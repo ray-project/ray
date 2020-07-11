@@ -44,6 +44,7 @@ class Message {
   /// All subclasses should implement `ToProtobuf` to serialize its own protobuf data.
   virtual void ToProtobuf(std::string *output) = 0;
 
+  void FillMessageCommon(queue::protobuf::MessageCommon *common);
  protected:
   ActorID actor_id_;
   ActorID peer_actor_id_;
@@ -184,7 +185,7 @@ class PullResponseMessage : public Message {
         msg_id_(msg_id),
         is_upstream_first_pull_(is_upstream_first_pull),
         err_code_(err_code) {}
-  virtual ~PullResponseMessage() {}
+  virtual ~PullResponseMessage() = default;
 
   static std::shared_ptr<PullResponseMessage> FromBytes(uint8_t *bytes);
   virtual void ToProtobuf(std::string *output);

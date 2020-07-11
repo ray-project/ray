@@ -56,7 +56,7 @@ StreamingStatus StreamingQueueProducer::CreateQueue() {
                       << " data_size: " << channel_info_.queue_size;
   auto upstream_handler = ray::streaming::UpstreamQueueMessageHandler::GetService();
   if (upstream_handler->UpstreamQueueExists(channel_info_.channel_id)) {
-    RAY_LOG(INFO) << "StreamingQueueWriter::CreateQueue duplicate!!!";
+    STREAMING_LOG(INFO) << "StreamingQueueWriter::CreateQueue duplicate!!!";
     return StreamingStatus::OK;
   }
 
@@ -152,12 +152,12 @@ StreamingQueueConsumer::~StreamingQueueConsumer() {
 
 StreamingQueueStatus StreamingQueueConsumer::GetQueue(
     const ObjectID &queue_id, uint64_t start_msg_id,
-    ChannelCreationParameter &init_param) {
+    const ChannelCreationParameter &init_param) {
   STREAMING_LOG(INFO) << "GetQueue qid: " << queue_id << " start_msg_id: " << start_msg_id
                       << " actor_id: " << init_param.actor_id;
   auto downstream_handler = ray::streaming::DownstreamQueueMessageHandler::GetService();
   if (downstream_handler->DownstreamQueueExists(queue_id)) {
-    RAY_LOG(INFO) << "StreamingQueueReader:: Already got this queue.";
+    STREAMING_LOG(INFO) << "StreamingQueueReader:: Already got this queue.";
     return StreamingQueueStatus::OK;
   }
 

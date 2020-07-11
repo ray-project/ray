@@ -159,7 +159,7 @@ class StreamingQueueConsumer : public ConsumerChannel {
 
  private:
   StreamingQueueStatus GetQueue(const ObjectID &queue_id, uint64_t start_msg_id,
-                                ChannelCreationParameter &init_param);
+                                const ChannelCreationParameter &init_param);
 
  private:
   std::shared_ptr<ReaderQueue> queue_;

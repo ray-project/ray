@@ -45,11 +45,16 @@ std::unique_ptr<LocalMemoryBuffer> Message::ToBytes() {
   return buffer;
 }
 
+
+void Message::FillMessageCommon(queue::protobuf::MessageCommon *common) {
+  common->set_src_actor_id(actor_id_.Binary());
+  common->set_dst_actor_id(peer_actor_id_.Binary());
+  common->set_queue_id(queue_id_.Binary());
+}
+
 void DataMessage::ToProtobuf(std::string *output) {
   queue::protobuf::StreamingQueueDataMsg msg;
-  msg.set_src_actor_id(actor_id_.Binary());
-  msg.set_dst_actor_id(peer_actor_id_.Binary());
-  msg.set_queue_id(queue_id_.Binary());
+  FillMessageCommon(msg.mutable_common());
   msg.set_seq_id(seq_id_);
   msg.set_msg_id_start(msg_id_start_);
   msg.set_msg_id_end(msg_id_end_);
@@ -64,9 +69,9 @@ std::shared_ptr<DataMessage> DataMessage::FromBytes(uint8_t *bytes) {
   std::string inputpb(reinterpret_cast<char const *>(bytes), *fbs_length);
   queue::protobuf::StreamingQueueDataMsg message;
   message.ParseFromString(inputpb);
-  ActorID src_actor_id = ActorID::FromBinary(message.src_actor_id());
-  ActorID dst_actor_id = ActorID::FromBinary(message.dst_actor_id());
-  ObjectID queue_id = ObjectID::FromBinary(message.queue_id());
+  ActorID src_actor_id = ActorID::FromBinary(message.common().src_actor_id());
+  ActorID dst_actor_id = ActorID::FromBinary(message.common().dst_actor_id());
+  ObjectID queue_id = ObjectID::FromBinary(message.common().queue_id());
   uint64_t msg_id_start = message.msg_id_start();
   uint64_t msg_id_end = message.msg_id_end();
   uint64_t seq_id = message.seq_id();
@@ -85,9 +90,7 @@ std::shared_ptr<DataMessage> DataMessage::FromBytes(uint8_t *bytes) {
 
 void NotificationMessage::ToProtobuf(std::string *output) {
   queue::protobuf::StreamingQueueNotificationMsg msg;
-  msg.set_src_actor_id(actor_id_.Binary());
-  msg.set_dst_actor_id(peer_actor_id_.Binary());
-  msg.set_queue_id(queue_id_.Binary());
+  FillMessageCommon(msg.mutable_common());
   msg.set_seq_id(seq_id_);
   msg.SerializeToString(output);
 }
@@ -98,10 +101,9 @@ std::shared_ptr<NotificationMessage> NotificationMessage::FromBytes(uint8_t *byt
   std::string inputpb(reinterpret_cast<char const *>(bytes), *length);
   queue::protobuf::StreamingQueueNotificationMsg message;
   message.ParseFromString(inputpb);
-  STREAMING_LOG(INFO) << "message.src_actor_id: " << message.src_actor_id();
-  ActorID src_actor_id = ActorID::FromBinary(message.src_actor_id());
-  ActorID dst_actor_id = ActorID::FromBinary(message.dst_actor_id());
-  ObjectID queue_id = ObjectID::FromBinary(message.queue_id());
+  ActorID src_actor_id = ActorID::FromBinary(message.common().src_actor_id());
+  ActorID dst_actor_id = ActorID::FromBinary(message.common().dst_actor_id());
+  ObjectID queue_id = ObjectID::FromBinary(message.common().queue_id());
   uint64_t seq_id = message.seq_id();
 
   std::shared_ptr<NotificationMessage> notify_msg =
@@ -112,9 +114,7 @@ std::shared_ptr<NotificationMessage> NotificationMessage::FromBytes(uint8_t *byt
 
 void CheckMessage::ToProtobuf(std::string *output) {
   queue::protobuf::StreamingQueueCheckMsg msg;
-  msg.set_src_actor_id(actor_id_.Binary());
-  msg.set_dst_actor_id(peer_actor_id_.Binary());
-  msg.set_queue_id(queue_id_.Binary());
+  FillMessageCommon(msg.mutable_common());
   msg.SerializeToString(output);
 }
 
@@ -124,9 +124,9 @@ std::shared_ptr<CheckMessage> CheckMessage::FromBytes(uint8_t *bytes) {
   std::string inputpb(reinterpret_cast<char const *>(bytes), *length);
   queue::protobuf::StreamingQueueCheckMsg message;
   message.ParseFromString(inputpb);
-  ActorID src_actor_id = ActorID::FromBinary(message.src_actor_id());
-  ActorID dst_actor_id = ActorID::FromBinary(message.dst_actor_id());
-  ObjectID queue_id = ObjectID::FromBinary(message.queue_id());
+  ActorID src_actor_id = ActorID::FromBinary(message.common().src_actor_id());
+  ActorID dst_actor_id = ActorID::FromBinary(message.common().dst_actor_id());
+  ObjectID queue_id = ObjectID::FromBinary(message.common().queue_id());
 
   std::shared_ptr<CheckMessage> check_msg =
       std::make_shared<CheckMessage>(src_actor_id, dst_actor_id, queue_id);
@@ -136,9 +136,7 @@ std::shared_ptr<CheckMessage> CheckMessage::FromBytes(uint8_t *bytes) {
 
 void CheckRspMessage::ToProtobuf(std::string *output) {
   queue::protobuf::StreamingQueueCheckRspMsg msg;
-  msg.set_src_actor_id(actor_id_.Binary());
-  msg.set_dst_actor_id(peer_actor_id_.Binary());
-  msg.set_queue_id(queue_id_.Binary());
+  FillMessageCommon(msg.mutable_common());
   msg.set_err_code(err_code_);
   msg.SerializeToString(output);
 }
@@ -149,9 +147,9 @@ std::shared_ptr<CheckRspMessage> CheckRspMessage::FromBytes(uint8_t *bytes) {
   std::string inputpb(reinterpret_cast<char const *>(bytes), *length);
   queue::protobuf::StreamingQueueCheckRspMsg message;
   message.ParseFromString(inputpb);
-  ActorID src_actor_id = ActorID::FromBinary(message.src_actor_id());
-  ActorID dst_actor_id = ActorID::FromBinary(message.dst_actor_id());
-  ObjectID queue_id = ObjectID::FromBinary(message.queue_id());
+  ActorID src_actor_id = ActorID::FromBinary(message.common().src_actor_id());
+  ActorID dst_actor_id = ActorID::FromBinary(message.common().dst_actor_id());
+  ObjectID queue_id = ObjectID::FromBinary(message.common().queue_id());
   queue::protobuf::StreamingQueueError err_code = message.err_code();
 
   std::shared_ptr<CheckRspMessage> check_rsp_msg =
@@ -162,9 +160,7 @@ std::shared_ptr<CheckRspMessage> CheckRspMessage::FromBytes(uint8_t *bytes) {
 
 void PullRequestMessage::ToProtobuf(std::string *output) {
   queue::protobuf::StreamingQueuePullRequestMsg msg;
-  msg.set_src_actor_id(actor_id_.Binary());
-  msg.set_dst_actor_id(peer_actor_id_.Binary());
-  msg.set_queue_id(queue_id_.Binary());
+  FillMessageCommon(msg.mutable_common());
   msg.set_msg_id(msg_id_);
   msg.SerializeToString(output);
 }
@@ -175,9 +171,9 @@ std::shared_ptr<PullRequestMessage> PullRequestMessage::FromBytes(uint8_t *bytes
   std::string inputpb(reinterpret_cast<char const *>(bytes), *length);
   queue::protobuf::StreamingQueuePullRequestMsg message;
   message.ParseFromString(inputpb);
-  ActorID src_actor_id = ActorID::FromBinary(message.src_actor_id());
-  ActorID dst_actor_id = ActorID::FromBinary(message.dst_actor_id());
-  ObjectID queue_id = ObjectID::FromBinary(message.queue_id());
+  ActorID src_actor_id = ActorID::FromBinary(message.common().src_actor_id());
+  ActorID dst_actor_id = ActorID::FromBinary(message.common().dst_actor_id());
+  ObjectID queue_id = ObjectID::FromBinary(message.common().queue_id());
   uint64_t msg_id = message.msg_id();
   STREAMING_LOG(DEBUG) << "src_actor_id:" << src_actor_id
                        << " dst_actor_id:" << dst_actor_id << " queue_id:" << queue_id
@@ -190,9 +186,7 @@ std::shared_ptr<PullRequestMessage> PullRequestMessage::FromBytes(uint8_t *bytes
 
 void PullResponseMessage::ToProtobuf(std::string *output) {
   queue::protobuf::StreamingQueuePullResponseMsg msg;
-  msg.set_src_actor_id(actor_id_.Binary());
-  msg.set_dst_actor_id(peer_actor_id_.Binary());
-  msg.set_queue_id(queue_id_.Binary());
+  FillMessageCommon(msg.mutable_common());
   msg.set_seq_id(seq_id_);
   msg.set_msg_id(msg_id_);
   msg.set_err_code(err_code_);
@@ -206,9 +200,9 @@ std::shared_ptr<PullResponseMessage> PullResponseMessage::FromBytes(uint8_t *byt
   std::string inputpb(reinterpret_cast<char const *>(bytes), *length);
   queue::protobuf::StreamingQueuePullResponseMsg message;
   message.ParseFromString(inputpb);
-  ActorID src_actor_id = ActorID::FromBinary(message.src_actor_id());
-  ActorID dst_actor_id = ActorID::FromBinary(message.dst_actor_id());
-  ObjectID queue_id = ObjectID::FromBinary(message.queue_id());
+  ActorID src_actor_id = ActorID::FromBinary(message.common().src_actor_id());
+  ActorID dst_actor_id = ActorID::FromBinary(message.common().dst_actor_id());
+  ObjectID queue_id = ObjectID::FromBinary(message.common().queue_id());
   uint64_t seq_id = message.seq_id();
   uint64_t msg_id = message.msg_id();
   queue::protobuf::StreamingQueueError err_code = message.err_code();
@@ -229,9 +223,7 @@ std::shared_ptr<PullResponseMessage> PullResponseMessage::FromBytes(uint8_t *byt
 
 void ResendDataMessage::ToProtobuf(std::string *output) {
   queue::protobuf::StreamingQueueResendDataMsg msg;
-  msg.set_src_actor_id(actor_id_.Binary());
-  msg.set_dst_actor_id(peer_actor_id_.Binary());
-  msg.set_queue_id(queue_id_.Binary());
+  FillMessageCommon(msg.mutable_common());
   msg.set_first_seq_id(first_seq_id_);
   msg.set_last_seq_id(last_seq_id_);
   msg.set_seq_id(seq_id_);
@@ -248,9 +240,9 @@ std::shared_ptr<ResendDataMessage> ResendDataMessage::FromBytes(uint8_t *bytes) 
   std::string inputpb(reinterpret_cast<char const *>(bytes), *fbs_length);
   queue::protobuf::StreamingQueueResendDataMsg message;
   message.ParseFromString(inputpb);
-  ActorID src_actor_id = ActorID::FromBinary(message.src_actor_id());
-  ActorID dst_actor_id = ActorID::FromBinary(message.dst_actor_id());
-  ObjectID queue_id = ObjectID::FromBinary(message.queue_id());
+  ActorID src_actor_id = ActorID::FromBinary(message.common().src_actor_id());
+  ActorID dst_actor_id = ActorID::FromBinary(message.common().dst_actor_id());
+  ObjectID queue_id = ObjectID::FromBinary(message.common().queue_id());
   uint64_t first_seq_id = message.first_seq_id();
   uint64_t last_seq_id = message.last_seq_id();
   uint64_t seq_id = message.seq_id();

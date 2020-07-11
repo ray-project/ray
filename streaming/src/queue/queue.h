@@ -190,16 +190,16 @@ class WriterQueue : public Queue {
   int ResendItems(std::list<QueueItem>::iterator start_iter, uint64_t first_seq_id,
                   uint64_t last_seq_id);
   /// Find the item which the message with `target_msg_id` in. If the `target_msg_id`
-  /// is larger than the largest message id in the queue, the `large_callback` callback
+  /// is larger than the largest message id in the queue, the `greater_callback` callback
   /// will be called; If the `target_message_id` is smaller than the smallest message id
-  /// in the queue, the `small_callback` callback will be called; If the `target_msg_id` is
+  /// in the queue, the `less_callback` callback will be called; If the `target_msg_id` is
   /// found in the queue, the `found_callback` callback willbe called.
   /// \param target_msg_id, the target message id to be found.
   void FindItem(
       uint64_t target_msg_id, 
-      std::function<void()> large_callback, 
-      std::function<void()> small_callback,
-      std::function<void(std::list<QueueItem>::iterator, uint64_t, uint64_t)> found_callback);
+      std::function<void()> greater_callback, 
+      std::function<void()> less_callback,
+      std::function<void(std::list<QueueItem>::iterator, uint64_t, uint64_t)> equal_callback);
 
  private:
   ActorID actor_id_;

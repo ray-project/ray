@@ -21,35 +21,33 @@ enum StreamingQueueError {
   NO_VALID_DATA = 3;
 }
 
-message StreamingQueueDataMsg {
+message MessageCommon {
   bytes src_actor_id = 1;
   bytes dst_actor_id = 2;
   bytes queue_id = 3;
-  uint64 seq_id = 4;
-  uint64 msg_id_start = 5;
-  uint64 msg_id_end = 6;
-  uint64 length = 7;
-  bool raw = 8;
+}
+
+message StreamingQueueDataMsg {
+  MessageCommon common = 1;
+  uint64 seq_id = 2;
+  uint64 msg_id_start = 3;
+  uint64 msg_id_end = 4;
+  uint64 length = 5;
+  bool raw = 6;
 }
 
 message StreamingQueueCheckMsg {
-  bytes src_actor_id = 1;
-  bytes dst_actor_id = 2;
-  bytes queue_id = 3;
+  MessageCommon common = 1;
 }
 
 message StreamingQueueCheckRspMsg {
-  bytes src_actor_id = 1;
-  bytes dst_actor_id = 2;
-  bytes queue_id = 3;
-  StreamingQueueError err_code = 4;
+  MessageCommon common = 1;
+  StreamingQueueError err_code = 2;
 }
 
 message StreamingQueueNotificationMsg {
-  bytes src_actor_id = 1;
-  bytes dst_actor_id = 2;
-  bytes queue_id = 3;
-  uint64 seq_id = 4;
+  MessageCommon common = 1;
+  uint64 seq_id = 2;
 }
 
 // for test
@@ -76,31 +74,25 @@ message StreamingQueueTestCheckStatusRspMsg {
 }
 
 message StreamingQueuePullRequestMsg {
-  bytes src_actor_id = 1;
-  bytes dst_actor_id = 2;
-  bytes queue_id = 3;
-  uint64 msg_id = 4;
+  MessageCommon common = 1;
+  uint64 msg_id = 2;
 }
 
 message StreamingQueuePullResponseMsg {
-  bytes src_actor_id = 1;
-  bytes dst_actor_id = 2;
-  bytes queue_id = 3;
-  uint64 seq_id = 4;
-  uint64 msg_id = 5;
-  StreamingQueueError err_code = 6;
-  bool is_upstream_first_pull = 7;
+  MessageCommon common = 1;
+  uint64 seq_id = 2;
+  uint64 msg_id = 3;
+  StreamingQueueError err_code = 4;
+  bool is_upstream_first_pull = 5;
 }
 
 message StreamingQueueResendDataMsg {
-  bytes src_actor_id = 1;
-  bytes dst_actor_id = 2;
-  bytes queue_id = 3;
-  uint64 first_seq_id = 4;
-  uint64 last_seq_id = 5;
-  uint64 seq_id = 6;
-  uint64 msg_id_start = 7;
-  uint64 msg_id_end = 8;
-  uint64 length = 9;
-  bool raw = 10;
+  MessageCommon common = 1;
+  uint64 first_seq_id = 2;
+  uint64 last_seq_id = 3;
+  uint64 seq_id = 4;
+  uint64 msg_id_start = 5;
+  uint64 msg_id_end = 6;
+  uint64 length = 7;
+  bool raw = 8;
 }

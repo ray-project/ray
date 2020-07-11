@@ -188,7 +188,7 @@ int WriterQueue::ResendItems(std::list<QueueItem>::iterator start_iter,
     if (it->SeqId() > last_seq_id) {
       break;
     }
-    STREAMING_LOG(INFO) << "ResendItems send seq_id " << (*it).SeqId() << " to peer.";
+    STREAMING_LOG(INFO) << "ResendItems send seq_id " << it->SeqId() << " to peer.";
     ResendItem(*it, first_seq_id, last_seq_id);
     count++;
   }
@@ -199,14 +199,14 @@ int WriterQueue::ResendItems(std::list<QueueItem>::iterator start_iter,
 }
 
 void WriterQueue::FindItem(
-    uint64_t target_msg_id, std::function<void()> large_callback, std::function<void()> small_callback,
-    std::function<void(std::list<QueueItem>::iterator, uint64_t, uint64_t)> found_callback) {
+    uint64_t target_msg_id, std::function<void()> greater_callback, std::function<void()> less_callback,
+    std::function<void(std::list<QueueItem>::iterator, uint64_t, uint64_t)> equal_callback) {
   auto last_one = std::prev(watershed_iter_);
   bool last_item_too_small =
       last_one != buffer_queue_.end() && last_one->MsgIdEnd() < target_msg_id;
 
   if (QUEUE_INITIAL_SEQ_ID == seq_id_ || last_item_too_small) {
-    large_callback();
+    greater_callback();
     return;
   }
 
@@ -221,9 +221,9 @@ void WriterQueue::FindItem(
       [&target_msg_id](QueueItem &item) { return item.InItem(target_msg_id); });
 
   if (target_item != watershed_iter_) {
-    found_callback(target_item, first_seq_id, last_seq_id);
+    equal_callback(target_item, first_seq_id, last_seq_id);
   } else {
-    small_callback();
+    less_callback();
   }
 }
 
