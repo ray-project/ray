@@ -1725,7 +1725,7 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
   rpc::Address owner_address;
   auto has_owner = reference_counter_->GetOwner(object_id, &owner_address);
   if (!has_owner) {
-    // We owned this object, but it the object has gone out of scope.
+    // We owned this object, but the object has gone out of scope.
     reply->set_status(rpc::GetObjectStatusReply::OUT_OF_SCOPE);
     send_reply_callback(Status::OK(), nullptr, nullptr);
   } else {
