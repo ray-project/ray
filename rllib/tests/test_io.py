@@ -38,7 +38,7 @@ class AgentIOTest(unittest.TestCase):
         self.test_dir = tempfile.mkdtemp()
 
     def tearDown(self):
-        shutil.rmtree(self.test_dir)
+        shutil.rmtree(self.test_dir, ignore_errors=True)
 
     def writeOutputs(self, output, fw):
         agent = PGTrainer(
