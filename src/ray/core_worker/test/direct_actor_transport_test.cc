@@ -123,7 +123,7 @@ TEST_F(DirectActorSubmitterTest, TestSubmitTask) {
   ASSERT_TRUE(submitter_.SubmitTask(task).ok());
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
-  submitter_.ConnectActor(actor_id, addr);
+  submitter_.ConnectActor(actor_id, addr, 0);
   ASSERT_EQ(worker_client_->callbacks.size(), 1);
 
   task = CreateActorTaskHelper(actor_id, worker_id, 1);
@@ -145,7 +145,7 @@ TEST_F(DirectActorSubmitterTest, TestDependencies) {
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id);
-  submitter_.ConnectActor(actor_id, addr);
+  submitter_.ConnectActor(actor_id, addr, 0);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
   // Create two tasks for the actor with different arguments.
@@ -179,7 +179,7 @@ TEST_F(DirectActorSubmitterTest, TestOutOfOrderDependencies) {
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id);
-  submitter_.ConnectActor(actor_id, addr);
+  submitter_.ConnectActor(actor_id, addr, 0);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
   // Create two tasks for the actor with different arguments.
@@ -215,7 +215,7 @@ TEST_F(DirectActorSubmitterTest, TestActorDead) {
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id);
   gcs::ActorTableData actor_data;
-  submitter_.ConnectActor(actor_id, addr);
+  submitter_.ConnectActor(actor_id, addr, 0);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
   // Create two tasks for the actor. One depends on an object that is not yet available.
@@ -248,7 +248,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartNoRetry) {
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id);
   gcs::ActorTableData actor_data;
-  submitter_.ConnectActor(actor_id, addr);
+  submitter_.ConnectActor(actor_id, addr, 0);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
   // Create four tasks for the actor.
@@ -274,7 +274,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartNoRetry) {
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
 
   // Actor gets restarted.
-  submitter_.ConnectActor(actor_id, addr);
+  submitter_.ConnectActor(actor_id, addr, 1);
   ASSERT_TRUE(submitter_.SubmitTask(task4).ok());
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
   ASSERT_TRUE(worker_client_->callbacks.empty());
@@ -289,7 +289,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartRetry) {
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id);
   gcs::ActorTableData actor_data;
-  submitter_.ConnectActor(actor_id, addr);
+  submitter_.ConnectActor(actor_id, addr, 0);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
   // Create four tasks for the actor.
@@ -318,7 +318,60 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartRetry) {
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
 
   // Actor gets restarted.
-  submitter_.ConnectActor(actor_id, addr);
+  submitter_.ConnectActor(actor_id, addr, 1);
+  // A new task is submitted.
+  ASSERT_TRUE(submitter_.SubmitTask(task4).ok());
+  // Tasks 2 and 3 get retried.
+  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
+  ASSERT_TRUE(submitter_.SubmitTask(task3).ok());
+  while (!worker_client_->callbacks.empty()) {
+    ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
+  }
+  // Actor counter restarts at 0 after the actor is restarted. New task cannot
+  // execute until after tasks 2 and 3 are re-executed.
+  ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1, 2, 2, 0, 1));
+}
+
+TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
+  rpc::Address addr;
+  auto worker_id = WorkerID::FromRandom();
+  addr.set_worker_id(worker_id.Binary());
+  ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
+  submitter_.AddActorQueueIfNotExists(actor_id);
+  gcs::ActorTableData actor_data;
+  submitter_.ConnectActor(actor_id, addr, 0);
+  ASSERT_EQ(worker_client_->callbacks.size(), 0);
+
+  // Create four tasks for the actor.
+  auto task1 = CreateActorTaskHelper(actor_id, worker_id, 0);
+  auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
+  auto task3 = CreateActorTaskHelper(actor_id, worker_id, 2);
+  auto task4 = CreateActorTaskHelper(actor_id, worker_id, 3);
+  // Submit three tasks.
+  ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
+  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
+  ASSERT_TRUE(submitter_.SubmitTask(task3).ok());
+
+  // All tasks will eventually finish.
+  EXPECT_CALL(*task_finisher_, CompletePendingTask(task1.TaskId(), _, _)).Times(4);
+  // Tasks 2 and 3 will be retried.
+  EXPECT_CALL(*task_finisher_, PendingTaskFailed(task2.TaskId(), _, _))
+      .Times(2)
+      .WillRepeatedly(Return(true));
+  // First task finishes. Second task fails.
+  ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
+  ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
+
+  // Simulate the actor failing.
+  submitter_.DisconnectActor(actor_id, /*dead=*/false);
+  // Third task fails after the actor is disconnected.
+  ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
+
+  // Actor gets restarted twice. We receive the second notification before the
+  // first.
+  submitter_.ConnectActor(actor_id, addr, 2);
+  addr.set_worker_id(WorkerID::FromRandom().Binary());
+  submitter_.ConnectActor(actor_id, addr, 1);
   // A new task is submitted.
   ASSERT_TRUE(submitter_.SubmitTask(task4).ok());
   // Tasks 2 and 3 get retried.
