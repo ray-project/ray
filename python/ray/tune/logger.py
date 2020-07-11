@@ -187,7 +187,7 @@ class TBXLogger(Logger):
     """
 
     # NoneType is not supported on the last TBX release yet.
-    VALID_HPARAMS = (str, bool, int, float, list)
+    VALID_HPARAMS = (str, bool, np.bool8, int, np.integer, float, list)
 
     def _init(self):
         try:

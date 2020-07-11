@@ -56,6 +56,15 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     } catch (IOException e) {
       throw new RuntimeException("Failed to create the log directory.", e);
     }
+
+    if (rayConfig.getRedisAddress() != null) {
+      GcsClient tempGcsClient =
+          new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
+      for (Map.Entry<String, String> entry :
+          tempGcsClient.getInternalConfig().entrySet()) {
+        rayConfig.rayletConfigParameters.put(entry.getKey(), entry.getValue());
+      }
+    }
   }
 
   private static void resetLibraryPath(RayConfig rayConfig) {

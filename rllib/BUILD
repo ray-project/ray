@@ -42,7 +42,7 @@
 
 # A2C/A3C
 py_test(
-    name = "regression_test_a2c_cartpole_tf",
+    name = "run_regression_tests_cartpole_a2c_tf",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_tf", "learning_tests_cartpole"],
     size = "medium",
@@ -52,7 +52,7 @@ py_test(
 )
 
 py_test(
-    name = "regression_test_a2c_cartpole_torch",
+    name = "run_regression_tests_cartpole_a2c_torch",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_torch", "learning_tests_cartpole"],
     size = "medium",
@@ -62,7 +62,7 @@ py_test(
 )
 
 py_test(
-    name = "regression_test_a3c_cartpole_tf",
+    name = "run_regression_tests_cartpole_a3c_tf",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_tf", "learning_tests_cartpole"],
     size = "medium",
@@ -72,7 +72,7 @@ py_test(
 )
 
 py_test(
-    name = "regression_test_a3c_cartpole_torch",
+    name = "run_regression_tests_cartpole_a3c_torch",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_torch", "learning_tests_cartpole"],
     size = "medium",
@@ -366,6 +366,7 @@ py_test(
     args = ["--yaml-dir=tuned_examples/ddpg", "--torch"]
 )
 
+
 # --------------------------------------------------------------------
 # Agents (Compilation, Losses, simple agent functionality tests)
 # rllib/agents/
@@ -400,7 +401,7 @@ py_test(
 py_test(
     name = "test_apex_ddpg",
     tags = ["agents_dir"],
-    size = "small",
+    size = "medium",
     srcs = ["agents/ddpg/tests/test_apex_ddpg.py"]
 )
 
@@ -424,7 +425,7 @@ py_test(
 py_test(
     name = "test_dqn",
     tags = ["agents_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["agents/dqn/tests/test_dqn.py"]
 )
 py_test(
@@ -454,7 +455,7 @@ py_test(
 py_test(
     name = "test_impala",
     tags = ["agents_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["agents/impala/tests/test_impala.py"]
 )
 py_test(
@@ -1133,10 +1134,10 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_dependency",
+    name = "tests/test_dependency_tf",
     tags = ["tests_dir", "tests_dir_D"],
     size = "small",
-    srcs = ["tests/test_dependency.py"]
+    srcs = ["tests/test_dependency_tf.py"]
 )
 
 py_test(
@@ -1147,10 +1148,21 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_eager_support",
+    name = "tests/test_eager_support_pg",
+    main = "tests/test_eager_support.py",
     tags = ["tests_dir", "tests_dir_E"],
-    size = "enormous",
-    srcs = ["tests/test_eager_support.py"]
+    size = "large",
+    srcs = ["tests/test_eager_support.py"],
+    args = ["TestEagerSupportPG"]
+)
+
+py_test(
+    name = "tests/test_eager_support_off_policy",
+    main = "tests/test_eager_support.py",
+    tags = ["tests_dir", "tests_dir_E"],
+    size = "large",
+    srcs = ["tests/test_eager_support.py"],
+    args = ["TestEagerSupportOffPolicy"]
 )
 
 py_test(
@@ -1269,6 +1281,13 @@ py_test(
 )
 
 py_test(
+    name = "tests/test_pettingzoo_env",
+    tags = ["tests_dir", "tests_dir_P"],
+    size = "medium",
+    srcs = ["tests/test_pettingzoo_env.py"]
+)
+
+py_test(
     name = "tests/test_reproducibility",
     tags = ["tests_dir", "tests_dir_R"],
     size = "medium",
@@ -1292,17 +1311,48 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_supported_multi_agent",
+    name = "tests/test_supported_multi_agent_pg",
+    main = "tests/test_supported_multi_agent.py",
     tags = ["tests_dir", "tests_dir_S"],
-    size = "large",
-    srcs = ["tests/test_supported_multi_agent.py"]
+    size = "medium",
+    srcs = ["tests/test_supported_multi_agent.py"],
+    args = ["TestSupportedMultiAgentPG"]
 )
 
 py_test(
-    name = "tests/test_supported_spaces",
+    name = "tests/test_supported_multi_agent_off_policy",
+    main = "tests/test_supported_multi_agent.py",
+    tags = ["tests_dir", "tests_dir_S"],
+    size = "medium",
+    srcs = ["tests/test_supported_multi_agent.py"],
+    args = ["TestSupportedMultiAgentOffPolicy"]
+)
+
+py_test(
+    name = "tests/test_supported_spaces_pg",
+    main = "tests/test_supported_spaces.py",
     tags = ["tests_dir", "tests_dir_S"],
     size = "enormous",
-    srcs = ["tests/test_supported_spaces.py"]
+    srcs = ["tests/test_supported_spaces.py"],
+    args = ["TestSupportedSpacesPG"]
+)
+
+py_test(
+    name = "tests/test_supported_spaces_off_policy",
+    main = "tests/test_supported_spaces.py",
+    tags = ["tests_dir", "tests_dir_S"],
+    size = "enormous",
+    srcs = ["tests/test_supported_spaces.py"],
+    args = ["TestSupportedSpacesOffPolicy"]
+)
+
+py_test(
+    name = "tests/test_supported_spaces_evolution_algos",
+    main = "tests/test_supported_spaces.py",
+    tags = ["tests_dir", "tests_dir_S"],
+    size = "large",
+    srcs = ["tests/test_supported_spaces.py"],
+    args = ["TestSupportedSpacesEvolutionAlgos"]
 )
 
 # --------------------------------------------------------------------

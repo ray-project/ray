@@ -8,6 +8,7 @@ aims to avoid boilerplate code, so you don't have to write the same training
 loops all over again when building a new model.
 
 .. image:: /images/pytorch_lightning_full.png
+  :align: center
 
 The main abstraction of PyTorch Lightning is the ``LightningModule`` class, which
 should be extended by your application. There is `a great post on how to transfer

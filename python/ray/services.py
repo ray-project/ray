@@ -23,6 +23,8 @@ resource = None
 if sys.platform != "win32":
     import resource
 
+EXE_SUFFIX = ".exe" if sys.platform == "win32" else ""
+
 # True if processes are run in the valgrind profiler.
 RUN_RAYLET_PROFILER = False
 RUN_PLASMA_STORE_PROFILER = False
@@ -31,7 +33,7 @@ RUN_PLASMA_STORE_PROFILER = False
 RAY_HOME = os.path.join(os.path.dirname(__file__), "../..")
 REDIS_EXECUTABLE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
-    "core/src/ray/thirdparty/redis/src/redis-server")
+    "core/src/ray/thirdparty/redis/src/redis-server" + EXE_SUFFIX)
 REDIS_MODULE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
     "core/src/ray/gcs/redis_module/libray_redis_module.so")
@@ -40,7 +42,7 @@ REDIS_MODULE = os.path.join(
 # credis will be enabled if the environment variable RAY_USE_NEW_GCS is set.
 CREDIS_EXECUTABLE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
-    "core/src/credis/redis/src/redis-server")
+    "core/src/credis/redis/src/redis-server" + EXE_SUFFIX)
 CREDIS_MASTER_MODULE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
     "core/src/credis/build/src/libmaster.so")
@@ -51,13 +53,15 @@ CREDIS_MEMBER_MODULE = os.path.join(
 # Location of the plasma object store executable.
 PLASMA_STORE_EXECUTABLE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
-    "core/src/plasma/plasma_store_server")
+    "core/src/plasma/plasma_store_server" + EXE_SUFFIX)
 
 # Location of the raylet executables.
 RAYLET_EXECUTABLE = os.path.join(
-    os.path.abspath(os.path.dirname(__file__)), "core/src/ray/raylet/raylet")
+    os.path.abspath(os.path.dirname(__file__)),
+    "core/src/ray/raylet/raylet" + EXE_SUFFIX)
 GCS_SERVER_EXECUTABLE = os.path.join(
-    os.path.abspath(os.path.dirname(__file__)), "core/src/ray/gcs/gcs_server")
+    os.path.abspath(os.path.dirname(__file__)),
+    "core/src/ray/gcs/gcs_server" + EXE_SUFFIX)
 
 DEFAULT_JAVA_WORKER_CLASSPATH = [
     os.path.join(
@@ -1256,7 +1260,8 @@ def start_raylet(redis_address,
                  plasma_directory=None,
                  huge_pages=False,
                  fate_share=None,
-                 socket_to_use=None):
+                 socket_to_use=None,
+                 head_node=False):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1398,6 +1403,8 @@ def start_raylet(redis_address,
             command.append("--huge_pages")
     if socket_to_use:
         socket_to_use.close()
+    if head_node:
+        command.append("--head_node")
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_RAYLET,
@@ -1461,7 +1468,7 @@ def build_java_worker_command(
         pairs.append(("ray.redis.password", redis_password))
 
     pairs.append(("ray.home", RAY_HOME))
-    pairs.append(("ray.log-dir", os.path.join(session_dir, "logs")))
+    pairs.append(("ray.logging.dir", os.path.join(session_dir, "logs")))
     pairs.append(("ray.session-dir", session_dir))
 
     command = ["java"] + ["-D{}={}".format(*pair) for pair in pairs]

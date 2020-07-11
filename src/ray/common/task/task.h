@@ -80,7 +80,7 @@ class Task {
   /// arguments and the mutable execution dependencies.
   ///
   /// \return The object dependencies.
-  const std::vector<ObjectID> &GetDependencies() const;
+  const std::vector<rpc::ObjectReference> &GetDependencies() const;
 
   /// Update the dynamic/mutable information for this task.
   /// \param task Task structure with updated dynamic information.
@@ -110,7 +110,7 @@ class Task {
   /// A cached copy of the task's object dependencies, including arguments from
   /// the TaskSpecification and execution dependencies from the
   /// TaskExecutionSpecification.
-  std::vector<ObjectID> dependencies_;
+  std::vector<rpc::ObjectReference> dependencies_;
 
   /// For direct task calls, overrides the dispatch behaviour to send an RPC
   /// back to the submitting worker.

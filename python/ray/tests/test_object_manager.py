@@ -50,12 +50,12 @@ def test_object_broadcast(ray_start_cluster_with_resource):
     def create_object():
         return np.zeros(1024 * 1024, dtype=np.uint8)
 
-    object_ids = []
+    object_refs = []
 
     for _ in range(3):
         # Broadcast an object to all machines.
         x_id = ray.put(x)
-        object_ids.append(x_id)
+        object_refs.append(x_id)
         ray.get([
             f._remote(args=[x_id], resources={str(i % num_nodes): 1})
             for i in range(10 * num_nodes)
@@ -64,7 +64,7 @@ def test_object_broadcast(ray_start_cluster_with_resource):
     for _ in range(3):
         # Broadcast an object to all machines.
         x_id = create_object.remote()
-        object_ids.append(x_id)
+        object_refs.append(x_id)
         ray.get([
             f._remote(args=[x_id], resources={str(i % num_nodes): 1})
             for i in range(10 * num_nodes)
@@ -75,7 +75,7 @@ def test_object_broadcast(ray_start_cluster_with_resource):
     transfer_events = ray.object_transfer_timeline()
 
     # Make sure that each object was transferred a reasonable number of times.
-    for x_id in object_ids:
+    for x_id in object_refs:
         relevant_events = [
             event for event in transfer_events
             if event["cat"] == "transfer_send"
@@ -141,12 +141,12 @@ def test_actor_broadcast(ray_start_cluster_with_resource):
     # Wait for the actors to start up.
     ray.get([a.ready.remote() for a in actors])
 
-    object_ids = []
+    object_refs = []
 
     # Broadcast a large object to all actors.
     for _ in range(5):
         x_id = ray.put(np.zeros(1024 * 1024, dtype=np.uint8))
-        object_ids.append(x_id)
+        object_refs.append(x_id)
         # Pass the object into a method for every actor.
         ray.get([a.set_weights.remote(x_id) for a in actors])
 
@@ -155,7 +155,7 @@ def test_actor_broadcast(ray_start_cluster_with_resource):
     transfer_events = ray.object_transfer_timeline()
 
     # Make sure that each object was transferred a reasonable number of times.
-    for x_id in object_ids:
+    for x_id in object_refs:
         relevant_events = [
             event for event in transfer_events
             if event["cat"] == "transfer_send"
@@ -214,10 +214,7 @@ def test_object_transfer_retry(ray_start_cluster):
     object_store_memory = 150 * 1024 * 1024
     cluster.add_node(
         object_store_memory=object_store_memory, _internal_config=config)
-    cluster.add_node(
-        num_gpus=1,
-        object_store_memory=object_store_memory,
-        _internal_config=config)
+    cluster.add_node(num_gpus=1, object_store_memory=object_store_memory)
     ray.init(address=cluster.address)
 
     @ray.remote(num_gpus=1)
