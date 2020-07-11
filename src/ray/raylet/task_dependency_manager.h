@@ -172,7 +172,7 @@ class TaskDependencyManager {
   /// \param[in] object_id The object whose owner to get.
   /// \param[out] owner_address The address of the object's owner, if
   /// available.
-  /// \return True if the object is still required on this node.
+  /// \return True if we have owner information for the object.
   bool GetOwnerAddress(const ObjectID &object_id, rpc::Address *owner_address) const;
 
  private:

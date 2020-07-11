@@ -526,7 +526,7 @@ bool TaskDependencyManager::GetOwnerAddress(const ObjectID &object_id,
   }
 
   *owner_address = it->second.owner_address;
-  return true;
+  return !owner_address->worker_id().empty();
 }
 
 }  // namespace raylet

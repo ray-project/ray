@@ -3003,15 +3003,12 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
                                            const ObjectID &required_object_id) {
   // Get the owner's address.
   rpc::Address owner_addr;
-  bool still_required =
+  bool has_owner =
       task_dependency_manager_.GetOwnerAddress(required_object_id, &owner_addr);
-  if (!still_required) {
-    // The object is no longer required on this node. If another
-    // client needs the object later on, the timeout will be reset.
-    return;
-  }
-
-  if (!owner_addr.worker_id().empty()) {
+  if (has_owner) {
+    RAY_LOG(DEBUG) << "Required object " << required_object_id
+                   << " fetch timed out, asking owner "
+                   << WorkerID::FromBinary(owner_addr.worker_id());
     // The owner's address exists. Poll the owner to check if the object is
     // still in scope. If not, mark the object as failed.
     // TODO(swang): If the owner has died, we could also mark the object as
@@ -3049,6 +3046,8 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
     // disabled. Once the GCS actor service is enabled by default, we can
     // immediately mark the object as failed if there is no ownership
     // information.
+    RAY_LOG(DEBUG) << "Required object " << required_object_id
+                   << " fetch timed out, checking task table";
     RAY_CHECK_OK(
         gcs_client_->Tasks().AsyncGet(
             task_id,
