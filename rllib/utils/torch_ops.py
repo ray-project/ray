@@ -1,10 +1,10 @@
 import numpy as np
+import tree
 
-from ray.rllib.utils import try_import_tree
+from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.utils.framework import try_import_torch
 
 torch, _ = try_import_torch()
-tree = try_import_tree()
 
 
 def explained_variance(y, pred):
@@ -123,8 +123,14 @@ def convert_to_torch_tensor(stats, device=None):
     """
 
     def mapping(item):
+        # Already torch tensor -> make sure it's on right device.
         if torch.is_tensor(item):
             return item if device is None else item.to(device)
+        # Special handling of "Repeated" values.
+        elif isinstance(item, RepeatedValues):
+            return RepeatedValues(
+                tree.map_structure(mapping, item.values),
+                item.lengths, item.max_len)
         tensor = torch.from_numpy(np.asarray(item))
         # Floatify all float64 tensors.
         if tensor.dtype == torch.double:

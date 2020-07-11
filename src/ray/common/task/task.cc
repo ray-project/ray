@@ -12,7 +12,9 @@ const TaskSpecification &Task::GetTaskSpecification() const { return task_spec_;
 
 void Task::IncrementNumForwards() { task_execution_spec_.IncrementNumForwards(); }
 
-const std::vector<ObjectID> &Task::GetDependencies() const { return dependencies_; }
+const std::vector<rpc::ObjectReference> &Task::GetDependencies() const {
+  return dependencies_;
+}
 
 void Task::ComputeDependencies() { dependencies_ = task_spec_.GetDependencies(); }
 

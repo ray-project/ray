@@ -4,9 +4,6 @@ from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils.framework import try_import_tf
-
-tf = try_import_tf()
 
 
 @DeveloperAPI
@@ -134,10 +131,10 @@ def build_tf_policy(name,
 
             DynamicTFPolicy.__init__(
                 self,
-                obs_space,
-                action_space,
-                config,
-                loss_fn,
+                obs_space=obs_space,
+                action_space=action_space,
+                config=config,
+                loss_fn=loss_fn,
                 stats_fn=stats_fn,
                 grad_stats_fn=grad_stats_fn,
                 before_loss_init=before_loss_init_wrapper,

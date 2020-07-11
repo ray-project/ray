@@ -34,7 +34,7 @@
 #include "ray/common/status.h"
 #include "ray/object_manager/plasma/compat.h"
 
-#include "arrow/status.h"
+#include "ray/common/status.h"
 #include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/util/logging.h"
@@ -45,6 +45,7 @@ using arrow::cuda::CudaIpcMemHandle;
 
 namespace plasma {
 
+using ray::Status;
 using ray::object_manager::protocol::ObjectInfoT;
 
 #define HANDLE_SIGPIPE(s, fd_)                                              \
@@ -69,7 +70,9 @@ constexpr int64_t kBlockSize = 64;
 
 /// Contains all information that is associated with a Plasma store client.
 struct Client {
-  explicit Client(int fd);
+  explicit Client(int fd) : fd(fd), notification_fd(-1) {}
+
+  ~Client();
 
   /// The file descriptor used to communicate with the client.
   int fd;
@@ -86,6 +89,20 @@ struct Client {
 
   std::string name = "anonymous_client";
 };
+
+std::ostream &operator<<(std::ostream &os, const std::shared_ptr<Client> &client);
+
+/// Connection to Plasma Store.
+struct StoreConn {
+  explicit StoreConn(int fd) : fd(fd) {}
+
+  ~StoreConn();
+
+  /// The file descriptor used to communicate with the store.
+  int fd;
+};
+
+std::ostream &operator<<(std::ostream &os, const std::shared_ptr<StoreConn> &store_conn);
 
 // TODO(pcm): Replace this by the flatbuffers message PlasmaObjectSpec.
 struct PlasmaObject {
@@ -169,5 +186,8 @@ std::unique_ptr<uint8_t[]> CreateObjectInfoBuffer(ObjectInfoT* object_info);
 
 std::unique_ptr<uint8_t[]> CreatePlasmaNotificationBuffer(
     const std::vector<ObjectInfoT>& object_info);
+
+/// Globally accessible reference to plasma store configuration.
+extern const PlasmaStoreInfo* plasma_config;
 
 }  // namespace plasma

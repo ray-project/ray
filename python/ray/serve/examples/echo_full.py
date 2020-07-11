@@ -2,13 +2,26 @@
 Full example of ray.serve module
 """
 
+import json
 import time
+
+from pygments import formatters, highlight, lexers
 
 import requests
 
 import ray
 import ray.serve as serve
-from ray.serve.utils import pformat_color_json
+
+
+def pformat_color_json(d):
+    """Use pygments to pretty format and colorize dictionary"""
+    formatted_json = json.dumps(d, sort_keys=True, indent=4)
+
+    colorful_json = highlight(formatted_json, lexers.JsonLexer(),
+                              formatters.TerminalFormatter())
+
+    return colorful_json
+
 
 # initialize ray serve system.
 serve.init()

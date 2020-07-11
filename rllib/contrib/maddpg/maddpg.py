@@ -23,6 +23,9 @@ logger.setLevel(logging.INFO)
 # yapf: disable
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
+    # === Framework to run the algorithm ===
+    "framework": "tf",
+
     # === Settings for each individual policy ===
     # ID of the agent controlled by this policy
     "agent_id": None,
@@ -67,9 +70,10 @@ DEFAULT_CONFIG = with_common_config({
     # Observation compression. Note that compression makes simulation slow in
     # MPE.
     "compress_observations": False,
-    # If set, this will fix the ratio of sampled to replayed timesteps.
-    # Otherwise, replay will proceed at the native ratio determined by
-    # (train_batch_size / rollout_fragment_length).
+    # If set, this will fix the ratio of replayed from a buffer and learned on
+    # timesteps to sampled from an environment and stored in the replay buffer
+    # timesteps. Otherwise, the replay will proceed at the native ratio
+    # determined by (train_batch_size / rollout_fragment_length).
     "training_intensity": None,
     # Force lockstep replay mode for MADDPG.
     "multiagent": merge_dicts(COMMON_CONFIG["multiagent"], {

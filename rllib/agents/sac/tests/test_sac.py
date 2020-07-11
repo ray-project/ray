@@ -11,13 +11,12 @@ from ray.rllib.models.tf.tf_action_dist import SquashedGaussian
 from ray.rllib.models.torch.torch_action_dist import TorchSquashedGaussian
 from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import fc, relu
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \
     framework_iterator
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor
 
-tf = try_import_tf()
 torch, _ = try_import_torch()
 
 
@@ -55,7 +54,7 @@ class TestSAC(unittest.TestCase):
         config["learning_starts"] = 0
         config["prioritized_replay"] = True
         num_iterations = 1
-        for _ in framework_iterator(config, ("tf", "torch")):
+        for _ in framework_iterator(config):
             # Test for different env types (discrete w/ and w/o image, + cont).
             for env in [
                     "Pendulum-v0", "MsPacmanNoFrameskip-v4", "CartPole-v0"
