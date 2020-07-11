@@ -51,7 +51,7 @@ class GcsPlacementGroupManager;
 class GcsServer {
  public:
   explicit GcsServer(const GcsServerConfig &config,
-                     boost::asio::io_service &main_service);
+                     std::vector<boost::asio::io_service *> io_services);
   virtual ~GcsServer();
 
   /// Start gcs server.
@@ -116,6 +116,9 @@ class GcsServer {
   GcsServerConfig config_;
   /// The main io service to drive event posted from grpc threads.
   boost::asio::io_context &main_service_;
+  /// The io service used by node manager in case of node failure detector being blocked
+  /// by main thread.
+  boost::asio::io_context &node_manager_io_service_;
   /// The grpc server
   rpc::GrpcServer rpc_server_;
   /// The `ClientCallManager` object that is shared by all `NodeManagerWorkerClient`s.

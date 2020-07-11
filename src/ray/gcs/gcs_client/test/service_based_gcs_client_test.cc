@@ -44,14 +44,10 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
       client_io_service_->run();
     }));
 
-    server_io_service_.reset(new boost::asio::io_service());
-    gcs_server_.reset(new gcs::GcsServer(config_, *server_io_service_));
+    io_service_pool_ = std::make_shared<IOServicePool>(io_service_num_);
+    io_service_pool_->Run();
+    gcs_server_.reset(new gcs::GcsServer(config_, io_service_pool_->GetAll()));
     gcs_server_->Start();
-    server_io_service_thread_.reset(new std::thread([this] {
-      std::unique_ptr<boost::asio::io_service::work> work(
-          new boost::asio::io_service::work(*server_io_service_));
-      server_io_service_->run();
-    }));
 
     // Wait until server starts listening.
     while (!gcs_server_->IsStarted()) {
@@ -70,9 +66,8 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     gcs_client_->Disconnect();
 
     gcs_server_->Stop();
-    server_io_service_->stop();
+    io_service_pool_->Stop();
     gcs_server_.reset();
-    server_io_service_thread_->join();
     TestSetupUtil::FlushAllRedisServers();
     client_io_service_thread_->join();
   }
@@ -80,19 +75,14 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   void RestartGcsServer() {
     RAY_LOG(INFO) << "Stopping GCS service, port = " << gcs_server_->GetPort();
     gcs_server_->Stop();
-    server_io_service_->stop();
+    io_service_pool_->Stop();
     gcs_server_.reset();
-    server_io_service_thread_->join();
     RAY_LOG(INFO) << "Finished stopping GCS service.";
 
-    server_io_service_.reset(new boost::asio::io_service());
-    gcs_server_.reset(new gcs::GcsServer(config_, *server_io_service_));
+    io_service_pool_ = std::make_shared<IOServicePool>(io_service_num_);
+    io_service_pool_->Run();
+    gcs_server_.reset(new gcs::GcsServer(config_, io_service_pool_->GetAll()));
     gcs_server_->Start();
-    server_io_service_thread_.reset(new std::thread([this] {
-      std::unique_ptr<boost::asio::io_service::work> work(
-          new boost::asio::io_service::work(*server_io_service_));
-      server_io_service_->run();
-    }));
 
     // Wait until server starts listening.
     while (gcs_server_->GetPort() == 0) {
@@ -498,8 +488,8 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   // GCS server.
   gcs::GcsServerConfig config_;
   std::unique_ptr<gcs::GcsServer> gcs_server_;
-  std::unique_ptr<std::thread> server_io_service_thread_;
-  std::unique_ptr<boost::asio::io_service> server_io_service_;
+  size_t io_service_num_{2};
+  std::shared_ptr<IOServicePool> io_service_pool_;
 
   // GCS client.
   std::unique_ptr<gcs::GcsClient> gcs_client_;

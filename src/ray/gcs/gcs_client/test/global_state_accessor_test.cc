@@ -37,8 +37,11 @@ class GlobalStateAccessorTest : public ::testing::Test {
     config.is_test = true;
     config.redis_port = TEST_REDIS_SERVER_PORTS.front();
 
+    io_service_pool_ = std::make_shared<IOServicePool>(io_service_num_);
+    io_service_pool_->Run();
+
     io_service_.reset(new boost::asio::io_service());
-    gcs_server_.reset(new gcs::GcsServer(config, *io_service_));
+    gcs_server_.reset(new gcs::GcsServer(config, io_service_pool_->GetAll()));
     gcs_server_->Start();
 
     thread_io_service_.reset(new std::thread([this] {
@@ -56,7 +59,7 @@ class GlobalStateAccessorTest : public ::testing::Test {
     gcs::GcsClientOptions options(config.redis_address, config.redis_port,
                                   config.redis_password, config.is_test);
     gcs_client_.reset(new gcs::ServiceBasedGcsClient(options));
-    RAY_CHECK_OK(gcs_client_->Connect(*io_service_));
+    RAY_CHECK_OK(gcs_client_->Connect(*(io_service_pool_->Get())));
 
     // Create global state.
     std::stringstream address;
@@ -68,6 +71,7 @@ class GlobalStateAccessorTest : public ::testing::Test {
   void TearDown() override {
     gcs_server_->Stop();
     io_service_->stop();
+    io_service_pool_->Stop();
     gcs_server_.reset();
     thread_io_service_->join();
 
@@ -87,6 +91,8 @@ class GlobalStateAccessorTest : public ::testing::Test {
   std::unique_ptr<gcs::GcsServer> gcs_server_;
   std::unique_ptr<std::thread> thread_io_service_;
   std::unique_ptr<boost::asio::io_service> io_service_;
+  size_t io_service_num_{2};
+  std::shared_ptr<IOServicePool> io_service_pool_;
 
   // GCS client.
   std::unique_ptr<gcs::GcsClient> gcs_client_;

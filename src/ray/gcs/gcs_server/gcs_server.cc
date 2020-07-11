@@ -30,12 +30,15 @@ namespace ray {
 namespace gcs {
 
 GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
-                     boost::asio::io_service &main_service)
+                     std::vector<boost::asio::io_service *> io_services)
     : config_(config),
-      main_service_(main_service),
+      main_service_(*io_services[0]),
+      node_manager_io_service_(*io_services[1]),
       rpc_server_(config.grpc_server_name, config.grpc_server_port,
                   config.grpc_server_thread_num),
-      client_call_manager_(main_service) {}
+      client_call_manager_(*io_services[0]) {
+  RAY_CHECK(io_services.size() >= 2);
+}
 
 GcsServer::~GcsServer() { Stop(); }
 
@@ -154,8 +157,9 @@ void GcsServer::InitBackendClient() {
 
 void GcsServer::InitGcsNodeManager() {
   RAY_CHECK(redis_gcs_client_ != nullptr);
-  gcs_node_manager_ = std::make_shared<GcsNodeManager>(
-      main_service_, redis_gcs_client_->Errors(), gcs_pub_sub_, gcs_table_storage_);
+  gcs_node_manager_ = std::make_shared<GcsNodeManager>(node_manager_io_service_,
+                                                       redis_gcs_client_->Errors(),
+                                                       gcs_pub_sub_, gcs_table_storage_);
 }
 
 void GcsServer::InitGcsActorManager() {
