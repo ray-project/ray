@@ -201,6 +201,10 @@ class ExperimentAnalysis(Analysis):
     """
 
     def __init__(self, experiment_checkpoint_path, trials=None):
+        experiment_checkpoint_path = os.path.expanduser(experiment_checkpoint_path)
+        if not os.path.isfile(experiment_checkpoint_path):
+            raise ValueError(
+                "{} is not a valid file; file representing the experiment state does not exist.".format(experiment_checkpoint_path))
         with open(experiment_checkpoint_path) as f:
             _experiment_state = json.load(f)
             self._experiment_state = _experiment_state
