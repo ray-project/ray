@@ -38,7 +38,7 @@ class AgentIOTest(unittest.TestCase):
         self.test_dir = tempfile.mkdtemp()
 
     def tearDown(self):
-        shutil.rmtree(self.test_dir, ignore_errors=True)
+        shutil.rmtree(self.test_dir)
 
     def writeOutputs(self, output, fw):
         agent = PGTrainer(
@@ -224,16 +224,12 @@ class AgentIOTest(unittest.TestCase):
 
 
 class JsonIOTest(unittest.TestCase):
-    test_dir = None
-
-    @classmethod
-    def setUpClass(cls) -> None:
+    def setUp(self):
         ray.init(num_cpus=1)
-        cls.test_dir = tempfile.mkdtemp()
+        self.test_dir = tempfile.mkdtemp()
 
-    @classmethod
-    def tearDownClass(cls) -> None:
-        shutil.rmtree(cls.test_dir)
+    def tearDown(self):
+        shutil.rmtree(self.test_dir)
         ray.shutdown()
 
     def test_write_simple(self):
