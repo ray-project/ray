@@ -61,13 +61,11 @@ class ModelV2:
         self.framework: str = framework
         self._last_output = None
         self._trajectory_view = {
-            SampleBatch.NEXT_OBS: ViewRequirement(
-                timesteps=-1, space=self.obs_space),
-            #SampleBatch.PREV_ACTIONS:
-            #    ViewRequirement(
-            #        SampleBatch.ACTIONS, timesteps=-1, space=self.action_space),
-            #SampleBatch.PREV_REWARDS:
-            #    ViewRequirement(SampleBatch.REWARDS, timesteps=-1),
+            SampleBatch.CUR_OBS: ViewRequirement(timesteps=0),
+            SampleBatch.PREV_ACTIONS:
+                ViewRequirement(SampleBatch.ACTIONS, timesteps=-1),
+            SampleBatch.PREV_REWARDS:
+                ViewRequirement(SampleBatch.REWARDS, timesteps=-1),
         }
 
     @PublicAPI
@@ -345,8 +343,8 @@ class NullContextManager:
 @DeveloperAPI
 def flatten(obs, framework):
     """Flatten the given tensor."""
-    if framework == "tf":
-        return tf1.layers.flatten(obs)
+    if framework in ["tf2", "tf", "tfe"]:
+        return tf1.keras.layers.Flatten()(obs)
     elif framework == "torch":
         assert torch is not None
         return torch.flatten(obs, start_dim=1)

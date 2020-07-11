@@ -250,6 +250,7 @@ def lstm(x,
     return unrolled_outputs, (c_states, h_states)
 
 
+# TODO: (sven) this will replace `TorchPolicy._convert_to_non_torch_tensor()`.
 def convert_to_numpy(x, reduce_floats=False):
     """Converts values in `stats` to non-Tensor numpy or python types.
 

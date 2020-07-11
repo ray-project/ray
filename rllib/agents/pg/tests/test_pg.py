@@ -27,7 +27,7 @@ class TestPG(unittest.TestCase):
         for _ in framework_iterator(config):
             trainer = pg.PGTrainer(config=config, env="CartPole-v0")
             for i in range(num_iterations):
-                trainer.train()
+                print(trainer.train())
             check_compute_single_action(
                 trainer, include_prev_action_reward=True)
 
@@ -56,7 +56,7 @@ class TestPG(unittest.TestCase):
             trainer = pg.PGTrainer(config=config, env="CartPole-v0")
             policy = trainer.get_policy()
             vars = policy.model.trainable_variables()
-            if fw == "tf":
+            if sess:
                 vars = policy.get_session().run(vars)
 
             # Post-process (calculate simple (non-GAE) advantages) and attach
@@ -71,13 +71,15 @@ class TestPG(unittest.TestCase):
             check(train_batch[Postprocessing.ADVANTAGES], [2.9701, 1.99, 1.0])
 
             # Actual loss results.
-            if fw == "tf":
+            if sess:
                 results = policy.get_session().run(
                     policy._loss,
                     feed_dict=policy._get_loss_inputs_dict(
                         train_batch, shuffle=False))
             else:
-                results = (pg.pg_tf_loss if fw == "tfe" else pg.pg_torch_loss)(
+                results = (
+                    pg.pg_tf_loss if fw in ["tf2", "tfe"] else pg.pg_torch_loss
+                )(
                     policy,
                     policy.model,
                     dist_class=dist_cls,

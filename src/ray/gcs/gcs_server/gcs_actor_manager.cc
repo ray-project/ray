@@ -69,11 +69,7 @@ ActorID GcsActor::GetActorID() const {
 
 bool GcsActor::IsDetached() const { return actor_table_data_.is_detached(); }
 
-std::string GcsActor::GetName() const {
-  RAY_CHECK(actor_table_data_.is_detached())
-      << "Actor names are only valid for detached actors.";
-  return actor_table_data_.name();
-}
+std::string GcsActor::GetName() const { return actor_table_data_.name(); }
 
 TaskSpecification GcsActor::GetCreationTaskSpecification() const {
   const auto &task_spec = actor_table_data_.task_spec();
@@ -390,7 +386,7 @@ Status GcsActorManager::RegisterActor(
   }
 
   auto actor = std::make_shared<GcsActor>(request);
-  if (actor->IsDetached()) {
+  if (!actor->GetName().empty()) {
     auto it = named_actors_.find(actor->GetName());
     if (it == named_actors_.end()) {
       named_actors_.emplace(actor->GetName(), actor->GetActorID());
@@ -520,13 +516,22 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
       // The actor was being scheduled and has now been canceled.
       RAY_CHECK(canceled_actor_id == actor_id);
     } else {
-      // The actor was pending scheduling. Remove it from the queue.
       auto pending_it = std::find_if(pending_actors_.begin(), pending_actors_.end(),
                                      [actor_id](const std::shared_ptr<GcsActor> &actor) {
                                        return actor->GetActorID() == actor_id;
                                      });
-      RAY_CHECK(pending_it != pending_actors_.end());
-      pending_actors_.erase(pending_it);
+
+      // The actor was pending scheduling. Remove it from the queue.
+      if (pending_it != pending_actors_.end()) {
+        pending_actors_.erase(pending_it);
+      } else {
+        // When actor creation request of this actor id is pending in raylet,
+        // it doesn't responds, and the actor should be still in leasing state.
+        // NOTE: Raylet will cancel the lease request once it receives the
+        // actor state notification. So this method doesn't have to cancel
+        // outstanding lease request by calling raylet_client->CancelWorkerLease
+        gcs_actor_scheduler_->CancelOnLeasing(node_id, actor_id);
+      }
     }
   }
 
@@ -534,7 +539,6 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   // happen if the owner of the actor dies while there are still callers.
   // TODO(swang): We can skip this step and delete the actor table entry
   // entirely if the callers check directly whether the owner is still alive.
-  actor->UpdateAddress(rpc::Address());
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
   mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
   auto actor_table_data =
@@ -564,8 +568,9 @@ void GcsActorManager::OnWorkerDead(const ray::ClientID &node_id,
     }
   }
 
+  // Find if actor is already created or in the creation process (lease request is
+  // granted)
   ActorID actor_id;
-  // Find from worker_to_created_actor_.
   auto iter = created_actors_.find(node_id);
   if (iter != created_actors_.end() && iter->second.count(worker_id)) {
     actor_id = iter->second[worker_id];
@@ -575,14 +580,17 @@ void GcsActorManager::OnWorkerDead(const ray::ClientID &node_id,
     }
   } else {
     actor_id = gcs_actor_scheduler_->CancelOnWorker(node_id, worker_id);
+    if (actor_id.IsNil()) {
+      return;
+    }
   }
 
-  if (!actor_id.IsNil()) {
-    RAY_LOG(WARNING) << "Worker " << worker_id << " on node " << node_id
-                     << " failed, restarting actor " << actor_id;
-    // Reconstruct the actor.
-    ReconstructActor(actor_id, /*need_reschedule=*/!intentional_exit);
-  }
+  // Otherwise, try to reconstruct the actor that was already created or in the creation
+  // process.
+  RAY_LOG(WARNING) << "Worker " << worker_id << " on node " << node_id
+                   << " failed, restarting actor " << actor_id
+                   << ", intentional exit: " << intentional_exit;
+  ReconstructActor(actor_id, /*need_reschedule=*/!intentional_exit);
 }
 
 void GcsActorManager::OnNodeDead(const ClientID &node_id) {
@@ -626,7 +634,6 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
   RAY_CHECK(actor != nullptr);
   auto node_id = actor->GetNodeID();
   auto worker_id = actor->GetWorkerID();
-  actor->UpdateAddress(rpc::Address());
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
   // If the need_reschedule is set to false, then set the `remaining_restarts` to 0
   // so that the actor will never be rescheduled.
@@ -647,19 +654,23 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
   if (remaining_restarts != 0) {
     mutable_actor_table_data->set_num_restarts(++num_restarts);
     mutable_actor_table_data->set_state(rpc::ActorTableData::RESTARTING);
+    const auto actor_table_data = actor->GetActorTableData();
+    // Make sure to reset the address before flushing to GCS. Otherwise,
+    // GCS will mistakenly consider this lease request succeeds when restarting.
+    actor->UpdateAddress(rpc::Address());
     mutable_actor_table_data->clear_resource_mapping();
     // The backend storage is reliable in the future, so the status must be ok.
     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
         actor_id, *mutable_actor_table_data,
-        [this, actor_id, mutable_actor_table_data](Status status) {
-          RAY_CHECK_OK(gcs_pub_sub_->Publish(
-              ACTOR_CHANNEL, actor_id.Hex(),
-              mutable_actor_table_data->SerializeAsString(), nullptr));
+        [this, actor_id, actor_table_data](Status status) {
+          RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
+                                             actor_table_data.SerializeAsString(),
+                                             nullptr));
         }));
     gcs_actor_scheduler_->Schedule(actor);
   } else {
-    // For detached actors, make sure to remove its name.
-    if (actor->IsDetached()) {
+    // Remove actor from `named_actors_` if its name is not empty.
+    if (!actor->GetName().empty()) {
       auto it = named_actors_.find(actor->GetName());
       if (it != named_actors_.end()) {
         RAY_CHECK(it->second == actor->GetActorID());
@@ -695,7 +706,15 @@ void GcsActorManager::OnActorCreationFailed(std::shared_ptr<GcsActor> actor) {
 void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor) {
   auto actor_id = actor->GetActorID();
   RAY_LOG(DEBUG) << "Actor created successfully, actor id = " << actor_id;
-  RAY_CHECK(registered_actors_.count(actor_id) > 0);
+  // NOTE: If an actor is deleted immediately after the user creates the actor, reference
+  // counter may return a reply to the request of WaitForActorOutOfScope to GCS server,
+  // and GCS server will destroy the actor. The actor creation is asynchronous, it may be
+  // destroyed before the actor creation is completed.
+  if (registered_actors_.count(actor_id) == 0) {
+    RAY_LOG(WARNING) << "Actor is destroyed before the creation is completed, actor id = "
+                     << actor_id;
+    return;
+  }
   actor->UpdateState(rpc::ActorTableData::ALIVE);
   auto actor_table_data = actor->GetActorTableData();
   // The backend storage is reliable in the future, so the status must be ok.
@@ -746,7 +765,7 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
         auto actor = std::make_shared<GcsActor>(item.second);
         registered_actors_.emplace(item.first, actor);
 
-        if (actor->IsDetached()) {
+        if (!actor->GetName().empty()) {
           named_actors_.emplace(actor->GetName(), actor->GetActorID());
         }
 

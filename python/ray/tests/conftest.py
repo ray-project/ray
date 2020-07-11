@@ -111,7 +111,9 @@ def _ray_start_cluster(**kwargs):
     init_kwargs.update(kwargs)
     cluster = Cluster()
     remote_nodes = []
-    for _ in range(num_nodes):
+    for i in range(num_nodes):
+        if i > 0 and "_internal_config" in init_kwargs:
+            del init_kwargs["_internal_config"]
         remote_nodes.append(cluster.add_node(**init_kwargs))
         # We assume driver will connect to the head (first node),
         # so ray init will be invoked if do_init is true
@@ -200,8 +202,7 @@ def two_node_cluster():
     cluster = ray.cluster_utils.Cluster(
         head_node_args={"_internal_config": internal_config})
     for _ in range(2):
-        remote_node = cluster.add_node(
-            num_cpus=1, _internal_config=internal_config)
+        remote_node = cluster.add_node(num_cpus=1)
     ray.init(address=cluster.address)
     yield cluster, remote_node
 
