@@ -29,6 +29,8 @@ is_python_version() {
 install_ray() {
   # TODO(mehrdadn): This function should be unified with the one in ci/travis/ci.sh.
   (
+    pip install wheel
+
     cd "${WORKSPACE_DIR}"/python
     pip install -v -e .
   )
@@ -73,7 +75,6 @@ build_wheel_windows() {
       unset PYTHON2_BIN_PATH PYTHON3_BIN_PATH  # make sure these aren't set by some chance
       install_ray
       cd "${WORKSPACE_DIR}"/python
-      python -m pip install wheel
       python setup.py --quiet bdist_wheel
       uninstall_ray
     )
