@@ -238,7 +238,7 @@ def _configure_subnet(config):
         if not all(_subnets_in_network_config(config["head_node"])):
             raise Exception(
                 "NetworkInterfaces are defined but at least one is missing a "
-                "subnet. Please ensure all interfaces have a subnet assigned.")           
+                "subnet. Please ensure all interfaces have a subnet assigned.")
     elif "SubnetIds" not in config["head_node"]:
         config["head_node"]["SubnetIds"] = subnet_ids
         logger.info("_configure_subnet: "
@@ -256,22 +256,22 @@ def _configure_subnet(config):
         logger.info("_configure_subnet: "
                     "SubnetId not specified for workers,"
                     " using {}".format(subnet_descr))
-    
+
     return config
 
 
 def _configure_security_group(config):
     node_types_to_configure = [
         node_type for node_type, config_key in NODE_TYPE_CONFIG_KEYS.items()
-        if "SecurityGroupIds" not in config[config_key] and
-        not all(_security_groups_in_network_config(config[config_key]))
+        if "SecurityGroupIds" not in config[config_key]
+        and not all(_security_groups_in_network_config(config[config_key]))
     ]
     if not node_types_to_configure:
         return config  # have user-defined groups
 
     security_groups = _upsert_security_groups(config, node_types_to_configure)
 
-    if NODE_TYPE_HEAD in node_types_to_configure:        
+    if NODE_TYPE_HEAD in node_types_to_configure:
         head_sg = security_groups[NODE_TYPE_HEAD]
         logger.info(
             "_configure_security_group: "
@@ -529,11 +529,11 @@ def _configure_node_from_launch_template(config, node_type):
     template = ec2.describe_launch_template_versions(**kwargs)
     data = template["LaunchTemplateVersions"][0]["LaunchTemplateData"]
 
-    # Populate IamInstanceProfile, TagSpecs, KeyName, and ImageId in the node 
+    # Populate IamInstanceProfile, TagSpecs, KeyName, and ImageId in the node
     # config from the LaunchTemplate to keep behavior consistent.
     # Allow explicit settings to override the LaunchTemplate config.
-    if ("IamInstanceProfile" not in config[node_type] and
-            "IamInstanceProfile" in data):
+    if ("IamInstanceProfile" not in config[node_type]
+            and "IamInstanceProfile" in data):
         config[node_type]["IamInstanceProfile"] = data["IamInstanceProfile"]
 
     if "KeyName" not in config[node_type] and "KeyName" in data:
@@ -542,8 +542,8 @@ def _configure_node_from_launch_template(config, node_type):
     if "TagSpecifications" in data:
         if "TagSpecifications" in config[node_type]:
             config[node_type]["TagSpecifications"] = _merge_tag_specs(
-                config[node_type]["TagSpecifications"], 
-                data["TagSpecifications"])           
+                config[node_type]["TagSpecifications"],
+                data["TagSpecifications"])
         else:
             config[node_type]["TagSpecifications"] = data["TagSpecifications"]
 
@@ -553,22 +553,21 @@ def _configure_node_from_launch_template(config, node_type):
     # If NetworkInterfaces are defined, SubnetId and SecurityGroupIds
     # can't be specified in the config.
     # Drop NetworkInterfaces directly into the config if it exists
-    if ("NetworkInterfaces" not in config[node_type] and
-            "NetworkInterfaces" in data):
-        if ("SubnetId" in config[node_type] or
-                "SubnetIds" in config[node_type] or
-                "SecurityGroupIds" in config[node_type]):
+    if ("NetworkInterfaces" not in config[node_type]
+            and "NetworkInterfaces" in data):
+        if ("SubnetId" in config[node_type] or "SubnetIds" in config[node_type]
+                or "SecurityGroupIds" in config[node_type]):
             raise Exception(
                 "If NetworkInterfaces are defined, you must specify subnets "
                 "and security groups as part of the NetworkInterface "
                 "definition.")
-        
+
         if not all(_subnets_in_network_config(data)):
             raise Exception(
                 "NetworkInterfaces are defined in the launch template but "
                 "at least one is missing a subnet. Please ensure all "
                 "interfaces have a subnet assigned.")
-        
+
         config[node_type]["NetworkInterfaces"] = data["NetworkInterfaces"]
 
     return config
@@ -582,43 +581,55 @@ def _merge_tag_specs(config_tag_specs, template_tag_specs):
 
     for tag_spec in template_tag_specs:
         if tag_spec["ResourceType"] == "instance":
-            tmpl_instance_tags = {kv["Key"]: kv["Value"] for kv
-                                  in tag_spec["Tags"]}
+            tmpl_instance_tags = {
+                kv["Key"]: kv["Value"]
+                for kv in tag_spec["Tags"]
+            }
         else:
-            tmpl_volume_tags = {kv["Key"]: kv["Value"] for kv 
-                                in tag_spec["Tags"]}
+            tmpl_volume_tags = {
+                kv["Key"]: kv["Value"]
+                for kv in tag_spec["Tags"]
+            }
 
     for tag_spec in config_tag_specs:
         if tag_spec["ResourceType"] == "instance":
-            config_instance_tags = {kv["Key"]: kv["Value"] for kv
-                                    in tag_spec["Tags"]}
+            config_instance_tags = {
+                kv["Key"]: kv["Value"]
+                for kv in tag_spec["Tags"]
+            }
         else:
-            config_volume_tags = {kv["Key"]: kv["Value"] for kv
-                                  in tag_spec["Tags"]}
+            config_volume_tags = {
+                kv["Key"]: kv["Value"]
+                for kv in tag_spec["Tags"]
+            }
 
-    for k,v in tmpl_instance_tags.items():
+    for k, v in tmpl_instance_tags.items():
         if k not in config_instance_tags:
             config_instance_tags[k] = v
-    
-    for k,v in tmpl_volume_tags.items():
+
+    for k, v in tmpl_volume_tags.items():
         if k not in config_volume_tags:
             config_volume_tags[k] = v
 
     return [{
         "ResourceType": "instance",
-        "Tags": [{"Key": k, "Value": v} for k, v 
-                 in config_instance_tags.items()]
-    },
-    {
+        "Tags": [{
+            "Key": k,
+            "Value": v
+        } for k, v in config_instance_tags.items()]
+    }, {
         "ResourceType": "volume",
-        "Tags": [{"Key": k, "Value": v} for k, v 
-                 in config_volume_tags.items()]
+        "Tags": [{
+            "Key": k,
+            "Value": v
+        } for k, v in config_volume_tags.items()]
     }]
 
 
 def _subnets_in_network_config(config):
-    return [ni.get("SubnetId", "") for ni
-            in config.get("NetworkInterfaces", [])]
+    return [
+        ni.get("SubnetId", "") for ni in config.get("NetworkInterfaces", [])
+    ]
 
 
 def _security_groups_in_network_config(config):

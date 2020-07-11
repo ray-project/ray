@@ -102,3 +102,71 @@ def describe_sg_echo(ec2_client_stub, security_group):
         "describe_security_groups",
         expected_params={"GroupIds": [security_group["GroupId"]]},
         service_response={"SecurityGroups": [security_group]})
+
+
+def create_tag_specifications(resource_types, keys, values):
+    tag_specs = []
+    for r in resource_types:
+        tag_specs.append({ 
+            "ResourceType": r,
+            "Tags": [{"Key": keys[i], "Value": values[i]}
+                     for i in range(len(keys))]
+        })
+    return tag_specs
+
+
+def describe_launch_template_versions_echo(ec2_client_stub, has_iam=True, 
+    has_key_name=True, has_tags=True, has_image=True, has_network=True,
+    has_subnet=True, has_security_group=True):
+    
+    data = {}
+
+    if has_iam:
+        data["IamInstanceProfile"] = {"Name": "foo"}
+    
+    if has_key_name:
+        data["KeyName"] = "foo"
+
+    if has_tags:
+        data["TagSpecifications"] = [
+            {
+                "ResourceType": "instance",
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "foo"
+                    }
+                ]
+            },
+            {
+                "ResourceType": "volume",
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "foo"
+                    }
+                ]
+            }
+        ]
+
+    if has_image:
+        data["ImageId"] = "foo"
+
+    if has_network:
+        data["NetworkInterfaces"] = [{}]
+        if has_subnet:
+            data["NetworkInterfaces"][0]["SubnetId"] = "foo"
+        if has_security_group:
+            data["NetworkInterfaces"][0]["Groups"] = ["bar"]
+
+    response = {
+        "LaunchTemplateVersions": [
+            {
+                "LaunchTemplateData": data
+            }
+        ]
+    }
+
+    ec2_client_stub.add_response(
+        "describe_launch_template_versions",
+        service_response=response)

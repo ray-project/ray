@@ -321,7 +321,7 @@ class AWSNodeProvider(NodeProvider):
                         "SubnetId": subnet_id,
                         "TagSpecifications": tag_specs
                     })
-                
+
                 created = self.ec2_fail_fast.create_instances(**conf)
                 for instance in created:
                     logger.info("NodeProvider: Created instance "
