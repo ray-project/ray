@@ -191,7 +191,7 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
         metric_columns=["loss", "accuracy", "training_iteration"])
     result = tune.run(
         train_cifar,
-        resources_per_trial={"cpu": 8, "gpu": gpus_per_trial},
+        resources_per_trial={"cpu": 2, "gpu": gpus_per_trial},
         config=config,
         num_samples=num_samples,
         scheduler=scheduler,
