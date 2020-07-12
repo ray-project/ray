@@ -20,8 +20,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "ray/common/client_connection.h"
 #include "ray/common/bundle_spec.h"
+#include "ray/common/client_connection.h"
 #include "ray/common/status.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/rpc/node_manager/node_manager_client.h"

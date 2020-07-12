@@ -14,23 +14,22 @@
 
 #include "client_connection.h"
 
-#include <chrono>
-#include <thread>
-
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/generic/stream_protocol.hpp>
 #include <boost/asio/placeholders.hpp>
 #include <boost/asio/read.hpp>
 #include <boost/asio/write.hpp>
 #include <boost/bind.hpp>
+#include <chrono>
 #include <sstream>
+#include <thread>
 
 #include "ray/common/ray_config.h"
 #include "ray/util/util.h"
 
 namespace ray {
 
-Status ConnectSocketRetry(local_stream_socket &socket, const std::string& endpoint,
+Status ConnectSocketRetry(local_stream_socket &socket, const std::string &endpoint,
                           int num_retries, int64_t timeout_in_ms) {
   RAY_CHECK(num_retries != 0);
   // Pick the default values if the user did not specify.

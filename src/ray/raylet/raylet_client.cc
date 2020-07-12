@@ -64,9 +64,10 @@ Status raylet::RayletConnection::WriteMessage(MessageType type,
   return conn_->WriteMessage(static_cast<int64_t>(type), length, bytes);
 }
 
-Status raylet::RayletConnection::AtomicRequestReply(
-    MessageType request_type, MessageType reply_type,
-    std::vector<uint8_t> *reply_message, flatbuffers::FlatBufferBuilder *fbb) {
+Status raylet::RayletConnection::AtomicRequestReply(MessageType request_type,
+                                                    MessageType reply_type,
+                                                    std::vector<uint8_t> *reply_message,
+                                                    flatbuffers::FlatBufferBuilder *fbb) {
   std::unique_lock<std::mutex> guard(mutex_);
   RAY_RETURN_NOT_OK(WriteMessage(request_type, fbb));
   return conn_->ReadMessage(static_cast<int64_t>(reply_type), reply_message);
@@ -194,7 +195,7 @@ Status raylet::RayletClient::Wait(const std::vector<ObjectID> &object_ids,
   fbb.Finish(message);
   std::vector<uint8_t> reply;
   RAY_RETURN_NOT_OK(conn_->AtomicRequestReply(MessageType::WaitRequest,
-                                          MessageType::WaitReply, &reply, &fbb));
+                                              MessageType::WaitReply, &reply, &fbb));
   // Parse the flatbuffer object.
   auto reply_message = flatbuffers::GetRoot<protocol::WaitReply>(reply.data());
   auto found = reply_message->found();
@@ -268,7 +269,8 @@ Status raylet::RayletClient::PrepareActorCheckpoint(const ActorID &actor_id,
 
   std::vector<uint8_t> reply;
   RAY_RETURN_NOT_OK(conn_->AtomicRequestReply(MessageType::PrepareActorCheckpointRequest,
-                                MessageType::PrepareActorCheckpointReply, &reply, &fbb));
+                                              MessageType::PrepareActorCheckpointReply,
+                                              &reply, &fbb));
   auto reply_message =
       flatbuffers::GetRoot<protocol::PrepareActorCheckpointReply>(reply.data());
   *checkpoint_id = ActorCheckpointID::FromBinary(reply_message->checkpoint_id()->str());

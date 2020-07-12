@@ -14,13 +14,12 @@
 
 #pragma once
 
-#include <deque>
-#include <memory>
-
 #include <boost/asio/basic_stream_socket.hpp>
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/error.hpp>
 #include <boost/asio/generic/stream_protocol.hpp>
+#include <deque>
+#include <memory>
 
 #include "ray/common/id.h"
 #include "ray/common/status.h"
@@ -32,8 +31,8 @@ typedef boost::asio::generic::stream_protocol local_stream_protocol;
 typedef boost::asio::basic_stream_socket<local_stream_protocol> local_stream_socket;
 
 /// Connect to a socket with retry times.
-Status ConnectSocketRetry(local_stream_socket &socket, const std::string& endpoint,
-                          int num_retries=-1, int64_t timeout_in_ms=-1);
+Status ConnectSocketRetry(local_stream_socket &socket, const std::string &endpoint,
+                          int num_retries = -1, int64_t timeout_in_ms = -1);
 
 /// \typename ServerConnection
 ///
