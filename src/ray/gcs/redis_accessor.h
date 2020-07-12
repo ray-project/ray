@@ -15,7 +15,6 @@
 #pragma once
 
 #include <ray/common/task/task_spec.h>
-
 #include "ray/common/id.h"
 #include "ray/gcs/accessor.h"
 #include "ray/gcs/callback.h"
@@ -348,12 +347,6 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
   Status AsyncGetResources(const ClientID &node_id,
                            const OptionalItemCallback<ResourceMap> &callback) override;
 
-  Status AsyncGetAllNodeResources(
-      const MultiItemCallback<rpc::NodeResources> &callback) override {
-    return Status::NotImplemented(
-        "RedisNodeInfoAccessor does not support AsyncGetAllNodeResources.");
-  }
-
   Status AsyncUpdateResources(const ClientID &node_id, const ResourceMap &resources,
                               const StatusCallback &callback) override;
 
@@ -467,11 +460,6 @@ class RedisWorkerInfoAccessor : public WorkerInfoAccessor {
 
   Status AsyncAdd(const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
                   const StatusCallback &callback) override;
-
-  Status AsyncGetWorkerFailures(
-      const MultiItemCallback<rpc::WorkerFailureData> &callback) override {
-    return Status::NotImplemented("AsyncGetWorkerFailures not implemented");
-  }
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
 

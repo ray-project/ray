@@ -33,16 +33,10 @@ class MockedGcsObjectManager : public gcs::GcsObjectManager {
   }
 
   void AddObjectLocationInCache(const ObjectID &object_id, const ClientID &node_id) {
-    gcs::GcsObjectManager::AddObjectLocationInCache(object_id, node_id,
-                                                    current_time_ms());
+    gcs::GcsObjectManager::AddObjectLocationInCache(object_id, node_id);
   }
 
-  void AddObjectLocationInCache(const ObjectID &object_id, const ClientID &node_id,
-                                int64_t timestamp) {
-    gcs::GcsObjectManager::AddObjectLocationInCache(object_id, node_id, timestamp);
-  }
-
-  LocationSet GetObjectLocations(const ObjectID &object_id) {
+  absl::flat_hash_set<ClientID> GetObjectLocations(const ObjectID &object_id) {
     return gcs::GcsObjectManager::GetObjectLocations(object_id);
   }
 
@@ -77,11 +71,12 @@ class GcsObjectManagerTest : public ::testing::Test {
     }
   }
 
-  void CheckLocations(const gcs::GcsObjectManager::LocationSet &locations) {
+  void CheckLocations(const absl::flat_hash_set<ClientID> &locations) {
     ASSERT_EQ(locations.size(), node_ids_.size());
     for (const auto &location : locations) {
-      auto it = node_ids_.find(location.first);
+      auto it = node_ids_.find(location);
       ASSERT_TRUE(it != node_ids_.end());
+      ASSERT_TRUE(location == *it);
     }
   }
 
@@ -132,7 +127,7 @@ TEST_F(GcsObjectManagerTest, RemoveNodeTest) {
   auto locations = gcs_object_manager_->GetObjectLocations(*object_ids_.begin());
   ASSERT_EQ(locations.size() + 1, node_ids_.size());
 
-  locations.emplace(*node_ids_.begin(), current_time_ms());
+  locations.emplace(*node_ids_.begin());
   ASSERT_EQ(locations.size(), node_ids_.size());
 }
 
@@ -146,22 +141,8 @@ TEST_F(GcsObjectManagerTest, RemoveObjectLocationTest) {
   auto locations = gcs_object_manager_->GetObjectLocations(*object_ids_.begin());
   ASSERT_EQ(locations.size() + 1, node_ids_.size());
 
-  locations.emplace(*node_ids_.begin(), current_time_ms());
+  locations.emplace(*node_ids_.begin());
   ASSERT_EQ(locations.size(), node_ids_.size());
-}
-
-TEST_F(GcsObjectManagerTest, ObjectLocationTimestampTest) {
-  auto object_id = ObjectID::FromRandom();
-  int64_t start_timestamp = current_sys_time_ms();
-  int64_t timestamp = start_timestamp;
-  for (const auto &node_id : node_ids_) {
-    gcs_object_manager_->AddObjectLocationInCache(object_id, node_id, timestamp++);
-  }
-
-  auto locations = gcs_object_manager_->GetObjectLocations(object_id);
-  for (auto &location : locations) {
-    ASSERT_EQ(location.second, start_timestamp++);
-  }
 }
 
 }  // namespace ray

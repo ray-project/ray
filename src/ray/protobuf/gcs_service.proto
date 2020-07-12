@@ -213,14 +213,6 @@ message GetResourcesReply {
   map<string, ResourceTableData> resources = 2;
 }
 
-message GetAllNodeResourcesRequest {
-}
-
-message GetAllNodeResourcesReply {
-  GcsStatus status = 1;
-  repeated NodeResources node_resources_list = 2;
-}
-
 message UpdateResourcesRequest {
   bytes node_id = 1;
   map<string, ResourceTableData> resources = 2;
@@ -267,8 +259,6 @@ service NodeInfoGcsService {
   rpc ReportHeartbeat(ReportHeartbeatRequest) returns (ReportHeartbeatReply);
   // Get node's resources from GCS Service.
   rpc GetResources(GetResourcesRequest) returns (GetResourcesReply);
-  // Get resources of all nodes from GCS Service.
-  rpc GetAllNodeResources(GetAllNodeResourcesRequest) returns (GetAllNodeResourcesReply);
   // Update resources of a node in GCS Service.
   rpc UpdateResources(UpdateResourcesRequest) returns (UpdateResourcesReply);
   // Delete resources of a node in GCS Service.
@@ -474,14 +464,6 @@ message AddWorkerInfoRequest {
 
 message AddWorkerInfoReply {
   GcsStatus status = 1;
-}
-
-message GetWorkerFailuresRequest {
-}
-
-message GetWorkerFailuresReply {
-  GcsStatus status = 1;
-  repeated WorkerFailureData worker_failure_list = 2;
 }
 
 // Service for worker info access.
