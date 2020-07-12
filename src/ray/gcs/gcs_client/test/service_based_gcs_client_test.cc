@@ -934,7 +934,7 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   RestartGcsServer();
 
   // Update the actor state to DEAD.
-  actor_table_data->set_timestamp(std::time(nullptr));
+  actor_table_data->set_timestamp(current_time_ms());
   actor_table_data->set_state(
       rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
   ASSERT_TRUE(UpdateActor(actor_id, actor_table_data));

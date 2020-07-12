@@ -15,6 +15,7 @@
 #pragma once
 
 #include <ray/common/task/task_spec.h>
+
 #include "ray/gcs/accessor.h"
 #include "ray/gcs/subscription_executor.h"
 #include "ray/util/sequencer.h"
@@ -366,8 +367,6 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
   /// Save the fetch data operation in this function, so we can call it again when GCS
   /// server restarts from a failure.
   std::unordered_map<ObjectID, FetchDataOperation> fetch_object_data_operations_;
-
-  IdempotentFilter subscribe_filter_;
 
   ServiceBasedGcsClient *client_impl_;
 
