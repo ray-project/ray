@@ -1092,11 +1092,6 @@ TEST_F(ServiceBasedGcsClientTest, TestWorkerTableResubscribe) {
   };
   ASSERT_TRUE(SubscribeToWorkerFailures(on_subscribe));
 
-  // Report a worker failure to GCS.
-  auto worker_failure_data = Mocker::GenWorkerFailureData();
-  ASSERT_TRUE(ReportWorkerFailure(worker_failure_data));
-  WaitPendingDone(worker_failure_count, 1);
-
   // Restart GCS
   RestartGcsServer();
 
@@ -1106,8 +1101,8 @@ TEST_F(ServiceBasedGcsClientTest, TestWorkerTableResubscribe) {
   ASSERT_TRUE(AddWorker(worker_data));
 
   // Report a worker failure to GCS and check if resubscribe works.
-  ASSERT_TRUE(ReportWorkerFailure(worker_failure_data));
-  WaitPendingDone(worker_failure_count, 2);
+  ASSERT_TRUE(ReportWorkerFailure(worker_data));
+  WaitPendingDone(worker_failure_count, 1);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestGcsTableReload) {

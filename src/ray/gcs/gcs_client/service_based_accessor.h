@@ -15,7 +15,6 @@
 #pragma once
 
 #include <ray/common/task/task_spec.h>
-
 #include "ray/gcs/accessor.h"
 #include "ray/gcs/subscription_executor.h"
 #include "ray/util/sequencer.h"
@@ -203,9 +202,6 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   Status AsyncGetResources(const ClientID &node_id,
                            const OptionalItemCallback<ResourceMap> &callback) override;
 
-  Status AsyncGetAllNodeResources(
-      const MultiItemCallback<rpc::NodeResources> &callback) override;
-
   Status AsyncUpdateResources(const ClientID &node_id, const ResourceMap &resources,
                               const StatusCallback &callback) override;
 
@@ -250,10 +246,8 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   /// Save the fetch data operation in this function, so we can call it again when GCS
   /// server restarts from a failure.
   FetchDataOperation fetch_node_data_operation_;
-  FetchDataOperation fetch_resource_data_operation_;
 
   IdempotentFilter subscribe_node_filter_;
-  IdempotentFilter subscribe_resource_filter_;
 
   void HandleNotification(const GcsNodeInfo &node_info);
 
@@ -438,21 +432,12 @@ class ServiceBasedWorkerInfoAccessor : public WorkerInfoAccessor {
   Status AsyncAdd(const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
                   const StatusCallback &callback) override;
 
-  Status AsyncGetWorkerFailures(
-      const MultiItemCallback<rpc::WorkerFailureData> &callback) override;
-
   void AsyncResubscribe(bool is_pubsub_server_restarted) override;
 
  private:
   /// Save the subscribe operation in this function, so we can call it again when GCS
   /// restarts from a failure.
   SubscribeOperation subscribe_operation_;
-
-  /// Save the fetch data operation in this function, so we can call it again when GCS
-  /// server restarts from a failure.
-  FetchDataOperation fetch_data_operation_;
-
-  IdempotentFilter subscribe_filter_;
 
   ServiceBasedGcsClient *client_impl_;
 };

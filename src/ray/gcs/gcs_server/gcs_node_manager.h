@@ -70,11 +70,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
                           rpc::GetResourcesReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle get resource of all nodes rpc request.
-  void HandleGetAllNodeResources(const rpc::GetAllNodeResourcesRequest &request,
-                                 rpc::GetAllNodeResourcesReply *reply,
-                                 rpc::SendReplyCallback send_reply_callback) override;
-
   /// Handle update resource rpc request.
   void HandleUpdateResources(const rpc::UpdateResourcesRequest &request,
                              rpc::UpdateResourcesReply *reply,

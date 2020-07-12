@@ -26,10 +26,9 @@ void GcsObjectManager::HandleGetObjectLocations(
   RAY_LOG(DEBUG) << "Getting object locations, job id = " << object_id.TaskId().JobId()
                  << ", object id = " << object_id;
   auto object_locations = GetObjectLocations(object_id);
-  for (auto &location : object_locations) {
+  for (auto &node_id : object_locations) {
     rpc::ObjectTableData object_table_data;
-    object_table_data.set_manager(location.first.Binary());
-    object_table_data.set_timestamp(location.second);
+    object_table_data.set_manager(node_id.Binary());
     reply->add_object_table_data_list()->CopyFrom(object_table_data);
   }
   RAY_LOG(DEBUG) << "Finished getting object locations, job id = "
@@ -45,10 +44,9 @@ void GcsObjectManager::HandleGetAllObjectLocations(
   for (auto &item : object_to_locations_) {
     rpc::ObjectLocationInfo object_location_info;
     object_location_info.set_object_id(item.first.Binary());
-    for (auto &location : item.second) {
+    for (auto &node_id : item.second) {
       rpc::ObjectTableData object_table_data;
-      object_table_data.set_manager(location.first.Binary());
-      object_table_data.set_timestamp(location.second);
+      object_table_data.set_manager(node_id.Binary());
       object_location_info.add_locations()->CopyFrom(object_table_data);
     }
     reply->add_object_location_info_list()->CopyFrom(object_location_info);
@@ -64,16 +62,14 @@ void GcsObjectManager::HandleAddObjectLocation(
   ClientID node_id = ClientID::FromBinary(request.node_id());
   RAY_LOG(DEBUG) << "Adding object location, job id = " << object_id.TaskId().JobId()
                  << ", object id = " << object_id << ", node id = " << node_id;
-  auto timestamp = current_time_ms();
-  AddObjectLocationInCache(object_id, node_id, timestamp);
+  AddObjectLocationInCache(object_id, node_id);
 
-  auto on_done = [this, object_id, node_id, timestamp, reply,
+  auto on_done = [this, object_id, node_id, reply,
                   send_reply_callback](const Status &status) {
     if (status.ok()) {
       RAY_CHECK_OK(gcs_pub_sub_->Publish(
           OBJECT_CHANNEL, object_id.Hex(),
-          gcs::CreateObjectLocationChange(node_id, timestamp, true)->SerializeAsString(),
-          nullptr));
+          gcs::CreateObjectLocationChange(node_id, true)->SerializeAsString(), nullptr));
       RAY_LOG(DEBUG) << "Finished adding object location, job id = "
                      << object_id.TaskId().JobId() << ", object id = " << object_id
                      << ", node id = " << node_id << ", task id = " << object_id.TaskId();
@@ -113,9 +109,7 @@ void GcsObjectManager::HandleRemoveObjectLocation(
     if (status.ok()) {
       RAY_CHECK_OK(gcs_pub_sub_->Publish(
           OBJECT_CHANNEL, object_id.Hex(),
-          gcs::CreateObjectLocationChange(node_id, current_time_ms(), false)
-              ->SerializeAsString(),
-          nullptr));
+          gcs::CreateObjectLocationChange(node_id, false)->SerializeAsString(), nullptr));
       RAY_LOG(DEBUG) << "Finished removing object location, job id = "
                      << object_id.TaskId().JobId() << ", object id = " << object_id
                      << ", node id = " << node_id;
@@ -159,13 +153,12 @@ void GcsObjectManager::AddObjectsLocation(
   for (const auto &object_id : object_ids) {
     auto *object_locations =
         GetObjectLocationSet(object_id, /* create_if_not_exist */ true);
-    object_locations->emplace(node_id, current_time_ms());
+    object_locations->emplace(node_id);
   }
 }
 
 void GcsObjectManager::AddObjectLocationInCache(const ObjectID &object_id,
-                                                const ClientID &node_id,
-                                                int64_t timestamp) {
+                                                const ClientID &node_id) {
   absl::MutexLock lock(&mutex_);
 
   auto *objects_on_node = GetObjectSetByNode(node_id, /* create_if_not_exist */ true);
@@ -173,10 +166,10 @@ void GcsObjectManager::AddObjectLocationInCache(const ObjectID &object_id,
 
   auto *object_locations =
       GetObjectLocationSet(object_id, /* create_if_not_exist */ true);
-  object_locations->emplace(node_id, timestamp);
+  object_locations->emplace(node_id);
 }
 
-GcsObjectManager::LocationSet GcsObjectManager::GetObjectLocations(
+absl::flat_hash_set<ClientID> GcsObjectManager::GetObjectLocations(
     const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
 
@@ -184,7 +177,7 @@ GcsObjectManager::LocationSet GcsObjectManager::GetObjectLocations(
   if (object_locations) {
     return *object_locations;
   }
-  return LocationSet{};
+  return absl::flat_hash_set<ClientID>{};
 }
 
 void GcsObjectManager::OnNodeRemoved(const ClientID &node_id) {
@@ -204,12 +197,7 @@ void GcsObjectManager::OnNodeRemoved(const ClientID &node_id) {
   for (const auto &object_id : objects_on_node) {
     auto *object_locations = GetObjectLocationSet(object_id);
     if (object_locations) {
-      auto iter = std::find_if(object_locations->begin(), object_locations->end(),
-                               [node_id](const std::pair<ClientID, int64_t> &location) {
-                                 return location.first == node_id;
-                               });
-      RAY_CHECK(iter != object_locations->end());
-      object_locations->erase(iter);
+      object_locations->erase(node_id);
       if (object_locations->empty()) {
         object_to_locations_.erase(object_id);
       }
@@ -223,12 +211,7 @@ void GcsObjectManager::RemoveObjectLocationInCache(const ObjectID &object_id,
 
   auto *object_locations = GetObjectLocationSet(object_id);
   if (object_locations) {
-    auto iter = std::find_if(object_locations->begin(), object_locations->end(),
-                             [node_id](const std::pair<ClientID, int64_t> &location) {
-                               return location.first == node_id;
-                             });
-    RAY_CHECK(iter != object_locations->end());
-    object_locations->erase(iter);
+    object_locations->erase(node_id);
     if (object_locations->empty()) {
       object_to_locations_.erase(object_id);
     }
@@ -277,38 +260,31 @@ GcsObjectManager::ObjectSet *GcsObjectManager::GetObjectSetByNode(
 std::shared_ptr<ObjectTableDataList> GcsObjectManager::GenObjectTableDataList(
     const GcsObjectManager::LocationSet &location_set) const {
   auto object_table_data_list = std::make_shared<ObjectTableDataList>();
-  for (auto &location : location_set) {
-    ObjectTableData object_table_data;
-    object_table_data.set_manager(location.first.Binary());
-    object_table_data.set_timestamp(location.second);
-    object_table_data_list->add_items()->CopyFrom(object_table_data);
+  for (auto &node_id : location_set) {
+    object_table_data_list->add_items()->set_manager(node_id.Binary());
   }
   return object_table_data_list;
 }
 
 void GcsObjectManager::LoadInitialData(const EmptyCallback &done) {
   RAY_LOG(INFO) << "Loading initial data.";
-  RAY_CHECK(done);
-  auto callback =
-      [this, done](const std::unordered_map<ObjectID, ObjectTableDataList> &result) {
-        absl::flat_hash_map<ClientID, ObjectSet> node_to_objects;
-        absl::MutexLock lock(&mutex_);
-        for (auto &item : result) {
-          const auto &object_list = item.second;
-          for (int index = 0; index < object_list.items_size(); ++index) {
-            const auto &object_table_date = object_list.items(index);
-            auto node_id = ClientID::FromBinary(object_table_date.manager());
-            auto *objects_on_node =
-                GetObjectSetByNode(node_id, /* create_if_not_exist */ true);
-            objects_on_node->insert(item.first);
-            auto *object_locations =
-                GetObjectLocationSet(item.first, /* create_if_not_exist */ true);
-            RAY_CHECK(object_locations->emplace(node_id, object_table_date.timestamp()).second);
-          }
-        }
-        RAY_LOG(INFO) << "Finished loading initial data.";
-        done();
-      };
+  auto callback = [this, done](
+                      const std::unordered_map<ObjectID, ObjectTableDataList> &result) {
+    absl::flat_hash_map<ClientID, ObjectSet> node_to_objects;
+    for (auto &item : result) {
+      auto object_list = item.second;
+      for (int index = 0; index < object_list.items_size(); ++index) {
+        node_to_objects[ClientID::FromBinary(object_list.items(index).manager())].insert(
+            item.first);
+      }
+    }
+
+    for (auto &item : node_to_objects) {
+      AddObjectsLocation(item.first, item.second);
+    }
+    RAY_LOG(INFO) << "Finished loading initial data.";
+    done();
+  };
   RAY_CHECK_OK(gcs_table_storage_->ObjectTable().GetAll(callback));
 }
 
