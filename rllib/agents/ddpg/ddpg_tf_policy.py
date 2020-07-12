@@ -236,7 +236,7 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
 
 def make_ddpg_optimizers(policy, config):
     # Create separate optimizers for actor & critic losses.
-    if tfv == 2 and config["framework"] == "tfe":
+    if policy.config["framework"] in ["tf2", "tfe"]:
         policy._actor_optimizer = tf.keras.optimizers.Adam(
             learning_rate=config["actor_lr"])
         policy._critic_optimizer = tf.keras.optimizers.Adam(
@@ -266,7 +266,7 @@ def build_apply_op(policy, optimizer, grads_and_vars):
     critic_op = policy._critic_optimizer.apply_gradients(
         policy._critic_grads_and_vars)
     # Increment global step & apply ops.
-    if tfv == 2 and policy.config["framework"] == "tfe":
+    if policy.config["framework"] in ["tf2", "tfe"]:
         policy.global_step.assign_add(1)
         return tf.no_op()
     else:
@@ -275,7 +275,7 @@ def build_apply_op(policy, optimizer, grads_and_vars):
 
 
 def gradients_fn(policy, optimizer, loss):
-    if policy.config["framework"] == "tfe":
+    if policy.config["framework"] in ["tf2", "tfe"]:
         tape = optimizer.tape
         pol_weights = policy.model.policy_variables()
         actor_grads_and_vars = list(zip(tape.gradient(
@@ -318,7 +318,7 @@ def build_ddpg_stats(policy, batch):
 
 def before_init_fn(policy, obs_space, action_space, config):
     # Create global step for counting the number of update operations.
-    if tfv == 2 and config["framework"] == "tfe":
+    if config["framework"] in ["tf2", "tfe"]:
         policy.global_step = get_variable(0, tf_name="global_step")
     else:
         policy.global_step = tf1.train.get_or_create_global_step()
