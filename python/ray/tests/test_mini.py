@@ -41,7 +41,7 @@ def test_put_api(ray_start_regular):
     for obj in test_values:
         assert ray.get(ray.put(obj)) == obj
 
-    # Test putting object IDs.
+    # Test putting object refs.
     x_id = ray.put(0)
     for obj in [[x_id], (x_id, ), {x_id: x_id}]:
         assert ray.get(ray.put(obj)) == obj
