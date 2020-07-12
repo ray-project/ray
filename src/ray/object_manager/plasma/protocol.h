@@ -25,6 +25,7 @@
 #include "ray/common/status.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/plasma_generated.h"
+#include "ray/protobuf/common.pb.h"
 
 namespace plasma {
 
@@ -76,7 +77,8 @@ Status ReadGetDebugStringReply(uint8_t* data, size_t size, std::string* debug_st
 
 /* Plasma Create message functions. */
 
-Status SendCreateRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID object_id, bool evict_if_full,
+Status SendCreateRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID object_id,
+                         const ray::rpc::Address &owner_address, bool evict_if_full,
                          int64_t data_size, int64_t metadata_size, int device_num);
 
 Status ReadCreateRequest(uint8_t* data, size_t size, ObjectID* object_id,

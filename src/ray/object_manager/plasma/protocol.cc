@@ -196,11 +196,16 @@ Status ReadGetDebugStringReply(uint8_t* data, size_t size, std::string* debug_st
 
 // Create messages.
 
-Status SendCreateRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID object_id, bool evict_if_full,
+Status SendCreateRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID object_id,
+                         const ray::rpc::Address& owner_address, bool evict_if_full,
                          int64_t data_size, int64_t metadata_size, int device_num) {
   flatbuffers::FlatBufferBuilder fbb;
+  auto fbb_owner_addr = fb::CreateAddress(
+        fbb, fbb.CreateString(owner_address.raylet_id()),
+        fbb.CreateString(owner_address.ip_address()),
+        owner_address.port(), fbb.CreateString(owner_address.worker_id()));
   auto message =
-      fb::CreatePlasmaCreateRequest(fbb, fbb.CreateString(object_id.Binary()),
+      fb::CreatePlasmaCreateRequest(fbb, fbb.CreateString(object_id.Binary()), fbb_owner_addr,
                                     evict_if_full, data_size, metadata_size, device_num);
   return PlasmaSend(store_conn, MessageType::PlasmaCreateRequest, &fbb, message);
 }

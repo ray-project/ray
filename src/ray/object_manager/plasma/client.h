@@ -26,6 +26,7 @@
 
 #include "ray/common/status.h"
 #include "ray/object_manager/plasma/common.h"
+#include "ray/protobuf/common.pb.h"
 #include "ray/util/visibility.h"
 
 using arrow::Buffer;
@@ -97,8 +98,9 @@ class RAY_EXPORT PlasmaClient {
   ///
   /// The returned object must be released once it is done with.  It must also
   /// be either sealed or aborted.
-  Status Create(const ObjectID& object_id, int64_t data_size, const uint8_t* metadata,
-                int64_t metadata_size, std::shared_ptr<Buffer>* data, int device_num = 0,
+  Status Create(const ObjectID& object_id, const ray::rpc::Address& owner_address,
+                int64_t data_size, const uint8_t* metadata, int64_t metadata_size,
+                std::shared_ptr<Buffer>* data, int device_num = 0,
                 bool evict_if_full = true);
 
   /// Create and seal an object in the object store. This is an optimization

@@ -151,8 +151,9 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param chunk_index Chunk index
   /// \param data Chunk data
   ray::Status ReceiveObjectChunk(const ClientID &client_id, const ObjectID &object_id,
-                                 uint64_t data_size, uint64_t metadata_size,
-                                 uint64_t chunk_index, const std::string &data);
+                                 const rpc::Address &owner_address, uint64_t data_size,
+                                 uint64_t metadata_size, uint64_t chunk_index,
+                                 const std::string &data);
 
   /// Send pull request
   ///

@@ -728,11 +728,12 @@ void ObjectManager::HandlePush(const rpc::PushRequest &request, rpc::PushReply *
   uint64_t chunk_index = request.chunk_index();
   uint64_t metadata_size = request.metadata_size();
   uint64_t data_size = request.data_size();
+  const rpc::Address &owner_address = request.owner_address();
   const std::string &data = request.data();
 
   double start_time = absl::GetCurrentTimeNanos() / 1e9;
-  auto status = ReceiveObjectChunk(client_id, object_id, data_size, metadata_size,
-                                   chunk_index, data);
+  auto status = ReceiveObjectChunk(client_id, object_id, owner_address, data_size,
+                                   metadata_size, chunk_index, data);
   double end_time = absl::GetCurrentTimeNanos() / 1e9;
 
   HandleReceiveFinished(object_id, client_id, chunk_index, start_time, end_time, status);
@@ -741,6 +742,7 @@ void ObjectManager::HandlePush(const rpc::PushRequest &request, rpc::PushReply *
 
 ray::Status ObjectManager::ReceiveObjectChunk(const ClientID &client_id,
                                               const ObjectID &object_id,
+                                              const rpc::Address &owner_address,
                                               uint64_t data_size, uint64_t metadata_size,
                                               uint64_t chunk_index,
                                               const std::string &data) {
@@ -750,7 +752,8 @@ ray::Status ObjectManager::ReceiveObjectChunk(const ClientID &client_id,
                  << ", object size: " << data_size;
 
   std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> chunk_status =
-      buffer_pool_.CreateChunk(object_id, data_size, metadata_size, chunk_index);
+      buffer_pool_.CreateChunk(object_id, owner_address, data_size, metadata_size,
+                               chunk_index);
   ray::Status status;
   ObjectBufferPool::ChunkInfo chunk_info = chunk_status.first;
   if (chunk_status.second.ok()) {

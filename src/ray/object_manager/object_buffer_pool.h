@@ -109,8 +109,8 @@ class ObjectBufferPool {
   /// or if create is invoked consecutively on the same chunk
   /// (with no intermediate AbortCreateChunk).
   std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> CreateChunk(
-      const ObjectID &object_id, uint64_t data_size, uint64_t metadata_size,
-      uint64_t chunk_index);
+      const ObjectID &object_id, const rpc::Address &owner_address, uint64_t data_size,
+      uint64_t metadata_size, uint64_t chunk_index);
 
   /// Abort the create operation associated with a chunk at chunk_index.
   /// This method will fail if it's invoked on a chunk_index on which

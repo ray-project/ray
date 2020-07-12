@@ -131,9 +131,20 @@ table PlasmaGetDebugStringReply {
   debug_string: string;
 }
 
+// Mimics the Address protobuf.
+table Address {
+  raylet_id: string;
+  ip_address: string;
+  port: int;
+  // Optional unique id for the worker.
+  worker_id: string;
+}
+
 table PlasmaCreateRequest {
   // ID of the object to be created.
   object_id: string;
+  // The RPC address of the worker that owns the object.
+  owner_address: Address;
   // Whether to evict other objects to make room for this one.
   evict_if_full: bool;
   // The size of the object's data in bytes.
