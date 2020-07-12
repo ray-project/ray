@@ -56,8 +56,7 @@ class CoreWorkerDirectTaskSubmitter {
       int64_t lease_timeout_ms,
       std::function<Status(const TaskSpecification &, const gcs::StatusCallback &)>
           actor_create_callback = nullptr,
-      absl::optional<boost::asio::steady_timer> cancel_timer = absl::nullopt,
-      int pipeline_fullness = 10)
+      absl::optional<boost::asio::steady_timer> cancel_timer = absl::nullopt)
       : rpc_address_(rpc_address),
         local_lease_client_(lease_client),
         client_factory_(client_factory),
@@ -67,30 +66,8 @@ class CoreWorkerDirectTaskSubmitter {
         lease_timeout_ms_(lease_timeout_ms),
         local_raylet_id_(local_raylet_id),
         actor_create_callback_(std::move(actor_create_callback)),
-        cancel_retry_timer_(std::move(cancel_timer)),
-        pipeline_fullness_(pipeline_fullness) {
-          char *pip_f_env = getenv("PIPELINE_FULLNESS_PARAM");
-          if (pip_f_env) {
-            try {
-              int pip_f_env_int = std::stoi(pip_f_env);
-              if (pip_f_env_int < 0 || pip_f_env_int > 10000) {
-                RAY_LOG(INFO) << "PIPELINE_FULLNESS_PARAM environment variable not valid. Setting pipeline_fullness to " << pipeline_fullness_;
-              } else {
-                RAY_CHECK(pip_f_env_int > 0 && pip_f_env_int <= 100);
-                RAY_LOG(DEBUG) << "Pipeline fullness set to " << pip_f_env_int << " from environment variable";
-                pipeline_fullness_ = pip_f_env_int;
-              } 
-            }
-            catch (std::invalid_argument const &e) {
-              RAY_LOG(INFO) << "Pipeline fullness environment variable not valid. Setting pipeline_fullness to default value: " << pipeline_fullness_;
-            }
-            catch (std::out_of_range const &e) {
-              RAY_LOG(INFO) << "Pipeline fullness environment variable not valid. Setting pipeline_fullness to default value: " << pipeline_fullness_;
-            }
-          } else {
-            RAY_LOG(DEBUG) << "Pipeline fullness environment variable not set. Setting it to default value: " << pipeline_fullness_;
-          }
-        }
+        cancel_retry_timer_(std::move(cancel_timer)), 
+        max_tasks_in_flight_per_worker_(RayConfig::instance().max_tasks_in_flight_per_worker()) {}
 
   /// Schedule a task for direct submission to a worker.
   ///
@@ -198,11 +175,16 @@ class CoreWorkerDirectTaskSubmitter {
   absl::flat_hash_map<rpc::WorkerAddress, std::shared_ptr<rpc::CoreWorkerClientInterface>>
       client_cache_ GUARDED_BY(mu_);
 
-  /// Map from worker address to the lease client through which it should be
-  /// returned and its lease expiration time.
+  // max_tasks_in_flight_per_worker_ limits the number of tasks that can be pipelined to a worker using a single lease
+  const uint32_t max_tasks_in_flight_per_worker_;
+
+  /// Map from worker address to a tuple containing three elements:
+  /// - the lease client through which the worker should be returned
+  /// - the expiration time of the worker lease
+  /// - the number of tasks that are currently in flight to the worker
   absl::flat_hash_map<rpc::WorkerAddress,
-                      std::pair<std::shared_ptr<WorkerLeaseInterface>, int64_t>>
-      worker_to_lease_client_ GUARDED_BY(mu_);
+                      std::tuple<std::shared_ptr<WorkerLeaseInterface>, int64_t, uint32_t>>
+      worker_to_lease_entry_ GUARDED_BY(mu_);
 
   // Keeps track of pending worker lease requests to the raylet.
   absl::flat_hash_map<SchedulingKey,
@@ -223,13 +205,6 @@ class CoreWorkerDirectTaskSubmitter {
 
   // Retries cancelation requests if they were not successful.
   absl::optional<boost::asio::steady_timer> cancel_retry_timer_;
-
-
-  int pipeline_fullness_;
-
-  // Keeps track of how many tasks are in-flight to a given worker, so that we can
-  // make sure to keep the pipeline full
-  absl::flat_hash_map<rpc::WorkerAddress, int> tasks_in_flight_ GUARDED_BY(mu_);
 
 };
 
