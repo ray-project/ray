@@ -95,13 +95,43 @@ We also split the training data into a training and validation subset. We thus t
 80% of the data and calculate the validation loss on the remaining 20%. The batch sizes
 with which we iterate through the training and test sets are configurable as well.
 
+Adding (multi) GPU support with DataParallel
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Image classification benefits largely from GPUs. Luckily, we can continue to use
+PyTorch's abstractions in Ray Tune. Thus, we can wrap our model in ``nn.DataParallel``
+to support data parallel training on multiple GPUs:
+
+.. code-block:: python
+
+    device = "cpu"
+    if torch.cuda.is_available():
+        device = "cuda:0"
+        if torch.cuda.device_count() > 1:
+            net = nn.DataParallel(net)
+    net.to(device)
+
+By using a ``device`` variable we make sure that training also works when we have
+no GPUs available. PyTorch requires us to send our data to the GPU memory explicitly,
+like this:
+
+.. code-block:: python
+
+    for i, data in enumerate(trainloader, 0):
+        inputs, labels = data
+        inputs, labels = inputs.to(device), labels.to(device)
+
+The code now supports training on CPUs, on a single GPU, and on multiple GPUs.
+
+Communicating with Ray Tune
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 The most interesting part is the communication with Tune:
 
 .. code-block:: python
 
     checkpoint_dir = tune.make_checkpoint_dir(epoch)
     path = os.path.join(checkpoint_dir, "checkpoint")
-    torch.save(net.state_dict(), path)
+    torch.save((net.state_dict(), optimizer.state_dict()), path)
     tune.save_checkpoint(path)
 
     tune.report(loss=(val_loss / val_steps), accuracy=correct / total)
@@ -117,13 +147,16 @@ schedulers like `Population Based Training <https://docs.ray.io/en/master/tune/t
 Also, by saving the checkpoint we can later load the trained models and validate them
 on a test set.
 
+Full training function
+~~~~~~~~~~~~~~~~~~~~~~
+
 The full code example looks like this:
 
 .. literalinclude:: /../../python/ray/tune/examples/cifar10_pytorch.py
    :language: python
    :start-after: __train_begin__
    :end-before: __train_end__
-   :emphasize-lines: 2,4,5,8,18,23,68-71,73
+   :emphasize-lines: 2,4-9,12,14-18,28,33,43,70,81-84,86
 
 As you can see, most of the code is adapted directly from the example.
 
@@ -137,6 +170,9 @@ function:
    :language: python
    :start-after: __test_acc_begin__
    :end-before: __test_acc_end__
+
+As you can see, the function also expects a ``device`` parameter, so we can do the
+test set validation on a GPU.
 
 Configuring the search space
 ----------------------------
@@ -160,9 +196,29 @@ the batch size is a choice between 2, 4, 8, and 16.
 
 At each trial, Tune will now randomly sample a combination of parameters from these
 search spaces. It will then train a number of models in parallel and find the best
-performing one among these.
+performing one among these. We also use the ``ASHAScheduler`` which will terminate bad
+performing trials early.
 
-We also use the ``ASHAScheduler`` which will terminate bad performing trials early.
+We can tell Tune what resources should be available for each trial:
+
+.. code-block:: python
+
+    gpus_per_trial = 2
+    # ...
+    result = tune.run(
+        train_cifar,
+        resources_per_trial={"cpu": 8, "gpu": gpus_per_trial},
+        config=config,
+        num_samples=num_samples,
+        scheduler=scheduler,
+        progress_reporter=reporter,
+        checkpoint_at_end=True)
+
+You can specify the number of CPUs, which are then available e.g.
+to increase the ``num_workers`` of the PyTorch ``DataLoader`` instances. The selected
+number of GPUs are made visible to PyTorch in each trial. Trials do not have access to
+GPUs that haven't been requested for them - so you don't have to care about two trials
+using the same set of resources.
 
 After training the models, we will find the best performing one and load the trained
 network from the checkpoint file. We then obtain the test set accuracy and report

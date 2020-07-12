@@ -60,10 +60,18 @@ class Net(nn.Module):
 def train_cifar(config, checkpoint=None):
     net = Net(config["l1"], config["l2"])
 
+    device = "cpu"
+    if torch.cuda.is_available():
+        device = "cuda:0"
+        if torch.cuda.device_count() > 1:
+            net = nn.DataParallel(net)
+    net.to(device)
+
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(net.parameters(), lr=config["lr"], momentum=0.9)
 
     if checkpoint:
+        print("loading checkpint {}".format(checkpoint))
         model_state, optimizer_state = torch.load(checkpoint)
         net.load_state_dict(model_state)
         optimizer.load_state_dict(optimizer_state)
@@ -78,12 +86,12 @@ def train_cifar(config, checkpoint=None):
         train_subset,
         batch_size=int(config["batch_size"]),
         shuffle=True,
-        num_workers=2)
+        num_workers=8)
     valloader = torch.utils.data.DataLoader(
         val_subset,
         batch_size=int(config["batch_size"]),
         shuffle=True,
-        num_workers=2)
+        num_workers=8)
 
     for epoch in range(10):  # loop over the dataset multiple times
         running_loss = 0.0
@@ -91,6 +99,7 @@ def train_cifar(config, checkpoint=None):
         for i, data in enumerate(trainloader, 0):
             # get the inputs; data is a list of [inputs, labels]
             inputs, labels = data
+            inputs, labels = inputs.to(device), labels.to(device)
 
             # zero the parameter gradients
             optimizer.zero_grad()
@@ -117,13 +126,15 @@ def train_cifar(config, checkpoint=None):
         for i, data in enumerate(valloader, 0):
             with torch.no_grad():
                 inputs, labels = data
+                inputs, labels = inputs.to(device), labels.to(device)
+
                 outputs = net(inputs)
                 _, predicted = torch.max(outputs.data, 1)
                 total += labels.size(0)
                 correct += (predicted == labels).sum().item()
 
                 loss = criterion(outputs, labels)
-                val_loss += loss.numpy()
+                val_loss += loss.cpu().numpy()
                 val_steps += 1
 
         checkpoint_dir = tune.make_checkpoint_dir(epoch)
@@ -137,7 +148,7 @@ def train_cifar(config, checkpoint=None):
 
 
 # __test_acc_begin__
-def test_accuracy(net):
+def test_accuracy(net, device="cpu"):
     trainset, testset = load_data()
 
     testloader = torch.utils.data.DataLoader(
@@ -148,6 +159,7 @@ def test_accuracy(net):
     with torch.no_grad():
         for data in testloader:
             images, labels = data
+            images, labels = images.to(device), labels.to(device)
             outputs = net(images)
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
@@ -159,11 +171,13 @@ def test_accuracy(net):
 
 # __main_begin__
 def main(num_samples=10, max_num_epochs=10):
+    gpus_per_trial = 2
+
     data_dir = os.path.abspath("./data")
     load_data(data_dir)
     config = {
-        "l1": tune.sample_from(lambda _: 2**np.random.randint(2, 9)),
-        "l2": tune.sample_from(lambda _: 2**np.random.randint(2, 9)),
+        "l1": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
+        "l2": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
         "lr": tune.loguniform(1e-4, 1e-1),
         "batch_size": tune.choice([2, 4, 8, 16]),
         "data_dir": data_dir
@@ -175,11 +189,11 @@ def main(num_samples=10, max_num_epochs=10):
         grace_period=1,
         reduction_factor=2)
     reporter = CLIReporter(
-        parameter_columns=["l1", "l2", "lr", "batch_size"],
+        # parameter_columns=["l1", "l2", "lr", "batch_size"],
         metric_columns=["loss", "accuracy", "training_iteration"])
     result = tune.run(
         train_cifar,
-        resources_per_trial={"cpu": 1},
+        resources_per_trial={"cpu": 8, "gpu": gpus_per_trial},
         config=config,
         num_samples=num_samples,
         scheduler=scheduler,
@@ -194,10 +208,17 @@ def main(num_samples=10, max_num_epochs=10):
         best_trial.last_result["accuracy"]))
 
     best_trained_model = Net(best_trial.config["l1"], best_trial.config["l2"])
+    device = "cpu"
+    if torch.cuda.is_available():
+        device = "cuda:0"
+        if gpus_per_trial > 1:
+            best_trained_model = nn.DataParallel(best_trained_model)
+    best_trained_model.to(device)
+
     model_state, optimizer_state = torch.load(best_trial.checkpoint.value)
     best_trained_model.load_state_dict(model_state)
 
-    test_acc = test_accuracy(best_trained_model)
+    test_acc = test_accuracy(best_trained_model, device)
     print("Best trial test set accuracy: {}".format(test_acc))
 # __main_end__
 
