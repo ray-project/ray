@@ -22,8 +22,7 @@ static int node_manager_port;
 class StreamingQueueTest : public StreamingQueueTestBase {
  public:
   StreamingQueueTest()
-      : StreamingQueueTestBase(1, raylet_executable, store_executable, node_manager_port,
-                               actor_executable, gcs_server_executable) {}
+      : StreamingQueueTestBase(1, node_manager_port) {}
 };
 
 class StreamingWriterTest : public StreamingQueueTestBase {

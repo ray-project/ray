@@ -100,8 +100,8 @@ StreamingStatus StreamingQueueProducer::NotifyChannelConsumed(uint64_t channel_o
 StreamingStatus StreamingQueueProducer::ProduceItemToChannel(uint8_t *data,
                                                              uint32_t data_size) {
   /// TODO: Fix msg_id_start and msg_id_end
-  Status status =
-      PushQueueItem(channel_info_.current_seq_id + 1, data, data_size, current_time_ms(), 0, 0);
+  Status status = PushQueueItem(channel_info_.current_seq_id + 1, data, data_size,
+                                current_time_ms(), 0, 0);
 
   if (status.code() != StatusCode::OK) {
     STREAMING_LOG(DEBUG) << channel_info_.channel_id << " => Queue is full"
@@ -123,9 +123,10 @@ Status StreamingQueueProducer::PushQueueItem(uint64_t seq_id, uint8_t *data,
                                              uint32_t data_size, uint64_t timestamp,
                                              uint64_t msg_id_start, uint64_t msg_id_end) {
   STREAMING_LOG(DEBUG) << "StreamingQueueProducer::PushQueueItem:"
-                      << " qid: " << channel_info_.channel_id << " seq_id: " << seq_id
-                      << " data_size: " << data_size;
-  Status status = queue_->Push(seq_id, data, data_size, timestamp, msg_id_start, msg_id_end, false);
+                       << " qid: " << channel_info_.channel_id << " seq_id: " << seq_id
+                       << " data_size: " << data_size;
+  Status status =
+      queue_->Push(seq_id, data, data_size, timestamp, msg_id_start, msg_id_end, false);
   if (status.IsOutOfMemory()) {
     status = queue_->TryEvictItems();
     if (!status.ok()) {
@@ -133,7 +134,8 @@ Status StreamingQueueProducer::PushQueueItem(uint64_t seq_id, uint8_t *data,
       return status;
     }
 
-    status = queue_->Push(seq_id, data, data_size, timestamp, msg_id_start, msg_id_end, false);
+    status =
+        queue_->Push(seq_id, data, data_size, timestamp, msg_id_start, msg_id_end, false);
   }
 
   queue_->Send();
@@ -162,7 +164,8 @@ StreamingQueueStatus StreamingQueueConsumer::GetQueue(
   }
 
   downstream_handler->SetPeerActorID(queue_id, channel_info_.parameter.actor_id,
-      *init_param.async_function, *init_param.sync_function);
+                                     *init_param.async_function,
+                                     *init_param.sync_function);
   STREAMING_LOG(INFO) << "Create ReaderQueue " << queue_id
                       << " pull from start_msg_id: " << start_msg_id;
   queue_ = downstream_handler->CreateDownstreamQueue(queue_id, init_param.actor_id);
