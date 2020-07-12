@@ -60,11 +60,13 @@ class Net(nn.Module):
 def train_cifar(config, checkpoint=None):
     net = Net(config["l1"], config["l2"])
 
-    if checkpoint:
-        net.load_state_dict(torch.load(checkpoint))
-
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(net.parameters(), lr=config["lr"], momentum=0.9)
+
+    if checkpoint:
+        model_state, optimizer_state = torch.load(checkpoint)
+        net.load_state_dict(model_state)
+        optimizer.load_state_dict(optimizer_state)
 
     trainset, testset = load_data(config["data_dir"])
 
@@ -126,7 +128,7 @@ def train_cifar(config, checkpoint=None):
 
         checkpoint_dir = tune.make_checkpoint_dir(epoch)
         path = os.path.join(checkpoint_dir, "checkpoint")
-        torch.save(net.state_dict(), path)
+        torch.save((net.state_dict(), optimizer.state_dict()), path)
         tune.save_checkpoint(path)
 
         tune.report(loss=(val_loss / val_steps), accuracy=correct / total)
@@ -192,7 +194,8 @@ def main(num_samples=10, max_num_epochs=10):
         best_trial.last_result["accuracy"]))
 
     best_trained_model = Net(best_trial.config["l1"], best_trial.config["l2"])
-    best_trained_model.load_state_dict(torch.load(best_trial.checkpoint.value))
+    model_state, optimizer_state = torch.load(best_trial.checkpoint.value)
+    best_trained_model.load_state_dict(model_state)
 
     test_acc = test_accuracy(best_trained_model)
     print("Best trial test set accuracy: {}".format(test_acc))
