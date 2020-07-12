@@ -100,7 +100,7 @@ void GcsNodeManager::NodeFailureDetector::ScheduleTick() {
   detect_timer_.expires_from_now(heartbeat_period);
   detect_timer_.async_wait([this](const boost::system::error_code &error) {
     if (error == boost::asio::error::operation_aborted) {
-      // `operation_canceled` is set when `detect_timer_` is canceled or destroyed.
+      // `operation_aborted` is set when `detect_timer_` is canceled or destroyed.
       // The Monitor lifetime may be short than the object who use it. (e.g. gcs_server)
       return;
     }
