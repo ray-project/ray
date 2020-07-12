@@ -170,9 +170,7 @@ def test_accuracy(net, device="cpu"):
 
 
 # __main_begin__
-def main(num_samples=10, max_num_epochs=10):
-    gpus_per_trial = 2
-
+def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
     data_dir = os.path.abspath("./data")
     load_data(data_dir)
     config = {
@@ -232,6 +230,6 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
-        main(1, 1)
+        main(num_samples=1, max_num_epochs=1, gpus_per_trial=0)
     else:
-        main()
+        main(gpus_per_trial=0)  # Change this to activate GPU training
