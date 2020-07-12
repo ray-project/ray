@@ -70,6 +70,9 @@ def import_external():
     """Mock a normal provider importer."""
 
     def return_it_back(config):
+        if config["provider"]["custom_bootstrap_config"]:
+            provider_cls = load_class(path=config["provider"]["module"])
+            config = provider_cls.bootstrap_config(config)
         return config
 
     return return_it_back, None
