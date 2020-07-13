@@ -26,8 +26,6 @@ class JobWorker(object):
         self.task_id = None
         self.task = None
         self.stream_processor = None
-        self.reader_client = None
-        self.writer_client = None
         logger.info("Creating job worker succeeded.")
 
     def init(self, worker_context_bytes):
@@ -52,10 +50,6 @@ class JobWorker(object):
         # get config from vertex
         self.config = self.execution_vertex_context.config
 
-        if self.config.get(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL):
-            self.reader_client = _streaming.ReaderClient()
-            self.writer_client = _streaming.WriterClient()
-
         self.task = self.create_stream_task()
 
         logger.info("Job worker init succeeded.")
@@ -79,28 +73,28 @@ class JobWorker(object):
         """Called by upstream queue writer to send data message to downstream
         queue reader.
         """
-        self.reader_client.on_reader_message(buffer)
+        self.task.on_reader_message(buffer)
 
     def on_reader_message_sync(self, buffer: bytes):
         """Called by upstream queue writer to send control message to downstream
         downstream queue reader.
         """
-        if self.reader_client is None:
+        if self.task is None:
             return _NOT_READY_FLAG_
-        result = self.reader_client.on_reader_message_sync(buffer)
+        result = self.task.on_reader_message_sync(buffer)
         return result.to_pybytes()
 
     def on_writer_message(self, buffer: bytes):
         """Called by downstream queue reader to send notify message to
         upstream queue writer.
         """
-        self.writer_client.on_writer_message(buffer)
+        self.task.on_writer_message(buffer)
 
     def on_writer_message_sync(self, buffer: bytes):
         """Called by downstream queue reader to send control message to
         upstream queue writer.
         """
-        if self.writer_client is None:
+        if self.task is None:
             return _NOT_READY_FLAG_
-        result = self.writer_client.on_writer_message_sync(buffer)
+        result = self.task.on_writer_message_sync(buffer)
         return result.to_pybytes()

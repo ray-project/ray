@@ -11,6 +11,7 @@
 #include "message/message_bundle.h"
 #include "message/priority_queue.h"
 #include "runtime_context.h"
+#include "receiver.h"
 
 namespace ray {
 namespace streaming {
@@ -38,7 +39,7 @@ struct StreamingReaderMsgPtrComparator {
 /// thread every time, so that the order of the message can be guranteed, which
 /// will also facilitate our future implementation of fault tolerance. Finally
 /// user thread can extract messages from the bundle and process one by one.
-class DataReader {
+class DataReader : public DirectCallReceiver {
  private:
   std::vector<ObjectID> input_queue_ids_;
 
@@ -60,6 +61,7 @@ class DataReader {
 
   static const uint32_t kReadItemTimeout;
 
+  std::shared_ptr<DownstreamQueueMessageHandler> downstream_handler_;
  protected:
   std::unordered_map<ObjectID, ConsumerChannelInfo> channel_info_map_;
   std::unordered_map<ObjectID, std::shared_ptr<ConsumerChannel>> channel_map_;
@@ -106,6 +108,9 @@ class DataReader {
   //// Notify message related channel to clear data.
   void NotifyConsumed(std::shared_ptr<DataBundle> &message);
 
+  void OnMessage(std::shared_ptr<LocalMemoryBuffer> buffers) override;
+  std::shared_ptr<LocalMemoryBuffer> OnMessageSync(
+      std::shared_ptr<LocalMemoryBuffer> buffer) override;
  private:
   /// Create channels and connect to all upstream.
   StreamingStatus InitChannel();

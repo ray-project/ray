@@ -103,3 +103,6 @@ std::shared_ptr<ray::RayFunction> FunctionDescriptorToRayFunction(
 void ParseChannelInitParameters(
     JNIEnv *env, jobject param_obj,
     std::vector<ray::streaming::ChannelCreationParameter> &parameter_vec);
+
+std::shared_ptr<ray::LocalMemoryBuffer> JByteArrayToBuffer(JNIEnv *env,
+                                                           jbyteArray bytes);

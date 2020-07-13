@@ -122,6 +122,14 @@ public class DataWriter {
     LOG.info("Finish closing data writer.");
   }
 
+  public void onWriterMessage(byte[] buffer) {
+    onWriterMessageNative(nativeWriterPtr, buffer);
+  }
+
+  public byte[] onWriterMessageSync(byte[] buffer) {
+    return onWriterMessageSyncNative(nativeWriterPtr, buffer);
+  }
+
   private static native long createWriterNative(
       ChannelCreationParametersBuilder initialParameters,
       byte[][] outputQueueIds,
@@ -137,4 +145,7 @@ public class DataWriter {
 
   private native void closeWriterNative(long nativeQueueProducerPtr);
 
+  private native void onWriterMessageNative(long handler, byte[] buffer);
+
+  private native byte[] onWriterMessageSyncNative(long handler, byte[] buffer);
 }

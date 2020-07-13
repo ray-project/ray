@@ -55,6 +55,11 @@ void DataReader::Init(const std::vector<ObjectID> &input_ids,
     channel_info.get_queue_item_times = 0;
   }
 
+  if (!runtime_context_->IsMockTest()) {
+    downstream_handler_ = ray::streaming::DownstreamQueueMessageHandler::CreateService(
+      CoreWorkerProcess::GetCoreWorker().GetWorkerContext().GetCurrentActorID());
+  }
+
   /// Make the input id location stable.
   sort(input_queue_ids_.begin(), input_queue_ids_.end(),
        [](const ObjectID &a, const ObjectID &b) { return a.Hash() < b.Hash(); });
@@ -321,6 +326,24 @@ bool StreamingReaderMsgPtrComparator::operator()(const std::shared_ptr<DataBundl
     return a->from.Hash() > b->from.Hash();
   }
   return a->meta->GetMessageBundleTs() > b->meta->GetMessageBundleTs();
+}
+
+void DataReader::OnMessage(std::shared_ptr<LocalMemoryBuffer> buffer) {
+  if (downstream_handler_) {
+    downstream_handler_->DispatchMessageAsync(buffer);
+  } else {
+    STREAMING_LOG(ERROR) << "Downstream handler not ready.";
+  }
+}
+
+std::shared_ptr<LocalMemoryBuffer> DataReader::OnMessageSync(
+    std::shared_ptr<LocalMemoryBuffer> buffer) {
+  if (downstream_handler_) {
+    return downstream_handler_->DispatchMessageSync(buffer);
+  } else {
+    STREAMING_LOG(ERROR) << "Downstream handler not ready.";
+    return nullptr;
+  }
 }
 
 }  // namespace streaming

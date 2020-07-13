@@ -8,7 +8,6 @@ import io.ray.streaming.runtime.core.processor.ProcessBuilder;
 import io.ray.streaming.runtime.core.processor.SourceProcessor;
 import io.ray.streaming.runtime.core.processor.StreamProcessor;
 import io.ray.streaming.runtime.master.JobMaster;
-import io.ray.streaming.runtime.transfer.TransferHandler;
 import io.ray.streaming.runtime.util.EnvUtil;
 import io.ray.streaming.runtime.worker.context.JobWorkerContext;
 import io.ray.streaming.runtime.worker.tasks.OneInputStreamTask;
@@ -42,7 +41,6 @@ public class JobWorker implements Serializable {
   private StreamingWorkerConfig workerConfig;
 
   private StreamTask task;
-  private TransferHandler transferHandler;
 
   public JobWorker() {
     LOG.info("Creating job worker succeeded.");
@@ -62,9 +60,6 @@ public class JobWorker implements Serializable {
 
       //Init transfer
       TransferChannelType channelType = workerConfig.transferConfig.channelType();
-      if (TransferChannelType.NATIVE_CHANNEL == channelType) {
-        transferHandler = new TransferHandler();
-      }
 
       // create stream task
       task = createStreamTask();
@@ -143,7 +138,11 @@ public class JobWorker implements Serializable {
    * Used by upstream streaming queue to send data to this actor
    */
   public void onReaderMessage(byte[] buffer) {
-    transferHandler.onReaderMessage(buffer);
+    if (task != null) {
+      task.onReaderMessage(buffer);
+    } else {
+      LOG.warn("onStreamingTransfer task is null");
+    }
   }
 
   /**
@@ -151,17 +150,22 @@ public class JobWorker implements Serializable {
    * and receive result from this actor
    */
   public byte[] onReaderMessageSync(byte[] buffer) {
-    if (transferHandler == null) {
-      return NOT_READY_FLAG;
+    if (task != null) {
+      return task.onReaderMessageSync(buffer);
+    } else {
+      return new byte[4];
     }
-    return transferHandler.onReaderMessageSync(buffer);
   }
 
   /**
    * Used by downstream streaming queue to send data to this actor
    */
   public void onWriterMessage(byte[] buffer) {
-    transferHandler.onWriterMessage(buffer);
+    if (task != null) {
+      task.onWriterMessage(buffer);
+    } else {
+      LOG.warn("onStreamingTransfer task is null");
+    }
   }
 
   /**
@@ -169,9 +173,10 @@ public class JobWorker implements Serializable {
    * and receive result from this actor
    */
   public byte[] onWriterMessageSync(byte[] buffer) {
-    if (transferHandler == null) {
-      return NOT_READY_FLAG;
+    if (task != null) {
+      return task.onWriterMessageSync(buffer);
+    } else {
+      return new byte[4];
     }
-    return transferHandler.onWriterMessageSync(buffer);
   }
 }

@@ -190,3 +190,11 @@ void ParseChannelInitParameters(
         return native_parameter;
       });
 }
+
+std::shared_ptr<ray::LocalMemoryBuffer> JByteArrayToBuffer(JNIEnv *env,
+                                                           jbyteArray bytes) {
+  RawDataFromJByteArray buf(env, bytes);
+  STREAMING_CHECK(buf.data != nullptr);
+
+  return std::make_shared<ray::LocalMemoryBuffer>(buf.data, buf.data_size, true);
+}

@@ -79,3 +79,22 @@ Java_io_ray_streaming_runtime_transfer_DataWriter_closeWriterNative(JNIEnv *env,
   auto *data_writer = reinterpret_cast<DataWriter *>(ptr);
   delete data_writer;
 }
+
+JNIEXPORT void JNICALL
+Java_io_ray_streaming_runtime_transfer_DataWriter_onWriterMessageNative
+  (JNIEnv *env, jobject thisObj, jlong ptr, jbyteArray bytes) {
+  auto writer = reinterpret_cast<DataWriter *>(ptr);
+  writer->OnMessage(JByteArrayToBuffer(env, bytes));
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_streaming_runtime_transfer_DataWriter_onWriterMessageSyncNative
+  (JNIEnv *env, jobject thisObj, jlong ptr, jbyteArray bytes) {
+  auto writer = reinterpret_cast<DataWriter *>(ptr);
+  auto result_buffer = writer->OnMessageSync(JByteArrayToBuffer(env, bytes));
+
+  jbyteArray arr = env->NewByteArray(result_buffer->Size());
+  env->SetByteArrayRegion(arr, 0, result_buffer->Size(),
+                          reinterpret_cast<jbyte *>(result_buffer->Data()));
+  return arr;
+}

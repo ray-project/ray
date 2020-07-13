@@ -29,6 +29,7 @@ public abstract class StreamTask implements Runnable {
   protected int taskId;
   protected Processor processor;
   protected JobWorker jobWorker;
+  protected DataWriter writer;
   protected DataReader reader;
   List<Collector> collectors = new ArrayList<>();
 
@@ -79,7 +80,7 @@ public abstract class StreamTask implements Runnable {
     }
 
     if (!targetActors.isEmpty()) {
-      DataWriter writer = new DataWriter(
+      writer = new DataWriter(
           outputChannelIds, targetActors, jobWorker.getWorkerConfig()
       );
 
@@ -159,4 +160,19 @@ public abstract class StreamTask implements Runnable {
     LOG.info("Stream task close success.");
   }
 
+  public void onReaderMessage(byte[] buffer) {
+    reader.onReaderMessage(buffer);
+  }
+
+  public byte[] onReaderMessageSync(byte[] buffer) {
+    return reader.onReaderMessageSync(buffer);
+  }
+
+  public void onWriterMessage(byte[] buffer) {
+    writer.onWriterMessage(buffer);
+  }
+
+  public byte[] onWriterMessageSync(byte[] buffer) {
+    return writer.onWriterMessageSync(buffer);
+  }
 }

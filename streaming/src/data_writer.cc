@@ -139,6 +139,11 @@ StreamingStatus DataWriter::Init(const std::vector<ObjectID> &queue_id_vec,
   output_queue_ids_ = queue_id_vec;
   transfer_config_->Set(ConfigEnum::QUEUE_ID_VECTOR, queue_id_vec);
 
+  if (!runtime_context_->IsMockTest()) {
+    upstream_handler_ = ray::streaming::UpstreamQueueMessageHandler::CreateService(
+      CoreWorkerProcess::GetCoreWorker().GetWorkerContext().GetCurrentActorID());
+  }
+
   for (size_t i = 0; i < queue_id_vec.size(); ++i) {
     StreamingStatus status = InitChannel(queue_id_vec[i], init_params[i],
                                          channel_message_id_vec[i], queue_size_vec[i]);
@@ -474,6 +479,24 @@ void DataWriter::FlowControlTimer() {
 void DataWriter::GetOffsetInfo(
     std::unordered_map<ObjectID, ProducerChannelInfo> *&offset_map) {
   offset_map = &channel_info_map_;
+}
+
+void DataWriter::OnMessage(std::shared_ptr<LocalMemoryBuffer> buffers) {
+  if (upstream_handler_) {
+    upstream_handler_->DispatchMessageAsync(buffers);
+  } else {
+    STREAMING_LOG(ERROR) << "Upstream handler not ready.";
+  }
+}
+
+std::shared_ptr<LocalMemoryBuffer> DataWriter::OnMessageSync(
+    std::shared_ptr<LocalMemoryBuffer> buffer) {
+  if (upstream_handler_) {
+    return upstream_handler_->DispatchMessageSync(buffer);
+  } else {
+    STREAMING_LOG(ERROR) << "Upstream handler not ready.";
+    return nullptr;
+  }
 }
 
 }  // namespace streaming

@@ -110,6 +110,21 @@ class StreamTask(ABC):
     def cancel_task(self):
         pass
 
+    def on_reader_message(self, buffer: bytes):
+        self.reader.on_reader_message(buffer)
+
+    def on_reader_message_sync(self, buffer: bytes):
+        result = self.reader.on_reader_message_sync(buffer)
+        return result.to_pybytes()
+
+    def on_writer_message(self, buffer: bytes):
+        for writer in self.writers:
+            writer.on_writer_message(buffer)
+
+    def on_writer_message_sync(self, buffer: bytes):
+        for writer in self.writers:    
+            result = writer.on_writer_message_sync(buffer)
+        return result.to_pybytes()
 
 class InputStreamTask(StreamTask):
     """Base class for stream tasks that execute a

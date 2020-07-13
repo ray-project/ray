@@ -335,6 +335,12 @@ class DataReader:
     def close(self):
         logger.info("closing Data Reader.")
 
+    def on_reader_message(self, buffer: bytes):
+        self.reader.on_reader_message(buffer)
+
+    def on_reader_message_sync(self, buffer: bytes):
+        result = self.reader.on_reader_message_sync(buffer)
+        return result.to_pybytes()
 
 def _to_native_conf(conf):
     config = streaming_pb.StreamingConfig()

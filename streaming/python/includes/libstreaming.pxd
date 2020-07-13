@@ -104,18 +104,6 @@ cdef extern from "channel.h" namespace "ray::streaming" nogil:
         shared_ptr[CRayFunction] async_function;
         shared_ptr[CRayFunction] sync_function;
 
-cdef extern from "queue/queue_client.h" namespace "ray::streaming" nogil:
-    cdef cppclass CReaderClient "ray::streaming::ReaderClient":
-        CReaderClient()
-        void OnReaderMessage(shared_ptr[CLocalMemoryBuffer] buffer);
-        shared_ptr[CLocalMemoryBuffer] OnReaderMessageSync(shared_ptr[CLocalMemoryBuffer] buffer);
-
-    cdef cppclass CWriterClient "ray::streaming::WriterClient":
-        CWriterClient()
-        void OnWriterMessage(shared_ptr[CLocalMemoryBuffer] buffer);
-        shared_ptr[CLocalMemoryBuffer] OnWriterMessageSync(shared_ptr[CLocalMemoryBuffer] buffer);
-
-
 cdef extern from "data_reader.h" namespace "ray::streaming" nogil:
     cdef cppclass CDataBundle "ray::streaming::DataBundle":
         uint8_t *data
@@ -134,6 +122,8 @@ cdef extern from "data_reader.h" namespace "ray::streaming" nogil:
         CStreamingStatus GetBundle(const uint32_t timeout_ms,
                                    shared_ptr[CDataBundle] &message)
         void Stop()
+        void OnMessage(shared_ptr[CLocalMemoryBuffer] buffer);
+        shared_ptr[CLocalMemoryBuffer] OnMessageSync(shared_ptr[CLocalMemoryBuffer] buffer);
 
 
 cdef extern from "data_writer.h" namespace "ray::streaming" nogil:
@@ -147,6 +137,8 @@ cdef extern from "data_writer.h" namespace "ray::streaming" nogil:
                 const CObjectID &q_id, uint8_t *data, uint32_t data_size)
         void Run()
         void Stop()
+        void OnMessage(shared_ptr[CLocalMemoryBuffer] buffer);
+        shared_ptr[CLocalMemoryBuffer] OnMessageSync(shared_ptr[CLocalMemoryBuffer] buffer);
 
 
 cdef extern from "ray/common/buffer.h" nogil:

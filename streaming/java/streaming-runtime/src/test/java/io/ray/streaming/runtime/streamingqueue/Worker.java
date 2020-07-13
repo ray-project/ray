@@ -10,7 +10,6 @@ import io.ray.streaming.runtime.transfer.ChannelCreationParametersBuilder;
 import io.ray.streaming.runtime.transfer.DataMessage;
 import io.ray.streaming.runtime.transfer.DataReader;
 import io.ray.streaming.runtime.transfer.DataWriter;
-import io.ray.streaming.runtime.transfer.TransferHandler;
 import io.ray.streaming.util.Config;
 import java.lang.management.ManagementFactory;
 import java.nio.ByteBuffer;
@@ -23,33 +22,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 
-public class Worker {
-  private static final Logger LOGGER = LoggerFactory.getLogger(Worker.class);
-
-  protected TransferHandler transferHandler = null;
-
-  public Worker() {
-    transferHandler = new TransferHandler();
-  }
-
-  public void onReaderMessage(byte[] buffer) {
-    transferHandler.onReaderMessage(buffer);
-  }
-
-  public byte[] onReaderMessageSync(byte[] buffer) {
-    return transferHandler.onReaderMessageSync(buffer);
-  }
-
-  public void onWriterMessage(byte[] buffer) {
-    transferHandler.onWriterMessage(buffer);
-  }
-
-  public byte[] onWriterMessageSync(byte[] buffer) {
-    return transferHandler.onWriterMessageSync(buffer);
-  }
-}
-
-class ReaderWorker extends Worker {
+class ReaderWorker {
   private static final Logger LOGGER = LoggerFactory.getLogger(ReaderWorker.class);
 
   private String name = null;
@@ -99,8 +72,8 @@ class ReaderWorker extends Worker {
     conf.put(Config.CHANNEL_SIZE, "100000");
     conf.put(Config.STREAMING_JOB_NAME, "integrationTest1");
     ChannelCreationParametersBuilder.setJavaWriterFunctionDesc(
-        new JavaFunctionDescriptor(Worker.class.getName(), "onWriterMessage", "([B)V"),
-        new JavaFunctionDescriptor(Worker.class.getName(), "onWriterMessageSync", "([B)[B"));
+        new JavaFunctionDescriptor(WriterWorker.class.getName(), "onWriterMessage", "([B)V"),
+        new JavaFunctionDescriptor(WriterWorker.class.getName(), "onWriterMessageSync", "([B)[B"));
     StreamingWorkerConfig workerConfig = new StreamingWorkerConfig(conf);
     dataReader = new DataReader(inputQueueList, inputActors, workerConfig);
 
@@ -167,9 +140,17 @@ class ReaderWorker extends Worker {
   public int getTotalMsg() {
     return totalMsg;
   }
+
+  public void onReaderMessage(byte[] buffer) {
+    dataReader.onReaderMessage(buffer);
+  }
+
+  public byte[] onReaderMessageSync(byte[] buffer) {
+    return dataReader.onReaderMessageSync(buffer);
+  }
 }
 
-class WriterWorker extends Worker {
+class WriterWorker {
   private static final Logger LOGGER = LoggerFactory.getLogger(WriterWorker.class);
 
   private String name = null;
@@ -226,8 +207,8 @@ class WriterWorker extends Worker {
     conf.put(Config.CHANNEL_SIZE, "100000");
     conf.put(Config.STREAMING_JOB_NAME, "integrationTest1");
     ChannelCreationParametersBuilder.setJavaReaderFunctionDesc(
-        new JavaFunctionDescriptor(Worker.class.getName(), "onReaderMessage", "([B)V"),
-        new JavaFunctionDescriptor(Worker.class.getName(), "onReaderMessageSync", "([B)[B"));
+        new JavaFunctionDescriptor(ReaderWorker.class.getName(), "onReaderMessage", "([B)V"),
+        new JavaFunctionDescriptor(ReaderWorker.class.getName(), "onReaderMessageSync", "([B)[B"));
     StreamingWorkerConfig workerConfig = new StreamingWorkerConfig(conf);
     dataWriter = new DataWriter(outputQueueList, outputActors, workerConfig);
     Thread writerThread = new Thread(Ray.wrapRunnable(new Runnable() {
@@ -270,5 +251,13 @@ class WriterWorker extends Worker {
     } catch (InterruptedException e) {
       e.printStackTrace();
     }
+  }
+
+  public void onReaderMessage(byte[] buffer) {
+    dataWriter.onWriterMessage(buffer);
+  }
+
+  public byte[] onReaderMessageSync(byte[] buffer) {
+    return dataWriter.onWriterMessageSync(buffer);
   }
 }

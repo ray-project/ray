@@ -159,6 +159,14 @@ public class DataReader {
     LOG.info("Finish closing DataReader.");
   }
 
+  public void onReaderMessage(byte[] buffer) {
+    onReaderMessageNative(nativeReaderPtr, buffer);
+  }
+
+  public byte[] onReaderMessageSync(byte[] buffer) {
+    return onReaderMessageSyncNative(nativeReaderPtr, buffer);
+  }
+
   private static native long createDataReaderNative(
       ChannelCreationParametersBuilder initialParameters,
       byte[][] inputChannels,
@@ -177,6 +185,10 @@ public class DataReader {
   private native void stopReaderNative(long nativeReaderPtr);
 
   private native void closeReaderNative(long nativeReaderPtr);
+
+  private native void onReaderMessageNative(long handler, byte[] buffer);
+
+  private native byte[] onReaderMessageSyncNative(long handler, byte[] buffer);
 
   enum DataBundleType {
     EMPTY(1),

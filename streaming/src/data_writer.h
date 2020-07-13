@@ -12,6 +12,7 @@
 #include "flow_control.h"
 #include "message/message_bundle.h"
 #include "runtime_context.h"
+#include "receiver.h"
 
 namespace ray {
 namespace streaming {
@@ -29,7 +30,7 @@ namespace streaming {
 /// it will also send an empty bundle, so downstream can know that and process
 /// accordingly. It will sleep for a short interval to save cpu if all ring
 /// buffers have no data in that moment.
-class DataWriter {
+class DataWriter : public DirectCallReceiver {
  public:
   explicit DataWriter(std::shared_ptr<RuntimeContext> &runtime_context);
   virtual ~DataWriter();
@@ -64,6 +65,10 @@ class DataWriter {
   /// Get offset information about channels for checkpoint.
   ///  \param offset_map (return value)
   void GetOffsetInfo(std::unordered_map<ObjectID, ProducerChannelInfo> *&offset_map);
+
+  void OnMessage(std::shared_ptr<LocalMemoryBuffer> buffers) override;
+  std::shared_ptr<LocalMemoryBuffer> OnMessageSync(
+      std::shared_ptr<LocalMemoryBuffer> buffer) override;
 
  private:
   bool IsMessageAvailableInBuffer(ProducerChannelInfo &channel_info);
@@ -124,6 +129,7 @@ class DataWriter {
   // unnecessary overflow.
   std::shared_ptr<FlowControl> flow_controller_;
 
+  std::shared_ptr<UpstreamQueueMessageHandler> upstream_handler_;
  protected:
   std::unordered_map<ObjectID, ProducerChannelInfo> channel_info_map_;
   /// ProducerChannel is middle broker for data transporting and all downstream

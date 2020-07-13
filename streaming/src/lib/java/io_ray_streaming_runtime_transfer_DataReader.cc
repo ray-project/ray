@@ -86,3 +86,22 @@ Java_io_ray_streaming_runtime_transfer_DataReader_closeReaderNative(JNIEnv *env,
                                                                     jlong ptr) {
   delete reinterpret_cast<DataReader *>(ptr);
 }
+
+JNIEXPORT void JNICALL
+Java_io_ray_streaming_runtime_transfer_DataReader_onReaderMessageNative
+  (JNIEnv * env, jobject thisObj, jlong ptr, jbyteArray bytes) {
+  auto reader = reinterpret_cast<DataReader *>(ptr);
+  reader->OnMessage(JByteArrayToBuffer(env, bytes));
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_streaming_runtime_transfer_DataReader_onReaderMessageSyncNative
+  (JNIEnv * env, jobject thisObj, jlong ptr, jbyteArray bytes) {
+  auto reader = reinterpret_cast<DataReader *>(ptr);
+  auto result_buffer = reader->OnMessageSync(JByteArrayToBuffer(env, bytes));
+
+  jbyteArray arr = env->NewByteArray(result_buffer->Size());
+  env->SetByteArrayRegion(arr, 0, result_buffer->Size(),
+                          reinterpret_cast<jbyte *>(result_buffer->Data()));
+  return arr;
+}

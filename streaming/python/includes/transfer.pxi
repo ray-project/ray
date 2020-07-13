@@ -34,8 +34,6 @@ from ray.streaming.includes.libstreaming cimport (
     CDataBundle,
     CDataWriter,
     CDataReader,
-    CReaderClient,
-    CWriterClient,
     CLocalMemoryBuffer,
     CChannelCreationParameter,
 )
@@ -67,66 +65,6 @@ cdef class ChannelCreationParameter:
 
     cdef CChannelCreationParameter get_parameter(self):
         return self.parameter
-
-cdef class ReaderClient:
-    cdef:
-        CReaderClient *client
-
-    def __cinit__(self):
-        self.client = new CReaderClient()
-
-    def __dealloc__(self):
-        del self.client
-        self.client = NULL
-
-    def on_reader_message(self, const unsigned char[:] value):
-        cdef:
-            size_t size = value.nbytes
-            shared_ptr[CLocalMemoryBuffer] local_buf = \
-                make_shared[CLocalMemoryBuffer](<uint8_t *>(&value[0]), size, True)
-        with nogil:
-            self.client.OnReaderMessage(local_buf)
-
-    def on_reader_message_sync(self, const unsigned char[:] value):
-        cdef:
-            size_t size = value.nbytes
-            shared_ptr[CLocalMemoryBuffer] local_buf = \
-                make_shared[CLocalMemoryBuffer](<uint8_t *>(&value[0]), size, True)
-            shared_ptr[CLocalMemoryBuffer] result_buffer
-        with nogil:
-            result_buffer = self.client.OnReaderMessageSync(local_buf)
-        return Buffer.make(dynamic_pointer_cast[CBuffer, CLocalMemoryBuffer](result_buffer))
-
-
-cdef class WriterClient:
-    cdef:
-        CWriterClient * client
-
-    def __cinit__(self):
-        self.client = new CWriterClient()
-
-    def __dealloc__(self):
-        del self.client
-        self.client = NULL
-
-    def on_writer_message(self, const unsigned char[:] value):
-        cdef:
-            size_t size = value.nbytes
-            shared_ptr[CLocalMemoryBuffer] local_buf = \
-                make_shared[CLocalMemoryBuffer](<uint8_t *>(&value[0]), size, True)
-        with nogil:
-            self.client.OnWriterMessage(local_buf)
-
-    def on_writer_message_sync(self, const unsigned char[:] value):
-        cdef:
-            size_t size = value.nbytes
-            shared_ptr[CLocalMemoryBuffer] local_buf = \
-                make_shared[CLocalMemoryBuffer](<uint8_t *>(&value[0]), size, True)
-            shared_ptr[CLocalMemoryBuffer] result_buffer
-        with nogil:
-            result_buffer = self.client.OnWriterMessageSync(local_buf)
-        return Buffer.make(dynamic_pointer_cast[CBuffer, CLocalMemoryBuffer](result_buffer))
-
 
 cdef class DataWriter:
     cdef:
@@ -204,6 +142,24 @@ cdef class DataWriter:
     def stop(self):
         self.writer.Stop()
         channel_logger.info("stopped DataWriter")
+
+    def on_writer_message(self, const unsigned char[:] value):
+        cdef:
+            size_t size = value.nbytes
+            shared_ptr[CLocalMemoryBuffer] local_buf = \
+                make_shared[CLocalMemoryBuffer](<uint8_t *>(&value[0]), size, True)
+        with nogil:
+            self.writer.OnMessage(local_buf)
+
+    def on_writer_message_sync(self, const unsigned char[:] value):
+        cdef:
+            size_t size = value.nbytes
+            shared_ptr[CLocalMemoryBuffer] local_buf = \
+                make_shared[CLocalMemoryBuffer](<uint8_t *>(&value[0]), size, True)
+            shared_ptr[CLocalMemoryBuffer] result_buffer
+        with nogil:
+            result_buffer = self.writer.OnMessageSync(local_buf)
+        return Buffer.make(dynamic_pointer_cast[CBuffer, CLocalMemoryBuffer](result_buffer))
 
 
 cdef class DataReader:
@@ -304,6 +260,25 @@ cdef class DataReader:
     def stop(self):
         self.reader.Stop()
         channel_logger.info("stopped DataReader")
+    
+    def on_reader_message(self, const unsigned char[:] value):
+        cdef:
+            size_t size = value.nbytes
+            shared_ptr[CLocalMemoryBuffer] local_buf = \
+                make_shared[CLocalMemoryBuffer](<uint8_t *>(&value[0]), size, True)
+        with nogil:
+            self.reader.OnMessage(local_buf)
+
+    def on_reader_message_sync(self, const unsigned char[:] value):
+        cdef:
+            size_t size = value.nbytes
+            shared_ptr[CLocalMemoryBuffer] local_buf = \
+                make_shared[CLocalMemoryBuffer](<uint8_t *>(&value[0]), size, True)
+            shared_ptr[CLocalMemoryBuffer] result_buffer
+        with nogil:
+            result_buffer = self.reader.OnMessageSync(local_buf)
+        return Buffer.make(dynamic_pointer_cast[CBuffer, CLocalMemoryBuffer](result_buffer))
+
 
 
 cdef c_vector[CObjectID] bytes_list_to_qid_vec(list py_queue_ids) except *:
