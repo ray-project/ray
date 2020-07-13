@@ -42,7 +42,7 @@
 
 # A2C/A3C
 py_test(
-    name = "regression_test_a2c_cartpole_tf",
+    name = "run_regression_tests_cartpole_a2c_tf",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_tf", "learning_tests_cartpole"],
     size = "medium",
@@ -52,7 +52,7 @@ py_test(
 )
 
 py_test(
-    name = "regression_test_a2c_cartpole_torch",
+    name = "run_regression_tests_cartpole_a2c_torch",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_torch", "learning_tests_cartpole"],
     size = "medium",
@@ -62,7 +62,7 @@ py_test(
 )
 
 py_test(
-    name = "regression_test_a3c_cartpole_tf",
+    name = "run_regression_tests_cartpole_a3c_tf",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_tf", "learning_tests_cartpole"],
     size = "medium",
@@ -72,7 +72,7 @@ py_test(
 )
 
 py_test(
-    name = "regression_test_a3c_cartpole_torch",
+    name = "run_regression_tests_cartpole_a3c_torch",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_torch", "learning_tests_cartpole"],
     size = "medium",
@@ -401,7 +401,7 @@ py_test(
 py_test(
     name = "test_apex_ddpg",
     tags = ["agents_dir"],
-    size = "small",
+    size = "medium",
     srcs = ["agents/ddpg/tests/test_apex_ddpg.py"]
 )
 
@@ -455,7 +455,7 @@ py_test(
 py_test(
     name = "test_impala",
     tags = ["agents_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["agents/impala/tests/test_impala.py"]
 )
 py_test(

@@ -111,9 +111,13 @@ class EpsilonGreedy(Exploration):
             ),
             false_fn=lambda: exploit_action)
 
-        assign_op = tf1.assign(self.last_timestep, timestep)
-        with tf1.control_dependencies([assign_op]):
+        if self.framework in ["tf2", "tfe"]:
+            self.last_timestep = timestep
             return action, tf.zeros_like(action, dtype=tf.float32)
+        else:
+            assign_op = tf1.assign(self.last_timestep, timestep)
+            with tf1.control_dependencies([assign_op]):
+                return action, tf.zeros_like(action, dtype=tf.float32)
 
     def _get_torch_exploration_action(self, q_values, explore, timestep):
         """Torch method to produce an epsilon exploration action.
