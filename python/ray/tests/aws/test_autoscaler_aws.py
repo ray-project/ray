@@ -6,6 +6,7 @@ from ray.tests.aws.utils.constants import AUX_SUBNET, DEFAULT_SUBNET, \
     DEFAULT_SG_AUX_SUBNET, DEFAULT_SG, DEFAULT_SG_DUAL_GROUP_RULES, \
     DEFAULT_SG_WITH_RULES_AUX_SUBNET, DEFAULT_SG_WITH_RULES, AUX_SG
 
+
 def test_create_sg_different_vpc_same_rules(iam_client_stub, ec2_client_stub):
     # use default stubs to skip ahead to security group configuration
     stubs.skip_to_configure_sg(ec2_client_stub, iam_client_stub)
@@ -68,6 +69,7 @@ def test_create_sg_different_vpc_same_rules(iam_client_stub, ec2_client_stub):
     # expect no pending responses left in IAM or EC2 client stub queues
     iam_client_stub.assert_no_pending_responses()
     ec2_client_stub.assert_no_pending_responses()
+
 
 if __name__ == "__main__":
     import sys

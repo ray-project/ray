@@ -263,9 +263,10 @@ def _configure_subnet(config):
 def _configure_security_group(config):
     node_types_to_configure = [
         node_type for node_type, config_key in NODE_TYPE_CONFIG_KEYS.items()
-        if "SecurityGroupIds" not in config[config_key]
-        and not all(_security_groups_in_network_config(config[config_key]))
+        if "SecurityGroupIds" not in config[config_key] and not all(
+            _security_groups_in_network_config(config[config_key]) or [False])
     ]
+
     if not node_types_to_configure:
         return config  # have user-defined groups
 
