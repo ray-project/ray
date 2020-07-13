@@ -139,21 +139,22 @@ def download(url):
         result = subprocess.check_output(curl_args)
     return result
 
-
+# Installs pickle5-backport into the local subdirectory.
 def download_pickle5(pickle5_dir):
     pickle5_file = urllib.parse.unquote(
         urllib.parse.urlparse(pickle5_url).path)
     pickle5_name = re.sub("\\.tar\\.gz$", ".tgz", pickle5_file, flags=re.I)
-    python = sys.executable
+    url_path_parts = os.path.splitext(pickle5_name)[0].split("/")
+    (project, commit) = (url_path_parts[2], url_path_parts[4])
+    pickle5_archive = download(pickle5_url)
     with tempfile.TemporaryDirectory() as work_dir:
-        tf = tarfile.open(None, "r", io.BytesIO(download(pickle5_url)))
+        tf = tarfile.open(None, "r", io.BytesIO(pickle5_archive))
         try:
             tf.extractall(work_dir)
         finally:
             tf.close()
-        relpath = "-".join(os.path.splitext(pickle5_name)[0].split("/")[2::2])
-        src_dir = os.path.join(work_dir, relpath)
-        args = [python, "setup.py", "--quiet", "bdist_wheel"]
+        src_dir = os.path.join(work_dir, project + "-" + commit)
+        args = [sys.executable, "setup.py", "-q", "bdist_wheel"]
         subprocess.check_call(args, cwd=src_dir)
         for wheel in glob.glob(os.path.join(src_dir, "dist", "*.whl")):
             wzf = zipfile.ZipFile(wheel, "r")
