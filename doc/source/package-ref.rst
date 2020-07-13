@@ -1,9 +1,6 @@
 Ray Package Reference
 =====================
 
-.. contents::
-   :local:
-
 Python API
 ----------
 .. _ray-init-ref:
