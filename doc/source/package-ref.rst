@@ -3,6 +3,7 @@ Ray Package Reference
 
 Python API
 ----------
+
 .. _ray-init-ref:
 
 ray.init
