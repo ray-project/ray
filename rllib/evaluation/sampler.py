@@ -5,8 +5,8 @@ import numpy as np
 import queue
 import threading
 import time
-from typing import List, Dict, Callable, Set, Tuple, Any, Iterable, Union, \
-    TYPE_CHECKING
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, \
+    TYPE_CHECKING, Union
 
 from ray.util.debug import log_once
 from ray.rllib.evaluation.episode import MultiAgentEpisode
