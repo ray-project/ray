@@ -232,4 +232,5 @@ if __name__ == "__main__":
     if args.smoke_test:
         main(num_samples=1, max_num_epochs=1, gpus_per_trial=0)
     else:
-        main(gpus_per_trial=0)  # Change this to activate GPU training
+        # Change this to activate training on GPUs
+        main(num_samples=10, max_num_epochs=10, gpus_per_trial=0)
