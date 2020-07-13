@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <boost/asio.hpp>
+#include <boost/asio/error.hpp>
 #include <list>
 #include <memory>
 
-#include <boost/asio.hpp>
-#include <boost/asio/error.hpp>
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
@@ -72,12 +72,12 @@ TEST_F(ClientConnectionTest, SimpleSyncWrite) {
 
   ClientHandler client_handler = [](ClientConnection &client) {};
 
-  MessageHandler message_handler = [&arr, &num_messages](
-                                       std::shared_ptr<ClientConnection> client,
-                                       int64_t message_type, const uint8_t *message) {
-    ASSERT_TRUE(!std::memcmp(arr, message, 5));
-    num_messages += 1;
-  };
+  MessageHandler message_handler =
+      [&arr, &num_messages](std::shared_ptr<ClientConnection> client,
+                            int64_t message_type, const std::vector<uint8_t> &message) {
+        ASSERT_TRUE(!std::memcmp(arr, message.data(), 5));
+        num_messages += 1;
+      };
 
   auto conn1 = ClientConnection::Create(client_handler, message_handler, std::move(in_),
                                         "conn1", {}, error_message_type_);
@@ -102,19 +102,21 @@ TEST_F(ClientConnectionTest, SimpleAsyncWrite) {
   ClientHandler client_handler = [](ClientConnection &client) {};
 
   MessageHandler noop_handler = [](std::shared_ptr<ClientConnection> client,
-                                   int64_t message_type, const uint8_t *message) {};
+                                   int64_t message_type,
+                                   const std::vector<uint8_t> &message) {};
 
   std::shared_ptr<ClientConnection> reader = NULL;
 
   MessageHandler message_handler = [&msg1, &msg2, &msg3, &num_messages, &reader](
                                        std::shared_ptr<ClientConnection> client,
-                                       int64_t message_type, const uint8_t *message) {
+                                       int64_t message_type,
+                                       const std::vector<uint8_t> &message) {
     if (num_messages == 0) {
-      ASSERT_TRUE(!std::memcmp(msg1, message, 5));
+      ASSERT_TRUE(!std::memcmp(msg1, message.data(), 5));
     } else if (num_messages == 1) {
-      ASSERT_TRUE(!std::memcmp(msg2, message, 5));
+      ASSERT_TRUE(!std::memcmp(msg2, message.data(), 5));
     } else {
-      ASSERT_TRUE(!std::memcmp(msg3, message, 5));
+      ASSERT_TRUE(!std::memcmp(msg3, message.data(), 5));
     }
     num_messages += 1;
     if (num_messages < 3) {
@@ -140,13 +142,44 @@ TEST_F(ClientConnectionTest, SimpleAsyncWrite) {
   ASSERT_EQ(num_messages, 3);
 }
 
+TEST_F(ClientConnectionTest, SimpleSyncReadWriteMessage) {
+  auto writer = ServerConnection::Create(std::move(in_));
+  auto reader = ServerConnection::Create(std::move(out_));
+
+  const std::vector<uint8_t> write_buffer = {1, 2, 3, 4, 5};
+  std::vector<uint8_t> read_buffer;
+
+  RAY_CHECK_OK(writer->WriteMessage(42, write_buffer.size(), write_buffer.data()));
+  RAY_CHECK_OK(reader->ReadMessage(42, &read_buffer));
+  RAY_CHECK(write_buffer == read_buffer);
+}
+
+TEST_F(ClientConnectionTest, SimpleAsyncReadWriteBuffers) {
+  auto writer = ServerConnection::Create(std::move(in_));
+  auto reader = ServerConnection::Create(std::move(out_));
+
+  const std::vector<uint8_t> write_buffer = {1, 2, 3, 4, 5};
+  std::vector<uint8_t> read_buffer = {0, 0, 0, 0, 0};
+
+  writer->WriteBufferAsync({boost::asio::buffer(write_buffer)},
+                           [](const ray::Status &status) { RAY_CHECK_OK(status); });
+
+  reader->ReadBufferAsync({boost::asio::buffer(read_buffer)},
+                          [&write_buffer, &read_buffer](const ray::Status &status) {
+                            RAY_CHECK_OK(status);
+                            RAY_CHECK(write_buffer == read_buffer);
+                          });
+  io_service_.run();
+}
+
 TEST_F(ClientConnectionTest, SimpleAsyncError) {
   const uint8_t msg1[5] = {1, 2, 3, 4, 5};
 
   ClientHandler client_handler = [](ClientConnection &client) {};
 
   MessageHandler noop_handler = [](std::shared_ptr<ClientConnection> client,
-                                   int64_t message_type, const uint8_t *message) {};
+                                   int64_t message_type,
+                                   const std::vector<uint8_t> &message) {};
 
   auto writer = ClientConnection::Create(client_handler, noop_handler, std::move(in_),
                                          "writer", {}, error_message_type_);
@@ -166,7 +199,8 @@ TEST_F(ClientConnectionTest, CallbackWithSharedRefDoesNotLeakConnection) {
   ClientHandler client_handler = [](ClientConnection &client) {};
 
   MessageHandler noop_handler = [](std::shared_ptr<ClientConnection> client,
-                                   int64_t message_type, const uint8_t *message) {};
+                                   int64_t message_type,
+                                   const std::vector<uint8_t> &message) {};
 
   auto writer = ClientConnection::Create(client_handler, noop_handler, std::move(in_),
                                          "writer", {}, error_message_type_);
@@ -186,12 +220,12 @@ TEST_F(ClientConnectionTest, ProcessBadMessage) {
 
   ClientHandler client_handler = [](ClientConnection &client) {};
 
-  MessageHandler message_handler = [&arr, &num_messages](
-                                       std::shared_ptr<ClientConnection> client,
-                                       int64_t message_type, const uint8_t *message) {
-    ASSERT_TRUE(!std::memcmp(arr, message, 5));
-    num_messages += 1;
-  };
+  MessageHandler message_handler =
+      [&arr, &num_messages](std::shared_ptr<ClientConnection> client,
+                            int64_t message_type, const std::vector<uint8_t> &message) {
+        ASSERT_TRUE(!std::memcmp(arr, message.data(), 5));
+        num_messages += 1;
+      };
 
   auto writer = ClientConnection::Create(client_handler, message_handler, std::move(in_),
                                          "writer", {}, error_message_type_);

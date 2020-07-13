@@ -19,6 +19,7 @@
 #include "ray/common/buffer.h"
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/actor_manager.h"
+#include "ray/core_worker/actor_reporter.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/future_resolver.h"
@@ -337,11 +338,38 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// (local, submitted_task) reference counts. For debugging purposes.
   std::unordered_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const;
 
-  /// Promote an object to plasma and get its owner information. This should be
-  /// called when serializing an object ID, and the returned information should
-  /// be stored with the serialized object ID. For plasma promotion, if the
+  /// Put an object into plasma. It's a version of Put that directly put the
+  /// object into plasma and also pin the object.
+  ///
+  /// \param[in] The ray object.
+  /// \param[in] object_id The object ID to serialize.
+  /// appended to the serialized object ID.
+  void PutObjectIntoPlasma(const RayObject &object, const ObjectID &object_id);
+
+  /// Promote an object to plasma. If the
   /// object already exists locally, it will be put into the plasma store. If
   /// it doesn't yet exist, it will be spilled to plasma once available.
+  ///
+  /// \param[in] object_id The object ID to serialize.
+  /// appended to the serialized object ID.
+  void PromoteObjectToPlasma(const ObjectID &object_id);
+
+  /// Get the RPC address of this worker.
+  ///
+  /// \param[out] The RPC address of this worker.
+  const rpc::Address &GetRpcAddress() const;
+
+  /// Get the RPC address of the worker that owns the given object.
+  ///
+  /// \param[in] object_id The object ID. The object must either be owned by
+  /// us, or the caller previously added the ownership information (via
+  /// RegisterOwnershipInfoAndResolveFuture).
+  /// \param[out] The RPC address of the worker that owns this object.
+  rpc::Address GetOwnerAddress(const ObjectID &object_id) const;
+
+  /// Get the owner information of an object. This should be
+  /// called when serializing an object ID, and the returned information should
+  /// be stored with the serialized object ID.
   ///
   /// This can only be called on object IDs that we created via task
   /// submission, ray.put, or object IDs that we deserialized. It cannot be
@@ -354,8 +382,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// appended to the serialized object ID.
   /// \param[out] owner_address The address of the object's owner. This should
   /// be appended to the serialized object ID.
-  void PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id,
-                                          rpc::Address *owner_address);
+  void GetOwnershipInfo(const ObjectID &object_id, rpc::Address *owner_address);
 
   /// Add a reference to an ObjectID that was deserialized by the language
   /// frontend. This will also start the process to resolve the future.
@@ -545,7 +572,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] args Arguments of this task.
   /// \param[in] task_options Options for this task.
   /// \param[out] return_ids Ids of the return objects.
-  void SubmitTask(const RayFunction &function, const std::vector<TaskArg> &args,
+  void SubmitTask(const RayFunction &function,
+                  const std::vector<std::unique_ptr<TaskArg>> &args,
                   const TaskOptions &task_options, std::vector<ObjectID> *return_ids,
                   int max_retries);
 
@@ -560,7 +588,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[out] actor_id ID of the created actor. This can be used to submit
   /// tasks on the actor.
   /// \return Status error if actor creation fails, likely due to raylet failure.
-  Status CreateActor(const RayFunction &function, const std::vector<TaskArg> &args,
+  Status CreateActor(const RayFunction &function,
+                     const std::vector<std::unique_ptr<TaskArg>> &args,
                      const ActorCreationOptions &actor_creation_options,
                      const std::string &extension_data, ActorID *actor_id);
 
@@ -576,7 +605,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// failed. Tasks can be invalid for direct actor calls because not all tasks
   /// are currently supported.
   void SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
-                       const std::vector<TaskArg> &args, const TaskOptions &task_options,
+                       const std::vector<std::unique_ptr<TaskArg>> &args,
+                       const TaskOptions &task_options,
                        std::vector<ObjectID> *return_ids);
 
   /// Tell an actor to exit immediately, without completing outstanding work.
@@ -656,17 +686,22 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Get a handle to an actor.
   ///
+  /// NOTE: This function should be called ONLY WHEN we know actor handle exists.
+  /// NOTE: The actor_handle obtained by this function should not be stored anywhere
+  /// because this method returns the raw pointer to what a unique pointer points to.
+  ///
   /// \param[in] actor_id The actor handle to get.
-  /// \param[out] actor_handle A handle to the requested actor.
   /// \return Status::Invalid if we don't have this actor handle.
-  Status GetActorHandle(const ActorID &actor_id, ActorHandle **actor_handle) const;
+  const ActorHandle *GetActorHandle(const ActorID &actor_id) const;
 
   /// Get a handle to a named actor.
   ///
+  /// NOTE: The actor_handle obtained by this function should not be stored anywhere.
+  ///
   /// \param[in] name The name of the actor whose handle to get.
   /// \param[out] actor_handle A handle to the requested actor.
-  /// \return Status::NotFound if an actor with the specified name wasn't found.
-  Status GetNamedActorHandle(const std::string &name, ActorHandle **actor_handle);
+  /// \return The raw pointer to the actor handle if found, nullptr otherwise.
+  const ActorHandle *GetNamedActorHandle(const std::string &name);
 
   ///
   /// The following methods are handlers for the core worker's gRPC server, which follow
@@ -753,20 +788,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] object_id The id to call get on.
   /// \param[in] success_callback The callback to use the result object.
-  /// \param[in] fallback_callback The callback to use when failed to get result.
   /// \param[in] python_future the void* object to be passed to SetResultCallback
   /// \return void
   void GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
-                SetResultCallback fallback_callback, void *python_future);
-
-  /// Connect to plasma store for async futures
-  using PlasmaSubscriptionCallback = std::function<void(ray::ObjectID, int64_t, int64_t)>;
-
-  /// Set callback when an item is added to the plasma store.
-  ///
-  /// \param[in] subscribe_callback The callback when an item is added to plasma.
-  /// \return void
-  void SetPlasmaAddedCallback(PlasmaSubscriptionCallback subscribe_callback);
+                void *python_future);
 
   /// Subscribe to receive notification of an object entering the plasma store.
   ///
@@ -808,21 +833,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     reference_counter_->AddLocalReference(object_id, call_site);
   }
 
-  /// Give this worker a handle to an actor.
-  ///
-  /// This handle will remain as long as the current actor or task is
-  /// executing, even if the Python handle goes out of scope. Tasks submitted
-  /// through this handle are guaranteed to execute in the same order in which
-  /// they are submitted.
-  ///
-  /// \param actor_handle The handle to the actor.
-  /// \param is_owner_handle Whether this is the owner's handle to the actor.
-  /// The owner is the creator of the actor and is responsible for telling the
-  /// actor to disconnect once all handles are out of scope.
-  /// \return True if the handle was added and False if we already had a handle
-  /// to the same actor.
-  bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle, bool is_owner_handle);
-
   ///
   /// Private methods related to task execution. Should not be used by driver processes.
   ///
@@ -852,10 +862,17 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void ExecuteTaskLocalMode(const TaskSpecification &task_spec,
                             const ActorID &actor_id = ActorID::Nil());
 
-  /// Build arguments for task executor. This would loop through all the arguments
-  /// in task spec, and for each of them that's passed by reference (ObjectID),
-  /// fetch its content from store and; for arguments that are passed by value,
-  /// just copy their content.
+  /// Get the values of the task arguments for the executor. Values are
+  /// retrieved from the local plasma store or, if the value is inlined, from
+  /// the task spec.
+  ///
+  /// This also pins all plasma arguments and ObjectIDs that were contained in
+  /// an inlined argument by adding a local reference in the reference counter.
+  /// This is to ensure that we have the address of the object's owner, which
+  /// is needed to retrieve the value. It also ensures that when the task
+  /// completes, we can retrieve any metadata about objects that are still
+  /// being borrowed by this process. The IDs should be unpinned once the task
+  /// completes.
   ///
   /// \param spec[in] task Task specification.
   /// \param args[out] args Argument data as RayObjects.
@@ -866,16 +883,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///                  // TODO(edoakes): this is a bit of a hack that's necessary because
   ///                  we have separate serialization paths for by-value and by-reference
   ///                  arguments in Python. This should ideally be handled better there.
-  /// \param args[out] borrowed_ids ObjectIDs that we are borrowing from the
-  ///                  task caller for the duration of the task execution. This
-  ///                  vector will be populated with all argument IDs that were
-  ///                  passed by reference and any ObjectIDs that were included
-  ///                  in the task spec's inlined arguments.
-  /// \return The arguments for passing to task executor.
-  Status BuildArgsForExecutor(const TaskSpecification &task,
-                              std::vector<std::shared_ptr<RayObject>> *args,
-                              std::vector<ObjectID> *arg_reference_ids,
-                              std::vector<ObjectID> *borrowed_ids);
+  /// \param args[out] pinned_ids ObjectIDs that should be unpinned once the
+  ///                  task completes execution.  This vector will be populated
+  ///                  with all argument IDs that were passed by reference and
+  ///                  any ObjectIDs that were included in the task spec's
+  ///                  inlined arguments.
+  /// \return Error if the values could not be retrieved.
+  Status GetAndPinArgsForExecutor(const TaskSpecification &task,
+                                  std::vector<std::shared_ptr<RayObject>> *args,
+                                  std::vector<ObjectID> *arg_reference_ids,
+                                  std::vector<ObjectID> *pinned_ids);
 
   /// Returns whether the message was sent to the wrong worker. The right error reply
   /// is sent automatically. Messages end up on the wrong worker when a worker dies
@@ -986,10 +1003,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::shared_ptr<TaskManager> task_manager_;
 
   // Interface for publishing actor death event for actor creation failure.
-  std::shared_ptr<ActorManager> actor_manager_;
+  std::shared_ptr<ActorReporter> actor_reporter_;
 
   // Interface to submit tasks directly to other actors.
-  std::unique_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
+  std::shared_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
 
   // Interface to submit non-actor tasks directly to leased workers.
   std::unique_ptr<CoreWorkerDirectTaskSubmitter> direct_task_submitter_;
@@ -997,20 +1014,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Manages recovery of objects stored in remote plasma nodes.
   std::unique_ptr<ObjectRecoveryManager> object_recovery_manager_;
 
-  // TODO(swang): Refactor to merge actor_handles_mutex_ and all fields that it
-  // protects into the ActorManager.
-  /// The `actor_handles_` field could be mutated concurrently due to multi-threading, we
-  /// need a mutex to protect it.
-  mutable absl::Mutex actor_handles_mutex_;
+  ///
+  /// Fields related to actor handles.
+  ///
 
-  /// Map from actor ID to a handle to that actor.
-  absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_
-      GUARDED_BY(actor_handles_mutex_);
-
-  /// Map from actor ID to a callback to call when all local handles to that
-  /// actor have gone out of scpoe.
-  absl::flat_hash_map<ActorID, std::function<void(const ActorID &)>>
-      actor_out_of_scope_callbacks_ GUARDED_BY(actor_handles_mutex_);
+  /// Interface to manage actor handles.
+  std::unique_ptr<ActorManager> actor_manager_;
 
   ///
   /// Fields related to task execution.
@@ -1059,14 +1068,26 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Common rpc service for all worker modules.
   rpc::CoreWorkerGrpcService grpc_service_;
 
+  /// Used to notify the task receiver when the arguments of a queued
+  /// actor task are ready.
+  std::shared_ptr<DependencyWaiterImpl> task_argument_waiter_;
+
   // Interface that receives tasks from direct actor calls.
   std::unique_ptr<CoreWorkerDirectTaskReceiver> direct_task_receiver_;
 
   // Queue of tasks to resubmit when the specified time passes.
   std::deque<std::pair<int64_t, TaskSpecification>> to_resubmit_ GUARDED_BY(mutex_);
 
-  // Plasma Callback
-  PlasmaSubscriptionCallback plasma_done_callback_;
+  // Guard for `async_plasma_callbacks_` map.
+  mutable absl::Mutex plasma_mutex_;
+
+  // Callbacks for when when a plasma object becomes ready.
+  absl::flat_hash_map<ObjectID, std::vector<std::function<void(void)>>>
+      async_plasma_callbacks_ GUARDED_BY(plasma_mutex_);
+
+  // Fallback for when GetAsync cannot directly get the requested object.
+  void PlasmaCallback(SetResultCallback success, std::shared_ptr<RayObject> ray_object,
+                      ObjectID object_id, void *py_future);
 
   /// Whether we are shutting down and not running further tasks.
   bool exiting_ = false;

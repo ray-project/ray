@@ -55,6 +55,12 @@ class GcsActorSchedulerInterface {
   /// \return ID list of actors associated with the specified node id.
   virtual std::vector<ActorID> CancelOnNode(const ClientID &node_id) = 0;
 
+  /// Cancel a outstanding leasing request to raylets.
+  ///
+  /// \param node_id ID of the node where the actor leasing request has been sent.
+  /// \param actor_id ID of an actor.
+  virtual void CancelOnLeasing(const ClientID &node_id, const ActorID &actor_id) = 0;
+
   /// Cancel the actor that is being scheduled to the specified worker.
   ///
   /// \param node_id ID of the node where the worker is located.
@@ -108,6 +114,16 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param node_id ID of the node where the worker is located.
   /// \return ID list of actors associated with the specified node id.
   std::vector<ActorID> CancelOnNode(const ClientID &node_id) override;
+
+  /// Cancel a outstanding leasing request to raylets.
+  ///
+  /// NOTE: The current implementation does not actually send lease cancel request to
+  /// raylet. This method must be only used to ignore incoming raylet lease request
+  /// responses.
+  ///
+  /// \param node_id ID of the node where the actor leasing request has been sent.
+  /// \param actor_id ID of an actor.
+  void CancelOnLeasing(const ClientID &node_id, const ActorID &actor_id) override;
 
   /// Cancel the actor that is being scheduled to the specified worker.
   ///

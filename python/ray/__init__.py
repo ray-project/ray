@@ -65,6 +65,7 @@ from ray._raylet import (
     WorkerID,
     FunctionID,
     ObjectID,
+    ObjectRef,
     TaskID,
     UniqueID,
     Language,
@@ -166,6 +167,7 @@ __all__ += [
     "WorkerID",
     "FunctionID",
     "ObjectID",
+    "ObjectRef",
     "TaskID",
     "UniqueID",
 ]

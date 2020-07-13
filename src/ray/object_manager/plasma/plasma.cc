@@ -29,6 +29,20 @@ namespace fb = ray::object_manager::protocol;
 
 namespace plasma {
 
+Client::~Client() { close(fd); }
+
+std::ostream &operator<<(std::ostream &os, const std::shared_ptr<Client> &client) {
+  os << client->fd;
+  return os;
+}
+
+StoreConn::~StoreConn() { close(fd); }
+
+std::ostream &operator<<(std::ostream &os, const std::shared_ptr<StoreConn> &store_conn) {
+  os << store_conn->fd;
+  return os;
+}
+
 ObjectTableEntry::ObjectTableEntry() : pointer(nullptr), ref_count(0) {}
 
 ObjectTableEntry::~ObjectTableEntry() { pointer = nullptr; }

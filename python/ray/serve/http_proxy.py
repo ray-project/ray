@@ -1,16 +1,16 @@
 import asyncio
+from urllib.parse import parse_qs
 
 import uvicorn
 
 import ray
+from ray.exceptions import RayTaskError
 from ray import serve
 from ray.serve.context import TaskContext
 from ray.serve.metric import MetricClient
 from ray.serve.request_params import RequestMetadata
 from ray.serve.http_util import Response
-from ray.serve.utils import logger
-
-from urllib.parse import parse_qs
+from ray.serve.router import Router
 
 # The maximum number of times to retry a request due to actor failure.
 # TODO(edoakes): this should probably be configurable.
@@ -26,12 +26,11 @@ class HTTPProxy:
     # blocks forever
     """
 
-    async def fetch_config_from_master(self):
+    async def fetch_config_from_master(self, instance_name=None):
         assert ray.is_initialized()
         master = serve.api._get_master_actor()
 
-        self.route_table, [self.router_handle
-                           ] = await master.get_http_proxy_config.remote()
+        self.route_table = await master.get_http_proxy_config.remote()
 
         # The exporter is required to return results for /-/metrics endpoint.
         [self.metric_exporter] = await master.get_metric_exporter.remote()
@@ -41,6 +40,9 @@ class HTTPProxy:
             "num_http_requests",
             description="The number of requests processed",
             label_names=("route", ))
+
+        self.router = Router()
+        await self.router.setup(instance_name)
 
     def set_route_table(self, route_table):
         self.route_table = route_table
@@ -155,24 +157,14 @@ class HTTPProxy:
             shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), None),
         )
 
-        retries = 0
-        while retries <= MAX_ACTOR_DEAD_RETRIES:
-            try:
-                result = await self.router_handle.enqueue_request.remote(
-                    request_metadata, scope, http_body_bytes)
-                if not isinstance(result, ray.exceptions.RayActorError):
-                    await Response(result).send(scope, receive, send)
-                    break
-                logger.warning("Got RayActorError: {}".format(str(result)))
-                await asyncio.sleep(0.1)
-            except Exception as e:
-                error_message = "Internal Error. Traceback: {}.".format(e)
-                await error_sender(error_message, 500)
-                break
+        result = await self.router.enqueue_request(request_metadata, scope,
+                                                   http_body_bytes)
+
+        if isinstance(result, RayTaskError):
+            error_message = "Task Error. Traceback: {}.".format(result)
+            await error_sender(error_message, 500)
         else:
-            logger.debug("Maximum actor death retries exceeded")
-            await error_sender(
-                "Internal Error. Maximum actor death retries exceeded", 500)
+            await Response(result).send(scope, receive, send)
 
 
 @ray.remote
@@ -180,7 +172,7 @@ class HTTPProxyActor:
     async def __init__(self, host, port, instance_name=None):
         serve.init(name=instance_name)
         self.app = HTTPProxy()
-        await self.app.fetch_config_from_master()
+        await self.app.fetch_config_from_master(instance_name)
         self.host = host
         self.port = port
 
@@ -206,3 +198,28 @@ class HTTPProxyActor:
 
     async def set_route_table(self, route_table):
         self.app.set_route_table(route_table)
+
+    # ------ Proxy router logic ------ #
+    async def add_new_worker(self, backend_tag, replica_tag, worker_handle):
+        return await self.app.router.add_new_worker(backend_tag, replica_tag,
+                                                    worker_handle)
+
+    async def set_traffic(self, endpoint, traffic_policy):
+        return await self.app.router.set_traffic(endpoint, traffic_policy)
+
+    async def set_backend_config(self, backend, config):
+        return await self.app.router.set_backend_config(backend, config)
+
+    async def remove_backend(self, backend):
+        return await self.app.router.remove_backend(backend)
+
+    async def remove_endpoint(self, endpoint):
+        return await self.app.router.remove_endpoint(endpoint)
+
+    async def remove_worker(self, backend_tag, replica_tag):
+        return await self.app.router.remove_worker(backend_tag, replica_tag)
+
+    async def enqueue_request(self, request_meta, *request_args,
+                              **request_kwargs):
+        return await self.app.router.enqueue_request(
+            request_meta, *request_args, **request_kwargs)

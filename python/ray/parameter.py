@@ -40,9 +40,9 @@ class RayParams:
             on. If not set or set to 0, random ports will be chosen.
         max_worker_port (int): The highest port number that workers will bind
             on. If set, min_worker_port must also be set.
-        object_id_seed (int): Used to seed the deterministic generation of
-            object IDs. The same value can be used across multiple runs of the
-            same job in order to generate the object IDs in a consistent
+        object_ref_seed (int): Used to seed the deterministic generation of
+            object refs. The same value can be used across multiple runs of the
+            same job in order to generate the object refs in a consistent
             manner. However, the same ID should not be used for different jobs.
         redirect_worker_output: True if the stdout and stderr of worker
             processes should be redirected to files.
@@ -107,7 +107,7 @@ class RayParams:
                  raylet_ip_address=None,
                  min_worker_port=None,
                  max_worker_port=None,
-                 object_id_seed=None,
+                 object_ref_seed=None,
                  driver_mode=None,
                  redirect_worker_output=None,
                  redirect_output=None,
@@ -131,7 +131,7 @@ class RayParams:
                  java_worker_options=None,
                  load_code_from_local=False,
                  _internal_config=None):
-        self.object_id_seed = object_id_seed
+        self.object_ref_seed = object_ref_seed
         self.redis_address = redis_address
         self.num_cpus = num_cpus
         self.num_gpus = num_gpus

@@ -225,13 +225,6 @@ message GetCoreWorkerStatsReply {
   CoreWorkerStats core_worker_stats = 1;
 }
 
-message ObjectReference {
-  // ObjectID that the worker has a reference to.
-  bytes object_id = 1;
-  // The address of the object's owner.
-  Address owner_address = 3;
-}
-
 message WaitForRefRemovedRequest {
   // The ID of the worker this message is intended for.
   bytes intended_worker_id = 1;

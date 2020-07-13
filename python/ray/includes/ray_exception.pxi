@@ -401,20 +401,20 @@ class UnreconstructableError(RayError):
     reconstruct the object.
 
     Attributes:
-        object_id: ID of the object.
+        object_ref: ID of the object.
     """
 
-    def __init__(self, object_id):
+    def __init__(self, object_ref):
         e = list(sys.exc_info())
         e[1] = ("Object {} is lost (either LRU evicted or deleted by user) "
                 "and cannot be reconstructed. Try increasing the object store "
                 "memory available with ray.init(object_store_memory=<bytes>) "
                 "or setting object store limits with "
                 "ray.remote(object_store_memory=<bytes>). See also: {}".format(
-                    object_id.hex(),
+                    object_ref.hex(),
                     "https://docs.ray.io/en/latest/memory-management.html"))
         super(UnreconstructableError, self).__init__(
-            e, object_id=object_id,
+            e, object_id=object_ref,
             error_type=ErrorType.OBJECT_UNRECONSTRUCTABLE)
 
 

@@ -256,7 +256,7 @@ The ``Trainable`` also provides the ``default_resource_requests`` interface to a
 
 
 
-.. _track-docstring:
+.. _tune-function-docstring:
 
 tune.report / tune.checkpoint (Function API)
 --------------------------------------------
