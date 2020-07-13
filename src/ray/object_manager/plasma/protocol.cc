@@ -306,43 +306,6 @@ Status ReadCreateAndSealRequest(uint8_t* data, size_t size, ObjectID* object_id,
   return Status::OK();
 }
 
-Status SendCreateAndSealBatchRequest(const std::shared_ptr<StoreConn> &store_conn, const std::vector<ObjectID>& object_ids,
-                                     bool evict_if_full,
-                                     const std::vector<std::string>& data,
-                                     const std::vector<std::string>& metadata) {
-  flatbuffers::FlatBufferBuilder fbb;
-
-  auto message = fb::CreatePlasmaCreateAndSealBatchRequest(
-      fbb, ToFlatbuffer(&fbb, object_ids.data(), object_ids.size()), evict_if_full,
-      ToFlatbuffer(&fbb, data), ToFlatbuffer(&fbb, metadata));
-
-  return PlasmaSend(store_conn, MessageType::PlasmaCreateAndSealBatchRequest, &fbb, message);
-}
-
-Status ReadCreateAndSealBatchRequest(uint8_t* data, size_t size,
-                                     std::vector<ObjectID>* object_ids,
-                                     bool* evict_if_full,
-                                     std::vector<std::string>* object_data,
-                                     std::vector<std::string>* metadata) {
-  RAY_DCHECK(data);
-  auto message = flatbuffers::GetRoot<fb::PlasmaCreateAndSealBatchRequest>(data);
-  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
-
-  *evict_if_full = message->evict_if_full();
-  ConvertToVector(message->object_ids(), object_ids,
-                  [](const flatbuffers::String& element) {
-                    return ObjectID::FromBinary(element.str());
-                  });
-
-  ConvertToVector(message->data(), object_data,
-                  [](const flatbuffers::String& element) { return element.str(); });
-
-  ConvertToVector(message->metadata(), metadata,
-                  [](const flatbuffers::String& element) { return element.str(); });
-
-  return Status::OK();
-}
-
 Status SendCreateAndSealReply(const std::shared_ptr<Client> &client, PlasmaError error) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = fb::CreatePlasmaCreateAndSealReply(fbb, static_cast<PlasmaError>(error));
@@ -352,20 +315,6 @@ Status SendCreateAndSealReply(const std::shared_ptr<Client> &client, PlasmaError
 Status ReadCreateAndSealReply(uint8_t* data, size_t size) {
   RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaCreateAndSealReply>(data);
-  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
-  return PlasmaErrorStatus(message->error());
-}
-
-Status SendCreateAndSealBatchReply(const std::shared_ptr<Client> &client, PlasmaError error) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message =
-      fb::CreatePlasmaCreateAndSealBatchReply(fbb, static_cast<PlasmaError>(error));
-  return PlasmaSend(client, MessageType::PlasmaCreateAndSealBatchReply, &fbb, message);
-}
-
-Status ReadCreateAndSealBatchReply(uint8_t* data, size_t size) {
-  RAY_DCHECK(data);
-  auto message = flatbuffers::GetRoot<fb::PlasmaCreateAndSealBatchReply>(data);
   RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   return PlasmaErrorStatus(message->error());
 }
