@@ -20,7 +20,7 @@
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_manager.h"
-#include "ray/raylet/raylet_client.h"
+#include "ray/raylet_client/raylet_client.h"
 
 namespace ray {
 
