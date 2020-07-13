@@ -102,13 +102,20 @@ The callback just reports some metrics back to Tune after each validation epoch:
    :start-after: __tune_callback_begin__
    :end-before: __tune_callback_end__
 
+Note that we have to explicitly move the output tensors to the CPU in order to
+support training on GPUs. If they've already been on the CPU (e.g. if you don't
+have a GPU), this will still work.
+
 Adding the Tune training function
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Then we specify our training function. Note that we added the ``data_dir`` as a config
-parameter here, even though it should not be tuned. We just need to specify it to avoid
+Then we specify our training function. Note that we added the ``data_dir`` as a
+parameter here to avoid
 that each training run downloads the full MNIST dataset. Instead, we want to access
 a shared data location.
+
+We are also able to specify the number of epochs to train each model, and the number
+of GPUs we want to use for training.
 
 .. literalinclude:: /../../python/ray/tune/examples/mnist_pytorch_lightning.py
    :language: python
@@ -134,7 +141,7 @@ We also delete this data after training to avoid filling up our disk or memory s
    :language: python
    :start-after: __tune_asha_begin__
    :end-before: __tune_asha_end__
-   :lines: 27
+   :lines: 35
    :dedent: 4
 
 Configuring the search space
@@ -150,7 +157,7 @@ we are able to also sample small values.
    :language: python
    :start-after: __tune_asha_begin__
    :end-before: __tune_asha_end__
-   :lines: 4-10
+   :lines: 5-10
    :dedent: 4
 
 Selecting a scheduler
@@ -165,7 +172,7 @@ configurations.
    :language: python
    :start-after: __tune_asha_begin__
    :end-before: __tune_asha_end__
-   :lines: 11-16
+   :lines: 12-17
    :dedent: 4
 
 
@@ -173,16 +180,29 @@ Changing the CLI output
 ~~~~~~~~~~~~~~~~~~~~~~~
 
 We instantiate a ``CLIReporter`` to specify which metrics we would like to see in our
-output tables in the command line. If we didn't specify this, Tune would print all
-hyperparameters by default, but since ``data_dir`` is not a real hyperparameter, we
-can avoid printing it by omitting it in the ``parameter_columns`` parameter.
+output tables in the command line. This is optional, but can be used to make sure our
+output tables only include information we would like to see.
 
 .. literalinclude:: /../../python/ray/tune/examples/mnist_pytorch_lightning.py
    :language: python
    :start-after: __tune_asha_begin__
    :end-before: __tune_asha_end__
-   :lines: 17-19
+   :lines: 19-21
    :dedent: 4
+
+Passing constants to the train function
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ``data_dir``, ``num_epochs`` and ``num_gpus`` we pass to the training function
+are constants. To avoid including them as non-configurable parameters in the ``config``
+specification, we can use ``functools.partial`` to wrap around the training function.
+
+.. literalinclude:: /../../python/ray/tune/examples/mnist_pytorch_lightning.py
+   :language: python
+   :start-after: __tune_asha_begin__
+   :end-before: __tune_asha_end__
+   :lines: 24-28
+   :dedent: 8
 
 Putting it together
 ~~~~~~~~~~~~~~~~~~~
