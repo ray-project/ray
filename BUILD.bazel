@@ -713,17 +713,17 @@ cc_library(
     copts = COPTS,
     visibility = ["//visibility:public"],
     deps = [
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        ":worker_cc_proto",
+        ":gcs",
+        ":plasma_client",
         ":ray_common",
         ":ray_util",
-        ":service_based_gcs_client_lib",
-        ":plasma_client",
         ":raylet_client_lib",
+        ":service_based_gcs_client_lib",
+        ":worker_cc_proto",
         ":worker_rpc",
-        ":gcs",
         "@boost//:fiber",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
