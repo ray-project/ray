@@ -121,7 +121,7 @@ like this:
         inputs, labels = inputs.to(device), labels.to(device)
 
 The code now supports training on CPUs, on a single GPU, and on multiple GPUs. Notably, Ray
-also supports :doc:`fractional GPUs </using-ray-with-gpus.html>`
+also supports :doc:`fractional GPUs </using-ray-with-gpus>`
 so we can share GPUs among trials, as long as the model still fits on the GPU memory. We'll come back
 to that later.
 
