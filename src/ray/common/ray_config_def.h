@@ -316,5 +316,5 @@ RAY_CONFIG(bool, gcs_actor_service_enabled,
            getenv("RAY_GCS_ACTOR_SERVICE_ENABLED") != nullptr &&
                getenv("RAY_GCS_ACTOR_SERVICE_ENABLED") == std::string("true"))
 
-/// Whether start the Plasma Store as a Raylet thread.
-RAY_CONFIG(bool, put_small_object_in_memory_store, false)
+/// Whether to put small objects directly into the memory store.
+RAY_CONFIG(bool, put_small_object_in_memory_store, true)
