@@ -59,6 +59,9 @@ int main(int argc, char *argv[]) {
   size_t io_service_num_{2};
   std::shared_ptr<ray::IOServicePool> io_service_pool =
       std::make_shared<ray::IOServicePool>(io_service_num_);
+  io_service_pool->Run();
+
+  boost::asio::io_service signal_service;
 
   ray::gcs::GcsServerConfig gcs_server_config;
   gcs_server_config.grpc_server_name = "GcsServer";
@@ -73,13 +76,14 @@ int main(int argc, char *argv[]) {
   // Destroy the GCS server on a SIGTERM. The pointer to main_service is
   // guaranteed to be valid since this function will run the event loop
   // instead of returning immediately.
-  auto handler = [&io_service_pool, &gcs_server](const boost::system::error_code &error,
-                                                 int signal_number) {
+  auto handler = [&io_service_pool, &gcs_server, &signal_service](
+                     const boost::system::error_code &error, int signal_number) {
     RAY_LOG(INFO) << "GCS server received SIGTERM, shutting down...";
     gcs_server.Stop();
     io_service_pool->Stop();
+    signal_service.stop();
   };
-  boost::asio::signal_set signals(*(io_service_pool->Get()));
+  boost::asio::signal_set signals(signal_service);
 #ifdef _WIN32
   signals.add(SIGBREAK);
 #else
@@ -89,5 +93,5 @@ int main(int argc, char *argv[]) {
 
   gcs_server.Start();
 
-  io_service_pool->Run();
+  signal_service.run();
 }
