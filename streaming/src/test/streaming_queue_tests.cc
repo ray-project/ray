@@ -1,7 +1,6 @@
 #define BOOST_BIND_NO_PLACEHOLDERS
 #include <unistd.h>
 #include "gtest/gtest.h"
-#include "queue/queue_client.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/core_worker.h"
 

@@ -1,10 +1,11 @@
 #define BOOST_BIND_NO_PLACEHOLDERS
+#include <csignal>
+
 #include "data_reader.h"
 #include "data_writer.h"
 #include "gtest/gtest.h"
 #include "message/message.h"
 #include "message/message_bundle.h"
-#include "queue/queue_client.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
@@ -45,6 +46,31 @@ class StreamingQueueTestSuite {
 
   virtual ~StreamingQueueTestSuite() {}
 
+  virtual void OnMessage(std::shared_ptr<LocalMemoryBuffer> buffers) {
+    std::unique_lock<std::mutex> lock(mutex_);
+    if (receiver_) {
+      receiver_->OnMessage(buffers);
+    }
+  }
+  virtual std::shared_ptr<LocalMemoryBuffer> OnMessageSync(
+      std::shared_ptr<LocalMemoryBuffer> buffer) {
+    std::unique_lock<std::mutex> lock(mutex_);
+    std::shared_ptr<LocalMemoryBuffer> rst = nullptr;
+    if (receiver_ && (rst = receiver_->OnMessageSync(buffer)) != nullptr) {
+      return rst;
+    } else {
+      uint8_t data[4];
+      std::shared_ptr<LocalMemoryBuffer> result =
+          std::make_shared<LocalMemoryBuffer>(data, 4, true);
+      return result;
+    }
+  }
+
+  void SetReceiver(std::shared_ptr<DirectCallReceiver> receiver) {
+    std::unique_lock<std::mutex> lock(mutex_);
+    receiver_ = receiver;
+  }
+
  protected:
   std::unordered_map<std::string, std::function<void()>> test_func_map_;
   std::string current_test_;
@@ -53,6 +79,8 @@ class StreamingQueueTestSuite {
   ActorID peer_actor_id_;
   std::vector<ObjectID> queue_ids_;
   std::vector<ObjectID> rescale_queue_ids_;
+  std::shared_ptr<DirectCallReceiver> receiver_;
+  std::mutex mutex_;
 };
 
 class StreamingQueueWriterTestSuite : public StreamingQueueTestSuite {
@@ -69,8 +97,6 @@ class StreamingQueueWriterTestSuite : public StreamingQueueTestSuite {
  private:
   void TestWriteMessageToBufferRing(std::shared_ptr<DataWriter> writer_client,
                                     std::vector<ray::ObjectID> &q_list) {
-    // const uint8_t temp_data[] = {1, 2, 4, 5};
-
     uint32_t i = 1;
     while (i <= MESSAGE_BOUND_SIZE) {
       for (auto &q_id : q_list) {
@@ -116,6 +142,7 @@ class StreamingQueueWriterTestSuite : public StreamingQueueTestSuite {
     std::vector<uint64_t> channel_seq_id_vec(queue_ids_.size(), 0);
     streaming_writer_client->Init(queue_ids_, params, channel_seq_id_vec,
                                   std::vector<uint64_t>(queue_ids_.size(), queue_size));
+    SetReceiver(streaming_writer_client);
     STREAMING_LOG(INFO) << "streaming_writer_client Init done";
 
     streaming_writer_client->Run();
@@ -240,7 +267,7 @@ class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
     std::shared_ptr<RuntimeContext> runtime_context(new RuntimeContext());
     runtime_context->SetConfig(config);
     std::shared_ptr<DataReader> reader(new DataReader(runtime_context));
-
+    SetReceiver(reader);
     reader->Init(queue_ids_, params, -1);
     ReaderLoopForward(reader, nullptr, queue_ids_);
 
@@ -320,9 +347,6 @@ class StreamingWorker {
         1,              // num_workers
     };
     CoreWorkerProcess::Initialize(options);
-
-    reader_client_ = std::make_shared<ReaderClient>();
-    writer_client_ = std::make_shared<WriterClient>();
     STREAMING_LOG(INFO) << "StreamingWorker constructor";
   }
 
@@ -368,7 +392,7 @@ class StreamingWorker {
       std::shared_ptr<LocalMemoryBuffer> local_buffer =
           std::make_shared<LocalMemoryBuffer>(args[1]->GetData()->Data(),
                                               args[1]->GetData()->Size(), true);
-      auto result_buffer = reader_client_->OnReaderMessageSync(local_buffer);
+      auto result_buffer = test_suite_->OnMessageSync(local_buffer);
       results->push_back(
           std::make_shared<RayObject>(result_buffer, nullptr, std::vector<ObjectID>()));
     } else if (func_name == "reader_async_call_func") {
@@ -379,7 +403,7 @@ class StreamingWorker {
       std::shared_ptr<LocalMemoryBuffer> local_buffer =
           std::make_shared<LocalMemoryBuffer>(args[1]->GetData()->Data(),
                                               args[1]->GetData()->Size(), true);
-      reader_client_->OnReaderMessage(local_buffer);
+      test_suite_->OnMessage(local_buffer);
     } else if (func_name == "writer_sync_call_func") {
       if (test_suite_->TestDone()) {
         STREAMING_LOG(WARNING) << "Test has done!!";
@@ -388,7 +412,7 @@ class StreamingWorker {
       std::shared_ptr<LocalMemoryBuffer> local_buffer =
           std::make_shared<LocalMemoryBuffer>(args[1]->GetData()->Data(),
                                               args[1]->GetData()->Size(), true);
-      auto result_buffer = writer_client_->OnWriterMessageSync(local_buffer);
+      auto result_buffer = test_suite_->OnMessageSync(local_buffer);
       results->push_back(
           std::make_shared<RayObject>(result_buffer, nullptr, std::vector<ObjectID>()));
     } else if (func_name == "writer_async_call_func") {
@@ -399,7 +423,7 @@ class StreamingWorker {
       std::shared_ptr<LocalMemoryBuffer> local_buffer =
           std::make_shared<LocalMemoryBuffer>(args[1]->GetData()->Data(),
                                               args[1]->GetData()->Size(), true);
-      writer_client_->OnWriterMessage(local_buffer);
+      test_suite_->OnMessage(local_buffer);
     } else {
       STREAMING_LOG(WARNING) << "Invalid function name " << func_name;
     }
@@ -447,8 +471,6 @@ class StreamingWorker {
   }
 
  private:
-  std::shared_ptr<ReaderClient> reader_client_;
-  std::shared_ptr<WriterClient> writer_client_;
   std::shared_ptr<std::thread> test_thread_;
   std::shared_ptr<StreamingQueueTestSuite> test_suite_;
   std::shared_ptr<ActorHandle> peer_actor_handle_;
@@ -466,6 +488,12 @@ int main(int argc, char **argv) {
   ray::gcs::GcsClientOptions gcs_options("127.0.0.1", 6379, "");
   ray::streaming::StreamingWorker worker(store_socket, raylet_socket, node_manager_port,
                                          gcs_options);
+  auto term = [](int num) {
+    STREAMING_LOG(WARNING) << "Caught SIGTERM";
+    _exit(0);
+  };
+  std::signal(SIGTERM, term); 
+
   worker.RunTaskExecutionLoop();
   return 0;
 }
