@@ -4,6 +4,9 @@
 
 #include <jni.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_Histogram_registerHistogramNative(
     JNIEnv *env, jobject obj, jstring j_name, jstring j_description, jstring j_unit,
     jdoubleArray j_boundaries, jobject tag_key_list) {
@@ -21,3 +24,6 @@ JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_Histogram_registerHistogramNa
       new ray::stats::Histogram(metric_name, description, unit, boundaries, tag_keys);
   return reinterpret_cast<long>(histogram);
 }
+#ifdef __cplusplus
+}
+#endif

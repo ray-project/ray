@@ -3,6 +3,9 @@
 
 #include <jni.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_Gauge_registerGaugeNative(
     JNIEnv *env, jobject obj, jstring j_name, jstring j_description, jstring j_unit,
     jobject tag_key_list) {
@@ -15,3 +18,6 @@ JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_Gauge_registerGaugeNative(
   auto *gauge = new ray::stats::Gauge(metric_name, description, unit, tag_keys);
   return reinterpret_cast<long>(gauge);
 }
+#ifdef __cplusplus
+}
+#endif
