@@ -21,6 +21,8 @@ public abstract class Metric {
   protected Map<TagKey, String> tags;
 
   public Metric(String name, Map<TagKey, String> tags) {
+    Preconditions.checkNotNull(tags, "Metric tags map must not be null.");
+    Preconditions.checkNotNull(name, "Metric name must not be null.");
     this.name = name;
     this.tags = tags;
   }
