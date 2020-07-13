@@ -303,8 +303,8 @@ message CoreWorkerStats {
   string current_task_desc = 1;
   // Number of pending normal and actor tasks.
   int32 num_pending_tasks = 2;
-  // Number of object ids in local scope.
-  int32 num_object_ids_in_scope = 3;
+  // Number of object refs in local scope.
+  int32 num_object_refs_in_scope = 3;
   // String representation of the function descriptor of the currently executing task.
   string current_task_func_desc = 4;
   // IP address of the core worker.

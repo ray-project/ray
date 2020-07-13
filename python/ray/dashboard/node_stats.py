@@ -36,7 +36,7 @@ class NodeStats(threading.Thread):
             "jobId": "",
             "numExecutedTasks": 0,
             "numLocalObjects": 0,
-            "numObjectIdsInScope": 0,
+            "numObjectRefsInScope": 0,
             "port": 0,
             "state": 0,
             "taskQueueLength": 0,

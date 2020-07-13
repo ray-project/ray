@@ -118,8 +118,8 @@ def copy_to_workspace(name, srcs, dstdir = ""):
             for f in {locations}; do
                 rm -f -- {dstdir}$${{f##*/}}
                 cp -f -- "$$f" {dstdir}
-                echo $$f {dstdir}$${{f##*/}}
-            done > $@
+            done
+            date > $@
         """.format(
             locations = src_locations,
             dstdir = "." + ("/" + dstdir.replace("\\", "/")).rstrip("/") + "/",
@@ -131,10 +131,9 @@ def copy_to_workspace(name, srcs, dstdir = ""):
             ) && (
                 for %f in ({locations}) do @(
                     (if exist {dstdir}%~nxf del /f /q {dstdir}%~nxf) &&
-                    copy /B /Y %f {dstdir} >NUL &&
-                    (echo %f {dstdir}%~nxf)
+                    copy /B /Y %f {dstdir} >NUL
                 )
-            ) > $@
+            ) && >$@ echo %TIME%
         """.replace("\r", "").replace("\n", " ").format(
             locations = src_locations,
             dstdir = "." + ("\\" + dstdir.replace("/", "\\")).rstrip("\\") + "\\",
