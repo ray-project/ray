@@ -22,6 +22,7 @@ import SortableTableHead, {
 } from "../../../common/SortableTableHead";
 import { getComparator, Order, stableSort } from "../../../common/tableUtils";
 import { StoreState } from "../../../store";
+import { dashboardActions } from "../state";
 import MemoryRowGroup from "./MemoryRowGroup";
 import { MemoryTableRow } from "./MemoryTableRow";
 
@@ -75,7 +76,7 @@ type memoryColumnId =
   | "node_ip_address"
   | "pid"
   | "type"
-  | "object_id"
+  | "object_ref"
   | "object_size"
   | "reference_type"
   | "call_site";
@@ -84,7 +85,7 @@ const memoryHeaderInfo: HeaderInfo<memoryColumnId>[] = [
   { id: "node_ip_address", label: "IP Address", numeric: true, sortable: true },
   { id: "pid", label: "pid", numeric: true, sortable: true },
   { id: "type", label: "Type", numeric: false, sortable: true },
-  { id: "object_id", label: "Object ID", numeric: false, sortable: true },
+  { id: "object_ref", label: "Object Ref", numeric: false, sortable: true },
   {
     id: "object_size",
     label: "Object Size (B)",
@@ -122,9 +123,11 @@ const MemoryInfo: React.FC<{}> = () => {
   const { memoryTable, shouldObtainMemoryTable } = useSelector(
     memoryInfoSelector,
   );
-  const { setShouldObtainMemoryTable } = useDispatch();
+  const dispatch = useDispatch();
   const toggleMemoryCollection = async () => {
-    setShouldObtainMemoryTable(!shouldObtainMemoryTable);
+    dispatch(
+      dashboardActions.setShouldObtainMemoryTable(!shouldObtainMemoryTable),
+    );
     if (shouldObtainMemoryTable) {
       await stopMemoryTableCollection();
     }
@@ -171,7 +174,7 @@ const MemoryInfo: React.FC<{}> = () => {
                 }
               }}
               headerInfo={memoryHeaderInfo}
-              firstColumnEmpty={true}
+              firstColumnEmpty={false}
             />
             <TableBody>
               {isGrouped
