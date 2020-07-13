@@ -553,7 +553,7 @@ cc_library(
         ":gcs_service_rpc",
         ":gcs_table_storage_lib",
         ":node_manager_rpc",
-        ":raylet_lib",
+        ":raylet_client_lib",
         ":worker_rpc",
     ],
 )
@@ -663,6 +663,33 @@ cc_library(
 )
 
 cc_library(
+    name = "raylet_client_lib",
+    srcs = glob([
+        "src/ray/raylet_client/*.cc",
+    ]),
+    hdrs = glob([
+        "src/ray/raylet_client/*.h",
+    ]),
+    copts = COPTS,
+    linkopts = select({
+        "@bazel_tools//src/conditions:windows": [
+        ],
+        "//conditions:default": [
+            "-lpthread",
+        ],
+    }),
+    visibility = ["//streaming:__subpackages__"],
+    deps = [
+        ":gcs_cc_proto",
+        ":node_manager_fbs",
+        ":node_manager_rpc",
+        ":ray_common",
+        ":ray_util",
+        "@boost//:asio",
+    ],
+)
+
+cc_library(
     name = "core_worker_lib",
     srcs = glob(
         [
@@ -686,17 +713,17 @@ cc_library(
     copts = COPTS,
     visibility = ["//visibility:public"],
     deps = [
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        ":worker_cc_proto",
+        ":gcs",
+        ":plasma_client",
         ":ray_common",
         ":ray_util",
-        # TODO(hchen): After `raylet_client` is migrated to gRPC, `core_worker_lib`
-        # should only depend on `raylet_client`, instead of the whole `raylet_lib`.
-        ":raylet_lib",
+        ":raylet_client_lib",
+        ":service_based_gcs_client_lib",
+        ":worker_cc_proto",
         ":worker_rpc",
-        ":gcs",
         "@boost//:fiber",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
