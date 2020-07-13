@@ -280,7 +280,10 @@ script:
   - ./ci/suppress_output bash src/ray/test/run_object_manager_tests.sh
 
   # cc bazel tests (w/o RLlib)
-  - ./ci/suppress_output bazel test --config=ci --build_tests_only -- //:all -rllib/...
+  # Use separated test tag for stats to avoid influences of static varibles in
+  # metric reporter.
+  - ./ci/suppress_output bazel test --config=ci --build_tests_only -- --test_tag_filters=-stats //:all -rllib/...
+  - ./ci/suppress_output bazel test --config=ci --build_tests_only -- --test_tag_filters=stats //:all -rllib/...
 
   # ray serve tests
   - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci --test_tag_filters=-jenkins_only python/ray/serve/...; fi
