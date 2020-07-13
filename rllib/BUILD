@@ -471,7 +471,7 @@ py_test(
     tags = ["agents_dir"],
     size = "medium",
     # Include the json data file.
-    data = ["tests/data/cartpole/large.yaml"],
+    data = ["tests/data/cartpole/large.json"],
     srcs = ["agents/marwil/tests/test_marwil.py"]
 )
 
@@ -698,7 +698,7 @@ py_test(
     tags = ["quick_train", "external_files"],
     size = "small",
     # Include the json data file.
-    data = ["tests/data/cartpole/small.yaml"],
+    data = ["tests/data/cartpole/small.json"],
     args = [
         "--env", "CartPole-v0",
         "--run", "DQN",
@@ -800,7 +800,7 @@ py_test(
     tags = ["quick_train", "external_files"],
     size = "small",
     # Include the json data file.
-    data = ["tests/data/cartpole/small.yaml"],
+    data = ["tests/data/cartpole/small.json"],
     args = [
         "--env", "CartPole-v0",
         "--run", "MARWIL",
@@ -816,7 +816,7 @@ py_test(
     tags = ["quick_train", "external_files"],
     size = "small",
     # Include the json data file.
-    data = ["tests/data/cartpole/small.yaml"],
+    data = ["tests/data/cartpole/small.json"],
     args = [
         "--env", "CartPole-v0",
         "--run", "MARWIL",
@@ -1651,7 +1651,7 @@ py_test(
     tags = ["examples", "examples_C"],
     size = "small",
     # Include the json data file.
-    data = ["tests/data/cartpole/small.yaml"],
+    data = ["tests/data/cartpole/small.json"],
     srcs = ["examples/custom_loss.py"],
     args = ["--stop-iters=2", "--input-files=tests/data/cartpole"]
 )
@@ -1662,7 +1662,7 @@ py_test(
     tags = ["examples", "examples_C"],
     size = "small",
     # Include the json data file.
-    data = ["tests/data/cartpole/small.yaml"],
+    data = ["tests/data/cartpole/small.json"],
     srcs = ["examples/custom_loss.py"],
     args = ["--torch", "--stop-iters=2", "--input-files=tests/data/cartpole"]
 )
