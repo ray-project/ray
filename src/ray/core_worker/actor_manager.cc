@@ -153,16 +153,6 @@ void ActorManager::WaitForActorOutOfScope(
 
 void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
                                                 const gcs::ActorTableData &actor_data) {
-  const auto &actor_state = gcs::ActorTableData::ActorState_Name(actor_data.state());
-  RAY_LOG(INFO) << "received notification on actor, state: " << actor_state
-                << ", actor_id: " << actor_id
-                << ", ip address: " << actor_data.address().ip_address()
-                << ", port: " << actor_data.address().port() << ", worker_id: "
-                << WorkerID::FromBinary(actor_data.address().worker_id())
-                << ", raylet_id: "
-                << ClientID::FromBinary(actor_data.address().raylet_id())
-                << ", num_restarts: " << actor_data.num_restarts();
-
   if (actor_data.state() == gcs::ActorTableData::PENDING) {
     // The actor is being created and not yet ready, just ignore!
   } else if (actor_data.state() == gcs::ActorTableData::RESTARTING) {
@@ -173,9 +163,17 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
     // submit tasks to dead actors. This also means we defer unsubscription,
     // otherwise we crash when bulk unsubscribing all actor handles.
   } else {
-    direct_actor_submitter_->ConnectActor(actor_id, actor_data.address(),
-                                          actor_data.num_restarts());
+    direct_actor_submitter_->ConnectActor(actor_id, actor_data.address());
   }
+
+  const auto &actor_state = gcs::ActorTableData::ActorState_Name(actor_data.state());
+  RAY_LOG(INFO) << "received notification on actor, state: " << actor_state
+                << ", actor_id: " << actor_id
+                << ", ip address: " << actor_data.address().ip_address()
+                << ", port: " << actor_data.address().port() << ", worker_id: "
+                << WorkerID::FromBinary(actor_data.address().worker_id())
+                << ", raylet_id: "
+                << ClientID::FromBinary(actor_data.address().raylet_id());
 }
 
 std::vector<ObjectID> ActorManager::GetActorHandleIDsFromHandles() {
