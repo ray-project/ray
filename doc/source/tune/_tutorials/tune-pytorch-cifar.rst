@@ -120,7 +120,10 @@ like this:
         inputs, labels = data
         inputs, labels = inputs.to(device), labels.to(device)
 
-The code now supports training on CPUs, on a single GPU, and on multiple GPUs.
+The code now supports training on CPUs, on a single GPU, and on multiple GPUs. Notably, Ray
+also supports :doc:`fractional GPUs </using-ray-with-gpus.html>`
+so we can share GPUs among trials, as long as the model still fits on the GPU memory. We'll come back
+to that later.
 
 Communicating with Ray Tune
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -199,14 +202,16 @@ search spaces. It will then train a number of models in parallel and find the be
 performing one among these. We also use the ``ASHAScheduler`` which will terminate bad
 performing trials early.
 
-We can tell Tune what resources should be available for each trial:
+We wrap the ``train_cifar`` function with ``functools.partial`` to set the constant
+``data_dir`` parameter. We can also tell Ray Tune what resources should be
+available for each trial:
 
 .. code-block:: python
 
     gpus_per_trial = 2
     # ...
     result = tune.run(
-        train_cifar,
+        partial(train_cifar, data_dir=data_dir),
         resources_per_trial={"cpu": 8, "gpu": gpus_per_trial},
         config=config,
         num_samples=num_samples,
@@ -219,6 +224,10 @@ to increase the ``num_workers`` of the PyTorch ``DataLoader`` instances. The sel
 number of GPUs are made visible to PyTorch in each trial. Trials do not have access to
 GPUs that haven't been requested for them - so you don't have to care about two trials
 using the same set of resources.
+
+Here we can also specify fractional GPUs, so something like ``gpus_per_trial=0.5`` is
+completely valid. The trials will then share GPUs among each other.
+You just have to make sure that the models still fit in the GPU memory.
 
 After training the models, we will find the best performing one and load the trained
 network from the checkpoint file. We then obtain the test set accuracy and report

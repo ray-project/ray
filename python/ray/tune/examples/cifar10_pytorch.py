@@ -2,6 +2,7 @@
 # yapf: disable
 
 # __import_begin__
+from functools import partial
 import numpy as np
 import os
 import torch
@@ -57,7 +58,7 @@ class Net(nn.Module):
 
 
 # __train_begin__
-def train_cifar(config, checkpoint=None):
+def train_cifar(config, checkpoint=None, data_dir=None):
     net = Net(config["l1"], config["l2"])
 
     device = "cpu"
@@ -76,7 +77,7 @@ def train_cifar(config, checkpoint=None):
         net.load_state_dict(model_state)
         optimizer.load_state_dict(optimizer_state)
 
-    trainset, testset = load_data(config["data_dir"])
+    trainset, testset = load_data(data_dir)
 
     test_abs = int(len(trainset) * 0.8)
     train_subset, val_subset = random_split(
@@ -177,8 +178,7 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
         "l1": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
         "l2": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
         "lr": tune.loguniform(1e-4, 1e-1),
-        "batch_size": tune.choice([2, 4, 8, 16]),
-        "data_dir": data_dir
+        "batch_size": tune.choice([2, 4, 8, 16])
     }
     scheduler = ASHAScheduler(
         metric="loss",
@@ -190,7 +190,7 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
         # parameter_columns=["l1", "l2", "lr", "batch_size"],
         metric_columns=["loss", "accuracy", "training_iteration"])
     result = tune.run(
-        train_cifar,
+        partial(train_cifar, data_dir=data_dir),
         resources_per_trial={"cpu": 2, "gpu": gpus_per_trial},
         config=config,
         num_samples=num_samples,
