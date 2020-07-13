@@ -2997,38 +2997,47 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
   bool has_owner =
       task_dependency_manager_.GetOwnerAddress(required_object_id, &owner_addr);
   if (has_owner) {
-    RAY_LOG(DEBUG) << "Required object " << required_object_id
-                   << " fetch timed out, asking owner "
-                   << WorkerID::FromBinary(owner_addr.worker_id());
-    // The owner's address exists. Poll the owner to check if the object is
-    // still in scope. If not, mark the object as failed.
-    // TODO(swang): If the owner has died, we could also mark the object as
-    // failed as soon as we hear about the owner's failure from the GCS,
-    // avoiding the raylet's reconstruction timeout.
-    auto client = std::unique_ptr<rpc::CoreWorkerClient>(
-        new rpc::CoreWorkerClient(owner_addr, client_call_manager_));
+    if (!RayConfig::instance().object_pinning_enabled()) {
+      // LRU eviction is enabled. The object may still be in scope, but we
+      // weren't able to fetch the value within the timeout, so the value has
+      // most likely been evicted. Mark the object as unreachable.
+      MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {required_object_id},
+                          JobID::Nil());
+    } else {
+      RAY_LOG(DEBUG) << "Required object " << required_object_id
+                     << " fetch timed out, asking owner "
+                     << WorkerID::FromBinary(owner_addr.worker_id());
+      // The owner's address exists. Poll the owner to check if the object is
+      // still in scope. If not, mark the object as failed.
+      // TODO(swang): If the owner has died, we could also mark the object as
+      // failed as soon as we hear about the owner's failure from the GCS,
+      // avoiding the raylet's reconstruction timeout.
+      auto client = std::unique_ptr<rpc::CoreWorkerClient>(
+          new rpc::CoreWorkerClient(owner_addr, client_call_manager_));
 
-    rpc::GetObjectStatusRequest request;
-    request.set_object_id(required_object_id.Binary());
-    request.set_owner_worker_id(owner_addr.worker_id());
-    RAY_CHECK_OK(client->GetObjectStatus(
-        request, [this, required_object_id](Status status,
-                                            const rpc::GetObjectStatusReply &reply) {
-          if (!status.ok() || reply.status() == rpc::GetObjectStatusReply::OUT_OF_SCOPE) {
-            // The owner is gone or the owner replied that the object has gone
-            // out of scope (this is an edge case in the distributed ref counting
-            // protocol where a borrower dies before it can notify the owner of
-            // another borrower). Store an error in the local plasma store so
-            // that an exception will be thrown when the worker tries to get the
-            // value.
-            MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {required_object_id},
-                                JobID::Nil());
-          }
-          // Do nothing if the owner replied that the object is available. The
-          // object manager will continue trying to fetch the object, and this
-          // handler will get triggered again if the object is still
-          // unavailable after another timeout.
-        }));
+      rpc::GetObjectStatusRequest request;
+      request.set_object_id(required_object_id.Binary());
+      request.set_owner_worker_id(owner_addr.worker_id());
+      RAY_CHECK_OK(client->GetObjectStatus(
+          request, [this, required_object_id](Status status,
+                                              const rpc::GetObjectStatusReply &reply) {
+            if (!status.ok() ||
+                reply.status() == rpc::GetObjectStatusReply::OUT_OF_SCOPE) {
+              // The owner is gone or the owner replied that the object has gone
+              // out of scope (this is an edge case in the distributed ref counting
+              // protocol where a borrower dies before it can notify the owner of
+              // another borrower). Store an error in the local plasma store so
+              // that an exception will be thrown when the worker tries to get the
+              // value.
+              MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE,
+                                  {required_object_id}, JobID::Nil());
+            }
+            // Do nothing if the owner replied that the object is available. The
+            // object manager will continue trying to fetch the object, and this
+            // handler will get triggered again if the object is still
+            // unavailable after another timeout.
+          }));
+    }
   } else {
     // We do not have the owner's address. This is either an actor creation
     // task or a randomly generated ObjectID. Try to look up the spec for the
