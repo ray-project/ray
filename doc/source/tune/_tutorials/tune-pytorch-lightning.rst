@@ -204,6 +204,27 @@ specification, we can use ``functools.partial`` to wrap around the training func
    :lines: 24-28
    :dedent: 8
 
+Training with GPUs
+~~~~~~~~~~~~~~~~~~
+We can specify how many resources Tune should request for each trial.
+This also includes GPUs.
+
+PyTorch Lightning takes care of moving the training to the GPUs. We
+already made sure that our code is compatible with that, so there's
+nothing more to do here other than to specify the number of GPUs
+we would like to use:
+
+.. literalinclude:: /../../python/ray/tune/examples/mnist_pytorch_lightning.py
+   :language: python
+   :start-after: __tune_asha_begin__
+   :end-before: __tune_asha_end__
+   :lines: 29
+   :dedent: 4
+
+Note that you can also use `fractional GPUs <https://docs.ray.io/en/master/using-ray-with-gpus.html#fractional-gpus>`_.
+So, something like ``gpus_per_trial=0.25`` is totally valid, as long
+as your model still fits on the GPU.
+
 Putting it together
 ~~~~~~~~~~~~~~~~~~~
 
