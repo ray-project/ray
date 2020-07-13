@@ -36,10 +36,10 @@ class Trajectory:
     convenience cursor and offset-pointers allow for only "viewing" the
     currently ongoing trajectory.
     Memory re-allocation into larger buffers (`self.buffer_size *= 2`) only
-    happens if unavoidable (in case the buffer is full AND the currently ongoing
-    trajectory (episode) takes more than half of the buffer). In all other
-    cases, the same buffer is used for succeeding episodes/trejactories (even
-    for different agents).
+    happens if unavoidable (in case the buffer is full AND the currently
+    ongoing trajectory (episode) takes more than half of the buffer). In all
+    other cases, the same buffer is used for succeeding episodes/trejactories
+    (even for different agents).
     """
 
     # Disambiguate unrolls within a single episode.
@@ -52,15 +52,16 @@ class Trajectory:
             buffer_size (Optional[int]): The max number of timesteps to
                 fit into one buffer column. When re-allocating
         """
-        # The current occupant (agent X in env Y using policy Z) of our buffers.
+        # The current occupant (agent X in env Y using policy Z) of our
+        # buffers.
         self.env_id: EnvID = None
         self.agent_id: AgentID = None
         self.policy_id: PolicyID = None
 
         # Determine the size of the initial buffers.
         self.buffer_size = buffer_size or 1000
-        # The actual buffer holding dict (by column name (str) -> numpy/torch/tf
-        # tensors).
+        # The actual buffer holding dict (by column name (str) ->
+        # numpy/torch/tf tensors).
         self.buffers = {}
 
         # Holds the initial observation data.
@@ -116,8 +117,8 @@ class Trajectory:
                 initial observation for.
             policy_id (PolicyID): Unique id for policy controlling the agent.
             values (Dict[str, TensorType]): Data dict (interpreted as a single
-                row) to be added to buffer.
-                Must contain keys: SampleBatch.ACTIONS, REWARDS, DONES, and OBS.
+                row) to be added to buffer. Must contain keys:
+                SampleBatch.ACTIONS, REWARDS, DONES, and OBS.
         """
         assert self.initial_obs is not None
         assert (SampleBatch.ACTIONS in values and SampleBatch.REWARDS in values
@@ -173,7 +174,8 @@ class Trajectory:
         if "t" in self.buffers:
             if self.buffers["t"][self.sample_batch_offset] > 0:
                 for k in self.buffers.keys():
-                    inputs[uid][k] = self.buffers[k][self.sample_batch_offset - 1]
+                    inputs[uid][k] = \
+                        self.buffers[k][self.sample_batch_offset - 1]
             else:
                 inputs[uid][SampleBatch.NEXT_OBS] = self.initial_obs
         else:

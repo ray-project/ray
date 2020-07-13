@@ -5,7 +5,6 @@ import tree
 from typing import Dict, List, Optional
 
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.evaluation.trajectory import Trajectory
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_torch
