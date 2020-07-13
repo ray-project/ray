@@ -14,7 +14,8 @@ from ray.rllib.models.tf.tf_action_dist import Beta, Categorical, \
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.utils.framework import try_import_tf, try_import_tfp
+from ray.rllib.utils.framework import get_variable, try_import_tf, \
+    try_import_tfp
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
@@ -277,7 +278,7 @@ def sac_actor_critic_loss(policy, model, _, train_batch):
 
 def gradients_fn(policy, optimizer, loss):
     # Eager: Use GradientTape.
-    if policy.config["framework"] == "tfe":
+    if policy.config["framework"] in ["tf2", "tfe"]:
         tape = optimizer.tape
         pol_weights = policy.model.policy_variables()
         actor_grads_and_vars = list(zip(tape.gradient(
@@ -355,10 +356,14 @@ def apply_gradients(policy, optimizer, grads_and_vars):
             policy._critic_optimizer[0].apply_gradients(cgrads)
         ]
 
-    alpha_apply_ops = policy._alpha_optimizer.apply_gradients(
-        policy._alpha_grads_and_vars,
-        global_step=tf1.train.get_or_create_global_step())
-    return tf.group([actor_apply_ops, alpha_apply_ops] + critic_apply_ops)
+    if policy.config["framework"] in ["tf2", "tfe"]:
+        policy._alpha_optimizer.apply_gradients(policy._alpha_grads_and_vars)
+        return
+    else:
+        alpha_apply_ops = policy._alpha_optimizer.apply_gradients(
+            policy._alpha_grads_and_vars,
+            global_step=tf1.train.get_or_create_global_step())
+        return tf.group([actor_apply_ops, alpha_apply_ops] + critic_apply_ops)
 
 
 def stats(policy, train_batch):
@@ -379,22 +384,40 @@ def stats(policy, train_batch):
 
 class ActorCriticOptimizerMixin:
     def __init__(self, config):
-        # create global step for counting the number of update operations
-        self.global_step = tf1.train.get_or_create_global_step()
-
-        # use separate optimizers for actor & critic
-        self._actor_optimizer = tf1.train.AdamOptimizer(
-            learning_rate=config["optimization"]["actor_learning_rate"])
-        self._critic_optimizer = [
-            tf1.train.AdamOptimizer(
-                learning_rate=config["optimization"]["critic_learning_rate"])
-        ]
-        if config["twin_q"]:
-            self._critic_optimizer.append(
-                tf1.train.AdamOptimizer(learning_rate=config["optimization"][
-                    "critic_learning_rate"]))
-        self._alpha_optimizer = tf1.train.AdamOptimizer(
-            learning_rate=config["optimization"]["entropy_learning_rate"])
+        # - Create global step for counting the number of update operations.
+        # - Use separate optimizers for actor & critic.
+        if config["framework"] in ["tf2", "tfe"]:
+            self.global_step = get_variable(0, tf_name="global_step")
+            self._actor_optimizer = tf.keras.optimizers.Adam(
+                learning_rate=config["optimization"]["actor_learning_rate"])
+            self._critic_optimizer = [
+                tf.keras.optimizers.Adam(
+                    learning_rate=config["optimization"][
+                        "critic_learning_rate"])
+            ]
+            if config["twin_q"]:
+                self._critic_optimizer.append(
+                    tf.keras.optimizers.Adam(
+                        learning_rate=config["optimization"][
+                            "critic_learning_rate"]))
+            self._alpha_optimizer = tf.keras.optimizers.Adam(
+                learning_rate=config["optimization"]["entropy_learning_rate"])
+        else:
+            self.global_step = tf1.train.get_or_create_global_step()
+            self._actor_optimizer = tf1.train.AdamOptimizer(
+                learning_rate=config["optimization"]["actor_learning_rate"])
+            self._critic_optimizer = [
+                tf1.train.AdamOptimizer(
+                    learning_rate=config["optimization"][
+                        "critic_learning_rate"])
+            ]
+            if config["twin_q"]:
+                self._critic_optimizer.append(
+                    tf1.train.AdamOptimizer(
+                        learning_rate=config["optimization"][
+                            "critic_learning_rate"]))
+            self._alpha_optimizer = tf1.train.AdamOptimizer(
+                learning_rate=config["optimization"]["entropy_learning_rate"])
 
 
 def setup_early_mixins(policy, obs_space, action_space, config):

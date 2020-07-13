@@ -65,10 +65,10 @@ cdef class BaseID:
     # here `cdef size_t` is required.
     cdef size_t hash(self)
 
-cdef class ObjectID(BaseID):
+cdef class ObjectRef(BaseID):
     cdef:
         CObjectID data
-        # Flag indicating whether or not this object ID was added to the set
+        # Flag indicating whether or not this object ref was added to the set
         # of active IDs in the core worker so we know whether we should clean
         # it up.
         c_bool in_core_worker
@@ -91,7 +91,7 @@ cdef class CoreWorker:
         c_bool is_local_mode
 
     cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
-                            size_t data_size, ObjectID object_id,
+                            size_t data_size, ObjectRef object_ref,
                             c_vector[CObjectID] contained_ids,
                             CObjectID *c_object_id, shared_ptr[CBuffer] *data)
     cdef store_task_outputs(

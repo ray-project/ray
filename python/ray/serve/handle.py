@@ -20,7 +20,7 @@ class RayServeHandle:
             Traffic=...
        )
        >>> handle.remote(my_request_content)
-       ObjectID(...)
+       ObjectRef(...)
        >>> ray.get(handle.remote(...))
        # result
        >>> ray.get(handle.remote(let_it_crash_request))

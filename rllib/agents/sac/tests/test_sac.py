@@ -5,18 +5,20 @@ import re
 import unittest
 
 import ray.rllib.agents.sac as sac
+from ray.rllib.agents.sac.sac_tf_policy import sac_actor_critic_loss as tf_loss
 from ray.rllib.agents.sac.sac_torch_policy import actor_critic_loss as \
     loss_torch
 from ray.rllib.models.tf.tf_action_dist import SquashedGaussian
 from ray.rllib.models.torch.torch_action_dist import TorchSquashedGaussian
 from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import fc, relu
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \
     framework_iterator
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor
 
+tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
@@ -166,6 +168,10 @@ class TestSAC(unittest.TestCase):
             if weights_dict is None:
                 assert fw in ["tf", "tfe"]  # Start with the tf vars-dict.
                 weights_dict = policy.get_weights()
+                if fw == "tfe":
+                    log_alpha = weights_dict[10]
+                    weights_dict = self._translate_tfe_weights(
+                        weights_dict, map_)
             else:
                 assert fw == "torch"  # Then transfer that to torch Model.
                 model_dict = self._translate_weights_to_torch(
@@ -212,6 +218,16 @@ class TestSAC(unittest.TestCase):
                 tf_c_grads = [g for g, v in tf_c_grads]
                 tf_a_grads = [g for g, v in tf_a_grads]
                 tf_e_grads = [g for g, v in tf_e_grads]
+
+            elif fw == "tfe":
+                with tf.GradientTape() as tape:
+                    tf_loss(policy, policy.model, None, input_)
+                c, a, e, t = policy.critic_loss, policy.actor_loss, \
+                    policy.alpha_loss, policy.td_error
+                vars = tape.watched_variables()
+                tf_c_grads = tape.gradient(c[0], vars[6:10])
+                tf_a_grads = tape.gradient(a, vars[2:6])
+                tf_e_grads = tape.gradient(e, vars[10])
 
             elif fw == "torch":
                 loss_torch(policy, policy.model, None, input_)
@@ -447,15 +463,27 @@ class TestSAC(unittest.TestCase):
 
         # Target q network evaluation.
         # target_model.get_q_values
-        q_tp1 = fc(
-            relu(
-                fc(np.concatenate([target_model_out_tp1, policy_tp1], -1),
-                   weights[ks[15]],
-                   weights[ks[14]],
-                   framework=fw)),
-            weights[ks[17]],
-            weights[ks[16]],
-            framework=fw)
+        if fw == "tf":
+            q_tp1 = fc(
+                relu(
+                    fc(np.concatenate([target_model_out_tp1, policy_tp1], -1),
+                       weights[ks[15]],
+                       weights[ks[14]],
+                       framework=fw)),
+                weights[ks[17]],
+                weights[ks[16]],
+                framework=fw)
+        else:
+            assert fw == "tfe"
+            q_tp1 = fc(
+                relu(
+                    fc(np.concatenate([target_model_out_tp1, policy_tp1], -1),
+                       weights[ks[7]],
+                       weights[ks[6]],
+                       framework=fw)),
+                weights[ks[9]],
+                weights[ks[8]],
+                framework=fw)
 
         q_t_selected = np.squeeze(q_t, axis=-1)
         q_tp1 -= alpha * log_pis_tp1
@@ -484,6 +512,23 @@ class TestSAC(unittest.TestCase):
                 np.transpose(v) if re.search("kernel", k) else v)
             for k, v in weights_dict.items()
             if re.search("(sequential(/|_1)|value_out/)", k)
+        }
+        return model_dict
+
+    def _translate_tfe_weights(self, weights_dict, map_):
+        model_dict = {
+            "default_policy/log_alpha": None,
+            "default_policy/log_alpha_target": None,
+            "default_policy/sequential/action_1/kernel": weights_dict[2],
+            "default_policy/sequential/action_1/bias": weights_dict[3],
+            "default_policy/sequential/action_out/kernel": weights_dict[4],
+            "default_policy/sequential/action_out/bias": weights_dict[5],
+            "default_policy/sequential_1/q_hidden_0/kernel": weights_dict[6],
+            "default_policy/sequential_1/q_hidden_0/bias": weights_dict[7],
+            "default_policy/sequential_1/q_out/kernel": weights_dict[8],
+            "default_policy/sequential_1/q_out/bias": weights_dict[9],
+            "default_policy/value_out/kernel": weights_dict[0],
+            "default_policy/value_out/bias": weights_dict[1],
         }
         return model_dict
 

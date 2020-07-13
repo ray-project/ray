@@ -66,7 +66,7 @@ def test_dynamic_res_infeasible_rescheduling(ray_start_regular):
         return 1
 
     remote_task = ray.remote(resources={res_name: res_capacity})(f)
-    oid = remote_task.remote()  # This is infeasible
+    obj_ref = remote_task.remote()  # This is infeasible
     ray.get(set_res.remote(res_name, res_capacity))  # Now should be feasible
 
     def check_resources():
@@ -75,7 +75,7 @@ def test_dynamic_res_infeasible_rescheduling(ray_start_regular):
 
     wait_for_condition(check_resources)
 
-    successful, unsuccessful = ray.wait([oid], timeout=1)
+    successful, unsuccessful = ray.wait([obj_ref], timeout=1)
     assert successful  # The task completed
 
 

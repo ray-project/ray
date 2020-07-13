@@ -396,8 +396,8 @@ class DockerCommandRunner(SSHCommandRunner):
             cmd,
             timeout=timeout,
             exit_on_fail=exit_on_fail,
-            port_forward=None,
-            with_output=False,
+            port_forward=port_forward,
+            with_output=with_output,
             ssh_options_override=ssh_options_override)
 
     def run_rsync_up(self, source, target):

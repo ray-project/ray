@@ -1973,7 +1973,7 @@ genrule(
     outs = ["ray_pkg.out"],
     cmd = """
         if [ "$${OSTYPE-}" = "msys" ]; then
-            mv -f python/ray/_raylet.so python/ray/_raylet.pyd
+            ln -P -f -- python/ray/_raylet.so python/ray/_raylet.pyd
         fi
         # NOTE(hchen): Protobuf doesn't allow specifying Python package name. So we use this `sed`
         # command to change the import path in the generated file.
