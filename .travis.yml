@@ -285,6 +285,7 @@ script:
   - ./ci/suppress_output bazel test --config=ci --build_tests_only -- //:all -rllib/...
 
   # ray serve tests
+  - printenv
   - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci --test_tag_filters=-jenkins_only python/ray/serve/...; fi
 
   # ray dashboard tests

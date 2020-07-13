@@ -12,6 +12,9 @@ import requests
 import ray
 import ray.serve as serve
 
+import os
+print(os.environ)
+raise Exception("hahaha")
 
 def pformat_color_json(d):
     """Use pygments to pretty format and colorize dictionary"""
