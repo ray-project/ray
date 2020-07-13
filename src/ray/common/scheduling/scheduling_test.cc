@@ -12,16 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
-
 #include <string>
 
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "ray/common/scheduling/cluster_resource_scheduler.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 
 #ifdef UNORDERED_VS_ABSL_MAPS_EVALUATION
 #include <chrono>
+
 #include "absl/container/flat_hash_map.h"
 #endif  // UNORDERED_VS_ABSL_MAPS_EVALUATION
 
@@ -575,7 +575,7 @@ TEST_F(SchedulingTest, GetLocalAvailableResourcesTest) {
       cluster_resources.GetLocalResources().GetAvailableResourceInstances();
 
   TaskResourceInstances expected_cluster_resources;
-  addTaskResourceInstances(true, {1., 1., 1.}, 0, &expected_cluster_resources);
+  addTaskResourceInstances(true, {3.}, 0, &expected_cluster_resources);
   addTaskResourceInstances(true, {4.}, 1, &expected_cluster_resources);
   addTaskResourceInstances(true, {1., 1., 1., 1., 1.}, 2, &expected_cluster_resources);
 
@@ -704,7 +704,7 @@ TEST_F(SchedulingTest, TaskResourceInstancesTest) {
     ASSERT_EQ(success, true);
 
     TaskResourceInstances expected_task_allocation;
-    addTaskResourceInstances(true, {0., 0., 0.}, CPU, &expected_task_allocation);
+    addTaskResourceInstances(true, {0.}, CPU, &expected_task_allocation);
     addTaskResourceInstances(true, {2.}, MEM, &expected_task_allocation);
     addTaskResourceInstances(true, {0., 0.5, 1., 1., 1.}, GPU, &expected_task_allocation);
 
@@ -797,7 +797,7 @@ TEST_F(SchedulingTest, TaskResourceInstancesTest) {
     ASSERT_EQ(success, true);
 
     TaskResourceInstances expected_task_allocation;
-    addTaskResourceInstances(true, {0., 0., 0.}, CPU, &expected_task_allocation);
+    addTaskResourceInstances(true, {0.}, CPU, &expected_task_allocation);
     addTaskResourceInstances(true, {2.}, MEM, &expected_task_allocation);
     addTaskResourceInstances(true, {0., 0.5, 1., 1., 1.}, GPU, &expected_task_allocation);
     addTaskResourceInstances(false, {1.}, 1, &expected_task_allocation);
@@ -842,102 +842,102 @@ TEST_F(SchedulingTest, TaskResourceInstancesTest2) {
   }
 }
 
-TEST_F(SchedulingTest, TaskCPUResourceInstancesTest) {
+TEST_F(SchedulingTest, TaskGPUResourceInstancesTest) {
   {
     NodeResources node_resources;
-    vector<FixedPoint> pred_capacities{4 /* CPU */, 1 /* MEM */, 1 /* GPU */};
+    vector<FixedPoint> pred_capacities{1 /* CPU */, 1 /* MEM */, 4 /* GPU */};
     vector<int64_t> cust_ids{1};
     vector<FixedPoint> cust_capacities{8};
     initNodeResources(node_resources, pred_capacities, cust_ids, cust_capacities);
     ClusterResourceScheduler cluster_resources(0, node_resources);
 
-    std::vector<double> allocate_cpu_instances{0.5, 0.5, 0.5, 0.5};
-    cluster_resources.SubtractCPUResourceInstances(allocate_cpu_instances);
-    std::vector<double> available_cpu_instances = cluster_resources.GetLocalResources()
+    std::vector<double> allocate_gpu_instances{0.5, 0.5, 0.5, 0.5};
+    cluster_resources.SubtractGPUResourceInstances(allocate_gpu_instances);
+    std::vector<double> available_gpu_instances = cluster_resources.GetLocalResources()
                                                       .GetAvailableResourceInstances()
-                                                      .GetCPUInstancesDouble();
-    std::vector<double> expected_available_cpu_instances{0.5, 0.5, 0.5, 0.5};
-    ASSERT_TRUE(std::equal(available_cpu_instances.begin(), available_cpu_instances.end(),
-                           expected_available_cpu_instances.begin()));
+                                                      .GetGPUInstancesDouble();
+    std::vector<double> expected_available_gpu_instances{0.5, 0.5, 0.5, 0.5};
+    ASSERT_TRUE(std::equal(available_gpu_instances.begin(), available_gpu_instances.end(),
+                           expected_available_gpu_instances.begin()));
 
-    cluster_resources.AddCPUResourceInstances(allocate_cpu_instances);
-    available_cpu_instances = cluster_resources.GetLocalResources()
+    cluster_resources.AddGPUResourceInstances(allocate_gpu_instances);
+    available_gpu_instances = cluster_resources.GetLocalResources()
                                   .GetAvailableResourceInstances()
-                                  .GetCPUInstancesDouble();
-    expected_available_cpu_instances = {1., 1., 1., 1.};
-    ASSERT_TRUE(std::equal(available_cpu_instances.begin(), available_cpu_instances.end(),
-                           expected_available_cpu_instances.begin()));
+                                  .GetGPUInstancesDouble();
+    expected_available_gpu_instances = {1., 1., 1., 1.};
+    ASSERT_TRUE(std::equal(available_gpu_instances.begin(), available_gpu_instances.end(),
+                           expected_available_gpu_instances.begin()));
 
-    allocate_cpu_instances = {1.5, 1.5, .5, 1.5};
+    allocate_gpu_instances = {1.5, 1.5, .5, 1.5};
     std::vector<double> underflow =
-        cluster_resources.SubtractCPUResourceInstances(allocate_cpu_instances);
+        cluster_resources.SubtractGPUResourceInstances(allocate_gpu_instances);
     std::vector<double> expected_underflow{.5, .5, 0., .5};
     ASSERT_TRUE(
         std::equal(underflow.begin(), underflow.end(), expected_underflow.begin()));
-    available_cpu_instances = cluster_resources.GetLocalResources()
+    available_gpu_instances = cluster_resources.GetLocalResources()
                                   .GetAvailableResourceInstances()
-                                  .GetCPUInstancesDouble();
-    expected_available_cpu_instances = {0., 0., 0.5, 0.};
-    ASSERT_TRUE(std::equal(available_cpu_instances.begin(), available_cpu_instances.end(),
-                           expected_available_cpu_instances.begin()));
+                                  .GetGPUInstancesDouble();
+    expected_available_gpu_instances = {0., 0., 0.5, 0.};
+    ASSERT_TRUE(std::equal(available_gpu_instances.begin(), available_gpu_instances.end(),
+                           expected_available_gpu_instances.begin()));
 
-    allocate_cpu_instances = {1.0, .5, 1., .5};
+    allocate_gpu_instances = {1.0, .5, 1., .5};
     std::vector<double> overflow =
-        cluster_resources.AddCPUResourceInstances(allocate_cpu_instances);
+        cluster_resources.AddGPUResourceInstances(allocate_gpu_instances);
     std::vector<double> expected_overflow{.0, .0, .5, 0.};
     ASSERT_TRUE(std::equal(overflow.begin(), overflow.end(), expected_overflow.begin()));
-    available_cpu_instances = cluster_resources.GetLocalResources()
+    available_gpu_instances = cluster_resources.GetLocalResources()
                                   .GetAvailableResourceInstances()
-                                  .GetCPUInstancesDouble();
-    expected_available_cpu_instances = {1., .5, 1., .5};
-    ASSERT_TRUE(std::equal(available_cpu_instances.begin(), available_cpu_instances.end(),
-                           expected_available_cpu_instances.begin()));
+                                  .GetGPUInstancesDouble();
+    expected_available_gpu_instances = {1., .5, 1., .5};
+    ASSERT_TRUE(std::equal(available_gpu_instances.begin(), available_gpu_instances.end(),
+                           expected_available_gpu_instances.begin()));
   }
 }
 
 TEST_F(SchedulingTest, UpdateLocalAvailableResourcesFromResourceInstancesTest) {
   {
     NodeResources node_resources;
-    vector<FixedPoint> pred_capacities{4 /* CPU */, 1 /* MEM */, 1 /* GPU */};
+    vector<FixedPoint> pred_capacities{1 /* CPU */, 1 /* MEM */, 4 /* GPU */};
     vector<int64_t> cust_ids{1};
     vector<FixedPoint> cust_capacities{8};
     initNodeResources(node_resources, pred_capacities, cust_ids, cust_capacities);
     ClusterResourceScheduler cluster_resources(0, node_resources);
 
     {
-      std::vector<double> allocate_cpu_instances{0.5, 0.5, 2, 0.5};
-      // SubtractCPUResourceInstances() calls
+      std::vector<double> allocate_gpu_instances{0.5, 0.5, 2, 0.5};
+      // SubtractGPUResourceInstances() calls
       // UpdateLocalAvailableResourcesFromResourceInstances() under the hood.
-      cluster_resources.SubtractCPUResourceInstances(allocate_cpu_instances);
-      std::vector<double> available_cpu_instances = cluster_resources.GetLocalResources()
+      cluster_resources.SubtractGPUResourceInstances(allocate_gpu_instances);
+      std::vector<double> available_gpu_instances = cluster_resources.GetLocalResources()
                                                         .GetAvailableResourceInstances()
-                                                        .GetCPUInstancesDouble();
-      std::vector<double> expected_available_cpu_instances{0.5, 0.5, 0., 0.5};
-      ASSERT_TRUE(std::equal(available_cpu_instances.begin(),
-                             available_cpu_instances.end(),
-                             expected_available_cpu_instances.begin()));
+                                                        .GetGPUInstancesDouble();
+      std::vector<double> expected_available_gpu_instances{0.5, 0.5, 0., 0.5};
+      ASSERT_TRUE(std::equal(available_gpu_instances.begin(),
+                             available_gpu_instances.end(),
+                             expected_available_gpu_instances.begin()));
 
       NodeResources nr;
       cluster_resources.GetNodeResources(0, &nr);
-      ASSERT_TRUE(nr.predefined_resources[0].available == 1.5);
+      ASSERT_TRUE(nr.predefined_resources[GPU].available == 1.5);
     }
 
     {
-      std::vector<double> allocate_cpu_instances{1.5, 0.5, 2, 0.3};
-      // SubtractCPUResourceInstances() calls
+      std::vector<double> allocate_gpu_instances{1.5, 0.5, 2, 0.3};
+      // SubtractGPUResourceInstances() calls
       // UpdateLocalAvailableResourcesFromResourceInstances() under the hood.
-      cluster_resources.AddCPUResourceInstances(allocate_cpu_instances);
-      std::vector<double> available_cpu_instances = cluster_resources.GetLocalResources()
+      cluster_resources.AddGPUResourceInstances(allocate_gpu_instances);
+      std::vector<double> available_gpu_instances = cluster_resources.GetLocalResources()
                                                         .GetAvailableResourceInstances()
-                                                        .GetCPUInstancesDouble();
-      std::vector<double> expected_available_cpu_instances{1., 1., 1., 0.8};
-      ASSERT_TRUE(std::equal(available_cpu_instances.begin(),
-                             available_cpu_instances.end(),
-                             expected_available_cpu_instances.begin()));
+                                                        .GetGPUInstancesDouble();
+      std::vector<double> expected_available_gpu_instances{1., 1., 1., 0.8};
+      ASSERT_TRUE(std::equal(available_gpu_instances.begin(),
+                             available_gpu_instances.end(),
+                             expected_available_gpu_instances.begin()));
 
       NodeResources nr;
       cluster_resources.GetNodeResources(0, &nr);
-      ASSERT_TRUE(nr.predefined_resources[0].available == 3.8);
+      ASSERT_TRUE(nr.predefined_resources[GPU].available == 3.8);
     }
   }
 }

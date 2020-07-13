@@ -41,6 +41,9 @@ class MockExporterClient1 : public MetricExporterDecorator {
   }
 
   void ReportMetrics(const std::vector<MetricPoint> &points) override {
+    if (points.empty()) {
+      return;
+    }
     MetricExporterDecorator::ReportMetrics(points);
     client1_count += points.size();
     client1_value = points.back().value;
@@ -88,6 +91,9 @@ class MockExporterClient2 : public MetricExporterDecorator {
     client2_count = 0;
   }
   void ReportMetrics(const std::vector<MetricPoint> &points) override {
+    if (points.empty()) {
+      return;
+    }
     MetricExporterDecorator::ReportMetrics(points);
     client2_count += points.size();
     RAY_LOG(DEBUG) << "Client 2 " << client2_count << " last metric "
@@ -103,11 +109,19 @@ class MockExporterClient2 : public MetricExporterDecorator {
   static int client2_value;
 };
 
+/// Default report flush interval is 500ms, so we may wait a while for data
+/// exporting.
+uint32_t kReportFlushInterval = 500;
+
 class MetricExporterClientTest : public ::testing::Test {
  public:
   void SetUp() {
     const stats::TagsType global_tags = {{stats::LanguageKey, "CPP"},
                                          {stats::WorkerPidKey, "1000"}};
+    absl::Duration report_interval = absl::Milliseconds(kReportFlushInterval);
+    absl::Duration harvest_interval = absl::Milliseconds(kReportFlushInterval / 2);
+    ray::stats::StatsConfig::instance().SetReportInterval(report_interval);
+    ray::stats::StatsConfig::instance().SetHarvestInterval(harvest_interval);
     ray::stats::Init("127.0.0.1:8888", global_tags, false);
     std::shared_ptr<MetricExporterClient> exporter(new stats::StdoutExporterClient());
     std::shared_ptr<MetricExporterClient> mock1(new MockExporterClient1(exporter));
@@ -129,10 +143,6 @@ int MockExporterClient2::client2_count;
 int MockExporterClient1::client1_value;
 int MockExporterClient2::client2_value;
 
-/// Default report flush interval is 10s, so we may wait a while for data
-/// exporting.
-uint32_t kReportFlushInterval = 10000;
-
 bool DoubleEqualTo(double value, double compared_value) {
   return value >= compared_value - 1e-5 && value <= compared_value + 1e-5;
 }
@@ -142,7 +152,7 @@ TEST_F(MetricExporterClientTest, decorator_test) {
   for (size_t i = 0; i < 100; ++i) {
     stats::CurrentWorker().Record(i + 1);
   }
-  std::this_thread::sleep_for(std::chrono::milliseconds(kReportFlushInterval + 200));
+  std::this_thread::sleep_for(std::chrono::milliseconds(kReportFlushInterval + 20));
   ASSERT_GE(100, MockExporterClient1::GetValue());
   ASSERT_GE(100, MockExporterClient2::GetValue());
   ASSERT_EQ(1, MockExporterClient1::GetCount());
@@ -167,7 +177,7 @@ TEST_F(MetricExporterClientTest, exporter_client_caculation_test) {
     random_sum.Record(i, {{tag1, std::to_string(i)}, {tag2, std::to_string(i * 2)}});
     random_hist.Record(i, {{tag1, std::to_string(i)}, {tag2, std::to_string(i * 2)}});
   }
-  std::this_thread::sleep_for(std::chrono::milliseconds(kReportFlushInterval + 200));
+  std::this_thread::sleep_for(std::chrono::milliseconds(kReportFlushInterval + 20));
   RAY_LOG(INFO) << "Min " << MockExporterClient1::GetLastestHistMin() << ", mean "
                 << MockExporterClient1::GetLastestHistMean() << ", max "
                 << MockExporterClient1::GetLastestHistMax();

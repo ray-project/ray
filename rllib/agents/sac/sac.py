@@ -146,6 +146,9 @@ def validate_config(config):
         deprecation_warning("grad_norm_clipping", "grad_clip")
         config["grad_clip"] = config.pop("grad_norm_clipping")
 
+    if config["grad_clip"] is not None and config["grad_clip"] <= 0.0:
+        raise ValueError("`grad_clip` value must be > 0.0!")
+
     # Use same keys as for standard Trainer "model" config.
     for model in ["Q_model", "policy_model"]:
         if config[model].get("hidden_activation", DEPRECATED_VALUE) != \

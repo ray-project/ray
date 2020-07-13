@@ -23,6 +23,7 @@
 #include "ray/common/test_util.h"
 #include "ray/protobuf/gcs_service.grpc.pb.h"
 #include "ray/util/asio_util.h"
+#include "src/ray/common/placement_group.h"
 
 namespace ray {
 
@@ -59,6 +60,31 @@ struct Mocker {
     auto actor_creation_task_spec =
         GenActorCreationTask(job_id, max_restarts, detached, name, owner_address);
     request.mutable_task_spec()->CopyFrom(actor_creation_task_spec.GetMessage());
+    return request;
+  }
+
+  static PlacementGroupSpecification GenPlacementGroupCreation(
+      const std::string &name, std::vector<rpc::Bundle> &bundles,
+      rpc::PlacementStrategy strategy) {
+    PlacementGroupSpecBuilder builder;
+
+    auto placement_group_id = PlacementGroupID::FromRandom();
+    builder.SetPlacementGroupSpec(placement_group_id, name, bundles, strategy);
+    return builder.Build();
+  }
+
+  static rpc::CreatePlacementGroupRequest GenCreatePlacementGroupRequest(
+      const std::string name = "") {
+    rpc::CreatePlacementGroupRequest request;
+    std::vector<rpc::Bundle> bundles;
+    rpc::PlacementStrategy strategy = rpc::PlacementStrategy::SPREAD;
+    rpc::Bundle bundle;
+    bundles.push_back(bundle);
+    bundles.push_back(bundle);
+    auto placement_group_creation_spec =
+        GenPlacementGroupCreation(name, bundles, strategy);
+    request.mutable_placement_group_spec()->CopyFrom(
+        placement_group_creation_spec.GetMessage());
     return request;
   }
 

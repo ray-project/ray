@@ -197,6 +197,13 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override;
 
+  Status AsyncSetInternalConfig(
+      std::unordered_map<std::string, std::string> &config) override;
+
+  Status AsyncGetInternalConfig(
+      const OptionalItemCallback<std::unordered_map<std::string, std::string>> &callback)
+      override;
+
  private:
   /// Save the subscribe operation in this function, so we can call it again when PubSub
   /// server restarts from a failure.
