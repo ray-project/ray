@@ -228,18 +228,23 @@ class ModelV2:
     def from_batch(self, train_batch, is_training=True):
         """Convenience function that calls this model with a tensor batch.
 
+        Note: This will be replaced by the Trajectory View API in the future:
+        >>> input_dict = get_trajectory_view(model, train_batch, is_training)
+        >>> model(input_dict)
+
         All this does is unpack the tensor batch to call this model with the
         right input dict, state, and seq len arguments.
         """
-
         input_dict = {
             "obs": train_batch[SampleBatch.CUR_OBS],
             "is_training": is_training,
         }
         if SampleBatch.PREV_ACTIONS in train_batch:
-            input_dict["prev_actions"] = train_batch[SampleBatch.PREV_ACTIONS]
+            input_dict["prev_actions"] = \
+                train_batch[SampleBatch.PREV_ACTIONS]
         if SampleBatch.PREV_REWARDS in train_batch:
-            input_dict["prev_rewards"] = train_batch[SampleBatch.PREV_REWARDS]
+            input_dict["prev_rewards"] = \
+                train_batch[SampleBatch.PREV_REWARDS]
         states = []
         i = 0
         while "state_in_{}".format(i) in train_batch:
@@ -267,7 +272,6 @@ class ModelV2:
             Dict[str, ViewRequirement]: The view requirements as a dict mapping
                 column names e.g. "obs" to config dicts containing supported
                 fields.
-                TODO: (sven) Currently only `timesteps==0` can be setup.
         """
         # Default implementation for simple RL model:
         # Single requirement: Pass current obs as input.

@@ -10,6 +10,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import EntropyCoeffSchedule, \
     LearningRateSchedule
 from ray.rllib.policy.torch_policy_template import build_torch_policy
+from ray.rllib.policy.trajectory_view import get_trajectory_view
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor, \
     explained_variance, sequence_mask
@@ -112,7 +113,11 @@ class PPOLoss:
 
 
 def ppo_surrogate_loss(policy, model, dist_class, train_batch):
-    logits, state = model.from_batch(train_batch)
+    if policy.config["_use_trajectory_view_api"]:
+        input_dict = get_trajectory_view(model, train_batch, is_training=True)
+        logits, state = model(input_dict)
+    else:
+        logits, state = model.from_batch(train_batch, is_training=True)
     action_dist = dist_class(logits, model)
 
     mask = None

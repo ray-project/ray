@@ -312,12 +312,17 @@ class TorchPolicy(Policy):
     @DeveloperAPI
     def learn_on_batch(self, postprocessed_batch: SampleBatch) -> Dict[
             str, TensorType]:
-        # Get batch ready for RNNs, if applicable.
-        pad_batch_to_sequences_of_same_size(
-            postprocessed_batch,
-            max_seq_len=self.max_seq_len,
-            shuffle=False,
-            batch_divisibility_req=self.batch_divisibility_req)
+        print()
+        if self.config["_use_trajectory_view_api"]:
+            postprocessed_batch = get_trajectory_view(self.model, [postprocessed_batch],
+                is_training=True)
+        else:
+            # Get batch ready for RNNs, if applicable.
+            pad_batch_to_sequences_of_same_size(
+                postprocessed_batch,
+                max_seq_len=self.max_seq_len,
+                shuffle=False,
+                batch_divisibility_req=self.batch_divisibility_req)
 
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
         loss_out = force_list(

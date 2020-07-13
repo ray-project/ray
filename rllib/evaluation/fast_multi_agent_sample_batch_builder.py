@@ -57,14 +57,19 @@ class _FastMultiAgentSampleBatchBuilder:
             buffer_size = 1000
         self.buffer_size = int(buffer_size)
 
-        # Build the Policies' SampleBatchBuilders.
-        self.policy_trajectories = {
-            k: PolicyTrajectories(buffer_size=self.buffer_size)
-            for k in policy_map.keys()
-        }
-        # Whenever we observe a new agent, add a new SampleBatchBuilder for
+        # Collect SampleBatches per-policy in PolicyTrajectories objects.
+        self.policy_trajectories = {}
+        for pid, policy in policy_map.items():
+            kwargs = {}
+            if policy.is_recurrent():
+                kwargs["max_seq_len"] = \
+                    policy.model.model_config["max_seq_len"]
+            self.policy_trajectories[pid] = PolicyTrajectories(
+                buffer_size=self.buffer_size, **kwargs)
+        # Whenever we observe a new agent, add a new Trajectory object for
         # this agent.
         self.single_agent_trajectories = {}
+
         # Internal agent-to-policy map.
         self.agent_to_policy = {}
         # Number of "inference" steps taken in the environment.
@@ -200,7 +205,6 @@ class _FastMultiAgentSampleBatchBuilder:
             policy = self.policy_map[self.agent_to_policy[agent_id]]
             post_batches[agent_id] = policy.postprocess_trajectory(
                 pre_batch, other_batches, episode)
-            #post_batches[agent_id].last_obs = pre_batch.last_obs
             # Call the Policy's Exploration's postprocess method.
             if getattr(policy, "exploration", None) is not None:
                 policy.exploration.postprocess_trajectory(

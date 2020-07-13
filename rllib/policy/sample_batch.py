@@ -66,7 +66,8 @@ class SampleBatch:
         # Placeholder for a last_obs value (in an n x sars'-trajectory).
         # Only used if _fast_sampling=True in the Policy's config to be able to
         # deprecate the SampleBatch.NEXT_OBS field entirely soon.
-        self._inputs = kwargs.pop("_initial_inputs", None)
+        self._inputs = kwargs.pop("_initial_inputs", {})
+        self._seq_lens = kwargs.pop("_seq_lens", None)
 
         # The actual data, accessible by column name (str).
         self.data = dict(*args, **kwargs)
@@ -75,7 +76,6 @@ class SampleBatch:
         for k, v in self.data.copy().items():
             assert isinstance(k, str), self
             lengths.append(len(v))
-            #self.data[k] = np.array(v, copy=False)
         if not lengths:
             raise ValueError("Empty sample batch")
         assert len(set(lengths)) == 1, \
@@ -98,16 +98,18 @@ class SampleBatch:
         if isinstance(samples[0], MultiAgentBatch):
             return MultiAgentBatch.concat_samples(samples)
         inputs = {}
+        seq_lens = []
         concat_samples = []
         for s in samples:
             if s.count > 0:
                 concat_samples.append(s)
                 inputs.update(s._inputs)
+                seq_lens.extend(s._seq_lens)
 
         out = {}
         for k in concat_samples[0].keys():
             out[k] = concat_aligned([s[k] for s in concat_samples])
-        return SampleBatch(out, _initial_inputs=inputs)
+        return SampleBatch(out, _initial_inputs=inputs, _seq_lens=seq_lens)
 
     @PublicAPI
     def concat(self, other: "SampleBatch") -> "SampleBatch":
@@ -237,8 +239,9 @@ class SampleBatch:
             SampleBatch: A new SampleBatch, which has a slice of this batch's
                 data.
         """
-        inputs = {s: self._inputs[s] for s in
-                  set(self.data["unroll_id"][start:end])}
+        inputs = {
+            s: self._inputs[s] for s in set(self.data["unroll_id"][start:end])
+        } if self._inputs else {}
         return SampleBatch(
             {k: v[start:end] for k, v in self.data.items()},
             _initial_inputs=inputs)

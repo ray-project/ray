@@ -45,12 +45,13 @@ def standardized(array):
     return (array - array.mean()) / max(1e-4, array.std())
 
 
-def minibatches(samples, sgd_minibatch_size):
+def minibatches(samples, sgd_minibatch_size, policy=None):
     """Return a generator yielding minibatches from a sample batch.
 
     Arguments:
         samples (SampleBatch): batch of samples to split up.
         sgd_minibatch_size (int): size of minibatches to return.
+        policy
 
     Returns:
         generator that returns mini-SampleBatches of size sgd_minibatch_size.
@@ -63,6 +64,7 @@ def minibatches(samples, sgd_minibatch_size):
         raise NotImplementedError(
             "Minibatching not implemented for multi-agent in simple mode")
 
+    # Replace with `if samples._seq_lens` check.
     if "state_in_0" in samples.data or "state_out_0" in samples.data:
         if log_once("not_shuffling_rnn_data_in_simple_mode"):
             logger.warning("Not shuffling RNN data for SGD in simple mode")
@@ -71,9 +73,25 @@ def minibatches(samples, sgd_minibatch_size):
 
     i = 0
     slices = []
-    while i < samples.count:
-        slices.append((i, i + sgd_minibatch_size))
-        i += sgd_minibatch_size
+    if samples._seq_lens:
+        max_seq_len = policy.model.model_config["max_seq_len"]
+        seq_no = 0
+        seq_index = 0
+        while i < samples.count:
+            seq_no_ = seq_no
+            actual_count = 0
+            while actual_count < sgd_minibatch_size:
+                actual_count += samples._seq_lens[seq_no_]
+                seq_no_ += 1
+            if actual_count > sgd_minibatch_size:
+                seq_index = sgd_minibatch_size - actual_count
+            slices.append((i, i + (seq_no_ - seq_no) * max_seq_len - seq_index))
+            i += (seq_no_ - seq_no) * max_seq_len - seq_index
+            seq_no = seq_no_
+    else:
+        while i < samples.count:
+            slices.append((i, i + sgd_minibatch_size))
+            i += sgd_minibatch_size
     random.shuffle(slices)
 
     for i, j in slices:
@@ -110,7 +128,7 @@ def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
 
         for i in range(num_sgd_iter):
             iter_extra_fetches = defaultdict(list)
-            for minibatch in minibatches(batch, sgd_minibatch_size):
+            for minibatch in minibatches(batch, sgd_minibatch_size, policy):
                 batch_fetches = (local_worker.learn_on_batch(
                     MultiAgentBatch({
                         policy_id: minibatch

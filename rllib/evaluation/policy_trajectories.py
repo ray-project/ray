@@ -37,18 +37,23 @@ class PolicyTrajectories:
     re-allocation).
     """
 
-    def __init__(self, buffer_size: Optional[int]):
+    def __init__(self, buffer_size: Optional[int],
+                 max_seq_len: Optional[int] = None):
         """Initializes a PolicyTrajectories object.
 
         Args:
             buffer_size (Optional[int]): The max number of timesteps to
                 fit into one buffer column.
+            max_seq_len (Optional[int]): TODO
         """
         # Determine the size of the initial buffers.
         self.buffer_size = buffer_size or 1000
         self.buffers = {}
 
-        self.policy_id = None
+        # If not None, already create chunks of this size (zero-padded)
+        # when adding SampleBatches.
+        self.max_seq_len = max_seq_len
+        self.seq_lens = []
 
         self.cursor = 0
         self.sample_batch_offset = 0
@@ -74,20 +79,20 @@ class PolicyTrajectories:
             self._extend_buffers(sample_batch)
 
         for k, column in sample_batch.items():
-            # Store last obs for this agent in self.last_obs.
-            #if k == SampleBatch.OBS:
-                #env_agent = \
-                #    str(sample_batch.data["env_id"][-1]) + ":" + \
-                #    str(sample_batch.data["agent_id"][-1])
-                #self.last_obs[env_agent] = column[-1]
-            #    self.buffers[k][self.cursor:self.cursor + ts] = column[:-1]
-            #else:
             self.buffers[k][self.cursor:self.cursor + ts] = column
 
         # Merge initial_inputs
         self._inputs.update(sample_batch._inputs)
 
-        self.cursor += ts
+        # Move cursor in a way that it's pointing to the next multiple of
+        # self.max_seq_len (if recurrent).
+        if self.max_seq_len:
+            fill_up = ts % self.max_seq_len
+            self.cursor += ts + (
+                self.max_seq_len - fill_up if fill_up > 0 else 0)
+            self.seq_lens.extend(([self.max_seq_len] * (ts // self.max_seq_len)) + [fill_up])
+        else:
+            self.cursor += ts
 
     def get_sample_batch_and_reset(self) -> SampleBatch:
         """Returns a SampleBatch carrying all previously added data.
@@ -107,13 +112,17 @@ class PolicyTrajectories:
         for k, v in self.buffers.items():
             data[k] = to_float_array(
                 v[self.sample_batch_offset:self.cursor])  #, reduce_floats=True)
-        batch = SampleBatch(data, _initial_inputs=self._inputs)
+        batch = SampleBatch(
+            data,
+            _initial_inputs=self._inputs,
+            _seq_lens=np.array(self.seq_lens) if self.seq_lens else None)
 
         assert SampleBatch.UNROLL_ID in batch.data
 
         # Leave buffers as-is and move the sample_batch offset to cursor.
         # Then build next sample_batch from sample_batch_offset on.
         self.sample_batch_offset = self.cursor
+        self.seq_lens = []
         return batch
 
     def _build_buffers(self, sample_batch: SampleBatch) -> None:

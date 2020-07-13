@@ -100,7 +100,7 @@ def get_trajectory_view(
         batch = []
         for traj in trajectories:
             if traj.cursor + view_req.timesteps < 0:
-                if data_col == SampleBatch.NEXT_OBS:
+                if data_col == SampleBatch.OBS:
                     batch.append(traj.initial_obs)
                 else:
                     if view_req.fill == "zeros":
