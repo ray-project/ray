@@ -283,7 +283,7 @@ class RolloutWorker(ParallelIteratorWorker):
         ParallelIteratorWorker.__init__(self, gen_rollouts, False)
 
         policy_config: TrainerConfigDict = policy_config or {}
-        if (tf1 and policy_config.get("framework") == "tfe"
+        if (tf1 and policy_config.get("framework") in ["tf2", "tfe"]
                 and not policy_config.get("no_eager_on_workers")
                 # This eager check is necessary for certain all-framework tests
                 # that use tf's eager_mode() context generator.
@@ -959,7 +959,7 @@ class RolloutWorker(ParallelIteratorWorker):
             if tf1 and tf1.executing_eagerly():
                 if hasattr(cls, "as_eager"):
                     cls = cls.as_eager()
-                    if policy_config["eager_tracing"]:
+                    if policy_config.get("eager_tracing"):
                         cls = cls.with_tracing()
                 elif not issubclass(cls, TFPolicy):
                     pass  # could be some other type of policy

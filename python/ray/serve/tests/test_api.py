@@ -570,7 +570,7 @@ def test_shutdown(serve_instance):
     def check_dead():
         for actor_name in [
                 constants.SERVE_MASTER_NAME, constants.SERVE_PROXY_NAME,
-                constants.SERVE_ROUTER_NAME, constants.SERVE_METRIC_SINK_NAME
+                constants.SERVE_METRIC_SINK_NAME
         ]:
             try:
                 ray.get_actor(format_actor_name(actor_name, instance_name))

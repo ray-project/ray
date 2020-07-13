@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_client/global_state_accessor.h"
+
 #include "gtest/gtest.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
@@ -168,6 +169,28 @@ TEST_F(GlobalStateAccessorTest, TestNodeResourceTable) {
   }
 }
 
+TEST_F(GlobalStateAccessorTest, TestInternalConfig) {
+  rpc::StoredConfig initial_proto;
+  initial_proto.ParseFromString(global_state_->GetInternalConfig());
+  ASSERT_EQ(initial_proto.config().size(), 0);
+  std::promise<bool> promise;
+  std::unordered_map<std::string, std::string> begin_config;
+  begin_config["key1"] = "value1";
+  begin_config["key2"] = "value2";
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncSetInternalConfig(begin_config));
+  std::string returned;
+  rpc::StoredConfig new_proto;
+  auto end = std::chrono::system_clock::now() + timeout_ms_;
+  while (std::chrono::system_clock::now() < end && new_proto.config().size() == 0) {
+    returned = global_state_->GetInternalConfig();
+    new_proto.ParseFromString(returned);
+  }
+  ASSERT_EQ(new_proto.config().size(), begin_config.size());
+  for (auto pair : new_proto.config()) {
+    ASSERT_EQ(pair.second, begin_config[pair.first]);
+  }
+}
+
 TEST_F(GlobalStateAccessorTest, TestProfileTable) {
   int profile_count = 100;
   ASSERT_EQ(global_state_->GetAllProfileInfo().size(), 0);
@@ -224,6 +247,26 @@ TEST_F(GlobalStateAccessorTest, TestActorTable) {
   for (auto &actor_id : actor_ids) {
     ASSERT_TRUE(global_state_->GetActorInfo(actor_id));
   }
+}
+
+TEST_F(GlobalStateAccessorTest, TestWorkerTable) {
+  ASSERT_EQ(global_state_->GetAllWorkerInfo().size(), 0);
+  // Add worker info
+  auto worker_table_data = Mocker::GenWorkerTableData();
+  worker_table_data->mutable_worker_address()->set_worker_id(
+      WorkerID::FromRandom().Binary());
+  ASSERT_TRUE(global_state_->AddWorkerInfo(worker_table_data->SerializeAsString()));
+
+  // Get worker info
+  auto worker_id = WorkerID::FromBinary(worker_table_data->worker_address().worker_id());
+  ASSERT_TRUE(global_state_->GetWorkerInfo(worker_id));
+
+  // Add another worker info
+  auto another_worker_data = Mocker::GenWorkerTableData();
+  another_worker_data->mutable_worker_address()->set_worker_id(
+      WorkerID::FromRandom().Binary());
+  ASSERT_TRUE(global_state_->AddWorkerInfo(another_worker_data->SerializeAsString()));
+  ASSERT_EQ(global_state_->GetAllWorkerInfo().size(), 2);
 }
 
 }  // namespace ray

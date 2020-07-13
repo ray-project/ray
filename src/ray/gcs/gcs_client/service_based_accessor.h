@@ -15,6 +15,7 @@
 #pragma once
 
 #include <ray/common/task/task_spec.h>
+
 #include "ray/gcs/accessor.h"
 #include "ray/gcs/subscription_executor.h"
 #include "ray/util/sequencer.h"
@@ -196,6 +197,13 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override;
 
+  Status AsyncSetInternalConfig(
+      std::unordered_map<std::string, std::string> &config) override;
+
+  Status AsyncGetInternalConfig(
+      const OptionalItemCallback<std::unordered_map<std::string, std::string>> &callback)
+      override;
+
  private:
   /// Save the subscribe operation in this function, so we can call it again when PubSub
   /// server restarts from a failure.
@@ -374,16 +382,19 @@ class ServiceBasedWorkerInfoAccessor : public WorkerInfoAccessor {
   virtual ~ServiceBasedWorkerInfoAccessor() = default;
 
   Status AsyncSubscribeToWorkerFailures(
-      const SubscribeCallback<WorkerID, rpc::WorkerFailureData> &subscribe,
+      const SubscribeCallback<WorkerID, rpc::WorkerTableData> &subscribe,
       const StatusCallback &done) override;
 
-  Status AsyncReportWorkerFailure(const std::shared_ptr<rpc::WorkerFailureData> &data_ptr,
+  Status AsyncReportWorkerFailure(const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
                                   const StatusCallback &callback) override;
 
-  Status AsyncRegisterWorker(
-      rpc::WorkerType worker_type, const WorkerID &worker_id,
-      const std::unordered_map<std::string, std::string> &worker_info,
-      const StatusCallback &callback) override;
+  Status AsyncGet(const WorkerID &worker_id,
+                  const OptionalItemCallback<rpc::WorkerTableData> &callback) override;
+
+  Status AsyncGetAll(const MultiItemCallback<rpc::WorkerTableData> &callback) override;
+
+  Status AsyncAdd(const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
+                  const StatusCallback &callback) override;
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override;
 
