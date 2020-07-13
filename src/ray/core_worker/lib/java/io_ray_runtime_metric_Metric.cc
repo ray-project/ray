@@ -9,7 +9,7 @@
 using TagKeyType = opencensus::tags::TagKey;
 using TagsType = std::vector<std::pair<opencensus::tags::TagKey, std::string>>;
 
-JNIEXPORT void JNICALL Java_io_ray_runtime_metric_Gauge_unregisterMetricNative(
+JNIEXPORT void JNICALL Java_io_ray_runtime_metric_Metric_unregisterMetricNative(
     JNIEnv *env, jobject obj, jlong metric_native_pointer) {
   ray::stats::Metric *metric =
       reinterpret_cast<ray::stats::Metric *>(metric_native_pointer);
