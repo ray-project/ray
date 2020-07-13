@@ -365,9 +365,6 @@ TEST_F(ActorManagerTest, TestActorStateNotificationAlive) {
 
 TEST_F(ActorManagerTest, TestActorLocationResolutionNormal) {
   ActorID actor_id = AddActorHandle(WorkerID::FromRandom());
-  const std::unique_ptr<ActorHandle> &actor_handle =
-      actor_manager_->GetActorHandle(actor_id);
-  ASSERT_FALSE(actor_handle->IsPersistedToGCS());
   ASSERT_TRUE(CheckActorIdInResolutionMap(actor_id));
 
   // Make sure state is properly updated after GCS notifies the actor information is
@@ -377,8 +374,7 @@ TEST_F(ActorManagerTest, TestActorLocationResolutionNormal) {
   actor_table_data.set_state(
       rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
   actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data);
-  ASSERT_TRUE(actor_handle->IsPersistedToGCS());
-  actor_manager_->ResolveActorsLocations();
+  actor_manager_->MarkPendingLocationActorsFailed();
   // Location should've been resolved.
   ASSERT_FALSE(CheckActorIdInResolutionMap(actor_id));
 }
@@ -388,13 +384,9 @@ TEST_F(ActorManagerTest, TestActorLocationResolutionNormal) {
 TEST_F(ActorManagerTest, TestActorLocationResolutionWorkerFailed) {
   auto worker_id = WorkerID::FromRandom();
   ActorID actor_id = AddActorHandle(worker_id);
-  const std::unique_ptr<ActorHandle> &actor_handle =
-      actor_manager_->GetActorHandle(actor_id);
-  // const WorkerID &worker_id =
-  //     WorkerID::FromBinary(actor_handle->GetOwnerAddress().worker_id());
   ASSERT_TRUE(CheckActorIdInResolutionMap(actor_id));
 
-  actor_manager_->ResolveActorsLocations();
+  actor_manager_->MarkPendingLocationActorsFailed();
   rpc::WorkerTableData worker_failure_data;
 
   // If the RPC request fails, do nothing.
@@ -420,10 +412,6 @@ TEST_F(ActorManagerTest, TestActorLocationResolutionWorkerFailed) {
   actor_info_accessor_->InvokeAsyncGetCallback(actor_id, ray::Status::OK(), boost::none);
   // The actor_id should've been deleted from the resolution list.
   ASSERT_FALSE(CheckActorIdInResolutionMap(actor_id));
-  ASSERT_FALSE(actor_handle->IsPersistedToGCS());
-  // NOTE: There's no way to get notification from GCS at this point because the worker
-  // failed before
-  //       the actor information is persisted to GCS.
 }
 
 // Actor should be disconnected if the node of an actor failed.
@@ -437,7 +425,7 @@ TEST_F(ActorManagerTest, TestActorLocationResolutionNodeFailed) {
       ClientID::FromBinary(actor_handle->GetOwnerAddress().raylet_id());
   ASSERT_TRUE(CheckActorIdInResolutionMap(actor_id));
 
-  actor_manager_->ResolveActorsLocations();
+  actor_manager_->MarkPendingLocationActorsFailed();
   rpc::GcsNodeInfo node_info;
   node_info.set_state(rpc::GcsNodeInfo_GcsNodeState_DEAD);
   // Node failure will be reported.
@@ -456,7 +444,6 @@ TEST_F(ActorManagerTest, TestActorLocationResolutionNodeFailed) {
   actor_info_accessor_->InvokeAsyncGetCallback(actor_id, ray::Status::OK(), boost::none);
   // The actor_id should've been deleted from the resolution list.
   ASSERT_FALSE(CheckActorIdInResolutionMap(actor_id));
-  ASSERT_FALSE(actor_handle->IsPersistedToGCS());
 }
 
 // There's one race condition that has to be tested. Sometimes,
@@ -472,7 +459,7 @@ TEST_F(ActorManagerTest, TestActorLocationResolutionRaceConditionActorRegistered
       ClientID::FromBinary(actor_handle->GetOwnerAddress().raylet_id());
   ASSERT_TRUE(CheckActorIdInResolutionMap(actor_id));
 
-  actor_manager_->ResolveActorsLocations();
+  actor_manager_->MarkPendingLocationActorsFailed();
   rpc::GcsNodeInfo node_info;
   node_info.set_state(rpc::GcsNodeInfo_GcsNodeState_DEAD);
   // Node failure will be reported.
@@ -499,14 +486,12 @@ TEST_F(ActorManagerTest, TestActorLocationResolutionRaceConditionActorRegistered
       boost::optional<gcs::ActorTableData>(actor_table_data));
   // The actor_id should've been deleted from the resolution list.
   ASSERT_TRUE(CheckActorIdInResolutionMap(actor_id));
-  ASSERT_FALSE(actor_handle->IsPersistedToGCS());
 
   // Now, GCS publishes the actor information.
   actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data);
-  ASSERT_TRUE(actor_handle->IsPersistedToGCS());
 
   // In the next resolution check, this actor will be removed from the resolution map.
-  actor_manager_->ResolveActorsLocations();
+  actor_manager_->MarkPendingLocationActorsFailed();
   ASSERT_FALSE(CheckActorIdInResolutionMap(actor_id));
 }
 

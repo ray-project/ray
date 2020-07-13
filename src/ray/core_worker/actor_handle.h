@@ -69,10 +69,6 @@ class ActorHandle {
 
   int64_t MaxTaskRetries() const { return inner_.max_task_retries(); }
 
-  bool IsPersistedToGCS() const;
-
-  void SetIsPersistedToGCSFlag();
-
  private:
   // Protobuf-defined persistent state of the actor handle.
   const ray::rpc::ActorHandle inner_;

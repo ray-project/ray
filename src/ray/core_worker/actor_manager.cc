@@ -163,9 +163,8 @@ void ActorManager::WaitForActorOutOfScope(
 
 void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
                                                 const gcs::ActorTableData &actor_data) {
-  const std::unique_ptr<ActorHandle> &actor_handle = GetActorHandle(actor_id);
-  // If any notification comes in, that means this actor is persisted to GCS.
-  actor_handle->SetIsPersistedToGCSFlag();
+  // If it recieves notification from GCS, it means the actor location has been resolved.
+  MarkPendingActorLocationResolved(actor_id);
 
   if (actor_data.state() == gcs::ActorTableData::PENDING) {
     // The actor is being created and not yet ready, just ignore!
@@ -201,67 +200,80 @@ std::vector<ObjectID> ActorManager::GetActorHandleIDsFromHandles() {
   return actor_handle_ids;
 }
 
-void ActorManager::ResolveActorsLocations() {
+void ActorManager::MarkPendingLocationActorsFailed() {
   absl::MutexLock lock(&mutex_);
   for (auto it = actors_pending_location_resolution_.begin();
        it != actors_pending_location_resolution_.end();) {
     auto current = it++;
     const auto &actor_id = *current;
 
-    const std::unique_ptr<ActorHandle> &actor_handle = GetActorHandleInternal(actor_id);
-    const ClientID &node_id =
-        ClientID::FromBinary(actor_handle->GetOwnerAddress().raylet_id());
-
-    if (actor_handle->IsPersistedToGCS()) {
-      // if an actor is already persisted to GCS, GCS will be responsible for lifecycle of
-      // actors, so we don't need to track them anymore.
-      RAY_CHECK(current != actors_pending_location_resolution_.end());
-      actors_pending_location_resolution_.erase(current);
-    } else {
-      // https://github.com/ray-project/ray/pull/8679/files
-      // Run a protocol to resolve actors location that haven't been registered to GCS.
-      RAY_CHECK_OK(gcs_client_->Workers().AsyncGet(
-          WorkerID::FromBinary(actor_handle->GetOwnerAddress().worker_id()),
-          [this, actor_id, node_id](Status status,
-                                    const boost::optional<rpc::WorkerTableData> &result) {
-            if (!status.ok()) {
-              return;
-            }
-
-            bool worker_or_node_failed = false;
-            if (result && !result->is_alive()) {
-              worker_or_node_failed = true;
-            } else {
-              // Check node failure. We should do this because worker failure event is not
-              // reported when nodes fail.
-              const auto &optional_node_info = gcs_client_->Nodes().Get(node_id);
-              RAY_CHECK(optional_node_info)
-                  << "Node information for an actor_id, " << actor_id << " is not found.";
-              if (optional_node_info->state() ==
-                  rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD) {
-                worker_or_node_failed = true;
-              }
-            }
-
-            if (worker_or_node_failed) {
-              // We should make sure one more time that an actor is not registered to GCS
-              // before resolving actor's location to avoid race condition.
-              RAY_CHECK_OK(gcs_client_->Actors().AsyncGet(
-                  actor_id,
-                  [this, actor_id](Status status,
-                                   const boost::optional<gcs::ActorTableData> &result) {
-                    absl::MutexLock lock(&mutex_);
-                    const std::unique_ptr<ActorHandle> &actor_handle =
-                        GetActorHandleInternal(actor_id);
-                    if (status.ok() && !result && !actor_handle->IsPersistedToGCS()) {
-                      direct_actor_submitter_->DisconnectActor(actor_id, /*dead*/ true);
-                      actors_pending_location_resolution_.erase(actor_id);
-                    }
-                  }));
-            }
-          }));
-    }
+    // This means that we didn't receive notification from GCS that this actor is
+    // registered yet. Check if the owner is still alive and mark the actor as dead if the
+    // owner is dead. Detail: https://github.com/ray-project/ray/pull/8679/files
+    DisconnectPendingLocationActorIfNeeded(actor_id);
   }
+}
+
+void ActorManager::MarkPendingActorLocationResolved(const ActorID &actor_id) {
+  absl::MutexLock lock(&mutex_);
+  auto it = actors_pending_location_resolution_.find(actor_id);
+  if (it == actors_pending_location_resolution_.end()) {
+    return;
+  }
+  actors_pending_location_resolution_.erase(it);
+}
+
+bool ActorManager::IsActorLocationPending(const ActorID &actor_id) {
+  absl::MutexLock lock(&mutex_);
+  auto it = actors_pending_location_resolution_.find(actor_id);
+  return it != actors_pending_location_resolution_.end();
+}
+
+void ActorManager::DisconnectPendingLocationActorIfNeeded(const ActorID &actor_id) {
+  const std::unique_ptr<ActorHandle> &actor_handle = GetActorHandleInternal(actor_id);
+  const ClientID &node_id =
+      ClientID::FromBinary(actor_handle->GetOwnerAddress().raylet_id());
+  const WorkerID &worker_id =
+      WorkerID::FromBinary(actor_handle->GetOwnerAddress().worker_id());
+
+  RAY_CHECK_OK(gcs_client_->Workers().AsyncGet(
+      worker_id, [this, actor_id, node_id](
+                     Status status, const boost::optional<rpc::WorkerTableData> &result) {
+        if (!status.ok() || !IsActorLocationPending(actor_id)) {
+          return;
+        }
+
+        bool worker_or_node_failed = false;
+        // Check whether or not worker has failed.
+        if (result && !result->is_alive()) {
+          worker_or_node_failed = true;
+        } else {
+          // Check node failure. We should do this because worker failure event is not
+          // reported when nodes fail.
+          const auto &optional_node_info = gcs_client_->Nodes().Get(node_id);
+          RAY_CHECK(optional_node_info)
+              << "Node information for an actor_id, " << actor_id << " is not found.";
+          if (optional_node_info->state() ==
+              rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD) {
+            worker_or_node_failed = true;
+          }
+        }
+
+        if (worker_or_node_failed) {
+          // We should make sure one more time that an actor is not registered to GCS
+          // because the actor could've been registered at this point.
+          RAY_CHECK_OK(gcs_client_->Actors().AsyncGet(
+              actor_id,
+              [this, actor_id](Status status,
+                               const boost::optional<gcs::ActorTableData> &result) {
+                if (!IsActorLocationPending(actor_id)) return;
+                if (status.ok() && !result) {
+                  direct_actor_submitter_->DisconnectActor(actor_id, /*dead*/ true);
+                  MarkPendingActorLocationResolved(actor_id);
+                }
+              }));
+        }
+      }));
 }
 
 }  // namespace ray

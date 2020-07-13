@@ -102,13 +102,13 @@ class ActorManager {
   /// This is used for debugging purpose.
   std::vector<ObjectID> GetActorHandleIDsFromHandles();
 
-  /// Resolve locations of actors that are not persisted to GCS yet.
-  /// https://github.com/ray-project/ray/pull/8679/files
-  /// It is required because core workers persist actor information to
-  /// GCS after it resolves all local dependencies. It means that, there's
-  /// no way for a worker to figure out if the actor is dead or not, which
-  /// can lead a worker to hang forever.
-  void ResolveActorsLocations();
+  /// Periodically check whether the owners are alive for actors whose locations have not
+  /// yet been persisted to the GCS. https://github.com/ray-project/ray/pull/8679/files It
+  /// is required because the owner persists actor information to the GCS after it
+  /// resolves all local dependencies. It means that if the location is not yet in the
+  /// GCS, we should check whether the owner is still alive to prevent this worker from
+  /// hanging forever while waiting for the actor's location.
+  void MarkPendingLocationActorsFailed();
 
  private:
   /// Give this worker a handle to an actor.
@@ -147,6 +147,25 @@ class ActorManager {
   std::unique_ptr<ActorHandle> &GetActorHandleInternal(const ActorID &actor_id)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
+  /// Mark the actor that its location is identified from GCS. This should be called when
+  /// the GCS publishes a actor information.
+  ///
+  /// \param[in] The actor id of the actor whose location is resolved by GCS.
+  void MarkPendingActorLocationResolved(const ActorID &actor_id);
+
+  /// Asynchronoushly disconnect the actor if the owner of the actor is dead before its
+  /// location is resolved.
+  ///
+  /// \param[in] actor_id The actor id of the actor,
+  void DisconnectPendingLocationActorIfNeeded(const ActorID &actor_id)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  /// Check if the actor location is still pending.
+  ///
+  /// \param[in] actor_id The actor id to check if its location is pending.
+  /// \return True if the actor's location is still pending.
+  bool IsActorLocationPending(const ActorID &actor_id);
+
   /// GCS client
   std::shared_ptr<gcs::GcsClient> gcs_client_;
 
@@ -169,8 +188,8 @@ class ActorManager {
 
   /// List of actor ids that didn't resolve its location in GCS yet.
   /// This means that these actor information hasn't been persisted to GCS.
-  /// It happens only when the actor is not created yet because local dependencies
-  /// for actor creation task hasn't been resolved.
+  /// It happens only when the actor is not created yet because the owner
+  /// hasn't resolved the dependencies for the actor creation task.
   absl::flat_hash_set<ActorID> actors_pending_location_resolution_ GUARDED_BY(mutex_);
 
   mutable absl::Mutex mutex_;

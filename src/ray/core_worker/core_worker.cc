@@ -710,7 +710,7 @@ void CoreWorker::LocationResolveHeartBeat(const boost::system::error_code &error
   if (error == boost::asio::error::operation_aborted) {
     return;
   }
-  actor_manager_->ResolveActorsLocations();
+  actor_manager_->MarkPendingLocationActorsFailed();
   actor_location_resolution_timer_.expires_at(
       actor_location_resolution_timer_.expiry() +
       boost::asio::chrono::milliseconds(kLocationResolveHeartbeatMillis));
