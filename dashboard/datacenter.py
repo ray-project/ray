@@ -1,8 +1,13 @@
 import logging
 
-from ray.new_dashboard.utils import Dict
+import ray.new_dashboard.consts as dashboard_consts
+from ray.new_dashboard.utils import Dict, Signal
 
 logger = logging.getLogger(__name__)
+
+
+class GlobalSignals:
+    node_info_fetched = Signal(dashboard_consts.SIGNAL_NODE_INFO_FETCHED)
 
 
 class DataSource:
@@ -14,7 +19,7 @@ class DataSource:
     actors = Dict()
     # {ip address(str): port(int)}
     agents = Dict()
-    # {ip address(str): port(int)}
+    # {ip address(str): gcs node info(dict)}
     nodes = Dict()
     # {hostname(str): ip(str)}
     hostname_to_ip = Dict()
@@ -24,7 +29,7 @@ class DataSource:
 
 class DataOrganizer:
     @staticmethod
-    def purge():
+    async def purge():
         # These data sources are maintained by master,
         # we do not needs to purge them:
         #   * agents
@@ -40,7 +45,7 @@ class DataOrganizer:
             DataSource.node_physical_stats.pop(key)
 
     @classmethod
-    def get_node_actors(cls, hostname):
+    async def get_node_actors(cls, hostname):
         ip = DataSource.hostname_to_ip[hostname]
         node_stats = DataSource.node_stats.get(ip, {})
         node_worker_id_set = set()
@@ -53,7 +58,7 @@ class DataOrganizer:
         return node_actors
 
     @classmethod
-    def get_node_info(cls, hostname):
+    async def get_node_info(cls, hostname):
         ip = DataSource.hostname_to_ip[hostname]
         node_physical_stats = DataSource.node_physical_stats.get(ip, {})
         node_stats = DataSource.node_stats.get(ip, {})
@@ -61,27 +66,38 @@ class DataOrganizer:
         # Merge coreWorkerStats (node stats) to workers (node physical stats)
         workers_stats = node_stats.pop("workersStats", {})
         pid_to_worker_stats = {}
+        pid_to_language = {}
+        pid_to_job_id = {}
         for stats in workers_stats:
             d = pid_to_worker_stats.setdefault(stats["pid"], {}).setdefault(
                 stats["workerId"], stats["coreWorkerStats"])
             d["workerId"] = stats["workerId"]
+            pid_to_language.setdefault(stats["pid"],
+                                       stats.get("language", "PYTHON"))
+            pid_to_job_id.setdefault(stats["pid"],
+                                     stats["coreWorkerStats"]["jobId"])
 
-        for worker in node_physical_stats["workers"]:
+        for worker in node_physical_stats.get("workers", []):
             worker_stats = pid_to_worker_stats.get(worker["pid"], {})
             worker["coreWorkerStats"] = list(worker_stats.values())
+            worker["language"] = pid_to_language.get(worker["pid"], "")
+            worker["jobId"] = pid_to_job_id.get(worker["pid"], "ffff")
 
         # Merge node stats to node physical stats
         node_info = node_physical_stats
         node_info["raylet"] = node_stats
-        node_info["actors"] = cls.get_node_actors(hostname)
+        node_info["actors"] = await cls.get_node_actors(hostname)
+        node_info["state"] = DataSource.nodes.get(ip, {}).get("state", "DEAD")
+
+        await GlobalSignals.node_info_fetched.send(node_info)
 
         return node_info
 
     @classmethod
-    def get_all_node_summary(cls):
+    async def get_all_node_summary(cls):
         all_nodes_summary = []
         for hostname in DataSource.hostname_to_ip.keys():
-            node_info = cls.get_node_info(hostname)
+            node_info = await cls.get_node_info(hostname)
             node_info.pop("workers", None)
             node_info["raylet"].pop("workersStats", None)
             node_info["raylet"].pop("viewData", None)

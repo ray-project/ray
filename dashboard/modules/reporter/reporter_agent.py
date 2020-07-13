@@ -138,6 +138,15 @@ class Reporter(dashboard_utils.DashboardAgentModule):
                 ]) for w in self._workers if w.status() != psutil.STATUS_ZOMBIE
             ]
 
+    @staticmethod
+    def _get_raylet_cmdline():
+        curr_proc = psutil.Process()
+        parent = curr_proc.parent()
+        if parent.pid == 1:
+            return ""
+        else:
+            return parent.cmdline()
+
     def _get_load_avg(self):
         if sys.platform == "win32":
             cpu_percent = psutil.cpu_percent()
@@ -169,6 +178,7 @@ class Reporter(dashboard_utils.DashboardAgentModule):
             "loadAvg": self._get_load_avg(),
             "disk": self._get_disk_usage(),
             "net": netstats,
+            "cmdline": self._get_raylet_cmdline(),
         }
 
     async def _perform_iteration(self):

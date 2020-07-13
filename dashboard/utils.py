@@ -15,9 +15,9 @@ from base64 import b64decode
 from collections.abc import MutableMapping, Mapping
 
 import aiohttp.web
-import ray.new_dashboard.consts as dashboard_consts
 from aiohttp import hdrs
-from aiohttp.signals import Signal
+from aiohttp.frozenlist import FrozenList
+import aiohttp.signals
 from google.protobuf.json_format import MessageToDict
 from ray.utils import binary_to_hex
 
@@ -236,6 +236,28 @@ def redirect_stream(stdout_filename, stderr_filename):
         os.dup2(ferr.fileno(), sys.stderr.fileno())
 
 
+class SignalManager:
+    _signals = FrozenList()
+
+    @classmethod
+    def register(cls, sig):
+        cls._signals.append(sig)
+
+    @classmethod
+    def freeze(cls):
+        cls._signals.freeze()
+        for sig in cls._signals:
+            sig.freeze()
+
+
+class Signal(aiohttp.signals.Signal):
+    __slots__ = ()
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        SignalManager.register(self)
+
+
 class Bunch(dict):
     """A dict with attribute-access."""
 
@@ -262,16 +284,6 @@ class NotifyQueue:
     """Asyncio notify queue for Dict signal."""
 
     _queue = asyncio.Queue()
-    _signals = []
-
-    @classmethod
-    def register_signal(cls, sig):
-        cls._signals.append(sig)
-
-    @classmethod
-    def freeze_signal(cls):
-        for sig in cls._signals:
-            sig.freeze()
 
     @classmethod
     def put(cls, co):
@@ -291,7 +303,6 @@ class Dict(MutableMapping):
     def __init__(self, *args, **kwargs):
         self._data = dict(*args, **kwargs)
         self.signal = Signal(self)
-        NotifyQueue.register_signal(self.signal)
 
     def __setitem__(self, key, value):
         old = self._data.pop(key, None)
@@ -324,36 +335,3 @@ class Dict(MutableMapping):
         for key in self._data.keys() - d.keys():
             self.pop(key)
         self.update(d)
-
-
-class MetricExporter:
-    """The base class for metric exporter."""
-
-    def __init__(self, *args, **kwargs):
-        pass
-
-    async def commit(self,
-                     timeout=dashboard_consts.REPORT_METRICS_TIMEOUT_SECONDS):
-        logger.debug("%s commit", type(self).__name__)
-
-    def put(self, metric, value, tags=None, timestamp=None):
-        logger.debug("%s metric: %s, value: %s, tags: %s",
-                     type(self).__name__, metric, value, tags)
-        return self
-
-    @classmethod
-    def create(cls, name, *args, **kwargs):
-        """Create MetricExporter instance. If the subtype does not exists,
-        fallback to cls.
-        """
-        for subtype in MetricExporter.__subclasses__():
-            if name == subtype.__name__:
-                logger.info(
-                    "Construct metric exporter %s with args %s, kwargs %s",
-                    name, args, kwargs)
-                return subtype(*args, **kwargs)
-        logger.warning(
-            "Construct metric exporter %s failed, "
-            "available metric exporters: %s", name,
-            MetricExporter.__subclasses__())
-        return cls(*args, **kwargs)

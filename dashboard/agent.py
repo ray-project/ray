@@ -53,8 +53,6 @@ class DashboardAgent(object):
             self.ip, self.node_manager_port))
         self.http_session = aiohttp.ClientSession(
             loop=asyncio.get_event_loop())
-        self.metric_exporter = dashboard_utils.MetricExporter.create(
-            "OpenTSDBMetricExporter", http_session=self.http_session)
 
     def _load_modules(self):
         """Load dashboard agent modules."""
@@ -86,24 +84,15 @@ class DashboardAgent(object):
             while True:
                 parent = curr_proc.parent()
                 if parent is None or parent.pid == 1:
-                    logger.error("raylet is dead, agent will die because it fate-shares with raylet.")
+                    logger.error("raylet is dead, agent will die because "
+                                 "it fate-shares with raylet.")
                     sys.exit(0)
                 await asyncio.sleep(
                     dashboard_consts.
                     DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_SECONDS)
 
-        async def _report_metric():
-            """Report metric periodically."""
-            while True:
-                await asyncio.sleep(
-                    dashboard_consts.REPORT_METRICS_INTERVAL_SECONDS)
-                try:
-                    await self.metric_exporter.commit()
-                except Exception as ex:
-                    logger.exception(ex)
-
         modules = self._load_modules()
-        await asyncio.gather(_check_parent(), _report_metric(),
+        await asyncio.gather(_check_parent(),
                              *(m.run(self.server) for m in modules))
         await self.server.wait_for_termination()
 

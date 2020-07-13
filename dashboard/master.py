@@ -1,13 +1,16 @@
+import sys
 import asyncio
 import logging
 
+import aiohttp
 import aioredis
 from grpc.experimental import aio as aiogrpc
 
+import ray.services
 import ray.new_dashboard.consts as dashboard_consts
 import ray.new_dashboard.utils as dashboard_utils
-import ray.gcs_utils
-import ray.services
+from ray.core.generated import gcs_service_pb2
+from ray.core.generated import gcs_service_pb2_grpc
 from ray.new_dashboard.datacenter import DataSource, DataOrganizer
 
 logger = logging.getLogger(__name__)
@@ -16,17 +19,28 @@ routes = dashboard_utils.ClassMethodRouteTable
 aiogrpc.init_grpc_aio()
 
 
+def gcs_node_info_to_dict(message):
+    return dashboard_utils.message_to_dict(
+        message, {"nodeId"}, including_default_value_fields=True)
+
+
 class DashboardMaster:
     def __init__(self, redis_address, redis_password):
         # Scan and import master modules for collecting http routes.
         self._master_cls_list = dashboard_utils.get_all_modules(
             dashboard_utils.DashboardMasterModule)
         ip, port = redis_address.split(":")
+        # NodeInfoGcsService
+        self._gcs_node_info_stub = None
+        self._gcs_rpc_error_counter = 0
         # Public attributes are accessible for all master modules.
         self.redis_address = (ip, int(port))
         self.redis_password = redis_password
         self.aioredis_client = None
         self.aiogrpc_gcs_channel = None
+        self.http_session = aiohttp.ClientSession(
+            loop=asyncio.get_event_loop())
+        self.ip = ray.services.get_node_ip_address()
 
     async def _get_nodes(self):
         """Read the client table.
@@ -34,36 +48,27 @@ class DashboardMaster:
         Returns:
             A list of information about the nodes in the cluster.
         """
-        message = await self.aioredis_client.execute(
-            "RAY.TABLE_LOOKUP", ray.gcs_utils.TablePrefix.Value("CLIENT"), "",
-            ray.ClientID.nil().binary())
-
-        # Handle the case where no clients are returned. This should only
-        # occur potentially immediately after the cluster is started.
-        if message is None:
-            return []
-
-        results = []
-        node_id_set = set()
-        gcs_entry = ray.gcs_utils.GcsEntry.FromString(message)
-
-        # Since GCS entries are append-only, we override so that
-        # only the latest entries are kept.
-        for entry in gcs_entry.entries:
-            item = ray.gcs_utils.GcsNodeInfo.FromString(entry)
-            if item.node_id in node_id_set:
-                continue
-            node_id_set.add(item.node_id)
-            node_info = dashboard_utils.message_to_dict(
-                item, including_default_value_fields=True)
-            results.append(node_info)
-
-        return results
+        request = gcs_service_pb2.GetAllNodeInfoRequest()
+        reply = await self._gcs_node_info_stub.GetAllNodeInfo(
+            request, timeout=2)
+        if reply.status.code == 0:
+            results = []
+            node_id_set = set()
+            for node_info in reply.node_info_list:
+                if node_info.node_id in node_id_set:
+                    continue
+                node_id_set.add(node_info.node_id)
+                node_info_dict = gcs_node_info_to_dict(node_info)
+                results.append(node_info_dict)
+            return results
+        else:
+            logger.error("Failed to GetAllNodeInfo: %s", reply.status.message)
 
     async def _update_nodes(self):
         while True:
             try:
                 nodes = await self._get_nodes()
+                self._gcs_rpc_error_counter = 0
                 node_ips = [node["nodeManagerAddress"] for node in nodes]
 
                 agents = {}
@@ -78,10 +83,7 @@ class DashboardMaster:
                             agents[node_ip] = agent_port
 
                 DataSource.agents.reset(agents)
-                DataSource.nodes.reset(
-                    dict(
-                        zip(node_ips,
-                            [node["nodeManagerPort"] for node in nodes])))
+                DataSource.nodes.reset(dict(zip(node_ips, nodes)))
                 DataSource.hostname_to_ip.reset(
                     dict(
                         zip([node["nodeManagerHostname"] for node in nodes],
@@ -90,6 +92,16 @@ class DashboardMaster:
                     dict(
                         zip(node_ips,
                             [node["nodeManagerHostname"] for node in nodes])))
+            except aiogrpc.AioRpcError as ex:
+                logger.exception(ex)
+                self._gcs_rpc_error_counter += 1
+                if self._gcs_rpc_error_counter > \
+                        dashboard_consts.MAX_COUNT_OF_GCS_RPC_ERROR:
+                    logger.error(
+                        "Dashboard suicide, the GCS RPC error count %s > %s",
+                        self._gcs_rpc_error_counter,
+                        dashboard_consts.MAX_COUNT_OF_GCS_RPC_ERROR)
+                    sys.exit(-1)
             except Exception as ex:
                 logger.exception(ex)
             finally:
@@ -118,6 +130,7 @@ class DashboardMaster:
                     dashboard_consts.REDIS_KEY_GCS_SERVER_ADDRESS)
                 if not gcs_address:
                     raise Exception("GCS address not found.")
+                logger.info("Connect to GCS at %s", gcs_address)
                 channel = aiogrpc.insecure_channel(gcs_address)
             except Exception as ex:
                 logger.error("Connect to GCS failed: %s, retry...", ex)
@@ -126,6 +139,9 @@ class DashboardMaster:
             else:
                 self.aiogrpc_gcs_channel = channel
                 break
+        # Create a NodeInfoGcsServiceStub.
+        self._gcs_node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
+            self.aiogrpc_gcs_channel)
 
         async def _async_notify():
             """Notify signals from queue."""
@@ -142,12 +158,12 @@ class DashboardMaster:
                 await asyncio.sleep(
                     dashboard_consts.PURGE_DATA_INTERVAL_SECONDS)
                 try:
-                    DataOrganizer.purge()
+                    await DataOrganizer.purge()
                 except Exception as e:
                     logger.exception(e)
 
         modules = self._load_modules()
         # Freeze signal after all modules loaded.
-        dashboard_utils.NotifyQueue.freeze_signal()
+        dashboard_utils.SignalManager.freeze()
         await asyncio.gather(self._update_nodes(), _async_notify(),
                              _purge_data(), *(m.run() for m in modules))
