@@ -214,6 +214,9 @@ class Monitor:
         This function loops forever, checking for messages about dead database
         clients and cleaning up state accordingly.
         """
+        # Initialize the mapping from raylet client ID to IP address.
+        self.update_raylet_map()
+
         # Initialize the subscription channel.
         self.psubscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_PATTERN)
         self.psubscribe(ray.gcs_utils.XRAY_JOB_PATTERN)
@@ -227,12 +230,10 @@ class Monitor:
 
         # Handle messages from the subscription channels.
         while True:
-            # Update the mapping from raylet client ID to IP address.
-            # This is only used to update the load metrics for the autoscaler.
-            self.update_raylet_map()
-
             # Process autoscaling actions
             if self.autoscaler:
+                # Only used to update the load metrics for the autoscaler.
+                self.update_raylet_map()
                 self.autoscaler.update()
 
             # Process a round of messages.
