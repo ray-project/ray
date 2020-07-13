@@ -91,7 +91,9 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
     // For new actor handles, their location is not resolved at GCS yet.
     // We should register them here until we get notification from GCS that they are
     // successfully registered.
-    if (inserted) actors_pending_location_resolution_.insert(actor_id);
+    if (inserted) {
+      RAY_CHECK(actors_pending_location_resolution_.insert(actor_id).second);
+    }
   }
 
   if (inserted) {

@@ -82,11 +82,6 @@ class ActorHandle {
   // Number of tasks that have been submitted on this handle.
   uint64_t task_counter_ GUARDED_BY(mutex_) = 0;
 
-  // False if actor handle is not persisted to GCS yet.
-  // This value will become true when the actor
-  // information is reported from GCS through pub/sub.
-  bool is_persisted_to_gcs_ GUARDED_BY(mutex_) = false;
-
   /// Mutex to protect fields in the actor handle.
   mutable absl::Mutex mutex_;
 
