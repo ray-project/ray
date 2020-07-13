@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_client/service_based_accessor.h"
-
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
 
 namespace ray {

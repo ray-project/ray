@@ -144,7 +144,7 @@ Note that this is the same information as displayed in the `ray memory command <
 
 Inspect Memory Usage
 ~~~~~~~~~~~~~~~~~~~~
-You can detect local memory anomalies through the Logical View tab. If NumObjectIdsInScope,
+You can detect local memory anomalies through the Logical View tab. If NumObjectRefsInScope,
 NumLocalObjects, or UsedLocalObjectMemory keeps growing without bound, it can lead to out
 of memory errors or eviction of objectIDs that your program still wants to use.
 
@@ -254,10 +254,10 @@ Logical View (Experimental)
 
 **Excuted**: A number of executed tasks for this actor.
 
-**NumObjectIdsInScope**: Number of object IDs in scope for this actor. object IDs
+**NumObjectRefsInScope**: Number of object refs in scope for this actor. object refs
 in scope will not be evicted unless object stores are full.
 
-**NumLocalObjects**: Number of object IDs that are in this actor's local memory.
+**NumLocalObjects**: Number of object refs that are in this actor's local memory.
 Only big objects (>100KB) are residing in plasma object stores, and other small
 objects are staying in local memory.
 
@@ -319,7 +319,7 @@ Memory
 
 **Type**: Type of a process. It is either a driver or worker.
 
-**Object ID**: Object ID of a Ray object.
+**Object Ref**: Object ref of a Ray object.
 
 **Object Size** Object Size of a Ray object in bytes.
 

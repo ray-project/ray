@@ -614,11 +614,11 @@ def test_remote_function_within_actor(ray_start_10_cpus):
         def __init__(self, x):
             self.x = x
             self.y = val2
-            self.object_ids = [f.remote(i) for i in range(5)]
+            self.object_refs = [f.remote(i) for i in range(5)]
             self.values2 = ray.get([f.remote(i) for i in range(5)])
 
         def get_values(self):
-            return self.x, self.y, self.object_ids, self.values2
+            return self.x, self.y, self.object_refs, self.values2
 
         def f(self):
             return [f.remote(i) for i in range(5)]
@@ -626,8 +626,8 @@ def test_remote_function_within_actor(ray_start_10_cpus):
         def g(self):
             return ray.get([g.remote(i) for i in range(5)])
 
-        def h(self, object_ids):
-            return ray.get(object_ids)
+        def h(self, object_refs):
+            return ray.get(object_refs)
 
     actor = Actor.remote(1)
     values = ray.get(actor.get_values.remote())
