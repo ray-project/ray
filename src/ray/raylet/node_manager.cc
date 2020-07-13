@@ -2301,10 +2301,23 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
   RAY_LOG(DEBUG) << "Submitting task: " << task.DebugString();
 
   if (local_queues_.HasTask(task_id)) {
-    RAY_LOG(WARNING) << "Submitted task " << task_id
-                     << " is already queued and will not be restarted. This is most "
-                        "likely due to spurious reconstruction.";
-    return;
+    if (RayConfig::instance().gcs_actor_service_enabled() && spec.IsActorCreationTask()) {
+      // NOTE(hchen): Normally when raylet receives a duplicated actor creation task
+      // from GCS, raylet should just ignore the task. However, due to the hack that
+      // we save the RPC reply in task's OnDispatch callback, we have to remove the
+      // old task and re-add the new task, to make sure the RPC reply callback is correct.
+      RAY_LOG(WARNING) << "Submitted actor creation task " << task_id
+                       << " is already queued. This is most likely due to a GCS restart. "
+                          "We will remove "
+                          "the old one from the queue, and enqueue the new one.";
+      std::unordered_set<TaskID> task_ids{task_id};
+      local_queues_.RemoveTasks(task_ids);
+    } else {
+      RAY_LOG(WARNING) << "Submitted task " << task_id
+                       << " is already queued and will not be restarted. This is most "
+                          "likely due to spurious reconstruction.";
+      return;
+    }
   }
 
   if (spec.IsActorTask()) {
