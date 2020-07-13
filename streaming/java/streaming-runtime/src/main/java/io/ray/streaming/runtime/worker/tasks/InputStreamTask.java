@@ -15,8 +15,8 @@ public abstract class InputStreamTask extends StreamTask {
   private final io.ray.streaming.runtime.serialization.Serializer javaSerializer;
   private final io.ray.streaming.runtime.serialization.Serializer crossLangSerializer;
 
-  public InputStreamTask(int taskId, Processor processor, JobWorker jobWorker) {
-    super(taskId, processor, jobWorker);
+  public InputStreamTask(Processor processor, JobWorker jobWorker) {
+    super(processor, jobWorker);
     readTimeoutMillis = jobWorker.getWorkerConfig().transferConfig.readerTimerIntervalMs();
     javaSerializer = new JavaSerializer();
     crossLangSerializer = new CrossLangSerializer();
@@ -47,16 +47,8 @@ public abstract class InputStreamTask extends StreamTask {
   }
 
   @Override
-  protected void cancelTask() throws Exception {
-    running = false;
-    while (!stopped) {
-    }
-  }
-
-  @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-      .add("taskId", taskId)
       .add("processor", processor)
       .toString();
   }

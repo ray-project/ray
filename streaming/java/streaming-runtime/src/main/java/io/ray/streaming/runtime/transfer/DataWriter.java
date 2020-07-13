@@ -7,7 +7,9 @@ import io.ray.streaming.runtime.config.types.TransferChannelType;
 import io.ray.streaming.runtime.util.Platform;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,6 +24,7 @@ public class DataWriter {
   private long nativeWriterPtr;
   private ByteBuffer buffer = ByteBuffer.allocateDirect(0);
   private long bufferAddress;
+  private List<String> outputChannels;
 
   {
     ensureBuffer(0);
@@ -31,14 +34,22 @@ public class DataWriter {
    * @param outputChannels output channels ids
    * @param toActors       downstream output actors
    * @param workerConfig   configuration
+   * @param checkpoints    offset of each channels
+   * @param checkpointId   the checkpoint ID to rollback
    */
   public DataWriter(List<String> outputChannels,
                     List<BaseActorHandle> toActors,
+                    Map<String, OffsetInfo> checkpoints,
+                    long checkpointId,
                     StreamingWorkerConfig workerConfig) {
+    this.checkpoints = checkpoints;
     Preconditions.checkArgument(!outputChannels.isEmpty());
     Preconditions.checkArgument(outputChannels.size() == toActors.size());
+    this.outputChannels = outputChannels;
+
     ChannelCreationParametersBuilder initialParameters =
         new ChannelCreationParametersBuilder().buildOutputQueueParameters(outputChannels, toActors);
+
     byte[][] outputChannelsBytes = outputChannels.stream()
         .map(ChannelId::idStrToBytes).toArray(byte[][]::new);
     long channelSize = workerConfig.transferConfig.channelSize();
@@ -102,6 +113,27 @@ public class DataWriter {
     }
   }
 
+  public Map<String, OffsetInfo> getOutputCheckpoints() {
+    long[] msgId = getOutputMsgIdNative(nativeWriterPtr);
+    Map<String, OffsetInfo> res = new HashMap<>(outputChannels.size());
+    for (int i = 0; i < outputChannels.size(); ++i) {
+      res.put(outputChannels.get(i), new OffsetInfo(msgId[i]));
+    }
+    LOG.info("got output points, {}.", res);
+    return res;
+  }
+
+  public void broadcastBarrier(long checkpointId, ByteBuffer attach) {
+    LOG.info("Broadcast barrier, cpId={}.", checkpointId);
+    Preconditions.checkArgument(attach.order() == ByteOrder.nativeOrder());
+    broadcastBarrierNative(nativeWriterPtr, checkpointId, checkpointId, attach.array());
+  }
+
+  public void clearCheckpoint(long checkpointId) {
+    LOG.info("Producer clear checkpoint, checkpointId={}.", checkpointId);
+    clearCheckpointNative(nativeWriterPtr, checkpointId);
+  }
+
   /**
    * stop writer
    */
@@ -136,5 +168,15 @@ public class DataWriter {
   private native void stopWriterNative(long nativeQueueProducerPtr);
 
   private native void closeWriterNative(long nativeQueueProducerPtr);
+
+  private native long[] getOutputMsgIdNative(long nativeQueueProducerPtr);
+
+  private native void broadcastBarrierNative(long nativeQueueProducerPtr, long checkpointId,
+                                             long barrierId, byte[] data);
+
+  private native void clearCheckpointNative(
+      long nativeQueueProducerPtr,
+      long checkpointId
+  );
 
 }

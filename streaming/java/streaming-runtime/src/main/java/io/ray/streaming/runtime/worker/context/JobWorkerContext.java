@@ -3,7 +3,9 @@ package io.ray.streaming.runtime.worker.context;
 import com.google.common.base.MoreObjects;
 import com.google.protobuf.ByteString;
 import io.ray.api.ActorHandle;
+import io.ray.api.id.ActorId;
 import io.ray.runtime.actor.NativeActorHandle;
+import io.ray.streaming.runtime.config.global.CommonConfig;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
 import io.ray.streaming.runtime.generated.RemoteCall;
 import io.ray.streaming.runtime.master.JobMaster;
@@ -33,6 +35,10 @@ public class JobWorkerContext implements Serializable {
     this.executionVertex = executionVertex;
   }
 
+  public ActorId getWorkerActorId() {
+    return executionVertex.getWorkerActorId();
+  }
+
   public int getWorkerId() {
     return executionVertex.getExecutionVertexId();
   }
@@ -51,6 +57,14 @@ public class JobWorkerContext implements Serializable {
 
   public ExecutionVertex getExecutionVertex() {
     return executionVertex;
+  }
+
+  public Map<String, String> getConf() {
+    return getExecutionVertex().getWorkerConfig();
+  }
+
+  public String getJobName() {
+    return getConf().get(CommonConfig.JOB_NAME);
   }
 
   @Override

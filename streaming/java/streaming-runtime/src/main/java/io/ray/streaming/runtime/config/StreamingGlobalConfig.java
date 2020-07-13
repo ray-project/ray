@@ -1,6 +1,7 @@
 package io.ray.streaming.runtime.config;
 
 import com.google.common.base.Preconditions;
+import io.ray.streaming.runtime.config.global.CheckpointConfig;
 import io.ray.streaming.runtime.config.global.CommonConfig;
 import io.ray.streaming.runtime.config.global.TransferConfig;
 import java.io.Serializable;
@@ -20,6 +21,7 @@ public class StreamingGlobalConfig implements Serializable {
 
   private static final Logger LOG = LoggerFactory.getLogger(StreamingGlobalConfig.class);
 
+  public CheckpointConfig checkpointConfig;
   public final CommonConfig commonConfig;
   public final TransferConfig transferConfig;
 

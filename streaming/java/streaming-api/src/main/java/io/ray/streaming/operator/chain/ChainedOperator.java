@@ -122,8 +122,8 @@ public abstract class ChainedOperator extends StreamOperator<Function> {
     }
 
     @Override
-    public void run() {
-      sourceOperator.run();
+    public void fetch(long checkpointId) {
+      sourceOperator.fetch(checkpointId);
     }
 
     @Override

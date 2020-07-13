@@ -7,4 +7,12 @@ import java.io.Serializable;
  */
 public interface Function extends Serializable {
 
+  default void loadCheckpoint(Object checkpointObject, long checkpointId) {
+
+  }
+
+  default Object doCheckpoint(long checkpointId) {
+    return null;
+  }
+
 }

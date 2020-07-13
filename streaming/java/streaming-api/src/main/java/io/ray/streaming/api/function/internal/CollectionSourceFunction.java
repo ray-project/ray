@@ -1,7 +1,7 @@
 package io.ray.streaming.api.function.internal;
 
 import io.ray.streaming.api.function.impl.SourceFunction;
-import java.util.ArrayList;
+
 import java.util.Collection;
 
 /**
@@ -22,12 +22,12 @@ public class CollectionSourceFunction<T> implements SourceFunction<T> {
   }
 
   @Override
-  public void run(SourceContext<T> ctx) throws Exception {
+  public void fetch(SourceContext<T> ctx, long checkpointId) throws Exception {
     for (T value : values) {
       ctx.collect(value);
     }
     // empty collection
-    values = new ArrayList<>();
+    values.clear();
   }
 
   @Override

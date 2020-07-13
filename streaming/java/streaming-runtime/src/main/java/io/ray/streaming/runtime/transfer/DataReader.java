@@ -9,6 +9,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,7 +31,10 @@ public class DataReader {
    */
   public DataReader(List<String> inputChannels,
                     List<BaseActorHandle> fromActors,
+                    Map<String, OffsetInfo> checkpoints,
+                    long checkpointId,
                     StreamingWorkerConfig workerConfig) {
+    this.checkpoints = checkpoints;
     Preconditions.checkArgument(inputChannels.size() > 0);
     Preconditions.checkArgument(inputChannels.size() == fromActors.size());
     ChannelCreationParametersBuilder initialParameters =

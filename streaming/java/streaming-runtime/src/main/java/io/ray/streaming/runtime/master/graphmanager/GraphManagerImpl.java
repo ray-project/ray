@@ -1,14 +1,22 @@
 package io.ray.streaming.runtime.master.graphmanager;
 
+import io.ray.api.BaseActorHandle;
+import io.ray.api.id.ActorId;
 import io.ray.streaming.jobgraph.JobGraph;
 import io.ray.streaming.jobgraph.JobVertex;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionEdge;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionJobEdge;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionJobVertex;
-import io.ray.streaming.runtime.master.JobRuntimeContext;
+import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
+import io.ray.streaming.runtime.master.context.JobMasterRuntimeContext;
+
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -16,9 +24,9 @@ public class GraphManagerImpl implements GraphManager {
 
   private static final Logger LOG = LoggerFactory.getLogger(GraphManagerImpl.class);
 
-  protected final JobRuntimeContext runtimeContext;
+  protected final JobMasterRuntimeContext runtimeContext;
 
-  public GraphManagerImpl(JobRuntimeContext runtimeContext) {
+  public GraphManagerImpl(JobMasterRuntimeContext runtimeContext) {
     this.runtimeContext = runtimeContext;
   }
 
@@ -48,6 +56,9 @@ public class GraphManagerImpl implements GraphManager {
 
     // create vertex
     Map<Integer, ExecutionJobVertex> exeJobVertexMap = new LinkedHashMap<>();
+    Map<String, Set<BaseActorHandle>> channelGroupedActors = new HashMap<>();
+    Map<ActorId, ExecutionVertex> actorIdExecutionVertexMap = new HashMap<>();
+    Map<Integer, ExecutionVertex> executionVertexMap = new HashMap<>();
     long buildTime = executionGraph.getBuildTime();
     for (JobVertex jobVertex : jobGraph.getJobVertices()) {
       int jobVertexId = jobVertex.getVertexId();
@@ -59,7 +70,7 @@ public class GraphManagerImpl implements GraphManager {
               buildTime));
     }
 
-    // connect vertex
+    // for each job edge, connect all source exeVertices and target exeVertices
     jobGraph.getJobEdges().forEach(jobEdge -> {
       ExecutionJobVertex source = exeJobVertexMap.get(jobEdge.getSrcVertexId());
       ExecutionJobVertex target = exeJobVertexMap.get(jobEdge.getTargetVertexId());
@@ -70,19 +81,40 @@ public class GraphManagerImpl implements GraphManager {
       source.getOutputEdges().add(executionJobEdge);
       target.getInputEdges().add(executionJobEdge);
 
-      source.getExecutionVertices().forEach(vertex -> {
-        target.getExecutionVertices().forEach(outputVertex -> {
-          ExecutionEdge executionEdge = new ExecutionEdge(vertex, outputVertex, executionJobEdge);
-          vertex.getOutputEdges().add(executionEdge);
-          outputVertex.getInputEdges().add(executionEdge);
+      source.getExecutionVertices().forEach(sourceExeVertex -> {
+        target.getExecutionVertices().forEach(targetExeVertex -> {
+          // generate channel ID and pre-process some mappings
+          String channelId = sourceExeVertex.getChannelIdByPeerActor(targetExeVertex.getWorkerActor());
+          addActorToChannelGroupedActors(channelGroupedActors, channelId, sourceExeVertex.getWorkerActor());
+          addActorToChannelGroupedActors(channelGroupedActors, channelId, targetExeVertex.getWorkerActor());
+          actorIdExecutionVertexMap.put(targetExeVertex.getActorId(), targetExeVertex);
+          executionVertexMap.put(targetExeVertex.getExecutionVertexId(), targetExeVertex);
+          actorIdExecutionVertexMap.put(sourceExeVertex.getActorId(), sourceExeVertex);
+          executionVertexMap.put(sourceExeVertex.getExecutionVertexId(), sourceExeVertex);
+          // build execution edge
+          ExecutionEdge executionEdge = new ExecutionEdge(sourceExeVertex, targetExeVertex, executionJobEdge);
+          sourceExeVertex.getOutputEdges().add(executionEdge);
+          targetExeVertex.getInputEdges().add(executionEdge);
         });
       });
     });
 
     // set execution job vertex into execution graph
     executionGraph.setExecutionJobVertexMap(exeJobVertexMap);
+    executionGraph.setExecutionVertexMap(executionVertexMap);
+    executionGraph.setActorIdExecutionVertexMap(actorIdExecutionVertexMap);
+    executionGraph.setChannelGroupedActors(channelGroupedActors);
 
     return executionGraph;
+  }
+
+  private void addActorToChannelGroupedActors(
+      Map<String, Set<BaseActorHandle>> channelGroupedActors,
+      String channelId,
+      BaseActorHandle actor) {
+
+    Set<BaseActorHandle> actorSet = channelGroupedActors.computeIfAbsent(channelId, k -> new HashSet<>());
+    actorSet.add(actor);
   }
 
   @Override

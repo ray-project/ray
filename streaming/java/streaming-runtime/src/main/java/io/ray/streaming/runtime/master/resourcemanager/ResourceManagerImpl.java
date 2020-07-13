@@ -11,7 +11,7 @@ import io.ray.streaming.runtime.config.types.ResourceAssignStrategyType;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
 import io.ray.streaming.runtime.core.resource.Container;
 import io.ray.streaming.runtime.core.resource.Resources;
-import io.ray.streaming.runtime.master.JobRuntimeContext;
+import io.ray.streaming.runtime.master.context.JobMasterRuntimeContext;
 import io.ray.streaming.runtime.master.resourcemanager.strategy.ResourceAssignStrategy;
 import io.ray.streaming.runtime.master.resourcemanager.strategy.ResourceAssignStrategyFactory;
 import io.ray.streaming.runtime.util.RayUtils;
@@ -34,7 +34,7 @@ public class ResourceManagerImpl implements ResourceManager {
   /**
    * Job runtime context.
    */
-  private JobRuntimeContext runtimeContext;
+  private JobMasterRuntimeContext runtimeContext;
 
   /**
    * Resource related configuration.
@@ -62,7 +62,7 @@ public class ResourceManagerImpl implements ResourceManager {
   private final ScheduledExecutorService resourceUpdater = new ScheduledThreadPoolExecutor(1,
       new ThreadFactoryBuilder().setNameFormat("resource-update-thread").build());
 
-  public ResourceManagerImpl(JobRuntimeContext runtimeContext) {
+  public ResourceManagerImpl(JobMasterRuntimeContext runtimeContext) {
     this.runtimeContext = runtimeContext;
     StreamingMasterConfig masterConfig = runtimeContext.getConf().masterConfig;
 

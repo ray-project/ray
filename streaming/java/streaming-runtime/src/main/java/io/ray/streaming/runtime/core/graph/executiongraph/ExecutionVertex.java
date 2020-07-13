@@ -1,20 +1,24 @@
 package io.ray.streaming.runtime.core.graph.executiongraph;
 
 import com.google.common.base.MoreObjects;
+import com.google.common.collect.Maps;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.id.ActorId;
 import io.ray.streaming.api.Language;
 import io.ray.streaming.jobgraph.VertexType;
 import io.ray.streaming.operator.StreamOperator;
 import io.ray.streaming.runtime.config.master.ResourceConfig;
-import io.ray.streaming.runtime.core.resource.ContainerID;
+import io.ray.streaming.runtime.core.resource.ContainerId;
 import io.ray.streaming.runtime.core.resource.ResourceType;
+import io.ray.streaming.runtime.transfer.ChannelId;
+
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -58,7 +62,9 @@ public class ExecutionVertex implements Serializable {
   /**
    * The id of the container which this vertex's worker actor belongs to.
    */
-  private ContainerID containerId;
+  private ContainerId containerId;
+
+  private String pid;
 
   /**
    * Worker actor handle.
@@ -72,6 +78,14 @@ public class ExecutionVertex implements Serializable {
 
   private List<ExecutionEdge> inputEdges = new ArrayList<>();
   private List<ExecutionEdge> outputEdges = new ArrayList<>();
+
+  private transient List<String> outputChannelIdList;
+  private transient List<String> inputChannelIdList;
+
+  private transient List<BaseActorHandle> outputActorList;
+  private transient List<BaseActorHandle> inputActorList;
+  private Map<BaseActorHandle, String> actorChannelMap;
+
 
   public ExecutionVertex(
       int globalIndex,
@@ -89,12 +103,11 @@ public class ExecutionVertex implements Serializable {
     this.executionVertexIndex = index;
     this.resource = generateResources(resourceConfig);
     this.workerConfig = genWorkerConfig(executionJobVertex.getJobConfig());
+    generateActorChannelInfo();
   }
 
   private Map<String, String> genWorkerConfig(Map<String, String> jobConfig) {
-    Map<String, String> workerConfig = new HashMap<>();
-    workerConfig.putAll(jobConfig);
-    return workerConfig;
+    return new HashMap<>(jobConfig);
   }
 
   public int getExecutionVertexId() {
@@ -199,6 +212,14 @@ public class ExecutionVertex implements Serializable {
         .collect(Collectors.toList());
   }
 
+  public ActorId getActorId() {
+    return null == workerActor ? null : workerActor.getId();
+  }
+
+  public String getActorName() {
+    return String.valueOf(executionVertexId);
+  }
+
   public Map<String, Double> getResource() {
     return resource;
   }
@@ -211,19 +232,79 @@ public class ExecutionVertex implements Serializable {
     return buildTime;
   }
 
-  public ContainerID getContainerId() {
+  public ContainerId getContainerId() {
     return containerId;
   }
 
-  public void setContainerId(ContainerID containerId) {
+  public void setContainerId(ContainerId containerId) {
     this.containerId = containerId;
   }
 
-  public void setContainerIfNotExist(ContainerID containerId) {
+  public String getPid() {
+    return pid;
+  }
+
+  public void setPid(String pid) {
+    this.pid = pid;
+  }
+
+  public void setContainerIfNotExist(ContainerId containerId) {
     if (null == this.containerId) {
       this.containerId = containerId;
     }
   }
+
+  /*---------channel-actor relations---------*/
+  public List<String> getOutputChannelIdList() {
+    return outputChannelIdList;
+  }
+
+  public List<BaseActorHandle> getOutputActorList() {
+    return outputActorList;
+  }
+
+  public List<String> getInputChannelIdList() {
+    return inputChannelIdList;
+  }
+
+  public List<BaseActorHandle> getInputActorList() {
+    return inputActorList;
+  }
+
+  public String getChannelIdByPeerActor(BaseActorHandle peerActor) {
+    return actorChannelMap.get(peerActor);
+  }
+
+  private void generateActorChannelInfo() {
+    inputChannelIdList = new ArrayList<>();
+    inputActorList = new ArrayList<>();
+    outputChannelIdList = new ArrayList<>();
+    outputActorList = new ArrayList<>();
+    actorChannelMap = new HashMap<>();
+
+    List<ExecutionEdge> inputEdges = getInputEdges();
+    for (ExecutionEdge edge : inputEdges) {
+      String channelId = ChannelId.genIdStr(
+          edge.getSourceExecutionVertex().getExecutionVertexId(),
+          getExecutionVertexId(),
+          getBuildTime());
+      inputChannelIdList.add(channelId);
+      inputActorList.add(edge.getSourceExecutionVertex().getWorkerActor());
+      actorChannelMap.put(edge.getSourceExecutionVertex().getWorkerActor(), channelId);
+    }
+
+    List<ExecutionEdge> outputEdges = getOutputEdges();
+    for (ExecutionEdge edge : outputEdges) {
+      String channelId = ChannelId.genIdStr(
+          getExecutionVertexId(),
+          edge.getTargetExecutionVertex().getExecutionVertexId(),
+          getBuildTime());
+      outputChannelIdList.add(channelId);
+      outputActorList.add(edge.getTargetExecutionVertex().getWorkerActor());
+      actorChannelMap.put(edge.getTargetExecutionVertex().getWorkerActor(), channelId);
+    }
+  }
+
 
   private Map<String, Double> generateResources(ResourceConfig resourceConfig) {
     Map<String, Double> resourceMap = new HashMap<>();

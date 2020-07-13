@@ -1,9 +1,9 @@
 package io.ray.streaming.runtime.core.resource;
 
-import io.ray.streaming.runtime.core.common.AbstractID;
+import io.ray.streaming.runtime.core.common.AbstractId;
 
 /**
  * Container unique identifier.
  */
-public class ContainerID extends AbstractID {
+public class ContainerId extends AbstractId {
 }

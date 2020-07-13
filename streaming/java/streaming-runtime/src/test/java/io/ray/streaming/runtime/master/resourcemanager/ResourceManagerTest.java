@@ -7,7 +7,7 @@ import io.ray.streaming.runtime.BaseUnitTest;
 import io.ray.streaming.runtime.config.StreamingConfig;
 import io.ray.streaming.runtime.config.global.CommonConfig;
 import io.ray.streaming.runtime.core.resource.Container;
-import io.ray.streaming.runtime.master.JobRuntimeContext;
+import io.ray.streaming.runtime.master.context.JobMasterRuntimeContext;
 import io.ray.streaming.runtime.util.RayUtils;
 import java.util.HashMap;
 import java.util.List;
@@ -44,8 +44,8 @@ public class ResourceManagerTest extends BaseUnitTest {
     Map<String, String> conf = new HashMap<String, String>();
     conf.put(CommonConfig.JOB_NAME, "testApi");
     StreamingConfig config = new StreamingConfig(conf);
-    JobRuntimeContext jobRuntimeContext = new JobRuntimeContext(config);
-    ResourceManager resourceManager = new ResourceManagerImpl(jobRuntimeContext);
+    JobMasterRuntimeContext jobMasterRuntimeContext = new JobMasterRuntimeContext(config);
+    ResourceManager resourceManager = new ResourceManagerImpl(jobMasterRuntimeContext);
 
     // test register container
     List<Container> containers = resourceManager.getRegisteredContainers();
