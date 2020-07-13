@@ -41,7 +41,11 @@ generate_one io.ray.runtime.object.NativeObjectStore
 generate_one io.ray.runtime.task.NativeTaskExecutor
 generate_one io.ray.runtime.gcs.GlobalStateAccessor
 generate_one io.ray.runtime.metric.TagKey
+generate_one io.ray.runtime.metric.Metric
 generate_one io.ray.runtime.metric.Gauge
+generate_one io.ray.runtime.metric.Count
+generate_one io.ray.runtime.metric.Sum
+generate_one io.ray.runtime.metric.Histogram
 
 # Remove empty files
 rm -f io_ray_runtime_RayNativeRuntime_AsyncContext.h

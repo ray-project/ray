@@ -6,6 +6,7 @@ import io.ray.runtime.metric.TagKey;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class MetricTest extends BaseTest {
@@ -18,6 +19,7 @@ public class MetricTest extends BaseTest {
     Gauge gauge = new Gauge("metric1", "", "", tags);
     gauge.update(2);
     gauge.record();
+    Assert.assertTrue(gauge.getValue() <= 2.0 + 1e-5 && gauge.getValue() >= 2.0 - 1e-5);
     gauge.unregister();
   }
 }

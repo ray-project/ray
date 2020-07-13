@@ -15,12 +15,16 @@
 #pragma once
 
 #include <jni.h>
+#include <algorithm>
 
 #include "ray/common/buffer.h"
 #include "ray/common/function_descriptor.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/status.h"
+#include "ray/stats/metric.h"
+
+#include "opencensus/tags/tag_key.h"
 
 /// Boolean class
 extern jclass java_boolean_class;
@@ -282,6 +286,16 @@ inline void JavaLongArrayToNativeLongVector(JNIEnv *env, jlongArray long_array,
   env->ReleaseLongArrayElements(long_array, long_array_ptr, 0);
 }
 
+/// Convert a Java double array to C++ std::vector<double>.
+inline void JavaDoubleArrayToNativeDoubleVector(JNIEnv *env, jdoubleArray double_array,
+                                                std::vector<double> *native_vector) {
+  jdouble *double_array_ptr = env->GetDoubleArrayElements(double_array, nullptr);
+  jsize vec_size = env->GetArrayLength(double_array);
+  native_vector->insert(native_vector->begin(), double_array_ptr,
+                        double_array_ptr + vec_size);
+  env->ReleaseDoubleArrayElements(double_array, double_array_ptr, 0);
+}
+
 /// Convert a C++ std::vector to a Java List.
 template <typename NativeT>
 inline jobject NativeVectorToJavaList(
@@ -430,4 +444,23 @@ inline jobject NativeRayFunctionDescriptorToJavaStringList(
   }
   RAY_LOG(FATAL) << "Unknown function descriptor type: " << function_descriptor->Type();
   return NativeStringVectorToJavaStringList(env, std::vector<std::string>());
+}
+
+using TagKeyType = opencensus::tags::TagKey;
+
+inline void MetricTransform(JNIEnv *env, jstring j_name, jstring j_description,
+                            jstring j_unit, jobject tag_key_list,
+                            std::string *metric_name, std::string *description,
+                            std::string *unit, std::vector<TagKeyType> &tag_keys) {
+  *metric_name = JavaStringToNativeString(env, static_cast<jstring>(j_name));
+  *description = JavaStringToNativeString(env, static_cast<jstring>(j_description));
+  *unit = JavaStringToNativeString(env, static_cast<jstring>(j_unit));
+  std::vector<std::string> tag_key_str_list;
+  JavaStringListToNativeStringVector(env, tag_key_list, &tag_key_str_list);
+  // We just call TagKeyType::Register to get tag object since opencensus tags
+  // registry is thread-safe and registry can return a new tag or registered
+  // item when it already exists.
+  std::transform(tag_key_str_list.begin(), tag_key_str_list.end(),
+                 std::back_inserter(tag_keys),
+                 [](std::string tag_key) { return TagKeyType::Register(tag_key); });
 }
