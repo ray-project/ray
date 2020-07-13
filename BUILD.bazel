@@ -11,13 +11,13 @@ load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("//bazel:ray.bzl", "COPTS", "PYX_COPTS", "PYX_SRCS", "copy_to_workspace")
 
 config_setting(
-    name = "windows_msvc-cl",
-    values = {"compiler": "msvc-cl"},
+    name = "msvc-cl",
+    flag_values = {"@bazel_tools//tools/cpp:compiler": "msvc-cl"},
 )
 
 config_setting(
-    name = "windows_clang-cl",
-    values = {"compiler": "clang-cl"},
+    name = "clang-cl",
+    flag_values = {"@bazel_tools//tools/cpp:compiler": "clang-cl"},
 )
 
 # === Begin of protobuf definitions ===
@@ -846,7 +846,7 @@ cc_test(
     name = "reconstruction_policy_test",
     srcs = ["src/ray/raylet/reconstruction_policy_test.cc"],
     copts = COPTS + select({
-        "//:windows_msvc-cl": [
+        "//:msvc-cl": [
         ],
         "//conditions:default": [
             # Ignore this warning since it's impractical to fix in the relevant headers
