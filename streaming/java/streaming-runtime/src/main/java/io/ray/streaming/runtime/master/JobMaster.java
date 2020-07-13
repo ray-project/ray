@@ -91,14 +91,15 @@ public class JobMaster {
     runtimeContext.setExecutionGraph(executionGraph);
 
     // init scheduler
+    boolean schedulingResult;
     try {
       scheduler = new JobSchedulerImpl(this);
-      scheduler.scheduleJob(graphManager.getExecutionGraph());
+      schedulingResult = scheduler.scheduleJob(graphManager.getExecutionGraph());
     } catch (Exception e) {
       LOG.error("Failed to submit job.", e);
       return false;
     }
-    return true;
+    return schedulingResult;
   }
 
   public ActorHandle<JobMaster> getJobMasterActor() {

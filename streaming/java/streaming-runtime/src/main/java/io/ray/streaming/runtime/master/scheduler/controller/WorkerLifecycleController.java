@@ -80,7 +80,7 @@ public class WorkerLifecycleController {
    */
   public boolean initWorkers(
       Map<ExecutionVertex, JobWorkerContext> vertexToContextMap, int timeout) {
-    LOG.info("Begin initiating workers: {}.", vertexToContextMap);
+    LOG.info("Begin initiating workers: {} with timeout: {}.", vertexToContextMap, timeout);
     long startTime = System.currentTimeMillis();
 
     Map<ObjectRef<Boolean>, ActorId> rayObjects = new HashMap<>();
@@ -92,11 +92,18 @@ public class WorkerLifecycleController {
 
     List<ObjectRef<Boolean>> objectRefList = new ArrayList<>(rayObjects.keySet());
 
-    LOG.info("Waiting for workers' initialization.");
+    LOG.info("Waiting for workers' initialization, size: {}.", objectRefList.size());
     WaitResult<Boolean> result = Ray.wait(objectRefList, objectRefList.size(), timeout);
     if (result.getReady().size() != objectRefList.size()) {
       LOG.error("Initializing workers timeout[{} ms].", timeout);
       return false;
+    }
+
+    for (ObjectRef<Boolean> boolResult : objectRefList) {
+      if (!boolResult.get()) {
+        LOG.error("Initializing workers end with failure.");
+        return false;
+      }
     }
 
     LOG.info("Finished waiting workers' initialization.");

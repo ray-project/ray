@@ -49,9 +49,7 @@ public class JobSchedulerImpl implements JobScheduler {
     prepareResourceAndCreateWorker(executionGraph);
 
     // init worker context and start to run
-    initAndStart(executionGraph);
-
-    return true;
+    return initAndStart(executionGraph);
   }
 
   /**
@@ -76,18 +74,23 @@ public class JobSchedulerImpl implements JobScheduler {
    *
    * @param executionGraph physical plan
    */
-  private void initAndStart(ExecutionGraph executionGraph) {
+  private boolean initAndStart(ExecutionGraph executionGraph) {
     // generate vertex - context map
     Map<ExecutionVertex, JobWorkerContext> vertexToContextMap = buildWorkersContext(executionGraph);
 
     // init workers
-    initWorkers(vertexToContextMap);
+    if (!initWorkers(vertexToContextMap)) {
+      return false;
+    }
 
     // init master
     initMaster();
 
     // start workers
-    startWorkers(executionGraph);
+    if (!startWorkers(executionGraph)) {
+      return false;
+    }
+    return true;
   }
 
   /**
@@ -101,16 +104,17 @@ public class JobSchedulerImpl implements JobScheduler {
     long startTs = System.currentTimeMillis();
 
     // create JobWorker actors
-    boolean createResult = workerLifecycleController
-        .createWorkers(executionGraph.getAllAddedExecutionVertices());
+    List<ExecutionVertex> allAddedVertices = executionGraph.getAllAddedExecutionVertices();
+    boolean createResult = workerLifecycleController.createWorkers(allAddedVertices);
 
     if (createResult) {
-      LOG.info("Finished creating workers. Cost {} ms.", System.currentTimeMillis() - startTs);
-      return true;
+      LOG.info("Finished creating workers(number={}). Cost {} ms.",
+          allAddedVertices.size(), System.currentTimeMillis() - startTs);
     } else {
-      LOG.error("Failed to create workers. Cost {} ms.", System.currentTimeMillis() - startTs);
-      return false;
+      LOG.error("Failed creating workers(number={}). Cost {} ms.",
+          allAddedVertices.size(), System.currentTimeMillis() - startTs);
     }
+    return createResult;
   }
 
   /**
@@ -119,15 +123,16 @@ public class JobSchedulerImpl implements JobScheduler {
    * @param vertexToContextMap vertex - context map
    */
   protected boolean initWorkers(Map<ExecutionVertex, JobWorkerContext> vertexToContextMap) {
-    boolean result;
+    LOG.info("Begin initiating workers.");
+    boolean initResult;
     try {
-      result = workerLifecycleController.initWorkers(vertexToContextMap,
-          jobConf.masterConfig.schedulerConfig.workerInitiationWaitTimeoutMs());
+      initResult = workerLifecycleController.initWorkers(vertexToContextMap,
+        jobConf.masterConfig.schedulerConfig.workerInitiationWaitTimeoutMs());
     } catch (Exception e) {
       LOG.error("Failed to initiate workers.", e);
       return false;
     }
-    return result;
+    return initResult;
   }
 
   /**
