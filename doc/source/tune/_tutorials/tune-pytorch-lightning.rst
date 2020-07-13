@@ -102,9 +102,7 @@ The callback just reports some metrics back to Tune after each validation epoch:
    :start-after: __tune_callback_begin__
    :end-before: __tune_callback_end__
 
-Note that we have to explicitly move the output tensors to the CPU in order to
-support training on GPUs. If they've already been on the CPU (e.g. if you don't
-have a GPU), this will still work.
+Note that we have to explicitly convert the metrics from a tensor to a Python value.
 
 Adding the Tune training function
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

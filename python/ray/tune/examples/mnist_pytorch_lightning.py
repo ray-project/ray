@@ -134,8 +134,8 @@ def train_mnist(config):
 class TuneReportCallback(Callback):
     def on_validation_end(self, trainer, pl_module):
         tune.report(
-            loss=trainer.callback_metrics["avg_val_loss"].cpu(),
-            mean_accuracy=trainer.callback_metrics["avg_val_accuracy"].cpu())
+            loss=trainer.callback_metrics["avg_val_loss"].item(),
+            mean_accuracy=trainer.callback_metrics["avg_val_accuracy"].item())
 # __tune_callback_end__
 
 
