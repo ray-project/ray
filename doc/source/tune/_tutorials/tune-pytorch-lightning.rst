@@ -221,9 +221,11 @@ we would like to use:
    :lines: 29
    :dedent: 4
 
-Note that you can also use `fractional GPUs <https://docs.ray.io/en/master/using-ray-with-gpus.html#fractional-gpus>`_.
-So, something like ``gpus_per_trial=0.25`` is totally valid, as long
-as your model still fits on the GPU.
+Please note that in the current state of PyTorch Lightning, training
+on :doc:`fractional GPUs </using-ray-with-gpus>` or
+multiple GPUs requires some workarounds. We will address these in a
+separate tutorial - for now this example works with no or exactly one
+GPU.
 
 Putting it together
 ~~~~~~~~~~~~~~~~~~~
