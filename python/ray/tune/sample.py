@@ -1,4 +1,6 @@
 import logging
+import random
+
 import numpy as np
 
 logger = logging.getLogger(__name__)
@@ -62,7 +64,7 @@ def choice(*args, **kwargs):
     ``tune.sample_from(lambda _: np.random.choice(10))``
 
     """
-    return sample_from(lambda _: np.random.choice(*args, **kwargs))
+    return sample_from(lambda _: random.choice(*args, **kwargs))
 
 
 def randint(*args, **kwargs):

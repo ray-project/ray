@@ -113,7 +113,10 @@ that each training run downloads the full MNIST dataset. Instead, we want to acc
 a shared data location.
 
 We are also able to specify the number of epochs to train each model, and the number
-of GPUs we want to use for training.
+of GPUs we want to use for training. We also create a TensorBoard logger that writes
+logfiles directly into Tune's root trial directory - if we didn't do that PyTorch
+Lightning would create subdirectories, and each trial would thus be shown twice in
+TensorBoard, one time for Tune's logs, and another time for PyTorch Lightning's logs.
 
 .. literalinclude:: /../../python/ray/tune/examples/mnist_pytorch_lightning.py
    :language: python

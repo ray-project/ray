@@ -16,6 +16,7 @@ import shutil
 from functools import partial
 from tempfile import mkdtemp
 from pytorch_lightning.callbacks import Callback
+from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.utilities.cloud_io import load as pl_load
 from ray import tune
 from ray.tune import CLIReporter
@@ -145,6 +146,8 @@ def train_mnist_tune(config, data_dir=None, num_epochs=10, num_gpus=0):
     trainer = pl.Trainer(
         max_epochs=num_epochs,
         gpus=num_gpus,
+        logger=TensorBoardLogger(
+            save_dir=tune.get_trial_dir(), name="", version="."),
         progress_bar_refresh_rate=0,
         callbacks=[TuneReportCallback()])
 
@@ -171,6 +174,8 @@ def train_mnist_tune_checkpoint(
     trainer = pl.Trainer(
         max_epochs=num_epochs,
         gpus=num_gpus,
+        logger=TensorBoardLogger(
+            save_dir=tune.get_trial_dir(), name="", version="."),
         progress_bar_refresh_rate=0,
         callbacks=[CheckpointCallback(),
                    TuneReportCallback()])
