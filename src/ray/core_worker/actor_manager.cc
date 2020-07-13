@@ -92,7 +92,7 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
     // We should register them here until we get notification from GCS that they are
     // successfully registered.
     if (inserted) {
-      RAY_CHECK(actors_pending_location_resolution_.insert(actor_id).second);
+      actors_pending_location_resolution_.insert(actor_id);
     }
   }
 
@@ -225,7 +225,7 @@ void ActorManager::MarkPendingActorLocationResolved(const ActorID &actor_id) {
   actors_pending_location_resolution_.erase(it);
 }
 
-bool ActorManager::IsActorLocationPending(const ActorID &actor_id) {
+bool ActorManager::IsActorLocationPending(const ActorID &actor_id) const {
   absl::MutexLock lock(&mutex_);
   auto it = actors_pending_location_resolution_.find(actor_id);
   return it != actors_pending_location_resolution_.end();
@@ -238,6 +238,9 @@ void ActorManager::DisconnectPendingLocationActorIfNeeded(const ActorID &actor_i
   const WorkerID &worker_id =
       WorkerID::FromBinary(actor_handle->GetOwnerAddress().worker_id());
 
+  // Check both worker and node table to see if the owner is dead.
+  // NOTE: We should check both tables because worker failures are not reported when nodes
+  // fail.
   RAY_CHECK_OK(gcs_client_->Workers().AsyncGet(
       worker_id, [this, actor_id, node_id](
                      Status status, const boost::optional<rpc::WorkerTableData> &result) {
@@ -250,8 +253,6 @@ void ActorManager::DisconnectPendingLocationActorIfNeeded(const ActorID &actor_i
         if (result && !result->is_alive()) {
           worker_or_node_failed = true;
         } else {
-          // Check node failure. We should do this because worker failure event is not
-          // reported when nodes fail.
           const auto &optional_node_info = gcs_client_->Nodes().Get(node_id);
           RAY_CHECK(optional_node_info)
               << "Node information for an actor_id, " << actor_id << " is not found.";

@@ -148,12 +148,12 @@ class ActorManager {
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Mark the actor that its location is identified from GCS. This should be called when
-  /// the GCS publishes a actor information.
+  /// the GCS publishes an actor notification.
   ///
   /// \param[in] The actor id of the actor whose location is resolved by GCS.
   void MarkPendingActorLocationResolved(const ActorID &actor_id);
 
-  /// Asynchronoushly disconnect the actor if the owner of the actor is dead before its
+  /// Asynchronously disconnect the actor if the owner of the actor is dead before its
   /// location is resolved.
   ///
   /// \param[in] actor_id The actor id of the actor,
@@ -164,7 +164,7 @@ class ActorManager {
   ///
   /// \param[in] actor_id The actor id to check if its location is pending.
   /// \return True if the actor's location is still pending.
-  bool IsActorLocationPending(const ActorID &actor_id);
+  bool IsActorLocationPending(const ActorID &actor_id) const;
 
   /// GCS client
   std::shared_ptr<gcs::GcsClient> gcs_client_;
