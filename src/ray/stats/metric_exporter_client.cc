@@ -44,9 +44,9 @@ void MetricExporterDecorator::ReportMetrics(const std::vector<MetricPoint> &poin
 ///
 MetricsAgentExporter::MetricsAgentExporter(std::shared_ptr<MetricExporterClient> exporter,
                                            const int port,
-                                           boost::asio::io_service &io_service)
+                                           boost::asio::io_service &io_service,
+                                           const std::string address)
     : MetricExporterDecorator(exporter), client_call_manager_(io_service) {
-  const std::string address = "127.0.0.1";
   client_.reset(new rpc::MetricsAgentClient(address, port, client_call_manager_));
 }
 

@@ -44,8 +44,8 @@ static void Init(
     const TagsType &global_tags, const int metrics_agent_port,
     boost::asio::io_service &io_service,
     std::shared_ptr<MetricExporterClient> exporter_to_use = nullptr,
-    int64_t k_report_batch_size = RayConfig::instance().k_report_batch_size(),
-    bool disable_stats = RayConfig::instance().disable_stats()) {
+    int64_t metrics_report_batch_size = RayConfig::instance().metrics_report_batch_size(),
+    bool disable_stats = !RayConfig::instance().enable_metrics_collection()) {
   StatsConfig::instance().SetIsDisableStats(disable_stats);
   if (disable_stats) {
     RAY_LOG(INFO) << "Disabled stats.";
@@ -57,13 +57,15 @@ static void Init(
   // Default exporter is metrics agent exporter.
   if (exporter_to_use == nullptr) {
     std::shared_ptr<MetricExporterClient> stdout_exporter(new StdoutExporterClient());
-    exporter.reset(
-        new MetricsAgentExporter(stdout_exporter, metrics_agent_port, io_service));
+    exporter.reset(new MetricsAgentExporter(stdout_exporter, metrics_agent_port,
+                                            io_service, "127.0.0.1"));
   } else {
     exporter = exporter_to_use;
   }
 
-  MetricExporter::Register(exporter, k_report_batch_size);
+  // TODO(sang): Currently, we don't do any cleanup. This can lead us to lose last 10
+  // seconds data before we exit the main script.
+  MetricExporter::Register(exporter, metrics_report_batch_size);
   opencensus::stats::StatsExporter::SetInterval(
       StatsConfig::instance().GetReportInterval());
   opencensus::stats::DeltaProducer::Get()->SetHarvestInterval(

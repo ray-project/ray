@@ -58,7 +58,7 @@ class MetricExporterDecorator : public MetricExporterClient {
 class MetricsAgentExporter : public MetricExporterDecorator {
  public:
   MetricsAgentExporter(std::shared_ptr<MetricExporterClient> exporter, const int port,
-                       boost::asio::io_service &io_service);
+                       boost::asio::io_service &io_service, const std::string address);
 
   ~MetricsAgentExporter() {}
 

@@ -45,6 +45,6 @@ message ReportMetricsReply {
 service ReporterService {
   // Get the profiling stats.
   rpc GetProfilingStats(GetProfilingStatsRequest) returns (GetProfilingStatsReply);
-  // Report Metrics to the local metrics agents.
+  // Report metrics to the local metrics agents.
   rpc ReportMetrics(ReportMetricsRequest) returns (ReportMetricsReply);
 }

@@ -227,7 +227,7 @@ class Reporter:
     def run(self):
         """Publish the port."""
         thread_pool = futures.ThreadPoolExecutor(max_workers=10)
-        server = grpc.server(thread_pool)
+        server = grpc.server(thread_pool, options=(("grpc.so_reuseport", 0), ))
         reporter_pb2_grpc.add_ReporterServiceServicer_to_server(
             ReporterServer(), server)
         port = server.add_insecure_port("[::]:{}".format(self.port))
