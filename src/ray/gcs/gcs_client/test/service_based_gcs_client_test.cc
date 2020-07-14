@@ -32,7 +32,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   void SetUp() override {
     config_.grpc_server_port = 0;
     config_.grpc_server_name = "MockedGcsServer";
-    config_.grpc_server_thread_num = 1;
+    config_.grpc_server_thread_num = 10;
     config_.redis_address = "127.0.0.1";
     config_.is_test = true;
     config_.redis_port = TEST_REDIS_SERVER_PORTS.front();
@@ -1126,13 +1126,9 @@ TEST_F(ServiceBasedGcsClientTest, TestGcsRedisFailureDetector) {
   // Stop redis.
   TestSetupUtil::ShutDownRedisServers();
 
-  // Sleep 3 times of gcs_redis_heartbeat_interval_milliseconds to make sure gcs_server
-  // detects that the redis is failure and then stop itself.
-  auto interval_ms = RayConfig::instance().gcs_redis_heartbeat_interval_milliseconds();
-  std::this_thread::sleep_for(std::chrono::milliseconds(3 * interval_ms));
-
   // Check if GCS server has exited.
-  RAY_CHECK(gcs_server_->IsStopped());
+  auto condition = [this]() { return gcs_server_->IsStopped(); };
+  EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
 }
 
 }  // namespace ray
