@@ -48,7 +48,7 @@ const MemoryRowGroup: React.FC<MemoryRowGroupProps> = ({
     "node_ip_address",
     "pid",
     "type",
-    "object_id",
+    "object_ref",
     "object_size",
     "reference_type",
     "call_site",

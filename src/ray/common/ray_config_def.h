@@ -321,3 +321,6 @@ RAY_CONFIG(bool, disable_stats, false)
 
 /// Whether enable stdout exporter.
 RAY_CONFIG(bool, enable_stdout_exporter, false)
+
+/// Whether start the Plasma Store as a Raylet thread.
+RAY_CONFIG(bool, put_small_object_in_memory_store, false)

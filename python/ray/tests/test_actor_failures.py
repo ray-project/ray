@@ -473,7 +473,7 @@ def test_multiple_actor_restart(ray_start_cluster_head):
     # Wait for the actors to start up.
     time.sleep(1)
 
-    # This is a mapping from actor handles to object IDs returned by
+    # This is a mapping from actor handles to object refs returned by
     # methods on that actor.
     result_ids = collections.defaultdict(lambda: [])
 
@@ -813,10 +813,10 @@ def test_decorated_method(ray_start_regular):
 
     a = Actor.remote()
 
-    object_id, extra = a.decorated_method.remote(3, kwarg=3)
-    assert isinstance(object_id, ray.ObjectID)
+    object_ref, extra = a.decorated_method.remote(3, kwarg=3)
+    assert isinstance(object_ref, ray.ObjectRef)
     assert extra == {"kwarg": 3}
-    assert ray.get(object_id) == 7  # 2 * 3 + 1
+    assert ray.get(object_ref) == 7  # 2 * 3 + 1
 
 
 @pytest.mark.parametrize(

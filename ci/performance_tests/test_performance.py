@@ -110,7 +110,7 @@ def create_array(size):
 @ray.remote
 def no_op(*values):
     # The reason that this function takes *values is so that we can pass in
-    # an arbitrary number of object IDs to create task dependencies.
+    # an arbitrary number of object refs to create task dependencies.
     return 1
 
 
@@ -134,16 +134,16 @@ def warm_up_cluster(num_nodes, object_store_memory):
     size = object_store_memory * 2 // 5
     num_objects = 2
     while size > 0:
-        object_ids = []
+        object_refs = []
         for i in range(num_nodes):
             for _ in range(num_objects):
-                object_ids += [
+                object_refs += [
                     create_array._remote(args=[size], resources={str(i): 1})
                 ]
         size = size // 2
         num_objects = min(num_objects * 2, 1000)
-    for object_id in object_ids:
-        ray.get(object_id)
+    for object_ref in object_refs:
+        ray.get(object_ref)
     logger.warning("Finished warming up the object store.")
 
     # Invoke all of the remote functions once so that the definitions are

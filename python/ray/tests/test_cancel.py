@@ -223,9 +223,9 @@ def test_fast(shutdown_only, use_force):
         if random.random() > 0.95:
             ray.cancel(ids[idx], use_force)
     signaler.send.remote()
-    for obj_id in ids:
+    for obj_ref in ids:
         try:
-            ray.get(obj_id)
+            ray.get(obj_ref)
         except Exception as e:
             assert isinstance(e, valid_exceptions(use_force))
 

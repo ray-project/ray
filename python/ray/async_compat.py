@@ -33,13 +33,13 @@ def sync_to_async(func):
     return wrapper
 
 
-def get_async(object_id):
+def get_async(object_ref):
     """C++ Asyncio version of ray.get"""
     loop = asyncio.get_event_loop()
     core_worker = ray.worker.global_worker.core_worker
 
     future = loop.create_future()
-    core_worker.get_async(object_id, future)
-    # A hack to keep a reference to the object ID for ref counting.
-    future.object_id = object_id
+    core_worker.get_async(object_ref, future)
+    # A hack to keep a reference to the object ref for ref counting.
+    future.object_ref = object_ref
     return future
