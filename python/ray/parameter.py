@@ -33,6 +33,7 @@ class RayParams:
             sharded redis tables (task and object tables).
         object_manager_port int: The port to use for the object manager.
         node_manager_port: The port to use for the node manager.
+        gcs_server_port: The port to use for the GCS server.
         node_ip_address (str): The IP address of the node that we are on.
         raylet_ip_address (str): The IP address of the raylet that this node
             connects to.
@@ -105,6 +106,7 @@ class RayParams:
                  redis_shard_ports=None,
                  object_manager_port=None,
                  node_manager_port=None,
+                 gcs_server_port=None,
                  node_ip_address=None,
                  raylet_ip_address=None,
                  min_worker_port=None,
@@ -147,6 +149,7 @@ class RayParams:
         self.redis_shard_ports = redis_shard_ports
         self.object_manager_port = object_manager_port
         self.node_manager_port = node_manager_port
+        self.gcs_server_port = gcs_server_port
         self.node_ip_address = node_ip_address
         self.raylet_ip_address = raylet_ip_address
         self.min_worker_port = min_worker_port

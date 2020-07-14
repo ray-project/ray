@@ -630,7 +630,8 @@ class Node:
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password,
             config=self._config,
-            fate_share=self.kernel_fate_share)
+            fate_share=self.kernel_fate_share,
+            gcs_server_port=self._ray_params.gcs_server_port)
         assert (
             ray_constants.PROCESS_TYPE_GCS_SERVER not in self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] = [

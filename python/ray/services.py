@@ -1202,7 +1202,8 @@ def start_gcs_server(redis_address,
                      stderr_file=None,
                      redis_password=None,
                      config=None,
-                     fate_share=None):
+                     fate_share=None,
+                     gcs_server_port=None):
     """Start a gcs server.
     Args:
         redis_address (str): The address that the Redis server is listening on.
@@ -1213,17 +1214,22 @@ def start_gcs_server(redis_address,
         redis_password (str): The password of the redis server.
         config (dict|None): Optional configuration that will
             override defaults in RayConfig.
+        gcs_server_port (int): Port number of the gcs server.
     Returns:
         ProcessInfo for the process that was started.
     """
     gcs_ip_address, gcs_port = redis_address.split(":")
     redis_password = redis_password or ""
     config_str = ",".join(["{},{}".format(*kv) for kv in config.items()])
+    if gcs_server_port is None:
+        gcs_server_port = 0
+
     command = [
         GCS_SERVER_EXECUTABLE,
         "--redis_address={}".format(gcs_ip_address),
         "--redis_port={}".format(gcs_port),
         "--config_list={}".format(config_str),
+        "--gcs_server_port={}".format(gcs_server_port),
     ]
     if redis_password:
         command += ["--redis_password={}".format(redis_password)]
