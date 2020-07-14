@@ -90,6 +90,14 @@ py_test(
     deps = [":serve_lib"],
 )
 
+py_test(
+    name = "test_regression",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
 
 py_test(
     name = "test_util",
