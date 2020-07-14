@@ -496,7 +496,8 @@ def init(address=None,
          java_worker_options=None,
          use_pickle=True,
          _internal_config=None,
-         lru_evict=False):
+         lru_evict=False,
+         enable_object_reconstruction=False):
     """
     Connect to an existing Ray cluster or start one and connect to it.
 
@@ -615,6 +616,12 @@ def init(address=None,
             reference counting will be used to decide which objects are safe
             to evict and when under memory pressure, ray.ObjectStoreFullError
             may be thrown.
+        enable_object_reconstruction (bool): If True, when an object stored in
+            the distributed plasma store is lost due to node failure, Ray will
+            attempt to reconstruct the object by re-executing the task that
+            created the object. Arguments to the task will be recursively
+            reconstructed. If False, then ray.UnreconstructableError will be
+            thrown.
 
     Returns:
         Address information about the started processes.
@@ -707,7 +714,8 @@ def init(address=None,
             load_code_from_local=load_code_from_local,
             java_worker_options=java_worker_options,
             _internal_config=_internal_config,
-            lru_evict=lru_evict)
+            lru_evict=lru_evict,
+            enable_object_reconstruction=enable_object_reconstruction)
         # Start the Ray processes. We set shutdown_at_exit=False because we
         # shutdown the node in the ray.shutdown call that happens in the atexit
         # handler. We still spawn a reaper process in case the atexit handler
@@ -765,6 +773,10 @@ def init(address=None,
         if lru_evict:
             raise ValueError("When connecting to an existing cluster, "
                              "lru_evict must not be provided.")
+        if enable_object_reconstruction:
+            raise ValueError(
+                "When connecting to an existing cluster, "
+                "enable_object_reconstruction must not be provided.")
 
         # In this case, we only need to connect the node.
         ray_params = ray.parameter.RayParams(
@@ -776,7 +788,8 @@ def init(address=None,
             temp_dir=temp_dir,
             load_code_from_local=load_code_from_local,
             _internal_config=_internal_config,
-            lru_evict=lru_evict)
+            lru_evict=lru_evict,
+            enable_object_reconstruction=enable_object_reconstruction)
         _global_node = ray.node.Node(
             ray_params,
             head=False,
