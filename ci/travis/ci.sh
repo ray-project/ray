@@ -224,7 +224,7 @@ install_go() {
   fi
 }
 
-bazel_ensure_buildable() {
+bazel_ensure_buildable_on_windows() {
   if [ "${OSTYPE}" = msys ]; then
     # This performs as full of a build as possible, to ensure the repository always remains buildable on Windows.
     # (Pip install will not perform a full build.)
@@ -422,8 +422,9 @@ init() {
 }
 
 build() {
+  bazel_ensure_buildable_on_windows
+
   if ! need_wheels; then
-    bazel_ensure_buildable
     install_ray
     if [ "${LINT-}" = 1 ]; then
       # Try generating Sphinx documentation. To do this, we need to install Ray first.
@@ -440,7 +441,6 @@ build() {
   fi
 
   if need_wheels; then
-    bazel_ensure_buildable
     build_wheels
   fi
 }
