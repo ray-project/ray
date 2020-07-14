@@ -13,9 +13,11 @@
 #include "message/message_bundle.h"
 #include "runtime_context.h"
 #include "reliability/barrier_helper.h"
+#include "reliability_helper.h"
 
 namespace ray {
 namespace streaming {
+class ReliabilityHelper;
 
 /// DataWriter is designed for data transporting between upstream and downstream.
 /// After the user sends the data, it does not immediately send the data to
@@ -66,6 +68,16 @@ class DataWriter {
   /// 
   void BroadcastBarrier(uint64_t checkpoint_id, uint64_t barrier_id, const uint8_t *data,
                         uint32_t data_size);
+
+  /// To relieve stress from large source/input data, we define a new function
+  /// clear_check_point
+  /// in producer/writer class. Worker can invoke this function if and only if
+  /// notify_consumed each item
+  /// flag is passed in reader/consumer, which means writer's producing became more
+  /// rhythmical and reader
+  /// can't walk on old way anymore.
+  /// \param barrier_id: user-defined numerical checkpoint id
+  void ClearCheckpoint(uint64_t barrier_id);
 
   void Run();
 
@@ -129,6 +141,8 @@ class DataWriter {
   /// \param data_size
   void BroadcastBarrier(uint64_t barrier_id, const uint8_t *data, uint32_t data_size);
 
+  void ClearCheckpointId(ProducerChannelInfo &channel_info, uint64_t seq_id);
+
  private:
   std::shared_ptr<EventService> event_service_;
 
@@ -142,6 +156,13 @@ class DataWriter {
   std::shared_ptr<FlowControl> flow_controller_;
 
   StreamingBarrierHelper barrier_helper_;
+  std::shared_ptr<ReliabilityHelper> reliability_helper_;
+
+  // Make thread-safe between loop thread and user thread.
+  // High-level runtime send notification about clear checkpoint if global
+  // checkpoint is finished and low-level will auto flush & evict item memory
+  // when no more space is available.
+  std::atomic_flag notify_flag_ = ATOMIC_FLAG_INIT;
 
  protected:
   std::unordered_map<ObjectID, ProducerChannelInfo> channel_info_map_;

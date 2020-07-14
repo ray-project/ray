@@ -207,28 +207,33 @@ StreamingStatus StreamingQueueConsumer::RefreshChannelInfo() {
   return StreamingStatus::OK;
 }
 
-StreamingStatus StreamingQueueConsumer::ConsumeItemFromChannel(uint64_t &offset_id,
-                                                               uint8_t *&data,
-                                                               uint32_t &data_size,
-                                                               uint32_t timeout) {
-  STREAMING_LOG(INFO) << "GetQueueItem qid: " << channel_info_.channel_id;
-  STREAMING_CHECK(queue_ != nullptr);
-  QueueItem item = queue_->PopPendingBlockTimeout(timeout * 1000);
+StreamingStatus StreamingQueueConsumer::ConsumeItemFromChannel(
+    std::shared_ptr<DataBundle> &message, uint32_t timeout) {
+  QueueItem item;
+  if (timeout == 0) {
+    item = queue_->PopPending();
+  } else {
+    item = queue_->PopPendingBlockTimeout(timeout * 1000);
+  }
   if (item.SeqId() == QUEUE_INVALID_SEQ_ID) {
-    STREAMING_LOG(INFO) << "GetQueueItem timeout.";
-    data = nullptr;
-    data_size = 0;
-    offset_id = QUEUE_INVALID_SEQ_ID;
+    STREAMING_LOG(DEBUG) << "GetQueueItem timeout.";
     return StreamingStatus::OK;
   }
 
-  data = item.Buffer()->Data();
-  offset_id = item.SeqId();
-  data_size = item.Buffer()->Size();
+  message->data = item.Buffer()->Data();
+  message->seq_id = item.SeqId();
+  message->data_size = item.Buffer()->Size();
+
 
   STREAMING_LOG(DEBUG) << "GetQueueItem qid: " << channel_info_.channel_id
-                       << " seq_id: " << offset_id << " msg_id: " << item.MaxMsgId()
-                       << " data_size: " << data_size;
+                       << " seq_id: " << item.SeqId() << " msg_id: (" << item.MsgIdStart()
+                       << "," << item.MsgIdEnd() << ")"
+                       << " data_size: " << item.DataSize();
+
+  StreamingMessageBundleMetaPtr meta =
+      StreamingMessageBundleMeta::FromBytes(message->data);
+  message->seq_id = meta->GetLastMessageId();
+  STREAMING_LOG(DEBUG) << "ConsumeItemFromChannel, bundle_meta=" << *meta;
   return StreamingStatus::OK;
 }
 
@@ -302,9 +307,8 @@ StreamingStatus MockProducer::RefreshChannelInfo() {
   return StreamingStatus::OK;
 }
 
-StreamingStatus MockConsumer::ConsumeItemFromChannel(uint64_t &offset_id, uint8_t *&data,
-                                                     uint32_t &data_size,
-                                                     uint32_t timeout) {
+StreamingStatus MockConsumer::ConsumeItemFromChannel(
+    std::shared_ptr<DataBundle> &message, uint32_t timeout) {
   std::unique_lock<std::mutex> lock(MockQueue::mutex);
   MockQueue &mock_queue = MockQueue::GetMockQueue();
   auto &channel_id = channel_info_.channel_id;
@@ -318,9 +322,9 @@ StreamingStatus MockConsumer::ConsumeItemFromChannel(uint64_t &offset_id, uint8_
   MockQueueItem item = mock_queue.message_bffer[channel_id]->Front();
   mock_queue.message_bffer[channel_id]->Pop();
   mock_queue.consumed_buffer[channel_id]->Push(item);
-  offset_id = item.seq_id;
-  data = item.data.get();
-  data_size = item.data_size;
+  message->seq_id = item.seq_id;
+  message->data = item.data.get();
+  message->data_size = item.data_size;
   return StreamingStatus::OK;
 }
 

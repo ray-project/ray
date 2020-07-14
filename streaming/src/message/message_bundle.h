@@ -81,6 +81,7 @@ class StreamingMessageBundleMeta {
 
   inline bool IsBarrier() { return StreamingMessageBundleType::Barrier == bundle_type_; }
   inline bool IsBundle() { return StreamingMessageBundleType::Bundle == bundle_type_; }
+  inline bool IsEmptyMsg() { return StreamingMessageBundleType::Empty == bundle_type_; }
 
   virtual void ToBytes(uint8_t *data);
   static StreamingMessageBundleMetaPtr FromBytes(const uint8_t *data,
@@ -97,6 +98,9 @@ class StreamingMessageBundleMeta {
            "," + std::to_string(message_bundle_ts_) + "," +
            std::to_string(static_cast<uint32_t>(bundle_type_));
   }
+
+  friend std::ostream &operator<<(std::ostream &os,
+                                  const StreamingMessageBundleMeta &meta);
 };
 
 /// StreamingMessageBundle inherits from metadata class (StreamingMessageBundleMeta)
@@ -175,5 +179,24 @@ class StreamingMessageBundle : public StreamingMessageBundleMeta {
       const std::list<StreamingMessagePtr> &message_list, uint32_t raw_data_size,
       uint8_t *raw_data);
 };
+
+/// Databundle is super-bundle that contains channel information (upstream
+/// channel id & bundle meta data) and raw buffer pointer.
+struct DataBundle {
+  uint8_t *data = nullptr;
+  uint32_t data_size;
+  ObjectID from;
+  uint64_t seq_id;
+  StreamingMessageBundleMetaPtr meta;
+  bool is_reallocated = false;
+  
+  ~DataBundle() { delete[] data; }
+
+  void Realloc(uint32_t size) {
+    data = new uint8_t[size];
+    is_reallocated = true;
+  }
+};
+
 }  // namespace streaming
 }  // namespace ray

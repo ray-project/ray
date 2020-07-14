@@ -5,87 +5,10 @@
 #include <unordered_map>
 
 #include "util/streaming_logging.h"
+#include "ray/common/id.h"
 
-namespace ray {
-namespace streaming {
-
-enum class ConfigEnum : uint32_t {
-  QUEUE_ID_VECTOR = 0,
-  RECONSTRUCT_RETRY_TIMES,
-  RECONSTRUCT_TIMEOUT_PER_MB,
-  CURRENT_DRIVER_ID,
-  /// For direct call
-  CORE_WORKER,
-  SYNC_FUNCTION,
-  ASYNC_FUNCTION,
-  TRANSFER_MIN = QUEUE_ID_VECTOR,
-  TRANSFER_MAX = ASYNC_FUNCTION
-};
-}  // namespace streaming
-}  // namespace ray
-
-namespace std {
-template <>
-struct hash<::ray::streaming::ConfigEnum> {
-  size_t operator()(const ::ray::streaming::ConfigEnum &config_enum_key) const {
-    return static_cast<uint32_t>(config_enum_key);
-  }
-};
-
-template <>
-struct hash<const ::ray::streaming::ConfigEnum> {
-  size_t operator()(const ::ray::streaming::ConfigEnum &config_enum_key) const {
-    return static_cast<uint32_t>(config_enum_key);
-  }
-};
-}  // namespace std
-
-namespace ray {
-namespace streaming {
-
-class Config {
- public:
-  template <typename ValueType>
-  inline void Set(ConfigEnum key, const ValueType &any) {
-    config_map_.emplace(key, any);
-  }
-
-  template <typename ValueType>
-  inline void Set(ConfigEnum key, ValueType &&any) {
-    config_map_.emplace(key, any);
-  }
-
-  template <typename ValueType>
-  inline boost::any &GetOrDefault(ConfigEnum key, ValueType &&any) {
-    auto item = config_map_.find(key);
-    if (item != config_map_.end()) {
-      return item->second;
-    }
-    Set(key, any);
-    return any;
-  }
-
-  boost::any &Get(ConfigEnum key) const;
-
-  boost::any Get(ConfigEnum key, boost::any default_value) const;
-
-  inline uint32_t GetInt32(ConfigEnum key) { return boost::any_cast<uint32_t>(Get(key)); }
-
-  inline uint64_t GetInt64(ConfigEnum key) { return boost::any_cast<uint64_t>(Get(key)); }
-
-  inline double GetDouble(ConfigEnum key) { return boost::any_cast<double>(Get(key)); }
-
-  inline bool GetBool(ConfigEnum key) { return boost::any_cast<bool>(Get(key)); }
-
-  inline std::string GetString(ConfigEnum key) {
-    return boost::any_cast<std::string>(Get(key));
-  }
-
-  virtual ~Config() = default;
-
- protected:
-  mutable std::unordered_map<ConfigEnum, boost::any> config_map_;
-};
+namespace ray{
+namespace streaming{
 
 class Util {
  public:
@@ -138,5 +61,23 @@ class Util {
     return a;
   }
 };
+
+class AutoSpinLock {
+ public:
+  explicit AutoSpinLock(std::atomic_flag &lock) : lock_(lock) {
+    while (lock_.test_and_set(std::memory_order_acquire))
+      ;
+  }
+  ~AutoSpinLock() { unlock(); }
+  void unlock() { lock_.clear(std::memory_order_release); }
+
+ private:
+  std::atomic_flag &lock_;
+};
+
+inline void ConvertToValidQueueId(const ObjectID &queue_id) {
+  auto addr = const_cast<ObjectID *>(&queue_id);
+  *(reinterpret_cast<uint64_t *>(addr)) = 0;
+}
 }  // namespace streaming
 }  // namespace ray

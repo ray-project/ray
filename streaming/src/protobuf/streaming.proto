@@ -20,6 +20,13 @@ enum NodeType {
   SINK = 3;
 }
 
+enum ReliabilityLevel {
+  NONE = 0;
+  AT_LEAST_ONCE = 1;
+  EXACTLY_ONCE = 2;
+  EXACTLY_SAME = 3;
+}
+
 enum FlowControlType {
   UNKNOWN_FLOW_CONTROL_TYPE = 0;
   UnconsumedSeqFlowControl = 1;

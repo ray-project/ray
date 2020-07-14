@@ -63,6 +63,14 @@ bool StreamingMessageBundleMeta::operator==(StreamingMessageBundleMeta *meta) co
   return operator==(*meta);
 }
 
+std::ostream &operator<<(std::ostream &os, const StreamingMessageBundleMeta &meta) {
+  os << "{"
+     << "last_message_id_: " << meta.last_message_id_
+     << ", message_list_size_: " << meta.message_list_size_
+     << ", bundle_type_: " << static_cast<int>(meta.bundle_type_) << "}";
+  return os;
+}
+
 StreamingMessageBundleMeta::StreamingMessageBundleMeta()
     : bundle_type_(StreamingMessageBundleType::Empty) {}
 

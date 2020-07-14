@@ -5,6 +5,7 @@
 #include "ring_buffer.h"
 #include "status.h"
 #include "util/streaming_util.h"
+#include "util/config.h"
 
 namespace ray {
 namespace streaming {
@@ -71,6 +72,7 @@ struct ConsumerChannelInfo {
   ChannelCreationParameter parameter;
   // Total count of notify request.
   uint64_t notify_cnt = 0;
+  uint64_t resend_notify_timer;
 };
 
 /// Two types of channel are presented:
@@ -111,9 +113,8 @@ class ConsumerChannel {
   virtual StreamingStatus ClearTransferCheckpoint(uint64_t checkpoint_id,
                                                   uint64_t checkpoint_offset) = 0;
   virtual StreamingStatus RefreshChannelInfo() = 0;
-  virtual StreamingStatus ConsumeItemFromChannel(uint64_t &offset_id, uint8_t *&data,
-                                                 uint32_t &data_size,
-                                                 uint32_t timeout) = 0;
+  virtual StreamingStatus ConsumeItemFromChannel(
+      std::shared_ptr<DataBundle> &message, uint32_t timeout) = 0;
   virtual StreamingStatus NotifyChannelConsumed(uint64_t offset_id) = 0;
 
  protected:
@@ -153,8 +154,8 @@ class StreamingQueueConsumer : public ConsumerChannel {
   StreamingStatus ClearTransferCheckpoint(uint64_t checkpoint_id,
                                           uint64_t checkpoint_offset) override;
   StreamingStatus RefreshChannelInfo() override;
-  StreamingStatus ConsumeItemFromChannel(uint64_t &offset_id, uint8_t *&data,
-                                         uint32_t &data_size, uint32_t timeout) override;
+  StreamingStatus ConsumeItemFromChannel(std::shared_ptr<DataBundle> &message,
+                                         uint32_t timeout) override;
   StreamingStatus NotifyChannelConsumed(uint64_t offset_id) override;
 
  private:
@@ -202,8 +203,8 @@ class MockConsumer : public ConsumerChannel {
     return StreamingStatus::OK;
   }
   StreamingStatus RefreshChannelInfo() override;
-  StreamingStatus ConsumeItemFromChannel(uint64_t &offset_id, uint8_t *&data,
-                                         uint32_t &data_size, uint32_t timeout) override;
+  StreamingStatus ConsumeItemFromChannel(std::shared_ptr<DataBundle> &message,
+                                         uint32_t timeout) override;
   StreamingStatus NotifyChannelConsumed(uint64_t offset_id) override;
 };
 

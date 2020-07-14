@@ -73,6 +73,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "ray_util.so",
+        "ray_common.so",
         "@boost//:any",
         "@com_google_googletest//:gtest",
     ],

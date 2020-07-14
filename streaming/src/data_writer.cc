@@ -156,6 +156,9 @@ StreamingStatus DataWriter::Init(const std::vector<ObjectID> &queue_id_vec,
     flow_controller_ = std::make_shared<NoFlowControl>();
     break;
   }
+
+  reliability_helper_ = ReliabilityHelperFactory::GenReliabilityHelper(
+      runtime_context_->GetConfig(), barrier_helper_, this, nullptr);
   // Register empty event and user event to event server.
   event_service_ = std::make_shared<EventService>();
   event_service_->Register(
@@ -523,6 +526,52 @@ void DataWriter::FlowControlTimer() {
 void DataWriter::GetOffsetInfo(
     std::unordered_map<ObjectID, ProducerChannelInfo> *&offset_map) {
   offset_map = &channel_info_map_;
+}
+
+void DataWriter::ClearCheckpoint(uint64_t barrier_id) {
+  if (!barrier_helper_.Contains(barrier_id)) {
+    STREAMING_LOG(WARNING) << "no such barrier id => " << barrier_id;
+    return;
+  }
+
+  std::string global_barrier_id_str = "|";
+
+  for (auto &queue_id : output_queue_ids_) {
+    uint64_t q_global_barrier_seq_id = 0;
+    StreamingStatus status = barrier_helper_.GetSeqIdByBarrierId(queue_id, barrier_id,
+                                                                 q_global_barrier_seq_id);
+    ProducerChannelInfo &channel_info = channel_info_map_[queue_id];
+    if (status == StreamingStatus::OK) {
+      ClearCheckpointId(channel_info, q_global_barrier_seq_id);
+    } else {
+      STREAMING_LOG(WARNING) << "no seq record in q => " << queue_id << ", barrier id => "
+                             << barrier_id;
+    }
+    global_barrier_id_str +=
+        queue_id.Hex() + " : " + std::to_string(q_global_barrier_seq_id) + "| ";
+    reliability_helper_->CleanupCheckpoint(channel_info, barrier_id);
+  }
+
+  STREAMING_LOG(INFO)
+      << "[Writer] [Barrier] [clear] global barrier flag, global barrier id => "
+      << barrier_id << ", seq id map => " << global_barrier_id_str;
+
+  barrier_helper_.ReleaseBarrierMapSeqIdById(barrier_id);
+  barrier_helper_.ReleaseBarrierMapCheckpointByBarrierId(barrier_id);
+}
+
+void DataWriter::ClearCheckpointId(ProducerChannelInfo &channel_info, uint64_t seq_id) {
+  AutoSpinLock lock(notify_flag_);
+
+  uint64_t current_seq_id = channel_info.current_seq_id;
+  if (seq_id > current_seq_id) {
+    STREAMING_LOG(WARNING) << "current_seq_id=" << current_seq_id << ", seq_id=" << seq_id
+                           << ", channel id = " << channel_info.channel_id;
+  }
+  channel_map_[channel_info.channel_id]->NotifyChannelConsumed(seq_id);
+
+  STREAMING_LOG(DEBUG) << "clearing current queue seq in writer. qid: "
+                       << channel_info.channel_id << ", q_seq_id: " << seq_id;
 }
 
 }  // namespace streaming
