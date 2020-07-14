@@ -1901,8 +1901,6 @@ def remote(*args, **kwargs):
             "max_retries",
         ], error_string
 
-    num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None
-    num_gpus = kwargs["num_gpus"] if "num_gpus" in kwargs else None
     resources = kwargs.get("resources")
     if not isinstance(resources, dict) and resources is not None:
         raise TypeError("The 'resources' keyword argument must be a "
@@ -1911,6 +1909,24 @@ def remote(*args, **kwargs):
     if resources is not None:
         assert "CPU" not in resources, "Use the 'num_cpus' argument."
         assert "GPU" not in resources, "Use the 'num_gpus' argument."
+
+    num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None
+    gpus = kwargs["num_gpus"] if "num_gpus" in kwargs else None
+
+    if gpus is not None and isinstance(gpus, numbers.Number):
+        num_gpus = gpus
+    elif gpus is not None and isinstance(gpus, list):
+        num_gpus = len(gpus)
+        if gpus:
+            constraint_name = gpus[0]
+            assert constraint_name not in resources, \
+                "The namespace _ray is reserved."
+            resources[constraint_name] = num_gpus
+    else:
+        num_gpus = None
+
+    if num_gpus is not None and isinstance(num_gpus, list):
+        gpus = gpus
 
     # Handle other arguments.
     num_return_vals = kwargs.get("num_return_vals")
