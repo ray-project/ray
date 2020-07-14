@@ -165,6 +165,12 @@ class ResourceSpec(
             if gpu_ids is not None:
                 num_gpus = min(num_gpus, len(gpu_ids))
 
+        gpu_type = _get_gpu_type()
+        if num_gpus and gpu_type is not None:
+            gpu_name = "_RAY_ResourceConstraint:{}".format(gpu_type)
+            resources[gpu_name] = num_gpus
+
+
         # Choose a default object store size.
         system_memory = ray.utils.get_system_memory()
         avail_memory = ray.utils.estimate_available_memory()
@@ -251,3 +257,27 @@ def _autodetect_num_gpus():
         lines = subprocess.check_output(cmdargs).splitlines()[1:]
         result = len([l.rstrip() for l in lines if l.startswith(b"NVIDIA")])
     return result
+
+def _get_gpu_type():
+    """Get the gpu type for this machine.
+
+    TODO(Alex): All the caveats of _autodetect_num_gpus and we assume only one
+    gpu type.
+
+    Returns:
+        (str) The gpu's model name.
+    """
+    if sys.platform.startswith("linux"):
+        proc_gpus_path = "/proc/driver/nvidia/gpus"
+        if os.path.isdir(proc_gpus_path):
+            gpu_dirs = os.listdir(proc_gpus_path)
+            if len(gpu_dirs) > 0:
+                gpu_info_path = "{}/information".format(gpu_dirs[0])
+                lines = open(gpu_info_path).readlines()
+                for line in lines:
+                    k, v = line.split()
+                    if k == "Model:":
+                        return v
+    return None
+
+
