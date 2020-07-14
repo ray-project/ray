@@ -52,8 +52,8 @@ void FutureResolver::ResolveFutureAsync(const ObjectID &object_id,
               RayObject(rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE), object_id));
         } else {
           // We can now try to fetch the object via plasma. If the owner later
-          // fails, the raylet will eventually store an error in plasma on our
-          // behalf.
+          // fails or the object is released, the raylet will eventually store
+          // an error in plasma on our behalf.
           RAY_UNUSED(in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
                                            object_id));
         }

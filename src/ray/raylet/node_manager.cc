@@ -3035,12 +3035,14 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
           request, [this, required_object_id](Status status,
                                               const rpc::GetObjectStatusReply &reply) {
             if (!status.ok() ||
-                reply.status() == rpc::GetObjectStatusReply::OUT_OF_SCOPE) {
-              // The owner is gone or the owner replied that the object has gone
-              // out of scope (this is an edge case in the distributed ref counting
-              // protocol where a borrower dies before it can notify the owner of
-              // another borrower). Store an error in the local plasma store so
-              // that an exception will be thrown when the worker tries to get the
+                reply.status() == rpc::GetObjectStatusReply::OUT_OF_SCOPE ||
+                reply.status() == rpc::GetObjectStatusReply::FREED) {
+              // The owner is gone, or the owner replied that the object has
+              // gone out of scope (this is an edge case in the distributed ref
+              // counting protocol where a borrower dies before it can notify
+              // the owner of another borrower), or the object value has been
+              // freed. Store an error in the local plasma store so that an
+              // exception will be thrown when the worker tries to get the
               // value.
               MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE,
                                   {required_object_id}, JobID::Nil());

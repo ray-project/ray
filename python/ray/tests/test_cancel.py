@@ -6,13 +6,15 @@ import pytest
 
 import ray
 from ray.exceptions import RayCancellationError, RayTaskError, \
-                           RayTimeoutError, RayWorkerError
+                           RayTimeoutError, RayWorkerError, \
+                           UnreconstructableError
 from ray.test_utils import SignalActor
 
 
 def valid_exceptions(use_force):
     if use_force:
-        return (RayTaskError, RayCancellationError, RayWorkerError)
+        return (RayTaskError, RayCancellationError, RayWorkerError,
+                UnreconstructableError)
     else:
         return (RayTaskError, RayCancellationError)
 

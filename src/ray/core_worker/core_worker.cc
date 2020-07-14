@@ -876,6 +876,7 @@ Status CoreWorker::Seal(const ObjectID &object_id, bool pin_object,
         }));
   } else {
     RAY_RETURN_NOT_OK(plasma_store_provider_->Release(object_id));
+    reference_counter_->FreePlasmaObjects({object_id});
   }
   RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
   return Status::OK();
@@ -1730,7 +1731,12 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
     send_reply_callback(Status::OK(), nullptr, nullptr);
   } else {
     RAY_CHECK(owner_address.worker_id() == request.owner_worker_id());
-    reply->set_status(rpc::GetObjectStatusReply::CREATED);
+
+    if (reference_counter_->IsPlasmaObjectFreed(object_id)) {
+      reply->set_status(rpc::GetObjectStatusReply::FREED);
+    } else {
+      reply->set_status(rpc::GetObjectStatusReply::CREATED);
+    }
     // Send the reply once the value has become available. The value is
     // guaranteed to become available eventually because we own the object and
     // its ref count is > 0.
