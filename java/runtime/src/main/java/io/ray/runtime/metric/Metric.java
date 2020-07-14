@@ -25,6 +25,7 @@ public abstract class Metric {
     Preconditions.checkNotNull(name, "Metric name must not be null.");
     this.name = name;
     this.tags = tags;
+    this.value = 0.0d;
   }
 
   // Sync metric with core worker stats for registry.
@@ -82,9 +83,16 @@ public abstract class Metric {
     metricNativePointer = 0;
   }
 
+  /**
+   * @return lastest updating value.
+   */
   public double getValue() {
     return value;
   }
 
-
+  /**
+   * It's abstract method for each metric measurements, so metric registry can store transient
+   * value and aggregate historical data for flushing.
+   */
+  public abstract void reset();
 }

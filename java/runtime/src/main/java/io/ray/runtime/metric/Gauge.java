@@ -21,5 +21,9 @@ public class Gauge extends Metric {
   private native long registerGaugeNative(String name, String description,
                                            String unit, List<String> tagKeys);
 
+  @Override
+  public void reset() {
+
+  }
 }
 

@@ -7,7 +7,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_Gauge_registerGaugeNative(
+JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_Count_registerCountNative(
     JNIEnv *env, jobject obj, jstring j_name, jstring j_description, jstring j_unit,
     jobject tag_key_list) {
   std::string metric_name;
@@ -19,3 +19,6 @@ JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_Gauge_registerGaugeNative(
   auto *count = new ray::stats::Count(metric_name, description, unit, tag_keys);
   return reinterpret_cast<long>(count);
 }
+#ifdef __cplusplus
+}
+#endif

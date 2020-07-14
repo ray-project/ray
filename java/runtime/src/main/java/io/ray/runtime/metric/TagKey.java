@@ -3,7 +3,7 @@ package io.ray.runtime.metric;
 import java.util.Objects;
 
 /**
- * Tagkey mapping java object to stats tagkey object.
+ * Tagkey is mapping java object to stats tagkey object.
  */
 public class TagKey {
 
