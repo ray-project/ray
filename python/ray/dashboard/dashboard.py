@@ -273,9 +273,7 @@ class Dashboardv2APIHandler:
 
     def node_summaries(self, req):
         node_stats = self.node_stats.get_node_stats()
-        return self.api_response({
-            "summaries": [client for client in node_stats["clients"]]
-        })
+        return self.api_response({"summaries": list(node_stats["clients"])})
 
     def node_details(self, req):
         hostname = req.match_info.get("hostname")
