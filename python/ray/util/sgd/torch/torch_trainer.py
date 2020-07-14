@@ -124,6 +124,7 @@ class TorchTrainer:
         num_workers (int): the number of workers used in distributed
             training. If 1, the worker will not be wrapped with
             DistributedDataParallel.
+        num_cpus_per_worker (int): Sets the cpu requirement for each worker.
         use_gpu (bool): Sets resource allocation for workers to 1 GPU
             if true, and automatically moves both the model and optimizer
             to the available CUDA device.
@@ -175,6 +176,7 @@ class TorchTrainer:
             initialization_hook=None,
             config=None,
             num_workers=1,
+            num_cpus_per_worker=1,
             use_gpu="auto",
             backend="auto",
             wrap_ddp=True,
@@ -240,6 +242,7 @@ class TorchTrainer:
 
         logger.debug("Using {} as backend.".format(backend))
         self.backend = backend
+        self.num_cpus_per_worker = num_cpus_per_worker
         self.use_gpu = use_gpu
         self.max_replicas = num_workers
 
@@ -328,11 +331,14 @@ class TorchTrainer:
 
             # Start local worker
             self.local_worker = LocalDistributedRunner(
-                num_cpus=1, num_gpus=int(self.use_gpu), **params)
+                num_cpus=self.num_cpus_per_worker,
+                num_gpus=int(self.use_gpu),
+                **params)
 
             # Generate actor class
             RemoteRunner = ray.remote(
-                num_cpus=1, num_gpus=int(self.use_gpu))(DistributedTorchRunner)
+                num_cpus=self.num_cpus_per_worker,
+                num_gpus=int(self.use_gpu))(DistributedTorchRunner)
             # Start workers
             self.remote_workers = [
                 RemoteRunner.remote(**params) for i in range(num_workers - 1)
@@ -736,12 +742,14 @@ class TorchTrainer:
             def default_resource_request(cls, config):
                 num_workers = config.get("num_workers",
                                          kwargs.get("num_workers", 1))
+                num_cpus = config.get("num_cpus_per_worker",
+                                      kwargs.get("num_cpus_per_worker", 1))
                 use_gpu = config.get("use_gpu", kwargs.get("use_gpu"))
 
                 remote_worker_count = num_workers - 1
 
                 return Resources(
-                    cpu=1,
+                    cpu=num_cpus,
                     gpu=int(use_gpu),
                     extra_cpu=int(remote_worker_count),
                     extra_gpu=int(int(use_gpu) * remote_worker_count))
@@ -777,7 +785,7 @@ class BaseTorchTrainable(Trainable):
         # TorchTrainable is subclass of BaseTorchTrainable.
 
         class CustomTrainable(TorchTrainable):
-            def _train(self):
+            def step(self):
                 for i in range(5):
                     train_stats = self.trainer.train()
                 validation_stats = self.trainer.validate()
@@ -791,11 +799,11 @@ class BaseTorchTrainable(Trainable):
 
     """
 
-    def _setup(self, config):
+    def setup(self, config):
         """Constructs a TorchTrainer object as `self.trainer`."""
         self._trainer = self._create_trainer(config)
 
-    def _train(self):
+    def step(self):
         """Calls `self.trainer.train()` and `self.trainer.validate()` once.
 
         You may want to override this if using a custom LR scheduler.
@@ -805,20 +813,20 @@ class BaseTorchTrainable(Trainable):
         stats = merge_dicts(train_stats, validation_stats)
         return stats
 
-    def _save(self, checkpoint_dir):
+    def save_checkpoint(self, checkpoint_dir):
         """Returns a path containing the trainer state."""
         checkpoint_path = os.path.join(checkpoint_dir, "trainer.checkpoint")
         self.trainer.save(checkpoint_path)
         return checkpoint_path
 
-    def _restore(self, checkpoint_path):
+    def load_checkpoint(self, checkpoint_path):
         """Restores the trainer state.
 
         Override this if you have state external to the Trainer object.
         """
         return self.trainer.load(checkpoint_path)
 
-    def _stop(self):
+    def cleanup(self):
         """Shuts down the trainer."""
         self.trainer.shutdown()
 

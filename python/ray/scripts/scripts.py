@@ -15,7 +15,8 @@ import psutil
 import ray.services as services
 from ray.autoscaler.commands import (
     attach_cluster, exec_cluster, create_or_update_cluster, monitor_cluster,
-    rsync, teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips)
+    rsync, teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips,
+    debug_status, RUN_ENV_TYPES)
 import ray.ray_constants as ray_constants
 import ray.utils
 from ray.projects.scripts import project_cli, session_cli
@@ -330,6 +331,11 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     is_flag=True,
     default=False,
     help="Specify whether load code from local file or GCS serialization.")
+@click.option(
+    "--lru-evict",
+    is_flag=True,
+    default=False,
+    help="Specify whether LRU evict will be used for this cluster.")
 def start(node_ip_address, redis_address, address, redis_port, port,
           num_redis_shards, redis_max_clients, redis_password,
           redis_shard_ports, object_manager_port, node_manager_port,
@@ -339,7 +345,8 @@ def start(node_ip_address, redis_address, address, redis_port, port,
           plasma_directory, huge_pages, autoscaling_config,
           no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
-          java_worker_options, load_code_from_local, internal_config):
+          java_worker_options, load_code_from_local, internal_config,
+          lru_evict):
     """Start Ray processes manually on the local machine."""
     if redis_address is not None:
         raise DeprecationWarning("The --redis-address argument is "
@@ -411,7 +418,8 @@ def start(node_ip_address, redis_address, address, redis_port, port,
         dashboard_port=dashboard_port,
         java_worker_options=java_worker_options,
         load_code_from_local=load_code_from_local,
-        _internal_config=internal_config)
+        _internal_config=internal_config,
+        lru_evict=lru_evict)
     if head:
         # Start Ray on the head node.
         if redis_shard_ports is not None:
@@ -569,7 +577,6 @@ def stop(force, verbose):
         # Keyword to filter, filter by command (True)/filter by args (False)
         ["raylet", True],
         ["plasma_store", True],
-        ["raylet_monitor", True],
         ["gcs_server", True],
         ["monitor.py", False],
         ["redis-server", False],
@@ -620,7 +627,7 @@ def stop(force, verbose):
                 logger.error("Error: %s", ex)
 
 
-@cli.command(hidden=True)
+@cli.command()
 @click.argument("cluster_config_file", required=True, type=str)
 @click.option(
     "--no-restart",
@@ -634,6 +641,11 @@ def stop(force, verbose):
     default=False,
     help=("Whether to skip running setup commands and only restart Ray. "
           "This cannot be used with 'no-restart'."))
+@click.option(
+    "--no-config-cache",
+    is_flag=True,
+    default=False,
+    help="Disable the local cluster config cache.")
 @click.option(
     "--min-workers",
     required=False,
@@ -656,8 +668,8 @@ def stop(force, verbose):
     is_flag=True,
     default=False,
     help="Don't ask for confirmation.")
-def create_or_update(cluster_config_file, min_workers, max_workers, no_restart,
-                     restart_only, yes, cluster_name):
+def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
+       yes, cluster_name, no_config_cache):
     """Create or update a Ray cluster."""
     if restart_only or no_restart:
         assert restart_only != no_restart, "Cannot set both 'restart_only' " \
@@ -673,10 +685,11 @@ def create_or_update(cluster_config_file, min_workers, max_workers, no_restart,
         except urllib.error.HTTPError as e:
             logger.info("Error downloading file: ", e)
     create_or_update_cluster(cluster_config_file, min_workers, max_workers,
-                             no_restart, restart_only, yes, cluster_name)
+                             no_restart, restart_only, yes, cluster_name,
+                             no_config_cache)
 
 
-@cli.command(hidden=True)
+@cli.command()
 @click.argument("cluster_config_file", required=True, type=str)
 @click.option(
     "--workers-only",
@@ -700,8 +713,8 @@ def create_or_update(cluster_config_file, min_workers, max_workers, no_restart,
     required=False,
     type=str,
     help="Override the configured cluster name.")
-def teardown(cluster_config_file, yes, workers_only, cluster_name,
-             keep_min_workers):
+def down(cluster_config_file, yes, workers_only, cluster_name,
+         keep_min_workers):
     """Tear down a Ray cluster."""
     teardown_cluster(cluster_config_file, yes, workers_only, cluster_name,
                      keep_min_workers)
@@ -831,11 +844,6 @@ def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes):
 @cli.command(context_settings={"ignore_unknown_options": True})
 @click.argument("cluster_config_file", required=True, type=str)
 @click.option(
-    "--docker",
-    is_flag=True,
-    default=False,
-    help="Runs command in the docker container specified in cluster_config.")
-@click.option(
     "--stop",
     is_flag=True,
     default=False,
@@ -872,8 +880,8 @@ def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes):
     type=str,
     help="(deprecated) Use '-- --arg1 --arg2' for script args.")
 @click.argument("script_args", nargs=-1)
-def submit(cluster_config_file, docker, screen, tmux, stop, start,
-           cluster_name, port_forward, script, args, script_args):
+def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
+           port_forward, script, args, script_args):
     """Uploads and runs a script on the specified cluster.
 
     The script is automatically synced to the following location:
@@ -894,10 +902,9 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
 
     if start:
         create_or_update_cluster(cluster_config_file, None, None, False, False,
-                                 True, cluster_name)
+                                 True, cluster_name, False)
     target = os.path.basename(script)
-    if not docker:
-        target = os.path.join("~", target)
+    target = os.path.join("~", target)
     rsync(cluster_config_file, script, target, cluster_name, down=False)
 
     command_parts = ["python", target]
@@ -910,24 +917,26 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
     cmd = " ".join(command_parts)
     exec_cluster(
         cluster_config_file,
-        cmd,
-        docker,
-        screen,
-        tmux,
-        stop,
+        cmd=cmd,
+        run_env="docker",
+        screen=screen,
+        tmux=tmux,
+        stop=stop,
         start=False,
         override_cluster_name=cluster_name,
         port_forward=port_forward)
 
 
-@cli.command(hidden=True)
+@cli.command()
 @click.argument("cluster_config_file", required=True, type=str)
 @click.argument("cmd", required=True, type=str)
 @click.option(
-    "--docker",
-    is_flag=True,
-    default=False,
-    help="Runs command in the docker container specified in cluster_config.")
+    "--run-env",
+    required=False,
+    type=click.Choice(RUN_ENV_TYPES),
+    default="auto",
+    help="Choose whether to execute this command in a container or directly on"
+    " the cluster head. Only applies when docker is configured in the YAML.")
 @click.option(
     "--stop",
     is_flag=True,
@@ -958,12 +967,21 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
     multiple=True,
     type=int,
     help="Port to forward. Use this multiple times to forward multiple ports.")
-def exec_cmd(cluster_config_file, cmd, docker, screen, tmux, stop, start,
-             cluster_name, port_forward):
+def exec(cluster_config_file, cmd, run_env, screen, tmux, stop, start,
+         cluster_name, port_forward):
     """Execute a command via SSH on a Ray cluster."""
     port_forward = [(port, port) for port in list(port_forward)]
-    exec_cluster(cluster_config_file, cmd, docker, screen, tmux, stop, start,
-                 cluster_name, port_forward)
+
+    exec_cluster(
+        cluster_config_file,
+        cmd=cmd,
+        run_env=run_env,
+        screen=screen,
+        tmux=tmux,
+        stop=stop,
+        start=start,
+        override_cluster_name=cluster_name,
+        port_forward=port_forward)
 
 
 @cli.command()
@@ -1055,7 +1073,7 @@ def timeline(address):
     required=False,
     type=str,
     help="Override the address to connect to.")
-def stat(address):
+def statistics(address):
     """Get the current metrics protobuf from a Ray cluster (developer tool)."""
     if not address:
         address = services.find_redis_address_or_die()
@@ -1100,6 +1118,21 @@ def memory(address):
     required=False,
     type=str,
     help="Override the address to connect to.")
+def status(address):
+    """Print cluster status, including autoscaling info."""
+    if not address:
+        address = services.find_redis_address_or_die()
+    logger.info("Connecting to Ray instance at {}.".format(address))
+    ray.init(address=address)
+    print(debug_status())
+
+
+@cli.command()
+@click.option(
+    "--address",
+    required=False,
+    type=str,
+    help="Override the address to connect to.")
 def globalgc(address):
     """Trigger Python garbage collection on all cluster workers."""
     if not address:
@@ -1119,20 +1152,23 @@ def add_command_alias(command, name, hidden):
 cli.add_command(dashboard)
 cli.add_command(start)
 cli.add_command(stop)
-add_command_alias(create_or_update, name="up", hidden=False)
+cli.add_command(up)
+add_command_alias(up, name="create_or_update", hidden=True)
 cli.add_command(attach)
-add_command_alias(exec_cmd, name="exec", hidden=False)
+cli.add_command(exec)
+add_command_alias(exec, name="exec_cmd", hidden=True)
 add_command_alias(rsync_down, name="rsync_down", hidden=True)
 add_command_alias(rsync_up, name="rsync_up", hidden=True)
 cli.add_command(submit)
-cli.add_command(teardown)
-add_command_alias(teardown, name="down", hidden=False)
+cli.add_command(down)
+add_command_alias(down, name="teardown", hidden=True)
 cli.add_command(kill_random_node)
 add_command_alias(get_head_ip, name="get_head_ip", hidden=True)
 cli.add_command(get_worker_ips)
 cli.add_command(microbenchmark)
 cli.add_command(stack)
-cli.add_command(stat)
+cli.add_command(statistics)
+cli.add_command(status)
 cli.add_command(memory)
 cli.add_command(globalgc)
 cli.add_command(timeline)

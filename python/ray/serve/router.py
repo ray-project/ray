@@ -17,14 +17,17 @@ from ray.serve.utils import logger, chain_future
 
 
 class Query:
-    def __init__(self,
-                 request_args,
-                 request_kwargs,
-                 request_context,
-                 request_slo_ms,
-                 call_method="__call__",
-                 shard_key=None,
-                 async_future=None):
+    def __init__(
+            self,
+            request_args,
+            request_kwargs,
+            request_context,
+            request_slo_ms,
+            call_method="__call__",
+            shard_key=None,
+            async_future=None,
+            is_shadow_query=False,
+    ):
         self.request_args = request_args
         self.request_kwargs = request_kwargs
         self.request_context = request_context
@@ -37,6 +40,7 @@ class Query:
 
         self.call_method = call_method
         self.shard_key = shard_key
+        self.is_shadow_query = is_shadow_query
 
     def ray_serialize(self):
         # NOTE: this method is needed because Query need to be serialized and
@@ -83,7 +87,7 @@ def _make_future_unwrapper(client_futures: List[asyncio.Future],
 class Router:
     """A router that routes request to available workers."""
 
-    async def __init__(self, instance_name=None):
+    async def setup(self, instance_name=None):
         # Note: Several queues are used in the router
         # - When a request come in, it's placed inside its corresponding
         #   endpoint_queue.
@@ -194,8 +198,6 @@ class Router:
             self.endpoint_queues[endpoint].appendleft(query)
             self.flush_endpoint_queue(endpoint)
 
-        # Note: a future change can be to directly return the ObjectID from
-        # replica task submission
         try:
             result = await query.async_future
         except RayTaskError as e:
@@ -241,11 +243,11 @@ class Router:
                 # result.
                 pass
 
-    async def set_traffic(self, endpoint, traffic_dict):
+    async def set_traffic(self, endpoint, traffic_policy):
         logger.debug("Setting traffic for endpoint %s to %s", endpoint,
-                     traffic_dict)
+                     traffic_policy)
         async with self.flush_lock:
-            self.traffic[endpoint] = RandomEndpointPolicy(traffic_dict)
+            self.traffic[endpoint] = RandomEndpointPolicy(traffic_policy)
             self.flush_endpoint_queue(endpoint)
 
     async def remove_endpoint(self, endpoint):
@@ -314,7 +316,13 @@ class Router:
         start = time.time()
         worker = self.replicas[backend_replica_tag]
         try:
-            result = await worker.handle_request.remote(req)
+            if req.is_shadow_query:
+                # No need to actually get the result, but we do need to wait
+                # until the call completes to mark the worker idle.
+                asyncio.wait([worker.handle_request.remote(req)])
+                result = ""
+            else:
+                result = await worker.handle_request.remote(req)
         except RayTaskError as error:
             self.num_error_backend_request.labels(backend=backend).add()
             result = error
@@ -356,6 +364,9 @@ class Router:
             self.queries_counter[backend_replica_tag] += 1
             future = asyncio.get_event_loop().create_task(
                 self._do_query(backend, backend_replica_tag, request))
-            chain_future(future, request.async_future)
+
+            # For shadow queries, just ignore the result.
+            if not request.is_shadow_query:
+                chain_future(future, request.async_future)
 
             worker_queue.appendleft(backend_replica_tag)

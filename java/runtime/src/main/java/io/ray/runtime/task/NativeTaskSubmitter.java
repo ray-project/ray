@@ -1,6 +1,7 @@
 package io.ray.runtime.task;
 
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.id.ActorId;
@@ -21,7 +22,11 @@ public class NativeTaskSubmitter implements TaskSubmitter {
   @Override
   public List<ObjectId> submitTask(FunctionDescriptor functionDescriptor, List<FunctionArg> args,
                                    int numReturns, CallOptions options) {
-    List<byte[]> returnIds = nativeSubmitTask(functionDescriptor, args, numReturns, options);
+    List<byte[]> returnIds = nativeSubmitTask(functionDescriptor, functionDescriptor.hashCode(),
+        args, numReturns, options);
+    if (returnIds == null) {
+      return ImmutableList.of();
+    }
     return returnIds.stream().map(ObjectId::new).collect(Collectors.toList());
   }
 
@@ -32,8 +37,14 @@ public class NativeTaskSubmitter implements TaskSubmitter {
       Preconditions.checkArgument(!Ray.getActor(options.name).isPresent(),
           String.format("Actor of name %s exists", options.name));
     }
-    byte[] actorId = nativeCreateActor(functionDescriptor, args, options);
+    byte[] actorId = nativeCreateActor(functionDescriptor, functionDescriptor.hashCode(), args,
+        options);
     return NativeActorHandle.create(actorId, functionDescriptor.getLanguage());
+  }
+
+  @Override
+  public BaseActorHandle getActor(ActorId actorId) {
+    return NativeActorHandle.create(actorId.getBytes());
   }
 
   @Override
@@ -42,22 +53,21 @@ public class NativeTaskSubmitter implements TaskSubmitter {
       List<FunctionArg> args, int numReturns, CallOptions options) {
     Preconditions.checkState(actor instanceof NativeActorHandle);
     List<byte[]> returnIds = nativeSubmitActorTask(actor.getId().getBytes(),
-        functionDescriptor, args, numReturns, options);
+        functionDescriptor, functionDescriptor.hashCode(), args, numReturns, options);
+    if (returnIds == null) {
+      return ImmutableList.of();
+    }
     return returnIds.stream().map(ObjectId::new).collect(Collectors.toList());
   }
 
-  @Override
-  public BaseActorHandle getActor(ActorId actorId) {
-    return NativeActorHandle.create(actorId.getBytes());
-  }
-
   private static native List<byte[]> nativeSubmitTask(FunctionDescriptor functionDescriptor,
-      List<FunctionArg> args, int numReturns, CallOptions callOptions);
+      int functionDescriptorHash, List<FunctionArg> args, int numReturns, CallOptions callOptions);
 
   private static native byte[] nativeCreateActor(FunctionDescriptor functionDescriptor,
-      List<FunctionArg> args, ActorCreationOptions actorCreationOptions);
+      int functionDescriptorHash, List<FunctionArg> args,
+      ActorCreationOptions actorCreationOptions);
 
   private static native List<byte[]> nativeSubmitActorTask(byte[] actorId,
-      FunctionDescriptor functionDescriptor, List<FunctionArg> args, int numReturns,
-      CallOptions callOptions);
+      FunctionDescriptor functionDescriptor, int functionDescriptorHash, List<FunctionArg> args,
+      int numReturns, CallOptions callOptions);
 }

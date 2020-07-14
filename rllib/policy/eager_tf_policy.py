@@ -16,7 +16,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
@@ -174,6 +174,7 @@ def build_eager_tf_policy(name,
                           grad_stats_fn=None,
                           extra_learn_fetches_fn=None,
                           extra_action_fetches_fn=None,
+                          validate_spaces=None,
                           before_init=None,
                           before_loss_init=None,
                           after_init=None,
@@ -199,7 +200,7 @@ def build_eager_tf_policy(name,
     class eager_policy_cls(base):
         def __init__(self, observation_space, action_space, config):
             assert tf.executing_eagerly()
-            self.framework = "tf"
+            self.framework = "tfe"
             Policy.__init__(self, observation_space, action_space, config)
             self._is_training = False
             self._loss_initialized = False
@@ -207,6 +208,9 @@ def build_eager_tf_policy(name,
 
             if get_default_config:
                 config = dict(get_default_config(), **config)
+
+            if validate_spaces:
+                validate_spaces(self, observation_space, action_space, config)
 
             if before_init:
                 before_init(self, observation_space, action_space, config)
@@ -231,11 +235,11 @@ def build_eager_tf_policy(name,
                     action_space,
                     logit_dim,
                     config["model"],
-                    framework="tf",
+                    framework=self.framework,
                 )
             self.exploration = self._create_exploration()
             self._state_in = [
-                tf.convert_to_tensor(np.array([s]))
+                tf.convert_to_tensor([s])
                 for s in self.model.get_initial_state()
             ]
             input_dict = {
@@ -262,7 +266,7 @@ def build_eager_tf_policy(name,
             if optimizer_fn:
                 self._optimizer = optimizer_fn(self, config)
             else:
-                self._optimizer = tf.train.AdamOptimizer(config["lr"])
+                self._optimizer = tf.keras.optimizers.Adam(config["lr"])
 
             if after_init:
                 after_init(self, observation_space, action_space, config)
@@ -321,16 +325,15 @@ def build_eager_tf_policy(name,
             self._is_training = False
             self._state_in = state_batches
 
-            if tf.executing_eagerly():
-                n = len(obs_batch)
-            else:
-                n = obs_batch.shape[0]
-            seq_lens = tf.ones(n, dtype=tf.int32)
+            if not tf1.executing_eagerly():
+                tf1.enable_eager_execution()
 
             input_dict = {
                 SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch),
                 "is_training": tf.constant(False),
             }
+            n = input_dict[SampleBatch.CUR_OBS].shape[0]
+            seq_lens = tf.ones(n, dtype=tf.int32)
             if obs_include_prev_action_reward:
                 if prev_action_batch is not None:
                     input_dict[SampleBatch.PREV_ACTIONS] = \
@@ -349,7 +352,8 @@ def build_eager_tf_policy(name,
                         self.model,
                         input_dict[SampleBatch.CUR_OBS],
                         explore=explore,
-                        timestep=timestep)
+                        timestep=timestep,
+                        episodes=episodes)
                 else:
                     # Exploration hook before each forward pass.
                     self.exploration.before_compute_actions(
@@ -454,8 +458,10 @@ def build_eager_tf_policy(name,
             return _convert_to_numpy(self.exploration.get_info())
 
         @override(Policy)
-        def get_weights(self):
+        def get_weights(self, as_dict=False):
             variables = self.variables()
+            if as_dict:
+                return {v.name: v.numpy() for v in variables}
             return [v.numpy() for v in variables]
 
         @override(Policy)
@@ -614,8 +620,7 @@ def build_eager_tf_policy(name,
                 SampleBatch.DONES: np.array([False], dtype=np.bool),
                 SampleBatch.REWARDS: np.array([0], dtype=np.float32),
             }
-            if isinstance(self.action_space, Tuple) or isinstance(
-                    self.action_space, Dict):
+            if isinstance(self.action_space, (Dict, Tuple)):
                 dummy_batch[SampleBatch.ACTIONS] = [
                     flatten_to_single_ndarray(self.action_space.sample())
                 ]
@@ -636,8 +641,8 @@ def build_eager_tf_policy(name,
                 dummy_batch["seq_lens"] = np.array([1], dtype=np.int32)
 
             # Convert everything to tensors.
-            dummy_batch = tf.nest.map_structure(tf.convert_to_tensor,
-                                                dummy_batch)
+            dummy_batch = tf.nest.map_structure(
+                tf1.convert_to_tensor, dummy_batch)
 
             # for IMPALA which expects a certain sample batch size.
             def tile_to(tensor, n):
@@ -648,6 +653,11 @@ def build_eager_tf_policy(name,
                 dummy_batch = tf.nest.map_structure(
                     lambda c: tile_to(c, get_batch_divisibility_req(self)),
                     dummy_batch)
+            i = 0
+            self._state_in = []
+            while "state_in_{}".format(i) in dummy_batch:
+                self._state_in.append(dummy_batch["state_in_{}".format(i)])
+                i += 1
 
             # Execute a forward pass to get self.action_dist etc initialized,
             # and also obtain the extra action fetches

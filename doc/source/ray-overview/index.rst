@@ -14,8 +14,8 @@ Parallelizing Python Functions with Ray Tasks
 =============================================
 
 First, import ray and ``init`` the Ray service.
-Then decorate your function with ``@ray.remote`` to declare that you want to run this function 
-remotely. Lastly, call that function with ``.remote()`` instead of calling it normally. This remote call yields a future, or ``ObjectID`` that you can then
+Then decorate your function with ``@ray.remote`` to declare that you want to run this function
+remotely. Lastly, call that function with ``.remote()`` instead of calling it normally. This remote call yields a future, or ``ObjectRef`` that you can then
 fetch with ``ray.get``.
 
 .. code-block:: python
@@ -37,15 +37,15 @@ Parallelizing Python Classes with Ray Actors
 ==============================================
 
 Ray provides actors to allow you to parallelize an instance of a class in Python.
-When you instantiate a class that is a Ray actor, Ray will start a remote instance 
-of that class in the cluster. This actor can then execute remote method calls and 
+When you instantiate a class that is a Ray actor, Ray will start a remote instance
+of that class in the cluster. This actor can then execute remote method calls and
 maintain its own internal state.
 
 .. code-block:: python
 
     import ray
     ray.init() # Only call this once.
- 
+
     @ray.remote
     class Counter(object):
         def __init__(self):
@@ -85,10 +85,10 @@ Tune Quick Start
 
     .. code-block:: bash
 
-        $ pip install ray torch torchvision filelock
+        $ pip install 'ray[tune]'
 
 
-This example runs a small grid search to train a CNN using PyTorch and Tune.
+This example runs a small grid search with an iterative training function.
 
 .. literalinclude:: ../../../python/ray/tune/tests/example.py
    :language: python
@@ -157,4 +157,4 @@ Ray programs can run on a single machine, and can also seamlessly scale to large
 
 ``ray submit [CLUSTER.YAML] example.py --start``
 
-Read more about `launching clusters <autoscaling.html>`_.
+Read more about `:ref:launching clusters <cluster-index>`.

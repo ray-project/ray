@@ -131,7 +131,7 @@ class GlobalState:
         """Execute a Redis command on the appropriate Redis shard based on key.
 
         Args:
-            key: The object ID or the task ID that the query is about.
+            key: The object ref or the task ID that the query is about.
             args: The command to run.
 
         Returns:
@@ -155,11 +155,11 @@ class GlobalState:
             result.extend(list(client.scan_iter(match=pattern)))
         return result
 
-    def object_table(self, object_id=None):
-        """Fetch and parse the object table info for one or more object IDs.
+    def object_table(self, object_ref=None):
+        """Fetch and parse the object table info for one or more object refs.
 
         Args:
-            object_id: An object ID to fetch information about. If this is
+            object_ref: An object ref to fetch information about. If this is
                 None, then the entire object table is fetched.
 
         Returns:
@@ -167,9 +167,10 @@ class GlobalState:
         """
         self._check_connected()
 
-        if object_id is not None:
-            object_id = ray.ObjectID(hex_to_binary(object_id))
-            object_info = self.global_state_accessor.get_object_info(object_id)
+        if object_ref is not None:
+            object_ref = ray.ObjectRef(hex_to_binary(object_ref))
+            object_info = self.global_state_accessor.get_object_info(
+                object_ref)
             if object_info is None:
                 return {}
             else:
@@ -196,7 +197,7 @@ class GlobalState:
             locations.append(ray.utils.binary_to_hex(location.manager))
 
         object_info = {
-            "ObjectID": ray.utils.binary_to_hex(
+            "ObjectRef": ray.utils.binary_to_hex(
                 object_location_info.object_id),
             "Locations": locations,
         }
@@ -538,21 +539,21 @@ class GlobalState:
 
             for event in items:
                 if event["event_type"] == "transfer_send":
-                    object_id, remote_node_id, _, _ = event["extra_data"]
+                    object_ref, remote_node_id, _, _ = event["extra_data"]
 
                 elif event["event_type"] == "transfer_receive":
-                    object_id, remote_node_id, _, _ = event["extra_data"]
+                    object_ref, remote_node_id, _, _ = event["extra_data"]
 
                 elif event["event_type"] == "receive_pull_request":
-                    object_id, remote_node_id = event["extra_data"]
+                    object_ref, remote_node_id = event["extra_data"]
 
                 else:
                     assert False, "This should be unreachable."
 
                 # Choose a color by reading the first couple of hex digits of
-                # the object ID as an integer and turning that into a color.
-                object_id_int = int(object_id[:2], 16)
-                color = self._chrome_tracing_colors[object_id_int % len(
+                # the object ref as an integer and turning that into a color.
+                object_ref_int = int(object_ref[:2], 16)
+                color = self._chrome_tracing_colors[object_ref_int % len(
                     self._chrome_tracing_colors)]
 
                 new_event = {
@@ -602,25 +603,51 @@ class GlobalState:
         """Get a dictionary mapping worker ID to worker information."""
         self._check_connected()
 
-        worker_keys = self.redis_client.keys("Worker*")
+        # Get all data in worker table
+        worker_table = self.global_state_accessor.get_worker_table()
         workers_data = {}
+        for i in range(len(worker_table)):
+            worker_table_data = gcs_utils.WorkerTableData.FromString(
+                worker_table[i])
+            if worker_table_data.is_alive and \
+                    worker_table_data.worker_type == gcs_utils.WORKER:
+                worker_id = binary_to_hex(
+                    worker_table_data.worker_address.worker_id)
+                worker_info = worker_table_data.worker_info
 
-        for worker_key in worker_keys:
-            worker_info = self.redis_client.hgetall(worker_key)
-            worker_id = binary_to_hex(worker_key[len("Workers:"):])
-
-            workers_data[worker_id] = {
-                "node_ip_address": decode(worker_info[b"node_ip_address"]),
-                "plasma_store_socket": decode(
-                    worker_info[b"plasma_store_socket"])
-            }
-            if b"stderr_file" in worker_info:
-                workers_data[worker_id]["stderr_file"] = decode(
-                    worker_info[b"stderr_file"])
-            if b"stdout_file" in worker_info:
-                workers_data[worker_id]["stdout_file"] = decode(
-                    worker_info[b"stdout_file"])
+                workers_data[worker_id] = {
+                    "node_ip_address": decode(worker_info[b"node_ip_address"]),
+                    "plasma_store_socket": decode(
+                        worker_info[b"plasma_store_socket"])
+                }
+                if b"stderr_file" in worker_info:
+                    workers_data[worker_id]["stderr_file"] = decode(
+                        worker_info[b"stderr_file"])
+                if b"stdout_file" in worker_info:
+                    workers_data[worker_id]["stdout_file"] = decode(
+                        worker_info[b"stdout_file"])
         return workers_data
+
+    def add_worker(self, worker_id, worker_type, worker_info):
+        """ Add a worker to the cluster.
+
+        Args:
+            worker_id: ID of this worker. Type is bytes.
+            worker_type: Type of this worker. Value is ray.gcs_utils.DRIVER or
+                ray.gcs_utils.WORKER.
+            worker_info: Info of this worker. Type is dict{str: str}.
+
+        Returns:
+             Is operation success
+        """
+        worker_data = ray.gcs_utils.WorkerTableData()
+        worker_data.is_alive = True
+        worker_data.worker_address.worker_id = worker_id
+        worker_data.worker_type = worker_type
+        for k, v in worker_info.items():
+            worker_data.worker_info[k] = bytes(v, encoding="utf-8")
+        return self.global_state_accessor.add_worker_info(
+            worker_data.SerializeToString())
 
     def _job_length(self):
         event_log_sets = self.redis_client.keys("event_log*")
@@ -703,12 +730,9 @@ class GlobalState:
             heartbeat_data = pub_message.data
             message = gcs_utils.HeartbeatTableData.FromString(heartbeat_data)
             # Calculate available resources for this client
-            num_resources = len(message.resources_available_label)
             dynamic_resources = {}
-            for i in range(num_resources):
-                resource_id = message.resources_available_label[i]
-                dynamic_resources[resource_id] = (
-                    message.resources_available_capacity[i])
+            for resource_id, capacity in message.resources_available.items():
+                dynamic_resources[resource_id] = capacity
 
             # Update available resources for this client
             client_id = ray.utils.binary_to_hex(message.client_id)
@@ -898,17 +922,17 @@ def actors(actor_id=None):
     return state.actor_table(actor_id=actor_id)
 
 
-def objects(object_id=None):
-    """Fetch and parse the object table info for one or more object IDs.
+def objects(object_ref=None):
+    """Fetch and parse the object table info for one or more object refs.
 
     Args:
-        object_id: An object ID to fetch information about. If this is None,
+        object_ref: An object ref to fetch information about. If this is None,
             then the entire object table is fetched.
 
     Returns:
         Information from the object table.
     """
-    return state.object_table(object_id=object_id)
+    return state.object_table(object_ref=object_ref)
 
 
 def timeline(filename=None):

@@ -23,3 +23,5 @@ if __name__ == "__main__":
 
     # Clean up.
     del os.environ["RLLIB_TEST_NO_TORCH_IMPORT"]
+
+    print("ok")

@@ -2,11 +2,8 @@ import unittest
 
 import ray
 import ray.rllib.agents.ppo as ppo
-from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_compute_single_action, \
     framework_iterator
-
-tf = try_import_tf()
 
 
 class TestAPPO(unittest.TestCase):
