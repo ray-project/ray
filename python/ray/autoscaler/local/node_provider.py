@@ -147,7 +147,7 @@ class LocalNodeProvider(NodeProvider):
         info = workers[node_id]
         info["state"] = "terminated"
         self.state.put(node_id, info)
-    
+
     @staticmethod
     def bootstrap_config(cluster_config):
         from ray.autoscaler.local.config import bootstrap_local
