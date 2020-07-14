@@ -176,7 +176,7 @@ import time
 import ray
 import numpy as np
 ray.init(address="{}")
-object_ids = [ray.put(np.zeros(200 * 1024, dtype=np.uint8))
+object_refs = [ray.put(np.zeros(200 * 1024, dtype=np.uint8))
               for i in range(1000)]
 start_time = time.time()
 while time.time() - start_time < 30:
@@ -582,7 +582,7 @@ ray.init(address="{}")
 @ray.remote
 def g(x):
     return
-g.remote(ray.ObjectID(ray.utils.hex_to_binary("{}")))
+g.remote(ray.ObjectRef(ray.utils.hex_to_binary("{}")))
 time.sleep(1)
 print("success")
 """
@@ -590,7 +590,7 @@ print("success")
     # Create some drivers and let them exit and make sure everything is
     # still alive.
     for _ in range(3):
-        nonexistent_id = ray.ObjectID.from_random()
+        nonexistent_id = ray.ObjectRef.from_random()
         driver_script = driver_script_template.format(address,
                                                       nonexistent_id.hex())
         out = run_string_as_driver(driver_script)
@@ -606,7 +606,7 @@ import ray
 ray.init(address="{}")
 @ray.remote
 def g():
-    ray.wait(ray.ObjectID(ray.utils.hex_to_binary("{}")))
+    ray.wait(ray.ObjectRef(ray.utils.hex_to_binary("{}")))
 g.remote()
 time.sleep(1)
 print("success")
@@ -615,7 +615,7 @@ print("success")
     # Create some drivers and let them exit and make sure everything is
     # still alive.
     for _ in range(3):
-        nonexistent_id = ray.ObjectID.from_random()
+        nonexistent_id = ray.ObjectRef.from_random()
         driver_script = driver_script_template.format(address,
                                                       nonexistent_id.hex())
         out = run_string_as_driver(driver_script)

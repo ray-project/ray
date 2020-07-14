@@ -117,18 +117,10 @@ export type NodeInfoResponse = {
     };
     load_avg: [[number, number, number], [number, number, number]];
     net: [number, number]; // Sent and received network traffic in bytes / second
+    log_count?: { [pid: string]: number };
+    error_count?: { [pid: string]: number };
     workers: Array<NodeInfoResponseWorker>;
   }>;
-  log_counts: {
-    [ip: string]: {
-      [pid: string]: number;
-    };
-  };
-  error_counts: {
-    [ip: string]: {
-      [pid: string]: number;
-    };
-  };
 };
 
 export const getNodeInfo = () => get<NodeInfoResponse>("/api/node_info", {});
@@ -166,7 +158,7 @@ export type RayletActorInfo =
       nodeId: string;
       numExecutedTasks: number;
       numLocalObjects: number;
-      numObjectIdsInScope: number;
+      numObjectRefsInScope: number;
       pid: number;
       port: number;
       state:
@@ -356,7 +348,7 @@ export type MemoryTableEntry = {
   node_ip_address: string;
   pid: number;
   type: string;
-  object_id: string;
+  object_ref: string;
   object_size: number;
   reference_type: string;
   call_site: string;

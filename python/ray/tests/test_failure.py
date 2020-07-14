@@ -819,15 +819,15 @@ def test_raylet_crash_when_get(ray_start_regular):
         time.sleep(2)
         ray.worker._global_node.kill_raylet()
 
-    object_id = ray.put(np.zeros(200 * 1024, dtype=np.uint8))
-    ray.internal.free(object_id)
-    while ray.worker.global_worker.core_worker.object_exists(object_id):
+    object_ref = ray.put(np.zeros(200 * 1024, dtype=np.uint8))
+    ray.internal.free(object_ref)
+    while ray.worker.global_worker.core_worker.object_exists(object_ref):
         time.sleep(1)
 
     thread = threading.Thread(target=sleep_to_kill_raylet)
     thread.start()
     with pytest.raises(ray.exceptions.UnreconstructableError):
-        ray.get(object_id)
+        ray.get(object_ref)
     thread.join()
 
 
@@ -938,11 +938,11 @@ def test_fill_object_store_lru_fallback(shutdown_only):
     end = time.time()
     assert end - start < 3
 
-    oids = []
+    obj_refs = []
     for _ in range(3):
-        oid = expensive_task.remote()
-        ray.get(oid)
-        oids.append(oid)
+        obj_ref = expensive_task.remote()
+        ray.get(obj_ref)
+        obj_refs.append(obj_ref)
 
     @ray.remote
     class LargeMemoryActor:
@@ -954,16 +954,16 @@ def test_fill_object_store_lru_fallback(shutdown_only):
 
     actor = LargeMemoryActor.remote()
     for _ in range(3):
-        oid = actor.some_expensive_task.remote()
-        ray.get(oid)
-        oids.append(oid)
+        obj_ref = actor.some_expensive_task.remote()
+        ray.get(obj_ref)
+        obj_refs.append(obj_ref)
     # Make sure actor does not die
     ray.get(actor.test.remote())
 
     for _ in range(3):
-        oid = ray.put(np.zeros(10**8 // 2, dtype=np.uint8))
-        ray.get(oid)
-        oids.append(oid)
+        obj_ref = ray.put(np.zeros(10**8 // 2, dtype=np.uint8))
+        ray.get(obj_ref)
+        obj_refs.append(obj_ref)
 
 
 @pytest.mark.parametrize(
@@ -1022,13 +1022,13 @@ def test_serialized_id(ray_start_cluster):
         return x
 
     @ray.remote
-    def get(obj_ids, test_dependent_task):
-        print("get", obj_ids)
-        obj_id = obj_ids[0]
+    def get(obj_refs, test_dependent_task):
+        print("get", obj_refs)
+        obj_ref = obj_refs[0]
         if test_dependent_task:
-            assert ray.get(dependent_task.remote(obj_id)) == 1
+            assert ray.get(dependent_task.remote(obj_ref)) == 1
         else:
-            assert ray.get(obj_id) == 1
+            assert ray.get(obj_ref) == 1
 
     obj = small_object.remote()
     ray.get(get.remote([obj], False))

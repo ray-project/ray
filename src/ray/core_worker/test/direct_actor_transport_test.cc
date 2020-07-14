@@ -18,7 +18,7 @@
 #include "ray/common/test_util.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/transport/direct_task_transport.h"
-#include "ray/raylet/raylet_client.h"
+#include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
@@ -336,6 +336,8 @@ class MockDependencyWaiter : public DependencyWaiter {
  public:
   MOCK_METHOD2(Wait, void(const std::vector<rpc::ObjectReference> &dependencies,
                           std::function<void()> on_dependencies_available));
+
+  virtual ~MockDependencyWaiter() {}
 };
 
 class MockWorkerContext : public WorkerContext {

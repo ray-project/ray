@@ -23,7 +23,7 @@ class TestIMPALA(unittest.TestCase):
         config = impala.DEFAULT_CONFIG.copy()
         num_iterations = 1
 
-        for _ in framework_iterator(config, frameworks=("tf", "torch")):
+        for _ in framework_iterator(config):
             local_cfg = config.copy()
             for env in ["Pendulum-v0", "CartPole-v0"]:
                 print("Env={}".format(env))

@@ -11,13 +11,13 @@ load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("//bazel:ray.bzl", "COPTS", "PYX_COPTS", "PYX_SRCS", "copy_to_workspace")
 
 config_setting(
-    name = "windows_msvc-cl",
-    values = {"compiler": "msvc-cl"},
+    name = "msvc-cl",
+    flag_values = {"@bazel_tools//tools/cpp:compiler": "msvc-cl"},
 )
 
 config_setting(
-    name = "windows_clang-cl",
-    values = {"compiler": "clang-cl"},
+    name = "clang-cl",
+    flag_values = {"@bazel_tools//tools/cpp:compiler": "clang-cl"},
 )
 
 # === Begin of protobuf definitions ===
@@ -553,7 +553,7 @@ cc_library(
         ":gcs_service_rpc",
         ":gcs_table_storage_lib",
         ":node_manager_rpc",
-        ":raylet_lib",
+        ":raylet_client_lib",
         ":worker_rpc",
     ],
 )
@@ -663,6 +663,33 @@ cc_library(
 )
 
 cc_library(
+    name = "raylet_client_lib",
+    srcs = glob([
+        "src/ray/raylet_client/*.cc",
+    ]),
+    hdrs = glob([
+        "src/ray/raylet_client/*.h",
+    ]),
+    copts = COPTS,
+    linkopts = select({
+        "@bazel_tools//src/conditions:windows": [
+        ],
+        "//conditions:default": [
+            "-lpthread",
+        ],
+    }),
+    visibility = ["//streaming:__subpackages__"],
+    deps = [
+        ":gcs_cc_proto",
+        ":node_manager_fbs",
+        ":node_manager_rpc",
+        ":ray_common",
+        ":ray_util",
+        "@boost//:asio",
+    ],
+)
+
+cc_library(
     name = "core_worker_lib",
     srcs = glob(
         [
@@ -686,17 +713,17 @@ cc_library(
     copts = COPTS,
     visibility = ["//visibility:public"],
     deps = [
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        ":worker_cc_proto",
+        ":gcs",
+        ":plasma_client",
         ":ray_common",
         ":ray_util",
-        # TODO(hchen): After `raylet_client` is migrated to gRPC, `core_worker_lib`
-        # should only depend on `raylet_client`, instead of the whole `raylet_lib`.
-        ":raylet_lib",
+        ":raylet_client_lib",
+        ":service_based_gcs_client_lib",
+        ":worker_cc_proto",
         ":worker_rpc",
-        ":gcs",
         "@boost//:fiber",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -846,7 +873,7 @@ cc_test(
     name = "reconstruction_policy_test",
     srcs = ["src/ray/raylet/reconstruction_policy_test.cc"],
     copts = COPTS + select({
-        "//:windows_msvc-cl": [
+        "//:msvc-cl": [
         ],
         "//conditions:default": [
             # Ignore this warning since it's impractical to fix in the relevant headers
@@ -1973,7 +2000,7 @@ genrule(
     outs = ["ray_pkg.out"],
     cmd = """
         if [ "$${OSTYPE-}" = "msys" ]; then
-            mv -f python/ray/_raylet.so python/ray/_raylet.pyd
+            ln -P -f -- python/ray/_raylet.so python/ray/_raylet.pyd
         fi
         # NOTE(hchen): Protobuf doesn't allow specifying Python package name. So we use this `sed`
         # command to change the import path in the generated file.

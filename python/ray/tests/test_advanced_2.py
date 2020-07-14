@@ -690,15 +690,15 @@ def test_blocking_tasks(ray_start_regular):
     def g(i):
         # Each instance of g submits and blocks on the result of another
         # remote task.
-        object_ids = [f.remote(i, j) for j in range(2)]
-        return ray.get(object_ids)
+        object_refs = [f.remote(i, j) for j in range(2)]
+        return ray.get(object_refs)
 
     @ray.remote
     def h(i):
         # Each instance of g submits and blocks on the result of another
         # remote task using ray.wait.
-        object_ids = [f.remote(i, j) for j in range(2)]
-        return ray.wait(object_ids, num_returns=len(object_ids))
+        object_refs = [f.remote(i, j) for j in range(2)]
+        return ray.wait(object_refs, num_returns=len(object_refs))
 
     ray.get([h.remote(i) for i in range(4)])
 

@@ -5,8 +5,11 @@ from six.moves import queue
 
 from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.execution.minibatch_buffer import MinibatchBuffer
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.window_stat import WindowStat
+
+tf1, tf, tfv = try_import_tf()
 
 
 class LearnerThread(threading.Thread):
@@ -55,6 +58,9 @@ class LearnerThread(threading.Thread):
         self.num_steps = 0
 
     def run(self):
+        # Switch on eager mode if configured.
+        if self.local_worker.policy_config.get("framework") in ["tf2", "tfe"]:
+            tf1.enable_eager_execution()
         while not self.stopped:
             self.step()
 
