@@ -3,6 +3,7 @@ from collections import namedtuple
 import logging
 import multiprocessing
 import os
+import re
 import subprocess
 import sys
 
@@ -167,9 +168,9 @@ class ResourceSpec(
 
         gpu_type = _get_gpu_type()
         if num_gpus and gpu_type is not None:
-            gpu_name = "_RAY_ResourceConstraint:{}".format(gpu_type)
-            resources[gpu_name] = num_gpus
-
+            pretty_name = _pretty_gpu_name(gpu_type)
+            constraint_name = "_RAY_ResourceConstraint:{}".format(pretty_name)
+            resources[constraint_name] = num_gpus
 
         # Choose a default object store size.
         system_memory = ray.utils.get_system_memory()
@@ -258,6 +259,7 @@ def _autodetect_num_gpus():
         result = len([l.rstrip() for l in lines if l.startswith(b"NVIDIA")])
     return result
 
+
 def _get_gpu_type():
     """Get the gpu type for this machine.
 
@@ -272,12 +274,19 @@ def _get_gpu_type():
         if os.path.isdir(proc_gpus_path):
             gpu_dirs = os.listdir(proc_gpus_path)
             if len(gpu_dirs) > 0:
-                gpu_info_path = "{}/information".format(gpu_dirs[0])
+                gpu_info_path = "{}/{}/information".format(
+                    proc_gpus_path, gpu_dirs[0])
                 lines = open(gpu_info_path).readlines()
                 for line in lines:
-                    k, v = line.split()
-                    if k == "Model:":
-                        return v
+                    k, v = line.split(":")
+                    if k.strip() == "Model":
+                        return v.strip()
     return None
 
 
+GPU_NAME_PATTERN = re.compile("\w+\s+(\S+)-\S+-(\S+)")
+
+
+def _pretty_gpu_name(name):
+    match = GPU_NAME_PATTERN.match(name)
+    return "{}-{}".format(match.group(1), match.group(2))
