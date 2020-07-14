@@ -27,7 +27,7 @@ def do_test_explorations(run,
         core_config["num_workers"] = 0
 
     # Test all frameworks.
-    for fw in framework_iterator(core_config):
+    for _ in framework_iterator(core_config):
         print("Agent={}".format(run))
 
         # Test for both the default Agent's exploration AND the `Random`

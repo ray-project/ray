@@ -321,3 +321,6 @@ RAY_CONFIG(int64_t, k_report_batch_size, 100)
 
 /// Whether or not we enable metrics collection.
 RAY_CONFIG(int64_t, disable_stats, false)
+
+/// Whether start the Plasma Store as a Raylet thread.
+RAY_CONFIG(bool, put_small_object_in_memory_store, false)

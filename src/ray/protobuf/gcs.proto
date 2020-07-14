@@ -45,6 +45,7 @@ enum TablePrefix {
   WORKERS = 19;
   INTERNAL_CONFIG = 20;
   TABLE_PREFIX_MAX = 21;
+  PLACEMENT_GROUP_SCHEDULE = 22;
 }
 
 // The channel that Add operations to the Table should be published on, if any.
@@ -154,6 +155,33 @@ message ErrorTableData {
   string error_message = 3;
   // The timestamp of the error message.
   double timestamp = 4;
+}
+
+message PlacementGroupTableData {
+  // State of a placement group.
+  enum PlacementGroupState {
+    // Placement Group is pending or scheduling
+    PENDING = 0;
+    // Placement Group is alive.
+    ALIVE = 1;
+    // Placement Group is already dead and won't be reschedule.
+    DEAD = 2;
+  }
+
+  // ID of the PlacementGroup.
+  bytes placement_group_id = 1;
+  // The name of the placement group.
+  string name = 2;
+  // The array of the bundle in Placement Group.
+  repeated Bundle bundles = 3;
+  // The schedule strategy of this Placement Group.
+  PlacementStrategy strategy = 4;
+  // Current state of this placement group.
+  PlacementGroupState state = 5;
+}
+
+message ScheduleData {
+  map<string, bytes> schedule_plan = 1;
 }
 
 message ProfileTableData {

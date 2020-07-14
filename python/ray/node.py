@@ -98,6 +98,10 @@ class Node:
             raise ValueError(
                 "Internal config parameters can only be set on the head node.")
 
+        if ray_params._lru_evict:
+            assert (connect_only or
+                    head), "LRU Evict can only be passed into the head node."
+
         self._raylet_ip_address = raylet_ip_address
 
         ray_params.update_if_absent(
@@ -284,9 +288,9 @@ class Node:
         return self._ray_params.load_code_from_local
 
     @property
-    def object_id_seed(self):
-        """Get the seed for deterministic generation of object IDs"""
-        return self._ray_params.object_id_seed
+    def object_ref_seed(self):
+        """Get the seed for deterministic generation of object refs"""
+        return self._ray_params.object_ref_seed
 
     @property
     def plasma_store_socket_name(self):

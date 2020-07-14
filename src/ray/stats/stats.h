@@ -18,6 +18,9 @@
 #include <string>
 #include <unordered_map>
 
+#include "opencensus/exporters/stats/prometheus/prometheus_exporter.h"
+#include "opencensus/exporters/stats/stdout/stdout_exporter.h"
+#include "opencensus/stats/internal/delta_producer.h"
 #include "opencensus/stats/stats.h"
 #include "opencensus/tags/tag_key.h"
 
@@ -61,6 +64,10 @@ static void Init(
   }
 
   MetricExporter::Register(exporter, k_report_batch_size);
+  opencensus::stats::StatsExporter::SetInterval(
+      StatsConfig::instance().GetReportInterval());
+  opencensus::stats::DeltaProducer::Get()->SetHarvestInterval(
+      StatsConfig::instance().GetHarvestInterval());
   StatsConfig::instance().SetGlobalTags(global_tags);
 }
 

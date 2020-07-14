@@ -27,7 +27,8 @@ class ChannelID:
             channel_id_str: string representation of channel id
         """
         self.channel_id_str = channel_id_str
-        self.object_qid = ray.ObjectID(channel_id_str_to_bytes(channel_id_str))
+        self.object_qid = ray.ObjectRef(
+            channel_id_str_to_bytes(channel_id_str))
 
     def __eq__(self, other):
         if other is None:

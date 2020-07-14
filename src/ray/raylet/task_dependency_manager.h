@@ -71,8 +71,8 @@ class TaskDependencyManager {
   /// \param required_objects The objects required by the task.
   /// \return Whether all of the given dependencies for the given task are
   /// local.
-  bool SubscribeGetDependencies(const TaskID &task_id,
-                                const std::vector<ObjectID> &required_objects);
+  bool SubscribeGetDependencies(
+      const TaskID &task_id, const std::vector<rpc::ObjectReference> &required_objects);
 
   /// Subscribe to object depedencies required by the worker. This should be called for
   /// ray.wait calls during task execution.
@@ -86,8 +86,9 @@ class TaskDependencyManager {
   /// \param worker_id The ID of the worker that called `ray.wait`.
   /// \param required_objects The objects required by the worker.
   /// \return Void.
-  void SubscribeWaitDependencies(const WorkerID &worker_id,
-                                 const std::vector<ObjectID> &required_objects);
+  void SubscribeWaitDependencies(
+      const WorkerID &worker_id,
+      const std::vector<rpc::ObjectReference> &required_objects);
 
   /// Unsubscribe from the object dependencies required by this task through the task
   /// arguments or `ray.get`. If the objects were remote and are no longer required by any
@@ -165,12 +166,16 @@ class TaskDependencyManager {
 
  private:
   struct ObjectDependencies {
+    ObjectDependencies(const rpc::ObjectReference &ref)
+        : owner_address(ref.owner_address()) {}
     /// The tasks that depend on this object, either because the object is a task argument
     /// or because the task called `ray.get` on the object.
     std::unordered_set<TaskID> dependent_tasks;
     /// The workers that depend on this object because they called `ray.wait` on the
     /// object.
     std::unordered_set<WorkerID> dependent_workers;
+    /// The address of the worker that owns this object.
+    rpc::Address owner_address;
 
     bool Empty() const { return dependent_tasks.empty() && dependent_workers.empty(); }
   };

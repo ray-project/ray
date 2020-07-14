@@ -202,6 +202,7 @@ install_toolchains() {
 install_dependencies() {
 
   install_bazel
+
   install_base
   install_toolchains
   install_nvm
