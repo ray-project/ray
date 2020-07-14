@@ -320,21 +320,6 @@ cc_library(
     ],
 )
 
-cc_binary(
-    name = "libplasma_java.so",
-    srcs = [
-        "src/ray/object_manager/plasma/lib/java/org_apache_arrow_plasma_PlasmaClientJNI.cc",
-        "src/ray/object_manager/plasma/lib/java/org_apache_arrow_plasma_PlasmaClientJNI.h",
-        ":jni.h",
-        ":jni_md.h",
-    ],
-    copts = PLASMA_COPTS,
-    includes = ["src/ray/object_manager/plasma/lib/java"],
-    linkshared = 1,
-    linkstatic = 1,
-    deps = [":plasma_client"],
-)
-
 copy_file(
     name = "copy_jni_h",
     src = "@bazel_tools//tools/jdk:jni_header",
@@ -349,14 +334,6 @@ copy_file(
         "//conditions:default": "@bazel_tools//tools/jdk:jni_md_header-linux",
     }),
     out = "jni_md.h",
-)
-
-genrule(
-    name = "plasma-jni-darwin-compat",
-    srcs = [":libplasma_java.so"],
-    outs = ["libplasma_java.dylib"],
-    cmd = "cp $< $@",
-    output_to_bindir = 1,
 )
 
 cc_library(
@@ -618,8 +595,6 @@ cc_library(
             "src/ray/raylet/*.cc",
         ],
         exclude = [
-            "src/ray/raylet/mock_gcs_client.cc",
-            "src/ray/raylet/monitor*.cc",
             "src/ray/raylet/*_test.cc",
             "src/ray/raylet/main.cc",
         ],
