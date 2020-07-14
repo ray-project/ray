@@ -145,9 +145,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   @SuppressWarnings("unchecked")
   @Override
   public <T extends BaseActorHandle> Optional<T> getActor(String name, boolean global) {
-    String fullName = global ? name :
-        String.format("%s-%s", getRuntimeContext().getCurrentJobId(), name);
-    byte[] actorIdBytes = nativeGetActorIdOfNamedActor(fullName);
+    byte[] actorIdBytes = nativeGetActorIdOfNamedActor(name, global);
     ActorId actorId = ActorId.fromBytes(actorIdBytes);
     if (actorId.isNil()) {
       return Optional.empty();
@@ -194,7 +192,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   private static native void nativeKillActor(byte[] actorId, boolean noRestart);
 
-  private static native byte[] nativeGetActorIdOfNamedActor(String actorName);
+  private static native byte[] nativeGetActorIdOfNamedActor(String actorName, boolean global);
 
   private static native void nativeSetCoreWorker(byte[] workerId);
 

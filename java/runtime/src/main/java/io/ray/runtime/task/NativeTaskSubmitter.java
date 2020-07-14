@@ -11,6 +11,7 @@ import io.ray.api.options.CallOptions;
 import io.ray.runtime.actor.NativeActorHandle;
 import io.ray.runtime.functionmanager.FunctionDescriptor;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 
@@ -34,7 +35,9 @@ public class NativeTaskSubmitter implements TaskSubmitter {
   public BaseActorHandle createActor(FunctionDescriptor functionDescriptor, List<FunctionArg> args,
                                      ActorCreationOptions options) throws IllegalArgumentException {
     if (StringUtils.isNotBlank(options.name)) {
-      Preconditions.checkArgument(!Ray.getActor(options.name).isPresent(),
+      Optional<BaseActorHandle> actor =
+          options.global ? Ray.getGlobalActor(options.name) : Ray.getActor(options.name);
+      Preconditions.checkArgument(!actor.isPresent(),
           String.format("Actor of name %s exists", options.name));
     }
     byte[] actorId = nativeCreateActor(functionDescriptor, functionDescriptor.hashCode(), args,

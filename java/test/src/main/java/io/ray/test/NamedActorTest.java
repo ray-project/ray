@@ -58,12 +58,12 @@ public class NamedActorTest extends BaseTest {
         "java",
         "-cp",
         System.getProperty("java.class.path"),
-        name,
         "-Dray.redis.address=" + rayConfig.getRedisAddress(),
         "-Dray.object-store.socket-name=" + rayConfig.objectStoreSocketName,
         "-Dray.raylet.socket-name=" + rayConfig.rayletSocketName,
         "-Dray.raylet.node-manager-port=" + rayConfig.getNodeManagerPort(),
-        NamedActorTest.class.getName());
+        NamedActorTest.class.getName(),
+        name);
     builder.redirectError(ProcessBuilder.Redirect.INHERIT);
     Process driver = builder.start();
     Assert.assertTrue(driver.waitFor(60, TimeUnit.SECONDS));
@@ -89,7 +89,9 @@ public class NamedActorTest extends BaseTest {
   public void testActorDuplicatedName() {
     String name = "named-actor-counter";
     // Create an actor.
-    Ray.actor(Counter::new).setName(name).remote();
+    ActorHandle<Counter> actor = Ray.actor(Counter::new).setName(name).remote();
+    // Ensure async actor creation is finished.
+    Assert.assertEquals(actor.task(Counter::increment).remote().get(), Integer.valueOf(1));
     // Registering with the same name should fail.
     Ray.actor(Counter::new).setName(name).remote();
   }

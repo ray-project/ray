@@ -103,12 +103,15 @@ inline ray::TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject call
 
 inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
                                                         jobject actorCreationOptions) {
+  bool global = false;
   std::string name = "";
   int64_t max_restarts = 0;
   std::unordered_map<std::string, double> resources;
   std::vector<std::string> dynamic_worker_options;
   uint64_t max_concurrency = 1;
   if (actorCreationOptions) {
+    global =
+        env->GetBooleanField(actorCreationOptions, java_actor_creation_options_global);
     auto java_name = (jstring)env->GetObjectField(actorCreationOptions,
                                                   java_actor_creation_options_name);
     if (java_name) {
@@ -129,6 +132,7 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
         actorCreationOptions, java_actor_creation_options_max_concurrency));
   }
 
+  auto full_name = GetActorFullName(global, name);
   ray::ActorCreationOptions actor_creation_options{
       max_restarts,
       0,  // TODO: Allow setting max_task_retries from Java.
@@ -137,7 +141,7 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
       resources,
       dynamic_worker_options,
       /*is_detached=*/false,
-      name,
+      full_name,
       /*is_asyncio=*/false};
   return actor_creation_options;
 }
@@ -199,7 +203,6 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
   std::vector<ObjectID> return_ids;
   ray::CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
       actor_id, ray_function, task_args, task_options, &return_ids);
-
 
   // This is to avoid creating an empty java list and boost performance.
   if (return_ids.empty()) {

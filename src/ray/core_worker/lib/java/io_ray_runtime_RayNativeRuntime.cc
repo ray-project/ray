@@ -180,13 +180,19 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeSetResource(
 
 JNIEXPORT jbyteArray JNICALL
 Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(JNIEnv *env, jclass,
-                                                                  jstring actor_name) {
+                                                                  jstring actor_name,
+                                                                  jboolean global) {
   const char *native_actor_name = env->GetStringUTFChars(actor_name, JNI_FALSE);
-  ray::ActorHandle *actor_handle;
-  auto status = ray::CoreWorkerProcess::GetCoreWorker().GetNamedActorHandle(
-      native_actor_name, &actor_handle);
-  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
-  auto actor_id = actor_handle->GetActorID();
+  auto full_name = GetActorFullName(global, native_actor_name);
+
+  auto *actor_handle =
+      ray::CoreWorkerProcess::GetCoreWorker().GetNamedActorHandle(full_name);
+  ray::ActorID actor_id;
+  if (actor_handle) {
+    actor_id = actor_handle->GetActorID();
+  } else {
+    actor_id = ray::ActorID::Nil();
+  }
   jbyteArray bytes = env->NewByteArray(actor_id.Size());
   env->SetByteArrayRegion(bytes, 0, actor_id.Size(),
                           reinterpret_cast<const jbyte *>(actor_id.Data()));
