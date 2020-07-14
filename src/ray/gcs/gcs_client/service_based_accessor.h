@@ -200,6 +200,9 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   Status AsyncGetResources(const ClientID &node_id,
                            const OptionalItemCallback<ResourceMap> &callback) override;
 
+  Status AsyncGetAllNodeResources(
+      const MultiItemCallback<rpc::NodeResources> &callback) override;
+
   Status AsyncUpdateResources(const ClientID &node_id, const ResourceMap &resources,
                               const StatusCallback &callback) override;
 
@@ -244,8 +247,10 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   /// Save the fetch data operation in this function, so we can call it again when GCS
   /// server restarts from a failure.
   FetchDataOperation fetch_node_data_operation_;
+  FetchDataOperation fetch_resource_data_operation_;
 
   IdempotentFilter subscribe_node_filter_;
+  IdempotentFilter subscribe_resource_filter_;
 
   void HandleNotification(const GcsNodeInfo &node_info);
 

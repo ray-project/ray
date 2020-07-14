@@ -645,6 +645,19 @@ Status ServiceBasedNodeInfoAccessor::AsyncGetResources(
   return Status::OK();
 }
 
+Status ServiceBasedNodeInfoAccessor::AsyncGetAllNodeResources(
+    const MultiItemCallback<rpc::NodeResources> &callback) {
+  RAY_LOG(DEBUG) << "Getting resources of all nodes.";
+  rpc::GetAllNodeResourcesRequest request;
+  client_impl_->GetGcsRpcClient().GetAllNodeResources(
+      request,
+      [callback](const Status &status, const rpc::GetAllNodeResourcesReply &reply) {
+        callback(status, VectorFromProtobuf(reply.node_resources_list()));
+        RAY_LOG(DEBUG) << "Finished getting resources of all nodes, status = " << status;
+      });
+  return Status::OK();
+}
+
 Status ServiceBasedNodeInfoAccessor::AsyncUpdateResources(
     const ClientID &node_id, const ResourceMap &resources,
     const StatusCallback &callback) {
@@ -704,16 +717,66 @@ Status ServiceBasedNodeInfoAccessor::AsyncDeleteResources(
 Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToResources(
     const ItemCallback<rpc::NodeResourceChange> &subscribe, const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  subscribe_resource_operation_ = [this, subscribe](const StatusCallback &done) {
-    auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+  fetch_resource_data_operation_ = [this, subscribe](const StatusCallback &fetch_done) {
+    auto callback = [this, subscribe, fetch_done](
+                        const Status &status,
+                        const std::vector<rpc::NodeResources> &node_resources_list) {
+      for (auto &node_resources : node_resources_list) {
+        rpc::NodeResourceChange node_resource_change;
+        node_resource_change.set_node_id(node_resources.node_id());
+        for (auto &it : node_resources.resources()) {
+          if (subscribe_resource_filter_.Filter(node_resources.node_id() + it.first,
+                                                it.second.timestamp())) {
+            (*node_resource_change.mutable_updated_resources())[it.first] =
+                it.second.resource_capacity();
+          }
+        }
+        if (node_resource_change.updated_resources_size() > 0 ||
+            node_resource_change.deleted_resources_size() > 0) {
+          subscribe(node_resource_change);
+        }
+      }
+      if (fetch_done) {
+        fetch_done(status);
+      }
+    };
+    RAY_CHECK_OK(AsyncGetAllNodeResources(callback));
+  };
+
+  subscribe_resource_operation_ = [this,
+                                   subscribe](const StatusCallback &subscribe_done) {
+    auto on_subscribe = [this, subscribe](const std::string &id,
+                                          const std::string &data) {
+      rpc::NodeResourceChange result;
+      result.ParseFromString(data);
+
+      bool is_changed = false;
       rpc::NodeResourceChange node_resource_change;
-      node_resource_change.ParseFromString(data);
-      subscribe(node_resource_change);
+      node_resource_change.set_node_id(result.node_id());
+      for (auto &it : result.updated_resources()) {
+        if (subscribe_resource_filter_.Filter(result.node_id() + it.first,
+                                              result.timestamp())) {
+          (*node_resource_change.mutable_updated_resources())[it.first] = it.second;
+          is_changed = true;
+        }
+      }
+      for (auto &it : result.deleted_resources()) {
+        if (subscribe_resource_filter_.Filter(result.node_id() + it,
+                                              result.timestamp())) {
+          node_resource_change.add_deleted_resources(it);
+          is_changed = true;
+        }
+      }
+      if (is_changed) {
+        subscribe(node_resource_change);
+      }
     };
     return client_impl_->GetGcsPubSub().SubscribeAll(NODE_RESOURCE_CHANNEL, on_subscribe,
-                                                     done);
+                                                     subscribe_done);
   };
-  return subscribe_resource_operation_(done);
+
+  return subscribe_resource_operation_(
+      [this, done](const Status &status) { fetch_resource_data_operation_(done); });
 }
 
 Status ServiceBasedNodeInfoAccessor::AsyncReportHeartbeat(
