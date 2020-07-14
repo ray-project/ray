@@ -61,7 +61,11 @@ int main(int argc, char *argv[]) {
       std::make_shared<ray::IOServicePool>(io_service_num_);
   io_service_pool->Run();
 
+  // IO Service for signals handler.
   boost::asio::io_service signal_service;
+  // Ensure that the IO service keeps running. Without this, the signal_service will exit
+  // as soon as there is no more work to be processed.
+  boost::asio::io_service::work signal_work(signal_service);
 
   ray::gcs::GcsServerConfig gcs_server_config;
   gcs_server_config.grpc_server_name = "GcsServer";
@@ -73,7 +77,7 @@ int main(int argc, char *argv[]) {
   gcs_server_config.retry_redis = retry_redis;
   ray::gcs::GcsServer gcs_server(gcs_server_config, io_service_pool->GetAll());
 
-  // Destroy the GCS server on a SIGTERM. The pointer to main_service is
+  // Destroy the GCS server on a SIGTERM. The pointer to signal_service is
   // guaranteed to be valid since this function will run the event loop
   // instead of returning immediately.
   auto handler = [&io_service_pool, &gcs_server, &signal_service](
