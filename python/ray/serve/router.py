@@ -50,7 +50,7 @@ class Query:
         # worker without removing async_future.
         clone = copy.copy(self).__dict__
         clone.pop("async_future")
-        return pickle.dumps(clone, protocol=5)
+        return pickle.dumps(clone)
 
     @staticmethod
     def ray_deserialize(value):
