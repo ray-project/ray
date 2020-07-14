@@ -162,8 +162,7 @@ def _add_service_name_to_service_port(spec, svc_name):
                     raise ValueError(
                         "The value of serviceName must be set to "
                         "${RAY_POD_NAME}. It is automatically replaced "
-                        "when autoscaling."
-                    )
+                        "when autoscaling.")
                 else:
                     spec["serviceName"] = svc_name
 
