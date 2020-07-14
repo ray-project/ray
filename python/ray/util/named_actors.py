@@ -21,7 +21,6 @@ def _calculate_key(name):
 
 
 def _get_actor(name):
-    print("hohoho")
     if ray._raylet.gcs_actor_service_enabled():
         worker = ray.worker.global_worker
         handle = worker.core_worker.get_named_actor_handle(name)

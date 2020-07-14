@@ -597,8 +597,6 @@ cdef void get_py_stack(c_string* stack_out) nogil:
     number of the Python code that is calling into the core worker.
     """
     with gil:
-        print(threading.get_ident())
-        print('sangbin 1')
         try:
             frame = inspect.currentframe()
         except ValueError:  # overhead of exception handling is about 20us
@@ -632,7 +630,6 @@ cdef void get_py_stack(c_string* stack_out) nogil:
                 break
             frame = frame.f_back
         stack_out[0] = msg.encode("ascii")
-        print('sangbin 12')
 
 cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):
     cdef shared_ptr[CBuffer] empty_metadata
@@ -1085,7 +1082,6 @@ cdef class CoreWorker:
             pair[const CActorHandle*, CRayStatus] named_actor_handle_pair
             const CActorHandle* c_actor_handle
 
-        # We should not 
         with nogil:
             named_actor_handle_pair = (
                 CCoreWorkerProcess.GetCoreWorker().GetNamedActorHandle(name))

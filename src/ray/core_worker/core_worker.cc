@@ -1321,33 +1321,26 @@ std::pair<const ActorHandle*, Status> CoreWorker::GetNamedActorHandle(const std:
   // There should be no risk of deadlock because we don't hold any
   // locks during the call and the RPCs run on a separate thread.
   ActorID actor_id;
-  RAY_LOG(ERROR) << "Create an actor of name, thread id: " << boost::this_thread::get_id();
   std::shared_ptr<std::promise<void>> ready_promise = std::make_shared<std::promise<void>>(std::promise<void>());
   RAY_CHECK_OK(gcs_client_->Actors().AsyncGetByName(
       name, [this, &actor_id, name, ready_promise](
                 Status status, const boost::optional<gcs::ActorTableData> &result) {
-        RAY_LOG(ERROR) << "reply came " << status;
         if (status.ok() && result) {
-          RAY_LOG(ERROR) << "Result, thread id: " << boost::this_thread::get_id();
           auto actor_handle = std::unique_ptr<ActorHandle>(new ActorHandle(*result));
           actor_id = actor_handle->GetActorID();
           auto inserted = actor_manager_->AddNewActorHandle(std::move(actor_handle), GetCallerId(),
                                             CurrentCallSite(), rpc_address_,
                                             /*is_detached*/ true);
-          RAY_LOG(ERROR) << "inserted: " << inserted;
         } else {
-          RAY_LOG(INFO) << "Failed to look up actor with name: " << name;
           // Use a NIL actor ID to signal that the actor wasn't found.
           actor_id = ActorID::Nil();
         }
-        RAY_LOG(ERROR) << "promise set value!";
         ready_promise->set_value();
       }));
   // Block until the RPC completes. Set a timeout to avoid hangs if the
   // GCS service crashes.
   if (ready_promise->get_future().wait_for(std::chrono::seconds(5)) !=
       std::future_status::ready) {
-    RAY_LOG(ERROR) << "timeout somehow thread id: " << boost::this_thread::get_id();
     std::ostringstream stream;
     stream << "There was timeout in getting the actor handle. It is probably "
               "because GCS server is dead or there's a high load there.";

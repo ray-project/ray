@@ -161,7 +161,7 @@ void GcsActorManager::HandleGetNamedActorInfo(
     const rpc::GetNamedActorInfoRequest &request, rpc::GetNamedActorInfoReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   const std::string &name = request.name();
-  RAY_LOG(ERROR) << "Getting actor info"
+  RAY_LOG(DEBUG) << "Getting actor info"
                  << ", name = " << name;
 
   auto on_done = [name, reply, send_reply_callback](
@@ -192,7 +192,7 @@ void GcsActorManager::HandleGetNamedActorInfo(
     if (!status.ok()) {
       on_done(status, boost::none);
     }
-    RAY_LOG(ERROR) << "Finished getting actor info, job id = " << actor_id.JobId()
+    RAY_LOG(DEBUG) << "Finished getting actor info, job id = " << actor_id.JobId()
                    << ", actor id = " << actor_id;
   }
 }

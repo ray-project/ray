@@ -925,12 +925,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // Convenience method to get the current language call site.
   std::string CurrentCallSite() {
     std::string call_site;
-    RAY_LOG(ERROR) << "call site function entered";
     if (get_call_site_ != nullptr) {
-      RAY_LOG(ERROR) << "call site is null. function called, thread id:" << boost::this_thread::get_id();
       get_call_site_(&call_site);
     }
-    RAY_LOG(ERROR) << "call site function is done thread id:" << boost::this_thread::get_id();
     return call_site;
   }
 
