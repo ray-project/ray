@@ -58,6 +58,8 @@ class SampleBatch:
     def __init__(self, *args, **kwargs):
         """Constructs a sample batch (same params as dict constructor)."""
 
+        self._initial_inputs = kwargs.pop("_initial_inputs", {})
+
         self.data = dict(*args, **kwargs)
         lengths = []
         for k, v in self.data.copy().items():

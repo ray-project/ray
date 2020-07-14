@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 def framework_iterator(config=None,
-                       frameworks=("tf", "tfe", "torch"),
+                       frameworks=("tf2", "tf", "tfe", "torch"),
                        session=False):
     """An generator that allows for looping through n frameworks for testing.
 
@@ -29,18 +29,23 @@ def framework_iterator(config=None,
         config (Optional[dict]): An optional config dict to alter in place
             depending on the iteration.
         frameworks (Tuple[str]): A list/tuple of the frameworks to be tested.
-            Allowed are: "tf", "tfe", "torch", and None.
+            Allowed are: "tf2", "tf", "tfe", "torch", and None.
         session (bool): If True and only in the tf-case: Enter a tf.Session()
             and yield that as second return value (otherwise yield (fw, None)).
 
     Yields:
         str: If enter_session is False:
-            The current framework ("tf", "tfe", "torch") used.
+            The current framework ("tf2", "tf", "tfe", "torch") used.
         Tuple(str, Union[None,tf.Session]: If enter_session is True:
             A tuple of the current fw and the tf.Session if fw="tf".
     """
     config = config or {}
-    frameworks = [frameworks] if isinstance(frameworks, str) else frameworks
+    frameworks = [frameworks] if isinstance(frameworks, str) else \
+        list(frameworks)
+
+    # Both tf2 and tfe present -> remove "tfe" or "tf2" depending on version.
+    if "tf2" in frameworks and "tfe" in frameworks:
+        frameworks.remove("tfe" if tfv == 2 else "tf2")
 
     for fw in frameworks:
         # Skip non-installed frameworks.
@@ -53,10 +58,14 @@ def framework_iterator(config=None,
                            "installed)!".format(fw))
             continue
         elif fw == "tfe" and not eager_mode:
-            logger.warning("framework_iterator skipping eager (could not "
+            logger.warning("framework_iterator skipping tf-eager (could not "
                            "import `eager_mode` from tensorflow.python)!")
             continue
-        assert fw in ["tf", "tfe", "torch", None]
+        elif fw == "tf2" and tfv != 2:
+            logger.warning(
+                "framework_iterator skipping tf2.x (tf version is < 2.0)!")
+            continue
+        assert fw in ["tf2", "tf", "tfe", "torch", None]
 
         # Do we need a test session?
         sess = None
@@ -69,10 +78,12 @@ def framework_iterator(config=None,
         config["framework"] = fw
 
         eager_ctx = None
-        if fw == "tfe":
+        # Enable eager mode for tf2 and tfe.
+        if fw in ["tf2", "tfe"]:
             eager_ctx = eager_mode()
             eager_ctx.__enter__()
             assert tf1.executing_eagerly()
+        # Make sure, eager mode is off.
         elif fw == "tf":
             assert not tf1.executing_eagerly()
 
@@ -169,8 +180,13 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
         if tf1 is not None:
             # y should never be a Tensor (y=expected value).
             if isinstance(y, tf1.Tensor):
-                raise ValueError("`y` (expected value) must not be a Tensor. "
-                                 "Use numpy.ndarray instead")
+                # In eager mode, numpyize tensors.
+                if tf.executing_eagerly():
+                    y = y.numpy()
+                else:
+                    raise ValueError(
+                        "`y` (expected value) must not be a Tensor. "
+                        "Use numpy.ndarray instead")
             if isinstance(x, tf1.Tensor):
                 # In eager mode, numpyize tensors.
                 if tf1.executing_eagerly():

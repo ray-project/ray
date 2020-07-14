@@ -113,7 +113,7 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
         if (on_store_full_) {
           on_store_full_();
         }
-        usleep(1000 * delay);
+        std::this_thread::sleep_for(std::chrono::milliseconds(delay));
         delay *= 2;
         retries += 1;
         should_retry = true;
