@@ -155,8 +155,8 @@ def _add_service_name_to_service_port(spec, svc_name):
         for k in dict_keys:
             spec[k] = _add_service_name_to_service_port(spec[k], svc_name)
 
-            # Every place that contains a servicePort definition should also
-            # have the serviceName defined.
+            # The magic string ${RAY_POD_NAME} is replaced with
+            # the true service name, which is equal to the worker pod name.
             if k == "serviceName":
                 if spec[k] != "${RAY_POD_NAME}":
                     raise ValueError(
