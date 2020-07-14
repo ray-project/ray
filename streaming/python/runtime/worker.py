@@ -56,7 +56,11 @@ class JobWorker(object):
             self.reader_client = _streaming.ReaderClient()
             self.writer_client = _streaming.WriterClient()
 
-        self.task = self.create_stream_task()
+        try:
+            self.task = self.create_stream_task()
+        except Exception as e:
+            logger.error("Job worker init failed.")
+            return False
 
         logger.info("Job worker init succeeded.")
         return True
