@@ -303,10 +303,17 @@ class PopulationBasedTraining(FIFOScheduler):
         """
         trial_state = self._trial_state[trial]
         new_state = self._trial_state[trial_to_clone]
-        if not new_state.last_checkpoint:
-            logger.info("[pbt]: no checkpoint for trial."
-                        " Skip exploit for Trial {}".format(trial))
-            return
+        checkpoint = new_state.last_checkpoint
+        if not checkpoint:
+            if not trial.checkpoint_manager.best_checkpoint:
+                logger.info("[pbt]: no last checkpoint found for trial."
+                            " Skip exploit for Trial {}".format(trial))
+                return
+            logger.info(
+                "[pbt]: no last checkpoint found for trial."
+                " Use best available checkpoint for Trial {}".format(trial))
+            checkpoint = trial.checkpoint_manager.best_checkpoint
+
         new_config = explore(trial_to_clone.config, self._hyperparam_mutations,
                              self._resample_probability,
                              self._custom_explore_fn)
@@ -329,14 +336,12 @@ class PopulationBasedTraining(FIFOScheduler):
         #  and suppress train on start as a stop-gap fix to
         #  https://github.com/ray-project/ray/issues/7258.
         if reset_successful:
-            trial_executor.restore(
-                trial, new_state.last_checkpoint, block=True)
+            trial_executor.restore(trial, checkpoint, block=True)
         else:
             trial_executor.stop_trial(trial, stop_logger=False)
             trial.config = new_config
             trial.experiment_tag = new_tag
-            trial_executor.start_trial(
-                trial, new_state.last_checkpoint, train=False)
+            trial_executor.start_trial(trial, checkpoint, train=False)
 
         self._num_perturbations += 1
         # Transfer over the last perturbation time as well

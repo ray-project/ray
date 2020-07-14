@@ -40,7 +40,7 @@ class CheckpointManagerTest(unittest.TestCase):
             for i in range(3)
         ]
 
-        with patch.object(checkpoint_manager, "delete") as delete_mock:
+        with patch.object(checkpoint_manager, "delete_fn") as delete_mock:
             for j in range(3):
                 checkpoint_manager.on_checkpoint(checkpoints[j])
                 expected_deletes = 0 if j != 2 else 1

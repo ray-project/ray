@@ -94,6 +94,13 @@ class CheckpointManager:
             key=lambda c: c.result.get(TRAINING_ITERATION, -1))
         return newest_checkpoint
 
+    @property
+    def best_checkpoint(self):
+        best_checkpoints = self.best_checkpoints()
+        if best_checkpoints:
+            return best_checkpoints[0]
+        return None
+
     def on_checkpoint(self, checkpoint):
         """Starts tracking checkpoint metadata on checkpoint.
 
