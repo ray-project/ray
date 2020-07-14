@@ -37,7 +37,7 @@ class _FastMultiAgentSampleBatchBuilder:
     def __init__(self, policy_map: Dict[PolicyID, Policy],
                  clip_rewards: Union[bool, float],
                  callbacks: "DefaultCallbacks",
-                 buffer_size: Optional[Union[float, int]]):
+                 buffer_size: Optional[Union[float, int]] = None):
         """Initializes a _FastMultiAgentSampleBatchBuilder object.
 
         Args:
@@ -62,10 +62,10 @@ class _FastMultiAgentSampleBatchBuilder:
         for pid, policy in policy_map.items():
             kwargs = {}
             if policy.is_recurrent():
-                kwargs["max_seq_len"] = \
+                kwargs["T"] = \
                     policy.model.model_config["max_seq_len"]
             self.policy_trajectories[pid] = PolicyTrajectories(
-                buffer_size=self.buffer_size, **kwargs)
+                B=self.buffer_size, **kwargs)
         # Whenever we observe a new agent, add a new Trajectory object for
         # this agent.
         self.single_agent_trajectories = {}
@@ -262,7 +262,7 @@ class _FastMultiAgentSampleBatchBuilder:
         self.postprocess_batch_so_far(episode)
         policy_batches = {}
         for policy_id, trajectories in self.policy_trajectories.items():
-            if trajectories.cursor > 0:
+            if trajectories.B_cursor > 0:
                 policy_batches[
                     policy_id] = trajectories.get_sample_batch_and_reset()
         old_count = self.count
