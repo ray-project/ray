@@ -1077,10 +1077,12 @@ cdef class CoreWorker:
 
     def get_named_actor_handle(self, const c_string &name):
         cdef:
-            # NOTE: This handle should not be stored anywhere.
             pair[const CActorHandle*, CRayStatus] named_actor_handle_pair
+            # NOTE: This handle should not be stored anywhere.
             const CActorHandle* c_actor_handle
 
+        # We need it because GetNamedActorHandle needs
+        # to call a method that holds the gil.
         with nogil:
             named_actor_handle_pair = (
                 CCoreWorkerProcess.GetCoreWorker().GetNamedActorHandle(name))
