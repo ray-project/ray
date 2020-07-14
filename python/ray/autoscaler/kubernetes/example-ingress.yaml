@@ -289,8 +289,9 @@ worker_nodes:
                 paths:
                 - path: /
                   backend:
-                    # serviceName: gets automatically set
-                    # by the autoscaler
+                    # The value of the serviceName will be
+                    # automatically set to the name of the pod
+                    serviceName: ${RAY_POD_NAME}
                     servicePort: 8000
 
 # Files or directories to copy to the head and worker nodes. The format is a

@@ -157,8 +157,15 @@ def _add_service_name_to_service_port(spec, svc_name):
 
             # Every place that contains a servicePort definition should also
             # have the serviceName defined.
-            if k == "servicePort":
-                spec["serviceName"] = svc_name
+            if k == "serviceName":
+                if spec[k] != "${RAY_POD_NAME}":
+                    raise ValueError(
+                        "The value of serviceName must be set to "
+                        "${RAY_POD_NAME}. It is automatically replaced "
+                        "when autoscaling."
+                    )
+                else:
+                    spec["serviceName"] = svc_name
 
     elif isinstance(spec, list):
         spec = [
