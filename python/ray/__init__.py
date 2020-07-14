@@ -60,12 +60,17 @@ from ray._raylet import (
     ActorClassID,
     ActorID,
     ClientID,
+    Count,
     Config as _Config,
+    Histogram,
+    Gauge,
     JobID,
     WorkerID,
     FunctionID,
     ObjectID,
     ObjectRef,
+    Sum,
+    TagKey,
     TaskID,
     UniqueID,
     Language,
@@ -169,5 +174,14 @@ __all__ += [
     "ObjectID",
     "ObjectRef",
     "TaskID",
+    "TagKey",
     "UniqueID",
+]
+
+# Metric
+__all__ += [
+    "Count",
+    "Gauge",
+    "Histogram",
+    "Sum",
 ]

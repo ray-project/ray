@@ -1755,6 +1755,7 @@ pyx_library(
     deps = [
         "//:core_worker_lib",
         "//:global_state_accessor_lib",
+        "//:stats_lib",
         "//:ray_util",
         "//:raylet_lib",
         "//:serialization_cc_proto",

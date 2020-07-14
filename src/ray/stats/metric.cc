@@ -85,6 +85,16 @@ void Metric::Record(double value, const TagsType &tags) {
   opencensus::stats::Record({{*measure_, value}}, combined_tags);
 }
 
+void Metric::Record(double value, std::unordered_map<std::string, std::string> &tags) {
+  TagsType tags_pair_vec;
+  auto tag_it = tags.begin();
+  while (tag_it != tags.end()) {
+    tags_pair_vec.push_back({TagKeyType::Register(tag_it->first), tag_it->second});
+    tag_it++;
+  }
+  this->Record(value, tags_pair_vec);
+}
+
 void Gauge::RegisterView() {
   opencensus::stats::ViewDescriptor view_descriptor =
       opencensus::stats::ViewDescriptor()
