@@ -48,10 +48,14 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
         ray.shutdown()
 
     def testInit(self):
-        experiment_checkpoint_path = os.path.join(self.test_dir, "experiment_state.json")
-        checkpoint_data = {"checkpoints": [
-        {"trainable_name": "MockTrainable",
-        "logdir": "/mock/test/MockTrainable_3_id=3_2020-07-12_17-07-27xwqh4_47"}]}
+        experiment_checkpoint_path = os.path.join(self.test_dir,
+                                                  "experiment_state.json")
+        checkpoint_data = {
+            "checkpoints": [{
+                "trainable_name": "MockTrainable",
+                "logdir": "/mock/test/MockTrainable_3_id=3_2020-07-12_17-07-27xwqh4_47"
+            }]
+        }
 
         with open(experiment_checkpoint_path, "w") as f:
             f.write(json.dumps(checkpoint_data))
@@ -63,7 +67,8 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
     def testInitException(self):
         experiment_checkpoint_path = os.path.join(self.test_dir, "mock.json")
         with pytest.raises(ValueError):
-            experiment_analysis = ExperimentAnalysis(experiment_checkpoint_path)
+            experiment_analysis = ExperimentAnalysis(
+                experiment_checkpoint_path)
 
     def testCompareTrials(self):
         scores = np.asarray(list(self.MockTrainable.scores_dict.values()))
