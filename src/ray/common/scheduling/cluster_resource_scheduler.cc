@@ -79,8 +79,6 @@ TaskRequest ResourceMapToTaskRequest(
       task_request.predefined_resources[CPU].demand = resource.second;
     } else if (resource.first == ray::kGPU_ResourceLabel) {
       task_request.predefined_resources[GPU].demand = resource.second;
-    } else if (resource.first == ray::kTPU_ResourceLabel) {
-      task_request.predefined_resources[TPU].demand = resource.second;
     } else if (resource.first == ray::kMemory_ResourceLabel) {
       task_request.predefined_resources[MEM].demand = resource.second;
     } else {
@@ -152,8 +150,6 @@ NodeResources ResourceMapToNodeResources(
       node_resources.predefined_resources[CPU] = resource_capacity;
     } else if (resource.first == ray::kGPU_ResourceLabel) {
       node_resources.predefined_resources[GPU] = resource_capacity;
-    } else if (resource.first == ray::kTPU_ResourceLabel) {
-      node_resources.predefined_resources[TPU] = resource_capacity;
     } else if (resource.first == ray::kMemory_ResourceLabel) {
       node_resources.predefined_resources[MEM] = resource_capacity;
     } else {
@@ -235,9 +231,6 @@ std::string NodeResources::DebugString(StringIdMap string_to_in_map) const {
     case GPU:
       buffer << "GPU: ";
       break;
-    case TPU:
-      buffer << "TPU: ";
-      break;
     default:
       RAY_CHECK(false) << "This should never happen.";
       break;
@@ -300,9 +293,6 @@ std::string NodeResourceInstances::DebugString(StringIdMap string_to_int_map) co
       break;
     case GPU:
       buffer << "GPU: ";
-      break;
-    case TPU:
-      buffer << "TPU: ";
       break;
     default:
       RAY_CHECK(false) << "This should never happen.";
@@ -724,8 +714,6 @@ void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &client_
     idx = (int)CPU;
   } else if (resource_name == ray::kGPU_ResourceLabel) {
     idx = (int)GPU;
-  } else if (resource_name == ray::kTPU_ResourceLabel) {
-    idx = (int)TPU;
   } else if (resource_name == ray::kMemory_ResourceLabel) {
     idx = (int)MEM;
   };
@@ -775,8 +763,6 @@ void ClusterResourceScheduler::DeleteResource(const std::string &client_id_strin
     idx = (int)CPU;
   } else if (resource_name == ray::kGPU_ResourceLabel) {
     idx = (int)GPU;
-  } else if (resource_name == ray::kTPU_ResourceLabel) {
-    idx = (int)TPU;
   } else if (resource_name == ray::kMemory_ResourceLabel) {
     idx = (int)MEM;
   };
@@ -1151,8 +1137,6 @@ std::string ClusterResourceScheduler::GetResourceNameFromIndex(int64_t res_idx) 
     return ray::kCPU_ResourceLabel;
   } else if (res_idx == GPU) {
     return ray::kGPU_ResourceLabel;
-  } else if (res_idx == TPU) {
-    return ray::kTPU_ResourceLabel;
   } else if (res_idx == MEM) {
     return ray::kMemory_ResourceLabel;
   } else {
