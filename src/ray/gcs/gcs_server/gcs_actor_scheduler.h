@@ -19,7 +19,7 @@
 #include <ray/common/task/task_spec.h>
 #include <ray/gcs/accessor.h>
 #include <ray/protobuf/gcs_service.pb.h>
-#include <ray/raylet/raylet_client.h>
+#include <ray/raylet_client/raylet_client.h>
 #include <ray/rpc/node_manager/node_manager_client.h>
 #include <ray/rpc/worker/core_worker_client.h>
 #include <queue>

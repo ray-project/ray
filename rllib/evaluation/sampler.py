@@ -329,8 +329,8 @@ class AsyncSampler(threading.Thread, SamplerInput):
             self.worker, self.base_env, extra_batches_putter, self.policies,
             self.policy_mapping_fn, self.rollout_fragment_length, self.horizon,
             self.preprocessors, self.obs_filters, self.clip_rewards,
-            self.clip_actions, self.multiple_episodes_in_batch, self.callbacks,
-            self.tf_sess, self.perf_stats, self.soft_horizon,
+            self.clip_actions, self.multiple_episodes_in_batch,
+            self.callbacks, self.tf_sess, self.perf_stats, self.soft_horizon,
             self.no_done_at_end, self.observation_fn,
             self._use_trajectory_view_api)
         while not self.shutdown:
@@ -598,16 +598,13 @@ def _process_observations(
         infos: Dict[EnvID, Dict[AgentID, EnvInfoDict]],
         horizon: int,
         preprocessors: Dict[PolicyID, Preprocessor],
-        obs_filters: Dict[PolicyID, Filter],
-        rollout_fragment_length: int,
-        multiple_episodes_in_batch: bool,
-        callbacks: "DefaultCallbacks",
-        soft_horizon: bool,
-        no_done_at_end: bool,
+        obs_filters: Dict[PolicyID, Filter], rollout_fragment_length: int,
+        multiple_episodes_in_batch: bool, callbacks: "DefaultCallbacks",
+        soft_horizon: bool, no_done_at_end: bool,
         observation_fn: "ObservationFunction",
         _use_trajectory_view_api: bool = False
-) -> Tuple[Set[EnvID], Dict[PolicyID, List[PolicyEvalData]], List[
-    Union[RolloutMetrics, SampleBatchType]]]:
+) -> Tuple[Set[EnvID], Dict[PolicyID, List[PolicyEvalData]], List[Union[
+        RolloutMetrics, SampleBatchType]]]:
     """Record new data from the environment and prepare for policy evaluation.
 
     Args:
