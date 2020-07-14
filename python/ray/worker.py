@@ -673,15 +673,6 @@ def init(address=None,
 
     _internal_config = (json.loads(_internal_config)
                         if _internal_config else {})
-    # Set the internal config options for LRU eviction.
-    if lru_evict:
-        # Turn off object pinning.
-        if _internal_config.get("object_pinning_enabled", False):
-            raise Exception(
-                "Object pinning cannot be enabled if using LRU eviction.")
-        _internal_config["object_pinning_enabled"] = False
-        _internal_config["object_store_full_max_retries"] = -1
-        _internal_config["free_objects_period_milliseconds"] = 1000
 
     global _global_node
     if redis_address is None:
@@ -716,7 +707,7 @@ def init(address=None,
             load_code_from_local=load_code_from_local,
             java_worker_options=java_worker_options,
             _internal_config=_internal_config,
-        )
+            lru_evict=lru_evict)
         # Start the Ray processes. We set shutdown_at_exit=False because we
         # shutdown the node in the ray.shutdown call that happens in the atexit
         # handler. We still spawn a reaper process in case the atexit handler
@@ -784,7 +775,8 @@ def init(address=None,
             object_ref_seed=object_ref_seed,
             temp_dir=temp_dir,
             load_code_from_local=load_code_from_local,
-            _internal_config=_internal_config)
+            _internal_config=_internal_config,
+            lru_evict=lru_evict)
         _global_node = ray.node.Node(
             ray_params,
             head=False,

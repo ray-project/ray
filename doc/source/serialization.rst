@@ -65,12 +65,7 @@ Serialization notes
 Last resort: Custom Serialization
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If none of these options work, you can try registering a custom serializer.
-
-.. autofunction:: ray.register_custom_serializer
-  :noindex:
-
-Below is an example of using ``ray.register_custom_serializer``:
+If none of these options work, you can try registering a custom serializer with ``ray.register_custom_serializer`` (:ref:`docstring <ray-register_custom_serializer-ref>`):
 
 .. code-block:: python
 

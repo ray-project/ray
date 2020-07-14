@@ -321,6 +321,9 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
 
         # Rewrite the auth config so that the head node can update the workers
         remote_config = copy.deepcopy(config)
+        # drop proxy options if they exist, otherwise
+        # head node won't be able to connect to workers
+        remote_config["auth"].pop("ssh_proxy_command", None)
         if config["provider"]["type"] != "kubernetes":
             remote_key_path = "~/ray_bootstrap_key.pem"
             remote_config["auth"]["ssh_private_key"] = remote_key_path
