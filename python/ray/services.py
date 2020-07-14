@@ -960,17 +960,19 @@ def _start_redis_instance(executable,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             fate_share=fate_share)
+        success = False
         if wait_for_sigstop:
             # Redis signals when it's ready by pausing itself; wait for it
             status = os.waitpid(process_info.process.pid, os.WUNTRACED)[1]
-            if os.WIFEXITED(status):
-                break
-            process_info.process.send_signal(signal.SIGCONT)
+            if os.WIFSTOPPED(status):
+                process_info.process.send_signal(signal.SIGCONT)
+                success = True
         else:
             # Wait a bit before checking to see if the executable hasn't exited
             time.sleep(0.1)
-        # Check if Redis started successfully
-        if process_info.process.poll() is None:
+            # Check if Redis started successfully
+            success = process_info.process.poll() is None
+        if success:
             break
         port = new_port()
         counter += 1
