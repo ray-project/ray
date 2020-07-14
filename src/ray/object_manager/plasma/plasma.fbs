@@ -24,8 +24,6 @@ enum MessageType:long {
   // Create a new object.
   PlasmaCreateRequest,
   PlasmaCreateReply,
-  PlasmaCreateAndSealRequest,
-  PlasmaCreateAndSealReply,
   PlasmaAbortRequest,
   PlasmaAbortReply,
   // Seal an object.
@@ -170,22 +168,6 @@ table PlasmaCreateReply {
   mmap_size: long;
   // CUDA IPC Handle for objects on GPU.
   ipc_handle: CudaHandle;
-}
-
-table PlasmaCreateAndSealRequest {
-  // ID of the object to be created.
-  object_id: string;
-  // Whether to evict other objects to make room for this one.
-  evict_if_full: bool;
-  // The object's data.
-  data: string;
-  // The object's metadata.
-  metadata: string;
-}
-
-table PlasmaCreateAndSealReply {
-  // Error that occurred for this call.
-  error: PlasmaError;
 }
 
 table PlasmaAbortRequest {

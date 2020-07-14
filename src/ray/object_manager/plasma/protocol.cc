@@ -283,42 +283,6 @@ Status ReadCreateReply(uint8_t* data, size_t size, ObjectID* object_id,
   return PlasmaErrorStatus(message->error());
 }
 
-Status SendCreateAndSealRequest(const std::shared_ptr<StoreConn> &store_conn, const ObjectID& object_id, bool evict_if_full,
-                                const std::string& data, const std::string& metadata) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = fb::CreatePlasmaCreateAndSealRequest(
-      fbb, fbb.CreateString(object_id.Binary()), evict_if_full, fbb.CreateString(data),
-      fbb.CreateString(metadata));
-  return PlasmaSend(store_conn, MessageType::PlasmaCreateAndSealRequest, &fbb, message);
-}
-
-Status ReadCreateAndSealRequest(uint8_t* data, size_t size, ObjectID* object_id,
-                                bool* evict_if_full, std::string* object_data,
-                                std::string* metadata) {
-  RAY_DCHECK(data);
-  auto message = flatbuffers::GetRoot<fb::PlasmaCreateAndSealRequest>(data);
-  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
-
-  *object_id = ObjectID::FromBinary(message->object_id()->str());
-  *evict_if_full = message->evict_if_full();
-  *object_data = message->data()->str();
-  *metadata = message->metadata()->str();
-  return Status::OK();
-}
-
-Status SendCreateAndSealReply(const std::shared_ptr<Client> &client, PlasmaError error) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = fb::CreatePlasmaCreateAndSealReply(fbb, static_cast<PlasmaError>(error));
-  return PlasmaSend(client, MessageType::PlasmaCreateAndSealReply, &fbb, message);
-}
-
-Status ReadCreateAndSealReply(uint8_t* data, size_t size) {
-  RAY_DCHECK(data);
-  auto message = flatbuffers::GetRoot<fb::PlasmaCreateAndSealReply>(data);
-  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
-  return PlasmaErrorStatus(message->error());
-}
-
 Status SendAbortRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID object_id) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = fb::CreatePlasmaAbortRequest(fbb, fbb.CreateString(object_id.Binary()));

@@ -103,19 +103,6 @@ class RAY_EXPORT PlasmaClient {
                 std::shared_ptr<Buffer>* data, int device_num = 0,
                 bool evict_if_full = true);
 
-  /// Create and seal an object in the object store. This is an optimization
-  /// which allows small objects to be created quickly with fewer messages to
-  /// the store.
-  ///
-  /// \param object_id The ID of the object to create.
-  /// \param data The data for the object to create.
-  /// \param metadata The metadata for the object to create.
-  /// \param evict_if_full Whether to evict other objects to make space for
-  ///        this object.
-  /// \return The return status.
-  Status CreateAndSeal(const ObjectID& object_id, const std::string& data,
-                       const std::string& metadata, bool evict_if_full = true);
-
   /// Get some objects from the Plasma Store. This function will block until the
   /// objects have all been created and sealed in the Plasma Store or the
   /// timeout expires.

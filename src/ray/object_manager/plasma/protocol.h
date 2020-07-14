@@ -91,17 +91,6 @@ Status SendCreateReply(const std::shared_ptr<Client> &client, ObjectID object_id
 Status ReadCreateReply(uint8_t* data, size_t size, ObjectID* object_id,
                        PlasmaObject* object, int* store_fd, int64_t* mmap_size);
 
-Status SendCreateAndSealRequest(const std::shared_ptr<StoreConn> &store_conn, const ObjectID& object_id, bool evict_if_full,
-                                const std::string& data, const std::string& metadata);
-
-Status ReadCreateAndSealRequest(uint8_t* data, size_t size, ObjectID* object_id,
-                                bool* evict_if_full, std::string* object_data,
-                                std::string* metadata);
-
-Status SendCreateAndSealReply(const std::shared_ptr<Client> &client, PlasmaError error);
-
-Status ReadCreateAndSealReply(uint8_t* data, size_t size);
-
 Status SendAbortRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID object_id);
 
 Status ReadAbortRequest(uint8_t* data, size_t size, ObjectID* object_id);
