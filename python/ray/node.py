@@ -108,6 +108,7 @@ class Node:
             include_log_monitor=True,
             resources={},
             temp_dir=ray.utils.get_ray_temp_dir(),
+            metrics_agent_port=self._get_unused_port()[0],
             worker_path=os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
                 "workers/default_worker.py"))
@@ -554,6 +555,7 @@ class Node:
                                     open_log(reporter_err_name))
         process_info = ray.services.start_reporter(
             self.redis_address,
+            self._ray_params.metrics_agent_port,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password,
@@ -661,6 +663,7 @@ class Node:
             self._ray_params.max_worker_port,
             self._ray_params.object_manager_port,
             self._ray_params.redis_password,
+            self._ray_params.metrics_agent_port,
             use_valgrind=use_valgrind,
             use_profiler=use_profiler,
             stdout_file=stdout_file,

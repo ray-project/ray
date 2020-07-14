@@ -1065,6 +1065,7 @@ def start_log_monitor(redis_address,
 
 
 def start_reporter(redis_address,
+                   port,
                    stdout_file=None,
                    stderr_file=None,
                    redis_password=None,
@@ -1073,6 +1074,7 @@ def start_reporter(redis_address,
 
     Args:
         redis_address (str): The address of the Redis instance.
+        port(int): The port to bind the reporter process.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
@@ -1085,10 +1087,8 @@ def start_reporter(redis_address,
     reporter_filepath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "reporter.py")
     command = [
-        sys.executable,
-        "-u",
-        reporter_filepath,
-        "--redis-address={}".format(redis_address),
+        sys.executable, "-u", reporter_filepath,
+        "--redis-address={}".format(redis_address), "--port={}".format(port)
     ]
     if redis_password:
         command += ["--redis-password", redis_password]
@@ -1249,6 +1249,7 @@ def start_raylet(redis_address,
                  max_worker_port=None,
                  object_manager_port=None,
                  redis_password=None,
+                 metrics_agent_port=None,
                  use_valgrind=False,
                  use_profiler=False,
                  stdout_file=None,
@@ -1284,6 +1285,7 @@ def start_raylet(redis_address,
         max_worker_port (int): The highest port number that workers will bind
             on. If set, min_worker_port must also be set.
         redis_password: The password to use when connecting to Redis.
+        metrics_agent_port(int): The port where metrics agent is bound to.
         use_valgrind (bool): True if the raylet should be started inside
             of valgrind. If this is True, use_profiler must be False.
         use_profiler (bool): True if the raylet should be started inside
@@ -1390,6 +1392,7 @@ def start_raylet(redis_address,
         "--redis_password={}".format(redis_password or ""),
         "--temp_dir={}".format(temp_dir),
         "--session_dir={}".format(session_dir),
+        "--metrics-agent-port={}".format(metrics_agent_port),
     ]
     if config.get("plasma_store_as_thread"):
         # command related to the plasma store

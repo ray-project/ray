@@ -77,6 +77,11 @@ proto_library(
     deps = [":common_proto"],
 )
 
+cc_proto_library(
+    name = "reporter_cc_proto",
+    deps = [":reporter_proto"],
+)
+
 python_grpc_compile(
     name = "reporter_py_proto",
     deps = [":reporter_proto"],
@@ -246,6 +251,31 @@ cc_library(
         ":grpc_common_lib",
         ":ray_common",
         ":worker_cc_grpc",
+        "@boost//:asio",
+        "@boost//:thread",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+# Metrics Agent gRPC lib.
+cc_grpc_library(
+    name = "reporter_cc_grpc",
+    srcs = [":reporter_proto"],
+    grpc_only = True,
+    deps = [":reporter_cc_proto"],
+)
+
+# Metrics Agent client.
+cc_library(
+    name = "reporter_rpc",
+    hdrs = glob([
+        "src/ray/rpc/metrics_agent_client.h",
+    ]),
+    copts = COPTS,
+    deps = [
+        ":grpc_common_lib",
+        ":ray_common",
+        ":reporter_cc_grpc",
         "@boost//:asio",
         "@boost//:thread",
         "@com_github_grpc_grpc//:grpc++",
@@ -576,6 +606,7 @@ cc_library(
     }),
     deps = [
         ":ray_util",
+        ":reporter_rpc",
         "@com_github_jupp0r_prometheus_cpp//pull",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",

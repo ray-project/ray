@@ -19,10 +19,16 @@
 namespace ray {
 namespace stats {
 
+///
+/// Stdout Exporter
+///
 void StdoutExporterClient::ReportMetrics(const std::vector<MetricPoint> &points) {
   RAY_LOG(DEBUG) << "Metric point size : " << points.size();
 }
 
+///
+/// Metrics Exporter Decorator
+///
 MetricExporterDecorator::MetricExporterDecorator(
     std::shared_ptr<MetricExporterClient> exporter)
     : exporter_(exporter) {}
@@ -32,5 +38,35 @@ void MetricExporterDecorator::ReportMetrics(const std::vector<MetricPoint> &poin
     exporter_->ReportMetrics(points);
   }
 }
+
+///
+/// Metrics Agent Exporter
+///
+MetricsAgentExporter::MetricsAgentExporter(std::shared_ptr<MetricExporterClient> exporter,
+                                           const int port,
+                                           boost::asio::io_service &io_service,
+                                           const std::string address)
+    : MetricExporterDecorator(exporter), client_call_manager_(io_service) {
+  client_.reset(new rpc::MetricsAgentClient(address, port, client_call_manager_));
+}
+
+void MetricsAgentExporter::ReportMetrics(const std::vector<MetricPoint> &points) {
+  MetricExporterDecorator::ReportMetrics(points);
+  rpc::ReportMetricsRequest request;
+  for (auto point : points) {
+    auto metric_point = request.add_metrics_point();
+    metric_point->set_metric_name(point.metric_name);
+    metric_point->set_timestamp(point.timestamp);
+    metric_point->set_value(point.value);
+    auto mutable_tags = metric_point->mutable_tags();
+    for (auto &tag : point.tags) {
+      (*mutable_tags)[tag.first] = tag.second;
+    }
+  }
+
+  // TODO(sang): Should retry metrics report if it fails.
+  client_->ReportMetrics(request, nullptr);
+}
+
 }  // namespace stats
 }  // namespace ray
