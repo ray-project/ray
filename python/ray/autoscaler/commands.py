@@ -25,7 +25,8 @@ from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_NODE_NAME, NODE_TYPE_WORKER, NODE_TYPE_HEAD
 
 from ray.ray_constants import AUTOSCALER_RESOURCE_REQUEST_CHANNEL
-from ray.autoscaler.updater import NodeUpdaterThread, DockerCommandRunner
+from ray.autoscaler.updater import NodeUpdaterThread
+from ray.autoscaler.command_runner import DockerCommandRunner
 from ray.autoscaler.log_timer import LogTimer
 from ray.worker import global_worker
 
@@ -85,7 +86,7 @@ def request_resources(num_cpus=None, bundles=None):
 
 def create_or_update_cluster(config_file, override_min_workers,
                              override_max_workers, no_restart, restart_only,
-                             yes, override_cluster_name):
+                             yes, override_cluster_name, no_config_cache):
     """Create or updates an autoscaling Ray cluster from a config json."""
     config = yaml.safe_load(open(config_file).read())
     if override_min_workers is not None:
@@ -94,19 +95,19 @@ def create_or_update_cluster(config_file, override_min_workers,
         config["max_workers"] = override_max_workers
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
-    config = _bootstrap_config(config)
+    config = _bootstrap_config(config, no_config_cache)
     get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
                             override_cluster_name)
 
 
-def _bootstrap_config(config):
+def _bootstrap_config(config, no_config_cache=False):
     config = prepare_config(config)
 
     hasher = hashlib.sha1()
     hasher.update(json.dumps([config], sort_keys=True).encode("utf-8"))
     cache_key = os.path.join(tempfile.gettempdir(),
                              "ray-config-{}".format(hasher.hexdigest()))
-    if os.path.exists(cache_key):
+    if os.path.exists(cache_key) and not no_config_cache:
         logger.info("Using cached config at {}".format(cache_key))
         return json.loads(open(cache_key).read())
     validate_config(config)
@@ -118,8 +119,9 @@ def _bootstrap_config(config):
 
     bootstrap_config, _ = importer()
     resolved_config = bootstrap_config(config)
-    with open(cache_key, "w") as f:
-        f.write(json.dumps(resolved_config))
+    if not no_config_cache:
+        with open(cache_key, "w") as f:
+            f.write(json.dumps(resolved_config))
     return resolved_config
 
 
@@ -319,6 +321,9 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
 
         # Rewrite the auth config so that the head node can update the workers
         remote_config = copy.deepcopy(config)
+        # drop proxy options if they exist, otherwise
+        # head node won't be able to connect to workers
+        remote_config["auth"].pop("ssh_proxy_command", None)
         if config["provider"]["type"] != "kubernetes":
             remote_key_path = "~/ray_bootstrap_key.pem"
             remote_config["auth"]["ssh_private_key"] = remote_key_path

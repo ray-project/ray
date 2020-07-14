@@ -331,6 +331,11 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     is_flag=True,
     default=False,
     help="Specify whether load code from local file or GCS serialization.")
+@click.option(
+    "--lru-evict",
+    is_flag=True,
+    default=False,
+    help="Specify whether LRU evict will be used for this cluster.")
 def start(node_ip_address, redis_address, address, redis_port, port,
           num_redis_shards, redis_max_clients, redis_password,
           redis_shard_ports, object_manager_port, node_manager_port,
@@ -340,7 +345,8 @@ def start(node_ip_address, redis_address, address, redis_port, port,
           plasma_directory, huge_pages, autoscaling_config,
           no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
-          java_worker_options, load_code_from_local, internal_config):
+          java_worker_options, load_code_from_local, internal_config,
+          lru_evict):
     """Start Ray processes manually on the local machine."""
     if redis_address is not None:
         raise DeprecationWarning("The --redis-address argument is "
@@ -412,7 +418,8 @@ def start(node_ip_address, redis_address, address, redis_port, port,
         dashboard_port=dashboard_port,
         java_worker_options=java_worker_options,
         load_code_from_local=load_code_from_local,
-        _internal_config=internal_config)
+        _internal_config=internal_config,
+        lru_evict=lru_evict)
     if head:
         # Start Ray on the head node.
         if redis_shard_ports is not None:
@@ -635,6 +642,11 @@ def stop(force, verbose):
     help=("Whether to skip running setup commands and only restart Ray. "
           "This cannot be used with 'no-restart'."))
 @click.option(
+    "--no-config-cache",
+    is_flag=True,
+    default=False,
+    help="Disable the local cluster config cache.")
+@click.option(
     "--min-workers",
     required=False,
     type=int,
@@ -657,7 +669,7 @@ def stop(force, verbose):
     default=False,
     help="Don't ask for confirmation.")
 def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
-       yes, cluster_name):
+       yes, cluster_name, no_config_cache):
     """Create or update a Ray cluster."""
     if restart_only or no_restart:
         assert restart_only != no_restart, "Cannot set both 'restart_only' " \
@@ -673,7 +685,8 @@ def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
         except urllib.error.HTTPError as e:
             logger.info("Error downloading file: ", e)
     create_or_update_cluster(cluster_config_file, min_workers, max_workers,
-                             no_restart, restart_only, yes, cluster_name)
+                             no_restart, restart_only, yes, cluster_name,
+                             no_config_cache)
 
 
 @cli.command()
@@ -889,7 +902,7 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
 
     if start:
         create_or_update_cluster(cluster_config_file, None, None, False, False,
-                                 True, cluster_name)
+                                 True, cluster_name, False)
     target = os.path.basename(script)
     target = os.path.join("~", target)
     rsync(cluster_config_file, script, target, cluster_name, down=False)
