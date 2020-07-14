@@ -47,13 +47,16 @@ class GcsTableStorageTestBase : public ::testing::Test {
 
     // Get.
     std::vector<rpc::JobTableData> values;
-    ASSERT_EQ(Get(table, job2_id, values), 1);
+    ASSERT_EQ(Get(table, job1_id, values), 1);
     ASSERT_EQ(Get(table, job2_id, values), 1);
 
     // Delete.
     Delete(table, job1_id);
     ASSERT_EQ(Get(table, job1_id, values), 0);
     ASSERT_EQ(Get(table, job2_id, values), 1);
+
+    // You must delete it, if not, the multi threads test will always fail.
+    Delete(table, job2_id);
   }
 
   void TestGcsTableWithJobIdApi() {
@@ -135,6 +138,71 @@ class GcsTableStorageTestBase : public ::testing::Test {
     ++pending_count_;
     RAY_CHECK_OK(table.Delete(key, on_done));
     WaitPendingDone();
+  }
+
+  template <typename TABLE, typename KEY, typename VALUE>
+  void PutForMultiThread(TABLE &table, const KEY &key, const VALUE &value) {
+    std::atomic<int> pending_count{0};
+    auto on_done = [&pending_count](const Status &status) { --pending_count; };
+    ++pending_count;
+    RAY_CHECK_OK(table.Put(key, value, on_done));
+    WaitPendingDone(pending_count);
+  }
+
+  template <typename TABLE, typename KEY, typename VALUE>
+  int GetForMultiThread(TABLE &table, const KEY &key, std::vector<VALUE> &values) {
+    std::atomic<int> pending_count{0};
+    auto on_done = [&values, &pending_count](const Status &status,
+                                             const boost::optional<VALUE> &result) {
+      RAY_CHECK_OK(status);
+      values.clear();
+      if (result) {
+        values.push_back(*result);
+      }
+      // NOTE: The callback is executed in an asynchronous thread, so the modification of
+      // pending_count_ must be put last, otherwise the unmodified pending_count_ will be
+      // read outside.
+      --pending_count;
+    };
+    ++pending_count;
+    RAY_CHECK_OK(table.Get(key, on_done));
+    WaitPendingDone(pending_count);
+    return values.size();
+  }
+
+  template <typename TABLE, typename KEY, typename VALUE>
+  int GetByJobIdForMultiThread(TABLE &table, const JobID &job_id, const KEY &key,
+                               std::vector<VALUE> &values) {
+    std::atomic<int> pending_count{0};
+    auto on_done = [&values,
+                    &pending_count](const std::unordered_map<KEY, VALUE> &result) {
+      values.clear();
+      if (!result.empty()) {
+        for (auto &item : result) {
+          values.push_back(item.second);
+        }
+      }
+      // NOTE: The callback is executed in an asynchronous thread, so the modification of
+      // pending_count_ must be put last, otherwise the unmodified pending_count_ will be
+      // read outside.
+      --pending_count;
+    };
+    ++pending_count;
+    RAY_CHECK_OK(table.GetByJobId(job_id, on_done));
+    WaitPendingDone(pending_count);
+    return values.size();
+  }
+
+  template <typename TABLE, typename KEY>
+  void DeleteForMultiThread(TABLE &table, const KEY &key) {
+    std::atomic<int> pending_count{0};
+    auto on_done = [&pending_count](const Status &status) {
+      RAY_CHECK_OK(status);
+      --pending_count;
+    };
+    ++pending_count;
+    RAY_CHECK_OK(table.Delete(key, on_done));
+    WaitPendingDone(pending_count);
   }
 
   void WaitPendingDone() { WaitPendingDone(pending_count_); }

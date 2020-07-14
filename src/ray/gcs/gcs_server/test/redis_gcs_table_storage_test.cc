@@ -33,17 +33,92 @@ class RedisGcsTableStorageTest : public gcs::GcsTableStorageTestBase {
     RAY_CHECK_OK(redis_client_->Connect(io_service_pool_->GetAll()));
 
     gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client_);
+
+    thread_num_ = 10;
   }
 
   void TearDown() override { redis_client_->Disconnect(); }
 
+  void TestGcsTableApiWithMultiThread() {
+    std::vector<std::thread> threads;
+    threads.reserve(thread_num_);
+
+    auto test_func = [this](int i) {
+      auto table = gcs_table_storage_->JobTable();
+      JobID job_id = JobID::FromInt(i);
+      auto job1_table_data = Mocker::GenJobTableData(job_id);
+
+      // Put.
+      PutForMultiThread(table, job_id, *job1_table_data);
+
+      // Get.
+      std::vector<rpc::JobTableData> values;
+      ASSERT_EQ(GetForMultiThread(table, job_id, values), 1);
+
+      // Delete.
+      DeleteForMultiThread(table, job_id);
+      ASSERT_EQ(GetForMultiThread(table, job_id, values), 0);
+    };
+
+    for (int i = 0; i < thread_num_; ++i) {
+      threads.emplace_back(test_func, i);
+    }
+
+    for (int i = 0; i < thread_num_; ++i) {
+      threads[i].join();
+    }
+  }
+
+  void TestGcsTableWithJobIdApiWithMultiThread() {
+    std::vector<std::thread> threads;
+    threads.reserve(thread_num_);
+
+    auto test_func = [this](int i) {
+      auto table = gcs_table_storage_->ActorTable();
+      JobID job_id = JobID::FromInt(i);
+      auto actor_table_data = Mocker::GenActorTableData(job_id);
+      ActorID actor_id = ActorID::FromBinary(actor_table_data->actor_id());
+
+      // Put.
+      PutForMultiThread(table, actor_id, *actor_table_data);
+
+      // Get.
+      std::vector<rpc::ActorTableData> values;
+      ASSERT_EQ(GetForMultiThread(table, actor_id, values), 1);
+
+      // Get by job id.
+      ASSERT_EQ(GetByJobIdForMultiThread(table, job_id, actor_id, values), 1);
+
+      // Delete.
+      DeleteForMultiThread(table, actor_id);
+      ASSERT_EQ(GetForMultiThread(table, actor_id, values), 0);
+    };
+
+    for (int i = 0; i < thread_num_; ++i) {
+      threads.emplace_back(test_func, i);
+    }
+
+    for (int i = 0; i < thread_num_; ++i) {
+      threads[i].join();
+    }
+  }
+
  protected:
   std::shared_ptr<gcs::RedisClient> redis_client_;
+  std::int64_t thread_num_;
 };
 
 TEST_F(RedisGcsTableStorageTest, TestGcsTableApi) { TestGcsTableApi(); }
 
 TEST_F(RedisGcsTableStorageTest, TestGcsTableWithJobIdApi) { TestGcsTableWithJobIdApi(); }
+
+TEST_F(RedisGcsTableStorageTest, TestGcsTableApiWithMultiThread) {
+  TestGcsTableApiWithMultiThread();
+}
+
+TEST_F(RedisGcsTableStorageTest, TestGcsTableWithJobIdApiWithMultiThread) {
+  TestGcsTableWithJobIdApiWithMultiThread();
+}
 
 }  // namespace ray
 
