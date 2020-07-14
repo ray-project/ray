@@ -27,9 +27,6 @@ namespace {
 
 // Duration between internal book-keeping heartbeats.
 const int kInternalHeartbeatMillis = 1000;
-// Duration between resolving locations of actors that haven't been reported to GCS.
-// The duration should be long otherwise it will poll the GCS service unnecessarily.
-const int kLocationResolveHeartbeatMillis = 3000;
 
 void BuildCommonTaskSpec(
     ray::TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
@@ -355,8 +352,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       boost::asio::chrono::milliseconds(kInternalHeartbeatMillis));
   internal_timer_.async_wait(boost::bind(&CoreWorker::InternalHeartbeat, this, _1));
 
-  actor_location_resolution_timer_.expires_from_now(
-      boost::asio::chrono::milliseconds(kLocationResolveHeartbeatMillis));
+  actor_location_resolution_timer_.expires_from_now(boost::asio::chrono::milliseconds(
+      RayConfig::instance().location_resolution_heartbeat()));
   actor_location_resolution_timer_.async_wait(
       boost::bind(&CoreWorker::LocationResolveHeartBeat, this, _1));
 
@@ -713,7 +710,8 @@ void CoreWorker::LocationResolveHeartBeat(const boost::system::error_code &error
   actor_manager_->MarkPendingLocationActorsFailed();
   actor_location_resolution_timer_.expires_at(
       actor_location_resolution_timer_.expiry() +
-      boost::asio::chrono::milliseconds(kLocationResolveHeartbeatMillis));
+      boost::asio::chrono::milliseconds(
+          RayConfig::instance().location_resolution_heartbeat()));
   actor_location_resolution_timer_.async_wait(
       boost::bind(&CoreWorker::LocationResolveHeartBeat, this, _1));
 }

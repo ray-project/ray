@@ -318,3 +318,6 @@ RAY_CONFIG(bool, gcs_actor_service_enabled,
 
 /// Whether start the Plasma Store as a Raylet thread.
 RAY_CONFIG(bool, put_small_object_in_memory_store, false)
+
+// Duration to ping GCS to resolve locations for pending actors.
+RAY_CONFIG(int64_t, location_resolution_heartbeat, 10000)
