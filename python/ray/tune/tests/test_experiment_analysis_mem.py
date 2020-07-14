@@ -9,7 +9,8 @@ import pytest
 import numpy as np
 
 import ray
-from ray.tune import run, Trainable, sample_from, ExperimentAnalysis, Analysis, grid_search
+from ray.tune import (run, Trainable, sample_from, Analysis,
+                      ExperimentAnalysis, grid_search)
 from ray.tune.examples.async_hyperband_example import MyTrainableClass
 
 
@@ -53,7 +54,7 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
         checkpoint_data = {
             "checkpoints": [{
                 "trainable_name": "MockTrainable",
-                "logdir": "/mock/test/MockTrainable_3_id=3_2020-07-12_17-07-27xwqh4_47"
+                "logdir": "/mock/test/MockTrainable_0_id=3_2020-07-12"
             }]
         }
 
@@ -67,8 +68,7 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
     def testInitException(self):
         experiment_checkpoint_path = os.path.join(self.test_dir, "mock.json")
         with pytest.raises(ValueError):
-            experiment_analysis = ExperimentAnalysis(
-                experiment_checkpoint_path)
+            ExperimentAnalysis(experiment_checkpoint_path)
 
     def testCompareTrials(self):
         scores = np.asarray(list(self.MockTrainable.scores_dict.values()))
