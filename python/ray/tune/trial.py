@@ -340,7 +340,7 @@ class Trial:
 
     def set_runner(self, runner):
         self.runner = runner
-        self.checkpoint_manager.delete = checkpoint_deleter(
+        self.checkpoint_manager.delete_fn = checkpoint_deleter(
             self._trainable_name(), runner)
 
     def set_location(self, location):

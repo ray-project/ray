@@ -79,7 +79,7 @@ class CheckpointManager:
         else:
             self._checkpoint_score_attr = checkpoint_score_attr
 
-        self.delete = delete_fn
+        self.delete_fn = delete_fn
         self.newest_persistent_checkpoint = Checkpoint(Checkpoint.PERSISTENT,
                                                        None)
         self.newest_memory_checkpoint = Checkpoint(Checkpoint.MEMORY, None)
@@ -113,7 +113,7 @@ class CheckpointManager:
 
         # Remove the old checkpoint if it isn't one of the best ones.
         if old_checkpoint.value and old_checkpoint not in self._membership:
-            self.delete(old_checkpoint)
+            self._delete(old_checkpoint)
 
         try:
             queue_item = QueueItem(self._priority(checkpoint), checkpoint)
@@ -131,15 +131,22 @@ class CheckpointManager:
             self._membership.add(checkpoint)
             if worst in self._membership:
                 self._membership.remove(worst)
-            # Don't delete the newest checkpoint. It will be deleted on the
+            # Don't delete the newest checkpoint dir. It will be deleted on the
             # next on_checkpoint() call since it isn't in self._membership.
-            if worst != checkpoint:
-                self.delete(worst)
+            self._delete(worst, remove_dir=False)
 
     def best_checkpoints(self):
         """Returns best PERSISTENT checkpoints, sorted by score."""
         checkpoints = sorted(self._best_checkpoints, key=lambda c: c.priority)
         return [queue_item.value for queue_item in checkpoints]
+
+    def _delete(self, checkpoint, remove_dir=True):
+        if self.newest_persistent_checkpoint == checkpoint or \
+           self.newest_persistent_checkpoint.value == checkpoint.value:
+            self.newest_persistent_checkpoint = Checkpoint(
+                Checkpoint.PERSISTENT, None)
+        if remove_dir:
+            self.delete_fn(checkpoint)
 
     def _priority(self, checkpoint):
         priority = checkpoint.result[self._checkpoint_score_attr]
@@ -148,9 +155,9 @@ class CheckpointManager:
     def __getstate__(self):
         state = self.__dict__.copy()
         # Avoid serializing lambda since it may capture cyclical dependencies.
-        state.pop("delete")
+        state.pop("delete_fn")
         return state
 
     def __setstate__(self, state):
         self.__dict__.update(state)
-        self.delete = None
+        self.delete_fn = None
