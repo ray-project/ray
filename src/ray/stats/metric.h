@@ -17,10 +17,8 @@
 #include <memory>
 #include <unordered_map>
 
-#include "opencensus/exporters/stats/prometheus/prometheus_exporter.h"
 #include "opencensus/stats/stats.h"
 #include "opencensus/tags/tag_key.h"
-#include "prometheus/exposer.h"
 
 #include "ray/util/logging.h"
 
@@ -35,12 +33,16 @@ class StatsConfig final {
  public:
   static StatsConfig &instance();
 
+  /// Set the global tags that will be appended to all metrics in this process.
   void SetGlobalTags(const TagsType &global_tags);
 
+  /// Get the current global tags.
   const TagsType &GetGlobalTags() const;
 
+  /// Set if the stats are enabled in this process.
   void SetIsDisableStats(bool disable_stats);
 
+  /// Get whether or not stats are enabled.
   bool IsStatsDisabled() const;
 
   void SetReportInterval(const absl::Duration interval);
@@ -59,6 +61,7 @@ class StatsConfig final {
 
  private:
   TagsType global_tags_;
+  /// If true, don't collect metrics in this process.
   bool is_stats_disabled_ = true;
   // Regular reporting interval for all reporters.
   absl::Duration report_interval_ = absl::Seconds(10);

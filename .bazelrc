@@ -1,7 +1,7 @@
 # Must be first. Enables build:windows, build:linux, build:macos, build:freebsd, build:openbsd
 build --enable_platform_specific_config
 ###############################################################################
-# On       Windows, provide: CC=clang, BAZEL_LLVM, BAZEL_SH
+# On       Windows, provide: BAZEL_SH, and BAZEL_LLVM (if using clang-cl)
 # On all platforms, provide: PYTHON3_BIN_PATH=python
 ###############################################################################
 build --action_env=PATH
@@ -17,14 +17,13 @@ build:msvc --compiler=msvc-cl
 #                 for compiling assembly files is fixed on Windows:
 #                 https://github.com/bazelbuild/bazel/issues/8924
 # Warnings should be errors
-build:linux    --per_file_copt="-\\.(asm|S)$,-.*/arrow/util/logging\\.cc@-Werror"
-build:macos    --per_file_copt="-\\.(asm|S)$,-.*/arrow/util/logging\\.cc@-Werror"
-build:clang-cl --per_file_copt="-\\.(asm|S)$,-.*/arrow/util/logging\\.cc@-Werror"
-build:msvc     --per_file_copt="-\\.(asm|S)$,-.*/arrow/util/logging\\.cc@-WX"
+build:linux    --per_file_copt="-\\.(asm|S)$@-Werror"
+build:macos    --per_file_copt="-\\.(asm|S)$@-Werror"
+build:clang-cl --per_file_copt="-\\.(asm|S)$@-Werror"
+build:msvc     --per_file_copt="-\\.(asm|S)$@-WX"
 # Ignore warnings for protobuf generated files and external projects.
 build --per_file_copt="\\.pb\\.cc$@-w"
 build --per_file_copt="-\\.(asm|S)$,external/.*@-w"
-# Enable some C warnings that really should be errors (e.g. implicit void* <-> int conversion)
 # Ignore minor warnings for host tools, which we generally can't control
 build:clang-cl --host_copt="-Wno-inconsistent-missing-override"
 build:clang-cl --host_copt="-Wno-microsoft-unqualified-friend"
@@ -81,6 +80,8 @@ test:asan --test_env=LD_PRELOAD="/usr/lib/x86_64-linux-gnu/libasan.so.2 /usr/lib
 # test:asan --test_env=LD_PRELOAD="/usr/lib/gcc/x86_64-linux-gnu/7/libasan.so"
 
 # CI configuration:
+aquery:ci --color=no
+aquery:ci --noshow_progress
 build:ci --color=yes
 build:ci --curses=no
 build:ci --disk_cache=~/ray-bazel-cache
@@ -98,7 +99,12 @@ test:ci --spawn_strategy=local
 test:ci --test_output=errors
 test:ci --test_verbose_timeout_warnings
 
-# [Linux] Uncomment this line to print a stack trace on exit.
-#test:linux --run_under="bash -c 'if command -v strace >/dev/null && strace -qq -k -e exit true 2>/dev/null; then strace -qq -k -e exit -e trace=\"!all\" -s 32768 -f -o >(awk \"/^[0-9]+ / { y = \\$3 != \\\"SIGCHLD\\\" && \\$3 != \\\"SIGTERM\\\" && \\$5 != \\\"SIGTERM\\\" && \\$5 != \\\"SIGKILL2\\\"; } y { print; }\" 1>&2 && cat 1>&2) -- \"$@\"; else \"$@\"; fi' -"
-# [Linux] Uncomment this line to preload libSegFault.so if available, to print a stack trace on aborts and segfault. (Note: This doesn't always work.)
-#test:linux --run_under="bash -c 'unset GREP_OPTIONS && if ! grep -q -o Microsoft /proc/version 2>/dev/null; then libs=\"$(command -v ldconfig >/dev/null && ldconfig -p | grep -F -o -e \"libSegFault.so\" | uniq | tr \"\\\\n\" :)\" && if [ -n \"${libs%:}\" ]; then export SEGFAULT_SIGNALS=\"abrt segv\" LD_PRELOAD=\"${libs}${LD_PRELOAD-}\"; fi; fi && \"$@\"' -"
+aquery:get-toolchain --include_commandline=false
+aquery:get-toolchain --noimplicit_deps
+
+# [Linux] Uncomment this line (or use --config) to print a stack trace on exit.
+#test:linux --config=strace
+test:strace --run_under="bash -c 'if command -v strace >/dev/null && strace -qq -k -e exit true 2>/dev/null; then strace -qq -k -e exit -e trace=\"!all\" -s 32768 -f -o >(awk \"/^[0-9]+ / { y = \\$3 != \\\"SIGCHLD\\\" && \\$3 != \\\"SIGTERM\\\" && \\$5 != \\\"SIGTERM\\\" && \\$5 != \\\"SIGKILL2\\\"; } y { print; }\" 1>&2 && cat 1>&2) -- \"$@\"; else \"$@\"; fi' -"
+# [Linux] Uncomment this line (or use --config) to preload libSegFault.so if available, to print a stack trace on aborts and segfault. (Note: This doesn't always work.)
+#test:linux --config=segfault
+test:segfault --run_under="bash -c 'unset GREP_OPTIONS && if ! grep -q -o Microsoft /proc/version 2>/dev/null; then libs=\"$(command -v ldconfig >/dev/null && ldconfig -p | grep -F -o -e \"libSegFault.so\" | uniq | tr \"\\\\n\" :)\" && if [ -n \"${libs%:}\" ]; then export SEGFAULT_SIGNALS=\"abrt segv\" LD_PRELOAD=\"${libs}${LD_PRELOAD-}\"; fi; fi && \"$@\"' -"
