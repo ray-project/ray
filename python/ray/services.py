@@ -951,6 +951,7 @@ def _start_redis_instance(executable,
         wait_for_sigstop = sys.platform != "win32"
         env_updates = {}
         if wait_for_sigstop:
+            # https://github.com/redis/redis/blob/5.0.9/redis.conf#L144
             env_updates.update(UPSTART_JOB="")
         process_info = start_ray_process(
             command,
