@@ -5,6 +5,10 @@ from ray import serve
 
 
 def test_np_in_composed_model(serve_instance):
+    # https://github.com/ray-project/ray/issues/9441
+    # AttributeError: 'bytes' object has no attribute 'readonly'
+    # in cloudpickle _from_numpy_buffer
+
     def sum_model(_request, data=None):
         return np.sum(data)
 
@@ -23,7 +27,7 @@ def test_np_in_composed_model(serve_instance):
     serve.create_endpoint(
         "model", backend="model", route="/model", methods=['GET'])
 
-    result = requests.get('http://127.0.0.1:8000/model')
+    result = requests.get("http://127.0.0.1:8000/model")
     assert result.status_code == 200
     assert result.json() == 100.0
 
