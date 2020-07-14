@@ -1,4 +1,4 @@
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
@@ -19,6 +19,7 @@ def build_torch_policy(name,
                        postprocess_fn=None,
                        extra_action_out_fn=None,
                        extra_grad_process_fn=None,
+                       extra_learn_fetches_fn=None,
                        optimizer_fn=None,
                        validate_spaces=None,
                        before_init=None,
@@ -47,6 +48,8 @@ def build_torch_policy(name,
             returns a dict of extra values to include in experiences.
         extra_grad_process_fn (Optional[callable]): Optional callable that is
             called after gradients are computed and returns processing info.
+        extra_learn_fetches_fn (func): optional function that returns a dict of
+            extra values to fetch from the policy after loss evaluation.
         optimizer_fn (Optional[callable]): Optional callable that returns a
             torch optimizer given the policy and config.
         validate_spaces (Optional[callable]): Optional callable that takes the
@@ -177,14 +180,24 @@ def build_torch_policy(name,
             if extra_grad_process_fn:
                 return extra_grad_process_fn(self, optimizer, loss)
             else:
-                return TorchPolicy.extra_grad_process(self, optimizer, loss)
+                return base.extra_grad_process(self, optimizer, loss)
+
+        @override(TorchPolicy)
+        def extra_compute_grad_fetches(self):
+            if extra_learn_fetches_fn:
+                fetches = convert_to_non_torch_type(
+                    extra_learn_fetches_fn(self))
+                # Auto-add empty learner stats dict if needed.
+                return dict({LEARNER_STATS_KEY: {}}, **fetches)
+            else:
+                return base.extra_compute_grad_fetches(self)
 
         @override(TorchPolicy)
         def apply_gradients(self, gradients):
             if apply_gradients_fn:
                 apply_gradients_fn(self, gradients)
             else:
-                TorchPolicy.apply_gradients(self, gradients)
+                base.apply_gradients(self, gradients)
 
         @override(TorchPolicy)
         def extra_action_out(self, input_dict, state_batches, model,
@@ -194,7 +207,7 @@ def build_torch_policy(name,
                     stats_dict = extra_action_out_fn(
                         self, input_dict, state_batches, model, action_dist)
                 else:
-                    stats_dict = TorchPolicy.extra_action_out(
+                    stats_dict = base.extra_action_out(
                         self, input_dict, state_batches, model, action_dist)
                 return convert_to_non_torch_type(stats_dict)
 
@@ -203,7 +216,7 @@ def build_torch_policy(name,
             if optimizer_fn:
                 return optimizer_fn(self, self.config)
             else:
-                return TorchPolicy.optimizer(self)
+                return base.optimizer(self)
 
         @override(TorchPolicy)
         def extra_grad_info(self, train_batch):
@@ -211,7 +224,7 @@ def build_torch_policy(name,
                 if stats_fn:
                     stats_dict = stats_fn(self, train_batch)
                 else:
-                    stats_dict = TorchPolicy.extra_grad_info(self, train_batch)
+                    stats_dict = base.extra_grad_info(self, train_batch)
                 return convert_to_non_torch_type(stats_dict)
 
     def with_updates(**overrides):
