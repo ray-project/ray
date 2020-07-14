@@ -469,7 +469,9 @@ py_test(
 py_test(
     name = "test_marwil",
     tags = ["agents_dir"],
-    size = "small",
+    size = "medium",
+    # Include the json data file.
+    data = ["tests/data/cartpole/large.json"],
     srcs = ["agents/marwil/tests/test_marwil.py"]
 )
 
@@ -696,12 +698,12 @@ py_test(
     tags = ["quick_train", "external_files"],
     size = "small",
     # Include the json data file.
-    data = glob(["tests/data/cartpole_small/**"]),
+    data = ["tests/data/cartpole/small.json"],
     args = [
         "--env", "CartPole-v0",
         "--run", "DQN",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"input\": \"tests/data/cartpole_small\", \"learning_starts\": 0, \"input_evaluation\": [\"wis\", \"is\"], \"exploration_config\": {\"type\": \"SoftQ\"}}'"
+        "--config", "'{\"framework\": \"tf\", \"input\": \"tests/data/cartpole\", \"learning_starts\": 0, \"input_evaluation\": [\"wis\", \"is\"], \"exploration_config\": {\"type\": \"SoftQ\"}}'"
         ]
 )
 
@@ -798,12 +800,12 @@ py_test(
     tags = ["quick_train", "external_files"],
     size = "small",
     # Include the json data file.
-    data = glob(["tests/data/cartpole_small/**"]),
+    data = ["tests/data/cartpole/small.json"],
     args = [
         "--env", "CartPole-v0",
         "--run", "MARWIL",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"input\": \"tests/data/cartpole_small\", \"learning_starts\": 0, \"input_evaluation\": [\"wis\", \"is\"], \"shuffle_buffer_size\": 10}'"
+        "--config", "'{\"framework\": \"tf\", \"input\": \"tests/data/cartpole\", \"learning_starts\": 0, \"input_evaluation\": [\"wis\", \"is\"], \"shuffle_buffer_size\": 10}'"
         ]
 )
 
@@ -814,12 +816,12 @@ py_test(
     tags = ["quick_train", "external_files"],
     size = "small",
     # Include the json data file.
-    data = glob(["tests/data/cartpole_small/**"]),
+    data = ["tests/data/cartpole/small.json"],
     args = [
         "--env", "CartPole-v0",
         "--run", "MARWIL",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"torch\", \"input\": \"tests/data/cartpole_small\", \"learning_starts\": 0, \"input_evaluation\": [\"wis\", \"is\"], \"shuffle_buffer_size\": 10}'"
+        "--config", "'{\"framework\": \"torch\", \"input\": \"tests/data/cartpole\", \"learning_starts\": 0, \"input_evaluation\": [\"wis\", \"is\"], \"shuffle_buffer_size\": 10}'"
         ]
 )
 
@@ -1649,9 +1651,9 @@ py_test(
     tags = ["examples", "examples_C"],
     size = "small",
     # Include the json data file.
-    data = glob(["tests/data/cartpole_small/**"]),
+    data = ["tests/data/cartpole/small.json"],
     srcs = ["examples/custom_loss.py"],
-    args = ["--stop-iters=2", "--input-files=tests/data/cartpole_small"]
+    args = ["--stop-iters=2", "--input-files=tests/data/cartpole"]
 )
 
 py_test(
@@ -1660,9 +1662,9 @@ py_test(
     tags = ["examples", "examples_C"],
     size = "small",
     # Include the json data file.
-    data = glob(["tests/data/cartpole_small/**"]),
+    data = ["tests/data/cartpole/small.json"],
     srcs = ["examples/custom_loss.py"],
-    args = ["--torch", "--stop-iters=2", "--input-files=tests/data/cartpole_small"]
+    args = ["--torch", "--stop-iters=2", "--input-files=tests/data/cartpole"]
 )
 
 py_test(

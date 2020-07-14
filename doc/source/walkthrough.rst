@@ -172,7 +172,7 @@ Further, remote functions can return multiple object refs.
 
   a_id, b_id, c_id = return_multiple.remote()
 
-Remote functions can be canceled by calling ``ray.cancel`` on the returned Object ref. Remote actor functions can be stopped by killing the actor using the ``ray.kill`` interface.
+Remote functions can be canceled by calling ``ray.cancel`` (:ref:`docstring <ray-cancel-ref>`) on the returned Object ref. Remote actor functions can be stopped by killing the actor using the ``ray.kill`` interface.
 
 .. code-block:: python
 
@@ -183,9 +183,6 @@ Remote functions can be canceled by calling ``ray.cancel`` on the returned Objec
 
   obj_ref = blocking_operation.remote()
   ray.cancel(obj_ref)
-
-.. autofunction:: ray.cancel
-    :noindex:
 
 Objects in Ray
 --------------
@@ -199,15 +196,12 @@ similar.
 Object refs can be created in multiple ways.
 
   1. They are returned by remote function calls.
-  2. They are returned by ``ray.put``.
+  2. They are returned by ``ray.put`` (:ref:`docstring <ray-put-ref>`).
 
 .. code-block:: python
 
     y = 1
     object_ref = ray.put(y)
-
-.. autofunction:: ray.put
-    :noindex:
 
 .. note::
 
@@ -219,7 +213,7 @@ Object refs can be created in multiple ways.
 Fetching Results
 ----------------
 
-The command ``ray.get(x_id, timeout=None)`` takes an object ref and creates a Python object
+The command ``ray.get(x_id, timeout=None)`` (:ref:`docstring <ray-get-ref>`) takes an object ref and creates a Python object
 from the corresponding remote object. First, if the current node's object store
 does not contain the object, the object is downloaded. Then, if the object is a `numpy array <https://docs.scipy.org/doc/numpy/reference/generated/numpy.array.html>`__
 or a collection of numpy arrays, the ``get`` call is zero-copy and returns arrays backed by shared object store memory.
@@ -247,20 +241,14 @@ You can also set a timeout to return early from a ``get`` that's blocking for to
     except RayTimeoutError:
         print("`get` timed out.")
 
-.. autofunction:: ray.get
-    :noindex:
-
 
 After launching a number of tasks, you may want to know which ones have
-finished executing. This can be done with ``ray.wait``. The function
+finished executing. This can be done with ``ray.wait`` (:ref:`ray-wait-ref`). The function
 works as follows.
 
 .. code:: python
 
     ready_ids, remaining_ids = ray.wait(object_refs, num_returns=1, timeout=None)
-
-.. autofunction:: ray.wait
-    :noindex:
 
 Object Eviction
 ---------------
