@@ -19,7 +19,7 @@ cdef class RayException(Exception):
                  WorkerID worker_id=None,
                  TaskID task_id=None,
                  ActorID actor_id=None,
-                 ObjectID object_id=None,
+                 ObjectRef object_id=None,
                  str ip=None,
                  pid=None,
                  str proctitle=None,
@@ -189,7 +189,7 @@ cdef class RayException(Exception):
 
     @property
     def object_id(self):
-        cdef ObjectID object_id = ObjectID.nil()
+        cdef ObjectRef object_id = ObjectRef.nil()
         object_id.data = self.exception.get().ObjectId()
         return object_id
 
