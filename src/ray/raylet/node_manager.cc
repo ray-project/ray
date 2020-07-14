@@ -2239,7 +2239,8 @@ void NodeManager::MarkObjectsAsFailed(const ErrorType &error_type,
   for (const auto &object_id : objects_to_fail) {
     std::shared_ptr<arrow::Buffer> data;
     Status status;
-    status = store_client_.Create(object_id, 0, reinterpret_cast<const uint8_t *>(meta.c_str()),
+    status = store_client_.Create(object_id, 0,
+                                  reinterpret_cast<const uint8_t *>(meta.c_str()),
                                   meta.length(), &data);
     if (status.ok()) {
       status = store_client_.Seal(object_id);
