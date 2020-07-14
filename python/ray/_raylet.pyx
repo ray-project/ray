@@ -1082,12 +1082,16 @@ cdef class CoreWorker:
     def get_named_actor_handle(self, const c_string &name):
         cdef:
             # NOTE: This handle should not be stored anywhere.
-            pair[const CActorHandle*, CRayStatus] named_actor_handle_pair = (
+            pair[const CActorHandle*, CRayStatus] named_actor_handle_pair
+            const CActorHandle* c_actor_handle
+
+        # We should not 
+        with nogil:
+            named_actor_handle_pair = (
                 CCoreWorkerProcess.GetCoreWorker().GetNamedActorHandle(name))
-            const CActorHandle* c_actor_handle = named_actor_handle_pair.first
+        c_actor_handle = named_actor_handle_pair.first
         check_status(named_actor_handle_pair.second)
 
-        print("succeed!")
         return self.make_actor_handle(c_actor_handle)
 
     def serialize_actor_handle(self, ActorID actor_id):

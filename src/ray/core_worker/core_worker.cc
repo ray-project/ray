@@ -1331,11 +1331,8 @@ std::pair<const ActorHandle*, Status> CoreWorker::GetNamedActorHandle(const std:
           RAY_LOG(ERROR) << "Result, thread id: " << boost::this_thread::get_id();
           auto actor_handle = std::unique_ptr<ActorHandle>(new ActorHandle(*result));
           actor_id = actor_handle->GetActorID();
-          auto caller_id = GetCallerId();
-          auto call_site = CurrentCallSite();
-          RAY_LOG(ERROR) << "hohoho3";
-          auto inserted = actor_manager_->AddNewActorHandle(std::move(actor_handle), caller_id,
-                                            call_site, rpc_address_,
+          auto inserted = actor_manager_->AddNewActorHandle(std::move(actor_handle), GetCallerId(),
+                                            CurrentCallSite(), rpc_address_,
                                             /*is_detached*/ true);
           RAY_LOG(ERROR) << "inserted: " << inserted;
         } else {
@@ -1348,14 +1345,13 @@ std::pair<const ActorHandle*, Status> CoreWorker::GetNamedActorHandle(const std:
       }));
   // Block until the RPC completes. Set a timeout to avoid hangs if the
   // GCS service crashes.
-  if (ready_promise->get_future().wait_for(std::chrono::seconds(10)) !=
+  if (ready_promise->get_future().wait_for(std::chrono::seconds(5)) !=
       std::future_status::ready) {
-    RAY_LOG(ERROR) << "timeout somehow";
+    RAY_LOG(ERROR) << "timeout somehow thread id: " << boost::this_thread::get_id();
     std::ostringstream stream;
     stream << "There was timeout in getting the actor handle. It is probably "
               "because GCS server is dead or there's a high load there.";
-    auto msg = stream.str();
-    return std::make_pair(nullptr, Status::TimedOut(msg));
+    return std::make_pair(nullptr, Status::TimedOut(stream.str()));
   }
 
   if (actor_id.IsNil()) {
@@ -1363,8 +1359,7 @@ std::pair<const ActorHandle*, Status> CoreWorker::GetNamedActorHandle(const std:
     stream << "Failed to look up actor with name '" << name
            << "'. It is either you look up the named actor you didn't create or the named"
            "actor hasn't been created because named actor creation is asynchronous.";
-    auto msg = stream.str();
-    return std::make_pair(nullptr, Status::NotFound(msg));
+    return std::make_pair(nullptr, Status::NotFound(stream.str()));
   }
 
   return std::make_pair(GetActorHandle(actor_id), Status::OK());
