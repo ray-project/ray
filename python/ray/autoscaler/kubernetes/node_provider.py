@@ -97,3 +97,8 @@ class KubernetesNodeProvider(NodeProvider):
                            docker_config=None):
         return KubernetesCommandRunner(log_prefix, self.namespace, node_id,
                                        auth_config, process_runner)
+    
+    @staticmethod
+    def bootstrap_config(cluster_config):
+        from ray.autoscaler.kubernetes.config import bootstrap_kubernetes
+        return bootstrap_kubernetes(cluster_config)

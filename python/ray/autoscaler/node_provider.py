@@ -9,33 +9,28 @@ logger = logging.getLogger(__name__)
 
 
 def import_aws():
-    from ray.autoscaler.aws.config import bootstrap_aws
     from ray.autoscaler.aws.node_provider import AWSNodeProvider
-    return bootstrap_aws, AWSNodeProvider
+    return AWSNodeProvider.bootstrap_config, AWSNodeProvider
 
 
 def import_gcp():
-    from ray.autoscaler.gcp.config import bootstrap_gcp
     from ray.autoscaler.gcp.node_provider import GCPNodeProvider
-    return bootstrap_gcp, GCPNodeProvider
+    return GCPNodeProvider.bootstrap_config, GCPNodeProvider
 
 
 def import_azure():
-    from ray.autoscaler.azure.config import bootstrap_azure
     from ray.autoscaler.azure.node_provider import AzureNodeProvider
-    return bootstrap_azure, AzureNodeProvider
+    return AzureNodeProvider.bootstrap_config, AzureNodeProvider
 
 
 def import_local():
-    from ray.autoscaler.local.config import bootstrap_local
     from ray.autoscaler.local.node_provider import LocalNodeProvider
-    return bootstrap_local, LocalNodeProvider
+    return LocalNodeProvider.bootstrap_config, LocalNodeProvider
 
 
 def import_kubernetes():
-    from ray.autoscaler.kubernetes.config import bootstrap_kubernetes
     from ray.autoscaler.kubernetes.node_provider import KubernetesNodeProvider
-    return bootstrap_kubernetes, KubernetesNodeProvider
+    return KubernetesNodeProvider.bootstrap_config, KubernetesNodeProvider
 
 
 def load_local_example_config():
@@ -69,13 +64,12 @@ def load_azure_example_config():
 def import_external():
     """Mock a normal provider importer."""
 
-    def return_it_back(config):
-        if config["provider"]["custom_bootstrap_config"]:
-            provider_cls = load_class(path=config["provider"]["module"])
-            config = provider_cls.bootstrap_config(config)
+    def return_bootstrap_config(config):
+        provider_cls = load_class(path=config["provider"]["module"])
+        config = provider_cls.bootstrap_config(config)
         return config
 
-    return return_it_back, None
+    return return_bootstrap_config, None
 
 
 NODE_PROVIDERS = {
@@ -229,6 +223,11 @@ class NodeProvider:
         This is an optional method only required if using the resource
         demand scheduler."""
         return None
+
+    @staticmethod
+    def bootstrap_config(cluster_config):
+        """Bootstraps the cluster config."""
+        return cluster_config
 
     def get_command_runner(self,
                            log_prefix,

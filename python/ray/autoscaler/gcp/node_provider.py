@@ -240,3 +240,8 @@ class GCPNodeProvider(NodeProvider):
             return self.cached_nodes[node_id]
 
         return self._get_node(node_id)
+    
+    @staticmethod
+    def bootstrap_config(cluster_config):
+        from ray.autoscaler.gcp.config import bootstrap_gcp
+        return bootstrap_gcp(cluster_config)

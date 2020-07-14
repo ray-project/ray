@@ -399,3 +399,8 @@ class AWSNodeProvider(NodeProvider):
     def cleanup(self):
         self.tag_cache_update_event.set()
         self.tag_cache_kill_event.set()
+
+    @staticmethod
+    def bootstrap_config(cluster_config):
+        from ray.autoscaler.aws.config import bootstrap_aws
+        return bootstrap_aws(cluster_config)
