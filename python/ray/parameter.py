@@ -137,7 +137,6 @@ class RayParams:
                  java_worker_options=None,
                  load_code_from_local=False,
                  _internal_config=None,
-                 lru_evict=False,
                  enable_object_reconstruction=False,
                  metrics_agent_port=None,
                  lru_evict=False):
