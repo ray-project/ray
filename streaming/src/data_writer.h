@@ -12,6 +12,7 @@
 #include "flow_control.h"
 #include "message/message_bundle.h"
 #include "runtime_context.h"
+#include "reliability/barrier_helper.h"
 
 namespace ray {
 namespace streaming {
@@ -56,6 +57,15 @@ class DataWriter {
   uint64_t WriteMessageToBufferRing(
       const ObjectID &q_id, uint8_t *data, uint32_t data_size,
       StreamingMessageType message_type = StreamingMessageType::Message);
+
+  /// send barrier to all channel. note there are user define data in barrier bundle
+  /// \param checkpoint_id : Its value is up to checkpoint operation. Actually it's useless but logging.
+  /// \param barrier_id
+  /// \param data
+  /// \param data_size
+  /// 
+  void BroadcastBarrier(uint64_t checkpoint_id, uint64_t barrier_id, const uint8_t *data,
+                        uint32_t data_size);
 
   void Run();
 
@@ -112,6 +122,13 @@ class DataWriter {
 
   void FlowControlTimer();
 
+  /// end barrier to all channel
+  /// Note: there are user define data in barrier bundle
+  /// \param barrier_id
+  /// \param data
+  /// \param data_size
+  void BroadcastBarrier(uint64_t barrier_id, const uint8_t *data, uint32_t data_size);
+
  private:
   std::shared_ptr<EventService> event_service_;
 
@@ -123,6 +140,8 @@ class DataWriter {
   // Flow controller makes a decision when it's should be blocked and avoid
   // unnecessary overflow.
   std::shared_ptr<FlowControl> flow_controller_;
+
+  StreamingBarrierHelper barrier_helper_;
 
  protected:
   std::unordered_map<ObjectID, ProducerChannelInfo> channel_info_map_;

@@ -170,6 +170,55 @@ StreamingStatus DataWriter::Init(const std::vector<ObjectID> &queue_id_vec,
   return StreamingStatus::OK;
 }
 
+void DataWriter::BroadcastBarrier(uint64_t checkpoint_id, uint64_t barrier_id,
+                                  const uint8_t *data, uint32_t data_size) {
+  STREAMING_LOG(INFO) << "broadcast checkpoint id : " << checkpoint_id
+                      << " and global barrier id : " << barrier_id;
+  barrier_helper_.MapBarrierToCheckpoint(barrier_id, checkpoint_id);
+  BroadcastBarrier(barrier_id, data, data_size);
+}
+
+void DataWriter::BroadcastBarrier(uint64_t barrier_id, const uint8_t *data,
+                                  uint32_t data_size) {
+
+  if (barrier_helper_.Contains(barrier_id)) {
+    STREAMING_LOG(WARNING) << "replicated global barrier id => " << barrier_id;
+    return;
+  }
+
+  std::vector<uint64_t> barrier_id_vec;
+  barrier_helper_.GetAllBarrier(barrier_id_vec);
+  if (barrier_id_vec.size() > 0) {
+    // Show all stashed barrier ids that means these checkpoint are not finished
+    // yet.
+    STREAMING_LOG(WARNING) << "[Writer] [Barrier] previous barrier(checkpoint) was fail "
+                              "to do some opearting, ids => "
+                           << Util::join(barrier_id_vec.begin(),
+                                                     barrier_id_vec.end(), "|");
+  }
+  StreamingBarrierHeader barrier_header = {
+      .barrier_type = StreamingBarrierType::GlobalBarrier, .barrier_id = barrier_id};
+
+  auto barrier_payload =
+      StreamingMessage::MakeBarrierMessage(barrier_header, data, data_size);
+  auto payload_size = kBarrierHeaderSize + data_size;
+  for (auto &queue_id : output_queue_ids_) {
+    uint64_t barrier_message_id = WriteMessageToBufferRing(
+        queue_id, barrier_payload.get(), payload_size, StreamingMessageType::Barrier);
+    if (runtime_context_->GetRuntimeStatus() == RuntimeStatus::Interrupted) {
+      STREAMING_LOG(WARNING) << " stop right now";
+      return;
+    }
+
+    STREAMING_LOG(INFO) << "[Writer] [Barrier] write barrier to => " << queue_id
+                        << ", barrier message id =>" << barrier_message_id
+                        << ", barrier id => " << barrier_id;
+  }
+
+  STREAMING_LOG(INFO) << "[Writer] [Barrier] global barrier id in runtime => "
+                      << barrier_id;
+}
+
 DataWriter::DataWriter(std::shared_ptr<RuntimeContext> &runtime_context)
     : transfer_config_(new Config()), runtime_context_(runtime_context) {}
 
