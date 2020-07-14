@@ -15,7 +15,7 @@ Parallelizing Python Functions with Ray Tasks
 
 First, import ray and ``init`` the Ray service.
 Then decorate your function with ``@ray.remote`` to declare that you want to run this function
-remotely. Lastly, call that function with ``.remote()`` instead of calling it normally. This remote call yields a future, or ``ObjectID`` that you can then
+remotely. Lastly, call that function with ``.remote()`` instead of calling it normally. This remote call yields a future, or ``ObjectRef`` that you can then
 fetch with ``ray.get``.
 
 .. code-block:: python

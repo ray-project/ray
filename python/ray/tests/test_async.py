@@ -40,7 +40,7 @@ def test_simple(init):
 def test_gather(init):
     loop = asyncio.get_event_loop()
     tasks = gen_tasks()
-    futures = [obj_id.as_future() for obj_id in tasks]
+    futures = [obj_ref.as_future() for obj_ref in tasks]
     results = loop.run_until_complete(asyncio.gather(*futures))
     assert all(a[0] == b[0] for a, b in zip(results, ray.get(tasks)))
 
@@ -48,7 +48,7 @@ def test_gather(init):
 def test_wait(init):
     loop = asyncio.get_event_loop()
     tasks = gen_tasks()
-    futures = [obj_id.as_future() for obj_id in tasks]
+    futures = [obj_ref.as_future() for obj_ref in tasks]
     results, _ = loop.run_until_complete(asyncio.wait(futures))
     assert set(results) == set(futures)
 
@@ -56,7 +56,7 @@ def test_wait(init):
 def test_wait_timeout(init):
     loop = asyncio.get_event_loop()
     tasks = gen_tasks(10)
-    futures = [obj_id.as_future() for obj_id in tasks]
+    futures = [obj_ref.as_future() for obj_ref in tasks]
     fut = asyncio.wait(futures, timeout=5)
     results, _ = loop.run_until_complete(fut)
     assert list(results)[0] == futures[0]

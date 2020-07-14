@@ -486,6 +486,14 @@ message CreateActorReply {
   GcsStatus status = 1;
 }
 
+message CreatePlacementGroupRequest {
+  PlacementGroupSpec placement_group_spec = 1;
+}
+
+message CreatePlacementGroupReply {
+  GcsStatus status = 1;
+}
+
 enum GcsServiceFailureType {
   RPC_DISCONNECT = 0;
   GCS_SERVER_RESTART = 1;
