@@ -52,7 +52,8 @@ class CoreWorkerDirectActorTaskSubmitterInterface {
   virtual void AddActorQueueIfNotExists(const ActorID &actor_id) = 0;
   virtual void ConnectActor(const ActorID &actor_id, const rpc::Address &address,
                             int64_t num_restarts) = 0;
-  virtual void DisconnectActor(const ActorID &actor_id, bool dead = false) = 0;
+  virtual void DisconnectActor(const ActorID &actor_id, int64_t num_restarts,
+                               bool dead = false) = 0;
   virtual void KillActor(const ActorID &actor_id, bool force_kill, bool no_restart) = 0;
 
   virtual ~CoreWorkerDirectActorTaskSubmitterInterface() {}
@@ -96,16 +97,21 @@ class CoreWorkerDirectActorTaskSubmitter
   ///
   /// \param[in] actor_id Actor ID.
   /// \param[in] address The new address of the actor.
-  /// \param[in] num_restarts How many times this actor was alive
-  /// before. If we've already seen a later incarnation of the actor,
-  /// we will ignore the command to connect.
+  /// \param[in] num_restarts How many times this actor has been restarted
+  /// before. If we've already seen a later incarnation of the actor, we will
+  /// ignore the command to connect.
   void ConnectActor(const ActorID &actor_id, const rpc::Address &address,
                     int64_t num_restarts);
 
   /// Disconnect from a failed actor.
   ///
   /// \param[in] actor_id Actor ID.
-  void DisconnectActor(const ActorID &actor_id, bool dead = false);
+  /// \param[in] num_restarts How many times this actor has been restarted
+  /// before. If we've already seen a later incarnation of the actor, we will
+  /// ignore the command to connect.
+  /// \param[in] dead Whether the actor is permanently dead. In this case, all
+  /// pending tasks for the actor should be failed.
+  void DisconnectActor(const ActorID &actor_id, int64_t num_restarts, bool dead = false);
 
   /// Set the timerstamp for the caller.
   void SetCallerCreationTimestamp(int64_t timestamp);
@@ -116,7 +122,7 @@ class CoreWorkerDirectActorTaskSubmitter
     /// an RPC client to the actor. If this is DEAD, then all tasks in the
     /// queue will be marked failed and all other ClientQueue state is ignored.
     rpc::ActorTableData::ActorState state = rpc::ActorTableData::PENDING;
-    /// How many times this actor has restarted so far. Starts at -1 to
+    /// How many times this actor has been restarted before. Starts at -1 to
     /// indicate that the actor is not yet created. This is used to drop stale
     /// messages from the GCS.
     int64_t num_restarts = -1;

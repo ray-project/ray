@@ -235,10 +235,10 @@ TEST_F(DirectActorSubmitterTest, TestActorDead) {
   }
 
   EXPECT_CALL(*task_finisher_, PendingTaskFailed(_, _, _)).Times(0);
-  submitter_.DisconnectActor(actor_id, /*dead=*/false);
+  submitter_.DisconnectActor(actor_id, 1, /*dead=*/false);
   // Actor marked as dead. All queued tasks should get failed.
   EXPECT_CALL(*task_finisher_, PendingTaskFailed(task2.TaskId(), _, _)).Times(1);
-  submitter_.DisconnectActor(actor_id, /*dead=*/true);
+  submitter_.DisconnectActor(actor_id, 1, /*dead=*/true);
 }
 
 TEST_F(DirectActorSubmitterTest, TestActorRestartNoRetry) {
@@ -268,7 +268,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartNoRetry) {
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
 
   // Simulate the actor failing.
-  submitter_.DisconnectActor(actor_id, /*dead=*/false);
+  submitter_.DisconnectActor(actor_id, 1, /*dead=*/false);
   // Third task fails after the actor is disconnected. It should not get
   // retried.
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
@@ -313,7 +313,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartRetry) {
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
 
   // Simulate the actor failing.
-  submitter_.DisconnectActor(actor_id, /*dead=*/false);
+  submitter_.DisconnectActor(actor_id, 1, /*dead=*/false);
   // Third task fails after the actor is disconnected.
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
 
@@ -363,7 +363,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
 
   // Simulate the actor failing.
-  submitter_.DisconnectActor(actor_id, /*dead=*/false);
+  submitter_.DisconnectActor(actor_id, 1, /*dead=*/false);
   // Third task fails after the actor is disconnected.
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
 
@@ -372,6 +372,8 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   submitter_.ConnectActor(actor_id, addr, 2);
   addr.set_worker_id(WorkerID::FromRandom().Binary());
   submitter_.ConnectActor(actor_id, addr, 1);
+  // We hear about an old message that the actor was restarted.
+  submitter_.DisconnectActor(actor_id, 2, /*dead=*/false);
   // A new task is submitted.
   ASSERT_TRUE(submitter_.SubmitTask(task4).ok());
   // Tasks 2 and 3 get retried.
