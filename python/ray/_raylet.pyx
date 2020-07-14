@@ -596,8 +596,8 @@ cdef void get_py_stack(c_string* stack_out) nogil:
     This can be called from within C++ code to retrieve the file name and line
     number of the Python code that is calling into the core worker.
     """
-
     with gil:
+        print(threading.get_ident())
         print('sangbin 1')
         try:
             frame = inspect.currentframe()
