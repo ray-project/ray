@@ -65,6 +65,7 @@ bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                                        /*object_size*/ -1,
                                        /*is_reconstructable=*/true);
   }
+
   return AddActorHandle(std::move(actor_handle),
                         /*is_owner_handle=*/!is_detached, caller_id, call_site,
                         caller_address, actor_id, actor_creation_return_id);
