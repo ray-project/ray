@@ -54,7 +54,7 @@ void MetricsAgentExporter::ReportMetrics(const std::vector<MetricPoint> &points)
   MetricExporterDecorator::ReportMetrics(points);
   rpc::ReportMetricsRequest request;
   for (auto point : points) {
-    auto metric_point = request.add_metrics_point();
+    auto metric_point = request.add_metrics_points();
     metric_point->set_metric_name(point.metric_name);
     metric_point->set_timestamp(point.timestamp);
     metric_point->set_value(point.value);

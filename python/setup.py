@@ -199,6 +199,10 @@ requires = [
     "py-spy >= 0.2.0",
     "pyyaml",
     "redis >= 3.3.2, < 3.5.0",
+    "opentelemetry-api==0.10b0",
+    "opentelemetry-sdk==0.10b0",
+    "opentelemetry-ext-prometheus==0.10b0",
+    "prometheus_client",
 ]
 
 setup(

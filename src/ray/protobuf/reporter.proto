@@ -35,7 +35,7 @@ message GetProfilingStatsReply {
 }
 
 message ReportMetricsRequest {
-  repeated MetricPoint metrics_point = 1;
+  repeated MetricPoint metrics_points = 1;
 }
 
 message ReportMetricsReply {
