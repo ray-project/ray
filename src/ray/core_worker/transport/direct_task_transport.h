@@ -53,7 +53,7 @@ class CoreWorkerDirectTaskSubmitter {
       rpc::ClientFactoryFn client_factory, LeaseClientFactoryFn lease_client_factory,
       std::shared_ptr<CoreWorkerMemoryStore> store,
       std::shared_ptr<TaskFinisherInterface> task_finisher, ClientID local_raylet_id,
-      int64_t lease_timeout_ms,
+      int64_t lease_timeout_ms, uint32_t max_tasks_in_flight_per_worker = RayConfig::instance().max_tasks_in_flight_per_worker(),
       std::function<Status(const TaskSpecification &, const gcs::StatusCallback &)>
           actor_create_callback = nullptr,
       absl::optional<boost::asio::steady_timer> cancel_timer = absl::nullopt)
@@ -64,10 +64,10 @@ class CoreWorkerDirectTaskSubmitter {
         resolver_(store, task_finisher),
         task_finisher_(task_finisher),
         lease_timeout_ms_(lease_timeout_ms),
+        max_tasks_in_flight_per_worker_(max_tasks_in_flight_per_worker),
         local_raylet_id_(local_raylet_id),
         actor_create_callback_(std::move(actor_create_callback)),
-        cancel_retry_timer_(std::move(cancel_timer)), 
-        max_tasks_in_flight_per_worker_(RayConfig::instance().max_tasks_in_flight_per_worker()) {}
+        cancel_retry_timer_(std::move(cancel_timer)) {}
 
   /// Schedule a task for direct submission to a worker.
   ///
@@ -175,16 +175,23 @@ class CoreWorkerDirectTaskSubmitter {
   absl::flat_hash_map<rpc::WorkerAddress, std::shared_ptr<rpc::CoreWorkerClientInterface>>
       client_cache_ GUARDED_BY(mu_);
 
-  // max_tasks_in_flight_per_worker_ limits the number of tasks that can be pipelined to a worker using a single lease
+  // max_tasks_in_flight_per_worker_ limits the number of tasks that can be pipelined to a worker using a single lease.
   const uint32_t max_tasks_in_flight_per_worker_;
 
-  /// Map from worker address to a tuple containing three elements:
-  /// - the lease client through which the worker should be returned
-  /// - the expiration time of the worker lease
-  /// - the number of tasks that are currently in flight to the worker
-  absl::flat_hash_map<rpc::WorkerAddress,
-                      std::tuple<std::shared_ptr<WorkerLeaseInterface>, int64_t, uint32_t>>
-      worker_to_lease_entry_ GUARDED_BY(mu_);
+  
+  
+  /// A lease_entry struct is used to condense the metadata about a single executor:
+  /// (1) The lease client through which the worker should be returned
+  /// (2) The expiration time of a worker's lease.
+  /// (3) The number of tasks that are currently in flight to the worker
+  typedef struct lease_entry {
+    std::shared_ptr<WorkerLeaseInterface> lease_client;
+    int64_t lease_expiration_time;
+    uint32_t tasks_in_flight;
+  } lease_entry;
+
+  // Map from worker address to a lease_entry struct containing the lease's metadata.
+  absl::flat_hash_map<rpc::WorkerAddress, lease_entry> worker_to_lease_entry_ GUARDED_BY(mu_);
 
   // Keeps track of pending worker lease requests to the raylet.
   absl::flat_hash_map<SchedulingKey,

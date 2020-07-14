@@ -1044,27 +1044,25 @@ TEST(DirectTaskTransportTest, TestPipeliningConcurrentWorkerLeases) {
   auto factory = [&](const rpc::Address &addr) { return worker_client; };
   auto task_finisher = std::make_shared<MockTaskFinisher>();
 
-  // setting max_tasks_in_flight_per_worker to a value larger than 1 to enable pipelining
-  // this should be done before instantiating the CoreWorkerDirectTaskSubmitter
-  std::unordered_map<std::string, std::string> config_map;
-  config_map["max_tasks_in_flight_per_worker"] = "10";
-  RayConfig::instance().initialize(config_map);
-  ASSERT_EQ(RayConfig::instance().max_tasks_in_flight_per_worker(), 10);
-
+  // Set max_tasks_in_flight_per_worker to a value larger than 1 to enable the pipelining
+  // of task submissions. This is done by passing a max_tasks_in_flight_per_worker 
+  // parameter to the CoreWorkerDirectTaskSubmitter.
+  uint32_t max_tasks_in_flight_per_worker = 10;
   CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
-                                          task_finisher, ClientID::Nil(), kLongTimeout);
+                                          task_finisher, ClientID::Nil(), kLongTimeout,
+                                          max_tasks_in_flight_per_worker);
   
-  // prepare 20 tasks and save them in a vector
+  // Prepare 20 tasks and save them in a vector.
   std::unordered_map<std::string, double> empty_resources;
   ray::FunctionDescriptor empty_descriptor =
       ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
   std::vector<TaskSpecification> tasks;
-  for (int i=0; i< 20; i++) {
+  for (int i=1; i<= 20; i++) {
     tasks.push_back(BuildTaskSpec(empty_resources, empty_descriptor));
   }
   ASSERT_EQ(tasks.size(), 20);
 
-  // Submit the 20 tasks and check that one worker is requested
+  // Submit the 20 tasks and check that one worker is requested.
   for (auto task : tasks) {
     ASSERT_TRUE(submitter.SubmitTask(task).ok());
   }
@@ -1079,10 +1077,20 @@ TEST(DirectTaskTransportTest, TestPipeliningConcurrentWorkerLeases) {
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, ClientID::Nil()));
   ASSERT_EQ(worker_client->callbacks.size(), 20);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
-  
-  // All workers returned.
-  while (!worker_client->callbacks.empty()) {
+
+  for (int i=1; i<=20; i++) {
+    ASSERT_FALSE(worker_client->callbacks.empty());
     ASSERT_TRUE(worker_client->ReplyPushTask());
+    // No worker should be returned until all the tasks that were submitted to it have been completed.
+    // In our case, the first worker should only be returned after the 10th task has been executed.
+    // The second worker should only be returned at the end, or after the 20th task has been executed.
+      if (i < 10) {
+        ASSERT_EQ(raylet_client->num_workers_returned, 0);
+      } else if (i >= 10 && i < 20) {
+        ASSERT_EQ(raylet_client->num_workers_returned, 1);
+      } else if (i == 20) {
+        ASSERT_EQ(raylet_client->num_workers_returned, 2);
+      }
   }
 
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
@@ -1103,14 +1111,13 @@ TEST(DirectTaskTransportTest, TestPipeliningReuseWorkerLease) {
   auto factory = [&](const rpc::Address &addr) { return worker_client; };
   auto task_finisher = std::make_shared<MockTaskFinisher>();
 
-  // setting max_tasks_in_flight_per_worker to a value larger than 1 to enable pipelining
-  // this should be done before instantiating the CoreWorkerDirectTaskSubmitter
-  std::unordered_map<std::string, std::string> config_map;
-  config_map["max_tasks_in_flight_per_worker"] = "10";
-  RayConfig::instance().initialize(config_map);
-  ASSERT_EQ(RayConfig::instance().max_tasks_in_flight_per_worker(), 10);
+  // Set max_tasks_in_flight_per_worker to a value larger than 1 to enable the pipelining
+  // of task submissions. This is done by passing a max_tasks_in_flight_per_worker 
+  // parameter to the CoreWorkerDirectTaskSubmitter.
+  uint32_t max_tasks_in_flight_per_worker = 10;
   CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
-                                          task_finisher, ClientID::Nil(), kLongTimeout);
+                                          task_finisher, ClientID::Nil(), kLongTimeout,
+                                          max_tasks_in_flight_per_worker);
   
   // prepare 30 tasks and save them in a vector
   std::unordered_map<std::string, double> empty_resources;
