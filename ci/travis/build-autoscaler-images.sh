@@ -15,15 +15,18 @@ if [[ "$TRAVIS" == "true" && "$TRAVIS_PULL_REQUEST" == "false" ]]; then
     commit_sha=$(echo $TRAVIS_COMMIT | head -c 6)
     cp -r $ROOT_DIR/.whl $ROOT_DIR/docker/autoscaler/.whl
 
-    docker build -q -t rayproject/base-deps:$commit_sha docker/base-deps
-    docker push rayproject/base-deps:$commit_sha
+    docker build -q -t rayproject/base-deps docker/base-deps
 
     docker build \
         --build-arg WHEEL_PATH=".whl/$wheel" \
         --build-arg WHEEL_NAME=$wheel \
         -t rayproject/autoscaler:$commit_sha \
         $ROOT_DIR/docker/autoscaler
+
+    docker tag rayproject/base-deps rayproject/base-deps:$commit_sha 
+    docker push rayproject/base-deps:$commit_sha
     docker push rayproject/autoscaler:$commit_sha
+
 
     # We have a branch build, e.g. release/v0.7.0
     if [[ "$TRAVIS_BRANCH" != "master" ]]; then
