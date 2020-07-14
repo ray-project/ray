@@ -26,8 +26,10 @@ class TestIMPALA(unittest.TestCase):
         ]
         local_cfg = config.copy()
         trainer = impala.ImpalaTrainer(config=local_cfg, env="CartPole-v0")
+
         def get_lr(result):
             return result["info"]["learner"]["default_policy"]["cur_lr"]
+
         try:
             r1 = trainer.train()
             r2 = trainer.train()
@@ -67,6 +69,7 @@ class TestIMPALA(unittest.TestCase):
                     include_state=True,
                     include_prev_action_reward=True)
                 trainer.stop()
+
 
 if __name__ == "__main__":
     import pytest
