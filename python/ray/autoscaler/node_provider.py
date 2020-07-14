@@ -10,27 +10,27 @@ logger = logging.getLogger(__name__)
 
 def import_aws():
     from ray.autoscaler.aws.node_provider import AWSNodeProvider
-    return AWSNodeProvider.bootstrap_config, AWSNodeProvider
+    return AWSNodeProvider
 
 
 def import_gcp():
     from ray.autoscaler.gcp.node_provider import GCPNodeProvider
-    return GCPNodeProvider.bootstrap_config, GCPNodeProvider
+    return GCPNodeProvider
 
 
 def import_azure():
     from ray.autoscaler.azure.node_provider import AzureNodeProvider
-    return AzureNodeProvider.bootstrap_config, AzureNodeProvider
+    return AzureNodeProvider
 
 
 def import_local():
     from ray.autoscaler.local.node_provider import LocalNodeProvider
-    return LocalNodeProvider.bootstrap_config, LocalNodeProvider
+    return LocalNodeProvider
 
 
 def import_kubernetes():
     from ray.autoscaler.kubernetes.node_provider import KubernetesNodeProvider
-    return KubernetesNodeProvider.bootstrap_config, KubernetesNodeProvider
+    return KubernetesNodeProvider
 
 
 def load_local_example_config():
@@ -118,7 +118,7 @@ def get_node_provider(provider_config, cluster_name):
     if importer is None:
         raise NotImplementedError("Unsupported node provider: {}".format(
             provider_config["type"]))
-    _, provider_cls = importer()
+    provider_cls = importer()
     return provider_cls(provider_config, cluster_name)
 
 
