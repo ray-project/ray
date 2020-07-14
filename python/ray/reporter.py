@@ -15,7 +15,7 @@ import psutil
 
 from opentelemetry import metrics
 from opentelemetry.ext.prometheus import PrometheusMetricsExporter
-from opentelemetry.sdk.metrics import ValueRecorder, Meter, MeterProvider
+from opentelemetry.sdk.metrics import Observer, Meter, MeterProvider
 from prometheus_client import start_http_server
 
 import ray
@@ -43,12 +43,12 @@ class MetricsDef:
     def __init__(self, meter):
         self.meter = meter
         self.registry = {
-            "task_count_received": meter.create_metric(
+            "task_count_received": self.meter.create_metric(
                 "task_count_received",
                 "",
                 "",
                 float,
-                ValueRecorder
+                Observer
             )
         }
 
@@ -101,7 +101,7 @@ class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
             if metric_name in self.metrics_exporter.metrics_def.registry:
                 print("{} is in registry hehe".format(metric_name))
                 print(value)
-                self.metrics_exporter.metrics_def.registry[metric_name].record(value, tags)
+                self.metrics_exporter.metrics_def.registry[metric_name].observe(value, tags)
 
         return reporter_pb2.ReportMetricsReply()
 
