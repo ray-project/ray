@@ -36,7 +36,10 @@ class BackendConfig:
             # timeout is default zero seconds, then we keep the existing
             # behavior to allow at most max batch size queries.
             if self.is_blocking and self.batch_wait_timeout == 0:
-                self.max_concurrent_queries = self.max_batch_size or 1
+                if self.max_batch_size:
+                    self.max_concurrent_queries = 2 * self.max_batch_size
+                else:
+                    self.max_concurrent_queries = 8
 
             # Pipeline/async mode: if the servable is not blocking,
             # router should just keep pushing queries to the worker
