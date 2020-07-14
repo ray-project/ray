@@ -9,23 +9,10 @@ import AddIcon from "@material-ui/icons/Add";
 import RemoveIcon from "@material-ui/icons/Remove";
 import classNames from "classnames";
 import React, { useState } from "react";
-import {
-  NodeInfoResponse,
-  NodeInfoResponseWorker,
-  RayletInfoResponse,
-} from "../../../api";
-import { NodeCPU, WorkerCPU } from "./features/CPU";
-import { NodeDisk, WorkerDisk } from "./features/Disk";
-import { makeNodeErrors, makeWorkerErrors } from "./features/Errors";
-import { NodeGPU, WorkerGPU } from "./features/GPU";
-import { NodeGRAM, WorkerGRAM } from "./features/GRAM";
-import { NodeHost, WorkerHost } from "./features/Host";
-import { makeNodeLogs, makeWorkerLogs } from "./features/Logs";
-import { NodeRAM, WorkerRAM } from "./features/RAM";
-import { NodeReceived, WorkerReceived } from "./features/Received";
-import { NodeSent, WorkerSent } from "./features/Sent";
-import { NodeUptime, WorkerUptime } from "./features/Uptime";
-import { NodeWorkers, WorkerWorkers } from "./features/Workers";
+import { NodeInfoResponse } from "../../../api";
+import { StyledTableCell } from "../../../common/TableCell";
+import { NodeInfoFeature, WorkerFeatureData } from "./features/types";
+import { NodeWorkerRow } from "./NodeWorkerRow";
 
 const useNodeRowGroupStyles = makeStyles((theme: Theme) =>
   createStyles({
@@ -55,59 +42,31 @@ type ArrayType<T> = T extends Array<infer U> ? U : never;
 type Node = ArrayType<NodeInfoResponse["clients"]>;
 
 type NodeRowGroupProps = {
+  features: NodeInfoFeature[];
   node: Node;
-  clusterWorkers: Array<NodeInfoResponseWorker>;
-  raylet: RayletInfoResponse["nodes"][keyof RayletInfoResponse["nodes"]] | null;
-  logCounts: {
-    perWorker: { [pid: string]: number };
-    total: number;
-  };
-  errorCounts: {
-    perWorker: { [pid: string]: number };
-    total: number;
-  };
-  setLogDialog: (hostname: string, pid: number | null) => void;
-  setErrorDialog: (hostname: string, pid: number | null) => void;
+  rayletInfo?: string;
+  workerFeatureData: WorkerFeatureData[];
   initialExpanded: boolean;
 };
 
 const NodeRowGroup: React.FC<NodeRowGroupProps> = ({
+  features,
   node,
-  raylet,
-  clusterWorkers,
-  logCounts,
-  errorCounts,
-  setLogDialog,
-  setErrorDialog,
   initialExpanded,
+  rayletInfo,
+  workerFeatureData,
 }) => {
   const [expanded, setExpanded] = useState<boolean>(initialExpanded);
   const toggleExpand = () => setExpanded(!expanded);
   const classes = useNodeRowGroupStyles();
-  const features = [
-    { NodeFeature: NodeHost, WorkerFeature: WorkerHost },
-    {
-      NodeFeature: NodeWorkers(clusterWorkers.length),
-      WorkerFeature: WorkerWorkers,
-    },
-    { NodeFeature: NodeUptime, WorkerFeature: WorkerUptime },
-    { NodeFeature: NodeCPU, WorkerFeature: WorkerCPU },
-    { NodeFeature: NodeRAM, WorkerFeature: WorkerRAM },
-    { NodeFeature: NodeGPU, WorkerFeature: WorkerGPU },
-    { NodeFeature: NodeGRAM, WorkerFeature: WorkerGRAM },
-    { NodeFeature: NodeDisk, WorkerFeature: WorkerDisk },
-    { NodeFeature: NodeSent, WorkerFeature: WorkerSent },
-    { NodeFeature: NodeReceived, WorkerFeature: WorkerReceived },
-    {
-      NodeFeature: makeNodeLogs(logCounts, setLogDialog),
-      WorkerFeature: makeWorkerLogs(logCounts, setLogDialog),
-    },
-    {
-      NodeFeature: makeNodeErrors(errorCounts, setErrorDialog),
-      WorkerFeature: makeWorkerErrors(errorCounts, setErrorDialog),
-    },
-  ];
-
+  const renderedNodeFeatures = features.map((nodeInfoFeature, i) => {
+    const FeatureComponent = nodeInfoFeature.NodeFeatureRenderFn;
+    return (
+      <StyledTableCell className={classes.cell} key={i}>
+        <FeatureComponent node={node} />
+      </StyledTableCell>
+    );
+  });
   return (
     <React.Fragment>
       <TableRow hover>
@@ -121,44 +80,30 @@ const NodeRowGroup: React.FC<NodeRowGroupProps> = ({
             <RemoveIcon className={classes.expandCollapseIcon} />
           )}
         </TableCell>
-        {features.map(({ NodeFeature }, index) => (
-          <TableCell className={classes.cell} key={index}>
-            <NodeFeature node={node} />
-          </TableCell>
-        ))}
+        {renderedNodeFeatures}
       </TableRow>
       {expanded && (
         <React.Fragment>
-          {raylet !== null && raylet.extraInfo !== undefined && (
+          {rayletInfo !== undefined && (
             <TableRow hover>
               <TableCell className={classes.cell} />
               <TableCell
                 className={classNames(classes.cell, classes.extraInfo)}
                 colSpan={features.length}
               >
-                {raylet.extraInfo}
+                {rayletInfo}
               </TableCell>
             </TableRow>
           )}
-          {clusterWorkers.map((worker, index: number) => {
-            const rayletWorker =
-              raylet?.workersStats.find(
-                (rayletWorker) => worker.pid === rayletWorker.pid,
-              ) || null;
-
+          {workerFeatureData.map((featureData, index: number) => {
             return (
-              <TableRow hover key={index}>
-                <TableCell className={classes.cell} />
-                {features.map(({ WorkerFeature }, index) => (
-                  <TableCell className={classes.cell} key={index}>
-                    <WorkerFeature
-                      node={node}
-                      worker={worker}
-                      rayletWorker={rayletWorker}
-                    />
-                  </TableCell>
-                ))}
-              </TableRow>
+              <NodeWorkerRow
+                key={index}
+                features={features.map(
+                  (feature) => feature.WorkerFeatureRenderFn,
+                )}
+                data={featureData}
+              />
             );
           })}
         </React.Fragment>

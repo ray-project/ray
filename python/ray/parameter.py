@@ -33,6 +33,7 @@ class RayParams:
             sharded redis tables (task and object tables).
         object_manager_port int: The port to use for the object manager.
         node_manager_port: The port to use for the node manager.
+        gcs_server_port: The port to use for the GCS server.
         node_ip_address (str): The IP address of the node that we are on.
         raylet_ip_address (str): The IP address of the raylet that this node
             connects to.
@@ -87,6 +88,7 @@ class RayParams:
             Java worker.
         java_worker_options (list): The command options for Java worker.
         load_code_from_local: Whether load code from local file or from GCS.
+        metrics_agent_port(int): The port to bind metrics agent.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
         lru_evict (bool): Enable LRU eviction if space is needed.
@@ -106,6 +108,7 @@ class RayParams:
                  redis_shard_ports=None,
                  object_manager_port=None,
                  node_manager_port=None,
+                 gcs_server_port=None,
                  node_ip_address=None,
                  raylet_ip_address=None,
                  min_worker_port=None,
@@ -135,7 +138,9 @@ class RayParams:
                  load_code_from_local=False,
                  _internal_config=None,
                  lru_evict=False,
-                 enable_object_reconstruction=False):
+                 enable_object_reconstruction=False,
+                 metrics_agent_port=None,
+                 lru_evict=False):
         self.object_ref_seed = object_ref_seed
         self.redis_address = redis_address
         self.num_cpus = num_cpus
@@ -148,6 +153,7 @@ class RayParams:
         self.redis_shard_ports = redis_shard_ports
         self.object_manager_port = object_manager_port
         self.node_manager_port = node_manager_port
+        self.gcs_server_port = gcs_server_port
         self.node_ip_address = node_ip_address
         self.raylet_ip_address = raylet_ip_address
         self.min_worker_port = min_worker_port
@@ -172,6 +178,7 @@ class RayParams:
         self.include_java = include_java
         self.java_worker_options = java_worker_options
         self.load_code_from_local = load_code_from_local
+        self.metrics_agent_port = metrics_agent_port
         self._internal_config = _internal_config
         self._lru_evict = lru_evict
         self._enable_object_reconstruction = enable_object_reconstruction

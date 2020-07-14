@@ -294,7 +294,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   // NOTE(edoakes): any initialization depending on RayConfig must happen after this line.
   RayConfig::instance().initialize(internal_config);
-
   // Start RPC server after all the task receivers are properly initialized and we have
   // our assigned port from the raylet.
   core_worker_server_ = std::unique_ptr<rpc::GrpcServer>(
