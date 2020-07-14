@@ -14,6 +14,7 @@ import sys
 import threading
 import time
 import traceback
+import numbers
 
 # Ray modules
 import ray.cloudpickle as pickle
@@ -1901,7 +1902,7 @@ def remote(*args, **kwargs):
             "max_retries",
         ], error_string
 
-    resources = kwargs.get("resources")
+    resources = kwargs.get("resources", {})
     if not isinstance(resources, dict) and resources is not None:
         raise TypeError("The 'resources' keyword argument must be a "
                         "dictionary, but received type {}.".format(
@@ -1919,7 +1920,7 @@ def remote(*args, **kwargs):
         num_gpus = len(gpus)
         if gpus:
             constraint_name = gpus[0]
-            assert constraint_name not in resources, \
+            assert resources is None or constraint_name not in resources, \
                 "The namespace _ray is reserved."
             resources[constraint_name] = num_gpus
     else:
