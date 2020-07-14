@@ -2237,7 +2237,14 @@ void NodeManager::MarkObjectsAsFailed(const ErrorType &error_type,
                                       const JobID &job_id) {
   const std::string meta = std::to_string(static_cast<int>(error_type));
   for (const auto &object_id : objects_to_fail) {
-    Status status = store_client_.CreateAndSeal(object_id, "", meta);
+    std::shared_ptr<arrow::Buffer> data;
+    Status status;
+    status = store_client_.Create(object_id, 0,
+                                  reinterpret_cast<const uint8_t *>(meta.c_str()),
+                                  meta.length(), &data);
+    if (status.ok()) {
+      status = store_client_.Seal(object_id);
+    }
     if (!status.ok() && !status.IsObjectExists()) {
       // If we failed to save the error code, log a warning and push an error message
       // to the driver.
