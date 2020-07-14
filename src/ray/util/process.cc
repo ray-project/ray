@@ -22,8 +22,8 @@
 #include <stddef.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#endif
 #include <unistd.h>
+#endif
 
 #include <algorithm>
 #include <fstream>
@@ -445,6 +445,7 @@ namespace std {
 
 bool equal_to<ray::Process>::operator()(const ray::Process &x,
                                         const ray::Process &y) const {
+  using namespace ray;
   return !x.IsNull()
              ? !y.IsNull()
                    ? x.IsValid()
@@ -456,6 +457,7 @@ bool equal_to<ray::Process>::operator()(const ray::Process &x,
 }
 
 size_t hash<ray::Process>::operator()(const ray::Process &value) const {
+  using namespace ray;
   return !value.IsNull() ? value.IsValid() ? hash<pid_t>()(value.GetId())
                                            : hash<void const *>()(value.Get())
                          : size_t();

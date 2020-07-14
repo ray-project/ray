@@ -18,8 +18,10 @@
 #pragma once
 
 #include <inttypes.h>
+#ifndef _WIN32
 #include <sys/socket.h>
 #include <sys/un.h>
+#endif
 #include <unistd.h>
 
 #include <memory>

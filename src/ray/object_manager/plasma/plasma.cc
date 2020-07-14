@@ -17,7 +17,9 @@
 
 #include "ray/object_manager/plasma/plasma.h"
 
+#ifndef _WIN32
 #include <sys/socket.h>
+#endif
 #include <sys/types.h>
 #include <unistd.h>
 

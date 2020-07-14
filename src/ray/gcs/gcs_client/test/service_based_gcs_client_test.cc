@@ -623,7 +623,7 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeInfo) {
 
   // Register local node to GCS.
   ASSERT_TRUE(RegisterSelf(*gcs_node1_info));
-  sleep(1);
+  usleep(1000 * 1000);
   EXPECT_EQ(gcs_client_->Nodes().GetSelfId(), node1_id);
   EXPECT_EQ(gcs_client_->Nodes().GetSelfInfo().node_id(), gcs_node1_info->node_id());
   EXPECT_EQ(gcs_client_->Nodes().GetSelfInfo().state(), gcs_node1_info->state());

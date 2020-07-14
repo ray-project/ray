@@ -725,7 +725,7 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
   }
 
   auto thread_func = [&unready_ids, &provider, &buffers]() {
-    sleep(1);
+    usleep(1000 * 1000);
 
     for (size_t i = 0; i < unready_ids.size(); i++) {
       RAY_CHECK(provider.Put(buffers[i], unready_ids[i]));

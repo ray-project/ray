@@ -14,13 +14,17 @@
 
 #include "ray/util/logging.h"
 
-#ifndef _WIN32
+#ifdef _WIN32
+#include <process.h>
+#else
 #include <execinfo.h>
 #endif
 
 #include <signal.h>
 #include <stdlib.h>
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 
 #include <algorithm>
 #include <cstdlib>
@@ -188,9 +192,14 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
     char buffer[80];
     time_t rawtime;
     time(&rawtime);
+#ifdef _WIN32
+    int pid = _getpid();
+#else
+    pid_t pid = getpid();
+#endif
     strftime(buffer, sizeof(buffer), "%Y%m%d-%H%M%S", localtime(&rawtime));
     std::string path = dir_ends_with_slash + app_name_without_path + "." + buffer + "." +
-                       std::to_string(getpid()) + ".log";
+                       std::to_string(pid) + ".log";
     stream_logger_singleton.out_.open(path.c_str(),
                                       std::ios_base::app | std::ios_base::binary);
   }

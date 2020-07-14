@@ -28,7 +28,9 @@
 #include <errno.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#ifndef _WIN32
 #include <sys/un.h>
+#endif
 #include <unistd.h>
 
 // This is necessary for Mac OS X, see http://www.apuebook.com/faqs2e.html
