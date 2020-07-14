@@ -65,7 +65,7 @@ bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                                        /*object_size*/ -1,
                                        /*is_reconstructable=*/true);
   }
-
+  RAY_LOG(ERROR) << "Sangbin sangbin add actor handle first step.";
   return AddActorHandle(std::move(actor_handle),
                         /*is_owner_handle=*/!is_detached, caller_id, call_site,
                         caller_address, actor_id, actor_creation_return_id);
@@ -79,11 +79,13 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                                   const ObjectID &actor_creation_return_id) {
   reference_counter_->AddLocalReference(actor_creation_return_id, call_site);
   direct_actor_submitter_->AddActorQueueIfNotExists(actor_id);
+  RAY_LOG(ERROR) << "Sangbin sangbin add actor handle";
   bool inserted;
   {
     absl::MutexLock lock(&mutex_);
     inserted = actor_handles_.emplace(actor_id, std::move(actor_handle)).second;
   }
+  RAY_LOG(ERROR) << "Sangbin sangbin add actor handle done, inserted " << inserted;
   if (inserted) {
     // Register a callback to handle actor notifications.
     auto actor_notification_callback =

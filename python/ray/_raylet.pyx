@@ -598,12 +598,13 @@ cdef void get_py_stack(c_string* stack_out) nogil:
     """
 
     with gil:
+        print('sangbin 1')
         try:
             frame = inspect.currentframe()
         except ValueError:  # overhead of exception handling is about 20us
             stack_out[0] = "".encode("ascii")
             return
-
+        
         msg = ""
         while frame:
             filename = frame.f_code.co_filename
@@ -631,7 +632,7 @@ cdef void get_py_stack(c_string* stack_out) nogil:
                 break
             frame = frame.f_back
         stack_out[0] = msg.encode("ascii")
-
+        print('sangbin 12')
 
 cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):
     cdef shared_ptr[CBuffer] empty_metadata
@@ -1081,12 +1082,11 @@ cdef class CoreWorker:
     def get_named_actor_handle(self, const c_string &name):
         cdef:
             # NOTE: This handle should not be stored anywhere.
-            const CActorHandle* c_actor_handle = (
+            pair[const CActorHandle*, CRayStatus] named_actor_handle_pair = (
                 CCoreWorkerProcess.GetCoreWorker().GetNamedActorHandle(name))
+            const CActorHandle* c_actor_handle = named_actor_handle_pair.first
+        check_status(named_actor_handle_pair.second)
 
-        if c_actor_handle == NULL:
-            print("failed!!")
-            raise ValueError("Named Actor Handle Not Found")
         print("succeed!")
         return self.make_actor_handle(c_actor_handle)
 

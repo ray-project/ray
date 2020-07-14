@@ -1311,7 +1311,7 @@ const ActorHandle *CoreWorker::GetActorHandle(const ActorID &actor_id) const {
   return actor_manager_->GetActorHandle(actor_id).get();
 }
 
-const ActorHandle *CoreWorker::GetNamedActorHandle(const std::string &name) {
+std::pair<const ActorHandle*, Status> CoreWorker::GetNamedActorHandle(const std::string &name) {
   RAY_CHECK(RayConfig::instance().gcs_actor_service_enabled());
   RAY_CHECK(!name.empty());
 
@@ -1321,6 +1321,7 @@ const ActorHandle *CoreWorker::GetNamedActorHandle(const std::string &name) {
   // There should be no risk of deadlock because we don't hold any
   // locks during the call and the RPCs run on a separate thread.
   ActorID actor_id;
+  RAY_LOG(ERROR) << "Create an actor of name " << name;
   std::shared_ptr<std::promise<void>> ready_promise = std::make_shared<std::promise<void>>(std::promise<void>());
   RAY_CHECK_OK(gcs_client_->Actors().AsyncGetByName(
       name, [this, &actor_id, name, ready_promise](
@@ -1329,35 +1330,47 @@ const ActorHandle *CoreWorker::GetNamedActorHandle(const std::string &name) {
         if (status.ok() && result) {
           RAY_LOG(ERROR) << "Result";
           auto actor_handle = std::unique_ptr<ActorHandle>(new ActorHandle(*result));
+          RAY_LOG(ERROR) << "hahaha";
           actor_id = actor_handle->GetActorID();
-          actor_manager_->AddNewActorHandle(std::move(actor_handle), GetCallerId(),
-                                            CurrentCallSite(), rpc_address_,
+          RAY_LOG(ERROR) << "hohoho";
+          auto caller_id = GetCallerId();
+          RAY_LOG(ERROR) << "hohoho2";
+          auto call_site = CurrentCallSite();
+          RAY_LOG(ERROR) << "hohoho3";
+          auto inserted = actor_manager_->AddNewActorHandle(std::move(actor_handle), caller_id,
+                                            call_site, rpc_address_,
                                             /*is_detached*/ true);
+          RAY_LOG(ERROR) << "inserted: " << inserted;
         } else {
           RAY_LOG(INFO) << "Failed to look up actor with name: " << name;
           // Use a NIL actor ID to signal that the actor wasn't found.
           actor_id = ActorID::Nil();
         }
+        RAY_LOG(ERROR) << "promise set value!";
         ready_promise->set_value();
       }));
   // Block until the RPC completes. Set a timeout to avoid hangs if the
   // GCS service crashes.
   if (ready_promise->get_future().wait_for(std::chrono::seconds(10)) !=
       std::future_status::ready) {
-    RAY_LOG(ERROR) << "There was timeout in getting the actor handle. It is probably "
-                      "because GCS server is dead or there's a high load there.";
-    return nullptr;
+    RAY_LOG(ERROR) << "timeout somehow";
+    std::ostringstream stream;
+    stream << "There was timeout in getting the actor handle. It is probably "
+              "because GCS server is dead or there's a high load there.";
+    auto msg = stream.str();
+    return std::make_pair(nullptr, Status::TimedOut(msg));
   }
 
   if (actor_id.IsNil()) {
-    RAY_LOG(WARNING)
-        << "Failed to look up actor with name '" << name
-        << "'. It is either you look up the named actor you didn't create or the named"
+    std::ostringstream stream;
+    stream << "Failed to look up actor with name '" << name
+           << "'. It is either you look up the named actor you didn't create or the named"
            "actor hasn't been created because named actor creation is asynchronous.";
-    return nullptr;
+    auto msg = stream.str();
+    return std::make_pair(nullptr, Status::NotFound(msg));
   }
 
-  return GetActorHandle(actor_id);
+  return std::make_pair(GetActorHandle(actor_id), Status::OK());
 }
 
 const ResourceMappingType CoreWorker::GetResourceIDs() const {
