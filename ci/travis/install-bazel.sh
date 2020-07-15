@@ -32,7 +32,7 @@ esac
 # This is most likely to occur on Windows, where symlinks are sometimes disabled by default.
 { git ls-files -s || true; } | {
   missing_symlinks=()
-  while read -r mode digest sn path; do
+  while read -r mode _ _ path; do
     if [ "${mode}" = 120000 ]; then
       test -L "${path}" || missing_symlinks+=("${paths}")
     fi

@@ -74,8 +74,6 @@ if [[ "$platform" == "linux" ]]; then
     "$PIP_CMD" install -q aiohttp google grpcio pytest requests
 
     # Run a simple test script to make sure that the wheel works.
-    INSTALLED_RAY_DIRECTORY=$(dirname "$($PYTHON_EXE -u -c "import ray; print(ray.__file__)" | tail -n1)")
-
     for SCRIPT in "${TEST_SCRIPTS[@]}"; do
         retry "$PYTHON_EXE" "$SCRIPT"
     done
@@ -118,7 +116,6 @@ elif [[ "$platform" == "macosx" ]]; then
     "$PIP_CMD" install -q aiohttp google grpcio pytest requests
 
     # Run a simple test script to make sure that the wheel works.
-    INSTALLED_RAY_DIRECTORY=$(dirname "$($PYTHON_EXE -u -c "import ray; print(ray.__file__)" | tail -n1)")
     for SCRIPT in "${TEST_SCRIPTS[@]}"; do
       retry "$PYTHON_EXE" "$SCRIPT"
     done

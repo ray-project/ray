@@ -12,8 +12,6 @@ SHM_SIZE="4G"
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
-SUPPRESS_OUTPUT=$ROOT_DIR/../suppress_output
-
 function retry {
   local n=1
   local max=3
