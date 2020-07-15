@@ -316,11 +316,14 @@ RAY_CONFIG(bool, gcs_actor_service_enabled,
            getenv("RAY_GCS_ACTOR_SERVICE_ENABLED") != nullptr &&
                getenv("RAY_GCS_ACTOR_SERVICE_ENABLED") == std::string("true"))
 
-/// Whether disable stats module.
-RAY_CONFIG(bool, disable_stats, false)
+/// The batch size for metrics export.
+RAY_CONFIG(int64_t, metrics_report_batch_size, 100)
 
-/// Whether enable stdout exporter.
-RAY_CONFIG(bool, enable_stdout_exporter, false)
+/// Whether or not we enable metrics collection.
+RAY_CONFIG(int64_t, enable_metrics_collection, true)
 
 /// Whether start the Plasma Store as a Raylet thread.
 RAY_CONFIG(bool, put_small_object_in_memory_store, false)
+
+/// Metric agent port for reporting.
+RAY_CONFIG(int, metrics_agent_port, -1)

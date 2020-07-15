@@ -1,12 +1,16 @@
+import json
 import unittest
 import shutil
 import tempfile
+import os
 import random
 import pandas as pd
+import pytest
 import numpy as np
 
 import ray
-from ray.tune import run, Trainable, sample_from, Analysis, grid_search
+from ray.tune import (run, Trainable, sample_from, Analysis,
+                      ExperimentAnalysis, grid_search)
 from ray.tune.examples.async_hyperband_example import MyTrainableClass
 
 
@@ -37,14 +41,36 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
                 pass
 
         self.MockTrainable = MockTrainable
+        self.test_dir = tempfile.mkdtemp()
         ray.init(local_mode=False, num_cpus=1)
 
     def tearDown(self):
         shutil.rmtree(self.test_dir, ignore_errors=True)
         ray.shutdown()
 
+    def testInit(self):
+        experiment_checkpoint_path = os.path.join(self.test_dir,
+                                                  "experiment_state.json")
+        checkpoint_data = {
+            "checkpoints": [{
+                "trainable_name": "MockTrainable",
+                "logdir": "/mock/test/MockTrainable_0_id=3_2020-07-12"
+            }]
+        }
+
+        with open(experiment_checkpoint_path, "w") as f:
+            f.write(json.dumps(checkpoint_data))
+
+        experiment_analysis = ExperimentAnalysis(experiment_checkpoint_path)
+        self.assertEqual(len(experiment_analysis._checkpoints), 1)
+        self.assertTrue(experiment_analysis.trials is None)
+
+    def testInitException(self):
+        experiment_checkpoint_path = os.path.join(self.test_dir, "mock.json")
+        with pytest.raises(ValueError):
+            ExperimentAnalysis(experiment_checkpoint_path)
+
     def testCompareTrials(self):
-        self.test_dir = tempfile.mkdtemp()
         scores = np.asarray(list(self.MockTrainable.scores_dict.values()))
         scores_all = scores.flatten("F")
         scores_last = scores_all[5:]
@@ -126,7 +152,7 @@ class AnalysisSuite(unittest.TestCase):
         analysis = Analysis(self.test_dir)
         df = analysis.dataframe()
         self.assertTrue(isinstance(df, pd.DataFrame))
-        self.assertEquals(df.shape[0], self.num_samples * 2)
+        self.assertEqual(df.shape[0], self.num_samples * 2)
 
     def testBestLogdir(self):
         analysis = Analysis(self.test_dir)
@@ -134,17 +160,16 @@ class AnalysisSuite(unittest.TestCase):
         self.assertTrue(logdir.startswith(self.test_dir))
         logdir2 = analysis.get_best_logdir(self.metric, mode="min")
         self.assertTrue(logdir2.startswith(self.test_dir))
-        self.assertNotEquals(logdir, logdir2)
+        self.assertNotEqual(logdir, logdir2)
 
     def testBestConfigIsLogdir(self):
         analysis = Analysis(self.test_dir)
         for metric, mode in [(self.metric, "min"), (self.metric, "max")]:
             logdir = analysis.get_best_logdir(metric, mode=mode)
             best_config = analysis.get_best_config(metric, mode=mode)
-            self.assertEquals(analysis.get_all_configs()[logdir], best_config)
+            self.assertEqual(analysis.get_all_configs()[logdir], best_config)
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
     sys.exit(pytest.main(["-v", __file__]))

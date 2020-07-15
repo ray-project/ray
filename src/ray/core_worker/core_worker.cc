@@ -302,8 +302,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       {ray::stats::VersionKey, "0.9.0.dev0"},
       {ray::stats::NodeAddressKey, options_.node_ip_address}};
 
-  ray::stats::Init("", global_tags, RayConfig::instance().disable_stats(),
-                   RayConfig::instance().enable_stdout_exporter());
+  ray::stats::Init(global_tags, RayConfig::instance().metrics_agent_port(), io_service_);
 
   // Start RPC server after all the task receivers are properly initialized and we have
   // our assigned port from the raylet.
