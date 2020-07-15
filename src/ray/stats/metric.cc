@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/stats/metric.h"
+
 #include "opencensus/stats/internal/aggregation_window.h"
 #include "opencensus/stats/internal/set_aggregation_window.h"
 
@@ -87,12 +88,12 @@ void Metric::Record(double value, const TagsType &tags) {
 
 void Metric::Record(double value, std::unordered_map<std::string, std::string> &tags) {
   TagsType tags_pair_vec;
-  auto tag_it = tags.begin();
-  while (tag_it != tags.end()) {
-    tags_pair_vec.push_back({TagKeyType::Register(tag_it->first), tag_it->second});
-    tag_it++;
-  }
-  this->Record(value, tags_pair_vec);
+  std::for_each(
+      tags.begin(), tags.end(),
+      [&tags_pair_vec](std::pair<std::string, std::string> tag) {
+        return tags_pair_vec.push_back({TagKeyType::Register(tag.first), tag.second});
+      });
+  Record(value, tags_pair_vec);
 }
 
 void Gauge::RegisterView() {
