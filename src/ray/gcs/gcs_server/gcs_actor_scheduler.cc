@@ -198,6 +198,13 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
   RAY_LOG(INFO) << "Start leasing worker from node " << node_id << " for actor "
                 << actor->GetActorID();
 
+  // We need to ensure that the RequestWorkerLease won't be sent before the reply of
+  // ReleaseUnusedWorkers is returned.
+  if (nodes_of_releasing_unused_workers_.contains(node_id)) {
+    RetryLeasingWorkerFromNode(actor, node);
+    return;
+  }
+
   rpc::Address remote_address;
   remote_address.set_raylet_id(node->node_id());
   remote_address.set_ip_address(node->node_manager_address());
@@ -277,8 +284,7 @@ void GcsActorScheduler::HandleWorkerLeasedReply(
     // node, and then try again on the new node.
     RAY_CHECK(!retry_at_raylet_address.raylet_id().empty());
     auto spill_back_node_id = ClientID::FromBinary(retry_at_raylet_address.raylet_id());
-    auto spill_back_node = gcs_node_manager_.GetNode(spill_back_node_id);
-    if (spill_back_node != nullptr) {
+    if (auto spill_back_node = gcs_node_manager_.GetNode(spill_back_node_id)) {
       actor->UpdateAddress(retry_at_raylet_address);
       RAY_CHECK(node_to_actors_when_leasing_[actor->GetNodeID()]
                     .emplace(actor->GetActorID())
