@@ -18,6 +18,7 @@
 #include <mutex>
 #include "ray/common/status.h"
 
+// These are forward declarations from hiredis.
 extern "C" {
 struct redisAsyncContext;
 struct redisReply;
