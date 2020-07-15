@@ -332,37 +332,37 @@ def test_actor_restart_on_node_failure(ray_start_cluster):
     assert result == 1 or result == results[-1] + 1
 
 
-# def test_actor_restart_without_task(ray_start_regular):
-#     """Test a dead actor can be restarted without sending task to it."""
+def test_actor_restart_without_task(ray_start_regular):
+    """Test a dead actor can be restarted without sending task to it."""
 
-#     @ray.remote(max_restarts=1, resources={"actor": 1})
-#     class RestartableActor:
-#         def __init__(self):
-#             pass
+    @ray.remote(max_restarts=1, resources={"actor": 1})
+    class RestartableActor:
+        def __init__(self):
+            pass
 
-#         def get_pid(self):
-#             return os.getpid()
+        def get_pid(self):
+            return os.getpid()
 
-#     @ray.remote(resources={"actor": 1})
-#     def probe():
-#         return
+    @ray.remote(resources={"actor": 1})
+    def probe():
+        return
 
-#     # Returns whether the "actor" resource is available.
-#     def actor_resource_available():
-#         p = probe.remote()
-#         ready, _ = ray.wait([p], timeout=1)
-#         return len(ready) > 0
+    # Returns whether the "actor" resource is available.
+    def actor_resource_available():
+        p = probe.remote()
+        ready, _ = ray.wait([p], timeout=1)
+        return len(ready) > 0
 
-#     ray.experimental.set_resource("actor", 1)
-#     actor = RestartableActor.remote()
-#     assert wait_for_condition(lambda: not actor_resource_available())
-#     # Kill the actor.
-#     pid = ray.get(actor.get_pid.remote())
+    ray.experimental.set_resource("actor", 1)
+    actor = RestartableActor.remote()
+    assert wait_for_condition(lambda: not actor_resource_available())
+    # Kill the actor.
+    pid = ray.get(actor.get_pid.remote())
 
-#     p = probe.remote()
-#     os.kill(pid, SIGKILL)
-#     ray.get(p)
-#     assert wait_for_condition(lambda: not actor_resource_available())
+    p = probe.remote()
+    os.kill(pid, SIGKILL)
+    ray.get(p)
+    assert wait_for_condition(lambda: not actor_resource_available())
 
 
 def test_caller_actor_restart(ray_start_regular):

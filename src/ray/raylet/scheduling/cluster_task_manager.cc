@@ -60,8 +60,7 @@ bool ClusterTaskManager::SchedulePendingTasks() {
 
 bool ClusterTaskManager::WaitForTaskArgsRequests(Work work) {
   Task task = work.second;
-  auto t1 = task.GetTaskSpecification();
-  std::vector<ObjectID> object_ids = t1.GetDependencies();
+  auto object_ids = task.GetTaskSpecification().GetDependencies();
   bool can_dispatch = true;
   if (object_ids.size() > 0) {
     bool args_ready = fulfills_dependencies_func_(task);
