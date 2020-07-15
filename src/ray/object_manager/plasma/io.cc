@@ -214,7 +214,7 @@ Status ConnectIpcSocketRetry(const std::string& pathname, int num_retries,
     RAY_LOG(ERROR) << "Connection to IPC socket failed for pathname " << pathname
                      << ", retrying " << num_retries << " more times";
     // Sleep for timeout milliseconds.
-    usleep(static_cast<int>(timeout * 1000));
+    std::this_thread::sleep_for(std::chrono::milliseconds(timeout));
     *fd = ConnectOrListenIpcSock(pathname, false);
     --num_retries;
   }

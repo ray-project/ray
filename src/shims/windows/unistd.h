@@ -7,8 +7,6 @@ typedef long long ssize_t;
 typedef int ssize_t;
 #endif
 
-typedef unsigned int useconds_t;
-int usleep(useconds_t usec);
 int getppid();
 
 #endif /* UNISTD_H */

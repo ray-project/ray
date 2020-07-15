@@ -108,8 +108,8 @@ bool ServiceBasedGcsClient::GetGcsServerAddressFromRedis(
     num_attempts++;
 
     if (num_attempts < max_attempts) {
-      usleep(RayConfig::instance().internal_gcs_service_connect_wait_milliseconds() *
-             1000);
+      std::this_thread::sleep_for(std::chrono::milliseconds(
+          RayConfig::instance().internal_gcs_service_connect_wait_milliseconds()));
     }
   }
 
@@ -190,7 +190,8 @@ void ServiceBasedGcsClient::ReconnectGcsServer() {
         break;
       }
     }
-    usleep(RayConfig::instance().ping_gcs_rpc_server_interval_milliseconds() * 1000);
+    std::this_thread::sleep_for(std::chrono::milliseconds(
+        RayConfig::instance().ping_gcs_rpc_server_interval_milliseconds()));
   }
 
   if (index < RayConfig::instance().ping_gcs_rpc_server_max_retries()) {
