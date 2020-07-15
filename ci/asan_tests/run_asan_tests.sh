@@ -47,7 +47,7 @@ asan_run() {
 
 asan_recompile() {
   git fetch
-  git checkout "${git_sha}"
+  git checkout "$1"
   asan_install || true
 }
 
