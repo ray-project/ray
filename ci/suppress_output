@@ -1,12 +1,12 @@
 #!/bin/bash
 # Run a command, suppressing output unless it hangs or crashes.
 
-TMPFILE=`mktemp`
+TMPFILE="$(mktemp)"
 PID=$$
 
 # Print output to avoid travis killing us
 watchdog() {
-    for i in `seq 5 5 150`; do
+    for i in $(seq 5 5 150); do
         sleep 300
         echo "This command has been running for more than $i minutes..."
     done

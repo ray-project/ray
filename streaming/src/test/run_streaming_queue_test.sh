@@ -24,13 +24,13 @@ set -e
 set -x
 
 # Get the directory in which this script is executing.
-SCRIPT_DIR="`dirname \"$0\"`"
+SCRIPT_DIR="$(dirname "$0")"
 
 # Get the directory in which this script is executing.
-SCRIPT_DIR="`dirname \"$0\"`"
+SCRIPT_DIR="$(dirname "$0")"
 RAY_ROOT="$SCRIPT_DIR/../../.."
 # Makes $RAY_ROOT an absolute path.
-RAY_ROOT="`( cd \"$RAY_ROOT\" && pwd )`"
+RAY_ROOT="$(cd "$RAY_ROOT" && pwd)"
 if [ -z "$RAY_ROOT" ] ; then
   exit 1
 fi
