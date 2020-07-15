@@ -106,6 +106,12 @@ Status GcsTableWithJobId<Key, Data>::DeleteByJobId(const JobID &job_id,
                                                  callback);
 }
 
+template <typename Key, typename Data>
+Status GcsTableWithJobId<Key, Data>::Delete(const Key &key,
+                                            const StatusCallback &callback) {
+  return DeleteByJobId(GetJobIdFromKey(key), callback);
+}
+
 template class GcsTable<JobID, JobTableData>;
 template class GcsTable<ClientID, GcsNodeInfo>;
 template class GcsTable<ClientID, ResourceMap>;
