@@ -121,7 +121,7 @@ class Worker : public WorkerInterface {
  public:
   /// A constructor that initializes a worker object.
   /// NOTE: You MUST manually set the worker process.
-  Worker(const WorkerID &worker_id, const Language &language, rpc::WorkerType worker_type,
+  Worker(const JobID &job_id, const WorkerID &worker_id, const Language &language, rpc::WorkerType worker_type,
          const std::string &ip_address, std::shared_ptr<ClientConnection> connection,
          rpc::ClientCallManager &client_call_manager);
   /// A destructor responsible for freeing all worker state.
@@ -149,7 +149,6 @@ class Worker : public WorkerInterface {
   bool AddBlockedTaskId(const TaskID &task_id);
   bool RemoveBlockedTaskId(const TaskID &task_id);
   const std::unordered_set<TaskID> &GetBlockedTaskIds() const;
-  void AssignJobId(const JobID &job_id);
   const JobID &GetAssignedJobId() const;
   void AssignActorId(const ActorID &actor_id);
   const ActorID &GetActorId() const;

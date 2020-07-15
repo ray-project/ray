@@ -102,7 +102,7 @@ class WorkerPoolTest : public ::testing::TestWithParam<bool> {
           {"dummy_java_worker_command", "RAY_WORKER_RAYLET_CONFIG_PLACEHOLDER"}}});
   }
 
-  std::shared_ptr<WorkerInterface> CreateWorker(
+  std::shared_ptr<WorkerInterface> CreateWorker(const JobID &job_id,
       Process proc, const Language &language = Language::PYTHON,
       const JobID &job_id = JOB_ID) {
     std::function<void(ClientConnection &)> client_handler =
@@ -118,7 +118,7 @@ class WorkerPoolTest : public ::testing::TestWithParam<bool> {
     auto client =
         ClientConnection::Create(client_handler, message_handler, std::move(socket),
                                  "worker", {}, error_message_type_);
-    std::shared_ptr<Worker> worker_ = std::make_shared<Worker>(
+    std::shared_ptr<Worker> worker_ = std::make_shared<Worker>(job_id,
         WorkerID::FromRandom(), language, rpc::WorkerType::WORKER, "127.0.0.1", client,
         client_call_manager_);
     std::shared_ptr<WorkerInterface> worker =
@@ -133,10 +133,10 @@ class WorkerPoolTest : public ::testing::TestWithParam<bool> {
   std::shared_ptr<WorkerInterface> RegisterDriver(
       const Language &language = Language::PYTHON, const JobID &job_id = JOB_ID,
       const rpc::JobConfig &job_config = rpc::JobConfig()) {
-    auto driver = CreateWorker(Process::CreateNewDummy(), Language::PYTHON, job_id);
+    auto driver = CreateWorker(job_id, Process::CreateNewDummy(), Language::PYTHON, job_id);
     driver->AssignTaskId(TaskID::ForDriverTask(job_id));
     RAY_CHECK_OK(
-        worker_pool_->RegisterDriver(driver, job_id, job_config, [](Status, int) {}));
+        worker_pool_->RegisterDriver(driver, job_config, [](Status, int) {}));
     return driver;
   }
 
@@ -239,7 +239,7 @@ TEST_P(WorkerPoolTest, HandleWorkerRegistration) {
       worker_pool_->StartWorkerProcess(Language::JAVA, rpc::WorkerType::WORKER, JOB_ID);
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   for (int i = 0; i < NUM_WORKERS_PER_PROCESS_JAVA; i++) {
-    workers.push_back(CreateWorker(Process(), Language::JAVA));
+    workers.push_back(CreateWorker(job_id, Process(), Language::JAVA));
   }
   for (const auto &worker : workers) {
     // Check that there's still a starting worker process
@@ -292,16 +292,17 @@ TEST_P(WorkerPoolTest, InitialWorkerProcessCount) {
 }
 
 TEST_P(WorkerPoolTest, HandleWorkerPushPop) {
+  auto job_id = JobID::FromInt(1);
   // Try to pop a worker from the empty pool and make sure we don't get one.
   std::shared_ptr<WorkerInterface> popped_worker;
-  const auto task_spec = ExampleTaskSpec();
+  const auto task_spec = ExampleTaskSpec(job_id);
   popped_worker = worker_pool_->PopWorker(task_spec);
   ASSERT_EQ(popped_worker, nullptr);
 
   // Create some workers.
   std::unordered_set<std::shared_ptr<WorkerInterface>> workers;
-  workers.insert(CreateWorker(Process::CreateNewDummy()));
-  workers.insert(CreateWorker(Process::CreateNewDummy()));
+  workers.insert(CreateWorker(job_id, Process::CreateNewDummy()));
+  workers.insert(CreateWorker(job_id, Process::CreateNewDummy()));
   // Add the workers to the pool.
   for (auto &worker : workers) {
     worker_pool_->PushWorker(worker);
@@ -319,13 +320,14 @@ TEST_P(WorkerPoolTest, HandleWorkerPushPop) {
 }
 
 TEST_P(WorkerPoolTest, PopActorWorker) {
+  const auto job_id = JobID::FromInt(1);
   // Create a worker.
-  auto worker = CreateWorker(Process::CreateNewDummy());
+  auto worker = CreateWorker(job_id, Process::CreateNewDummy());
   // Add the worker to the pool.
   worker_pool_->PushWorker(worker);
 
   // Assign an actor ID to the worker.
-  const auto task_spec = ExampleTaskSpec();
+  const auto task_spec = ExampleTaskSpec(job_id);
   auto actor = worker_pool_->PopWorker(task_spec);
   auto actor_id = ActorID::Of(JOB_ID, TaskID::ForDriverTask(JOB_ID), 1);
   actor->AssignActorId(actor_id);
@@ -334,25 +336,26 @@ TEST_P(WorkerPoolTest, PopActorWorker) {
   // Check that there are no more non-actor workers.
   ASSERT_EQ(worker_pool_->PopWorker(task_spec), nullptr);
   // Check that we can pop the actor worker.
-  const auto actor_task_spec = ExampleTaskSpec(actor_id);
+  const auto actor_task_spec = ExampleTaskSpec(job_id, actor_id);
   actor = worker_pool_->PopWorker(actor_task_spec);
   ASSERT_EQ(actor, worker);
   ASSERT_EQ(actor->GetActorId(), actor_id);
 }
 
 TEST_P(WorkerPoolTest, PopWorkersOfMultipleLanguages) {
+  const auto job_id = JobID::FromInt(1);
   // Create a Python Worker, and add it to the pool
-  auto py_worker = CreateWorker(Process::CreateNewDummy(), Language::PYTHON);
+  auto py_worker = CreateWorker(job_id, Process::CreateNewDummy(), Language::PYTHON);
   worker_pool_->PushWorker(py_worker);
   // Check that no worker will be popped if the given task is a Java task
-  const auto java_task_spec = ExampleTaskSpec(ActorID::Nil(), Language::JAVA);
+  const auto java_task_spec = ExampleTaskSpec(job_id, ActorID::Nil(), Language::JAVA);
   ASSERT_EQ(worker_pool_->PopWorker(java_task_spec), nullptr);
   // Check that the worker can be popped if the given task is a Python task
-  const auto py_task_spec = ExampleTaskSpec(ActorID::Nil(), Language::PYTHON);
+  const auto py_task_spec = ExampleTaskSpec(job_id, ActorID::Nil(), Language::PYTHON);
   ASSERT_NE(worker_pool_->PopWorker(py_task_spec), nullptr);
 
   // Create a Java Worker, and add it to the pool
-  auto java_worker = CreateWorker(Process::CreateNewDummy(), Language::JAVA);
+  auto java_worker = CreateWorker(job_id, Process::CreateNewDummy(), Language::JAVA);
   worker_pool_->PushWorker(java_worker);
   // Check that the worker will be popped now for Java task
   ASSERT_NE(worker_pool_->PopWorker(java_task_spec), nullptr);

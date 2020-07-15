@@ -338,12 +338,6 @@ Process WorkerPool::StartWorkerProcess(
   }
 
   Process proc = StartProcess(worker_command_args, env);
-  if (RayConfig::instance().enable_multi_tenancy() && job_config) {
-    // If the pid is reused between processes, the old process must have exited.
-    // So it's safe to bind the pid with another job ID.
-    RAY_LOG(DEBUG) << "Worker process " << proc.GetId() << " is bound to job " << job_id;
-    state.worker_pids_to_assigned_jobs[proc.GetId()] = job_id;
-  }
   RAY_LOG(DEBUG) << "Started worker process of " << workers_to_start
                  << " worker(s) with pid " << proc.GetId();
   MonitorStartingWorkerProcess(proc, language, worker_type);
@@ -549,7 +543,7 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
 }
 
 Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver,
-                                  const JobID &job_id, const rpc::JobConfig &job_config,
+                                  const rpc::JobConfig &job_config,
                                   std::function<void(Status, int)> send_reply_callback) {
   int port;
   RAY_CHECK(!driver->GetAssignedTaskId().IsNil());
@@ -561,7 +555,6 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   driver->SetAssignedPort(port);
   auto &state = GetStateForLanguage(driver->GetLanguage());
   state.registered_drivers.insert(std::move(driver));
-  driver->AssignJobId(job_id);
   all_jobs_[job_id] = job_config;
 
   // This is a workaround to start initial workers on this node if and only if Raylet is

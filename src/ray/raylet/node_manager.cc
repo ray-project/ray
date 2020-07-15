@@ -1167,13 +1167,14 @@ void NodeManager::ProcessRegisterClientRequestMessage(
 
   auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
   Language language = static_cast<Language>(message->language());
+  const JobID job_id = from_flatbuf<JobID>(*message->job_id());
   WorkerID worker_id = from_flatbuf<WorkerID>(*message->worker_id());
   pid_t pid = message->worker_pid();
   std::string worker_ip_address = string_from_flatbuf(*message->ip_address());
   // TODO(suquark): Use `WorkerType` in `common.proto` without type converting.
   rpc::WorkerType worker_type = static_cast<rpc::WorkerType>(message->worker_type());
   auto worker = std::dynamic_pointer_cast<WorkerInterface>(std::make_shared<Worker>(
-      worker_id, language, worker_type, worker_ip_address, client, client_call_manager_));
+      job_id, worker_id, language, worker_type, worker_ip_address, client, client_call_manager_));
 
   auto send_reply_callback = [this, client](Status status, int assigned_port) {
     flatbuffers::FlatBufferBuilder fbb;
@@ -1212,14 +1213,13 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     // Register the new driver.
     RAY_CHECK(pid >= 0);
     worker->SetProcess(Process::FromPid(pid));
-    const JobID job_id = from_flatbuf<JobID>(*message->job_id());
     // Compute a dummy driver task id from a given driver.
     const TaskID driver_task_id = TaskID::ComputeDriverTaskId(worker_id);
     worker->AssignTaskId(driver_task_id);
     rpc::JobConfig job_config;
     job_config.ParseFromString(message->serialized_job_config()->str());
     Status status =
-        worker_pool_.RegisterDriver(worker, job_id, job_config, send_reply_callback);
+        worker_pool_.RegisterDriver(worker, job_config, send_reply_callback);
     if (status.ok()) {
       local_queues_.AddDriverTaskId(driver_task_id);
       auto job_data_ptr =

@@ -43,9 +43,6 @@ class WorkerContext {
       &GetCurrentOverrideEnvironmentVariables() const;
 
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
-  void SetCurrentJobId(const JobID &job_id);
-
-  // TODO(edoakes): remove this once Python core worker uses the task interfaces.
   void SetCurrentTaskId(const TaskID &task_id);
 
   void SetCurrentTask(const TaskSpecification &task_spec);
@@ -89,7 +86,7 @@ class WorkerContext {
  private:
   const WorkerType worker_type_;
   const WorkerID worker_id_;
-  JobID current_job_id_;
+  const JobID current_job_id_;
   ActorID current_actor_id_;
   int current_actor_max_concurrency_ = 1;
   bool current_actor_is_asyncio_ = false;
