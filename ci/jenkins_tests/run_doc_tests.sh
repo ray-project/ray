@@ -25,7 +25,7 @@ if [ "$DOCKER_SHA" == "" ]; then
 
     # Add Ray source
     git rev-parse HEAD > ./docker/tune_test/git-rev
-    git archive -o ./docker/tune_test/ray.tar $(git rev-parse HEAD)
+    git archive -o ./docker/tune_test/ray.tar "$(git rev-parse HEAD)"
     if [ "$CI_BUILD_FROM_SOURCE" == "1" ]; then
       DOCKER_SHA=$(docker build --no-cache -q -t ray-project/tune_test docker/tune_test -f docker/tune_test/build_from_source.Dockerfile)
     else
