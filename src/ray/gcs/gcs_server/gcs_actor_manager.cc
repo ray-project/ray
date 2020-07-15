@@ -652,7 +652,6 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
                    << " at node " << node_id << ", need_reschedule = " << need_reschedule
                    << ", remaining_restarts = " << remaining_restarts;
   if (remaining_restarts != 0) {
-    mutable_actor_table_data->set_num_restarts(++num_restarts);
     mutable_actor_table_data->set_state(rpc::ActorTableData::RESTARTING);
     const auto actor_table_data = actor->GetActorTableData();
     // Make sure to reset the address before flushing to GCS. Otherwise,
@@ -668,6 +667,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
                                              nullptr));
         }));
     gcs_actor_scheduler_->Schedule(actor);
+    mutable_actor_table_data->set_num_restarts(num_restarts + 1);
   } else {
     // Remove actor from `named_actors_` if its name is not empty.
     if (!actor->GetName().empty()) {

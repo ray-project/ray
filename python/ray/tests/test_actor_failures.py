@@ -167,6 +167,7 @@ def test_actor_restart(ray_init_with_task_retry_delay):
     results = [actor.increase.remote() for _ in range(100)]
     # Kill actor process, while the above task is still being executed.
     os.kill(pid, SIGKILL)
+    wait_for_pid_to_exit(pid)
     # Make sure that all tasks were executed in order before the actor's death.
     res = results.pop(0)
     i = 1
@@ -208,6 +209,7 @@ def test_actor_restart(ray_init_with_task_retry_delay):
     results = [actor.increase.remote() for _ in range(100)]
     pid = ray.get(actor.get_pid.remote())
     os.kill(pid, SIGKILL)
+    wait_for_pid_to_exit(pid)
     # The actor has exceeded max restarts, and this task should fail.
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(actor.increase.remote())
@@ -244,6 +246,7 @@ def test_actor_restart_with_retry(ray_init_with_task_retry_delay):
     results = [actor.increase.remote() for _ in range(100)]
     # Kill actor process, while the above task is still being executed.
     os.kill(pid, SIGKILL)
+    wait_for_pid_to_exit(pid)
     # Check that none of the tasks failed and the actor is restarted.
     seq = list(range(1, 101))
     results = ray.get(results)
@@ -264,6 +267,7 @@ def test_actor_restart_with_retry(ray_init_with_task_retry_delay):
     results = [actor.increase.remote() for _ in range(100)]
     pid = ray.get(actor.get_pid.remote())
     os.kill(pid, SIGKILL)
+    wait_for_pid_to_exit(pid)
     # The actor has exceeded max restarts, and this task should fail.
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(actor.increase.remote())
