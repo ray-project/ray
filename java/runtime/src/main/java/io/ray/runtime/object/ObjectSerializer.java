@@ -7,7 +7,11 @@ import io.ray.api.exception.UnreconstructableException;
 import io.ray.api.id.ObjectId;
 import io.ray.runtime.generated.Gcs.ErrorType;
 import io.ray.runtime.serializer.Serializer;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import org.apache.commons.lang3.tuple.Pair;
 
 /**
@@ -29,6 +33,12 @@ public class ObjectSerializer {
   public static final byte[] OBJECT_METADATA_TYPE_JAVA = "JAVA".getBytes();
   public static final byte[] OBJECT_METADATA_TYPE_PYTHON = "PYTHON".getBytes();
   public static final byte[] OBJECT_METADATA_TYPE_RAW = "RAW".getBytes();
+
+  // When an outer object is being serialized, the nested ObjectRefs are all
+  // serialized and the writeExternal method of the nested ObjectRefs are
+  // executed. So after the outer object is serialized, the containedObjectIds
+  // field will contain all the nested object IDs.
+  static ThreadLocal<Set<ObjectId>> containedObjectIds = ThreadLocal.withInitial(HashSet::new);
 
   /**
    * Deserialize an object from an {@link NativeRayObject} instance.
@@ -88,8 +98,18 @@ public class ObjectSerializer {
       Pair<byte[], Boolean> serialized = Serializer.encode(object);
       NativeRayObject nativeRayObject = new NativeRayObject(serialized.getLeft(),
           serialized.getRight() ? OBJECT_METADATA_TYPE_CROSS_LANGUAGE : OBJECT_METADATA_TYPE_JAVA);
-      nativeRayObject.setContainedObjectIds(ObjectRefImpl.getAndClearContainedObjectIds());
+      nativeRayObject.setContainedObjectIds(getAndClearContainedObjectIds());
       return nativeRayObject;
     }
+  }
+
+  static void addContainedObjectId(ObjectId objectId) {
+    containedObjectIds.get().add(objectId);
+  }
+
+  private static List<ObjectId> getAndClearContainedObjectIds() {
+    List<ObjectId> ids = new ArrayList<>(containedObjectIds.get());
+    containedObjectIds.get().clear();
+    return ids;
   }
 }

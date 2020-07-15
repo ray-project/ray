@@ -9,6 +9,7 @@ import io.ray.api.Ray;
 import io.ray.api.id.ObjectId;
 import io.ray.runtime.object.NativeObjectStore;
 import io.ray.runtime.object.ObjectRefImpl;
+import java.lang.reflect.Method;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Collections;
@@ -42,7 +43,13 @@ public class ReferenceCountingTest extends BaseTest {
    * local reference.
    */
   private static void del(ObjectRef<?> obj) {
-    ((ObjectRefImpl<?>) obj).removeLocalReference();
+    try {
+      Method method = ObjectRefImpl.class.getDeclaredMethod("removeLocalReference");
+      method.setAccessible(true);
+      method.invoke(obj);
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
   }
 
   private void checkRefCounts(Map<ObjectId, long[]> expected, Duration timeout) {

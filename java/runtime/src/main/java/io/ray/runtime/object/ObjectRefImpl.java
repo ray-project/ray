@@ -10,10 +10,6 @@ import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
 
 /**
  * Implementation of {@link ObjectRef}.
@@ -60,19 +56,11 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
     }
   }
 
-  static ThreadLocal<Set<ObjectId>> containedObjectIds = ThreadLocal.withInitial(HashSet::new);
-
-  public static List<ObjectId> getAndClearContainedObjectIds() {
-    List<ObjectId> ids = new ArrayList<>(containedObjectIds.get());
-    containedObjectIds.get().clear();
-    return ids;
-  }
-
   @Override
   public void writeExternal(ObjectOutput out) throws IOException {
     out.writeObject(this.getId());
     out.writeObject(this.getType());
-    containedObjectIds.get().add(this.getId());
+    ObjectSerializer.addContainedObjectId(this.getId());
   }
 
   @Override
@@ -89,8 +77,9 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
     runtime.getObjectStore().addLocalReference(workerId, id);
   }
 
-  // This method is public for test purposes only.
-  public synchronized void removeLocalReference() {
+  private synchronized void removeLocalReference() {
+    // This method may be invoked multiple times on the same instance (due to explicit invoking in
+    // unit tests). So if `workerId` is null, it means this method has been invoked.
     if (workerId != null) {
       RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
       // It's possible that GC is executed after the runtime is shutdown.
