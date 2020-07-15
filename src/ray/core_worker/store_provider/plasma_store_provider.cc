@@ -39,18 +39,20 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     get_current_call_site_ = []() { return "<no callsite callback>"; };
   }
   buffer_tracker_ = std::make_shared<BufferTracker>();
-  RAY_CHECK_OK(store_client_.Connect(store_socket));
+  std::unique_ptr<plasma::PlasmaClient> client(new plasma::PlasmaClient());
+  RAY_CHECK_OK(client->Connect(store_socket));
+  store_client_ = std::move(client);
   RAY_CHECK_OK(WarmupStore());
 }
 
 CoreWorkerPlasmaStoreProvider::~CoreWorkerPlasmaStoreProvider() {
-  RAY_IGNORE_EXPR(store_client_.Disconnect());
+  RAY_IGNORE_EXPR(store_client_->Disconnect());
 }
 
 Status CoreWorkerPlasmaStoreProvider::SetClientOptions(std::string name,
                                                        int64_t limit_bytes) {
   std::lock_guard<std::mutex> guard(store_client_mutex_);
-  RAY_RETURN_NOT_OK(store_client_.SetClientOptions(name, limit_bytes));
+  RAY_RETURN_NOT_OK(store_client_->SetClientOptions(name, limit_bytes));
   return Status::OK();
 }
 
@@ -95,7 +97,7 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
     std::shared_ptr<arrow::Buffer> arrow_buffer;
     {
       std::lock_guard<std::mutex> guard(store_client_mutex_);
-      plasma_status = store_client_.Create(object_id, data_size,
+      plasma_status = store_client_->Create(object_id, data_size,
                                            metadata ? metadata->Data() : nullptr,
                                            metadata ? metadata->Size() : 0, &arrow_buffer,
                                            /*device_num=*/0, evict_if_full);
@@ -141,7 +143,7 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
 Status CoreWorkerPlasmaStoreProvider::Seal(const ObjectID &object_id) {
   {
     std::lock_guard<std::mutex> guard(store_client_mutex_);
-    RAY_RETURN_NOT_OK(store_client_.Seal(object_id));
+    RAY_RETURN_NOT_OK(store_client_->Seal(object_id));
   }
   return Status::OK();
 }
@@ -149,7 +151,7 @@ Status CoreWorkerPlasmaStoreProvider::Seal(const ObjectID &object_id) {
 Status CoreWorkerPlasmaStoreProvider::Release(const ObjectID &object_id) {
   {
     std::lock_guard<std::mutex> guard(store_client_mutex_);
-    RAY_RETURN_NOT_OK(store_client_.Release(object_id));
+    RAY_RETURN_NOT_OK(store_client_->Release(object_id));
   }
   return Status::OK();
 }
@@ -167,7 +169,7 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
   std::vector<plasma::ObjectBuffer> plasma_results;
   {
     std::lock_guard<std::mutex> guard(store_client_mutex_);
-    RAY_RETURN_NOT_OK(store_client_.Get(batch_ids, timeout_ms, &plasma_results));
+    RAY_RETURN_NOT_OK(store_client_->Get(batch_ids, timeout_ms, &plasma_results));
   }
 
   // Add successfully retrieved objects to the result map and remove them from
@@ -316,7 +318,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
 Status CoreWorkerPlasmaStoreProvider::Contains(const ObjectID &object_id,
                                                bool *has_object) {
   std::lock_guard<std::mutex> guard(store_client_mutex_);
-  RAY_RETURN_NOT_OK(store_client_.Contains(object_id, has_object));
+  RAY_RETURN_NOT_OK(store_client_->Contains(object_id, has_object));
   return Status::OK();
 }
 
@@ -371,7 +373,7 @@ Status CoreWorkerPlasmaStoreProvider::Delete(
 
 std::string CoreWorkerPlasmaStoreProvider::MemoryUsageString() {
   std::lock_guard<std::mutex> guard(store_client_mutex_);
-  return store_client_.DebugString();
+  return store_client_->DebugString();
 }
 
 absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>>

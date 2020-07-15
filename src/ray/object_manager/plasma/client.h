@@ -44,8 +44,27 @@ struct ObjectBuffer {
   int device_num;
 };
 
+/// Interface for accessing Plasma memory. This allows the plasma client to be
+/// proxied over gRPC as needed for Ray client mode.
+class PlasmaClientInterface {
+ public:
+  virtual ~PlasmaClientInterface(){};
+  virtual Status SetClientOptions(const std::string& client_name, int64_t output_memory_quota) = 0;
+  virtual Status Create(const ObjectID& object_id, int64_t data_size, const uint8_t* metadata,
+                int64_t metadata_size, std::shared_ptr<Buffer>* data, int device_num = 0,
+                bool evict_if_full = true) = 0;
+  virtual Status Get(const std::vector<ObjectID>& object_ids, int64_t timeout_ms,
+             std::vector<ObjectBuffer>* object_buffers) = 0;
+  virtual Status Release(const ObjectID& object_id) = 0;
+  virtual Status Contains(const ObjectID& object_id, bool* has_object) = 0;
+  virtual Status Seal(const ObjectID& object_id) = 0;
+  virtual Status Delete(const std::vector<ObjectID>& object_ids) = 0;
+  virtual Status Disconnect() = 0;
+  virtual std::string DebugString() = 0;
+};
+
 // TODO(suquark): Maybe we should not export plasma later?
-class RAY_EXPORT PlasmaClient {
+class RAY_EXPORT PlasmaClient : public PlasmaClientInterface {
  public:
   PlasmaClient();
   ~PlasmaClient();

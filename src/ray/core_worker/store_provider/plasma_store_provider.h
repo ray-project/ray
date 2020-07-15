@@ -145,7 +145,8 @@ class CoreWorkerPlasmaStoreProvider {
   Status WarmupStore();
 
   const std::shared_ptr<raylet::RayletClient> raylet_client_;
-  plasma::PlasmaClient store_client_;
+  /// Either a direct socket client, or gRPC client for Ray client mode.
+  std::unique_ptr<plasma::PlasmaClientInterface> store_client_;
   /// Used to look up a plasma object's owner.
   const std::shared_ptr<ReferenceCounter> reference_counter_;
   std::mutex store_client_mutex_;
