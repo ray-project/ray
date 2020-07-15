@@ -37,7 +37,7 @@ while [ $# -gt 0 ]; do
       echo "ERROR: unknown option \"$key\""
       echo
       usage
-      exit -1
+      exit 1
       ;;
   esac
   shift
