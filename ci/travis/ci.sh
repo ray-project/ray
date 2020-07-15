@@ -238,7 +238,7 @@ install_ray() {
   (
     cd "${WORKSPACE_DIR}"/python
     build_dashboard_front_end
-    pip install -v -e .
+    pip install -v -v -e .
   )
 }
 
