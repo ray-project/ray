@@ -61,17 +61,6 @@ def load_azure_example_config():
         os.path.dirname(ray_azure.__file__), "example-full.yaml")
 
 
-def import_external():
-    """Mock a normal provider importer."""
-
-    def return_bootstrap_config(cluster_config):
-        provider_cls = load_class(path=config["provider"]["module"])
-        config = provider_cls.bootstrap_config(cluster_config)
-        return cluster_config
-
-    return return_bootstrap_config, None
-
-
 NODE_PROVIDERS = {
     "local": import_local,
     "aws": import_aws,
@@ -79,7 +68,7 @@ NODE_PROVIDERS = {
     "azure": import_azure,
     "kubernetes": import_kubernetes,
     "docker": None,
-    "external": import_external  # Import an external module
+    "external": None  # Import an external module
 }
 
 DEFAULT_CONFIGS = {
