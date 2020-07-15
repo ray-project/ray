@@ -11,6 +11,7 @@ from contextlib import contextmanager
 
 from ray.projects.scripts import (session_start, session_commands,
                                   session_execute)
+from ray.test_utils import check_call_ray
 import ray
 
 TEST_DIR = os.path.join(
@@ -57,13 +58,14 @@ def test_project_root():
 
 
 def test_project_validation():
-    path = os.path.join(TEST_DIR, "project1")
-    subprocess.check_call(["ray", "project", "validate"], cwd=path)
+    with _chdir_and_back(os.path.join(TEST_DIR, "project1")):
+        check_call_ray(["project", "validate"])
 
 
 def test_project_no_validation():
-    with pytest.raises(subprocess.CalledProcessError):
-        subprocess.check_call(["ray", "project", "validate"], cwd=TEST_DIR)
+    with _chdir_and_back(TEST_DIR):
+        with pytest.raises(subprocess.CalledProcessError):
+            check_call_ray(["project", "validate"])
 
 
 @contextmanager

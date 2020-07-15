@@ -13,6 +13,8 @@ build:linux --force_pic
 build:macos --force_pic
 build:clang-cl --compiler=clang-cl
 build:msvc --compiler=msvc-cl
+# This is needed for some core tests to run correctly
+test:windows --enable_runfiles
 # TODO(mehrdadn): Revert the "-\\.(asm|S)$" exclusion when this Bazel bug
 #                 for compiling assembly files is fixed on Windows:
 #                 https://github.com/bazelbuild/bazel/issues/8924

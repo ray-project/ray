@@ -253,14 +253,6 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
                 int64_t metadata_size, std::shared_ptr<Buffer>* data, int device_num = 0,
                 bool evict_if_full = true);
 
-  Status CreateAndSeal(const ObjectID& object_id, const std::string& data,
-                       const std::string& metadata, bool evict_if_full = true);
-
-  Status CreateAndSealBatch(const std::vector<ObjectID>& object_ids,
-                            const std::vector<std::string>& data,
-                            const std::vector<std::string>& metadata,
-                            bool evict_if_full = true);
-
   Status Get(const std::vector<ObjectID>& object_ids, int64_t timeout_ms,
              std::vector<ObjectBuffer>* object_buffers);
 
@@ -506,41 +498,6 @@ Status PlasmaClient::Impl::Create(const ObjectID& object_id, int64_t data_size,
   // buffer returned by PlasmaClient::Create goes out of scope, the object does
   // not get released before the call to PlasmaClient::Seal happens.
   IncrementObjectCount(object_id, &object, false);
-  return Status::OK();
-}
-
-Status PlasmaClient::Impl::CreateAndSeal(const ObjectID& object_id,
-                                         const std::string& data,
-                                         const std::string& metadata,
-                                         bool evict_if_full) {
-  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
-
-  RAY_LOG(DEBUG) << "called CreateAndSeal on conn " << store_conn_;
-
-  RAY_RETURN_NOT_OK(SendCreateAndSealRequest(store_conn_, object_id, evict_if_full, data,
-                                         metadata));
-  std::vector<uint8_t> buffer;
-  RAY_RETURN_NOT_OK(
-      PlasmaReceive(store_conn_, MessageType::PlasmaCreateAndSealReply, &buffer));
-  RAY_RETURN_NOT_OK(ReadCreateAndSealReply(buffer.data(), buffer.size()));
-  return Status::OK();
-}
-
-Status PlasmaClient::Impl::CreateAndSealBatch(const std::vector<ObjectID>& object_ids,
-                                              const std::vector<std::string>& data,
-                                              const std::vector<std::string>& metadata,
-                                              bool evict_if_full) {
-  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
-
-  RAY_LOG(DEBUG) << "called CreateAndSealBatch on conn " << store_conn_;
-
-  RAY_RETURN_NOT_OK(SendCreateAndSealBatchRequest(store_conn_, object_ids, evict_if_full,
-                                              data, metadata));
-  std::vector<uint8_t> buffer;
-  RAY_RETURN_NOT_OK(
-      PlasmaReceive(store_conn_, MessageType::PlasmaCreateAndSealBatchReply, &buffer));
-  RAY_RETURN_NOT_OK(ReadCreateAndSealBatchReply(buffer.data(), buffer.size()));
-
   return Status::OK();
 }
 
@@ -1146,18 +1103,6 @@ Status PlasmaClient::Create(const ObjectID& object_id, int64_t data_size,
                             bool evict_if_full) {
   return impl_->Create(object_id, data_size, metadata, metadata_size, data, device_num,
                        evict_if_full);
-}
-
-Status PlasmaClient::CreateAndSeal(const ObjectID& object_id, const std::string& data,
-                                   const std::string& metadata, bool evict_if_full) {
-  return impl_->CreateAndSeal(object_id, data, metadata, evict_if_full);
-}
-
-Status PlasmaClient::CreateAndSealBatch(const std::vector<ObjectID>& object_ids,
-                                        const std::vector<std::string>& data,
-                                        const std::vector<std::string>& metadata,
-                                        bool evict_if_full) {
-  return impl_->CreateAndSealBatch(object_ids, data, metadata, evict_if_full);
 }
 
 Status PlasmaClient::Get(const std::vector<ObjectID>& object_ids, int64_t timeout_ms,
