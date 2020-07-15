@@ -86,7 +86,7 @@ void CoreWorkerDirectTaskSubmitter::AddWorkerLeaseClient(
     RAY_LOG(INFO) << "Connected to " << addr.ip_address << ":" << addr.port;
   }
   int64_t expiration = current_time_ms() + lease_timeout_ms_;
-  lease_entry new_lease_entry = {std::move(lease_client), expiration, 0};
+  LeaseEntry new_lease_entry = LeaseEntry(std::move(lease_client), expiration, 0);
   worker_to_lease_entry_.emplace(addr, new_lease_entry);
 }
 
@@ -95,22 +95,21 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources) {
   
   auto &lease_entry = worker_to_lease_entry_[addr];
-  // Check that the lease client exists
-  if (!lease_entry.lease_client) {
+  if (!lease_entry.lease_client_) {
     return;
   }
-  RAY_CHECK(lease_entry.lease_client);
+  RAY_CHECK(lease_entry.lease_client_);
   
   auto queue_entry = task_queues_.find(scheduling_key);
   // Return the worker if there was an error executing the previous task,
   // the previous task is an actor creation task,
   // there are no more applicable queued tasks, or the lease is expired.
   if (was_error || queue_entry == task_queues_.end() ||
-      current_time_ms() > lease_entry.lease_expiration_time) {
+      current_time_ms() > lease_entry.lease_expiration_time_) {
     
     // Return the worker only if there are no tasks in flight
-    if (lease_entry.tasks_in_flight == 0) {
-      auto status = lease_entry.lease_client->ReturnWorker(addr.port, addr.worker_id, was_error);
+    if (lease_entry.tasks_in_flight_ == 0) {
+      auto status = lease_entry.lease_client_->ReturnWorker(addr.port, addr.worker_id, was_error);
       if (!status.ok()) {
         RAY_LOG(ERROR) << "Error returning worker to raylet: " << status.ToString();
       }
@@ -120,9 +119,9 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
   } else {
     auto &client = *client_cache_[addr];
 
-    while (!queue_entry->second.empty() && lease_entry.tasks_in_flight < max_tasks_in_flight_per_worker_) {
+    while (!queue_entry->second.empty() && lease_entry.tasks_in_flight_ < max_tasks_in_flight_per_worker_) {
       auto task_spec = queue_entry->second.front();
-      lease_entry.tasks_in_flight ++; // Increment the number of tasks in flight to the worker
+      lease_entry.tasks_in_flight_ ++; // Increment the number of tasks in flight to the worker
       executing_tasks_.emplace(task_spec.TaskId(), addr);
       PushNormalTask(addr, client, scheduling_key, task_spec, assigned_resources);
       queue_entry->second.pop_front();
@@ -289,8 +288,8 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
 
           // Decrement the number of tasks in flight to the worker
           auto &lease_entry = worker_to_lease_entry_[addr];
-          RAY_CHECK(lease_entry.tasks_in_flight > 0);
-          lease_entry.tasks_in_flight--;
+          RAY_CHECK(lease_entry.tasks_in_flight_ > 0);
+          lease_entry.tasks_in_flight_--;
         }
         if (reply.worker_exiting()) {
           // The worker is draining and will shutdown after it is done. Don't return

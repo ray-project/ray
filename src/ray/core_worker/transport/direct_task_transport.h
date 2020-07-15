@@ -180,18 +180,25 @@ class CoreWorkerDirectTaskSubmitter {
 
   
   
-  /// A lease_entry struct is used to condense the metadata about a single executor:
+  /// A LeaseEntry struct is used to condense the metadata about a single executor:
   /// (1) The lease client through which the worker should be returned
   /// (2) The expiration time of a worker's lease.
   /// (3) The number of tasks that are currently in flight to the worker
-  typedef struct lease_entry {
-    std::shared_ptr<WorkerLeaseInterface> lease_client;
-    int64_t lease_expiration_time;
-    uint32_t tasks_in_flight;
-  } lease_entry;
+  struct LeaseEntry {
+    std::shared_ptr<WorkerLeaseInterface> lease_client_;
+    int64_t lease_expiration_time_;
+    uint32_t tasks_in_flight_;
 
-  // Map from worker address to a lease_entry struct containing the lease's metadata.
-  absl::flat_hash_map<rpc::WorkerAddress, lease_entry> worker_to_lease_entry_ GUARDED_BY(mu_);
+    LeaseEntry(std::shared_ptr<WorkerLeaseInterface> lease_client=nullptr,
+              int64_t lease_expiration_time=0,
+              uint32_t tasks_in_flight=0):
+              lease_client_(lease_client),
+              lease_expiration_time_(lease_expiration_time),
+              tasks_in_flight_(tasks_in_flight) {}
+  };
+
+  // Map from worker address to a LeaseEntry struct containing the lease's metadata.
+  absl::flat_hash_map<rpc::WorkerAddress, LeaseEntry> worker_to_lease_entry_ GUARDED_BY(mu_);
 
   // Keeps track of pending worker lease requests to the raylet.
   absl::flat_hash_map<SchedulingKey,
