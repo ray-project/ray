@@ -191,6 +191,9 @@ class FunctionRunner(Trainable):
         self._restore_tmpdir = None
         self.default_checkpoint_dir = None
 
+    def execute(self, fn):
+        return fn(self)
+
     def _trainable_func(self):
         """Subclasses can override this to set the trainable func."""
 
