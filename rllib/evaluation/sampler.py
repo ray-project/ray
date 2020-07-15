@@ -349,7 +349,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
             raise RuntimeError("Sampling thread has died")
         rollout = self.queue.get(timeout=600.0)
 
-        # Propagate errors
+        # Propagate errors.
         if isinstance(rollout, BaseException):
             raise rollout
 
