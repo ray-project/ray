@@ -33,7 +33,7 @@
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/protobuf/core_worker.pb.h"
 #include "ray/protobuf/gcs.pb.h"
-#include "ray/raylet/raylet_client.h"
+#include "ray/raylet_client/raylet_client.h"
 #include "ray/util/filesystem.h"
 
 namespace {

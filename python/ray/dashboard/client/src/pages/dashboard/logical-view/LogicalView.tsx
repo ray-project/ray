@@ -8,6 +8,7 @@ import {
 import React, { useState } from "react";
 import { connect } from "react-redux";
 import { ActorState, RayletActorInfo, RayletInfoResponse } from "../../../api";
+import { filterObj } from "../../../common/util";
 import { StoreState } from "../../../store";
 import Actors from "./Actors";
 
@@ -45,9 +46,6 @@ const getNestedActorTitles = (actor: RayletActorInfo): string[] => {
 const mapStateToProps = (state: StoreState) => ({
   rayletInfo: state.dashboard.rayletInfo,
 });
-
-const filterObj = (obj: Object, filterFn: any) =>
-  Object.fromEntries(Object.entries(obj).filter(filterFn));
 
 type LogicalViewProps = {
   rayletInfo: RayletInfoResponse | null;
