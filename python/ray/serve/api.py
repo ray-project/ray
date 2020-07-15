@@ -8,8 +8,6 @@ from ray.serve.handle import RayServeHandle
 from ray.serve.utils import (block_until_http_ready, format_actor_name)
 from ray.serve.exceptions import RayServeException
 from ray.serve.config import BackendConfig, ReplicaConfig
-from ray.serve.router import Query
-from ray.serve.request_params import RequestMetadata
 from ray.serve.metric import InMemoryExporter
 
 master_actor = None

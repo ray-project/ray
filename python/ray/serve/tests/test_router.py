@@ -5,7 +5,7 @@ import pytest
 import ray
 
 from ray.serve.master import TrafficPolicy
-from ray.serve.router import Router
+from ray.serve.router import Router, Query
 from ray.serve.request_params import RequestMetadata
 from ray.serve.utils import get_random_letters
 from ray.test_utils import SignalActor
@@ -22,6 +22,8 @@ def mock_task_runner():
             self.queries = []
 
         async def handle_request(self, request):
+            if isinstance(request, bytes):
+                request = Query.ray_deserialize(request)
             self.query = request
             self.queries.append(request)
             return "DONE"
@@ -186,6 +188,12 @@ async def test_shard_key(serve_instance, task_runner_mock_actor):
 
 
 async def test_router_use_max_concurrency(serve_instance):
+    # The VisibleRouter::get_queues method needs to pickle queries
+    # so we register serializer here. In regular code path, query
+    # serialization is done by Serve manually for performance.
+    ray.register_custom_serializer(Query, Query.ray_serialize,
+                                   Query.ray_deserialize)
+
     signal = SignalActor.remote()
 
     @ray.remote
@@ -204,11 +212,11 @@ async def test_router_use_max_concurrency(serve_instance):
     worker = MockWorker.remote()
     q = ray.remote(VisibleRouter).remote()
     await q.setup.remote()
-    BACKEND_NAME = "max-concurrent-test"
+    backend_name = "max-concurrent-test"
     config = BackendConfig({"max_concurrent_queries": 1})
-    await q.set_traffic.remote("svc", TrafficPolicy({BACKEND_NAME: 1.0}))
-    await q.add_new_worker.remote(BACKEND_NAME, "replica-tag", worker)
-    await q.set_backend_config.remote(BACKEND_NAME, config)
+    await q.set_traffic.remote("svc", TrafficPolicy({backend_name: 1.0}))
+    await q.add_new_worker.remote(backend_name, "replica-tag", worker)
+    await q.set_backend_config.remote(backend_name, config)
 
     # We send over two queries
     first_query = q.enqueue_request.remote(RequestMetadata("svc", None), 1)
