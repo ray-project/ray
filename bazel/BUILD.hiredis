@@ -44,7 +44,6 @@ cc_library(
     include_prefix = "hiredis",
     deps = [
         ":_hiredis",
-        "@//:platform_shims",
     ],
     visibility = ["//visibility:public"],
 )
