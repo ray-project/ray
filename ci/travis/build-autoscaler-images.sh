@@ -11,7 +11,7 @@ DOCKER_USERNAME="raytravisbot"
 if [[ "$TRAVIS" == "true" && "$TRAVIS_PULL_REQUEST" == "false" ]]; then
     echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
 
-    wheel=$(cd $ROOT_DIR/.whl; ls | grep cp36m-manylinux)
+    wheel="$(basename "$ROOT_DIR"/.whl/*cp36m-manylinux*)"
     commit_sha=$(echo $TRAVIS_COMMIT | head -c 6)
     cp -r $ROOT_DIR/.whl $ROOT_DIR/docker/autoscaler/.whl
 
@@ -19,7 +19,7 @@ if [[ "$TRAVIS" == "true" && "$TRAVIS_PULL_REQUEST" == "false" ]]; then
 
     docker build \
         --build-arg WHEEL_PATH=".whl/$wheel" \
-        --build-arg WHEEL_NAME=$wheel \
+        --build-arg WHEEL_NAME="$wheel" \
         -t rayproject/autoscaler:$commit_sha \
         $ROOT_DIR/docker/autoscaler
 
