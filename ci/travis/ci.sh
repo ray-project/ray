@@ -312,7 +312,7 @@ lint_bazel() {
   # Run buildifier without affecting external environment variables
   (
     mkdir -p -- "${GOPATH}"
-    export PATH="${GOPATH}/bin":"${GOROOT}/bin":"${PATH}"
+    export PATH="${GOPATH}/bin:${GOROOT}/bin:${PATH}"
 
     # Build buildifier
     go get github.com/bazelbuild/buildtools/buildifier
