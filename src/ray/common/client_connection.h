@@ -14,22 +14,25 @@
 
 #pragma once
 
-#include <deque>
-#include <memory>
-
 #include <boost/asio/basic_stream_socket.hpp>
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/error.hpp>
 #include <boost/asio/generic/stream_protocol.hpp>
-#include <boost/enable_shared_from_this.hpp>
+#include <deque>
+#include <memory>
 
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/util/util.h"
 
 namespace ray {
 
 typedef boost::asio::generic::stream_protocol local_stream_protocol;
 typedef boost::asio::basic_stream_socket<local_stream_protocol> local_stream_socket;
+
+/// Connect to a socket with retry times.
+Status ConnectSocketRetry(local_stream_socket &socket, const std::string &endpoint,
+                          int num_retries = -1, int64_t timeout_in_ms = -1);
 
 /// \typename ServerConnection
 ///
@@ -63,11 +66,26 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
   void WriteMessageAsync(int64_t type, int64_t length, const uint8_t *message,
                          const std::function<void(const ray::Status &)> &handler);
 
+  /// Read a message from the client.
+  ///
+  /// \param type The message type (e.g., a flatbuffer enum).
+  /// \param message A pointer to the message buffer.
+  /// \return Status.
+  Status ReadMessage(int64_t type, std::vector<uint8_t> *message);
+
   /// Write a buffer to this connection.
   ///
   /// \param buffer The buffer.
   /// \return Status.
   Status WriteBuffer(const std::vector<boost::asio::const_buffer> &buffer);
+
+  /// Write a buffer to this connection asynchronously.
+  ///
+  /// \param buffer The buffer.
+  /// \param handler A callback to run on write completion.
+  /// \return Status.
+  void WriteBufferAsync(const std::vector<boost::asio::const_buffer> &buffer,
+                        const std::function<void(const ray::Status &)> &handler);
 
   /// Read a buffer from this connection.
   ///
@@ -75,10 +93,28 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
   /// \return Status.
   Status ReadBuffer(const std::vector<boost::asio::mutable_buffer> &buffer);
 
+  /// Read a buffer from this connection asynchronously.
+  ///
+  /// \param buffer The buffer.
+  /// \param handler A callback to run on read completion.
+  /// \return Status.
+  void ReadBufferAsync(const std::vector<boost::asio::mutable_buffer> &buffer,
+                       const std::function<void(const ray::Status &)> &handler);
+
   /// Shuts down socket for this connection.
   void Close() {
     boost::system::error_code ec;
     socket_.close(ec);
+  }
+
+  /// Get the native handle of the socket.
+  int GetNativeHandle() { return socket_.native_handle(); }
+
+  /// Set the blocking flag of the underlying socket.
+  Status SetNonBlocking(bool nonblocking) {
+    boost::system::error_code ec;
+    socket_.native_non_blocking(nonblocking, ec);
+    return boost_to_ray_status(ec);
   }
 
   std::string DebugString() const;
@@ -133,8 +169,8 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
 class ClientConnection;
 
 using ClientHandler = std::function<void(ClientConnection &)>;
-using MessageHandler =
-    std::function<void(std::shared_ptr<ClientConnection>, int64_t, const uint8_t *)>;
+using MessageHandler = std::function<void(std::shared_ptr<ClientConnection>, int64_t,
+                                          const std::vector<uint8_t> &)>;
 
 /// \typename ClientConnection
 ///

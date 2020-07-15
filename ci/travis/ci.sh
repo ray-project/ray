@@ -132,6 +132,7 @@ test_python() {
       -python/ray/tests:test_cython
       -python/ray/tests:test_failure
       -python/ray/tests:test_global_gc
+      -python/ray/tests:test_job
       -python/ray/tests:test_memstat
       -python/ray/tests:test_metrics
       -python/ray/tests:test_multi_node
@@ -200,7 +201,7 @@ build_sphinx_docs() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      sphinx-build -q -E -T -b html source _build/html
+      sphinx-build -q -E -W -T -b html source _build/html
     fi
   )
 }
@@ -223,7 +224,17 @@ install_go() {
   fi
 }
 
+bazel_ensure_buildable_on_windows() {
+  if [ "${OSTYPE}" = msys ]; then
+    # This performs as full of a build as possible, to ensure the repository always remains buildable on Windows.
+    # (Pip install will not perform a full build.)
+    # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
+    bazel build -k "//:*"
+  fi
+}
+
 install_ray() {
+  # TODO(mehrdadn): This function should be unified with the one in python/build-wheel-windows.sh.
   (
     cd "${WORKSPACE_DIR}"/python
     build_dashboard_front_end
@@ -257,43 +268,7 @@ build_wheels() {
       suppress_output "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
       ;;
     msys*)
-      (
-        local backup_conda="${CONDA_PREFIX}.bak" ray_uninstall_status=0
-        test ! -d "${backup_conda}"
-        pip uninstall -y ray || ray_uninstall_status=1
-        mv -n -T -- "${CONDA_PREFIX}" "${backup_conda}"  # Back up conda
-
-        local pyversion pyversions=()
-        for pyversion in 3.6 3.7 3.8; do
-          if [ "${pyversion}" = "${PYTHON-}" ]; then continue; fi  # we'll build ${PYTHON} last
-          pyversions+=("${pyversion}")
-        done
-
-        pyversions+=("${PYTHON-}")  # build this last so any subsequent steps use the right version
-        local local_dir="python/dist"
-        for pyversion in "${pyversions[@]}"; do
-          if [ -z "${pyversion}" ]; then continue; fi
-          "${ROOT_DIR}"/bazel-preclean.sh
-          git clean -q -f -f -x -d -e "${local_dir}" -e python/ray/dashboard/client
-          git checkout -q -f -- .
-          cp -R -f -a -T -- "${backup_conda}" "${CONDA_PREFIX}"
-          local existing_version
-          existing_version="$(python -s -c "import sys; print('%s.%s' % sys.version_info[:2])")"
-          if [ "${pyversion}" != "${existing_version}" ]; then
-            suppress_output conda install python="${pyversion}"
-          fi
-          install_ray
-          (cd "${WORKSPACE_DIR}"/python && python setup.py --quiet bdist_wheel)
-          pip uninstall -y ray
-          rm -r -f -- "${CONDA_PREFIX}"
-        done
-
-        mv -n -T -- "${backup_conda}" "${CONDA_PREFIX}"
-        "${ROOT_DIR}"/bazel-preclean.sh
-        if [ 0 -eq "${ray_uninstall_status}" ]; then  # If Ray was previously installed, restore it
-          install_ray
-        fi
-      )
+      suppress_output "${WORKSPACE_DIR}"/python/build-wheel-windows.sh
       ;;
   esac
 }
@@ -447,9 +422,9 @@ init() {
 }
 
 build() {
+  bazel_ensure_buildable_on_windows
+
   if ! need_wheels; then
-    # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
-    bazel build -k "//:*"  # Full build first, since pip install will build only a subset of targets
     install_ray
     if [ "${LINT-}" = 1 ]; then
       # Try generating Sphinx documentation. To do this, we need to install Ray first.

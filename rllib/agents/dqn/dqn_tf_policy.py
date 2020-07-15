@@ -17,7 +17,7 @@ from ray.rllib.utils.tf_ops import huber_loss, reduce_mean_ignore_inf, \
     minimize_and_clip
 from ray.rllib.utils.tf_ops import make_tf_callable
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 Q_SCOPE = "q_func"
 Q_TARGET_SCOPE = "target_q_func"
@@ -253,8 +253,12 @@ def build_q_losses(policy, model, _, train_batch):
 
 
 def adam_optimizer(policy, config):
-    return tf.train.AdamOptimizer(
-        learning_rate=policy.cur_lr, epsilon=config["adam_epsilon"])
+    if policy.config["framework"] in ["tf2", "tfe"]:
+        return tf.keras.optimizers.Adam(
+            learning_rate=policy.cur_lr, epsilon=config["adam_epsilon"])
+    else:
+        return tf1.train.AdamOptimizer(
+            learning_rate=policy.cur_lr, epsilon=config["adam_epsilon"])
 
 
 def clip_gradients(policy, optimizer, loss):

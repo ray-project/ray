@@ -36,6 +36,10 @@ RAY_CONFIG(int64_t, handler_warning_timeout_ms, 100)
 
 /// The duration between heartbeats sent by the raylets.
 RAY_CONFIG(int64_t, raylet_heartbeat_timeout_milliseconds, 100)
+/// Whether to send heartbeat lightly. When it is enalbed, only changed part,
+/// like should_global_gc or changed resources, will be included in the heartbeat,
+/// and gcs only broadcast the changed heartbeat.
+RAY_CONFIG(bool, light_heartbeat_enabled, false)
 /// If a component has not sent a heartbeat in the last num_heartbeats_timeout
 /// heartbeat intervals, the raylet monitor process will report
 /// it as dead to the db_client table.
@@ -106,7 +110,7 @@ RAY_CONFIG(bool, lineage_pinning_enabled, false)
 /// Whether to enable the new scheduler. The new scheduler is designed
 /// only to work with  direct calls. Once direct calls afre becoming
 /// the default, this scheduler will also become the default.
-RAY_CONFIG(bool, new_scheduler_enabled, true)
+RAY_CONFIG(bool, new_scheduler_enabled, false)
 
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
@@ -187,6 +191,10 @@ RAY_CONFIG(size_t, raylet_max_active_object_ids, 0)
 /// The duration that we wait after sending a worker SIGTERM before sending
 /// the worker SIGKILL.
 RAY_CONFIG(int64_t, kill_worker_timeout_milliseconds, 100)
+
+/// The duration that we wait after the worekr is launched before the
+/// starting_worker_timeout_callback() is called.
+RAY_CONFIG(int64_t, worker_register_timeout_seconds, 30)
 
 /// This is a timeout used to cause failures in the plasma manager and raylet
 /// when certain event loop handlers take too long.
@@ -304,4 +312,15 @@ RAY_CONFIG(bool, plasma_store_as_thread, false)
 /// changed. When the address changed, we will resubscribe again.
 RAY_CONFIG(int64_t, gcs_service_address_check_interval_milliseconds, 1000)
 
-RAY_CONFIG(bool, gcs_actor_service_enabled, true)
+RAY_CONFIG(bool, gcs_actor_service_enabled,
+           getenv("RAY_GCS_ACTOR_SERVICE_ENABLED") != nullptr &&
+               getenv("RAY_GCS_ACTOR_SERVICE_ENABLED") == std::string("true"))
+
+/// The batch size for metrics export.
+RAY_CONFIG(int64_t, metrics_report_batch_size, 100)
+
+/// Whether or not we enable metrics collection.
+RAY_CONFIG(int64_t, enable_metrics_collection, true)
+
+/// Whether start the Plasma Store as a Raylet thread.
+RAY_CONFIG(bool, put_small_object_in_memory_store, false)

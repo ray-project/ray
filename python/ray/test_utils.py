@@ -10,6 +10,7 @@ import socket
 import math
 
 import ray
+import ray.services
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
 
@@ -88,7 +89,7 @@ def wait_for_children_of_pid_to_exit(pid, timeout=20):
 
 def kill_process_by_name(name, SIGKILL=False):
     for p in psutil.process_iter(attrs=["name"]):
-        if p.info["name"] == name:
+        if p.info["name"] == name + ray.services.EXE_SUFFIX:
             if SIGKILL:
                 p.kill()
             else:
@@ -112,6 +113,7 @@ def run_string_as_driver(driver_script):
     with proc:
         output = proc.communicate(driver_script.encode("ascii"))[0]
         if proc.returncode:
+            print(ray.utils.decode(output))
             raise subprocess.CalledProcessError(proc.returncode, proc.args,
                                                 output, proc.stderr)
         out = ray.utils.decode(output)
@@ -153,6 +155,15 @@ def flat_errors():
 
 def relevant_errors(error_type):
     return [error for error in flat_errors() if error["type"] == error_type]
+
+
+def wait_for_num_actors(num_actors, timeout=10):
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        if len(ray.actors()) >= num_actors:
+            return
+        time.sleep(0.1)
+    raise RayTestTimeoutException("Timed out while waiting for global state.")
 
 
 def wait_for_errors(error_type, num_errors, timeout=20):

@@ -516,7 +516,7 @@ int64_t ClusterResourceScheduler::IsSchedulable(const TaskRequest &task_req,
     }
   }
 
-  // No check custom resources.
+  // Now check custom resources.
   for (const auto task_req_custom_resource : task_req.custom_resources) {
     auto it = resources.custom_resources.find(task_req_custom_resource.id);
 
@@ -1059,7 +1059,7 @@ std::vector<double> ClusterResourceScheduler::AddCPUResourceInstances(
       VectorDoubleToVectorFixedPoint(cpu_instances);
 
   if (cpu_instances.size() == 0) {
-    return cpu_instances;  // No oveerflow.
+    return cpu_instances;  // No overflow.
   }
   RAY_CHECK(nodes_.find(local_node_id_) != nodes_.end());
 
@@ -1082,6 +1082,40 @@ std::vector<double> ClusterResourceScheduler::SubtractCPUResourceInstances(
 
   auto underflow = SubtractAvailableResourceInstances(
       cpu_instances_fp, &local_resources_.predefined_resources[CPU]);
+  UpdateLocalAvailableResourcesFromResourceInstances();
+
+  return VectorFixedPointToVectorDouble(underflow);
+}
+
+std::vector<double> ClusterResourceScheduler::AddGPUResourceInstances(
+    std::vector<double> &gpu_instances) {
+  std::vector<FixedPoint> gpu_instances_fp =
+      VectorDoubleToVectorFixedPoint(gpu_instances);
+
+  if (gpu_instances.size() == 0) {
+    return gpu_instances;  // No overflow.
+  }
+  RAY_CHECK(nodes_.find(local_node_id_) != nodes_.end());
+
+  auto overflow = AddAvailableResourceInstances(
+      gpu_instances_fp, &local_resources_.predefined_resources[GPU]);
+  UpdateLocalAvailableResourcesFromResourceInstances();
+
+  return VectorFixedPointToVectorDouble(overflow);
+}
+
+std::vector<double> ClusterResourceScheduler::SubtractGPUResourceInstances(
+    std::vector<double> &gpu_instances) {
+  std::vector<FixedPoint> gpu_instances_fp =
+      VectorDoubleToVectorFixedPoint(gpu_instances);
+
+  if (gpu_instances.size() == 0) {
+    return gpu_instances;  // No underflow.
+  }
+  RAY_CHECK(nodes_.find(local_node_id_) != nodes_.end());
+
+  auto underflow = SubtractAvailableResourceInstances(
+      gpu_instances_fp, &local_resources_.predefined_resources[GPU]);
   UpdateLocalAvailableResourcesFromResourceInstances();
 
   return VectorFixedPointToVectorDouble(underflow);

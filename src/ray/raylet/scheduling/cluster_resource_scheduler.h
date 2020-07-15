@@ -72,7 +72,7 @@ class TaskRequest {
  public:
   /// List of predefined resources required by the task.
   std::vector<ResourceRequest> predefined_resources;
-  /// List of custom resources required by the tasl.
+  /// List of custom resources required by the task.
   std::vector<ResourceRequestWithId> custom_resources;
   /// List of placement hints. A placement hint is a node on which
   /// we desire to run this task. This is a soft constraint in that
@@ -105,6 +105,36 @@ class TaskResourceInstances {
   std::vector<double> GetCPUInstancesDouble() const {
     if (!this->predefined_resources.empty()) {
       return VectorFixedPointToVectorDouble(this->predefined_resources[CPU]);
+    } else {
+      return {};
+    }
+  };
+  /// Get GPU instances only.
+  std::vector<FixedPoint> GetGPUInstances() const {
+    if (!this->predefined_resources.empty()) {
+      return this->predefined_resources[GPU];
+    } else {
+      return {};
+    }
+  };
+  std::vector<double> GetGPUInstancesDouble() const {
+    if (!this->predefined_resources.empty()) {
+      return VectorFixedPointToVectorDouble(this->predefined_resources[GPU]);
+    } else {
+      return {};
+    }
+  };
+  /// Get mem instances only.
+  std::vector<FixedPoint> GetMemInstances() const {
+    if (!this->predefined_resources.empty()) {
+      return this->predefined_resources[MEM];
+    } else {
+      return {};
+    }
+  };
+  std::vector<double> GetMemInstancesDouble() const {
+    if (!this->predefined_resources.empty()) {
+      return VectorFixedPointToVectorDouble(this->predefined_resources[MEM]);
     } else {
       return {};
     }
@@ -429,6 +459,22 @@ class ClusterResourceScheduler {
   /// \return Underflow capacities of CPU instances after subtracting CPU
   /// capacities in cpu_instances.
   std::vector<double> SubtractCPUResourceInstances(std::vector<double> &cpu_instances);
+
+  /// Increase the available GPU instances of this node.
+  ///
+  /// \param gpu_instances GPU instances to be added to available gpus.
+  ///
+  /// \return Overflow capacities of GPU instances after adding GPU
+  /// capacities in gpu_instances.
+  std::vector<double> AddGPUResourceInstances(std::vector<double> &gpu_instances);
+
+  /// Decrease the available GPU instances of this node.
+  ///
+  /// \param gpu_instances GPU instances to be removed from available gpus.
+  ///
+  /// \return Underflow capacities of GPU instances after subtracting GPU
+  /// capacities in gpu_instances.
+  std::vector<double> SubtractGPUResourceInstances(std::vector<double> &gpu_instances);
 
   /// Subtract the resources required by a given task request (task_req) from the
   /// local node. This function also updates the local node resources

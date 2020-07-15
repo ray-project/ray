@@ -13,12 +13,10 @@ from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import fc
 from ray.rllib.utils.test_utils import check, framework_iterator, \
     check_compute_single_action
 
-tf = try_import_tf()
 
 # Fake CartPole episode of n time steps.
 FAKE_BATCH = {
@@ -40,7 +38,7 @@ FAKE_BATCH = {
 class TestPPO(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init()
+        ray.init(local_mode=True)
 
     @classmethod
     def tearDownClass(cls):
@@ -95,10 +93,10 @@ class TestPPO(unittest.TestCase):
         learnt = False
         for i in range(num_iterations):
             results = trainer.train()
+            print(results)
             if results["episode_reward_mean"] > 150:
                 learnt = True
                 break
-            print(results)
         assert learnt, "PPO multi-GPU (with fake-GPUs) did not learn CartPole!"
         trainer.stop()
 
@@ -182,7 +180,7 @@ class TestPPO(unittest.TestCase):
             init_std = get_value()
             assert init_std == 0.0, init_std
 
-            if fw in ["tf", "tfe"]:
+            if fw in ["tf2", "tf", "tfe"]:
                 batch = postprocess_ppo_gae_tf(policy, FAKE_BATCH)
             else:
                 batch = postprocess_ppo_gae_torch(policy, FAKE_BATCH)
@@ -224,7 +222,7 @@ class TestPPO(unittest.TestCase):
             # to train_batch dict.
             # A = [0.99^2 * 0.5 + 0.99 * -1.0 + 1.0, 0.99 * 0.5 - 1.0, 0.5] =
             # [0.50005, -0.505, 0.5]
-            if fw == "tf" or fw == "tfe":
+            if fw in ["tf2", "tf", "tfe"]:
                 train_batch = postprocess_ppo_gae_tf(policy, FAKE_BATCH)
             else:
                 train_batch = postprocess_ppo_gae_torch(policy, FAKE_BATCH)
@@ -235,7 +233,7 @@ class TestPPO(unittest.TestCase):
                   [0.50005, -0.505, 0.5])
 
             # Calculate actual PPO loss.
-            if fw == "tfe":
+            if fw in ["tf2", "tfe"]:
                 ppo_surrogate_loss_tf(policy, policy.model, Categorical,
                                       train_batch)
             elif fw == "torch":

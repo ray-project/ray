@@ -250,9 +250,9 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
 
 void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
                                               const Language &language) {
-  constexpr static size_t worker_register_timeout_seconds = 30;
   auto timer = std::make_shared<boost::asio::deadline_timer>(
-      *io_service_, boost::posix_time::seconds(worker_register_timeout_seconds));
+      *io_service_, boost::posix_time::seconds(
+                        RayConfig::instance().worker_register_timeout_seconds()));
   // Capture timer in lambda to copy it once, so that it can avoid destructing timer.
   timer->async_wait(
       [timer, language, proc, this](const boost::system::error_code e) -> void {
