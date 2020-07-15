@@ -689,6 +689,7 @@ cc_library(
         ":gcs_cc_proto",
         ":node_manager_fbs",
         ":node_manager_rpc",
+        ":plasma_client",
         ":ray_common",
         ":ray_util",
         "@boost//:asio",

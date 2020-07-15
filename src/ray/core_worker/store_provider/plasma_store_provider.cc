@@ -39,9 +39,17 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     get_current_call_site_ = []() { return "<no callsite callback>"; };
   }
   buffer_tracker_ = std::make_shared<BufferTracker>();
-  std::unique_ptr<plasma::PlasmaClient> client(new plasma::PlasmaClient());
-  RAY_CHECK_OK(client->Connect(store_socket));
-  store_client_ = std::move(client);
+
+  // TODO(ekl) make this a proper feature flag.
+  bool proxy_plasma_over_grpc = true;
+  if (proxy_plasma_over_grpc) {
+    store_client_ = raylet_client;
+  } else {
+    std::unique_ptr<plasma::PlasmaClient> client(new plasma::PlasmaClient());
+    RAY_CHECK_OK(client->Connect(store_socket));
+    store_client_ = std::move(client);
+  }
+
   RAY_CHECK_OK(WarmupStore());
 }
 
@@ -97,10 +105,10 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
     std::shared_ptr<arrow::Buffer> arrow_buffer;
     {
       std::lock_guard<std::mutex> guard(store_client_mutex_);
-      plasma_status = store_client_->Create(object_id, data_size,
-                                           metadata ? metadata->Data() : nullptr,
-                                           metadata ? metadata->Size() : 0, &arrow_buffer,
-                                           /*device_num=*/0, evict_if_full);
+      plasma_status = store_client_->Create(
+          object_id, data_size, metadata ? metadata->Data() : nullptr,
+          metadata ? metadata->Size() : 0, &arrow_buffer,
+          /*device_num=*/0, evict_if_full);
       // Always try to evict after the first attempt.
       evict_if_full = true;
     }

@@ -45,7 +45,7 @@ struct ObjectBuffer {
 };
 
 /// Interface for accessing Plasma memory. This allows the plasma client to be
-/// proxied over gRPC as needed for Ray client mode.
+/// proxied over gRPC as needed for Ray client mode. TODO(ekl) some methods not included?
 class PlasmaClientInterface {
  public:
   virtual ~PlasmaClientInterface(){};
