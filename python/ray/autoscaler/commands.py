@@ -20,7 +20,7 @@ import ray.services as services
 from ray.autoscaler.util import validate_config, hash_runtime_conf, \
     hash_launch_conf, prepare_config, DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
-from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS
+from ray.autoscaler.node_provider import get_node_provider
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_NODE_NAME, NODE_TYPE_WORKER, NODE_TYPE_HEAD
 
