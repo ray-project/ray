@@ -84,11 +84,11 @@ def centralized_critic_postprocessing(policy,
         if args.torch:
             sample_batch[SampleBatch.VF_PREDS] = policy.compute_central_vf(
                 convert_to_torch_tensor(sample_batch[SampleBatch.CUR_OBS],
-                    policy._device),
+                    policy.device),
                 convert_to_torch_tensor(sample_batch[OPPONENT_OBS],
-                    policy._device),
+                    policy.device),
                 convert_to_torch_tensor(sample_batch[OPPONENT_ACTION],
-                    policy._device)).detach().numpy()
+                    policy.device)).detach().numpy()
         else:
             sample_batch[SampleBatch.VF_PREDS] = policy.compute_central_vf(
                 sample_batch[SampleBatch.CUR_OBS], sample_batch[OPPONENT_OBS],
