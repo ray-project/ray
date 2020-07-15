@@ -357,46 +357,36 @@ class RayletClient : public PinObjectsInterface,
 
   // Implements PlasmaClientInterface.
   ray::Status SetClientOptions(const std::string &client_name,
-                               int64_t output_memory_quota) {
-    return ray::Status::NotImplemented("Cannot set client options over gRPC client.");
+                               int64_t output_memory_quota) override {
+    return ray::Status::NotImplemented("Cannot set options for gRPC plasma client.");
   }
 
   // Implements PlasmaClientInterface.
   ray::Status Create(const ObjectID &object_id, int64_t data_size,
                      const uint8_t *metadata, int64_t metadata_size,
                      std::shared_ptr<arrow::Buffer> *data, int device_num = 0,
-                     bool evict_if_full = true) {
-    return ray::Status::NotImplemented("TODO");
-  }
+                     bool evict_if_full = true) override;
 
   // Implements PlasmaClientInterface.
   ray::Status Get(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
-                  std::vector<plasma::ObjectBuffer> *object_buffers) {
-    return ray::Status::NotImplemented("TODO");
-  }
+                  std::vector<plasma::ObjectBuffer> *object_buffers) override;
 
   // Implements PlasmaClientInterface.
-  ray::Status Release(const ObjectID &object_id) {
-    return ray::Status::NotImplemented("TODO");
-  }
+  ray::Status Release(const ObjectID &object_id) override;
 
   // Implements PlasmaClientInterface.
-  ray::Status Contains(const ObjectID &object_id, bool *has_object) {
-    return ray::Status::NotImplemented("TODO");
-  }
+  ray::Status Contains(const ObjectID &object_id, bool *has_object) override;
 
   // Implements PlasmaClientInterface.
-  ray::Status Seal(const ObjectID &object_id) {
-    return ray::Status::NotImplemented("TODO");
-  }
+  ray::Status Seal(const ObjectID &object_id) override;
 
   // Implements PlasmaClientInterface.
-  ray::Status Delete(const std::vector<ObjectID> &object_ids) {
-    return ray::Status::NotImplemented("TODO");
-  }
+  ray::Status Delete(const std::vector<ObjectID> &object_ids) override;
 
   // Implements PlasmaClientInterface.
-  std::string DebugString() { return "TODO: NotImplemented"; }
+  std::string DebugString() override {
+    return "Debug string not available for gRPC plasma client.";
+  }
 
  private:
   /// gRPC client to the raylet. Right now, this is only used for a couple

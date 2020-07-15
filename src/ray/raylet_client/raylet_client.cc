@@ -366,4 +366,27 @@ Status raylet::RayletClient::SubscribeToPlasma(const ObjectID &object_id) {
   return conn_->WriteMessage(MessageType::SubscribePlasmaReady, &fbb);
 }
 
+Status Create(const ObjectID &object_id, int64_t data_size, const uint8_t *metadata,
+              int64_t metadata_size, std::shared_ptr<arrow::Buffer> *data,
+              int device_num = 0, bool evict_if_full = true) {
+  return Status::NotImplemented("TODO");
+}
+
+Status Get(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
+           std::vector<plasma::ObjectBuffer> *object_buffers) {
+  return Status::NotImplemented("TODO");
+}
+
+Status Release(const ObjectID &object_id) { return Status::NotImplemented("TODO"); }
+
+Status Contains(const ObjectID &object_id, bool *has_object) {
+  return Status::NotImplemented("TODO");
+}
+
+Status Seal(const ObjectID &object_id) { return Status::NotImplemented("TODO"); }
+
+Status Delete(const std::vector<ObjectID> &object_ids) {
+  return Status::NotImplemented("TODO");
+}
+
 }  // namespace ray

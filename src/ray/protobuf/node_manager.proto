@@ -143,6 +143,35 @@ message FormatGlobalMemoryInfoReply {
   string memory_summary = 1;
 }
 
+message PlasmaStatus {
+  int32 code = 1;
+  string message = 2;
+}
+
+message PlasmaCreateRequest {
+}
+
+message PlasmaGetRequest {
+}
+
+message PlasmaGetReply {
+}
+
+message PlasmaReleaseRequest {
+}
+
+message PlasmaContainsRequest {
+}
+
+message PlasmaContainsReply {
+}
+
+message PlasmaSealRequest {
+}
+
+message PlasmaDeleteRequest {
+}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Request a worker from the raylet.
@@ -169,4 +198,14 @@ service NodeManagerService {
   // Get global object reference stats in formatted form.
   rpc FormatGlobalMemoryInfo(FormatGlobalMemoryInfoRequest)
       returns (FormatGlobalMemoryInfoReply);
+
+  //
+  // PlasmaClientInterface RPCs
+  //
+  rpc PlasmaCreate(PlasmaCreateRequest) returns (PlasmaStatus);
+  rpc PlasmaGet(PlasmaGetRequest) returns (PlasmaGetReply);
+  rpc PlasmaRelease(PlasmaReleaseRequest) returns (PlasmaStatus);
+  rpc PlasmaContains(PlasmaContainsRequest) returns (PlasmaContainsReply);
+  rpc PlasmaSeal(PlasmaSealRequest) returns (PlasmaStatus);
+  rpc PlasmaDelete(PlasmaDeleteRequest) returns (PlasmaStatus);
 }
