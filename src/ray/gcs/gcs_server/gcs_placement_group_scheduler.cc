@@ -221,7 +221,7 @@ void GcsPlacementGroupScheduler::CancelResourceReserve(
           return_timer_.expires_from_now(boost::posix_time::milliseconds(5));
           return_timer_.async_wait(
               [this, bundle_spec, node](const boost::system::error_code &error) {
-                if (error == boost::system::errc::operation_canceled) {
+                if (error == boost::asio::error::operation_aborted) {
                   return;
                 } else {
                   CancelResourceReserve(bundle_spec, node);

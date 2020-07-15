@@ -266,6 +266,10 @@ class ModelV2:
         # Single requirement: Pass current obs as input.
         return {
             SampleBatch.CUR_OBS: ViewRequirement(timesteps=0),
+            SampleBatch.PREV_ACTIONS:
+                ViewRequirement(SampleBatch.ACTIONS, timesteps=-1),
+            SampleBatch.PREV_REWARDS:
+                ViewRequirement(SampleBatch.REWARDS, timesteps=-1),
         }
 
     def import_from_h5(self, h5_file):
@@ -338,7 +342,7 @@ class NullContextManager:
 @DeveloperAPI
 def flatten(obs, framework):
     """Flatten the given tensor."""
-    if framework in ["tf", "tfe"]:
+    if framework in ["tf2", "tf", "tfe"]:
         return tf1.keras.layers.Flatten()(obs)
     elif framework == "torch":
         assert torch is not None
