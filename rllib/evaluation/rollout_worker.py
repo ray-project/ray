@@ -399,18 +399,19 @@ class RolloutWorker(ParallelIteratorWorker):
                         tf1.set_random_seed(seed)
                     self.policy_map, self.preprocessors = \
                         self._build_policy_map(policy_dict, policy_config)
-            if (ray.is_initialized()
-                    and ray.worker._mode() != ray.worker.LOCAL_MODE):
+            print(end="")
+            if ray.is_initialized():
+                #and ray.worker._mode() != ray.worker.LOCAL_MODE):
                 if not ray.get_gpu_ids():
                     logger.debug(
                         "Creating policy evaluation worker {}".format(
                             worker_index) +
                         " on CPU (please ignore any CUDA init errors)")
-                elif not tf1.test.is_gpu_available():
+                elif not tf.config.list_physical_devices("GPU"):
                     raise RuntimeError(
                         "GPUs were assigned to this worker by Ray, but "
                         "TensorFlow reports GPU acceleration is disabled. "
-                        "This could be due to a bad CUDA or TF installation.")
+                        "This could be due to a bad CUDA- or TF installation.")
         else:
             self.policy_map, self.preprocessors = self._build_policy_map(
                 policy_dict, policy_config)
