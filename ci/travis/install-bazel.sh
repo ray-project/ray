@@ -38,7 +38,7 @@ esac
     fi
   done
   if [ ! 0 -eq "${#missing_symlinks[@]}" ]; then
-    echo "error: expected symlink: ${missing_symlinks[@]}" 1>&2
+    echo "error: expected symlink: ${missing_symlinks[*]}" 1>&2
     echo "For a correct build, please run 'git config --local core.symlinks true' and re-run git checkout." 1>&2
     false
   fi
