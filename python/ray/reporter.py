@@ -15,7 +15,7 @@ import psutil
 
 from opentelemetry import metrics
 from opentelemetry.ext.prometheus import PrometheusMetricsExporter
-from opentelemetry.sdk.metrics import Observer, Meter, MeterProvider
+from opentelemetry.sdk.metrics import ValueObserver, Meter, MeterProvider
 from prometheus_client import start_http_server
 
 import ray
@@ -43,12 +43,12 @@ class MetricsDef:
     def __init__(self, meter):
         self.meter = meter
         self.registry = {
-            "task_count_received": self.meter.create_metric(
+            "task_count_received": self.meter.register_observer(
                 "task_count_received",
                 "",
                 "",
                 float,
-                Observer
+                ValueObserver
             )
         }
 
