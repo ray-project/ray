@@ -13,7 +13,7 @@
 
 (
   set -euo pipefail
-  bazel aquery --color=no --show_progress=no --output=textproto \
+  bazel aquery --output=textproto \
     "mnemonic(\"Genrule\", deps(${1-//:*}))" | awk '
     {
       body = 0;

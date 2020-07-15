@@ -4,6 +4,13 @@ COPTS = [] + select({
     ],
     "//conditions:default": [
     ],
+}) + select({
+    "@//:msvc-cl": [
+    ],
+    "//conditions:default": [
+        # Old versions of GCC (e.g. 4.9.2) can fail to compile Redis's C without this.
+        "-std=c99",
+    ],
 })
 
 # This library is for internal hiredis use, because hiredis assumes a
@@ -25,6 +32,7 @@ cc_library(
         ],
         exclude =
         [
+            "ssl.c",
             "test.c",
         ],
     ),
@@ -32,14 +40,7 @@ cc_library(
         "*.h",
         "adapters/*.h",
     ]),
-    copts = COPTS + select({
-        "@bazel_tools//src/conditions:windows": [
-            "-D" + "WIN32_REPLACE_FD_APIS",
-            "/FI" + "win32fd.h",
-        ],
-        "//conditions:default": [
-        ],
-    }),
+    copts = COPTS,
     include_prefix = "hiredis",
     deps = [
         ":_hiredis",

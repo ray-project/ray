@@ -36,6 +36,7 @@
 #include "ray/raylet/task_dependency_manager.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/util/ordered_set.h"
+#include "ray/common/bundle_spec.h"
 // clang-format on
 
 namespace ray {
@@ -298,6 +299,17 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// resource_map argument.
   /// \return Void.
   void ScheduleTasks(std::unordered_map<ClientID, SchedulingResources> &resource_map);
+
+  /// Make a placement decision for the resource_map.
+  ///
+  /// \param resource_map A mapping from node manager ID to an estimate of the
+  /// resources available to that node manager. Scheduling decisions will only
+  /// consider the local node manager and the node managers in the keys of the
+  /// resource_map argument.
+  /// \return ResourceIdSet.
+  ResourceIdSet ScheduleBundle(
+      std::unordered_map<ClientID, SchedulingResources> &resource_map,
+      const BundleSpecification &bundle_spec);
   /// Handle a task whose return value(s) must be reconstructed.
   ///
   /// \param task_id The relevant task ID.
@@ -353,14 +365,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// wait call.
   ///
   /// \param client The client that is executing the blocked task.
-  /// \param required_object_ids The IDs that the client is blocked waiting for.
+  /// \param required_object_refs The objects that the client is blocked waiting for.
   /// \param current_task_id The task that is blocked.
   /// \param ray_get Whether the task is blocked in a `ray.get` call.
   /// \param mark_worker_blocked Whether to mark the worker as blocked. This
   ///                            should be False for direct calls.
   /// \return Void.
   void AsyncResolveObjects(const std::shared_ptr<ClientConnection> &client,
-                           const std::vector<ObjectID> &required_object_ids,
+                           const std::vector<rpc::ObjectReference> &required_object_refs,
                            const TaskID &current_task_id, bool ray_get,
                            bool mark_worker_blocked);
 
@@ -428,6 +440,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param object_id The object that has been evicted locally.
   /// \return Void.
   void HandleObjectMissing(const ObjectID &object_id);
+
+  /// Handles the event that a job is started.
+  ///
+  /// \param job_id ID of the started job.
+  /// \param job_data Data associated with the started job.
+  /// \return Void
+  void HandleJobStarted(const JobID &job_id, const JobTableData &job_data);
 
   /// Handles the event that a job is finished.
   ///
@@ -577,6 +596,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ///
   /// \return Status indicating whether setup was successful.
   ray::Status SetupPlasmaSubscription();
+
+  /// Handle a `ResourcesLease` request.
+  void HandleRequestResourceReserve(const rpc::RequestResourceReserveRequest &request,
+                                    rpc::RequestResourceReserveReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle a `ResourcesReturn` request.
+  void HandleCancelResourceReserve(const rpc::CancelResourceReserveRequest &request,
+                                   rpc::CancelResourceReserveReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `WorkerLease` request.
   void HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest &request,
@@ -771,7 +800,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void WaitForTaskArgsRequests(std::pair<ScheduleFn, Task> &work);
 
   // TODO(swang): Evict entries from these caches.
-  /// Cache for the WorkerFailureTable in the GCS.
+  /// Cache for the WorkerTable in the GCS.
   absl::flat_hash_set<WorkerID> failed_workers_cache_;
   /// Cache for the ClientTable in the GCS.
   absl::flat_hash_set<ClientID> failed_nodes_cache_;

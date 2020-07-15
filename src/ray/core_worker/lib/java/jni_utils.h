@@ -32,6 +32,11 @@ extern jclass java_double_class;
 /// doubleValue method of Double class
 extern jmethodID java_double_double_value;
 
+/// Object class
+extern jclass java_object_class;
+/// equals method of Object class
+extern jmethodID java_object_equals;
+
 /// List class
 extern jclass java_list_class;
 /// size method of List class

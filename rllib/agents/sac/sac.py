@@ -68,9 +68,10 @@ DEFAULT_CONFIG = with_common_config({
     "final_prioritized_replay_beta": 0.4,
     # Whether to LZ4 compress observations
     "compress_observations": False,
-    # If set, this will fix the ratio of sampled to replayed timesteps.
-    # Otherwise, replay will proceed at the native ratio determined by
-    # (train_batch_size / rollout_fragment_length).
+    # If set, this will fix the ratio of replayed from a buffer and learned on
+    # timesteps to sampled from an environment and stored in the replay buffer
+    # timesteps. Otherwise, the replay will proceed at the native ratio
+    # determined by (train_batch_size / rollout_fragment_length).
     "training_intensity": None,
 
     # === Optimization ===
@@ -144,6 +145,9 @@ def validate_config(config):
     if config.get("grad_norm_clipping", DEPRECATED_VALUE) != DEPRECATED_VALUE:
         deprecation_warning("grad_norm_clipping", "grad_clip")
         config["grad_clip"] = config.pop("grad_norm_clipping")
+
+    if config["grad_clip"] is not None and config["grad_clip"] <= 0.0:
+        raise ValueError("`grad_clip` value must be > 0.0!")
 
     # Use same keys as for standard Trainer "model" config.
     for model in ["Q_model", "policy_model"]:

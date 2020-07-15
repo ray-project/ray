@@ -107,12 +107,14 @@ class TrainTFMultiGPU:
                  train_batch_size: int,
                  shuffle_sequences: bool,
                  policies: List[PolicyID] = frozenset([]),
-                 _fake_gpus: bool = False):
+                 _fake_gpus: bool = False,
+                 framework: str = "tf"):
         self.workers = workers
         self.policies = policies or workers.local_worker().policies_to_train
         self.num_sgd_iter = num_sgd_iter
         self.sgd_minibatch_size = sgd_minibatch_size
         self.shuffle_sequences = shuffle_sequences
+        self.framework = framework
 
         # Collect actual devices to use.
         if not num_gpus:
@@ -136,8 +138,10 @@ class TrainTFMultiGPU:
         with self.workers.local_worker().tf_sess.graph.as_default():
             with self.workers.local_worker().tf_sess.as_default():
                 for policy_id in self.policies:
-                    policy = self.workers.local_worker().get_policy(policy_id)
-                    with tf1.variable_scope(policy_id, reuse=tf1.AUTO_REUSE):
+                    policy = self.workers.local_worker().get_policy(
+                        policy_id)
+                    with tf1.variable_scope(
+                            policy_id, reuse=tf1.AUTO_REUSE):
                         if policy._state_inputs:
                             rnn_inputs = policy._state_inputs + [
                                 policy._seq_lens
@@ -146,10 +150,12 @@ class TrainTFMultiGPU:
                             rnn_inputs = []
                         self.optimizers[policy_id] = (
                             LocalSyncParallelOptimizer(
-                                policy._optimizer, self.devices,
-                                [v
-                                 for _, v in policy._loss_inputs], rnn_inputs,
-                                self.per_device_batch_size, policy.copy))
+                                policy._optimizer,
+                                self.devices,
+                                [v for _, v in policy._loss_inputs],
+                                rnn_inputs,
+                                self.per_device_batch_size,
+                                policy.copy))
 
                 self.sess = self.workers.local_worker().tf_sess
                 self.sess.run(tf1.global_variables_initializer())

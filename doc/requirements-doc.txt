@@ -24,3 +24,4 @@ sphinx_rtd_theme
 tabulate
 uvicorn
 werkzeug
+git+https://github.com/ray-project/tune-sklearn.git#egg=tune-sklearn
