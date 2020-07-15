@@ -175,16 +175,17 @@ def postprocess_ppo_gae(policy,
         next_state = []
         for i in range(policy.num_state_tensors()):
             next_state.append(sample_batch["state_out_{}".format(i)][-1])
-        #if policy.config["_use_trajectory_view_api"]:
-        #    last_r = policy._value(sample_batch[SampleBatch.OBS][-1],
-        #                           sample_batch[SampleBatch.ACTIONS][-1],
-        #                           sample_batch[SampleBatch.REWARDS][-1],
-        #                           *next_state)
-        #else:
-        last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1],
-                               sample_batch[SampleBatch.ACTIONS][-1],
-                               sample_batch[SampleBatch.REWARDS][-1],
-                               *next_state)
+        if policy.config["_use_trajectory_view_api"]:
+            #TODO
+            last_r = policy._value(sample_batch[SampleBatch.OBS][-1],
+                                   sample_batch[SampleBatch.ACTIONS][-1],
+                                   sample_batch[SampleBatch.REWARDS][-1],
+                                   *next_state)
+        else:
+            last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1],
+                                   sample_batch[SampleBatch.ACTIONS][-1],
+                                   sample_batch[SampleBatch.REWARDS][-1],
+                                   *next_state)
     batch = compute_advantages(
         sample_batch,
         last_r,
