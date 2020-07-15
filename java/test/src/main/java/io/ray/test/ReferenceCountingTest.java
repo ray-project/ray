@@ -160,38 +160,108 @@ public class ReferenceCountingTest extends BaseTest {
    * Based on Python test case `test_dependency_refcounts`.
    */
   public void testDependencyRefCounts() {
-    // Test that regular plasma dep refcounts are decremented once the
-    // task finishes.
-    ActorHandle<SignalActor> signal = SignalActor.create();
-    ObjectRef<TestUtils.LargeObject> largeDep = Ray.put(new TestUtils.LargeObject());
-    ObjectRef<Object> result = Ray.<TestUtils.LargeObject, ActorHandle<SignalActor>, Object>task(
-        ReferenceCountingTest::oneDep, largeDep, signal).remote();
-    checkRefCounts(largeDep.getId(), 1, 1, result.getId(), 1, 0);
-    sendSignal(signal);
-    // Reference count should be removed once the task finishes.
-    checkRefCounts(largeDep.getId(), 1, 0, result.getId(), 1, 0);
-    del(largeDep);
-    del(result);
-    checkRefCounts(ImmutableMap.of());
+    {
+      // Test that regular plasma dependency refcounts are decremented once the
+      // task finishes.
+      ActorHandle<SignalActor> signal = SignalActor.create();
+      ObjectRef<TestUtils.LargeObject> largeDep = Ray.put(new TestUtils.LargeObject());
+      ObjectRef<Object> result = Ray.<TestUtils.LargeObject, ActorHandle<SignalActor>, Object>task(
+          ReferenceCountingTest::oneDep, largeDep, signal).remote();
+      checkRefCounts(largeDep.getId(), 1, 1, result.getId(), 1, 0);
+      sendSignal(signal);
+      // Reference count should be removed once the task finishes.
+      checkRefCounts(largeDep.getId(), 1, 0, result.getId(), 1, 0);
+      del(largeDep);
+      del(result);
+      checkRefCounts(ImmutableMap.of());
+    }
 
-    // Test that inlined dep refcounts are decremented once they are
-    // inlined.
-    signal = SignalActor.create();
-    ObjectRef<Integer> dep =
-        Ray.<Integer, ActorHandle<SignalActor>, Integer>task(ReferenceCountingTest::oneDep,
-            Integer.valueOf(1), signal).remote();
-    checkRefCounts(dep.getId(), 1, 0);
-    result = Ray.<Integer, Object>task(ReferenceCountingTest::oneDep, dep).remote();
-    checkRefCounts(dep.getId(), 1, 1, result.getId(), 1, 0);
-    sendSignal(signal);
-    // Reference count should be removed as soon as the dep is inlined.
-    checkRefCounts(dep.getId(), 1, 0, result.getId(), 1, 0);
-    del(dep);
-    del(result);
-    checkRefCounts(ImmutableMap.of());
+    {
+      // Test that inlined dependency refcounts are decremented once they are
+      // inlined.
+      ActorHandle<SignalActor> signal = SignalActor.create();
+      ObjectRef<Integer> dep =
+          Ray.<Integer, ActorHandle<SignalActor>, Integer>task(ReferenceCountingTest::oneDep,
+              Integer.valueOf(1), signal).remote();
+      checkRefCounts(dep.getId(), 1, 0);
+      ObjectRef<Object> result =
+          Ray.<Integer, Object>task(ReferenceCountingTest::oneDep, dep).remote();
+      checkRefCounts(dep.getId(), 1, 1, result.getId(), 1, 0);
+      sendSignal(signal);
+      // Reference count should be removed as soon as the dependency is inlined.
+      checkRefCounts(dep.getId(), 1, 0, result.getId(), 1, 0);
+      del(dep);
+      del(result);
+      checkRefCounts(ImmutableMap.of());
+    }
 
-    // TODO(kfstorm): Add remaining code of this test case based on Python test case
-    // `test_dependency_refcounts`.
+    {
+      // Test that spilled plasma dependency refcounts are decremented once
+      // the task finishes.
+      ActorHandle<SignalActor> signal1 = SignalActor.create();
+      ActorHandle<SignalActor> signal2 = SignalActor.create();
+      ObjectRef<TestUtils.LargeObject> dep =
+          Ray.<TestUtils.LargeObject, ActorHandle<SignalActor>, TestUtils.LargeObject>task(
+              ReferenceCountingTest::oneDepLarge, (TestUtils.LargeObject) null, signal1).remote();
+      checkRefCounts(dep.getId(), 1, 0);
+      ObjectRef<Integer> result =
+          Ray.<TestUtils.LargeObject, ActorHandle<SignalActor>, Integer>task(
+              ReferenceCountingTest::oneDep, dep, signal2).remote();
+      checkRefCounts(dep.getId(), 1, 1, result.getId(), 1, 0);
+      sendSignal(signal1);
+      dep.get(); // TODO(kfstorm): timeout=10
+      // Reference count should remain because the dependency is in plasma.
+      checkRefCounts(dep.getId(), 1, 1, result.getId(), 1, 0);
+      sendSignal(signal2);
+      // Reference count should be removed because the task finished.
+      checkRefCounts(dep.getId(), 1, 0, result.getId(), 1, 0);
+      del(dep);
+      del(result);
+      checkRefCounts(ImmutableMap.of());
+    }
+
+    {
+      // Test that regular plasma dependency refcounts are decremented if a task
+      // fails.
+      ActorHandle<SignalActor> signal = SignalActor.create();
+      ObjectRef<TestUtils.LargeObject> largeDep =
+          Ray.put(new TestUtils.LargeObject(10 * 1024 * 1024));
+      ObjectRef<Integer> result =
+          Ray.<TestUtils.LargeObject, ActorHandle<SignalActor>, Boolean, Integer>task(
+              ReferenceCountingTest::oneDep, largeDep, signal, /* fail= */true).remote();
+      checkRefCounts(largeDep.getId(), 1, 1, result.getId(), 1, 0);
+      sendSignal(signal);
+      // Reference count should be removed once the task finishes.
+      checkRefCounts(largeDep.getId(), 1, 0, result.getId(), 1, 0);
+      del(largeDep);
+      del(result);
+      checkRefCounts(ImmutableMap.of());
+    }
+
+    {
+      // Test that spilled plasma dependency refcounts are decremented if a task
+      // fails.
+      ActorHandle<SignalActor> signal1 = SignalActor.create();
+      ActorHandle<SignalActor> signal2 = SignalActor.create();
+      ObjectRef<TestUtils.LargeObject> dep =
+          Ray.<Integer, ActorHandle<SignalActor>, TestUtils.LargeObject>task(
+              ReferenceCountingTest::oneDepLarge, (Integer) null, signal1).remote();
+      checkRefCounts(dep.getId(), 1, 0);
+      ObjectRef<Integer> result =
+          Ray.<TestUtils.LargeObject, ActorHandle<SignalActor>, Boolean, Integer>task(
+              ReferenceCountingTest::oneDep, dep, signal2, /* fail= */true).remote();
+      checkRefCounts(dep.getId(), 1, 1, result.getId(), 1, 0);
+      sendSignal(signal1);
+      dep.get(); // TODO(kfstorm): timeout=10
+      // Reference count should remain because the dependency is in plasma.
+      checkRefCounts(dep.getId(), 1, 1, result.getId(), 1, 0);
+      sendSignal(signal2);
+      // Reference count should be removed because the task finished.
+      checkRefCounts(dep.getId(), 1, 0, result.getId(), 1, 0);
+      del(dep);
+      del(result);
+      checkRefCounts(ImmutableMap.of());
+    }
   }
 
   private static int fooBasicPinning(Object arg) {
