@@ -153,19 +153,6 @@ void ActorManager::WaitForActorOutOfScope(
 
 void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
                                                 const gcs::ActorTableData &actor_data) {
-  if (actor_data.state() == gcs::ActorTableData::PENDING) {
-    // The actor is being created and not yet ready, just ignore!
-  } else if (actor_data.state() == gcs::ActorTableData::RESTARTING) {
-    direct_actor_submitter_->DisconnectActor(actor_id, false);
-  } else if (actor_data.state() == gcs::ActorTableData::DEAD) {
-    direct_actor_submitter_->DisconnectActor(actor_id, true);
-    // We cannot erase the actor handle here because clients can still
-    // submit tasks to dead actors. This also means we defer unsubscription,
-    // otherwise we crash when bulk unsubscribing all actor handles.
-  } else {
-    direct_actor_submitter_->ConnectActor(actor_id, actor_data.address());
-  }
-
   const auto &actor_state = gcs::ActorTableData::ActorState_Name(actor_data.state());
   RAY_LOG(INFO) << "received notification on actor, state: " << actor_state
                 << ", actor_id: " << actor_id
@@ -173,7 +160,22 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
                 << ", port: " << actor_data.address().port() << ", worker_id: "
                 << WorkerID::FromBinary(actor_data.address().worker_id())
                 << ", raylet_id: "
-                << ClientID::FromBinary(actor_data.address().raylet_id());
+                << ClientID::FromBinary(actor_data.address().raylet_id())
+                << ", num_restarts: " << actor_data.num_restarts();
+
+  if (actor_data.state() == gcs::ActorTableData::PENDING) {
+    // The actor is being created and not yet ready, just ignore!
+  } else if (actor_data.state() == gcs::ActorTableData::RESTARTING) {
+    direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(), false);
+  } else if (actor_data.state() == gcs::ActorTableData::DEAD) {
+    direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(), true);
+    // We cannot erase the actor handle here because clients can still
+    // submit tasks to dead actors. This also means we defer unsubscription,
+    // otherwise we crash when bulk unsubscribing all actor handles.
+  } else {
+    direct_actor_submitter_->ConnectActor(actor_id, actor_data.address(),
+                                          actor_data.num_restarts());
+  }
 }
 
 std::vector<ObjectID> ActorManager::GetActorHandleIDsFromHandles() {
