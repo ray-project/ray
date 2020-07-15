@@ -114,20 +114,31 @@ upload_wheels() {
 }
 
 test_core() {
-  bazel test --config=ci --build_tests_only -- //:all -rllib/...
+  local args=(
+    "//:*"
+  )
+  case "${OSTYPE}" in
+    msys)
+      args+=(
+        -//:redis_gcs_client_test
+        -//:core_worker_test
+        -//:gcs_pub_sub_test
+        -//:gcs_server_test
+        -//:gcs_server_rpc_test
+        -//:subscription_executor_test
+      )
+      ;;
+  esac
+  bazel test --config=ci --build_tests_only -- "${args[@]}"
 }
 
 test_python() {
   if [ "${OSTYPE}" = msys ]; then
     local args=(python/ray/tests/...)
     args+=(
-      -python/ray/tests:test_actor_advanced
-      -python/ray/tests:test_actor_failures
       -python/ray/tests:test_advanced_2
-      -python/ray/tests:test_advanced_3
-      -python/ray/tests:test_array  # timeout
+      -python/ray/tests:test_advanced_3  # test_invalid_unicode_in_worker_log() fails on Windows
       -python/ray/tests:test_autoscaler_aws
-      -python/ray/tests:test_autoscaler_yaml
       -python/ray/tests:test_component_failures
       -python/ray/tests:test_cython
       -python/ray/tests:test_failure
@@ -137,15 +148,13 @@ test_python() {
       -python/ray/tests:test_metrics
       -python/ray/tests:test_multi_node
       -python/ray/tests:test_multi_node_2
-      -python/ray/tests:test_multiprocessing  # flaky
+      -python/ray/tests:test_multiprocessing  # test_connect_to_ray() fails to connect to raylet
       -python/ray/tests:test_node_manager
       -python/ray/tests:test_object_manager
       -python/ray/tests:test_projects
-      -python/ray/tests:test_queue  # timeout
-      -python/ray/tests:test_ray_init  # flaky
-      -python/ray/tests:test_reconstruction  # UnreconstructableError
-      -python/ray/tests:test_stress
-      -python/ray/tests:test_stress_sharded
+      -python/ray/tests:test_ray_init  # test_redis_port() seems to fail here, but pass in isolation
+      -python/ray/tests:test_stress  # timeout
+      -python/ray/tests:test_stress_sharded  # timeout
       -python/ray/tests:test_webui
     )
     bazel test -k --config=ci --test_timeout=600 --build_tests_only -- "${args[@]}";
