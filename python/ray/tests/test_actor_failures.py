@@ -156,7 +156,7 @@ def test_actor_restart(ray_init_with_task_retry_delay):
 
         def increase(self, exit=False):
             if exit:
-                sys.exit(-1)
+                os._exit(-1)
             self.value += 1
             return self.value
 
