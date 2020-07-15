@@ -137,7 +137,7 @@ class StreamingQueueProducer : public ProducerChannel {
 
  private:
   StreamingStatus CreateQueue();
-  Status PushQueueItem(uint64_t seq_id, uint8_t *data, uint32_t data_size,
+  Status PushQueueItem(uint8_t *data, uint32_t data_size,
                        uint64_t timestamp, uint64_t msg_id_start, uint64_t msg_id_end);
 
  private:

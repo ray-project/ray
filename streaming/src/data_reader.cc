@@ -113,7 +113,6 @@ StreamingStatus DataReader::InitChannelMerger(uint32_t timeout_ms) {
   for (auto &input_queue : unready_queue_ids_) {
     std::shared_ptr<DataBundle> msg = std::make_shared<DataBundle>();
     RETURN_IF_NOT_OK(GetMessageFromChannel(channel_info_map_[input_queue], msg, timeout_ms, timeout_ms))
-    channel_info_map_[msg->from].current_seq_id = msg->seq_id;
     channel_info_map_[msg->from].current_message_id = msg->meta->GetLastMessageId();
     reader_merger_->push(msg);
   }
@@ -285,7 +284,6 @@ StreamingStatus DataReader::GetMergedMessageBundle(std::shared_ptr<DataBundle> &
   }
 
   offset_info.current_message_id = message->meta->GetLastMessageId();
-  offset_info.current_seq_id = message->seq_id;
   last_bundle_ts_ = message->meta->GetMessageBundleTs();
 
   STREAMING_LOG(DEBUG) << "[Reader] [Bundle] message type =>"
@@ -359,7 +357,6 @@ void DataReader::GetOffsetInfo(
   offset_map = &channel_info_map_;
   for (auto &offset_info : channel_info_map_) {
     STREAMING_LOG(INFO) << "[Reader] [GetOffsetInfo], q id " << offset_info.first
-                        << ", seq id => " << offset_info.second.current_seq_id
                         << ", message id => " << offset_info.second.current_message_id;
   }
 }

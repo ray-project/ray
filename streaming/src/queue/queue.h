@@ -138,7 +138,7 @@ class WriterQueue : public Queue {
   /// \param msg_id_start, the message id of the first message in the buffer
   /// \param msg_id_end, the message id of the last message in the buffer
   /// \param raw, whether this buffer is raw data, be True only in test
-  Status Push(uint64_t seq_id, uint8_t *buffer, uint32_t buffer_size, uint64_t timestamp,
+  Status Push(uint8_t *buffer, uint32_t buffer_size, uint64_t timestamp,
               uint64_t msg_id_start, uint64_t msg_id_end, bool raw = false);
 
   /// Callback function, will be called when downstream queue notifies

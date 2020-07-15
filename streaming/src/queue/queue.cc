@@ -109,7 +109,7 @@ size_t Queue::PendingCount() {
   return begin->SeqId() - end->SeqId() + 1;
 }
 
-Status WriterQueue::Push(uint64_t seq_id, uint8_t *buffer, uint32_t buffer_size,
+Status WriterQueue::Push(uint8_t *buffer, uint32_t buffer_size,
                          uint64_t timestamp, uint64_t msg_id_start, uint64_t msg_id_end, bool raw) {
   if (IsPendingFull(buffer_size)) {
     return Status::OutOfMemory("Queue Push OutOfMemory");
@@ -120,7 +120,7 @@ Status WriterQueue::Push(uint64_t seq_id, uint8_t *buffer, uint32_t buffer_size,
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
 
-  QueueItem item(seq_id, buffer, buffer_size, timestamp, msg_id_start, msg_id_end, raw);
+  QueueItem item(seq_id_, buffer, buffer_size, timestamp, msg_id_start, msg_id_end, raw);
   Queue::Push(item);
   STREAMING_LOG(DEBUG) << "WriterQueue::Push seq_id: " << seq_id_;
   seq_id_++;

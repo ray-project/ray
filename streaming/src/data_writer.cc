@@ -203,7 +203,7 @@ void DataWriter::BroadcastBarrier(uint64_t barrier_id, const uint8_t *data,
       .barrier_type = StreamingBarrierType::GlobalBarrier, .barrier_id = barrier_id};
 
   auto barrier_payload =
-      StreamingMessage::MakeBarrierMessage(barrier_header, data, data_size);
+      StreamingMessage::MakeBarrierPayload(barrier_header, data, data_size);
   auto payload_size = kBarrierHeaderSize + data_size;
   for (auto &queue_id : output_queue_ids_) {
     uint64_t barrier_message_id = WriteMessageToBufferRing(

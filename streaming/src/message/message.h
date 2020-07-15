@@ -18,20 +18,14 @@ enum class StreamingMessageType : uint32_t {
 
 enum class StreamingBarrierType : uint32_t {
   GlobalBarrier = 0,
-  PartialBarrier = 1,
   EndOfDataBarrier = 2
 };
 
 struct StreamingBarrierHeader {
   StreamingBarrierType barrier_type;
   uint64_t barrier_id;
-  // It's -1 if it's global barrier;
-  uint64_t partial_barrier_id;
   inline bool IsGlobalBarrier() {
     return StreamingBarrierType::GlobalBarrier == barrier_type;
-  }
-  inline bool IsPartialBarrier() {
-    return StreamingBarrierType::PartialBarrier == barrier_type;
   }
   inline bool IsEndOfDataBarrier() {
     return StreamingBarrierType::EndOfDataBarrier == barrier_type;
@@ -42,22 +36,33 @@ struct StreamingBarrierHeader {
 constexpr uint32_t kMessageHeaderSize =
     sizeof(uint32_t) + sizeof(uint64_t) + sizeof(StreamingMessageType);
 
-// constexpr uint32_t kBarrierHeaderSize = sizeof(StreamingBarrierHeader);
+
 constexpr uint32_t kBarrierHeaderSize =
-    sizeof(StreamingBarrierType) + sizeof(uint64_t) * 2;
+    sizeof(StreamingBarrierType) + sizeof(uint64_t);
 
 /// All messages should be wrapped by this protocol.
 //  DataSize means length of raw data, message id is increasing from [1, +INF].
 //  MessageType will be used for barrier transporting and checkpoint.
 ///      +----------------+
-///      | DataSize=U32   |
+///      | PayloadSize=U32|
 ///      +----------------+
 ///      | MessageId=U64  |
 ///      +----------------+
 ///      | MessageType=U32|
 ///      +----------------+
-///      | Data=var       |
+///      | Payload=var    |
 ///      +----------------+
+/// Payload field contains barrier header and carried buffer if message type is
+/// global/partial barrier.
+///
+/// Barrier's Payload field:
+///      +----------------------------+
+///      | StreamingBarrierType=U32   |
+///      +----------------------------+
+///      | barrier_id=U64             |
+///      +----------------------------+
+///      | carried_buffer=var         |
+///      +----------------------------+
 
 class StreamingMessage {
  private:
@@ -107,18 +112,13 @@ class StreamingMessage {
 
   bool operator==(const StreamingMessage &) const;
 
-  static inline std::shared_ptr<uint8_t> MakeBarrierMessage(
+  static inline std::shared_ptr<uint8_t> MakeBarrierPayload(
       StreamingBarrierHeader &barrier_header, const uint8_t *data, uint32_t data_size) {
     std::shared_ptr<uint8_t> ptr(new uint8_t[data_size + kBarrierHeaderSize],
                                  std::default_delete<uint8_t[]>());
     std::memcpy(ptr.get(), &barrier_header.barrier_type, sizeof(StreamingBarrierType));
     std::memcpy(ptr.get() + sizeof(StreamingBarrierType), &barrier_header.barrier_id,
                 sizeof(uint64_t));
-    if (barrier_header.IsGlobalBarrier()) {
-      barrier_header.partial_barrier_id = -1;
-    }
-    std::memcpy(ptr.get() + sizeof(StreamingBarrierType) + sizeof(uint64_t),
-                &barrier_header.partial_barrier_id, sizeof(uint64_t));
     if (data && data_size > 0) {
       std::memcpy(ptr.get() + kBarrierHeaderSize, data, data_size);
     }
