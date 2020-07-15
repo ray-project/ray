@@ -14,10 +14,10 @@
 
 #pragma once
 
-#include "ray/protobuf/core_worker.grpc.pb.h"
-#include "ray/protobuf/core_worker.pb.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
+#include "src/ray/protobuf/core_worker.grpc.pb.h"
+#include "src/ray/protobuf/core_worker.pb.h"
 
 namespace ray {
 

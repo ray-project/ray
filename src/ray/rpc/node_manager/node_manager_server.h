@@ -14,10 +14,10 @@
 
 #pragma once
 
-#include "ray/protobuf/node_manager.grpc.pb.h"
-#include "ray/protobuf/node_manager.pb.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
+#include "src/ray/protobuf/node_manager.grpc.pb.h"
+#include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
 namespace rpc {

@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/common/task/scheduling_resources.h"
+
 #include <memory>
 
 #include "gtest/gtest.h"
 #include "ray/common/id.h"
-#include "scheduling_resources.h"
 
 namespace ray {
 class SchedulingResourcesTest : public ::testing::Test {

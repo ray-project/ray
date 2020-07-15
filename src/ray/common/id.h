@@ -400,7 +400,7 @@ std::ostream &operator<<(std::ostream &os, const PlacementGroupID &id);
     }                                                                          \
   };
 
-#include "id_def.h"
+#include "ray/common/id_def.h"
 
 #undef DEFINE_UNIQUE_ID
 
@@ -510,7 +510,7 @@ DEFINE_UNIQUE_ID(ActorID);
 DEFINE_UNIQUE_ID(TaskID);
 DEFINE_UNIQUE_ID(ObjectID);
 DEFINE_UNIQUE_ID(PlacementGroupID);
-#include "id_def.h"
+#include "ray/common/id_def.h"
 
 #undef DEFINE_UNIQUE_ID
 }  // namespace std

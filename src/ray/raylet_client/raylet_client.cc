@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "raylet_client.h"
+#include "ray/raylet_client/raylet_client.h"
 
 #include "ray/common/client_connection.h"
 #include "ray/common/common_protocol.h"

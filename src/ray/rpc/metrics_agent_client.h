@@ -19,10 +19,10 @@
 #include <thread>
 
 #include "ray/common/status.h"
-#include "ray/protobuf/reporter.grpc.pb.h"
-#include "ray/protobuf/reporter.pb.h"
 #include "ray/rpc/grpc_client.h"
 #include "ray/util/logging.h"
+#include "src/ray/protobuf/reporter.grpc.pb.h"
+#include "src/ray/protobuf/reporter.pb.h"
 
 namespace ray {
 namespace rpc {

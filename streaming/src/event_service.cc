@@ -1,7 +1,7 @@
+#include "event_service.h"
+
 #include <chrono>
 #include <unordered_set>
-
-#include "event_service.h"
 
 namespace ray {
 namespace streaming {

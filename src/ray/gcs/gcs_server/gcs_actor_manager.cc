@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "gcs_actor_manager.h"
-
-#include <ray/common/ray_config.h>
+#include "ray/gcs/gcs_server/gcs_actor_manager.h"
 
 #include <utility>
+
+#include "ray/common/ray_config.h"
 
 namespace ray {
 namespace gcs {

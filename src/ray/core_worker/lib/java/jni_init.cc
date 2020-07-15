@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/lib/java/jni_utils.h"
+#include "jni_utils.h"
 
 jclass java_boolean_class;
 jmethodID java_boolean_init;

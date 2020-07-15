@@ -17,8 +17,8 @@
 #include "absl/types/optional.h"
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
-#include "ray/protobuf/gcs.pb.h"
 #include "ray/util/logging.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 

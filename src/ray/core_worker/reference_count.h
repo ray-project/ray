@@ -21,10 +21,10 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
-#include "ray/protobuf/common.pb.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/util/logging.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 

@@ -17,7 +17,7 @@
 #include <string>
 
 #include "ray/common/grpc_util.h"
-#include "ray/protobuf/common.pb.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 /// See `common.proto` for definition of `FunctionDescriptor` oneof type.

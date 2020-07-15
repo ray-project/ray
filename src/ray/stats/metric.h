@@ -20,7 +20,6 @@
 #include "opencensus/stats/stats.h"
 #include "opencensus/stats/stats_exporter.h"
 #include "opencensus/tags/tag_key.h"
-
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -28,7 +27,7 @@ namespace ray {
 namespace stats {
 
 /// Include tag_defs.h to define tag items
-#include "tag_defs.h"
+#include "ray/stats/tag_defs.h"
 
 class StatsConfig final {
  public:
