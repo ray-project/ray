@@ -47,4 +47,6 @@ popd
 pushd $ROOT_DIR
 echo "Testing maven install."
 mvn -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN clean install -DskipTests
+# Ensure mvn test works
+mvn test -pl test -Dtest="io.ray.test.HelloWorldTest"
 popd
