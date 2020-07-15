@@ -20,7 +20,7 @@ function usage()
 RUN_TYPE=diff
 
 # Parse options
-while [[ $# > 0 ]]; do
+while [ $# -gt 0 ]; do
   key="$1"
   case $key in
     -h|--help)
