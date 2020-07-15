@@ -144,9 +144,12 @@ class CheckpointManager:
             # next on_checkpoint() call since it isn't in self._membership.
             self._delete(worst, remove_dir=False)
         else:
-            self.newest_persistent_checkpoint = Checkpoint(
-                Checkpoint.PERSISTENT, None)
-            self._update_newest_persistent_checkpoint()
+            if old_checkpoint in self._membership:
+                self.newest_persistent_checkpoint = old_checkpoint
+            else:
+                self.newest_persistent_checkpoint = Checkpoint(
+                    Checkpoint.PERSISTENT, None)
+                self._update_newest_persistent_checkpoint()
 
     def best_checkpoints(self):
         """Returns best PERSISTENT checkpoints, sorted by score."""
