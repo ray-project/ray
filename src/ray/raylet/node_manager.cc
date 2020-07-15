@@ -2001,8 +2001,8 @@ void NodeManager::HandleReleaseUnusedWorkers(
   // TODO(ffbin): At present, we have not cleaned up the lease worker requests that are
   // still waiting to be scheduled, which will be implemented in the next pr.
   std::unordered_set<WorkerID> in_use_worker_ids;
-  for (int index = 0; index < request.worker_id_list_size(); ++index) {
-    auto worker_id = WorkerID::FromBinary(request.worker_id_list(index));
+  for (int index = 0; index < request.worker_ids_in_use_size(); ++index) {
+    auto worker_id = WorkerID::FromBinary(request.worker_ids_in_use(index));
     in_use_worker_ids.emplace(worker_id);
   }
 
