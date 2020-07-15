@@ -146,7 +146,7 @@ int ConnectOrListenIpcSock(const std::string& pathname, bool shall_listen) {
   } else {
 #ifdef _WIN32
     RAY_LOG(ERROR) << "UNIX domain sockets not supported on Windows: " << pathname;
-    return 01;
+    return -1;
 #else
     addrlen = sizeof(socket_address.un);
     socket_address.un.sun_family = AF_UNIX;
