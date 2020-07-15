@@ -30,12 +30,15 @@ jobs:
             python-version: 3.6
           - name: ubuntu-jenkins-tune
             os: ubuntu-latest
+            python-version: 3.6
             jenkins-test: RUN_TUNE_TESTS
           - name: ubuntu-jenkins-doc
             os: ubuntu-latest
+            python-version: 3.6
             jenkins-test: RUN_DOC_TESTS
           - name: ubuntu-jenkins-sgd
             os: ubuntu-latest
+            python-version: 3.6
             jenkins-test: RUN_SGD_TESTS
     env:
       BAZEL_CONFIG: ${{ matrix.config }}
@@ -48,9 +51,9 @@ jobs:
       shell: bash -e -o pipefail -l {0}
       run: |
         # Note: only configure settings here that are required _before_ the repository is cloned (such as Git settings).
-        if [ ! -f ~/.profile ] && [ ! -f ~/.bash_profile ]; then  # missing on some machines, but needed for ~/.bashrc
-          echo 'if [ -n "${BASH_VERSION}" ] && [ -f ~/.bashrc ]; then . ~/.bashrc; fi' >> ~/.profile
-        fi
+        # Different machines behave very differently with Bash initialization -- make them more uniform
+        rm -f -- ~/.bash_profile ~/.profile ~/.bashrc
+        printf '\n%s\n' 'if [ -n "${BASH_VERSION}" ] && [ -f ~/.bashrc ]; then . ~/.bashrc; fi' >> ~/.profile
         git config --global core.symlinks true && git config --global core.autocrlf false
         if command -v dpkg > /dev/null; then sudo dpkg-reconfigure debconf -f noninteractive -p high; fi
     - name: Checkout repository
@@ -60,11 +63,36 @@ jobs:
         fetch-depth: 0
     - name: Configure AWS Credentials
       continue-on-error: true
+      if: github.repository == 'ray-project/ray' && github.event_name != 'pull_request'
       uses: aws-actions/configure-aws-credentials@v1
       with:
         aws-access-key-id: ${{ secrets.GHA_AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.GHA_AWS_SECRET_ACCESS_KEY }}
         aws-region: us-west-2
+    - name: Prepare caching
+      id: info
+      shell: bash
+      run: |
+        case "${OSTYPE}" in
+          linux*) pip_cache=~/.cache/pip;;
+          darwin*) pip_cache=~/Library/Caches/pip;;
+          msys) pip_cache="${LOCALAPPDATA}\pip\Cache";;
+        esac
+        cat <<-EOF
+        ::set-output name=git_tree_hash::$(git cat-file -p HEAD | sed -n "s/^tree //p")
+        ::set-output name=pip_cache::${pip_cache}
+        EOF
+    - name: Cache (pip)
+      uses: actions/cache@v1.1.2
+      continue-on-error: true
+      if: steps.info.outputs.pip_cache
+      with:
+        path: ${{ steps.info.outputs.pip_cache }}
+        key: |
+          pip-${{ runner.os }}-${{ steps.info.outputs.git_tree_hash }}
+        restore-keys: |
+          pip-${{ runner.os }}-
+          pip-
     - name: Run Jenkins tests
       shell: bash -e -o pipefail -l {0}
       if: matrix.jenkins-test != ''

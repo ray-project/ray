@@ -14,20 +14,49 @@
 
 #include "client_connection.h"
 
-#include <stdio.h>
-
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/generic/stream_protocol.hpp>
 #include <boost/asio/placeholders.hpp>
 #include <boost/asio/read.hpp>
 #include <boost/asio/write.hpp>
 #include <boost/bind.hpp>
+#include <chrono>
 #include <sstream>
+#include <thread>
 
 #include "ray/common/ray_config.h"
 #include "ray/util/util.h"
 
 namespace ray {
+
+Status ConnectSocketRetry(local_stream_socket &socket, const std::string &endpoint,
+                          int num_retries, int64_t timeout_in_ms) {
+  RAY_CHECK(num_retries != 0);
+  // Pick the default values if the user did not specify.
+  if (num_retries < 0) {
+    num_retries = RayConfig::instance().raylet_client_num_connect_attempts();
+  }
+  if (timeout_in_ms < 0) {
+    timeout_in_ms = RayConfig::instance().raylet_client_connect_timeout_milliseconds();
+  }
+  boost::system::error_code ec;
+  for (int num_attempts = 0; num_attempts < num_retries; ++num_attempts) {
+    // The latest boost::asio always returns void for connect(). Do not
+    // treat its return value as error code anymore.
+    socket.connect(ParseUrlEndpoint(endpoint), ec);
+    if (!ec) {
+      break;
+    }
+    if (num_attempts > 0) {
+      RAY_LOG(ERROR) << "Retrying to connect to socket for endpoint " << endpoint
+                     << " (num_attempts = " << num_attempts
+                     << ", num_retries = " << num_retries << ")";
+    }
+    // Sleep for timeout milliseconds.
+    std::this_thread::sleep_for(std::chrono::milliseconds(timeout_in_ms));
+  }
+  return boost_to_ray_status(ec);
+}
 
 std::shared_ptr<ServerConnection> ServerConnection::Create(local_stream_socket &&socket) {
   std::shared_ptr<ServerConnection> self(new ServerConnection(std::move(socket)));
