@@ -343,8 +343,8 @@ class RayServeWorker:
         self.batch_queue.set_config(self.config.max_batch_size or 1,
                                     self.config.batch_wait_timeout)
 
-    async def handle_request(self, request: Query):
-        assert not isinstance(request, list)
+    async def handle_request(self, request: bytes):
+        request = Query.ray_deserialize(request)
         logger.debug("Worker {} got request {}".format(self.name, request))
         request.async_future = asyncio.get_event_loop().create_future()
         self.batch_queue.put(request)

@@ -96,13 +96,6 @@ def init(name=None,
     except ValueError:
         pass
 
-    # Register serialization context once
-    ray.register_custom_serializer(Query, Query.ray_serialize,
-                                   Query.ray_deserialize)
-    ray.register_custom_serializer(RequestMetadata,
-                                   RequestMetadata.ray_serialize,
-                                   RequestMetadata.ray_deserialize)
-
     # TODO(edoakes): for now, always start the HTTP proxy on the node that
     # serve.init() was run on. We should consider making this configurable
     # in the future.

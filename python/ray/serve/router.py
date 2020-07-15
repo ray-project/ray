@@ -316,13 +316,14 @@ class Router:
         start = time.time()
         worker = self.replicas[backend_replica_tag]
         try:
+            object_ref = worker.handle_request.remote(req.ray_serialize())
             if req.is_shadow_query:
                 # No need to actually get the result, but we do need to wait
                 # until the call completes to mark the worker idle.
-                asyncio.wait([worker.handle_request.remote(req)])
+                await asyncio.wait([object_ref])
                 result = ""
             else:
-                result = await worker.handle_request.remote(req)
+                result = await object_ref
         except RayTaskError as error:
             self.num_error_backend_request.labels(backend=backend).add()
             result = error
