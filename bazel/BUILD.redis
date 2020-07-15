@@ -55,7 +55,10 @@ cc_library(
 
 cc_library(
     name = "linenoise",
-    srcs = ["deps/linenoise/linenoise.c"],
+    srcs = [
+        "deps/linenoise/linenoise.c",
+        "deps/linenoise/linenoise.h",
+    ],
     hdrs = ["deps/linenoise/linenoise.h"],
     strip_include_prefix = "deps/linenoise",
     visibility = ["//visibility:public"],
