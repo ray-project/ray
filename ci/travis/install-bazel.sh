@@ -98,6 +98,7 @@ if [ "${CI-}" = true ]; then
             -in "${ROOT_DIR}/bazel_cache_credential.json.enc" \
             -out "${HOME}/bazel_cache_credential.json" -d
       } 2>&-  # avoid printing secrets
+      # shellcheck disable=SC2181
       if [ 0 -eq $? ]; then
         upload=1
       fi
