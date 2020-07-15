@@ -1,6 +1,6 @@
 # This file exists for Jenkins compatiblity
 
-ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")" && pwd)"
 
 export RUN_TUNE_TESTS=1
 export RUN_DOC_TESTS=1

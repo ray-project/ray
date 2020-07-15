@@ -1,3 +1,5 @@
+set -euo pipefail
+
 cd ~/efs/lm
 
 # download the dataset
