@@ -92,6 +92,7 @@ class RedisGcsTableStorageTest : public gcs::GcsTableStorageTestBase {
       // Delete.
       DeleteForMultiThread(table, actor_id);
       ASSERT_EQ(GetForMultiThread(table, actor_id, values), 0);
+      ASSERT_EQ(GetByJobIdForMultiThread(table, job_id, actor_id, values), 0);
     };
 
     for (int i = 0; i < thread_num_; ++i) {
@@ -105,7 +106,7 @@ class RedisGcsTableStorageTest : public gcs::GcsTableStorageTestBase {
 
  protected:
   std::shared_ptr<gcs::RedisClient> redis_client_;
-  std::int64_t thread_num_;
+  uint16_t thread_num_;
 };
 
 TEST_F(RedisGcsTableStorageTest, TestGcsTableApi) { TestGcsTableApi(); }

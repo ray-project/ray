@@ -55,7 +55,7 @@ class GcsTableStorageTestBase : public ::testing::Test {
     ASSERT_EQ(Get(table, job1_id, values), 0);
     ASSERT_EQ(Get(table, job2_id, values), 1);
 
-    // You must delete it, if not, the multi threads test will always fail.
+    // Delete.
     Delete(table, job2_id);
   }
 
