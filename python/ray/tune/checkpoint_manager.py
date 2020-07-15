@@ -89,6 +89,8 @@ class CheckpointManager:
     @property
     def newest_checkpoint(self):
         """Returns the newest checkpoint (based on training iteration)."""
+        self._update_newest_persistent_checkpoint()
+
         newest_checkpoint = max(
             [self.newest_persistent_checkpoint, self.newest_memory_checkpoint],
             key=lambda c: c.result.get(TRAINING_ITERATION, -1))
@@ -141,17 +143,38 @@ class CheckpointManager:
             # Don't delete the newest checkpoint dir. It will be deleted on the
             # next on_checkpoint() call since it isn't in self._membership.
             self._delete(worst, remove_dir=False)
+        else:
+            self.newest_persistent_checkpoint = Checkpoint(
+                Checkpoint.PERSISTENT, None)
+            self._update_newest_persistent_checkpoint()
 
     def best_checkpoints(self):
         """Returns best PERSISTENT checkpoints, sorted by score."""
         checkpoints = sorted(self._best_checkpoints, key=lambda c: c.priority)
         return [queue_item.value for queue_item in checkpoints]
 
+    def _update_newest_persistent_checkpoint(self):
+        """
+        The newest persistent checkpoint sometimes gets deleted or not stored
+        at all. In this case, we will look through the best checkpoints to
+        find the latest one.
+        """
+        if not self.newest_persistent_checkpoint.value and \
+           self._best_checkpoints:
+            self.newest_persistent_checkpoint = max(
+                self._best_checkpoints,
+                key=lambda q: q.value.result.get(TRAINING_ITERATION, -1)).value
+
     def _delete(self, checkpoint, remove_dir=True):
+        """
+        Delete checkpoint helper. Does not update `self._membership` or
+        `self._best_checkpoints`!
+        """
         if self.newest_persistent_checkpoint == checkpoint or \
            self.newest_persistent_checkpoint.value == checkpoint.value:
             self.newest_persistent_checkpoint = Checkpoint(
                 Checkpoint.PERSISTENT, None)
+            self._update_newest_persistent_checkpoint()
         if remove_dir:
             self.delete_fn(checkpoint)
 

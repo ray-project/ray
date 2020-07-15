@@ -18,15 +18,43 @@ class CheckpointManagerTest(unittest.TestCase):
             keep_checkpoints_num, "i", delete_fn=lambda c: None)
 
     def testNewestCheckpoint(self):
-        checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num=1)
-        memory_checkpoint = Checkpoint(Checkpoint.MEMORY, {0},
-                                       self.mock_result(0))
-        checkpoint_manager.on_checkpoint(memory_checkpoint)
-        persistent_checkpoint = Checkpoint(Checkpoint.PERSISTENT, {1},
-                                           self.mock_result(1))
-        checkpoint_manager.on_checkpoint(persistent_checkpoint)
-        self.assertEqual(checkpoint_manager.newest_persistent_checkpoint,
-                         persistent_checkpoint)
+        checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num=2)
+
+        # Add persistent checkpoint A, should be newest
+        persistent_checkpoint_a = Checkpoint(Checkpoint.PERSISTENT, {1},
+                                             self.mock_result(1))
+        checkpoint_manager.on_checkpoint(persistent_checkpoint_a)
+        self.assertEqual(checkpoint_manager.newest_checkpoint,
+                         persistent_checkpoint_a)
+
+        # Add memory checkpoint X, should be newest
+        memory_checkpoint_x = Checkpoint(Checkpoint.MEMORY, {2},
+                                         self.mock_result(2))
+        checkpoint_manager.on_checkpoint(memory_checkpoint_x)
+        self.assertEqual(checkpoint_manager.newest_checkpoint,
+                         memory_checkpoint_x)
+
+        # Add persistent checkpoint B, should be newest
+        persistent_checkpoint_b = Checkpoint(Checkpoint.PERSISTENT, {3},
+                                             self.mock_result(3))
+        checkpoint_manager.on_checkpoint(persistent_checkpoint_b)
+        self.assertEqual(checkpoint_manager.newest_checkpoint,
+                         persistent_checkpoint_b)
+
+        # Add bad performing (or older) persistent checkpoint C
+        # B should remain newest
+        persistent_checkpoint_c = Checkpoint(Checkpoint.PERSISTENT, {0},
+                                             self.mock_result(0))
+        checkpoint_manager.on_checkpoint(persistent_checkpoint_c)
+        self.assertEqual(checkpoint_manager.newest_checkpoint,
+                         persistent_checkpoint_b)
+
+        # Delete checkpoint B, so X should be newest
+        checkpoint_manager._membership.remove(persistent_checkpoint_b)
+        checkpoint_manager._best_checkpoints.pop(1)
+        checkpoint_manager._delete(persistent_checkpoint_b, remove_dir=False)
+        self.assertEqual(checkpoint_manager.newest_checkpoint,
+                         memory_checkpoint_x)
 
     def testOnCheckpointOrdered(self):
         """
