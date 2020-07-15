@@ -1,4 +1,5 @@
 #include "cluster_task_manager.h"
+
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -12,8 +13,7 @@ ClusterTaskManager::ClusterTaskManager(
     : self_node_id_(self_node_id),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       fulfills_dependencies_func_(fulfills_dependencies_func),
-      gcs_client_(gcs_client) {
-}
+      gcs_client_(gcs_client) {}
 
 bool ClusterTaskManager::SchedulePendingTasks() {
   size_t queue_size = tasks_to_schedule_.size();
