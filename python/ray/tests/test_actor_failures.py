@@ -208,6 +208,7 @@ def test_actor_restart(ray_init_with_task_retry_delay):
     results = [actor.increase.remote() for _ in range(100)]
     pid = ray.get(actor.get_pid.remote())
     os.kill(pid, SIGKILL)
+    wait_for_pid_to_exit(pid)
     # The actor has exceeded max restarts, and this task should fail.
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(actor.increase.remote())
