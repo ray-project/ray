@@ -35,7 +35,6 @@ DEFINE_int32(min_worker_port, 0,
              "The lowest port that workers' gRPC servers will bind on.");
 DEFINE_int32(max_worker_port, 0,
              "The highest port that workers' gRPC servers will bind on.");
-DEFINE_int32(num_initial_workers, 0, "Number of initial workers.");
 DEFINE_int32(maximum_startup_concurrency, 1, "Maximum startup concurrency");
 DEFINE_string(static_resource_list, "", "The static resource list of this node.");
 DEFINE_string(config_list, "", "The raylet config list of this node.");
@@ -70,7 +69,6 @@ int main(int argc, char *argv[]) {
   const int redis_port = static_cast<int>(FLAGS_redis_port);
   const int min_worker_port = static_cast<int>(FLAGS_min_worker_port);
   const int max_worker_port = static_cast<int>(FLAGS_max_worker_port);
-  const int num_initial_workers = static_cast<int>(FLAGS_num_initial_workers);
   const int maximum_startup_concurrency =
       static_cast<int>(FLAGS_maximum_startup_concurrency);
   const std::string static_resource_list = FLAGS_static_resource_list;
@@ -159,7 +157,6 @@ int main(int argc, char *argv[]) {
                        << node_manager_config.resource_config.ToString();
         node_manager_config.node_manager_address = node_ip_address;
         node_manager_config.node_manager_port = node_manager_port;
-        node_manager_config.num_initial_workers = num_initial_workers;
         node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;
         node_manager_config.min_worker_port = min_worker_port;
         node_manager_config.max_worker_port = max_worker_port;
@@ -216,6 +213,8 @@ int main(int argc, char *argv[]) {
                        << ", object_chunk_size = "
                        << object_manager_config.object_chunk_size;
 
+        node_manager_config.adaptive_num_initial_workers =
+            static_cast<uint32_t>(num_cpus);
         // Initialize the node manager.
         server.reset(new ray::raylet::Raylet(
             main_service, raylet_socket_name, node_ip_address, redis_address, redis_port,

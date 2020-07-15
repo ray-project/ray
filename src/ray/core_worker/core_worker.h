@@ -118,6 +118,8 @@ struct CoreWorkerOptions {
   int num_workers;
   /// The function to destroy asyncio event and loops.
   std::function<void()> terminate_asyncio_thread;
+  /// Serialized representation of JobConfigs.
+  std::string serialized_job_configs;
 };
 
 /// Lifecycle management of one or more `CoreWorker` instances in a process.

@@ -29,7 +29,7 @@ extern "C" {
  */
 JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
     JNIEnv *, jclass, jint, jstring, jint, jstring, jstring, jstring, jbyteArray, jobject,
-    jint, jstring, jobject);
+    jint, jstring, jobject, jbyteArray);
 
 /*
  * Class:     io_ray_runtime_RayNativeRuntime

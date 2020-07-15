@@ -141,7 +141,7 @@ public class GcsClient {
     } catch (InvalidProtocolBufferException e) {
       throw new RuntimeException("Received invalid protobuf data from GCS.");
     }
-    return actorTableData.getNumRestarts() != 0;
+    return actorTableData.getState() != Gcs.ActorTableData.ActorState.PENDING;
   }
 
   /**

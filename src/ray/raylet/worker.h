@@ -64,6 +64,8 @@ class Worker {
   bool AddBlockedTaskId(const TaskID &task_id);
   bool RemoveBlockedTaskId(const TaskID &task_id);
   const std::unordered_set<TaskID> &GetBlockedTaskIds() const;
+  /// Assign the worker to a job.
+  /// NOTE: Don't use it outside of `WorkerPool`.
   void AssignJobId(const JobID &job_id);
   const JobID &GetAssignedJobId() const;
   void AssignActorId(const ActorID &actor_id);

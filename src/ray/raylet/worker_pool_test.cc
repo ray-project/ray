@@ -40,11 +40,13 @@ class WorkerPoolMock : public WorkerPool {
 
   explicit WorkerPoolMock(boost::asio::io_service &io_service,
                           const WorkerCommandMap &worker_commands)
-      : WorkerPool(io_service, 0, MAXIMUM_STARTUP_CONCURRENCY, 0, 0, nullptr,
-                   worker_commands, {}, []() {}),
+      : WorkerPool(
+            io_service, 0, MAXIMUM_STARTUP_CONCURRENCY, 0, 0, nullptr, worker_commands,
+            {}, []() {}, [this](const JobID &job_id) { return &mock_job_configs; }),
         last_worker_process_() {
     states_by_lang_[ray::Language::JAVA].num_workers_per_process =
         NUM_WORKERS_PER_PROCESS_JAVA;
+    mock_job_configs.set_num_java_workers_per_process(NUM_WORKERS_PER_PROCESS_JAVA);
   }
 
   ~WorkerPoolMock() {
@@ -53,6 +55,19 @@ class WorkerPoolMock : public WorkerPool {
   }
 
   using WorkerPool::StartWorkerProcess;  // we need this to be public for testing
+
+  void SetNumInitialWorkers(Language language, int num_initial_workers) {
+    switch (language) {
+    case Language::PYTHON:
+      mock_job_configs.set_num_initial_python_workers(num_initial_workers);
+      break;
+    case Language::JAVA:
+      mock_job_configs.set_num_initial_java_workers(num_initial_workers);
+      break;
+    default:
+      RAY_LOG(FATAL) << "Unknown language: " << language;
+    }
+  }
 
   Process StartProcess(const std::vector<std::string> &worker_command_args) override {
     // Use a bogus process ID that won't conflict with those in the system
@@ -92,6 +107,7 @@ class WorkerPoolMock : public WorkerPool {
   Process last_worker_process_;
   // The worker commands by process.
   std::unordered_map<Process, std::vector<std::string>> worker_commands_by_proc_;
+  rpc::JobConfigs mock_job_configs;
 };
 
 class WorkerPoolTest : public ::testing::Test {
@@ -123,6 +139,15 @@ class WorkerPoolTest : public ::testing::Test {
     return worker;
   }
 
+  std::shared_ptr<Worker> CreateDriver(JobID job_id,
+                                       const Language &language = Language::PYTHON) {
+    auto driver = CreateWorker(Process::CreateNewDummy(), language);
+    driver->AssignTaskId(TaskID::ForDriverTask(job_id));
+    int assigned_port;
+    RAY_CHECK_OK(worker_pool_->RegisterDriver(driver, job_id, &assigned_port));
+    return driver;
+  }
+
   void SetWorkerCommands(const WorkerCommandMap &worker_commands) {
     worker_pool_ =
         std::unique_ptr<WorkerPoolMock>(new WorkerPoolMock(io_service_, worker_commands));
@@ -130,6 +155,7 @@ class WorkerPoolTest : public ::testing::Test {
 
   void TestStartupWorkerProcessCount(Language language, int num_workers_per_process,
                                      std::vector<std::string> expected_worker_command) {
+    const auto job_id = JobID::FromInt(1);
     int desired_initial_worker_process_count = 100;
     int expected_worker_process_count = static_cast<int>(std::ceil(
         static_cast<double>(MAXIMUM_STARTUP_CONCURRENCY) / num_workers_per_process));
@@ -137,7 +163,7 @@ class WorkerPoolTest : public ::testing::Test {
                 static_cast<int>(desired_initial_worker_process_count));
     Process last_started_worker_process;
     for (int i = 0; i < desired_initial_worker_process_count; i++) {
-      worker_pool_->StartWorkerProcess(language);
+      worker_pool_->StartWorkerProcess(language, job_id);
       ASSERT_TRUE(worker_pool_->NumWorkerProcessesStarting() <=
                   expected_worker_process_count);
       Process prev = worker_pool_->LastStartedWorkerProcess();
@@ -204,7 +230,8 @@ TEST_F(WorkerPoolTest, CompareWorkerProcessObjects) {
 }
 
 TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
-  Process proc = worker_pool_->StartWorkerProcess(Language::JAVA);
+  const auto job_id = JobID::FromInt(1);
+  Process proc = worker_pool_->StartWorkerProcess(Language::JAVA, job_id);
   std::vector<std::shared_ptr<Worker>> workers;
   for (int i = 0; i < NUM_WORKERS_PER_PROCESS_JAVA; i++) {
     workers.push_back(CreateWorker(Process(), Language::JAVA));
@@ -238,11 +265,17 @@ TEST_F(WorkerPoolTest, StartupJavaWorkerProcessCount) {
       Language::JAVA, NUM_WORKERS_PER_PROCESS_JAVA,
       {"dummy_java_worker_command",
        std::string("-Dray.raylet.config.num_workers_per_process_java=") +
+           std::to_string(NUM_WORKERS_PER_PROCESS_JAVA),
+       std::string("-Dray.job.num-java-workers-per-process=") +
            std::to_string(NUM_WORKERS_PER_PROCESS_JAVA)});
 }
 
 TEST_F(WorkerPoolTest, InitialWorkerProcessCount) {
-  worker_pool_->Start(1);
+  auto job_id = JobID::FromInt(1);
+  worker_pool_->SetNumInitialWorkers(ray::Language::JAVA, 1);
+  worker_pool_->SetNumInitialWorkers(ray::Language::PYTHON, 1);
+  RAY_UNUSED(CreateDriver(job_id));
+  worker_pool_->StartInitialWorkersForJob(job_id);
   // Here we try to start only 1 worker for each worker language. But since each Java
   // worker process contains exactly NUM_WORKERS_PER_PROCESS_JAVA (3) workers here,
   // it's expected to see 3 workers for Java and 1 worker for Python, instead of 1 for
@@ -331,13 +364,14 @@ TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
   TaskSpecification task_spec = ExampleTaskSpec(
       ActorID::Nil(), Language::JAVA,
       ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1), {"test_op_0", "test_op_1"});
-  worker_pool_->StartWorkerProcess(Language::JAVA, task_spec.DynamicWorkerOptions());
+  worker_pool_->StartWorkerProcess(Language::JAVA, job_id,
+                                   task_spec.DynamicWorkerOptions());
   const auto real_command =
       worker_pool_->GetWorkerCommand(worker_pool_->LastStartedWorkerProcess());
-  ASSERT_EQ(real_command,
-            std::vector<std::string>(
-                {"test_op_0", "dummy_java_worker_command",
-                 "-Dray.raylet.config.num_workers_per_process_java=1", "test_op_1"}));
+  ASSERT_EQ(real_command, std::vector<std::string>(
+                              {"test_op_0", "dummy_java_worker_command",
+                               "-Dray.raylet.config.num_workers_per_process_java=1",
+                               "-Dray.job.num-java-workers-per-process=1", "test_op_1"}));
 }
 
 }  // namespace raylet

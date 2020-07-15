@@ -170,7 +170,8 @@ class RayletClient : public PinObjectsInterface,
                const std::string &raylet_socket, const WorkerID &worker_id,
                bool is_worker, const JobID &job_id, const Language &language,
                const std::string &ip_address, ClientID *raylet_id, int *port,
-               std::unordered_map<std::string, std::string> *internal_config);
+               std::unordered_map<std::string, std::string> *internal_config,
+               const std::string &job_configs);
 
   /// Connect to the raylet via grpc only.
   ///
@@ -357,6 +358,8 @@ class RayletClient : public PinObjectsInterface,
   std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client_;
   const WorkerID worker_id_;
   const JobID job_id_;
+  const std::string job_configs_;
+
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
   /// of that resource allocated for this worker.

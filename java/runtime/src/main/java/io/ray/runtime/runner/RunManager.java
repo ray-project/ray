@@ -219,6 +219,9 @@ public class RunManager {
       // Register the number of Redis shards in the primary shard, so that clients
       // know how many redis shards to expect under RedisShards.
       client.set("NumRedisShards", Integer.toString(rayConfig.numberRedisShards));
+      // Set session dir for this cluster, so that the drivers which connected to this
+      // cluster will fetch this session dir as its self's session dir.
+      client.set("session_dir", rayConfig.getSessionDir());
 
       // start redis shards
       for (int i = 0; i < rayConfig.numberRedisShards; i++) {
@@ -316,7 +319,6 @@ public class RunManager {
         String.format("--node_ip_address=%s", rayConfig.nodeIp),
         String.format("--redis_address=%s", rayConfig.getRedisIp()),
         String.format("--redis_port=%d", rayConfig.getRedisPort()),
-        String.format("--num_initial_workers=%d", 0),  // number of initial workers
         String.format("--maximum_startup_concurrency=%d", maximumStartupConcurrency),
         String.format("--static_resource_list=%s",
             ResourceUtil.getResourcesStringFromMap(rayConfig.resources)),

@@ -20,6 +20,7 @@ import ray.cloudpickle as pickle
 import ray.gcs_utils
 import ray.memory_monitor as memory_monitor
 import ray.node
+import ray.job_configs
 import ray.parameter
 import ray.ray_constants as ray_constants
 import ray.remote_function
@@ -486,6 +487,7 @@ def init(address=None,
          dashboard_host="localhost",
          dashboard_port=ray_constants.DEFAULT_DASHBOARD_PORT,
          job_id=None,
+         job_configs=None,
          configure_logging=True,
          logging_level=logging.INFO,
          logging_format=ray_constants.LOGGER_FORMAT,
@@ -587,6 +589,7 @@ def init(address=None,
         dashboard_port: The port to bind the dashboard server to. Defaults to
             8265.
         job_id: The ID of this job.
+        job_configs (ray.job_configs.JobConfigs): The job configurations.
         configure_logging: True (default) if configuration of logging is
             allowed here. Otherwise, the user may want to configure it
             separately.
@@ -790,7 +793,8 @@ def init(address=None,
         log_to_driver=log_to_driver,
         worker=global_worker,
         driver_object_store_memory=driver_object_store_memory,
-        job_id=job_id)
+        job_id=job_id,
+        job_configs=job_configs)
 
     for hook in _post_init_hooks:
         hook()
@@ -1134,7 +1138,8 @@ def connect(node,
             log_to_driver=False,
             worker=global_worker,
             driver_object_store_memory=None,
-            job_id=None):
+            job_id=None,
+            job_configs=None):
     """Connect this worker to the raylet, to Plasma, and to Redis.
 
     Args:
@@ -1147,6 +1152,7 @@ def connect(node,
         driver_object_store_memory: Limit the amount of memory the driver can
             use in the object store when creating objects.
         job_id: The ID of job. If it's None, then we will generate one.
+        job_configs (ray.job_configs.JobConfigs): The job configurations.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -1252,7 +1258,9 @@ def connect(node,
         int(redis_port),
         node.redis_password,
     )
-
+    if job_configs is None:
+        job_configs = ray.job_configs.JobConfigs()
+    serialized_job_configs = job_configs.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
         (mode == SCRIPT_MODE or mode == LOCAL_MODE),
         node.plasma_store_socket_name,
@@ -1267,6 +1275,7 @@ def connect(node,
         driver_name,
         log_stdout_file_path,
         log_stderr_file_path,
+        serialized_job_configs,
     )
 
     # Create an object for interfacing with the global state.

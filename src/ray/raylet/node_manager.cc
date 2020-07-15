@@ -160,11 +160,19 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       initial_config_(config),
       local_available_resources_(config.resource_config),
       worker_pool_(
-          io_service, config.num_initial_workers, config.maximum_startup_concurrency,
-          config.min_worker_port, config.max_worker_port, gcs_client_,
-          config.worker_commands, config.raylet_config,
+          io_service, config.adaptive_num_initial_workers,
+          config.maximum_startup_concurrency, config.min_worker_port,
+          config.max_worker_port, gcs_client_, config.worker_commands,
+          config.raylet_config,
           /*starting_worker_timeout_callback=*/
-          [this]() { this->DispatchTasks(this->local_queues_.GetReadyTasksByClass()); }),
+          [this]() { this->DispatchTasks(this->local_queues_.GetReadyTasksByClass()); },
+          [this](const JobID &job_id) -> const rpc::JobConfigs * {
+            auto it = job_info_cache_.find(job_id);
+            if (it == job_info_cache_.end()) {
+              return nullptr;
+            }
+            return &it->second.configs();
+          }),
       scheduling_policy_(local_queues_),
       reconstruction_policy_(
           io_service_,
@@ -282,6 +290,7 @@ ray::Status NodeManager::RegisterGcs() {
   // Subscribe to job updates.
   const auto job_subscribe_handler = [this](const JobID &job_id,
                                             const JobTableData &job_data) {
+    job_info_cache_[job_id] = job_data;
     if (!job_data.is_dead()) {
       HandleJobStarted(job_id, job_data);
     } else {
@@ -328,7 +337,9 @@ void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_
   RAY_LOG(DEBUG) << "HandleJobStarted " << job_id;
   RAY_CHECK(!job_data.is_dead());
 
-  // TODO(kfstorm): Spawn job initial workers in a later PR.
+  worker_pool_.StartInitialWorkersForJob(job_id);
+  // Trigger dispatching in case this job has no initial workers.
+  DispatchTasks(local_queues_.GetReadyTasksByClass());
 }
 
 void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job_data) {
@@ -1206,12 +1217,14 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     // Compute a dummy driver task id from a given driver.
     const TaskID driver_task_id = TaskID::ComputeDriverTaskId(worker_id);
     worker->AssignTaskId(driver_task_id);
-    worker->AssignJobId(job_id);
-    Status status = worker_pool_.RegisterDriver(worker, &assigned_port);
+    Status status = worker_pool_.RegisterDriver(worker, job_id, &assigned_port);
     if (status.ok()) {
       local_queues_.AddDriverTaskId(driver_task_id);
-      auto job_data_ptr = gcs::CreateJobTableData(
-          job_id, /*is_dead*/ false, std::time(nullptr), worker_ip_address, pid);
+      rpc::JobConfigs job_configs;
+      job_configs.ParseFromString(message->serialized_job_configs()->str());
+      auto job_data_ptr =
+          gcs::CreateJobTableData(job_id, /*is_dead*/ false, std::time(nullptr),
+                                  worker_ip_address, pid, job_configs);
       RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(job_data_ptr, nullptr));
     } else {
       // Return -1 to signal to the worker that registration failed.
@@ -1719,7 +1732,6 @@ void NodeManager::DispatchScheduledTasksToWorkers() {
       worker->SetAllocatedInstances(allocated_instances);
     }
     worker->AssignTaskId(spec.TaskId());
-    worker->AssignJobId(spec.JobId());
     worker->SetAssignedTask(task.second);
 
     reply(worker, ClientID::Nil(), "", -1);
@@ -2784,10 +2796,6 @@ bool NodeManager::FinishAssignedTask(Worker &worker) {
   task_dependency_manager_.UnsubscribeGetDependencies(spec.TaskId());
   task_dependency_manager_.TaskCanceled(task_id);
 
-  // Unset the worker's assigned job Id if this is not an actor.
-  if (!spec.IsActorCreationTask() && !spec.IsActorTask()) {
-    worker.AssignJobId(JobID::Nil());
-  }
   if (!spec.IsActorCreationTask()) {
     // Unset the worker's assigned task. We keep the assigned task ID for
     // direct actor creation calls because this ID is used later if the actor
@@ -3389,7 +3397,6 @@ void NodeManager::FinishAssignTask(const std::shared_ptr<Worker> &worker,
     // We successfully assigned the task to the worker.
     worker->AssignTaskId(spec.TaskId());
     worker->SetOwnerAddress(spec.CallerAddress());
-    worker->AssignJobId(spec.JobId());
     // TODO(swang): For actors with multiple actor handles, to
     // guarantee that tasks are replayed in the same order after a
     // failure, we must update the task's execution dependency to be

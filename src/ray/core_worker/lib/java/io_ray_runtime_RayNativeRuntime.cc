@@ -50,7 +50,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
     JNIEnv *env, jclass, jint workerMode, jstring nodeIpAddress, jint nodeManagerPort,
     jstring driverName, jstring storeSocket, jstring rayletSocket, jbyteArray jobId,
     jobject gcsClientOptions, jint numWorkersPerProcess, jstring logDir,
-    jobject rayletConfigParameters) {
+    jobject rayletConfigParameters, jbyteArray jobConfigs) {
   auto raylet_config = JavaMapToNativeMap<std::string, std::string>(
       env, rayletConfigParameters,
       [](JNIEnv *env, jobject java_key) {
@@ -124,6 +124,8 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
         return ray::Status::OK();
       };
 
+  std::string serialized_job_configs =
+      (jobConfigs == nullptr ? "" : JavaByteArrayToNativeString(env, jobConfigs));
   ray::CoreWorkerOptions options = {
       static_cast<ray::WorkerType>(workerMode),     // worker_type
       ray::Language::JAVA,                          // langauge
@@ -149,6 +151,8 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
       false,                                         // ref_counting_enabled
       false,                                         // is_local_mode
       static_cast<int>(numWorkersPerProcess),        // num_workers
+      nullptr,                                       // terminate_asyncio_thread
+      serialized_job_configs,                        // serialized_job_configs
   };
 
   ray::CoreWorkerProcess::Initialize(options);

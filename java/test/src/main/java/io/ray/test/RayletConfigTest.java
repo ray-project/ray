@@ -9,8 +9,8 @@ import org.testng.annotations.Test;
 
 public class RayletConfigTest extends BaseTest {
 
-  private static final String RAY_CONFIG_KEY = "num_workers_per_process_java";
-  private static final String RAY_CONFIG_VALUE = "2";
+  private static final String RAY_CONFIG_KEY = "get_timeout_milliseconds";
+  private static final String RAY_CONFIG_VALUE = "1234";
 
   @BeforeClass
   public void beforeClass() {
