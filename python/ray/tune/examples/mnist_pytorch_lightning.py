@@ -76,7 +76,7 @@ class LightningMNISTClassifier(pl.LightningModule):
         loss = self.cross_entropy_loss(logits, y)
         accuracy = self.accuracy(logits, y)
 
-        logs = {"train_loss": loss, "train_accuracy": accuracy}
+        logs = {"ptl/train_loss": loss, "ptl/train_accuracy": accuracy}
         return {"loss": loss, "log": logs}
 
     def validation_step(self, val_batch, batch_idx):
@@ -90,12 +90,12 @@ class LightningMNISTClassifier(pl.LightningModule):
     def validation_epoch_end(self, outputs):
         avg_loss = torch.stack([x["val_loss"] for x in outputs]).mean()
         avg_acc = torch.stack([x["val_accuracy"] for x in outputs]).mean()
-        tensorboard_logs = {"val_loss": avg_loss, "val_accuracy": avg_acc}
+        logs = {"ptl/val_loss": avg_loss, "ptl/val_accuracy": avg_acc}
 
         return {
             "avg_val_loss": avg_loss,
             "avg_val_accuracy": avg_acc,
-            "log": tensorboard_logs
+            "log": logs
         }
 
     @staticmethod
@@ -230,7 +230,8 @@ def tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0):
         config=config,
         num_samples=num_samples,
         scheduler=scheduler,
-        progress_reporter=reporter)
+        progress_reporter=reporter,
+        name="tune_mnist_asha")
 
     shutil.rmtree(data_dir)
 # __tune_asha_end__
@@ -272,7 +273,8 @@ def tune_mnist_pbt(num_samples=10, num_epochs=10, gpus_per_trial=0):
         config=config,
         num_samples=num_samples,
         scheduler=scheduler,
-        progress_reporter=reporter)
+        progress_reporter=reporter,
+        name="tune_mnist_pbt")
 
     shutil.rmtree(data_dir)
 # __tune_pbt_end__

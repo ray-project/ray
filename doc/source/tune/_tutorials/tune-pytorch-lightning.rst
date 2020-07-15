@@ -142,7 +142,7 @@ We also delete this data after training to avoid filling up our disk or memory s
    :language: python
    :start-after: __tune_asha_begin__
    :end-before: __tune_asha_end__
-   :lines: 35
+   :lines: 36
    :dedent: 4
 
 Configuring the search space
