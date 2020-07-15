@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 # This script build docker images for autoscaler.
 # For now, we only build python3.6 images.
 set -e

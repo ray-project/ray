@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 # Stop backend processes
 ray stop
 # Kill Java workers

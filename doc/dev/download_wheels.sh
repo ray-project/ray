@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 if [[ -z "$RAY_HASH" ]]; then
     echo "RAY_HASH env var should be provided"
     exit 1
