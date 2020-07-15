@@ -1,4 +1,5 @@
 #include "cluster_task_manager.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 namespace raylet {
@@ -7,12 +8,12 @@ ClusterTaskManager::ClusterTaskManager(
     const ClientID &self_node_id,
     std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
     std::function<bool(const Task &)> fulfills_dependencies_func,
-    const WorkerPool &worker_pool, std::shared_ptr<gcs::GcsClient> gcs_client)
+    std::shared_ptr<gcs::GcsClient> gcs_client)
     : self_node_id_(self_node_id),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       fulfills_dependencies_func_(fulfills_dependencies_func),
-      worker_pool_(worker_pool),
-      gcs_client_(gcs_client) {}
+      gcs_client_(gcs_client) {
+}
 
 bool ClusterTaskManager::SchedulePendingTasks() {
   size_t queue_size = tasks_to_schedule_.size();
@@ -24,9 +25,9 @@ bool ClusterTaskManager::SchedulePendingTasks() {
   // there are not enough available resources blocks other
   // tasks from being scheduled.
   while (queue_size-- > 0) {
-    auto work = tasks_to_schedule_.front();
+    Work work = tasks_to_schedule_.front();
     tasks_to_schedule_.pop_front();
-    auto task = work.second;
+    Task task = work.second;
     auto request_resources =
         task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
     int64_t violations = 0;
@@ -57,20 +58,19 @@ bool ClusterTaskManager::SchedulePendingTasks() {
   return did_schedule;
 }
 
-bool ClusterTaskManager::WaitForTaskArgsRequests(const Work &work) {
-  const Task &task = work.second;
-  std::vector<ObjectID> object_ids = task.GetTaskSpecification().GetDependencies();
+bool ClusterTaskManager::WaitForTaskArgsRequests(Work work) {
+  Task task = work.second;
+  auto t1 = task.GetTaskSpecification();
+  std::vector<ObjectID> object_ids = t1.GetDependencies();
   bool can_dispatch = true;
-
   if (object_ids.size() > 0) {
     bool args_ready = fulfills_dependencies_func_(task);
     if (args_ready) {
       tasks_to_dispatch_.push_back(work);
     } else {
       can_dispatch = false;
-      auto task_id = task.GetTaskSpecification().TaskId();
+      TaskID task_id = task.GetTaskSpecification().TaskId();
       waiting_tasks_.try_emplace(task_id, work);
-      // waiting_tasks_[task_id] = work;
     }
   } else {
     tasks_to_dispatch_.push_back(work);
@@ -78,32 +78,26 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(const Work &work) {
   return can_dispatch;
 }
 
-std::unique_ptr<std::vector<std::pair<const Work, std::shared_ptr<Worker>>>>
-ClusterTaskManager::GetDispatchableTasks() {
-  std::unique_ptr<std::vector<std::pair<const Work, std::shared_ptr<Worker>>>> dispatchable{
-      new std::vector<std::pair<const Work, std::shared_ptr<Worker>>>()};
-  auto idle_workers = worker_pool_.GetIdleWorkers(Language::PYTHON);
-  auto worker_it = idle_workers->begin();
-
+void ClusterTaskManager::DispatchScheduledTasksToWorkers(WorkerPool &worker_pool) {
   // Check every task in task_to_dispatch queue to see
   // whether it can be dispatched and ran. This avoids head-of-line
   // blocking where a task which cannot be dispatched because
   // there are not enough available resources blocks other
   // tasks from being dispatched.
   for (size_t queue_size = tasks_to_dispatch_.size(); queue_size > 0; queue_size--) {
-    auto work = tasks_to_dispatch_.front();
-    auto reply = work.first;
-    const auto &task = work.second;
-    auto spec = task.GetTaskSpecification();
+    auto task = tasks_to_dispatch_.front();
+    auto reply = task.first;
+    auto spec = task.second.GetTaskSpecification();
     tasks_to_dispatch_.pop_front();
 
-    if (worker_it == idle_workers->end()) {
+    std::shared_ptr<Worker> worker = worker_pool.PopWorker(spec);
+    if (!worker) {
       // No worker available to schedule this task.
       // Put the task back in the dispatch queue.
-      tasks_to_dispatch_.push_front(work);
-      return dispatchable;
+      tasks_to_dispatch_.push_front(task);
+      return;
     }
-    std::shared_ptr<Worker> worker = *worker_it;
+
     std::shared_ptr<TaskResourceInstances> allocated_instances(
         new TaskResourceInstances());
     bool schedulable = cluster_resource_scheduler_->AllocateLocalTaskResources(
@@ -111,32 +105,29 @@ ClusterTaskManager::GetDispatchableTasks() {
     if (!schedulable) {
       // Not enough resources to schedule this task.
       // Put it back at the end of the dispatch queue.
-      tasks_to_dispatch_.push_back(work);
+      tasks_to_dispatch_.push_back(task);
+      worker_pool.PushWorker(worker);
       // Try next task in the dispatch queue.
       continue;
     }
 
-    std::pair<const Work, std::shared_ptr<Worker>> to_dispatch{work, *worker_it};
-    dispatchable->push_back(to_dispatch);
-    worker_it++;
-    // worker->SetOwnerAddress(spec.CallerAddress());
-    // if (spec.IsActorCreationTask()) {
-    //   // The actor belongs to this worker now.
-    //   worker->SetLifetimeAllocatedInstances(allocated_instances);
-    // } else {
-    //   worker->SetAllocatedInstances(allocated_instances);
-    // }
-    // worker->AssignTaskId(spec.TaskId());
-    // worker->AssignJobId(spec.JobId());
-    // worker->SetAssignedTask(task.second);
+    worker->SetOwnerAddress(spec.CallerAddress());
+    if (spec.IsActorCreationTask()) {
+      // The actor belongs to this worker now.
+      worker->SetLifetimeAllocatedInstances(allocated_instances);
+    } else {
+      worker->SetAllocatedInstances(allocated_instances);
+    }
+    worker->AssignTaskId(spec.TaskId());
+    worker->AssignJobId(spec.JobId());
+    worker->SetAssignedTask(task.second);
 
-    // reply(worker, ClientID::Nil(), "", -1);
+    reply(worker, ClientID::Nil(), "", -1);
   }
-  return dispatchable;
 }
 
 void ClusterTaskManager::QueueTask(ScheduleFn fn, const Task &task) {
-  const Work &work = std::make_pair(fn, task);
+  Work work = std::make_pair(fn, task);
   tasks_to_schedule_.push_back(work);
 }
 

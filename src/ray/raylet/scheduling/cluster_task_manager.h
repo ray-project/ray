@@ -13,7 +13,7 @@ typedef std::function<void(std::shared_ptr<Worker>, ClientID spillback_to,
                            std::string address, int port)>
     ScheduleFn;
 
-typedef std::pair<ScheduleFn, const Task &> Work;
+typedef std::pair<ScheduleFn, Task> Work;
 
 class ClusterTaskManager {
  public:
@@ -23,7 +23,6 @@ class ClusterTaskManager {
   ClusterTaskManager(const ClientID &self_node_id,
                      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
                      std::function<bool(const Task &)> fulfills_dependencies_func,
-                     const WorkerPool &worker_pool,
                      std::shared_ptr<gcs::GcsClient> gcs_client);
 
   /// For the pending task at the head of tasks_to_schedule_, return a node
@@ -32,11 +31,7 @@ class ClusterTaskManager {
   /// Repeat the process as long as we can schedule a task.
   bool SchedulePendingTasks();
 
-  void DispatchScheduledTasksToWorkers();
-
-  /// Dispatch tasks to available workers.
-  std::unique_ptr<std::vector<std::pair<const Work, std::shared_ptr<Worker>>>>
-  GetDispatchableTasks();
+  void DispatchScheduledTasksToWorkers(WorkerPool &worker_pool);
 
   /// Queue tasks for scheduling.
   void QueueTask(ScheduleFn fn, const Task &task);
@@ -48,20 +43,19 @@ class ClusterTaskManager {
   const ClientID &self_node_id_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::function<bool(const Task &)> fulfills_dependencies_func_;
-  const WorkerPool &worker_pool_;
   std::shared_ptr<gcs::GcsClient> gcs_client_;
 
   /// Queue of lease requests that are waiting for resources to become available.
   /// TODO this should be a queue for each SchedulingClass
-  std::deque<const Work> tasks_to_schedule_;
+  std::deque<Work> tasks_to_schedule_;
   /// Queue of lease requests that should be scheduled onto workers.
-  std::deque<const Work> tasks_to_dispatch_;
+  std::deque<Work> tasks_to_dispatch_;
   /// Queue tasks waiting for arguments to be transferred locally.
-  absl::flat_hash_map<TaskID, const Work> waiting_tasks_;
+  absl::flat_hash_map<TaskID, Work> waiting_tasks_;
 
-  /* /// Correctly determine whether a task should be immediately dispatched, */
-  /* /// or placed on a wait queue. */
-  bool WaitForTaskArgsRequests(const Work &work);
+  /// Correctly determine whether a task should be immediately dispatched,
+  /// or placed on a wait queue.
+  bool WaitForTaskArgsRequests(Work work);
 };
 }  // namespace raylet
 }  // namespace ray

@@ -196,7 +196,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
 
     cluster_task_manager_ = std::shared_ptr<ClusterTaskManager>(
         new ClusterTaskManager(self_node_id_, new_resource_scheduler_,
-                               fulfills_dependencies_func, worker_pool_, gcs_client_));
+                               fulfills_dependencies_func, gcs_client_));
   }
 
   RAY_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
@@ -1596,64 +1596,10 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
   SubmitTask(Task(task_message), Lineage());
 }
 
-void NodeManager::DispatchScheduledTasksToWorkers() {
-  RAY_CHECK(new_scheduler_enabled_);
-
-  // Check every task in task_to_dispatch queue to see
-  // whether it can be dispatched and ran. This avoids head-of-line
-  // blocking where a task which cannot be dispatched because
-  // there are not enough available resources blocks other
-  // tasks from being dispatched.
-  for (size_t queue_size = tasks_to_dispatch_.size(); queue_size > 0; queue_size--) {
-    auto task = tasks_to_dispatch_.front();
-    auto reply = task.first;
-    auto spec = task.second.GetTaskSpecification();
-    tasks_to_dispatch_.pop_front();
-
-    std::shared_ptr<Worker> worker = worker_pool_.PopWorker(spec);
-    if (!worker) {
-      // No worker available to schedule this task.
-      // Put the task back in the dispatch queue.
-      tasks_to_dispatch_.push_front(task);
-      return;
-    }
-
-    std::shared_ptr<TaskResourceInstances> allocated_instances(
-        new TaskResourceInstances());
-    bool schedulable = new_resource_scheduler_->AllocateLocalTaskResources(
-        spec.GetRequiredResources().GetResourceMap(), allocated_instances);
-    if (!schedulable) {
-      // Not enough resources to schedule this task.
-      // Put it back at the end of the dispatch queue.
-      tasks_to_dispatch_.push_back(task);
-      worker_pool_.PushWorker(worker);
-      // Try next task in the dispatch queue.
-      continue;
-    }
-
-    worker->SetOwnerAddress(spec.CallerAddress());
-    if (spec.IsActorCreationTask()) {
-      // The actor belongs to this worker now.
-      worker->SetLifetimeAllocatedInstances(allocated_instances);
-    } else {
-      worker->SetAllocatedInstances(allocated_instances);
-    }
-    worker->AssignTaskId(spec.TaskId());
-    worker->AssignJobId(spec.JobId());
-    worker->SetAssignedTask(task.second);
-
-    reply(worker, ClientID::Nil(), "", -1);
-  }
-}
-
 void NodeManager::ScheduleAndDispatch() {
   RAY_CHECK(new_scheduler_enabled_);
   if (cluster_task_manager_->SchedulePendingTasks()) {
-    auto to_dispatch = cluster_task_manager_->GetDispatchableTasks();
-    for (auto pair : *to_dispatch) {
-      RAY_LOG(INFO) << "Dispatching...";
-    }
-
+    cluster_task_manager_->DispatchScheduledTasksToWorkers(worker_pool_);
   }
 }
 
