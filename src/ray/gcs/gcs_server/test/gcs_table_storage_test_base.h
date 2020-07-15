@@ -78,6 +78,7 @@ class GcsTableStorageTestBase : public ::testing::Test {
     // Delete.
     Delete(table, actor_id);
     ASSERT_EQ(Get(table, actor_id, values), 0);
+    ASSERT_EQ(GetByJobId(table, job_id, actor_id, values), 0);
   }
 
   template <typename TABLE, typename KEY, typename VALUE>
