@@ -84,6 +84,7 @@ systemctl enable ray
 echo "Starting ray..."
 systemctl start ray
 
+# shellcheck disable=SC2154
 if [ "$type" = "head" ]; then
    echo "Configure TensorBoard to start at boot..."
    systemctl enable tensorboard

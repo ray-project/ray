@@ -84,6 +84,7 @@ if [ "${CI-}" = true ]; then
   # If we are in master build, we can write to the cache as well.
   upload=0
   if [ "${TRAVIS_PULL_REQUEST-false}" = false ]; then
+    # shellcheck disable=SC2154
     if [ -n "${BAZEL_CACHE_CREDENTIAL_B64:+x}" ]; then
       {
         printf "%s" "${BAZEL_CACHE_CREDENTIAL_B64}" | base64 -d - >> "${HOME}/bazel_cache_credential.json"
@@ -91,6 +92,7 @@ if [ "${CI-}" = true ]; then
       upload=1
     elif [ -n "${encrypted_1c30b31fe1ee_key:+x}" ]; then
       {
+        # shellcheck disable=SC2154
         openssl aes-256-cbc -K "${encrypted_1c30b31fe1ee_key}" \
             -iv "${encrypted_1c30b31fe1ee_iv}" \
             -in "${ROOT_DIR}/bazel_cache_credential.json.enc" \
