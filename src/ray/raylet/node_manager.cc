@@ -282,10 +282,14 @@ ray::Status NodeManager::RegisterGcs() {
   // Subscribe to job updates.
   const auto job_subscribe_handler = [this](const JobID &job_id,
                                             const JobTableData &job_data) {
-    HandleJobFinished(job_id, job_data);
+    if (!job_data.is_dead()) {
+      HandleJobStarted(job_id, job_data);
+    } else {
+      HandleJobFinished(job_id, job_data);
+    }
   };
   RAY_RETURN_NOT_OK(
-      gcs_client_->Jobs().AsyncSubscribeToFinishedJobs(job_subscribe_handler, nullptr));
+      gcs_client_->Jobs().AsyncSubscribeAll(job_subscribe_handler, nullptr));
 
   // Start sending heartbeats to the GCS.
   last_heartbeat_at_ms_ = current_time_ms();
@@ -318,6 +322,13 @@ void NodeManager::KillWorker(std::shared_ptr<Worker> worker) {
     // Force kill worker
     worker->GetProcess().Kill();
   });
+}
+
+void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_data) {
+  RAY_LOG(DEBUG) << "HandleJobStarted " << job_id;
+  RAY_CHECK(!job_data.is_dead());
+
+  // TODO(kfstorm): Spawn job initial workers in a later PR.
 }
 
 void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job_data) {
