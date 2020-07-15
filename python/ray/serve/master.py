@@ -88,7 +88,7 @@ class ServeMaster:
     """
 
     async def __init__(self, instance_name, http_node_id, http_proxy_host,
-                       http_proxy_port, metric_exporter_class):
+                       http_proxy_port, http_proxy_per_nmetric_exporter_class):
         # Unique name of the serve instance managed by this actor. Used to
         # namespace child actors and checkpoints.
         self.instance_name = instance_name
