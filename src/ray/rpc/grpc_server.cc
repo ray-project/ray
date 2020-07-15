@@ -26,6 +26,7 @@ namespace rpc {
 
 GrpcServer::GrpcServer(std::string name, const uint32_t port, int num_threads)
     : name_(std::move(name)), port_(port), is_closed_(true), num_threads_(num_threads) {
+  RAY_LOG(WARNING) << "GrpcServer num_threads = " << num_threads;
   cqs_.resize(num_threads_);
 }
 
@@ -113,6 +114,7 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
       case ServerCallState::PENDING:
         // We've received a new incoming request. Now this call object is used to
         // track this request.
+        RAY_LOG(INFO) << "PollEventsFromCompletionQueue index = " << index;
         server_call->SetState(ServerCallState::PROCESSING);
         server_call->HandleRequest();
         break;
