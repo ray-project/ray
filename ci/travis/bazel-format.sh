@@ -17,7 +17,7 @@ function usage()
   echo
 }
 
-RUN_TYPE=diff
+RUN_TYPE="diff"
 
 # Parse options
 while [[ $# > 0 ]]; do
@@ -28,7 +28,7 @@ while [[ $# > 0 ]]; do
       exit 0
       ;;
     -c|--check)
-      RUN_TYPE=diff
+      RUN_TYPE="diff"
       ;;
     -f|--fix)
       RUN_TYPE=fix
