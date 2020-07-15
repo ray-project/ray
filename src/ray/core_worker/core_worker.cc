@@ -875,6 +875,7 @@ Status CoreWorker::Seal(const ObjectID &object_id, bool pin_object,
         }));
   } else {
     RAY_RETURN_NOT_OK(plasma_store_provider_->Release(object_id));
+    reference_counter_->FreePlasmaObjects({object_id});
   }
   RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
   return Status::OK();
@@ -1070,8 +1071,16 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
   // logged and the object will not get released.
   reference_counter_->FreePlasmaObjects(object_ids);
 
+  // Store an error in the in-memory store to indicate that the plasma value is
+  // no longer reachable.
+  memory_store_->Delete(object_ids);
+  for (const auto &object_id : object_ids) {
+    RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE),
+                                 object_id));
+  }
+
   // We only delete from plasma, which avoids hangs (issue #7105). In-memory
-  // objects are always handled by ref counting only.
+  // objects can only be deleted once the ref count goes to 0.
   absl::flat_hash_set<ObjectID> plasma_object_ids(object_ids.begin(), object_ids.end());
   return plasma_store_provider_->Delete(plasma_object_ids, local_only,
                                         delete_creating_tasks);
@@ -1708,31 +1717,37 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
 
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   RAY_LOG(DEBUG) << "Received GetObjectStatus " << object_id;
-  // We own the task. Reply back to the borrower once the object has been
-  // created.
-  // TODO(swang): We could probably just send the object value if it is small
-  // enough and we have it local.
-  reply->set_status(rpc::GetObjectStatusReply::CREATED);
-  if (task_manager_->IsTaskPending(object_id.TaskId())) {
-    // Acquire a reference and retry. This prevents the object from being
-    // evicted out from under us before we can start the get.
-    AddLocalReference(object_id, "<temporary (get object status)>");
-    if (task_manager_->IsTaskPending(object_id.TaskId())) {
-      // The task is pending. Send the reply once the task finishes.
-      memory_store_->GetAsync(object_id,
-                              [send_reply_callback](std::shared_ptr<RayObject> obj) {
-                                send_reply_callback(Status::OK(), nullptr, nullptr);
-                              });
-      RemoveLocalReference(object_id);
-    } else {
-      // We lost the race, the task is done.
-      RemoveLocalReference(object_id);
-      send_reply_callback(Status::OK(), nullptr, nullptr);
-    }
-  } else {
-    // The task is done. Send the reply immediately.
+  // Acquire a reference to the object. This prevents the object from being
+  // evicted out from under us while we check the object status and start the
+  // Get.
+  AddLocalReference(object_id, "<temporary (get object status)>");
+
+  rpc::Address owner_address;
+  auto has_owner = reference_counter_->GetOwner(object_id, &owner_address);
+  if (!has_owner) {
+    // We owned this object, but the object has gone out of scope.
+    reply->set_status(rpc::GetObjectStatusReply::OUT_OF_SCOPE);
     send_reply_callback(Status::OK(), nullptr, nullptr);
+  } else {
+    RAY_CHECK(owner_address.worker_id() == request.owner_worker_id());
+
+    if (reference_counter_->IsPlasmaObjectFreed(object_id)) {
+      reply->set_status(rpc::GetObjectStatusReply::FREED);
+    } else {
+      reply->set_status(rpc::GetObjectStatusReply::CREATED);
+    }
+    // Send the reply once the value has become available. The value is
+    // guaranteed to become available eventually because we own the object and
+    // its ref count is > 0.
+    // TODO(swang): We could probably just send the object value if it is small
+    // enough and we have it local.
+    memory_store_->GetAsync(object_id,
+                            [send_reply_callback](std::shared_ptr<RayObject> obj) {
+                              send_reply_callback(Status::OK(), nullptr, nullptr);
+                            });
   }
+
+  RemoveLocalReference(object_id);
 }
 
 void CoreWorker::HandleWaitForActorOutOfScope(

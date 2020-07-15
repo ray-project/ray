@@ -92,7 +92,7 @@ std::vector<TaskID> TaskDependencyManager::HandleObjectLocal(
     const ray::ObjectID &object_id) {
   // Add the object to the table of locally available objects.
   auto inserted = local_objects_.insert(object_id);
-  RAY_CHECK(inserted.second);
+  RAY_CHECK(inserted.second) << object_id;
 
   // Find all tasks and workers that depend on the newly available object.
   std::vector<TaskID> ready_task_ids;
@@ -511,6 +511,22 @@ void TaskDependencyManager::RecordMetrics() const {
       local_objects_.size(), {{stats::ValueTypeKey, "num_local_objects"}});
   stats::TaskDependencyManagerStats().Record(
       pending_tasks_.size(), {{stats::ValueTypeKey, "num_pending_tasks"}});
+}
+
+bool TaskDependencyManager::GetOwnerAddress(const ObjectID &object_id,
+                                            rpc::Address *owner_address) const {
+  const auto creating_task_entry = required_tasks_.find(object_id.TaskId());
+  if (creating_task_entry == required_tasks_.end()) {
+    return false;
+  }
+
+  const auto it = creating_task_entry->second.find(object_id);
+  if (it == creating_task_entry->second.end()) {
+    return false;
+  }
+
+  *owner_address = it->second.owner_address;
+  return !owner_address->worker_id().empty();
 }
 
 }  // namespace raylet
