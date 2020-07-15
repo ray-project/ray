@@ -139,6 +139,7 @@ def download(url):
         result = subprocess.check_output(curl_args)
     return result
 
+
 # Installs pickle5-backport into the local subdirectory.
 def download_pickle5(pickle5_dir):
     pickle5_file = urllib.parse.unquote(
