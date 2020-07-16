@@ -116,7 +116,7 @@ def _bootstrap_config(config, no_config_cache=False):
     if not importer:
         raise NotImplementedError("Unsupported provider {}".format(
             config["provider"]))
-    
+
     provider_cls = importer(config["provider"])
     resolved_config = provider_cls.bootstrap_config(config)
     if not no_config_cache:
