@@ -14,6 +14,8 @@
 
 #include "raylet_client.h"
 
+#include "absl/synchronization/notification.h"
+
 #include "ray/common/client_connection.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/ray_config.h"
@@ -366,27 +368,140 @@ Status raylet::RayletClient::SubscribeToPlasma(const ObjectID &object_id) {
   return conn_->WriteMessage(MessageType::SubscribePlasmaReady, &fbb);
 }
 
-Status Create(const ObjectID &object_id, int64_t data_size, const uint8_t *metadata,
-              int64_t metadata_size, std::shared_ptr<arrow::Buffer> *data,
-              int device_num = 0, bool evict_if_full = true) {
-  return Status::NotImplemented("TODO");
+Status raylet::RayletClient::Create(const ObjectID &object_id, int64_t data_size,
+                                    const uint8_t *metadata, int64_t metadata_size,
+                                    std::shared_ptr<arrow::Buffer> *data, int device_num,
+                                    bool evict_if_full) {
+  Status status;
+  rpc::PlasmaCreateRequest request;
+  request.set_object_id(object_id.Binary());
+  request.set_data_size(data_size);
+  if (metadata != nullptr) {
+    std::string meta(reinterpret_cast<const char *>(metadata), metadata_size);
+    request.set_metadata(meta);
+  }
+  request.set_device_num(device_num);
+  request.set_evict_if_full(evict_if_full);
+  absl::Notification done;
+  RAY_RETURN_NOT_OK(grpc_client_->PlasmaCreate(
+      request, [&done, &status](const Status &s, const rpc::PlasmaCreateReply &reply) {
+        if (!s.ok()) {
+          status = s;
+        } else {
+          status = Status(static_cast<StatusCode>(reply.status().code()),
+                          reply.status().message());
+          RAY_CHECK(false);  // TODO(ekl) create return buffer
+        }
+        done.Notify();
+      }));
+  done.WaitForNotification();
+  return status;
 }
 
-Status Get(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
-           std::vector<plasma::ObjectBuffer> *object_buffers) {
-  return Status::NotImplemented("TODO");
+Status raylet::RayletClient::Get(const std::vector<ObjectID> &object_ids,
+                                 int64_t timeout_ms,
+                                 std::vector<plasma::ObjectBuffer> *object_buffers) {
+  Status status;
+  rpc::PlasmaGetRequest request;
+  for (const auto &obj_id : object_ids) {
+    request.add_object_ids(obj_id.binary());
+  }
+  request.set_timeout_ms(timeout_ms);
+  absl::Notification done;
+  RAY_RETURN_NOT_OK(grpc_client_->PlasmaGet(
+      request, [&done, &status](const Status &s, const rpc::PlasmaGetReply &reply) {
+        if (!s.ok()) {
+          status = s;
+        } else {
+          status = Status(static_cast<StatusCode>(reply.status().code()),
+                          reply.status().message());
+          RAY_CHECK(false);  // TODO(ekl) populate return buffers
+        }
+        done.Notify();
+      }));
+  done.WaitForNotification();
+  return status;
 }
 
-Status Release(const ObjectID &object_id) { return Status::NotImplemented("TODO"); }
-
-Status Contains(const ObjectID &object_id, bool *has_object) {
-  return Status::NotImplemented("TODO");
+Status raylet::RayletClient::Release(const ObjectID &object_id) {
+  Status status;
+  rpc::PlasmaReleaseRequest request;
+  request.set_object_id(object_id.Binary());
+  absl::Notification done;
+  RAY_RETURN_NOT_OK(grpc_client_->PlasmaRelease(
+      request, [&done, &status](const Status &s, const rpc::PlasmaReleaseReply &reply) {
+        if (!s.ok()) {
+          status = s;
+        } else {
+          status = Status(static_cast<StatusCode>(reply.status().code()),
+                          reply.status().message());
+        }
+        done.Notify();
+      }));
+  done.WaitForNotification();
+  return status;
 }
 
-Status Seal(const ObjectID &object_id) { return Status::NotImplemented("TODO"); }
+Status raylet::RayletClient::Contains(const ObjectID &object_id, bool *has_object) {
+  Status status;
+  rpc::PlasmaContainsRequest request;
+  request.set_object_id(object_id.Binary());
+  absl::Notification done;
+  RAY_RETURN_NOT_OK(grpc_client_->PlasmaContains(
+      request, [&done, &status, &has_object](const Status &s,
+                                             const rpc::PlasmaContainsReply &reply) {
+        if (!s.ok()) {
+          status = s;
+        } else {
+          status = Status(static_cast<StatusCode>(reply.status().code()),
+                          reply.status().message());
+          *has_object = reply.has_object();
+        }
+        done.Notify();
+      }));
+  done.WaitForNotification();
+  return status;
+}
 
-Status Delete(const std::vector<ObjectID> &object_ids) {
-  return Status::NotImplemented("TODO");
+Status raylet::RayletClient::Seal(const ObjectID &object_id) {
+  Status status;
+  rpc::PlasmaSealRequest request;
+  request.set_object_id(object_id.Binary());
+  RAY_CHECK(false);  // TODO(ekl) we need to send back the actual written data.
+  absl::Notification done;
+  RAY_RETURN_NOT_OK(grpc_client_->PlasmaSeal(
+      request, [&done, &status](const Status &s, const rpc::PlasmaSealReply &reply) {
+        if (!s.ok()) {
+          status = s;
+        } else {
+          status = Status(static_cast<StatusCode>(reply.status().code()),
+                          reply.status().message());
+        }
+        done.Notify();
+      }));
+  done.WaitForNotification();
+  return status;
+}
+
+Status raylet::RayletClient::Delete(const std::vector<ObjectID> &object_ids) {
+  Status status;
+  rpc::PlasmaDeleteRequest request;
+  for (const auto &obj_id : object_ids) {
+    request.add_object_ids(obj_id.binary());
+  }
+  absl::Notification done;
+  RAY_RETURN_NOT_OK(grpc_client_->PlasmaDelete(
+      request, [&done, &status](const Status &s, const rpc::PlasmaDeleteReply &reply) {
+        if (!s.ok()) {
+          status = s;
+        } else {
+          status = Status(static_cast<StatusCode>(reply.status().code()),
+                          reply.status().message());
+        }
+        done.Notify();
+      }));
+  done.WaitForNotification();
+  return status;
 }
 
 }  // namespace ray

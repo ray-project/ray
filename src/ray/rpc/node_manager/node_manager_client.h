@@ -15,6 +15,7 @@
 #pragma once
 
 #include <grpcpp/grpcpp.h>
+#include <boost/bind.hpp>
 
 #include <thread>
 
@@ -100,6 +101,16 @@ class NodeManagerWorkerClient
 
   /// Trigger global GC across the cluster.
   RPC_CLIENT_METHOD(NodeManagerService, GlobalGC, grpc_client_, )
+
+  ///
+  /// PlasmaClientInterface RPCs.
+  ///
+  RPC_CLIENT_METHOD(NodeManagerService, PlasmaCreate, grpc_client_, )
+  RPC_CLIENT_METHOD(NodeManagerService, PlasmaGet, grpc_client_, )
+  RPC_CLIENT_METHOD(NodeManagerService, PlasmaRelease, grpc_client_, )
+  RPC_CLIENT_METHOD(NodeManagerService, PlasmaContains, grpc_client_, )
+  RPC_CLIENT_METHOD(NodeManagerService, PlasmaSeal, grpc_client_, )
+  RPC_CLIENT_METHOD(NodeManagerService, PlasmaDelete, grpc_client_, )
 
  private:
   /// Constructor.

@@ -149,27 +149,58 @@ message PlasmaStatus {
 }
 
 message PlasmaCreateRequest {
+  bytes object_id = 1;
+  int64 data_size = 2;
+  bytes metadata = 3;
+  int32 device_num = 4;
+  bool evict_if_full = 5;
 }
 
 message PlasmaGetRequest {
-}
-
-message PlasmaGetReply {
+  repeated bytes object_ids = 1;
+  int64 timeout_ms = 2;
 }
 
 message PlasmaReleaseRequest {
+  bytes object_id = 1;
 }
 
 message PlasmaContainsRequest {
-}
-
-message PlasmaContainsReply {
+  bytes object_id = 1;
 }
 
 message PlasmaSealRequest {
+  bytes object_id = 1;
+  bytes data = 2;
 }
 
 message PlasmaDeleteRequest {
+  repeated bytes object_ids = 1;
+}
+
+message PlasmaCreateReply {
+  PlasmaStatus status = 1;
+}
+
+message PlasmaGetReply {
+  PlasmaStatus status = 1;
+}
+
+message PlasmaReleaseReply {
+  PlasmaStatus status = 1;
+}
+
+message PlasmaContainsReply {
+  PlasmaStatus status = 1;
+  bool has_object = 2;
+}
+
+message PlasmaSealReply {
+  PlasmaStatus status = 1;
+}
+
+message PlasmaDeleteReply {
+  PlasmaStatus status = 1;
 }
 
 // Service for inter-node-manager communication.
@@ -202,10 +233,10 @@ service NodeManagerService {
   //
   // PlasmaClientInterface RPCs
   //
-  rpc PlasmaCreate(PlasmaCreateRequest) returns (PlasmaStatus);
+  rpc PlasmaCreate(PlasmaCreateRequest) returns (PlasmaCreateReply);
   rpc PlasmaGet(PlasmaGetRequest) returns (PlasmaGetReply);
-  rpc PlasmaRelease(PlasmaReleaseRequest) returns (PlasmaStatus);
+  rpc PlasmaRelease(PlasmaReleaseRequest) returns (PlasmaReleaseReply);
   rpc PlasmaContains(PlasmaContainsRequest) returns (PlasmaContainsReply);
-  rpc PlasmaSeal(PlasmaSealRequest) returns (PlasmaStatus);
-  rpc PlasmaDelete(PlasmaDeleteRequest) returns (PlasmaStatus);
+  rpc PlasmaSeal(PlasmaSealRequest) returns (PlasmaSealReply);
+  rpc PlasmaDelete(PlasmaDeleteRequest) returns (PlasmaDeleteReply);
 }
