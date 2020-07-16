@@ -22,8 +22,7 @@ def dockerize_if_needed(config):
     worker_docker_image = config["docker"].get("worker_image", docker_image)
     worker_run_options = config["docker"].get("worker_run_options", [])
 
-    image_present = not docker_image and not (head_docker_image
-                                              and worker_docker_image)
+    image_present = docker_image or (head_docker_image and worker_docker_image)
     if (not cname) and (not image_present):
         return
     else:
@@ -72,7 +71,9 @@ def with_docker_exec(cmds,
 
 
 def check_docker_running_cmd(cname):
-    return " ".join(["docker", "inspect", "-f", "'{{.State.Running}}'", cname])
+    return " ".join([
+        "docker", "inspect", "-f", "'{{.State.Running}}'", cname, "||", "true"
+    ])
 
 
 def check_docker_image(cname):
@@ -103,7 +104,7 @@ def docker_start_cmds(user, image, mount, cname, user_options):
         port_flags, mount_flags, env_flags, user_options_str, "--net=host",
         image, "bash"
     ]
-    [" ".join(docker_run)]
+    return " ".join(docker_run)
 
 
 def docker_autoscaler_setup(cname):

@@ -55,7 +55,7 @@ def validate_config(config):
     try:
         jsonschema.validate(config, schema)
     except jsonschema.ValidationError as e:
-        raise jsonschema.ValidationError(message=e.message) from None
+        raise e from None
 
 
 def prepare_config(config):
