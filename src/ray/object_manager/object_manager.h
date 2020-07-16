@@ -138,6 +138,7 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param chunk_index Chunk index of this object chunk, start with 0
   /// \param rpc_client Rpc client used to send message to remote object manager
   ray::Status SendObjectChunk(const UniqueID &push_id, const ObjectID &object_id,
+                              const rpc::Address &owner_address,
                               const ClientID &client_id, uint64_t data_size,
                               uint64_t metadata_size, uint64_t chunk_index,
                               std::shared_ptr<rpc::ObjectManagerClient> rpc_client);

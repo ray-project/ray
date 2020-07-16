@@ -445,16 +445,22 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
     uint64_t metadata_size = static_cast<uint64_t>(object_info.metadata_size);
     uint64_t num_chunks = buffer_pool_.GetNumChunks(data_size);
 
+    rpc::Address owner_address;
+    owner_address.set_raylet_id(object_info.owner_raylet_id);
+    owner_address.set_ip_address(object_info.owner_ip_address);
+    owner_address.set_port(object_info.owner_port);
+    owner_address.set_worker_id(object_info.owner_worker_id);
+
     RAY_LOG(DEBUG) << "Sending object chunks of " << object_id << " to client "
                    << client_id << ", number of chunks: " << num_chunks
                    << ", total data size: " << data_size;
 
     UniqueID push_id = UniqueID::FromRandom();
     for (uint64_t chunk_index = 0; chunk_index < num_chunks; ++chunk_index) {
-      rpc_service_.post([this, push_id, object_id, client_id, data_size, metadata_size,
-                         chunk_index, rpc_client]() {
-        auto st = SendObjectChunk(push_id, object_id, client_id, data_size, metadata_size,
-                                  chunk_index, rpc_client);
+      rpc_service_.post([this, push_id, object_id, owner_address, client_id, data_size,
+                         metadata_size, chunk_index, rpc_client]() {
+        auto st = SendObjectChunk(push_id, object_id, owner_address, client_id, data_size,
+                                  metadata_size, chunk_index, rpc_client);
         if (!st.ok()) {
           RAY_LOG(WARNING) << "Send object " << object_id << " chunk failed due to "
                            << st.message() << ", chunk index " << chunk_index;
@@ -469,14 +475,15 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
 }
 
 ray::Status ObjectManager::SendObjectChunk(
-    const UniqueID &push_id, const ObjectID &object_id, const ClientID &client_id,
-    uint64_t data_size, uint64_t metadata_size, uint64_t chunk_index,
-    std::shared_ptr<rpc::ObjectManagerClient> rpc_client) {
+    const UniqueID &push_id, const ObjectID &object_id, const rpc::Address &owner_address,
+    const ClientID &client_id,uint64_t data_size, uint64_t metadata_size,
+    uint64_t chunk_index, std::shared_ptr<rpc::ObjectManagerClient> rpc_client) {
   double start_time = absl::GetCurrentTimeNanos() / 1e9;
   rpc::PushRequest push_request;
   // Set request header
   push_request.set_push_id(push_id.Binary());
   push_request.set_object_id(object_id.Binary());
+  *push_request.mutable_owner_address() = owner_address;
   push_request.set_client_id(self_node_id_.Binary());
   push_request.set_data_size(data_size);
   push_request.set_metadata_size(metadata_size);
