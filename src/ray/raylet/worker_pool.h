@@ -258,14 +258,6 @@ class WorkerPool {
   /// for a given language.
   State &GetStateForLanguage(const Language &language);
 
-  /// Assign a worker process to a job and do some checks. This is a helper function to
-  /// ensure that all workers in the same process are always assigned to the same job.
-  ///
-  /// \param pid The pid of the worker process.
-  /// \param job_id The job ID of the job to assign to.
-  /// \return Void.
-  void AssignWorkerProcessToJob(int pid, const JobID &job_id);
-
   /// Start a timer to monitor the starting worker process.
   ///
   /// If any workers in this process don't register within the timeout
