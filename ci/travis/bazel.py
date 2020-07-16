@@ -180,6 +180,7 @@ def shellcheck(bazel_aquery, *shellcheck_args):
                 break
             i += 1
     result = 0
+    bazel_execution_root = None
     for shell, script_infos in all_script_infos.items():
         scripts_combined = []
         has_stdin = False
@@ -195,15 +196,18 @@ def shellcheck(bazel_aquery, *shellcheck_args):
                     scripts_combined.append("\n".join(statements))
         if has_stdin:
             filenames.insert(0, "-")
-        cwd = bazel.info()["execution_root"]
-        cmdargs = ["--shell=" + shell, "--external-sources"] + filenames
-        cmdargs = shellcheck_args + cmdargs
-        proc = subprocess.Popen(cmdargs, stdin=subprocess.PIPE, cwd=cwd)
-        try:
-            proc.communicate("\n".join(scripts_combined).encode("utf-8"))
-        finally:
-            proc.wait()
-        result = result or proc.returncode
+        if shell.endswith("sh"):
+            if bazel_execution_root is None:
+                bazel_execution_root = bazel.info()["execution_root"]
+            cwd = bazel_execution_root
+            cmdargs = ["--shell=" + shell, "--external-sources"] + filenames
+            cmdargs = shellcheck_args + cmdargs
+            proc = subprocess.Popen(cmdargs, stdin=subprocess.PIPE, cwd=cwd)
+            try:
+                proc.communicate("\n".join(scripts_combined).encode("utf-8"))
+            finally:
+                proc.wait()
+            result = result or proc.returncode
     return result
 
 
