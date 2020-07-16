@@ -404,7 +404,7 @@ Status raylet::RayletClient::Get(const std::vector<ObjectID> &object_ids,
   Status status;
   rpc::PlasmaGetRequest request;
   for (const auto &obj_id : object_ids) {
-    request.add_object_ids(obj_id.binary());
+    request.add_object_ids(obj_id.Binary());
   }
   request.set_timeout_ms(timeout_ms);
   absl::Notification done;
@@ -487,7 +487,7 @@ Status raylet::RayletClient::Delete(const std::vector<ObjectID> &object_ids) {
   Status status;
   rpc::PlasmaDeleteRequest request;
   for (const auto &obj_id : object_ids) {
-    request.add_object_ids(obj_id.binary());
+    request.add_object_ids(obj_id.Binary());
   }
   absl::Notification done;
   RAY_RETURN_NOT_OK(grpc_client_->PlasmaDelete(
