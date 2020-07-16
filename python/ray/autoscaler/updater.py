@@ -161,7 +161,7 @@ class NodeUpdater:
         with LogTimer(
                 self.log_prefix + "Ray start commands", show_status=True):
             for cmd in self.ray_start_commands:
-                self.cmd_runner.run(cmd, run_env="host")  # TBD TODO(ilr)
+                self.cmd_runner.run(cmd, run_env="docker")  # TBD TODO(ilr)
 
     def rsync_up(self, source, target):
         logger.info(self.log_prefix +

@@ -42,13 +42,6 @@ def dockerize_if_needed(config):
     config["docker"]["worker_docker_start"] = worker_docker_start
     config["docker"]["head_docker_start"] = head_docker_start
 
-    config["head_start_ray_commands"] = with_docker_exec(
-        config["head_start_ray_commands"], container_name=cname)
-    config["worker_start_ray_commands"] = with_docker_exec(
-        config["worker_start_ray_commands"],
-        container_name=cname,
-        env_vars=["RAY_HEAD_IP"])
-
     return config
 
 
