@@ -42,11 +42,11 @@ class WorkerPoolMock : public WorkerPool {
                           const WorkerCommandMap &worker_commands)
       : WorkerPool(
             io_service, 0, MAXIMUM_STARTUP_CONCURRENCY, 0, 0, nullptr, worker_commands,
-            {}, []() {}, [this](const JobID &job_id) { return &mock_job_configs; }),
+            {}, []() {}, [this](const JobID &job_id) { return &mock_job_config; }),
         last_worker_process_() {
     states_by_lang_[ray::Language::JAVA].num_workers_per_process =
         NUM_WORKERS_PER_PROCESS_JAVA;
-    mock_job_configs.set_num_java_workers_per_process(NUM_WORKERS_PER_PROCESS_JAVA);
+    mock_job_config.set_num_java_workers_per_process(NUM_WORKERS_PER_PROCESS_JAVA);
   }
 
   ~WorkerPoolMock() {
@@ -59,10 +59,10 @@ class WorkerPoolMock : public WorkerPool {
   void SetNumInitialWorkers(Language language, int num_initial_workers) {
     switch (language) {
     case Language::PYTHON:
-      mock_job_configs.set_num_initial_python_workers(num_initial_workers);
+      mock_job_config.set_num_initial_python_workers(num_initial_workers);
       break;
     case Language::JAVA:
-      mock_job_configs.set_num_initial_java_workers(num_initial_workers);
+      mock_job_config.set_num_initial_java_workers(num_initial_workers);
       break;
     default:
       RAY_LOG(FATAL) << "Unknown language: " << language;
@@ -107,7 +107,7 @@ class WorkerPoolMock : public WorkerPool {
   Process last_worker_process_;
   // The worker commands by process.
   std::unordered_map<Process, std::vector<std::string>> worker_commands_by_proc_;
-  rpc::JobConfigs mock_job_configs;
+  rpc::JobConfig mock_job_config;
 };
 
 class WorkerPoolTest : public ::testing::Test {

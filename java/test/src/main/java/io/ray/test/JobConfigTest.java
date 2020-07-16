@@ -8,16 +8,16 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-public class JobConfigsTest extends BaseTest {
+public class JobConfigTest extends BaseTest {
 
   @BeforeClass
-  public void setupJobConfigs() {
+  public void setupJobConfig() {
     System.setProperty("ray.job.num-java-workers-per-process", "3");
     System.setProperty("ray.job.jvm-options.0", "-DX=999");
   }
 
   @AfterClass
-  public void tearDownJobConfigs() {
+  public void tearDownJobConfig() {
     System.clearProperty("ray.job.num-java-workers-per-process");
     System.clearProperty("ray.job.jvm-options.0");
   }
@@ -44,14 +44,14 @@ public class JobConfigsTest extends BaseTest {
   @Test
   public void testJvmOptions() {
     TestUtils.skipTestUnderSingleProcess();
-    ObjectRef<String> obj = Ray.task(JobConfigsTest::getJvmOptions).remote();
+    ObjectRef<String> obj = Ray.task(JobConfigTest::getJvmOptions).remote();
     Assert.assertEquals("999", obj.get());
   }
 
   @Test
   public void testNumJavaWorkerPerProcess() {
     TestUtils.skipTestUnderSingleProcess();
-    ObjectRef<Integer> obj = Ray.task(JobConfigsTest::getWorkersNum).remote();
+    ObjectRef<Integer> obj = Ray.task(JobConfigTest::getWorkersNum).remote();
     Assert.assertEquals(3, (int) obj.get());
   }
 

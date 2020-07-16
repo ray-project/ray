@@ -293,7 +293,7 @@ def test_num_initial_workers(shutdown_only):
     ray.init(
         num_cpus=10,
         include_dashboard=True,
-        job_configs=ray.job_configs.JobConfigs(num_initial_python_workers=3))
+        job_config=ray.job_config.JobConfig(num_initial_python_workers=3))
     raylet = ray.nodes()[0]
     raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
                                     raylet["NodeManagerPort"])

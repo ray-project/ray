@@ -59,14 +59,14 @@ WorkerPool::WorkerPool(
     std::shared_ptr<gcs::GcsClient> gcs_client, const WorkerCommandMap &worker_commands,
     const std::unordered_map<std::string, std::string> &raylet_config,
     std::function<void()> starting_worker_timeout_callback,
-    std::function<const rpc::JobConfigs *(const JobID &)> job_configs_getter)
+    std::function<const rpc::JobConfig *(const JobID &)> job_config_getter)
     : io_service_(&io_service),
       adaptive_num_initial_workers_(adaptive_num_initial_workers),
       maximum_startup_concurrency_(maximum_startup_concurrency),
       gcs_client_(std::move(gcs_client)),
       raylet_config_(raylet_config),
       starting_worker_timeout_callback_(starting_worker_timeout_callback),
-      job_configs_getter_(job_configs_getter) {
+      job_config_getter_(job_config_getter) {
   RAY_CHECK(maximum_startup_concurrency > 0);
 #ifndef _WIN32
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
@@ -140,9 +140,9 @@ uint32_t WorkerPool::Size(const Language &language) const {
 
 Process WorkerPool::StartWorkerProcess(const Language &language, const JobID &job_id,
                                        std::vector<std::string> dynamic_options) {
-  auto job_configs = job_configs_getter_(job_id);
-  if (!job_configs) {
-    RAY_LOG(INFO) << "Job configs of job " << job_id << " are not local yet.";
+  auto job_config = job_config_getter_(job_id);
+  if (!job_config) {
+    RAY_LOG(INFO) << "Job config of job " << job_id << " are not local yet.";
     return Process();
   }
 
@@ -167,16 +167,16 @@ Process WorkerPool::StartWorkerProcess(const Language &language, const JobID &jo
 
   int workers_to_start;
   if (dynamic_options.empty() && language == Language::JAVA) {
-    workers_to_start = job_configs->num_java_workers_per_process();
+    workers_to_start = job_config->num_java_workers_per_process();
   } else {
     workers_to_start = 1;
   }
 
-  if (!job_configs->jvm_options().empty()) {
+  if (!job_config->jvm_options().empty()) {
     // Note that we push the item to the front of the vector to make
     // sure this is the freshest option than others.
-    dynamic_options.insert(dynamic_options.begin(), job_configs->jvm_options().begin(),
-                           job_configs->jvm_options().end());
+    dynamic_options.insert(dynamic_options.begin(), job_config->jvm_options().begin(),
+                           job_config->jvm_options().end());
   }
 
   // Extract pointers from the worker command to pass into execvp.
@@ -374,18 +374,18 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<Worker> &driver,
 }
 
 void WorkerPool::StartInitialWorkersForJob(const JobID &job_id) {
-  auto job_configs = job_configs_getter_(job_id);
-  RAY_CHECK(job_configs);
+  auto job_config = job_config_getter_(job_id);
+  RAY_CHECK(job_config);
   for (auto &entry : states_by_lang_) {
     auto &state = entry.second;
     uint32_t num_initial_workers = adaptive_num_initial_workers_;
     int32_t config_value;
     switch (entry.first) {
     case Language::PYTHON:
-      config_value = job_configs->num_initial_python_workers();
+      config_value = job_config->num_initial_python_workers();
       break;
     case Language::JAVA:
-      config_value = job_configs->num_initial_java_workers();
+      config_value = job_config->num_initial_java_workers();
       break;
     default:
       config_value = 0;

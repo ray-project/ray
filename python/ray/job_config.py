@@ -1,7 +1,7 @@
 import ray
 
 
-class JobConfigs:
+class JobConfig:
     """A class used to store the configurations of a job.
 
     Attributes:
@@ -39,13 +39,13 @@ class JobConfigs:
             self.jvm_options = jvm_options
 
     def serialize(self):
-        job_configs = ray.gcs_utils.JobConfigs()
-        job_configs.num_initial_python_workers = (
+        job_config = ray.gcs_utils.JobConfig()
+        job_config.num_initial_python_workers = (
             self.num_initial_python_workers)
-        job_configs.num_initial_java_workers = self.num_initial_java_workers
+        job_config.num_initial_java_workers = self.num_initial_java_workers
         for key in self.worker_env:
-            job_configs.worker_env[key] = self.worker_env[key]
-        job_configs.num_java_workers_per_process = (
+            job_config.worker_env[key] = self.worker_env[key]
+        job_config.num_java_workers_per_process = (
             self.num_java_workers_per_process)
-        job_configs.jvm_options.extend(self.jvm_options)
-        return job_configs.SerializeToString()
+        job_config.jvm_options.extend(self.jvm_options)
+        return job_config.SerializeToString()

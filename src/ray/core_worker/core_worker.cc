@@ -285,7 +285,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       (options_.worker_type == ray::WorkerType::WORKER),
       worker_context_.GetCurrentJobID(), options_.language, options_.node_ip_address,
       &local_raylet_id, &assigned_port, &internal_config,
-      options_.serialized_job_configs));
+      options_.serialized_job_config));
   connected_ = true;
 
   RAY_CHECK(assigned_port != -1)
