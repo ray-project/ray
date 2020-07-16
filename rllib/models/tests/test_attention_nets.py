@@ -251,7 +251,7 @@ class TestModules(unittest.TestCase):
                 self.train_tf_model(
                     model, [x] + init_state,
                     [y, value_labels, memory_labels, mlp_labels],
-                    num_epochs=50,
+                    num_epochs=200,
                     minibatch_size=B)
 
 

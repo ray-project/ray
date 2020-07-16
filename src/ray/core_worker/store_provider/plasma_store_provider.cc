@@ -24,10 +24,12 @@ namespace ray {
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     const std::string &store_socket,
     const std::shared_ptr<raylet::RayletClient> raylet_client,
+    const std::shared_ptr<ReferenceCounter> reference_counter,
     std::function<Status()> check_signals, bool evict_if_full,
     std::function<void()> on_store_full,
     std::function<std::string()> get_current_call_site)
     : raylet_client_(raylet_client),
+      reference_counter_(reference_counter),
       check_signals_(check_signals),
       evict_if_full_(evict_if_full),
       on_store_full_(on_store_full) {
@@ -38,6 +40,7 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
   }
   buffer_tracker_ = std::make_shared<BufferTracker>();
   RAY_CHECK_OK(store_client_.Connect(store_socket));
+  RAY_CHECK_OK(WarmupStore());
 }
 
 CoreWorkerPlasmaStoreProvider::~CoreWorkerPlasmaStoreProvider() {
@@ -110,7 +113,7 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
         if (on_store_full_) {
           on_store_full_();
         }
-        usleep(1000 * delay);
+        std::this_thread::sleep_for(std::chrono::milliseconds(delay));
         delay *= 2;
         retries += 1;
         should_retry = true;
@@ -156,8 +159,10 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
     int64_t timeout_ms, bool fetch_only, bool in_direct_call, const TaskID &task_id,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
     bool *got_exception) {
+  const auto owner_addresses = reference_counter_->GetOwnerAddresses(batch_ids);
   RAY_RETURN_NOT_OK(raylet_client_->FetchOrReconstruct(
-      batch_ids, fetch_only, /*mark_worker_blocked*/ !in_direct_call, task_id));
+      batch_ids, owner_addresses, fetch_only, /*mark_worker_blocked*/ !in_direct_call,
+      task_id));
 
   std::vector<plasma::ObjectBuffer> plasma_results;
   {
@@ -335,10 +340,11 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
     if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
       RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskBlocked());
     }
-    RAY_RETURN_NOT_OK(
-        raylet_client_->Wait(id_vector, num_objects, call_timeout, /*wait_local*/ true,
-                             /*mark_worker_blocked*/ !ctx.CurrentTaskIsDirectCall(),
-                             ctx.GetCurrentTaskID(), &result_pair));
+    const auto owner_addresses = reference_counter_->GetOwnerAddresses(id_vector);
+    RAY_RETURN_NOT_OK(raylet_client_->Wait(
+        id_vector, owner_addresses, num_objects, call_timeout, /*wait_local*/ true,
+        /*mark_worker_blocked*/ !ctx.CurrentTaskIsDirectCall(), ctx.GetCurrentTaskID(),
+        &result_pair));
 
     if (result_pair.first.size() >= static_cast<size_t>(num_objects)) {
       should_break = true;
@@ -412,6 +418,16 @@ void CoreWorkerPlasmaStoreProvider::WarnIfAttemptedTooManyTimes(
         << " happened in raylet backend. " << remaining.size()
         << " object(s) pending: " << oss.str() << ".";
   }
+}
+
+Status CoreWorkerPlasmaStoreProvider::WarmupStore() {
+  ObjectID object_id = ObjectID::FromRandom();
+  std::shared_ptr<Buffer> data;
+  RAY_RETURN_NOT_OK(Create(nullptr, 8, object_id, &data));
+  RAY_RETURN_NOT_OK(Seal(object_id));
+  RAY_RETURN_NOT_OK(Release(object_id));
+  RAY_RETURN_NOT_OK(Delete({object_id}, false, false));
+  return Status::OK();
 }
 
 }  // namespace ray

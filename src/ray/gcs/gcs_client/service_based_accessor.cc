@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_client/service_based_accessor.h"
-
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
 
 namespace ray {
@@ -60,20 +59,32 @@ Status ServiceBasedJobInfoAccessor::AsyncMarkFinished(const JobID &job_id,
   return Status::OK();
 }
 
-Status ServiceBasedJobInfoAccessor::AsyncSubscribeToFinishedJobs(
+Status ServiceBasedJobInfoAccessor::AsyncSubscribeAll(
     const SubscribeCallback<JobID, JobTableData> &subscribe, const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
+  fetch_all_data_operation_ = [this, subscribe](const StatusCallback &done) {
+    auto callback = [subscribe, done](
+                        const Status &status,
+                        const std::vector<rpc::JobTableData> &job_info_list) {
+      for (auto &job_info : job_info_list) {
+        subscribe(JobID::FromBinary(job_info.job_id()), job_info);
+      }
+      if (done) {
+        done(status);
+      }
+    };
+    RAY_CHECK_OK(AsyncGetAll(callback));
+  };
   subscribe_operation_ = [this, subscribe](const StatusCallback &done) {
     auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
       JobTableData job_data;
       job_data.ParseFromString(data);
-      if (job_data.is_dead()) {
-        subscribe(JobID::FromBinary(id), job_data);
-      }
+      subscribe(JobID::FromBinary(id), job_data);
     };
     return client_impl_->GetGcsPubSub().SubscribeAll(JOB_CHANNEL, on_subscribe, done);
   };
-  return subscribe_operation_(done);
+  return subscribe_operation_(
+      [this, done](const Status &status) { fetch_all_data_operation_(done); });
 }
 
 void ServiceBasedJobInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
@@ -767,6 +778,39 @@ void ServiceBasedNodeInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restar
   }
 }
 
+Status ServiceBasedNodeInfoAccessor::AsyncSetInternalConfig(
+    std::unordered_map<std::string, std::string> &config) {
+  rpc::SetInternalConfigRequest request;
+  request.mutable_config()->mutable_config()->insert(config.begin(), config.end());
+
+  client_impl_->GetGcsRpcClient().SetInternalConfig(
+      request, [](const Status &status, const rpc::SetInternalConfigReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(ERROR) << "Failed to set internal config: " << status.message();
+        }
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedNodeInfoAccessor::AsyncGetInternalConfig(
+    const OptionalItemCallback<std::unordered_map<std::string, std::string>> &callback) {
+  rpc::GetInternalConfigRequest request;
+  client_impl_->GetGcsRpcClient().GetInternalConfig(
+      request,
+      [callback](const Status &status, const rpc::GetInternalConfigReply &reply) {
+        if (status.ok() && reply.has_config()) {
+          RAY_LOG(DEBUG) << "Fetched internal config: " << reply.config().DebugString();
+          callback(status,
+                   std::unordered_map<std::string, std::string>(
+                       reply.config().config().begin(), reply.config().config().end()));
+        } else {
+          RAY_LOG(ERROR) << "Failed to get internal config: " << status.message();
+          callback(status, boost::none);
+        }
+      });
+  return Status::OK();
+}
+
 ServiceBasedTaskInfoAccessor::ServiceBasedTaskInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl) {}
@@ -1252,17 +1296,16 @@ ServiceBasedWorkerInfoAccessor::ServiceBasedWorkerInfoAccessor(
     : client_impl_(client_impl) {}
 
 Status ServiceBasedWorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
-    const SubscribeCallback<WorkerID, rpc::WorkerFailureData> &subscribe,
+    const SubscribeCallback<WorkerID, rpc::WorkerTableData> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
   subscribe_operation_ = [this, subscribe](const StatusCallback &done) {
     auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
-      rpc::WorkerFailureData worker_failure_data;
+      rpc::WorkerTableData worker_failure_data;
       worker_failure_data.ParseFromString(data);
       subscribe(WorkerID::FromBinary(id), worker_failure_data);
     };
-    return client_impl_->GetGcsPubSub().SubscribeAll(WORKER_FAILURE_CHANNEL, on_subscribe,
-                                                     done);
+    return client_impl_->GetGcsPubSub().SubscribeAll(WORKER_CHANNEL, on_subscribe, done);
   };
   return subscribe_operation_(done);
 }
@@ -1276,7 +1319,7 @@ void ServiceBasedWorkerInfoAccessor::AsyncResubscribe(bool is_pubsub_server_rest
 }
 
 Status ServiceBasedWorkerInfoAccessor::AsyncReportWorkerFailure(
-    const std::shared_ptr<rpc::WorkerFailureData> &data_ptr,
+    const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
     const StatusCallback &callback) {
   rpc::Address worker_address = data_ptr->worker_address();
   RAY_LOG(DEBUG) << "Reporting worker failure, " << worker_address.DebugString();
@@ -1294,22 +1337,48 @@ Status ServiceBasedWorkerInfoAccessor::AsyncReportWorkerFailure(
   return Status::OK();
 }
 
-Status ServiceBasedWorkerInfoAccessor::AsyncRegisterWorker(
-    rpc::WorkerType worker_type, const WorkerID &worker_id,
-    const std::unordered_map<std::string, std::string> &worker_info,
-    const StatusCallback &callback) {
-  RAY_LOG(DEBUG) << "Registering the worker. worker id = " << worker_id;
-  rpc::RegisterWorkerRequest request;
-  request.set_worker_type(worker_type);
+Status ServiceBasedWorkerInfoAccessor::AsyncGet(
+    const WorkerID &worker_id,
+    const OptionalItemCallback<rpc::WorkerTableData> &callback) {
+  RAY_LOG(DEBUG) << "Getting worker info, worker id = " << worker_id;
+  rpc::GetWorkerInfoRequest request;
   request.set_worker_id(worker_id.Binary());
-  request.mutable_worker_info()->insert(worker_info.begin(), worker_info.end());
-  client_impl_->GetGcsRpcClient().RegisterWorker(
+  client_impl_->GetGcsRpcClient().GetWorkerInfo(
       request,
-      [worker_id, callback](const Status &status, const rpc::RegisterWorkerReply &reply) {
+      [worker_id, callback](const Status &status, const rpc::GetWorkerInfoReply &reply) {
+        if (reply.has_worker_table_data()) {
+          callback(status, reply.worker_table_data());
+        } else {
+          callback(status, boost::none);
+        }
+        RAY_LOG(DEBUG) << "Finished getting worker info, worker id = " << worker_id;
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedWorkerInfoAccessor::AsyncGetAll(
+    const MultiItemCallback<rpc::WorkerTableData> &callback) {
+  RAY_LOG(DEBUG) << "Getting all worker info.";
+  rpc::GetAllWorkerInfoRequest request;
+  client_impl_->GetGcsRpcClient().GetAllWorkerInfo(
+      request, [callback](const Status &status, const rpc::GetAllWorkerInfoReply &reply) {
+        auto result = VectorFromProtobuf(reply.worker_table_data());
+        callback(status, result);
+        RAY_LOG(DEBUG) << "Finished getting all worker info, status = " << status;
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedWorkerInfoAccessor::AsyncAdd(
+    const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
+    const StatusCallback &callback) {
+  rpc::AddWorkerInfoRequest request;
+  request.mutable_worker_data()->CopyFrom(*data_ptr);
+  client_impl_->GetGcsRpcClient().AddWorkerInfo(
+      request, [callback](const Status &status, const rpc::AddWorkerInfoReply &reply) {
         if (callback) {
           callback(status);
         }
-        RAY_LOG(DEBUG) << "Finished registering worker. worker id = " << worker_id;
       });
   return Status::OK();
 }

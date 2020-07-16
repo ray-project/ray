@@ -170,11 +170,11 @@ class UnreconstructableError(RayError):
     reconstruct the object.
 
     Attributes:
-        object_id: ID of the object.
+        object_ref: ID of the object.
     """
 
-    def __init__(self, object_id):
-        self.object_id = object_id
+    def __init__(self, object_ref):
+        self.object_ref = object_ref
 
     def __str__(self):
         return (
@@ -183,7 +183,7 @@ class UnreconstructableError(RayError):
             "memory available with ray.init(object_store_memory=<bytes>) "
             "or setting object store limits with "
             "ray.remote(object_store_memory=<bytes>). See also: {}".format(
-                self.object_id.hex(),
+                self.object_ref.hex(),
                 "https://docs.ray.io/en/latest/memory-management.html"))
 
 

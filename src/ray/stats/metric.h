@@ -17,10 +17,8 @@
 #include <memory>
 #include <unordered_map>
 
-#include "opencensus/exporters/stats/prometheus/prometheus_exporter.h"
 #include "opencensus/stats/stats.h"
 #include "opencensus/tags/tag_key.h"
-#include "prometheus/exposer.h"
 
 #include "ray/util/logging.h"
 
@@ -35,13 +33,25 @@ class StatsConfig final {
  public:
   static StatsConfig &instance();
 
+  /// Set the global tags that will be appended to all metrics in this process.
   void SetGlobalTags(const TagsType &global_tags);
 
+  /// Get the current global tags.
   const TagsType &GetGlobalTags() const;
 
+  /// Set if the stats are enabled in this process.
   void SetIsDisableStats(bool disable_stats);
 
+  /// Get whether or not stats are enabled.
   bool IsStatsDisabled() const;
+
+  void SetReportInterval(const absl::Duration interval);
+
+  const absl::Duration &GetReportInterval() const;
+
+  void SetHarvestInterval(const absl::Duration interval);
+
+  const absl::Duration &GetHarvestInterval() const;
 
  private:
   StatsConfig() = default;
@@ -51,7 +61,15 @@ class StatsConfig final {
 
  private:
   TagsType global_tags_;
+  /// If true, don't collect metrics in this process.
   bool is_stats_disabled_ = true;
+  // Regular reporting interval for all reporters.
+  absl::Duration report_interval_ = absl::Seconds(10);
+  // Time interval for periodic aggregation.
+  // Exporter may capture empty collection if harvest interval is longer than
+  // report interval. So harvest interval is suggusted to be half of report
+  // interval.
+  absl::Duration harvest_interval_ = absl::Seconds(5);
 };
 
 /// A thin wrapper that wraps the `opencensus::tag::measure` for using it simply.

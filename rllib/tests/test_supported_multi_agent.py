@@ -14,7 +14,10 @@ def check_support_multiagent(alg, config):
     register_env("multi_agent_cartpole",
                  lambda _: MultiAgentCartPole({"num_agents": 2}))
     config["log_level"] = "ERROR"
-    for _ in framework_iterator(config, frameworks=("torch", "tf")):
+    for fw in framework_iterator(config):
+        if fw in ["tf2", "tfe"] and \
+                alg in ["A3C", "APEX", "APEX_DDPG", "IMPALA"]:
+            continue
         if alg in ["DDPG", "APEX_DDPG", "SAC"]:
             a = get_agent_class(alg)(
                 config=config, env="multi_agent_mountaincar")
@@ -121,6 +124,6 @@ if __name__ == "__main__":
     import sys
     # One can specify the specific TestCase class to run.
     # None for all unittest.TestCase classes in this file.
-    class_ = sys.argv[1] if len(sys.argv) > 0 else None
+    class_ = sys.argv[1] if len(sys.argv) > 1 else None
     sys.exit(pytest.main(
         ["-v", __file__ + ("" if class_ is None else "::" + class_)]))

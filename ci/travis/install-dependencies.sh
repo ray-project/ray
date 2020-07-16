@@ -202,6 +202,7 @@ install_toolchains() {
 install_dependencies() {
 
   install_bazel
+
   install_base
   install_toolchains
   install_nvm
@@ -232,7 +233,7 @@ install_dependencies() {
       opencv-python-headless pyyaml pandas==1.0.5 requests feather-format lxml openpyxl xlrd \
       py-spy pytest pytest-timeout networkx tabulate aiohttp uvicorn dataclasses pygments werkzeug \
       kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio scikit-learn==0.22.2 numba \
-      Pillow prometheus_client boto3)
+      Pillow prometheus_client boto3 pettingzoo)
     if [ "${OSTYPE}" != msys ]; then
       # These packages aren't Windows-compatible
       pip_packages+=(blist)  # https://github.com/DanielStutzbach/blist/issues/81#issue-391460716
