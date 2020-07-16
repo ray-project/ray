@@ -25,11 +25,14 @@ void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
   JobID job_id = JobID::FromBinary(request.data().job_id());
   RAY_LOG(INFO) << "Adding job, job id = " << job_id
                 << ", driver pid = " << request.data().driver_pid();
-  auto on_done = [job_id, request, reply, send_reply_callback](const Status &status) {
+  auto on_done = [this, job_id, request, reply,
+                  send_reply_callback](const Status &status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to add job, job id = " << job_id
                      << ", driver pid = " << request.data().driver_pid();
     } else {
+      RAY_CHECK_OK(gcs_pub_sub_->Publish(JOB_CHANNEL, job_id.Binary(),
+                                         request.data().SerializeAsString(), nullptr));
       RAY_LOG(INFO) << "Finished adding job, job id = " << job_id
                     << ", driver pid = " << request.data().driver_pid();
     }

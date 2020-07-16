@@ -441,6 +441,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void HandleObjectMissing(const ObjectID &object_id);
 
+  /// Handles the event that a job is started.
+  ///
+  /// \param job_id ID of the started job.
+  /// \param job_data Data associated with the started job.
+  /// \return Void
+  void HandleJobStarted(const JobID &job_id, const JobTableData &job_data);
+
   /// Handles the event that a job is finished.
   ///
   /// \param job_id ID of the finished job.

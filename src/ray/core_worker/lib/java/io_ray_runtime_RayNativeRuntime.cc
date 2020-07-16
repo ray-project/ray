@@ -19,6 +19,7 @@
 #include <sstream>
 
 #include "ray/common/id.h"
+#include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/lib/java/jni_utils.h"
 
@@ -175,6 +176,27 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeSetResource(
       native_resource_name, static_cast<double>(capacity), node_id);
   env->ReleaseStringUTFChars(resourceName, native_resource_name);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(JNIEnv *env, jclass,
+                                                                  jstring actor_name,
+                                                                  jboolean global) {
+  const char *native_actor_name = env->GetStringUTFChars(actor_name, JNI_FALSE);
+  auto full_name = GetActorFullName(global, native_actor_name);
+
+  auto *actor_handle =
+      ray::CoreWorkerProcess::GetCoreWorker().GetNamedActorHandle(full_name);
+  ray::ActorID actor_id;
+  if (actor_handle) {
+    actor_id = actor_handle->GetActorID();
+  } else {
+    actor_id = ray::ActorID::Nil();
+  }
+  jbyteArray bytes = env->NewByteArray(actor_id.Size());
+  env->SetByteArrayRegion(bytes, 0, actor_id.Size(),
+                          reinterpret_cast<const jbyte *>(actor_id.Data()));
+  return bytes;
 }
 
 JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeKillActor(
