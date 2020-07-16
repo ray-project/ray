@@ -3,6 +3,7 @@ from collections import defaultdict, namedtuple
 import os
 import random
 import time
+from typing import Callable
 
 import ray
 import ray.cloudpickle as pickle
@@ -87,8 +88,13 @@ class ServeMaster:
           requires all implementations here to be idempotent.
     """
 
-    async def __init__(self, instance_name, http_node_id, http_proxy_host,
-                       http_proxy_port, http_proxy_per_nmetric_exporter_class):
+    async def __init__(self,
+                       instance_name,
+                       http_node_id,
+                       http_proxy_host,
+                       http_proxy_port,
+                       metric_exporter_class,
+                       num_routers=1):
         # Unique name of the serve instance managed by this actor. Used to
         # namespace child actors and checkpoints.
         self.instance_name = instance_name
@@ -121,15 +127,14 @@ class ServeMaster:
         self.write_lock = asyncio.Lock()
 
         # Cached handles to actors in the system.
-        self.router = None
-        self.http_proxy = None
+        self.routers = []
         self.metric_exporter = None
 
         # If starting the actor for the first time, starts up the other system
         # components. If recovering, fetches their actor handles.
         self._get_or_start_metric_exporter(metric_exporter_class)
-        self._get_or_start_http_proxy(http_node_id, http_proxy_host,
-                                      http_proxy_port)
+        self._get_or_start_routers(http_node_id, http_proxy_host,
+                                   http_proxy_port, num_routers)
 
         # NOTE(edoakes): unfortunately, we can't completely recover from a
         # checkpoint in the constructor because we block while waiting for
@@ -151,38 +156,41 @@ class ServeMaster:
             asyncio.get_event_loop().create_task(
                 self._recover_from_checkpoint(checkpoint))
 
-    def _get_or_start_http_proxy(self, node_id, host, port):
+    def _get_or_start_routers(self, node_id, host, port, num_routers):
         """Get the HTTP proxy belonging to this serve instance.
 
         If the HTTP proxy does not already exist, it will be started.
         """
-        proxy_name = format_actor_name(SERVE_PROXY_NAME, self.instance_name)
-        try:
-            self.http_proxy = ray.get_actor(proxy_name)
-        except ValueError:
-            logger.info(
-                "Starting HTTP proxy with name '{}' on node '{}'".format(
-                    proxy_name, node_id))
-            self.http_proxy = HTTPProxyActor.options(
-                name=proxy_name,
-                max_concurrency=ASYNC_CONCURRENCY,
-                max_restarts=-1,
-                max_task_retries=-1,
-                resources={
-                    node_id: 0.01
-                },
-            ).remote(
-                host, port, instance_name=self.instance_name)
-
-        # Since router is a merged with HTTP proxy actor, the router will be
-        # proxied via the HTTP actor. Even though the two variable names are
-        # pointing to the same object, their semantic differences make the code
-        # more readable. (e.g. http_proxy.set_route_table, router.add_worker)
-        self.router = self.http_proxy
+        for i in range(num_routers):
+            proxy_name = format_actor_name(SERVE_PROXY_NAME,
+                                           self.instance_name)
+            proxy_name += "-{}".format(i)
+            try:
+                router = ray.get_actor(proxy_name)
+            except ValueError:
+                logger.info(
+                    "Starting HTTP proxy with name '{}' on node '{}'".format(
+                        proxy_name, node_id))
+                router = HTTPProxyActor.options(
+                    name=proxy_name,
+                    max_concurrency=ASYNC_CONCURRENCY,
+                    max_restarts=-1,
+                    max_task_retries=-1,
+                    resources={
+                        node_id: 0.01
+                    },
+                ).remote(
+                    host, port, instance_name=self.instance_name)
+            self.routers.append(router)
 
     def get_http_proxy(self):
         """Returns a handle to the HTTP proxy managed by this actor."""
-        return [self.http_proxy]
+        return self.routers
+
+    async def broadcast_routers(
+            self, apply: Callable[[HTTPProxyActor], ray.ObjectRef]):
+        object_refs = [apply(router) for router in self.routers]
+        await asyncio.gather(*object_refs)
 
     def get_http_proxy_config(self):
         """Called by the HTTP proxy on startup to fetch required state."""
@@ -267,20 +275,23 @@ class ServeMaster:
         # Push configuration state to the router.
         # TODO(edoakes): should we make this a pull-only model for simplicity?
         for endpoint, traffic_policy in self.traffic_policies.items():
-            await self.router.set_traffic.remote(endpoint, traffic_policy)
+            await self.broadcast_routers(
+                lambda router: router.set_traffic.remote(endpoint, traffic_policy)
+            )
 
         for backend_tag, replica_dict in self.workers.items():
             for replica_tag, worker in replica_dict.items():
-                await self.router.add_new_worker.remote(
-                    backend_tag, replica_tag, worker)
+                await self.broadcast_routers(lambda router: router.add_new_worker.remote(
+                    backend_tag, replica_tag, worker))
 
         for backend, info in self.backends.items():
-            await self.router.set_backend_config.remote(
-                backend, info.backend_config)
+            await self.broadcast_routers(lambda router: router.set_backend_config.remote(
+                backend, info.backend_config))
             await self.broadcast_backend_config(backend)
 
         # Push configuration state to the HTTP proxy.
-        await self.http_proxy.set_route_table.remote(self.routes)
+        await self.broadcast_routers(
+            lambda router: router.set_route_table.remote(self.routes))
 
         # Start/stop any pending backend replicas.
         await self._start_pending_replicas()
@@ -353,8 +364,8 @@ class ServeMaster:
         self.workers[backend_tag][replica_tag] = worker_handle
 
         # Register the worker with the router.
-        await self.router.add_new_worker.remote(backend_tag, replica_tag,
-                                                worker_handle)
+        await self.broadcast_routers(lambda router: router.add_new_worker.remote(backend_tag, replica_tag,
+                                                worker_handle))
 
     async def _start_pending_replicas(self):
         """Starts the pending backend replicas in self.replicas_to_start.
@@ -392,8 +403,8 @@ class ServeMaster:
                     continue
 
                 # Remove the replica from router. This call is idempotent.
-                await self.router.remove_worker.remote(backend_tag,
-                                                       replica_tag)
+                await self.broadcast_routers(lambda router: router.remove_worker.remote(backend_tag,
+                                                       replica_tag))
 
                 # TODO(edoakes): this logic isn't ideal because there may be
                 # pending tasks still executing on the replica. However, if we
@@ -410,7 +421,8 @@ class ServeMaster:
         Clears self.backends_to_remove.
         """
         for backend_tag in self.backends_to_remove:
-            await self.router.remove_backend.remote(backend_tag)
+            await self.broadcast_routers(
+                lambda router: router.remove_backend.remote(backend_tag))
         self.backends_to_remove.clear()
 
     async def _remove_pending_endpoints(self):
@@ -419,7 +431,8 @@ class ServeMaster:
         Clears self.endpoints_to_remove.
         """
         for endpoint_tag in self.endpoints_to_remove:
-            await self.router.remove_endpoint.remote(endpoint_tag)
+            await self.broadcast_routers(
+                lambda router: router.remove_endpoint.remote(endpoint_tag))
         self.endpoints_to_remove.clear()
 
     def _scale_replicas(self, backend_tag, num_replicas):
@@ -533,7 +546,9 @@ class ServeMaster:
         # update to avoid inconsistent state if we crash after pushing the
         # update.
         self._checkpoint()
-        await self.router.set_traffic.remote(endpoint_name, traffic_policy)
+        await self.broadcast_routers(
+            lambda router: router.set_traffic.remote(endpoint_name, traffic_policy)
+        )
 
     async def set_traffic(self, endpoint_name, traffic_dict):
         """Sets the traffic policy for the specified endpoint."""
@@ -560,8 +575,8 @@ class ServeMaster:
             # update to avoid inconsistent state if we crash after pushing the
             # update.
             self._checkpoint()
-            await self.router.set_traffic.remote(
-                endpoint_name, self.traffic_policies[endpoint_name])
+            await self.broadcast_routers(lambda router: router.set_traffic.remote(
+                endpoint_name, self.traffic_policies[endpoint_name]))
 
     async def create_endpoint(self, endpoint, traffic_dict, route, methods):
         """Create a new endpoint with the specified route and methods.
@@ -600,7 +615,8 @@ class ServeMaster:
 
             # NOTE(edoakes): checkpoint is written in self._set_traffic.
             await self._set_traffic(endpoint, traffic_dict)
-            await self.http_proxy.set_route_table.remote(self.routes)
+            await self.broadcast_routers(
+                lambda router: router.set_route_table.remote(self.routes))
 
     async def delete_endpoint(self, endpoint):
         """Delete the specified endpoint.
@@ -635,7 +651,8 @@ class ServeMaster:
 
             # Update the HTTP proxy first to ensure no new requests for the
             # endpoint are sent to the router.
-            await self.http_proxy.set_route_table.remote(self.routes)
+            await self.broadcast_routers(
+                lambda router: router.set_route_table.remote(self.routes))
             await self._remove_pending_endpoints()
 
     async def create_backend(self, backend_tag, backend_config,
@@ -660,8 +677,8 @@ class ServeMaster:
 
             # Set the backend config inside the router
             # (particularly for max-batch-size).
-            await self.router.set_backend_config.remote(
-                backend_tag, backend_config)
+            await self.broadcast_routers(lambda router: router.set_backend_config.remote(
+                backend_tag, backend_config))
             await self.broadcast_backend_config(backend_tag)
 
     async def delete_backend(self, backend_tag):
@@ -717,8 +734,8 @@ class ServeMaster:
 
             # Inform the router about change in configuration
             # (particularly for setting max_batch_size).
-            await self.router.set_backend_config.remote(
-                backend_tag, backend_config)
+            await self.broadcast_routers(lambda router: router.set_backend_config.remote(
+                backend_tag, backend_config))
 
             await self._start_pending_replicas()
             await self._stop_pending_replicas()
@@ -748,7 +765,8 @@ class ServeMaster:
     async def shutdown(self):
         """Shuts down the serve instance completely."""
         async with self.write_lock:
-            ray.kill(self.http_proxy, no_restart=True)
+            for router in self.routers:
+                ray.kill(router, no_restart=True)
             ray.kill(self.metric_exporter, no_restart=True)
             for replica_dict in self.workers.values():
                 for replica in replica_dict.values():

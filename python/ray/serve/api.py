@@ -60,7 +60,8 @@ def accept_batch(f):
 def init(name=None,
          http_host=DEFAULT_HTTP_HOST,
          http_port=DEFAULT_HTTP_PORT,
-         metric_exporter=InMemoryExporter):
+         metric_exporter=InMemoryExporter,
+         num_routers=1):
     """Initialize or connect to a serve cluster.
 
     If serve cluster is already initialized, this function will just return.
@@ -111,7 +112,8 @@ def init(name=None,
         name=master_actor_name,
         max_restarts=-1,
         max_task_retries=-1,
-    ).remote(name, http_node_id, http_host, http_port, metric_exporter)
+    ).remote(name, http_node_id, http_host, http_port, metric_exporter,
+             num_routers)
 
     block_until_http_ready(
         "http://{}:{}/-/routes".format(http_host, http_port),
@@ -131,6 +133,7 @@ def shutdown():
     master_actor = None
 
 
+@_ensure_connected
 def create_endpoint(endpoint_name,
                     *,
                     backend=None,
