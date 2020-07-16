@@ -2009,6 +2009,7 @@ void NodeManager::HandleReleaseUnusedWorkers(
   std::vector<WorkerID> unused_worker_ids;
   for (auto &iter : leased_workers_) {
     // We need to exclude workers used by common tasks.
+    // Because they are not used by GCS.
     if (!iter.second->GetActorId().IsNil() && !in_use_worker_ids.count(iter.first)) {
       unused_worker_ids.emplace_back(iter.first);
     }

@@ -178,15 +178,13 @@ void GcsActorScheduler::ReleaseUnusedWorkers(
           nodes_of_releasing_unused_workers_.erase(node_id);
         };
     auto iter = node_to_workers.find(alive_node.first);
-    if (iter != node_to_workers.end()) {
-      RAY_CHECK_OK(lease_client->ReleaseUnusedWorkers(iter->second,
-                                                      release_unused_workers_callback));
-    } else {
-      // When GCS restarts, the reply of RequestWorkerLease may not be processed, so some
-      // nodes do not have leased workers. In this case, GCS will send an empty list.
-      RAY_CHECK_OK(
-          lease_client->ReleaseUnusedWorkers({}, release_unused_workers_callback));
-    }
+
+    // When GCS restarts, the reply of RequestWorkerLease may not be processed, so some
+    // nodes do not have leased workers. In this case, GCS will send an empty list.
+    auto workers_in_use =
+        iter != node_to_workers.end() ? iter->second : std::vector<WorkerID>{};
+    RAY_UNUSED(lease_client->ReleaseUnusedWorkers(workers_in_use,
+                                                  release_unused_workers_callback));
   }
 }
 
