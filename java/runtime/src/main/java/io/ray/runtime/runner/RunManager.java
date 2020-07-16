@@ -222,7 +222,6 @@ public class RunManager {
       // Set session dir for this cluster, so that the drivers which connected to this
       // cluster will fetch this session dir as its self's session dir.
       client.set("session_dir", rayConfig.getSessionDir());
-
       // start redis shards
       for (int i = 0; i < rayConfig.numberRedisShards; i++) {
         String shard = startRedisInstance(rayConfig.nodeIp,
