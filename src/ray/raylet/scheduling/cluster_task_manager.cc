@@ -131,12 +131,11 @@ void ClusterTaskManager::QueueTask(ScheduleFn fn, const Task &task) {
   tasks_to_schedule_.push_back(work);
 }
 
-void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> readyIds) {
-  for (auto task_id : readyIds) {
+void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> ready_ids) {
+  for (const auto &task_id : ready_ids) {
     auto it = waiting_tasks_.find(task_id);
-    if (it == waiting_tasks_.end()) {
-      const auto &work = *it;
-      tasks_to_dispatch_.push_back(work.second);
+    if (it != waiting_tasks_.end()) {
+      tasks_to_dispatch_.push_back(it->second);
       waiting_tasks_.erase(it);
     }
   }

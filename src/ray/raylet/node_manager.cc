@@ -1597,9 +1597,8 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
 
 void NodeManager::ScheduleAndDispatch() {
   RAY_CHECK(new_scheduler_enabled_);
-  if (cluster_task_manager_->SchedulePendingTasks()) {
-    cluster_task_manager_->DispatchScheduledTasksToWorkers(worker_pool_);
-  }
+  cluster_task_manager_->SchedulePendingTasks();
+  cluster_task_manager_->DispatchScheduledTasksToWorkers(worker_pool_);
 }
 
 void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest &request,
@@ -2841,14 +2840,7 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
                  << " tasks ready";
   // Transition the tasks whose dependencies are now fulfilled to the ready state.
   if (new_scheduler_enabled_) {
-    for (auto task_id : ready_task_ids) {
-      auto it = waiting_tasks_.find(task_id);
-      if (it != waiting_tasks_.end()) {
-        task_dependency_manager_.UnsubscribeGetDependencies(task_id);
-        tasks_to_dispatch_.push_back(it->second);
-        waiting_tasks_.erase(it);
-      }
-    }
+    cluster_task_manager_->TasksUnblocked(ready_task_ids);
     ScheduleAndDispatch();
   } else {
     if (ready_task_ids.size() > 0) {

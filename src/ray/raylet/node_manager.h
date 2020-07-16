@@ -740,17 +740,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// on all local workers of this raylet.
   bool should_local_gc_ = false;
 
-  /// The new resource scheduler for direct task calls.
+  /// These two classes make up the new scheduler. ClusterResourceScheduler is
+  /// responsible for maintaining a view of the cluster state w.r.t resource
+  /// usage. ClusterTaskManager is responsible for queuing, spilling back, and
+  /// dispatching tasks.
   std::shared_ptr<ClusterResourceScheduler> new_resource_scheduler_;
   std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
-
-  /// Queue of lease requests that are waiting for resources to become available.
-  /// TODO this should be a queue for each SchedulingClass
-  std::deque<std::pair<ScheduleFn, Task>> tasks_to_schedule_;
-  /// Queue of lease requests that should be scheduled onto workers.
-  std::deque<std::pair<ScheduleFn, Task>> tasks_to_dispatch_;
-  /// Queue tasks waiting for arguments to be transferred locally.
-  absl::flat_hash_map<TaskID, std::pair<ScheduleFn, Task>> waiting_tasks_;
 
   /// Cache of gRPC clients to workers (not necessarily running on this node).
   /// Also includes the number of inflight requests to each worker - when this
