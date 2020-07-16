@@ -1,5 +1,6 @@
 package io.ray.api.options;
 
+import io.ray.api.Ray;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -7,15 +8,17 @@ import java.util.Map;
  * The options for creating actor.
  */
 public class ActorCreationOptions extends BaseTaskOptions {
+  public final boolean global;
+  public final String name;
   public final int maxRestarts;
-
   public final String jvmOptions;
-
   public final int maxConcurrency;
 
-  private ActorCreationOptions(Map<String, Double> resources, int maxRestarts,
-                               String jvmOptions, int maxConcurrency) {
+  private ActorCreationOptions(boolean global, String name, Map<String, Double> resources,
+                               int maxRestarts, String jvmOptions, int maxConcurrency) {
     super(resources);
+    this.global = global;
+    this.name = name;
     this.maxRestarts = maxRestarts;
     this.jvmOptions = jvmOptions;
     this.maxConcurrency = maxConcurrency;
@@ -25,11 +28,41 @@ public class ActorCreationOptions extends BaseTaskOptions {
    * The inner class for building ActorCreationOptions.
    */
   public static class Builder {
-
+    private boolean global;
+    private String name;
     private Map<String, Double> resources = new HashMap<>();
     private int maxRestarts = 0;
     private String jvmOptions = null;
     private int maxConcurrency = 1;
+
+    /**
+     * Set the actor name of a named actor.
+     * This named actor is only accessible from this job by this name via
+     * {@link Ray#getActor(java.lang.String)}. If you want create a named actor that is accessible
+     * from all jobs, use {@link Builder#setGlobalName(java.lang.String)} instead.
+     *
+     * @param name The name of the named actor.
+     * @return self
+     */
+    public Builder setName(String name) {
+      this.name = name;
+      this.global = false;
+      return this;
+    }
+
+    /**
+     * Set the name of this actor. This actor will be accessible from all jobs by this name via
+     * {@link Ray#getGlobalActor(java.lang.String)}. If you want to create a named actor that is
+     * only accessible from this job, use {@link Builder#setName(java.lang.String)} instead.
+     *
+     * @param name The name of the named actor.
+     * @return self
+     */
+    public Builder setGlobalName(String name) {
+      this.name = name;
+      this.global = true;
+      return this;
+    }
 
     /**
      * Set a custom resource requirement to reserve for the lifetime of this actor.
@@ -73,7 +106,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
     /**
      * Set the JVM options for the Java worker that this actor is running in.
-     *
+     * <p>
      * Note, if this is set, this actor won't share Java worker with other actors or tasks.
      *
      * @param jvmOptions JVM options for the Java worker that this actor is running in.
@@ -86,7 +119,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
     /**
      * Set the max number of concurrent calls to allow for this actor.
-     *
+     * <p>
      * The max concurrency defaults to 1 for threaded execution.
      * Note that the execution order is not guaranteed when max_concurrency > 1.
      *
@@ -104,7 +137,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
     public ActorCreationOptions build() {
       return new ActorCreationOptions(
-          resources, maxRestarts, jvmOptions, maxConcurrency);
+          global, name, resources, maxRestarts, jvmOptions, maxConcurrency);
     }
   }
 

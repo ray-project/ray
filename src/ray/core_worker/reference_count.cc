@@ -368,6 +368,11 @@ std::vector<rpc::Address> ReferenceCounter::GetOwnerAddresses(
   return owner_addresses;
 }
 
+bool ReferenceCounter::IsPlasmaObjectFreed(const ObjectID &object_id) const {
+  absl::MutexLock lock(&mutex_);
+  return freed_objects_.find(object_id) != freed_objects_.end();
+}
+
 void ReferenceCounter::FreePlasmaObjects(const std::vector<ObjectID> &object_ids) {
   absl::MutexLock lock(&mutex_);
   for (const ObjectID &object_id : object_ids) {

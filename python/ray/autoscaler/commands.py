@@ -117,8 +117,8 @@ def _bootstrap_config(config, no_config_cache=False):
         raise NotImplementedError("Unsupported provider {}".format(
             config["provider"]))
 
-    bootstrap_config, _ = importer()
-    resolved_config = bootstrap_config(config)
+    provider_cls = importer(config["provider"])
+    resolved_config = provider_cls.bootstrap_config(config)
     if not no_config_cache:
         with open(cache_key, "w") as f:
             f.write(json.dumps(resolved_config))

@@ -1,6 +1,7 @@
 package io.ray.runtime.task;
 
 import io.ray.api.BaseActorHandle;
+import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
@@ -29,9 +30,10 @@ public interface TaskSubmitter {
    * @param args Arguments of this task.
    * @param options Options for this actor creation task.
    * @return Handle to the actor.
+   * @throws IllegalArgumentException if actor of specified name exists
    */
   BaseActorHandle createActor(FunctionDescriptor functionDescriptor, List<FunctionArg> args,
-                              ActorCreationOptions options);
+                              ActorCreationOptions options) throws IllegalArgumentException;
 
   /**
    * Submit an actor task.
@@ -44,4 +46,7 @@ public interface TaskSubmitter {
    */
   List<ObjectId> submitActorTask(BaseActorHandle actor, FunctionDescriptor functionDescriptor,
                                  List<FunctionArg> args, int numReturns, CallOptions options);
+
+  BaseActorHandle getActor(ActorId actorId);
+
 }

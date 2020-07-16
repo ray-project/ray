@@ -13,6 +13,7 @@ import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyFunction;
 import io.ray.api.function.RayFunc;
+import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
@@ -154,6 +155,11 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     return (PyActorHandle) createActorImpl(functionDescriptor, args, options);
   }
 
+  @SuppressWarnings("unchecked")
+  @Override
+  public <T extends BaseActorHandle> T getActorHandle(ActorId actorId) {
+    return (T) taskSubmitter.getActor(actorId);
+  }
 
   @Override
   public void setAsyncContext(Object asyncContext) {

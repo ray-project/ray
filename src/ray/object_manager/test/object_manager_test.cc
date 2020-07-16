@@ -24,6 +24,10 @@
 #include "ray/common/test_util.h"
 #include "ray/util/filesystem.h"
 
+extern "C" {
+#include "hiredis/hiredis.h"
+}
+
 namespace {
 int64_t wait_timeout_ms;
 }  // namespace

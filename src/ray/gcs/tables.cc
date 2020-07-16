@@ -20,6 +20,10 @@
 #include "ray/common/ray_config.h"
 #include "ray/gcs/redis_gcs_client.h"
 
+extern "C" {
+#include "hiredis/hiredis.h"
+}
+
 namespace {
 
 static const std::string kTableAppendCommand = "RAY.TABLE_APPEND";
