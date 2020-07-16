@@ -148,7 +148,8 @@ class TorchPolicy(Policy):
                 input_dict[SampleBatch.PREV_REWARDS] = \
                     np.asarray(prev_reward_batch)
             state_batches = [
-                convert_to_torch_tensor(s) for s in (state_batches or [])
+                convert_to_torch_tensor(s, self.device)
+                for s in (state_batches or [])
             ]
             actions, state_out, extra_fetches, logp = \
                 self._compute_action_helper(
@@ -565,7 +566,8 @@ class TorchPolicy(Policy):
 
     def _lazy_tensor_dict(self, postprocessed_batch):
         train_batch = UsageTrackingDict(postprocessed_batch)
-        train_batch.set_get_interceptor(convert_to_torch_tensor)
+        train_batch.set_get_interceptor(functools.partial(
+            convert_to_torch_tensor, device=self.device))
         return train_batch
 
 
