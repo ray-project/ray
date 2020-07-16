@@ -4,6 +4,7 @@ import time
 import logging
 
 from ray.autoscaler.node_provider import NodeProvider
+from ray.autoscaler.gcp.config import bootstrap_gcp
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 from ray.autoscaler.gcp.config import MAX_POLLS, POLL_INTERVAL, \
         construct_clients_from_provider_config
@@ -238,3 +239,7 @@ class GCPNodeProvider(NodeProvider):
             return self.cached_nodes[node_id]
 
         return self._get_node(node_id)
+
+    @staticmethod
+    def bootstrap_config(cluster_config):
+        return bootstrap_gcp(cluster_config)
