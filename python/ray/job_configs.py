@@ -22,15 +22,21 @@ class JobConfigs:
             self,
             num_initial_python_workers=-1,
             num_initial_java_workers=-1,
-            worker_env=dict(),
+            worker_env=None,
             num_java_workers_per_process=10,
-            jvm_options=[],
+            jvm_options=None,
     ):
         self.num_initial_python_workers = num_initial_python_workers
         self.num_initial_java_workers = num_initial_java_workers
-        self.worker_env = worker_env
+        if worker_env is None:
+            self.worker_env = dict()
+        else:
+            self.worker_env = worker_env
         self.num_java_workers_per_process = num_java_workers_per_process
-        self.jvm_options = jvm_options
+        if jvm_options is None:
+            self.jvm_options = []
+        else:
+            self.jvm_options = jvm_options
 
     def serialize(self):
         job_configs = ray.gcs_utils.JobConfigs()
