@@ -26,6 +26,7 @@ import { dashboardActions } from "../state";
 import { MemoryTableRow } from "./MemoryTableRow";
 import MemoryRowGroup from "./MemoryRowGroup";
 
+DEFAULT_ENTRIES_PER_GROUP = 10;
 
 type GroupedMemoryRowsProps = {
   memoryTableGroups: MemoryTableGroups,
@@ -52,6 +53,7 @@ const GroupedMemoryRows: React.FC<GroupedMemoryRowsProps> = ({
           summary={group.summary}
           entries={sortedEntries}
           initialExpanded={false}
+          visibleEntries={visibleEntries ?? DEFAULT_ENTRIES_PER_GROUP}
         />
       );
     })}
