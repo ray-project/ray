@@ -222,6 +222,7 @@ def kill_node(config_file, yes, hard, override_cluster_name):
                 setup_commands=[],
                 ray_start_commands=[],
                 runtime_hash="",
+                file_mounts_contents_hash="",
                 docker_config=config.get("docker"))
 
             _exec(updater, "ray stop", False, False)
@@ -316,7 +317,8 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
 
         # TODO(ekl) right now we always update the head node even if the hash
         # matches. We could prompt the user for what they want to do here.
-        runtime_hash = hash_runtime_conf(config["file_mounts"], config)
+        (runtime_hash, file_mounts_contents_hash) = hash_runtime_conf(
+            config["file_mounts"], config)
         logger.info("get_or_create_head_node: Updating files on head node...")
 
         # Rewrite the auth config so that the head node can update the workers
@@ -372,6 +374,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             setup_commands=init_commands,
             ray_start_commands=ray_start_commands,
             runtime_hash=runtime_hash,
+            file_mounts_contents_hash=file_mounts_contents_hash,
             docker_config=config.get("docker"))
         updater.start()
         updater.join()
@@ -501,6 +504,7 @@ def exec_cluster(config_file,
             setup_commands=[],
             ray_start_commands=[],
             runtime_hash="",
+            file_mounts_contents_hash="",
             docker_config=config.get("docker"))
 
         is_docker = isinstance(updater.cmd_runner, DockerCommandRunner)
@@ -624,6 +628,7 @@ def rsync(config_file,
                 setup_commands=[],
                 ray_start_commands=[],
                 runtime_hash="",
+                file_mounts_contents_hash="",
                 docker_config=config.get("docker"))
             if down:
                 rsync = updater.rsync_down

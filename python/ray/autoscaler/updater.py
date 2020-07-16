@@ -6,7 +6,7 @@ import time
 
 from threading import Thread
 
-from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG, \
+from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG, TAG_RAY_FILE_MOUNTS_CONTENTS, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, STATUS_WAITING_FOR_SSH, \
     STATUS_SETTING_UP, STATUS_SYNCING_FILES
 from ray.autoscaler.command_runner import NODE_START_WAIT_S, SSHOptions
@@ -31,6 +31,7 @@ class NodeUpdater:
                  setup_commands,
                  ray_start_commands,
                  runtime_hash,
+                 file_mounts_contents_hash,
                  process_runner=subprocess,
                  use_internal_ip=False,
                  docker_config=None):
@@ -54,6 +55,7 @@ class NodeUpdater:
         self.setup_commands = setup_commands
         self.ray_start_commands = ray_start_commands
         self.runtime_hash = runtime_hash
+        self.file_mounts_contents_hash = file_mounts_contents_hash
         self.auth_config = auth_config
 
     def run(self):
@@ -79,7 +81,8 @@ class NodeUpdater:
         self.provider.set_node_tags(
             self.node_id, {
                 TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
-                TAG_RAY_RUNTIME_CONFIG: self.runtime_hash
+                TAG_RAY_RUNTIME_CONFIG: self.runtime_hash,
+                TAG_RAY_FILE_MOUNTS_CONTENTS: self.file_mounts_contents_hash,
             })
 
         self.exitcode = 0
@@ -133,7 +136,10 @@ class NodeUpdater:
 
         node_tags = self.provider.node_tags(self.node_id)
         logger.debug("Node tags: {}".format(str(node_tags)))
-        if node_tags.get(TAG_RAY_RUNTIME_CONFIG) == self.runtime_hash:
+        if node_tags.get(
+                TAG_RAY_RUNTIME_CONFIG) == self.runtime_hash and node_tags.get(
+                    TAG_RAY_FILE_MOUNTS_CONTENTS
+                ) == self.file_mounts_contents_hash:
             logger.info(self.log_prefix +
                         "{} already up-to-date, skip to ray start".format(
                             self.node_id))
@@ -142,22 +148,24 @@ class NodeUpdater:
                 self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SYNCING_FILES})
             self.sync_file_mounts(self.rsync_up)
 
-            # Run init commands
-            self.provider.set_node_tags(
-                self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SETTING_UP})
-            with LogTimer(
-                    self.log_prefix + "Initialization commands",
-                    show_status=True):
-                for cmd in self.initialization_commands:
-                    self.cmd_runner.run(
-                        cmd,
-                        ssh_options_override=SSHOptions(
-                            self.auth_config.get("ssh_private_key")))
+            # Only run init/setup commands when runtime config has changed
+            if node_tags.get(TAG_RAY_RUNTIME_CONFIG) != self.runtime_hash:
+                # Run init commands
+                self.provider.set_node_tags(
+                    self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SETTING_UP})
+                with LogTimer(
+                        self.log_prefix + "Initialization commands",
+                        show_status=True):
+                    for cmd in self.initialization_commands:
+                        self.cmd_runner.run(
+                            cmd,
+                            ssh_options_override=SSHOptions(
+                                self.auth_config.get("ssh_private_key")))
 
-            with LogTimer(
-                    self.log_prefix + "Setup commands", show_status=True):
-                for cmd in self.setup_commands:
-                    self.cmd_runner.run(cmd)
+                with LogTimer(
+                        self.log_prefix + "Setup commands", show_status=True):
+                    for cmd in self.setup_commands:
+                        self.cmd_runner.run(cmd)
 
         with LogTimer(
                 self.log_prefix + "Ray start commands", show_status=True):
