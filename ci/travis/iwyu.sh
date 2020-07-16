@@ -85,6 +85,7 @@ main() {
     data="$(exec sed -e "s/\(0x[0-9a-fA-F]*\)]\(,\a\)/\"\1\"]\2/g" -e "s/,\(\a\s*\(]\|\$\)\)/\1/g" -e "s/\a/\n/g" <<< "${data}")"
     # Parse the resulting JSON and select the actual fields we're interested in.
     # We put the environment variables first, separating them from the command-line arguments via '--'.
+    # shellcheck disable=SC1003
     data="$(PATH="${PATH}:${MINGW_DIR-/usr}/bin" && exec jq -r '(
         []
         + [.[1:][] | select (.[0] == 6) | "\(.[1][1])=\(.[2][1])" | gsub("'\''"; "'\''\\'\'''\''") | "'\''\(.)'\''"]
