@@ -25,4 +25,4 @@ tabulate
 uvicorn
 werkzeug
 tune-sklearn==0.0.5
-skopt
+scikit-optimize
