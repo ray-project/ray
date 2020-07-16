@@ -103,7 +103,7 @@ class TorchParametricActionsModel(DQNTorchModel):
         # These are then recognized by the EpsilonGreedy exploration component
         # as invalid actions that are not to be chosen.
         inf_mask = torch.clamp(
-            torch.log(action_mask), -float(LARGE_INTEGER), float("inf"))
+            torch.log(action_mask), -float("inf"), float("inf"))
         return action_logits + inf_mask, state
 
     def value_function(self):
