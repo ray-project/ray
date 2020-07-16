@@ -98,7 +98,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       JobConfigs.Builder jobConfigsBuilder =
           JobConfigs.newBuilder()
               .setNumJavaWorkersPerProcess(rayConfig.numWorkersPerProcess)
-              // TODO (kfstorm): Add a test case to verify it.
               .setNumInitialPythonWorkers(rayConfig.numInitialPythonWorkers)
               .setNumInitialJavaWorkers(rayConfig.numInitialJavaWorkers)
               .addAllJvmOptions(rayConfig.jvmOptionsForJavaWorker)
