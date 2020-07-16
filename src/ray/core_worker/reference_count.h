@@ -208,6 +208,12 @@ class ReferenceCounter : public ReferenceCounterInterface {
   std::vector<rpc::Address> GetOwnerAddresses(
       const std::vector<ObjectID> object_ids) const;
 
+  /// Check whether an object value has been freed.
+  ///
+  /// \param[in] object_id The object to check.
+  /// \return Whether the object value has been freed.
+  bool IsPlasmaObjectFreed(const ObjectID &object_id) const;
+
   /// Release the underlying value from plasma (if any) for these objects.
   ///
   /// \param[in] object_ids The IDs whose values to free.

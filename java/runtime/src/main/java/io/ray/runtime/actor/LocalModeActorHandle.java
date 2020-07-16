@@ -38,6 +38,10 @@ public class LocalModeActorHandle implements ActorHandle, Externalizable {
     return this.previousActorTaskDummyObjectId.getAndSet(previousActorTaskDummyObjectId);
   }
 
+  public LocalModeActorHandle copy() {
+    return new LocalModeActorHandle(this.actorId, this.previousActorTaskDummyObjectId.get());
+  }
+
   @Override
   public synchronized void writeExternal(ObjectOutput out) throws IOException {
     out.writeObject(actorId);
