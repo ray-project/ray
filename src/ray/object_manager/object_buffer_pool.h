@@ -101,6 +101,7 @@ class ObjectBufferPool {
   /// SealChunk has already been invoked.
   ///
   /// \param object_id The ObjectID.
+  /// \param owner_address The address of the object's owner.
   /// \param data_size The sum of the object size and metadata size.
   /// \param metadata_size The size of the metadata.
   /// \param chunk_index The index of the chunk.

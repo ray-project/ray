@@ -134,7 +134,7 @@ table PlasmaCreateRequest {
   owner_ip_address: string;
   // Owner port address of this object.
   owner_port: int;
-  // Optional unique id for the owner worker.
+  // Unique id for the owner worker.
   owner_worker_id: string;
   // Whether to evict other objects to make room for this one.
   evict_if_full: bool;

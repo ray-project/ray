@@ -78,6 +78,7 @@ class RAY_EXPORT PlasmaClient {
   /// be passed in when the object is created.
   ///
   /// \param object_id The ID to use for the newly created object.
+  /// \param owner_address The address of the object's owner.
   /// \param data_size The size in bytes of the space to be allocated for this
   /// object's
   ///        data (this does not include space used for metadata).

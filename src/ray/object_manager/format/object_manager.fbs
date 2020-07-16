@@ -25,7 +25,7 @@ table ObjectInfo {
   owner_ip_address: string;
   // Owner port address of this object.
   owner_port: int;
-  // Optional unique id for the owner worker.
+  // Unique id for the owner worker.
   owner_worker_id: string;
   // Number of bytes the content of this object occupies in memory.
   data_size: long;

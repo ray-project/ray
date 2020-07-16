@@ -71,6 +71,10 @@ class PlasmaStore {
   /// the store when it is done with the object.
   ///
   /// \param object_id Object ID of the object to be created.
+  /// \param owner_raylet_id Raylet ID of the object's owner.
+  /// \param owner_ip_address IP address of the object's owner.
+  /// \param owner_port Port of the object's owner.
+  /// \param owner_worker_id Worker ID of the object's owner.
   /// \param evict_if_full If this is true, then when the object store is full,
   ///        try to evict objects that are not currently referenced before
   ///        creating the object. Else, do not evict any objects and

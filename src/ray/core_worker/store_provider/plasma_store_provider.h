@@ -52,6 +52,7 @@ class CoreWorkerPlasmaStoreProvider {
   ///
   /// \param[in] object The object to create.
   /// \param[in] object_id The ID of the object.
+  /// \param[in] owner_address The address of the object's owner.
   /// \param[out] object_exists Optional. Returns whether an object with the
   /// same ID already exists. If this is true, then the Put does not write any
   /// object data.
@@ -64,6 +65,7 @@ class CoreWorkerPlasmaStoreProvider {
   /// \param[in] metadata The metadata of the object.
   /// \param[in] data_size The size of the object.
   /// \param[in] object_id The ID of the object.
+  /// \param[in] owner_address The address of the object's owner.
   /// \param[out] data The mutable object buffer in plasma that can be written to.
   Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
                 const ObjectID &object_id, const rpc::Address &owner_address,

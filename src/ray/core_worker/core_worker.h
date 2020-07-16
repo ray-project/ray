@@ -454,6 +454,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] metadata Metadata of the object to be written.
   /// \param[in] data_size Size of the object to be written.
   /// \param[in] object_id Object ID specified by the user.
+  /// \param[in] owner_address The address of the object's owner.
   /// \param[out] data Buffer for the user to write the object into.
   /// \return Status.
   Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,

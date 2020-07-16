@@ -483,7 +483,7 @@ ray::Status ObjectManager::SendObjectChunk(
   // Set request header
   push_request.set_push_id(push_id.Binary());
   push_request.set_object_id(object_id.Binary());
-  *push_request.mutable_owner_address() = owner_address;
+  push_request.mutable_owner_address()->CopyFrom(owner_address);
   push_request.set_client_id(self_node_id_.Binary());
   push_request.set_data_size(data_size);
   push_request.set_metadata_size(metadata_size);

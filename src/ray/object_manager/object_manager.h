@@ -133,6 +133,7 @@ class ObjectManager : public ObjectManagerInterface,
   /// contains only one chunk
   /// \param push_id Unique push id to indicate this push request
   /// \param object_id Object id
+  /// \param owner_address The address of the object's owner
   /// \param data_size Data size
   /// \param metadata_size Metadata size
   /// \param chunk_index Chunk index of this object chunk, start with 0
@@ -147,6 +148,7 @@ class ObjectManager : public ObjectManagerInterface,
   ///
   /// \param client_id Client id of remote object manager which sends this chunk
   /// \param object_id Object id
+  /// \param owner_address The address of the object's owner
   /// \param data_size Data size
   /// \param metadata_size Metadata size
   /// \param chunk_index Chunk index
