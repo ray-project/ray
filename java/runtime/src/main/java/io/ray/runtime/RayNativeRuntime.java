@@ -2,6 +2,7 @@ package io.ray.runtime;
 
 import com.google.common.base.Preconditions;
 import io.ray.api.BaseActorHandle;
+import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.config.RayConfig;
@@ -19,6 +20,7 @@ import io.ray.runtime.util.JniUtils;
 import java.io.File;
 import java.io.IOException;
 import java.util.Map;
+import java.util.Optional;
 import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -140,6 +142,18 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     nativeSetResource(resourceName, capacity, nodeId.getBytes());
   }
 
+  @SuppressWarnings("unchecked")
+  @Override
+  public <T extends BaseActorHandle> Optional<T> getActor(String name, boolean global) {
+    byte[] actorIdBytes = nativeGetActorIdOfNamedActor(name, global);
+    ActorId actorId = ActorId.fromBytes(actorIdBytes);
+    if (actorId.isNil()) {
+      return Optional.empty();
+    } else {
+      return Optional.of((T) getActorHandle(actorId));
+    }
+  }
+
   @Override
   public void killActor(BaseActorHandle actor, boolean noRestart) {
     nativeKillActor(actor.getId().getBytes(), noRestart);
@@ -164,7 +178,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     nativeRunTaskExecutor(taskExecutor);
   }
 
-  private static native void nativeInitialize(int workerMode, String ndoeIpAddress,
+  private static native void nativeInitialize(
+      int workerMode, String ndoeIpAddress,
       int nodeManagerPort, String driverName, String storeSocket, String rayletSocket,
       byte[] jobId, GcsClientOptions gcsClientOptions, int numWorkersPerProcess,
       String logDir, Map<String, String> rayletConfigParameters);
@@ -176,6 +191,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   private static native void nativeSetResource(String resourceName, double capacity, byte[] nodeId);
 
   private static native void nativeKillActor(byte[] actorId, boolean noRestart);
+
+  private static native byte[] nativeGetActorIdOfNamedActor(String actorName, boolean global);
 
   private static native void nativeSetCoreWorker(byte[] workerId);
 

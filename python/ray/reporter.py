@@ -53,7 +53,7 @@ class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
             with open(profiling_file_path, "r") as f:
                 profiling_stats = f.read()
         return reporter_pb2.GetProfilingStatsReply(
-            profiling_stats=profiling_stats, stdout=stdout, stderr=stderr)
+            profiling_stats=profiling_stats, std_out=stdout, std_err=stderr)
 
     def ReportMetrics(self, request, context):
         # TODO(sang): Process metrics here.
