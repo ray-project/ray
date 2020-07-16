@@ -29,15 +29,16 @@ function retry {
   local max=3
 
   while true; do
-    "$@" && break || {
-      if [[ $n -lt $max ]]; then
-        ((n++))
-        echo "Command failed. Attempt $n/$max:"
-      else
-        echo "The command has failed after $n attempts."
-        exit 1
-      fi
-    }
+    if "$@"; then
+      break
+    fi
+    if [ $n -lt $max ]; then
+      ((n++))
+      echo "Command failed. Attempt $n/$max:"
+    else
+      echo "The command has failed after $n attempts."
+      exit 1
+    fi
   done
 }
 
