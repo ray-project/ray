@@ -181,6 +181,14 @@ py_test(
 )
 
 py_test(
+    name = "test_trial_scheduler_pbt",
+    size = "medium",
+    srcs = ["tests/test_trial_scheduler_pbt.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+)
+
+py_test(
     name = "test_tune_restore",
     size = "large",
     srcs = ["tests/test_tune_restore.py"],

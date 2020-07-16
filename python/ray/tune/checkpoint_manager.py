@@ -112,7 +112,8 @@ class CheckpointManager:
         self.newest_persistent_checkpoint = checkpoint
 
         # Remove the old checkpoint if it isn't one of the best ones.
-        if old_checkpoint.value and old_checkpoint not in self._membership:
+        if old_checkpoint.value and old_checkpoint not in self._membership \
+           and old_checkpoint.value != checkpoint.value:
             self.delete(old_checkpoint)
 
         try:
