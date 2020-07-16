@@ -474,6 +474,9 @@ TEST_F(GcsActorSchedulerTest, TestReleaseUnusedWorkers) {
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   // Release unused workers.
+  // Before the requested reply arrives, the actor bound to the leased worker can be
+  // created successfully. The actor not bound to the leased worker needs to wait for the
+  // reply to arrive.
   std::unordered_map<ClientID, std::vector<WorkerID>> node_to_workers;
   node_to_workers[node_id].push_back({WorkerID::FromRandom()});
   gcs_actor_scheduler_->ReleaseUnusedWorkers(node_to_workers);
@@ -508,6 +511,8 @@ TEST_F(GcsActorSchedulerTest, TestReleaseUnusedWorkers) {
   // Reschedule the actor with 1 available node.
   gcs_actor_scheduler_->Reschedule(actor);
   ASSERT_EQ(2, gcs_actor_scheduler_->num_retry_leasing_count_);
+
+  // The reply of the request arrives and the actor can start creating.
   ASSERT_TRUE(raylet_client_->ReplyReleaseUnusedWorkers());
   gcs_actor_scheduler_->TryLeaseWorkerFromNodeAgain(actor, node);
   ASSERT_EQ(2, gcs_actor_scheduler_->num_retry_leasing_count_);
