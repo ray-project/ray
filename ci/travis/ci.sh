@@ -394,6 +394,7 @@ _check_job_triggers() {
     eval "${restore_shell_state}" "${expression}"  # Restore set -x, then evaluate expression
   fi
 
+  # shellcheck disable=SC2086
   if ! (set +x && should_run_job ${job_names//,/ }); then
     if [ "${GITHUB_ACTIONS-}" = true ]; then
       # If this job is to be skipped, emit 'exit' into .bashrc to quickly exit all following steps.
