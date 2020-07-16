@@ -1,7 +1,8 @@
 import numpy as np
 
-from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
+from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.models.torch.modules.noisy_layer import NoisyLayer
+from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
@@ -24,6 +25,8 @@ class DQNTorchModel(TorchModelV2, nn.Module):
             dueling_activation="relu",
             num_atoms=1,
             use_noisy=False,
+            v_min=-10.0,
+            v_max=10.0,
             sigma0=0.5,
             # TODO(sven): Move `add_layer_norm` into ModelCatalog as
             #  generic option, then error if we use ParameterNoise as
@@ -44,9 +47,11 @@ class DQNTorchModel(TorchModelV2, nn.Module):
                 as Q-values.
             dueling_activation (str): The activation to use for all dueling
                 layers (A- and V-branch). One of "relu", "tanh", "linear".
-            num_atoms (int): if >1, enables distributional DQN
-            use_noisy (bool): use noisy nets
-            sigma0 (float): initial value of noisy nets
+            num_atoms (int): If >1, enables distributional DQN.
+            use_noisy (bool): Use noisy layers.
+            v_min (float): Min value support for distributional DQN.
+            v_max (float): Max value support for distributional DQN.
+            sigma0 (float): Initial value of noisy layers.
             add_layer_norm (bool): Enable layer norm (for param noise).
         """
         nn.Module.__init__(self)
@@ -54,6 +59,8 @@ class DQNTorchModel(TorchModelV2, nn.Module):
                                             num_outputs, model_config, name)
 
         self.dueling = dueling
+        self.num_atoms = num_atoms
+        self.sigma0 = sigma0
         ins = num_outputs
 
         advantage_module = nn.Sequential()
@@ -61,33 +68,33 @@ class DQNTorchModel(TorchModelV2, nn.Module):
 
         # Dueling case: Build the shared (advantages and value) fc-network.
         for i, n in enumerate(q_hiddens):
-            advantage_module.add_module("dueling_A_{}".format(i),
-                                        nn.Linear(ins, n))
-            value_module.add_module("dueling_V_{}".format(i),
-                                    nn.Linear(ins, n))
-            # Add activations if necessary.
-            if dueling_activation == "relu":
-                advantage_module.add_module("dueling_A_act_{}".format(i),
-                                            nn.ReLU())
-                value_module.add_module("dueling_V_act_{}".format(i),
-                                        nn.ReLU())
-            elif dueling_activation == "tanh":
-                advantage_module.add_module("dueling_A_act_{}".format(i),
-                                            nn.Tanh())
-                value_module.add_module("dueling_V_act_{}".format(i),
-                                        nn.Tanh())
-
-            # Add LayerNorm after each Dense.
-            if add_layer_norm:
-                advantage_module.add_module("LayerNorm_A_{}".format(i),
-                                            nn.LayerNorm(n))
-                value_module.add_module("LayerNorm_V_{}".format(i),
-                                        nn.LayerNorm(n))
+            if use_noisy:
+                advantage_module.add_module(
+                    "dueling_A_{}".format(i), NoisyLayer(ins, n, sigma0=self.sigma0, activation=dueling_activation))  #nn.Linear(ins, n))
+                value_module.add_module(
+                    "dueling_V_{}".format(i), NoisyLayer(ins, n, sigma0=self.sigma0, activation=dueling_activation))
+            else:
+                advantage_module.add_module(
+                    "dueling_A_{}".format(i), SlimFC(ins, n, activation_fn=dueling_activation))  #nn.Linear(ins, n)
+                value_module.add_module(
+                    "dueling_V_{}".format(i), SlimFC(ins, n, activation_fn=dueling_activation))  #nn.Linear(ins, n)
+                # Add LayerNorm after each Dense.
+                if add_layer_norm:
+                    advantage_module.add_module(
+                        "LayerNorm_A_{}".format(i), nn.LayerNorm(n))
+                    value_module.add_module(
+                        "LayerNorm_V_{}".format(i), nn.LayerNorm(n))
             ins = n
 
         # Actual Advantages layer (nodes=num-actions).
-        if q_hiddens:
-            advantage_module.add_module("A", nn.Linear(ins, action_space.n))
+        if use_noisy:
+            advantage_module.add_module("A", NoisyLayer(
+                ins,
+                self.action_space.n * self.num_atoms,
+                sigma0,
+                activation=None))
+        elif q_hiddens:
+            advantage_module.add_module("A", nn.Linear(ins, action_space.n * self.num_atoms))
 
         self.advantage_module = advantage_module
 
