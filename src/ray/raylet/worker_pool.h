@@ -71,7 +71,7 @@ class WorkerPool {
              const WorkerCommandMap &worker_commands,
              const std::unordered_map<std::string, std::string> &raylet_config,
              std::function<void()> starting_worker_timeout_callback,
-             std::function<const rpc::JobConfig *(const JobID &)> job_config_getter);
+             std::function<boost::optional<rpc::JobConfig>(const JobID &)> job_config_getter);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   virtual ~WorkerPool();
@@ -296,7 +296,7 @@ class WorkerPool {
   std::function<void()> starting_worker_timeout_callback_;
   FRIEND_TEST(WorkerPoolTest, InitialWorkerProcessCount);
 
-  std::function<const rpc::JobConfig *(const JobID &)> job_config_getter_;
+  std::function<boost::optional<rpc::JobConfig>(const JobID &)> job_config_getter_;
 };
 
 }  // namespace raylet

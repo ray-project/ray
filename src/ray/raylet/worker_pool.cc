@@ -59,7 +59,7 @@ WorkerPool::WorkerPool(
     std::shared_ptr<gcs::GcsClient> gcs_client, const WorkerCommandMap &worker_commands,
     const std::unordered_map<std::string, std::string> &raylet_config,
     std::function<void()> starting_worker_timeout_callback,
-    std::function<const rpc::JobConfig *(const JobID &)> job_config_getter)
+    std::function<boost::optional<rpc::JobConfig>(const JobID &)> job_config_getter)
     : io_service_(&io_service),
       adaptive_num_initial_workers_(adaptive_num_initial_workers),
       maximum_startup_concurrency_(maximum_startup_concurrency),

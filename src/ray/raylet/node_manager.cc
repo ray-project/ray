@@ -166,12 +166,12 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
           config.raylet_config,
           /*starting_worker_timeout_callback=*/
           [this]() { this->DispatchTasks(this->local_queues_.GetReadyTasksByClass()); },
-          [this](const JobID &job_id) -> const rpc::JobConfig * {
+          [this](const JobID &job_id) -> boost::optional<rpc::JobConfig> {
             auto it = job_info_cache_.find(job_id);
             if (it == job_info_cache_.end()) {
               return nullptr;
             }
-            return &it->second.config();
+            return it->second.config();
           }),
       scheduling_policy_(local_queues_),
       reconstruction_policy_(
