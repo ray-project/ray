@@ -4,6 +4,7 @@ import sys
 import asyncio
 import collections
 import copy
+import json
 import datetime
 import functools
 import importlib
@@ -15,6 +16,7 @@ from base64 import b64decode
 from collections.abc import MutableMapping, Mapping
 
 import aiohttp.web
+import ray.new_dashboard.consts as dashboard_consts
 from aiohttp import hdrs
 from aiohttp.frozenlist import FrozenList
 import aiohttp.signals
@@ -162,12 +164,22 @@ def to_posix_time(dt):
     return (dt - datetime.datetime(1970, 1, 1)).total_seconds()
 
 
+class CustomEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, bytes):
+            return binary_to_hex(obj)
+        # Let the base class default method raise the TypeError
+        return json.JSONEncoder.default(self, obj)
+
+
 async def rest_response(success, message, **kwargs) -> aiohttp.web.Response:
-    return aiohttp.web.json_response({
-        "result": success,
-        "msg": message,
-        "data": to_google_style(kwargs)
-    })
+    return aiohttp.web.json_response(
+        {
+            "result": success,
+            "msg": message,
+            "data": to_google_style(kwargs)
+        },
+        dumps=functools.partial(json.dumps, cls=CustomEncoder))
 
 
 def to_camel_case(snake_str):
@@ -224,16 +236,6 @@ def message_to_dict(message, decode_keys=None, **kwargs):
             MessageToDict(message, use_integers_for_enums=False, **kwargs))
     else:
         return MessageToDict(message, use_integers_for_enums=False, **kwargs)
-
-
-def redirect_stream(stdout_filename, stderr_filename):
-    """Redirect stdout or stderr to file."""
-    if stdout_filename:
-        fout = open(stdout_filename, "a")
-        os.dup2(fout.fileno(), sys.stdout.fileno())
-    if stderr_filename:
-        ferr = open(stderr_filename, "a")
-        os.dup2(ferr.fileno(), sys.stderr.fileno())
 
 
 class SignalManager:

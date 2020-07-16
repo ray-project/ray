@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import logging
+import logging.handlers
 import os
 import sys
 import traceback
@@ -141,38 +142,69 @@ if __name__ == "__main__":
         default=ray_constants.LOGGER_FORMAT,
         help=ray_constants.LOGGER_FORMAT_HELP)
     parser.add_argument(
+        "--logging-filename",
+        required=False,
+        type=str,
+        default=dashboard_consts.DASHBOARD_AGENT_LOG_FILENAME,
+        help=
+        "Specify the name of log file, log to stdout if set empty, default is \"{}\".".
+        format(dashboard_consts.DASHBOARD_AGENT_LOG_FILENAME))
+    parser.add_argument(
+        "--logging-rotate-bytes",
+        required=False,
+        type=int,
+        default=dashboard_consts.LOGGING_ROTATE_BYTES,
+        help=
+        "Specify the max bytes for rotating log file, default is {} bytes.".
+        format(dashboard_consts.LOGGING_ROTATE_BYTES))
+    parser.add_argument(
+        "--logging-rotate-backup-count",
+        required=False,
+        type=int,
+        default=dashboard_consts.LOGGING_ROTATE_BACKUP_COUNT,
+        help="Specify the backup count of rotated log file, default is {}.".
+        format(dashboard_consts.LOGGING_ROTATE_BACKUP_COUNT))
+    parser.add_argument(
+        "--log-dir",
+        required=False,
+        type=str,
+        default=None,
+        help="Specify the path of log directory.")
+    parser.add_argument(
         "--temp-dir",
         required=False,
         type=str,
         default=None,
         help="Specify the path of the temporary directory use by Ray process.")
-    args = parser.parse_args()
-    logging.basicConfig(level=args.logging_level, format=args.logging_format)
 
     try:
+        args = parser.parse_args()
         if args.temp_dir:
             temp_dir = "/" + args.temp_dir.strip("/")
         else:
             temp_dir = "/tmp/ray"
-        # Redirect the stdout & stderr of dashboard agent to the same directory
-        # where raylet's stdout & stderr in.
-        parent = psutil.Process().parent()
-        std_fds = [sys.stdout.fileno(), sys.stderr.fileno()]
-        for open_file in parent and parent.open_files() or []:
-            if open_file.fd in std_fds:
-                log_dir = os.path.dirname(open_file.path)
-                redirect_stdout = os.path.join(
-                    log_dir,
-                    dashboard_consts.DASHBOARD_AGENT_LOG_FILENAME + ".out")
-                redirect_stderr = os.path.join(
-                    log_dir,
-                    dashboard_consts.DASHBOARD_AGENT_LOG_FILENAME + ".err")
-                break
+        os.makedirs(temp_dir, exist_ok=True)
+
+        if args.log_dir:
+            log_dir = args.log_dir
         else:
-            log_dir = None
-            redirect_stdout = None
-            redirect_stderr = None
-        dashboard_utils.redirect_stream(redirect_stdout, redirect_stderr)
+            log_dir = os.path.join(temp_dir, "session_latest/logs")
+        os.makedirs(log_dir, exist_ok=True)
+
+        if args.logging_filename:
+            logging_handlers = [
+                logging.handlers.RotatingFileHandler(
+                    os.path.join(log_dir, args.logging_filename),
+                    maxBytes=args.logging_rotate_bytes,
+                    backupCount=args.logging_rotate_backup_count)
+            ]
+        else:
+            logging_handlers = None
+        logging.basicConfig(
+            level=args.logging_level,
+            format=args.logging_format,
+            handlers=logging_handlers)
+
         agent = DashboardAgent(
             args.redis_address,
             redis_password=args.redis_password,
