@@ -7,11 +7,6 @@ from colorful.core import ColorfulString
 import colorful as cf
 colorama.init()
 
-def _tostr(x):
-    if not isinstance(x, str):
-        return str(x)
-    return x
-
 def _strip_codes(msg):
     return msg # todo
 
@@ -40,8 +35,8 @@ def _format_msg(msg, *args, **kwargs):
         if "_numbered" in kwargs:
             chars, i, n = kwargs["_numbered"]
 
-            i = _tostr(i)
-            n = _tostr(n)
+            i = str(i)
+            n = str(n)
 
             numbering_str = cf.gray(
                 chars[0] + i + "/" + n + chars[1]) + " "
@@ -62,7 +57,7 @@ def _format_msg(msg, *args, **kwargs):
         raise ValueError("We do not support printing kwargs yet.")
 
     l = [msg, *args]
-    l = [_tostr(x) for x in l]
+    l = [str(x) for x in l]
     return ', '.join(l)
 
 class _CliLogger():
@@ -153,9 +148,9 @@ class _CliLogger():
 
         return VerbatimErorContextManager()
 
-    def keyvalue(self, key, msg, *args, **kwargs):
+    def labeled_value(self, key, msg, *args, **kwargs):
         self._print(
-            cf.cyan(key)+": "+_format_msg(cf.bold(msg), *args, **kwargs))
+            cf.cyan(key) + ": " + _format_msg(cf.bold(msg), *args, **kwargs))
 
     def verbose(self, msg, *args, **kwargs):
         if self.verbosity > 0:
@@ -185,7 +180,7 @@ class _CliLogger():
         if msg is not None:
             self.error(msg, *args, **kwargs)
 
-        sys.exit(1)
+        raise SilentClickException("Exiting due to cli_logger.abort()")
 
     def doassert(self, val, msg, *args, **kwargs):
         if self.old_style:
@@ -218,10 +213,6 @@ class _CliLogger():
         if self.old_style:
             logger.exception(_format_msg(msg, *args, **kwargs))
             return
-
-    def add_log_info(self, **kwargs):
-        for k, v in kwargs.items():
-            self.info[k] = v
 
     def arn_to_name(self, arn):
         return arn.split(":")[-1].split("/")[-1]
@@ -300,7 +291,8 @@ class _CliLogger():
             # todo: make sure we tell the user if they
             # need to do cleanup
             self._print("Exiting...")
-            sys.exit(2)
+            raise SilentClickException(
+                "Exiting due to the response to confirm(should_abort=True).")
 
         return res
 
@@ -310,117 +302,19 @@ class _CliLogger():
 
         return None if yes else click.confirm(msg, abort=True)
 
-    def boto_exception_handler(self, msg, *args, **kwargs):
-        # todo: implement timer
-        cli_logger = self
-        class ExceptionHandlerContextManager():
-            def __enter__(self):
-                pass
+class SilentClickException(click.ClickException):
+    '''
+    Some of our tooling relies on catching ClickException in particular.
 
-            def __exit__(self, type, value, tb):
-                import botocore
+    However the default prints a message, which is undesirable since we expect
+    our code to log errors manually using `cli_logger.error()` to allow for
+    colors and other formatting.
+    '''
 
-                if type is botocore.exceptions.ClientError:
-                    cli_logger.handle_boto_error(value, msg, *args, **kwargs)
+    def __init__(self, message):
+        super(SilentClickException, self).__init__(message)
 
-        return ExceptionHandlerContextManager()
-
-    def handle_boto_error(self, exc, msg, *args, **kwargs):
-        if self.old_style:
-            # old-style logging doesn't do anything here
-            return
-
-        error_code = None
-        error_info = None
-        # todo: not sure if these exceptions always have response
-        if hasattr(exc, "response"):
-            error_info = exc.response.get("Error", None)
-        if error_info is not None:
-            error_code = error_info.get("Code", None)
-
-        generic_message_args = [
-            "{}\n"
-            "Error code: {}",
-            msg.format(*args, **kwargs),
-            cf.bold(error_code)
-        ]
-
-        # apparently
-        # ExpiredTokenException
-        # ExpiredToken
-        # RequestExpired
-        # are all the same pretty much
-        credentials_expiration_codes = [
-            "ExpiredTokenException",
-            "ExpiredToken",
-            "RequestExpired"
-        ]
-
-        if error_code in credentials_expiration_codes:
-            # "An error occurred (ExpiredToken) when calling the
-            # GetInstanceProfile operation: The security token
-            # included in the request is expired"
-
-            # "An error occurred (RequestExpired) when calling the
-            # DescribeKeyPairs operation: Request has expired."
-
-            token_command = (
-                "aws sts get-session-token "
-                "--serial-number arn:aws:iam::"+
-                cf.underlined("ROOT_ACCOUNT_ID")+":mfa/"+
-                cf.underlined("AWS_USERNAME")+
-                " --token-code "+
-                cf.underlined("TWO_FACTOR_AUTH_CODE"))
-
-            secret_key_var = (
-                "export AWS_SECRET_ACCESS_KEY = "+
-                cf.underlined("REPLACE_ME")+
-                " # found at Credentials.SecretAccessKey")
-            session_token_var = (
-                "export AWS_SESSION_TOKEN = "+
-                cf.underlined("REPLACE_ME")+
-                " # found at Credentials.SessionToken")
-            access_key_id_var = (
-                "export AWS_ACCESS_KEY_ID = "+
-                cf.underlined("REPLACE_ME")+
-                " # found at Credentials.AccessKeyId")
-
-            # fixme: replace with a Github URL that points
-            # to our repo
-            aws_session_script_url = (
-                "https://gist.github.com/maximsmol/"
-                "a0284e1d97b25d417bd9ae02e5f450cf")
-
-            self.verbose_error(*generic_message_args)
-            self.verbose(vars(exc))
-
-            self.abort(
-                "Your AWS session has expired.\n\n"
-                "You can request a new one using\n{}\n"
-                "then expose it to Ray by setting\n{}\n{}\n{}\n\n"
-                "You can find a script that automates this at:\n{}",
-                cf.bold(token_command),
-
-                cf.bold(secret_key_var),
-                cf.bold(session_token_var),
-                cf.bold(access_key_id_var),
-
-                cf.underlined(aws_session_script_url))
-
-        # todo: any other errors that we should catch separately?
-
-        self.error(*generic_message_args)
-        self.newline()
-        with self.verbatim_error_ctx("Boto3 error:"):
-            self.verbose(vars(exc))
-            self.error(exc)
-        self.abort()
-
-class CLILoggerError(Exception):
-    def __init__(self, msg, type, data):
-        self.type = type
-        self.data = data
-
-        super(CLILoggerError, self).__init__(msg)
+    def show(self, file=None):
+        pass
 
 cli_logger = _CliLogger()

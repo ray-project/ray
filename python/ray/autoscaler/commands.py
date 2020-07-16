@@ -30,7 +30,7 @@ from ray.autoscaler.log_timer import LogTimer
 from ray.autoscaler.docker import with_docker_exec
 from ray.worker import global_worker
 
-from ray.autoscaler.cli_logger import cli_logger
+from ray.autoscaler.cli_logger import cli_logger, SilentClickException
 import colorful as cf
 
 logger = logging.getLogger(__name__)
@@ -84,6 +84,12 @@ def request_resources(num_cpus=None, bundles=None):
     if bundles:
         r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps(bundles))
 
+def _get_provider_config_for(provider):
+    if provider == "aws":
+        import ray.autoscaler.aws.config as provider_config
+        return provider_config
+    return None
+
 def create_or_update_cluster(config_file, override_min_workers,
                              override_max_workers, no_restart, restart_only,
                              yes, override_cluster_name,
@@ -108,6 +114,10 @@ def create_or_update_cluster(config_file, override_min_workers,
 
     try:
         config = yaml.safe_load(open(config_file).read())
+    except FileNotFoundError:
+        cli_logger.abort(
+            "Provided cluster configuration file ({}) does not exist.",
+            cf.bold(config_file))
     except yaml.parser.ParserError as e:
         handle_yaml_error(e)
     except yaml.scanner.ScannerError as e:
@@ -152,7 +162,7 @@ def create_or_update_cluster(config_file, override_min_workers,
     if printed_overrides:
         cli_logger.newline()
 
-    cli_logger.keyvalue("Cluster", config["cluster_name"])
+    cli_logger.labeled_value("Cluster", config["cluster_name"])
 
     # disable the cli_logger here if needed
     # because it only supports aws
@@ -162,134 +172,9 @@ def create_or_update_cluster(config_file, override_min_workers,
     if config["provider"]["type"] != "aws":
         cli_logger.old_style = False
 
-    with cli_logger.group(
-            "{} config",
-            PROVIDER_PRETTY_NAMES.get(
-                config["provider"]["type"], "Unknown provider")):
-
-        if config["provider"]["type"] == "aws":
-            tags = {
-                "default":
-                    cli_logger.info["head_instance_profile_src"] == "default"
-            }
-            cli_logger.keyvalue(
-                "IAM Profile", "{}",
-                cli_logger.arn_to_name(
-                    config["head_node"]["IamInstanceProfile"]["Arn"]),
-                _tags=tags)
-
-            if config["head_node"]["KeyName"] ==\
-               config["worker_nodes"]["KeyName"]:
-                tags = {
-                    "default":
-                        cli_logger.info["keypair_src"] == "default"
-                }
-                cli_logger.keyvalue(
-                    "Key pair (head & workers)", "{}",
-                    config["head_node"]["KeyName"],
-                    _tags=tags)
-            else:
-                # cannot be default
-                cli_logger.keyvalue(
-                    "Key pair (head)", "{}",
-                    config["head_node"]["KeyName"])
-                cli_logger.keyvalue(
-                    "Key pair (workers)", "{}",
-                    config["worker_nodes"]["KeyName"])
-
-            if config["head_node"]["SubnetIds"] ==\
-               config["worker_nodes"]["SubnetIds"]:
-                tags = {
-                    "default":
-                        cli_logger.info["head_subnet_src"] == "default"
-                }
-                cli_logger.keyvalue( # todo: handle plural vs singular?
-                    "Subnets (head & workers)", "{}",
-                    cli_logger.render_list(
-                        config["head_node"]["SubnetIds"]),
-                    _tags=tags)
-            else:
-                tags = {
-                    "default":
-                        cli_logger.info["head_subnet_src"] == "default"
-                }
-                cli_logger.keyvalue(
-                    "Subnets (head)", "{}",
-                    cli_logger.render_list(
-                        config["head_node"]["SubnetIds"]),
-                    _tags=tags)
-
-                tags = {
-                    "default":
-                        cli_logger.info["workers_subnet_src"] == "default"
-                }
-                cli_logger.keyvalue(
-                    "Subnets (workers)", "{}",
-                    cli_logger.render_list(
-                        config["worker_nodes"]["SubnetIds"]),
-                    _tags=tags)
-
-            if config["head_node"]["SecurityGroupIds"] ==\
-               config["worker_nodes"]["SecurityGroupIds"]:
-                tags = {
-                    "default":
-                        cli_logger.info["head_security_group_src"] == "default"
-                }
-                cli_logger.keyvalue(
-                    "Security groups (head & workers)", "{}",
-                    cli_logger.render_list(
-                        config["head_node"]["SecurityGroupIds"]),
-                    _tags=tags)
-            else:
-                tags = {
-                    "default":
-                        cli_logger.info["head_security_group_src"] == "default"
-                }
-                cli_logger.keyvalue( # todo: handle plural vs singular?
-                    "Security groups (head)", "{}",
-                    cli_logger.render_list(
-                        config["head_node"]["SecurityGroupIds"]),
-                    _tags=tags)
-
-                tags = {
-                    "default":
-                        cli_logger.info[
-                            "workers_security_group_src"] == "default"
-                }
-                cli_logger.keyvalue(
-                    "Security groups (workers)", "{}",
-                    cli_logger.render_list(
-                        config["worker_nodes"]["SecurityGroupIds"]),
-                    _tags=tags)
-
-            if config["head_node"]["ImageId"] ==\
-               config["worker_nodes"]["ImageId"]:
-                tags = {
-                    "dlami":
-                        cli_logger.info["head_ami_src"] == "dlami"
-                }
-                cli_logger.keyvalue(
-                    "AMI (head & workers)", "{}",
-                    config["head_node"]["ImageId"],
-                    _tags=tags)
-            else:
-                tags = {
-                    "dlami":
-                        cli_logger.info["head_ami_src"] == "dlami"
-                }
-                cli_logger.keyvalue(
-                    "AMI (head)", "{}",
-                    config["head_node"]["ImageId"],
-                    _tags=tags)
-
-                tags = {
-                    "dlami":
-                        cli_logger.info["workers_ami_src"] == "dlami"
-                }
-                cli_logger.keyvalue(
-                    "AMI (workers)", "{}",
-                    config["worker_nodes"]["ImageId"],
-                    _tags=tags)
+    provider_config = _get_provider_config_for(config["provider"]["type"])
+    if provider_config is not None:
+        provider_config.log_to_cli(config)
     cli_logger.newline()
 
     get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
@@ -298,6 +183,8 @@ def create_or_update_cluster(config_file, override_min_workers,
 
 CONFIG_CACHE_VERSION = 1
 def _bootstrap_config(config):
+    provider_config = _get_provider_config_for(config["provider"]["type"])
+
     config = prepare_config(config)
 
     hasher = hashlib.sha1()
@@ -307,11 +194,11 @@ def _bootstrap_config(config):
     if os.path.exists(cache_key):
         config_cache = json.loads(open(cache_key).read())
         if config_cache.get("_version", -1) == CONFIG_CACHE_VERSION:
-            # todo: is it fine to re-resolve? should be
+            # todo: is it fine to re-resolve? afaik it should be.
             # we can have migrations otherwise or something
             # but this seems overcomplicated given that resolving is
             # relatively cheap
-            cli_logger.info = config_cache["cli_logger_info"]
+            provider_config._log_info = config_cache["provider_log_info"]
 
             cli_logger.verbose(
                 "Loaded cached config from "+cf.bold("{}"),
@@ -343,7 +230,7 @@ def _bootstrap_config(config):
     with open(cache_key, "w") as f:
         config_cache = {
             "_version": CONFIG_CACHE_VERSION,
-            "cli_logger_info": cli_logger.info,
+            "provider_log_info": provider_config._log_info,
             "config": resolved_config
         }
         f.write(json.dumps(config_cache))
@@ -374,8 +261,10 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name,
             exec_cluster(config_file, "ray stop", False, False, False, False,
                          False, override_cluster_name, None, False)
         except Exception as e:
-            cli_logger.warning( # todo: add exception info
-                "Exception occured when stopping the cluster Ray runtime.")
+            cli_logger.verbose_error(e) # todo: add better exception info
+            cli_logger.warning(
+                "Exception occured when stopping the cluster Ray runtime "
+                "(use -v to see).")
             cli_logger.warning(
                 "Ignoring the exception and "
                 "attempting to shut down the cluster nodes anyway.")
@@ -566,12 +455,11 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             elif no_restart:
                 cli_logger.print(
                     "Cluster Ray runtime will not be restarted due "
-                    "to `{}`.")
+                    "to `{}`.", cf.bold("--no-restart"))
                 cli_logger.confirm(
                     yes,
                     "Updating cluster configuration and "
-                    "running setup commands. ",
-                    cf.bold("--no-restart"),
+                    "running setup commands.",
                     _abort=True)
             else:
                 cli_logger.print(

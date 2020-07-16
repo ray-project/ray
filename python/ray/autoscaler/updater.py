@@ -9,6 +9,9 @@ import os
 import subprocess
 import sys
 import time
+import tempfile
+import selectors
+import re
 
 from threading import Thread
 from getpass import getuser
@@ -19,7 +22,7 @@ from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG, \
 from ray.autoscaler.log_timer import LogTimer
 from ray.autoscaler.docker import check_docker_running_cmd
 
-from ray.autoscaler.cli_logger import cli_logger, CLILoggerError
+from ray.autoscaler.cli_logger import cli_logger
 import colorful as cf
 
 logger = logging.getLogger(__name__)
@@ -30,6 +33,24 @@ READY_CHECK_INTERVAL = 5
 HASH_MAX_LENGTH = 10
 KUBECTL_RSYNC = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "kubernetes/kubectl-rsync.sh")
+
+
+class ProcessRunnerError(Exception):
+    def __init__(self, msg, type,
+        code=None, command=None, message_discovered=None):
+        super(ProcessRunnerError, self).__init__(
+            msg + str(dict(
+                type=type,
+                code=code,
+                command=command,
+                message_discovered=message_discovered
+            )))
+
+        self.type = type
+        self.code = code
+        self.command = command
+
+        self.message_discovered = message_discovered
 
 
 def with_interactive(cmd):
@@ -169,6 +190,15 @@ class SSHCommandRunner:
         self.ssh_control_path = ssh_control_path
         self.ssh_ip = None
 
+        self.known_host_update_msg_re = re.compile(
+            "\\s*Permanently added '.+' (.+) to the list of known hosts.\\s*")
+        self.connection_closed_msg_re = re.compile(
+            "\\s*Shared connection to .+ closed.\\s*")
+        self.timeout_msg_re = re.compile(
+            "\\s*ssh: connect to host .+ port .+: "
+            "Operation timed out\\s*")
+        # todo: check for other connection failures for better error messages?
+
     def get_default_ssh_options(self, connect_timeout):
         OPTS = [
             ("ConnectTimeout", "{}s".format(connect_timeout)),
@@ -202,12 +232,11 @@ class SSHCommandRunner:
         # if we have IP do not print waiting info
         # ip = self.get_node_ip()
         # if ip is not None:
-        #     cli_logger.keyvalue("Fetched IP", ip)
+        #     cli_logger.labeled_value("Fetched IP", ip)
         #     return ip
 
         interval = 10
-        with cli_logger.timed("Waiting for IP",
-                              _tags=dict(interval=str(interval) + "s")):
+        with cli_logger.timed("Waiting for IP"):
             while time.time() < deadline and \
                     not self.provider.is_terminated(self.node_id):
                 cli_logger.old_info(
@@ -215,8 +244,11 @@ class SSHCommandRunner:
 
                 ip = self.get_node_ip()
                 if ip is not None:
-                    cli_logger.keyvalue("Received", ip)
+                    cli_logger.labeled_value("Received", ip)
                     return ip
+                cli_logger.print(
+                    "Not yet available, retrying in a {} seconds",
+                    cf.bold(str(interval)))
                 time.sleep(interval)
 
         return None
@@ -246,6 +278,172 @@ class SSHCommandRunner:
         except OSError as e:
             cli_logger.warning(e) # todo: msg
             cli_logger.old_warning(logger, e)
+
+    def _run(self, final_cmd):
+        def run_command(output_file, dump_stderr=False):
+            p = self.process_runner.Popen(
+                final_cmd,
+                # do not inherit stdin as it messes with signals
+                # (ctrl-C for SIGINT) and these commands aren't
+                # supposed to take input anyway
+                #
+                # P.S. it also messes up the terminal formatting
+                # probably due to some weird stuff that SSH
+                # does to stdin internally if it's a TTY
+                stdin=self.process_runner.PIPE,
+                # fixme: for some reason this is a tty which we DON'T want
+                # commands spam A LOT if they think it's a real tty
+                # especially for progress bars and such
+                # pip is a HUGE issue since it redraws the progress bar
+                # even if no progress was made
+                stdout=self.process_runner.PIPE,
+                stderr=self.process_runner.PIPE,
+                universal_newlines=True) # text mode outputs
+
+            def read_streams(sel):
+                sel.register(p.stdout, selectors.EVENT_READ)
+                sel.register(p.stderr, selectors.EVENT_READ)
+
+                failure_message = None
+
+                remaining_streams = 2
+                while remaining_streams > 0:
+                    # we rely on SSH to be well-behaved and
+                    # die + close all streams when timing out
+                    # and so do not set a timeout for selecting
+                    for key, events in sel.select(timeout=None):
+                        f = key.fileobj
+                        data = f.read()
+
+                        if data is None:
+                            sel.unregister(f)
+                            remaining_streams -= 1
+                            continue
+
+                        for l in data.split("\n"):
+                            # idk if this is necessary, but my experiments
+                            # say it is, and it doesn't hurt
+
+                            if f is p.stdout:
+                                if self.known_host_update_msg_re.\
+                                    fullmatch(data) is not None:
+                                    cli_logger.warning(data)
+
+                                output_file.write(data)
+                            elif f is p.stderr:
+                                if dump_stderr:
+                                    output_file.write(data)
+
+                                if self.connection_closed_msg_re.\
+                                    fullmatch(data) is not None:
+                                    # don't log connection closed
+                                    # messages which SSH puts in stderr
+                                    # for no reason
+                                    continue
+
+                                if self.timeout_msg_re.\
+                                    fullmatch(data) is not None:
+                                    # timeout isn't really an error
+                                    # but rather a special condition.
+                                    #
+                                    # it should be handled separately
+                                    # and is often expected to occur
+                                    failure_message="ssh_timeout"
+                                    continue
+
+                                cli_logger.error(data)
+                            else:
+                                raise ValueError(
+                                        "Select returned something weird")
+
+                    p.poll()
+                    if p.returncode is not None:
+                        # there might be issues with missing output
+                        # if this ever exits before it is all consumed
+                        # for any reason
+                        # but if we do not break out here, then the
+                        # streams apparently never close, with
+                        # stderr forever reading "\n"
+                        break
+
+                if p.returncode > 0 and p.returncode != 0:
+                    raise ProcessRunnerError(
+                        "Command failed",
+                        "ssh_command_failed",
+                        code=p.returncode,
+                        command=final_cmd,
+                        message_discovered=failure_message)
+                elif p.returncode != 0:
+                    raise ProcessRunnerError(
+                        "Command failed",
+                        "ssh_command_failed",
+                        code=p.returncode,
+                        command=final_cmd,
+                        message_discovered="died_to_signal")
+
+                if failure_message is not None:
+                    # we didn't fail but found a failure message
+                    cli_logger.error(
+                        "Found a failure message ({}) in the "
+                        "command output but the command exited "
+                        "normally.",
+                        cf.bold(failure_message))
+
+                return p.returncode
+            try:
+                sel = selectors.DefaultSelector()
+                try:
+                    return read_streams(sel)
+                finally:
+                    sel.close()
+            finally:
+                p.kill()
+
+        if cli_logger.dump_command_output:
+            return run_command(output_file=sys.stdout)
+        else:
+            # the way we handle temporary files here
+            # is not consistent with how we usually do it
+            # (usually we just leave trash lying around and hope
+            # that the OS deletes them eventually BUT not too early)
+            tmp = tempfile.NamedTemporaryFile(mode="w", delete=False)
+            try:
+                cli_logger.verbose(
+                    "Command output is redirected to {}.",
+                    cf.bold(tmp.name))
+                cli_logger.verbose(
+                    cf.gray("Use -vvv to dump to console instead."))
+
+                return run_command(output_file=tmp, dump_stderr=True)
+            except ProcessRunnerError as e:
+                if e.message_discovered is not None:
+                    # something special happened and someone will probably
+                    # handle this better
+                    # todo: add an expected flag for this
+                    raise e
+
+                cli_logger.error(
+                    "Command `{}` failed.",
+                    cf.bold(" ".join(e.command)))
+
+                tmp.close()
+
+                error_log_filename = "cluster-launcher-error-log.txt"
+                with open(tmp.name, mode="r") as tmp_read:
+                    with open(error_log_filename, mode="a") as log_write:
+                        # make sure we are fine even if tmp is giant
+                        for line in tmp_read:
+                            log_write.write(line)
+
+                cli_logger.error(
+                    "Appended the failed command's output to `{}`.",
+                    cf.bold(error_log_filename))
+
+                raise e
+            finally:
+                if not tmp.closed:
+                    tmp.close()
+                os.remove(tmp.name)
 
     def run(self,
             cmd,
@@ -299,23 +497,23 @@ class SSHCommandRunner:
                 cf.bold(" ".join(final_cmd)))
 
         try:
-            # todo: catch and log
-            # Warning: Permanently added '52.37.238.148' (ECDSA) to the list of known hosts.
-
+            # for now if output is needed we just don't use the new logic
+            # in the future we could technically capture the output in a string
+            # as well, but i'm not sure if that is necessary and it's just
+            # another integration surface with potential for bugs
+            if not cli_logger.old_style and not with_output:
+                return self._run(final_cmd)
             if with_output:
                 return self.process_runner.check_output(final_cmd)
             else:
                 self.process_runner.check_call(final_cmd)
         except subprocess.CalledProcessError as e:
             if not cli_logger.old_style:
-                raise CLILoggerError(
+                raise ProcessRunnerError(
                     "Command failed",
                     "ssh_command_failed",
-                    dict(
-                        code = e.returncode,
-                        command = final_cmd,
-                        stdout = e.output,
-                        stderr = e.stderr))
+                    code=e.returncode,
+                    command=final_cmd)
 
             if exit_on_fail:
                 quoted_cmd = " ".join(final_cmd[:-1] + [quote(final_cmd[-1])])
@@ -334,7 +532,8 @@ class SSHCommandRunner:
             " ".join(["ssh"] + self.get_default_ssh_options(120)), "-avz",
             source, "{}@{}:{}".format(self.ssh_user, self.ssh_ip, target)
         ]
-        self.process_runner.check_call(command)
+        cli_logger.verbose("Running `{}`", cf.bold(command))
+        self._run(command)
 
     def run_rsync_down(self, source, target):
         self.set_ssh_ip_if_required()
@@ -344,7 +543,8 @@ class SSHCommandRunner:
             " ".join(["ssh"] + self.get_default_ssh_options(120)), "-avz",
             "{}@{}:{}".format(self.ssh_user, self.ssh_ip, source), target
         ]
-        self.process_runner.check_call(command)
+        cli_logger.verbose("Running `{}`", cf.bold(command))
+        self._run(command)
 
     def remote_shell_command_str(self):
         return "ssh -o IdentitiesOnly=yes -i {} {}@{}\n".format(
@@ -497,7 +697,7 @@ class NodeUpdater:
                 TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
                 TAG_RAY_RUNTIME_CONFIG: self.runtime_hash
             })
-        cli_logger.keyvalue("New status", STATUS_UP_TO_DATE)
+        cli_logger.labeled_value("New status", STATUS_UP_TO_DATE)
 
         self.exitcode = 0
 
@@ -538,10 +738,7 @@ class NodeUpdater:
     def wait_ready(self, deadline):
         with cli_logger.group(
             "Waiting for SSH to become available",
-            _numbered=("[]", 1, 5),
-            _tags=dict(
-                interval=str(READY_CHECK_INTERVAL) + "s"
-            )):
+            _numbered=("[]", 1, 5)):
             with LogTimer(self.log_prefix + "Got remote shell"):
                 cli_logger.old_info(
                     logger, "{}Waiting for remote shell...", self.log_prefix)
@@ -561,25 +758,41 @@ class NodeUpdater:
                             "Uptime succeeded.")
                         cli_logger.success("Success.")
                         return True
-                    except CLILoggerError as e:
-                        # ssh: connect to host 52.27.104.32 port 22: Operation timed out
-                        # todo: catch ^
+                    except ProcessRunnerError as e:
+                        # todo: handle "ssh: connect to host 34.208.199.190 port 22: Connection refused"
 
                         if e.type == "ssh_command_failed":
-                            cli_logger.print(
-                                "SSH still not available, retrying.")
+                            if e.message_discovered == "ssh_timeout":
+                                cli_logger.print(
+                                    "SSH still not available, "
+                                    "retrying in {} seconds.",
+                                    cf.bold(str(READY_CHECK_INTERVAL)))
+                            else:
+                                # todo: something really went wrong,
+                                # this is not just timeout
+                                cli_logger.abort("AAAAAAA")
 
                         time.sleep(READY_CHECK_INTERVAL)
                     except Exception as e:
+                        if not cli_logger.old_style:
+                            # we used to catch literaly all exceptions,
+                            # but now we have a special exception type for
+                            # things we should handle
+                            #
+                            # so we can raise everything since it indicates
+                            # something actually went bad
+                            raise e
+
                         retry_str = str(e)
                         if hasattr(e, "cmd"):
                             retry_str = "(Exit Status {}): {}".format(
                                 e.returncode, " ".join(e.cmd))
 
-                        # the way we handle exceptions here is awful
                         cli_logger.print(
-                            "SSH still not available ({}), retrying.",
-                            retry_str)
+                            "SSH still not available {}, "
+                            "retrying in {} seconds.",
+                            cf.gray(retry_str),
+                            cf.bold(str(READY_CHECK_INTERVAL)))
                         cli_logger.old_debug(
                             logger,
                             "{}Node not up, retrying: {}",
@@ -592,7 +805,7 @@ class NodeUpdater:
     def do_update(self):
         self.provider.set_node_tags(
             self.node_id, {TAG_RAY_NODE_STATUS: STATUS_WAITING_FOR_SSH})
-        cli_logger.keyvalue("New status", STATUS_WAITING_FOR_SSH)
+        cli_logger.labeled_value("New status", STATUS_WAITING_FOR_SSH)
 
         deadline = time.time() + NODE_START_WAIT_S
         self.wait_ready(deadline)
@@ -616,13 +829,13 @@ class NodeUpdater:
 
             self.provider.set_node_tags(
                 self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SYNCING_FILES})
-            cli_logger.keyvalue("New status", STATUS_SYNCING_FILES)
+            cli_logger.labeled_value("New status", STATUS_SYNCING_FILES)
             self.sync_file_mounts(self.rsync_up)
 
             # Run init commands
             self.provider.set_node_tags(
                 self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SETTING_UP})
-            cli_logger.keyvalue("New status", STATUS_SETTING_UP)
+            cli_logger.labeled_value("New status", STATUS_SETTING_UP)
 
             if self.initialization_commands:
                 with cli_logger.group(
@@ -647,7 +860,17 @@ class NodeUpdater:
                             self.log_prefix + "Setup commands",
                             show_status=True):
 
-                        for cmd in self.setup_commands:
+                        total = len(self.setup_commands)
+                        for i, cmd in enumerate(self.setup_commands):
+                            if cli_logger.verbosity == 0:
+                                cmd_to_print = cf.bold(cmd[:30]) + "..."
+                            else:
+                                cmd_to_print = cf.bold(cmd)
+
+                            cli_logger.print(
+                                cmd_to_print,
+                                _numbered=("()", i, total))
+
                             self.cmd_runner.run(cmd)
             else:
                 cli_logger.print(

@@ -14,6 +14,7 @@ from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME, \
 from ray.ray_constants import BOTO_MAX_RETRIES, BOTO_CREATE_MAX_RETRIES
 from ray.autoscaler.log_timer import LogTimer
 
+from ray.autoscaler.aws.utils import boto_exception_handler
 from ray.autoscaler.cli_logger import cli_logger
 import colorful as cf
 
@@ -135,7 +136,7 @@ class AWSNodeProvider(NodeProvider):
                 "Values": [v],
             })
 
-        with cli_logger.boto_exception_handler(
+        with boto_exception_handler(
                 "Failed to fetch running instances from AWS."):
             nodes = list(self.ec2.instances.filter(Filters=filters))
 

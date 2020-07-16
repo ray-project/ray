@@ -13,7 +13,8 @@ import botocore
 
 from ray.ray_constants import BOTO_MAX_RETRIES
 from ray.autoscaler.tags import NODE_TYPE_WORKER, NODE_TYPE_HEAD
-from ray.autoscaler.aws.utils import LazyDefaultDict
+from ray.autoscaler.aws.utils import LazyDefaultDict, handle_boto_error
+from ray.autoscaler.node_provider import PROVIDER_PRETTY_NAMES
 
 from ray.autoscaler.cli_logger import cli_logger
 import colorful as cf
@@ -76,6 +77,135 @@ def key_pair(i, region, key_name):
 logging.getLogger("botocore").setLevel(logging.WARNING)
 
 
+_log_info = {}
+def _set_config_info(**kwargs):
+    '''
+    Record configuration artifacts useful for logging.
+    '''
+
+    # todo: this is technically fragile iff we ever use multiple configs
+
+    for k, v in kwargs.items():
+        _log_info[k] = v
+
+def log_to_cli(config):
+    with cli_logger.group(
+            "{} config",
+            PROVIDER_PRETTY_NAMES.get("aws", "Unknown provider")):
+
+        def same_everywhere(key):
+            return config["head_node"][key] == config["worker_nodes"][key]
+
+        tags = {
+            "default":
+                _log_info["head_instance_profile_src"] == "default"
+        }
+        cli_logger.labeled_value(
+            "IAM Profile", "{}",
+            cli_logger.arn_to_name(
+                config["head_node"]["IamInstanceProfile"]["Arn"]),
+            _tags=tags)
+
+        if same_everywhere("KeyName"):
+            tags = {
+                "default": _log_info["keypair_src"] == "default"
+            }
+            cli_logger.labeled_value(
+                "Key pair (head & workers)", "{}",
+                config["head_node"]["KeyName"],
+                _tags=tags)
+        else:
+            # cannot be default
+            cli_logger.labeled_value(
+                "Key pair (head)", "{}",
+                config["head_node"]["KeyName"])
+            cli_logger.labeled_value(
+                "Key pair (workers)", "{}",
+                config["worker_nodes"]["KeyName"])
+
+        if same_everywhere("SubnetIds"):
+            tags = {
+                "default": _log_info["head_subnet_src"] == "default"
+            }
+            cli_logger.labeled_value( # todo: handle plural vs singular?
+                "Subnets (head & workers)", "{}",
+                cli_logger.render_list(
+                    config["head_node"]["SubnetIds"]),
+                _tags=tags)
+        else:
+            tags = {
+                "default": _log_info["head_subnet_src"] == "default"
+            }
+            cli_logger.labeled_value(
+                "Subnets (head)", "{}",
+                cli_logger.render_list(
+                    config["head_node"]["SubnetIds"]),
+                _tags=tags)
+
+            tags = {
+                "default": _log_info["workers_subnet_src"] == "default"
+            }
+            cli_logger.labeled_value(
+                "Subnets (workers)", "{}",
+                cli_logger.render_list(
+                    config["worker_nodes"]["SubnetIds"]),
+                _tags=tags)
+
+        if same_everywhere("SecurityGroupIds"):
+            tags = {
+                "default": _log_info["head_security_group_src"] == "default"
+            }
+            cli_logger.labeled_value(
+                "Security groups (head & workers)", "{}",
+                cli_logger.render_list(
+                    config["head_node"]["SecurityGroupIds"]),
+                _tags=tags)
+        else:
+            tags = {
+                "default": _log_info["head_security_group_src"] == "default"
+            }
+            cli_logger.labeled_value( # todo: handle plural vs singular?
+                "Security groups (head)", "{}",
+                cli_logger.render_list(
+                    config["head_node"]["SecurityGroupIds"]),
+                _tags=tags)
+
+            tags = {
+                "default":
+                    _log_info["workers_security_group_src"] == "default"
+            }
+            cli_logger.labeled_value(
+                "Security groups (workers)", "{}",
+                cli_logger.render_list(
+                    config["worker_nodes"]["SecurityGroupIds"]),
+                _tags=tags)
+
+        if same_everywhere("ImageId"):
+            tags = {
+                "dlami": _log_info["head_ami_src"] == "dlami"
+            }
+            cli_logger.labeled_value(
+                "AMI (head & workers)", "{}",
+                config["head_node"]["ImageId"],
+                _tags=tags)
+        else:
+            tags = {
+                "dlami": _log_info["head_ami_src"] == "dlami"
+            }
+            cli_logger.labeled_value(
+                "AMI (head)", "{}",
+                config["head_node"]["ImageId"],
+                _tags=tags)
+
+            tags = {
+                "dlami": _log_info["workers_ami_src"] == "dlami"
+            }
+            cli_logger.labeled_value(
+                "AMI (workers)", "{}",
+                config["worker_nodes"]["ImageId"],
+                _tags=tags)
+
+
 def bootstrap_aws(config):
     # The head node needs to have an IAM role that allows it to create further
     # EC2 instances.
@@ -99,9 +229,9 @@ def bootstrap_aws(config):
 
 def _configure_iam_role(config):
     if "IamInstanceProfile" in config["head_node"]:
-        cli_logger.add_log_info(head_instance_profile_src="config")
+        _set_config_info(head_instance_profile_src="config")
         return config
-    cli_logger.add_log_info(head_instance_profile_src="default")
+    _set_config_info(head_instance_profile_src="default")
 
     profile = _get_instance_profile(DEFAULT_RAY_INSTANCE_PROFILE, config)
 
@@ -171,7 +301,7 @@ def _configure_iam_role(config):
 
 def _configure_key_pair(config):
     if "ssh_private_key" in config["auth"]:
-        cli_logger.add_log_info(keypair_src="config")
+        _set_config_info(keypair_src="config")
 
         cli_logger.doassert( # todo: verify schema beforehand?
             "KeyName" in config["head_node"],
@@ -183,7 +313,7 @@ def _configure_key_pair(config):
         assert "KeyName" in config["head_node"]
         assert "KeyName" in config["worker_nodes"]
         return config
-    cli_logger.add_log_info(keypair_src="default")
+    _set_config_info(keypair_src="default")
 
     ec2 = _resource("ec2", config)
 
@@ -260,7 +390,7 @@ def _configure_subnet(config):
             reverse=True,  # sort from Z-A
             key=lambda subnet: subnet.availability_zone)
     except botocore.exceptions.ClientError as exc:
-        cli_logger.handle_boto_error(
+        handle_boto_error(
             exc,
             "Failed to fetch available subnets from AWS.")
         raise exc
@@ -299,7 +429,7 @@ def _configure_subnet(config):
     subnet_ids = [s.subnet_id for s in subnets]
     subnet_descr = [(s.subnet_id, s.availability_zone) for s in subnets]
     if "SubnetIds" not in config["head_node"]:
-        cli_logger.add_log_info(head_subnet_src="default")
+        _set_config_info(head_subnet_src="default")
         config["head_node"]["SubnetIds"] = subnet_ids
         cli_logger.old_info(
             logger,
@@ -307,11 +437,10 @@ def _configure_subnet(config):
             "SubnetIds not specified for head node, using {}",
             subnet_descr)
     else:
-        cli_logger.add_log_info(head_subnet_src="config")
+        _set_config_info(head_subnet_src="config")
 
     if "SubnetIds" not in config["worker_nodes"]:
-        cli_logger.add_log_info(
-            workers_subnet_src="default")
+        _set_config_info(workers_subnet_src="default")
         config["worker_nodes"]["SubnetIds"] = subnet_ids
         cli_logger.old_info(
             logger,
@@ -320,13 +449,13 @@ def _configure_subnet(config):
             " using {}",
             subnet_descr)
     else:
-        cli_logger.add_log_info(workers_subnet_src="config")
+        _set_config_info(workers_subnet_src="config")
 
     return config
 
 
 def _configure_security_group(config):
-    cli_logger.add_log_info(
+    _set_config_info(
         head_security_group_src="config",
         workers_security_group_src="config")
 
@@ -342,7 +471,7 @@ def _configure_security_group(config):
     if NODE_TYPE_HEAD in node_types_to_configure:
         head_sg = security_groups[NODE_TYPE_HEAD]
 
-        cli_logger.add_log_info(head_security_group_src="default")
+        _set_config_info(head_security_group_src="default")
         cli_logger.old_info(
             logger,
             "_configure_security_group: "
@@ -353,7 +482,7 @@ def _configure_security_group(config):
     if NODE_TYPE_WORKER in node_types_to_configure:
         workers_sg = security_groups[NODE_TYPE_WORKER]
 
-        cli_logger.add_log_info(workers_security_group_src="default")
+        _set_config_info(workers_security_group_src="default")
         cli_logger.old_info(
             logger,
             "_configure_security_group: "
@@ -367,7 +496,7 @@ def _configure_security_group(config):
 def _check_ami(config):
     """Provide helpful message for missing ImageId for node configuration."""
 
-    cli_logger.add_log_info(
+    _set_config_info(
         head_ami_src="config",
         workers_ami_src="config")
 
@@ -379,7 +508,7 @@ def _check_ami(config):
 
     if config["head_node"].get("ImageId", "").lower() == "latest_dlami":
         config["head_node"]["ImageId"] = default_ami
-        cli_logger.add_log_info(head_ami_src="dlami")
+        _set_config_info(head_ami_src="dlami")
         cli_logger.old_info(
             logger,
             "_check_ami: head node ImageId is 'latest_dlami'. "
@@ -391,7 +520,7 @@ def _check_ami(config):
 
     if config["worker_nodes"].get("ImageId", "").lower() == "latest_dlami":
         config["worker_nodes"]["ImageId"] = default_ami
-        cli_logger.add_log_info(workers_ami_src="dlami")
+        _set_config_info(workers_ami_src="dlami")
         cli_logger.old_info(
             logger,
             "_check_ami: worker nodes ImageId is 'latest_dlami'. "
@@ -570,7 +699,7 @@ def _get_role(role_name, config):
         if exc.response.get("Error", {}).get("Code") == "NoSuchEntity":
             return None
         else:
-            cli_logger.handle_boto_error(
+            handle_boto_error(
                 exc,
                 "Failed to fetch IAM role data for {} from AWS.",
                 cf.bold(role_name))
@@ -587,7 +716,7 @@ def _get_instance_profile(profile_name, config):
         if exc.response.get("Error", {}).get("Code") == "NoSuchEntity":
             return None
         else:
-            cli_logger.handle_boto_error(
+            handle_boto_error(
                 exc,
                 "Failed to fetch IAM instance profile data for {} from AWS.",
                 cf.bold(profile_name))
@@ -604,7 +733,7 @@ def _get_key(key_name, config):
             if key.name == key_name:
                 return key
     except botocore.exceptions.ClientError as exc:
-        cli_logger.handle_boto_error(
+        handle_boto_error(
             exc,
             "Failed to fetch EC2 key pair {} from AWS.",
             cf.bold(key_name))
