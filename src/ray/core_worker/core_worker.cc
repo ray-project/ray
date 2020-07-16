@@ -1319,7 +1319,8 @@ const ActorHandle *CoreWorker::GetActorHandle(const ActorID &actor_id) const {
   return actor_manager_->GetActorHandle(actor_id).get();
 }
 
-const ActorHandle *CoreWorker::GetNamedActorHandle(const std::string &name) {
+std::pair<const ActorHandle *, Status> CoreWorker::GetNamedActorHandle(
+    const std::string &name) {
   RAY_CHECK(RayConfig::instance().gcs_actor_service_enabled());
   RAY_CHECK(!name.empty());
 
@@ -1329,9 +1330,10 @@ const ActorHandle *CoreWorker::GetNamedActorHandle(const std::string &name) {
   // There should be no risk of deadlock because we don't hold any
   // locks during the call and the RPCs run on a separate thread.
   ActorID actor_id;
-  auto ready_promise = std::promise<void>();
+  std::shared_ptr<std::promise<void>> ready_promise =
+      std::make_shared<std::promise<void>>(std::promise<void>());
   RAY_CHECK_OK(gcs_client_->Actors().AsyncGetByName(
-      name, [this, &actor_id, name, &ready_promise](
+      name, [this, &actor_id, name, ready_promise](
                 Status status, const boost::optional<gcs::ActorTableData> &result) {
         if (status.ok() && result) {
           auto actor_handle = std::unique_ptr<ActorHandle>(new ActorHandle(*result));
@@ -1340,30 +1342,31 @@ const ActorHandle *CoreWorker::GetNamedActorHandle(const std::string &name) {
                                             CurrentCallSite(), rpc_address_,
                                             /*is_detached*/ true);
         } else {
-          RAY_LOG(INFO) << "Failed to look up actor with name: " << name;
           // Use a NIL actor ID to signal that the actor wasn't found.
+          RAY_LOG(DEBUG) << "Failed to look up actor with name: " << name;
           actor_id = ActorID::Nil();
         }
-        ready_promise.set_value();
+        ready_promise->set_value();
       }));
   // Block until the RPC completes. Set a timeout to avoid hangs if the
   // GCS service crashes.
-  if (ready_promise.get_future().wait_for(std::chrono::seconds(5)) !=
+  if (ready_promise->get_future().wait_for(std::chrono::seconds(5)) !=
       std::future_status::ready) {
-    RAY_LOG(ERROR) << "There was timeout in getting the actor handle. It is probably "
-                      "because GCS server is dead or there's a high load there.";
-    return nullptr;
+    std::ostringstream stream;
+    stream << "There was timeout in getting the actor handle. It is probably "
+              "because GCS server is dead or there's a high load there.";
+    return std::make_pair(nullptr, Status::TimedOut(stream.str()));
   }
 
   if (actor_id.IsNil()) {
-    RAY_LOG(WARNING)
-        << "Failed to look up actor with name '" << name
-        << "'. It is either you look up the named actor you didn't create or the named"
-           "actor hasn't been created because named actor creation is asynchronous.";
-    return nullptr;
+    std::ostringstream stream;
+    stream << "Failed to look up actor with name '" << name
+           << "'. It is either you look up the named actor you didn't create or the named"
+              "actor hasn't been created because named actor creation is asynchronous.";
+    return std::make_pair(nullptr, Status::NotFound(stream.str()));
   }
 
-  return GetActorHandle(actor_id);
+  return std::make_pair(GetActorHandle(actor_id), Status::OK());
 }
 
 const ResourceMappingType CoreWorker::GetResourceIDs() const {

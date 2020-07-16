@@ -596,14 +596,12 @@ cdef void get_py_stack(c_string* stack_out) nogil:
     This can be called from within C++ code to retrieve the file name and line
     number of the Python code that is calling into the core worker.
     """
-
     with gil:
         try:
             frame = inspect.currentframe()
         except ValueError:  # overhead of exception handling is about 20us
             stack_out[0] = "".encode("ascii")
             return
-
         msg = ""
         while frame:
             filename = frame.f_code.co_filename
@@ -631,7 +629,6 @@ cdef void get_py_stack(c_string* stack_out) nogil:
                 break
             frame = frame.f_back
         stack_out[0] = msg.encode("ascii")
-
 
 cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):
     cdef shared_ptr[CBuffer] empty_metadata
@@ -1080,12 +1077,18 @@ cdef class CoreWorker:
 
     def get_named_actor_handle(self, const c_string &name):
         cdef:
+            pair[const CActorHandle*, CRayStatus] named_actor_handle_pair
             # NOTE: This handle should not be stored anywhere.
-            const CActorHandle* c_actor_handle = (
-                CCoreWorkerProcess.GetCoreWorker().GetNamedActorHandle(name))
+            const CActorHandle* c_actor_handle
 
-        if c_actor_handle == NULL:
-            raise ValueError("Named Actor Handle Not Found")
+        # We need it because GetNamedActorHandle needs
+        # to call a method that holds the gil.
+        with nogil:
+            named_actor_handle_pair = (
+                CCoreWorkerProcess.GetCoreWorker().GetNamedActorHandle(name))
+        c_actor_handle = named_actor_handle_pair.first
+        check_status(named_actor_handle_pair.second)
+
         return self.make_actor_handle(c_actor_handle)
 
     def serialize_actor_handle(self, ActorID actor_id):
