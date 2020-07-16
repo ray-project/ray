@@ -13,18 +13,18 @@ from concurrent import futures
 
 import psutil
 
-from opentelemetry import metrics
-from opentelemetry.ext.prometheus import PrometheusMetricsExporter
-from opentelemetry.sdk.metrics import ValueObserver, Meter, MeterProvider
-from prometheus_client import start_http_server
+from opencensus.stats import aggregation
+from opencensus.stats import view
+from opencensus.stats import stats
+from opencensus.stats import measure
 
 import ray
 import ray.ray_constants as ray_constants
 import ray.services
 import ray.utils
-from ray_constants import METER_NAME, METRICS_EXPORT_INTERVAL
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
+from ray.metrics import MetricsManager
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -39,36 +39,9 @@ except ImportError:
         "Install gpustat with 'pip install gpustat' to enable GPU monitoring.")
 
 
-class MetricsDef:
-    def __init__(self, meter):
-        self.meter = meter
-        self.registry = {
-            "task_count_received": self.meter.register_observer(
-                "task_count_received",
-                "",
-                "",
-                float,
-                ValueObserver
-            )
-        }
-
-
-class MetricsExporter:
-    def __init__(self):
-        metrics.set_meter_provider(MeterProvider())
-        self.meter = metrics.get_meter(__name__)
-        self.metrics_def = MetricsDef(self.meter)
-        self.exporter = PrometheusMetricsExporter("")
-    
-    def start(self):
-        start_http_server(port=8888, addr="localhost")
-        metrics.get_meter_provider().start_pipeline(
-            self.meter, self.exporter, METRICS_EXPORT_INTERVAL)
-
-
 class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
-    def __init__(self, metrics_exporter):
-        self.metrics_exporter = metrics_exporter
+    def __init__(self, metrics_manager):
+        self.metrics_manager = metrics_manager
 
     def GetProfilingStats(self, request, context):
         pid = request.pid
@@ -92,16 +65,17 @@ class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
 
     def ReportMetrics(self, request, context):
         # TODO(sang): Process metrics here.
+        print(request)
         for metrics_point in request.metrics_points:
             metric_name = metrics_point.metric_name
             timestamp = metrics_point.timestamp
             value = metrics_point.value
             tags = metrics_point.tags
 
-            if metric_name in self.metrics_exporter.metrics_def.registry:
-                print("{} is in registry hehe".format(metric_name))
-                print(value)
-                self.metrics_exporter.metrics_def.registry[metric_name].observe(value, tags)
+            # if metric_name in self.metrics_manager.metrics_def.registry:
+            #     print("{} is in registry hehe".format(metric_name))
+            #     print(value)
+            #     self.metrics_exporter.metrics_def.registry[metric_name].observe(value, tags)
 
         return reporter_pb2.ReportMetricsReply()
 
@@ -150,8 +124,8 @@ class Reporter:
         self.ip = ray.services.get_node_ip_address()
         self.hostname = platform.node()
         self.port = port
-        self.metrics_exporter = MetricsExporter()
-        self.reporter_grpc_server = ReporterServer(self.metrics_exporter)
+        self.metrics_manager = MetricsManager()
+        self.reporter_grpc_server = ReporterServer(self.metrics_manager)
 
         _ = psutil.cpu_percent()  # For initialization
 
@@ -279,7 +253,7 @@ class Reporter:
             self.reporter_grpc_server, server)
         port = server.add_insecure_port("[::]:{}".format(self.port))
 
-        self.metrics_exporter.start()
+        self.metrics_manager.start()
         server.start()
         # Publish the port.
         self.redis_client.set("REPORTER_PORT:{}".format(self.ip), port)
