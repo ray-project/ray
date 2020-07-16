@@ -56,7 +56,8 @@ class ClusterTaskManager {
   /// will be dispatched if it is on `tasks_to_dispatch_` and there are still
   /// avaialable resources on the node.
   /// \param worker_pool: The pool of workers which will be dispatched to.
-  /// `worker_pool` state will be modified (idle workers will be popped) during dispatching.
+  /// `worker_pool` state will be modified (idle workers will be popped) during
+  /// dispatching.
   void DispatchScheduledTasksToWorkers(WorkerPool &worker_pool);
 
   /// (Step 1) Queue tasks for scheduling.
