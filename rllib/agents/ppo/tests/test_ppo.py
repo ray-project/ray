@@ -38,7 +38,7 @@ FAKE_BATCH = {
 class TestPPO(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(local_mode=False, num_gpus=1)
+        ray.init(local_mode=True)
 
     @classmethod
     def tearDownClass(cls):
@@ -47,8 +47,7 @@ class TestPPO(unittest.TestCase):
     def test_ppo_compilation(self):
         """Test whether a PPOTrainer can be built with all frameworks."""
         config = copy.deepcopy(ppo.DEFAULT_CONFIG)
-        config["num_workers"] = 0
-        config["num_gpus"] = 1
+        config["num_workers"] = 1
         config["num_sgd_iter"] = 2
         # Settings in case we use an LSTM.
         config["model"]["lstm_cell_size"] = 10
@@ -56,7 +55,7 @@ class TestPPO(unittest.TestCase):
         config["train_batch_size"] = 128
         num_iterations = 2
 
-        for _ in framework_iterator(config, frameworks=("tf", "torch", "tf2", "tfe")):
+        for _ in framework_iterator(config):
             for env in ["CartPole-v0", "MsPacmanNoFrameskip-v4"]:
                 print("Env={}".format(env))
                 for lstm in [True, False]:
