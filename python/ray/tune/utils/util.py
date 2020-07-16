@@ -2,7 +2,7 @@ import copy
 import logging
 import threading
 import time
-from collections import defaultdict
+from collections import defaultdict, deque, Mapping, Sequence
 from threading import Thread
 
 import numpy as np
@@ -214,6 +214,21 @@ def flatten_dict(dt, delimiter="/"):
         for k in remove:
             del dt[k]
     return dt
+
+
+def unflattened_lookup(flat_key, lookup, delimiter="/", default=None):
+    keys = deque(flat_key.split(delimiter))
+    base = lookup
+    while keys:
+        key = keys.popleft()
+        try:
+            if isinstance(base, Mapping):
+                base = base[key]
+            elif isinstance(base, Sequence):
+                base = base[int(key)]
+        except KeyError:
+            return default
+    return base
 
 
 def _to_pinnable(obj):
