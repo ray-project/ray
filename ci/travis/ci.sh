@@ -253,7 +253,7 @@ install_ray() {
   (
     cd "${WORKSPACE_DIR}"/python
     build_dashboard_front_end
-    pip install -v -e .
+    keep_alive pip install -v -e .
   )
 }
 
