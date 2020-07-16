@@ -6,7 +6,6 @@ import shutil
 import json
 import sys
 import socket
-import subprocess
 import tempfile
 import time
 
@@ -20,7 +19,8 @@ import ray.cluster_utils
 import ray.test_utils
 import setproctitle
 
-from ray.test_utils import RayTestTimeoutException, wait_for_num_actors
+from ray.test_utils import (check_call_ray, RayTestTimeoutException,
+                            wait_for_num_actors)
 
 logger = logging.getLogger(__name__)
 
@@ -404,7 +404,8 @@ def test_ray_stack(ray_start_2_cpus):
     start_time = time.time()
     while time.time() - start_time < 30:
         # Attempt to parse the "ray stack" call.
-        output = ray.utils.decode(subprocess.check_output(["ray", "stack"]))
+        output = ray.utils.decode(
+            check_call_ray(["stack"], capture_stdout=True))
         if ("unique_name_1" in output and "unique_name_2" in output
                 and "unique_name_3" in output):
             success = True
@@ -434,12 +435,13 @@ def test_pandas_parquet_serialization():
 
 
 def test_socket_dir_not_existing(shutdown_only):
-    random_name = ray.ObjectRef.from_random().hex()
-    temp_raylet_socket_dir = os.path.join(ray.utils.get_ray_temp_dir(),
-                                          "tests", random_name)
-    temp_raylet_socket_name = os.path.join(temp_raylet_socket_dir,
-                                           "raylet_socket")
-    ray.init(num_cpus=1, raylet_socket_name=temp_raylet_socket_name)
+    if sys.platform != "win32":
+        random_name = ray.ObjectRef.from_random().hex()
+        temp_raylet_socket_dir = os.path.join(ray.utils.get_ray_temp_dir(),
+                                              "tests", random_name)
+        temp_raylet_socket_name = os.path.join(temp_raylet_socket_dir,
+                                               "raylet_socket")
+        ray.init(num_cpus=1, raylet_socket_name=temp_raylet_socket_name)
 
 
 def test_raylet_is_robust_to_random_messages(ray_start_regular):

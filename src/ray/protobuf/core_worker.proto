@@ -154,6 +154,7 @@ message GetObjectStatusReply {
   enum ObjectStatus {
     CREATED = 0;
     OUT_OF_SCOPE = 1;
+    FREED = 2;
   }
   ObjectStatus status = 1;
 }
