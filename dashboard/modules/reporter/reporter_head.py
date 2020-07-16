@@ -20,9 +20,9 @@ logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
 
 
-class ReportMaster(dashboard_utils.DashboardMasterModule):
-    def __init__(self, dashboard_master):
-        super().__init__(dashboard_master)
+class ReportHead(dashboard_utils.DashboardHeadModule):
+    def __init__(self, dashboard_head):
+        super().__init__(dashboard_head)
         self._stubs = {}
         self._profiling_stats = {}
         DataSource.agents.signal.append(self._update_stubs)
@@ -86,7 +86,7 @@ class ReportMaster(dashboard_utils.DashboardMasterModule):
         return json.loads(profiling_stats.profiling_stats)
 
     async def run(self):
-        p = self._dashboard_master.aioredis_client
+        p = self._dashboard_head.aioredis_client
         mpsc = Receiver()
 
         reporter_key = "{}*".format(reporter_consts.REPORTER_PREFIX)

@@ -24,16 +24,16 @@ def gcs_node_info_to_dict(message):
         message, {"nodeId"}, including_default_value_fields=True)
 
 
-class DashboardMaster:
+class DashboardHead:
     def __init__(self, redis_address, redis_password):
-        # Scan and import master modules for collecting http routes.
-        self._master_cls_list = dashboard_utils.get_all_modules(
-            dashboard_utils.DashboardMasterModule)
+        # Scan and import head modules for collecting http routes.
+        self._head_cls_list = dashboard_utils.get_all_modules(
+            dashboard_utils.DashboardHeadModule)
         ip, port = redis_address.split(":")
         # NodeInfoGcsService
         self._gcs_node_info_stub = None
         self._gcs_rpc_error_counter = 0
-        # Public attributes are accessible for all master modules.
+        # Public attributes are accessible for all head modules.
         self.redis_address = (ip, int(port))
         self.redis_password = redis_password
         self.aioredis_client = None
@@ -109,11 +109,11 @@ class DashboardMaster:
                     dashboard_consts.UPDATE_NODES_INTERVAL_SECONDS)
 
     def _load_modules(self):
-        """Load dashboard master modules."""
+        """Load dashboard head modules."""
         modules = []
-        for cls in self._master_cls_list:
+        for cls in self._head_cls_list:
             logger.info("Load %s: %s",
-                        dashboard_utils.DashboardMasterModule.__name__, cls)
+                        dashboard_utils.DashboardHeadModule.__name__, cls)
             c = cls(self)
             dashboard_utils.ClassMethodRouteTable.bind(c)
             modules.append(c)

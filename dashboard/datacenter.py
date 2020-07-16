@@ -30,7 +30,7 @@ class DataSource:
 class DataOrganizer:
     @staticmethod
     async def purge():
-        # These data sources are maintained by master,
+        # These data sources are maintained by DashboardHead,
         # we do not needs to purge them:
         #   * agents
         #   * nodes

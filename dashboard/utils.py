@@ -45,14 +45,14 @@ class DashboardAgentModule(abc.ABC):
         """
 
 
-class DashboardMasterModule(abc.ABC):
-    def __init__(self, dashboard_master):
+class DashboardHeadModule(abc.ABC):
+    def __init__(self, dashboard_head):
         """
-        Initialize current module when DashboardMaster loading modules.
+        Initialize current module when DashboardHead loading modules.
 
-        :param dashboard_master: The DashboardMaster instance.
+        :param dashboard_head: The DashboardHead instance.
         """
-        self._dashboard_master = dashboard_master
+        self._dashboard_head = dashboard_head
 
     @abc.abstractmethod
     async def run(self):
@@ -136,17 +136,17 @@ class ClassMethodRouteTable:
         return cls._register_route(hdrs.METH_ANY, path, **kwargs)
 
     @classmethod
-    def bind(cls, master_instance):
+    def bind(cls, instance):
         def predicate(o):
             if inspect.ismethod(o):
                 return hasattr(o, "__route_method__") and hasattr(
                     o, "__route_path__")
             return False
 
-        handler_routes = inspect.getmembers(master_instance, predicate)
+        handler_routes = inspect.getmembers(instance, predicate)
         for _, h in handler_routes:
             cls._bind_map[h.__func__.__route_method__][
-                h.__func__.__route_path__].instance = master_instance
+                h.__func__.__route_path__].instance = instance
 
 
 def get_all_modules(module_type):

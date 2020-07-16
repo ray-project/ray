@@ -19,7 +19,7 @@ import aioredis
 
 import ray
 import ray.new_dashboard.consts as dashboard_consts
-import ray.new_dashboard.master as dashboard_master
+import ray.new_dashboard.head as dashboard_head
 import ray.new_dashboard.utils as dashboard_utils
 import ray.ray_constants as ray_constants
 import ray.services
@@ -77,7 +77,7 @@ class Dashboard:
         self.port = port
         self.temp_dir = temp_dir
         self.dashboard_id = str(uuid.uuid4())
-        self.dashboard_master = dashboard_master.DashboardMaster(
+        self.dashboard_head = dashboard_head.DashboardHead(
             redis_address=redis_address, redis_password=redis_password)
 
         self.app = aiohttp.web.Application()
@@ -104,13 +104,13 @@ class Dashboard:
 
     async def run(self):
         coroutines = [
-            self.dashboard_master.run(),
+            self.dashboard_head.run(),
             aiohttp.web._run_app(self.app, host=self.host, port=self.port)
         ]
         ip = ray.services.get_node_ip_address()
         aioredis_client = await aioredis.create_redis_pool(
-            address=self.dashboard_master.redis_address,
-            password=self.dashboard_master.redis_password)
+            address=self.dashboard_head.redis_address,
+            password=self.dashboard_head.redis_password)
         await aioredis_client.set(dashboard_consts.REDIS_KEY_DASHBOARD,
                                   ip + ":" + str(self.port))
         await asyncio.gather(*coroutines)
