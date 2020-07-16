@@ -21,6 +21,7 @@
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/status.h"
+#include "ray/core_worker/core_worker.h"
 
 /// Boolean class
 extern jclass java_boolean_class;
@@ -116,6 +117,10 @@ extern jfieldID java_base_task_options_resources;
 
 /// ActorCreationOptions class
 extern jclass java_actor_creation_options_class;
+/// global field of ActorCreationOptions class
+extern jfieldID java_actor_creation_options_global;
+/// name field of ActorCreationOptions class
+extern jfieldID java_actor_creation_options_name;
 /// maxRestarts field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_max_restarts;
 /// jvmOptions field of ActorCreationOptions class
@@ -425,4 +430,11 @@ inline jobject NativeRayFunctionDescriptorToJavaStringList(
   }
   RAY_LOG(FATAL) << "Unknown function descriptor type: " << function_descriptor->Type();
   return NativeStringVectorToJavaStringList(env, std::vector<std::string>());
+}
+
+// Return an actor fullname with job id prepended if this tis a global actor.
+inline std::string GetActorFullName(bool global, std::string name) {
+  return global ? name
+                : ::ray::CoreWorkerProcess::GetCoreWorker().GetCurrentJobId().Hex() + "-" +
+                      name;
 }
