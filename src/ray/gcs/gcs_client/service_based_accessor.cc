@@ -76,8 +76,8 @@ Status ServiceBasedJobInfoAccessor::AsyncMarkFinished(const JobID &job_id,
 Status ServiceBasedJobInfoAccessor::AsyncSubscribeAll(
     const SubscribeCallback<JobID, JobTableData> &subscribe, const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  fetch_all_data_operation_ = [this, subscribe](const StatusCallback &done) {
-    auto callback = [this, subscribe, done](
+  fetch_all_data_operation_ = [this, subscribe](const StatusCallback &fetch_done) {
+    auto callback = [this, subscribe, fetch_done](
                         const Status &status,
                         const std::vector<rpc::JobTableData> &job_info_list) {
       for (auto &job_info : job_info_list) {
