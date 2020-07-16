@@ -35,6 +35,12 @@ public abstract class NativeActorHandle implements BaseActorHandle, Externalizab
   NativeActorHandle() {
   }
 
+  public static NativeActorHandle create(byte[] actorId) {
+    Language language = Language.forNumber(nativeGetLanguage(actorId));
+    Preconditions.checkState(language != null, "Language shouldn't be null");
+    return create(actorId, language);
+  }
+
   public static NativeActorHandle create(byte[] actorId, Language language) {
     switch (language) {
       case JAVA:

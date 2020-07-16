@@ -15,6 +15,10 @@
 #include "gcs_redis_failure_detector.h"
 #include "ray/common/ray_config.h"
 
+extern "C" {
+#include "hiredis/hiredis.h"
+}
+
 namespace ray {
 namespace gcs {
 

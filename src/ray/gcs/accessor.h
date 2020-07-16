@@ -188,12 +188,12 @@ class JobInfoAccessor {
   virtual Status AsyncMarkFinished(const JobID &job_id,
                                    const StatusCallback &callback) = 0;
 
-  /// Subscribe to finished jobs.
+  /// Subscribe to job updates.
   ///
-  /// \param subscribe Callback that will be called each time when a job finishes.
+  /// \param subscribe Callback that will be called each time when a job updates.
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
-  virtual Status AsyncSubscribeToFinishedJobs(
+  virtual Status AsyncSubscribeAll(
       const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
       const StatusCallback &done) = 0;
 
