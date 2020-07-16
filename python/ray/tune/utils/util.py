@@ -224,7 +224,9 @@ def unflattened_lookup(flat_key, lookup, delimiter="/", default=None):
         try:
             if isinstance(base, Mapping):
                 base = base[key]
-            elif isinstance(base, Sequence):
+            # Explicitly use list here, we don't want
+            # to flatten arrays or tuples.
+            elif isinstance(base, list):
                 base = base[int(key)]
         except KeyError:
             return default
