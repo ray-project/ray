@@ -411,9 +411,9 @@ class RolloutWorker(ParallelIteratorWorker):
                     "Creating policy evaluation worker {}".format(
                         worker_index) +
                     " on CPU (please ignore any CUDA init errors)")
-            elif (policy_config["framework"] in ["tf2", "tf", "tfe"] and \
+            elif (policy_config["framework"] in ["tf2", "tf", "tfe"] and
                   not tf.config.list_physical_devices("GPU")) or \
-                    (policy_config["framework"] == "torch" and \
+                    (policy_config["framework"] == "torch" and
                      not torch.cuda.is_available()):
                 raise RuntimeError(
                     "GPUs were assigned to this worker by Ray, but "
