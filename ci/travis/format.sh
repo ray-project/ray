@@ -3,7 +3,7 @@
 # You are encouraged to run this locally before pushing changes for review.
 
 # Cause the script to exit if a single command fails
-set -eo pipefail
+set -euo pipefail
 
 FLAKE8_VERSION_REQUIRED="3.7.7"
 YAPF_VERSION_REQUIRED="0.23.0"
@@ -231,11 +231,11 @@ format_all() {
 
 # This flag formats individual files. --files *must* be the first command line
 # arg to use this option.
-if [[ "$1" == '--files' ]]; then
+if [ "${1-}" == '--files' ]; then
     format "${@:2}"
     # If `--all` is passed, then any further arguments are ignored and the
     # entire python directory is formatted.
-elif [[ "$1" == '--all' ]]; then
+elif [ "${1-}" == '--all' ]; then
     format_all
 else
     # Format only the files that changed in last commit.
