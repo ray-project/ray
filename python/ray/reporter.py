@@ -24,7 +24,7 @@ import ray.services
 import ray.utils
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
-from ray.metrics import MetricsManager
+from ray.metrics_agent import MetricsAgent
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -40,8 +40,8 @@ except ImportError:
 
 
 class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
-    def __init__(self, metrics_manager):
-        self.metrics_manager = metrics_manager
+    def __init__(self, metrics_agent):
+        self.metrics_agent = metrics_agent
 
     def GetProfilingStats(self, request, context):
         pid = request.pid
@@ -64,19 +64,7 @@ class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
             profiling_stats=profiling_stats, stdout=stdout, stderr=stderr)
 
     def ReportMetrics(self, request, context):
-        # TODO(sang): Process metrics here.
-        print(request)
-        for metrics_point in request.metrics_points:
-            metric_name = metrics_point.metric_name
-            timestamp = metrics_point.timestamp
-            value = metrics_point.value
-            tags = metrics_point.tags
-
-            # if metric_name in self.metrics_manager.metrics_def.registry:
-            #     print("{} is in registry hehe".format(metric_name))
-            #     print(value)
-            #     self.metrics_exporter.metrics_def.registry[metric_name].observe(value, tags)
-
+        self.metrics_agent.record_metrics_points(request.metrics_points)
         return reporter_pb2.ReportMetricsReply()
 
 
@@ -124,8 +112,8 @@ class Reporter:
         self.ip = ray.services.get_node_ip_address()
         self.hostname = platform.node()
         self.port = port
-        self.metrics_manager = MetricsManager()
-        self.reporter_grpc_server = ReporterServer(self.metrics_manager)
+        self.metrics_agent = MetricsAgent()
+        self.reporter_grpc_server = ReporterServer(self.metrics_agent)
 
         _ = psutil.cpu_percent()  # For initialization
 
@@ -253,7 +241,6 @@ class Reporter:
             self.reporter_grpc_server, server)
         port = server.add_insecure_port("[::]:{}".format(self.port))
 
-        self.metrics_manager.start()
         server.start()
         # Publish the port.
         self.redis_client.set("REPORTER_PORT:{}".format(self.ip), port)
