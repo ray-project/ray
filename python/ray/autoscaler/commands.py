@@ -372,7 +372,8 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             setup_commands=init_commands,
             ray_start_commands=ray_start_commands,
             runtime_hash=runtime_hash,
-            docker_config=config.get("docker"))
+            docker_config=config.get("docker"),
+            initialize_as_head=True)
         updater.start()
         updater.join()
 

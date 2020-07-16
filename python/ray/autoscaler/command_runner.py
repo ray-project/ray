@@ -9,7 +9,10 @@ import subprocess
 import sys
 import time
 
-from ray.autoscaler.docker import check_docker_running_cmd, with_docker_exec
+from ray.autoscaler.docker import check_docker_running_cmd, \
+                                  check_docker_image, \
+                                  docker_autoscaler_setup, \
+                                  with_docker_exec
 from ray.autoscaler.log_timer import LogTimer
 
 logger = logging.getLogger(__name__)
@@ -72,6 +75,20 @@ class CommandRunnerInterface:
     def remote_shell_command_str(self) -> str:
         """Return the command the user can use to open a shell."""
         raise NotImplementedError
+
+    def run_init(self, init_cmds: List[str], as_head: bool) -> bool:
+        """"Run custom initialization inside the CommandRunner
+
+        Args:
+            init_cmds (List): The Initialization Commands to run
+            as_head (bool): If this is the head node
+         """
+        for cmd in init_cmds:
+            self.run(
+                cmd,
+                ssh_options_override=SSHOptions(
+                    self.auth_config.get("ssh_private_key")),
+                run_env="host")
 
 
 class KubernetesCommandRunner(CommandRunnerInterface):
@@ -367,14 +384,15 @@ class SSHCommandRunner(CommandRunnerInterface):
             self.ssh_private_key, self.ssh_user, self.ssh_ip)
 
 
-class DockerCommandRunner(SSHCommandRunner):
+class DockerCommandRunner(CommandRunnerInterface):
     def __init__(self, docker_config, **common_args):
         self.ssh_command_runner = SSHCommandRunner(**common_args)
         self.docker_name = docker_config["container_name"]
         self.docker_config = docker_config
         self.home_dir = None
-        self._check_docker_installed()
+        self.auth_config = common_args["auth_config"]
         self.shutdown = False
+        self.initialized = False
 
     def run(self,
             cmd,
@@ -390,6 +408,9 @@ class DockerCommandRunner(SSHCommandRunner):
 
         if run_env == "docker":
             cmd = self._docker_expand_user(cmd, any_char=True)
+            # MAYBE KEEP TODO(ilr)
+            cmd = _with_interactive(cmd)
+            #
             cmd = with_docker_exec(
                 [cmd], container_name=self.docker_name,
                 with_interactive=True)[0]
@@ -406,7 +427,7 @@ class DockerCommandRunner(SSHCommandRunner):
 
     def run_rsync_up(self, source, target):
         self.ssh_command_runner.run_rsync_up(source, target)
-        if self._check_container_status():
+        if self.initialized:
             self.ssh_command_runner.run("docker cp {} {}:{}".format(
                 target, self.docker_name, self._docker_expand_user(target)))
 
@@ -440,14 +461,14 @@ class DockerCommandRunner(SSHCommandRunner):
         self.shutdown = True
 
     def _check_container_status(self):
-        no_exist = "not_present"
-        cmd = check_docker_running_cmd(self.docker_name) + " ".join(
-            ["||", "echo", quote(no_exist)])
+        if self.initialized:
+            return True
         output = self.ssh_command_runner.run(
-            cmd, with_output=True).decode("utf-8").strip()
-        if no_exist in output:
-            return False
-        return "true" in output.lower()
+            check_docker_running_cmd(self.docker_name),
+            with_output=True).decode("utf-8").strip()
+        # Checks for the false positive where "true" is in the container name
+        return "true" in output.lower(
+        ) and "No such object" not in output.lower()
 
     def _docker_expand_user(self, string, any_char=False):
         user_pos = string.find("~")
@@ -465,3 +486,40 @@ class DockerCommandRunner(SSHCommandRunner):
                 return string.replace("~", self.home_dir, 1)
 
         return string
+
+    def run_init(self, init_cmds, as_head):
+        # Run actual init commands
+        super().run_init(init_cmds, as_head)
+
+        image = self.docker_config.get("image")
+        if image is None:
+            image = self.docker_config.get(
+                "{}_image".format("head" if as_head else "worker"))
+
+        self._check_docker_installed()
+        if self.docker_config.get("pull_before_run", True):
+            assert image, "Image must be included"
+
+            self.run("docker pull {}".format(image), run_env="host")
+
+        start_command = self.docker_config["{}_docker_start".format(
+            "head" if as_head else "worker")]
+
+        if not self._check_container_status():
+            self.run(start_command, run_env="host")
+        else:
+            running_image = self.run(
+                check_docker_image(self.docker_name),
+                with_output=True,
+                run_env="host").decode("utf-8").strip()
+            if running_image != image:
+                logger.error(
+                    "A container with name {} ".format(self.docker_name) +
+                    "is running image {} instead ".format(running_image) +
+                    "of {} (which was provided in the YAML".format(image))
+
+        # Copy bootstrap config & key over
+        if as_head:
+            for copy_cmd in docker_autoscaler_setup(self.docker_name):
+                self.run(copy_cmd, run_env="host")
+        self.initialized = True

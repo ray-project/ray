@@ -9,7 +9,7 @@ from threading import Thread
 from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, STATUS_WAITING_FOR_SSH, \
     STATUS_SETTING_UP, STATUS_SYNCING_FILES
-from ray.autoscaler.command_runner import NODE_START_WAIT_S, SSHOptions
+from ray.autoscaler.command_runner import NODE_START_WAIT_S
 from ray.autoscaler.log_timer import LogTimer
 
 logger = logging.getLogger(__name__)
@@ -33,7 +33,8 @@ class NodeUpdater:
                  runtime_hash,
                  process_runner=subprocess,
                  use_internal_ip=False,
-                 docker_config=None):
+                 docker_config=None,
+                 initialize_as_head=False):
 
         self.log_prefix = "NodeUpdater: {}: ".format(node_id)
         use_internal_ip = (use_internal_ip
@@ -54,7 +55,7 @@ class NodeUpdater:
         self.setup_commands = setup_commands
         self.ray_start_commands = ray_start_commands
         self.runtime_hash = runtime_hash
-        self.auth_config = auth_config
+        self.initialize_as_head = initialize_as_head
 
     def run(self):
         logger.info(self.log_prefix +
@@ -148,21 +149,19 @@ class NodeUpdater:
             with LogTimer(
                     self.log_prefix + "Initialization commands",
                     show_status=True):
-                for cmd in self.initialization_commands:
-                    self.cmd_runner.run(
-                        cmd,
-                        ssh_options_override=SSHOptions(
-                            self.auth_config.get("ssh_private_key")))
+                self.cmd_runner.run_init(
+                    init_cmds=self.initialization_commands,
+                    as_head=self.initialize_as_head)
 
             with LogTimer(
                     self.log_prefix + "Setup commands", show_status=True):
                 for cmd in self.setup_commands:
-                    self.cmd_runner.run(cmd)
+                    self.cmd_runner.run(cmd, run_env="docker")  # TBD TODO(ilr)
 
         with LogTimer(
                 self.log_prefix + "Ray start commands", show_status=True):
             for cmd in self.ray_start_commands:
-                self.cmd_runner.run(cmd)
+                self.cmd_runner.run(cmd, run_env="docker")  # TBD TODO(ilr)
 
     def rsync_up(self, source, target):
         logger.info(self.log_prefix +
