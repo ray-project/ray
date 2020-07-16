@@ -5,8 +5,8 @@ The implementation has a couple assumptions:
 - Each agent is bound to a policy of the same name.
 - Discrete actions are sent as logits (pre-softmax).
 
-For a minimal example, see twostep_game.py, and the README for how to run
-with the multi-agent particle envs.
+For a minimal example, see rllib/examples/two_step_game.py,
+and the README for how to run with the multi-agent particle envs.
 """
 
 import logging
