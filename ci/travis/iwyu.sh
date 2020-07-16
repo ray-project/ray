@@ -58,6 +58,7 @@ invoke_cc() {
   case "${cc##*/}" in
     clang*)
       # Call iwyu with the modified arguments and environment variables (env -i starts with a blank slate)
+      # shellcheck disable=SC2016
       { PATH="${PATH}:/usr/bin" env -i "${env_vars[@]}" "${SHELL-/bin/bash}" -c 'iwyu -isystem "$("$1" -print-resource-dir "${@:2}")/include" "${@:2}"' exec "${args[@]}" 2>&1 || true; } | awk '
         # Awk script to remove noise in the iwyu output
         { header = 0; }
