@@ -152,11 +152,11 @@ bool DoubleEqualTo(double value, double compared_value) {
 }
 
 TEST_F(MetricExporterClientTest, decorator_test) {
-  // Export client should emit at least once in 10 seconds.
+  // Export client should emit at least once in report flush interval.
   for (size_t i = 0; i < 100; ++i) {
     stats::CurrentWorker().Record(i + 1);
   }
-  std::this_thread::sleep_for(std::chrono::milliseconds(kReportFlushInterval + 20));
+  std::this_thread::sleep_for(std::chrono::milliseconds(kReportFlushInterval + 200));
   ASSERT_GE(100, MockExporterClient1::GetValue());
   ASSERT_GE(100, MockExporterClient2::GetValue());
   ASSERT_EQ(1, MockExporterClient1::GetCount());
@@ -182,7 +182,9 @@ TEST_F(MetricExporterClientTest, exporter_client_caculation_test) {
     random_sum.Record(i, {{tag1, std::to_string(i)}, {tag2, std::to_string(i * 2)}});
     random_hist.Record(i, {{tag1, std::to_string(i)}, {tag2, std::to_string(i * 2)}});
   }
-  std::this_thread::sleep_for(std::chrono::milliseconds(kReportFlushInterval + 20));
+  // Sleep must be greater than report interval and less than 2 * harvest
+  // interval.
+  std::this_thread::sleep_for(std::chrono::milliseconds(kReportFlushInterval + 200));
   RAY_LOG(INFO) << "Min " << MockExporterClient1::GetLastestHistMin() << ", mean "
                 << MockExporterClient1::GetLastestHistMean() << ", max "
                 << MockExporterClient1::GetLastestHistMax();
