@@ -898,6 +898,10 @@ void PlasmaStore::SubscribeToUpdates(const std::shared_ptr<Client> &client) {
       info.object_id = entry.first.Binary();
       info.data_size = entry.second->data_size;
       info.metadata_size = entry.second->metadata_size;
+      info.owner_raylet_id = entry.second->owner_raylet_id.Binary();
+      info.owner_ip_address = entry.second->owner_ip_address;
+      info.owner_port = entry.second->owner_port;
+      info.owner_worker_id = entry.second->owner_worker_id.Binary();
       PushNotification(&info, fd);
     }
   }
