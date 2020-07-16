@@ -20,7 +20,7 @@ import ray.services as services
 from ray.autoscaler.util import validate_config, hash_runtime_conf, \
     hash_launch_conf, prepare_config, DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
-from ray.autoscaler.node_provider import get_node_provider
+from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_NODE_NAME, NODE_TYPE_WORKER, NODE_TYPE_HEAD
 
@@ -111,8 +111,12 @@ def _bootstrap_config(config, no_config_cache=False):
         logger.info("Using cached config at {}".format(cache_key))
         return json.loads(open(cache_key).read())
     validate_config(config)
-    provider = get_node_provider(config["provider"], config["cluster_name"])
-    resolved_config = provider.bootstrap_config(config)
+    importer = NODE_PROVIDERS.get(config["provider"]["type"])
+    if not importer:
+        raise NotImplementedError("Unsupported provider {}".format(
+            config["provider"]))
+    provider_cls = importer(config["provider"])
+    resolved_config = provider_cls.bootstrap_config(config)
     if not no_config_cache:
         with open(cache_key, "w") as f:
             f.write(json.dumps(resolved_config))

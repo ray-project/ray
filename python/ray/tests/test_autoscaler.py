@@ -280,7 +280,7 @@ class LoadMetricsTest(unittest.TestCase):
 class AutoscalingTest(unittest.TestCase):
     def setUp(self):
         NODE_PROVIDERS["mock"] = \
-            lambda: self.create_provider
+            lambda x: self.create_provider
         self.provider = None
         self.tmpdir = tempfile.mkdtemp()
 

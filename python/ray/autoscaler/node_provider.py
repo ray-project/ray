@@ -8,27 +8,27 @@ from ray.autoscaler.command_runner import SSHCommandRunner, DockerCommandRunner
 logger = logging.getLogger(__name__)
 
 
-def import_aws():
+def import_aws(provider_config):
     from ray.autoscaler.aws.node_provider import AWSNodeProvider
     return AWSNodeProvider
 
 
-def import_gcp():
+def import_gcp(provider_config):
     from ray.autoscaler.gcp.node_provider import GCPNodeProvider
     return GCPNodeProvider
 
 
-def import_azure():
+def import_azure(provider_config):
     from ray.autoscaler.azure.node_provider import AzureNodeProvider
     return AzureNodeProvider
 
 
-def import_local():
+def import_local(provider_config):
     from ray.autoscaler.local.node_provider import LocalNodeProvider
     return LocalNodeProvider
 
 
-def import_kubernetes():
+def import_kubernetes(provider_config):
     from ray.autoscaler.kubernetes.node_provider import KubernetesNodeProvider
     return KubernetesNodeProvider
 
@@ -61,6 +61,11 @@ def load_azure_example_config():
         os.path.dirname(ray_azure.__file__), "example-full.yaml")
 
 
+def import_external(provider_config):
+    provider_cls = load_class(path=provider_config["module"])
+    return provider_cls
+
+
 NODE_PROVIDERS = {
     "local": import_local,
     "aws": import_aws,
@@ -68,7 +73,7 @@ NODE_PROVIDERS = {
     "azure": import_azure,
     "kubernetes": import_kubernetes,
     "docker": None,
-    "external": None  # Import an external module
+    "external": import_external  # Import an external module
 }
 
 DEFAULT_CONFIGS = {
@@ -98,16 +103,11 @@ def load_class(path):
 
 
 def get_node_provider(provider_config, cluster_name):
-    if provider_config["type"] == "external":
-        provider_cls = load_class(path=provider_config["module"])
-        return provider_cls(provider_config, cluster_name)
-
     importer = NODE_PROVIDERS.get(provider_config["type"])
-
     if importer is None:
         raise NotImplementedError("Unsupported node provider: {}".format(
             provider_config["type"]))
-    provider_cls = importer()
+    provider_cls = importer(provider_config)
     return provider_cls(provider_config, cluster_name)
 
 
