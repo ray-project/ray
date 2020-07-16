@@ -35,7 +35,7 @@ void FutureResolver::ResolveFutureAsync(const ObjectID &object_id,
   rpc::GetObjectStatusRequest request;
   request.set_object_id(object_id.Binary());
   request.set_owner_worker_id(owner_worker_id.Binary());
-  RAY_CHECK_OK(it->second->GetObjectStatus(
+  it->second->GetObjectStatus(
       request,
       [this, object_id](const Status &status, const rpc::GetObjectStatusReply &reply) {
         if (!status.ok()) {
@@ -47,7 +47,7 @@ void FutureResolver::ResolveFutureAsync(const ObjectID &object_id,
         // plasma.
         RAY_UNUSED(in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
                                          object_id));
-      }));
+      });
 }
 
 }  // namespace ray

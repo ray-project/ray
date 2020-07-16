@@ -439,7 +439,7 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
   rpc::WaitForActorOutOfScopeRequest wait_request;
   wait_request.set_intended_worker_id(owner_id.Binary());
   wait_request.set_actor_id(actor_id.Binary());
-  RAY_CHECK_OK(it->second.client->WaitForActorOutOfScope(
+  it->second.client->WaitForActorOutOfScope(
       wait_request, [this, owner_node_id, owner_id, actor_id](
                         Status status, const rpc::WaitForActorOutOfScopeReply &reply) {
         if (!status.ok()) {
@@ -452,7 +452,7 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
           // have already been destroyed if the owner died.
           DestroyActor(actor_id);
         }
-      }));
+      });
 }
 
 void GcsActorManager::DestroyActor(const ActorID &actor_id) {

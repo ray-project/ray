@@ -301,7 +301,8 @@ Status raylet::RayletClient::RequestWorkerLease(
     const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback) {
   rpc::RequestWorkerLeaseRequest request;
   request.mutable_resource_spec()->CopyFrom(resource_spec.GetMessage());
-  return grpc_client_->RequestWorkerLease(request, callback);
+  grpc_client_->RequestWorkerLease(request, callback);
+  return Status::OK();
 }
 
 Status raylet::RayletClient::ReturnWorker(int worker_port, const WorkerID &worker_id,
@@ -310,12 +311,13 @@ Status raylet::RayletClient::ReturnWorker(int worker_port, const WorkerID &worke
   request.set_worker_port(worker_port);
   request.set_worker_id(worker_id.Binary());
   request.set_disconnect_worker(disconnect_worker);
-  return grpc_client_->ReturnWorker(
+  grpc_client_->ReturnWorker(
       request, [](const Status &status, const rpc::ReturnWorkerReply &reply) {
         if (!status.ok()) {
           RAY_LOG(INFO) << "Error returning worker: " << status;
         }
       });
+  return Status::OK();
 }
 
 ray::Status raylet::RayletClient::CancelWorkerLease(
@@ -323,7 +325,8 @@ ray::Status raylet::RayletClient::CancelWorkerLease(
     const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) {
   rpc::CancelWorkerLeaseRequest request;
   request.set_task_id(task_id.Binary());
-  return grpc_client_->CancelWorkerLease(request, callback);
+  grpc_client_->CancelWorkerLease(request, callback);
+  return Status::OK();
 }
 
 Status raylet::RayletClient::RequestResourceReserve(
@@ -331,7 +334,8 @@ Status raylet::RayletClient::RequestResourceReserve(
     const ray::rpc::ClientCallback<ray::rpc::RequestResourceReserveReply> &callback) {
   rpc::RequestResourceReserveRequest request;
   request.mutable_bundle_spec()->CopyFrom(bundle_spec.GetMessage());
-  return grpc_client_->RequestResourceReserve(request, callback);
+  grpc_client_->RequestResourceReserve(request, callback);
+  return Status::OK();
 }
 
 Status raylet::RayletClient::CancelResourceReserve(
@@ -339,7 +343,8 @@ Status raylet::RayletClient::CancelResourceReserve(
     const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback) {
   rpc::CancelResourceReserveRequest request;
   request.mutable_bundle_spec()->CopyFrom(bundle_spec.GetMessage());
-  return grpc_client_->CancelResourceReserve(request, callback);
+  grpc_client_->CancelResourceReserve(request, callback);
+  return Status::OK();
 }
 
 Status raylet::RayletClient::PinObjectIDs(
@@ -350,13 +355,15 @@ Status raylet::RayletClient::PinObjectIDs(
   for (const ObjectID &object_id : object_ids) {
     request.add_object_ids(object_id.Binary());
   }
-  return grpc_client_->PinObjectIDs(request, callback);
+  grpc_client_->PinObjectIDs(request, callback);
+  return Status::OK();
 }
 
 Status raylet::RayletClient::GlobalGC(
     const rpc::ClientCallback<rpc::GlobalGCReply> &callback) {
   rpc::GlobalGCRequest request;
-  return grpc_client_->GlobalGC(request, callback);
+  grpc_client_->GlobalGC(request, callback);
+  return Status::OK();
 }
 
 Status raylet::RayletClient::SubscribeToPlasma(const ObjectID &object_id) {

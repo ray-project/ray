@@ -137,7 +137,7 @@ void CoreWorkerDirectTaskSubmitter::CancelWorkerLeaseIfNeeded(
     auto &lease_client = it->second.first;
     auto &lease_id = it->second.second;
     RAY_LOG(DEBUG) << "Canceling lease request " << lease_id;
-    RAY_UNUSED(lease_client->CancelWorkerLease(
+    lease_client->CancelWorkerLease(
         lease_id, [this, scheduling_key](const Status &status,
                                          const rpc::CancelWorkerLeaseReply &reply) {
           absl::MutexLock lock(&mu_);
@@ -152,7 +152,7 @@ void CoreWorkerDirectTaskSubmitter::CancelWorkerLeaseIfNeeded(
             // longer need to cancel.
             CancelWorkerLeaseIfNeeded(scheduling_key);
           }
-        }));
+        });
   }
 }
 
@@ -196,7 +196,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   TaskSpecification &resource_spec = it->second.front();
   TaskID task_id = resource_spec.TaskId();
   RAY_LOG(DEBUG) << "Lease requested " << task_id;
-  RAY_UNUSED(lease_client->RequestWorkerLease(
+  lease_client->RequestWorkerLease(
       resource_spec, [this, scheduling_key](const Status &status,
                                             const rpc::RequestWorkerLeaseReply &reply) {
         absl::MutexLock lock(&mu_);
@@ -240,7 +240,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
                             "likely because the local raylet has crahsed.";
           RAY_LOG(FATAL) << status.ToString();
         }
-      }));
+      });
   RAY_CHECK(pending_lease_requests_
                 .emplace(scheduling_key, std::make_pair(lease_client, task_id))
                 .second);
@@ -262,7 +262,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   request->mutable_resource_mapping()->CopyFrom(assigned_resources);
   request->set_intended_worker_id(addr.worker_id.Binary());
-  RAY_UNUSED(client.PushNormalTask(
+  client.PushNormalTask(
       std::move(request),
       [this, task_id, is_actor, is_actor_creation, scheduling_key, addr,
        assigned_resources](Status status, const rpc::PushTaskReply &reply) {
@@ -293,7 +293,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
         } else {
           task_finisher_->CompletePendingTask(task_id, reply, addr.ToProto());
         }
-      }));
+      });
 }
 
 Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
@@ -348,7 +348,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
   auto request = rpc::CancelTaskRequest();
   request.set_intended_task_id(task_spec.TaskId().Binary());
   request.set_force_kill(force_kill);
-  RAY_UNUSED(client->CancelTask(
+  client->CancelTask(
       request, [this, task_spec, force_kill](const Status &status,
                                              const rpc::CancelTaskReply &reply) {
         absl::MutexLock lock(&mu_);
@@ -366,7 +366,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
         }
         // Retry is not attempted if !status.ok() because force-kill may kill the worker
         // before the reply is sent.
-      }));
+      });
   return Status::OK();
 }
 
@@ -381,7 +381,8 @@ Status CoreWorkerDirectTaskSubmitter::CancelRemoteTask(const ObjectID &object_id
   auto request = rpc::RemoteCancelTaskRequest();
   request.set_force_kill(force_kill);
   request.set_remote_object_id(object_id.Binary());
-  return client->second->RemoteCancelTask(request, nullptr);
+  client->second->RemoteCancelTask(request, nullptr);
+  return Status::OK();
 }
 
 };  // namespace ray

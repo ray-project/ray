@@ -69,7 +69,7 @@ class Executor {
     };                                                                                 \
     auto operation = [request, operation_callback](GcsRpcClient *gcs_rpc_client) {     \
       RAY_UNUSED(INVOKE_RPC_CALL(SERVICE, METHOD, request, operation_callback,         \
-                                 gcs_rpc_client->grpc_client));                        \
+                 gcs_rpc_client->grpc_client));                                        \
     };                                                                                 \
     executor->Execute(operation);                                                      \
   }

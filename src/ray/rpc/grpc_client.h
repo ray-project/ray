@@ -38,13 +38,6 @@ namespace rpc {
     RAY_UNUSED(INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client)); \
   }
 
-// Define a RPC client method that returns ray::Status.
-#define RPC_CLIENT_METHOD(SERVICE, METHOD, rpc_client, SPECS)               \
-  ray::Status METHOD(const METHOD##Request &request,                        \
-                     const ClientCallback<METHOD##Reply> &callback) SPECS { \
-    return INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client); \
-  }
-
 template <class GrpcService>
 class GrpcClient {
  public:
