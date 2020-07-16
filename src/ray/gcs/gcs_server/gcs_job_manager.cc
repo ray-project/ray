@@ -13,7 +13,7 @@
 // limitations under the License.
 
 #include "gcs_job_manager.h"
-
+#include "gcs_table_info_helper.h"
 #include "ray/gcs/pb_util.h"
 
 namespace ray {
@@ -22,28 +22,26 @@ namespace gcs {
 void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
                                  rpc::AddJobReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) {
-  JobTableData job_table_data(request.data());
-  JobID job_id = JobID::FromBinary(job_table_data.job_id());
+  auto job_table_data = GenJobTableData(request.data());
+  JobID job_id = JobID::FromBinary(job_table_data->job_id());
   RAY_LOG(INFO) << "Adding job, job id = " << job_id
-                << ", driver pid = " << request.data().driver_pid() << "   "
-                << current_time_ms();
+                << ", driver pid = " << job_table_data->driver_pid();
 
-  job_table_data.set_timestamp(current_time_ms());
   auto on_done = [this, job_id, job_table_data, reply,
                   send_reply_callback](const Status &status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to add job, job id = " << job_id
-                     << ", driver pid = " << job_table_data.driver_pid();
+                     << ", driver pid = " << job_table_data->driver_pid();
     } else {
       RAY_CHECK_OK(gcs_pub_sub_->Publish(JOB_CHANNEL, job_id.Binary(),
-                                         job_table_data.SerializeAsString(), nullptr));
+                                         job_table_data->SerializeAsString(), nullptr));
       RAY_LOG(INFO) << "Finished adding job, job id = " << job_id
-                    << ", driver pid = " << job_table_data.driver_pid();
+                    << ", driver pid = " << job_table_data->driver_pid();
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
-  Status status = gcs_table_storage_->JobTable().Put(job_id, job_table_data, on_done);
+  Status status = gcs_table_storage_->JobTable().Put(job_id, *job_table_data, on_done);
   if (!status.ok()) {
     on_done(status);
   }
@@ -53,7 +51,7 @@ void GcsJobManager::HandleMarkJobFinished(const rpc::MarkJobFinishedRequest &req
                                           rpc::MarkJobFinishedReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
   JobID job_id = JobID::FromBinary(request.job_id());
-  RAY_LOG(INFO) << "Marking job state, job id = " << job_id << "   " << current_time_ms();
+  RAY_LOG(INFO) << "Marking job state, job id = " << job_id;
   auto job_table_data =
       gcs::CreateJobTableData(job_id, /*is_dead*/ true, current_time_ms(), "", -1);
   auto on_done = [this, job_id, job_table_data, reply,

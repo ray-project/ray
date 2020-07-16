@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "gcs_node_manager.h"
+#include "gcs_table_info_helper.h"
 
 #include <ray/common/ray_config.h>
 #include <ray/gcs/pb_util.h>
@@ -119,7 +120,7 @@ GcsNodeManager::GcsNodeManager(boost::asio::io_service &io_service,
           io_service, gcs_table_storage, gcs_pub_sub,
           [this](const ClientID &node_id) {
             if (auto node = RemoveNode(node_id, /* is_intended = */ false)) {
-              node->set_state(rpc::GcsNodeInfo::DEAD);
+              UpdateNodeState(*node, rpc::GcsNodeInfo::DEAD);
               RAY_CHECK(dead_nodes_.emplace(node_id, node).second);
               auto on_done = [this, node_id, node](const Status &status) {
                 auto on_done = [this, node_id, node](const Status &status) {
@@ -138,10 +139,9 @@ GcsNodeManager::GcsNodeManager(boost::asio::io_service &io_service,
 void GcsNodeManager::HandleRegisterNode(const rpc::RegisterNodeRequest &request,
                                         rpc::RegisterNodeReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
-  ClientID node_id = ClientID::FromBinary(request.node_info().node_id());
+  auto node_info = GenNodeInfo(request.node_info());
+  ClientID node_id = ClientID::FromBinary(node_info->node_id());
   RAY_LOG(INFO) << "Registering node info, node id = " << node_id;
-  auto node_info = std::make_shared<rpc::GcsNodeInfo>(request.node_info());
-  node_info->set_timestamp(current_time_ms());
   AddNode(node_info);
   auto on_done = [this, node_id, request, reply,
                   send_reply_callback](const Status &status) {
@@ -160,8 +160,7 @@ void GcsNodeManager::HandleUnregisterNode(const rpc::UnregisterNodeRequest &requ
   ClientID node_id = ClientID::FromBinary(request.node_id());
   RAY_LOG(INFO) << "Unregistering node info, node id = " << node_id;
   if (auto node = RemoveNode(node_id, /* is_intended = */ true)) {
-    node->set_state(rpc::GcsNodeInfo::DEAD);
-    node->set_timestamp(current_time_ms());
+    UpdateNodeState(*node, rpc::GcsNodeInfo::DEAD);
     RAY_CHECK(dead_nodes_.emplace(node_id, node).second);
 
     auto on_done = [this, node_id, node, reply,
