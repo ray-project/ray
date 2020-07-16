@@ -66,7 +66,7 @@ struct NodeManagerConfig {
   int max_worker_port;
   /// Number of initial workers to start per job if num_initial_***_workers
   /// is not specified in the job config.
-  uint32_t adaptive_num_initial_workers;
+  uint32_t default_num_initial_workers;
   /// The maximum number of workers that can be started concurrently by a
   /// worker pool.
   int maximum_startup_concurrency;
@@ -722,7 +722,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ResourceIdSet local_available_resources_;
   std::unordered_map<ClientID, SchedulingResources> cluster_resource_map_;
 
-  absl::flat_hash_map<JobID, rpc::JobTableData> job_info_cache_;
+  /// This map tracks the latest infos of unfinished jobs.
+  absl::flat_hash_map<JobID, rpc::JobTableData> unfinished_jobs_;
 
   /// A pool of workers.
   WorkerPool worker_pool_;

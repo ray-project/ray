@@ -160,16 +160,16 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       initial_config_(config),
       local_available_resources_(config.resource_config),
       worker_pool_(
-          io_service, config.adaptive_num_initial_workers,
+          io_service, config.default_num_initial_workers,
           config.maximum_startup_concurrency, config.min_worker_port,
           config.max_worker_port, gcs_client_, config.worker_commands,
           config.raylet_config,
           /*starting_worker_timeout_callback=*/
           [this]() { this->DispatchTasks(this->local_queues_.GetReadyTasksByClass()); },
           [this](const JobID &job_id) -> boost::optional<rpc::JobConfig> {
-            auto it = job_info_cache_.find(job_id);
-            if (it == job_info_cache_.end()) {
-              return nullptr;
+            auto it = unfinished_jobs_.find(job_id);
+            if (it == unfinished_jobs_.end()) {
+              return {};
             }
             return it->second.config();
           }),
@@ -290,10 +290,11 @@ ray::Status NodeManager::RegisterGcs() {
   // Subscribe to job updates.
   const auto job_subscribe_handler = [this](const JobID &job_id,
                                             const JobTableData &job_data) {
-    job_info_cache_[job_id] = job_data;
     if (!job_data.is_dead()) {
+      unfinished_jobs_[job_id] = job_data;
       HandleJobStarted(job_id, job_data);
     } else {
+      unfinished_jobs_.erase(job_id);
       HandleJobFinished(job_id, job_data);
     }
   };
