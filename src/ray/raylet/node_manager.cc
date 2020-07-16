@@ -2239,7 +2239,12 @@ void NodeManager::MarkObjectsAsFailed(const ErrorType &error_type,
   for (const auto &object_id : objects_to_fail) {
     std::shared_ptr<arrow::Buffer> data;
     Status status;
-    status = store_client_.Create(object_id, 0,
+    rpc::Address owner_address;
+    bool have_owner = task_dependency_manager_.GetOwnerAddress(object_id, &owner_address);
+    // TODO(zhuohan): This should only happen for failures in actor creation
+    // task.
+    RAY_CHECK(have_owner);
+    status = store_client_.Create(object_id, owner_address, 0,
                                   reinterpret_cast<const uint8_t *>(meta.c_str()),
                                   meta.length(), &data);
     if (status.ok()) {

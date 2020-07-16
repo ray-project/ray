@@ -200,18 +200,20 @@ Status SendCreateRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID 
                          const ray::rpc::Address& owner_address, bool evict_if_full,
                          int64_t data_size, int64_t metadata_size, int device_num) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto fbb_owner_addr = fb::CreateAddress(
-        fbb, fbb.CreateString(owner_address.raylet_id()),
-        fbb.CreateString(owner_address.ip_address()),
-        owner_address.port(), fbb.CreateString(owner_address.worker_id()));
   auto message =
-      fb::CreatePlasmaCreateRequest(fbb, fbb.CreateString(object_id.Binary()), fbb_owner_addr,
+      fb::CreatePlasmaCreateRequest(fbb, fbb.CreateString(object_id.Binary()),
+                                    fbb.CreateString(owner_address.raylet_id()),
+                                    fbb.CreateString(owner_address.ip_address()),
+                                    owner_address.port(),
+                                    fbb.CreateString(owner_address.worker_id()),
                                     evict_if_full, data_size, metadata_size, device_num);
   return PlasmaSend(store_conn, MessageType::PlasmaCreateRequest, &fbb, message);
 }
 
 Status ReadCreateRequest(uint8_t* data, size_t size, ObjectID* object_id,
-                         bool* evict_if_full, int64_t* data_size, int64_t* metadata_size,
+                         ClientID* owner_raylet_id, std::string* owner_ip_address,
+                         int* owner_port, WorkerID* owner_worker_id, bool* evict_if_full,
+                         int64_t* data_size, int64_t* metadata_size,
                          int* device_num) {
   RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaCreateRequest>(data);
@@ -220,6 +222,10 @@ Status ReadCreateRequest(uint8_t* data, size_t size, ObjectID* object_id,
   *data_size = message->data_size();
   *metadata_size = message->metadata_size();
   *object_id = ObjectID::FromBinary(message->object_id()->str());
+  *owner_raylet_id = ClientID::FromBinary(message->owner_raylet_id()->str());
+  *owner_ip_address = message->owner_ip_address()->str();
+  *owner_port = message->owner_port();
+  *owner_worker_id = WorkerID::FromBinary(message->owner_worker_id()->str());
   *device_num = message->device_num();
   return Status::OK();
 }
