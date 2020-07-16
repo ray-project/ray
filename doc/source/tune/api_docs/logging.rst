@@ -58,7 +58,7 @@ You can then pass in your own logger as follows:
 
 These loggers will be called along with the default Tune loggers. You can also check out `logger.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/logger.py>`__ for implementation details.
 
-An example of creating a custom logger can be found in `logging_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__.
+An example of creating a custom logger can be found in :doc:`/tune/examples/logging_example`.
 
 .. _trainable-logging:
 
@@ -164,7 +164,7 @@ CSVLogger
 MLFLowLogger
 ------------
 
-Tune also provides a default logger for `MLFlow <https://mlflow.org>`_. You can install MLFlow via ``pip install mlflow``. An example can be found `mlflow_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/mlflow_example.py>`__. Note that this currently does not include artifact logging support. For this, you can use the native MLFlow APIs inside your Trainable definition.
+Tune also provides a default logger for `MLFlow <https://mlflow.org>`_. You can install MLFlow via ``pip install mlflow``. An example can be found in :doc:`/tune/examples/mlflow_example`. Note that this currently does not include artifact logging support. For this, you can use the native MLFlow APIs inside your Trainable definition.
 
 .. autoclass:: ray.tune.logger.MLFLowLogger
 

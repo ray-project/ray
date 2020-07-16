@@ -33,7 +33,7 @@
 #include "ray/core_worker/transport/raylet_transport.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/gcs/subscription_executor.h"
-#include "ray/raylet/raylet_client.h"
+#include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_server.h"
@@ -701,7 +701,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] name The name of the actor whose handle to get.
   /// \param[out] actor_handle A handle to the requested actor.
   /// \return The raw pointer to the actor handle if found, nullptr otherwise.
-  const ActorHandle *GetNamedActorHandle(const std::string &name);
+  /// The second pair contains the status of getting a named actor handle.
+  std::pair<const ActorHandle *, Status> GetNamedActorHandle(const std::string &name);
 
   ///
   /// The following methods are handlers for the core worker's gRPC server, which follow

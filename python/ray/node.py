@@ -98,12 +98,17 @@ class Node:
             raise ValueError(
                 "Internal config parameters can only be set on the head node.")
 
+        if ray_params._lru_evict:
+            assert (connect_only or
+                    head), "LRU Evict can only be passed into the head node."
+
         self._raylet_ip_address = raylet_ip_address
 
         ray_params.update_if_absent(
             include_log_monitor=True,
             resources={},
             temp_dir=ray.utils.get_ray_temp_dir(),
+            metrics_agent_port=self._get_unused_port()[0],
             worker_path=os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
                 "workers/default_worker.py"))
@@ -550,6 +555,7 @@ class Node:
                                     open_log(reporter_err_name))
         process_info = ray.services.start_reporter(
             self.redis_address,
+            self._ray_params.metrics_agent_port,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password,
@@ -624,7 +630,8 @@ class Node:
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password,
             config=self._config,
-            fate_share=self.kernel_fate_share)
+            fate_share=self.kernel_fate_share,
+            gcs_server_port=self._ray_params.gcs_server_port)
         assert (
             ray_constants.PROCESS_TYPE_GCS_SERVER not in self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] = [
@@ -657,6 +664,7 @@ class Node:
             self._ray_params.max_worker_port,
             self._ray_params.object_manager_port,
             self._ray_params.redis_password,
+            self._ray_params.metrics_agent_port,
             use_valgrind=use_valgrind,
             use_profiler=use_profiler,
             stdout_file=stdout_file,

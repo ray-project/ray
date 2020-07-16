@@ -110,10 +110,10 @@ def convert_to_non_torch_type(stats):
     return tree.map_structure(mapping, stats)
 
 
-def convert_to_torch_tensor(stats, device=None):
+def convert_to_torch_tensor(x, device=None):
     """Converts any struct to torch.Tensors.
 
-    stats (any): Any (possibly nested) struct, the values in which will be
+    x (any): Any (possibly nested) struct, the values in which will be
         converted and returned as a new struct with all leaves converted
         to torch tensors.
 
@@ -137,7 +137,7 @@ def convert_to_torch_tensor(stats, device=None):
             tensor = tensor.float()
         return tensor if device is None else tensor.to(device)
 
-    return tree.map_structure(mapping, stats)
+    return tree.map_structure(mapping, x)
 
 
 def atanh(x):

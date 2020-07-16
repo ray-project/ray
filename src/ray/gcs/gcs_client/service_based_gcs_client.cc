@@ -17,6 +17,10 @@
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_client/service_based_accessor.h"
 
+extern "C" {
+#include "hiredis/hiredis.h"
+}
+
 namespace ray {
 namespace gcs {
 
@@ -146,8 +150,8 @@ void ServiceBasedGcsClient::PeriodicallyCheckGcsServerAddress() {
       RayConfig::instance().gcs_service_address_check_interval_milliseconds());
   detect_timer_->expires_from_now(check_period);
   detect_timer_->async_wait([this](const boost::system::error_code &error) {
-    if (error == boost::system::errc::operation_canceled) {
-      // `operation_canceled` is set when `detect_timer_` is canceled or destroyed.
+    if (error == boost::asio::error::operation_aborted) {
+      // `operation_aborted` is set when `detect_timer_` is canceled or destroyed.
       return;
     }
     RAY_CHECK(!error) << "Checking gcs server address failed with error: "
