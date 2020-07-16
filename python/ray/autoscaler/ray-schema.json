@@ -173,6 +173,10 @@
                 },
                 "ssh_private_key": { 
                     "type": "string"
+                },
+                "ssh_proxy_command": {
+                    "description": "A value for ProxyCommand ssh option, for connecting through proxies. Example: nc -x proxy.example.com:1234 %h %p",
+                    "type": "string"
                 }
             }
         },

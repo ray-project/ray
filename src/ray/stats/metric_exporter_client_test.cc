@@ -122,17 +122,20 @@ class MetricExporterClientTest : public ::testing::Test {
     absl::Duration harvest_interval = absl::Milliseconds(kReportFlushInterval / 2);
     ray::stats::StatsConfig::instance().SetReportInterval(report_interval);
     ray::stats::StatsConfig::instance().SetHarvestInterval(harvest_interval);
-    ray::stats::Init("127.0.0.1:8888", global_tags, false);
+
     std::shared_ptr<MetricExporterClient> exporter(new stats::StdoutExporterClient());
     std::shared_ptr<MetricExporterClient> mock1(new MockExporterClient1(exporter));
     std::shared_ptr<MetricExporterClient> mock2(new MockExporterClient2(mock1));
-    MetricExporter::Register(mock2, kMockReportBatchSize);
+    ray::stats::Init(global_tags, 10054, io_service_, mock2, kMockReportBatchSize);
   }
 
   void Shutdown() {
     MockExporterClient1::ResetCount();
     MockExporterClient2::ResetCount();
   }
+
+ private:
+  boost::asio::io_service io_service_;
 };
 
 int MockExporterClient1::client1_count;

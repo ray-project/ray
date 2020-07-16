@@ -102,13 +102,21 @@ The callback just reports some metrics back to Tune after each validation epoch:
    :start-after: __tune_callback_begin__
    :end-before: __tune_callback_end__
 
+Note that we have to explicitly convert the metrics from a tensor to a Python value.
+
 Adding the Tune training function
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Then we specify our training function. Note that we added the ``data_dir`` as a config
-parameter here, even though it should not be tuned. We just need to specify it to avoid
+Then we specify our training function. Note that we added the ``data_dir`` as a
+parameter here to avoid
 that each training run downloads the full MNIST dataset. Instead, we want to access
 a shared data location.
+
+We are also able to specify the number of epochs to train each model, and the number
+of GPUs we want to use for training. We also create a TensorBoard logger that writes
+logfiles directly into Tune's root trial directory - if we didn't do that PyTorch
+Lightning would create subdirectories, and each trial would thus be shown twice in
+TensorBoard, one time for Tune's logs, and another time for PyTorch Lightning's logs.
 
 .. literalinclude:: /../../python/ray/tune/examples/mnist_pytorch_lightning.py
    :language: python
@@ -134,7 +142,7 @@ We also delete this data after training to avoid filling up our disk or memory s
    :language: python
    :start-after: __tune_asha_begin__
    :end-before: __tune_asha_end__
-   :lines: 27
+   :lines: 36
    :dedent: 4
 
 Configuring the search space
@@ -150,7 +158,7 @@ we are able to also sample small values.
    :language: python
    :start-after: __tune_asha_begin__
    :end-before: __tune_asha_end__
-   :lines: 4-10
+   :lines: 5-10
    :dedent: 4
 
 Selecting a scheduler
@@ -165,7 +173,7 @@ configurations.
    :language: python
    :start-after: __tune_asha_begin__
    :end-before: __tune_asha_end__
-   :lines: 11-16
+   :lines: 12-17
    :dedent: 4
 
 
@@ -173,16 +181,52 @@ Changing the CLI output
 ~~~~~~~~~~~~~~~~~~~~~~~
 
 We instantiate a ``CLIReporter`` to specify which metrics we would like to see in our
-output tables in the command line. If we didn't specify this, Tune would print all
-hyperparameters by default, but since ``data_dir`` is not a real hyperparameter, we
-can avoid printing it by omitting it in the ``parameter_columns`` parameter.
+output tables in the command line. This is optional, but can be used to make sure our
+output tables only include information we would like to see.
 
 .. literalinclude:: /../../python/ray/tune/examples/mnist_pytorch_lightning.py
    :language: python
    :start-after: __tune_asha_begin__
    :end-before: __tune_asha_end__
-   :lines: 17-19
+   :lines: 19-21
    :dedent: 4
+
+Passing constants to the train function
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ``data_dir``, ``num_epochs`` and ``num_gpus`` we pass to the training function
+are constants. To avoid including them as non-configurable parameters in the ``config``
+specification, we can use ``functools.partial`` to wrap around the training function.
+
+.. literalinclude:: /../../python/ray/tune/examples/mnist_pytorch_lightning.py
+   :language: python
+   :start-after: __tune_asha_begin__
+   :end-before: __tune_asha_end__
+   :lines: 24-28
+   :dedent: 8
+
+Training with GPUs
+~~~~~~~~~~~~~~~~~~
+We can specify how many resources Tune should request for each trial.
+This also includes GPUs.
+
+PyTorch Lightning takes care of moving the training to the GPUs. We
+already made sure that our code is compatible with that, so there's
+nothing more to do here other than to specify the number of GPUs
+we would like to use:
+
+.. literalinclude:: /../../python/ray/tune/examples/mnist_pytorch_lightning.py
+   :language: python
+   :start-after: __tune_asha_begin__
+   :end-before: __tune_asha_end__
+   :lines: 29
+   :dedent: 4
+
+Please note that in the current state of PyTorch Lightning, training
+on :doc:`fractional GPUs </using-ray-with-gpus>` or
+multiple GPUs requires some workarounds. We will address these in a
+separate tutorial - for now this example works with no or exactly one
+GPU.
 
 Putting it together
 ~~~~~~~~~~~~~~~~~~~
