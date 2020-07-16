@@ -1,6 +1,4 @@
 import abc
-import os
-import sys
 import asyncio
 import collections
 import copy
@@ -16,7 +14,6 @@ from base64 import b64decode
 from collections.abc import MutableMapping, Mapping
 
 import aiohttp.web
-import ray.new_dashboard.consts as dashboard_consts
 from aiohttp import hdrs
 from aiohttp.frozenlist import FrozenList
 import aiohttp.signals

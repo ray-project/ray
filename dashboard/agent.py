@@ -146,17 +146,17 @@ if __name__ == "__main__":
         required=False,
         type=str,
         default=dashboard_consts.DASHBOARD_AGENT_LOG_FILENAME,
-        help=
-        "Specify the name of log file, log to stdout if set empty, default is \"{}\".".
-        format(dashboard_consts.DASHBOARD_AGENT_LOG_FILENAME))
+        help="Specify the name of log file, "
+        "log to stdout if set empty, default is \"{}\".".format(
+            dashboard_consts.DASHBOARD_AGENT_LOG_FILENAME))
     parser.add_argument(
         "--logging-rotate-bytes",
         required=False,
         type=int,
         default=dashboard_consts.LOGGING_ROTATE_BYTES,
-        help=
-        "Specify the max bytes for rotating log file, default is {} bytes.".
-        format(dashboard_consts.LOGGING_ROTATE_BYTES))
+        help="Specify the max bytes for rotating "
+        "log file, default is {} bytes.".format(
+            dashboard_consts.LOGGING_ROTATE_BYTES))
     parser.add_argument(
         "--logging-rotate-backup-count",
         required=False,
@@ -177,8 +177,8 @@ if __name__ == "__main__":
         default=None,
         help="Specify the path of the temporary directory use by Ray process.")
 
+    args = parser.parse_args()
     try:
-        args = parser.parse_args()
         if args.temp_dir:
             temp_dir = "/" + args.temp_dir.strip("/")
         else:

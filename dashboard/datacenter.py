@@ -11,25 +11,28 @@ class GlobalSignals:
 
 
 class DataSource:
-    # {ip address(str): node stats(dict)}
+    # {ip address(str): node stats(dict of GetNodeStatsReply
+    # in node_manager.proto)}
     node_stats = Dict()
-    # {ip address(str): node physical stats(dict)}
+    # {ip address(str): node physical stats(dict from reporter_agent.py)}
     node_physical_stats = Dict()
-    # {actor id hex(str): actor table data(dict)}
+    # {actor id hex(str): actor table data(dict of ActorTableData
+    # in gcs.proto)}
     actors = Dict()
-    # {ip address(str): port(int)}
+    # {ip address(str): dashboard agent grpc server port(int)}
     agents = Dict()
-    # {ip address(str): gcs node info(dict)}
+    # {ip address(str): gcs node info(dict of GcsNodeInfo in gcs.proto)}
     nodes = Dict()
-    # {hostname(str): ip(str)}
+    # {hostname(str): ip address(str)}
     hostname_to_ip = Dict()
-    # {ip(str): hostname(str)}
+    # {ip address(str): hostname(str)}
     ip_to_hostname = Dict()
 
 
 class DataOrganizer:
     @staticmethod
     async def purge():
+        # Purge data that is out of date.
         # These data sources are maintained by DashboardHead,
         # we do not needs to purge them:
         #   * agents
