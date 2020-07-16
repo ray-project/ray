@@ -476,7 +476,7 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
 
 ray::Status ObjectManager::SendObjectChunk(
     const UniqueID &push_id, const ObjectID &object_id, const rpc::Address &owner_address,
-    const ClientID &client_id,uint64_t data_size, uint64_t metadata_size,
+    const ClientID &client_id, uint64_t data_size, uint64_t metadata_size,
     uint64_t chunk_index, std::shared_ptr<rpc::ObjectManagerClient> rpc_client) {
   double start_time = absl::GetCurrentTimeNanos() / 1e9;
   rpc::PushRequest push_request;

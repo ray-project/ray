@@ -24,8 +24,8 @@
 #include <unordered_map>
 
 #include "ray/common/id.h"
-#include "ray/object_manager/plasma/compat.h"
 #include "ray/object_manager/format/object_manager_generated.h"
+#include "ray/object_manager/plasma/compat.h"
 
 #ifdef PLASMA_CUDA
 #include "arrow/gpu/cuda_api.h"
