@@ -3,10 +3,10 @@ import copy
 from collections import defaultdict, deque
 import time
 from typing import DefaultDict, List
+import pickle
 
 import blist
 
-import ray.cloudpickle as pickle
 from ray.exceptions import RayTaskError
 
 import ray
