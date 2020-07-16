@@ -40,7 +40,7 @@ DEFAULT_CONFIG = with_common_config({
     # N-step Q learning
     "n_step": 1,
 
-    # === Exploration Settings (Experimental) ===
+    # === Exploration Settings ===
     "exploration_config": {
         # The Exploration class to use.
         "type": "EpsilonGreedy",

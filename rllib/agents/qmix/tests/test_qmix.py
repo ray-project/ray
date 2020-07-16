@@ -3,8 +3,10 @@ import numpy as np
 import unittest
 
 import ray
+from ray import tune
 from ray.tune import register_env
 from ray.rllib.agents.qmix import QMixTrainer
+from ray.rllib.agents.qmix.qmix_policy import ENV_STATE
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
 
@@ -53,7 +55,75 @@ class AvailActionsTestEnv(MultiAgentEnv):
         return obs, rewards, dones, {}
 
 
-class TestAvailActionsQMix(unittest.TestCase):
+class SimpleTwoStepGame(MultiAgentEnv):
+    """Always pick action=0 to maximize rewards."""
+    action_space = Discrete(3)
+
+    def __init__(self, env_config):
+        self.counter = 0
+
+    def reset(self):
+        return {0: {'obs': np.array([0]), 'state': np.array([0])},
+                1: {'obs': np.array([0]), 'state': np.array([0])}}
+
+    def step(self, action_dict):
+        self.counter += 1
+        move1 = action_dict[0]
+        move2 = action_dict[1]
+        reward_1 = 0
+        reward_2 = 0
+        if move1 == 0:
+            reward_1 = 0.5
+        if move2 == 0:
+            reward_2 = 0.5
+
+        obs = {0: {'obs': np.array([0]), 'state': np.array([0])},
+               1: {'obs': np.array([0]), 'state': np.array([0])}}
+        done = False
+        if self.counter > 100:
+            self.counter = 0
+            done = True
+
+        return obs, {0: reward_1, 1: reward_2}, {"__all__": done}, {}
+
+
+class TestQMix(unittest.TestCase):
+    def test_qmix_learning(self):
+        grouping = {"group_1": [0, 1]}
+        obs_space = Tuple([
+            Dict({
+                "obs": MultiDiscrete([2]),
+                ENV_STATE: MultiDiscrete([3])
+            }),
+            Dict({
+                "obs": MultiDiscrete([2]),
+                ENV_STATE: MultiDiscrete([3])
+            }),
+        ])
+        act_space = Tuple([
+            SimpleTwoStepGame.action_space,
+            SimpleTwoStepGame.action_space,
+        ])
+
+        register_env(
+            "twostep",
+            lambda config: SimpleTwoStepGame(config).with_agent_groups(
+                grouping, obs_space=obs_space, act_space=act_space))
+        config = {
+            "mixer": "qmix",
+            "env_config": {
+                "separate_state_space": True,
+                "one_hot_state_encoding": True
+            },
+        }
+        stop = {"timesteps_total": 100000, "episode_reward_mean": 75.0}
+        results = tune.run(
+            "QMIX",
+            stop=stop,
+            config=dict(config, **{"env": "twostep"}),
+            verbose=1)
+        self.assertGreater(results, stop["episode_reward_mean"])
+
     def test_avail_actions_qmix(self):
         grouping = {
             "group_1": ["agent_1"],  # trivial grouping for testing
