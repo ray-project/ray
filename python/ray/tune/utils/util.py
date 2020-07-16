@@ -2,7 +2,7 @@ import copy
 import logging
 import threading
 import time
-from collections import defaultdict, deque, Mapping, Sequence
+from collections import defaultdict, deque, Mapping
 from threading import Thread
 
 import numpy as np
