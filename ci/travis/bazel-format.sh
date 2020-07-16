@@ -43,8 +43,8 @@ while [[ $# > 0 ]]; do
   shift
 done
 
-pushd $ROOT_DIR/../..
-BAZEL_FILES="bazel/BUILD bazel/BUILD.arrow bazel/ray.bzl BUILD.bazel java/BUILD.bazel
- cpp/BUILD.bazel streaming/BUILD.bazel streaming/java/BUILD.bazel WORKSPACE"
-buildifier -mode=$RUN_TYPE -diff_command="diff -u" $BAZEL_FILES
+pushd "$ROOT_DIR"/../..
+BAZEL_FILES=(bazel/BUILD bazel/BUILD.arrow bazel/ray.bzl BUILD.bazel java/BUILD.bazel \
+ cpp/BUILD.bazel streaming/BUILD.bazel streaming/java/BUILD.bazel WORKSPACE)
+buildifier -mode=$RUN_TYPE -diff_command="diff -u" "${BAZEL_FILES[@]}"
 popd

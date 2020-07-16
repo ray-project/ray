@@ -23,7 +23,7 @@ if [ ! -d "$RAY_ROOT/python" ]; then
 fi
 
 REDIS_MODULE="./bazel-bin/libray_redis_module.so"
-LOAD_MODULE_ARGS="--loadmodule ${REDIS_MODULE}"
+LOAD_MODULE_ARGS=(--loadmodule "${REDIS_MODULE}")
 STORE_EXEC="./bazel-bin/plasma_store_server"
 
 VALGRIND_CMD="valgrind --track-origins=yes --leak-check=full --show-leak-kinds=all --leak-check-heuristics=stdstring --error-exitcode=1"
@@ -32,7 +32,7 @@ VALGRIND_CMD="valgrind --track-origins=yes --leak-check=full --show-leak-kinds=a
 killall plasma_store || true
 bazel run //:redis-cli -- -p 6379 shutdown || true
 sleep 1s
-bazel run //:redis-server -- --loglevel warning ${LOAD_MODULE_ARGS} --port 6379 &
+bazel run //:redis-server -- --loglevel warning "${LOAD_MODULE_ARGS[@]}" --port 6379 &
 sleep 1s
 
 # Run tests. Use timeout=10000ms for the Wait tests since tests run slower

@@ -23,13 +23,13 @@ if [ ! -d "$RAY_ROOT/python" ]; then
 fi
 
 REDIS_MODULE="./bazel-bin/libray_redis_module.so"
-LOAD_MODULE_ARGS="--loadmodule ${REDIS_MODULE}"
+LOAD_MODULE_ARGS=(--loadmodule "${REDIS_MODULE}")
 STORE_EXEC="./bazel-bin/plasma_store_server"
 
 # Allow cleanup commands to fail.
 bazel run //:redis-cli -- -p 6379 shutdown || true
 sleep 1s
-bazel run //:redis-server -- --loglevel warning ${LOAD_MODULE_ARGS} --port 6379 &
+bazel run //:redis-server -- --loglevel warning "${LOAD_MODULE_ARGS[@]}" --port 6379 &
 sleep 1s
 # Run tests.
 ./bazel-bin/object_manager_stress_test $STORE_EXEC

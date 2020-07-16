@@ -22,4 +22,4 @@ if [ "X$pod" = "X-l" ]; then
     shift
 fi
 
-exec kubectl $namespace exec -i $pod -- "$@"
+exec kubectl "$namespace" exec -i "$pod" -- "$@"
