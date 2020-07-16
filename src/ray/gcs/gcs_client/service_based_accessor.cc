@@ -78,7 +78,6 @@ Status ServiceBasedJobInfoAccessor::AsyncSubscribeAll(
   RAY_CHECK(subscribe != nullptr);
 
   auto filtered_subscribe = [this, subscribe](const JobTableData &data) {
-    RAY_LOG(ERROR) << "Job id = " << data.job_id() << ", tm = " << data.timestamp();
     if (subscribe_filter_.Filter(data.job_id(), data.timestamp())) {
       subscribe(JobID::FromBinary(data.job_id()), data);
     }
