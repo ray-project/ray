@@ -139,7 +139,7 @@ message ActorTableData {
   bool is_detached = 11;
   // Name of the actor. Only populated if is_detached is true.
   string name = 12;
-  // Timestamp that the actor is created or reconstructed.
+  // The timestamp that the actor info is updated.
   int64 timestamp = 13;
   // The task specification of this actor's creation task.
   TaskSpec task_spec = 14;
@@ -246,7 +246,7 @@ message GcsNodeInfo {
   GcsNodeState state = 7;
   // The Hostname address of the node manager.
   string node_manager_hostname = 8;
-  // Timestamp that the node is created or updated.
+  // The timestamp that the node info is updated.
   int64 timestamp = 9;
 }
 
@@ -303,7 +303,7 @@ message JobTableData {
   bytes job_id = 1;
   // Whether it's dead.
   bool is_dead = 2;
-  // The UNIX timestamp corresponding to this event (job added or removed).
+  // The timestamp that the job info is updated.
   int64 timestamp = 3;
   // IP address of the driver that started this job.
   string driver_ip_address = 4;

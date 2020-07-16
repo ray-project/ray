@@ -879,7 +879,7 @@ TEST_F(ServiceBasedGcsClientTest, TestJobTableResubscribe) {
 
   ASSERT_TRUE(AddJob(job_table_data));
   ASSERT_TRUE(MarkJobFinished(job_id));
-  WaitPendingDone(job_update_count, 1);
+  WaitPendingDone(job_update_count, 2);
 
   RestartGcsServer();
 
@@ -887,7 +887,7 @@ TEST_F(ServiceBasedGcsClientTest, TestJobTableResubscribe) {
   job_table_data = Mocker::GenJobTableData(job_id);
   ASSERT_TRUE(AddJob(job_table_data));
   ASSERT_TRUE(MarkJobFinished(job_id));
-  WaitPendingDone(job_update_count, 2);
+  WaitPendingDone(job_update_count, 4);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {

@@ -76,15 +76,21 @@ Status ServiceBasedJobInfoAccessor::AsyncMarkFinished(const JobID &job_id,
 Status ServiceBasedJobInfoAccessor::AsyncSubscribeAll(
     const SubscribeCallback<JobID, JobTableData> &subscribe, const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  fetch_all_data_operation_ = [this, subscribe](const StatusCallback &fetch_done) {
-    auto callback = [this, subscribe, fetch_done](
+
+  auto filtered_subscribe = [this, subscribe](const JobTableData &data) {
+    RAY_LOG(ERROR) << "Job id = " << data.job_id() << ", tm = " << data.timestamp();
+    if (subscribe_filter_.Filter(data.job_id(), data.timestamp())) {
+      subscribe(JobID::FromBinary(data.job_id()), data);
+    }
+  };
+
+  fetch_all_data_operation_ = [this,
+                               filtered_subscribe](const StatusCallback &fetch_done) {
+    auto callback = [filtered_subscribe, fetch_done](
                         const Status &status,
                         const std::vector<rpc::JobTableData> &job_info_list) {
       for (auto &job_info : job_info_list) {
-        if (job_info.is_dead() &&
-            subscribe_filter_.Filter(job_info.job_id(), job_info.timestamp())) {
-          subscribe(JobID::FromBinary(job_info.job_id()), job_info);
-        }
+        filtered_subscribe(job_info);
       }
       if (fetch_done) {
         fetch_done(status);
@@ -93,15 +99,13 @@ Status ServiceBasedJobInfoAccessor::AsyncSubscribeAll(
     RAY_CHECK_OK(AsyncGetAll(callback));
   };
 
-  subscribe_operation_ = [this, subscribe](const StatusCallback &subscribe_done) {
-    auto on_subscribe = [this, subscribe](const std::string &id,
-                                          const std::string &data) {
+  subscribe_operation_ = [this,
+                          filtered_subscribe](const StatusCallback &subscribe_done) {
+    auto on_subscribe = [filtered_subscribe](const std::string &id,
+                                             const std::string &data) {
       JobTableData job_data;
       job_data.ParseFromString(data);
-      if (job_data.is_dead() &&
-          subscribe_filter_.Filter(job_data.job_id(), job_data.timestamp())) {
-        subscribe(JobID::FromBinary(id), job_data);
-      }
+      filtered_subscribe(job_data);
     };
     return client_impl_->GetGcsPubSub().SubscribeAll(JOB_CHANNEL, on_subscribe,
                                                      subscribe_done);
@@ -274,14 +278,20 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribeAll(
     const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  fetch_all_data_operation_ = [this, subscribe](const StatusCallback &fetch_done) {
-    auto callback = [this, subscribe, fetch_done](
+
+  auto filtered_subscribe = [this, subscribe](const ActorTableData &data) {
+    if (subscribe_all_filter_.Filter(data.actor_id(), data.timestamp())) {
+      subscribe(ActorID::FromBinary(data.actor_id()), data);
+    }
+  };
+
+  fetch_all_data_operation_ = [this,
+                               filtered_subscribe](const StatusCallback &fetch_done) {
+    auto callback = [filtered_subscribe, fetch_done](
                         const Status &status,
                         const std::vector<rpc::ActorTableData> &actor_info_list) {
       for (auto &actor_info : actor_info_list) {
-        if (subscribe_all_filter_.Filter(actor_info.actor_id(), actor_info.timestamp())) {
-          subscribe(ActorID::FromBinary(actor_info.actor_id()), actor_info);
-        }
+        filtered_subscribe(actor_info);
       }
       if (fetch_done) {
         fetch_done(status);
@@ -290,14 +300,13 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribeAll(
     RAY_CHECK_OK(AsyncGetAll(callback));
   };
 
-  subscribe_all_operation_ = [this, subscribe](const StatusCallback &subscribe_done) {
-    auto on_subscribe = [this, subscribe](const std::string &id,
-                                          const std::string &data) {
+  subscribe_all_operation_ = [this,
+                              filtered_subscribe](const StatusCallback &subscribe_done) {
+    auto on_subscribe = [filtered_subscribe](const std::string &id,
+                                             const std::string &data) {
       ActorTableData actor_data;
       actor_data.ParseFromString(data);
-      if (subscribe_all_filter_.Filter(actor_data.actor_id(), actor_data.timestamp())) {
-        subscribe(ActorID::FromBinary(actor_data.actor_id()), actor_data);
-      }
+      filtered_subscribe(actor_data);
     };
     return client_impl_->GetGcsPubSub().SubscribeAll(ACTOR_CHANNEL, on_subscribe,
                                                      subscribe_done);
@@ -314,13 +323,19 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribe(
   RAY_LOG(DEBUG) << "Subscribing update operations of actor, actor id = " << actor_id;
   RAY_CHECK(subscribe != nullptr) << "Failed to subscribe actor, actor id = " << actor_id;
 
+  auto filtered_subscribe = [this, subscribe](const ActorTableData &data) {
+    if (subscribe_filter_.Filter(data.actor_id(), data.timestamp())) {
+      subscribe(ActorID::FromBinary(data.actor_id()), data);
+    }
+  };
+
   auto fetch_data_operation = [this, actor_id,
-                               subscribe](const StatusCallback &fetch_done) {
-    auto callback = [this, actor_id, subscribe, fetch_done](
+                               filtered_subscribe](const StatusCallback &fetch_done) {
+    auto callback = [filtered_subscribe, fetch_done](
                         const Status &status,
                         const boost::optional<rpc::ActorTableData> &result) {
-      if (result && subscribe_filter_.Filter(actor_id.Binary(), result->timestamp())) {
-        subscribe(actor_id, *result);
+      if (result) {
+        filtered_subscribe(*result);
       }
       if (fetch_done) {
         fetch_done(status);
@@ -330,14 +345,12 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribe(
   };
 
   auto subscribe_operation = [this, actor_id,
-                              subscribe](const StatusCallback &subscribe_done) {
-    auto on_subscribe = [this, subscribe](const std::string &id,
-                                          const std::string &data) {
+                              filtered_subscribe](const StatusCallback &subscribe_done) {
+    auto on_subscribe = [filtered_subscribe](const std::string &id,
+                                             const std::string &data) {
       ActorTableData actor_data;
       actor_data.ParseFromString(data);
-      if (subscribe_filter_.Filter(actor_data.actor_id(), actor_data.timestamp())) {
-        subscribe(ActorID::FromBinary(actor_data.actor_id()), actor_data);
-      }
+      filtered_subscribe(actor_data);
     };
     return client_impl_->GetGcsPubSub().Subscribe(ACTOR_CHANNEL, actor_id.Hex(),
                                                   on_subscribe, subscribe_done);
@@ -574,13 +587,19 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToNodeChange(
   RAY_CHECK(node_change_callback_ == nullptr);
   node_change_callback_ = subscribe;
 
-  fetch_node_data_operation_ = [this](const StatusCallback &fetch_done) {
-    auto callback = [this, fetch_done](const Status &status,
-                                       const std::vector<GcsNodeInfo> &node_info_list) {
+  auto filtered_subscribe = [this](const GcsNodeInfo &data) {
+    if (subscribe_node_filter_.Filter(data.node_id(), data.timestamp())) {
+      HandleNotification(data);
+    }
+  };
+
+  fetch_node_data_operation_ = [this,
+                                filtered_subscribe](const StatusCallback &fetch_done) {
+    auto callback = [filtered_subscribe, fetch_done](
+                        const Status &status,
+                        const std::vector<GcsNodeInfo> &node_info_list) {
       for (auto &node_info : node_info_list) {
-        if (subscribe_node_filter_.Filter(node_info.node_id(), node_info.timestamp())) {
-          HandleNotification(node_info);
-        }
+        filtered_subscribe(node_info);
       }
       if (fetch_done) {
         fetch_done(status);
@@ -589,13 +608,13 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToNodeChange(
     RAY_CHECK_OK(AsyncGetAll(callback));
   };
 
-  subscribe_node_operation_ = [this](const StatusCallback &subscribe_done) {
-    auto on_subscribe = [this](const std::string &id, const std::string &data) {
+  subscribe_node_operation_ = [this,
+                               filtered_subscribe](const StatusCallback &subscribe_done) {
+    auto on_subscribe = [filtered_subscribe](const std::string &id,
+                                             const std::string &data) {
       GcsNodeInfo node_info;
       node_info.ParseFromString(data);
-      if (subscribe_node_filter_.Filter(node_info.node_id(), node_info.timestamp())) {
-        HandleNotification(node_info);
-      }
+      filtered_subscribe(node_info);
     };
     return client_impl_->GetGcsPubSub().SubscribeAll(NODE_CHANNEL, on_subscribe,
                                                      subscribe_done);

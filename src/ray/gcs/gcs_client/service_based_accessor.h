@@ -30,19 +30,21 @@ using FetchDataOperation = std::function<void(const StatusCallback &done)>;
 class ServiceBasedGcsClient;
 
 /// \class IdempotentFilter
-/// `IdempotentFilter` is used to filter duplicate or older data.
+/// `IdempotentFilter` is used to filter duplicate or obsolete message.
+/// It saves the timestamp of the latest message of each key, and compares the timestamp
+/// to identify duplicate or obsolete messages.
 class IdempotentFilter {
  public:
-  /// Check whether the data is duplicate or older. Non-thread safe.
+  /// Check whether the message is duplicate or obsolete. Non-thread safe.
   ///
-  /// \param id The id of data.
-  /// \param timestamp The timestamp of data.
-  /// \return If data is duplicate or older, return false, otherwise return true.
+  /// \param id The id of message.
+  /// \param timestamp The timestamp of message.
+  /// \return If message is duplicate or obsolete, return false, otherwise return true.
   bool Filter(const std::string &id, int64_t timestamp);
 
-  /// Remove the specified id of data. Non-thread safe.
+  /// Remove the specified id of message. Non-thread safe.
   ///
-  /// \param id The id of data.
+  /// \param id The id of message.
   void Remove(const std::string &id);
 
  private:
