@@ -340,7 +340,7 @@ TEST(DirectTaskTransportTest, TestSubmitOneTask) {
   ASSERT_EQ(worker_client->callbacks.size(), 1);
   ASSERT_EQ(task_finisher->num_tasks_complete, 0);
   ASSERT_EQ(task_finisher->num_tasks_failed, 0);
-  
+
   ASSERT_TRUE(worker_client->ReplyPushTask());
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
@@ -1045,19 +1045,19 @@ TEST(DirectTaskTransportTest, TestPipeliningConcurrentWorkerLeases) {
   auto task_finisher = std::make_shared<MockTaskFinisher>();
 
   // Set max_tasks_in_flight_per_worker to a value larger than 1 to enable the pipelining
-  // of task submissions. This is done by passing a max_tasks_in_flight_per_worker 
+  // of task submissions. This is done by passing a max_tasks_in_flight_per_worker
   // parameter to the CoreWorkerDirectTaskSubmitter.
   uint32_t max_tasks_in_flight_per_worker = 10;
   CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
                                           task_finisher, ClientID::Nil(), kLongTimeout,
                                           max_tasks_in_flight_per_worker);
-  
+
   // Prepare 20 tasks and save them in a vector.
   std::unordered_map<std::string, double> empty_resources;
   ray::FunctionDescriptor empty_descriptor =
       ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
   std::vector<TaskSpecification> tasks;
-  for (int i=1; i<= 20; i++) {
+  for (int i = 1; i <= 20; i++) {
     tasks.push_back(BuildTaskSpec(empty_resources, empty_descriptor));
   }
   ASSERT_EQ(tasks.size(), 20);
@@ -1072,25 +1072,26 @@ TEST(DirectTaskTransportTest, TestPipeliningConcurrentWorkerLeases) {
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, ClientID::Nil()));
   ASSERT_EQ(worker_client->callbacks.size(), 10);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
-  
+
   // Last 10 tasks are pushed; no more workers are requested.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, ClientID::Nil()));
   ASSERT_EQ(worker_client->callbacks.size(), 20);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
 
-  for (int i=1; i<=20; i++) {
+  for (int i = 1; i <= 20; i++) {
     ASSERT_FALSE(worker_client->callbacks.empty());
     ASSERT_TRUE(worker_client->ReplyPushTask());
-    // No worker should be returned until all the tasks that were submitted to it have been completed.
-    // In our case, the first worker should only be returned after the 10th task has been executed.
-    // The second worker should only be returned at the end, or after the 20th task has been executed.
-      if (i < 10) {
-        ASSERT_EQ(raylet_client->num_workers_returned, 0);
-      } else if (i >= 10 && i < 20) {
-        ASSERT_EQ(raylet_client->num_workers_returned, 1);
-      } else if (i == 20) {
-        ASSERT_EQ(raylet_client->num_workers_returned, 2);
-      }
+    // No worker should be returned until all the tasks that were submitted to it have
+    // been completed. In our case, the first worker should only be returned after the
+    // 10th task has been executed. The second worker should only be returned at the end,
+    // or after the 20th task has been executed.
+    if (i < 10) {
+      ASSERT_EQ(raylet_client->num_workers_returned, 0);
+    } else if (i >= 10 && i < 20) {
+      ASSERT_EQ(raylet_client->num_workers_returned, 1);
+    } else if (i == 20) {
+      ASSERT_EQ(raylet_client->num_workers_returned, 2);
+    }
   }
 
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
@@ -1099,7 +1100,7 @@ TEST(DirectTaskTransportTest, TestPipeliningConcurrentWorkerLeases) {
   ASSERT_EQ(task_finisher->num_tasks_complete, 20);
   ASSERT_EQ(task_finisher->num_tasks_failed, 0);
   ASSERT_EQ(raylet_client->num_leases_canceled, 0);
-  
+
   ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
 }
 
@@ -1112,19 +1113,19 @@ TEST(DirectTaskTransportTest, TestPipeliningReuseWorkerLease) {
   auto task_finisher = std::make_shared<MockTaskFinisher>();
 
   // Set max_tasks_in_flight_per_worker to a value larger than 1 to enable the pipelining
-  // of task submissions. This is done by passing a max_tasks_in_flight_per_worker 
+  // of task submissions. This is done by passing a max_tasks_in_flight_per_worker
   // parameter to the CoreWorkerDirectTaskSubmitter.
   uint32_t max_tasks_in_flight_per_worker = 10;
   CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
                                           task_finisher, ClientID::Nil(), kLongTimeout,
                                           max_tasks_in_flight_per_worker);
-  
+
   // prepare 30 tasks and save them in a vector
   std::unordered_map<std::string, double> empty_resources;
   ray::FunctionDescriptor empty_descriptor =
       ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
   std::vector<TaskSpecification> tasks;
-  for (int i=0; i< 30; i++) {
+  for (int i = 0; i < 30; i++) {
     tasks.push_back(BuildTaskSpec(empty_resources, empty_descriptor));
   }
   ASSERT_EQ(tasks.size(), 30);
@@ -1143,7 +1144,7 @@ TEST(DirectTaskTransportTest, TestPipeliningReuseWorkerLease) {
   ASSERT_EQ(raylet_client->num_leases_canceled, 0);
 
   // Task 1-10 finish, Tasks 11-20 are scheduled on the same worker.
-  for (int i=1; i<=10; i++) {
+  for (int i = 1; i <= 10; i++) {
     ASSERT_TRUE(worker_client->ReplyPushTask());
   }
   ASSERT_EQ(worker_client->callbacks.size(), 10);
@@ -1151,7 +1152,7 @@ TEST(DirectTaskTransportTest, TestPipeliningReuseWorkerLease) {
   ASSERT_EQ(raylet_client->num_leases_canceled, 0);
 
   // Task 11-20 finish, Tasks 21-30 are scheduled on the same worker.
-  for (int i=11; i<=20; i++) {
+  for (int i = 11; i <= 20; i++) {
     ASSERT_TRUE(worker_client->ReplyPushTask());
   }
   ASSERT_EQ(worker_client->callbacks.size(), 10);
@@ -1160,7 +1161,7 @@ TEST(DirectTaskTransportTest, TestPipeliningReuseWorkerLease) {
   ASSERT_TRUE(raylet_client->ReplyCancelWorkerLease());
 
   // Tasks 21-30 finish, and the worker is finally returned.
-  for (int i=21; i<=30; i++) {
+  for (int i = 21; i <= 30; i++) {
     ASSERT_TRUE(worker_client->ReplyPushTask());
   }
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
