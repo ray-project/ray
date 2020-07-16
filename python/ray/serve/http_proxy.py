@@ -184,6 +184,7 @@ class HTTPProxyActor:
         sock = socket.socket()
         # These two socket options will allow multiple process to bind the the
         # same port. Kernel will evenly load balance among the port listeners.
+        # Note: this will only work on Linux.
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
         sock.bind((self.host, self.port))

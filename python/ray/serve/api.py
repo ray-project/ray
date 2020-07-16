@@ -57,11 +57,12 @@ def accept_batch(f):
     return f
 
 
-def init(name=None,
-         http_host=DEFAULT_HTTP_HOST,
-         http_port=DEFAULT_HTTP_PORT,
-         metric_exporter=InMemoryExporter,
-         num_routers=1):
+def init(
+        name=None,
+        http_host=DEFAULT_HTTP_HOST,
+        http_port=DEFAULT_HTTP_PORT,
+        metric_exporter=InMemoryExporter,
+):
     """Initialize or connect to a serve cluster.
 
     If serve cluster is already initialized, this function will just return.
@@ -75,7 +76,10 @@ def init(name=None,
             multiple serve instances to run on the same ray cluster. Must be
             specified in all subsequent serve.init() calls.
         http_host (str): Host for HTTP server. Default to "0.0.0.0".
-        http_port (int): Port for HTTP server. Default to 8000.
+        http_port (int, List[int]): Port for HTTP server. Default to 8000. If
+            a list of integers are passed in, multiple instance of the HTTP
+            servers will be started and bind to each port. On linux machine,
+            the ports can be repeated.
         metric_exporter(ExporterInterface): The class aggregates metrics from
             all RayServe actors and optionally export them to external
             services. RayServe has two options built in: InMemoryExporter and
@@ -83,6 +87,11 @@ def init(name=None,
     """
     if name is not None and not isinstance(name, str):
         raise TypeError("name must be a string.")
+
+    if isinstance(http_port, int):
+        http_ports = [http_port]
+    else:
+        http_ports = http_port
 
     # Initialize ray if needed.
     if not ray.is_initialized():
@@ -112,12 +121,18 @@ def init(name=None,
         name=master_actor_name,
         max_restarts=-1,
         max_task_retries=-1,
-    ).remote(name, http_node_id, http_host, http_port, metric_exporter,
-             num_routers)
+    ).remote(
+        name,
+        http_node_id,
+        http_host,
+        http_ports,
+        metric_exporter,
+    )
 
-    block_until_http_ready(
-        "http://{}:{}/-/routes".format(http_host, http_port),
-        timeout=HTTP_PROXY_TIMEOUT)
+    for port in http_ports:
+        block_until_http_ready(
+            "http://{}:{}/-/routes".format(http_host, port),
+            timeout=HTTP_PROXY_TIMEOUT)
 
 
 @_ensure_connected

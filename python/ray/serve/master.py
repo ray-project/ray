@@ -88,13 +88,8 @@ class ServeMaster:
           requires all implementations here to be idempotent.
     """
 
-    async def __init__(self,
-                       instance_name,
-                       http_node_id,
-                       http_proxy_host,
-                       http_proxy_port,
-                       metric_exporter_class,
-                       num_routers=1):
+    async def __init__(self, instance_name, http_node_id, http_proxy_host,
+                       http_proxy_ports, metric_exporter_class):
         # Unique name of the serve instance managed by this actor. Used to
         # namespace child actors and checkpoints.
         self.instance_name = instance_name
@@ -134,7 +129,7 @@ class ServeMaster:
         # components. If recovering, fetches their actor handles.
         self._get_or_start_metric_exporter(metric_exporter_class)
         self._get_or_start_routers(http_node_id, http_proxy_host,
-                                   http_proxy_port, num_routers)
+                                   http_proxy_ports)
 
         # NOTE(edoakes): unfortunately, we can't completely recover from a
         # checkpoint in the constructor because we block while waiting for
@@ -156,21 +151,21 @@ class ServeMaster:
             asyncio.get_event_loop().create_task(
                 self._recover_from_checkpoint(checkpoint))
 
-    def _get_or_start_routers(self, node_id, host, port, num_routers):
+    def _get_or_start_routers(self, node_id, host, ports):
         """Get the HTTP proxy belonging to this serve instance.
 
         If the HTTP proxy does not already exist, it will be started.
         """
-        for i in range(num_routers):
+        for i, port_number in enumerate(ports):
             proxy_name = format_actor_name(SERVE_PROXY_NAME,
                                            self.instance_name)
             proxy_name += "-{}".format(i)
             try:
                 router = ray.get_actor(proxy_name)
             except ValueError:
-                logger.info(
-                    "Starting HTTP proxy with name '{}' on node '{}'".format(
-                        proxy_name, node_id))
+                logger.info("Starting HTTP proxy with name '{}' on node '{}' "
+                            "listening on port {}".format(
+                                proxy_name, node_id, port_number))
                 router = HTTPProxyActor.options(
                     name=proxy_name,
                     max_concurrency=ASYNC_CONCURRENCY,
@@ -180,7 +175,7 @@ class ServeMaster:
                         node_id: 0.01
                     },
                 ).remote(
-                    host, port, instance_name=self.instance_name)
+                    host, port_number, instance_name=self.instance_name)
             self.routers.append(router)
 
     def get_http_proxy(self):

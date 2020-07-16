@@ -40,9 +40,11 @@ def run_http_benchmark(url, num_queries):
 @click.option("--num-queries", type=int, required=False)
 @click.option("--num-replicas", type=int, default=1)
 @click.option("--max-concurrent-queries", type=int, required=False)
+@click.option("--num-routers", type=int, default=1)
 def main(num_replicas: int, num_queries: Optional[int],
-         max_concurrent_queries: Optional[int], blocking: bool):
-    serve.init()
+         max_concurrent_queries: Optional[int], blocking: bool,
+         num_routers: int):
+    serve.init(http_port=[8000 + i for i in range(num_routers)])
 
     def noop(_):
         return "hello world"

@@ -23,7 +23,7 @@ ASYNC_CONCURRENCY = int(1e6)
 DEFAULT_LATENCY_SLO_MS = 1e9
 
 #: Interval for metric client to push metrics to exporters
-METRIC_PUSH_INTERVAL_S = 2
+METRIC_PUSH_INTERVAL_S = 2000
 
 #: Time to wait for HTTP proxy in `serve.init()`
 HTTP_PROXY_TIMEOUT = 60
