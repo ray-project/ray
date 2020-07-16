@@ -23,36 +23,52 @@ import SortableTableHead, {
 import { getComparator, Order, stableSort } from "../../../common/tableUtils";
 import { StoreState } from "../../../store";
 import { dashboardActions } from "../state";
-import MemoryRowGroup from "./MemoryRowGroup";
 import { MemoryTableRow } from "./MemoryTableRow";
+import MemoryRowGroup from "./MemoryRowGroup";
 
-const makeGroupedEntries = (
+
+type GroupedMemoryRowsProps = {
   memoryTableGroups: MemoryTableGroups,
   order: Order,
   orderBy: keyof MemoryTableEntry | null,
-) => {
-  const comparator = orderBy && getComparator(order, orderBy);
-  return Object.entries(memoryTableGroups).map(([groupKey, group]) => {
-    const sortedEntries = comparator
-      ? stableSort(group.entries, comparator)
-      : group.entries;
-
-    return (
-      <MemoryRowGroup
-        groupKey={groupKey}
-        summary={group.summary}
-        entries={sortedEntries}
-        initialExpanded={true}
-      />
-    );
-  });
+  visibleEntries?: number
 };
 
-const makeUngroupedEntries = (
+const GroupedMemoryRows: React.FC<GroupedMemoryRowsProps> = ({
+  memoryTableGroups,
+  order,
+  orderBy,
+}) => {
+  const comparator = orderBy && getComparator(order, orderBy);
+  return <>
+    {Object.entries(memoryTableGroups).map(([groupKey, group]) => {
+      const sortedEntries = comparator
+        ? stableSort(group.entries, comparator)
+        : group.entries;
+
+      return (
+        <MemoryRowGroup
+          groupKey={groupKey}
+          summary={group.summary}
+          entries={sortedEntries}
+          initialExpanded={false}
+        />
+      );
+    })}
+  </>
+};
+
+type UngroupedMemoryRowsProps = {
   memoryTableGroups: MemoryTableGroups,
   order: Order,
   orderBy: memoryColumnId | null,
-) => {
+};
+
+const UngroupedMemoryRows: React.FC<UngroupedMemoryRowsProps> = ({
+  memoryTableGroups,
+  order,
+  orderBy,
+}) => {
   const allEntries = Object.values(memoryTableGroups).reduce(
     (allEntries: Array<MemoryTableEntry>, memoryTableGroup) => {
       const groupEntries = memoryTableGroup.entries;
@@ -64,12 +80,12 @@ const makeUngroupedEntries = (
     orderBy === null
       ? allEntries
       : stableSort(allEntries, getComparator(order, orderBy));
-  return sortedEntries.map((memoryTableEntry, index) => (
+  return <> {sortedEntries.map((memoryTableEntry, index) => (
     <MemoryTableRow
       memoryTableEntry={memoryTableEntry}
       key={`mem-row-${index}`}
     />
-  ));
+  ))}</>
 };
 
 type memoryColumnId =
@@ -178,8 +194,18 @@ const MemoryInfo: React.FC<{}> = () => {
             />
             <TableBody>
               {isGrouped
-                ? makeGroupedEntries(memoryTable.group, order, orderBy)
-                : makeUngroupedEntries(memoryTable.group, order, orderBy)}
+                ? <GroupedMemoryRows
+                  memoryTableGroups={memoryTable.group}
+                  order={order}
+                  orderBy={orderBy}
+                /> : 
+                <UngroupedMemoryRows
+                  memoryTableGroups={memoryTable.group}
+                  order={order}
+                  orderBy={orderBy}
+                />
+              }
+
             </TableBody>
           </Table>
         </React.Fragment>
