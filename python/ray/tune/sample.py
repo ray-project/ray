@@ -1,4 +1,6 @@
 import logging
+import random
+
 import numpy as np
 
 logger = logging.getLogger(__name__)
@@ -56,13 +58,13 @@ def loguniform(min_bound, max_bound, base=10):
 
 
 def choice(*args, **kwargs):
-    """Wraps tune.sample_from around ``np.random.choice``.
+    """Wraps tune.sample_from around ``random.choice``.
 
-    ``tune.choice(10)`` is equivalent to
-    ``tune.sample_from(lambda _: np.random.choice(10))``
+    ``tune.choice([1, 2])`` is equivalent to
+    ``tune.sample_from(lambda _: random.choice([1, 2]))``
 
     """
-    return sample_from(lambda _: np.random.choice(*args, **kwargs))
+    return sample_from(lambda _: random.choice(*args, **kwargs))
 
 
 def randint(*args, **kwargs):

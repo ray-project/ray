@@ -35,7 +35,9 @@ class MetricExporter final : public opencensus::stats::StatsExporter::Handler {
                           size_t report_batch_size = kDefaultBatchSize)
       : metric_exporter_client_(metric_exporter_client),
         report_batch_size_(report_batch_size) {}
+
   ~MetricExporter() = default;
+
   static void Register(std::shared_ptr<MetricExporterClient> metric_exporter_client,
                        size_t report_batch_size) {
     opencensus::stats::StatsExporter::RegisterPushHandler(
@@ -63,10 +65,8 @@ class MetricExporter final : public opencensus::stats::StatsExporter::Handler {
         tags[keys[i]] = row.first[i];
       }
       // Current timestamp is used for point not view data time.
-      MetricPoint point{metric_name,
-                        current_sys_time_ms(),
-                        static_cast<double>(row.second),
-                        tags};
+      MetricPoint point{metric_name, current_sys_time_ms(),
+                        static_cast<double>(row.second), tags};
       RAY_LOG(DEBUG) << "Metric name " << metric_name << ", value " << point.value;
       points.push_back(std::move(point));
       if (points.size() >= report_batch_size_) {
