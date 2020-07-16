@@ -56,7 +56,7 @@ def free(object_refs, local_only=False, delete_creating_tasks=False):
     """
     worker = ray.worker.global_worker
 
-    if isinstance(object_refs, ray.ObjectID):
+    if isinstance(object_refs, ray.ObjectRef):
         object_refs = [object_refs]
 
     if not isinstance(object_refs, list):
@@ -65,7 +65,7 @@ def free(object_refs, local_only=False, delete_creating_tasks=False):
 
     # Make sure that the values are object refs.
     for object_ref in object_refs:
-        if not isinstance(object_ref, ray.ObjectID):
+        if not isinstance(object_ref, ray.ObjectRef):
             raise TypeError(
                 "Attempting to call `free` on the value {}, "
                 "which is not an ray.ObjectRef.".format(object_ref))
