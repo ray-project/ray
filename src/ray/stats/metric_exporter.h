@@ -35,7 +35,9 @@ class MetricExporter final : public opencensus::stats::StatsExporter::Handler {
                           size_t report_batch_size = kDefaultBatchSize)
       : metric_exporter_client_(metric_exporter_client),
         report_batch_size_(report_batch_size) {}
+
   ~MetricExporter() = default;
+
   static void Register(std::shared_ptr<MetricExporterClient> metric_exporter_client,
                        size_t report_batch_size) {
     opencensus::stats::StatsExporter::RegisterPushHandler(

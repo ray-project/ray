@@ -4,6 +4,7 @@ import tempfile
 import random
 import os
 import pandas as pd
+from numpy import nan
 
 import ray
 from ray.tune import run, sample_from
@@ -38,6 +39,21 @@ class ExperimentAnalysisSuite(unittest.TestCase):
                 "height": sample_from(lambda spec: int(100 * random.random())),
             })
 
+    def nan_test_exp(self):
+        nan_ea = run(
+            lambda x: nan,
+            name="testing_nan",
+            local_dir=self.test_dir,
+            stop={"training_iteration": 1},
+            checkpoint_freq=1,
+            num_samples=self.num_samples,
+            config={
+                "width": sample_from(
+                    lambda spec: 10 + int(90 * random.random())),
+                "height": sample_from(lambda spec: int(100 * random.random())),
+            })
+        return nan_ea
+
     def testDataframe(self):
         df = self.ea.dataframe()
 
@@ -58,10 +74,14 @@ class ExperimentAnalysisSuite(unittest.TestCase):
 
     def testBestConfig(self):
         best_config = self.ea.get_best_config(self.metric)
-
         self.assertTrue(isinstance(best_config, dict))
         self.assertTrue("width" in best_config)
         self.assertTrue("height" in best_config)
+
+    def testBestConfigNan(self):
+        nan_ea = self.nan_test_exp()
+        best_config = nan_ea.get_best_config(self.metric)
+        self.assertIsNone(best_config)
 
     def testBestLogdir(self):
         logdir = self.ea.get_best_logdir(self.metric)
@@ -69,6 +89,11 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         logdir2 = self.ea.get_best_logdir(self.metric, mode="min")
         self.assertTrue(logdir2.startswith(self.test_path))
         self.assertNotEquals(logdir, logdir2)
+
+    def testBestLogdirNan(self):
+        nan_ea = self.nan_test_exp()
+        logdir = nan_ea.get_best_logdir(self.metric)
+        self.assertIsNone(logdir)
 
     def testGetTrialCheckpointsPathsByTrial(self):
         best_trial = self.ea.get_best_trial(self.metric)

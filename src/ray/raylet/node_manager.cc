@@ -2237,7 +2237,14 @@ void NodeManager::MarkObjectsAsFailed(const ErrorType &error_type,
                                       const JobID &job_id) {
   const std::string meta = std::to_string(static_cast<int>(error_type));
   for (const auto &object_id : objects_to_fail) {
-    Status status = store_client_.CreateAndSeal(object_id, "", meta);
+    std::shared_ptr<arrow::Buffer> data;
+    Status status;
+    status = store_client_.Create(object_id, 0,
+                                  reinterpret_cast<const uint8_t *>(meta.c_str()),
+                                  meta.length(), &data);
+    if (status.ok()) {
+      status = store_client_.Seal(object_id);
+    }
     if (!status.ok() && !status.IsObjectExists()) {
       // If we failed to save the error code, log a warning and push an error message
       // to the driver.
@@ -2300,7 +2307,11 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
   RAY_LOG(DEBUG) << "Submitting task: " << task.DebugString();
 
   if (local_queues_.HasTask(task_id)) {
-    if (spec.IsActorCreationTask()) {
+    if (RayConfig::instance().gcs_actor_service_enabled() && spec.IsActorCreationTask()) {
+      // NOTE(hchen): Normally when raylet receives a duplicated actor creation task
+      // from GCS, raylet should just ignore the task. However, due to the hack that
+      // we save the RPC reply in task's OnDispatch callback, we have to remove the
+      // old task and re-add the new task, to make sure the RPC reply callback is correct.
       RAY_LOG(WARNING) << "Submitted actor creation task " << task_id
                        << " is already queued. This is most likely due to a GCS restart. "
                           "We will remove "

@@ -87,7 +87,7 @@ def _make_future_unwrapper(client_futures: List[asyncio.Future],
 class Router:
     """A router that routes request to available workers."""
 
-    async def __init__(self, instance_name=None):
+    async def setup(self, instance_name=None):
         # Note: Several queues are used in the router
         # - When a request come in, it's placed inside its corresponding
         #   endpoint_queue.
@@ -198,8 +198,6 @@ class Router:
             self.endpoint_queues[endpoint].appendleft(query)
             self.flush_endpoint_queue(endpoint)
 
-        # Note: a future change can be to directly return the ObjectRef from
-        # replica task submission
         try:
             result = await query.async_future
         except RayTaskError as e:
