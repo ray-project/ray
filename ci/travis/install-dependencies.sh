@@ -159,7 +159,7 @@ install_nvm() {
       )
       printf "%s\n" \
         "export NVM_HOME=\"$(cygpath -w -- "${NVM_HOME}")\"" \
-        'nvm() { "${NVM_HOME}/nvm.exe" "$@"; }' \
+        "nvm() { \"\${NVM_HOME}/nvm.exe\" \"\$@\"; }" \
         > "${NVM_HOME}/nvm.sh"
     fi
   else
