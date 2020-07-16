@@ -54,18 +54,18 @@ def textproto_split(input_lines, json_encoder=None):
         pieces[1:] = [b"".join(pieces[1:])]
         [line, tail] = pieces
         next_line = pat_open.sub(b"\\1[\"\\2\",\\3[", line)
-        outputs.append(b"" if not prev_comma
-                       else b"]" if next_line.endswith(b"}") else b",")
+        outputs.append(b"" if not prev_comma else b"]"
+                       if next_line.endswith(b"}") else b",")
         next_line = pat_close.sub(b"]", next_line)
         next_line = pat_line.sub(
-            lambda m: textproto_format(*(m.groups() + (json_encoder,))),
+            lambda m: textproto_format(*(m.groups() + (json_encoder, ))),
             next_line)
         outputs.append(prev_tail + next_line)
         if line == b"}":
             yield b"".join(outputs)
             del outputs[:]
-        prev_comma = line != b"}" and (next_line.endswith(b"]") or
-                                       next_line.endswith(b"\""))
+        prev_comma = line != b"}" and (next_line.endswith(b"]")
+                                       or next_line.endswith(b"\""))
         prev_tail = tail
     if len(outputs) > 0:
         yield b"".join(outputs)
@@ -89,12 +89,12 @@ class Bazel(object):
     def __init__(self, program=None):
         if program is None:
             program = os.getenv("BAZEL", "bazel")
-        self.argv = (program,)
-        self.extra_args = ("--show_progress=no",)
+        self.argv = (program, )
+        self.extra_args = ("--show_progress=no", )
 
     def _call(self, command, *args):
         return subprocess.check_output(
-            self.argv + (command,) + args[:1] + self.extra_args + args[1:],
+            self.argv + (command, ) + args[:1] + self.extra_args + args[1:],
             stdin=subprocess.PIPE)
 
     def info(self, *args):
