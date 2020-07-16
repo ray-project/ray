@@ -3,7 +3,7 @@ halfcheetah-mb-mpo:
     run: MBMPO
     stop:
         training_iteration: 500
-    local_dir: ~/mbmpo-testing 
+    local_dir: ~/mbmpo-debug
     config:
         framework: torch
         horizon: 200

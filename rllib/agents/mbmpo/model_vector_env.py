@@ -12,6 +12,22 @@ from ray.rllib.agents.mbmpo.model_ensemble import normalize, denormalize
 
 logger = logging.getLogger(__name__)
 
+def custom_model_vector_env(**kwargs):
+    worker_index = kwargs["env_context"].worker_index
+    env = kwargs["env"]
+    if worker_index:
+        return _VectorizedModelGymEnv(
+            make_env=kwargs["make_env"],
+            existing_envs=kwargs["existing_envs"],
+            num_envs=kwargs["num_worker_envs"],
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            env_config=kwargs["env_config"]
+            )
+    else:
+        # This env will become vectorized later
+        return env
+
 
 class _VectorizedModelGymEnv(VectorEnv):
     """Internal wrapper to translate model-based gym envs into a VectorEnv object.

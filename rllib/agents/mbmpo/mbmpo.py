@@ -19,6 +19,7 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.torch_ops import convert_to_non_torch_type, \
     convert_to_torch_tensor
 from ray.rllib.evaluation.metrics import collect_episodes
+from ray.rllib.agents.mbmpo.model_vector_env import custom_model_vector_env
 
 logger = logging.getLogger(__name__)
 
@@ -69,21 +70,24 @@ DEFAULT_CONFIG = with_common_config({
     "dynamics_model":{
         "custom_model": DynamicsEnsembleCustomModel,
         # Number of Transition-Dynamics Models for Ensemble
-        "model_ensemble_size": 5,
+        "model_ensemble_size": 1,
         # Hidden Layers for Model Ensemble
         "model_hiddens": [512, 512],
         # Model Learning Rate
         "model_lr": 1e-3,
         # Max number of training epochs per MBMPO iter
-        "model_train_epochs": 1000,
+        "model_train_epochs": 1,
         # Model Batch Size
         "model_batch_size": 500,
         # Training/Validation Split
         "valid_split_ratio": 0.2,
         # Normalize Data (obs, action, and deltas)
         "normalize_data": True,
-
     },
+    # Workers sample from dynamics models
+    "custom_vector_env": custom_model_vector_env,
+    # How many enviornments there are per worker (vectorized)
+    "num_worker_envs": 50,
     # How many iterations through MAML per MBMPO iteration
     "num_maml_steps": 5,
 })
@@ -182,7 +186,7 @@ class MetaUpdate:
             sync_stats(self.workers)
 
             metrics.counters[STEPS_SAMPLED_COUNTER] = td_metric[STEPS_SAMPLED_COUNTER]
-            import pdb; pdb.set_trace()
+
             res = self.metric_gen.__call__(None)
             res.update(self.metrics)
             self.step_counter = 0

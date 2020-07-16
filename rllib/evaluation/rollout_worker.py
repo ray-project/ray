@@ -347,7 +347,6 @@ class RolloutWorker(ParallelIteratorWorker):
                     env = wrappers.Monitor(env, monitor_path, resume=True)
                 return env
         else:
-
             def wrap(env):
                 if monitor_path:
                     from gym import wrappers
@@ -360,7 +359,9 @@ class RolloutWorker(ParallelIteratorWorker):
             return wrap(
                 env_creator(
                     env_context.copy_with_overrides(
-                        vector_index=vector_index, remote=remote_worker_envs)))
+                        worker_index=worker_index,
+                        vector_index=vector_index, 
+                        remote=remote_worker_envs)))
 
         self.tf_sess = None
         policy_dict = _validate_and_canonicalize(policy, self.env)
@@ -435,25 +436,24 @@ class RolloutWorker(ParallelIteratorWorker):
         if self.worker_index == 0:
             logger.info("Built filter map: {}".format(self.filters))
 
-        from ray.rllib.agents.mbmpo.model_vector_env import _VectorizedModelGymEnv
-        from ray.rllib.env.base_env import _VectorEnvToBaseEnv
-
-        # Temporary for MBMPO
-        if self.worker_index:
-            self.async_env = _VectorEnvToBaseEnv(_VectorizedModelGymEnv(
-                make_env=make_env,
-                            existing_envs=[self.env],
-                            num_envs=num_envs,
-                            action_space=self.env.action_space,
-                            observation_space=self.env.observation_space))
-        else:
-            # Always use vector env for consistency even if num_envs = 1.
-            self.async_env: BaseEnv = BaseEnv.to_base_env(
-                self.env,
-                make_env=make_env,
-                num_envs=num_envs,
-                remote_envs=remote_worker_envs,
-                remote_env_batch_wait_ms=remote_env_batch_wait_ms)
+        if "custom_vector_env" in policy_config:
+            custom_env_dict = dict(policy_config)
+            custom_env_dict.update({
+                "env": self.env,
+                "make_env": make_env,
+                "existing_envs": [self.env],
+                "num_envs": num_envs,
+                "env_context": env_context,
+                })
+            custom_vec = policy_config["custom_vector_env"]
+            self.env = custom_vec(**custom_env_dict)
+        # Always use vector env for consistency even if num_envs = 1.
+        self.async_env: BaseEnv = BaseEnv.to_base_env(
+            self.env,
+            make_env=make_env,
+            num_envs=num_envs,
+            remote_envs=remote_worker_envs,
+            remote_env_batch_wait_ms=remote_env_batch_wait_ms)
         self.num_envs: int = num_envs
 
         # `truncate_episodes`: Allow a batch to contain more than one episode
@@ -818,10 +818,10 @@ class RolloutWorker(ParallelIteratorWorker):
     @DeveloperAPI
     def for_policy(self,
                    func: Callable[[Policy], T],
-                   policy_id: Optional[PolicyID] = DEFAULT_POLICY_ID) -> T:
+                   policy_id: Optional[PolicyID] = DEFAULT_POLICY_ID, **kwargs) -> T:
         """Apply the given function to the specified policy."""
 
-        return func(self.policy_map[policy_id])
+        return func(self.policy_map[policy_id], **kwargs)
 
     @DeveloperAPI
     def foreach_policy(self, func: Callable[[Policy, PolicyID], T], **kwargs) -> List[T]:
@@ -831,7 +831,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
     @DeveloperAPI
     def foreach_trainable_policy(
-            self, func: Callable[[Policy, PolicyID], T]) -> List[T]:
+            self, func: Callable[[Policy, PolicyID], T], **kwargs) -> List[T]:
         """
         Applies the given function to each (policy, policy_id) tuple, which
         can be found in `self.policies_to_train`.
@@ -845,7 +845,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 `func([policy], [ID])`-calls.
         """
         return [
-            func(policy, pid) for pid, policy in self.policy_map.items()
+            func(policy, pid, **kwargs) for pid, policy in self.policy_map.items()
             if pid in self.policies_to_train
         ]
 
