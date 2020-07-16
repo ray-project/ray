@@ -8,6 +8,7 @@ from ray.tune import register_env
 from ray.rllib.agents.qmix import QMixTrainer
 from ray.rllib.agents.qmix.qmix_policy import ENV_STATE
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.rllib.utils.test_utils import check_learning_achieved
 
 
 class AvailActionsTestEnv(MultiAgentEnv):
@@ -57,14 +58,15 @@ class AvailActionsTestEnv(MultiAgentEnv):
 
 class SimpleTwoStepGame(MultiAgentEnv):
     """Always pick action=0 to maximize rewards."""
+
     action_space = Discrete(3)
 
     def __init__(self, env_config):
         self.counter = 0
 
     def reset(self):
-        return {0: {'obs': np.array([0]), 'state': np.array([0])},
-                1: {'obs': np.array([0]), 'state': np.array([0])}}
+        return {0: {"obs": np.array([0]), "state": np.array([0])},
+                1: {"obs": np.array([0]), "state": np.array([0])}}
 
     def step(self, action_dict):
         self.counter += 1
@@ -77,8 +79,8 @@ class SimpleTwoStepGame(MultiAgentEnv):
         if move2 == 0:
             reward_2 = 0.5
 
-        obs = {0: {'obs': np.array([0]), 'state': np.array([0])},
-               1: {'obs': np.array([0]), 'state': np.array([0])}}
+        obs = {0: {"obs": np.array([0]), "state": np.array([0])},
+               1: {"obs": np.array([0]), "state": np.array([0])}}
         done = False
         if self.counter > 100:
             self.counter = 0
@@ -116,13 +118,14 @@ class TestQMix(unittest.TestCase):
                 "one_hot_state_encoding": True
             },
         }
-        stop = {"timesteps_total": 100000, "episode_reward_mean": 75.0}
+        min_reward = 75.0
+        stop = {"timesteps_total": 100000, "episode_reward_mean": min_reward}
         results = tune.run(
             "QMIX",
             stop=stop,
             config=dict(config, **{"env": "twostep"}),
             verbose=1)
-        self.assertGreater(results, stop["episode_reward_mean"])
+        check_learning_achieved(results, min_reward)
 
     def test_avail_actions_qmix(self):
         grouping = {

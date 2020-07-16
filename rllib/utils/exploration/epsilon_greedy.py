@@ -6,7 +6,6 @@ from ray.rllib.utils.exploration.exploration import Exploration, TensorType
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     get_variable
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.numpy import LARGE_INTEGER
 from ray.rllib.utils.schedules import Schedule, PiecewiseSchedule
 
 tf1, tf, tfv = try_import_tf()
