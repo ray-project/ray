@@ -215,7 +215,7 @@ class NodeProvider:
 
     @staticmethod
     def bootstrap_config(cluster_config):
-        """Bootstraps the cluster config by filling in env defaults if needed."""
+        """Bootstraps the cluster config by adding env defaults if needed."""
         return cluster_config
 
     def get_command_runner(self,
