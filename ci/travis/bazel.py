@@ -203,7 +203,7 @@ def shellcheck(bazel_aquery, *shellcheck_args):
             proc.communicate("\n".join(scripts_combined).encode("utf-8"))
         finally:
             proc.wait()
-        result = result and proc.returncode
+        result = result or proc.returncode
     return result
 
 
