@@ -140,3 +140,55 @@ def copy_to_workspace(name, srcs, dstdir = ""):
         ),
         local = 1,
     )
+
+def native_java_binary(module_name, name, native_binary_name):
+    native.genrule(
+        name = name + "_darwin",
+        srcs = [native_binary_name],
+        outs = [module_name + "/src/main/resources/native/darwin/" + name],
+        cmd = "cp $< $@",
+        output_to_bindir = 1,
+    )
+
+    native.genrule(
+        name = name + "_linux",
+        srcs = [native_binary_name],
+        outs = [module_name + "/src/main/resources/native/linux/" + name],
+        cmd = "cp $< $@",
+        output_to_bindir = 1,
+    )
+
+    native.filegroup(
+            name = name,
+            srcs = select({
+                "@bazel_tools//src/conditions:darwin": [name + "_darwin"],
+                "//conditions:default": [name + "_linux"],
+            }),
+            visibility = ["//visibility:public"],
+        )
+
+def native_java_library(module_name, name, native_library_name):
+    native.genrule(
+        name = name + "_darwin",
+        srcs = [native_library_name],
+        outs = [module_name + "/src/main/resources/native/darwin/lib{}.dylib".format(name)],
+        cmd = "cp $< $@",
+        output_to_bindir = 1,
+    )
+
+    native.genrule(
+        name = name + "_linux",
+        srcs = [native_library_name],
+        outs = [module_name + "/src/main/resources/native/linux/lib{}.so".format(name)],
+        cmd = "cp $< $@",
+        output_to_bindir = 1,
+    )
+
+    native.filegroup(
+            name = name,
+            srcs = select({
+                "@bazel_tools//src/conditions:darwin": [name + "_darwin"],
+                "//conditions:default": [name + "_linux"],
+            }),
+            visibility = ["//visibility:public"],
+        )

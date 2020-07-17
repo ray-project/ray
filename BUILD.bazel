@@ -1821,22 +1821,6 @@ cc_binary(
         "//:src/ray/ray_version_script.lds",
         "@bazel_tools//tools/jdk:jni",
     ],
-)
-
-genrule(
-    name = "core_worker-jni-darwin-compat",
-    srcs = [":libcore_worker_library_java.so"],
-    outs = ["libcore_worker_library_java.dylib"],
-    cmd = "cp $< $@",
-    output_to_bindir = 1,
-)
-
-filegroup(
-    name = "core_worker_library_java",
-    srcs = select({
-        "@bazel_tools//src/conditions:darwin": [":libcore_worker_library_java.dylib"],
-        "//conditions:default": [":libcore_worker_library_java.so"],
-    }),
     visibility = ["//java:__subpackages__"],
 )
 
