@@ -61,11 +61,16 @@ class StatsTest : public ::testing::Test {
   void SetUp() {
     const stats::TagsType global_tags = {{stats::LanguageKey, "CPP"},
                                          {stats::WorkerPidKey, "1000"}};
-    ray::stats::Init("127.0.0.1:8888", global_tags, false);
+    std::shared_ptr<stats::MetricExporterClient> exporter(
+        new stats::StdoutExporterClient());
+    ray::stats::Init(global_tags, 10054, io_service_, exporter);
     MockExporter::Register();
   }
 
   void Shutdown() {}
+
+ private:
+  boost::asio::io_service io_service_;
 };
 
 TEST_F(StatsTest, F) {

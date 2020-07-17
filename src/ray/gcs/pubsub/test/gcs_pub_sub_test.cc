@@ -42,11 +42,11 @@ class GcsPubSubTest : public ::testing::Test {
   }
 
   virtual void TearDown() override {
-    pub_sub_.reset();
     client_->Disconnect();
     io_service_.stop();
     thread_io_service_->join();
     thread_io_service_.reset();
+    pub_sub_.reset();
 
     // Note: If we immediately reset client_ after io_service_ stop, because client_ still
     // has thread executing logic, such as unsubscribe's callback, the problem of heap
@@ -57,7 +57,7 @@ class GcsPubSubTest : public ::testing::Test {
   void Subscribe(const std::string &channel, const std::string &id,
                  std::vector<std::string> &result) {
     std::promise<bool> promise;
-    auto done = [&promise](Status status) { promise.set_value(status.ok()); };
+    auto done = [&promise](const Status &status) { promise.set_value(status.ok()); };
     auto subscribe = [&result](const std::string &id, const std::string &data) {
       result.push_back(data);
     };
@@ -68,7 +68,7 @@ class GcsPubSubTest : public ::testing::Test {
   void SubscribeAll(const std::string &channel,
                     std::vector<std::pair<std::string, std::string>> &result) {
     std::promise<bool> promise;
-    auto done = [&promise](Status status) { promise.set_value(status.ok()); };
+    auto done = [&promise](const Status &status) { promise.set_value(status.ok()); };
     auto subscribe = [&result](const std::string &id, const std::string &data) {
       result.push_back(std::make_pair(id, data));
     };
@@ -83,7 +83,7 @@ class GcsPubSubTest : public ::testing::Test {
   bool Publish(const std::string &channel, const std::string &id,
                const std::string &data) {
     std::promise<bool> promise;
-    auto done = [&promise](Status status) { promise.set_value(status.ok()); };
+    auto done = [&promise](const Status &status) { promise.set_value(status.ok()); };
     RAY_CHECK_OK((pub_sub_->Publish(channel, id, data, done)));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
@@ -177,7 +177,7 @@ TEST_F(GcsPubSubTest, TestMultithreading) {
                                                const std::string &data) {
             ++(*sub_message_count);
           };
-          auto on_done = [sub_finished_count](Status status) {
+          auto on_done = [sub_finished_count](const Status &status) {
             RAY_CHECK_OK(status);
             ++(*sub_finished_count);
           };
@@ -225,8 +225,8 @@ TEST_F(GcsPubSubTest, TestPubSubWithTableData) {
     auto done = [&promise](const Status &status) { promise.set_value(status.ok()); };
     auto subscribe = [this, channel, &result](const std::string &id,
                                               const std::string &data) {
-      result.push_back(data);
       RAY_CHECK_OK(pub_sub_->Unsubscribe(channel, id));
+      result.push_back(data);
     };
     RAY_CHECK_OK((pub_sub_->Subscribe(channel, object_id.Hex(), subscribe, done)));
     WaitReady(promise.get_future(), timeout_ms_);

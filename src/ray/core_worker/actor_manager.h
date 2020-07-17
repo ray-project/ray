@@ -89,14 +89,14 @@ class ActorManager {
                          const TaskID &caller_id, const std::string &call_site,
                          const rpc::Address &caller_address, bool is_detached);
 
-  /// Add a callback that is called when an actor goes out of scope.
+  /// Wait for actor out of scope.
   ///
   /// \param actor_id The actor id that owns the callback.
-  /// \param actor_out_of_scope_callbacks The callback function that will be called when
+  /// \param actor_out_of_scope_callback The callback function that will be called when
   /// an actor_id goes out of scope.
-  void AddActorOutOfScopeCallback(
+  void WaitForActorOutOfScope(
       const ActorID &actor_id,
-      std::function<void(const ActorID &)> actor_out_of_scope_callbacks);
+      std::function<void(const ActorID &)> actor_out_of_scope_callback);
 
   /// Get a list of actor_ids from existing actor handles.
   /// This is used for debugging purpose.
@@ -148,11 +148,6 @@ class ActorManager {
   /// Actor handle is a logical abstraction that holds actor handle's states.
   absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_
       GUARDED_BY(mutex_);
-
-  /// Map from actor ID to a callback. Callback is called when
-  /// the corresponding handles are gone out of scope.
-  absl::flat_hash_map<ActorID, std::function<void(const ActorID &)>>
-      actor_out_of_scope_callbacks_ GUARDED_BY(mutex_);
 };
 
 }  // namespace ray

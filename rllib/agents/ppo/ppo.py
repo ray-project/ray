@@ -134,7 +134,7 @@ def validate_config(config):
             "Using the simple minibatch optimizer. This will significantly "
             "reduce performance, consider simple_optimizer=False.")
     # Multi-gpu not supported for PyTorch and tf-eager.
-    elif config["framework"] in ["tfe", "torch"]:
+    elif config["framework"] in ["tf2", "tfe", "torch"]:
         config["simple_optimizer"] = True
 
 
@@ -192,7 +192,8 @@ def execution_plan(workers, config):
                 num_envs_per_worker=config["num_envs_per_worker"],
                 train_batch_size=config["train_batch_size"],
                 shuffle_sequences=config["shuffle_sequences"],
-                _fake_gpus=config["_fake_gpus"]))
+                _fake_gpus=config["_fake_gpus"],
+                framework=config.get("framework")))
 
     # Update KL after each round of training.
     train_op = train_op.for_each(lambda t: t[1]).for_each(UpdateKL(workers))

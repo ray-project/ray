@@ -20,8 +20,11 @@
 
 #include <signal.h>
 #include <stdlib.h>
+#include <unistd.h>
+
 #include <algorithm>
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
 
 #ifdef RAY_USE_GLOG
@@ -41,19 +44,23 @@
 namespace ray {
 
 #ifdef RAY_USE_GLOG
-struct StdoutLogger : public google::base::Logger {
+struct StreamLogger : public google::base::Logger {
+  std::ofstream out_;
+
+  std::ostream &out() { return out_.is_open() ? out_ : std::cout; }
+
   virtual void Write(bool /* should flush */, time_t /* timestamp */, const char *message,
                      int length) {
     // note: always flush otherwise it never shows up in raylet.out
-    std::cout << std::string(message, length) << std::flush;
+    out().write(message, length) << std::flush;
   }
 
-  virtual void Flush() { std::cout.flush(); }
+  virtual void Flush() { out().flush(); }
 
   virtual google::uint32 LogSize() { return 0; }
 };
 
-static StdoutLogger stdout_logger_singleton;
+static StreamLogger stream_logger_singleton;
 #endif
 
 // This is the default implementation of ray log,
@@ -178,16 +185,18 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
         app_name_without_path = app_file_name;
       }
     }
-    google::SetLogFilenameExtension((app_name_without_path + ".log.").c_str());
+    char buffer[80];
+    time_t rawtime;
+    time(&rawtime);
+    strftime(buffer, sizeof(buffer), "%Y%m%d-%H%M%S", localtime(&rawtime));
+    std::string path = dir_ends_with_slash + app_name_without_path + "." + buffer + "." +
+                       std::to_string(getpid()) + ".log";
+    stream_logger_singleton.out_.open(path.c_str(),
+                                      std::ios_base::app | std::ios_base::binary);
   }
   for (int lvl = 0; lvl < NUM_SEVERITIES; ++lvl) {
-    if (log_dir_.empty()) {
-      google::SetStderrLogging(lvl);
-      google::base::SetLogger(lvl, &stdout_logger_singleton);
-    } else {
-      std::string prefix = dir_ends_with_slash + LogSeverityNames[lvl] + '.';
-      google::SetLogDestination(lvl, prefix.c_str());
-    }
+    google::SetStderrLogging(lvl);
+    google::base::SetLogger(lvl, &stream_logger_singleton);
   }
 #endif
 }

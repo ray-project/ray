@@ -123,6 +123,16 @@ std::vector<ActorID> GcsActorScheduler::CancelOnNode(const ClientID &node_id) {
   return actor_ids;
 }
 
+void GcsActorScheduler::CancelOnLeasing(const ClientID &node_id,
+                                        const ActorID &actor_id) {
+  // NOTE: This method does not currently cancel the outstanding lease request.
+  // It only removes leasing information from the internal state so that
+  // RequestWorkerLease ignores the response from raylet.
+  auto node_it = node_to_actors_when_leasing_.find(node_id);
+  RAY_CHECK(node_it != node_to_actors_when_leasing_.end());
+  node_it->second.erase(actor_id);
+}
+
 ActorID GcsActorScheduler::CancelOnWorker(const ClientID &node_id,
                                           const WorkerID &worker_id) {
   // Remove the worker from creating map and return ID of the actor associated with the
@@ -169,11 +179,16 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
         // gcs_actor_manager will reconstruct it again.
         auto iter = node_to_actors_when_leasing_.find(node_id);
         if (iter != node_to_actors_when_leasing_.end()) {
-          // If the node is still available, the actor must be still in the leasing map as
-          // it is erased from leasing map only when `CancelOnNode` or the
-          // `RequestWorkerLeaseReply` is received from the node, so try lease again.
           auto actor_iter = iter->second.find(actor->GetActorID());
-          RAY_CHECK(actor_iter != iter->second.end());
+          if (actor_iter == iter->second.end()) {
+            // if actor is not in leasing state, it means it is cancelled.
+            RAY_LOG(INFO) << "Raylet granted a lease request, but the outstanding lease "
+                             "request for "
+                          << actor->GetActorID()
+                          << " has been already cancelled. The response will be ignored.";
+            return;
+          }
+
           if (status.ok()) {
             // Remove the actor from the leasing map as the reply is returned from the
             // remote node.
@@ -252,6 +267,10 @@ void GcsActorScheduler::HandleWorkerLeasedReply(
                   .emplace(leased_worker->GetWorkerID(), leased_worker)
                   .second);
     actor->UpdateAddress(leased_worker->GetAddress());
+    // Make sure to connect to the client before persisting actor info to GCS.
+    // Without this, there could be a possible race condition. Related issues:
+    // https://github.com/ray-project/ray/pull/9215/files#r449469320
+    GetOrConnectCoreWorkerClient(leased_worker->GetAddress());
     RAY_CHECK_OK(gcs_actor_table_.Put(actor->GetActorID(), actor->GetActorTableData(),
                                       [this, actor, leased_worker](Status status) {
                                         RAY_CHECK_OK(status);

@@ -43,6 +43,14 @@ enum TaskType {
   DRIVER_TASK = 3;
 }
 
+// Type of placement group strategy.
+enum PlacementStrategy {
+  // Packs Bundles close together inside processes or nodes as tight as possible
+  PACK = 0;
+  // Places Bundles across distinct nodes or processes as even as possible.
+  SPREAD = 1;
+}
+
 // Address of a worker or node manager.
 message Address {
   bytes raylet_id = 1;
@@ -126,6 +134,26 @@ message TaskSpec {
   ActorTaskSpec actor_task_spec = 15;
   // Number of times this task may be retried on worker failure.
   int32 max_retries = 16;
+}
+
+message Bundle {
+  message BundleIdentifier {
+    bytes placement_group_id = 1;
+    int32 bundle_index = 2;
+  }
+  BundleIdentifier bundle_id = 1;
+  map<string, double> unit_resources = 2;
+}
+
+message PlacementGroupSpec {
+  // ID of the PlacementGroup.
+  bytes placement_group_id = 1;
+  // The name of the placement group.
+  string name = 2;
+  // The array of the bundle in Placement Group.
+  repeated Bundle bundles = 3;
+  // The schedule strategy of this Placement Group.
+  PlacementStrategy strategy = 4;
 }
 
 message ObjectReference {
@@ -275,8 +303,8 @@ message CoreWorkerStats {
   string current_task_desc = 1;
   // Number of pending normal and actor tasks.
   int32 num_pending_tasks = 2;
-  // Number of object ids in local scope.
-  int32 num_object_ids_in_scope = 3;
+  // Number of object refs in local scope.
+  int32 num_object_refs_in_scope = 3;
   // String representation of the function descriptor of the currently executing task.
   string current_task_func_desc = 4;
   // IP address of the core worker.
@@ -303,4 +331,11 @@ message CoreWorkerStats {
   string actor_title = 16;
   // Local reference table.
   repeated ObjectRefInfo object_refs = 17;
+}
+
+message MetricPoint {
+  string metric_name = 1;
+  int64 timestamp = 2;
+  double value = 3;
+  map<string, string> tags = 4;
 }

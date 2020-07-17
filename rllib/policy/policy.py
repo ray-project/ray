@@ -154,14 +154,14 @@ class Policy(metaclass=ABCMeta):
             timestep (Optional[int]): The current (sampling) time step.
 
         Keyword Args:
-            kwargs: forward compatibility placeholder
+            kwargs: Forward compatibility.
 
         Returns:
             Tuple:
-                actions (TensorType): Single action.
-                state_outs (List[TensorType]): List of RNN state outputs,
+                - actions (TensorType): Single action.
+                - state_outs (List[TensorType]): List of RNN state outputs,
                     if any.
-                info (dict): Dictionary of extra features, if any.
+                - info (dict): Dictionary of extra features, if any.
         """
         prev_action_batch = None
         prev_reward_batch = None
@@ -217,7 +217,7 @@ class Policy(metaclass=ABCMeta):
     def compute_actions_from_trajectories(
             self,
             trajectories: List["Trajectory"],
-            other_trajectories: Dict[AgentID, "Trajectory"],
+            other_trajectories: Optional[Dict[AgentID, "Trajectory"]] = None,
             explore: bool = None,
             timestep: Optional[int] = None,
             **kwargs) -> \
@@ -226,14 +226,14 @@ class Policy(metaclass=ABCMeta):
 
         Note: This is an experimental API method.
 
-        Only used so far by the Sampler iff `_fast_sampling=True` (also only
-        supported for torch).
+        Only used so far by the Sampler iff `_use_trajectory_view_api=True`
+        (also only supported for torch).
 
         Args:
             trajectories (List[Trajectory]): A List of Trajectory data used
                 to create a view for the Model forward call.
-            other_trajectories (Dict[AgentID, Trajectory]): Optional dict
-                mapping AgentIDs to Trajectory objects.
+            other_trajectories (Optional[Dict[AgentID, Trajectory]]): Optional
+                dict mapping AgentIDs to Trajectory objects.
             explore (bool): Whether to pick an exploitation or exploration
                 action (default: None -> use self.config["explore"]).
             timestep (Optional[int]): The current (sampling) time step.

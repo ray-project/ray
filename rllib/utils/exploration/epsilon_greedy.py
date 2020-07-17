@@ -57,7 +57,7 @@ class EpsilonGreedy(Exploration):
             0, framework=framework, tf_name="timestep")
 
         # Build the tf-info-op.
-        if self.framework == "tf":
+        if self.framework in ["tf", "tfe"]:
             self._tf_info_op = self.get_info()
 
     @override(Exploration)
@@ -68,7 +68,7 @@ class EpsilonGreedy(Exploration):
                                explore: bool = True):
 
         q_values = action_distribution.inputs
-        if self.framework == "tf":
+        if self.framework in ["tf", "tfe"]:
             return self._get_tf_exploration_action_op(q_values, explore,
                                                       timestep)
         else:
@@ -111,9 +111,13 @@ class EpsilonGreedy(Exploration):
             ),
             false_fn=lambda: exploit_action)
 
-        assign_op = tf1.assign(self.last_timestep, timestep)
-        with tf1.control_dependencies([assign_op]):
+        if self.framework in ["tf2", "tfe"]:
+            self.last_timestep = timestep
             return action, tf.zeros_like(action, dtype=tf.float32)
+        else:
+            assign_op = tf1.assign(self.last_timestep, timestep)
+            with tf1.control_dependencies([assign_op]):
+                return action, tf.zeros_like(action, dtype=tf.float32)
 
     def _get_torch_exploration_action(self, q_values, explore, timestep):
         """Torch method to produce an epsilon exploration action.

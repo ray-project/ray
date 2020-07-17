@@ -222,18 +222,33 @@ bool NodeResources::operator==(const NodeResources &other) {
 
 std::string NodeResources::DebugString(StringIdMap string_to_in_map) const {
   std::stringstream buffer;
-  buffer << " {";
-  for (size_t i = 0; i < static_cast<size_t>(this->predefined_resources.size()); i++) {
+  buffer << " {\n";
+  for (size_t i = 0; i < this->predefined_resources.size(); i++) {
+    buffer << "\t";
+    switch (i) {
+    case CPU:
+      buffer << "CPU: ";
+      break;
+    case MEM:
+      buffer << "MEM: ";
+      break;
+    case GPU:
+      buffer << "GPU: ";
+      break;
+    case TPU:
+      buffer << "TPU: ";
+      break;
+    default:
+      RAY_CHECK(false) << "This should never happen.";
+      break;
+    }
     buffer << "(" << this->predefined_resources[i].total << ":"
-           << this->predefined_resources[i].available << ") ";
+           << this->predefined_resources[i].available << ")\n";
   }
-  buffer << "}";
-
-  buffer << "  {";
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
-    buffer << string_to_in_map.Get(it->first) << ":(" << it->second.total << ":"
-           << it->second.available << ") ";
+    buffer << "\t" << string_to_in_map.Get(it->first) << ":(" << it->second.total << ":"
+           << it->second.available << ")\n";
   }
   buffer << "}" << std::endl;
   return buffer.str();
@@ -273,18 +288,34 @@ bool NodeResourceInstances::operator==(const NodeResourceInstances &other) {
 
 std::string NodeResourceInstances::DebugString(StringIdMap string_to_int_map) const {
   std::stringstream buffer;
-  buffer << " {";
+  buffer << "{\n";
   for (size_t i = 0; i < this->predefined_resources.size(); i++) {
+    buffer << "\t";
+    switch (i) {
+    case CPU:
+      buffer << "CPU: ";
+      break;
+    case MEM:
+      buffer << "MEM: ";
+      break;
+    case GPU:
+      buffer << "GPU: ";
+      break;
+    case TPU:
+      buffer << "TPU: ";
+      break;
+    default:
+      RAY_CHECK(false) << "This should never happen.";
+      break;
+    }
     buffer << "(" << VectorToString(predefined_resources[i].total) << ":"
-           << VectorToString(this->predefined_resources[i].available) << ") ";
+           << VectorToString(this->predefined_resources[i].available) << ")\n";
   }
-  buffer << "}";
-
-  buffer << " {";
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
-    buffer << string_to_int_map.Get(it->first) << ":(" << VectorToString(it->second.total)
-           << ":" << VectorToString(it->second.available) << ") ";
+    buffer << "\t" << string_to_int_map.Get(it->first) << ":("
+           << VectorToString(it->second.total) << ":"
+           << VectorToString(it->second.available) << ")\n";
   }
   buffer << "}" << std::endl;
   return buffer.str();
@@ -763,10 +794,10 @@ void ClusterResourceScheduler::DeleteResource(const std::string &client_id_strin
 
 std::string ClusterResourceScheduler::DebugString(void) const {
   std::stringstream buffer;
-  buffer << "\n Local id: " << local_node_id_;
+  buffer << "\nLocal id: " << local_node_id_;
   buffer << " Local resources: " << local_resources_.DebugString(string_to_int_map_);
   for (auto &node : nodes_) {
-    buffer << "   node id: " << node.first;
+    buffer << "node id: " << node.first;
     buffer << node.second.DebugString(string_to_int_map_);
   }
   return buffer.str();
@@ -907,7 +938,7 @@ bool ClusterResourceScheduler::AllocateResourceInstances(
   }
 
   if (remaining_demand >= 1.) {
-    // Cannot satisfy a demand greater than one if no unit caapcity resource is available.
+    // Cannot satisfy a demand greater than one if no unit capacity resource is available.
     return false;
   }
 
@@ -1028,7 +1059,7 @@ std::vector<double> ClusterResourceScheduler::AddCPUResourceInstances(
       VectorDoubleToVectorFixedPoint(cpu_instances);
 
   if (cpu_instances.size() == 0) {
-    return cpu_instances;  // No oveerflow.
+    return cpu_instances;  // No overflow.
   }
   RAY_CHECK(nodes_.find(local_node_id_) != nodes_.end());
 
@@ -1051,6 +1082,40 @@ std::vector<double> ClusterResourceScheduler::SubtractCPUResourceInstances(
 
   auto underflow = SubtractAvailableResourceInstances(
       cpu_instances_fp, &local_resources_.predefined_resources[CPU]);
+  UpdateLocalAvailableResourcesFromResourceInstances();
+
+  return VectorFixedPointToVectorDouble(underflow);
+}
+
+std::vector<double> ClusterResourceScheduler::AddGPUResourceInstances(
+    std::vector<double> &gpu_instances) {
+  std::vector<FixedPoint> gpu_instances_fp =
+      VectorDoubleToVectorFixedPoint(gpu_instances);
+
+  if (gpu_instances.size() == 0) {
+    return gpu_instances;  // No overflow.
+  }
+  RAY_CHECK(nodes_.find(local_node_id_) != nodes_.end());
+
+  auto overflow = AddAvailableResourceInstances(
+      gpu_instances_fp, &local_resources_.predefined_resources[GPU]);
+  UpdateLocalAvailableResourcesFromResourceInstances();
+
+  return VectorFixedPointToVectorDouble(overflow);
+}
+
+std::vector<double> ClusterResourceScheduler::SubtractGPUResourceInstances(
+    std::vector<double> &gpu_instances) {
+  std::vector<FixedPoint> gpu_instances_fp =
+      VectorDoubleToVectorFixedPoint(gpu_instances);
+
+  if (gpu_instances.size() == 0) {
+    return gpu_instances;  // No underflow.
+  }
+  RAY_CHECK(nodes_.find(local_node_id_) != nodes_.end());
+
+  auto underflow = SubtractAvailableResourceInstances(
+      gpu_instances_fp, &local_resources_.predefined_resources[GPU]);
   UpdateLocalAvailableResourcesFromResourceInstances();
 
   return VectorFixedPointToVectorDouble(underflow);

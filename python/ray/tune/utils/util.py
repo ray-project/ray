@@ -97,9 +97,9 @@ class UtilMonitor(Thread):
 def pin_in_object_store(obj):
     """Deprecated, use ray.put(value, weakref=False) instead."""
 
-    obj_id = ray.put(obj, weakref=False)
-    _pinned_objects.append(obj_id)
-    return obj_id
+    obj_ref = ray.put(obj, weakref=False)
+    _pinned_objects.append(obj_ref)
+    return obj_ref
 
 
 def get_pinned_object(pinned_id):

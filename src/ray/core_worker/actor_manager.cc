@@ -93,15 +93,16 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
     RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
         actor_id, actor_notification_callback, nullptr));
 
-    RAY_CHECK(reference_counter_->SetDeleteCallback(
-        actor_creation_return_id,
-        [this, actor_id, is_owner_handle](const ObjectID &object_id) {
-          if (is_owner_handle) {
-            // If we own the actor and the actor handle is no longer in scope,
-            // terminate the actor. We do not do this if the GCS service is
-            // enabled since then the GCS will terminate the actor for us.
-            // TODO(sang): Remove this block once gcs_actor_service is enabled by default.
-            if (!RayConfig::instance().gcs_actor_service_enabled()) {
+    if (!RayConfig::instance().gcs_actor_service_enabled()) {
+      RAY_CHECK(reference_counter_->SetDeleteCallback(
+          actor_creation_return_id,
+          [this, actor_id, is_owner_handle](const ObjectID &object_id) {
+            if (is_owner_handle) {
+              // If we own the actor and the actor handle is no longer in scope,
+              // terminate the actor. We do not do this if the GCS service is
+              // enabled since then the GCS will terminate the actor for us.
+              // TODO(sang): Remove this block once gcs_actor_service is enabled by
+              // default.
               RAY_LOG(INFO) << "Owner's handle and creation ID " << object_id
                             << " has gone out of scope, sending message to actor "
                             << actor_id << " to do a clean exit.";
@@ -109,56 +110,49 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
               direct_actor_submitter_->KillActor(actor_id,
                                                  /*force_kill=*/false,
                                                  /*no_restart=*/false);
-            }
-          }
 
-          absl::MutexLock lock(&mutex_);
-          // TODO(swang): Erase the actor handle once all refs to the actor
-          // have gone out of scope. We cannot erase it here in case the
-          // language frontend receives another ref to the same actor. In this
-          // case, we must remember the last task counter that we sent to the
-          // actor.
-          // TODO(ekl) we can't unsubscribe to actor notifications here due to
-          // https://github.com/ray-project/ray/pull/6885
-          auto callback = actor_out_of_scope_callbacks_.extract(actor_id);
-          if (callback) {
-            callback.mapped()(actor_id);
-          }
-        }));
+              // TODO(swang): Erase the actor handle once all refs to the actor
+              // have gone out of scope. We cannot erase it here in case the
+              // language frontend receives another ref to the same actor. In this
+              // case, we must remember the last task counter that we sent to the
+              // actor.
+              // TODO(ekl) we can't unsubscribe to actor notifications here due to
+              // https://github.com/ray-project/ray/pull/6885
+            }
+          }));
+    }
   }
 
   return inserted;
 }
 
-void ActorManager::AddActorOutOfScopeCallback(
+void ActorManager::WaitForActorOutOfScope(
     const ActorID &actor_id,
-    std::function<void(const ActorID &)> actor_out_of_scope_callbacks) {
+    std::function<void(const ActorID &)> actor_out_of_scope_callback) {
   absl::MutexLock lock(&mutex_);
   auto it = actor_handles_.find(actor_id);
   if (it == actor_handles_.end()) {
-    actor_out_of_scope_callbacks(actor_id);
+    actor_out_of_scope_callback(actor_id);
   } else {
-    RAY_CHECK(actor_out_of_scope_callbacks_
-                  .emplace(actor_id, std::move(actor_out_of_scope_callbacks))
-                  .second);
+    // GCS actor manager will wait until the actor has been created before polling the
+    // owner. This should avoid any asynchronous problems.
+    auto callback = [actor_id, actor_out_of_scope_callback](const ObjectID &object_id) {
+      actor_out_of_scope_callback(actor_id);
+    };
+
+    // Returns true if the object was present and the callback was added. It might have
+    // already been evicted by the time we get this request, in which case we should
+    // respond immediately so the gcs server can destroy the actor.
+    const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
+    if (!reference_counter_->SetDeleteCallback(actor_creation_return_id, callback)) {
+      RAY_LOG(DEBUG) << "ActorID reference already gone for " << actor_id;
+      actor_out_of_scope_callback(actor_id);
+    }
   }
 }
 
 void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
                                                 const gcs::ActorTableData &actor_data) {
-  if (actor_data.state() == gcs::ActorTableData::PENDING) {
-    // The actor is being created and not yet ready, just ignore!
-  } else if (actor_data.state() == gcs::ActorTableData::RESTARTING) {
-    direct_actor_submitter_->DisconnectActor(actor_id, false);
-  } else if (actor_data.state() == gcs::ActorTableData::DEAD) {
-    direct_actor_submitter_->DisconnectActor(actor_id, true);
-    // We cannot erase the actor handle here because clients can still
-    // submit tasks to dead actors. This also means we defer unsubscription,
-    // otherwise we crash when bulk unsubscribing all actor handles.
-  } else {
-    direct_actor_submitter_->ConnectActor(actor_id, actor_data.address());
-  }
-
   const auto &actor_state = gcs::ActorTableData::ActorState_Name(actor_data.state());
   RAY_LOG(INFO) << "received notification on actor, state: " << actor_state
                 << ", actor_id: " << actor_id
@@ -166,7 +160,22 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
                 << ", port: " << actor_data.address().port() << ", worker_id: "
                 << WorkerID::FromBinary(actor_data.address().worker_id())
                 << ", raylet_id: "
-                << ClientID::FromBinary(actor_data.address().raylet_id());
+                << ClientID::FromBinary(actor_data.address().raylet_id())
+                << ", num_restarts: " << actor_data.num_restarts();
+
+  if (actor_data.state() == gcs::ActorTableData::PENDING) {
+    // The actor is being created and not yet ready, just ignore!
+  } else if (actor_data.state() == gcs::ActorTableData::RESTARTING) {
+    direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(), false);
+  } else if (actor_data.state() == gcs::ActorTableData::DEAD) {
+    direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(), true);
+    // We cannot erase the actor handle here because clients can still
+    // submit tasks to dead actors. This also means we defer unsubscription,
+    // otherwise we crash when bulk unsubscribing all actor handles.
+  } else {
+    direct_actor_submitter_->ConnectActor(actor_id, actor_data.address(),
+                                          actor_data.num_restarts());
+  }
 }
 
 std::vector<ObjectID> ActorManager::GetActorHandleIDsFromHandles() {

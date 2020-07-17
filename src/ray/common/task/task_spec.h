@@ -20,6 +20,13 @@ namespace ray {
 typedef ResourceSet SchedulingClassDescriptor;
 typedef int SchedulingClass;
 
+static inline rpc::ObjectReference GetReferenceForActorDummyObject(
+    const ObjectID &object_id) {
+  rpc::ObjectReference ref;
+  ref.set_object_id(object_id.Binary());
+  return ref;
+};
+
 /// Wrapper class of protobuf `TaskSpec`, see `common.proto` for details.
 /// TODO(ekl) we should consider passing around std::unique_ptrs<TaskSpecification>
 /// instead `const TaskSpecification`, since this class is actually mutable.
@@ -71,6 +78,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   ObjectID ArgId(size_t arg_index) const;
 
+  rpc::ObjectReference ArgRef(size_t arg_index) const;
+
   ObjectID ReturnId(size_t return_index) const;
 
   const uint8_t *ArgData(size_t arg_index) const;
@@ -109,11 +118,18 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \return The resources that are required to place a task on a node.
   const ResourceSet &GetRequiredPlacementResources() const;
 
+  /// Return the ObjectIDs of any dependencies passed by reference to this
+  /// task. This is recomputed each time, so it can be used if the task spec is
+  /// mutated.
+  ///
+  /// \return The recomputed IDs of the dependencies for the task.
+  std::vector<ObjectID> GetDependencyIds() const;
+
   /// Return the dependencies of this task. This is recomputed each time, so it can
   /// be used if the task spec is mutated.
   ///
   /// \return The recomputed dependencies for the task.
-  std::vector<ObjectID> GetDependencies() const;
+  std::vector<rpc::ObjectReference> GetDependencies() const;
 
   bool IsDriverTask() const;
 

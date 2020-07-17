@@ -283,7 +283,7 @@ class RolloutWorker(ParallelIteratorWorker):
         ParallelIteratorWorker.__init__(self, gen_rollouts, False)
 
         policy_config: TrainerConfigDict = policy_config or {}
-        if (tf1 and policy_config.get("framework") == "tfe"
+        if (tf1 and policy_config.get("framework") in ["tf2", "tfe"]
                 and not policy_config.get("no_eager_on_workers")
                 # This eager check is necessary for certain all-framework tests
                 # that use tf's eager_mode() context generator.
@@ -496,7 +496,9 @@ class RolloutWorker(ParallelIteratorWorker):
                 blackhole_outputs="simulation" in input_evaluation,
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
-                observation_fn=observation_fn)
+                observation_fn=observation_fn,
+                _use_trajectory_view_api=policy_config.get(
+                    "_use_trajectory_view_api", False))
             # Start the Sampler thread.
             self.sampler.start()
         else:
@@ -516,7 +518,9 @@ class RolloutWorker(ParallelIteratorWorker):
                 clip_actions=clip_actions,
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
-                observation_fn=observation_fn)
+                observation_fn=observation_fn,
+                _use_trajectory_view_api=policy_config.get(
+                    "_use_trajectory_view_api", False))
 
         self.input_reader: InputReader = input_creator(self.io_context)
         self.output_writer: OutputWriter = output_creator(self.io_context)
@@ -561,7 +565,8 @@ class RolloutWorker(ParallelIteratorWorker):
             batch = self.input_reader.next()
             steps_so_far += batch.count
             batches.append(batch)
-        batch = batches[0].concat_samples(batches)
+        batch = batches[0].concat_samples(batches) if len(batches) > 1 else \
+            batches[0]
 
         self.callbacks.on_sample_end(worker=self, samples=batch)
 
@@ -959,7 +964,7 @@ class RolloutWorker(ParallelIteratorWorker):
             if tf1 and tf1.executing_eagerly():
                 if hasattr(cls, "as_eager"):
                     cls = cls.as_eager()
-                    if policy_config["eager_tracing"]:
+                    if policy_config.get("eager_tracing"):
                         cls = cls.with_tracing()
                 elif not issubclass(cls, TFPolicy):
                     pass  # could be some other type of policy

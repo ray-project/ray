@@ -188,12 +188,12 @@ class JobInfoAccessor {
   virtual Status AsyncMarkFinished(const JobID &job_id,
                                    const StatusCallback &callback) = 0;
 
-  /// Subscribe to finished jobs.
+  /// Subscribe to job updates.
   ///
-  /// \param subscribe Callback that will be called each time when a job finishes.
+  /// \param subscribe Callback that will be called each time when a job updates.
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
-  virtual Status AsyncSubscribeToFinishedJobs(
+  virtual Status AsyncSubscribeAll(
       const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
       const StatusCallback &done) = 0;
 
@@ -573,6 +573,22 @@ class NodeInfoAccessor {
   ///
   /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
   virtual void AsyncResubscribe(bool is_pubsub_server_restarted) = 0;
+
+  /// Set the internal config string that will be used by all nodes started in the
+  /// cluster.
+  ///
+  /// \param config Map of config options
+  /// \return Status
+  virtual Status AsyncSetInternalConfig(
+      std::unordered_map<std::string, std::string> &config) = 0;
+
+  /// Get the internal config string from GCS.
+  ///
+  /// \param callback Processes a map of config options
+  /// \return Status
+  virtual Status AsyncGetInternalConfig(
+      const OptionalItemCallback<std::unordered_map<std::string, std::string>>
+          &callback) = 0;
 
  protected:
   NodeInfoAccessor() = default;

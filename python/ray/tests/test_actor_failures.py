@@ -167,6 +167,7 @@ def test_actor_restart(ray_init_with_task_retry_delay):
     results = [actor.increase.remote() for _ in range(100)]
     # Kill actor process, while the above task is still being executed.
     os.kill(pid, SIGKILL)
+    wait_for_pid_to_exit(pid)
     # Make sure that all tasks were executed in order before the actor's death.
     res = results.pop(0)
     i = 1
@@ -208,6 +209,7 @@ def test_actor_restart(ray_init_with_task_retry_delay):
     results = [actor.increase.remote() for _ in range(100)]
     pid = ray.get(actor.get_pid.remote())
     os.kill(pid, SIGKILL)
+    wait_for_pid_to_exit(pid)
     # The actor has exceeded max restarts, and this task should fail.
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(actor.increase.remote())
@@ -244,6 +246,7 @@ def test_actor_restart_with_retry(ray_init_with_task_retry_delay):
     results = [actor.increase.remote() for _ in range(100)]
     # Kill actor process, while the above task is still being executed.
     os.kill(pid, SIGKILL)
+    wait_for_pid_to_exit(pid)
     # Check that none of the tasks failed and the actor is restarted.
     seq = list(range(1, 101))
     results = ray.get(results)
@@ -264,6 +267,7 @@ def test_actor_restart_with_retry(ray_init_with_task_retry_delay):
     results = [actor.increase.remote() for _ in range(100)]
     pid = ray.get(actor.get_pid.remote())
     os.kill(pid, SIGKILL)
+    wait_for_pid_to_exit(pid)
     # The actor has exceeded max restarts, and this task should fail.
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(actor.increase.remote())
@@ -291,7 +295,7 @@ def test_actor_restart_on_node_failure(ray_start_cluster):
     ray.init(address=cluster.address)
 
     # Node to place the actor.
-    actor_node = cluster.add_node(num_cpus=1, _internal_config=config)
+    actor_node = cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
 
     @ray.remote(num_cpus=1, max_restarts=1, max_task_retries=-1)
@@ -313,7 +317,7 @@ def test_actor_restart_on_node_failure(ray_start_cluster):
     results = [actor.increase.remote() for _ in range(100)]
     # Kill actor node, while the above task is still being executed.
     cluster.remove_node(actor_node)
-    cluster.add_node(num_cpus=1, _internal_config=config)
+    cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
     # Check that none of the tasks failed and the actor is restarted.
     seq = list(range(1, 101))
@@ -442,7 +446,8 @@ def test_caller_task_reconstruction(ray_start_regular):
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_internal_config_map(
-            initial_reconstruction_timeout_milliseconds=1000)
+            initial_reconstruction_timeout_milliseconds=1000,
+            num_heartbeats_timeout=10)
     ],
     indirect=True)
 def test_multiple_actor_restart(ray_start_cluster_head):
@@ -454,14 +459,7 @@ def test_multiple_actor_restart(ray_start_cluster_head):
     num_actors_at_a_time = 3
     num_function_calls_at_a_time = 10
 
-    worker_nodes = [
-        cluster.add_node(
-            num_cpus=3,
-            _internal_config=json.dumps({
-                "initial_reconstruction_timeout_milliseconds": 200,
-                "num_heartbeats_timeout": 10,
-            })) for _ in range(num_nodes)
-    ]
+    worker_nodes = [cluster.add_node(num_cpus=3) for _ in range(num_nodes)]
 
     @ray.remote(max_restarts=-1, max_task_retries=-1)
     class SlowCounter:
@@ -479,7 +477,7 @@ def test_multiple_actor_restart(ray_start_cluster_head):
     # Wait for the actors to start up.
     time.sleep(1)
 
-    # This is a mapping from actor handles to object IDs returned by
+    # This is a mapping from actor handles to object refs returned by
     # methods on that actor.
     result_ids = collections.defaultdict(lambda: [])
 
@@ -819,10 +817,10 @@ def test_decorated_method(ray_start_regular):
 
     a = Actor.remote()
 
-    object_id, extra = a.decorated_method.remote(3, kwarg=3)
-    assert isinstance(object_id, ray.ObjectID)
+    object_ref, extra = a.decorated_method.remote(3, kwarg=3)
+    assert isinstance(object_ref, ray.ObjectRef)
     assert extra == {"kwarg": 3}
-    assert ray.get(object_id) == 7  # 2 * 3 + 1
+    assert ray.get(object_ref) == 7  # 2 * 3 + 1
 
 
 @pytest.mark.parametrize(

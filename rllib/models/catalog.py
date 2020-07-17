@@ -370,7 +370,7 @@ class ModelCatalog:
                     "used, however you specified a custom model {}".format(
                         model_cls))
 
-        if framework in ["tf", "tfe"]:
+        if framework in ["tf", "tfe", "tf2"]:
             v2_class = None
             # Try to get a default v2 model.
             if not model_config.get("custom_model"):

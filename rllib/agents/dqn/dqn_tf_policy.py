@@ -253,8 +253,12 @@ def build_q_losses(policy, model, _, train_batch):
 
 
 def adam_optimizer(policy, config):
-    return tf1.train.AdamOptimizer(
-        learning_rate=policy.cur_lr, epsilon=config["adam_epsilon"])
+    if policy.config["framework"] in ["tf2", "tfe"]:
+        return tf.keras.optimizers.Adam(
+            learning_rate=policy.cur_lr, epsilon=config["adam_epsilon"])
+    else:
+        return tf1.train.AdamOptimizer(
+            learning_rate=policy.cur_lr, epsilon=config["adam_epsilon"])
 
 
 def clip_gradients(policy, optimizer, loss):

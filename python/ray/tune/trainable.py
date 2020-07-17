@@ -175,7 +175,7 @@ class Trainable:
     Calling ``save()`` should save the training state of a trainable to disk,
     and ``restore(path)`` should restore a trainable to the given state.
 
-    Generally you only need to implement ``build``, ``step``,
+    Generally you only need to implement ``setup``, ``step``,
     ``save_checkpoint``, and ``load_checkpoint`` when subclassing Trainable.
 
     Other implementation methods that may be helpful to override are

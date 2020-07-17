@@ -13,7 +13,9 @@
 // limitations under the License.
 
 #include "ray/core_worker/lib/java/io_ray_runtime_gcs_GlobalStateAccessor.h"
+
 #include <jni.h>
+
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/lib/java/jni_utils.h"
 #include "ray/gcs/gcs_client/global_state_accessor.h"
@@ -77,6 +79,16 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetNodeResourceInfo(
   auto node_id = JavaByteArrayToId<ray::ClientID>(env, node_id_bytes);
   auto node_resource_info = gcs_accessor->GetNodeResourceInfo(node_id);
   return static_cast<jbyteArray>(NativeStringToJavaByteArray(env, node_resource_info));
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetInternalConfig(
+    JNIEnv *env, jobject o, jlong gcs_accessor_ptr) {
+  auto *gcs_accessor =
+      reinterpret_cast<ray::gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
+  auto internal_config_string = gcs_accessor->GetInternalConfig();
+  return static_cast<jbyteArray>(
+      NativeStringToJavaByteArray(env, internal_config_string));
 }
 
 JNIEXPORT jobject JNICALL

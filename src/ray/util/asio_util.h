@@ -21,7 +21,7 @@ inline void execute_after(boost::asio::io_context &io_context,
   auto timer = std::make_shared<boost::asio::deadline_timer>(io_context);
   timer->expires_from_now(boost::posix_time::milliseconds(delay_milliseconds));
   timer->async_wait([timer, fn](const boost::system::error_code &error) {
-    if (error != boost::system::errc::operation_canceled && fn) {
+    if (error != boost::asio::error::operation_aborted && fn) {
       fn();
     }
   });

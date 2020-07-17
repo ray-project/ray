@@ -168,7 +168,7 @@ class TorchPolicy(Policy):
     def compute_actions_from_trajectories(
             self,
             trajectories: List["Trajectory"],
-            other_trajectories: Dict[AgentID, "Trajectory"],
+            other_trajectories: Optional[Dict[AgentID, "Trajectory"]] = None,
             explore: bool = None,
             timestep: Optional[int] = None,
             **kwargs) -> \
