@@ -30,7 +30,6 @@ bool ClusterTaskManager::SchedulePendingTasks() {
     Task task = std::get<0>(work);
     auto request_resources =
         task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
-    int64_t violations = 0;
     std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
         request_resources, &violations);
     if (node_id_string.empty()) {
