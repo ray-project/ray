@@ -341,7 +341,6 @@ cc_library(
     deps = [
         ":object_manager_fbs",
         ":plasma_fbs",
-        ":platform_shims",
         ":ray_common",
         ":ray_util",
         "@arrow",
@@ -415,7 +414,6 @@ cc_library(
     deps = [
         ":ae",
         ":plasma_client",
-        ":platform_shims",
         "@com_github_google_glog//:glog",
     ],
 )
@@ -429,7 +427,6 @@ cc_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":plasma_store_server_lib",
-        ":platform_shims",
     ],
 )
 
@@ -1359,11 +1356,9 @@ cc_library(
         "//conditions:default": [],
     }),
     copts = COPTS,
-    includes = [] + select({
-        "@bazel_tools//src/conditions:windows": [
-            "src/shims/windows",
-        ],
-        "//conditions:default": [],
+    strip_include_prefix = select({
+        "@bazel_tools//src/conditions:windows": "src/shims/windows",
+        "//conditions:default": "",
     }),
     visibility = ["//visibility:public"],
 )
@@ -1387,7 +1382,6 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":platform_shims",
         ":sha256",
         "@boost//:asio",
         "@com_github_google_glog//:glog",

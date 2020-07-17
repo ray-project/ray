@@ -921,7 +921,8 @@ TEST(DirectTaskTransportTest, TestWorkerLeaseTimeout) {
   // Task 2 runs successfully on the second worker; the worker is returned due to the
   // timeout.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, ClientID::Nil()));
-  usleep(10 * 1000);  // Sleep for 10ms, causing the lease to time out.
+  std::this_thread::sleep_for(
+      std::chrono::milliseconds(10));  // Sleep for 10ms, causing the lease to time out.
   ASSERT_TRUE(worker_client->ReplyPushTask());
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);

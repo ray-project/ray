@@ -20,19 +20,25 @@
 #include "ray/object_manager/plasma/client.h"
 
 #include <fcntl.h>
+#ifndef _WIN32
 #include <netinet/in.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
+#ifndef _WIN32
 #include <strings.h>
-#include <sys/ioctl.h>
+#endif
 #ifdef _WIN32
 #include <Windows.h>
 #else
+#include <sys/ioctl.h>
 #include <sys/mman.h>
 #endif
 #include <sys/socket.h>
 #include <sys/types.h>
+#ifndef _WIN32
 #include <sys/un.h>
+#endif
 #include <time.h>
 #ifndef _WIN32
 #include <unistd.h>
