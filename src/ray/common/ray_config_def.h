@@ -251,6 +251,9 @@ RAY_CONFIG(int, num_workers_per_process_python, 1)
 /// Number of workers per Java worker process
 RAY_CONFIG(int, num_workers_per_process_java, 10)
 
+/// Number of workers per CPP worker process
+RAY_CONFIG(int, num_workers_per_process_cpp, 1)
+
 /// Maximum timeout in milliseconds within which a task lease must be renewed.
 RAY_CONFIG(int64_t, max_task_lease_timeout_ms, 60000)
 
