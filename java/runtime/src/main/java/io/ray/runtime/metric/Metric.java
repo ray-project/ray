@@ -48,7 +48,7 @@ public abstract class Metric {
         .map(TagKey::getTagKey).collect(Collectors.toList()), tagValues);
   }
 
-  private native void recordNative(long gaugePtr, double value,
+  private native void recordNative(long metricNativePointer, double value,
                                    List tagKeys,
                                    List<String> tagValues);
 
