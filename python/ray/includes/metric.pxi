@@ -70,7 +70,7 @@ cdef class Gauge(Metric):
             unit (string): measure unit of this metric.
             tag_keys (list): a list of tay keys in string format.
         """
-        super(Gauge, self).__init__(tag_keys)
+        super().__init__(tag_keys)
 
         self.metric.reset(
             new CGauge(
