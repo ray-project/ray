@@ -28,7 +28,7 @@
 /// List of predefined resources.
 enum PredefinedResources { CPU, MEM, GPU, TPU, PredefinedResources_MAX };
 // Specify resources that consists of unit-size instances.
-static std::unordered_set<int64_t> UnitInstanceResources{GPU, TPU};
+static std::unordered_set<int64_t> UnitInstanceResources{CPU, GPU, TPU};
 
 /// Helper function to compare two vectors with FixedPoint values.
 bool EqualVectors(const std::vector<FixedPoint> &v1, const std::vector<FixedPoint> &v2);
