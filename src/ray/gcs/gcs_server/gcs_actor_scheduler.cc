@@ -183,8 +183,14 @@ void GcsActorScheduler::ReleaseUnusedWorkers(
     // nodes do not have leased workers. In this case, GCS will send an empty list.
     auto workers_in_use =
         iter != node_to_workers.end() ? iter->second : std::vector<WorkerID>{};
-    RAY_UNUSED(lease_client->ReleaseUnusedWorkers(workers_in_use,
-                                                  release_unused_workers_callback));
+    const auto &status = lease_client->ReleaseUnusedWorkers(
+        workers_in_use, release_unused_workers_callback);
+    if (!status.ok()) {
+      RAY_LOG(WARNING) << "Failed to send ReleaseUnusedWorkers request to raylet because "
+                          "raylet may be dead, node id: "
+                       << node_id << ", status: " << status.ToString();
+      nodes_of_releasing_unused_workers_.erase(node_id);
+    }
   }
 }
 
