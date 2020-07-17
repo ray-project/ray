@@ -1119,7 +1119,7 @@ class AutoscalingTest(unittest.TestCase):
 
         runner.clear_history()
 
-        with open(os.path.join(file_mount_dir, "test.txt"), 'wb') as temp_file:
+        with open(os.path.join(file_mount_dir, "test.txt"), "wb") as temp_file:
             temp_file.write("hello".encode())
 
         autoscaler.update()
@@ -1166,7 +1166,7 @@ class AutoscalingTest(unittest.TestCase):
 
         runner.clear_history()
 
-        with open(os.path.join(file_mount_dir, "test.txt"), 'wb') as temp_file:
+        with open(os.path.join(file_mount_dir, "test.txt"), "wb") as temp_file:
             temp_file.write("hello".encode())
 
         autoscaler.update()

@@ -327,7 +327,9 @@ class StandardAutoscaler:
         applied_config_hash = node_tags.get(TAG_RAY_RUNTIME_CONFIG)
         applied_file_mounts_contents_hash = node_tags.get(
             TAG_RAY_FILE_MOUNTS_CONTENTS)
-        if applied_config_hash != self.runtime_hash or applied_file_mounts_contents_hash != self.file_mounts_contents_hash:
+        if (applied_config_hash != self.runtime_hash
+                or applied_file_mounts_contents_hash !=
+                self.file_mounts_contents_hash):
             logger.info("StandardAutoscaler: "
                         "{}: Runtime state is ({},{}), want ({},{})".format(
                             node_id, applied_config_hash,
