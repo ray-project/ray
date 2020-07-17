@@ -117,10 +117,10 @@ def log_to_cli(config):
         else:
             # cannot be default
             cli_logger.labeled_value(
-                "Key pair (head)", "{}",
+                "EC2 Key pair (head)", "{}",
                 config["head_node"]["KeyName"])
             cli_logger.labeled_value(
-                "Key pair (workers)", "{}",
+                "EC2 Key pair (workers)", "{}",
                 config["worker_nodes"]["KeyName"])
 
         if same_everywhere("SubnetIds"):
@@ -128,7 +128,7 @@ def log_to_cli(config):
                 "default": _log_info["head_subnet_src"] == "default"
             }
             cli_logger.labeled_value( # todo: handle plural vs singular?
-                "Subnets (head & workers)", "{}",
+                "VPC Subnets (head & workers)", "{}",
                 cli_logger.render_list(
                     config["head_node"]["SubnetIds"]),
                 _tags=tags)
@@ -137,7 +137,7 @@ def log_to_cli(config):
                 "default": _log_info["head_subnet_src"] == "default"
             }
             cli_logger.labeled_value(
-                "Subnets (head)", "{}",
+                "VPC Subnets (head)", "{}",
                 cli_logger.render_list(
                     config["head_node"]["SubnetIds"]),
                 _tags=tags)
@@ -146,7 +146,7 @@ def log_to_cli(config):
                 "default": _log_info["workers_subnet_src"] == "default"
             }
             cli_logger.labeled_value(
-                "Subnets (workers)", "{}",
+                "VPC Subnets (workers)", "{}",
                 cli_logger.render_list(
                     config["worker_nodes"]["SubnetIds"]),
                 _tags=tags)
@@ -156,7 +156,7 @@ def log_to_cli(config):
                 "default": _log_info["head_security_group_src"] == "default"
             }
             cli_logger.labeled_value(
-                "Security groups (head & workers)", "{}",
+                "EC2 Security groups (head & workers)", "{}",
                 cli_logger.render_list(
                     config["head_node"]["SecurityGroupIds"]),
                 _tags=tags)
@@ -165,7 +165,7 @@ def log_to_cli(config):
                 "default": _log_info["head_security_group_src"] == "default"
             }
             cli_logger.labeled_value( # todo: handle plural vs singular?
-                "Security groups (head)", "{}",
+                "EC2 Security groups (head)", "{}",
                 cli_logger.render_list(
                     config["head_node"]["SecurityGroupIds"]),
                 _tags=tags)
@@ -175,7 +175,7 @@ def log_to_cli(config):
                     _log_info["workers_security_group_src"] == "default"
             }
             cli_logger.labeled_value(
-                "Security groups (workers)", "{}",
+                "EC2 Security groups (workers)", "{}",
                 cli_logger.render_list(
                     config["worker_nodes"]["SecurityGroupIds"]),
                 _tags=tags)
@@ -185,7 +185,7 @@ def log_to_cli(config):
                 "dlami": _log_info["head_ami_src"] == "dlami"
             }
             cli_logger.labeled_value(
-                "AMI (head & workers)", "{}",
+                "EC2 AMI (head & workers)", "{}",
                 config["head_node"]["ImageId"],
                 _tags=tags)
         else:
@@ -193,7 +193,7 @@ def log_to_cli(config):
                 "dlami": _log_info["head_ami_src"] == "dlami"
             }
             cli_logger.labeled_value(
-                "AMI (head)", "{}",
+                "EC2 AMI (head)", "{}",
                 config["head_node"]["ImageId"],
                 _tags=tags)
 
@@ -201,7 +201,7 @@ def log_to_cli(config):
                 "dlami": _log_info["workers_ami_src"] == "dlami"
             }
             cli_logger.labeled_value(
-                "AMI (workers)", "{}",
+                "EC2 AMI (workers)", "{}",
                 config["worker_nodes"]["ImageId"],
                 _tags=tags)
 

@@ -264,7 +264,7 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name,
             cli_logger.verbose_error(e) # todo: add better exception info
             cli_logger.warning(
                 "Exception occured when stopping the cluster Ray runtime "
-                "(use -v to see).")
+                "(use -v to dump teardown exceptions).")
             cli_logger.warning(
                 "Ignoring the exception and "
                 "attempting to shut down the cluster nodes anyway.")
