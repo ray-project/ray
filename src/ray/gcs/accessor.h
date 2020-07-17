@@ -61,13 +61,21 @@ class ActorInfoAccessor {
       const std::string &name,
       const OptionalItemCallback<rpc::ActorTableData> &callback) = 0;
 
-  /// Create an actor to GCS asynchronously.
+  /// Register actor to GCS asynchronously.
   ///
   /// \param task_spec The specification for the actor creation task.
   /// \param callback Callback that will be called after the actor info is written to GCS.
   /// \return Status
-  virtual Status AsyncCreateActor(const TaskSpecification &task_spec,
-                                  const StatusCallback &callback) = 0;
+  virtual Status AsyncRegisterActor(const TaskSpecification &task_spec,
+                                    const StatusCallback &callback) = 0;
+
+  /// Report actor dependencies resolved to GCS asynchronously.
+  ///
+  /// \param task_spec The specification for the actor creation task.
+  /// \param callback Callback that will be called after the actor info is written to GCS.
+  /// \return Status
+  virtual Status AsyncReportActorDependenciesResolved(const TaskSpecification &task_spec,
+                                                      const StatusCallback &callback) = 0;
 
   /// Register an actor to GCS asynchronously.
   ///

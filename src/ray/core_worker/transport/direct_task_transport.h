@@ -54,7 +54,7 @@ class CoreWorkerDirectTaskSubmitter {
       std::shared_ptr<CoreWorkerMemoryStore> store,
       std::shared_ptr<TaskFinisherInterface> task_finisher, ClientID local_raylet_id,
       int64_t lease_timeout_ms,
-      std::function<Status(const TaskSpecification &, const gcs::StatusCallback &)>
+      std::function<Status(const TaskSpecification &, bool, const gcs::StatusCallback &)>
           actor_create_callback = nullptr,
       absl::optional<boost::asio::steady_timer> cancel_timer = absl::nullopt)
       : rpc_address_(rpc_address),
@@ -164,6 +164,7 @@ class CoreWorkerDirectTaskSubmitter {
   /// creation task has been accepted for submission, but the actor may not be created
   /// yet.
   std::function<Status(const TaskSpecification &task_spec,
+                       bool is_local_dependency_resolved,
                        const gcs::StatusCallback &callback)>
       actor_create_callback_;
 

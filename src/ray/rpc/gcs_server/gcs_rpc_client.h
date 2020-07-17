@@ -120,8 +120,13 @@ class GcsRpcClient {
   /// Get information of all jobs from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService, GetAllJobInfo, job_info_grpc_client_, )
 
-  /// Create actor via GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, CreateActor, actor_info_grpc_client_, )
+  /// Register actor via GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, RegisterActor,
+                             actor_info_grpc_client_, )
+
+  /// Report actor dependencies resolved to GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, ReportActorDependenciesResolved,
+                             actor_info_grpc_client_, )
 
   /// Get actor data from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, GetActorInfo, actor_info_grpc_client_, )

@@ -427,12 +427,18 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         new raylet::RayletClient(std::move(grpc_client)));
   };
 
-  std::function<Status(const TaskSpecification &, const gcs::StatusCallback &)>
+  std::function<Status(const TaskSpecification &, bool, const gcs::StatusCallback &)>
       actor_create_callback = nullptr;
   if (RayConfig::instance().gcs_actor_service_enabled()) {
     actor_create_callback = [this](const TaskSpecification &task_spec,
+                                   bool is_local_dependency_resolved,
                                    const gcs::StatusCallback &callback) {
-      return gcs_client_->Actors().AsyncCreateActor(task_spec, callback);
+      if (is_local_dependency_resolved) {
+        return gcs_client_->Actors().AsyncReportActorDependenciesResolved(task_spec,
+                                                                          callback);
+      } else {
+        return gcs_client_->Actors().AsyncRegisterActor(task_spec, callback);
+      }
     };
   }
 

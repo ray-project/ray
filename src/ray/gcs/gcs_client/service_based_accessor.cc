@@ -169,13 +169,30 @@ Status ServiceBasedActorInfoAccessor::AsyncGetByName(
   return Status::OK();
 }
 
-Status ServiceBasedActorInfoAccessor::AsyncCreateActor(
+Status ServiceBasedActorInfoAccessor::AsyncRegisterActor(
     const ray::TaskSpecification &task_spec, const ray::gcs::StatusCallback &callback) {
   RAY_CHECK(task_spec.IsActorCreationTask() && callback);
-  rpc::CreateActorRequest request;
+  rpc::RegisterActorRequest request;
   request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
-  client_impl_->GetGcsRpcClient().CreateActor(
-      request, [callback](const Status &, const rpc::CreateActorReply &reply) {
+  client_impl_->GetGcsRpcClient().RegisterActor(
+      request, [callback](const Status &, const rpc::RegisterActorReply &reply) {
+        auto status =
+            reply.status().code() == (int)StatusCode::OK
+                ? Status()
+                : Status(StatusCode(reply.status().code()), reply.status().message());
+        callback(status);
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedActorInfoAccessor::AsyncReportActorDependenciesResolved(
+    const ray::TaskSpecification &task_spec, const ray::gcs::StatusCallback &callback) {
+  RAY_CHECK(task_spec.IsActorCreationTask() && callback);
+  rpc::ReportActorDependenciesResolvedRequest request;
+  request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
+  client_impl_->GetGcsRpcClient().ReportActorDependenciesResolved(
+      request,
+      [callback](const Status &, const rpc::ReportActorDependenciesResolvedReply &reply) {
         auto status =
             reply.status().code() == (int)StatusCode::OK
                 ? Status()

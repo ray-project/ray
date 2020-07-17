@@ -82,8 +82,11 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
       const std::string &name,
       const OptionalItemCallback<rpc::ActorTableData> &callback) override;
 
-  Status AsyncCreateActor(const TaskSpecification &task_spec,
-                          const StatusCallback &callback) override;
+  Status AsyncRegisterActor(const TaskSpecification &task_spec,
+                            const StatusCallback &callback) override;
+
+  Status AsyncReportActorDependenciesResolved(const TaskSpecification &task_spec,
+                                              const StatusCallback &callback) override;
 
   Status AsyncRegister(const std::shared_ptr<rpc::ActorTableData> &data_ptr,
                        const StatusCallback &callback) override;

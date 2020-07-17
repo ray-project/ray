@@ -42,31 +42,32 @@ class GcsActor {
   explicit GcsActor(rpc::ActorTableData actor_table_data)
       : actor_table_data_(std::move(actor_table_data)) {}
 
-  /// Create a GcsActor by CreateActorRequest.
+  /// Create a GcsActor by TaskSpec.
   ///
-  /// \param request Contains the actor creation task specification.
-  explicit GcsActor(const ray::rpc::CreateActorRequest &request) {
-    RAY_CHECK(request.task_spec().type() == TaskType::ACTOR_CREATION_TASK);
-    const auto &actor_creation_task_spec = request.task_spec().actor_creation_task_spec();
+  /// \param task_spec Contains the actor creation task specification.
+  explicit GcsActor(const ray::rpc::TaskSpec &task_spec,
+                    bool local_dependency_resolved = true) {
+    RAY_CHECK(task_spec.type() == TaskType::ACTOR_CREATION_TASK);
+    const auto &actor_creation_task_spec = task_spec.actor_creation_task_spec();
     actor_table_data_.set_actor_id(actor_creation_task_spec.actor_id());
-    actor_table_data_.set_job_id(request.task_spec().job_id());
+    actor_table_data_.set_job_id(task_spec.job_id());
     actor_table_data_.set_max_restarts(actor_creation_task_spec.max_actor_restarts());
     actor_table_data_.set_num_restarts(0);
 
-    auto dummy_object =
-        TaskSpecification(request.task_spec()).ActorDummyObject().Binary();
+    auto dummy_object = TaskSpecification(task_spec).ActorDummyObject().Binary();
     actor_table_data_.set_actor_creation_dummy_object_id(dummy_object);
 
     actor_table_data_.set_is_detached(actor_creation_task_spec.is_detached());
     actor_table_data_.set_name(actor_creation_task_spec.name());
-    actor_table_data_.mutable_owner_address()->CopyFrom(
-        request.task_spec().caller_address());
+    actor_table_data_.mutable_owner_address()->CopyFrom(task_spec.caller_address());
 
     actor_table_data_.set_state(rpc::ActorTableData::PENDING);
-    actor_table_data_.mutable_task_spec()->CopyFrom(request.task_spec());
+    actor_table_data_.mutable_task_spec()->CopyFrom(task_spec);
 
     actor_table_data_.mutable_address()->set_raylet_id(ClientID::Nil().Binary());
     actor_table_data_.mutable_address()->set_worker_id(WorkerID::Nil().Binary());
+
+    actor_table_data_.set_local_dependency_resolved(local_dependency_resolved);
   }
 
   /// Get the node id on which this actor is created.
@@ -104,6 +105,9 @@ class GcsActor {
   /// Get the mutable ActorTableData of this actor.
   rpc::ActorTableData *GetMutableActorTableData();
 
+  /// Whether the local dependency of the actor creation task has been resolved.
+  bool IsLocalDependencyResolved() const;
+
  private:
   /// The actor meta data which contains the task specification as well as the state of
   /// the gcs actor and so on (see gcs.proto).
@@ -111,6 +115,8 @@ class GcsActor {
 };
 
 using RegisterActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;
+using ReportActorDependenciesResolvedCallback =
+    std::function<void(std::shared_ptr<GcsActor>)>;
 /// GcsActorManager is responsible for managing the lifecycle of all actors.
 /// This class is not thread-safe.
 class GcsActorManager : public rpc::ActorInfoHandler {
@@ -127,9 +133,14 @@ class GcsActorManager : public rpc::ActorInfoHandler {
 
   ~GcsActorManager() = default;
 
-  void HandleCreateActor(const rpc::CreateActorRequest &request,
-                         rpc::CreateActorReply *reply,
-                         rpc::SendReplyCallback send_reply_callback) override;
+  void HandleRegisterActor(const rpc::RegisterActorRequest &request,
+                           rpc::RegisterActorReply *reply,
+                           rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleReportActorDependenciesResolved(
+      const rpc::ReportActorDependenciesResolvedRequest &request,
+      rpc::ReportActorDependenciesResolvedReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   void HandleGetActorInfo(const rpc::GetActorInfoRequest &request,
                           rpc::GetActorInfoReply *reply,
@@ -171,8 +182,20 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// its state is `ALIVE`.
   /// \return Status::Invalid if this is a named actor and an actor with the specified
   /// name already exists. The callback will not be called in this case.
-  Status RegisterActor(const rpc::CreateActorRequest &request,
+  Status RegisterActor(const rpc::RegisterActorRequest &request,
                        RegisterActorCallback callback);
+
+  /// Register actor asynchronously.
+  ///
+  /// \param request Contains the meta info to create the actor.
+  /// \param callback Will be invoked after the actor is created successfully or be
+  /// invoked immediately if the actor is already registered to `registered_actors_` and
+  /// its state is `ALIVE`.
+  /// \return Status::Invalid if this is a named actor and an actor with the specified
+  /// name already exists. The callback will not be called in this case.
+  Status ReportActorDependenciesResolved(
+      const rpc::ReportActorDependenciesResolvedRequest &request,
+      ReportActorDependenciesResolvedCallback callback);
 
   /// Get the actor ID for the named actor. Returns nil if the actor was not found.
   /// \param name The name of the detached actor to look up.
@@ -277,6 +300,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> registered_actors_;
   /// Maps actor names to their actor ID for lookups by name.
   absl::flat_hash_map<std::string, ActorID> named_actors_;
+  /// The actors which dependencies have not yet been resolved.
+  absl::flat_hash_map<ClientID, absl::flat_hash_map<WorkerID, ActorID>>
+      unresolved_actors_;
   /// The pending actors which will not be scheduled until there's a resource change.
   std::vector<std::shared_ptr<GcsActor>> pending_actors_;
   /// Map contains the relationship of node and created actors. Each node ID
