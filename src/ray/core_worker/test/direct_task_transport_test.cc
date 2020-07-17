@@ -1037,6 +1037,147 @@ TEST(DirectTaskTransportTest, TestKillResolvingTask) {
   ASSERT_EQ(task_finisher->num_tasks_failed, 1);
 }
 
+TEST(DirectTaskTransportTest, TestPipeliningConcurrentWorkerLeases) {
+  rpc::Address address;
+  auto raylet_client = std::make_shared<MockRayletClient>();
+  auto worker_client = std::make_shared<MockWorkerClient>();
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto factory = [&](const rpc::Address &addr) { return worker_client; };
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+
+  // Set max_tasks_in_flight_per_worker to a value larger than 1 to enable the pipelining
+  // of task submissions. This is done by passing a max_tasks_in_flight_per_worker
+  // parameter to the CoreWorkerDirectTaskSubmitter.
+  uint32_t max_tasks_in_flight_per_worker = 10;
+  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
+                                          task_finisher, ClientID::Nil(), kLongTimeout,
+                                          max_tasks_in_flight_per_worker);
+
+  // Prepare 20 tasks and save them in a vector.
+  std::unordered_map<std::string, double> empty_resources;
+  ray::FunctionDescriptor empty_descriptor =
+      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
+  std::vector<TaskSpecification> tasks;
+  for (int i = 1; i <= 20; i++) {
+    tasks.push_back(BuildTaskSpec(empty_resources, empty_descriptor));
+  }
+  ASSERT_EQ(tasks.size(), 20);
+
+  // Submit the 20 tasks and check that one worker is requested.
+  for (auto task : tasks) {
+    ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  }
+  ASSERT_EQ(raylet_client->num_workers_requested, 1);
+
+  // First 10 tasks are pushed; worker 2 is requested.
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, ClientID::Nil()));
+  ASSERT_EQ(worker_client->callbacks.size(), 10);
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+
+  // Last 10 tasks are pushed; no more workers are requested.
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, ClientID::Nil()));
+  ASSERT_EQ(worker_client->callbacks.size(), 20);
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+
+  for (int i = 1; i <= 20; i++) {
+    ASSERT_FALSE(worker_client->callbacks.empty());
+    ASSERT_TRUE(worker_client->ReplyPushTask());
+    // No worker should be returned until all the tasks that were submitted to it have
+    // been completed. In our case, the first worker should only be returned after the
+    // 10th task has been executed. The second worker should only be returned at the end,
+    // or after the 20th task has been executed.
+    if (i < 10) {
+      ASSERT_EQ(raylet_client->num_workers_returned, 0);
+    } else if (i >= 10 && i < 20) {
+      ASSERT_EQ(raylet_client->num_workers_returned, 1);
+    } else if (i == 20) {
+      ASSERT_EQ(raylet_client->num_workers_returned, 2);
+    }
+  }
+
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  ASSERT_EQ(raylet_client->num_workers_returned, 2);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 20);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+
+  ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
+}
+
+TEST(DirectTaskTransportTest, TestPipeliningReuseWorkerLease) {
+  rpc::Address address;
+  auto raylet_client = std::make_shared<MockRayletClient>();
+  auto worker_client = std::make_shared<MockWorkerClient>();
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto factory = [&](const rpc::Address &addr) { return worker_client; };
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+
+  // Set max_tasks_in_flight_per_worker to a value larger than 1 to enable the pipelining
+  // of task submissions. This is done by passing a max_tasks_in_flight_per_worker
+  // parameter to the CoreWorkerDirectTaskSubmitter.
+  uint32_t max_tasks_in_flight_per_worker = 10;
+  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
+                                          task_finisher, ClientID::Nil(), kLongTimeout,
+                                          max_tasks_in_flight_per_worker);
+
+  // prepare 30 tasks and save them in a vector
+  std::unordered_map<std::string, double> empty_resources;
+  ray::FunctionDescriptor empty_descriptor =
+      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
+  std::vector<TaskSpecification> tasks;
+  for (int i = 0; i < 30; i++) {
+    tasks.push_back(BuildTaskSpec(empty_resources, empty_descriptor));
+  }
+  ASSERT_EQ(tasks.size(), 30);
+
+  // Submit the 30 tasks and check that one worker is requested
+  for (auto task : tasks) {
+    ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  }
+  ASSERT_EQ(raylet_client->num_workers_requested, 1);
+
+  // Task 1-10 are pushed, and a new worker is requested.
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, ClientID::Nil()));
+  ASSERT_EQ(worker_client->callbacks.size(), 10);
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  // The lease is not cancelled, as there is more work to do
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+
+  // Task 1-10 finish, Tasks 11-20 are scheduled on the same worker.
+  for (int i = 1; i <= 10; i++) {
+    ASSERT_TRUE(worker_client->ReplyPushTask());
+  }
+  ASSERT_EQ(worker_client->callbacks.size(), 10);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+
+  // Task 11-20 finish, Tasks 21-30 are scheduled on the same worker.
+  for (int i = 11; i <= 20; i++) {
+    ASSERT_TRUE(worker_client->ReplyPushTask());
+  }
+  ASSERT_EQ(worker_client->callbacks.size(), 10);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 1);
+  ASSERT_TRUE(raylet_client->ReplyCancelWorkerLease());
+
+  // Tasks 21-30 finish, and the worker is finally returned.
+  for (int i = 21; i <= 30; i++) {
+    ASSERT_TRUE(worker_client->ReplyPushTask());
+  }
+  ASSERT_EQ(raylet_client->num_workers_returned, 1);
+
+  // The second lease request is returned immediately.
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, ClientID::Nil()));
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
+  ASSERT_EQ(raylet_client->num_workers_returned, 2);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 30);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 1);
+  ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
