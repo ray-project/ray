@@ -62,6 +62,15 @@ std::unique_ptr<CoreWorkerProcess> CoreWorkerProcess::instance_;
 
 thread_local std::weak_ptr<CoreWorker> CoreWorkerProcess::current_core_worker_;
 
+boost::asio::io_service CoreWorkerProcess::stats_io_service_;
+
+boost::asio::io_service::work CoreWorkerProcess::stats_io_work_(
+    CoreWorkerProcess::stats_io_service_);
+
+std::shared_ptr<std::thread> CoreWorkerProcess::stats_thread_;
+
+absl::Mutex CoreWorkerProcess::stats_mutex_;
+
 void CoreWorkerProcess::Initialize(const CoreWorkerOptions &options) {
   RAY_CHECK(!instance_) << "The process is already initialized for core worker.";
   instance_ = std::unique_ptr<CoreWorkerProcess>(new CoreWorkerProcess(options));
@@ -239,6 +248,24 @@ void CoreWorkerProcess::RunTaskExecutionLoop() {
   instance_.reset();
 }
 
+void CoreWorkerProcess::RunStatsService() {
+  absl::MutexLock lock(&CoreWorkerProcess::stats_mutex_);
+  if (CoreWorkerProcess::stats_thread_) {
+    return;
+  }
+  // Initialize stats.
+  const ray::stats::TagsType global_tags = {{ray::stats::ComponentKey, "core_worker"},
+                                            {ray::stats::VersionKey, "0.9.0.dev0"}};
+
+  ray::stats::Init(global_tags, RayConfig::instance().metrics_agent_port(),
+                   CoreWorkerProcess::stats_io_service_);
+  CoreWorkerProcess::stats_thread_.reset(
+      new std::thread([]() { CoreWorkerProcess::stats_io_service_.run(); }));
+  // TODO(lingxuan.zlx): Should shutdown if opencensus disabled.
+  // Detach to avoid crash when process exit.
+  CoreWorkerProcess::stats_thread_->detach();
+}
+
 CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_id)
     : options_(options),
       get_call_site_(RayConfig::instance().record_ref_creation_sites()
@@ -295,15 +322,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   // NOTE(edoakes): any initialization depending on RayConfig must happen after this line.
   RayConfig::instance().initialize(internal_config);
-
-  // Initialize stats.
-  const ray::stats::TagsType global_tags = {
-      {ray::stats::ComponentKey, "core_worker"},
-      {ray::stats::VersionKey, "0.9.0.dev0"},
-      {ray::stats::NodeAddressKey, options_.node_ip_address}};
-
-  ray::stats::Init(global_tags, RayConfig::instance().metrics_agent_port(), io_service_);
-
+  CoreWorkerProcess::RunStatsService();
   // Start RPC server after all the task receivers are properly initialized and we have
   // our assigned port from the raylet.
   core_worker_server_ = std::unique_ptr<rpc::GrpcServer>(

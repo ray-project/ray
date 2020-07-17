@@ -200,6 +200,8 @@ class CoreWorkerProcess {
   /// Start receiving and executing tasks.
   static void RunTaskExecutionLoop();
 
+  static void RunStatsService();
+
   // The destructor is not to be used as a public API, but it's required by smart
   // pointers.
   ~CoreWorkerProcess();
@@ -255,6 +257,14 @@ class CoreWorkerProcess {
 
   /// To protect accessing the `workers_` map.
   mutable absl::Mutex worker_map_mutex_;
+
+  static boost::asio::io_service stats_io_service_;
+
+  static boost::asio::io_service::work stats_io_work_;
+
+  static std::shared_ptr<std::thread> stats_thread_;
+
+  static absl::Mutex stats_mutex_;
 };
 
 /// The root class that contains all the core and language-independent functionalities
