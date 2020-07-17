@@ -17,6 +17,10 @@
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_client/service_based_accessor.h"
 
+extern "C" {
+#include "hiredis/hiredis.h"
+}
+
 namespace ray {
 namespace gcs {
 

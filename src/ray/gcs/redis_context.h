@@ -28,11 +28,6 @@
 #include "ray/gcs/redis_async_context.h"
 #include "ray/protobuf/gcs.pb.h"
 
-extern "C" {
-#include "hiredis/async.h"
-#include "hiredis/hiredis.h"
-}
-
 struct redisContext;
 struct redisAsyncContext;
 
@@ -289,6 +284,10 @@ class RedisContext {
   boost::asio::io_service &io_service() { return io_service_; }
 
  private:
+  // These functions avoid problems with dependence on hiredis headers with clang-cl.
+  static int GetRedisError(redisContext *context);
+  static void FreeRedisReply(void *reply);
+
   boost::asio::io_service &io_service_;
   redisContext *context_;
   std::unique_ptr<RedisAsyncContext> redis_async_context_;
@@ -352,12 +351,12 @@ std::shared_ptr<CallbackReply> RedisContext::RunSync(
                                id.Data(), id.Size());
   }
   if (redis_reply == nullptr) {
-    RAY_LOG(INFO) << "Run redis command failed , err is " << context_->err;
+    RAY_LOG(INFO) << "Run redis command failed , err is " << GetRedisError(context_);
     return nullptr;
   } else {
     std::shared_ptr<CallbackReply> callback_reply =
         std::make_shared<CallbackReply>(reinterpret_cast<redisReply *>(redis_reply));
-    freeReplyObject(redis_reply);
+    FreeRedisReply(redis_reply);
     return callback_reply;
   }
 }

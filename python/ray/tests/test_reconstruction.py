@@ -13,6 +13,7 @@ def test_cached_object(ray_start_cluster):
     config = json.dumps({
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_timeout_milliseconds": 100,
+        "initial_reconstruction_timeout_milliseconds": 200,
     })
     cluster = ray_start_cluster
     # Head node with no resources.
@@ -56,6 +57,7 @@ def test_reconstruction_cached_dependency(ray_start_cluster,
         "raylet_heartbeat_timeout_milliseconds": 100,
         "lineage_pinning_enabled": 1 if reconstruction_enabled else 0,
         "free_objects_period_milliseconds": -1,
+        "initial_reconstruction_timeout_milliseconds": 200,
     })
     cluster = ray_start_cluster
     # Head node with no resources.
@@ -109,6 +111,7 @@ def test_basic_reconstruction(ray_start_cluster, reconstruction_enabled):
         "raylet_heartbeat_timeout_milliseconds": 100,
         "lineage_pinning_enabled": 1 if reconstruction_enabled else 0,
         "free_objects_period_milliseconds": -1,
+        "initial_reconstruction_timeout_milliseconds": 200,
     })
     cluster = ray_start_cluster
     # Head node with no resources.
@@ -152,6 +155,7 @@ def test_basic_reconstruction_put(ray_start_cluster, reconstruction_enabled):
         "raylet_heartbeat_timeout_milliseconds": 100,
         "lineage_pinning_enabled": 1 if reconstruction_enabled else 0,
         "free_objects_period_milliseconds": -1,
+        "initial_reconstruction_timeout_milliseconds": 200,
     })
     cluster = ray_start_cluster
     # Head node with no resources.
@@ -198,6 +202,7 @@ def test_multiple_downstream_tasks(ray_start_cluster, reconstruction_enabled):
         "raylet_heartbeat_timeout_milliseconds": 100,
         "lineage_pinning_enabled": 1 if reconstruction_enabled else 0,
         "free_objects_period_milliseconds": -1,
+        "initial_reconstruction_timeout_milliseconds": 200,
     })
     cluster = ray_start_cluster
     # Head node with no resources.
@@ -252,6 +257,7 @@ def test_reconstruction_chain(ray_start_cluster, reconstruction_enabled):
         "raylet_heartbeat_timeout_milliseconds": 100,
         "lineage_pinning_enabled": 1 if reconstruction_enabled else 0,
         "free_objects_period_milliseconds": -1,
+        "initial_reconstruction_timeout_milliseconds": 200,
     })
     cluster = ray_start_cluster
     # Head node with no resources.
@@ -298,6 +304,7 @@ def test_reconstruction_stress(ray_start_cluster):
         "free_objects_period_milliseconds": -1,
         "max_direct_call_object_size": 100,
         "task_retry_delay_ms": 100,
+        "initial_reconstruction_timeout_milliseconds": 200,
     })
     cluster = ray_start_cluster
     # Head node with no resources.

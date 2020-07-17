@@ -445,6 +445,10 @@ Status RedisContext::PublishAsync(const std::string &channel, const std::string 
   return RunArgvAsync(args, redisCallback);
 }
 
+void RedisContext::FreeRedisReply(void *reply) { return freeReplyObject(reply); }
+
+int RedisContext::GetRedisError(redisContext *context) { return context->err; }
+
 }  // namespace gcs
 
 }  // namespace ray

@@ -822,12 +822,12 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   // wait for objects being deleted, so wait a while for plasma store
   // to process the command.
   usleep(200 * 1000);
-  ASSERT_TRUE(core_worker.Get(ids, 0, &results).IsTimedOut());
+  ASSERT_TRUE(core_worker.Get(ids, 0, &results).ok());
   // Since array2 has been deleted from the plasma store, the Get should
-  // timeout and return nullptr for all results.
+  // return UnreconstructableError for all results.
   ASSERT_EQ(results.size(), 2);
-  ASSERT_TRUE(!results[0]);
-  ASSERT_TRUE(!results[1]);
+  ASSERT_TRUE(results[0]->IsException());
+  ASSERT_TRUE(results[1]->IsException());
 }
 
 TEST_F(SingleNodeTest, TestNormalTaskLocal) {
