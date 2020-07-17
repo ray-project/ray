@@ -468,35 +468,36 @@ TEST_F(GcsActorSchedulerTest, TestReschedule) {
 }
 
 TEST_F(GcsActorSchedulerTest, TestReleaseUnusedWorkers) {
+  // Test the case that GCS won't send `RequestWorkerLease` request to the raylet,
+  // if there is still a pending `ReleaseUnusedWorkers` request.
+
+  // Add a node to the cluster.
   auto node = Mocker::GenNodeInfo();
   auto node_id = ClientID::FromBinary(node->node_id());
   gcs_node_manager_->AddNode(node);
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
-  // Release unused workers.
-  // Before the requested reply arrives, the actor bound to the leased worker can be
-  // created successfully. The actor not bound to the leased worker needs to wait for the
-  // reply to arrive.
+  // Send a `ReleaseUnusedWorkers` request to the node.
   std::unordered_map<ClientID, std::vector<WorkerID>> node_to_workers;
   node_to_workers[node_id].push_back({WorkerID::FromRandom()});
   gcs_actor_scheduler_->ReleaseUnusedWorkers(node_to_workers);
   ASSERT_EQ(1, raylet_client_->num_release_unused_workers);
   ASSERT_EQ(1, raylet_client_->release_callbacks.size());
 
-  // Actor is not tied to a leased worker.
+  // Schedule an actor which is not tied to a worker, this should invoke the
+  // `LeaseWorkerFromNode` method.
+  // But since the `ReleaseUnusedWorkers` request hasn't finished, `GcsActorScheduler`
+  // won't send `RequestWorkerLease` request to node immediately. But instead, it will
+  // invoke the `RetryLeasingWorkerFromNode` to retry later.
   auto job_id = JobID::FromInt(1);
   auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
   auto actor = std::make_shared<gcs::GcsActor>(create_actor_request);
-
-  // The reply of ReleaseUnusedWorkers request is not returned, so the gcs actor scheduler
-  // will try to lease worker several times to reach the upper limit we set in
-  // MockedGcsActorScheduler::RetryLeasingWorkerFromNode function.
   gcs_actor_scheduler_->Schedule(actor);
   ASSERT_EQ(2, gcs_actor_scheduler_->num_retry_leasing_count_);
   ASSERT_EQ(raylet_client_->num_workers_requested, 0);
 
-  // The reply of the ReleaseUnusedWorkers request arrives and the gcs actor scheduler can
-  // select a node to send RequestWorkerLease request.
+  // When `GcsActorScheduler` receives the `ReleaseUnusedWorkers` reply, it will send
+  // out the `RequestWorkerLease` request.
   ASSERT_TRUE(raylet_client_->ReplyReleaseUnusedWorkers());
   gcs_actor_scheduler_->TryLeaseWorkerFromNodeAgain(actor, node);
   ASSERT_EQ(raylet_client_->num_workers_requested, 1);
