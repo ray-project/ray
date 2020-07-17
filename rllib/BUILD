@@ -1975,7 +1975,7 @@ py_test(
     tags = ["examples", "examples_T"],
     size = "medium",
     srcs = ["examples/two_step_game.py"],
-    args = ["--as-test", "--torch", "--stop-reward=6", "--run=QMIX"]
+    args = ["--as-test", "--torch", "--stop-reward=7", "--run=QMIX"]
 )
 
 py_test(

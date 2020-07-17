@@ -84,8 +84,8 @@ if __name__ == "__main__":
             "rollout_fragment_length": 4,
             "train_batch_size": 32,
             "exploration_config": {
-                "epsilon_timesteps": 40000,
-                "final_epsilon": 0.02,
+                "epsilon_timesteps": 5000,
+                "final_epsilon": 0.05,
             },
             "num_workers": 0,
             "mixer": grid_search([None, "qmix", "vdn"]),
