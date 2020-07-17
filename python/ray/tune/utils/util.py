@@ -2,7 +2,7 @@ import copy
 import logging
 import threading
 import time
-from collections import defaultdict, deque, Mapping
+from collections import defaultdict, deque, Mapping, Sequence
 from threading import Thread
 
 import numpy as np
@@ -228,10 +228,10 @@ def unflattened_lookup(flat_key, lookup, delimiter="/", default=None):
         try:
             if isinstance(base, Mapping):
                 base = base[key]
-            # Explicitly use list here, we don't want
-            # to flatten arrays or tuples.
-            elif isinstance(base, list):
+            elif isinstance(base, Sequence):
                 base = base[int(key)]
+            else:
+                raise KeyError()
         except KeyError:
             return default
     return base
