@@ -52,11 +52,16 @@ def test_cached_object(ray_start_cluster):
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
 def test_reconstruction_cached_dependency(ray_start_cluster,
                                           reconstruction_enabled):
-    config = json.dumps({
+    config = {
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_timeout_milliseconds": 100,
         "initial_reconstruction_timeout_milliseconds": 200,
-    })
+    }
+    # Workaround to reset the config to the default value.
+    if not reconstruction_enabled:
+        config["lineage_pinning_enabled"] = 0
+    config = json.dumps(config)
+
     cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(
@@ -107,11 +112,16 @@ def test_reconstruction_cached_dependency(ray_start_cluster,
 
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
 def test_basic_reconstruction(ray_start_cluster, reconstruction_enabled):
-    config = json.dumps({
+    config = {
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_timeout_milliseconds": 100,
         "initial_reconstruction_timeout_milliseconds": 200,
-    })
+    }
+    # Workaround to reset the config to the default value.
+    if not reconstruction_enabled:
+        config["lineage_pinning_enabled"] = 0
+    config = json.dumps(config)
+
     cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(
@@ -152,11 +162,16 @@ def test_basic_reconstruction(ray_start_cluster, reconstruction_enabled):
 
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
 def test_basic_reconstruction_put(ray_start_cluster, reconstruction_enabled):
-    config = json.dumps({
+    config = {
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_timeout_milliseconds": 100,
         "initial_reconstruction_timeout_milliseconds": 200,
-    })
+    }
+    # Workaround to reset the config to the default value.
+    if not reconstruction_enabled:
+        config["lineage_pinning_enabled"] = 0
+    config = json.dumps(config)
+
     cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(
@@ -204,11 +219,16 @@ def test_basic_reconstruction_put(ray_start_cluster, reconstruction_enabled):
 
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
 def test_multiple_downstream_tasks(ray_start_cluster, reconstruction_enabled):
-    config = json.dumps({
+    config = {
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_timeout_milliseconds": 100,
         "initial_reconstruction_timeout_milliseconds": 200,
-    })
+    }
+    # Workaround to reset the config to the default value.
+    if not reconstruction_enabled:
+        config["lineage_pinning_enabled"] = 0
+    config = json.dumps(config)
+
     cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(
@@ -260,11 +280,16 @@ def test_multiple_downstream_tasks(ray_start_cluster, reconstruction_enabled):
 
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
 def test_reconstruction_chain(ray_start_cluster, reconstruction_enabled):
-    config = json.dumps({
+    config = {
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_timeout_milliseconds": 100,
         "initial_reconstruction_timeout_milliseconds": 200,
-    })
+    }
+    # Workaround to reset the config to the default value.
+    if not reconstruction_enabled:
+        config["lineage_pinning_enabled"] = 0
+    config = json.dumps(config)
+
     cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(

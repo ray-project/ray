@@ -390,6 +390,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           absl::MutexLock lock(&mutex_);
           to_resubmit_.push_back(std::make_pair(current_time_ms() + delay, spec));
         } else {
+          RAY_LOG(ERROR) << "Resubmitting task that produced lost plasma object: "
+                         << spec.DebugString();
           RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
         }
       },
