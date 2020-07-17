@@ -62,7 +62,8 @@ void GrpcServer::Run() {
     if (port_ > 0) {
       break;
     }
-    usleep(RayConfig::instance().grpc_server_retry_timeout_milliseconds() * 1000);
+    std::this_thread::sleep_for(std::chrono::milliseconds(
+        RayConfig::instance().grpc_server_retry_timeout_milliseconds()));
     num_retries--;
   }
 
