@@ -104,8 +104,7 @@ class CoreWorkerClientInterface {
   /// \param[in] callback The callback function that handles reply.
   /// \return if the rpc call succeeds
   virtual void AssignTask(const AssignTaskRequest &request,
-                                 const ClientCallback<AssignTaskReply> &callback) {
-  }
+                          const ClientCallback<AssignTaskReply> &callback) {}
 
   /// Push an actor task directly from worker to worker.
   ///
@@ -114,16 +113,13 @@ class CoreWorkerClientInterface {
   /// task for execution immediately.
   /// \param[in] callback The callback function that handles reply.
   /// \return if the rpc call succeeds
-  virtual void PushActorTask(std::unique_ptr<PushTaskRequest> request,
-                             bool skip_queue,
-                             const ClientCallback<PushTaskReply> &callback) {
-  }
+  virtual void PushActorTask(std::unique_ptr<PushTaskRequest> request, bool skip_queue,
+                             const ClientCallback<PushTaskReply> &callback) {}
 
   /// Similar to PushActorTask, but sets no ordering constraint. This is used to
   /// push non-actor tasks directly to a worker.
   virtual void PushNormalTask(std::unique_ptr<PushTaskRequest> request,
-                              const ClientCallback<PushTaskReply> &callback) {
-  }
+                              const ClientCallback<PushTaskReply> &callback) {}
 
   /// Notify a wait has completed for direct actor call arguments.
   ///
@@ -132,58 +128,45 @@ class CoreWorkerClientInterface {
   /// \return if the rpc call succeeds
   virtual void DirectActorCallArgWaitComplete(
       const DirectActorCallArgWaitCompleteRequest &request,
-      const ClientCallback<DirectActorCallArgWaitCompleteReply> &callback) {
-  }
+      const ClientCallback<DirectActorCallArgWaitCompleteReply> &callback) {}
 
   /// Ask the owner of an object about the object's current status.
-  virtual void GetObjectStatus(
-      const GetObjectStatusRequest &request,
-      const ClientCallback<GetObjectStatusReply> &callback) {
-  }
+  virtual void GetObjectStatus(const GetObjectStatusRequest &request,
+                               const ClientCallback<GetObjectStatusReply> &callback) {}
 
   /// Ask the actor's owner to reply when the actor has gone out of scope.
   virtual void WaitForActorOutOfScope(
       const WaitForActorOutOfScopeRequest &request,
-      const ClientCallback<WaitForActorOutOfScopeReply> &callback) {
-  }
+      const ClientCallback<WaitForActorOutOfScopeReply> &callback) {}
 
   /// Notify the owner of an object that the object has been pinned.
   virtual void WaitForObjectEviction(
       const WaitForObjectEvictionRequest &request,
-      const ClientCallback<WaitForObjectEvictionReply> &callback) {
-  }
+      const ClientCallback<WaitForObjectEvictionReply> &callback) {}
 
   /// Tell this actor to exit immediately.
   virtual void KillActor(const KillActorRequest &request,
-                         const ClientCallback<KillActorReply> &callback) {
-  }
+                         const ClientCallback<KillActorReply> &callback) {}
 
   virtual void CancelTask(const CancelTaskRequest &request,
-                          const ClientCallback<CancelTaskReply> &callback) {
-  }
+                          const ClientCallback<CancelTaskReply> &callback) {}
 
-  virtual void RemoteCancelTask(
-      const RemoteCancelTaskRequest &request,
-      const ClientCallback<RemoteCancelTaskReply> &callback) {
-  }
+  virtual void RemoteCancelTask(const RemoteCancelTaskRequest &request,
+                                const ClientCallback<RemoteCancelTaskReply> &callback) {}
 
   virtual void GetCoreWorkerStats(
       const GetCoreWorkerStatsRequest &request,
-      const ClientCallback<GetCoreWorkerStatsReply> &callback) {
-  }
+      const ClientCallback<GetCoreWorkerStatsReply> &callback) {}
 
   virtual void LocalGC(const LocalGCRequest &request,
-                       const ClientCallback<LocalGCReply> &callback) {
+                       const ClientCallback<LocalGCReply> &callback) {}
+
+  virtual void WaitForRefRemoved(const WaitForRefRemovedRequest &request,
+                                 const ClientCallback<WaitForRefRemovedReply> &callback) {
   }
 
-  virtual void WaitForRefRemoved(
-      const WaitForRefRemovedRequest &request,
-      const ClientCallback<WaitForRefRemovedReply> &callback) {
-  }
-
-  virtual void PlasmaObjectReady(
-      const PlasmaObjectReadyRequest &request,
-      const ClientCallback<PlasmaObjectReadyReply> &callback) {
+  virtual void PlasmaObjectReady(const PlasmaObjectReadyRequest &request,
+                                 const ClientCallback<PlasmaObjectReadyReply> &callback) {
   }
 
   virtual ~CoreWorkerClientInterface(){};
@@ -210,7 +193,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, AssignTask, grpc_client_, override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, DirectActorCallArgWaitComplete, grpc_client_,
-                    override)
+                         override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, GetObjectStatus, grpc_client_, override)
 
@@ -220,7 +203,8 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, RemoteCancelTask, grpc_client_, override)
 
-  VOID_RPC_CLIENT_METHOD(CoreWorkerService, WaitForActorOutOfScope, grpc_client_, override)
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, WaitForActorOutOfScope, grpc_client_,
+                         override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, WaitForObjectEviction, grpc_client_, override)
 
@@ -239,8 +223,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
       // processing this request. We could also set it to max_finished_seq_no_,
       // but we just set it to the default of -1 to avoid taking the lock.
       request->set_client_processed_up_to(-1);
-      INVOKE_RPC_CALL(CoreWorkerService, PushTask, *request, callback,
-                      grpc_client_);
+      INVOKE_RPC_CALL(CoreWorkerService, PushTask, *request, callback, grpc_client_);
     }
 
     {
