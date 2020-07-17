@@ -1173,6 +1173,10 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                                const ActorCreationOptions &actor_creation_options,
                                const std::string &extension_data,
                                ActorID *return_actor_id) {
+  if (actor_creation_options.is_asyncio && options_.is_local_mode) {
+    return Status::NotImplemented(
+        "Async actor is currently not supported for the local mode");
+  }
   const int next_task_index = worker_context_.GetNextTaskIndex();
   const ActorID actor_id =
       ActorID::Of(worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(),
