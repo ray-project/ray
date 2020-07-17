@@ -1117,6 +1117,7 @@ def statistics(address):
     "--redis_password",
     required=False,
     type=str,
+    default=ray_constants.REDIS_DEFAULT_PASSWORD,
     help="Connect to ray with redis_password.")
 def memory(address, redis_password):
     """Print object references held in a Ray cluster."""
