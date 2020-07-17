@@ -178,12 +178,13 @@ class GumbelSoftmax(TFActionDistribution):
         assert temperature >= 0.0
         self.dist = tfp.distributions.RelaxedOneHotCategorical(
             temperature=temperature, logits=inputs)
+        self.probs = tf.nn.softmax(self.dist._distribution.logits)
         super().__init__(inputs, model)
 
     @override(ActionDistribution)
     def deterministic_sample(self):
         # Return the dist object's prob values.
-        return self.dist._distribution.probs
+        return self.probs
 
     @override(ActionDistribution)
     def logp(self, x):

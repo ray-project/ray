@@ -2257,6 +2257,7 @@ void NodeManager::MarkObjectsAsFailed(const ErrorType &error_type,
       status = store_client_.Seal(object_id);
     }
     if (!status.ok() && !status.IsObjectExists()) {
+      RAY_LOG(INFO) << "Marking plasma object failed " << object_id;
       // If we failed to save the error code, log a warning and push an error message
       // to the driver.
       std::ostringstream stream;
@@ -2759,7 +2760,7 @@ bool NodeManager::FinishAssignedTask(Worker &worker) {
     }
   } else {
     // (See design_docs/task_states.rst for the state transition diagram.)
-    RAY_CHECK(local_queues_.RemoveTask(task_id, &task));
+    RAY_CHECK(local_queues_.RemoveTask(task_id, &task)) << task_id;
 
     // Release task's resources. The worker's lifetime resources are still held.
     auto const &task_resources = worker.GetTaskResourceIds();
@@ -3022,76 +3023,130 @@ void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id
 
 void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
                                            const ObjectID &required_object_id) {
-  // Retrieve the task spec in order to re-execute the task.
-  RAY_CHECK_OK(gcs_client_->Tasks().AsyncGet(
-      task_id,
-      /*callback=*/
-      [this, required_object_id, task_id](
-          Status status, const boost::optional<TaskTableData> &task_data) {
-        if (task_data) {
-          // The task was in the GCS task table. Use the stored task spec to
-          // re-execute the task.
-          ResubmitTask(Task(task_data->task()), required_object_id);
-          return;
-        }
-        // The task was not in the GCS task table. It must therefore be in the
-        // lineage cache.
-        if (lineage_cache_.ContainsTask(task_id)) {
-          // Use a copy of the cached task spec to re-execute the task.
-          const Task task = lineage_cache_.GetTaskOrDie(task_id);
-          ResubmitTask(task, required_object_id);
-        } else {
-          RAY_LOG(WARNING)
-              << "Metadata of task " << task_id
-              << " not found in either GCS or lineage cache. It may have been evicted "
-              << "by the redis LRU configuration. Consider increasing the memory "
-                 "allocation via "
-              << "ray.init(redis_max_memory=<max_memory_bytes>).";
-          MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {required_object_id},
-                              JobID::Nil());
-        }
-      }));
+  // Get the owner's address.
+  rpc::Address owner_addr;
+  bool has_owner =
+      task_dependency_manager_.GetOwnerAddress(required_object_id, &owner_addr);
+  if (has_owner) {
+    if (!RayConfig::instance().object_pinning_enabled()) {
+      // LRU eviction is enabled. The object may still be in scope, but we
+      // weren't able to fetch the value within the timeout, so the value has
+      // most likely been evicted. Mark the object as unreachable.
+      MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {required_object_id},
+                          JobID::Nil());
+    } else {
+      RAY_LOG(DEBUG) << "Required object " << required_object_id
+                     << " fetch timed out, asking owner "
+                     << WorkerID::FromBinary(owner_addr.worker_id());
+      // The owner's address exists. Poll the owner to check if the object is
+      // still in scope. If not, mark the object as failed.
+      // TODO(swang): If the owner has died, we could also mark the object as
+      // failed as soon as we hear about the owner's failure from the GCS,
+      // avoiding the raylet's reconstruction timeout.
+      auto client = std::unique_ptr<rpc::CoreWorkerClient>(
+          new rpc::CoreWorkerClient(owner_addr, client_call_manager_));
+
+      rpc::GetObjectStatusRequest request;
+      request.set_object_id(required_object_id.Binary());
+      request.set_owner_worker_id(owner_addr.worker_id());
+      RAY_CHECK_OK(client->GetObjectStatus(
+          request, [this, required_object_id](Status status,
+                                              const rpc::GetObjectStatusReply &reply) {
+            if (!status.ok() ||
+                reply.status() == rpc::GetObjectStatusReply::OUT_OF_SCOPE ||
+                reply.status() == rpc::GetObjectStatusReply::FREED) {
+              // The owner is gone, or the owner replied that the object has
+              // gone out of scope (this is an edge case in the distributed ref
+              // counting protocol where a borrower dies before it can notify
+              // the owner of another borrower), or the object value has been
+              // freed. Store an error in the local plasma store so that an
+              // exception will be thrown when the worker tries to get the
+              // value.
+              MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE,
+                                  {required_object_id}, JobID::Nil());
+            }
+            // Do nothing if the owner replied that the object is available. The
+            // object manager will continue trying to fetch the object, and this
+            // handler will get triggered again if the object is still
+            // unavailable after another timeout.
+          }));
+    }
+  } else {
+    // We do not have the owner's address. This is either an actor creation
+    // task or a randomly generated ObjectID. Try to look up the spec for the
+    // actor creation task.
+    // TODO(swang): The task lookup is only needed when the GCS actor service is
+    // disabled. Once the GCS actor service is enabled by default, we can
+    // immediately mark the object as failed if there is no ownership
+    // information.
+    RAY_LOG(DEBUG) << "Required object " << required_object_id
+                   << " fetch timed out, checking task table";
+    RAY_CHECK_OK(
+        gcs_client_->Tasks().AsyncGet(
+            task_id,
+            /*callback=*/
+            [this, required_object_id, task_id](
+                Status status, const boost::optional<TaskTableData> &task_data) {
+              if (task_data) {
+                // The task was in the GCS task table. Use the stored task spec to
+                // re-execute the task.
+                ResubmitTask(Task(task_data->task()), required_object_id);
+                return;
+              }
+              // The task was not in the GCS task table. It must therefore be in the
+              // lineage cache.
+              if (lineage_cache_.ContainsTask(task_id)) {
+                // Use a copy of the cached task spec to re-execute the task.
+                const Task task = lineage_cache_.GetTaskOrDie(task_id);
+                ResubmitTask(task, required_object_id);
+              } else {
+                // No actor creation task spec was found. This is most likely a
+                // randomly generated ObjectID whose value is unreachable. Mark the
+                // object as failed.
+                RAY_LOG(WARNING)
+                    << "Ray cannot get the value of ObjectIDs that are generated "
+                       "randomly (ObjectID.from_random()) or out-of-band "
+                       "(ObjectID.from_binary(...)) because Ray "
+                       "does not know which task will create them. "
+                       "If this was not how your object ID was generated, please file an "
+                       "issue "
+                       "at https://github.com/ray-project/ray/issues/";
+                MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE,
+                                    {required_object_id}, JobID::Nil());
+              }
+            }));
+  }
 }
 
 void NodeManager::ResubmitTask(const Task &task, const ObjectID &required_object_id) {
   RAY_LOG(DEBUG) << "Attempting to resubmit task "
                  << task.GetTaskSpecification().TaskId();
 
-  // Actors should only be recreated if the first initialization failed or if
-  // the most recent instance of the actor failed.
-  if (task.GetTaskSpecification().IsActorCreationTask()) {
-    const auto &actor_id = task.GetTaskSpecification().ActorCreationId();
-    const auto it = actor_registry_.find(actor_id);
-    if (it != actor_registry_.end() && it->second.GetState() == ActorTableData::ALIVE) {
-      // If the actor is still alive, then do not resubmit the task. If the
-      // actor actually is dead and a result is needed, then reconstruction
-      // for this task will be triggered again.
-      RAY_LOG(WARNING)
-          << "Actor creation task resubmitted, but the actor is still alive.";
-      return;
-    }
-  }
-
-  // Driver tasks cannot be reconstructed. If this is a driver task, push an
-  // error to the driver and do not resubmit it.
-  if (task.GetTaskSpecification().IsDriverTask()) {
-    // TODO(rkn): Define this constant somewhere else.
-    std::string type = "put_reconstruction";
-    std::ostringstream error_message;
-    error_message << "The task with ID " << task.GetTaskSpecification().TaskId()
-                  << " is a driver task and so the object created by ray.put "
-                  << "could not be reconstructed.";
-    auto error_data_ptr =
-        gcs::CreateErrorTableData(type, error_message.str(), current_time_ms(),
-                                  task.GetTaskSpecification().JobId());
-    RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
-    MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {required_object_id},
-                        task.GetTaskSpecification().JobId());
+  // All failure handling is handled by the owner, except for actor creation
+  // tasks.
+  if (!task.GetTaskSpecification().IsActorCreationTask()) {
     return;
   }
 
-  RAY_LOG(INFO) << "Resubmitting task " << task.GetTaskSpecification().TaskId()
-                << " on node " << self_node_id_;
+  // When the GCS is disabled, the raylet is responsible for restarting the actor.
+  if (RayConfig::instance().gcs_actor_service_enabled()) {
+    return;
+  }
+
+  // Actors should only be recreated if the first initialization failed or if
+  // the most recent instance of the actor failed.
+  const auto &actor_id = task.GetTaskSpecification().ActorCreationId();
+  const auto it = actor_registry_.find(actor_id);
+  if (it != actor_registry_.end() && it->second.GetState() == ActorTableData::ALIVE) {
+    // If the actor is still alive, then do not resubmit the task. If the
+    // actor actually is dead and a result is needed, then reconstruction
+    // for this task will be triggered again.
+    RAY_LOG(WARNING) << "Actor creation task resubmitted, but the actor is still alive.";
+    return;
+  }
+
+  RAY_LOG(INFO) << "Resubmitting actor creation task "
+                << task.GetTaskSpecification().TaskId() << " on node " << self_node_id_;
   // The task may be reconstructed. Submit it with an empty lineage, since any
   // uncommitted lineage must already be in the lineage cache. At this point,
   // the task should not yet exist in the local scheduling queue. If it does,
