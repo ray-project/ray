@@ -3,9 +3,6 @@ import logging
 import os
 import subprocess
 import time
-import tempfile
-import selectors
-import re
 
 from threading import Thread
 
@@ -21,6 +18,7 @@ import colorful as cf
 logger = logging.getLogger(__name__)
 
 READY_CHECK_INTERVAL = 5
+
 
 class NodeUpdater:
     """A process for syncing files and running init commands on a node."""
@@ -62,10 +60,8 @@ class NodeUpdater:
         self.auth_config = auth_config
 
     def run(self):
-        cli_logger.old_info(
-            logger,
-            "{}Updating to {}",
-            self.log_prefix, self.runtime_hash)
+        cli_logger.old_info(logger, "{}Updating to {}", self.log_prefix,
+                            self.runtime_hash)
 
         try:
             with LogTimer(self.log_prefix +
@@ -81,20 +77,17 @@ class NodeUpdater:
                 self.node_id, {TAG_RAY_NODE_STATUS: STATUS_UPDATE_FAILED})
             cli_logger.error("New status: {}", cf.bold(STATUS_UPDATE_FAILED))
 
-            cli_logger.old_error(
-                logger,
-                "{}Error executing: {}\n",
-                self.log_prefix, error_str)
+            cli_logger.old_error(logger, "{}Error executing: {}\n",
+                                 self.log_prefix, error_str)
 
             cli_logger.error("!!!")
             if hasattr(e, "cmd"):
                 cli_logger.error(
                     "Setup command `{}` failed with exit code {}. stderr:",
-                    cf.bold(e.cmd),
-                    e.returncode)
+                    cf.bold(e.cmd), e.returncode)
             else:
                 cli_logger.verbose_error(vars(e), _no_format=True)
-                cli_logger.error(str(e)) # todo: handle this better somehow?
+                cli_logger.error(str(e))  # todo: handle this better somehow?
             # todo: print stderr here
             cli_logger.error("!!!")
             cli_logger.newline()
@@ -117,14 +110,12 @@ class NodeUpdater:
         nolog_paths = []
         if cli_logger.verbosity == 0:
             nolog_paths = [
-                "~/ray_bootstrap_key.pem",
-                "~/ray_bootstrap_config.yaml"
+                "~/ray_bootstrap_key.pem", "~/ray_bootstrap_config.yaml"
             ]
 
         # Rsync file mounts
         with cli_logger.group(
-            "Processing file mounts",
-            _numbered=("[]", 2, 5)):
+                "Processing file mounts", _numbered=("[]", 2, 5)):
             for remote_path, local_path in self.file_mounts.items():
                 assert os.path.exists(local_path), local_path
                 if os.path.isdir(local_path):
@@ -133,42 +124,34 @@ class NodeUpdater:
                     if not remote_path.endswith("/"):
                         remote_path += "/"
 
-                with LogTimer(self.log_prefix +
-                              "Synced {} to {}".format(
-                                local_path, remote_path)):
+                with LogTimer(self.log_prefix + "Synced {} to {}".format(
+                        local_path, remote_path)):
                     self.cmd_runner.run("mkdir -p {}".format(
                         os.path.dirname(remote_path)))
                     sync_cmd(local_path, remote_path)
 
                     if remote_path not in nolog_paths:
                         # todo: timed here?
-                        cli_logger.print(
-                            "{} from {}",
-                            cf.bold(remote_path),
-                            cf.bold(local_path))
+                        cli_logger.print("{} from {}", cf.bold(remote_path),
+                                         cf.bold(local_path))
 
     def wait_ready(self, deadline):
         with cli_logger.group(
-            "Waiting for SSH to become available",
-            _numbered=("[]", 1, 5)):
+                "Waiting for SSH to become available", _numbered=("[]", 1, 5)):
             with LogTimer(self.log_prefix + "Got remote shell"):
-                cli_logger.old_info(
-                    logger, "{}Waiting for remote shell...", self.log_prefix)
+                cli_logger.old_info(logger, "{}Waiting for remote shell...",
+                                    self.log_prefix)
 
                 cli_logger.print("Running `{}` as a test.", cf.bold("uptime"))
-                first_conn_refused_time = None
                 while time.time() < deadline and \
                         not self.provider.is_terminated(self.node_id):
                     try:
-                        cli_logger.old_debug(
-                            logger,
-                            "{}Waiting for remote shell...",
-                            self.log_prefix)
+                        cli_logger.old_debug(logger,
+                                             "{}Waiting for remote shell...",
+                                             self.log_prefix)
 
                         self.cmd_runner.run("uptime")
-                        cli_logger.old_debug(
-                            logger,
-                            "Uptime succeeded.")
+                        cli_logger.old_debug(logger, "Uptime succeeded.")
                         cli_logger.success("Success.")
                         return True
                     except Exception as e:
@@ -179,13 +162,11 @@ class NodeUpdater:
 
                         cli_logger.print(
                             "SSH still not available {}, "
-                            "retrying in {} seconds.",
-                            cf.gray(retry_str),
+                            "retrying in {} seconds.", cf.gray(retry_str),
                             cf.bold(str(READY_CHECK_INTERVAL)))
-                        cli_logger.old_debug(
-                            logger,
-                            "{}Node not up, retrying: {}",
-                            self.log_prefix, retry_str)
+                        cli_logger.old_debug(logger,
+                                             "{}Node not up, retrying: {}",
+                                             self.log_prefix, retry_str)
 
                         time.sleep(READY_CHECK_INTERVAL)
 
@@ -207,10 +188,9 @@ class NodeUpdater:
             cli_logger.print(
                 "Configuration already up to date, "
                 "skipping file mounts, initalization and setup commands.")
-            cli_logger.old_info(
-                logger,
-                "{}{} already up-to-date, skip to ray start",
-                self.log_prefix, self.node_id)
+            cli_logger.old_info(logger,
+                                "{}{} already up-to-date, skip to ray start",
+                                self.log_prefix, self.node_id)
         else:
             cli_logger.print(
                 "Updating cluster configuration.",
@@ -228,8 +208,8 @@ class NodeUpdater:
 
             if self.initialization_commands:
                 with cli_logger.group(
-                    "Running initialization commands",
-                    _numbered=("[]", 3, 5)):  # todo: fix command numbering
+                        "Running initialization commands",
+                        _numbered=("[]", 3, 5)):  # todo: fix command numbering
                     with LogTimer(
                             self.log_prefix + "Initialization commands",
                             show_status=True):
@@ -246,8 +226,8 @@ class NodeUpdater:
 
             if self.setup_commands:
                 with cli_logger.group(
-                    "Running setup commands",
-                    _numbered=("[]", 4, 5)): # todo: fix command numbering
+                        "Running setup commands",
+                        _numbered=("[]", 4, 5)):  # todo: fix command numbering
                     with LogTimer(
                             self.log_prefix + "Setup commands",
                             show_status=True):
@@ -260,46 +240,35 @@ class NodeUpdater:
                                 cmd_to_print = cf.bold(cmd)
 
                             cli_logger.print(
-                                cmd_to_print,
-                                _numbered=("()", i, total))
+                                cmd_to_print, _numbered=("()", i, total))
 
                             self.cmd_runner.run(cmd)
             else:
                 cli_logger.print(
-                    "No setup commands to run.",
-                    _numbered=("[]", 4, 5))
+                    "No setup commands to run.", _numbered=("[]", 4, 5))
 
         with cli_logger.group(
-            "Starting the Ray runtime",
-            _numbered=("[]", 5, 5)):
+                "Starting the Ray runtime", _numbered=("[]", 5, 5)):
             with LogTimer(
                     self.log_prefix + "Ray start commands", show_status=True):
                 for cmd in self.ray_start_commands:
                     self.cmd_runner.run(cmd)
 
     def rsync_up(self, source, target):
-        cli_logger.old_info(
-            logger,
-            "{}Syncing {} to {}...",
-            self.log_prefix,
-            source, target)
+        cli_logger.old_info(logger, "{}Syncing {} to {}...", self.log_prefix,
+                            source, target)
 
         self.cmd_runner.run_rsync_up(source, target)
-        cli_logger.verbose(
-            "`rsync`ed {} (local) to {} (remote)",
-            cf.bold(source), cf.bold(target))
+        cli_logger.verbose("`rsync`ed {} (local) to {} (remote)",
+                           cf.bold(source), cf.bold(target))
 
     def rsync_down(self, source, target):
-        cli_logger.old_info(
-            logger,
-            "{}Syncing {} from {}...",
-            self.log_prefix,
-            source, target)
+        cli_logger.old_info(logger, "{}Syncing {} from {}...", self.log_prefix,
+                            source, target)
 
         self.cmd_runner.run_rsync_down(source, target)
-        cli_logger.verbose(
-            "`rsync`ed {} (remote) to {} (local)",
-            cf.bold(source), cf.bold(target))
+        cli_logger.verbose("`rsync`ed {} (remote) to {} (local)",
+                           cf.bold(source), cf.bold(target))
 
 
 class NodeUpdaterThread(NodeUpdater, Thread):

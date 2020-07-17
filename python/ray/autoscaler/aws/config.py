@@ -49,7 +49,6 @@ DEFAULT_AMI = {
     "sa-east-1": "ami-0da2c49fe75e7e5ed",  # SA (Sao Paulo)
 }
 
-
 # todo: cli_logger should handle this assert properly
 # this should probably also happens somewhere else
 assert StrictVersion(boto3.__version__) >= StrictVersion("1.4.8"), \
@@ -76,79 +75,70 @@ def key_pair(i, region, key_name):
 # Suppress excessive connection dropped logs from boto
 logging.getLogger("botocore").setLevel(logging.WARNING)
 
-
 _log_info = {}
+
+
 def _set_config_info(**kwargs):
-    '''
+    """
     Record configuration artifacts useful for logging.
-    '''
+    """
 
     # todo: this is technically fragile iff we ever use multiple configs
 
     for k, v in kwargs.items():
         _log_info[k] = v
 
+
 def log_to_cli(config):
-    with cli_logger.group(
-            "{} config",
-            PROVIDER_PRETTY_NAMES.get("aws", "Unknown provider")):
+    with cli_logger.group("{} config",
+                          PROVIDER_PRETTY_NAMES.get("aws",
+                                                    "Unknown provider")):
 
         def same_everywhere(key):
             return config["head_node"][key] == config["worker_nodes"][key]
 
-        tags = {
-            "default":
-                _log_info["head_instance_profile_src"] == "default"
-        }
+        tags = {"default": _log_info["head_instance_profile_src"] == "default"}
         cli_logger.labeled_value(
-            "IAM Profile", "{}",
+            "IAM Profile",
+            "{}",
             cli_logger.arn_to_name(
                 config["head_node"]["IamInstanceProfile"]["Arn"]),
             _tags=tags)
 
         if same_everywhere("KeyName"):
-            tags = {
-                "default": _log_info["keypair_src"] == "default"
-            }
+            tags = {"default": _log_info["keypair_src"] == "default"}
             cli_logger.labeled_value(
-                "Key pair (head & workers)", "{}",
+                "Key pair (head & workers)",
+                "{}",
                 config["head_node"]["KeyName"],
                 _tags=tags)
         else:
             # cannot be default
-            cli_logger.labeled_value(
-                "EC2 Key pair (head)", "{}",
-                config["head_node"]["KeyName"])
-            cli_logger.labeled_value(
-                "EC2 Key pair (workers)", "{}",
-                config["worker_nodes"]["KeyName"])
+            cli_logger.labeled_value("EC2 Key pair (head)", "{}",
+                                     config["head_node"]["KeyName"])
+            cli_logger.labeled_value("EC2 Key pair (workers)", "{}",
+                                     config["worker_nodes"]["KeyName"])
 
         if same_everywhere("SubnetIds"):
-            tags = {
-                "default": _log_info["head_subnet_src"] == "default"
-            }
-            cli_logger.labeled_value( # todo: handle plural vs singular?
-                "VPC Subnets (head & workers)", "{}",
-                cli_logger.render_list(
-                    config["head_node"]["SubnetIds"]),
+            tags = {"default": _log_info["head_subnet_src"] == "default"}
+            cli_logger.labeled_value(  # todo: handle plural vs singular?
+                "VPC Subnets (head & workers)",
+                "{}",
+                cli_logger.render_list(config["head_node"]["SubnetIds"]),
                 _tags=tags)
         else:
-            tags = {
-                "default": _log_info["head_subnet_src"] == "default"
-            }
+            tags = {"default": _log_info["head_subnet_src"] == "default"}
             cli_logger.labeled_value(
-                "VPC Subnets (head)", "{}",
-                cli_logger.render_list(
-                    config["head_node"]["SubnetIds"]),
+                "VPC Subnets (head)",
+                "{}",
+                cli_logger.render_list(config["head_node"]["SubnetIds"]),
                 _tags=tags)
 
-            tags = {
-                "default": _log_info["workers_subnet_src"] == "default"
-            }
+            tags = {"default": _log_info["workers_subnet_src"] == "default"}
             cli_logger.labeled_value(
-                "VPC Subnets (workers)", "{}",
-                cli_logger.render_list(
-                    config["worker_nodes"]["SubnetIds"]),
+                "VPC Subnets (workers)",
+                "{}",
+                cli_logger.render_list(config["worker_nodes"]["SubnetIds"]),
                 _tags=tags)
 
         if same_everywhere("SecurityGroupIds"):
@@ -156,7 +146,8 @@ def log_to_cli(config):
                 "default": _log_info["head_security_group_src"] == "default"
             }
             cli_logger.labeled_value(
-                "EC2 Security groups (head & workers)", "{}",
+                "EC2 Security groups (head & workers)",
+                "{}",
                 cli_logger.render_list(
                     config["head_node"]["SecurityGroupIds"]),
                 _tags=tags)
@@ -164,44 +155,42 @@ def log_to_cli(config):
             tags = {
                 "default": _log_info["head_security_group_src"] == "default"
             }
-            cli_logger.labeled_value( # todo: handle plural vs singular?
-                "EC2 Security groups (head)", "{}",
+            cli_logger.labeled_value(  # todo: handle plural vs singular?
+                "EC2 Security groups (head)",
+                "{}",
                 cli_logger.render_list(
                     config["head_node"]["SecurityGroupIds"]),
                 _tags=tags)
 
             tags = {
-                "default":
-                    _log_info["workers_security_group_src"] == "default"
+                "default": _log_info["workers_security_group_src"] == "default"
             }
             cli_logger.labeled_value(
-                "EC2 Security groups (workers)", "{}",
+                "EC2 Security groups (workers)",
+                "{}",
                 cli_logger.render_list(
                     config["worker_nodes"]["SecurityGroupIds"]),
                 _tags=tags)
 
         if same_everywhere("ImageId"):
-            tags = {
-                "dlami": _log_info["head_ami_src"] == "dlami"
-            }
+            tags = {"dlami": _log_info["head_ami_src"] == "dlami"}
             cli_logger.labeled_value(
-                "EC2 AMI (head & workers)", "{}",
+                "EC2 AMI (head & workers)",
+                "{}",
                 config["head_node"]["ImageId"],
                 _tags=tags)
         else:
-            tags = {
-                "dlami": _log_info["head_ami_src"] == "dlami"
-            }
+            tags = {"dlami": _log_info["head_ami_src"] == "dlami"}
             cli_logger.labeled_value(
-                "EC2 AMI (head)", "{}",
+                "EC2 AMI (head)",
+                "{}",
                 config["head_node"]["ImageId"],
                 _tags=tags)
 
-            tags = {
-                "dlami": _log_info["workers_ami_src"] == "dlami"
-            }
+            tags = {"dlami": _log_info["workers_ami_src"] == "dlami"}
             cli_logger.labeled_value(
-                "EC2 AMI (workers)", "{}",
+                "EC2 AMI (workers)",
+                "{}",
                 config["worker_nodes"]["ImageId"],
                 _tags=tags)
 
@@ -240,8 +229,7 @@ def _configure_iam_role(config):
             "Creating new IAM instance profile {} for use as the default.",
             cf.bold(DEFAULT_RAY_INSTANCE_PROFILE))
         cli_logger.old_info(
-            logger,
-            "_configure_iam_role: "
+            logger, "_configure_iam_role: "
             "Creating new instance profile {}", DEFAULT_RAY_INSTANCE_PROFILE)
         client = _client("iam", config)
         client.create_instance_profile(
@@ -249,8 +237,8 @@ def _configure_iam_role(config):
         profile = _get_instance_profile(DEFAULT_RAY_INSTANCE_PROFILE, config)
         time.sleep(15)  # wait for propagation
 
-    cli_logger.doassert(
-        profile is not None, "Failed to create instance profile.") # todo: err msg
+    cli_logger.doassert(profile is not None,
+                        "Failed to create instance profile.")  # todo: err msg
     assert profile is not None, "Failed to create instance profile"
 
     if not profile.roles:
@@ -260,10 +248,8 @@ def _configure_iam_role(config):
                 "Creating new IAM role {} for "
                 "use as the default instance role.",
                 cf.bold(DEFAULT_RAY_IAM_ROLE))
-            cli_logger.old_info(
-                logger,
-                "_configure_iam_role: "
-                "Creating new role {}", DEFAULT_RAY_IAM_ROLE)
+            cli_logger.old_info(logger, "_configure_iam_role: "
+                                "Creating new role {}", DEFAULT_RAY_IAM_ROLE)
             iam = _resource("iam", config)
             iam.create_role(
                 RoleName=DEFAULT_RAY_IAM_ROLE,
@@ -280,8 +266,8 @@ def _configure_iam_role(config):
                 }))
             role = _get_role(DEFAULT_RAY_IAM_ROLE, config)
 
-            cli_logger.doassert(
-                role is not None, "Failed to create role.") # todo: err msg
+            cli_logger.doassert(role is not None,
+                                "Failed to create role.")  # todo: err msg
             assert role is not None, "Failed to create role"
         role.attach_policy(
             PolicyArn="arn:aws:iam::aws:policy/AmazonEC2FullAccess")
@@ -291,8 +277,7 @@ def _configure_iam_role(config):
         time.sleep(15)  # wait for propagation
 
     cli_logger.old_info(
-        logger,
-        "_configure_iam_role: "
+        logger, "_configure_iam_role: "
         "Role not specified for head node, using {}", profile.arn)
     config["head_node"]["IamInstanceProfile"] = {"Arn": profile.arn}
 
@@ -303,12 +288,12 @@ def _configure_key_pair(config):
     if "ssh_private_key" in config["auth"]:
         _set_config_info(keypair_src="config")
 
-        cli_logger.doassert( # todo: verify schema beforehand?
+        cli_logger.doassert(  # todo: verify schema beforehand?
             "KeyName" in config["head_node"],
-            "`KeyName` missing for head node.") # todo: err msg
+            "`KeyName` missing for head node.")  # todo: err msg
         cli_logger.doassert(
             "KeyName" in config["worker_nodes"],
-            "`KeyName` missing for worker nodes.") # todo: err msg
+            "`KeyName` missing for worker nodes.")  # todo: err msg
 
         assert "KeyName" in config["head_node"]
         assert "KeyName" in config["worker_nodes"]
@@ -337,8 +322,7 @@ def _configure_key_pair(config):
                 "Creating new key pair {} for use as the default.",
                 cf.bold(key_name))
             cli_logger.old_info(
-                logger,
-                "_configure_key_pair: "
+                logger, "_configure_key_pair: "
                 "Creating new key pair {}", key_name)
             key = ec2.create_key_pair(KeyName=key_name)
 
@@ -354,22 +338,20 @@ def _configure_key_pair(config):
             "No matching local key file for any of the key pairs in this "
             "account with ids from 0..{}. "
             "Consider deleting some unused keys pairs from your account.",
-            key_name) # todo: err msg
+            key_name)  # todo: err msg
         raise ValueError(
             "No matching local key file for any of the key pairs in this "
             "account with ids from 0..{}. ".format(key_name) +
             "Consider deleting some unused keys pairs from your account.")
 
     cli_logger.doassert(
-        os.path.exists(key_path),
-        "Private key file "+cf.bold("{}")+" not found for "+cf.bold("{}"),
-        key_path, key_name) # todo: err msg
+        os.path.exists(key_path), "Private key file " + cf.bold("{}") +
+        " not found for " + cf.bold("{}"), key_path, key_name)  # todo: err msg
     assert os.path.exists(key_path), \
         "Private key file {} not found for {}".format(key_path, key_name)
 
     cli_logger.old_info(
-        logger,
-        "_configure_key_pair: "
+        logger, "_configure_key_pair: "
         "KeyName not specified for nodes, using {}", key_name)
 
     config["auth"]["ssh_private_key"] = key_path
@@ -390,9 +372,7 @@ def _configure_subnet(config):
             reverse=True,  # sort from Z-A
             key=lambda subnet: subnet.availability_zone)
     except botocore.exceptions.ClientError as exc:
-        handle_boto_error(
-            exc,
-            "Failed to fetch available subnets from AWS.")
+        handle_boto_error(exc, "Failed to fetch available subnets from AWS.")
         raise exc
 
     if not subnets:
@@ -402,7 +382,7 @@ def _configure_subnet(config):
             "and trying this again.\n"
             "Note that the subnet must map public IPs "
             "on instance launch unless you set `use_internal_ips: true` in "
-            "the `provider` config.") # todo: err msg
+            "the `provider` config.")  # todo: err msg
         raise Exception(
             "No usable subnets found, try manually creating an instance in "
             "your specified region to populate the list of subnets "
@@ -418,7 +398,7 @@ def _configure_subnet(config):
                 "Choose a different availability zone or try "
                 "manually creating an instance in your specified region "
                 "to populate the list of subnets and trying this again.",
-                config["provider"]["availability_zone"]) # todo: err msg
+                config["provider"]["availability_zone"])  # todo: err msg
             raise Exception(
                 "No usable subnets matching availability zone {} "
                 "found. Choose a different availability zone or try "
@@ -432,10 +412,8 @@ def _configure_subnet(config):
         _set_config_info(head_subnet_src="default")
         config["head_node"]["SubnetIds"] = subnet_ids
         cli_logger.old_info(
-            logger,
-            "_configure_subnet: "
-            "SubnetIds not specified for head node, using {}",
-            subnet_descr)
+            logger, "_configure_subnet: "
+            "SubnetIds not specified for head node, using {}", subnet_descr)
     else:
         _set_config_info(head_subnet_src="config")
 
@@ -443,11 +421,9 @@ def _configure_subnet(config):
         _set_config_info(workers_subnet_src="default")
         config["worker_nodes"]["SubnetIds"] = subnet_ids
         cli_logger.old_info(
-            logger,
-            "_configure_subnet: "
+            logger, "_configure_subnet: "
             "SubnetId not specified for workers,"
-            " using {}",
-            subnet_descr)
+            " using {}", subnet_descr)
     else:
         _set_config_info(workers_subnet_src="config")
 
@@ -456,8 +432,7 @@ def _configure_subnet(config):
 
 def _configure_security_group(config):
     _set_config_info(
-        head_security_group_src="config",
-        workers_security_group_src="config")
+        head_security_group_src="config", workers_security_group_src="config")
 
     node_types_to_configure = [
         node_type for node_type, config_key in NODE_TYPE_CONFIG_KEYS.items()
@@ -473,8 +448,7 @@ def _configure_security_group(config):
 
         _set_config_info(head_security_group_src="default")
         cli_logger.old_info(
-            logger,
-            "_configure_security_group: "
+            logger, "_configure_security_group: "
             "SecurityGroupIds not specified for head node, using {} ({})",
             head_sg.group_name, head_sg.id)
         config["head_node"]["SecurityGroupIds"] = [head_sg.id]
@@ -484,8 +458,7 @@ def _configure_security_group(config):
 
         _set_config_info(workers_security_group_src="default")
         cli_logger.old_info(
-            logger,
-            "_configure_security_group: "
+            logger, "_configure_security_group: "
             "SecurityGroupIds not specified for workers, using {} ({})",
             workers_sg.group_name, workers_sg.id)
         config["worker_nodes"]["SecurityGroupIds"] = [workers_sg.id]
@@ -496,9 +469,7 @@ def _configure_security_group(config):
 def _check_ami(config):
     """Provide helpful message for missing ImageId for node configuration."""
 
-    _set_config_info(
-        head_ami_src="config",
-        workers_ami_src="config")
+    _set_config_info(head_ami_src="config", workers_ami_src="config")
 
     region = config["provider"]["region"]
     default_ami = DEFAULT_AMI.get(region)
@@ -583,8 +554,8 @@ def _get_vpc_id_or_die(ec2, subnet_id):
             "Values": [subnet_id]
         }]))
 
-    cli_logger.doassert(
-        len(subnet) == 1, "Subnet ID not found: {}", subnet_id) #err msg
+    # TODO: better error message
+    cli_logger.doassert(len(subnet) == 1, "Subnet ID not found: {}", subnet_id)
     assert len(subnet) == 1, "Subnet ID not found: {}".format(subnet_id)
     subnet = subnet[0]
     return subnet.vpc_id
@@ -624,12 +595,11 @@ def _create_security_group(config, vpc_id, group_name):
         cf.bold(security_group.group_name),
         _tags=dict(id=security_group.id))
     cli_logger.old_info(
-        logger,
-        "_create_security_group: Created new security group {} ({})",
+        logger, "_create_security_group: Created new security group {} ({})",
         security_group.group_name, security_group.id)
 
-    cli_logger.doassert(
-        security_group, "Failed to create security group") # err msg
+    cli_logger.doassert(security_group,
+                        "Failed to create security group")  # err msg
     assert security_group, "Failed to create security group"
     return security_group
 
@@ -700,8 +670,7 @@ def _get_role(role_name, config):
             return None
         else:
             handle_boto_error(
-                exc,
-                "Failed to fetch IAM role data for {} from AWS.",
+                exc, "Failed to fetch IAM role data for {} from AWS.",
                 cf.bold(role_name))
             raise exc
 
@@ -733,10 +702,8 @@ def _get_key(key_name, config):
             if key.name == key_name:
                 return key
     except botocore.exceptions.ClientError as exc:
-        handle_boto_error(
-            exc,
-            "Failed to fetch EC2 key pair {} from AWS.",
-            cf.bold(key_name))
+        handle_boto_error(exc, "Failed to fetch EC2 key pair {} from AWS.",
+                          cf.bold(key_name))
         raise exc
 
 

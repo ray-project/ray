@@ -25,11 +25,15 @@ KUBECTL_RSYNC = os.path.join(
 
 
 class ProcessRunnerError(Exception):
-    def __init__(self, msg, msg_type,
-        code=None, command=None, message_discovered=None):
+    def __init__(self,
+                 msg,
+                 msg_type,
+                 code=None,
+                 command=None,
+                 message_discovered=None):
         super(ProcessRunnerError, self).__init__(
             "{} (discovered={}): type={}, code={}, command={}".format(
-            msg, message_discovered, msg_type, code, command))
+                msg, message_discovered, msg_type, code, command))
 
         self.msg_type = msg_type
         self.code = code
@@ -284,16 +288,15 @@ class SSHCommandRunner(CommandRunnerInterface):
         with cli_logger.timed("Waiting for IP"):
             while time.time() < deadline and \
                     not self.provider.is_terminated(self.node_id):
-                cli_logger.old_info(
-                    logger, "{}Waiting for IP...", self.log_prefix)
+                cli_logger.old_info(logger, "{}Waiting for IP...",
+                                    self.log_prefix)
 
                 ip = self._get_node_ip()
                 if ip is not None:
                     cli_logger.labeled_value("Received", ip)
                     return ip
-                cli_logger.print(
-                    "Not yet available, retrying in {} seconds",
-                    cf.bold(str(interval)))
+                cli_logger.print("Not yet available, retrying in {} seconds",
+                                 cf.bold(str(interval)))
                 time.sleep(interval)
 
         return None
@@ -308,9 +311,8 @@ class SSHCommandRunner(CommandRunnerInterface):
         with LogTimer(self.log_prefix + "Got IP"):
             ip = self.wait_for_ip(deadline)
 
-            cli_logger.doassert(
-                ip is not None,
-                "Could not get node IP.") # todo: msg
+            cli_logger.doassert(ip is not None,
+                                "Could not get node IP.")  # todo: msg
             assert ip is not None, "Unable to find IP of node"
 
         self.ssh_ip = ip
@@ -321,7 +323,7 @@ class SSHCommandRunner(CommandRunnerInterface):
         try:
             os.makedirs(self.ssh_control_path, mode=0o700, exist_ok=True)
         except OSError as e:
-            cli_logger.warning(e) # todo: msg
+            cli_logger.warning(e)  # todo: msg
             cli_logger.old_warning(logger, e)
 
     def run(self,
@@ -350,11 +352,10 @@ class SSHCommandRunner(CommandRunnerInterface):
                 for local, remote in port_forward:
                     cli_logger.verbose(
                         "Forwarding port {} to port {} on localhost.",
-                        cf.bold(local), cf.bold(remote)) # todo: msg
-                    cli_logger.old_info(
-                        logger,
-                        "{}Forwarding {} -> localhost:{}",
-                        self.log_prefix, local, remote)
+                        cf.bold(local), cf.bold(remote))  # todo: msg
+                    cli_logger.old_info(logger,
+                                        "{}Forwarding {} -> localhost:{}",
+                                        self.log_prefix, local, remote)
                     ssh += ["-L", "{}:localhost:{}".format(remote, local)]
 
         final_cmd = ssh + ssh_options.to_ssh_options_list(timeout=timeout) + [
@@ -362,11 +363,8 @@ class SSHCommandRunner(CommandRunnerInterface):
         ]
         if cmd:
             final_cmd += _with_interactive(cmd)
-            cli_logger.old_info(
-                logger,
-                "{}Running {}",
-                self.log_prefix,
-                " ".join(final_cmd))
+            cli_logger.old_info(logger, "{}Running {}", self.log_prefix,
+                                " ".join(final_cmd))
         else:
             # We do this because `-o ControlMaster` causes the `-N` flag to
             # still create an interactive shell in some ssh versions.
@@ -374,13 +372,10 @@ class SSHCommandRunner(CommandRunnerInterface):
 
         # todo: add a flag for this, we might
         # wanna log commands with print sometimes
-        cli_logger.verbose(
-            "Running `{}`",
-            cf.bold(cmd))
+        cli_logger.verbose("Running `{}`", cf.bold(cmd))
         with cli_logger.indented():
-            cli_logger.very_verbose(
-                "Full command is `{}`",
-                cf.bold(" ".join(final_cmd)))
+            cli_logger.very_verbose("Full command is `{}`",
+                                    cf.bold(" ".join(final_cmd)))
 
         def start_process():
             try:
@@ -397,8 +392,8 @@ class SSHCommandRunner(CommandRunnerInterface):
                         command=final_cmd)
 
                 if exit_on_fail:
-                    quoted_cmd = " ".join(final_cmd[:-1] + \
-                        [quote(final_cmd[-1])])
+                    quoted_cmd = " ".join(final_cmd[:-1] +
+                                          [quote(final_cmd[-1])])
                     raise click.ClickException(
                         "Command failed: \n\n  {}\n".format(quoted_cmd)) \
                         from None

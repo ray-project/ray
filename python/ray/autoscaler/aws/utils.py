@@ -3,6 +3,7 @@ from collections import defaultdict
 from ray.autoscaler.cli_logger import cli_logger
 import colorful as cf
 
+
 class LazyDefaultDict(defaultdict):
     """
     LazyDefaultDict(default_factory[, ...]) --> dict with default factory
@@ -23,6 +24,7 @@ class LazyDefaultDict(defaultdict):
         """
         self[key] = self.default_factory(key)
         return self[key]
+
 
 def handle_boto_error(exc, msg, *args, **kwargs):
     if cli_logger.old_style:
@@ -51,9 +53,7 @@ def handle_boto_error(exc, msg, *args, **kwargs):
     # RequestExpired
     # are all the same pretty much
     credentials_expiration_codes = [
-        "ExpiredTokenException",
-        "ExpiredToken",
-        "RequestExpired"
+        "ExpiredTokenException", "ExpiredToken", "RequestExpired"
     ]
 
     if error_code in credentials_expiration_codes:
@@ -66,30 +66,24 @@ def handle_boto_error(exc, msg, *args, **kwargs):
 
         token_command = (
             "aws sts get-session-token "
-            "--serial-number arn:aws:iam::"+
-            cf.underlined("ROOT_ACCOUNT_ID")+":mfa/"+
-            cf.underlined("AWS_USERNAME")+
-            " --token-code "+
+            "--serial-number arn:aws:iam::" + cf.underlined("ROOT_ACCOUNT_ID")
+            + ":mfa/" + cf.underlined("AWS_USERNAME") + " --token-code " +
             cf.underlined("TWO_FACTOR_AUTH_CODE"))
 
         secret_key_var = (
-            "export AWS_SECRET_ACCESS_KEY = "+
-            cf.underlined("REPLACE_ME")+
+            "export AWS_SECRET_ACCESS_KEY = " + cf.underlined("REPLACE_ME") +
             " # found at Credentials.SecretAccessKey")
         session_token_var = (
-            "export AWS_SESSION_TOKEN = "+
-            cf.underlined("REPLACE_ME")+
+            "export AWS_SESSION_TOKEN = " + cf.underlined("REPLACE_ME") +
             " # found at Credentials.SessionToken")
         access_key_id_var = (
-            "export AWS_ACCESS_KEY_ID = "+
-            cf.underlined("REPLACE_ME")+
+            "export AWS_ACCESS_KEY_ID = " + cf.underlined("REPLACE_ME") +
             " # found at Credentials.AccessKeyId")
 
         # fixme: replace with a Github URL that points
         # to our repo
-        aws_session_script_url = (
-            "https://gist.github.com/maximsmol/"
-            "a0284e1d97b25d417bd9ae02e5f450cf")
+        aws_session_script_url = ("https://gist.github.com/maximsmol/"
+                                  "a0284e1d97b25d417bd9ae02e5f450cf")
 
         cli_logger.verbose_error(*generic_message_args)
         cli_logger.verbose(vars(exc))
@@ -99,12 +93,8 @@ def handle_boto_error(exc, msg, *args, **kwargs):
             "You can request a new one using\n{}\n"
             "then expose it to Ray by setting\n{}\n{}\n{}\n\n"
             "You can find a script that automates this at:\n{}",
-            cf.bold(token_command),
-
-            cf.bold(secret_key_var),
-            cf.bold(session_token_var),
-            cf.bold(access_key_id_var),
-
+            cf.bold(token_command), cf.bold(secret_key_var),
+            cf.bold(session_token_var), cf.bold(access_key_id_var),
             cf.underlined(aws_session_script_url))
 
     # todo: any other errors that we should catch separately?
@@ -115,6 +105,7 @@ def handle_boto_error(exc, msg, *args, **kwargs):
         cli_logger.verbose(vars(exc))
         cli_logger.error(exc)
     cli_logger.abort()
+
 
 def boto_exception_handler(msg, *args, **kwargs):
     # todo: implement timer

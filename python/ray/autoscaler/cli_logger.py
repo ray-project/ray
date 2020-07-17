@@ -7,8 +7,10 @@ from colorful.core import ColorfulString
 import colorful as cf
 colorama.init()
 
+
 def _strip_codes(msg):
-    return msg # todo
+    return msg  # todo
+
 
 # we could bold "{}" strings automatically but do we want that?
 # todo:
@@ -24,7 +26,7 @@ def _format_msg(msg, *args, **kwargs):
                 if v is False:
                     continue
 
-                tags_list += [k+"="+v]
+                tags_list += [k + "=" + v]
             if tags_list:
                 tags_str = cf.reset(
                     cf.gray(" [{}]".format(", ".join(tags_list))))
@@ -38,8 +40,7 @@ def _format_msg(msg, *args, **kwargs):
             i = str(i)
             n = str(n)
 
-            numbering_str = cf.gray(
-                chars[0] + i + "/" + n + chars[1]) + " "
+            numbering_str = cf.gray(chars[0] + i + "/" + n + chars[1]) + " "
 
             del kwargs["_numbered"]
 
@@ -56,9 +57,10 @@ def _format_msg(msg, *args, **kwargs):
     if kwargs:
         raise ValueError("We do not support printing kwargs yet.")
 
-    l = [msg, *args]
-    l = [str(x) for x in l]
-    return ', '.join(l)
+    res = [msg, *args]
+    res = [str(x) for x in res]
+    return ", ".join(res)
+
 
 class _CliLogger():
     def __init__(self):
@@ -86,7 +88,7 @@ class _CliLogger():
         raise ValueError("Invalid log color setting: " + self.color_mode)
 
     def newline(self):
-        self._print('')
+        self._print("")
 
     def _print(self, msg, linefeed=True):
         if self.old_style:
@@ -106,6 +108,7 @@ class _CliLogger():
 
     def indented(self, cls=False):
         cli_logger = self
+
         class IndentedContextManager():
             def __enter__(self):
                 cli_logger.indent_level += 1
@@ -123,6 +126,7 @@ class _CliLogger():
 
         # todo: implement timer
         cli_logger = self
+
         class TimedContextManager():
             def __enter__(self):
                 cli_logger.indent_level += 1
@@ -139,9 +143,10 @@ class _CliLogger():
 
     def verbatim_error_ctx(self, msg, *args, **kwargs):
         cli_logger = self
+
         class VerbatimErorContextManager():
             def __enter__(self):
-                cli_logger.error(cf.bold("!!! ")+msg, *args, **kwargs)
+                cli_logger.error(cf.bold("!!! ") + msg, *args, **kwargs)
 
             def __exit__(self, type, value, tb):
                 cli_logger.error(cf.bold("!!!"))
@@ -245,12 +250,12 @@ class _CliLogger():
         if rendered_message and rendered_message[-1] != "\n":
             rendered_message += " "
 
-        l = len(rendered_message.split("\n")[-1])
+        msg_len = len(rendered_message.split("\n")[-1])
         complete_str = rendered_message + confirm_str
 
         if yes:
-            self._print(
-                complete_str + "y " + cf.gray("[automatic, due to --yes]"))
+            self._print(complete_str + "y " +
+                        cf.gray("[automatic, due to --yes]"))
             return True
 
         self._print(complete_str, linefeed=False)
@@ -275,13 +280,11 @@ class _CliLogger():
                     res = False
                     break
 
-                indent = " " * l
-                self.error(
-                    "{}Invalid answer: {}. "
-                    "Expected {} or {}",
-                    indent, cf.bold(ans.strip()),
-                    self.render_list(yes_answers, "/"),
-                    self.render_list(no_answers, "/"))
+                indent = " " * msg_len
+                self.error("{}Invalid answer: {}. "
+                           "Expected {} or {}", indent, cf.bold(ans.strip()),
+                           self.render_list(yes_answers, "/"),
+                           self.render_list(no_answers, "/"))
                 self._print(indent + confirm_str, linefeed=False)
         except KeyboardInterrupt:
             self.newline()
@@ -302,19 +305,21 @@ class _CliLogger():
 
         return None if yes else click.confirm(msg, abort=True)
 
+
 class SilentClickException(click.ClickException):
-    '''
+    """
     Some of our tooling relies on catching ClickException in particular.
 
     However the default prints a message, which is undesirable since we expect
     our code to log errors manually using `cli_logger.error()` to allow for
     colors and other formatting.
-    '''
+    """
 
     def __init__(self, message):
         super(SilentClickException, self).__init__(message)
 
     def show(self, file=None):
         pass
+
 
 cli_logger = _CliLogger()

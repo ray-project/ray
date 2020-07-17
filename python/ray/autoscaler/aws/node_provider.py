@@ -242,8 +242,7 @@ class AWSNodeProvider(NodeProvider):
                     "under `provider` in the cluster configuration.",
                     cli_logger.render_list(reuse_node_ids))
                 cli_logger.old_info(
-                    logger,
-                    "AWSNodeProvider: reusing instances {}. "
+                    logger, "AWSNodeProvider: reusing instances {}. "
                     "To disable reuse, set "
                     "'cache_stopped_nodes: False' in the provider "
                     "config.", reuse_node_ids)
@@ -255,14 +254,12 @@ class AWSNodeProvider(NodeProvider):
                             {x["Key"]: x["Value"]
                              for x in node.tags})
                         if node.state["Name"] == "stopping":
-                            cli_logger.print(
-                                "Waiting for instance {} to stop",
-                                node.id)
+                            cli_logger.print("Waiting for instance {} to stop",
+                                             node.id)
                             cli_logger.old_info(
                                 logger,
                                 "AWSNodeProvider: waiting for instance "
-                                "{} to fully stop...",
-                                node.id)
+                                "{} to fully stop...", node.id)
                             node.wait_until_stopped()
 
                 self.ec2.meta.client.start_instances(
@@ -325,8 +322,7 @@ class AWSNodeProvider(NodeProvider):
                 subnet_id = subnet_ids[self.subnet_idx % len(subnet_ids)]
 
                 cli_logger.old_info(
-                    logger,
-                    "NodeProvider: calling create_instances "
+                    logger, "NodeProvider: calling create_instances "
                     "with {} (count={}).", subnet_id, count)
 
                 self.subnet_idx += 1
@@ -340,21 +336,20 @@ class AWSNodeProvider(NodeProvider):
 
                 # todo: timed?
                 # todo: handle plurality?
-                with cli_logger.group("Launching {} nodes",
-                                      count, _tags=dict(subnet_id=subnet_id)):
+                with cli_logger.group(
+                        "Launching {} nodes",
+                        count,
+                        _tags=dict(subnet_id=subnet_id)):
                     for instance in created:
                         cli_logger.print(
                             "Launched instance {}",
                             instance.instance_id,
                             _tags=dict(
                                 state=instance.state["Name"],
-                                info=instance.state_reason["Message"]
-                            ))
+                                info=instance.state_reason["Message"]))
                         cli_logger.old_info(
-                            logger,
-                            "NodeProvider: Created instance "
-                            "[id={}, name={}, info={}]",
-                            instance.instance_id,
+                            logger, "NodeProvider: Created instance "
+                            "[id={}, name={}, info={}]", instance.instance_id,
                             instance.state["Name"],
                             instance.state_reason["Message"])
                 break
@@ -380,22 +375,19 @@ class AWSNodeProvider(NodeProvider):
                 cli_logger.print(
                     "Terminating instance {} " +
                     cf.gray("(cannot stop spot instances, only terminate)"),
-                    node_id) # todo: show node name?
+                    node_id)  # todo: show node name?
 
                 cli_logger.old_info(
                     logger,
                     "AWSNodeProvider: terminating node {} (spot nodes cannot "
-                    "be stopped, only terminated)",
-                    node_id)
+                    "be stopped, only terminated)", node_id)
                 node.terminate()
             else:
-                cli_logger.print(
-                    "Stopping instance {} " +
-                    cf.gray(
-                        "(to terminate instead, "
-                        "set `cache_stopped_nodes: False` "
-                        "under `provider` in the cluster configuration)"),
-                    node_id) # todo: show node name?
+                cli_logger.print("Stopping instance {} " + cf.gray(
+                    "(to terminate instead, "
+                    "set `cache_stopped_nodes: False` "
+                    "under `provider` in the cluster configuration)"),
+                                 node_id)  # todo: show node name?
 
                 cli_logger.old_info(
                     logger,
@@ -425,8 +417,7 @@ class AWSNodeProvider(NodeProvider):
             if on_demand_ids:
                 # todo: show node names?
                 cli_logger.print(
-                    "Stopping instances {} " +
-                    cf.gray(
+                    "Stopping instances {} " + cf.gray(
                         "(to terminate instead, "
                         "set `cache_stopped_nodes: False` "
                         "under `provider` in the cluster configuration)"),

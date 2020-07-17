@@ -686,23 +686,17 @@ def stop(force, verbose):
     default=False,
     help="Disable the local cluster config cache.")
 @click.option(
-    "--log-old-style",
-    is_flag=True,
-    default=False,
-    help=("Use old logging."))
+    "--log-old-style", is_flag=True, default=False, help=("Use old logging."))
 @click.option(
     "--log-color",
     required=False,
     type=str,
     default="auto",
-    help=(
-        "Use color logging. "
-        "Valid values are: auto (if stdout is a tty), true, false."))
+    help=("Use color logging. "
+          "Valid values are: auto (if stdout is a tty), true, false."))
 @click.option("-v", "--verbose", count=True)
-def up(cluster_config_file, min_workers, max_workers, no_restart,
-                     restart_only, yes, cluster_name,
-                     no_config_cache,
-                     log_old_style, log_color, verbose):
+def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
+       yes, cluster_name, no_config_cache, log_old_style, log_color, verbose):
     """Create or update a Ray cluster."""
     if restart_only or no_restart:
         assert restart_only != no_restart, "Cannot set both 'restart_only' " \
@@ -719,8 +713,8 @@ def up(cluster_config_file, min_workers, max_workers, no_restart,
             logger.info("Error downloading file: ", e)
     create_or_update_cluster(cluster_config_file, min_workers, max_workers,
                              no_restart, restart_only, yes, cluster_name,
-                             no_config_cache,
-                             log_old_style, log_color, verbose)
+                             no_config_cache, log_old_style, log_color,
+                             verbose)
 
 
 @cli.command()
@@ -748,26 +742,20 @@ def up(cluster_config_file, min_workers, max_workers, no_restart,
     default=False,
     help="Retain the minimal amount of workers specified in the config.")
 @click.option(
-    "--log-old-style",
-    is_flag=True,
-    default=False,
-    help=("Use old logging."))
+    "--log-old-style", is_flag=True, default=False, help=("Use old logging."))
 @click.option(
     "--log-color",
     required=False,
     type=str,
     default="auto",
-    help=(
-        "Use color logging. "
-        "Valid values are: auto (if stdout is a tty), true, false."))
+    help=("Use color logging. "
+          "Valid values are: auto (if stdout is a tty), true, false."))
 @click.option("-v", "--verbose", count=True)
 def down(cluster_config_file, yes, workers_only, cluster_name,
-         keep_min_workers,
-         log_old_style, log_color, verbose):
+         keep_min_workers, log_old_style, log_color, verbose):
     """Tear down a Ray cluster."""
     teardown_cluster(cluster_config_file, yes, workers_only, cluster_name,
-                     keep_min_workers,
-                     log_old_style, log_color, verbose)
+                     keep_min_workers, log_old_style, log_color, verbose)
 
 
 @cli.command()
