@@ -681,8 +681,8 @@ TEST_F(GcsActorManagerTest, TestRegisterActor) {
 
   auto future = promise.get_future();
   ASSERT_EQ(future.wait_for(std::chrono::seconds(2)), std::future_status::ready);
-  // Make sure the dependencies of this actor are not resolved.
-  ASSERT_FALSE(registered_actor->IsLocalDependencyResolved());
+  // Make sure the actor state is `UNRESOLVED`.
+  ASSERT_EQ(registered_actor->GetState(), rpc::ActorTableData_ActorState_UNRESOLVED);
   // Make sure the actor has not been scheduled yet.
   ASSERT_TRUE(mock_actor_scheduler_->actors.empty());
 
@@ -697,8 +697,8 @@ TEST_F(GcsActorManagerTest, TestRegisterActor) {
   ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
   auto actor = mock_actor_scheduler_->actors.back();
   mock_actor_scheduler_->actors.pop_back();
-  // Make sure the dependencies of this actor are resolved.
-  ASSERT_TRUE(actor->IsLocalDependencyResolved());
+  // Make sure the actor state is `PENDING`.
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData_ActorState_PENDING);
 
   actor->UpdateAddress(RandomAddress());
   gcs_actor_manager_->OnActorCreationSuccess(actor);

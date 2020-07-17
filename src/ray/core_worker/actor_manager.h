@@ -22,6 +22,46 @@
 
 namespace ray {
 
+class ActorCreatorInterface {
+ public:
+  virtual ~ActorCreatorInterface() = default;
+  /// Register actor to GCS asynchronously.
+  ///
+  /// \param task_spec The specification for the actor creation task.
+  /// \param callback Callback that will be called after the actor info is written to GCS.
+  /// \return Status
+  virtual Status AsyncRegisterActor(const TaskSpecification &task_spec,
+                                    const gcs::StatusCallback &callback) = 0;
+
+  /// Report actor dependencies resolved to GCS asynchronously.
+  ///
+  /// \param task_spec The specification for the actor creation task.
+  /// \param callback Callback that will be called after the actor info is written to GCS.
+  /// \return Status
+  virtual Status AsyncReportActorDependenciesResolved(
+      const TaskSpecification &task_spec, const gcs::StatusCallback &callback) = 0;
+};
+
+class DefaultActorCreator : public ActorCreatorInterface {
+ public:
+  explicit DefaultActorCreator(std::shared_ptr<gcs::GcsClient> gcs_client)
+      : gcs_client_(std::move(gcs_client)) {}
+
+  Status AsyncRegisterActor(const TaskSpecification &task_spec,
+                            const gcs::StatusCallback &callback) override {
+    return gcs_client_->Actors().AsyncRegisterActor(task_spec, callback);
+  }
+
+  Status AsyncReportActorDependenciesResolved(
+      const TaskSpecification &task_spec, const gcs::StatusCallback &callback) override {
+    return gcs_client_->Actors().AsyncReportActorDependenciesResolved(task_spec,
+                                                                      callback);
+  }
+
+ private:
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
+};
+
 /// Class to manage lifetimes of actors that we create (actor children).
 /// Currently this class is only used to publish actor DEAD event
 /// for actor creation task failures. All other cases are managed

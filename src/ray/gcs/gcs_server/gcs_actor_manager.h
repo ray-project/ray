@@ -45,8 +45,7 @@ class GcsActor {
   /// Create a GcsActor by TaskSpec.
   ///
   /// \param task_spec Contains the actor creation task specification.
-  explicit GcsActor(const ray::rpc::TaskSpec &task_spec,
-                    bool local_dependency_resolved = true) {
+  explicit GcsActor(const ray::rpc::TaskSpec &task_spec) {
     RAY_CHECK(task_spec.type() == TaskType::ACTOR_CREATION_TASK);
     const auto &actor_creation_task_spec = task_spec.actor_creation_task_spec();
     actor_table_data_.set_actor_id(actor_creation_task_spec.actor_id());
@@ -61,13 +60,11 @@ class GcsActor {
     actor_table_data_.set_name(actor_creation_task_spec.name());
     actor_table_data_.mutable_owner_address()->CopyFrom(task_spec.caller_address());
 
-    actor_table_data_.set_state(rpc::ActorTableData::PENDING);
+    actor_table_data_.set_state(rpc::ActorTableData::UNRESOLVED);
     actor_table_data_.mutable_task_spec()->CopyFrom(task_spec);
 
     actor_table_data_.mutable_address()->set_raylet_id(ClientID::Nil().Binary());
     actor_table_data_.mutable_address()->set_worker_id(WorkerID::Nil().Binary());
-
-    actor_table_data_.set_local_dependency_resolved(local_dependency_resolved);
   }
 
   /// Get the node id on which this actor is created.
@@ -104,9 +101,6 @@ class GcsActor {
   const rpc::ActorTableData &GetActorTableData() const;
   /// Get the mutable ActorTableData of this actor.
   rpc::ActorTableData *GetMutableActorTableData();
-
-  /// Whether the local dependency of the actor creation task has been resolved.
-  bool IsLocalDependencyResolved() const;
 
  private:
   /// The actor meta data which contains the task specification as well as the state of
@@ -281,6 +275,13 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// deregisters the actor.
   void DestroyActor(const ActorID &actor_id);
 
+  /// Cancel any unresolved actors that were submitted from the specified node.
+  absl::flat_hash_set<ActorID> CancelUnresolvedActors(const ClientID &node_id);
+
+  /// Cancel any unresolved actors that were submitted from the specified worker.
+  absl::flat_hash_set<ActorID> CancelUnresolvedActors(const ClientID &node_id,
+                                                      const WorkerID &worker_id);
+
  private:
   /// Reconstruct the specified actor.
   ///
@@ -300,8 +301,11 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> registered_actors_;
   /// Maps actor names to their actor ID for lookups by name.
   absl::flat_hash_map<std::string, ActorID> named_actors_;
-  /// The actors which dependencies have not yet been resolved.
-  absl::flat_hash_map<ClientID, absl::flat_hash_map<WorkerID, ActorID>>
+  /// The actors which dependencies have not been resolved.
+  /// Maps from wroker ID to a client and the IDs of the actors owned by that worker.
+  /// This
+  absl::flat_hash_map<ClientID,
+                      absl::flat_hash_map<WorkerID, absl::flat_hash_set<ActorID>>>
       unresolved_actors_;
   /// The pending actors which will not be scheduled until there's a resource change.
   std::vector<std::shared_ptr<GcsActor>> pending_actors_;

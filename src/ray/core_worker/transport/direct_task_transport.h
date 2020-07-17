@@ -20,6 +20,7 @@
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
+#include "ray/core_worker/actor_manager.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_manager.h"
@@ -54,8 +55,7 @@ class CoreWorkerDirectTaskSubmitter {
       std::shared_ptr<CoreWorkerMemoryStore> store,
       std::shared_ptr<TaskFinisherInterface> task_finisher, ClientID local_raylet_id,
       int64_t lease_timeout_ms,
-      std::function<Status(const TaskSpecification &, bool, const gcs::StatusCallback &)>
-          actor_create_callback = nullptr,
+      std::shared_ptr<ActorCreatorInterface> actor_creator = nullptr,
       absl::optional<boost::asio::steady_timer> cancel_timer = absl::nullopt)
       : rpc_address_(rpc_address),
         local_lease_client_(lease_client),
@@ -65,7 +65,7 @@ class CoreWorkerDirectTaskSubmitter {
         task_finisher_(task_finisher),
         lease_timeout_ms_(lease_timeout_ms),
         local_raylet_id_(local_raylet_id),
-        actor_create_callback_(std::move(actor_create_callback)),
+        actor_creator_(std::move(actor_creator)),
         cancel_retry_timer_(std::move(cancel_timer)) {}
 
   /// Schedule a task for direct submission to a worker.
@@ -163,10 +163,7 @@ class CoreWorkerDirectTaskSubmitter {
   /// A function to override actor creation. The callback will be called once the actor
   /// creation task has been accepted for submission, but the actor may not be created
   /// yet.
-  std::function<Status(const TaskSpecification &task_spec,
-                       bool is_local_dependency_resolved,
-                       const gcs::StatusCallback &callback)>
-      actor_create_callback_;
+  std::shared_ptr<ActorCreatorInterface> actor_creator_;
 
   // Protects task submission state below.
   absl::Mutex mu_;

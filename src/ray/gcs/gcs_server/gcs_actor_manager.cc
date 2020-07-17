@@ -82,10 +82,6 @@ const rpc::ActorTableData &GcsActor::GetActorTableData() const {
 
 rpc::ActorTableData *GcsActor::GetMutableActorTableData() { return &actor_table_data_; }
 
-bool GcsActor::IsLocalDependencyResolved() const {
-  return actor_table_data_.local_dependency_resolved();
-}
-
 /////////////////////////////////////////////////////////////////////////////////////////
 GcsActorManager::GcsActorManager(std::shared_ptr<GcsActorSchedulerInterface> scheduler,
                                  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
@@ -124,15 +120,16 @@ void GcsActorManager::HandleReportActorDependenciesResolved(
   auto actor_id =
       ActorID::FromBinary(request.task_spec().actor_creation_task_spec().actor_id());
 
-  RAY_LOG(INFO) << "Registering actor, actor id = " << actor_id;
+  RAY_LOG(INFO) << "Reporting actor dependencies resolved, actor id = " << actor_id;
   Status status = ReportActorDependenciesResolved(
       request, [reply, send_reply_callback,
                 actor_id](const std::shared_ptr<gcs::GcsActor> &actor) {
-        RAY_LOG(INFO) << "Registered actor, actor id = " << actor_id;
+        RAY_LOG(INFO) << "Reported actor dependencies resolved, actor id = " << actor_id;
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
       });
   if (!status.ok()) {
-    RAY_LOG(ERROR) << "Failed to create actor: " << status.ToString();
+    RAY_LOG(ERROR) << "Failed to report actor dependencies resolved, actor: "
+                   << status.ToString();
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   }
 }
@@ -414,14 +411,13 @@ Status GcsActorManager::RegisterActor(
   // created.
   actor_to_register_callbacks_[actor_id].emplace_back(std::move(callback));
 
-  auto actor = std::make_shared<GcsActor>(request.task_spec(),
-                                          /*local_dependency_resolved = */ false);
+  auto actor = std::make_shared<GcsActor>(request.task_spec());
   RAY_CHECK(registered_actors_.emplace(actor->GetActorID(), actor).second);
 
   const auto &owner_address = actor->GetOwnerAddress();
   auto node_id = ClientID::FromBinary(owner_address.raylet_id());
   auto worker_id = WorkerID::FromBinary(owner_address.worker_id());
-  RAY_CHECK(unresolved_actors_[node_id].emplace(worker_id, actor->GetActorID()).second);
+  RAY_CHECK(unresolved_actors_[node_id][worker_id].emplace(actor->GetActorID()).second);
 
   return gcs_table_storage_->ActorTable().Put(
       actor->GetActorID(), *actor->GetMutableActorTableData(),
@@ -465,8 +461,8 @@ Status GcsActorManager::ReportActorDependenciesResolved(
     return Status::OK();
   }
 
-  auto actor = std::make_shared<GcsActor>(request.task_spec(),
-                                          /*local_dependency_resolved = */ true);
+  auto actor = std::make_shared<GcsActor>(request.task_spec());
+  actor->GetMutableActorTableData()->set_state(rpc::ActorTableData_ActorState_PENDING);
   if (!actor->GetName().empty()) {
     auto it = named_actors_.find(actor->GetName());
     if (it == named_actors_.end()) {
@@ -647,6 +643,36 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
       }));
 }
 
+absl::flat_hash_set<ActorID> GcsActorManager::CancelUnresolvedActors(
+    const ClientID &node_id) {
+  absl::flat_hash_set<ActorID> actor_ids;
+  auto iter = unresolved_actors_.find(node_id);
+  if (iter != unresolved_actors_.end()) {
+    for (auto &entry : iter->second) {
+      actor_ids.merge(entry.second);
+    }
+    unresolved_actors_.erase(iter);
+  }
+  return actor_ids;
+}
+
+absl::flat_hash_set<ActorID> GcsActorManager::CancelUnresolvedActors(
+    const ClientID &node_id, const WorkerID &worker_id) {
+  absl::flat_hash_set<ActorID> actor_ids;
+  auto iter = unresolved_actors_.find(node_id);
+  if (iter != unresolved_actors_.end()) {
+    auto it = iter->second.find(worker_id);
+    if (it != iter->second.end()) {
+      actor_ids.merge(std::move(it->second));
+      iter->second.erase(it);
+      if (iter->second.empty()) {
+        unresolved_actors_.erase(iter);
+      }
+    }
+  }
+  return actor_ids;
+}
+
 void GcsActorManager::OnWorkerDead(const ray::ClientID &node_id,
                                    const ray::WorkerID &worker_id,
                                    bool intentional_exit) {
@@ -662,6 +688,14 @@ void GcsActorManager::OnWorkerDead(const ray::ClientID &node_id,
     }
   }
 
+  // The creator worker of these actors died before resolving their dependencies. In this
+  // case, these actors will never be created successfully. So we need to mark them dead,
+  // to prevent actor tasks hang forever.
+  auto unresolved_actors = CancelUnresolvedActors(node_id, worker_id);
+  for (auto &actor_id : unresolved_actors) {
+    ReconstructActor(actor_id, /*need_reschedule=*/false);
+  }
+
   // Find if actor is already created or in the creation process (lease request is
   // granted)
   ActorID actor_id;
@@ -673,19 +707,9 @@ void GcsActorManager::OnWorkerDead(const ray::ClientID &node_id,
       created_actors_.erase(iter);
     }
   } else {
-    auto iter = unresolved_actors_.find(node_id);
-    if (iter != unresolved_actors_.end() && iter->second.count(worker_id)) {
-      intentional_exit = true;
-      actor_id = iter->second[worker_id];
-      iter->second.erase(worker_id);
-      if (iter->second.empty()) {
-        unresolved_actors_.erase(iter);
-      }
-    } else {
-      actor_id = gcs_actor_scheduler_->CancelOnWorker(node_id, worker_id);
-      if (actor_id.IsNil()) {
-        return;
-      }
+    actor_id = gcs_actor_scheduler_->CancelOnWorker(node_id, worker_id);
+    if (actor_id.IsNil()) {
+      return;
     }
   }
 
@@ -732,16 +756,12 @@ void GcsActorManager::OnNodeDead(const ClientID &node_id) {
     }
   }
 
-  // Find all actors that were registered on this node but the dependencies are not
-  // resolved yet.
-  iter = unresolved_actors_.find(node_id);
-  if (iter != unresolved_actors_.end()) {
-    auto unresolved_actors = std::move(iter->second);
-    // Remove all unresolved actors from unresolved_actors_.
-    unresolved_actors_.erase(iter);
-    for (auto &entry : unresolved_actors) {
-      ReconstructActor(entry.second, /*need_reschedule=*/false);
-    }
+  // The creator node of these actors died before resolving their dependencies. In this
+  // case, these actors will never be created successfully. So we need to mark them dead,
+  // to prevent actor tasks hang forever.
+  auto unresolved_actors = CancelUnresolvedActors(node_id);
+  for (auto &actor_id : unresolved_actors) {
+    ReconstructActor(actor_id, /*need_reschedule=*/false);
   }
 }
 

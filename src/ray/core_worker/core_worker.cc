@@ -427,19 +427,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         new raylet::RayletClient(std::move(grpc_client)));
   };
 
-  std::function<Status(const TaskSpecification &, bool, const gcs::StatusCallback &)>
-      actor_create_callback = nullptr;
+  std::shared_ptr<ActorCreatorInterface> actor_creator = nullptr;
   if (RayConfig::instance().gcs_actor_service_enabled()) {
-    actor_create_callback = [this](const TaskSpecification &task_spec,
-                                   bool is_local_dependency_resolved,
-                                   const gcs::StatusCallback &callback) {
-      if (is_local_dependency_resolved) {
-        return gcs_client_->Actors().AsyncReportActorDependenciesResolved(task_spec,
-                                                                          callback);
-      } else {
-        return gcs_client_->Actors().AsyncRegisterActor(task_spec, callback);
-      }
-    };
+    actor_creator = std::make_shared<DefaultActorCreator>(gcs_client_);
   }
 
   direct_actor_submitter_ = std::shared_ptr<CoreWorkerDirectActorTaskSubmitter>(
@@ -450,8 +440,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       std::unique_ptr<CoreWorkerDirectTaskSubmitter>(new CoreWorkerDirectTaskSubmitter(
           rpc_address_, local_raylet_client_, client_factory, raylet_client_factory,
           memory_store_, task_manager_, local_raylet_id,
-          RayConfig::instance().worker_lease_timeout_milliseconds(),
-          std::move(actor_create_callback), boost::asio::steady_timer(io_service_)));
+          RayConfig::instance().worker_lease_timeout_milliseconds(), actor_creator,
+          boost::asio::steady_timer(io_service_)));
   future_resolver_.reset(new FutureResolver(memory_store_, client_factory, rpc_address_));
   // Unfortunately the raylet client has to be constructed after the receivers.
   if (direct_task_receiver_ != nullptr) {

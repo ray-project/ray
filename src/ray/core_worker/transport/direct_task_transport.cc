@@ -21,52 +21,51 @@ namespace ray {
 Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
 
-  if (actor_create_callback_ && task_spec.IsActorCreationTask()) {
-    // The resolving of local dependencies is asynchronously, in this process the
-    // ActorHandler may be passed to other Workers. If the worker who got the ActorHandler
-    // submitted a task through this ActionHandler and executes GetObject, while the local
-    // dependencies of this actor creation task have not been resolved. And then the owner
-    // of this actor exits, it will cause the cluster hang.
-    // So the actor creation task needs to be registered to the GCS Server synchronously
-    // before its local dependencies are resolved, After resolved, the actor creation task
-    // should be registered again as the dependencies are inlined to the task
-    // specification. If the owner exits before resolving the local dependencies , the GCS
-    // Server will mark the Actor as DEAD, so that it will not cause a cluster hang.
-    static thread_local absl::Mutex tl_mutex;
-    absl::Mutex *mutex = &tl_mutex;
-    bool is_flushed = false;
-    RAY_CHECK_OK(actor_create_callback_(task_spec,
-                                        /*is_local_dependency_resolved = */ false,
-                                        [&is_flushed, &mutex](Status status) {
-                                          RAY_CHECK_OK(status);
-                                          mutex->Lock();
-                                          is_flushed = true;
-                                          mutex->Unlock();
-                                        }));
-    mutex->LockWhen(absl::Condition(&is_flushed));
-    mutex->Unlock();
+  // The creation of actor is divided into two steps:
+  // Step1: Synchronously register the actor which local dependencies are not resolved to
+  // the gcs server which will reply after persisting the unresolved actor.
+  // Step2: Report actor dependencies resolved to the gcs server after its local
+  // dependencies are resolved successfully, and the gcs server will reply after the actor
+  // is created successfully. This step is asynchronously.
+  if (actor_creator_ && task_spec.IsActorCreationTask()) {
+    // Since the step2 is asynchronously, the ActorHandler may be passed to other Workers.
+    // If the worker who got the ActorHandler submitted a task through this ActionHandler
+    // and executes GetObject, while the local dependencies of this actor creation task
+    // have not been resolved. Then the owner of this actor exits, it will cause the
+    // cluster hang.
+    // So we need the step1. If the owner exits before resolving the local dependencies,
+    // the GCS Server will mark the Actor died, so that it will not cause a cluster hang.
+
+    // Step1: Synchronously register the actor to GCS server.
+    std::promise<void> promise;
+    RAY_CHECK_OK(
+        actor_creator_->AsyncRegisterActor(task_spec, [&promise](const Status &status) {
+          RAY_CHECK_OK(status);
+          promise.set_value();
+        }));
+    promise.get_future().wait();
   }
 
   resolver_.ResolveDependencies(task_spec, [this, task_spec]() {
     RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
-    if (actor_create_callback_ && task_spec.IsActorCreationTask()) {
+    if (actor_creator_ && task_spec.IsActorCreationTask()) {
       // If gcs actor management is enabled, the actor creation task will be sent to
       // gcs server directly after the in-memory dependent objects are resolved. For
       // more details please see the protocol of actor management based on gcs.
       // https://docs.google.com/document/d/1EAWide-jy05akJp6OMtDn58XOK7bUyruWMia4E-fV28/edit?usp=sharing
       auto actor_id = task_spec.ActorCreationId();
       auto task_id = task_spec.TaskId();
-      RAY_LOG(INFO) << "Submitting actor creation task to GCS: " << actor_id;
-      RAY_CHECK_OK(actor_create_callback_(
-          task_spec, /*is_local_dependency_resolved = */ true,
-          [this, actor_id, task_id](Status status) {
+      RAY_LOG(INFO) << "Reporting actor dependencies resolved to GCS: " << actor_id;
+      RAY_CHECK_OK(actor_creator_->AsyncReportActorDependenciesResolved(
+          task_spec, [this, actor_id, task_id](Status status) {
             if (status.ok()) {
-              RAY_LOG(INFO) << "Actor creation task submitted to GCS: " << actor_id;
+              RAY_LOG(INFO) << "Actor dependencies resolved reported to GCS: "
+                            << actor_id;
               task_finisher_->CompletePendingTask(task_id, rpc::PushTaskReply(),
                                                   rpc::Address());
             } else {
-              RAY_LOG(ERROR) << "Failed to create actor " << actor_id
-                             << " with: " << status.ToString();
+              RAY_LOG(ERROR) << "Failed to report dependencies resolved of actor "
+                             << actor_id << " with: " << status.ToString();
               RAY_UNUSED(task_finisher_->PendingTaskFailed(
                   task_id, rpc::ErrorType::ACTOR_CREATION_FAILED, &status));
             }
