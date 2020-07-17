@@ -237,6 +237,7 @@ void RayLog::UninstallSignalAction() {
 }
 
 void RayLog::ShutDownRayLog() {
+  stream_logger_singleton.out_.close();
 #ifdef RAY_USE_GLOG
   UninstallSignalAction();
   google::ShutdownGoogleLogging();
