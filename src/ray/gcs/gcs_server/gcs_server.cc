@@ -120,7 +120,9 @@ void GcsServer::Start() {
         // Store gcs rpc server address in redis.
         StoreGcsServerAddressInRedis();
 
-        // Start node failure detector.
+        // Only after the rpc_server_ is running can the node failure detector be run.
+        // Otherwise the node failure detector will mistake some living nodes as dead
+        // as the timer inside node failure detector is already run.
         gcs_node_manager_->StartNodeFailureDetector();
         is_started_ = true;
       };

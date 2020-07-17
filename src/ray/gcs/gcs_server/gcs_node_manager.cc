@@ -134,7 +134,7 @@ GcsNodeManager::GcsNodeManager(boost::asio::io_service &io_service,
                 RAY_CHECK_OK(
                     gcs_table_storage_->NodeResourceTable().Delete(node_id, on_done));
               };
-              RAY_CHECK_OK(gcs_table_storage_->NodeTable().Delete(node_id, on_done));
+              RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_done));
             }
           })),
       gcs_pub_sub_(gcs_pub_sub),
@@ -400,8 +400,6 @@ void GcsNodeManager::LoadInitialData(const EmptyCallback &done) {
           for (auto &item : result) {
             if (alive_nodes_.count(item.first)) {
               cluster_resources_[item.first] = item.second;
-            } else {
-              // TODO(Shanly): Delete dead node resources.
             }
           }
           RAY_LOG(INFO) << "Finished loading initial data.";

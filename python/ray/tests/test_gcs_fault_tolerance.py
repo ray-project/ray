@@ -69,8 +69,6 @@ def test_node_failure_detector_when_gcs_server_restart(ray_start_cluster_head):
 
     cluster.head_node.kill_gcs_server()
     cluster.remove_node(worker, allow_graceful=False)
-
-    time.sleep(1)
     cluster.head_node.start_gcs_server()
 
     nodes = ray.nodes()
