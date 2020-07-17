@@ -89,6 +89,12 @@ class NodeManagerWorkerClient
   /// Cancel a pending worker lease request.
   RPC_CLIENT_METHOD(NodeManagerService, CancelWorkerLease, grpc_client_, )
 
+  /// Request resource lease.
+  RPC_CLIENT_METHOD(NodeManagerService, RequestResourceReserve, grpc_client_, )
+
+  /// Return resource lease.
+  RPC_CLIENT_METHOD(NodeManagerService, CancelResourceReserve, grpc_client_, )
+
   /// Notify the raylet to pin the provided object IDs.
   RPC_CLIENT_METHOD(NodeManagerService, PinObjectIDs, grpc_client_, )
 

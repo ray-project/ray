@@ -1,9 +1,9 @@
 import functools
 from math import log
 import numpy as np
+import tree
 
 from ray.rllib.models.action_dist import ActionDistribution
-from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import SMALL_NUMBER, MIN_LOG_NN_OUTPUT, \
@@ -12,7 +12,6 @@ from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.torch_ops import atanh
 
 torch, nn = try_import_torch()
-tree = try_import_tree()
 
 
 class TorchDistributionWrapper(ActionDistribution):

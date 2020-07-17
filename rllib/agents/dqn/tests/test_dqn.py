@@ -3,11 +3,8 @@ import unittest
 
 import ray
 import ray.rllib.agents.dqn as dqn
-from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \
     framework_iterator
-
-tf1, tf, tfv = try_import_tf()
 
 
 class TestDQN(unittest.TestCase):
@@ -34,6 +31,7 @@ class TestDQN(unittest.TestCase):
                 print(results)
 
             check_compute_single_action(trainer)
+            trainer.stop()
 
             # Rainbow.
             # TODO(sven): Add torch once DQN-torch supports distributional-Q.
@@ -51,6 +49,7 @@ class TestDQN(unittest.TestCase):
                 print(results)
 
             check_compute_single_action(trainer)
+            trainer.stop()
 
     def test_dqn_exploration_and_soft_q_config(self):
         """Tests, whether a DQN Agent outputs exploration/softmaxed actions."""
@@ -73,6 +72,7 @@ class TestDQN(unittest.TestCase):
             for _ in range(50):
                 actions.append(trainer.compute_action(obs))
             check(np.std(actions), 0.0, false=True)
+            trainer.stop()
 
             # Low softmax temperature. Behaves like argmax
             # (but no epsilon exploration).
@@ -86,6 +86,7 @@ class TestDQN(unittest.TestCase):
             for _ in range(50):
                 actions.append(trainer.compute_action(obs))
             check(np.std(actions), 0.0, decimals=3)
+            trainer.stop()
 
             # Higher softmax temperature.
             config["exploration_config"]["temperature"] = 1.0
@@ -104,6 +105,7 @@ class TestDQN(unittest.TestCase):
             for _ in range(300):
                 actions.append(trainer.compute_action(obs))
             check(np.std(actions), 0.0, false=True)
+            trainer.stop()
 
             # With Random exploration.
             config["exploration_config"] = {"type": "Random"}
@@ -113,6 +115,7 @@ class TestDQN(unittest.TestCase):
             for _ in range(300):
                 actions.append(trainer.compute_action(obs))
             check(np.std(actions), 0.0, false=True)
+            trainer.stop()
 
 
 if __name__ == "__main__":

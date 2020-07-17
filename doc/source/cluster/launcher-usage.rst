@@ -72,6 +72,8 @@ You can also run ``ray up`` to restart a cluster if it seems to be in a bad stat
 
 If you don't want the update to restart services (e.g., because the changes don't require a restart), pass ``--no-restart`` to the update call.
 
+If you want to force re-generation of the config to pick up possible changes in the cloud environment, pass ``--no-config-cache`` to the update call.
+
 See :ref:`the documentation <ray-up-doc>` for ``ray up``.
 
 .. code-block:: shell

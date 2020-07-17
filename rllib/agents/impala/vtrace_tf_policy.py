@@ -253,11 +253,19 @@ def postprocess_trajectory(policy,
 
 def choose_optimizer(policy, config):
     if policy.config["opt_type"] == "adam":
-        return tf1.train.AdamOptimizer(policy.cur_lr)
+        if policy.config["framework"] in ["tf2", "tfe"]:
+            return tf.keras.optimizers.Adam(policy.cur_lr)
+        else:
+            return tf1.train.AdamOptimizer(policy.cur_lr)
     else:
-        return tf1.train.RMSPropOptimizer(
-            policy.cur_lr,
-            config["decay"], config["momentum"], config["epsilon"])
+        if tfv == 2:
+            return tf.keras.optimizers.RMSprop(
+                policy.cur_lr, config["decay"], config["momentum"],
+                config["epsilon"])
+        else:
+            return tf1.train.RMSPropOptimizer(
+                policy.cur_lr, config["decay"], config["momentum"],
+                config["epsilon"])
 
 
 def clip_gradients(policy, optimizer, loss):

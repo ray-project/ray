@@ -1,11 +1,8 @@
 import asyncio
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, List
 
-from ray.serve.metric.types import (
-    MetricType,
-    convert_event_type_to_class,
-    MetricMetadata,
-)
+from ray.serve.metric.types import (MetricType, convert_event_type_to_class,
+                                    MetricMetadata, MetricRecord)
 from ray.serve.utils import _get_logger
 from ray.serve.constants import METRIC_PUSH_INTERVAL_S
 
@@ -29,8 +26,8 @@ class MetricClient:
         self.exporter = metric_exporter_actor
         self.default_labels = default_labels or dict()
 
-        self.registered_metrics: Dict[str, MetricMetadata] = dict()
-        self.metric_records = []
+        self.registered_metrics: Dict[int, MetricMetadata] = dict()
+        self.metric_records: List[MetricRecord] = []
 
         assert asyncio.get_event_loop().is_running()
         self.push_task = asyncio.get_event_loop().create_task(
@@ -101,10 +98,6 @@ class MetricClient:
             description: str,
             label_names: Tuple[str] = (),
     ):
-        if name in self.registered_metrics:
-            raise ValueError(
-                "Metric with name {} is already registered.".format(name))
-
         if not isinstance(label_names, tuple):
             raise ValueError("label_names need to be a tuple, it is {}".format(
                 type(label_names)))
@@ -116,11 +109,17 @@ class MetricClient:
             label_names=label_names,
             default_labels=self.default_labels.copy(),
         )
+
+        key = hash(metric_metadata)
+        if key in self.registered_metrics:
+            raise ValueError("Metric named {} and associated metadata "
+                             "is already registered.".format(name))
+        self.registered_metrics[key] = metric_metadata
+
         metric_class = convert_event_type_to_class(metric_type)
         metric_object = metric_class(
-            client=self, name=name, label_names=label_names)
+            client=self, key=key, label_names=label_names)
 
-        self.registered_metrics[name] = metric_metadata
         return metric_object
 
     async def _push_to_exporter_once(self):

@@ -179,7 +179,7 @@ class TorchCustomLossModel(TorchModelV2, nn.Module):
         # Add the imitation loss to each already calculated policy loss term.
         # Alternatively (if custom loss has its own optimizer):
         # return policy_loss + [10 * self.imitation_loss]
-        return [l + 10 * self.imitation_loss for l in policy_loss]
+        return [loss_ + 10 * self.imitation_loss for loss_ in policy_loss]
 
     def custom_stats(self):
         return {

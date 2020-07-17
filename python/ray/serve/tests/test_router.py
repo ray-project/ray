@@ -48,6 +48,8 @@ def task_runner_mock_actor():
 
 async def test_single_prod_cons_queue(serve_instance, task_runner_mock_actor):
     q = ray.remote(Router).remote()
+    await q.setup.remote()
+
     q.set_traffic.remote("svc", TrafficPolicy({"backend-single-prod": 1.0}))
     q.add_new_worker.remote("backend-single-prod", "replica-1",
                             task_runner_mock_actor)
@@ -64,6 +66,7 @@ async def test_single_prod_cons_queue(serve_instance, task_runner_mock_actor):
 
 async def test_slo(serve_instance, task_runner_mock_actor):
     q = ray.remote(Router).remote()
+    await q.setup.remote()
     await q.set_traffic.remote("svc", TrafficPolicy({"backend-slo": 1.0}))
 
     all_request_sent = []
@@ -88,6 +91,7 @@ async def test_slo(serve_instance, task_runner_mock_actor):
 
 async def test_alter_backend(serve_instance, task_runner_mock_actor):
     q = ray.remote(Router).remote()
+    await q.setup.remote()
 
     await q.set_traffic.remote("svc", TrafficPolicy({"backend-alter": 1}))
     await q.add_new_worker.remote("backend-alter", "replica-1",
@@ -106,6 +110,7 @@ async def test_alter_backend(serve_instance, task_runner_mock_actor):
 
 async def test_split_traffic_random(serve_instance, task_runner_mock_actor):
     q = ray.remote(Router).remote()
+    await q.setup.remote()
 
     await q.set_traffic.remote(
         "svc", TrafficPolicy({
@@ -135,6 +140,7 @@ async def test_queue_remove_replicas(serve_instance):
 
     temp_actor = mock_task_runner()
     q = ray.remote(TestRouter).remote()
+    await q.setup.remote()
     await q.add_new_worker.remote("backend-remove", "replica-1", temp_actor)
     await q.remove_worker.remote("backend-remove", "replica-1")
     assert ray.get(q.worker_queue_size.remote("backend")) == 0
@@ -142,6 +148,7 @@ async def test_queue_remove_replicas(serve_instance):
 
 async def test_shard_key(serve_instance, task_runner_mock_actor):
     q = ray.remote(Router).remote()
+    await q.setup.remote()
 
     num_backends = 5
     traffic_dict = {}
@@ -196,6 +203,7 @@ async def test_router_use_max_concurrency(serve_instance):
 
     worker = MockWorker.remote()
     q = ray.remote(VisibleRouter).remote()
+    await q.setup.remote()
     BACKEND_NAME = "max-concurrent-test"
     config = BackendConfig({"max_concurrent_queries": 1})
     await q.set_traffic.remote("svc", TrafficPolicy({BACKEND_NAME: 1.0}))

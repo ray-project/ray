@@ -24,7 +24,7 @@ class TestMAML(unittest.TestCase):
         num_iterations = 1
 
         # Test for tf framework (torch not implemented yet).
-        for _ in framework_iterator(config, frameworks=("tf")):
+        for _ in framework_iterator(config, frameworks=("tf", "torch")):
             trainer = maml.MAMLTrainer(
                 config=config,
                 env="ray.rllib.examples.env.pendulum_mass.PendulumMassEnv")

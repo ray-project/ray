@@ -7,6 +7,63 @@
 
 namespace ray {
 
+/// Argument of a task.
+class TaskArg {
+ public:
+  virtual void ToProto(rpc::TaskArg *arg_proto) const = 0;
+  virtual ~TaskArg(){};
+};
+
+class TaskArgByReference : public TaskArg {
+ public:
+  /// Create a pass-by-reference task argument.
+  ///
+  /// \param[in] object_id Id of the argument.
+  /// \return The task argument.
+  TaskArgByReference(const ObjectID &object_id, const rpc::Address &owner_address)
+      : id_(object_id), owner_address_(owner_address) {}
+
+  void ToProto(rpc::TaskArg *arg_proto) const {
+    auto ref = arg_proto->mutable_object_ref();
+    ref->set_object_id(id_.Binary());
+    ref->mutable_owner_address()->CopyFrom(owner_address_);
+  }
+
+ private:
+  /// Id of the argument if passed by reference, otherwise nullptr.
+  const ObjectID id_;
+  const rpc::Address owner_address_;
+};
+
+class TaskArgByValue : public TaskArg {
+ public:
+  /// Create a pass-by-value task argument.
+  ///
+  /// \param[in] value Value of the argument.
+  /// \return The task argument.
+  TaskArgByValue(const std::shared_ptr<RayObject> &value) : value_(value) {
+    RAY_CHECK(value) << "Value can't be null.";
+  }
+
+  void ToProto(rpc::TaskArg *arg_proto) const {
+    if (value_->HasData()) {
+      const auto &data = value_->GetData();
+      arg_proto->set_data(data->Data(), data->Size());
+    }
+    if (value_->HasMetadata()) {
+      const auto &metadata = value_->GetMetadata();
+      arg_proto->set_metadata(metadata->Data(), metadata->Size());
+    }
+    for (const auto &nested_id : value_->GetNestedIds()) {
+      arg_proto->add_nested_inlined_ids(nested_id.Binary());
+    }
+  }
+
+ private:
+  /// Value of the argument.
+  const std::shared_ptr<RayObject> value_;
+};
+
 /// Helper class for building a `TaskSpecification` object.
 class TaskSpecBuilder {
  public:
@@ -66,32 +123,10 @@ class TaskSpecBuilder {
     return *this;
   }
 
-  /// Add a by-reference argument to the task.
-  ///
-  /// \param arg_id Id of the argument.
-  /// \return Reference to the builder object itself.
-  TaskSpecBuilder &AddByRefArg(const ObjectID &arg_id) {
-    message_->add_args()->add_object_ids(arg_id.Binary());
-    return *this;
-  }
-
-  /// Add a by-value argument to the task.
-  ///
-  /// \param value the RayObject instance that contains the data and the metadata.
-  /// \return Reference to the builder object itself.
-  TaskSpecBuilder &AddByValueArg(const RayObject &value) {
-    auto arg = message_->add_args();
-    if (value.HasData()) {
-      const auto &data = value.GetData();
-      arg->set_data(data->Data(), data->Size());
-    }
-    if (value.HasMetadata()) {
-      const auto &metadata = value.GetMetadata();
-      arg->set_metadata(metadata->Data(), metadata->Size());
-    }
-    for (const auto &nested_id : value.GetNestedIds()) {
-      arg->add_nested_inlined_ids(nested_id.Binary());
-    }
+  /// Add an argument to the task.
+  TaskSpecBuilder &AddArg(const TaskArg &arg) {
+    auto ref = message_->add_args();
+    arg.ToProto(ref);
     return *this;
   }
 

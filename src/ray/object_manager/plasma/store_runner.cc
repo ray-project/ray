@@ -2,7 +2,9 @@
 
 #include <fcntl.h>
 #include <stdio.h>
+#ifndef _WIN32
 #include <sys/statvfs.h>
+#endif
 #include <sys/types.h>
 #include <unistd.h>
 

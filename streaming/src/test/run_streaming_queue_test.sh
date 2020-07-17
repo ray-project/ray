@@ -46,7 +46,7 @@ if [ ! -d "$RAY_ROOT/python" ]; then
 fi
 
 REDIS_MODULE="./bazel-bin/libray_redis_module.so"
-REDIS_SERVER_EXEC="./bazel-bin/redis-server"
+REDIS_SERVER_EXEC="./bazel-bin/external/com_github_antirez_redis/redis-server"
 STORE_EXEC="./bazel-bin/plasma_store_server"
 REDIS_CLIENT_EXEC="./bazel-bin/redis-cli"
 RAYLET_EXEC="./bazel-bin/raylet"

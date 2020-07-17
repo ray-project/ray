@@ -9,6 +9,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.backends import default_backend
 from googleapiclient import discovery, errors
 from google.oauth2 import service_account
+from google.oauth2.credentials import Credentials as OAuthCredentials
 
 logger = logging.getLogger(__name__)
 
@@ -103,52 +104,66 @@ def generate_rsa_key_pair():
     return public_key, pem
 
 
-def _create_crm(gcp_credentials):
+def _create_crm(gcp_credentials=None):
     return discovery.build(
         "cloudresourcemanager", "v1", credentials=gcp_credentials)
 
 
-def _create_iam(gcp_credentials):
+def _create_iam(gcp_credentials=None):
     return discovery.build("iam", "v1", credentials=gcp_credentials)
 
 
-def _create_compute(gcp_credentials):
+def _create_compute(gcp_credentials=None):
     return discovery.build("compute", "v1", credentials=gcp_credentials)
 
 
-def fetch_gcp_credentials_from_provider_config(provider_config):
+def construct_clients_from_provider_config(provider_config):
     """
     Attempt to fetch and parse the JSON GCP credentials from the provider
     config yaml file.
     """
-    service_account_info_string = provider_config.get("gcp_credentials")
-    if service_account_info_string is None:
-        logger.info("gcp_credentials not found in cluster yaml file. "
-                    "Falling back to GOOGLE_APPLICATION_CREDENTIALS "
-                    "environment variable.")
+    gcp_credentials = provider_config.get("gcp_credentials")
+    if gcp_credentials is None:
+        logger.debug("gcp_credentials not found in cluster yaml file. "
+                     "Falling back to GOOGLE_APPLICATION_CREDENTIALS "
+                     "environment variable.")
         # If gcp_credentials is None, then discovery.build will search for
         # credentials in the local environment.
-        return None
+        return _create_crm(), \
+            _create_iam(), \
+            _create_compute()
 
-    # If parsing the gcp_credentials failed, then the user likely made a
-    # mistake in copying the credentials into the config yaml.
-    try:
-        service_account_info = json.loads(service_account_info_string)
-    except json.decoder.JSONDecodeError:
-        raise RuntimeError("gcp_credentials found in cluster yaml file but "
-                           "formatted improperly.")
-    gcp_credentials = service_account.Credentials.from_service_account_info(
-        service_account_info)
-    return gcp_credentials
+    assert ("type" in gcp_credentials), \
+        "gcp_credentials cluster yaml field missing 'type' field."
+    assert ("credentials" in gcp_credentials), \
+        "gcp_credentials cluster yaml field missing 'credentials' field."
+
+    cred_type = gcp_credentials["type"]
+    credentials_field = gcp_credentials["credentials"]
+
+    if cred_type == "service_account":
+        # If parsing the gcp_credentials failed, then the user likely made a
+        # mistake in copying the credentials into the config yaml.
+        try:
+            service_account_info = json.loads(credentials_field)
+        except json.decoder.JSONDecodeError:
+            raise RuntimeError(
+                "gcp_credentials found in cluster yaml file but "
+                "formatted improperly.")
+        credentials = service_account.Credentials.from_service_account_info(
+            service_account_info)
+    elif cred_type == "credentials_token":
+        # Otherwise the credentials type must be credentials_token.
+        credentials = OAuthCredentials(credentials_field)
+
+    return _create_crm(credentials), \
+        _create_iam(credentials), \
+        _create_compute(credentials)
 
 
 def bootstrap_gcp(config):
-    gcp_credentials = fetch_gcp_credentials_from_provider_config(
-        config["provider"])
-
-    crm = _create_crm(gcp_credentials)
-    iam = _create_iam(gcp_credentials)
-    compute = _create_compute(gcp_credentials)
+    crm, iam, compute = \
+        construct_clients_from_provider_config(config["provider"])
 
     config = _configure_project(config, crm)
     config = _configure_iam_role(config, crm, iam)

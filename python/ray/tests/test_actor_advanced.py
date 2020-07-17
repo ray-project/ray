@@ -908,6 +908,50 @@ def test_actor_creation_task_crash(ray_start_regular):
     ray.get(ra.f.remote())
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_GCS_ACTOR_SERVICE_ENABLED") != "true",
+    reason=("This edge case is not handled when GCS actor management is off. "
+            "We won't fix this because GCS actor management "
+            "will be on by default anyway."))
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "num_cpus": 2,
+        "num_gpus": 1
+    }], indirect=True)
+def test_pending_actor_removed_by_owner(ray_start_regular):
+    # Verify when an owner of pending actors is killed, the actor resources
+    # are correctly returned.
+
+    @ray.remote(num_cpus=1, num_gpus=1)
+    class A:
+        def __init__(self):
+            self.actors = []
+
+        def create_actors(self):
+            self.actors = [B.remote() for _ in range(2)]
+
+    @ray.remote(num_gpus=1)
+    class B:
+        def ping(self):
+            return True
+
+    @ray.remote(num_gpus=1)
+    def f():
+        return True
+
+    a = A.remote()
+    # Create pending actors
+    ray.get(a.create_actors.remote())
+
+    # Owner is dead. pending actors should be killed
+    # and raylet should return workers correctly.
+    del a
+    a = B.remote()
+    assert ray.get(a.ping.remote())
+    ray.kill(a)
+    assert ray.get(f.remote())
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))

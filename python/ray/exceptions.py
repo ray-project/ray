@@ -41,12 +41,17 @@ class RayTaskError(RayError):
     retrieved from the object store, the Python method that retrieved it checks
     to see if the object is a RayTaskError and if it is then an exception is
     thrown propagating the error message.
+
+    Attributes:
+        function_name (str): The name of the function that failed and produced
+            the RayTaskError.
+        traceback_str (str): The traceback from the exception.
     """
 
     def __init__(self,
                  function_name,
                  traceback_str,
-                 cause,
+                 cause_cls,
                  proctitle=None,
                  pid=None,
                  ip=None):
@@ -59,43 +64,34 @@ class RayTaskError(RayError):
         self.ip = ip or ray.services.get_node_ip_address()
         self.function_name = function_name
         self.traceback_str = traceback_str
-        # TODO(edoakes): should we handle non-serializable exception objects?
-        self.cause = cause
+        self.cause_cls = cause_cls
         assert traceback_str is not None
 
     def as_instanceof_cause(self):
-        """Returns an exception that is an instance of the cause's class.
+        """Returns copy that is an instance of the cause's Python class.
 
         The returned exception will inherit from both RayTaskError and the
-        cause class and will contain all of the attributes of the cause
-        exception.
+        cause class.
         """
 
-        cause_cls = self.cause.__class__
-        if issubclass(RayTaskError, cause_cls):
+        if issubclass(RayTaskError, self.cause_cls):
             return self  # already satisfied
 
-        if issubclass(cause_cls, RayError):
+        if issubclass(self.cause_cls, RayError):
             return self  # don't try to wrap ray internal errors
 
-        cause = self.cause
-        error_msg = str(self)
+        class cls(RayTaskError, self.cause_cls):
+            def __init__(self, function_name, traceback_str, cause_cls,
+                         proctitle, pid, ip):
+                RayTaskError.__init__(self, function_name, traceback_str,
+                                      cause_cls, proctitle, pid, ip)
 
-        class cls(RayTaskError, cause_cls):
-            def __init__(self):
-                pass
-
-            def __getattr__(self, name):
-                return getattr(cause, name)
-
-            def __str__(self):
-                return error_msg
-
-        name = "RayTaskError({})".format(cause_cls.__name__)
+        name = "RayTaskError({})".format(self.cause_cls.__name__)
         cls.__name__ = name
         cls.__qualname__ = name
 
-        return cls()
+        return cls(self.function_name, self.traceback_str, self.cause_cls,
+                   self.proctitle, self.pid, self.ip)
 
     def __str__(self):
         """Format a RayTaskError as a string."""
@@ -174,11 +170,11 @@ class UnreconstructableError(RayError):
     reconstruct the object.
 
     Attributes:
-        object_id: ID of the object.
+        object_ref: ID of the object.
     """
 
-    def __init__(self, object_id):
-        self.object_id = object_id
+    def __init__(self, object_ref):
+        self.object_ref = object_ref
 
     def __str__(self):
         return (
@@ -187,7 +183,7 @@ class UnreconstructableError(RayError):
             "memory available with ray.init(object_store_memory=<bytes>) "
             "or setting object store limits with "
             "ray.remote(object_store_memory=<bytes>). See also: {}".format(
-                self.object_id.hex(),
+                self.object_ref.hex(),
                 "https://docs.ray.io/en/latest/memory-management.html"))
 
 
