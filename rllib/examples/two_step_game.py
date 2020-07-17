@@ -85,7 +85,7 @@ if __name__ == "__main__":
             "train_batch_size": 32,
             "exploration_config": {
                 "epsilon_timesteps": 40000,
-                "final_epsilon": 0.0,
+                "final_epsilon": 0.02,
             },
             "num_workers": 0,
             "mixer": grid_search([None, "qmix", "vdn"]),
