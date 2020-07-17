@@ -169,6 +169,5 @@ __all__ += [
     "ObjectID",
     "ObjectRef",
     "TaskID",
-    "TagKey",
     "UniqueID",
 ]
