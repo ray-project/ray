@@ -252,8 +252,8 @@ class NodeUpdater:
                             self.log_prefix + "Setup commands",
                             show_status=True):
 
-                        total = len(self.initialization_commands)
-                        for i, cmd in enumerate(self.initialization_commands):
+                        total = len(self.setup_commands)
+                        for i, cmd in enumerate(self.setup_commands):
                             if cli_logger.verbosity == 0:
                                 cmd_to_print = cf.bold(cmd[:30]) + "..."
                             else:
