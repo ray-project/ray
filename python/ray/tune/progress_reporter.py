@@ -87,7 +87,7 @@ class TuneReporterBase(ProgressReporter):
                  max_progress_rows=20,
                  max_error_rows=20,
                  max_report_frequency=5):
-        self._metric_columns = metric_columns or self.DEFAULT_COLUMNS
+        self._metric_columns = metric_columns or self.DEFAULT_COLUMNS.copy()
         self._parameter_columns = parameter_columns or []
         self._max_progress_rows = max_progress_rows
         self._max_error_rows = max_error_rows
