@@ -201,9 +201,9 @@ format_changed() {
           git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.sh' &&
           git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- ':(exclude)*.*' | xargs -r git --no-pager grep -l '^#!\(/usr\)\?/bin/\(env \+\)\?\(ba\)\?sh'
         ))
-          if [ 0 -lt "${#shell_files[@]}" ]; then
+        if [ 0 -lt "${#shell_files[@]}" ]; then
             shellcheck_scripts "${shell_files[@]}"
-          fi
+        fi
     fi
 }
 
