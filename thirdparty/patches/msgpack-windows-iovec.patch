@@ -1,7 +1,11 @@
 diff --git include/msgpack/v1/vrefbuffer.hpp include/msgpack/v1/vrefbuffer.hpp
 --- include/msgpack/v1/vrefbuffer.hpp
 +++ include/msgpack/v1/vrefbuffer.hpp
-@@ -28,4 +28,19 @@
+@@ -25,7 +25,22 @@
+-#if defined(unix) || defined(__unix) || defined(__APPLE__) || defined(__OpenBSD__)
++#if defined(unix) || defined(__unix) || defined(__APPLE__) || defined(__OpenBSD__) || defined(__unix__)
+ #include <sys/uio.h>
+ #else
 +#ifdef _WIN32
 +#ifndef _WS2DEF_
 +#include <Winsock2.h>

@@ -49,10 +49,10 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
     target_model_out_tp1, _ = policy.target_model(input_dict_next, [], None)
 
     # Policy network evaluation.
-    # prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
+    # prev_update_ops = set(tf1.get_collection(tf.GraphKeys.UPDATE_OPS))
     policy_t = model.get_policy_output(model_out_t)
     # policy_batchnorm_update_ops = list(
-    #    set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
+    #    set(tf1.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
 
     policy_tp1 = \
         policy.target_model.get_policy_output(target_model_out_tp1)
@@ -73,7 +73,7 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
         policy_tp1_smoothed = policy_tp1
 
     # Q-net(s) evaluation.
-    # prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
+    # prev_update_ops = set(tf1.get_collection(tf.GraphKeys.UPDATE_OPS))
     # Q-values for given actions & observations in given current
     q_t = model.get_q_values(model_out_t, train_batch[SampleBatch.ACTIONS])
 
@@ -86,7 +86,7 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
         twin_q_t = model.get_twin_q_values(model_out_t,
                                            train_batch[SampleBatch.ACTIONS])
     # q_batchnorm_update_ops = list(
-    #     set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
+    #     set(tf1.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
 
     # Target q-net(s) evaluation.
     q_tp1 = policy.target_model.get_q_values(target_model_out_tp1,

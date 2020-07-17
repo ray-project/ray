@@ -128,6 +128,16 @@ class Cluster:
             node (Node): Worker node of which all associated processes
                 will be removed.
         """
+        global_node = ray.worker._global_node
+        if global_node is not None:
+            if node._raylet_socket_name == global_node._raylet_socket_name:
+                ray.shutdown()
+                raise ValueError(
+                    "Removing a node that is connected to this Ray client "
+                    "is not allowed because it will break the driver."
+                    "You can use the get_other_node utility to avoid removing"
+                    "a node that the Ray client is connected.")
+
         if self.head_node == node:
             self.head_node.kill_all_processes(
                 check_alive=False, allow_graceful=allow_graceful)

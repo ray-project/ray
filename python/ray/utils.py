@@ -233,8 +233,8 @@ def ensure_str(s, encoding="utf-8", errors="strict"):
         return s.decode(encoding, errors)
 
 
-def binary_to_object_id(binary_object_id):
-    return ray.ObjectID(binary_object_id)
+def binary_to_object_ref(binary_object_ref):
+    return ray.ObjectRef(binary_object_ref)
 
 
 def binary_to_task_id(binary_task_id):
@@ -403,6 +403,7 @@ def create_and_init_new_worker_log(path, worker_pid):
 
     Args:
         path (str): The name/path of the file to be opened.
+        worker_pid (int): The pid of the worker process.
 
     Returns:
         A file-like object which can be written to.

@@ -16,7 +16,7 @@ from ray.rllib.policy.tf_policy import LearningRateSchedule, \
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_ops import explained_variance
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
@@ -253,10 +253,19 @@ def postprocess_trajectory(policy,
 
 def choose_optimizer(policy, config):
     if policy.config["opt_type"] == "adam":
-        return tf.train.AdamOptimizer(policy.cur_lr)
+        if policy.config["framework"] in ["tf2", "tfe"]:
+            return tf.keras.optimizers.Adam(policy.cur_lr)
+        else:
+            return tf1.train.AdamOptimizer(policy.cur_lr)
     else:
-        return tf.train.RMSPropOptimizer(policy.cur_lr, config["decay"],
-                                         config["momentum"], config["epsilon"])
+        if tfv == 2:
+            return tf.keras.optimizers.RMSprop(
+                policy.cur_lr, config["decay"], config["momentum"],
+                config["epsilon"])
+        else:
+            return tf1.train.RMSPropOptimizer(
+                policy.cur_lr, config["decay"], config["momentum"],
+                config["epsilon"])
 
 
 def clip_gradients(policy, optimizer, loss):

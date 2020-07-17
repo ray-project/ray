@@ -785,7 +785,7 @@ class BaseTorchTrainable(Trainable):
         # TorchTrainable is subclass of BaseTorchTrainable.
 
         class CustomTrainable(TorchTrainable):
-            def _train(self):
+            def step(self):
                 for i in range(5):
                     train_stats = self.trainer.train()
                 validation_stats = self.trainer.validate()
@@ -799,11 +799,11 @@ class BaseTorchTrainable(Trainable):
 
     """
 
-    def _setup(self, config):
+    def setup(self, config):
         """Constructs a TorchTrainer object as `self.trainer`."""
         self._trainer = self._create_trainer(config)
 
-    def _train(self):
+    def step(self):
         """Calls `self.trainer.train()` and `self.trainer.validate()` once.
 
         You may want to override this if using a custom LR scheduler.
@@ -813,20 +813,20 @@ class BaseTorchTrainable(Trainable):
         stats = merge_dicts(train_stats, validation_stats)
         return stats
 
-    def _save(self, checkpoint_dir):
+    def save_checkpoint(self, checkpoint_dir):
         """Returns a path containing the trainer state."""
         checkpoint_path = os.path.join(checkpoint_dir, "trainer.checkpoint")
         self.trainer.save(checkpoint_path)
         return checkpoint_path
 
-    def _restore(self, checkpoint_path):
+    def load_checkpoint(self, checkpoint_path):
         """Restores the trainer state.
 
         Override this if you have state external to the Trainer object.
         """
         return self.trainer.load(checkpoint_path)
 
-    def _stop(self):
+    def cleanup(self):
         """Shuts down the trainer."""
         self.trainer.shutdown()
 

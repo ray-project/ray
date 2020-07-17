@@ -18,7 +18,7 @@ class TestES(unittest.TestCase):
 
         num_iterations = 2
 
-        for _ in framework_iterator(config, ("tf", "torch")):
+        for _ in framework_iterator(config):
             plain_config = config.copy()
             trainer = es.ESTrainer(config=plain_config, env="CartPole-v0")
             for i in range(num_iterations):
@@ -26,6 +26,8 @@ class TestES(unittest.TestCase):
                 print(results)
 
             check_compute_single_action(trainer)
+            trainer.stop()
+        ray.shutdown()
 
 
 if __name__ == "__main__":

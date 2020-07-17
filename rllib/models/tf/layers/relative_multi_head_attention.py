@@ -1,9 +1,9 @@
 from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
-class RelativeMultiHeadAttention(tf.keras.layers.Layer):
+class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
     """A RelativeMultiHeadAttention layer as described in [3].
 
     Uses segment level recurrence with state reuse.

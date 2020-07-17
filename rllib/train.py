@@ -14,7 +14,7 @@ from ray.tune.tune import _make_scheduler, run_experiments
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
 # Try to import both backends for flag checking/warnings.
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 EXAMPLE_USAGE = """

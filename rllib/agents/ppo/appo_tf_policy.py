@@ -21,7 +21,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 POLICY_SCOPE = "func"
 TARGET_POLICY_SCOPE = "target_func"
@@ -65,7 +65,7 @@ class PPOSurrogateLoss:
         def reduce_mean_valid(t):
             return tf.reduce_mean(tf.boolean_mask(t, valid_mask))
 
-        logp_ratio = tf.exp(actions_logp - prev_actions_logp)
+        logp_ratio = tf.math.exp(actions_logp - prev_actions_logp)
 
         surrogate_loss = tf.minimum(
             advantages * logp_ratio,
@@ -170,7 +170,7 @@ class VTraceSurrogateLoss:
                                               tf.float32))
 
         self.is_ratio = tf.clip_by_value(
-            tf.exp(prev_actions_logp - old_policy_actions_logp), 0.0, 2.0)
+            tf.math.exp(prev_actions_logp - old_policy_actions_logp), 0.0, 2.0)
         logp_ratio = self.is_ratio * tf.exp(actions_logp - prev_actions_logp)
 
         advantages = self.vtrace_returns.pg_advantages

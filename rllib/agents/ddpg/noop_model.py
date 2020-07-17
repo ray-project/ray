@@ -4,7 +4,7 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+_, tf, _ = try_import_tf()
 
 
 class NoopModel(TFModelV2):

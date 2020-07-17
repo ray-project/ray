@@ -13,7 +13,7 @@ before_install:
     git clone -q -n "https://github.com/${TRAVIS_REPO_SLUG}.git" "${TRAVIS_REPO_SLUG}"
     cd -- "${TRAVIS_REPO_SLUG}"
     to_fetch=("${TRAVIS_COMMIT}")
-    if [ -n "${TRAVIS_PULL_REQUEST-}" ]; then to_fetch+=("+refs/pull/${TRAVIS_PULL_REQUEST}/merge:"); fi
+    if [ false != "${TRAVIS_PULL_REQUEST-}" ]; then to_fetch+=("+refs/pull/${TRAVIS_PULL_REQUEST}/merge:"); fi
     git fetch -q -- origin "${to_fetch[@]}"
     git checkout -qf "${TRAVIS_COMMIT}" --
 
@@ -48,6 +48,19 @@ matrix:
       osx_image: xcode7
       env:
         - PYTHON=3.6
+        - PYTHONWARNINGS=ignore
+        - RAY_DEFAULT_BUILD=1
+        - RAY_CYTHON_EXAMPLES=1
+        - RAY_USE_RANDOM_PORTS=1
+      install:
+        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED
+      before_script:
+        - . ./ci/travis/ci.sh build
+
+    - os: osx
+      osx_image: xcode7
+      env:
+        - PYTHON=3.6 RAY_GCS_ACTOR_SERVICE_ENABLED=true
         - PYTHONWARNINGS=ignore
         - RAY_DEFAULT_BUILD=1
         - RAY_CYTHON_EXAMPLES=1
@@ -277,9 +290,6 @@ script:
 
   # ray operator tests
   - (cd deploy/ray-operator && export CC=gcc && suppress_output go build && suppress_output go test ./...)
-
-  # random python tests TODO(ekl): these should be moved to bazel
-  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/test/async_test.py; fi
 
   # bazel python tests. This should be run last to keep its logs at the end of travis logs.
   - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci --test_tag_filters=-jenkins_only python/ray/tests/...; fi

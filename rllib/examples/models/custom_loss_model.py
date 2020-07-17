@@ -10,7 +10,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.offline import JsonReader
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
 
 
@@ -73,7 +73,7 @@ class DeprecatedCustomLossModelV1(Model):
 
     def _build_layers_v2(self, input_dict, num_outputs, options):
         self.obs_in = input_dict["obs"]
-        with tf.variable_scope("shared", reuse=tf.AUTO_REUSE):
+        with tf1.variable_scope("shared", reuse=tf1.AUTO_REUSE):
             self.fcnet = FullyConnectedNetwork(input_dict, self.obs_space,
                                                self.action_space, num_outputs,
                                                options)
@@ -121,6 +121,8 @@ class TorchCustomLossModel(TorchModelV2, nn.Module):
         nn.Module.__init__(self)
 
         self.input_files = input_files
+        # Create a new input reader per worker.
+        self.reader = JsonReader(self.input_files)
         self.fcnet = TorchFC(
             self.obs_space,
             self.action_space,
@@ -135,13 +137,30 @@ class TorchCustomLossModel(TorchModelV2, nn.Module):
 
     @override(ModelV2)
     def custom_loss(self, policy_loss, loss_inputs):
-        # Create a new input reader per worker.
-        reader = JsonReader(self.input_files)
-        input_ops = reader.tf_input_ops()
+        """Calculates a custom loss on top of the given policy_loss(es).
+
+        Args:
+            policy_loss (List[TensorType]): The list of already calculated
+                policy losses (as many as there are optimizers).
+            loss_inputs (TensorStruct): Struct of np.ndarrays holding the
+                entire train batch.
+
+        Returns:
+            List[TensorType]: The altered list of policy losses. In case the
+                custom loss should have its own optimizer, make sure the
+                returned list is one larger than the incoming policy_loss list.
+                In case you simply want to mix in the custom loss into the
+                already calculated policy losses, return a list of altered
+                policy losses (as done in this example below).
+        """
+        # Get the next batch from our input files.
+        batch = self.reader.next()
 
         # Define a secondary loss by building a graph copy with weight sharing.
         obs = restore_original_dimensions(
-            tf.cast(input_ops["obs"], tf.float32), self.obs_space)
+            torch.from_numpy(batch["obs"]).float(),
+            self.obs_space,
+            tensorlib="torch")
         logits, _ = self.forward({"obs": obs}, [], None)
 
         # You can also add self-supervised losses easily by referencing tensors
@@ -155,11 +174,15 @@ class TorchCustomLossModel(TorchModelV2, nn.Module):
         action_dist = TorchCategorical(logits, self.model_config)
         self.policy_loss = policy_loss
         self.imitation_loss = torch.mean(
-            -action_dist.logp(input_ops["actions"]))
-        return policy_loss + 10 * self.imitation_loss
+            -action_dist.logp(torch.from_numpy(batch["actions"])))
+
+        # Add the imitation loss to each already calculated policy loss term.
+        # Alternatively (if custom loss has its own optimizer):
+        # return policy_loss + [10 * self.imitation_loss]
+        return [loss_ + 10 * self.imitation_loss for loss_ in policy_loss]
 
     def custom_stats(self):
         return {
-            "policy_loss": self.policy_loss,
+            "policy_loss": torch.mean(self.policy_loss),
             "imitation_loss": self.imitation_loss,
         }

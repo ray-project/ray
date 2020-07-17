@@ -52,14 +52,6 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeConnect(JNIEnv *, jobject, jlo
 
 /*
  * Class:     io_ray_runtime_gcs_GlobalStateAccessor
- * Method:    nativeDisconnect
- * Signature: (J)V
- */
-JNIEXPORT void JNICALL
-Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeDisconnect(JNIEnv *, jobject, jlong);
-
-/*
- * Class:     io_ray_runtime_gcs_GlobalStateAccessor
  * Method:    nativeGetAllJobInfo
  * Signature: (J)Ljava/util/List;
  */
@@ -83,6 +75,16 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllNodeInfo(JNIEnv *, jobje
 JNIEXPORT jbyteArray JNICALL
 Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetNodeResourceInfo(JNIEnv *, jobject,
                                                                       jlong, jbyteArray);
+
+/*
+ * Class:     io_ray_runtime_gcs_GlobalStateAccessor
+ * Method:    nativeGetInternalConfig
+ * Signature: (J)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetInternalConfig(JNIEnv *, jobject,
+                                                                    jlong);
+
 /*
  * Class:     io_ray_runtime_gcs_GlobalStateAccessor
  * Method:    nativeGetAllActorInfo

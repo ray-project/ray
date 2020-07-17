@@ -30,9 +30,7 @@ std::string test_executable;
 // TODO(hme): Get this working once the dust settles.
 class TestObjectManagerBase : public ::testing::Test {
  public:
-  TestObjectManagerBase() {
-    RAY_LOG(INFO) << "TestObjectManagerBase: started.";
-  }
+  TestObjectManagerBase() { RAY_LOG(INFO) << "TestObjectManagerBase: started."; }
 
   NodeManagerConfig GetNodeManagerConfig(std::string raylet_socket_name,
                                          std::string store_socket_name) {
@@ -80,13 +78,13 @@ class TestObjectManagerBase : public ::testing::Test {
         GetNodeManagerConfig("raylet_2", store_sock_2), om_config_2, gcs_client_2));
 
     // connect to stores.
-    RAY_ARROW_CHECK_OK(client1.Connect(store_sock_1));
-    RAY_ARROW_CHECK_OK(client2.Connect(store_sock_2));
+    RAY_CHECK_OK(client1.Connect(store_sock_1));
+    RAY_CHECK_OK(client2.Connect(store_sock_2));
   }
 
   void TearDown() {
-    arrow::Status client1_status = client1.Disconnect();
-    arrow::Status client2_status = client2.Disconnect();
+    Status client1_status = client1.Disconnect();
+    Status client2_status = client2.Disconnect();
     ASSERT_TRUE(client1_status.ok() && client2_status.ok());
 
     this->server1.reset();
@@ -105,9 +103,8 @@ class TestObjectManagerBase : public ::testing::Test {
     uint8_t metadata[] = {5};
     int64_t metadata_size = sizeof(metadata);
     std::shared_ptr<Buffer> data;
-    RAY_ARROW_CHECK_OK(
-        client.Create(object_id, data_size, metadata, metadata_size, &data));
-    RAY_ARROW_CHECK_OK(client.Seal(object_id));
+    RAY_CHECK_OK(client.Create(object_id, data_size, metadata, metadata_size, &data));
+    RAY_CHECK_OK(client.Seal(object_id));
     return object_id;
   }
 

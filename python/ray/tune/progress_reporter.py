@@ -5,7 +5,7 @@ import time
 
 from ray.tune.result import (EPISODE_REWARD_MEAN, MEAN_ACCURACY, MEAN_LOSS,
                              TRAINING_ITERATION, TIME_TOTAL_S, TIMESTEPS_TOTAL)
-from ray.tune.utils import flatten_dict
+from ray.tune.utils import unflattened_lookup
 
 try:
     from collections.abc import Mapping
@@ -466,9 +466,9 @@ def _get_trial_info(trial, parameters, metrics):
         parameters (list[str]): Names of trial parameters to include.
         metrics (list[str]): Names of metrics to include.
     """
-    result = flatten_dict(trial.last_result)
-    config = flatten_dict(trial.config)
+    result = trial.last_result
+    config = trial.config
     trial_info = [str(trial), trial.status, str(trial.location)]
-    trial_info += [config.get(param) for param in parameters]
-    trial_info += [result.get(metric) for metric in metrics]
+    trial_info += [unflattened_lookup(param, config) for param in parameters]
+    trial_info += [unflattened_lookup(metric, result) for metric in metrics]
     return trial_info

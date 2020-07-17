@@ -37,6 +37,24 @@ message RequestWorkerLeaseReply {
   bool canceled = 4;
 }
 
+message RequestResourceReserveRequest {
+  // Bundle containing the requested resources.
+  Bundle bundle_spec = 1;
+}
+
+message RequestResourceReserveReply {
+  // The status if resource reserve success.
+  bool success = 1;
+}
+
+message CancelResourceReserveRequest {
+  // Bundle containing the requested resources.
+  Bundle bundle_spec = 1;
+}
+
+message CancelResourceReserveReply {
+}
+
 // Release a worker back to its raylet.
 message ReturnWorkerRequest {
   // Port of the leased worker that we are now returning.
@@ -120,8 +138,8 @@ message FormatGlobalMemoryInfoRequest {
 }
 
 message FormatGlobalMemoryInfoReply {
-  // A tabular summary of the memory stats. To get this data in structured form, you
-  // can instead use GetNodeStats() directly.
+  // A tabular summary of the memory stats. To get this data in structured form,
+  // you can instead use GetNodeStats() directly.
   string memory_summary = 1;
 }
 
@@ -131,6 +149,12 @@ service NodeManagerService {
   rpc RequestWorkerLease(RequestWorkerLeaseRequest) returns (RequestWorkerLeaseReply);
   // Release a worker back to its raylet.
   rpc ReturnWorker(ReturnWorkerRequest) returns (ReturnWorkerReply);
+  // Request resource from the raylet for a bundle.
+  rpc RequestResourceReserve(RequestResourceReserveRequest)
+      returns (RequestResourceReserveReply);
+  // Return resource for the raylet.
+  rpc CancelResourceReserve(CancelResourceReserveRequest)
+      returns (CancelResourceReserveReply);
   // Cancel a pending lease request. This only returns success if the
   // lease request was not yet granted.
   rpc CancelWorkerLease(CancelWorkerLeaseRequest) returns (CancelWorkerLeaseReply);

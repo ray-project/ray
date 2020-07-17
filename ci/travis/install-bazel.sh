@@ -4,6 +4,8 @@ set -euo pipefail
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
+arg1="${1-}"
+
 version="3.2.0"
 achitecture="${HOSTTYPE}"
 platform="unknown"
@@ -46,16 +48,13 @@ if [ "${OSTYPE}" = "msys" ]; then
   target="${MINGW_DIR-/usr}/bin/bazel.exe"
   mkdir -p "${target%/*}"
   curl -f -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-${platform}-${achitecture}.exe"
-  tee /etc/profile.d/bazel.sh > /dev/null <<EOF; . /etc/profile.d/bazel.sh
-export USE_CLANG_CL=1  # Clang front-end for Visual C++
-EOF
 else
   target="./install.sh"
   curl -f -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-installer-${platform}-${achitecture}.sh"
   chmod +x "${target}"
-  if [ "${CI-}" = true ]; then
-    sudo "${target}" > /dev/null  # system-wide install for CI
-    command -V bazel 1>&2
+  if [ "${CI-}" = true ] || [ "${arg1-}" = "--system" ]; then
+    "$(command -v sudo || echo command)" "${target}" > /dev/null  # system-wide install for CI
+    which bazel > /dev/null
   else
     "${target}" --user > /dev/null
   fi

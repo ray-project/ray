@@ -1,8 +1,9 @@
 # Bazel build
 # C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
 
+load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@rules_proto_grpc//python:defs.bzl", "python_proto_compile")
-load("//bazel:ray.bzl", "COPTS")
+load("//bazel:ray.bzl", "COPTS", "copy_to_workspace")
 
 proto_library(
     name = "streaming_proto",
@@ -258,25 +259,24 @@ filegroup(
     ],
 )
 
+copy_to_workspace(
+    name = "cp_all_py_proto",
+    srcs = [":all_py_proto"],
+    dstdir = "streaming/python/generated",
+)
+
 genrule(
     name = "copy_streaming_py_proto",
     srcs = [
-        ":all_py_proto",
+        ":cp_all_py_proto",
     ],
     outs = [
         "copy_streaming_py_proto.out",
     ],
     cmd = """
-        set -e
-        WORK_DIR="$$(pwd)"
-        # Copy generated files.
-        GENERATED_DIR="$$WORK_DIR/streaming/python/generated"
-        rm -rf "$$GENERATED_DIR"
+        GENERATED_DIR="streaming/python/generated"
         mkdir -p "$$GENERATED_DIR"
         touch "$$GENERATED_DIR/__init__.py"
-        for f in $(locations //streaming:all_py_proto); do
-            cp -f "$$f" "$$GENERATED_DIR"
-        done
         sed -i -E 's/from streaming.src.protobuf/from ./' "$$GENERATED_DIR/remote_call_pb2.py"
         date > $@
     """,
@@ -285,22 +285,20 @@ genrule(
 )
 
 # Streaming java
-genrule(
+copy_file(
     name = "copy_jni_h",
-    srcs = ["@bazel_tools//tools/jdk:jni_header"],
-    outs = ["jni.h"],
-    cmd = "cp -f $< $@",
+    src = "@bazel_tools//tools/jdk:jni_header",
+    out = "jni.h",
 )
 
-genrule(
+copy_file(
     name = "copy_jni_md_h",
-    srcs = select({
-        "@bazel_tools//src/conditions:windows": ["@bazel_tools//tools/jdk:jni_md_header-windows"],
-        "@bazel_tools//src/conditions:darwin": ["@bazel_tools//tools/jdk:jni_md_header-darwin"],
-        "//conditions:default": ["@bazel_tools//tools/jdk:jni_md_header-linux"],
+    src = select({
+        "@bazel_tools//src/conditions:windows": "@bazel_tools//tools/jdk:jni_md_header-windows",
+        "@bazel_tools//src/conditions:darwin": "@bazel_tools//tools/jdk:jni_md_header-darwin",
+        "//conditions:default": "@bazel_tools//tools/jdk:jni_md_header-linux",
     }),
-    outs = ["jni_md.h"],
-    cmd = "cp -f $< $@",
+    out = "jni_md.h",
     visibility = ["//visibility:public"],
 )
 

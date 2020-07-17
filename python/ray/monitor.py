@@ -97,15 +97,9 @@ class Monitor:
         message = ray.gcs_utils.HeartbeatBatchTableData.FromString(
             heartbeat_data)
         for heartbeat_message in message.batch:
-            resource_load = dict(
-                zip(heartbeat_message.resource_load_label,
-                    heartbeat_message.resource_load_capacity))
-            total_resources = dict(
-                zip(heartbeat_message.resources_total_label,
-                    heartbeat_message.resources_total_capacity))
-            available_resources = dict(
-                zip(heartbeat_message.resources_available_label,
-                    heartbeat_message.resources_available_capacity))
+            resource_load = dict(heartbeat_message.resource_load)
+            total_resources = dict(heartbeat_message.resources_total)
+            available_resources = dict(heartbeat_message.resources_available)
             for resource in total_resources:
                 available_resources.setdefault(resource, 0.0)
 

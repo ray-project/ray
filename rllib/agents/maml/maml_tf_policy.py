@@ -9,7 +9,7 @@ from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae, \
     vf_preds_fetches, clip_gradients, setup_config, ValueNetworkMixin
 from ray.rllib.utils.framework import get_activation_fn
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ def PPOLoss(dist_class,
         pi_new_logp = curr_dist.logp(actions)
         pi_old_logp = prev_dist.logp(actions)
 
-        logp_ratio = tf.exp(pi_new_logp - pi_old_logp)
+        logp_ratio = tf.math.exp(pi_new_logp - pi_old_logp)
         if clip_loss:
             return tf.minimum(
                 advantages * logp_ratio,
@@ -49,10 +49,10 @@ def PPOLoss(dist_class,
 
     def vf_loss(value_fn, value_targets, vf_preds, vf_clip_param=0.1):
         # GAE Value Function Loss
-        vf_loss1 = tf.square(value_fn - value_targets)
+        vf_loss1 = tf.math.square(value_fn - value_targets)
         vf_clipped = vf_preds + tf.clip_by_value(value_fn - vf_preds,
                                                  -vf_clip_param, vf_clip_param)
-        vf_loss2 = tf.square(vf_clipped - value_targets)
+        vf_loss2 = tf.math.square(vf_clipped - value_targets)
         vf_loss = tf.maximum(vf_loss1, vf_loss2)
         return vf_loss
 
@@ -104,7 +104,7 @@ class WorkerLoss(object):
             vf_clip_param=vf_clip_param,
             vf_loss_coeff=vf_loss_coeff,
             clip_loss=clip_loss)
-        self.loss = tf.Print(self.loss, ["Worker Adapt Loss", self.loss])
+        self.loss = tf1.Print(self.loss, ["Worker Adapt Loss", self.loss])
 
 
 # This is the Meta-Update computation graph for main (meta-update step)
@@ -230,7 +230,7 @@ class MAMLLoss(object):
             tf.multiply(self.cur_kl_coeff, mean_inner_kl))
         self.loss = tf.reduce_mean(tf.stack(ppo_obj,
                                             axis=0)) + self.inner_kl_loss
-        self.loss = tf.Print(
+        self.loss = tf1.Print(
             self.loss,
             ["Meta-Loss", self.loss, "Inner KL", self.mean_inner_kl])
 
@@ -309,7 +309,7 @@ class MAMLLoss(object):
 def maml_loss(policy, model, dist_class, train_batch):
     logits, state = model.from_batch(train_batch)
 
-    policy._loss_input_dict["split"] = tf.placeholder(
+    policy._loss_input_dict["split"] = tf1.placeholder(
         tf.int32,
         name="Meta-Update-Splitting",
         shape=(policy.config["inner_adaptation_steps"] + 1,
@@ -333,8 +333,8 @@ def maml_loss(policy, model, dist_class, train_batch):
             vf_loss_coeff=policy.config["vf_loss_coeff"],
             clip_loss=False)
     else:
-        policy.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                            tf.get_variable_scope().name)
+        policy.var_list = tf1.get_collection(tf1.GraphKeys.TRAINABLE_VARIABLES,
+                                             tf1.get_variable_scope().name)
         policy.loss_obj = MAMLLoss(
             model=model,
             dist_class=dist_class,
@@ -380,8 +380,8 @@ class KLCoeffMixin:
         self.kl_coeff_val = [config["kl_coeff"]
                              ] * config["inner_adaptation_steps"]
         self.kl_target = self.config["kl_target"]
-        self.kl_coeff = tf.get_variable(
-            initializer=tf.constant_initializer(self.kl_coeff_val),
+        self.kl_coeff = tf1.get_variable(
+            initializer=tf.keras.initializers.Constant(self.kl_coeff_val),
             name="kl_coeff",
             shape=(config["inner_adaptation_steps"]),
             trainable=False,
@@ -404,8 +404,8 @@ def maml_optimizer_fn(policy, config):
     Meta-Policy uses Adam optimizer for meta-update
     """
     if not config["worker_index"]:
-        return tf.train.AdamOptimizer(learning_rate=config["lr"])
-    return tf.train.GradientDescentOptimizer(learning_rate=config["inner_lr"])
+        return tf1.train.AdamOptimizer(learning_rate=config["lr"])
+    return tf1.train.GradientDescentOptimizer(learning_rate=config["inner_lr"])
 
 
 def setup_mixins(policy, obs_space, action_space, config):

@@ -36,10 +36,10 @@ ObjectStoreNotificationManagerIPC::ObjectStoreNotificationManagerIPC(
       length_(0),
       socket_(io_service),
       exit_on_error_(exit_on_error) {
-  RAY_ARROW_CHECK_OK(store_client_.Connect(store_socket_name.c_str(), "", 0, 300));
+  RAY_CHECK_OK(store_client_.Connect(store_socket_name.c_str(), "", 0, 300));
 
   int fd;
-  RAY_ARROW_CHECK_OK(store_client_.Subscribe(&fd));
+  RAY_CHECK_OK(store_client_.Subscribe(&fd));
   boost::system::error_code ec;
 #ifdef _WIN32
   boost::asio::detail::socket_type c_socket = fh_release(fd);
@@ -71,11 +71,11 @@ ObjectStoreNotificationManagerIPC::ObjectStoreNotificationManagerIPC(
 }
 
 ObjectStoreNotificationManagerIPC::~ObjectStoreNotificationManagerIPC() {
-  RAY_ARROW_CHECK_OK(store_client_.Disconnect());
+  RAY_CHECK_OK(store_client_.Disconnect());
 }
 
 void ObjectStoreNotificationManagerIPC::Shutdown() {
-  RAY_ARROW_CHECK_OK(store_client_.Disconnect());
+  RAY_CHECK_OK(store_client_.Disconnect());
 }
 
 void ObjectStoreNotificationManagerIPC::NotificationWait() {

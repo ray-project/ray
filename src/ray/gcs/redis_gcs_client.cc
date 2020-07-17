@@ -15,6 +15,7 @@
 #include "ray/gcs/redis_gcs_client.h"
 
 #include <unistd.h>
+
 #include "ray/common/ray_config.h"
 #include "ray/gcs/redis_accessor.h"
 #include "ray/gcs/redis_context.h"
@@ -68,8 +69,14 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   actor_checkpoint_table_.reset(new ActorCheckpointTable(shard_contexts, this));
   actor_checkpoint_id_table_.reset(new ActorCheckpointIdTable(shard_contexts, this));
   resource_table_.reset(new DynamicResourceTable({primary_context}, this));
-  worker_failure_table_.reset(new WorkerFailureTable(shard_contexts, this));
-  actor_accessor_.reset(new RedisActorInfoAccessor(this));
+  worker_table_.reset(new WorkerTable(shard_contexts, this));
+
+  if (RayConfig::instance().gcs_actor_service_enabled()) {
+    actor_accessor_.reset(new RedisActorInfoAccessor(this));
+  } else {
+    actor_accessor_.reset(new RedisLogBasedActorInfoAccessor(this));
+  }
+
   job_accessor_.reset(new RedisJobInfoAccessor(this));
   object_accessor_.reset(new RedisObjectInfoAccessor(this));
   node_accessor_.reset(new RedisNodeInfoAccessor(this));
@@ -118,9 +125,7 @@ LogBasedActorTable &RedisGcsClient::log_based_actor_table() {
 
 ActorTable &RedisGcsClient::actor_table() { return *actor_table_; }
 
-WorkerFailureTable &RedisGcsClient::worker_failure_table() {
-  return *worker_failure_table_;
-}
+WorkerTable &RedisGcsClient::worker_table() { return *worker_table_; }
 
 TaskReconstructionLog &RedisGcsClient::task_reconstruction_log() {
   return *task_reconstruction_log_;

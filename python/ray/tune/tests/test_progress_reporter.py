@@ -1,11 +1,10 @@
 import pytest
 import collections
-import subprocess
-import tempfile
 import os
 import unittest
 from unittest.mock import MagicMock, Mock
 
+from ray.test_utils import run_string_as_driver
 from ray.tune.trial import Trial
 from ray.tune.progress_reporter import (CLIReporter, _fair_filter_trials,
                                         trial_progress_str)
@@ -23,15 +22,15 @@ Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
 
 EXPECTED_RESULT_2 = """Result logdir: /foo
 Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
-+--------------+------------+-------+-----+-----+
-|   Trial name | status     | loc   |   a |   b |
-|--------------+------------+-------+-----+-----|
-|        00000 | TERMINATED | here  |   0 |   0 |
-|        00001 | PENDING    | here  |   1 |   2 |
-|        00002 | RUNNING    | here  |   2 |   4 |
-|        00003 | RUNNING    | here  |   3 |   6 |
-|        00004 | RUNNING    | here  |   4 |   8 |
-+--------------+------------+-------+-----+-----+"""
++--------------+------------+-------+-----+-----+---------+---------+
+|   Trial name | status     | loc   |   a |   b |   n/k/0 |   n/k/1 |
+|--------------+------------+-------+-----+-----+---------+---------|
+|        00000 | TERMINATED | here  |   0 |   0 |       0 |       0 |
+|        00001 | PENDING    | here  |   1 |   2 |       1 |       2 |
+|        00002 | RUNNING    | here  |   2 |   4 |       2 |       4 |
+|        00003 | RUNNING    | here  |   3 |   6 |       3 |       6 |
+|        00004 | RUNNING    | here  |   4 |   8 |       4 |       8 |
++--------------+------------+-------+-----+-----+---------+---------+"""
 
 EXPECTED_RESULT_3 = """Result logdir: /foo
 Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
@@ -247,21 +246,29 @@ class ProgressReporterTest(unittest.TestCase):
             t.trial_id = "%05d" % i
             t.local_dir = "/foo"
             t.location = "here"
-            t.config = {"a": i, "b": i * 2}
-            t.evaluated_params = t.config
+            t.config = {"a": i, "b": i * 2, "n": {"k": [i, 2 * i]}}
+            t.evaluated_params = {
+                "a": i,
+                "b": i * 2,
+                "n/k/0": i,
+                "n/k/1": 2 * i
+            }
             t.last_result = {
                 "config": {
                     "a": i,
-                    "b": i * 2
+                    "b": i * 2,
+                    "n": {
+                        "k": [i, 2 * i]
+                    }
                 },
                 "metric_1": i / 2,
                 "metric_2": i / 4
             }
             t.__str__ = lambda self: self.trial_id
             trials.append(t)
-        # One metric, all parameters
+        # One metric, two parameters
         prog1 = trial_progress_str(
-            trials, ["metric_1"], None, fmt="psql", max_rows=3)
+            trials, ["metric_1"], ["a", "b"], fmt="psql", max_rows=3)
         print(prog1)
         assert prog1 == EXPECTED_RESULT_1
 
@@ -284,19 +291,15 @@ class ProgressReporterTest(unittest.TestCase):
     def testEndToEndReporting(self):
         try:
             os.environ["_TEST_TUNE_TRIAL_UUID"] = "xxxxx"
-            with tempfile.NamedTemporaryFile(suffix=".py") as f:
-                f.write(END_TO_END_COMMAND.encode("utf-8"))
-                f.flush()
-                output = subprocess.check_output(["python3", f.name])
-                output = output.decode("utf-8")
-                try:
-                    assert EXPECTED_END_TO_END_START in output
-                    assert EXPECTED_END_TO_END_END in output
-                except Exception:
-                    print("*** BEGIN OUTPUT ***")
-                    print(output)
-                    print("*** END OUTPUT ***")
-                    raise
+            output = run_string_as_driver(END_TO_END_COMMAND)
+            try:
+                assert EXPECTED_END_TO_END_START in output
+                assert EXPECTED_END_TO_END_END in output
+            except Exception:
+                print("*** BEGIN OUTPUT ***")
+                print(output)
+                print("*** END OUTPUT ***")
+                raise
         finally:
             del os.environ["_TEST_TUNE_TRIAL_UUID"]
 

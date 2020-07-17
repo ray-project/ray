@@ -183,4 +183,6 @@ int fake_munmap(void* addr, int64_t size) {
 
 void SetMallocGranularity(int value) { change_mparam(M_GRANULARITY, value); }
 
+const PlasmaStoreInfo* plasma_config;
+
 }  // namespace plasma

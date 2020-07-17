@@ -1,6 +1,6 @@
 # The base-deps Docker image installs main libraries needed to run Ray
 
-FROM ubuntu:xenial
+FROM ubuntu:bionic
 RUN apt-get update \
     && apt-get install -y \
         git \
@@ -12,6 +12,9 @@ RUN apt-get update \
         libgtk2.0-dev \
         zlib1g-dev \
         libgl1-mesa-dev \
+        tmux \
+        screen \
+        rsync \
     && apt-get clean \
     && echo 'export PATH=/opt/conda/bin:$PATH' > /etc/profile.d/conda.sh \
     && wget \
@@ -31,3 +34,7 @@ RUN apt-get update \
     && /opt/conda/bin/pip uninstall -y dask
 
 ENV PATH "/opt/conda/bin:$PATH"
+
+# OLD IS 
+# ray-project/base-deps                latest              50a2d9de82fa        30 seconds ago      961MB
+# ray-project/base-deps                latest              5c46dd1acbdf        50 seconds ago      1.03GB

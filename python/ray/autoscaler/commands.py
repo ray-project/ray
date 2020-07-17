@@ -24,10 +24,11 @@ from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS, \
     PROVIDER_PRETTY_NAMES
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_NODE_NAME, NODE_TYPE_WORKER, NODE_TYPE_HEAD
+
 from ray.ray_constants import AUTOSCALER_RESOURCE_REQUEST_CHANNEL
 from ray.autoscaler.updater import NodeUpdaterThread
+from ray.autoscaler.command_runner import DockerCommandRunner
 from ray.autoscaler.log_timer import LogTimer
-from ray.autoscaler.docker import with_docker_exec
 from ray.worker import global_worker
 
 from ray.autoscaler.cli_logger import cli_logger, SilentClickException
@@ -36,6 +37,8 @@ import colorful as cf
 logger = logging.getLogger(__name__)
 
 redis_client = None
+
+RUN_ENV_TYPES = ["auto", "host", "docker"]
 
 
 def _redis():
@@ -93,6 +96,7 @@ def _get_provider_config_for(provider):
 def create_or_update_cluster(config_file, override_min_workers,
                              override_max_workers, no_restart, restart_only,
                              yes, override_cluster_name,
+                             no_config_cache,
                              log_old_style, log_color, verbose):
     """Create or updates an autoscaling Ray cluster from a config json."""
     cli_logger.old_style = log_old_style
@@ -168,7 +172,7 @@ def create_or_update_cluster(config_file, override_min_workers,
     # because it only supports aws
     if config["provider"]["type"] != "aws":
         cli_logger.old_style = True
-    config = _bootstrap_config(config)
+    config = _bootstrap_config(config, no_config_cache)
     if config["provider"]["type"] != "aws":
         cli_logger.old_style = False
 
@@ -182,16 +186,20 @@ def create_or_update_cluster(config_file, override_min_workers,
 
 
 CONFIG_CACHE_VERSION = 1
-def _bootstrap_config(config):
+def _bootstrap_config(config, no_config_cache=False):
     provider_config = _get_provider_config_for(config["provider"]["type"])
-
     config = prepare_config(config)
 
     hasher = hashlib.sha1()
     hasher.update(json.dumps([config], sort_keys=True).encode("utf-8"))
     cache_key = os.path.join(tempfile.gettempdir(),
                              "ray-config-{}".format(hasher.hexdigest()))
-    if os.path.exists(cache_key):
+
+    if os.path.exists(cache_key) and not no_config_cache:
+        cli_logger.old_info(
+            logger,
+            "Using cached config at {}", cache_key)
+
         config_cache = json.loads(open(cache_key).read())
         if config_cache.get("_version", -1) == CONFIG_CACHE_VERSION:
             # todo: is it fine to re-resolve? afaik it should be.
@@ -203,9 +211,6 @@ def _bootstrap_config(config):
             cli_logger.verbose(
                 "Loaded cached config from "+cf.bold("{}"),
                 cache_key)
-            cli_logger.old_info(
-                logger,
-                "Using cached config at {}", cache_key)
 
             return config_cache["config"]
         else:
@@ -220,20 +225,25 @@ def _bootstrap_config(config):
     validate_config(config)
 
     importer = NODE_PROVIDERS.get(config["provider"]["type"])
-    bootstrap_config, _ = importer()
+    if not importer:
+        raise NotImplementedError("Unsupported provider {}".format(
+            config["provider"]))
+
+    provider_cls = importer(config["provider"])
 
     with cli_logger.timed( # todo: better message
         "Bootstraping {} config",
         PROVIDER_PRETTY_NAMES.get(config["provider"]["type"])):
-        resolved_config = bootstrap_config(config)
+        resolved_config = provider_cls.bootstrap_config(config)
 
-    with open(cache_key, "w") as f:
-        config_cache = {
-            "_version": CONFIG_CACHE_VERSION,
-            "provider_log_info": provider_config._log_info,
-            "config": resolved_config
-        }
-        f.write(json.dumps(config_cache))
+    if not no_config_cache:
+        with open(cache_key, "w") as f:
+            config_cache = {
+                "_version": CONFIG_CACHE_VERSION,
+                "provider_log_info": provider_config._log_info,
+                "config": resolved_config
+            }
+            f.write(json.dumps(config_cache))
     return resolved_config
 
 
@@ -258,8 +268,17 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name,
 
     if not workers_only:
         try:
-            exec_cluster(config_file, "ray stop", False, False, False, False,
-                         False, override_cluster_name, None, False)
+            exec_cluster(
+                config_file,
+                cmd="ray stop",
+                run_env="auto",
+                screen=False,
+                tmux=False,
+                stop=False,
+                start=False,
+                override_cluster_name=override_cluster_name,
+                port_forward=None,
+                with_output=False)
         except Exception as e:
             cli_logger.verbose_error(e) # todo: add better exception info
             cli_logger.warning(
@@ -384,10 +403,18 @@ def kill_node(config_file, yes, hard, override_cluster_name):
 
 
 def monitor_cluster(cluster_config_file, num_lines, override_cluster_name):
-    """Kills a random Raylet worker."""
+    """Tails the autoscaler logs of a Ray cluster."""
     cmd = "tail -n {} -f /tmp/ray/session_*/logs/monitor*".format(num_lines)
-    exec_cluster(cluster_config_file, cmd, False, False, False, False, False,
-                 override_cluster_name, None)
+    exec_cluster(
+        cluster_config_file,
+        cmd=cmd,
+        run_env="auto",
+        screen=False,
+        tmux=False,
+        stop=False,
+        start=False,
+        override_cluster_name=override_cluster_name,
+        port_forward=None)
 
 
 def warn_about_bad_start_command(start_commands):
@@ -544,6 +571,11 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             # Rewrite the auth config so that the head
             # node can update the workers
             remote_config = copy.deepcopy(config)
+
+            # drop proxy options if they exist, otherwise
+            # head node won't be able to connect to workers
+            remote_config["auth"].pop("ssh_proxy_command", None)
+
             if config["provider"]["type"] != "kubernetes":
                 remote_key_path = "~/ray_bootstrap_key.pem"
                 remote_config["auth"]["ssh_private_key"] = remote_key_path
@@ -563,6 +595,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             config["file_mounts"].update({
                 "~/ray_bootstrap_config.yaml": remote_config_file.name
             })
+
             if config["provider"]["type"] != "kubernetes":
                 config["file_mounts"].update({
                     remote_key_path: config["auth"]["ssh_private_key"],
@@ -628,9 +661,8 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             else:
                 modifiers = ""
             print("To monitor auto-scaling activity, you can run:\n\n"
-                  "  ray exec {} {}{}{}\n".format(
-                      config_file, "--docker " if use_docker else "",
-                      quote(monitor_str), modifiers))
+              "  ray exec {} {}{}\n".format(config_file, quote(monitor_str),
+                                            modifiers))
             print("To open a console on the cluster:\n\n"
                   "  ray attach {}{}\n".format(config_file, modifiers))
 
@@ -670,13 +702,22 @@ def attach_cluster(config_file, start, use_screen, use_tmux,
                 "--new only makes sense if passing --screen or --tmux")
         cmd = "$SHELL"
 
-    exec_cluster(config_file, cmd, False, False, False, False, start,
-                 override_cluster_name, port_forward)
+    exec_cluster(
+        config_file,
+        cmd=cmd,
+        run_env="auto",
+        screen=False,
+        tmux=False,
+        stop=False,
+        start=start,
+        override_cluster_name=override_cluster_name,
+        port_forward=port_forward)
 
 
 def exec_cluster(config_file,
+                 *,
                  cmd=None,
-                 docker=False,
+                 run_env="auto",
                  screen=False,
                  tmux=False,
                  stop=False,
@@ -689,7 +730,8 @@ def exec_cluster(config_file,
     Arguments:
         config_file: path to the cluster yaml
         cmd: command to run
-        docker: whether to run command in docker container of config
+        run_env: whether to run the command on the host or in a container.
+            Select between "auto", "host" and "docker"
         screen: whether to run in a screen
         tmux: whether to run in a tmux session
         stop: whether to stop the cluster after command run
@@ -698,7 +740,8 @@ def exec_cluster(config_file,
         port_forward (int or list[int]): port(s) to forward
     """
     assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
-
+    assert run_env in RUN_ENV_TYPES, "--run_env must be in {}".format(
+        RUN_ENV_TYPES)
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
@@ -722,23 +765,17 @@ def exec_cluster(config_file,
             runtime_hash="",
             docker_config=config.get("docker"))
 
-        def wrap_docker(command):
-            container_name = config["docker"]["container_name"]
-            if not container_name:
-                raise ValueError("Docker container not specified in config.")
-            return with_docker_exec(
-                [command], container_name=container_name)[0]
+        is_docker = isinstance(updater.cmd_runner, DockerCommandRunner)
 
-        if cmd:
-            cmd = wrap_docker(cmd) if docker else cmd
-
-            if stop:
-                shutdown_cmd = (
-                    "ray stop; ray teardown ~/ray_bootstrap_config.yaml "
-                    "--yes --workers-only")
-                if docker:
-                    shutdown_cmd = wrap_docker(shutdown_cmd)
-                cmd += ("; {}; sudo shutdown -h now".format(shutdown_cmd))
+        if cmd and stop:
+            cmd += "; ".join([
+                "ray stop",
+                "ray teardown ~/ray_bootstrap_config.yaml --yes --workers-only"
+            ])
+            if is_docker and run_env == "docker":
+                updater.cmd_runner.shutdown_after_next_cmd()
+            else:
+                cmd += "; sudo shutdown -h now"
 
         result = _exec(
             updater,
@@ -746,8 +783,8 @@ def exec_cluster(config_file,
             screen,
             tmux,
             port_forward=port_forward,
-            with_output=with_output)
-
+            with_output=with_output,
+            run_env=run_env)
         if tmux or screen:
             attach_command_parts = ["ray attach", config_file]
             if override_cluster_name is not None:
@@ -767,7 +804,13 @@ def exec_cluster(config_file,
         provider.cleanup()
 
 
-def _exec(updater, cmd, screen, tmux, port_forward=None, with_output=False):
+def _exec(updater,
+          cmd,
+          screen,
+          tmux,
+          port_forward=None,
+          with_output=False,
+          run_env="auto"):
     if cmd:
         if screen:
             cmd = [
@@ -786,7 +829,8 @@ def _exec(updater, cmd, screen, tmux, port_forward=None, with_output=False):
         cmd,
         exit_on_fail=True,
         port_forward=port_forward,
-        with_output=with_output)
+        with_output=with_output,
+        run_env=run_env)
 
 
 def rsync(config_file,

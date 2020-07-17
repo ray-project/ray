@@ -28,10 +28,8 @@ namespace rpc {
 // This macro wraps the logic to call a specific RPC method of a service,
 // to make it easier to implement a new RPC client.
 #define INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client) \
-  ({                                                                    \
-    rpc_client->CallMethod<METHOD##Request, METHOD##Reply>(             \
-        &SERVICE::Stub::PrepareAsync##METHOD, request, callback);       \
-  })
+  (rpc_client->CallMethod<METHOD##Request, METHOD##Reply>(              \
+      &SERVICE::Stub::PrepareAsync##METHOD, request, callback))
 
 // Define a void RPC client method.
 #define VOID_RPC_CLIENT_METHOD(SERVICE, METHOD, rpc_client, SPECS)               \
