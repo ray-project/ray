@@ -88,7 +88,7 @@ class Bazel(object):
 
     def __init__(self, program=None):
         if program is None:
-            program = os.getenv("BAZEL", "bazel")
+            program = os.getenv("BAZEL_EXECUTABLE", "bazel")
         self.argv = (program, )
         self.extra_args = ("--show_progress=no", )
 
