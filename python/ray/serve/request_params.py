@@ -42,7 +42,7 @@ class RequestMetadata:
         return current_time_ms + slo_ms
 
     def ray_serialize(self):
-        return pickle.dumps(self.__dict__, protocol=5)
+        return pickle.dumps(self.__dict__)
 
     @staticmethod
     def ray_deserialize(value):

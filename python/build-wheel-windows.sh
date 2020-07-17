@@ -32,7 +32,7 @@ install_ray() {
     pip install wheel
 
     cd "${WORKSPACE_DIR}"/python
-    pip install -v -e .
+    "${WORKSPACE_DIR}"/ci/keep_alive pip install -v -e .
   )
 }
 
