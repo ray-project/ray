@@ -1743,6 +1743,7 @@ def _mode(worker=global_worker):
 def make_decorator(num_return_vals=None,
                    num_cpus=None,
                    num_gpus=None,
+                   constraints=None,
                    memory=None,
                    object_store_memory=None,
                    resources=None,
@@ -1902,6 +1903,8 @@ def remote(*args, **kwargs):
             "max_retries",
         ], error_string
 
+    num_cpus = kwargs.get("num_cpus", None)
+    num_gpus = kwargs.get("num_gpus", None)
     resources = kwargs.get("resources", {})
     if not isinstance(resources, dict) and resources is not None:
         raise TypeError("The 'resources' keyword argument must be a "
@@ -1911,23 +1914,14 @@ def remote(*args, **kwargs):
         assert "CPU" not in resources, "Use the 'num_cpus' argument."
         assert "GPU" not in resources, "Use the 'num_gpus' argument."
 
-    num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None
-    gpus = kwargs["num_gpus"] if "num_gpus" in kwargs else None
 
-    if gpus is not None and isinstance(gpus, numbers.Number):
-        num_gpus = gpus
-    elif gpus is not None and isinstance(gpus, list):
-        num_gpus = len(gpus)
-        if gpus:
-            constraint_name = gpus[0]
-            assert resources is None or constraint_name not in resources, \
-                "The namespace _ray is reserved."
-            resources[constraint_name] = num_gpus
-    else:
-        num_gpus = None
-
-    if num_gpus is not None and isinstance(num_gpus, list):
-        gpus = gpus
+    constraints = kwargs.get("constraints", None)
+    if constraints is not None:
+        if isinstance(constrains, str):
+            constraints = {constraints}
+        assert isinstance(constraints, set), "constraints must be a string or a set."
+        for constraint in constraints:
+            resources[constraint] = 0.0001
 
     # Handle other arguments.
     num_return_vals = kwargs.get("num_return_vals")

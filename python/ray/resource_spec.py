@@ -169,7 +169,7 @@ class ResourceSpec(
         gpu_type = _get_gpu_type()
         if num_gpus and gpu_type is not None:
             pretty_name = _pretty_gpu_name(gpu_type)
-            constraint_name = "_RAY_ResourceConstraint:{}".format(pretty_name)
+            constraint_name = "ResourceConstraint:{}".format(pretty_name)
             resources[constraint_name] = num_gpus
 
         # Choose a default object store size.
@@ -260,6 +260,25 @@ def _autodetect_num_gpus():
     return result
 
 
+def get_gpu_model(info_str):
+    """Parse the contents of a /proc/driver/nvidia/gpus/*/information to get the
+gpu model type.
+
+    Args:
+        info_str (str): The contents of the file.
+
+    Returns:
+        (str) The full model name.
+    """
+
+    lines = info_str.split("\n")
+    for line in lines:
+        k, v = line.split(":")
+        if k.strip() == "Model":
+            return v.strip()
+    return None
+
+
 def _get_gpu_type():
     """Get the gpu type for this machine.
 
@@ -276,11 +295,8 @@ def _get_gpu_type():
             if len(gpu_dirs) > 0:
                 gpu_info_path = "{}/{}/information".format(
                     proc_gpus_path, gpu_dirs[0])
-                lines = open(gpu_info_path).readlines()
-                for line in lines:
-                    k, v = line.split(":")
-                    if k.strip() == "Model":
-                        return v.strip()
+                info_str = open(gpu_info_path).read()
+                return get_gpu_model(info_str)
     return None
 
 
