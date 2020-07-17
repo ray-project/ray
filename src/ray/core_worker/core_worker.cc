@@ -1168,6 +1168,21 @@ void CoreWorker::SubmitTask(const RayFunction &function,
   }
 }
 
+std::unordered_map<std::string, double> AddPlacementGroupConstraint(
+    const std::unordered_map<std::string, double> &resources,
+    PlacementGroupID placement_group_id, int64_t bundle_index) {
+  std::unordered_map<std::string, double> new_resources;
+  if (placement_group_id != PlacementGroupID::Nil()) {
+    for (auto iter = resources.begin(); iter != resources.end(); iter++) {
+      auto new_name =
+          placement_group_id.Hex() + std::to_string(bundle_index) + "_" + iter->first;
+      new_resources[new_name] = iter->second;
+    }
+    return new_resources;
+  }
+  return resources;
+}
+
 Status CoreWorker::CreateActor(const RayFunction &function,
                                const std::vector<std::unique_ptr<TaskArg>> &args,
                                const ActorCreationOptions &actor_creation_options,
@@ -1185,10 +1200,17 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   const JobID job_id = worker_context_.GetCurrentJobID();
   std::vector<ObjectID> return_ids;
   TaskSpecBuilder builder;
+  auto new_placement_resources =
+      AddPlacementGroupConstraint(actor_creation_options.placement_resources,
+                                  actor_creation_options.placement_options.first,
+                                  actor_creation_options.placement_options.second);
+  auto new_resource = AddPlacementGroupConstraint(
+      actor_creation_options.resources, actor_creation_options.placement_options.first,
+      actor_creation_options.placement_options.second);
   BuildCommonTaskSpec(builder, job_id, actor_creation_task_id,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
-                      rpc_address_, function, args, 1, actor_creation_options.resources,
-                      actor_creation_options.placement_resources, &return_ids);
+                      rpc_address_, function, args, 1, new_resource,
+                      new_placement_resources, &return_ids);
   builder.SetActorCreationTaskSpec(
       actor_id, actor_creation_options.max_restarts,
       actor_creation_options.dynamic_worker_options,
@@ -1225,6 +1247,22 @@ Status CoreWorker::CreateActor(const RayFunction &function,
     status = direct_task_submitter_->SubmitTask(task_spec);
   }
   return status;
+}
+
+Status CoreWorker::CreatePlacementGroup(
+    const PlacementGroupCreationOptions &placement_group_creation_options,
+    PlacementGroupID *return_placement_group_id) {
+  const PlacementGroupID placement_group_id = PlacementGroupID ::FromRandom();
+  PlacementGroupSpecBuilder builder;
+  builder.SetPlacementGroupSpec(placement_group_id, placement_group_creation_options.name,
+                                placement_group_creation_options.bundles,
+                                placement_group_creation_options.strategy);
+  PlacementGroupSpecification placement_group_spec = builder.Build();
+  *return_placement_group_id = placement_group_id;
+  RAY_LOG(INFO) << "Submitting Placement Group creation to GCS: " << placement_group_id;
+  RAY_CHECK_OK(
+      gcs_client_->PlacementGroups().AsyncCreatePlacementGroup(placement_group_spec));
+  return Status::OK();
 }
 
 void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
