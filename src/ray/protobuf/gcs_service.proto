@@ -162,6 +162,13 @@ service ActorInfoGcsService {
       returns (GetActorCheckpointIDReply);
 }
 
+// Service for placement group info access.
+service PlacementGroupInfoGcsService {
+  // Create placement group via gcs service
+  rpc CreatePlacementGroup(CreatePlacementGroupRequest)
+      returns (CreatePlacementGroupReply);
+}
+
 message RegisterNodeRequest {
   // Info of node.
   GcsNodeInfo node_info = 1;
@@ -483,6 +490,14 @@ message CreateActorRequest {
 }
 
 message CreateActorReply {
+  GcsStatus status = 1;
+}
+
+message CreatePlacementGroupRequest {
+  PlacementGroupSpec placement_group_spec = 1;
+}
+
+message CreatePlacementGroupReply {
   GcsStatus status = 1;
 }
 

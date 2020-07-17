@@ -112,17 +112,37 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
   return Status::OK();
 }
 
+void CoreWorkerDirectActorTaskSubmitter::DisconnectRpcClient(ClientQueue &queue) {
+  queue.rpc_client = nullptr;
+  queue.worker_id.clear();
+  queue.pending_force_kill.reset();
+}
+
 void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
-                                                      const rpc::Address &address) {
+                                                      const rpc::Address &address,
+                                                      int64_t num_restarts) {
+  RAY_LOG(DEBUG) << "Connecting to actor " << actor_id << " at worker "
+                 << WorkerID::FromBinary(address.worker_id());
   absl::MutexLock lock(&mu_);
 
   auto queue = client_queues_.find(actor_id);
   RAY_CHECK(queue != client_queues_.end());
-  if (queue->second.rpc_client) {
-    // Skip reconnection if we already have a client to this actor.
-    // NOTE(swang): This seems to only trigger in multithreaded Java tests.
-    RAY_CHECK(queue->second.worker_id == address.worker_id());
+  if (num_restarts <= queue->second.num_restarts) {
+    // This message is about an old version of the actor and the actor has
+    // already restarted since then. Skip the connection.
     return;
+  }
+
+  if (queue->second.state == rpc::ActorTableData::DEAD) {
+    // This message is about an old version of the actor and the actor has
+    // already died since then. Skip the connection.
+    return;
+  }
+
+  queue->second.num_restarts = num_restarts;
+  if (queue->second.rpc_client) {
+    // Clear the client to the old version of the actor.
+    DisconnectRpcClient(queue->second);
   }
 
   queue->second.state = rpc::ActorTableData::ALIVE;
@@ -142,26 +162,26 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
 }
 
 void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
+                                                         int64_t num_restarts,
                                                          bool dead) {
+  RAY_LOG(DEBUG) << "Disconnecting from actor " << actor_id;
   absl::MutexLock lock(&mu_);
   auto queue = client_queues_.find(actor_id);
   RAY_CHECK(queue != client_queues_.end());
-
-  if (dead) {
-    queue->second.state = rpc::ActorTableData::DEAD;
-  } else {
-    queue->second.state = rpc::ActorTableData::RESTARTING;
+  if (num_restarts < queue->second.num_restarts && !dead) {
+    // This message is about an old version of the actor that has already been
+    // restarted successfully. Skip the message handling.
+    return;
   }
 
   // The actor failed, so erase the client for now. Either the actor is
   // permanently dead or the new client will be inserted once the actor is
   // restarted.
-  queue->second.rpc_client = nullptr;
-  queue->second.worker_id.clear();
-  queue->second.pending_force_kill.reset();
+  DisconnectRpcClient(queue->second);
 
-  // If there are pending requests, treat the pending tasks as failed.
   if (dead) {
+    queue->second.state = rpc::ActorTableData::DEAD;
+    // If there are pending requests, treat the pending tasks as failed.
     RAY_LOG(INFO) << "Failing pending tasks for actor " << actor_id;
     auto &requests = queue->second.requests;
     auto head = requests.begin();
@@ -180,6 +200,11 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
     // replies. They will be treated as failed once the connection dies.
     // We retain the sequencing information so that we can properly fail
     // any tasks submitted after the actor death.
+  } else if (queue->second.state != rpc::ActorTableData::DEAD) {
+    // Only update the actor's state if it is not permanently dead. The actor
+    // will eventually get restarted or marked as permanently dead.
+    queue->second.state = rpc::ActorTableData::RESTARTING;
+    queue->second.num_restarts = num_restarts;
   }
 }
 
@@ -269,8 +294,8 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
 
 void CoreWorkerDirectTaskReceiver::Init(
     rpc::ClientFactoryFn client_factory, rpc::Address rpc_address,
-    std::shared_ptr<DependencyWaiterInterface> dependency_client) {
-  waiter_.reset(new DependencyWaiterImpl(*dependency_client));
+    std::shared_ptr<DependencyWaiter> dependency_waiter) {
+  waiter_ = std::move(dependency_waiter);
   rpc_address_ = rpc_address;
   client_factory_ = client_factory;
 }
@@ -291,13 +316,6 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
                   << task_spec.ActorCreationId()
                   << ". This is likely due to a GCS server restart.";
     return;
-  }
-
-  std::vector<ObjectID> dependencies;
-  for (size_t i = 0; i < task_spec.NumArgs(); ++i) {
-    if (task_spec.ArgByRef(i)) {
-      dependencies.push_back(task_spec.ArgId(i));
-    }
   }
 
   // Only assign resources for non-actor tasks. Actor tasks inherit the resources
@@ -394,17 +412,14 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
         SchedulingQueue(task_main_io_service_, *waiter_, worker_context_));
     it = result.first;
   }
+  auto dependencies = task_spec.GetDependencies();
+  // Pop the dummy actor dependency.
+  if (task_spec.IsActorTask()) {
+    // TODO(swang): Remove this with legacy raylet code.
+    dependencies.pop_back();
+  }
   it->second.Add(request.sequence_number(), request.client_processed_up_to(),
                  accept_callback, reject_callback, dependencies);
-}
-
-void CoreWorkerDirectTaskReceiver::HandleDirectActorCallArgWaitComplete(
-    const rpc::DirectActorCallArgWaitCompleteRequest &request,
-    rpc::DirectActorCallArgWaitCompleteReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG) << "Arg wait complete for tag " << request.tag();
-  waiter_->OnWaitComplete(request.tag());
-  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 }  // namespace ray

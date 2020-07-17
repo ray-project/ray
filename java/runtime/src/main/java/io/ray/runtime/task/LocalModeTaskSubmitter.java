@@ -3,7 +3,9 @@ package io.ray.runtime.task;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.protobuf.ByteString;
+import io.ray.api.ActorHandle;
 import io.ray.api.BaseActorHandle;
+import io.ray.api.Ray;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.TaskId;
@@ -32,6 +34,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -39,6 +42,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.stream.Collectors;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -61,11 +65,14 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   /// The thread pool to execute normal tasks.
   private final ExecutorService normalTaskExecutorService;
 
+  private final Map<ActorId, LocalModeActorHandle> actorHandles = new ConcurrentHashMap<>();
+
+  private final Map<String, ActorHandle> namedActors = new ConcurrentHashMap<>();
 
   private final Map<ActorId, TaskExecutor.ActorContext> actorContexts = new ConcurrentHashMap<>();
 
   public LocalModeTaskSubmitter(RayRuntimeInternal runtime, TaskExecutor taskExecutor,
-      LocalModeObjectStore objectStore) {
+                                LocalModeObjectStore objectStore) {
     this.runtime = runtime;
     this.taskExecutor = taskExecutor;
     this.objectStore = objectStore;
@@ -126,11 +133,11 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
             ByteString.copyFrom(runtime.getRayConfig().getJobId().getBytes()))
         .setTaskId(ByteString.copyFrom(taskIdBytes))
         .setFunctionDescriptor(Common.FunctionDescriptor.newBuilder()
-                .setJavaFunctionDescriptor(
-                        Common.JavaFunctionDescriptor.newBuilder()
-                        .setClassName(functionDescriptorList.get(0))
-                        .setFunctionName(functionDescriptorList.get(1))
-                        .setSignature(functionDescriptorList.get(2))))
+            .setJavaFunctionDescriptor(
+                Common.JavaFunctionDescriptor.newBuilder()
+                    .setClassName(functionDescriptorList.get(0))
+                    .setFunctionName(functionDescriptorList.get(1))
+                    .setSignature(functionDescriptorList.get(2))))
         .addAllArgs(args.stream().map(arg -> arg.id != null ? TaskArg.newBuilder()
             .setObjectRef(ObjectReference.newBuilder().setObjectId(
                     ByteString.copyFrom(arg.id.getBytes()))).build()
@@ -152,8 +159,9 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   }
 
   @Override
-  public BaseActorHandle createActor(FunctionDescriptor functionDescriptor, List<FunctionArg> args,
-                                     ActorCreationOptions options) {
+  public BaseActorHandle createActor(
+      FunctionDescriptor functionDescriptor, List<FunctionArg> args,
+      ActorCreationOptions options) throws IllegalArgumentException {
     ActorId actorId = ActorId.fromRandom();
     TaskSpec taskSpec = getTaskSpecBuilder(TaskType.ACTOR_CREATION_TASK, functionDescriptor, args)
         .setNumReturns(1)
@@ -162,7 +170,15 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
             .build())
         .build();
     submitTaskSpec(taskSpec);
-    return new LocalModeActorHandle(actorId, getReturnIds(taskSpec).get(0));
+    final LocalModeActorHandle actorHandle
+        = new LocalModeActorHandle(actorId, getReturnIds(taskSpec).get(0));
+    actorHandles.put(actorId, actorHandle.copy());
+    if (StringUtils.isNotBlank(options.name)) {
+      Preconditions.checkArgument(!namedActors.containsKey(options.name),
+          String.format("Actor of name %s exists", options.name));
+      namedActors.put(options.name, actorHandle);
+    }
+    return actorHandle;
   }
 
   @Override
@@ -188,6 +204,21 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
       return ImmutableList.of();
     } else {
       return ImmutableList.of(returnIds.get(0));
+    }
+  }
+
+  @Override
+  public BaseActorHandle getActor(ActorId actorId) {
+    return actorHandles.get(actorId).copy();
+  }
+
+  public Optional<BaseActorHandle> getActor(String name, boolean global) {
+    String fullName = global ? name :
+        String.format("%s-%s", Ray.getRuntimeContext().getCurrentJobId(), name);
+    if (namedActors.containsKey(fullName)) {
+      return Optional.of(namedActors.get(fullName));
+    } else {
+      return Optional.empty();
     }
   }
 
@@ -300,7 +331,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
         // If the task is an actor task or an actor creation task,
         // put the dummy object in object store, so those tasks which depends on it
         // can be executed.
-        putObject = new NativeRayObject(new byte[]{1}, null);
+        putObject = new NativeRayObject(new byte[] {1}, null);
       } else {
         putObject = returnObjects.get(i);
       }
@@ -310,13 +341,13 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
 
   private static JavaFunctionDescriptor getJavaFunctionDescriptor(TaskSpec taskSpec) {
     Common.FunctionDescriptor functionDescriptor =
-            taskSpec.getFunctionDescriptor();
+        taskSpec.getFunctionDescriptor();
     if (functionDescriptor.getFunctionDescriptorCase() ==
-            Common.FunctionDescriptor.FunctionDescriptorCase.JAVA_FUNCTION_DESCRIPTOR) {
+        Common.FunctionDescriptor.FunctionDescriptorCase.JAVA_FUNCTION_DESCRIPTOR) {
       return new JavaFunctionDescriptor(
-              functionDescriptor.getJavaFunctionDescriptor().getClassName(),
-              functionDescriptor.getJavaFunctionDescriptor().getFunctionName(),
-              functionDescriptor.getJavaFunctionDescriptor().getSignature());
+          functionDescriptor.getJavaFunctionDescriptor().getClassName(),
+          functionDescriptor.getJavaFunctionDescriptor().getFunctionName(),
+          functionDescriptor.getJavaFunctionDescriptor().getSignature());
     } else {
       throw new RuntimeException("Can't build non java function descriptor");
     }

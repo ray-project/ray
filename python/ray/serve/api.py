@@ -366,7 +366,7 @@ def get_handle(endpoint_name,
             master_actor.get_all_endpoints.remote())
 
     return RayServeHandle(
-        ray.get(master_actor.get_router.remote())[0],
+        ray.get(master_actor.get_http_proxy.remote())[0],
         endpoint_name,
         relative_slo_ms,
         absolute_slo_ms,

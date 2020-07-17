@@ -53,46 +53,45 @@ class DQNTorchModel(TorchModelV2, nn.Module):
         self.dueling = dueling
         ins = num_outputs
 
-        # Dueling case: Build the shared (advantages and value) fc-network.
         advantage_module = nn.Sequential()
-        value_module = None
-        if self.dueling:
-            value_module = nn.Sequential()
-            for i, n in enumerate(q_hiddens):
-                advantage_module.add_module("dueling_A_{}".format(i),
-                                            nn.Linear(ins, n))
-                value_module.add_module("dueling_V_{}".format(i),
-                                        nn.Linear(ins, n))
-                # Add activations if necessary.
-                if dueling_activation == "relu":
-                    advantage_module.add_module("dueling_A_act_{}".format(i),
-                                                nn.ReLU())
-                    value_module.add_module("dueling_V_act_{}".format(i),
-                                            nn.ReLU())
-                elif dueling_activation == "tanh":
-                    advantage_module.add_module("dueling_A_act_{}".format(i),
-                                                nn.Tanh())
-                    value_module.add_module("dueling_V_act_{}".format(i),
-                                            nn.Tanh())
+        value_module = nn.Sequential()
 
-                # Add LayerNorm after each Dense.
-                if add_layer_norm:
-                    advantage_module.add_module("LayerNorm_A_{}".format(i),
-                                                nn.LayerNorm(n))
-                    value_module.add_module("LayerNorm_V_{}".format(i),
+        # Dueling case: Build the shared (advantages and value) fc-network.
+        for i, n in enumerate(q_hiddens):
+            advantage_module.add_module("dueling_A_{}".format(i),
+                                        nn.Linear(ins, n))
+            value_module.add_module("dueling_V_{}".format(i),
+                                    nn.Linear(ins, n))
+            # Add activations if necessary.
+            if dueling_activation == "relu":
+                advantage_module.add_module("dueling_A_act_{}".format(i),
+                                            nn.ReLU())
+                value_module.add_module("dueling_V_act_{}".format(i),
+                                        nn.ReLU())
+            elif dueling_activation == "tanh":
+                advantage_module.add_module("dueling_A_act_{}".format(i),
+                                            nn.Tanh())
+                value_module.add_module("dueling_V_act_{}".format(i),
+                                        nn.Tanh())
+
+            # Add LayerNorm after each Dense.
+            if add_layer_norm:
+                advantage_module.add_module("LayerNorm_A_{}".format(i),
                                             nn.LayerNorm(n))
-                ins = n
-            # Actual Advantages layer (nodes=num-actions) and
-            # value layer (nodes=1).
+                value_module.add_module("LayerNorm_V_{}".format(i),
+                                        nn.LayerNorm(n))
+            ins = n
+
+        # Actual Advantages layer (nodes=num-actions).
+        if q_hiddens:
             advantage_module.add_module("A", nn.Linear(ins, action_space.n))
-            value_module.add_module("V", nn.Linear(ins, 1))
-        # Non-dueling:
-        # Q-value layer (use main module's outputs as Q-values).
-        else:
-            pass
 
         self.advantage_module = advantage_module
-        self.value_module = value_module
+
+        # Value layer (nodes=1).
+        if self.dueling:
+            value_module.add_module("V", nn.Linear(ins, 1))
+            self.value_module = value_module
 
     def get_advantages_or_q_values(self, model_out):
         """Returns distributional values for Q(s, a) given a state embedding.

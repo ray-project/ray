@@ -1,5 +1,6 @@
 package io.ray.runtime.functionmanager;
 
+import com.google.common.base.Objects;
 import io.ray.runtime.generated.Common.Language;
 import java.util.Arrays;
 import java.util.List;
@@ -24,6 +25,25 @@ public class PyFunctionDescriptor implements FunctionDescriptor {
   @Override
   public String toString() {
     return moduleName + "." + className + "." + functionName;
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) {
+      return true;
+    }
+    if (o == null || getClass() != o.getClass()) {
+      return false;
+    }
+    PyFunctionDescriptor that = (PyFunctionDescriptor) o;
+    return Objects.equal(moduleName, that.moduleName) &&
+      Objects.equal(className, that.className) &&
+      Objects.equal(functionName, that.functionName);
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hashCode(moduleName, className, functionName);
   }
 
   @Override

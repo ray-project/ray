@@ -65,7 +65,12 @@ Language Worker::GetLanguage() const { return language_; }
 const std::string Worker::IpAddress() const { return ip_address_; }
 
 int Worker::Port() const {
-  RAY_CHECK(port_ > 0);
+  // NOTE(kfstorm): Since `RayletClient::AnnounceWorkerPort` is an asynchronous
+  // operation, the worker may crash before the `AnnounceWorkerPort` request is received
+  // by raylet. In this case, Accessing `Worker::Port` in
+  // `NodeManager::ProcessDisconnectClientMessage` will fail the check. So disable the
+  // check here.
+  // RAY_CHECK(port_ > 0);
   return port_;
 }
 

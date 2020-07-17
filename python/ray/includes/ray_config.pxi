@@ -157,3 +157,7 @@ cdef class Config:
     @staticmethod
     def maximum_gcs_deletion_batch_size():
         return RayConfig.instance().maximum_gcs_deletion_batch_size()
+
+    @staticmethod
+    def put_small_object_in_memory_store():
+        return RayConfig.instance().put_small_object_in_memory_store()

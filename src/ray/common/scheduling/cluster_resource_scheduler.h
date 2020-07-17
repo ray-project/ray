@@ -14,87 +14,21 @@
 
 #pragma once
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
-#include "ray/common/scheduling/scheduling_ids.h"
-#include "ray/common/task/scheduling_resources.h"
-#include "ray/util/logging.h"
-
 #include <iostream>
 #include <sstream>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "ray/common/scheduling/fixed_point.h"
+#include "ray/common/scheduling/scheduling_ids.h"
+#include "ray/common/task/scheduling_resources.h"
+#include "ray/util/logging.h"
+
 /// List of predefined resources.
 enum PredefinedResources { CPU, MEM, GPU, TPU, PredefinedResources_MAX };
 // Specify resources that consists of unit-size instances.
-static std::unordered_set<int64_t> UnitInstanceResources{CPU, GPU, TPU};
-
-/// Fixed point data type.
-class FixedPoint {
-#define RESOURCE_UNIT_SCALING 1000
- private:
-  int64_t i_;
-
- public:
-  FixedPoint(double d = 0) { i_ = (int64_t)(d * RESOURCE_UNIT_SCALING); }
-
-  FixedPoint operator+(FixedPoint const &ru) {
-    FixedPoint res;
-    res.i_ = i_ + ru.i_;
-    return res;
-  }
-
-  FixedPoint operator+=(FixedPoint const &ru) {
-    i_ += ru.i_;
-    return *this;
-  }
-
-  FixedPoint operator-(FixedPoint const &ru) {
-    FixedPoint res;
-    res.i_ = i_ - ru.i_;
-    return res;
-  }
-
-  FixedPoint operator-=(FixedPoint const &ru) {
-    i_ -= ru.i_;
-    return *this;
-  }
-
-  FixedPoint operator-() const {
-    FixedPoint res;
-    res.i_ = -i_;
-    return res;
-  }
-
-  FixedPoint operator+(double const d) {
-    FixedPoint res;
-    res.i_ = i_ + (int64_t)(d * RESOURCE_UNIT_SCALING);
-    return res;
-  }
-
-  FixedPoint operator-(double const d) {
-    FixedPoint res;
-    res.i_ = i_ - (int64_t)(d * RESOURCE_UNIT_SCALING);
-    return res;
-  }
-
-  FixedPoint operator=(double const d) {
-    i_ = (int64_t)(d * RESOURCE_UNIT_SCALING);
-    ;
-    return *this;
-  }
-
-  friend bool operator<(FixedPoint const &ru1, FixedPoint const &ru2);
-  friend bool operator>(FixedPoint const &ru1, FixedPoint const &ru2);
-  friend bool operator<=(FixedPoint const &ru1, FixedPoint const &ru2);
-  friend bool operator>=(FixedPoint const &ru1, FixedPoint const &ru2);
-  friend bool operator==(FixedPoint const &ru1, FixedPoint const &ru2);
-  friend bool operator!=(FixedPoint const &ru1, FixedPoint const &ru2);
-
-  double Double() { return (double)i_ / RESOURCE_UNIT_SCALING; };
-
-  friend std::ostream &operator<<(std::ostream &out, const FixedPoint &ru);
-};
+static std::unordered_set<int64_t> UnitInstanceResources{GPU, TPU};
 
 /// Helper function to compare two vectors with FixedPoint values.
 bool EqualVectors(const std::vector<FixedPoint> &v1, const std::vector<FixedPoint> &v2);
@@ -171,6 +105,36 @@ class TaskResourceInstances {
   std::vector<double> GetCPUInstancesDouble() const {
     if (!this->predefined_resources.empty()) {
       return VectorFixedPointToVectorDouble(this->predefined_resources[CPU]);
+    } else {
+      return {};
+    }
+  };
+  /// Get GPU instances only.
+  std::vector<FixedPoint> GetGPUInstances() const {
+    if (!this->predefined_resources.empty()) {
+      return this->predefined_resources[GPU];
+    } else {
+      return {};
+    }
+  };
+  std::vector<double> GetGPUInstancesDouble() const {
+    if (!this->predefined_resources.empty()) {
+      return VectorFixedPointToVectorDouble(this->predefined_resources[GPU]);
+    } else {
+      return {};
+    }
+  };
+  /// Get mem instances only.
+  std::vector<FixedPoint> GetMemInstances() const {
+    if (!this->predefined_resources.empty()) {
+      return this->predefined_resources[MEM];
+    } else {
+      return {};
+    }
+  };
+  std::vector<double> GetMemInstancesDouble() const {
+    if (!this->predefined_resources.empty()) {
+      return VectorFixedPointToVectorDouble(this->predefined_resources[MEM]);
     } else {
       return {};
     }
@@ -495,6 +459,22 @@ class ClusterResourceScheduler {
   /// \return Underflow capacities of CPU instances after subtracting CPU
   /// capacities in cpu_instances.
   std::vector<double> SubtractCPUResourceInstances(std::vector<double> &cpu_instances);
+
+  /// Increase the available GPU instances of this node.
+  ///
+  /// \param gpu_instances GPU instances to be added to available gpus.
+  ///
+  /// \return Overflow capacities of GPU instances after adding GPU
+  /// capacities in gpu_instances.
+  std::vector<double> AddGPUResourceInstances(std::vector<double> &gpu_instances);
+
+  /// Decrease the available GPU instances of this node.
+  ///
+  /// \param gpu_instances GPU instances to be removed from available gpus.
+  ///
+  /// \return Underflow capacities of GPU instances after subtracting GPU
+  /// capacities in gpu_instances.
+  std::vector<double> SubtractGPUResourceInstances(std::vector<double> &gpu_instances);
 
   /// Subtract the resources required by a given task request (task_req) from the
   /// local node. This function also updates the local node resources

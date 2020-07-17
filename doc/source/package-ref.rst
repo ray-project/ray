@@ -1,50 +1,167 @@
 Ray Package Reference
 =====================
 
+Python API
+----------
+
+.. _ray-init-ref:
+
+ray.init
+~~~~~~~~
+
 .. autofunction:: ray.init
+
+.. _ray-is_initialized-ref:
+
+ray.is_initialized
+~~~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.is_initialized
 
+.. _ray-remote-ref:
+
+ray.remote
+~~~~~~~~~~
+
 .. autofunction:: ray.remote
+
+.. _ray-get-ref:
+
+ray.get
+~~~~~~~
 
 .. autofunction:: ray.get
 
+.. _ray-wait-ref:
+
+ray.wait
+~~~~~~~~
+
 .. autofunction:: ray.wait
+
+.. _ray-put-ref:
+
+ray.put
+~~~~~~~
 
 .. autofunction:: ray.put
 
+.. _ray-kill-ref:
+
+ray.kill
+~~~~~~~~
+
 .. autofunction:: ray.kill
+
+.. _ray-cancel-ref:
+
+ray.cancel
+~~~~~~~~~~
 
 .. autofunction:: ray.cancel
 
+.. _ray-get_gpu_ids-ref:
+
+ray.get_gpu_ids
+~~~~~~~~~~~~~~~
+
 .. autofunction:: ray.get_gpu_ids
+
+.. _ray-get_resource_ids-ref:
+
+ray.get_resource_ids
+~~~~~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.get_resource_ids
 
+.. _ray-get_webui_url-ref:
+
+ray.get_webui_url
+~~~~~~~~~~~~~~~~~
+
 .. autofunction:: ray.get_webui_url
+
+.. _ray-shutdown-ref:
+
+ray.shutdown
+~~~~~~~~~~~~
 
 .. autofunction:: ray.shutdown
 
+
+.. _ray-register_custom_serializer-ref:
+
+ray.register_custom_serializer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 .. autofunction:: ray.register_custom_serializer
+
+.. _ray-profile-ref:
+
+ray.profile
+~~~~~~~~~~~
 
 .. autofunction:: ray.profile
 
+.. _ray-method-ref:
+
+ray.method
+~~~~~~~~~~
+
 .. autofunction:: ray.method
 
-Inspect the Cluster State
--------------------------
+ray.util.ActorPool
+~~~~~~~~~~~~~~~~~~
+
+.. autoclass:: ray.util.ActorPool
+   :members:
+
+.. _ray-nodes-ref:
+
+ray.nodes
+~~~~~~~~~
 
 .. autofunction:: ray.nodes
 
+.. _ray-objects-ref:
+
+ray.objects
+~~~~~~~~~~~
+
 .. autofunction:: ray.objects
+
+.. _ray-timeline-ref:
+
+ray.timeline
+~~~~~~~~~~~~
 
 .. autofunction:: ray.timeline
 
+.. _ray-object_transfer_timeline-ref:
+
+ray.object_transfer_timeline
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 .. autofunction:: ray.object_transfer_timeline
+
+.. _ray-cluster_resources-ref:
+
+ray.cluster_resources
+~~~~~~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.cluster_resources
 
+.. _ray-available_resources-ref:
+
+ray.available_resources
+~~~~~~~~~~~~~~~~~~~~~~~
+
 .. autofunction:: ray.available_resources
+
+.. _ray-errors-ref:
+
+ray.errors
+~~~~~~~~~~
 
 .. autofunction:: ray.errors
 

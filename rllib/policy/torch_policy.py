@@ -4,6 +4,7 @@ import numpy as np
 import time
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
+import ray
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
@@ -98,8 +99,10 @@ class TorchPolicy(Policy):
         """
         self.framework = "torch"
         super().__init__(observation_space, action_space, config)
-        self.device = (torch.device("cuda")
-                       if torch.cuda.is_available() else torch.device("cpu"))
+        if torch.cuda.is_available() and ray.get_gpu_ids():
+            self.device = torch.device("cuda")
+        else:
+            self.device = torch.device("cpu")
         self.model = model.to(self.device)
         self.exploration = self._create_exploration()
         self.unwrapped_model = model  # used to support DistributedDataParallel
@@ -149,7 +152,8 @@ class TorchPolicy(Policy):
                 input_dict[SampleBatch.PREV_REWARDS] = \
                     np.asarray(prev_reward_batch)
             state_batches = [
-                convert_to_torch_tensor(s) for s in (state_batches or [])
+                convert_to_torch_tensor(s, self.device)
+                for s in (state_batches or [])
             ]
             actions, state_out, extra_fetches, logp = \
                 self._compute_action_helper(
@@ -168,7 +172,7 @@ class TorchPolicy(Policy):
     def compute_actions_from_trajectories(
             self,
             trajectories: List["Trajectory"],
-            other_trajectories: Dict[AgentID, "Trajectory"],
+            other_trajectories: Optional[Dict[AgentID, "Trajectory"]] = None,
             explore: bool = None,
             timestep: Optional[int] = None,
             **kwargs) -> \
@@ -556,7 +560,8 @@ class TorchPolicy(Policy):
 
     def _lazy_tensor_dict(self, postprocessed_batch):
         train_batch = UsageTrackingDict(postprocessed_batch)
-        train_batch.set_get_interceptor(convert_to_torch_tensor)
+        train_batch.set_get_interceptor(functools.partial(
+            convert_to_torch_tensor, device=self.device))
         return train_batch
 
 

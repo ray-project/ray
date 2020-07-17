@@ -40,6 +40,7 @@ class GcsNodeManager;
 class GcsActorManager;
 class GcsJobManager;
 class GcsWorkerManager;
+class GcsPlacementGroupManager;
 
 /// The GcsServer will take over all requests from ServiceBasedGcsClient and transparent
 /// transmit the command to the backend reliable storage for the time being.
@@ -85,6 +86,9 @@ class GcsServer {
   /// Initialize the gcs job manager.
   virtual void InitGcsJobManager();
 
+  /// Initialize the gcs placement group manager.
+  virtual void InitGcsPlacementGroupManager();
+
   /// The object manager
   virtual std::unique_ptr<GcsObjectManager> InitObjectManager();
 
@@ -122,6 +126,8 @@ class GcsServer {
   std::shared_ptr<GcsRedisFailureDetector> gcs_redis_failure_detector_;
   /// The gcs actor manager
   std::shared_ptr<GcsActorManager> gcs_actor_manager_;
+  /// The gcs placement group manager
+  std::shared_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
   /// Job info handler and service
   std::unique_ptr<GcsJobManager> gcs_job_manager_;
   std::unique_ptr<rpc::JobInfoGrpcService> job_info_service_;
@@ -145,6 +151,9 @@ class GcsServer {
   std::unique_ptr<GcsWorkerManager> gcs_worker_manager_;
   /// Worker info service
   std::unique_ptr<rpc::WorkerInfoGrpcService> worker_info_service_;
+  /// Placement Group info handler and service
+  std::unique_ptr<rpc::PlacementGroupInfoHandler> placement_group_info_handler_;
+  std::unique_ptr<rpc::PlacementGroupInfoGrpcService> placement_group_info_service_;
   /// Backend client
   std::shared_ptr<RedisGcsClient> redis_gcs_client_;
   /// A publisher for publishing gcs messages.
