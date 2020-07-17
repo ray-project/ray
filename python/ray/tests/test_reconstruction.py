@@ -1,4 +1,6 @@
 import json
+import os
+import signal
 import sys
 
 import numpy as np
@@ -6,7 +8,11 @@ import pytest
 
 import ray
 from ray.test_utils import (
-    wait_for_condition, )
+    wait_for_condition,
+    wait_for_pid_to_exit,
+)
+
+SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
 
 def test_cached_object(ray_start_cluster):
@@ -215,6 +221,77 @@ def test_basic_reconstruction_put(ray_start_cluster, reconstruction_enabled):
             ray.get(result)
         except ray.exceptions.UnreconstructableError:
             pass
+
+
+@pytest.mark.parametrize("reconstruction_enabled", [False, True])
+def test_basic_reconstruction_actor(ray_start_cluster, reconstruction_enabled):
+    config = {
+        "num_heartbeats_timeout": 10,
+        "raylet_heartbeat_timeout_milliseconds": 100,
+        "initial_reconstruction_timeout_milliseconds": 200,
+    }
+    # Workaround to reset the config to the default value.
+    if not reconstruction_enabled:
+        config["lineage_pinning_enabled"] = 0
+    config = json.dumps(config)
+
+    cluster = ray_start_cluster
+    # Head node with no resources.
+    cluster.add_node(
+        num_cpus=0,
+        _internal_config=config,
+        enable_object_reconstruction=reconstruction_enabled)
+    ray.init(address=cluster.address)
+    # Node to place the initial object.
+    node_to_kill = cluster.add_node(
+        num_cpus=1, resources={"node1": 2}, object_store_memory=10**8)
+    cluster.add_node(
+        num_cpus=1, resources={"node2": 1}, object_store_memory=10**8)
+    cluster.wait_for_nodes()
+
+    @ray.remote(
+        max_restarts=-1,
+        max_task_retries=-1 if reconstruction_enabled else 0,
+        resources={"node1": 1},
+        num_cpus=0)
+    class Actor:
+        def __init__(self):
+            pass
+
+        def large_object(self):
+            return np.zeros(10**7, dtype=np.uint8)
+
+        def pid(self):
+            return os.getpid()
+
+    @ray.remote
+    def dependent_task(x):
+        return
+
+    a = Actor.remote()
+    pid = ray.get(a.pid.remote())
+    obj = a.large_object.remote()
+    ray.get(dependent_task.options(resources={"node1": 1}).remote(obj))
+
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    cluster.add_node(
+        num_cpus=1, resources={"node1": 2}, object_store_memory=10**8)
+
+    # Workaround since there is a bug where killing the raylet does not always
+    # kill the actor.
+    os.kill(pid, SIGKILL)
+    wait_for_pid_to_exit(pid)
+
+    if reconstruction_enabled:
+        ray.get(dependent_task.remote(obj))
+    else:
+        with pytest.raises(ray.exceptions.RayTaskError) as e:
+            ray.get(dependent_task.remote(obj))
+            with pytest.raises(ray.exceptions.UnreconstructableError):
+                raise e.as_instanceof_cause()
+
+    # Make sure the actor handle is still usable.
+    pid = ray.get(a.pid.remote())
 
 
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
