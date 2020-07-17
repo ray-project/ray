@@ -55,12 +55,12 @@ build_jars_linux() {
 }
 
 # This function assuem all dependencies are installed already.
-build_jars_macos() {
-  build_jars macos
+build_jars_darwin() {
+  build_jars darwin
 }
 
 build_jars_multiplatform() {
-  build_jars_macos
+  build_jars_darwin
 
   # The -f flag is passed twice to also run git clean in the arrow subdirectory.
   # The -d flag removes directories. The -x flag ignores the .gitignore file,
@@ -74,31 +74,20 @@ build_jars_multiplatform() {
 
 # prepare native binaries and libraries.
 prepare_native() {
-  for os in 'macos' 'linux'; do
+  for os in 'darwin' 'linux'; do
     cd "$JAR_BASE_DIR"/"$os"
     jar xf "$(ls ray-runtime*.jar | grep -v sources | grep -v grep)" "$os"
-    local native_dir="$WORKSPACE_DIR"/java/runtime/native_dependencies
+    local native_dir="$WORKSPACE_DIR"/java/runtime/native_dependencies/native/"$os"
     mkdir -p "$native_dir"
     rm -rf "$native_dir"
-    mv "$os" "$native_dir"
-    jar xf "$(ls streaming-runtime*.jar | grep -v sources | grep -v grep)" "$os"
-    local native_dir="$WORKSPACE_DIR"/streaming/java/streaming-runtime/native_dependencies
+    jar xf "$(ls ray-runtime*.jar | grep -v sources | grep -v grep)" "native/$os"
+    mv "native/$os" "$native_dir"
+    local native_dir="$WORKSPACE_DIR"/streaming/java/streaming-runtime/native_dependencies/native/"$os"
     mkdir -p "$native_dir"
     rm -rf "$native_dir"
-    mv "$os" "$native_dir"
+    jar xf "$(ls streaming-runtime*.jar | grep -v sources | grep -v grep)" "native/$os"
+    mv "native/$os" "$native_dir"
   done
-
-  mkdir -p "$WORKSPACE_DIR"/java/runtime/native_dependencies
-  cd "$WORKSPACE_DIR"/java/runtime/native_dependencies
-  rm -rf *
-  echo "$JAR_BASE_DIR"/macos/
-  jar xf "$JAR_BASE_DIR"/linux/"$(ls ray-runtime*.jar | grep -v sources | grep -v grep)" linux
-  jar xf "$JAR_BASE_DIR"/macos/"$(ls ray-runtime*.jar | grep -v sources | grep -v grep)" macos
-
-  cd "$WORKSPACE_DIR"/streaming/java/streaming-runtime/native_dependencies
-  rm -rf *
-  jar xf "$JAR_BASE_DIR"/linux/"$(ls streaming-runtime*.jar | grep -v sources | grep -v grep)" linux
-  jar xf "$JAR_BASE_DIR"/macos/"$(ls streaming-runtime*.jar | grep -v sources | grep -v grep)" macos
 }
 
 # This function assuem all multiplatform binaries are prepared already.
@@ -115,8 +104,8 @@ case $1 in
 linux)
   build_jar_linux
   ;;
-macos)
-  build_jar_macos
+darwin)
+  build_jar_darwin
   ;;
 multiplatform)
   build_jars_multiplatform
@@ -125,7 +114,7 @@ deploy)
   deploy_jars
   ;;
 *)
-  echo "ERROR: unknown option \"$1\", please pass linux/macos/multiplatform"
+  echo "ERROR: unknown option \"$1\", please pass linux/darwin/multiplatform"
   echo
   exit -1
   ;;
