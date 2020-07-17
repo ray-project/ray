@@ -104,20 +104,18 @@ class MockRayletClient : public WorkerLeaseInterface {
     return Status::OK();
   }
 
-  ray::Status RequestWorkerLease(
+  void RequestWorkerLease(
       const ray::TaskSpecification &resource_spec,
       const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback) override {
     num_workers_requested += 1;
     callbacks.push_back(callback);
-    return Status::OK();
   }
 
-  ray::Status CancelWorkerLease(
+  void CancelWorkerLease(
       const TaskID &task_id,
       const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override {
     num_leases_canceled += 1;
     cancel_callbacks.push_back(callback);
-    return Status::OK();
   }
 
   // Trigger reply to RequestWorkerLease.

@@ -100,7 +100,7 @@ void ObjectRecoveryManager::PinExistingObjectCopy(
     client = client_it->second;
   }
 
-  RAY_UNUSED(client->PinObjectIDs(
+  client->PinObjectIDs(
       rpc_address_, {object_id},
       [this, object_id, other_locations, node_id](const Status &status,
                                                   const rpc::PinObjectIDsReply &reply) {
@@ -115,7 +115,7 @@ void ObjectRecoveryManager::PinExistingObjectCopy(
                         << ", trying again";
           PinOrReconstructObject(object_id, other_locations);
         }
-      }));
+      });
 }
 
 void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {

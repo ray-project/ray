@@ -68,20 +68,18 @@ struct GcsServerMocker {
       return Status::OK();
     }
 
-    ray::Status RequestWorkerLease(
+    void RequestWorkerLease(
         const ray::TaskSpecification &resource_spec,
         const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback) override {
       num_workers_requested += 1;
       callbacks.push_back(callback);
-      return Status::OK();
     }
 
-    ray::Status CancelWorkerLease(
+    void CancelWorkerLease(
         const TaskID &task_id,
         const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override {
       num_leases_canceled += 1;
       cancel_callbacks.push_back(callback);
-      return Status::OK();
     }
 
     bool GrantWorkerLease() {
@@ -140,22 +138,20 @@ struct GcsServerMocker {
 
   class MockRayletResourceClient : public ResourceReserveInterface {
    public:
-    ray::Status RequestResourceReserve(
+    void RequestResourceReserve(
         const BundleSpecification &bundle_spec,
         const ray::rpc::ClientCallback<ray::rpc::RequestResourceReserveReply> &callback)
         override {
       num_lease_requested += 1;
       lease_callbacks.push_back(callback);
-      return Status::OK();
     }
 
-    ray::Status CancelResourceReserve(
+    void CancelResourceReserve(
         BundleSpecification &bundle_spec,
         const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback)
         override {
       num_return_requested += 1;
       return_callbacks.push_back(callback);
-      return Status::OK();
     }
 
     // Trigger reply to RequestWorkerLease.
