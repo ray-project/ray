@@ -71,7 +71,7 @@ class StatsTest : public ::testing::Test {
                                          {stats::WorkerPidKey, "1000"}};
     std::shared_ptr<stats::MetricExporterClient> exporter(
         new stats::StdoutExporterClient());
-    ray::stats::Init(global_tags, 10054, io_service_, exporter);
+    ray::stats::Init(global_tags, 10054, exporter);
     MockExporter::Register();
   }
 

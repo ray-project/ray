@@ -29,6 +29,7 @@
 #include "ray/stats/metric_exporter.h"
 #include "ray/stats/metric_exporter_client.h"
 #include "ray/util/logging.h"
+#include "ray/util/io_service_pool.h"
 
 namespace ray {
 
@@ -42,7 +43,6 @@ namespace stats {
 /// Initialize stats.
 static void Init(
     const TagsType &global_tags, const int metrics_agent_port,
-    boost::asio::io_service &io_service,
     std::shared_ptr<MetricExporterClient> exporter_to_use = nullptr,
     int64_t metrics_report_batch_size = RayConfig::instance().metrics_report_batch_size(),
     bool disable_stats = !RayConfig::instance().enable_metrics_collection()) {
@@ -52,13 +52,17 @@ static void Init(
     return;
   }
 
+  static std::shared_ptr<IOServicePool> metrics_io_service_pool = std::make_shared<IOServicePool>(1);
+  metrics_io_service_pool->Run();
+  boost::asio::io_service *metrics_io_serve = metrics_io_service_pool->Get();
+
   // Force to have a singleton exporter.
   static std::shared_ptr<MetricExporterClient> exporter;
   // Default exporter is metrics agent exporter.
   if (exporter_to_use == nullptr) {
     std::shared_ptr<MetricExporterClient> stdout_exporter(new StdoutExporterClient());
     exporter.reset(new MetricsAgentExporter(stdout_exporter, metrics_agent_port,
-                                            io_service, "127.0.0.1"));
+                                            (*metrics_io_serve), "127.0.0.1"));
   } else {
     exporter = exporter_to_use;
   }
