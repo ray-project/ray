@@ -217,6 +217,10 @@ def flatten_dict(dt, delimiter="/"):
 
 
 def unflattened_lookup(flat_key, lookup, delimiter="/", default=None):
+    """
+    Unflatten `flat_key` and iteratively look up in `lookup`. E.g.
+    `flat_key="a/0/b"` will try to return `lookup["a"][0]["b"]`.
+    """
     keys = deque(flat_key.split(delimiter))
     base = lookup
     while keys:

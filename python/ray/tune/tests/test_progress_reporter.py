@@ -247,7 +247,12 @@ class ProgressReporterTest(unittest.TestCase):
             t.local_dir = "/foo"
             t.location = "here"
             t.config = {"a": i, "b": i * 2, "n": {"k": [i, 2 * i]}}
-            t.evaluated_params = ["a", "b", "n/k/0", "n/k/1"]
+            t.evaluated_params = {
+                "a": i,
+                "b": i * 2,
+                "n/k/0": i,
+                "n/k/1": 2 * i
+            }
             t.last_result = {
                 "config": {
                     "a": i,
