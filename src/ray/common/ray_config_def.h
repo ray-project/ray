@@ -324,3 +324,8 @@ RAY_CONFIG(int64_t, enable_metrics_collection, true)
 
 /// Whether start the Plasma Store as a Raylet thread.
 RAY_CONFIG(bool, put_small_object_in_memory_store, false)
+
+/// Maximum number of tasks that can be in flight between an owner and a worker for which
+/// the owner has been granted a lease. A value >1 is used when we want to enable
+/// pipelining task submission.
+RAY_CONFIG(uint32_t, max_tasks_in_flight_per_worker, 1)

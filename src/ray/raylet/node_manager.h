@@ -25,11 +25,12 @@
 #include "ray/common/client_connection.h"
 #include "ray/common/task/task_common.h"
 #include "ray/common/task/scheduling_resources.h"
-#include "ray/common/scheduling/scheduling_ids.h"
-#include "ray/common/scheduling/cluster_resource_scheduler.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/actor_registration.h"
 #include "ray/raylet/lineage_cache.h"
+#include "ray/raylet/scheduling/scheduling_ids.h"
+#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
+#include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/raylet/scheduling_policy.h"
 #include "ray/raylet/scheduling_queue.h"
 #include "ray/raylet/reconstruction_policy.h"
@@ -664,7 +665,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// in the system (local or remote) that has enough resources available to
   /// run the task, if any such node exist.
   /// Repeat the process as long as we can schedule a task.
-  void NewSchedulerSchedulePendingTasks();
+  /// NEW SCHEDULER_FUNCTION
+  void ScheduleAndDispatch();
 
   /// Whether a task is an actor creation task.
   bool IsActorCreationTask(const TaskID &task_id);
@@ -772,20 +774,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// on all local workers of this raylet.
   bool should_local_gc_ = false;
 
-  /// The new resource scheduler for direct task calls.
+  /// These two classes make up the new scheduler. ClusterResourceScheduler is
+  /// responsible for maintaining a view of the cluster state w.r.t resource
+  /// usage. ClusterTaskManager is responsible for queuing, spilling back, and
+  /// dispatching tasks.
   std::shared_ptr<ClusterResourceScheduler> new_resource_scheduler_;
-
-  typedef std::function<void(std::shared_ptr<Worker>, ClientID spillback_to,
-                             std::string address, int port)>
-      ScheduleFn;
-
-  /// Queue of lease requests that are waiting for resources to become available.
-  /// TODO this should be a queue for each SchedulingClass
-  std::deque<std::pair<ScheduleFn, Task>> tasks_to_schedule_;
-  /// Queue of lease requests that should be scheduled onto workers.
-  std::deque<std::pair<ScheduleFn, Task>> tasks_to_dispatch_;
-  /// Queue tasks waiting for arguments to be transferred locally.
-  absl::flat_hash_map<TaskID, std::pair<ScheduleFn, Task>> waiting_tasks_;
+  std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
 
   /// Cache of gRPC clients to workers (not necessarily running on this node).
   /// Also includes the number of inflight requests to each worker - when this
@@ -795,9 +789,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
       worker_rpc_clients_;
 
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
-
-  /// Wait for a task's arguments to become ready.
-  void WaitForTaskArgsRequests(std::pair<ScheduleFn, Task> &work);
 
   // TODO(swang): Evict entries from these caches.
   /// Cache for the WorkerTable in the GCS.
