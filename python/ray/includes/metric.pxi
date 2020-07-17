@@ -25,7 +25,7 @@ cdef class TagKey:
 cdef class Metric:
     """Cython wrapper class of C++ `ray::stats::Metric`.
 
-        It's an asbtract class of all metric type.
+        It's an abstract class of all metric types.
     """
     cdef:
         unique_ptr[CMetric] metric
