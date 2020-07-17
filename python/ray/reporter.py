@@ -64,7 +64,11 @@ class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
             profiling_stats=profiling_stats, stdout=stdout, stderr=stderr)
 
     def ReportMetrics(self, request, context):
-        self.metrics_agent.record_metrics_points(request.metrics_points)
+        # Exceptions are not propagated for some reasons.
+        try:
+            self.metrics_agent.record_metrics_points(request.metrics_points)
+        except Exception as e:
+            logger.error(traceback.format_exc())
         return reporter_pb2.ReportMetricsReply()
 
 
