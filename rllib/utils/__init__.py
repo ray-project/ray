@@ -91,7 +91,6 @@ __all__ = [
     "try_import_tf",
     "try_import_tfp",
     "try_import_torch",
-    "try_import_tree",
     "ConstantSchedule",
     "DeveloperAPI",
     "ExponentialSchedule",

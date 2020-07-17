@@ -31,7 +31,7 @@ def method(*args, **kwargs):
         _, _ = f.bar.remote()
 
     Args:
-        num_return_vals: The number of object IDs that should be returned by
+        num_return_vals: The number of object refs that should be returned by
             invocations of this actor method.
     """
     assert len(args) == 0
@@ -64,7 +64,7 @@ class ActorMethod:
             invoking the method. The decorator must return a function that
             takes in two arguments ("args" and "kwargs"). In most cases, it
             should call the function that was passed into the decorator and
-            return the resulting ObjectIDs. For an example, see
+            return the resulting ObjectRefs. For an example, see
             "test_decorated_method" in "python/ray/tests/test_actor.py".
     """
 
@@ -81,7 +81,7 @@ class ActorMethod:
         # opposed to the function execution). The decorator must return a
         # function that takes in two arguments ("args" and "kwargs"). In most
         # cases, it should call the function that was passed into the decorator
-        # and return the resulting ObjectIDs.
+        # and return the resulting ObjectRefs.
         self._decorator = decorator
 
         # Acquire a hard ref to the actor, this is useful mainly when passing
@@ -685,7 +685,7 @@ class ActorHandle:
             num_return_vals (int): The number of return values for the method.
 
         Returns:
-            object_ids: A list of object IDs returned by the remote actor
+            object_refs: A list of object refs returned by the remote actor
                 method.
         """
         worker = ray.worker.global_worker
@@ -713,16 +713,16 @@ class ActorHandle:
                 "Cross language remote actor method " \
                 "cannot be executed locally."
 
-        object_ids = worker.core_worker.submit_actor_task(
+        object_refs = worker.core_worker.submit_actor_task(
             self._ray_actor_language, self._ray_actor_id, function_descriptor,
             list_args, num_return_vals, self._ray_actor_method_cpus)
 
-        if len(object_ids) == 1:
-            object_ids = object_ids[0]
-        elif len(object_ids) == 0:
-            object_ids = None
+        if len(object_refs) == 1:
+            object_refs = object_refs[0]
+        elif len(object_refs) == 0:
+            object_refs = None
 
-        return object_ids
+        return object_refs
 
     def __getattr__(self, item):
         if not self._ray_is_cross_language:
@@ -795,14 +795,14 @@ class ActorHandle:
         return state
 
     @classmethod
-    def _deserialization_helper(cls, state, outer_object_id=None):
+    def _deserialization_helper(cls, state, outer_object_ref=None):
         """This is defined in order to make pickling work.
 
         Args:
             state: The serialized state of the actor handle.
-            outer_object_id: The ObjectID that the serialized actor handle was
-                contained in, if any. This is used for counting references to
-                the actor handle.
+            outer_object_ref: The ObjectRef that the serialized actor handle
+                was contained in, if any. This is used for counting references
+                to the actor handle.
 
         """
         worker = ray.worker.global_worker
@@ -811,7 +811,7 @@ class ActorHandle:
         if hasattr(worker, "core_worker"):
             # Non-local mode
             return worker.core_worker.deserialize_and_register_actor_handle(
-                state, outer_object_id)
+                state, outer_object_ref)
         else:
             # Local mode
             return cls(

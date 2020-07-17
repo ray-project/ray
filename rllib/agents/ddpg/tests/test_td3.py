@@ -16,13 +16,14 @@ class TestTD3(unittest.TestCase):
         config["num_workers"] = 0  # Run locally.
 
         # Test against all frameworks.
-        for _ in framework_iterator(config, frameworks=["tf"]):
+        for _ in framework_iterator(config):
             trainer = td3.TD3Trainer(config=config, env="Pendulum-v0")
-            num_iterations = 2
+            num_iterations = 1
             for i in range(num_iterations):
                 results = trainer.train()
                 print(results)
             check_compute_single_action(trainer)
+            trainer.stop()
 
     def test_td3_exploration_and_with_random_prerun(self):
         """Tests TD3's Exploration (w/ random actions for n timesteps)."""
@@ -31,7 +32,7 @@ class TestTD3(unittest.TestCase):
         obs = np.array([0.0, 0.1, -0.1])
 
         # Test against all frameworks.
-        for _ in framework_iterator(config, frameworks="tf"):
+        for _ in framework_iterator(config):
             lcl_config = config.copy()
             # Default GaussianNoise setup.
             trainer = td3.TD3Trainer(config=lcl_config, env="Pendulum-v0")

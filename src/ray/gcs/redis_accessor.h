@@ -15,6 +15,7 @@
 #pragma once
 
 #include <ray/common/task/task_spec.h>
+
 #include "ray/common/id.h"
 #include "ray/gcs/accessor.h"
 #include "ray/gcs/callback.h"
@@ -174,9 +175,8 @@ class RedisJobInfoAccessor : public JobInfoAccessor {
 
   Status AsyncMarkFinished(const JobID &job_id, const StatusCallback &callback) override;
 
-  Status AsyncSubscribeToFinishedJobs(
-      const SubscribeCallback<JobID, JobTableData> &subscribe,
-      const StatusCallback &done) override;
+  Status AsyncSubscribeAll(const SubscribeCallback<JobID, JobTableData> &subscribe,
+                           const StatusCallback &done) override;
 
   Status AsyncGetAll(const MultiItemCallback<rpc::JobTableData> &callback) override {
     return Status::NotImplemented("AsyncGetAll not implemented");
@@ -374,6 +374,17 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
 
+  Status AsyncSetInternalConfig(
+      std::unordered_map<std::string, std::string> &config) override {
+    return Status::NotImplemented("SetInternaConfig not implemented.");
+  }
+
+  Status AsyncGetInternalConfig(
+      const OptionalItemCallback<std::unordered_map<std::string, std::string>> &callback)
+      override {
+    return Status::NotImplemented("GetInternalConfig not implemented.");
+  }
+
  private:
   RedisGcsClient *client_impl_{nullptr};
 
@@ -436,23 +447,26 @@ class RedisWorkerInfoAccessor : public WorkerInfoAccessor {
   virtual ~RedisWorkerInfoAccessor() = default;
 
   Status AsyncSubscribeToWorkerFailures(
-      const SubscribeCallback<WorkerID, WorkerFailureData> &subscribe,
+      const SubscribeCallback<WorkerID, WorkerTableData> &subscribe,
       const StatusCallback &done) override;
 
-  Status AsyncReportWorkerFailure(const std::shared_ptr<WorkerFailureData> &data_ptr,
+  Status AsyncReportWorkerFailure(const std::shared_ptr<WorkerTableData> &data_ptr,
                                   const StatusCallback &callback) override;
 
-  Status AsyncRegisterWorker(
-      rpc::WorkerType worker_type, const WorkerID &worker_id,
-      const std::unordered_map<std::string, std::string> &worker_info,
-      const StatusCallback &callback) override;
+  Status AsyncGet(const WorkerID &worker_id,
+                  const OptionalItemCallback<rpc::WorkerTableData> &callback) override;
+
+  Status AsyncGetAll(const MultiItemCallback<rpc::WorkerTableData> &callback) override;
+
+  Status AsyncAdd(const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
+                  const StatusCallback &callback) override;
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
 
  private:
   RedisGcsClient *client_impl_{nullptr};
 
-  typedef SubscriptionExecutor<WorkerID, WorkerFailureData, WorkerFailureTable>
+  typedef SubscriptionExecutor<WorkerID, WorkerTableData, WorkerTable>
       WorkerFailureSubscriptionExecutor;
   WorkerFailureSubscriptionExecutor worker_failure_sub_executor_;
 };

@@ -6,20 +6,18 @@ from ray.rllib.utils.sgd import standardized
 from ray.rllib.agents import with_common_config
 from ray.rllib.agents.mbmpo.mbmpo_torch_policy import MBMPOTorchPolicy
 from ray.rllib.agents.trainer_template import build_trainer
-from typing import List
 from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
     STEPS_TRAINED_COUNTER, LEARNER_INFO, _get_shared_metrics
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.execution.metric_ops import CollectMetrics
 from ray.util.iter import from_actors
-from ray.rllib.utils.types import SampleBatchType
 from ray.rllib.agents.mbmpo.model_ensemble import DynamicsEnsembleCustomModel
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.torch_ops import convert_to_non_torch_type, \
-    convert_to_torch_tensor
+from ray.rllib.utils.torch_ops import convert_to_torch_tensor
 from ray.rllib.evaluation.metrics import collect_episodes
 from ray.rllib.agents.mbmpo.model_vector_env import custom_model_vector_env
+from ray.rllib.evaluation.metrics import collect_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -64,10 +62,8 @@ DEFAULT_CONFIG = with_common_config({
     "inner_lr": 1e-3,
     # Horizon of Environment (200 in MB-MPO paper)
     "horizon": 200,
-    #============================================================#
-    #                Model-based RL Parameters                   #
-    #============================================================#
-    "dynamics_model":{
+    # Dynamics Ensemble Hyperparameters
+    "dynamics_model": {
         "custom_model": DynamicsEnsembleCustomModel,
         # Number of Transition-Dynamics Models for Ensemble
         "model_ensemble_size": 1,
@@ -174,6 +170,7 @@ def post_process_metrics(prefix, workers, metrics):
     res = collect_metrics(remote_workers=workers.remote_workers())
     for key in METRICS_KEYS:
         metrics[prefix + "_" + key] = res[key]
+    return metrics
 
 
 def inner_adaptation(workers, samples):
@@ -218,14 +215,15 @@ def sync_ensemble(workers, model_attr="dynamics_model"):
 
 def sync_stats(workers):
     def get_normalizations(worker):
-        policy = workers.policy_map[DEFAULT_POLICY_ID]
+        policy = worker.policy_map[DEFAULT_POLICY_ID]
         return policy.dynamics_model.normalizations
 
     def set_normalizations(policy, pid, normalizations):
         policy.dynamics_model.set_norms(normalizations)
 
     if workers.remote_workers():
-        normalization_dict = ray.put(get_normalizations(worker.local_worker()))
+        normalization_dict = ray.put(
+            get_normalizations(workers.local_worker()))
         set_func = ray.put(set_normalizations)
         for e in workers.remote_workers():
             e.foreach_policy.remote(
@@ -235,12 +233,12 @@ def sync_stats(workers):
 # Similar to MAML Execution Plan
 def execution_plan(workers, config):
     # Train TD Models
-    metrics = workers.local_worker().foreach_policy(fit_dynamics)[0]
+    workers.local_worker().foreach_policy(fit_dynamics)[0]
 
     # Sync workers policy with workers
     workers.sync_weights()
 
-    # Sync TD Models and other important data (normalization stats) with workers
+    # Sync TD Models and normalization stats with workers
     sync_ensemble(workers)
     sync_stats(workers)
 
@@ -255,6 +253,8 @@ def execution_plan(workers, config):
         workers,
         min_history=0,
         timeout_seconds=config["collect_metrics_timeout"])
+
+    inner_steps = config["inner_adaptation_steps"]
 
     def inner_adaptation_steps(itr):
         buf = []
@@ -272,8 +272,7 @@ def execution_plan(workers, config):
             split.append(split_lst)
 
             adapt_iter = len(split) - 1
-            adapt_iter, workers, metrics
-            prefix = "DynaTrajInner_" + str(len(self.split))
+            prefix = "DynaTrajInner_" + str(adapt_iter)
             metrics = post_process_metrics(prefix, workers, metrics)
 
             if len(split) > inner_steps:
@@ -282,11 +281,6 @@ def execution_plan(workers, config):
                 buf = []
                 split = []
 
-                # Reporting Adaptation Rew Diff
-                ep_rew_pre = metrics["episode_reward_mean"]
-                ep_rew_post = metrics["episode_reward_mean_adapt_" +
-                                      str(inner_steps)]
-                metrics["adaptation_delta"] = ep_rew_post - ep_rew_pre
                 yield out, metrics
                 metrics = {}
             else:

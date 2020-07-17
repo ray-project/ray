@@ -18,6 +18,10 @@
 #include "ray/common/ray_config.h"
 #include "ray/gcs/redis_context.h"
 
+extern "C" {
+#include "hiredis/hiredis.h"
+}
+
 namespace ray {
 
 namespace gcs {

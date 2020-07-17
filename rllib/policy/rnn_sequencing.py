@@ -230,8 +230,8 @@ def chop_into_sequences(episode_ids,
             f_pad = np.zeros((length, ) + np.shape(f)[1:])
         seq_base = 0
         i = 0
-        for l in seq_lens:
-            for seq_offset in range(l):
+        for len_ in seq_lens:
+            for seq_offset in range(len_):
                 f_pad[seq_base + seq_offset] = f[i]
                 i += 1
             seq_base += max_seq_len
@@ -243,9 +243,9 @@ def chop_into_sequences(episode_ids,
         s = np.array(s)
         s_init = []
         i = 0
-        for l in seq_lens:
+        for len_ in seq_lens:
             s_init.append(s[i])
-            i += l
+            i += len_
         initial_states.append(np.array(s_init))
 
     if shuffle:

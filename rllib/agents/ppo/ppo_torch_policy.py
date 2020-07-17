@@ -70,7 +70,7 @@ class PPOLoss:
             num_valid = torch.sum(valid_mask)
 
             def reduce_mean_valid(t):
-                return torch.sum(t * valid_mask) / num_valid
+                return torch.sum(t[valid_mask]) / num_valid
 
         else:
 
@@ -188,14 +188,16 @@ class ValueNetworkMixin:
             def value(ob, prev_action, prev_reward, *state):
                 model_out, _ = self.model({
                     SampleBatch.CUR_OBS: convert_to_torch_tensor(
-                        np.asarray([ob])),
+                        np.asarray([ob]), self.device),
                     SampleBatch.PREV_ACTIONS: convert_to_torch_tensor(
-                        np.asarray([prev_action])),
+                        np.asarray([prev_action]), self.device),
                     SampleBatch.PREV_REWARDS: convert_to_torch_tensor(
-                        np.asarray([prev_reward])),
+                        np.asarray([prev_reward]), self.device),
                     "is_training": False,
-                }, [convert_to_torch_tensor(np.asarray([s])) for s in state],
-                    convert_to_torch_tensor(np.asarray([1])))
+                }, [
+                    convert_to_torch_tensor(np.asarray([s]), self.device)
+                    for s in state
+                ], convert_to_torch_tensor(np.asarray([1]), self.device))
                 return self.model.value_function()[0]
 
         else:

@@ -29,13 +29,9 @@ class ModelV2:
                value_function() -> V(s)
     """
 
-    def __init__(self,
-                 obs_space: gym.spaces.Space,
-                 action_space: gym.spaces.Space,
-                 num_outputs: int,
-                 model_config: ModelConfigDict,
-                 name: str,
-                 framework: str):
+    def __init__(self, obs_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space, num_outputs: int,
+                 model_config: ModelConfigDict, name: str, framework: str):
         """Initializes a ModelV2 object.
 
         This method should create any variables used by the model.
@@ -241,8 +237,7 @@ class ModelV2:
         return self.__call__(input_dict, states, train_batch.get("seq_lens"))
 
     def get_view_requirements(
-            self,
-            is_training: bool = False) -> Dict[str, ViewRequirement]:
+            self, is_training: bool = False) -> Dict[str, ViewRequirement]:
         """Returns a list of ViewRequirements for this Model (or None).
 
         Note: This is an experimental API method.
@@ -266,6 +261,10 @@ class ModelV2:
         # Single requirement: Pass current obs as input.
         return {
             SampleBatch.CUR_OBS: ViewRequirement(timesteps=0),
+            SampleBatch.PREV_ACTIONS: ViewRequirement(
+                SampleBatch.ACTIONS, timesteps=-1),
+            SampleBatch.PREV_REWARDS: ViewRequirement(
+                SampleBatch.REWARDS, timesteps=-1),
         }
 
     def import_from_h5(self, h5_file):
@@ -338,8 +337,8 @@ class NullContextManager:
 @DeveloperAPI
 def flatten(obs, framework):
     """Flatten the given tensor."""
-    if framework == "tf":
-        return tf1.layers.flatten(obs)
+    if framework in ["tf2", "tf", "tfe"]:
+        return tf1.keras.layers.Flatten()(obs)
     elif framework == "torch":
         assert torch is not None
         return torch.flatten(obs, start_dim=1)

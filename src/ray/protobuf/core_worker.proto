@@ -154,6 +154,7 @@ message GetObjectStatusReply {
   enum ObjectStatus {
     CREATED = 0;
     OUT_OF_SCOPE = 1;
+    FREED = 2;
   }
   ObjectStatus status = 1;
 }
@@ -223,13 +224,6 @@ message GetCoreWorkerStatsRequest {
 message GetCoreWorkerStatsReply {
   // Debug information returned from the core worker.
   CoreWorkerStats core_worker_stats = 1;
-}
-
-message ObjectReference {
-  // ObjectID that the worker has a reference to.
-  bytes object_id = 1;
-  // The address of the object's owner.
-  Address owner_address = 3;
 }
 
 message WaitForRefRemovedRequest {

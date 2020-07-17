@@ -188,9 +188,20 @@ table ForwardTaskRequest {
   uncommitted_tasks: [Task];
 }
 
+// Mimics the Address protobuf.
+table Address {
+  raylet_id: string;
+  ip_address: string;
+  port: int;
+  // Optional unique id for the worker.
+  worker_id: string;
+}
+
 table FetchOrReconstruct {
   // List of object IDs of the objects that we want to reconstruct or fetch.
   object_ids: [string];
+  // The RPC addresses of the workers that own the objects in object_ids.
+  owner_addresses: [Address];
   // Do we only want to fetch the objects or also reconstruct them?
   fetch_only: bool;
   // False for direct call tasks. Blocking for those tasks is handled via the
@@ -214,6 +225,8 @@ table NotifyDirectCallTaskUnblocked {
 table WaitRequest {
   // List of object ids we'll be waiting on.
   object_ids: [string];
+  // The RPC addresses of the workers that own the objects in object_ids.
+  owner_addresses: [Address];
   // Number of objects expected to be returned, if available.
   num_ready_objects: int;
   // timeout
@@ -237,6 +250,8 @@ table WaitReply {
 table WaitForDirectActorCallArgsRequest {
   // List of object ids we'll be waiting on.
   object_ids: [string];
+  // The RPC addresses of the workers that own the objects in object_ids.
+  owner_addresses: [Address];
   // Id used to uniquely identify this request. This is sent back to the core
   // worker to notify the wait has completed.
   tag: int;

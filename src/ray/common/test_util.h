@@ -23,9 +23,21 @@
 
 #include "gtest/gtest.h"
 #include "ray/common/id.h"
+#include "ray/protobuf/common.pb.h"
 #include "ray/util/util.h"
 
 namespace ray {
+
+static inline std::vector<rpc::ObjectReference> ObjectIdsToRefs(
+    std::vector<ObjectID> object_ids) {
+  std::vector<rpc::ObjectReference> refs;
+  for (const auto &object_id : object_ids) {
+    rpc::ObjectReference ref;
+    ref.set_object_id(object_id.Binary());
+    refs.push_back(ref);
+  }
+  return refs;
+}
 
 class Buffer;
 class RayObject;

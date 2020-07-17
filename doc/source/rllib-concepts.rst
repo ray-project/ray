@@ -209,77 +209,76 @@ In the above section you saw how to compose a simple policy gradient algorithm w
         name="PPOTrainer",
         default_config=DEFAULT_CONFIG,
         default_policy=PPOTFPolicy,
-        make_policy_optimizer=choose_policy_optimizer,
         validate_config=validate_config,
-        after_optimizer_step=update_kl,
-        before_train_step=warn_about_obs_filter,
-        after_train_result=warn_about_bad_reward_scales)
+        execution_plan=execution_plan)
 
-Besides some boilerplate for defining the PPO configuration and some warnings, there are two important arguments to take note of here: ``make_policy_optimizer=choose_policy_optimizer``, and ``after_optimizer_step=update_kl``.
+Besides some boilerplate for defining the PPO configuration and some warnings, the most important argument to take note of is the ``execution_plan``.
 
-.. warning::
-
-    Policy optimizers are deprecated. This documentation will be updated in the future.
-
-The ``choose_policy_optimizer`` function chooses which `Policy Optimizer <#policy-optimization>`__ to use for distributed training. You can think of these policy optimizers as coordinating the distributed workflow needed to improve the policy. Depending on the trainer config, PPO can switch between a simple synchronous optimizer, or a multi-GPU optimizer that implements minibatch SGD (the default):
+The trainer's `execution plan <#execution-plan>`__ defines the distributed training workflow. Depending on the ``simple_optimizer`` trainer config, PPO can switch between a simple synchronous plan, or a multi-GPU plan that implements minibatch SGD (the default):
 
 .. code-block:: python
 
-    def choose_policy_optimizer(workers, config):
+    def execution_plan(workers, config):
+        rollouts = ParallelRollouts(workers, mode="bulk_sync")
+
+        # Collect large batches of relevant experiences & standardize.
+        rollouts = rollouts.for_each(
+            SelectExperiences(workers.trainable_policies()))
+        rollouts = rollouts.combine(
+            ConcatBatches(min_batch_size=config["train_batch_size"]))
+        rollouts = rollouts.for_each(StandardizeFields(["advantages"]))
+
         if config["simple_optimizer"]:
-            return SyncSamplesOptimizer(
-                workers,
-                num_sgd_iter=config["num_sgd_iter"],
-                train_batch_size=config["train_batch_size"])
+            train_op = rollouts.for_each(
+                TrainOneStep(
+                    workers,
+                    num_sgd_iter=config["num_sgd_iter"],
+                    sgd_minibatch_size=config["sgd_minibatch_size"]))
+        else:
+            train_op = rollouts.for_each(
+                TrainTFMultiGPU(
+                    workers,
+                    sgd_minibatch_size=config["sgd_minibatch_size"],
+                    num_sgd_iter=config["num_sgd_iter"],
+                    num_gpus=config["num_gpus"],
+                    rollout_fragment_length=config["rollout_fragment_length"],
+                    num_envs_per_worker=config["num_envs_per_worker"],
+                    train_batch_size=config["train_batch_size"],
+                    shuffle_sequences=config["shuffle_sequences"],
+                    _fake_gpus=config["_fake_gpus"]))
 
-        return LocalMultiGPUOptimizer(
-            workers,
-            sgd_batch_size=config["sgd_minibatch_size"],
-            num_sgd_iter=config["num_sgd_iter"],
-            num_gpus=config["num_gpus"],
-            rollout_fragment_length=config["rollout_fragment_length"],
-            num_envs_per_worker=config["num_envs_per_worker"],
-            train_batch_size=config["train_batch_size"],
-            standardize_fields=["advantages"],
-            straggler_mitigation=config["straggler_mitigation"])
+        # Update KL after each round of training.
+        train_op = train_op.for_each(lambda t: t[1]).for_each(UpdateKL(workers))
 
-Suppose we want to customize PPO to use an asynchronous-gradient optimization strategy similar to A3C. To do that, we could define a new function that returns ``AsyncGradientsOptimizer`` and override the ``make_policy_optimizer`` component of ``PPOTrainer``.
+        return StandardMetricsReporting(train_op, workers, config) \
+            .for_each(lambda result: warn_about_bad_reward_scales(config, result))
+
+Suppose we want to customize PPO to use an asynchronous-gradient optimization strategy similar to A3C. To do that, we could swap out its execution plan to that of A3C's:
 
 .. code-block:: python
 
     from ray.rllib.agents.ppo import PPOTrainer
-    from ray.rllib.optimizers import AsyncGradientsOptimizer
+    from ray.rllib.execution.rollout_ops import AsyncGradients
+    from ray.rllib.execution.train_ops import ApplyGradients
+    from ray.rllib.execution.metric_ops import StandardMetricsReporting
 
-    def make_async_optimizer(workers, config):
-        return AsyncGradientsOptimizer(workers, grads_per_step=100)
+    def a3c_execution_plan(workers, config):
+        # For A3C, compute policy gradients remotely on the rollout workers.
+        grads = AsyncGradients(workers)
+
+        # Apply the gradients as they arrive. We set update_all to False so that
+        # only the worker sending the gradient is updated with new weights.
+        train_op = grads.for_each(ApplyGradients(workers, update_all=False))
+
+        return StandardMetricsReporting(train_op, workers, config)
 
     CustomTrainer = PPOTrainer.with_updates(
-        make_policy_optimizer=make_async_optimizer)
+        execution_plan=a3c_execution_plan)
 
 
 The ``with_updates`` method that we use here is also available for Torch and TF policies built from templates.
 
-Now let's take a look at the ``update_kl`` function. This is used to adaptively adjust the KL penalty coefficient on the PPO loss, which bounds the policy change per training step. You'll notice the code handles both single and multi-agent cases (where there are be multiple policies each with different KL coeffs):
-
-.. code-block:: python
-
-    def update_kl(trainer, fetches):
-        if "kl" in fetches:
-            # single-agent
-            trainer.workers.local_worker().for_policy(
-                lambda pi: pi.update_kl(fetches["kl"]))
-        else:
-
-            def update(pi, pi_id):
-                if pi_id in fetches:
-                    pi.update_kl(fetches[pi_id]["kl"])
-                else:
-                    logger.debug("No data for {}, not updating kl".format(pi_id))
-
-            # multi-agent
-            trainer.workers.local_worker().foreach_trainable_policy(update)
-
-The ``update_kl`` method on the policy is defined in `PPOTFPolicy <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/ppo_tf_policy.py>`__ via the ``KLCoeffMixin``, along with several other advanced features. Let's look at each new feature used by the policy:
+Now let's look at each PPO policy definition:
 
 .. code-block:: python
 
@@ -582,33 +581,12 @@ Here is an example of creating a set of rollout workers and using them gather ex
         for w in workers.remote_workers():
             w.set_weights.remote(weights)
 
-Policy Optimization
--------------------
+Execution Plan
+--------------
 
-.. warning::
+.. note::
 
-    Policy optimizers are deprecated. This documentation will be updated in the future.
-
-Similar to how a `gradient-descent optimizer <https://www.tensorflow.org/api_docs/python/tf/train/GradientDescentOptimizer>`__ can be used to improve a model, RLlib's `policy optimizers <https://github.com/ray-project/ray/tree/master/rllib/optimizers>`__ implement different strategies for improving a policy.
-
-For example, in A3C you'd want to compute gradients asynchronously on different workers, and apply them to a central policy replica. This strategy is implemented by the `AsyncGradientsOptimizer <https://github.com/ray-project/ray/blob/master/rllib/optimizers/async_gradients_optimizer.py>`__. Another alternative is to gather experiences synchronously in parallel and optimize the model centrally, as in `SyncSamplesOptimizer <https://github.com/ray-project/ray/blob/master/rllib/optimizers/sync_samples_optimizer.py>`__. Policy optimizers abstract these strategies away into reusable modules.
-
-This is how the example in the previous section looks when written using a policy optimizer:
-
-.. code-block:: python
-
-    # Same setup as before
-    workers = WorkerSet(
-        policy=CustomPolicy,
-        env_creator=lambda c: gym.make("CartPole-v0"),
-        num_workers=10)
-
-    # this optimizer implements the IMPALA architecture
-    optimizer = AsyncSamplesOptimizer(workers, train_batch_size=500)
-
-    while True:
-        optimizer.step()
-
+    Policy optimizers have been replaced by the execution plan API. This documentation will be updated in the future.
 
 Trainers
 --------

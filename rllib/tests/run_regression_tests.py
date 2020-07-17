@@ -39,17 +39,23 @@ parser.add_argument(
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    # Bazel regression test mode: Get path to look for yaml files from argv[2].
+    # Bazel regression test mode: Get path to look for yaml files.
     # Get the path or single file to use.
     rllib_dir = Path(__file__).parent.parent
     print("rllib dir={}".format(rllib_dir))
 
-    if not os.path.isdir(os.path.join(rllib_dir, args.yaml_dir)):
+    abs_yaml_path = os.path.join(rllib_dir, args.yaml_dir)
+    # Single file given.
+    if os.path.isfile(abs_yaml_path):
+        yaml_files = [abs_yaml_path]
+    # Given path/file does not exist.
+    elif not os.path.isdir(abs_yaml_path):
         raise ValueError("yaml-dir ({}) not found!".format(args.yaml_dir))
-
-    yaml_files = rllib_dir.rglob(args.yaml_dir + "/*.yaml")
-    yaml_files = sorted(
-        map(lambda path: str(path.absolute()), yaml_files), reverse=True)
+    # Path given -> Get all yaml files in there via rglob.
+    else:
+        yaml_files = rllib_dir.rglob(args.yaml_dir + "/*.yaml")
+        yaml_files = sorted(
+            map(lambda path: str(path.absolute()), yaml_files), reverse=True)
 
     print("Will run the following regression tests:")
     for yaml_file in yaml_files:

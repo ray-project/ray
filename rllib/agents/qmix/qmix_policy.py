@@ -1,6 +1,7 @@
 from gym.spaces import Tuple, Discrete, Dict
 import logging
 import numpy as np
+import tree
 
 import ray
 from ray.rllib.agents.qmix.mixers import VDNMixer, QMixer
@@ -13,13 +14,11 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import _unpack_obs
 from ray.rllib.env.constants import GROUP_REWARDS
-from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.annotations import override
 
 # Torch must be installed.
 torch, nn = try_import_torch(error=True)
-tree = try_import_tree()
 
 logger = logging.getLogger(__name__)
 

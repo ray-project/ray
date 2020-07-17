@@ -83,10 +83,13 @@ def centralized_critic_postprocessing(policy,
         # overwrite default VF prediction with the central VF
         if args.torch:
             sample_batch[SampleBatch.VF_PREDS] = policy.compute_central_vf(
-                convert_to_torch_tensor(sample_batch[SampleBatch.CUR_OBS]),
-                convert_to_torch_tensor(sample_batch[OPPONENT_OBS]),
-                convert_to_torch_tensor(sample_batch[OPPONENT_ACTION])). \
-                detach().numpy()
+                convert_to_torch_tensor(
+                    sample_batch[SampleBatch.CUR_OBS], policy.device),
+                convert_to_torch_tensor(
+                    sample_batch[OPPONENT_OBS], policy.device),
+                convert_to_torch_tensor(
+                    sample_batch[OPPONENT_ACTION], policy.device)) \
+                .detach().numpy()
         else:
             sample_batch[SampleBatch.VF_PREDS] = policy.compute_central_vf(
                 sample_batch[SampleBatch.CUR_OBS], sample_batch[OPPONENT_OBS],
