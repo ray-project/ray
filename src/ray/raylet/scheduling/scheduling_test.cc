@@ -16,8 +16,8 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "ray/common/scheduling/cluster_resource_scheduler.h"
-#include "ray/common/scheduling/scheduling_ids.h"
+#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
+#include "ray/raylet/scheduling/scheduling_ids.h"
 
 #ifdef UNORDERED_VS_ABSL_MAPS_EVALUATION
 #include <chrono>
@@ -575,7 +575,7 @@ TEST_F(SchedulingTest, GetLocalAvailableResourcesTest) {
       cluster_resources.GetLocalResources().GetAvailableResourceInstances();
 
   TaskResourceInstances expected_cluster_resources;
-  addTaskResourceInstances(true, {3.}, 0, &expected_cluster_resources);
+  addTaskResourceInstances(true, {1., 1., 1.}, 0, &expected_cluster_resources);
   addTaskResourceInstances(true, {4.}, 1, &expected_cluster_resources);
   addTaskResourceInstances(true, {1., 1., 1., 1., 1.}, 2, &expected_cluster_resources);
 
@@ -704,7 +704,7 @@ TEST_F(SchedulingTest, TaskResourceInstancesTest) {
     ASSERT_EQ(success, true);
 
     TaskResourceInstances expected_task_allocation;
-    addTaskResourceInstances(true, {0.}, CPU, &expected_task_allocation);
+    addTaskResourceInstances(true, {0., 0., 0.}, CPU, &expected_task_allocation);
     addTaskResourceInstances(true, {2.}, MEM, &expected_task_allocation);
     addTaskResourceInstances(true, {0., 0.5, 1., 1., 1.}, GPU, &expected_task_allocation);
 
@@ -797,7 +797,7 @@ TEST_F(SchedulingTest, TaskResourceInstancesTest) {
     ASSERT_EQ(success, true);
 
     TaskResourceInstances expected_task_allocation;
-    addTaskResourceInstances(true, {0.}, CPU, &expected_task_allocation);
+    addTaskResourceInstances(true, {0., 0., 0.}, CPU, &expected_task_allocation);
     addTaskResourceInstances(true, {2.}, MEM, &expected_task_allocation);
     addTaskResourceInstances(true, {0., 0.5, 1., 1., 1.}, GPU, &expected_task_allocation);
     addTaskResourceInstances(false, {1.}, 1, &expected_task_allocation);

@@ -33,6 +33,7 @@ using rpc::HeartbeatTableData;
 using rpc::JobTableData;
 using rpc::ObjectTableData;
 using rpc::ObjectTableDataList;
+using rpc::PlacementGroupTableData;
 using rpc::ProfileTableData;
 using rpc::ResourceMap;
 using rpc::ResourceTableData;
@@ -152,6 +153,15 @@ class GcsActorTable : public GcsTableWithJobId<ActorID, ActorTableData> {
 
  private:
   JobID GetJobIdFromKey(const ActorID &key) override { return key.JobId(); }
+};
+
+class GcsPlacementGroupTable
+    : public GcsTable<PlacementGroupID, PlacementGroupTableData> {
+ public:
+  explicit GcsPlacementGroupTable(std::shared_ptr<StoreClient> &store_client)
+      : GcsTable(store_client) {
+    table_name_ = TablePrefix_Name(TablePrefix::PLACEMENT_GROUP);
+  }
 };
 
 class GcsActorCheckpointTable : public GcsTable<ActorCheckpointID, ActorCheckpointData> {
@@ -307,6 +317,11 @@ class GcsTableStorage {
     return *actor_table_;
   }
 
+  GcsPlacementGroupTable &PlacementGroupTable() {
+    RAY_CHECK(placement_group_table_ != nullptr);
+    return *placement_group_table_;
+  }
+
   GcsActorCheckpointTable &ActorCheckpointTable() {
     RAY_CHECK(actor_checkpoint_table_ != nullptr);
     return *actor_checkpoint_table_;
@@ -386,6 +401,7 @@ class GcsTableStorage {
   std::shared_ptr<StoreClient> store_client_;
   std::unique_ptr<GcsJobTable> job_table_;
   std::unique_ptr<GcsActorTable> actor_table_;
+  std::unique_ptr<GcsPlacementGroupTable> placement_group_table_;
   std::unique_ptr<GcsActorCheckpointTable> actor_checkpoint_table_;
   std::unique_ptr<GcsActorCheckpointIdTable> actor_checkpoint_id_table_;
   std::unique_ptr<GcsTaskTable> task_table_;
@@ -394,8 +410,8 @@ class GcsTableStorage {
   std::unique_ptr<GcsObjectTable> object_table_;
   std::unique_ptr<GcsNodeTable> node_table_;
   std::unique_ptr<GcsNodeResourceTable> node_resource_table_;
-  std::unique_ptr<GcsPlacementGroupScheduleTable> placement_group_schedule_table_;
   std::unique_ptr<GcsHeartbeatTable> heartbeat_table_;
+  std::unique_ptr<GcsPlacementGroupScheduleTable> placement_group_schedule_table_;
   std::unique_ptr<GcsHeartbeatBatchTable> heartbeat_batch_table_;
   std::unique_ptr<GcsErrorInfoTable> error_info_table_;
   std::unique_ptr<GcsProfileTable> profile_table_;
@@ -412,6 +428,7 @@ class RedisGcsTableStorage : public GcsTableStorage {
     store_client_ = std::make_shared<RedisStoreClient>(redis_client);
     job_table_.reset(new GcsJobTable(store_client_));
     actor_table_.reset(new GcsActorTable(store_client_));
+    placement_group_table_.reset(new GcsPlacementGroupTable(store_client_));
     actor_checkpoint_table_.reset(new GcsActorCheckpointTable(store_client_));
     actor_checkpoint_id_table_.reset(new GcsActorCheckpointIdTable(store_client_));
     task_table_.reset(new GcsTaskTable(store_client_));
@@ -442,6 +459,7 @@ class InMemoryGcsTableStorage : public GcsTableStorage {
     store_client_ = std::make_shared<InMemoryStoreClient>(main_io_service);
     job_table_.reset(new GcsJobTable(store_client_));
     actor_table_.reset(new GcsActorTable(store_client_));
+    placement_group_table_.reset(new GcsPlacementGroupTable(store_client_));
     actor_checkpoint_table_.reset(new GcsActorCheckpointTable(store_client_));
     actor_checkpoint_id_table_.reset(new GcsActorCheckpointIdTable(store_client_));
     task_table_.reset(new GcsTaskTable(store_client_));

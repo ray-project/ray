@@ -41,7 +41,8 @@ static void GetRedisShards(redisContext *context, std::vector<std::string> *addr
 
     // Sleep for a little, and try again if the entry isn't there yet.
     freeReplyObject(reply);
-    usleep(RayConfig::instance().redis_db_connect_wait_milliseconds() * 1000);
+    std::this_thread::sleep_for(std::chrono::milliseconds(
+        RayConfig::instance().redis_db_connect_wait_milliseconds()));
     num_attempts++;
   }
   RAY_CHECK(num_attempts < RayConfig::instance().redis_db_connect_retries())
@@ -67,7 +68,8 @@ static void GetRedisShards(redisContext *context, std::vector<std::string> *addr
     // Sleep for a little, and try again if not all Redis shard addresses have
     // been added yet.
     freeReplyObject(reply);
-    usleep(RayConfig::instance().redis_db_connect_wait_milliseconds() * 1000);
+    std::this_thread::sleep_for(std::chrono::milliseconds(
+        RayConfig::instance().redis_db_connect_wait_milliseconds()));
     num_attempts++;
   }
   RAY_CHECK(num_attempts < RayConfig::instance().redis_db_connect_retries())

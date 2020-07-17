@@ -116,7 +116,9 @@ Status ReadMessage(int fd, MessageType* type, std::vector<uint8_t>* buffer) {
 int ConnectOrListenIpcSock(const std::string& pathname, bool shall_listen) {
   union {
     struct sockaddr addr;
+#ifndef _WIN32
     struct sockaddr_un un;
+#endif
     struct sockaddr_in in;
   } socket_address;
   int addrlen;
@@ -142,6 +144,10 @@ int ConnectOrListenIpcSock(const std::string& pathname, bool shall_listen) {
       return -1;
     }
   } else {
+#ifdef _WIN32
+    RAY_LOG(ERROR) << "UNIX domain sockets not supported on Windows: " << pathname;
+    return -1;
+#else
     addrlen = sizeof(socket_address.un);
     socket_address.un.sun_family = AF_UNIX;
     if (pathname.size() + 1 > sizeof(socket_address.un.sun_path)) {
@@ -149,6 +155,7 @@ int ConnectOrListenIpcSock(const std::string& pathname, bool shall_listen) {
       return -1;
     }
     strncpy(socket_address.un.sun_path, pathname.c_str(), pathname.size() + 1);
+#endif
   }
 
   int socket_fd = socket(socket_address.addr.sa_family, SOCK_STREAM, 0);
@@ -207,7 +214,7 @@ Status ConnectIpcSocketRetry(const std::string& pathname, int num_retries,
     RAY_LOG(ERROR) << "Connection to IPC socket failed for pathname " << pathname
                      << ", retrying " << num_retries << " more times";
     // Sleep for timeout milliseconds.
-    usleep(static_cast<int>(timeout * 1000));
+    std::this_thread::sleep_for(std::chrono::milliseconds(timeout));
     *fd = ConnectOrListenIpcSock(pathname, false);
     --num_retries;
   }

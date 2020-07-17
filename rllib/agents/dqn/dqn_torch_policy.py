@@ -169,7 +169,9 @@ def build_q_losses(policy, model, _, train_batch):
     # q scores for actions which we know were selected in the given state.
     one_hot_selection = F.one_hot(train_batch[SampleBatch.ACTIONS],
                                   policy.action_space.n)
-    q_t_selected = torch.sum(q_t * one_hot_selection, 1)
+    q_t_selected = torch.sum(
+        torch.where(q_t > -float("inf"), q_t, torch.tensor(0.0)) *
+        one_hot_selection, 1)
 
     # compute estimate of best possible value starting from state at t + 1
     if config["double_q"]:
@@ -182,11 +184,13 @@ def build_q_losses(policy, model, _, train_batch):
         q_tp1_best_using_online_net = torch.argmax(q_tp1_using_online_net, 1)
         q_tp1_best_one_hot_selection = F.one_hot(q_tp1_best_using_online_net,
                                                  policy.action_space.n)
-        q_tp1_best = torch.sum(q_tp1 * q_tp1_best_one_hot_selection, 1)
     else:
         q_tp1_best_one_hot_selection = F.one_hot(
             torch.argmax(q_tp1, 1), policy.action_space.n)
-        q_tp1_best = torch.sum(q_tp1 * q_tp1_best_one_hot_selection, 1)
+
+    q_tp1_best = torch.sum(
+        torch.where(q_tp1 > -float("inf"), q_tp1, torch.tensor(0.0)) *
+        q_tp1_best_one_hot_selection, 1)
 
     policy.q_loss = QLoss(q_t_selected, q_tp1_best, train_batch[PRIO_WEIGHTS],
                           train_batch[SampleBatch.REWARDS],
