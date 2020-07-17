@@ -620,17 +620,19 @@ cc_library(
     name = "raylet_lib",
     srcs = glob(
         [
-            "src/ray/raylet/*.cc",
+            "src/ray/raylet/**/*.cc",
         ],
         exclude = [
             "src/ray/raylet/*_test.cc",
             "src/ray/raylet/main.cc",
         ],
     ),
-    hdrs = glob([
-        "src/ray/raylet/*.h",
-        "src/ray/core_worker/common.h",
-    ]),
+    hdrs = glob(
+        [
+            "src/ray/raylet/**/*.h",
+            "src/ray/core_worker/common.h",
+        ],
+    ),
     copts = COPTS,
     linkopts = select({
         "@bazel_tools//src/conditions:windows": [
@@ -853,10 +855,10 @@ cc_test(
 
 cc_test(
     name = "scheduling_test",
-    srcs = ["src/ray/common/scheduling/scheduling_test.cc"],
+    srcs = ["src/ray/raylet/scheduling/scheduling_test.cc"],
     copts = COPTS,
     deps = [
-        ":ray_common",
+        ":raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
