@@ -194,7 +194,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
           return args_ready;
         };
 
-    auto get_node_info_func = [gcs_client_](const ClientID &node_id) {
+    auto get_node_info_func = [this](const ClientID &node_id) {
       return gcs_client_->Nodes().Get(node_id);
     };
     cluster_task_manager_ = std::shared_ptr<ClusterTaskManager>(
