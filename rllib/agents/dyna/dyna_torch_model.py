@@ -54,10 +54,10 @@ class DYNATorchModel(TorchModelV2, nn.Module):
         """
 
         # One-hot the actions.
-        if isinstance(action_space, Discrete):
+        if isinstance(self.action_space, Discrete):
             actions_flat = nn.functional.one_hot(
                 actions.long(), num_classes=self.action_space.n).float()
-        elif isinstance(action_space, Box):
+        elif isinstance(self.action_space, Box):
             actions_flat = torch.cat([observations, actions], -1)
         # Push through our underlying Model.
         next_obs, _ = self.forward({

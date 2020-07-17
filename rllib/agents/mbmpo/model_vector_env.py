@@ -1,16 +1,12 @@
 import logging
-import gym
 import numpy as np
-from typing import Callable, List, Tuple
 
-from ray.rllib.utils.annotations import override, PublicAPI
-from ray.rllib.utils.types import EnvType, EnvConfigDict, EnvObsType, \
-    EnvInfoDict, EnvActionType
+from ray.rllib.utils.annotations import override
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.evaluation.rollout_worker import get_global_worker
-from ray.rllib.agents.mbmpo.model_ensemble import normalize, denormalize
 
 logger = logging.getLogger(__name__)
+
 
 def custom_model_vector_env(**kwargs):
     worker_index = kwargs["env_context"].worker_index
@@ -22,8 +18,7 @@ def custom_model_vector_env(**kwargs):
             num_envs=kwargs["num_worker_envs"],
             observation_space=env.observation_space,
             action_space=env.action_space,
-            env_config=kwargs["env_config"]
-            )
+            env_config=kwargs["env_config"])
     else:
         # This env will become vectorized later
         return env
@@ -54,11 +49,11 @@ class _VectorizedModelGymEnv(VectorEnv):
             num_envs=num_envs)
         worker = get_global_worker()
         self.model, self.device = worker.foreach_policy(
-            lambda x,y: (x.dynamics_model, x.device))[0]
+            lambda x, y: (x.dynamics_model, x.device))[0]
 
     @override(VectorEnv)
     def vector_reset(self):
-        self.cur_obs =  [e.reset() for e in self.envs]
+        self.cur_obs = [e.reset() for e in self.envs]
         return self.cur_obs
 
     @override(VectorEnv)
@@ -69,17 +64,20 @@ class _VectorizedModelGymEnv(VectorEnv):
     def vector_step(self, actions):
         if self.cur_obs is None:
             raise ValueError("Need to reset env first")
-        
+
         obs_batch = np.stack(self.cur_obs, axis=0)
         action_batch = np.stack(actions, axis=0)
 
-        next_obs_batch = self.model.predict_model_batches(obs_batch, 
-            action_batch, device = self.device)
+        next_obs_batch = self.model.predict_model_batches(
+            obs_batch, action_batch, device=self.device)
 
-        rew_batch = self.envs[0].reward(obs_batch, action_batch, next_obs_batch)
+        next_obs_batch = np.clip(next_obs_batch, -1000, 1000)
+
+        rew_batch = self.envs[0].reward(obs_batch, action_batch,
+                                        next_obs_batch)
 
         if hasattr(self.envs[0], "done"):
-            dones_batch = self.envs[0].done(next_obs)
+            dones_batch = self.envs[0].done(next_obs_batch)
         else:
             dones_batch = np.asarray([False for _ in range(self.num_envs)])
 

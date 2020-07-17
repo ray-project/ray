@@ -3,7 +3,7 @@ halfcheetah-mb-mpo:
     run: MBMPO
     stop:
         training_iteration: 500
-    local_dir: ~/mbmpo-debug
+    local_dir: ~/mbmpo-testing
     config:
         framework: torch
         horizon: 200
@@ -18,7 +18,7 @@ halfcheetah-mb-mpo:
         clip_param: 0.5
         kl_target: 0.01
         kl_coeff: 0.0000000001
-        num_workers: 20
+        num_workers: 1
         num_gpus: 0
         inner_lr: 0.001
         clip_actions: False

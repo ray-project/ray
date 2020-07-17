@@ -99,6 +99,7 @@ def _import_maml():
     from ray.rllib.agents import maml
     return maml.MAMLTrainer
 
+
 def _import_mbmpo():
     from ray.rllib.agents import mbmpo
     return mbmpo.MBMPOTrainer

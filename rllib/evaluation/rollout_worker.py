@@ -347,6 +347,7 @@ class RolloutWorker(ParallelIteratorWorker):
                     env = wrappers.Monitor(env, monitor_path, resume=True)
                 return env
         else:
+
             def wrap(env):
                 if monitor_path:
                     from gym import wrappers
@@ -360,7 +361,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 env_creator(
                     env_context.copy_with_overrides(
                         worker_index=worker_index,
-                        vector_index=vector_index, 
+                        vector_index=vector_index,
                         remote=remote_worker_envs)))
 
         self.tf_sess = None
@@ -444,9 +445,10 @@ class RolloutWorker(ParallelIteratorWorker):
                 "existing_envs": [self.env],
                 "num_envs": num_envs,
                 "env_context": env_context,
-                })
+            })
             custom_vec = policy_config["custom_vector_env"]
             self.env = custom_vec(**custom_env_dict)
+
         # Always use vector env for consistency even if num_envs = 1.
         self.async_env: BaseEnv = BaseEnv.to_base_env(
             self.env,
@@ -818,20 +820,25 @@ class RolloutWorker(ParallelIteratorWorker):
     @DeveloperAPI
     def for_policy(self,
                    func: Callable[[Policy], T],
-                   policy_id: Optional[PolicyID] = DEFAULT_POLICY_ID, **kwargs) -> T:
+                   policy_id: Optional[PolicyID] = DEFAULT_POLICY_ID,
+                   **kwargs) -> T:
         """Apply the given function to the specified policy."""
 
         return func(self.policy_map[policy_id], **kwargs)
 
     @DeveloperAPI
-    def foreach_policy(self, func: Callable[[Policy, PolicyID], T], **kwargs) -> List[T]:
+    def foreach_policy(self, func: Callable[[Policy, PolicyID], T],
+                       **kwargs) -> List[T]:
         """Apply the given function to each (policy, policy_id) tuple."""
 
-        return [func(policy, pid, **kwargs) for pid, policy in self.policy_map.items()]
+        return [
+            func(policy, pid, **kwargs)
+            for pid, policy in self.policy_map.items()
+        ]
 
     @DeveloperAPI
-    def foreach_trainable_policy(
-            self, func: Callable[[Policy, PolicyID], T], **kwargs) -> List[T]:
+    def foreach_trainable_policy(self, func: Callable[[Policy, PolicyID], T],
+                                 **kwargs) -> List[T]:
         """
         Applies the given function to each (policy, policy_id) tuple, which
         can be found in `self.policies_to_train`.
@@ -845,7 +852,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 `func([policy], [ID])`-calls.
         """
         return [
-            func(policy, pid, **kwargs) for pid, policy in self.policy_map.items()
+            func(policy, pid, **kwargs)
+            for pid, policy in self.policy_map.items()
             if pid in self.policies_to_train
         ]
 
