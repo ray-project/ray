@@ -9,11 +9,11 @@ ClusterTaskManager::ClusterTaskManager(
     const ClientID &self_node_id,
     std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
     std::function<bool(const Task &)> fulfills_dependencies_func,
-    std::shared_ptr<gcs::GcsClient> gcs_client)
+    NodeInfoGetter get_node_info)
     : self_node_id_(self_node_id),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       fulfills_dependencies_func_(fulfills_dependencies_func),
-      gcs_client_(gcs_client) {}
+      get_node_info_(get_node_info) {}
 
 bool ClusterTaskManager::SchedulePendingTasks() {
   size_t queue_size = tasks_to_schedule_.size();
@@ -46,14 +46,15 @@ bool ClusterTaskManager::SchedulePendingTasks() {
                                                                  request_resources);
 
         ClientID node_id = ClientID::FromBinary(node_id_string);
-        auto node_info_opt = gcs_client_->Nodes().Get(node_id);
+        auto node_info_opt = get_node_info_(node_id);
+        // gcs_client_->Nodes().Get(node_id);
         RAY_CHECK(node_info_opt)
             << "Spilling back to a node manager, but no GCS info found for node "
             << node_id;
         auto reply = std::get<1>(work);
         auto callback = std::get<2>(work);
         Spillback(node_id, node_info_opt->node_manager_address(),
-                     node_info_opt->node_manager_port(), reply, callback);
+                  node_info_opt->node_manager_port(), reply, callback);
       }
     }
   }
@@ -80,7 +81,9 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(Work work) {
   return can_dispatch;
 }
 
-void ClusterTaskManager::DispatchScheduledTasksToWorkers(WorkerPool &worker_pool, std::unordered_map<WorkerID, std::shared_ptr<Worker>> &leased_workers) {
+void ClusterTaskManager::DispatchScheduledTasksToWorkers(
+    WorkerPool &worker_pool,
+    std::unordered_map<WorkerID, std::shared_ptr<Worker>> &leased_workers) {
   // Check every task in task_to_dispatch queue to see
   // whether it can be dispatched and ran. This avoids head-of-line
   // blocking where a task which cannot be dispatched because
@@ -125,15 +128,12 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(WorkerPool &worker_pool
     worker->AssignTaskId(spec.TaskId());
     worker->AssignJobId(spec.JobId());
     worker->SetAssignedTask(task);
-    Dispatch(worker, leased_workers,
-          spec, reply, callback);
+    Dispatch(worker, leased_workers, spec, reply, callback);
   }
 }
 
-void ClusterTaskManager::QueueTask(                 const Task &task,
-                 rpc::RequestWorkerLeaseReply *reply,
-                 rpc::SendReplyCallback send_reply_callback
-   ) {
+void ClusterTaskManager::QueueTask(const Task &task, rpc::RequestWorkerLeaseReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) {
   Work work = std::make_tuple(task, reply, send_reply_callback);
   tasks_to_schedule_.push_back(work);
 }
@@ -149,76 +149,71 @@ void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> ready_ids) {
 }
 
 void ClusterTaskManager::Dispatch(
-              std::shared_ptr<Worker> worker,
-              std::unordered_map<WorkerID, std::shared_ptr<Worker>> &leased_workers_,
-              const TaskSpecification &task_spec,
-              rpc::RequestWorkerLeaseReply *reply,
-              rpc::SendReplyCallback send_reply_callback
-                                  ) {
-
-        reply->mutable_worker_address()->set_ip_address(worker->IpAddress());
-        reply->mutable_worker_address()->set_port(worker->Port());
-        reply->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());
-        reply->mutable_worker_address()->set_raylet_id(self_node_id_.Binary());
-        RAY_CHECK(leased_workers_.find(worker->WorkerId()) == leased_workers_.end());
-        leased_workers_[worker->WorkerId()] = worker;
-        std::shared_ptr<TaskResourceInstances> allocated_resources;
-        if (task_spec.IsActorCreationTask()) {
-          allocated_resources = worker->GetLifetimeAllocatedInstances();
-        } else {
-          allocated_resources = worker->GetAllocatedInstances();
+    std::shared_ptr<Worker> worker,
+    std::unordered_map<WorkerID, std::shared_ptr<Worker>> &leased_workers_,
+    const TaskSpecification &task_spec, rpc::RequestWorkerLeaseReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  reply->mutable_worker_address()->set_ip_address(worker->IpAddress());
+  reply->mutable_worker_address()->set_port(worker->Port());
+  reply->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());
+  reply->mutable_worker_address()->set_raylet_id(self_node_id_.Binary());
+  RAY_CHECK(leased_workers_.find(worker->WorkerId()) == leased_workers_.end());
+  leased_workers_[worker->WorkerId()] = worker;
+  std::shared_ptr<TaskResourceInstances> allocated_resources;
+  if (task_spec.IsActorCreationTask()) {
+    allocated_resources = worker->GetLifetimeAllocatedInstances();
+  } else {
+    allocated_resources = worker->GetAllocatedInstances();
+  }
+  auto predefined_resources = allocated_resources->predefined_resources;
+  ::ray::rpc::ResourceMapEntry *resource;
+  for (size_t res_idx = 0; res_idx < predefined_resources.size(); res_idx++) {
+    bool first = true;  // Set resource name only if at least one of its
+                        // instances has available capacity.
+    for (size_t inst_idx = 0; inst_idx < predefined_resources[res_idx].size();
+         inst_idx++) {
+      if (predefined_resources[res_idx][inst_idx] > 0.) {
+        if (first) {
+          resource = reply->add_resource_mapping();
+          resource->set_name(
+              cluster_resource_scheduler_->GetResourceNameFromIndex(res_idx));
+          first = false;
         }
-        auto predefined_resources = allocated_resources->predefined_resources;
-        ::ray::rpc::ResourceMapEntry *resource;
-        for (size_t res_idx = 0; res_idx < predefined_resources.size(); res_idx++) {
-          bool first = true;  // Set resource name only if at least one of its
-                              // instances has available capacity.
-          for (size_t inst_idx = 0; inst_idx < predefined_resources[res_idx].size();
-                inst_idx++) {
-            if (predefined_resources[res_idx][inst_idx] > 0.) {
-              if (first) {
-                resource = reply->add_resource_mapping();
-                resource->set_name(
-                    cluster_resource_scheduler_->GetResourceNameFromIndex(res_idx));
-                first = false;
-              }
-              auto rid = resource->add_resource_ids();
-              rid->set_index(inst_idx);
-              rid->set_quantity(predefined_resources[res_idx][inst_idx].Double());
-            }
-          }
+        auto rid = resource->add_resource_ids();
+        rid->set_index(inst_idx);
+        rid->set_quantity(predefined_resources[res_idx][inst_idx].Double());
+      }
+    }
+  }
+  auto custom_resources = allocated_resources->custom_resources;
+  for (auto it = custom_resources.begin(); it != custom_resources.end(); ++it) {
+    bool first = true;  // Set resource name only if at least one of its
+                        // instances has available capacity.
+    for (size_t inst_idx = 0; inst_idx < it->second.size(); inst_idx++) {
+      if (it->second[inst_idx] > 0.) {
+        if (first) {
+          resource = reply->add_resource_mapping();
+          resource->set_name(
+              cluster_resource_scheduler_->GetResourceNameFromIndex(it->first));
+          first = false;
         }
-        auto custom_resources = allocated_resources->custom_resources;
-        for (auto it = custom_resources.begin(); it != custom_resources.end(); ++it) {
-          bool first = true;  // Set resource name only if at least one of its
-                              // instances has available capacity.
-          for (size_t inst_idx = 0; inst_idx < it->second.size(); inst_idx++) {
-            if (it->second[inst_idx] > 0.) {
-              if (first) {
-                resource = reply->add_resource_mapping();
-                resource->set_name(
-                    cluster_resource_scheduler_->GetResourceNameFromIndex(it->first));
-                first = false;
-              }
-              auto rid = resource->add_resource_ids();
-              rid->set_index(inst_idx);
-              rid->set_quantity(it->second[inst_idx].Double());
-            }
-          }
-        }
-        send_reply_callback(Status::OK(), nullptr, nullptr);
+        auto rid = resource->add_resource_ids();
+        rid->set_index(inst_idx);
+        rid->set_quantity(it->second[inst_idx].Double());
+      }
+    }
+  }
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void ClusterTaskManager::Spillback(ClientID spillback_to, std::string address, int port,
-                rpc::RequestWorkerLeaseReply *reply,
-                rpc::SendReplyCallback send_reply_callback
-                                    ) {
+                                   rpc::RequestWorkerLeaseReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) {
   reply->mutable_retry_at_raylet_address()->set_ip_address(address);
   reply->mutable_retry_at_raylet_address()->set_port(port);
   reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
-
 
 }  // namespace raylet
 }  // namespace ray

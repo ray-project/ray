@@ -14,6 +14,9 @@ namespace raylet {
 
 typedef std::tuple<Task, rpc::RequestWorkerLeaseReply *, rpc::SendReplyCallback> Work;
 
+typedef std::function<boost::optional<rpc::GcsNodeInfo>(const ClientID &node_id)>
+    NodeInfoGetter;
+
 /// Manages the queuing and dispatching of tasks. The logic is as follows:
 /// 1. Queue tasks for scheduling.
 /// 2. Pick a node on the cluster which has the available resources to run a
@@ -42,7 +45,7 @@ class ClusterTaskManager {
   ClusterTaskManager(const ClientID &self_node_id,
                      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
                      std::function<bool(const Task &)> fulfills_dependencies_func,
-                     std::shared_ptr<gcs::GcsClient> gcs_client);
+                     NodeInfoGetter get_node_info);
 
   /// (Step 2) For each task in tasks_to_schedule_, pick a node in the system
   /// (local or remote) that has enough resources available to run the task, if
@@ -57,15 +60,15 @@ class ClusterTaskManager {
   /// \param worker_pool: The pool of workers which will be dispatched to.
   /// `worker_pool` state will be modified (idle workers will be popped) during
   /// dispatching.
-  void DispatchScheduledTasksToWorkers(WorkerPool &worker_pool, std::unordered_map<WorkerID, std::shared_ptr<Worker>> &leased_workers);
+  void DispatchScheduledTasksToWorkers(
+      WorkerPool &worker_pool,
+      std::unordered_map<WorkerID, std::shared_ptr<Worker>> &leased_workers);
 
   /// (Step 1) Queue tasks for scheduling.
   /// \param fn: The function used during dispatching.
   /// \param task: The incoming task to schedule.
-  void QueueTask(                 const Task &task,
-                 rpc::RequestWorkerLeaseReply *reply,
-                 rpc::SendReplyCallback send_reply_callback
-                 );
+  void QueueTask(const Task &task, rpc::RequestWorkerLeaseReply *reply,
+                 rpc::SendReplyCallback send_reply_callback);
 
   /// Move tasks from waiting to ready for dispatch. Called when a task's
   /// dependencies are resolved.
@@ -77,7 +80,7 @@ class ClusterTaskManager {
   const ClientID &self_node_id_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::function<bool(const Task &)> fulfills_dependencies_func_;
-  std::shared_ptr<gcs::GcsClient> gcs_client_;
+  NodeInfoGetter get_node_info_;
 
   /// Queue of lease requests that are waiting for resources to become available.
   /// TODO this should be a queue for each SchedulingClass
@@ -93,19 +96,14 @@ class ClusterTaskManager {
   /// \return True if the work can be immediately dispatched.
   bool WaitForTaskArgsRequests(Work work);
 
-  void Dispatch(
-            std::shared_ptr<Worker> worker,
-            std::unordered_map<WorkerID, std::shared_ptr<Worker>> &leased_workers_,
-            const TaskSpecification &task_spec,
-            rpc::RequestWorkerLeaseReply *reply,
-            rpc::SendReplyCallback send_reply_callback
-                );
+  void Dispatch(std::shared_ptr<Worker> worker,
+                std::unordered_map<WorkerID, std::shared_ptr<Worker>> &leased_workers_,
+                const TaskSpecification &task_spec, rpc::RequestWorkerLeaseReply *reply,
+                rpc::SendReplyCallback send_reply_callback);
 
   void Spillback(ClientID spillback_to, std::string address, int port,
-       rpc::RequestWorkerLeaseReply *reply,
-       rpc::SendReplyCallback send_reply_callback
-                 );
-
+                 rpc::RequestWorkerLeaseReply *reply,
+                 rpc::SendReplyCallback send_reply_callback);
 };
 }  // namespace raylet
 }  // namespace ray

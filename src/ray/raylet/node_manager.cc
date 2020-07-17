@@ -194,8 +194,12 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
           return args_ready;
         };
 
-    cluster_task_manager_ = std::shared_ptr<ClusterTaskManager>(new ClusterTaskManager(
-        self_node_id_, new_resource_scheduler_, fulfills_dependencies_func, gcs_client_));
+    auto get_node_info_func = [gcs_client_](const ClientID &node_id) {
+      return gcs_client_->Nodes().Get(node_id);
+    };
+    cluster_task_manager_ = std::shared_ptr<ClusterTaskManager>(
+        new ClusterTaskManager(self_node_id_, new_resource_scheduler_,
+                               fulfills_dependencies_func, get_node_info_func));
   }
 
   RAY_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
