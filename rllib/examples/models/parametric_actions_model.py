@@ -7,7 +7,6 @@ from ray.rllib.agents.dqn.dqn_torch_model import \
 from ray.rllib.models.tf.fcnet import FullyConnectedNetwork
 from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as TorchFC
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.numpy import LARGE_INTEGER
 
 tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
@@ -99,11 +98,11 @@ class TorchParametricActionsModel(DQNTorchModel):
         # Batch dot product => shape of logits is [BATCH, MAX_ACTIONS].
         action_logits = torch.sum(avail_actions * intent_vector, dim=2)
 
-        # Mask out invalid actions (use -LARGE_INTEGER to tag invalid).
+        # Mask out invalid actions (use -inf to tag invalid).
         # These are then recognized by the EpsilonGreedy exploration component
         # as invalid actions that are not to be chosen.
         inf_mask = torch.clamp(
-            torch.log(action_mask), -float(LARGE_INTEGER), float("inf"))
+            torch.log(action_mask), -float("inf"), float("inf"))
         return action_logits + inf_mask, state
 
     def value_function(self):

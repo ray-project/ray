@@ -85,10 +85,10 @@ Tune Quick Start
 
     .. code-block:: bash
 
-        $ pip install ray torch torchvision filelock
+        $ pip install 'ray[tune]'
 
 
-This example runs a small grid search to train a CNN using PyTorch and Tune.
+This example runs a small grid search with an iterative training function.
 
 .. literalinclude:: ../../../python/ray/tune/tests/example.py
    :language: python

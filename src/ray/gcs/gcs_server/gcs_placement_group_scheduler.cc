@@ -188,8 +188,8 @@ void GcsPlacementGroupScheduler::ReserveResourceFromNode(
             if (iter->second.empty()) {
               node_to_bundles_when_leasing_.erase(iter);
             }
+            callback(status, reply);
           }
-          callback(status, reply);
         }
       });
   if (!status.ok()) {
@@ -221,7 +221,7 @@ void GcsPlacementGroupScheduler::CancelResourceReserve(
           return_timer_.expires_from_now(boost::posix_time::milliseconds(5));
           return_timer_.async_wait(
               [this, bundle_spec, node](const boost::system::error_code &error) {
-                if (error == boost::system::errc::operation_canceled) {
+                if (error == boost::asio::error::operation_aborted) {
                   return;
                 } else {
                   CancelResourceReserve(bundle_spec, node);
@@ -229,7 +229,7 @@ void GcsPlacementGroupScheduler::CancelResourceReserve(
               });
         }
       });
-}  // namespace gcs
+}
 
 std::shared_ptr<ResourceReserveInterface>
 GcsPlacementGroupScheduler::GetOrConnectLeaseClient(const rpc::Address &raylet_address) {
