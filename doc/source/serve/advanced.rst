@@ -299,19 +299,9 @@ The metric exporter is extensible and you can customize it for your own metric
 infrastructure. We are gathering feedback and welcome contribution! Feel free
 to submit a github issue to chat with us in #serve channel in `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_.
 
-Here's an simple example of a dummy exporter:
+Here's an simple example of a dummy exporter that writes metrics to file:
 
-.. code-block:: python
-
-  from ray.serve.metric.exporter import ExporterInterface
-  
-  class DummyExporter(ExporterInterface):
-      def export(self, metric_metadata, metric_batch):
-          print("Got a new batch of metrics data", metric_batch)
-
-      def inspect_metrics(self):
-          return "Dummy metrics"
-
+.. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_metric_export.py
 
 .. _serve-faq:
 

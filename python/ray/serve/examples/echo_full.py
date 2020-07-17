@@ -1,8 +1,3 @@
-"""
-Full example of ray.serve module
-"""
-
-import json
 import time
 
 import requests
