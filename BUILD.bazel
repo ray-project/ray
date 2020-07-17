@@ -341,7 +341,6 @@ cc_library(
     deps = [
         ":object_manager_fbs",
         ":plasma_fbs",
-        ":platform_shims",
         ":ray_common",
         ":ray_util",
         "@arrow",
@@ -415,7 +414,6 @@ cc_library(
     deps = [
         ":ae",
         ":plasma_client",
-        ":platform_shims",
         "@com_github_google_glog//:glog",
     ],
 )
@@ -429,7 +427,6 @@ cc_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":plasma_store_server_lib",
-        ":platform_shims",
     ],
 )
 
@@ -1011,6 +1008,7 @@ cc_test(
     name = "stats_test",
     srcs = ["src/ray/stats/stats_test.cc"],
     copts = COPTS,
+    tags = ["stats"],
     deps = [
         ":stats_lib",
         "@com_google_googletest//:gtest_main",
@@ -1021,6 +1019,7 @@ cc_test(
     name = "metric_exporter_client_test",
     srcs = ["src/ray/stats/metric_exporter_client_test.cc"],
     copts = COPTS,
+    tags = ["stats"],
     deps = [
         ":stats_lib",
         "@com_google_googletest//:gtest_main",
@@ -1067,6 +1066,20 @@ cc_test(
     name = "gcs_node_manager_test",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_node_manager_test.cc",
+        "src/ray/gcs/gcs_server/test/gcs_server_test_util.h",
+    ],
+    copts = COPTS,
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_test_util_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "gcs_placement_group_manager_test",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/gcs_placement_group_manager_test.cc",
         "src/ray/gcs/gcs_server/test/gcs_server_test_util.h",
     ],
     copts = COPTS,
@@ -1357,11 +1370,9 @@ cc_library(
         "//conditions:default": [],
     }),
     copts = COPTS,
-    includes = [] + select({
-        "@bazel_tools//src/conditions:windows": [
-            "src/shims/windows",
-        ],
-        "//conditions:default": [],
+    strip_include_prefix = select({
+        "@bazel_tools//src/conditions:windows": "src/shims/windows",
+        "//conditions:default": "",
     }),
     visibility = ["//visibility:public"],
 )
@@ -1385,7 +1396,6 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":platform_shims",
         ":sha256",
         "@boost//:asio",
         "@com_github_google_glog//:glog",
