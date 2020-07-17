@@ -46,14 +46,6 @@ write_file(
 )
 
 cc_library(
-    name = "jemalloc",
-    srcs = glob(["deps/jemalloc/src/*.c"]),
-    hdrs = glob(["deps/jemalloc/include/**/*.h"]),
-    strip_include_prefix = "deps/jemalloc/include",
-    visibility = ["//visibility:public"],
-)
-
-cc_library(
     name = "linenoise",
     srcs = [
         "deps/linenoise/linenoise.c",
@@ -116,7 +108,6 @@ cc_binary(
     includes = ["src"],
     visibility = ["//visibility:public"],
     deps = [
-        # ":jemalloc",
         ":hiredis",
         ":libredis",
         ":linenoise",
@@ -144,7 +135,6 @@ cc_binary(
     includes = ["src"],
     local_defines = [
         "REDIS_STATIC=",
-        # "USE_JEMALLOC",
     ],
     linkopts = select({
         "@bazel_tools//src/conditions:windows": [
@@ -160,7 +150,6 @@ cc_binary(
     }),
     visibility = ["//visibility:public"],
     deps = [
-        # ":jemalloc",
         ":hiredis",
         ":libredis",
         ":lua",
