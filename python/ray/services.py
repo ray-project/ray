@@ -940,15 +940,16 @@ def _start_redis_instance(executable,
 
     while counter < num_retries:
         # Construct the command to start the Redis server.
+        wait_for_sigstop = sys.platform != "win32"
         command = [executable]
         if password:
             if " " in password:
                 raise ValueError("Spaces not permitted in redis password.")
             command += ["--requirepass", password]
         command += ["--port", str(port), "--loglevel", "warning"]
-        command += ["--supervised", "upstart"]
+        if wait_for_sigstop:
+            command += ["--supervised", "upstart"]
         command += load_module_args
-        wait_for_sigstop = sys.platform != "win32"
         env_updates = {}
         if wait_for_sigstop:
             # https://github.com/redis/redis/blob/5.0.9/redis.conf#L144
