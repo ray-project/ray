@@ -16,6 +16,10 @@
 
 #include "ray/util/logging.h"
 
+extern "C" {
+#include "hiredis/async.h"
+}
+
 RedisAsioClient::RedisAsioClient(boost::asio::io_service &io_service,
                                  ray::gcs::RedisAsyncContext &redis_async_context)
     : redis_async_context_(redis_async_context),

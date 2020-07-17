@@ -283,6 +283,21 @@ message TaskLeaseData {
   uint64 timeout = 4;
 }
 
+message JobConfigs {
+  // The initial Python workers to start per node. If a negative value is specified, it
+  // fallbacks to `num_cpus`.
+  int32 num_initial_python_workers = 1;
+  // The initial Java workers to start per node. If a negative value is specified, it
+  // fallbacks to `num_cpus`.
+  int32 num_initial_java_workers = 2;
+  // Environment variables to be set on worker processes.
+  map<string, string> worker_env = 3;
+  // The number of java workers per worker process.
+  uint32 num_java_workers_per_process = 4;
+  // The jvm options for java workers of the job.
+  repeated string jvm_options = 5;
+}
+
 message JobTableData {
   // The job ID.
   bytes job_id = 1;
@@ -294,6 +309,8 @@ message JobTableData {
   string driver_ip_address = 4;
   // Process ID of the driver running this job.
   int64 driver_pid = 5;
+  // The configs of this job.
+  JobConfigs configs = 6;
 }
 
 // This table stores the actor checkpoint data. An actor checkpoint

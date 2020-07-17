@@ -1943,39 +1943,39 @@ py_test(
 )
 
 py_test(
-    name = "examples/twostep_game_maddpg",
-    main = "examples/twostep_game.py",
+    name = "examples/two_step_game_maddpg",
+    main = "examples/two_step_game.py",
     tags = ["examples", "examples_T"],
     size = "large",
-    srcs = ["examples/twostep_game.py"],
+    srcs = ["examples/two_step_game.py"],
     args = ["--stop-timesteps=2000", "--run=contrib/MADDPG"]
 )
 
 py_test(
-    name = "examples/twostep_game_pg_tf",
-    main = "examples/twostep_game.py",
+    name = "examples/two_step_game_pg_tf",
+    main = "examples/two_step_game.py",
     tags = ["examples", "examples_T"],
     size = "medium",
-    srcs = ["examples/twostep_game.py"],
+    srcs = ["examples/two_step_game.py"],
     args = ["--as-test", "--stop-reward=7", "--run=PG"]
 )
 
 py_test(
-    name = "examples/twostep_game_pg_torch",
-    main = "examples/twostep_game.py",
+    name = "examples/two_step_game_pg_torch",
+    main = "examples/two_step_game.py",
     tags = ["examples", "examples_T"],
     size = "medium",
-    srcs = ["examples/twostep_game.py"],
+    srcs = ["examples/two_step_game.py"],
     args = ["--as-test", "--torch", "--stop-reward=7", "--run=PG"]
 )
 
 py_test(
-    name = "examples/twostep_game_qmix",
-    main = "examples/twostep_game.py",
+    name = "examples/two_step_game_qmix",
+    main = "examples/two_step_game.py",
     tags = ["examples", "examples_T"],
     size = "medium",
-    srcs = ["examples/twostep_game.py"],
-    args = ["--stop-timesteps=2000", "--run=QMIX"]
+    srcs = ["examples/two_step_game.py"],
+    args = ["--as-test", "--torch", "--stop-reward=7", "--run=QMIX"]
 )
 
 py_test(

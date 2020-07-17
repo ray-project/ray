@@ -18,6 +18,7 @@
 #include <unordered_map>
 
 #include "opencensus/stats/stats.h"
+#include "opencensus/stats/stats_exporter.h"
 #include "opencensus/tags/tag_key.h"
 
 #include "ray/util/logging.h"
@@ -83,7 +84,7 @@ class Metric {
         unit_(unit),
         tag_keys_(tag_keys){};
 
-  virtual ~Metric() = default;
+  virtual ~Metric() { opencensus::stats::StatsExporter::RemoveView(name_); }
 
   Metric &operator()() { return *this; }
 

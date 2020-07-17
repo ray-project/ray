@@ -29,9 +29,9 @@ message GetProfilingStatsReply {
   // Profiling stats.
   string profiling_stats = 1;
   // Standard output of the profiler process.
-  string stdout = 2;
+  string std_out = 2;
   // Standard error of the profiler process.
-  string stderr = 3;
+  string std_err = 3;
 }
 
 message ReportMetricsRequest {

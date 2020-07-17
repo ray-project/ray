@@ -12,6 +12,7 @@ from ray.rllib.policy.tf_policy import LearningRateSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.exploration import ParameterNoise
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_ops import huber_loss, reduce_mean_ignore_inf, \
     minimize_and_clip
@@ -378,7 +379,8 @@ def postprocess_nstep_and_prio(policy, batch, other_agent=None, episode=None):
             batch[SampleBatch.REWARDS], batch[SampleBatch.NEXT_OBS],
             batch[SampleBatch.DONES], batch[PRIO_WEIGHTS])
         new_priorities = (
-            np.abs(td_errors) + policy.config["prioritized_replay_eps"])
+            np.abs(convert_to_numpy(td_errors)) +
+            policy.config["prioritized_replay_eps"])
         batch.data[PRIO_WEIGHTS] = new_priorities
 
     return batch

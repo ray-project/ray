@@ -59,20 +59,32 @@ Status ServiceBasedJobInfoAccessor::AsyncMarkFinished(const JobID &job_id,
   return Status::OK();
 }
 
-Status ServiceBasedJobInfoAccessor::AsyncSubscribeToFinishedJobs(
+Status ServiceBasedJobInfoAccessor::AsyncSubscribeAll(
     const SubscribeCallback<JobID, JobTableData> &subscribe, const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
+  fetch_all_data_operation_ = [this, subscribe](const StatusCallback &done) {
+    auto callback = [subscribe, done](
+                        const Status &status,
+                        const std::vector<rpc::JobTableData> &job_info_list) {
+      for (auto &job_info : job_info_list) {
+        subscribe(JobID::FromBinary(job_info.job_id()), job_info);
+      }
+      if (done) {
+        done(status);
+      }
+    };
+    RAY_CHECK_OK(AsyncGetAll(callback));
+  };
   subscribe_operation_ = [this, subscribe](const StatusCallback &done) {
     auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
       JobTableData job_data;
       job_data.ParseFromString(data);
-      if (job_data.is_dead()) {
-        subscribe(JobID::FromBinary(id), job_data);
-      }
+      subscribe(JobID::FromBinary(id), job_data);
     };
     return client_impl_->GetGcsPubSub().SubscribeAll(JOB_CHANNEL, on_subscribe, done);
   };
-  return subscribe_operation_(done);
+  return subscribe_operation_(
+      [this, done](const Status &status) { fetch_all_data_operation_(done); });
 }
 
 void ServiceBasedJobInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
