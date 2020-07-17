@@ -1,1 +1,1 @@
-GPU_V100_16GB = "_RAY_ResourceConstraint:V100-16GB"
+GPU_TYPE_V100 = "ResourceConstraint:V100"
