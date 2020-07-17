@@ -32,7 +32,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   void SetUp() override {
     config_.grpc_server_port = 0;
     config_.grpc_server_name = "MockedGcsServer";
-    config_.grpc_server_thread_num = 1;
+    config_.grpc_server_thread_num = 2;
     config_.redis_address = "127.0.0.1";
     config_.is_test = true;
     config_.redis_port = TEST_REDIS_SERVER_PORTS.front();

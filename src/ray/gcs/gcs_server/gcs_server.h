@@ -28,7 +28,7 @@ namespace gcs {
 struct GcsServerConfig {
   std::string grpc_server_name = "GcsServer";
   uint16_t grpc_server_port = 0;
-  uint16_t grpc_server_thread_num = 1;
+  uint16_t grpc_server_thread_num = 2;
   std::string redis_password;
   std::string redis_address;
   uint16_t redis_port = 6379;

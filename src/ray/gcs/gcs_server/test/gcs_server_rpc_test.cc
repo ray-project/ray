@@ -30,7 +30,7 @@ class GcsServerTest : public ::testing::Test {
     gcs::GcsServerConfig config;
     config.grpc_server_port = 0;
     config.grpc_server_name = "MockedGcsServer";
-    config.grpc_server_thread_num = 1;
+    config.grpc_server_thread_num = 2;
     config.redis_address = "127.0.0.1";
     config.is_test = true;
     config.redis_port = TEST_REDIS_SERVER_PORTS.front();
