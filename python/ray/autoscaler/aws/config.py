@@ -335,11 +335,16 @@ def _upsert_security_groups(config, node_types):
 
 def _get_or_create_vpc_security_groups(conf, node_types):
     # Figure out which VPC each node_type is in...
+    def subnet(node_conf):
+        if "NetworkInterfaces" in node_conf:
+            return node_conf["NetworkInterfaces"][0]["SubnetId"]
+        return node_conf["SubnetIds"][0]
+
     ec2 = _resource("ec2", conf)
     node_type_to_vpc = {
         node_type: _get_vpc_id_or_die(
             ec2,
-            conf[NODE_TYPE_CONFIG_KEYS[node_type]]["SubnetIds"][0],
+            subnet(conf[NODE_TYPE_CONFIG_KEYS[node_type]]),
         )
         for node_type in node_types
     }
@@ -520,7 +525,7 @@ def _configure_node_from_launch_template(config, node_type):
 
     ec2 = _client("ec2", config)
     template_config = config[node_type]["LaunchTemplate"]
-    kwargs = {'Versions': [template_config["Version"]]}
+    kwargs = {"Versions": [template_config["Version"]]}
 
     if "LaunchTemplateName" in template_config:
         kwargs["LaunchTemplateName"] = template_config["LaunchTemplateName"]

@@ -157,7 +157,7 @@ def describe_launch_template_versions_echo(ec2_client_stub,
         if has_subnet:
             data["NetworkInterfaces"][0]["SubnetId"] = "foo"
         if has_security_group:
-            data["NetworkInterfaces"][0]["Groups"] = ["bar"]
+            data["NetworkInterfaces"][0]["Groups"] = ["foo"]
 
     response = {"LaunchTemplateVersions": [{"LaunchTemplateData": data}]}
 
