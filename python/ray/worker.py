@@ -14,7 +14,6 @@ import sys
 import threading
 import time
 import traceback
-import numbers
 
 # Ray modules
 import ray.cloudpickle as pickle
@@ -1901,6 +1900,7 @@ def remote(*args, **kwargs):
             "max_restarts",
             "max_task_retries",
             "max_retries",
+            "constraints",
         ], error_string
 
     num_cpus = kwargs.get("num_cpus", None)
@@ -1914,12 +1914,12 @@ def remote(*args, **kwargs):
         assert "CPU" not in resources, "Use the 'num_cpus' argument."
         assert "GPU" not in resources, "Use the 'num_gpus' argument."
 
-
     constraints = kwargs.get("constraints", None)
     if constraints is not None:
-        if isinstance(constrains, str):
+        if isinstance(constraints, str):
             constraints = {constraints}
-        assert isinstance(constraints, set), "constraints must be a string or a set."
+        assert isinstance(constraints,
+                          set), "constraints must be a string or a set."
         for constraint in constraints:
             resources[constraint] = 0.0001
 
