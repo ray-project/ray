@@ -256,8 +256,8 @@ class StandardAutoscaler:
     def reload_config(self, errors_fatal=False):
         file_mounts_sync_continuously = False
         if hasattr(self, "config"):
-            file_mounts_sync_continuously = self.config[
-                "file_mounts_sync_continuously"]
+            file_mounts_sync_continuously = self.config.get(
+                "file_mounts_sync_continuously", False)
         try:
             with open(self.config_path) as f:
                 new_config = yaml.safe_load(f.read())
