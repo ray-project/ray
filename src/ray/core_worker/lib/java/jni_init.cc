@@ -207,7 +207,7 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 
   java_task_executor_class = LoadClass(env, "io/ray/runtime/task/TaskExecutor");
   java_task_executor_parse_function_arguments = env->GetMethodID(
-      java_task_executor_class, "parseFunctionArguments", "(Ljava/util/List;)[Z");
+      java_task_executor_class, "checkByteBufferArguments", "(Ljava/util/List;)[Z");
   java_task_executor_execute =
       env->GetMethodID(java_task_executor_class, "execute",
                        "(Ljava/util/List;Ljava/util/List;)Ljava/util/List;");

@@ -73,13 +73,13 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
   /**
    * The return value indicates which parameters are ByteBuffer.
    */
-  protected boolean[] parseFunctionArguments(List<String> rayFunctionInfo) {
+  protected boolean[] checkByteBufferArguments(List<String> rayFunctionInfo) {
     localRayFunction.set(null);
     try {
       localRayFunction.set(getRayFunction(rayFunctionInfo));
     } catch (Throwable e) {
       // Ignore the exception.
-      return new boolean[0];
+      return null;
     }
     Class<?>[] types = localRayFunction.get().executable.getParameterTypes();
     boolean[] results = new boolean[types.length];
@@ -111,7 +111,7 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
     try {
       // Find the executable object.
       if (rayFunction == null) {
-        // Failed to get RayFunction in parseFunctionArguments. Redo here to throw
+        // Failed to get RayFunction in checkByteBufferArguments. Redo here to throw
         // the exception again.
         rayFunction = getRayFunction(rayFunctionInfo);
       }
