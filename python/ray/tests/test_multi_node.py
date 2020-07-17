@@ -16,7 +16,7 @@ def test_error_isolation(call_ray_start):
     # Connect a driver to the Ray cluster.
     ray.init(address=address)
 
-    # There shouldn"t be any errors yet.
+    # There shouldn't be any errors yet.
     assert len(ray.errors()) == 0
 
     error_string1 = "error_string1"
@@ -74,7 +74,7 @@ print("success")
     # Make sure the other driver succeeded.
     assert "success" in out
 
-    # Make sure that the other error message doesn"t show up for this
+    # Make sure that the other error message doesn't show up for this
     # driver.
     assert len(ray.errors()) == 1
     assert error_string1 in ray.errors()[0]["message"]
@@ -340,21 +340,21 @@ print("success")
 
     # Make sure we can run this driver repeatedly, which means that resources
     # are getting released in between.
-    print("a")
+    print('a')
     for _ in range(5):
-        print("b")
+        print('b')
         out = run_string_as_driver(driver_script1)
-        print("c")
+        print('c')
         # Make sure the first driver ran to completion.
         assert "success" in out
         # Also make sure that this works when the driver exits ungracefully.
         process_handle = run_string_as_driver_nonblocking(driver_script2)
-        print("d")
+        print('d')
         wait_for_success_output(process_handle)
-        print("e")
+        print('e')
         # Kill the process ungracefully.
         process_handle.kill()
-        print("f")
+        print('f')
 
 
 def test_calling_start_ray_head(call_ray_stop_only):
@@ -431,7 +431,7 @@ def test_calling_start_ray_head(call_ray_stop_only):
     kill_process_by_name("raylet")
     wait_for_children_of_pid_to_exit(blocked.pid, timeout=30)
     blocked.wait()
-    assert blocked.returncode != 0, "ray start shouldn"t return 0 on bad exit"
+    assert blocked.returncode != 0, "ray start shouldn't return 0 on bad exit"
 
     # Test --block. Killing the command should clean up all child processes.
     blocked = subprocess.Popen(["ray", "start", "--head", "--block"])
@@ -443,7 +443,7 @@ def test_calling_start_ray_head(call_ray_stop_only):
     blocked.terminate()
     wait_for_children_of_pid_to_exit(blocked.pid, timeout=30)
     blocked.wait()
-    assert blocked.returncode != 0, "ray start shouldn"t return 0 on bad exit"
+    assert blocked.returncode != 0, "ray start shouldn't return 0 on bad exit"
 
 
 @pytest.mark.parametrize(
@@ -685,14 +685,14 @@ ray.get(main_wait.release.remote())
     ray.get(driver1_wait.release.remote())
     ray.get(driver2_wait.release.remote())
 
-    # At this point driver1 should receive "1" and driver2 "3"
+    # At this point driver1 should receive '1' and driver2 '3'
     ray.get(main_wait.acquire.remote())
     ray.get(main_wait.acquire.remote())
 
     ray.get(driver1_wait.release.remote())
     ray.get(driver2_wait.release.remote())
 
-    # At this point driver1 should receive "2" and driver2 "4"
+    # At this point driver1 should receive '2' and driver2 '4'
     ray.get(main_wait.acquire.remote())
     ray.get(main_wait.acquire.remote())
 
