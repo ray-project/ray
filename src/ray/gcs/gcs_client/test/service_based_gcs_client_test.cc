@@ -623,7 +623,7 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeInfo) {
 
   // Register local node to GCS.
   ASSERT_TRUE(RegisterSelf(*gcs_node1_info));
-  sleep(1);
+  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
   EXPECT_EQ(gcs_client_->Nodes().GetSelfId(), node1_id);
   EXPECT_EQ(gcs_client_->Nodes().GetSelfInfo().node_id(), gcs_node1_info->node_id());
   EXPECT_EQ(gcs_client_->Nodes().GetSelfInfo().state(), gcs_node1_info->state());
@@ -735,7 +735,7 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskInfo) {
   ASSERT_TRUE(AddTask(task_table_data));
 
   // Assert unsubscribe succeeded.
-  usleep(100 * 1000);
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
   EXPECT_EQ(task_count, 1);
 
   // Delete tasks from GCS.
@@ -764,7 +764,7 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskInfo) {
   ASSERT_TRUE(AddTaskLease(task_lease));
 
   // Assert unsubscribe succeeded.
-  usleep(100 * 1000);
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
   EXPECT_EQ(task_lease_count, 2);
 
   // Attempt task reconstruction to GCS.
@@ -815,7 +815,7 @@ TEST_F(ServiceBasedGcsClientTest, TestObjectInfo) {
   ASSERT_TRUE(AddLocation(object_id, node_id));
 
   // Assert unsubscribe succeeded.
-  usleep(100 * 1000);
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
   ASSERT_EQ(object_add_count, 1);
 }
 
@@ -972,7 +972,7 @@ TEST_F(ServiceBasedGcsClientTest, TestObjectTableResubscribe) {
 
   // Cancel subscription to any update of an object's location.
   UnsubscribeToLocations(object1_id);
-  usleep(100 * 1000);
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
   // Restart GCS.
   RestartGcsServer();

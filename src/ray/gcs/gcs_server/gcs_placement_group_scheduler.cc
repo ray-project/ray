@@ -188,8 +188,8 @@ void GcsPlacementGroupScheduler::ReserveResourceFromNode(
             if (iter->second.empty()) {
               node_to_bundles_when_leasing_.erase(iter);
             }
+            callback(status, reply);
           }
-          callback(status, reply);
         }
       });
   if (!status.ok()) {
@@ -229,7 +229,7 @@ void GcsPlacementGroupScheduler::CancelResourceReserve(
               });
         }
       });
-}  // namespace gcs
+}
 
 std::shared_ptr<ResourceReserveInterface>
 GcsPlacementGroupScheduler::GetOrConnectLeaseClient(const rpc::Address &raylet_address) {

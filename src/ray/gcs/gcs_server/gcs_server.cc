@@ -19,6 +19,7 @@
 #include "gcs_job_manager.h"
 #include "gcs_node_manager.h"
 #include "gcs_object_manager.h"
+#include "gcs_placement_group_manager.h"
 #include "gcs_worker_manager.h"
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
@@ -60,6 +61,9 @@ void GcsServer::Start() {
   // Init gcs actor manager.
   InitGcsActorManager();
 
+  // Init gcs placement group manager.
+  InitGcsPlacementGroupManager();
+
   // Register rpc service.
   gcs_object_manager_ = InitObjectManager();
   object_info_service_.reset(
@@ -78,6 +82,10 @@ void GcsServer::Start() {
   actor_info_service_.reset(
       new rpc::ActorInfoGrpcService(main_service_, *gcs_actor_manager_));
   rpc_server_.RegisterService(*actor_info_service_);
+
+  placement_group_info_service_.reset(new rpc::PlacementGroupInfoGrpcService(
+      main_service_, *gcs_placement_group_manager_));
+  rpc_server_.RegisterService(*placement_group_info_service_);
 
   node_info_service_.reset(
       new rpc::NodeInfoGrpcService(main_service_, *gcs_node_manager_));
@@ -208,6 +216,22 @@ void GcsServer::InitGcsJobManager() {
   gcs_job_manager_->AddJobFinishedListener([this](std::shared_ptr<JobID> job_id) {
     gcs_actor_manager_->OnJobFinished(*job_id);
   });
+}
+
+void GcsServer::InitGcsPlacementGroupManager() {
+  RAY_CHECK(gcs_table_storage_ != nullptr && gcs_node_manager_ != nullptr);
+  auto scheduler = std::make_shared<GcsPlacementGroupScheduler>(
+      main_service_, gcs_table_storage_, *gcs_node_manager_,
+      /*lease_client_factory=*/
+      [this](const rpc::Address &address) {
+        auto node_manager_worker_client = rpc::NodeManagerWorkerClient::make(
+            address.ip_address(), address.port(), client_call_manager_);
+        return std::make_shared<ray::raylet::RayletClient>(
+            std::move(node_manager_worker_client));
+      });
+
+  gcs_placement_group_manager_ = std::make_shared<GcsPlacementGroupManager>(
+      main_service_, scheduler, gcs_table_storage_);
 }
 
 std::unique_ptr<GcsObjectManager> GcsServer::InitObjectManager() {
