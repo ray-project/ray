@@ -25,7 +25,7 @@ def test_np_in_composed_model(serve_instance):
     serve.create_endpoint("sum_model", backend="sum_model")
     serve.create_backend("model", ComposedModel)
     serve.create_endpoint(
-        "model", backend="model", route="/model", methods=['GET'])
+        "model", backend="model", route="/model", methods=["GET"])
 
     result = requests.get("http://127.0.0.1:8000/model")
     assert result.status_code == 200
