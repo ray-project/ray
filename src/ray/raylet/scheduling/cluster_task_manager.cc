@@ -31,8 +31,8 @@ bool ClusterTaskManager::SchedulePendingTasks() {
     auto request_resources =
         task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
     int64_t _unused;
-    std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-        request_resources, &_unused);
+    std::string node_id_string =
+        cluster_resource_scheduler_->GetBestSchedulableNode(request_resources, &_unused);
     if (node_id_string.empty()) {
       /// There is no node that has available resources to run the request.
       tasks_to_schedule_.push_back(work);
