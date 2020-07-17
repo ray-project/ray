@@ -332,7 +332,6 @@ print("success")
         while time.time() - start_time < timeout:
             output_line = ray.utils.decode(
                 process_handle.stdout.readline()).strip()
-            print(output_line)
             if output_line == "success":
                 return
             time.sleep(1)
@@ -341,15 +340,21 @@ print("success")
 
     # Make sure we can run this driver repeatedly, which means that resources
     # are getting released in between.
+    print('a')
     for _ in range(5):
+        print('b')
         out = run_string_as_driver(driver_script1)
+        print('c')
         # Make sure the first driver ran to completion.
         assert "success" in out
         # Also make sure that this works when the driver exits ungracefully.
         process_handle = run_string_as_driver_nonblocking(driver_script2)
+        print('d')
         wait_for_success_output(process_handle)
+        print('e')
         # Kill the process ungracefully.
         process_handle.kill()
+        print('f')
 
 
 def test_calling_start_ray_head(call_ray_stop_only):
