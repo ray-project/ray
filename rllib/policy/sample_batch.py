@@ -438,8 +438,8 @@ class MultiAgentBatch:
         steps = []
         for policy_id, batch in self.policy_batches.items():
             for row in batch.rows():
-                steps.append((row[SampleBatch.EPS_ID], row["t"], row["agent_index"], policy_id,
-                              row))
+                steps.append((row[SampleBatch.EPS_ID], row["t"],
+                              row["agent_index"], policy_id, row))
         steps.sort()
 
         finished_slices = []
