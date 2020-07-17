@@ -3046,7 +3046,7 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
       rpc::GetObjectStatusRequest request;
       request.set_object_id(required_object_id.Binary());
       request.set_owner_worker_id(owner_addr.worker_id());
-      RAY_CHECK_OK(client->GetObjectStatus(
+      client->GetObjectStatus(
           request, [this, required_object_id](Status status,
                                               const rpc::GetObjectStatusReply &reply) {
             if (!status.ok() ||
@@ -3066,7 +3066,7 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
             // object manager will continue trying to fetch the object, and this
             // handler will get triggered again if the object is still
             // unavailable after another timeout.
-          }));
+          });
     }
   } else {
     // We do not have the owner's address. This is either an actor creation
