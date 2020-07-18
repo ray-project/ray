@@ -44,10 +44,9 @@ enum class MessageType : int64_t;
 
 }  // namespace flatbuf
 
-// TODO(pcm): Replace our own custom message header (message type,
-// message length, plasma protocol version) with one that is serialized
-// using flatbuffers.
-const int64_t kPlasmaProtocolVersion = RayConfig::instance().ray_cookie();
+// TODO(suquark): We temporarily sync this with Ray cookie. This code will
+// be removed soon in later PRs.
+constexpr int64_t kPlasmaProtocolVersion = 0x5241590000000000;
 
 Status WriteBytes(int fd, uint8_t* cursor, size_t length);
 
