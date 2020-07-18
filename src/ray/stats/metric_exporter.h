@@ -40,8 +40,20 @@ class MetricExporter final : public opencensus::stats::StatsExporter::Handler {
 
   static void Register(std::shared_ptr<MetricExporterClient> metric_exporter_client,
                        size_t report_batch_size) {
+    is_exporting_ = false;
+    should_be_cleaned_up_ = false;
     opencensus::stats::StatsExporter::RegisterPushHandler(
         absl::make_unique<MetricExporter>(metric_exporter_client, report_batch_size));
+  }
+
+  /// Stop Metrics export. If it is still exporting metrics, this method waits until
+  /// that's done.
+  static void StopExportMetricsGraceful() {
+    // Wait until the current exporting is done.
+    while (is_exporting_) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    should_be_cleaned_up_ = true;
   }
 
   void ExportViewData(
@@ -82,6 +94,10 @@ class MetricExporter final : public opencensus::stats::StatsExporter::Handler {
   /// Auto max minbatch size for reporting metrics to external components.
   static constexpr size_t kDefaultBatchSize = 100;
   size_t report_batch_size_;
+  /// True if the handler is in progress of exporting metrics.
+  static std::atomic<bool> is_exporting_;
+  /// True if the exporter is about to be cleaned up.
+  static std::atomic<bool> should_be_cleaned_up_;
 };
 
 }  // namespace stats

@@ -40,6 +40,9 @@ namespace stats {
 /// Include metric_defs.h to define measure items.
 #include "metric_defs.h"
 
+static std::shared_ptr<IOServicePool> metrics_io_service_pool;
+static std::shared_ptr<MetricExporterClient> exporter;
+
 /// Initialize stats.
 static void Init(
     const TagsType &global_tags, const int metrics_agent_port,
@@ -52,12 +55,13 @@ static void Init(
     return;
   }
 
-  static std::shared_ptr<IOServicePool> metrics_io_service_pool = std::make_shared<IOServicePool>(1);
-  metrics_io_service_pool->Run();
+  if (StatsConfig::instance().IsInitialized()) {
+    return;
+  }
+
+  metrics_io_service_pool = std::make_shared<IOServicePool>(1);
   boost::asio::io_service *metrics_io_serve = metrics_io_service_pool->Get();
 
-  // Force to have a singleton exporter.
-  static std::shared_ptr<MetricExporterClient> exporter;
   // Default exporter is metrics agent exporter.
   if (exporter_to_use == nullptr) {
     std::shared_ptr<MetricExporterClient> stdout_exporter(new StdoutExporterClient());
@@ -67,6 +71,8 @@ static void Init(
     exporter = exporter_to_use;
   }
 
+  metrics_io_service_pool->Run();
+
   // TODO(sang): Currently, we don't do any cleanup. This can lead us to lose last 10
   // seconds data before we exit the main script.
   MetricExporter::Register(exporter, metrics_report_batch_size);
@@ -75,6 +81,18 @@ static void Init(
   opencensus::stats::DeltaProducer::Get()->SetHarvestInterval(
       StatsConfig::instance().GetHarvestInterval());
   StatsConfig::instance().SetGlobalTags(global_tags);
+  StatsConfig::instance().SetIsInitialized(true);
+}
+
+/// NOTE: OpenCensus doesn't have APIs to  stop metrics collection & export.
+/// This method simply stops exporting metrics. It has to be called only when the
+/// process is terminated.
+static void Cleanup() {
+  MetricExporter::StopExportMetricsGraceful();
+  metrics_io_service_pool->Stop();
+  metrics_io_service_pool = nullptr;
+  exporter = nullptr;
+  StatsConfig::instance().SetIsInitialized(false);
 }
 
 }  // namespace stats
