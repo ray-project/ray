@@ -742,20 +742,14 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
     RemoveFromClientObjectIds(entry.first, entry.second, client);
   }
 
-  if (client->notification_fd > 0) {
-    // This client has subscribed for notifications.
-    auto notify_fd = client->notification_fd;
-    loop_->RemoveFileEvent(notify_fd);
-    // Close socket.
-    close(notify_fd);
-    // Remove notification queue for this fd from global map.
-    pending_notifications_.erase(notify_fd);
-    // Reset fd.
-    client->notification_fd = -1;
+  if (pending_notifications_.find(client->fd) != pending_notifications_.end()) {
+    // Remove notification for this client from global map.
+    pending_notifications_.erase(client->fd);
   }
 
   // We lose the last borrower of the Client instance here.
   loop_->RemoveFileEvent(client_fd);
+  close(client_fd);
 }
 
 /// Send notifications about sealed objects to the subscribers. This is called
@@ -768,9 +762,24 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
 /// \param it Iterator that points to the client to send the notification to.
 /// \return Iterator pointing to the next client.
 PlasmaStore::NotificationMap::iterator PlasmaStore::SendNotifications(
-    PlasmaStore::NotificationMap::iterator it) {
+    PlasmaStore::NotificationMap::iterator it, const std::vector<ObjectInfoT> &object_info) {
+  namespace protocol = ray::object_manager::protocol;
+  flatbuffers::FlatBufferBuilder fbb;
+  std::vector<flatbuffers::Offset<protocol::ObjectInfo>> info;
+  for (size_t i = 0; i < object_info.size(); ++i) {
+    info.push_back(protocol::CreateObjectInfo(fbb, &object_info[i]));
+  }
+  auto info_array = fbb.CreateVector(info);
+  auto message = protocol::CreatePlasmaNotification(fbb, info_array);
+  fbb.Finish(message);
+
   int client_fd = it->first;
   auto& notifications = it->second.object_notifications;
+  auto new_notifications =
+      std::unique_ptr<uint8_t[]>(new uint8_t[sizeof(int64_t) + fbb.GetSize()]);
+  *(reinterpret_cast<int64_t*>(new_notifications.get())) = fbb.GetSize();
+  memcpy(new_notifications.get() + sizeof(int64_t), fbb.GetBufferPointer(), fbb.GetSize());
+  notifications.emplace_back(std::move(new_notifications));
 
   int num_processed = 0;
   bool closed = false;
@@ -796,11 +805,12 @@ PlasmaStore::NotificationMap::iterator PlasmaStore::SendNotifications(
       // TODO(pcm): Introduce status codes and check in case the file descriptor
       // is added twice.
       loop_->AddFileEvent(client_fd, kEventLoopWrite, [this, client_fd](int events) {
-        SendNotifications(pending_notifications_.find(client_fd));
+        SendNotifications(pending_notifications_.find(client_fd), {});
       });
       break;
     } else {
-      RAY_LOG(WARNING) << "Failed to send notification to client on fd " << client_fd;
+      RAY_LOG(WARNING) << "Failed to send notification to client on fd " << client_fd
+                       << ", errno = " << errno;
       if (errno == EPIPE) {
         closed = true;
         break;
@@ -842,42 +852,22 @@ void PlasmaStore::PushNotifications(const std::vector<ObjectInfoT>& object_info)
 
   auto it = pending_notifications_.begin();
   while (it != pending_notifications_.end()) {
-    auto notifications = CreatePlasmaNotificationBuffer(object_info);
-    it->second.object_notifications.emplace_back(std::move(notifications));
-    it = SendNotifications(it);
+    it = SendNotifications(it, object_info);
   }
 }
 
 void PlasmaStore::PushNotification(ObjectInfoT* object_info, int client_fd) {
   auto it = pending_notifications_.find(client_fd);
   if (it != pending_notifications_.end()) {
-    auto notification = CreatePlasmaNotificationBuffer({*object_info});
-    it->second.object_notifications.emplace_back(std::move(notification));
-    SendNotifications(it);
+    SendNotifications(it, {*object_info});
   }
 }
 
 // Subscribe to notifications about sealed objects.
 void PlasmaStore::SubscribeToUpdates(const std::shared_ptr<Client> &client) {
   RAY_LOG(DEBUG) << "subscribing to updates on fd " << client->fd;
-  if (client->notification_fd > 0) {
-    // This client has already subscribed. Return.
-    return;
-  }
-
-  // TODO(rkn): The store could block here if the client doesn't send a file
-  // descriptor.
-  int fd = recv_fd(client->fd);
-  if (fd < 0) {
-    // This may mean that the client died before sending the file descriptor.
-    RAY_LOG(WARNING) << "Failed to receive file descriptor from client on fd "
-                       << client << ".";
-    return;
-  }
-
   // Add this fd to global map, which is needed for this client to receive notifications.
-  pending_notifications_[fd];
-  client->notification_fd = fd;
+  pending_notifications_[client->fd];
 
   // Push notifications to the new subscriber about existing sealed objects.
   for (const auto& entry : store_info_.objects) {
@@ -886,7 +876,7 @@ void PlasmaStore::SubscribeToUpdates(const std::shared_ptr<Client> &client) {
       info.object_id = entry.first.Binary();
       info.data_size = entry.second->data_size;
       info.metadata_size = entry.second->metadata_size;
-      PushNotification(&info, fd);
+      PushNotification(&info, client->fd);
     }
   }
 }

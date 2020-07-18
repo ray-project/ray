@@ -28,6 +28,7 @@
 #include <string>
 #include <vector>
 
+#include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/compat.h"
@@ -46,7 +47,7 @@ enum class MessageType : int64_t;
 // TODO(pcm): Replace our own custom message header (message type,
 // message length, plasma protocol version) with one that is serialized
 // using flatbuffers.
-constexpr int64_t kPlasmaProtocolVersion = 0x0000000000000000;
+const int64_t kPlasmaProtocolVersion = RayConfig::instance().ray_cookie();
 
 Status WriteBytes(int fd, uint8_t* cursor, size_t length);
 
