@@ -809,7 +809,7 @@ PlasmaStore::NotificationMap::iterator PlasmaStore::SendNotifications(
       });
       break;
     } else {
-      RAY_LOG(WARNING) << "Failed to send notification to client on fd " << client_fd
+      RAY_LOG(WARNING) << "Failed to send notification to client on fd " << client->fd
                        << ", errno = " << errno;
       if (errno == EPIPE) {
         closed = true;
