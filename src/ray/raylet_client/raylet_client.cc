@@ -318,6 +318,25 @@ Status raylet::RayletClient::ReturnWorker(int worker_port, const WorkerID &worke
       });
 }
 
+Status raylet::RayletClient::ReleaseUnusedWorkers(
+    const std::vector<WorkerID> &workers_in_use,
+    const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) {
+  rpc::ReleaseUnusedWorkersRequest request;
+  for (auto &worker_id : workers_in_use) {
+    request.add_worker_ids_in_use(worker_id.Binary());
+  }
+  return grpc_client_->ReleaseUnusedWorkers(
+      request,
+      [callback](const Status &status, const rpc::ReleaseUnusedWorkersReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(WARNING)
+              << "Error releasing workers from raylet, the raylet may have died:"
+              << status;
+        }
+        callback(status, reply);
+      });
+}
+
 ray::Status raylet::RayletClient::CancelWorkerLease(
     const TaskID &task_id,
     const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) {
