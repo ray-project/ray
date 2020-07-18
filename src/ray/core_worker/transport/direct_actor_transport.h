@@ -14,6 +14,12 @@
 
 #pragma once
 
+#ifdef __clang__
+// TODO(mehrdadn): Remove this when the warnings are addressed
+#pragma clang diagnostic push
+#pragma clang diagnostic warning "-Wunused-result"
+#endif
+
 #include <boost/asio/thread_pool.hpp>
 #include <boost/thread.hpp>
 #include <list>
@@ -525,3 +531,7 @@ class CoreWorkerDirectTaskReceiver {
 };
 
 }  // namespace ray
+
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
