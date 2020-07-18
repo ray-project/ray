@@ -73,6 +73,14 @@ class WorkerLeaseInterface {
   virtual ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
                                    bool disconnect_worker) = 0;
 
+  /// Notify raylets to release unused workers.
+  /// \param workers_in_use Workers currently in use.
+  /// \param callback Callback that will be called after raylet completes the release of
+  /// unused workers. \return ray::Status
+  virtual ray::Status ReleaseUnusedWorkers(
+      const std::vector<WorkerID> &workers_in_use,
+      const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) = 0;
+
   virtual ray::Status CancelWorkerLease(
       const TaskID &task_id,
       const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) = 0;
@@ -319,6 +327,11 @@ class RayletClient : public PinObjectsInterface,
   /// Implements WorkerLeaseInterface.
   ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
                            bool disconnect_worker) override;
+
+  /// Implements WorkerLeaseInterface.
+  ray::Status ReleaseUnusedWorkers(
+      const std::vector<WorkerID> &workers_in_use,
+      const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) override;
 
   ray::Status CancelWorkerLease(
       const TaskID &task_id,

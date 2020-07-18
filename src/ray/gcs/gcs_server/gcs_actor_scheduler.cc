@@ -154,6 +154,46 @@ ActorID GcsActorScheduler::CancelOnWorker(const ClientID &node_id,
   return assigned_actor_id;
 }
 
+void GcsActorScheduler::ReleaseUnusedWorkers(
+    const std::unordered_map<ClientID, std::vector<WorkerID>> &node_to_workers) {
+  // The purpose of this function is to release leased workers that may be leaked.
+  // When GCS restarts, it doesn't know which workers it has leased in the previous
+  // lifecycle. In this case, GCS will send a list of worker ids that are still needed.
+  // And Raylet will release other leased workers.
+  // If the node is dead, there is no need to send the request of release unused
+  // workers.
+  const auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
+  for (const auto &alive_node : alive_nodes) {
+    const auto &node_id = alive_node.first;
+    nodes_of_releasing_unused_workers_.insert(node_id);
+
+    rpc::Address address;
+    address.set_raylet_id(alive_node.second->node_id());
+    address.set_ip_address(alive_node.second->node_manager_address());
+    address.set_port(alive_node.second->node_manager_port());
+    auto lease_client = GetOrConnectLeaseClient(address);
+    auto release_unused_workers_callback =
+        [this, node_id](const Status &status,
+                        const rpc::ReleaseUnusedWorkersReply &reply) {
+          nodes_of_releasing_unused_workers_.erase(node_id);
+        };
+    auto iter = node_to_workers.find(alive_node.first);
+
+    // When GCS restarts, the reply of RequestWorkerLease may not be processed, so some
+    // nodes do not have leased workers. In this case, GCS will send an empty list.
+    auto workers_in_use =
+        iter != node_to_workers.end() ? iter->second : std::vector<WorkerID>{};
+    const auto &status = lease_client->ReleaseUnusedWorkers(
+        workers_in_use, release_unused_workers_callback);
+    if (!status.ok()) {
+      RAY_LOG(WARNING) << "Failed to send ReleaseUnusedWorkers request to raylet because "
+                          "raylet may be dead, node id: "
+                       << node_id << ", status: " << status.ToString();
+      nodes_of_releasing_unused_workers_.erase(node_id);
+    }
+  }
+}
+
 void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
                                             std::shared_ptr<rpc::GcsNodeInfo> node) {
   RAY_CHECK(actor && node);
@@ -161,6 +201,13 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
   auto node_id = ClientID::FromBinary(node->node_id());
   RAY_LOG(INFO) << "Start leasing worker from node " << node_id << " for actor "
                 << actor->GetActorID();
+
+  // We need to ensure that the RequestWorkerLease won't be sent before the reply of
+  // ReleaseUnusedWorkers is returned.
+  if (nodes_of_releasing_unused_workers_.contains(node_id)) {
+    RetryLeasingWorkerFromNode(actor, node);
+    return;
+  }
 
   rpc::Address remote_address;
   remote_address.set_raylet_id(node->node_id());

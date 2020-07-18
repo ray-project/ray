@@ -26,6 +26,7 @@ namespace rpc {
 #define RAY_NODE_MANAGER_RPC_HANDLERS                             \
   RPC_SERVICE_HANDLER(NodeManagerService, RequestWorkerLease)     \
   RPC_SERVICE_HANDLER(NodeManagerService, ReturnWorker)           \
+  RPC_SERVICE_HANDLER(NodeManagerService, ReleaseUnusedWorkers)   \
   RPC_SERVICE_HANDLER(NodeManagerService, CancelWorkerLease)      \
   RPC_SERVICE_HANDLER(NodeManagerService, ForwardTask)            \
   RPC_SERVICE_HANDLER(NodeManagerService, PinObjectIDs)           \
@@ -56,6 +57,10 @@ class NodeManagerServiceHandler {
   virtual void HandleReturnWorker(const ReturnWorkerRequest &request,
                                   ReturnWorkerReply *reply,
                                   SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleReleaseUnusedWorkers(const ReleaseUnusedWorkersRequest &request,
+                                          ReleaseUnusedWorkersReply *reply,
+                                          SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &request,
                                        rpc::CancelWorkerLeaseReply *reply,
