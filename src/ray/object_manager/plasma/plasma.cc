@@ -65,44 +65,6 @@ int WarnIfSigpipe(int status, int client_sock) {
   return -1;  // This is never reached.
 }
 
-/**
- * This will create a new ObjectInfo buffer. The first sizeof(int64_t) bytes
- * of this buffer are the length of the remaining message and the
- * remaining message is a serialized version of the object info.
- *
- * \param object_info The object info to be serialized
- * \return The object info buffer. It is the caller's responsibility to free
- *         this buffer with "delete" after it has been used.
- */
-std::unique_ptr<uint8_t[]> CreateObjectInfoBuffer(fb::ObjectInfoT* object_info) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = fb::CreateObjectInfo(fbb, object_info);
-  fbb.Finish(message);
-  auto notification =
-      std::unique_ptr<uint8_t[]>(new uint8_t[sizeof(int64_t) + fbb.GetSize()]);
-  *(reinterpret_cast<int64_t*>(notification.get())) = fbb.GetSize();
-  memcpy(notification.get() + sizeof(int64_t), fbb.GetBufferPointer(), fbb.GetSize());
-  return notification;
-}
-
-std::unique_ptr<uint8_t[]> CreatePlasmaNotificationBuffer(
-    const std::vector<fb::ObjectInfoT>& object_info) {
-  flatbuffers::FlatBufferBuilder fbb;
-  std::vector<flatbuffers::Offset<fb::ObjectInfo>> info;
-  for (size_t i = 0; i < object_info.size(); ++i) {
-    info.push_back(fb::CreateObjectInfo(fbb, &object_info[i]));
-  }
-
-  auto info_array = fbb.CreateVector(info);
-  auto message = fb::CreatePlasmaNotification(fbb, info_array);
-  fbb.Finish(message);
-  auto notification =
-      std::unique_ptr<uint8_t[]>(new uint8_t[sizeof(int64_t) + fbb.GetSize()]);
-  *(reinterpret_cast<int64_t*>(notification.get())) = fbb.GetSize();
-  memcpy(notification.get() + sizeof(int64_t), fbb.GetBufferPointer(), fbb.GetSize());
-  return notification;
-}
-
 ObjectTableEntry* GetObjectTableEntry(PlasmaStoreInfo* store_info,
                                       const ObjectID& object_id) {
   auto it = store_info->objects.find(object_id);

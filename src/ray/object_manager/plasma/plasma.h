@@ -70,7 +70,7 @@ constexpr int64_t kBlockSize = 64;
 
 /// Contains all information that is associated with a Plasma store client.
 struct Client {
-  explicit Client(int fd) : fd(fd), notification_fd(-1) {}
+  explicit Client(int fd) : fd(fd) {}
 
   ~Client();
 
@@ -83,11 +83,11 @@ struct Client {
   /// File descriptors that are used by this client.
   std::unordered_set<int> used_fds;
 
-  /// The file descriptor used to push notifications to client. This is only valid
-  /// if client subscribes to plasma store. -1 indicates invalid.
-  int notification_fd;
-
   std::string name = "anonymous_client";
+
+  /// The object notifications for clients. We notify the client about the
+  /// objects in the order that the objects were sealed or deleted.
+  std::deque<std::unique_ptr<uint8_t[]>> object_notifications;
 };
 
 std::ostream &operator<<(std::ostream &os, const std::shared_ptr<Client> &client);
@@ -181,11 +181,6 @@ ObjectTableEntry* GetObjectTableEntry(PlasmaStoreInfo* store_info,
 ///        information.
 /// \return The errno set.
 int WarnIfSigpipe(int status, int client_sock);
-
-std::unique_ptr<uint8_t[]> CreateObjectInfoBuffer(ObjectInfoT* object_info);
-
-std::unique_ptr<uint8_t[]> CreatePlasmaNotificationBuffer(
-    const std::vector<ObjectInfoT>& object_info);
 
 /// Globally accessible reference to plasma store configuration.
 extern const PlasmaStoreInfo* plasma_config;
