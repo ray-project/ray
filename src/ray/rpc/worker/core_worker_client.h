@@ -219,7 +219,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   /// \param[in] port Port of the worker server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   CoreWorkerClient(const rpc::Address &address, ClientCallManager &client_call_manager)
-      : addr_(address), client_call_manager_(client_call_manager) {
+      : addr_(address) {
     grpc_client_ =
         std::unique_ptr<GrpcClient<CoreWorkerService>>(new GrpcClient<CoreWorkerService>(
             addr_.ip_address(), addr_.port(), client_call_manager));
@@ -329,9 +329,6 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   /// The RPC client.
   std::unique_ptr<GrpcClient<CoreWorkerService>> grpc_client_;
-
-  /// The `ClientCallManager` used for managing requests.
-  ClientCallManager &client_call_manager_;
 
   /// Queue of requests to send.
   std::deque<std::pair<std::unique_ptr<PushTaskRequest>, ClientCallback<PushTaskReply>>>
