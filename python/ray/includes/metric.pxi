@@ -22,6 +22,7 @@ cdef class TagKey:
     def name(self):
         return self.name
 
+
 cdef class Metric:
     """Cython wrapper class of C++ `ray::stats::Metric`.
 
@@ -56,6 +57,7 @@ cdef class Metric:
     def get_name(self):
         return self.metric.get().GetName()
 
+
 cdef class Gauge(Metric):
     """Cython wrapper class of C++ `ray::stats::Gauge`.
 
@@ -80,6 +82,7 @@ cdef class Gauge(Metric):
                 self.c_tag_keys
             )
         )
+
 
 cdef class Count(Metric):
     """Cython wrapper class of C++ `ray::stats::Count`.
@@ -106,6 +109,7 @@ cdef class Count(Metric):
             )
         )
 
+
 cdef class Sum(Metric):
     """Cython wrapper class of C++ `ray::stats::Sum`.
 
@@ -131,6 +135,7 @@ cdef class Sum(Metric):
                 self.c_tag_keys
             )
         )
+
 
 cdef class Histogram(Metric):
     """Cython wrapper class of C++ `ray::stats::Histogram`.
