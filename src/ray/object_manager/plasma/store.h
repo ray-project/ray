@@ -55,7 +55,7 @@ struct NotificationQueue {
 
 class PlasmaStore {
  public:
-  using NotificationMap = std::unordered_map<int, NotificationQueue>;
+  using NotificationMap = std::unordered_map<std::shared_ptr<Client>, NotificationQueue>;
 
   // TODO: PascalCase PlasmaStore methods.
   PlasmaStore(EventLoop* loop, std::string directory, bool hugepages_enabled,
@@ -193,8 +193,6 @@ class PlasmaStore {
   void PushNotification(ObjectInfoT* object_notification);
 
   void PushNotifications(const std::vector<ObjectInfoT>& object_notifications);
-
-  void PushNotification(ObjectInfoT* object_notification, int client_fd);
 
   void AddToClientObjectIds(const ObjectID& object_id, ObjectTableEntry* entry,
                             const std::shared_ptr<Client> &client);

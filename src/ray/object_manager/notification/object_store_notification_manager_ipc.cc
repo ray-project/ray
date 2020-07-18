@@ -99,6 +99,8 @@ void ObjectStoreNotificationManagerIPC::ProcessStoreNotification(const ray::Stat
   for (size_t i = 0; i < object_notification->object_info()->size(); ++i) {
     auto object_info = object_notification->object_info()->Get(i);
     const ObjectID object_id = ObjectID::FromBinary(object_info->object_id()->str());
+    RAY_LOG(ERROR) << "Decode notification, ObjectID = " << object_id.Hex() << ", "
+                   << "is_deletion = " << object_info->is_deletion();
     if (object_info->is_deletion()) {
       ProcessStoreRemove(object_id);
     } else {
