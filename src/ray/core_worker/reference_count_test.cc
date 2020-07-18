@@ -2028,26 +2028,33 @@ TEST_F(ReferenceCountTest, TestFree) {
 
   // Test free before receiving information about where the object is pinned.
   rc->AddOwnedObject(id, {}, rpc::Address(), "", 0, true);
+  ASSERT_FALSE(rc->IsPlasmaObjectFreed(id));
   rc->AddLocalReference(id, "");
   rc->FreePlasmaObjects({id});
+  ASSERT_TRUE(rc->IsPlasmaObjectFreed(id));
   ASSERT_FALSE(rc->SetDeleteCallback(id, callback));
   ASSERT_EQ(deleted->count(id), 0);
   rc->UpdateObjectPinnedAtRaylet(id, node_id);
   bool pinned = true;
   ASSERT_TRUE(rc->IsPlasmaObjectPinned(id, &pinned));
   ASSERT_FALSE(pinned);
+  ASSERT_TRUE(rc->IsPlasmaObjectFreed(id));
   rc->RemoveLocalReference(id, nullptr);
+  ASSERT_FALSE(rc->IsPlasmaObjectFreed(id));
 
   // Test free after receiving information about where the object is pinned.
   rc->AddOwnedObject(id, {}, rpc::Address(), "", 0, true);
   rc->AddLocalReference(id, "");
   ASSERT_TRUE(rc->SetDeleteCallback(id, callback));
   rc->UpdateObjectPinnedAtRaylet(id, node_id);
+  ASSERT_FALSE(rc->IsPlasmaObjectFreed(id));
   rc->FreePlasmaObjects({id});
+  ASSERT_TRUE(rc->IsPlasmaObjectFreed(id));
   ASSERT_TRUE(deleted->count(id) > 0);
   ASSERT_TRUE(rc->IsPlasmaObjectPinned(id, &pinned));
   ASSERT_FALSE(pinned);
   rc->RemoveLocalReference(id, nullptr);
+  ASSERT_FALSE(rc->IsPlasmaObjectFreed(id));
 }
 
 }  // namespace ray

@@ -22,6 +22,7 @@ import SortableTableHead, {
 } from "../../../common/SortableTableHead";
 import { getComparator, Order, stableSort } from "../../../common/tableUtils";
 import { StoreState } from "../../../store";
+import { dashboardActions } from "../state";
 import MemoryRowGroup from "./MemoryRowGroup";
 import { MemoryTableRow } from "./MemoryTableRow";
 
@@ -50,7 +51,7 @@ const makeGroupedEntries = (
 const makeUngroupedEntries = (
   memoryTableGroups: MemoryTableGroups,
   order: Order,
-  orderBy: keyof MemoryTableEntry | null,
+  orderBy: memoryColumnId | null,
 ) => {
   const allEntries = Object.values(memoryTableGroups).reduce(
     (allEntries: Array<MemoryTableEntry>, memoryTableGroup) => {
@@ -71,14 +72,33 @@ const makeUngroupedEntries = (
   ));
 };
 
-const memoryHeaderInfo: HeaderInfo<MemoryTableEntry>[] = [
-  { id: "node_ip_address", label: "IP Address", numeric: true },
-  { id: "pid", label: "pid", numeric: true },
-  { id: "type", label: "Type", numeric: false },
-  { id: "object_ref", label: "Object Ref", numeric: false },
-  { id: "object_size", label: "Object Size (B)", numeric: true },
-  { id: "reference_type", label: "Reference Type", numeric: false },
-  { id: "call_site", label: "Call Site", numeric: false },
+type memoryColumnId =
+  | "node_ip_address"
+  | "pid"
+  | "type"
+  | "object_ref"
+  | "object_size"
+  | "reference_type"
+  | "call_site";
+
+const memoryHeaderInfo: HeaderInfo<memoryColumnId>[] = [
+  { id: "node_ip_address", label: "IP Address", numeric: true, sortable: true },
+  { id: "pid", label: "pid", numeric: true, sortable: true },
+  { id: "type", label: "Type", numeric: false, sortable: true },
+  { id: "object_ref", label: "Object Ref", numeric: false, sortable: true },
+  {
+    id: "object_size",
+    label: "Object Size (B)",
+    numeric: true,
+    sortable: true,
+  },
+  {
+    id: "reference_type",
+    label: "Reference Type",
+    numeric: false,
+    sortable: true,
+  },
+  { id: "call_site", label: "Call Site", numeric: false, sortable: true },
 ];
 
 const useMemoryInfoStyles = makeStyles((theme: Theme) =>
@@ -103,9 +123,11 @@ const MemoryInfo: React.FC<{}> = () => {
   const { memoryTable, shouldObtainMemoryTable } = useSelector(
     memoryInfoSelector,
   );
-  const { setShouldObtainMemoryTable } = useDispatch();
+  const dispatch = useDispatch();
   const toggleMemoryCollection = async () => {
-    setShouldObtainMemoryTable(!shouldObtainMemoryTable);
+    dispatch(
+      dashboardActions.setShouldObtainMemoryTable(!shouldObtainMemoryTable),
+    );
     if (shouldObtainMemoryTable) {
       await stopMemoryTableCollection();
     }
@@ -120,9 +142,7 @@ const MemoryInfo: React.FC<{}> = () => {
   const [isGrouped, setIsGrouped] = useState(true);
   const [order, setOrder] = React.useState<Order>("asc");
   const toggleOrder = () => setOrder(order === "asc" ? "desc" : "asc");
-  const [orderBy, setOrderBy] = React.useState<keyof MemoryTableEntry | null>(
-    null,
-  );
+  const [orderBy, setOrderBy] = React.useState<memoryColumnId | null>(null);
   return (
     <React.Fragment>
       {memoryTable !== null ? (
@@ -143,9 +163,9 @@ const MemoryInfo: React.FC<{}> = () => {
           />
           <Table className={classes.table}>
             <SortableTableHead
-              orderBy={orderBy || ""}
+              orderBy={orderBy}
               order={order}
-              onRequestSort={(event, property) => {
+              onRequestSort={(_, property) => {
                 if (property === orderBy) {
                   toggleOrder();
                 } else {
@@ -154,6 +174,7 @@ const MemoryInfo: React.FC<{}> = () => {
                 }
               }}
               headerInfo={memoryHeaderInfo}
+              firstColumnEmpty={false}
             />
             <TableBody>
               {isGrouped

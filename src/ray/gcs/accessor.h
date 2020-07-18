@@ -15,6 +15,7 @@
 #pragma once
 
 #include "ray/common/id.h"
+#include "ray/common/placement_group.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/callback.h"
 #include "ray/gcs/entry_change_notification.h"
@@ -188,12 +189,12 @@ class JobInfoAccessor {
   virtual Status AsyncMarkFinished(const JobID &job_id,
                                    const StatusCallback &callback) = 0;
 
-  /// Subscribe to finished jobs.
+  /// Subscribe to job updates.
   ///
-  /// \param subscribe Callback that will be called each time when a job finishes.
+  /// \param subscribe Callback that will be called each time when a job updates.
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
-  virtual Status AsyncSubscribeToFinishedJobs(
+  virtual Status AsyncSubscribeAll(
       const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
       const StatusCallback &done) = 0;
 
@@ -709,6 +710,21 @@ class WorkerInfoAccessor {
 
  protected:
   WorkerInfoAccessor() = default;
+};
+
+class PlacementGroupInfoAccessor {
+ public:
+  // TODO(AlisaWu): fill the accessor.
+  /// Create an placement group to GCS asynchronously.
+  ///
+  /// \param placement_group_spec The specification for the placement group creation task.
+  /// \param callback Callback that will be called after the placement group info is
+  /// written to GCS. \return Status
+  virtual Status AsyncCreatePlacementGroup(
+      const PlacementGroupSpecification &placement_group_spec) = 0;
+
+ protected:
+  PlacementGroupInfoAccessor() = default;
 };
 
 }  // namespace gcs

@@ -117,18 +117,10 @@ export type NodeInfoResponse = {
     };
     load_avg: [[number, number, number], [number, number, number]];
     net: [number, number]; // Sent and received network traffic in bytes / second
+    log_count?: { [pid: string]: number };
+    error_count?: { [pid: string]: number };
     workers: Array<NodeInfoResponseWorker>;
   }>;
-  log_counts: {
-    [ip: string]: {
-      [pid: string]: number;
-    };
-  };
-  error_counts: {
-    [ip: string]: {
-      [pid: string]: number;
-    };
-  };
 };
 
 export const getNodeInfo = () => get<NodeInfoResponse>("/api/node_info", {});

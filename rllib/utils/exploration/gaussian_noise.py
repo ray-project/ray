@@ -72,7 +72,7 @@ class GaussianNoise(Exploration):
             0, framework=self.framework, tf_name="timestep")
 
         # Build the tf-info-op.
-        if self.framework == "tf":
+        if self.framework in ["tf", "tfe"]:
             self._tf_info_op = self.get_info()
 
     @override(Exploration)
@@ -123,11 +123,18 @@ class GaussianNoise(Exploration):
         logp = tf.zeros(shape=(batch_size,), dtype=tf.float32)
 
         # Increment `last_timestep` by 1 (or set to `timestep`).
-        assign_op = (
-            tf1.assign_add(self.last_timestep, 1) if timestep is None else
-            tf1.assign(self.last_timestep, timestep))
-        with tf1.control_dependencies([assign_op]):
+        if self.framework in ["tf2", "tfe"]:
+            if timestep is None:
+                self.last_timestep.assign_add(1)
+            else:
+                self.last_timestep.assign(timestep)
             return action, logp
+        else:
+            assign_op = (
+                tf1.assign_add(self.last_timestep, 1) if timestep is None else
+                tf1.assign(self.last_timestep, timestep))
+            with tf1.control_dependencies([assign_op]):
+                return action, logp
 
     def _get_torch_exploration_action(self, action_dist, explore, timestep):
         # Set last timestep or (if not given) increase by one.

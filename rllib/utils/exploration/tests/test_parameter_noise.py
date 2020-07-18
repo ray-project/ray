@@ -189,7 +189,7 @@ class TestParameterNoise(unittest.TestCase):
 
     def _get_current_weight(self, policy, fw):
         weights = policy.get_weights()
-        key = 0 if fw == "tfe" else list(weights.keys())[0]
+        key = 0 if fw in ["tf2", "tfe"] else list(weights.keys())[0]
         return weights[key][0][0]
 
 

@@ -77,8 +77,10 @@ class MockDirectActorSubmitter : public CoreWorkerDirectActorTaskSubmitterInterf
   MockDirectActorSubmitter() : CoreWorkerDirectActorTaskSubmitterInterface() {}
 
   MOCK_METHOD1(AddActorQueueIfNotExists, void(const ActorID &actor_id));
-  MOCK_METHOD2(ConnectActor, void(const ActorID &actor_id, const rpc::Address &address));
-  MOCK_METHOD2(DisconnectActor, void(const ActorID &actor_id, bool dead));
+  MOCK_METHOD3(ConnectActor, void(const ActorID &actor_id, const rpc::Address &address,
+                                  int64_t num_restarts));
+  MOCK_METHOD3(DisconnectActor,
+               void(const ActorID &actor_id, int64_t num_restarts, bool dead));
   MOCK_METHOD3(KillActor,
                void(const ActorID &actor_id, bool force_kill, bool no_restart));
 
@@ -189,7 +191,7 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
   ASSERT_TRUE(actor_handle_to_get->GetActorID() == actor_id);
 
   // Check after the actor is created, if it is connected to an actor.
-  EXPECT_CALL(*direct_actor_submitter_, ConnectActor(_, _)).Times(1);
+  EXPECT_CALL(*direct_actor_submitter_, ConnectActor(_, _, _)).Times(1);
   rpc::ActorTableData actor_table_data;
   actor_table_data.set_actor_id(actor_id.Binary());
   actor_table_data.set_state(
@@ -197,7 +199,7 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
   actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data);
 
   // Now actor state is updated to DEAD. Make sure it is diconnected.
-  EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _)).Times(1);
+  EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _, _)).Times(1);
   actor_table_data.set_actor_id(actor_id.Binary());
   actor_table_data.set_state(
       rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
@@ -242,8 +244,8 @@ TEST_F(ActorManagerTest, RegisterActorHandles) {
 TEST_F(ActorManagerTest, TestActorStateNotificationPending) {
   ActorID actor_id = AddActorHandle();
   // Nothing happens if state is pending.
-  EXPECT_CALL(*direct_actor_submitter_, ConnectActor(_, _)).Times(0);
-  EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _)).Times(0);
+  EXPECT_CALL(*direct_actor_submitter_, ConnectActor(_, _, _)).Times(0);
+  EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _, _)).Times(0);
   rpc::ActorTableData actor_table_data;
   actor_table_data.set_actor_id(actor_id.Binary());
   actor_table_data.set_state(
@@ -255,8 +257,8 @@ TEST_F(ActorManagerTest, TestActorStateNotificationPending) {
 TEST_F(ActorManagerTest, TestActorStateNotificationRestarting) {
   ActorID actor_id = AddActorHandle();
   // Should disconnect to an actor when actor is restarting.
-  EXPECT_CALL(*direct_actor_submitter_, ConnectActor(_, _)).Times(0);
-  EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _)).Times(1);
+  EXPECT_CALL(*direct_actor_submitter_, ConnectActor(_, _, _)).Times(0);
+  EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _, _)).Times(1);
   rpc::ActorTableData actor_table_data;
   actor_table_data.set_actor_id(actor_id.Binary());
   actor_table_data.set_state(
@@ -268,8 +270,8 @@ TEST_F(ActorManagerTest, TestActorStateNotificationRestarting) {
 TEST_F(ActorManagerTest, TestActorStateNotificationDead) {
   ActorID actor_id = AddActorHandle();
   // Should disconnect to an actor when actor is dead.
-  EXPECT_CALL(*direct_actor_submitter_, ConnectActor(_, _)).Times(0);
-  EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _)).Times(1);
+  EXPECT_CALL(*direct_actor_submitter_, ConnectActor(_, _, _)).Times(0);
+  EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _, _)).Times(1);
   rpc::ActorTableData actor_table_data;
   actor_table_data.set_actor_id(actor_id.Binary());
   actor_table_data.set_state(
@@ -281,8 +283,8 @@ TEST_F(ActorManagerTest, TestActorStateNotificationDead) {
 TEST_F(ActorManagerTest, TestActorStateNotificationAlive) {
   ActorID actor_id = AddActorHandle();
   // Should connect to an actor when actor is alive.
-  EXPECT_CALL(*direct_actor_submitter_, ConnectActor(_, _)).Times(1);
-  EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _)).Times(0);
+  EXPECT_CALL(*direct_actor_submitter_, ConnectActor(_, _, _)).Times(1);
+  EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _, _)).Times(0);
   rpc::ActorTableData actor_table_data;
   actor_table_data.set_actor_id(actor_id.Binary());
   actor_table_data.set_state(

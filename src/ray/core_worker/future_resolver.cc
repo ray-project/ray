@@ -42,11 +42,21 @@ void FutureResolver::ResolveFutureAsync(const ObjectID &object_id,
           RAY_LOG(WARNING) << "Error retrieving the value of object ID " << object_id
                            << " that was deserialized: " << status.ToString();
         }
-        // Either the owner is gone or the owner replied that the object has
-        // been created. In both cases, we can now try to fetch the object via
-        // plasma.
-        RAY_UNUSED(in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                                         object_id));
+        if (!status.ok() || reply.status() == rpc::GetObjectStatusReply::OUT_OF_SCOPE) {
+          // The owner is gone or the owner replied that the object has gone
+          // out of scope (this is an edge case in the distributed ref counting
+          // protocol where a borrower dies before it can notify the owner of
+          // another borrower). Store an error so that an exception will be
+          // thrown immediately when the worker tries to get the value.
+          RAY_UNUSED(in_memory_store_->Put(
+              RayObject(rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE), object_id));
+        } else {
+          // We can now try to fetch the object via plasma. If the owner later
+          // fails or the object is released, the raylet will eventually store
+          // an error in plasma on our behalf.
+          RAY_UNUSED(in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                                           object_id));
+        }
       }));
 }
 

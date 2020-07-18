@@ -23,48 +23,49 @@
 #include "opencensus/stats/internal/delta_producer.h"
 #include "opencensus/stats/stats.h"
 #include "opencensus/tags/tag_key.h"
-#include "prometheus/exposer.h"
 
+#include "ray/common/ray_config.h"
 #include "ray/stats/metric.h"
+#include "ray/stats/metric_exporter.h"
+#include "ray/stats/metric_exporter_client.h"
 #include "ray/util/logging.h"
 
 namespace ray {
 
 namespace stats {
 
+#include <boost/asio.hpp>
+
 /// Include metric_defs.h to define measure items.
 #include "metric_defs.h"
 
 /// Initialize stats.
-static void Init(const std::string &address, const TagsType &global_tags,
-                 bool disable_stats = false, bool enable_stdout_exporter = false) {
+static void Init(
+    const TagsType &global_tags, const int metrics_agent_port,
+    boost::asio::io_service &io_service,
+    std::shared_ptr<MetricExporterClient> exporter_to_use = nullptr,
+    int64_t metrics_report_batch_size = RayConfig::instance().metrics_report_batch_size(),
+    bool disable_stats = !RayConfig::instance().enable_metrics_collection()) {
   StatsConfig::instance().SetIsDisableStats(disable_stats);
   if (disable_stats) {
     RAY_LOG(INFO) << "Disabled stats.";
     return;
   }
 
-  // Enable the Prometheus exporter.
-  // Note that the reason for we using local static variables
-  // here is to make sure they are single-instances.
-  static auto exporter =
-      std::make_shared<opencensus::exporters::stats::PrometheusExporter>();
-
-  if (enable_stdout_exporter) {
-    // Enable stdout exporter by default.
-    opencensus::exporters::stats::StdoutExporter::Register();
+  // Force to have a singleton exporter.
+  static std::shared_ptr<MetricExporterClient> exporter;
+  // Default exporter is metrics agent exporter.
+  if (exporter_to_use == nullptr) {
+    std::shared_ptr<MetricExporterClient> stdout_exporter(new StdoutExporterClient());
+    exporter.reset(new MetricsAgentExporter(stdout_exporter, metrics_agent_port,
+                                            io_service, "127.0.0.1"));
+  } else {
+    exporter = exporter_to_use;
   }
 
-  // Enable prometheus exporter.
-  try {
-    static prometheus::Exposer exposer(address);
-    exposer.RegisterCollectable(exporter);
-    RAY_LOG(INFO) << "Succeeded to initialize stats: exporter address is " << address;
-  } catch (std::exception &e) {
-    RAY_LOG(WARNING) << "Failed to create the Prometheus exporter. This doesn't "
-                     << "affect anything except stats. Caused by: " << e.what();
-    return;
-  }
+  // TODO(sang): Currently, we don't do any cleanup. This can lead us to lose last 10
+  // seconds data before we exit the main script.
+  MetricExporter::Register(exporter, metrics_report_batch_size);
   opencensus::stats::StatsExporter::SetInterval(
       StatsConfig::instance().GetReportInterval());
   opencensus::stats::DeltaProducer::Get()->SetHarvestInterval(
