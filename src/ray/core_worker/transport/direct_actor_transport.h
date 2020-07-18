@@ -338,11 +338,11 @@ class SchedulingQueue {
   SchedulingQueue(boost::asio::io_service &main_io_service, DependencyWaiter &waiter,
                   WorkerContext &worker_context,
                   int64_t reorder_wait_seconds = kMaxReorderWaitSeconds)
-      : wait_timer_(main_io_service),
-        waiter_(waiter),
+      : worker_context_(worker_context),
         reorder_wait_seconds_(reorder_wait_seconds),
+        wait_timer_(main_io_service),
         main_thread_id_(boost::this_thread::get_id()),
-        worker_context_(worker_context) {}
+        waiter_(waiter) {}
 
   void Add(int64_t seq_no, int64_t client_processed_up_to,
            std::function<void()> accept_request, std::function<void()> reject_request,

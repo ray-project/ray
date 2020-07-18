@@ -370,8 +370,8 @@ class ReferenceCounter : public ReferenceCounterInterface {
           object_size(object_size),
           owned_by_us(true),
           owner_address(owner_address),
-          is_reconstructable(is_reconstructable),
-          pinned_at_raylet_id(pinned_at_raylet_id) {}
+          pinned_at_raylet_id(pinned_at_raylet_id),
+          is_reconstructable(is_reconstructable) {}
 
     /// Constructor from a protobuf. This is assumed to be a message from
     /// another process, so the object defaults to not being owned by us.

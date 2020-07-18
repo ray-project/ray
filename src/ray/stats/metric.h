@@ -78,11 +78,11 @@ class Metric {
  public:
   Metric(const std::string &name, const std::string &description, const std::string &unit,
          const std::vector<opencensus::tags::TagKey> &tag_keys = {})
-      : measure_(nullptr),
-        name_(name),
+      : name_(name),
         description_(description),
         unit_(unit),
-        tag_keys_(tag_keys){};
+        tag_keys_(tag_keys),
+        measure_(nullptr) {}
 
   virtual ~Metric() { opencensus::stats::StatsExporter::RemoveView(name_); }
 
