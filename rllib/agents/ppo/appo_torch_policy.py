@@ -66,7 +66,7 @@ class PPOSurrogateLoss:
             num_valid = torch.sum(valid_mask)
 
             def reduce_mean_valid(t):
-                return torch.sum(t * valid_mask) / num_valid
+                return torch.sum(t[valid_mask]) / num_valid
 
         else:
 
@@ -162,7 +162,7 @@ class VTraceSurrogateLoss:
             num_valid = torch.sum(valid_mask)
 
             def reduce_mean_valid(t):
-                return torch.sum(t * valid_mask) / num_valid
+                return torch.sum(t[valid_mask]) / num_valid
 
         else:
 
