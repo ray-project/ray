@@ -341,6 +341,12 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     is_flag=True,
     default=False,
     help="Specify whether LRU evict will be used for this cluster.")
+@click.option(
+    "--enable-object-reconstruction",
+    is_flag=True,
+    default=False,
+    help="Specify whether object reconstruction will be used for this cluster."
+)
 def start(node_ip_address, redis_address, address, redis_port, port,
           num_redis_shards, redis_max_clients, redis_password,
           redis_shard_ports, object_manager_port, node_manager_port,
@@ -351,7 +357,7 @@ def start(node_ip_address, redis_address, address, redis_port, port,
           autoscaling_config, no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
           java_worker_options, load_code_from_local, internal_config,
-          lru_evict):
+          lru_evict, enable_object_reconstruction):
     """Start Ray processes manually on the local machine."""
     if gcs_server_port and not head:
         raise ValueError(
@@ -429,7 +435,8 @@ def start(node_ip_address, redis_address, address, redis_port, port,
         java_worker_options=java_worker_options,
         load_code_from_local=load_code_from_local,
         _internal_config=internal_config,
-        lru_evict=lru_evict)
+        lru_evict=lru_evict,
+        enable_object_reconstruction=enable_object_reconstruction)
     if head:
         # Start Ray on the head node.
         if redis_shard_ports is not None:
