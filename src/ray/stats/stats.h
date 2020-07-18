@@ -28,8 +28,8 @@
 #include "ray/stats/metric.h"
 #include "ray/stats/metric_exporter.h"
 #include "ray/stats/metric_exporter_client.h"
-#include "ray/util/logging.h"
 #include "ray/util/io_service_pool.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 
