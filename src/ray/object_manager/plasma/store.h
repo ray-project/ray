@@ -167,8 +167,8 @@ class PlasmaStore {
   /// \param client The client that is disconnected.
   void DisconnectClient(const std::shared_ptr<Client> &client);
 
-  NotificationMap::iterator SendNotifications(
-      PlasmaStore::NotificationMap::iterator it, const std::vector<ObjectInfoT> &object_info);
+  Status SendNotifications(
+      const std::shared_ptr<Client>& client, const std::vector<ObjectInfoT> &object_info);
 
   Status ProcessMessage(const std::shared_ptr<Client> &client);
 

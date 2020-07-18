@@ -84,6 +84,10 @@ struct Client {
   std::unordered_set<int> used_fds;
 
   std::string name = "anonymous_client";
+
+  /// The object notifications for clients. We notify the client about the
+  /// objects in the order that the objects were sealed or deleted.
+  std::deque<std::unique_ptr<uint8_t[]>> object_notifications;
 };
 
 std::ostream &operator<<(std::ostream &os, const std::shared_ptr<Client> &client);

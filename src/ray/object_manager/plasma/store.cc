@@ -760,8 +760,8 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
 ///
 /// \param it Iterator that points to the client to send the notification to.
 /// \return Iterator pointing to the next client.
-PlasmaStore::NotificationMap::iterator PlasmaStore::SendNotifications(
-    PlasmaStore::NotificationMap::iterator it, const std::vector<ObjectInfoT> &object_info) {
+Status PlasmaStore::SendNotifications(
+    const std::shared_ptr<Client>& client, const std::vector<ObjectInfoT> &object_info) {
   namespace protocol = ray::object_manager::protocol;
   flatbuffers::FlatBufferBuilder fbb;
   std::vector<flatbuffers::Offset<protocol::ObjectInfo>> info;
@@ -772,9 +772,8 @@ PlasmaStore::NotificationMap::iterator PlasmaStore::SendNotifications(
   auto message = protocol::CreatePlasmaNotification(fbb, info_array);
   fbb.Finish(message);
 
-  auto &client = it->first;
   RAY_LOG(DEBUG) << "Send notifications to fd = " << client->fd;
-  auto& notifications = it->second.object_notifications;
+  auto& notifications = client->object_notifications;
   auto new_notifications =
       std::unique_ptr<uint8_t[]>(new uint8_t[sizeof(int64_t) + fbb.GetSize()]);
   *(reinterpret_cast<int64_t*>(new_notifications.get())) = fbb.GetSize();
@@ -805,7 +804,10 @@ PlasmaStore::NotificationMap::iterator PlasmaStore::SendNotifications(
       // TODO(pcm): Introduce status codes and check in case the file descriptor
       // is added twice.
       loop_->AddFileEvent(client->fd, kEventLoopWrite, [this, client](int events) {
-        SendNotifications(pending_notifications_.find(client), {});
+        Status s = SendNotifications(client, {});
+        if (!s.ok()) {
+          pending_notifications_.erase(client);
+        }
       });
       break;
     } else {
@@ -825,15 +827,8 @@ PlasmaStore::NotificationMap::iterator PlasmaStore::SendNotifications(
   if (notifications.empty()) {
     loop_->RemoveFileEvent(client->fd);
   }
-
   // Stop sending notifications if the pipe was broken.
-  if (closed) {
-    RAY_LOG(DEBUG) << "close fd = " << client->fd << " for notification.";
-    close(client->fd);
-    return pending_notifications_.erase(it);
-  } else {
-    return ++it;
-  }
+  return closed ? Status::IOError("Send notifications failed") : Status::OK();
 }
 
 void PlasmaStore::PushNotification(ObjectInfoT* object_info) {
@@ -853,7 +848,12 @@ void PlasmaStore::PushNotifications(const std::vector<ObjectInfoT>& object_info)
 
   auto it = pending_notifications_.begin();
   while (it != pending_notifications_.end()) {
-    it = SendNotifications(it, object_info);
+    Status s = SendNotifications(it->first, object_info);
+    if (s.ok()) {
+      ++it;
+    } else {
+      it = pending_notifications_.erase(it);
+    }
   }
 }
 
@@ -879,9 +879,9 @@ void PlasmaStore::SubscribeToUpdates(const std::shared_ptr<Client> &client) {
       info.object_id = entry.first.Binary();
       info.data_size = entry.second->data_size;
       info.metadata_size = entry.second->metadata_size;
-      auto it = pending_notifications_.find(client);
-      if (it != pending_notifications_.end()) {
-        SendNotifications(it, {info});
+      Status s = SendNotifications(client, {info});
+      if (!s.ok()) {
+        pending_notifications_.erase(client);
       }
     }
   }
