@@ -618,6 +618,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                           rpc::ReturnWorkerReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `ReleaseUnusedWorkers` request.
+  void HandleReleaseUnusedWorkers(const rpc::ReleaseUnusedWorkersRequest &request,
+                                  rpc::ReleaseUnusedWorkersReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `ReturnWorker` request.
   void HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &request,
                                rpc::CancelWorkerLeaseReply *reply,
