@@ -21,7 +21,8 @@ from ray.autoscaler.util import validate_config, hash_runtime_conf, \
     hash_launch_conf, prepare_config, DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
 from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS, \
-    PROVIDER_PRETTY_NAMES
+    PROVIDER_PRETTY_NAMES, try_get_log_state, try_logging_config, \
+    try_reload_log_state
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_NODE_NAME, NODE_TYPE_WORKER, NODE_TYPE_HEAD
 
@@ -86,13 +87,6 @@ def request_resources(num_cpus=None, bundles=None):
                   }))
     if bundles:
         r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps(bundles))
-
-
-def _get_provider_config_for(provider):
-    if provider == "aws":
-        import ray.autoscaler.aws.config as provider_config
-        return provider_config
-    return None
 
 
 def create_or_update_cluster(config_file, override_min_workers,
@@ -174,11 +168,7 @@ def create_or_update_cluster(config_file, override_min_workers,
     if config["provider"]["type"] != "aws":
         cli_logger.old_style = False
 
-    provider_config = _get_provider_config_for(config["provider"]["type"])
-    if provider_config is not None:
-        provider_config.log_to_cli(config)
-    cli_logger.newline()
-
+    try_logging_config(config)
     get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
                             override_cluster_name)
 
@@ -187,7 +177,6 @@ CONFIG_CACHE_VERSION = 1
 
 
 def _bootstrap_config(config, no_config_cache=False):
-    provider_config = _get_provider_config_for(config["provider"]["type"])
     config = prepare_config(config)
 
     hasher = hashlib.sha1()
@@ -204,8 +193,8 @@ def _bootstrap_config(config, no_config_cache=False):
             # we can have migrations otherwise or something
             # but this seems overcomplicated given that resolving is
             # relatively cheap
-            provider_config._log_info = config_cache["provider_log_info"]
-
+            try_reload_log_state(config_cache["config"]["provider"],
+                                 config_cache.get("provider_log_info"))
             cli_logger.verbose("Loaded cached config from " + cf.bold("{}"),
                                cache_key)
 
@@ -236,7 +225,7 @@ def _bootstrap_config(config, no_config_cache=False):
         with open(cache_key, "w") as f:
             config_cache = {
                 "_version": CONFIG_CACHE_VERSION,
-                "provider_log_info": provider_config._log_info,
+                "provider_log_info": try_get_log_state(config["provider"]),
                 "config": resolved_config
             }
             f.write(json.dumps(config_cache))

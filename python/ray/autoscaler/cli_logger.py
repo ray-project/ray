@@ -14,12 +14,12 @@ def _strip_codes(msg):
 
 # we could bold "{}" strings automatically but do we want that?
 # todo:
-def _format_msg(msg, *args, **kwargs):
+def _format_msg(msg, *args, _tags=None, _numbered=None, _no_format=None, **kwargs):
     if isinstance(msg, str) or isinstance(msg, ColorfulString):
         tags_str = ""
-        if "_tags" in kwargs:
+        if _tags is not None:
             tags_list = []
-            for k, v in kwargs["_tags"].items():
+            for k, v in _tags.items():
                 if v is True:
                     tags_list += [k]
                     continue
@@ -31,25 +31,16 @@ def _format_msg(msg, *args, **kwargs):
                 tags_str = cf.reset(
                     cf.gray(" [{}]".format(", ".join(tags_list))))
 
-            del kwargs["_tags"]
-
         numbering_str = ""
-        if "_numbered" in kwargs:
-            chars, i, n = kwargs["_numbered"]
+        if _numbered is not None:
+            chars, i, n = _numbered
 
             i = str(i)
             n = str(n)
 
             numbering_str = cf.gray(chars[0] + i + "/" + n + chars[1]) + " "
 
-            del kwargs["_numbered"]
-
-        no_format = False
-        if "_no_format" in kwargs:
-            no_format = kwargs["_no_format"]
-            del kwargs["_no_format"]
-
-        if no_format:
+        if _no_format:
             # todo: throw if given args/kwargs?
             return numbering_str + msg + tags_str
         return numbering_str + msg.format(*args, **kwargs) + tags_str
@@ -219,25 +210,15 @@ class _CliLogger():
             logger.exception(_format_msg(msg, *args, **kwargs))
             return
 
-    def arn_to_name(self, arn):
-        return arn.split(":")[-1].split("/")[-1]
-
     def render_list(self, xs, separator=cf.reset(", ")):
         return separator.join([str(cf.bold(x)) for x in xs])
 
-    def confirm(self, yes, msg, *args, **kwargs):
+    def confirm(self, yes, msg, *args, _abort=False, _default=False, **kwargs):
         if self.old_style:
             return
 
-        should_abort = False
-        if "_abort" in kwargs:
-            should_abort = kwargs["_abort"]
-            del kwargs["_abort"]
-
-        default = False
-        if "_default" in kwargs:
-            default = kwargs["_default"]
-            del kwargs["_default"]
+        should_abort = _abort
+        default = _default
 
         if default:
             yn_str = cf.green("Y") + "/" + cf.red("n")

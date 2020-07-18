@@ -78,10 +78,16 @@ logging.getLogger("botocore").setLevel(logging.WARNING)
 _log_info = {}
 
 
+def reload_log_state(override_log_info):
+    _log_info.update(override_log_info)
+
+
+def get_log_state():
+    return _log_info.copy()
+
+
 def _set_config_info(**kwargs):
-    """
-    Record configuration artifacts useful for logging.
-    """
+    """Record configuration artifacts useful for logging."""
 
     # todo: this is technically fragile iff we ever use multiple configs
 
@@ -89,10 +95,13 @@ def _set_config_info(**kwargs):
         _log_info[k] = v
 
 
+def _arn_to_name(arn):
+    return arn.split(":")[-1].split("/")[-1]
+
+
 def log_to_cli(config):
-    with cli_logger.group("{} config",
-                          PROVIDER_PRETTY_NAMES.get("aws",
-                                                    "Unknown provider")):
+    provider_name = PROVIDER_PRETTY_NAMES.get("aws", "Unknown provider")
+    with cli_logger.group("{} config", provider_name):
 
         def same_everywhere(key):
             return config["head_node"][key] == config["worker_nodes"][key]
@@ -101,8 +110,7 @@ def log_to_cli(config):
         cli_logger.labeled_value(
             "IAM Profile",
             "{}",
-            cli_logger.arn_to_name(
-                config["head_node"]["IamInstanceProfile"]["Arn"]),
+            _arn_to_name(config["head_node"]["IamInstanceProfile"]["Arn"]),
             _tags=tags)
 
         if same_everywhere("KeyName"):
@@ -193,6 +201,8 @@ def log_to_cli(config):
                 "{}",
                 config["worker_nodes"]["ImageId"],
                 _tags=tags)
+
+    cli_logger.newline()
 
 
 def bootstrap_aws(config):

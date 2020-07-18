@@ -95,6 +95,26 @@ DEFAULT_CONFIGS = {
 }
 
 
+def try_logging_config(config):
+    if config["provider"]["type"] == "aws":
+        from ray.autoscaler.aws.config import log_to_cli
+        log_to_cli(config)
+
+
+def try_get_log_state(provider_config):
+    if provider_config["type"] == "aws":
+        from ray.autoscaler.aws.config import get_log_state
+        return get_log_state()
+
+
+def try_reload_log_state(provider_config, log_state):
+    if not log_state:
+        return
+    if provider_config["type"] == "aws":
+        from ray.autoscaler.aws.config import reload_log_state
+        return reload_log_state(log_state)
+
+
 def load_class(path):
     """
     Load a class at runtime given a full path.

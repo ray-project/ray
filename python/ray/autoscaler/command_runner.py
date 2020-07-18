@@ -384,16 +384,15 @@ class SSHCommandRunner(CommandRunnerInterface):
                 else:
                     self.process_runner.check_call(final_cmd)
             except subprocess.CalledProcessError as e:
+                quoted_cmd = " ".join(final_cmd[:-1] + [quote(final_cmd[-1])])
                 if not cli_logger.old_style:
                     raise ProcessRunnerError(
                         "Command failed",
                         "ssh_command_failed",
                         code=e.returncode,
-                        command=final_cmd)
+                        command=quoted_cmd)
 
                 if exit_on_fail:
-                    quoted_cmd = " ".join(final_cmd[:-1] +
-                                          [quote(final_cmd[-1])])
                     raise click.ClickException(
                         "Command failed: \n\n  {}\n".format(quoted_cmd)) \
                         from None
