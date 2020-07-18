@@ -264,7 +264,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
     }
 
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      absl::MutexLock lock(&mutex_);
       send_queue_.push_back(std::make_pair(std::move(request), callback));
     }
     SendRequests();
@@ -284,7 +284,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   /// sent at once. This prevents the server scheduling queue from being overwhelmed.
   /// See direct_actor.proto for a description of the ordering protocol.
   void SendRequests() {
-    std::lock_guard<std::mutex> lock(mutex_);
+    absl::MutexLock lock(&mutex_);
     auto this_ptr = this->shared_from_this();
 
     while (!send_queue_.empty() && rpc_bytes_in_flight_ < kMaxBytesInFlight) {
@@ -301,7 +301,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
       auto rpc_callback = [this, this_ptr, seq_no, task_size, callback](
                               Status status, const rpc::PushTaskReply &reply) {
         {
-          std::lock_guard<std::mutex> lock(mutex_);
+          absl::MutexLock lock(&mutex_);
           if (seq_no > max_finished_seq_no_) {
             max_finished_seq_no_ = seq_no;
           }
@@ -322,7 +322,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
  private:
   /// Protects against unsafe concurrent access from the callback thread.
-  std::mutex mutex_;
+  absl::Mutex mutex_;
 
   /// Address of the remote worker.
   rpc::Address addr_;
