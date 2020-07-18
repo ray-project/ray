@@ -742,9 +742,9 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
     RemoveFromClientObjectIds(entry.first, entry.second, client);
   }
 
-  if (pending_notifications_.find(client) != pending_notifications_.end()) {
+  if (notification_clients_.find(client) != notification_clients_.end()) {
     // Remove notification for this client from global map.
-    pending_notifications_.erase(client);
+    notification_clients_.erase(client);
   }
 
   // We lose the last borrower of the Client instance here.
@@ -754,12 +754,9 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
 /// Send notifications about sealed objects to the subscribers. This is called
 /// in SealObject. If the socket's send buffer is full, the notification will
 /// be buffered, and this will be called again when the send buffer has room.
-/// Since we call erase on pending_notifications_, all iterators get
-/// invalidated, which is why we return a valid iterator to the next client to
-/// be used in PushNotification.
 ///
-/// \param it Iterator that points to the client to send the notification to.
-/// \return Iterator pointing to the next client.
+/// \param client The client to push notifications to.
+/// \param object_info The notifications.
 Status PlasmaStore::SendNotifications(
     const std::shared_ptr<Client>& client, const std::vector<ObjectInfoT> &object_info) {
   namespace protocol = ray::object_manager::protocol;
@@ -806,7 +803,7 @@ Status PlasmaStore::SendNotifications(
       loop_->AddFileEvent(client->fd, kEventLoopWrite, [this, client](int events) {
         Status s = SendNotifications(client, {});
         if (!s.ok()) {
-          pending_notifications_.erase(client);
+          notification_clients_.erase(client);
         }
       });
       break;
@@ -846,13 +843,13 @@ void PlasmaStore::PushNotifications(const std::vector<ObjectInfoT>& object_info)
     }
   }
 
-  auto it = pending_notifications_.begin();
-  while (it != pending_notifications_.end()) {
-    Status s = SendNotifications(it->first, object_info);
+  auto it = notification_clients_.begin();
+  while (it != notification_clients_.end()) {
+    Status s = SendNotifications(*it, object_info);
     if (s.ok()) {
       ++it;
     } else {
-      it = pending_notifications_.erase(it);
+      it = notification_clients_.erase(it);
     }
   }
 }
@@ -861,7 +858,7 @@ void PlasmaStore::PushNotifications(const std::vector<ObjectInfoT>& object_info)
 void PlasmaStore::SubscribeToUpdates(const std::shared_ptr<Client> &client) {
   RAY_LOG(DEBUG) << "subscribing to updates on fd " << client->fd;
   // Add this fd to global map, which is needed for this client to receive notifications.
-  pending_notifications_[client];
+  notification_clients_.insert(client);
 
   // Make the socket non-blocking.
 #ifdef _WINSOCKAPI_
@@ -881,7 +878,7 @@ void PlasmaStore::SubscribeToUpdates(const std::shared_ptr<Client> &client) {
       info.metadata_size = entry.second->metadata_size;
       Status s = SendNotifications(client, {info});
       if (!s.ok()) {
-        pending_notifications_.erase(client);
+        notification_clients_.erase(client);
       }
     }
   }
