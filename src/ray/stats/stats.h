@@ -40,7 +40,7 @@ namespace stats {
 #include "metric_defs.h"
 
 /// Initialize stats.
-static void Init(
+static inline void Init(
     const TagsType &global_tags, const int metrics_agent_port,
     boost::asio::io_service &io_service,
     std::shared_ptr<MetricExporterClient> exporter_to_use = nullptr,
