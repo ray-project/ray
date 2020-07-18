@@ -714,6 +714,8 @@ class WorkerInfoAccessor {
 
 class PlacementGroupInfoAccessor {
  public:
+  virtual ~PlacementGroupInfoAccessor() = default;
+
   // TODO(AlisaWu): fill the accessor.
   /// Create an placement group to GCS asynchronously.
   ///

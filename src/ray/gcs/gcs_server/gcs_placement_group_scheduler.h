@@ -62,6 +62,7 @@ class GcsPlacementGroupSchedulerInterface {
 
 class GcsScheduleStrategy {
  public:
+  virtual ~GcsScheduleStrategy() {}
   virtual ScheduleMap Schedule(
       std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
       const GcsNodeManager &node_manager) = 0;

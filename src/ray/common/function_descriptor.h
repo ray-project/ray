@@ -25,6 +25,8 @@ using FunctionDescriptorType = rpc::FunctionDescriptor::FunctionDescriptorCase;
 /// Wrap a protobuf message.
 class FunctionDescriptorInterface : public MessageWrapper<rpc::FunctionDescriptor> {
  public:
+  virtual ~FunctionDescriptorInterface() {}
+
   /// Construct an empty FunctionDescriptor.
   FunctionDescriptorInterface() : MessageWrapper() {}
 
