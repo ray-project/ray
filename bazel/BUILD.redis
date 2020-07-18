@@ -1,4 +1,24 @@
+load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@bazel_skylib//rules:write_file.bzl", "write_file")
+
+# TODO(mehrdadn): The copy_file() rules below shouldn't be necessary in principle.
+# However, for some reason, the current directory that some tests are launched with appear incorrect
+# when cc_binary() is used directly, causing redis-server to fail to find the Redis module.
+# This should be resolved at some point, and the binaries should be used directly.
+
+copy_file(
+    name = "cp_redis-server",
+    src = ":_redis-server",
+    out = "redis-server",
+    visibility = ["//visibility:public"],
+)
+
+copy_file(
+    name = "cp_redis-cli",
+    src = ":_redis-cli",
+    out = "redis-cli",
+    visibility = ["//visibility:public"],
+)
 
 # This library is for internal hiredis use, because hiredis assumes a
 # different include prefix for itself than external libraries do.
@@ -87,7 +107,7 @@ cc_library(
 )
 
 cc_binary(
-    name = "redis-cli",
+    name = "_redis-cli",
     srcs = glob(
         [
             # These must end up equal to REDIS_CLI_OBJ in redis/src/Makefile
@@ -116,7 +136,7 @@ cc_binary(
 )
 
 cc_binary(
-    name = "redis-server",
+    name = "_redis-server",
     srcs = glob(
         # These globs must end up equal to REDIS_SERVER_OBJ in redis/src/Makefile
         [
@@ -148,7 +168,6 @@ cc_binary(
             "-lrt",
         ],
     }),
-    visibility = ["//visibility:public"],
     deps = [
         ":hiredis",
         ":libredis",

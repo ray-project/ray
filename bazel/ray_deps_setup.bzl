@@ -77,12 +77,6 @@ def auto_http_archive(*, name=None, url=None, urls=True,
 
 def ray_deps_setup():
     auto_http_archive(
-        name = "bazel_skylib",
-        sha256 = "a89898b28fb596ba8df76fe361597d08659dd58b7f54cb5ece5251f522de0691",
-        url = "https://github.com/bazelbuild/bazel-skylib/archive/feb52960ebd8797421b599194ad6ac7da3fc7600.tar.gz",
-    )
-
-    auto_http_archive(
         name = "com_github_antirez_redis",
         build_file = "//bazel:BUILD.redis",
         url = "https://github.com/antirez/redis/archive/5.0.9.tar.gz",
