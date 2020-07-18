@@ -22,31 +22,6 @@ import psutil
 logger = logging.getLogger(__name__)
 
 
-class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
-    def __init__(self):
-        pass
-
-    async def GetProfilingStats(self, request, context):
-        pid = request.pid
-        duration = request.duration
-        profiling_file_path = os.path.join(ray.utils.get_ray_temp_dir(),
-                                           "{}_profiling.txt".format(pid))
-        process = subprocess.Popen(
-            "sudo $(which py-spy) record -o {} -p {} -d {} -f speedscope"
-            .format(profiling_file_path, pid, duration),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            shell=True)
-        stdout, stderr = process.communicate()
-        if process.returncode != 0:
-            profiling_stats = ""
-        else:
-            with open(profiling_file_path, "r") as f:
-                profiling_stats = f.read()
-        return reporter_pb2.GetProfilingStatsReply(
-            profiling_stats=profiling_stats, stdout=stdout, stderr=stderr)
-
-
 def recursive_asdict(o):
     if isinstance(o, tuple) and hasattr(o, "_asdict"):
         return recursive_asdict(o._asdict())
@@ -68,7 +43,8 @@ def jsonify_asdict(o):
     return json.dumps(dashboard_utils.to_google_style(recursive_asdict(o)))
 
 
-class Reporter(dashboard_utils.DashboardAgentModule):
+class ReporterAgent(dashboard_utils.DashboardAgentModule,
+                    reporter_pb2_grpc.ReporterServiceServicer):
     """A monitor process for monitoring Ray nodes.
 
     Attributes:
@@ -84,6 +60,26 @@ class Reporter(dashboard_utils.DashboardAgentModule):
         self._hostname = socket.gethostname()
         self._workers = set()
         self._network_stats_hist = [(0, (0.0, 0.0))]  # time, (sent, recv)
+
+    async def GetProfilingStats(self, request, context):
+        pid = request.pid
+        duration = request.duration
+        profiling_file_path = os.path.join(ray.utils.get_ray_temp_dir(),
+                                           "{}_profiling.txt".format(pid))
+        process = subprocess.Popen(
+            "sudo $(which py-spy) record -o {} -p {} -d {} -f speedscope"
+            .format(profiling_file_path, pid, duration),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            shell=True)
+        stdout, stderr = process.communicate()
+        if process.returncode != 0:
+            profiling_stats = ""
+        else:
+            with open(profiling_file_path, "r") as f:
+                profiling_stats = f.read()
+        return reporter_pb2.GetProfilingStatsReply(
+            profiling_stats=profiling_stats, stdout=stdout, stderr=stderr)
 
     @staticmethod
     def _get_cpu_percent():
@@ -199,6 +195,5 @@ class Reporter(dashboard_utils.DashboardAgentModule):
                 reporter_consts.REPORTER_UPDATE_INTERVAL_MS / 1000)
 
     async def run(self, server):
-        reporter_pb2_grpc.add_ReporterServiceServicer_to_server(
-            ReporterServer(), server)
+        reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
         await self._perform_iteration()

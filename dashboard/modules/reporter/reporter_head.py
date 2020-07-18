@@ -42,48 +42,40 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         node_id = req.query.get("node_id")
         pid = int(req.query.get("pid"))
         duration = int(req.query.get("duration"))
-        profiling_id = await self._launch_profiling(node_id, pid, duration)
-        return await dashboard_utils.rest_response(
-            success=True,
-            message="Profiling launched.",
-            profiling_id=profiling_id)
-
-    async def _launch_profiling(self, node_id, pid, duration):
         profiling_id = str(uuid.uuid4())
         reporter_stub = self._stubs[node_id]
         reply = await reporter_stub.GetProfilingStats(
             reporter_pb2.GetProfilingStatsRequest(pid=pid, duration=duration))
         self._profiling_stats[profiling_id] = reply
-        return profiling_id
+        return await dashboard_utils.rest_response(
+            success=True,
+            message="Profiling launched.",
+            profiling_id=profiling_id)
 
     @routes.get("/api/check_profiling_status")
     async def check_profiling_status(self, req) -> aiohttp.web.Response:
         profiling_id = req.query.get("profiling_id")
-        status = self._check_profiling_status(profiling_id)
-        return await dashboard_utils.rest_response(
-            success=True, message="Profiling status fetched.", status=status)
-
-    def _check_profiling_status(self, profiling_id):
         is_present = profiling_id in self._profiling_stats
         if not is_present:
-            return {"status": "pending"}
-
-        reply = self._profiling_stats[profiling_id]
-        if reply.stderr:
-            return {"status": "error", "error": reply.stderr}
+            status = {"status": "pending"}
         else:
-            return {"status": "finished"}
+            reply = self._profiling_stats[profiling_id]
+            if reply.stderr:
+                status = {"status": "error", "error": reply.stderr}
+            else:
+                status = {"status": "finished"}
+        return await dashboard_utils.rest_response(
+            success=True, message="Profiling status fetched.", status=status)
 
     @routes.get("/api/get_profiling_info")
     async def get_profiling_info(self, req) -> aiohttp.web.Response:
         profiling_id = req.query.get("profiling_id")
-        profiling_info = self._get_profiling_info(profiling_id)
-        return aiohttp.web.json_response(profiling_info)
-
-    def _get_profiling_info(self, profiling_id):
         profiling_stats = self._profiling_stats.get(profiling_id)
         assert profiling_stats, "profiling not finished"
-        return json.loads(profiling_stats.profiling_stats)
+        return await dashboard_utils.rest_response(
+            success=True,
+            message="Profiling info fetched.",
+            profiling_info=json.loads(profiling_stats.profiling_stats))
 
     async def run(self):
         p = self._dashboard_head.aioredis_client
