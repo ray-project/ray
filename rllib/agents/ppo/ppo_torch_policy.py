@@ -104,8 +104,8 @@ class PPOLoss:
         else:
             self.mean_vf_loss = 0.0
             loss = torch.mean(-surrogate_loss +
-                                     cur_kl_coeff * action_kl -
-                                     entropy_coeff * curr_entropy)
+                              cur_kl_coeff * action_kl -
+                              entropy_coeff * curr_entropy)
         self.loss = loss
 
 
