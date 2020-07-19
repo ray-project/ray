@@ -20,15 +20,15 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "ray/common/scheduling/fixed_point.h"
-#include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/task/scheduling_resources.h"
+#include "ray/raylet/scheduling/fixed_point.h"
+#include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/util/logging.h"
 
 /// List of predefined resources.
 enum PredefinedResources { CPU, MEM, GPU, TPU, PredefinedResources_MAX };
 // Specify resources that consists of unit-size instances.
-static std::unordered_set<int64_t> UnitInstanceResources{GPU, TPU};
+static std::unordered_set<int64_t> UnitInstanceResources{CPU, GPU, TPU};
 
 /// Helper function to compare two vectors with FixedPoint values.
 bool EqualVectors(const std::vector<FixedPoint> &v1, const std::vector<FixedPoint> &v2);

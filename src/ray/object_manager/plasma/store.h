@@ -47,16 +47,8 @@ using flatbuf::PlasmaError;
 
 struct GetRequest;
 
-struct NotificationQueue {
-  /// The object notifications for clients. We notify the client about the
-  /// objects in the order that the objects were sealed or deleted.
-  std::deque<std::unique_ptr<uint8_t[]>> object_notifications;
-};
-
 class PlasmaStore {
  public:
-  using NotificationMap = std::unordered_map<int, NotificationQueue>;
-
   // TODO: PascalCase PlasmaStore methods.
   PlasmaStore(EventLoop* loop, std::string directory, bool hugepages_enabled,
               const std::string& socket_name,
@@ -167,7 +159,8 @@ class PlasmaStore {
   /// \param client The client that is disconnected.
   void DisconnectClient(const std::shared_ptr<Client> &client);
 
-  NotificationMap::iterator SendNotifications(NotificationMap::iterator it);
+  Status SendNotifications(
+      const std::shared_ptr<Client>& client, const std::vector<ObjectInfoT> &object_info);
 
   Status ProcessMessage(const std::shared_ptr<Client> &client);
 
@@ -192,8 +185,6 @@ class PlasmaStore {
   void PushNotification(ObjectInfoT* object_notification);
 
   void PushNotifications(const std::vector<ObjectInfoT>& object_notifications);
-
-  void PushNotification(ObjectInfoT* object_notification, int client_fd);
 
   void AddToClientObjectIds(const ObjectID& object_id, ObjectTableEntry* entry,
                             const std::shared_ptr<Client> &client);
@@ -239,12 +230,8 @@ class PlasmaStore {
   /// A hash table mapping object IDs to a vector of the get requests that are
   /// waiting for the object to arrive.
   std::unordered_map<ObjectID, std::vector<GetRequest*>> object_get_requests_;
-  /// The pending notifications that have not been sent to subscribers because
-  /// the socket send buffers were full. This is a hash table from client file
-  /// descriptor to an array of object_ids to send to that client.
-  /// TODO(pcm): Consider putting this into the Client data structure and
-  /// reorganize the code slightly.
-  NotificationMap pending_notifications_;
+  /// The registered client for receiving notifications.
+  std::unordered_set<std::shared_ptr<Client>> notification_clients_;
 
   std::unordered_set<ObjectID> deletion_cache_;
 

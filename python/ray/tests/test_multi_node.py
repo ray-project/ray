@@ -638,6 +638,13 @@ def test_multi_driver_logging(ray_start_regular):
     driver2_wait = Semaphore.options(name="driver2_wait").remote(value=0)
     main_wait = Semaphore.options(name="main_wait").remote(value=0)
 
+    # The creation of an actor is asynchronous.
+    # We need to wait for the completion of the actor creation,
+    # otherwise we can't get the actor by name.
+    ray.get(driver1_wait.locked.remote())
+    ray.get(driver2_wait.locked.remote())
+    ray.get(main_wait.locked.remote())
+
     # Params are address, semaphore name, output1, output2
     driver_script_template = """
 import ray

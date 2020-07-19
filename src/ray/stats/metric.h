@@ -18,6 +18,7 @@
 #include <unordered_map>
 
 #include "opencensus/stats/stats.h"
+#include "opencensus/stats/stats_exporter.h"
 #include "opencensus/tags/tag_key.h"
 
 #include "ray/util/logging.h"
@@ -83,7 +84,7 @@ class Metric {
         unit_(unit),
         tag_keys_(tag_keys){};
 
-  virtual ~Metric() = default;
+  virtual ~Metric() { opencensus::stats::StatsExporter::RemoveView(name_); }
 
   Metric &operator()() { return *this; }
 
@@ -91,13 +92,19 @@ class Metric {
   std::string GetName() const { return name_; }
 
   /// Record the value for this metric.
-  void Record(double value) { Record(value, {}); }
+  void Record(double value) { Record(value, TagsType{}); }
 
   /// Record the value for this metric.
   ///
   /// \param value The value that we record.
   /// \param tags The tag values that we want to record for this metric record.
   void Record(double value, const TagsType &tags);
+
+  /// Record the value for this metric.
+  ///
+  /// \param value The value that we record.
+  /// \param tags The map tag values that we want to record for this metric record.
+  void Record(double value, std::unordered_map<std::string, std::string> &tags);
 
  protected:
   virtual void RegisterView() = 0;

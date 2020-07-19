@@ -177,10 +177,6 @@ Status SendEvictReply(const std::shared_ptr<Client> &client, int64_t num_bytes);
 
 Status ReadEvictReply(uint8_t* data, size_t size, int64_t& num_bytes);
 
-/* Plasma Subscribe message functions. */
-
-Status SendSubscribeRequest(const std::shared_ptr<StoreConn> &store_conn);
-
 /* Data messages. */
 
 Status SendDataRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID object_id, const char* address, int port);
