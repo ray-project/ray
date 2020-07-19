@@ -69,6 +69,13 @@ message ReturnWorkerRequest {
 message ReturnWorkerReply {
 }
 
+message ReleaseUnusedWorkersRequest {
+  repeated bytes worker_ids_in_use = 1;
+}
+
+message ReleaseUnusedWorkersReply {
+}
+
 message CancelWorkerLeaseRequest {
   // The task to cancel.
   bytes task_id = 1;
@@ -149,6 +156,12 @@ service NodeManagerService {
   rpc RequestWorkerLease(RequestWorkerLeaseRequest) returns (RequestWorkerLeaseReply);
   // Release a worker back to its raylet.
   rpc ReturnWorker(ReturnWorkerRequest) returns (ReturnWorkerReply);
+  // This method is only used by GCS, and the purpose is to release leased workers
+  // that may be leaked. When GCS restarts, it doesn't know which workers it has leased
+  // in the previous lifecycle. In this case, GCS will send a list of worker ids that
+  // are still needed. And Raylet will release other leased workers.
+  rpc ReleaseUnusedWorkers(ReleaseUnusedWorkersRequest)
+      returns (ReleaseUnusedWorkersReply);
   // Request resource from the raylet for a bundle.
   rpc RequestResourceReserve(RequestResourceReserveRequest)
       returns (RequestResourceReserveReply);

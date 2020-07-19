@@ -602,14 +602,6 @@ Status ReadGetReply(uint8_t* data, size_t size, ObjectID object_ids[],
   return Status::OK();
 }
 
-// Subscribe messages.
-
-Status SendSubscribeRequest(const std::shared_ptr<StoreConn> &store_conn) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = fb::CreatePlasmaSubscribeRequest(fbb);
-  return PlasmaSend(store_conn, MessageType::PlasmaSubscribeRequest, &fbb, message);
-}
-
 // Data messages.
 
 Status SendDataRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID object_id, const char* address, int port) {

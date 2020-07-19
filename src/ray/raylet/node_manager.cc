@@ -1841,6 +1841,33 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
   send_reply_callback(status, nullptr, nullptr);
 }
 
+void NodeManager::HandleReleaseUnusedWorkers(
+    const rpc::ReleaseUnusedWorkersRequest &request,
+    rpc::ReleaseUnusedWorkersReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  // TODO(ffbin): At present, we have not cleaned up the lease worker requests that are
+  // still waiting to be scheduled, which will be implemented in the next pr.
+  std::unordered_set<WorkerID> in_use_worker_ids;
+  for (int index = 0; index < request.worker_ids_in_use_size(); ++index) {
+    auto worker_id = WorkerID::FromBinary(request.worker_ids_in_use(index));
+    in_use_worker_ids.emplace(worker_id);
+  }
+
+  std::vector<WorkerID> unused_worker_ids;
+  for (auto &iter : leased_workers_) {
+    // We need to exclude workers used by common tasks.
+    // Because they are not used by GCS.
+    if (!iter.second->GetActorId().IsNil() && !in_use_worker_ids.count(iter.first)) {
+      unused_worker_ids.emplace_back(iter.first);
+    }
+  }
+
+  for (auto &iter : unused_worker_ids) {
+    leased_workers_.erase(iter);
+  }
+
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 void NodeManager::HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &request,
                                           rpc::CancelWorkerLeaseReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
