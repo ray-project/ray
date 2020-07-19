@@ -19,10 +19,10 @@
 #include <thread>
 
 #include "ray/common/status.h"
-#include "ray/protobuf/node_manager.grpc.pb.h"
-#include "ray/protobuf/node_manager.pb.h"
 #include "ray/rpc/grpc_client.h"
 #include "ray/util/logging.h"
+#include "src/ray/protobuf/node_manager.grpc.pb.h"
+#include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
 namespace rpc {
@@ -36,8 +36,7 @@ class NodeManagerClient {
   /// \param[in] port Port of the node manager server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   NodeManagerClient(const std::string &address, const int port,
-                    ClientCallManager &client_call_manager)
-      : client_call_manager_(client_call_manager) {
+                    ClientCallManager &client_call_manager) {
     grpc_client_ = std::unique_ptr<GrpcClient<NodeManagerService>>(
         new GrpcClient<NodeManagerService>(address, port, client_call_manager));
   };
@@ -59,9 +58,6 @@ class NodeManagerClient {
  private:
   /// The RPC client.
   std::unique_ptr<GrpcClient<NodeManagerService>> grpc_client_;
-
-  /// The `ClientCallManager` used for managing requests.
-  ClientCallManager &client_call_manager_;
 };
 
 /// Client used by workers for communicating with a node manager server.
@@ -111,17 +107,13 @@ class NodeManagerWorkerClient
   /// \param[in] port Port of the node manager server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   NodeManagerWorkerClient(const std::string &address, const int port,
-                          ClientCallManager &client_call_manager)
-      : client_call_manager_(client_call_manager) {
+                          ClientCallManager &client_call_manager) {
     grpc_client_ = std::unique_ptr<GrpcClient<NodeManagerService>>(
         new GrpcClient<NodeManagerService>(address, port, client_call_manager));
   };
 
   /// The RPC client.
   std::unique_ptr<GrpcClient<NodeManagerService>> grpc_client_;
-
-  /// The `ClientCallManager` used for managing requests.
-  ClientCallManager &client_call_manager_;
 };
 
 }  // namespace rpc

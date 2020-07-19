@@ -1,7 +1,6 @@
 # Bazel build
 # C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
 
-load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_proto_library", "cc_test")
 load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
@@ -151,6 +150,7 @@ cc_library(
         "src/ray/rpc/*.h",
     ]),
     copts = COPTS,
+    strip_include_prefix = "src",
     deps = [
         ":ray_common",
         "@boost//:asio",
@@ -174,6 +174,7 @@ cc_library(
         "src/ray/rpc/node_manager/*.h",
     ]),
     copts = COPTS,
+    strip_include_prefix = "src",
     deps = [
         ":grpc_common_lib",
         ":node_manager_cc_grpc",
@@ -199,6 +200,7 @@ cc_library(
         "src/ray/rpc/gcs_server/gcs_rpc_client.h",
     ]),
     copts = COPTS,
+    strip_include_prefix = "src",
     deps = [
         ":gcs_service_cc_grpc",
         ":grpc_common_lib",
@@ -223,6 +225,7 @@ cc_library(
         "src/ray/rpc/object_manager/*.h",
     ]),
     copts = COPTS,
+    strip_include_prefix = "src",
     deps = [
         ":grpc_common_lib",
         ":object_manager_cc_grpc",
@@ -247,6 +250,7 @@ cc_library(
         "src/ray/rpc/worker/*.h",
     ]),
     copts = COPTS,
+    strip_include_prefix = "src",
     deps = [
         ":grpc_common_lib",
         ":ray_common",
@@ -272,6 +276,7 @@ cc_library(
         "src/ray/rpc/metrics_agent_client.h",
     ]),
     copts = COPTS,
+    strip_include_prefix = "src",
     deps = [
         ":grpc_common_lib",
         ":ray_common",
@@ -349,22 +354,6 @@ cc_library(
     ],
 )
 
-copy_file(
-    name = "copy_jni_h",
-    src = "@bazel_tools//tools/jdk:jni_header",
-    out = "jni.h",
-)
-
-copy_file(
-    name = "copy_jni_md_h",
-    src = select({
-        "@bazel_tools//src/conditions:windows": "@bazel_tools//tools/jdk:jni_md_header-windows",
-        "@bazel_tools//src/conditions:darwin": "@bazel_tools//tools/jdk:jni_md_header-darwin",
-        "//conditions:default": "@bazel_tools//tools/jdk:jni_md_header-linux",
-    }),
-    out = "jni_md.h",
-)
-
 cc_library(
     name = "ae",
     srcs = [
@@ -440,7 +429,6 @@ flatbuffer_cc_library(
     name = "plasma_fbs",
     srcs = ["src/ray/object_manager/plasma/plasma.fbs"],
     flatc_args = FLATC_ARGS,
-    includes = ["src/ray/object_manager/format/object_manager.fbs"],
     out_prefix = "src/ray/object_manager/plasma/",
 )
 
@@ -462,9 +450,7 @@ cc_library(
         ],
     ),
     copts = COPTS,
-    includes = [
-        "@boost//:asio",
-    ],
+    strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
         ":common_cc_proto",
@@ -507,6 +493,7 @@ cc_library(
         ],
     ),
     copts = COPTS,
+    strip_include_prefix = "src",
     deps = [
         ":gcs",
         ":ray_common",
@@ -551,6 +538,7 @@ cc_library(
         ],
     ),
     copts = COPTS,
+    strip_include_prefix = "src",
     deps = [
         ":gcs",
         ":gcs_pub_sub_lib",
@@ -591,9 +579,6 @@ cc_library(
         ],
     ),
     copts = COPTS,
-    includes = [
-        "src",
-    ],
     linkopts = select({
         "@bazel_tools//src/conditions:windows": [
         ],
@@ -601,6 +586,7 @@ cc_library(
             "-lpthread",
         ],
     }),
+    strip_include_prefix = "src",
     deps = [
         ":ray_util",
         ":reporter_rpc",
@@ -641,6 +627,7 @@ cc_library(
             "-lpthread",
         ],
     }),
+    strip_include_prefix = "src",
     visibility = ["//streaming:__subpackages__"],
     deps = [
         ":common_cc_proto",
@@ -683,6 +670,7 @@ cc_library(
             "-lpthread",
         ],
     }),
+    strip_include_prefix = "src",
     visibility = ["//streaming:__subpackages__"],
     deps = [
         ":gcs_cc_proto",
@@ -716,6 +704,7 @@ cc_library(
         "src/ray/core_worker/transport/*.h",
     ]),
     copts = COPTS,
+    strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
         ":gcs",
@@ -739,6 +728,7 @@ cc_library(
         "src/ray/core_worker/test/*.h",
     ]),
     copts = COPTS,
+    strip_include_prefix = "src",
     deps = [
         ":core_worker_lib",
     ],
@@ -1035,6 +1025,7 @@ cc_library(
         "src/ray/gcs/test/gcs_test_util.h",
     ],
     copts = COPTS,
+    strip_include_prefix = "src",
     deps = [
         ":gcs",
         ":gcs_service_rpc",
@@ -1064,15 +1055,24 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "gcs_server_test_util",
+    hdrs = [
+        "src/ray/gcs/gcs_server/test/gcs_server_test_util.h",
+    ],
+    copts = COPTS,
+    strip_include_prefix = "src",
+)
+
 cc_test(
     name = "gcs_node_manager_test",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_node_manager_test.cc",
-        "src/ray/gcs/gcs_server/test/gcs_server_test_util.h",
     ],
     copts = COPTS,
     deps = [
         ":gcs_server_lib",
+        ":gcs_server_test_util",
         ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1082,11 +1082,11 @@ cc_test(
     name = "gcs_placement_group_manager_test",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_placement_group_manager_test.cc",
-        "src/ray/gcs/gcs_server/test/gcs_server_test_util.h",
     ],
     copts = COPTS,
     deps = [
         ":gcs_server_lib",
+        ":gcs_server_test_util",
         ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1096,11 +1096,11 @@ cc_test(
     name = "gcs_placement_group_scheduler_test",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_placement_group_scheduler_test.cc",
-        "src/ray/gcs/gcs_server/test/gcs_server_test_util.h",
     ],
     copts = COPTS,
     deps = [
         ":gcs_server_lib",
+        ":gcs_server_test_util",
         ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1110,11 +1110,11 @@ cc_test(
     name = "gcs_actor_scheduler_test",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_actor_scheduler_test.cc",
-        "src/ray/gcs/gcs_server/test/gcs_server_test_util.h",
     ],
     copts = COPTS,
     deps = [
         ":gcs_server_lib",
+        ":gcs_server_test_util",
         ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1124,11 +1124,11 @@ cc_test(
     name = "gcs_actor_manager_test",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_actor_manager_test.cc",
-        "src/ray/gcs/gcs_server/test/gcs_server_test_util.h",
     ],
     copts = COPTS,
     deps = [
         ":gcs_server_lib",
+        ":gcs_server_test_util",
         ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1147,6 +1147,7 @@ cc_library(
         ],
     ),
     copts = COPTS,
+    strip_include_prefix = "src",
     deps = [
         ":gcs",
         ":gcs_in_memory_store_client",
@@ -1161,6 +1162,7 @@ cc_library(
         "src/ray/gcs/gcs_server/test/gcs_table_storage_test_base.h",
     ],
     copts = COPTS,
+    strip_include_prefix = "src",
     deps = [
         "redis_store_client",
     ],
@@ -1219,6 +1221,7 @@ cc_library(
         ],
     ),
     copts = COPTS,
+    strip_include_prefix = "src",
     deps = [
         ":gcs",
         ":gcs_pub_sub_lib",
@@ -1240,6 +1243,7 @@ cc_library(
         ],
     ),
     copts = COPTS,
+    strip_include_prefix = "src",
     deps = [
         ":service_based_gcs_client_lib",
     ],
@@ -1298,11 +1302,11 @@ cc_test(
     name = "gcs_object_manager_test",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_object_manager_test.cc",
-        "src/ray/gcs/gcs_server/test/gcs_server_test_util.h",
     ],
     copts = COPTS,
     deps = [
         ":gcs_server_lib",
+        ":gcs_server_test_util",
         ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1319,9 +1323,7 @@ cc_library(
         "src/ray/object_manager/notification/*.h",
     ]),
     copts = COPTS,
-    includes = [
-        "src",
-    ],
+    strip_include_prefix = "src",
     deps = [
         ":gcs",
         ":object_manager_fbs",
@@ -1393,9 +1395,7 @@ cc_library(
         "src/ray/util/*.h",
     ]),
     copts = COPTS,
-    includes = [
-        "src",
-    ],
+    strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
         ":sha256",
@@ -1447,7 +1447,7 @@ cc_library(
         "src/ray/thirdparty/sha256.h",
     ],
     copts = COPTS,
-    includes = ["src/ray/thirdparty"],
+    strip_include_prefix = "src",
 )
 
 alias(
@@ -1470,6 +1470,7 @@ cc_library(
         "src/ray/gcs/redis_context.h",
     ],
     copts = COPTS,
+    strip_include_prefix = "src",
     deps = [
         ":hiredis",
         ":ray_common",
@@ -1490,6 +1491,7 @@ cc_library(
         "src/ray/gcs/store_client/store_client.h",
     ],
     copts = COPTS,
+    strip_include_prefix = "src",
     deps = [
         "redis_client",
     ],
@@ -1506,6 +1508,7 @@ cc_library(
         "src/ray/gcs/store_client/store_client.h",
     ],
     copts = COPTS,
+    strip_include_prefix = "src",
     deps = [
         ":ray_common",
         ":ray_util",
@@ -1518,6 +1521,7 @@ cc_library(
         "src/ray/gcs/store_client/test/store_client_test_base.h",
     ],
     copts = COPTS,
+    strip_include_prefix = "src",
     deps = [
         "redis_store_client",
     ],
@@ -1569,6 +1573,7 @@ cc_library(
         "src/ray/gcs/*.h",
     ]),
     copts = COPTS,
+    strip_include_prefix = "src",
     deps = [
         ":gcs_cc_proto",
         ":hiredis",
@@ -1732,7 +1737,7 @@ flatbuffer_cc_library(
     name = "node_manager_fbs",
     srcs = ["src/ray/raylet/format/node_manager.fbs"],
     flatc_args = FLATC_ARGS,
-    out_prefix = "src/ray/raylet/format/",
+    out_prefix = "ray/raylet/format/",
 )
 
 flatbuffer_cc_library(
@@ -1808,25 +1813,8 @@ cc_binary(
     srcs = glob([
         "src/ray/core_worker/lib/java/*.h",
         "src/ray/core_worker/lib/java/*.cc",
-    ]) + [
-        "@bazel_tools//tools/jdk:jni_header",
-    ] + select({
-        "@bazel_tools//src/conditions:windows": ["@bazel_tools//tools/jdk:jni_md_header-windows"],
-        "@bazel_tools//src/conditions:darwin": ["@bazel_tools//tools/jdk:jni_md_header-darwin"],
-        "//conditions:default": ["@bazel_tools//tools/jdk:jni_md_header-linux"],
-    }) + [
-        ":jni.h",
-        ":jni_md.h",
-    ],
+    ]),
     copts = COPTS,
-    includes = [
-        "src",
-        "external/bazel_tools/tools/jdk/include",
-    ] + select({
-        "@bazel_tools//src/conditions:windows": ["external/bazel_tools/tools/jdk/include/windows"],
-        "@bazel_tools//src/conditions:darwin": ["external/bazel_tools/tools/jdk/include/darwin"],
-        "//conditions:default": ["external/bazel_tools/tools/jdk/include/linux"],
-    }),
     # Export ray ABI symbols, which can then be used by libstreaming_java.so. see `//:_raylet`
     linkopts = select({
         "@bazel_tools//src/conditions:darwin": [
@@ -1845,7 +1833,7 @@ cc_binary(
         "//:global_state_accessor_lib",
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",
-        "//streaming:jni",
+        "@bazel_tools//tools/jdk:jni",
     ],
 )
 
@@ -1912,12 +1900,20 @@ alias(
     visibility = ["//visibility:public"],
 )
 
+cc_library(
+    name = "ray_redis_module",
+    hdrs = [
+        "src/ray/gcs/redis_module/redis_string.h",
+        "src/ray/gcs/redis_module/redismodule.h",
+    ],
+    copts = COPTS,
+    strip_include_prefix = "src",
+)
+
 cc_binary(
     name = "libray_redis_module.so",
     srcs = [
         "src/ray/gcs/redis_module/ray_redis_module.cc",
-        "src/ray/gcs/redis_module/redis_string.h",
-        "src/ray/gcs/redis_module/redismodule.h",
     ],
     copts = COPTS,
     linkshared = 1,
@@ -1926,6 +1922,7 @@ cc_binary(
     deps = [
         ":gcs_cc_proto",
         ":ray_common",
+        ":ray_redis_module",
     ],
 )
 
