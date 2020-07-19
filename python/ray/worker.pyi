@@ -17,8 +17,8 @@ R = TypeVar('R')
 class RemoteFunction(Generic[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
     def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], Any]) -> None: pass
 
-    # @overload
-    # def remote(self) -> ObjectRef: ...
+    @overload
+    def remote(self) -> ObjectRef: ...
     @overload
     def remote(self, arg0: Union[T0, ObjectRef]) -> ObjectRef: ...
     @overload
@@ -65,6 +65,6 @@ def remote(function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8], R]) -> Remot
 @overload
 def remote(function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], R]) -> RemoteFunction[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]: ...
 # Pass on typing actors for now. The following makes it so no type errors are generated for actors.
-# @overload
-# def remote(t: type) -> Any: ...
+@overload
+def remote(t: type) -> Any: ...
 def remote(function: Callable[..., R]) -> RemoteFunction[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]: pass
