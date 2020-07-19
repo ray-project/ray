@@ -386,9 +386,8 @@ void GcsNodeManager::LoadInitialData(const EmptyCallback &done) {
                                const std::unordered_map<ClientID, GcsNodeInfo> &result) {
     for (auto &item : result) {
       if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
-        // 1. Add the alive node to `alive_nodes_`.
-        // 2. Add it to failure detector for monitoring.
-        // 3. Notify `node_added_listeners_`.
+        // Call `AddNode` for this node to make sure it is tracked by the failure
+        // detector.
         AddNode(std::make_shared<rpc::GcsNodeInfo>(item.second));
       } else if (item.second.state() == rpc::GcsNodeInfo::DEAD) {
         dead_nodes_.emplace(item.first, std::make_shared<rpc::GcsNodeInfo>(item.second));

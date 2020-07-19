@@ -58,9 +58,9 @@ def test_gcs_server_restart_during_actor_creation(ray_start_regular):
 def test_node_failure_detector_when_gcs_server_restart(ray_start_cluster_head):
     """Checks that the node failure detector is correct when gcs server restart.
 
-    We set the cluster to timeout nodes after 2 seconds of no timeouts. We
-    then remove a node, wait for 1 second and start gcs server again to check
-    that the alive node count is 2, then wait another 2 seconds to check that
+    We set the cluster to timeout nodes after 2 seconds of heartbeats. We
+    then remove a node and restart gcs server again to check
+    that the alive node count is 2, then wait another 2.5 seconds to check that
     the one of the node is timed out.
     """
     cluster = ray_start_cluster_head
