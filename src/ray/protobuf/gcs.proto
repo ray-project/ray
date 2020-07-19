@@ -102,10 +102,10 @@ message TaskTableData {
 message ActorTableData {
   // State of an actor.
   enum ActorState {
-    // Actor is unresolved.
-    UNRESOLVED = 0;
-    // Actor is pending.
-    PENDING = 1;
+    // Actor dependencies are resolving.
+    PENDING_DEPENDENCY_RESOLUTION = 0;
+    // Actor is creating and the dependencies of this actor are resolved.
+    PENDING_CREATION = 1;
     // Actor is alive.
     ALIVE = 2;
     // Actor is dead, now being restarted.

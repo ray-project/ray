@@ -249,7 +249,7 @@ TEST_F(ActorManagerTest, TestActorStateNotificationPending) {
   rpc::ActorTableData actor_table_data;
   actor_table_data.set_actor_id(actor_id.Binary());
   actor_table_data.set_state(
-      rpc::ActorTableData_ActorState::ActorTableData_ActorState_PENDING);
+      rpc::ActorTableData_ActorState::ActorTableData_ActorState_PENDING_CREATION);
   ASSERT_TRUE(
       actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data));
 }

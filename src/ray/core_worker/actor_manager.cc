@@ -162,8 +162,10 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
                 << ", raylet_id: "
                 << ClientID::FromBinary(actor_data.address().raylet_id())
                 << ", num_restarts: " << actor_data.num_restarts();
-
-  if (actor_data.state() == gcs::ActorTableData::RESTARTING) {
+  if (actor_data.state() == gcs::ActorTableData::PENDING_DEPENDENCY_RESOLUTION ||
+      actor_data.state() == gcs::ActorTableData::PENDING_CREATION) {
+    // The actor is being created and not yet ready, just ignore!
+  } else if (actor_data.state() == gcs::ActorTableData::RESTARTING) {
     direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(), false);
   } else if (actor_data.state() == gcs::ActorTableData::DEAD) {
     direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(), true);

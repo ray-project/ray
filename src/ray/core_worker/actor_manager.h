@@ -25,13 +25,11 @@ namespace ray {
 class ActorCreatorInterface {
  public:
   virtual ~ActorCreatorInterface() = default;
-  /// Register actor to GCS asynchronously.
+  /// Register actor to GCS synchronously.
   ///
   /// \param task_spec The specification for the actor creation task.
-  /// \param callback Callback that will be called after the actor info is written to GCS.
   /// \return Status
-  virtual Status AsyncRegisterActor(const TaskSpecification &task_spec,
-                                    const gcs::StatusCallback &callback) = 0;
+  virtual Status RegisterActor(const TaskSpecification &task_spec) = 0;
 
   /// Report actor dependencies resolved to GCS asynchronously.
   ///
@@ -47,9 +45,14 @@ class DefaultActorCreator : public ActorCreatorInterface {
   explicit DefaultActorCreator(std::shared_ptr<gcs::GcsClient> gcs_client)
       : gcs_client_(std::move(gcs_client)) {}
 
-  Status AsyncRegisterActor(const TaskSpecification &task_spec,
-                            const gcs::StatusCallback &callback) override {
-    return gcs_client_->Actors().AsyncRegisterActor(task_spec, callback);
+  Status RegisterActor(const TaskSpecification &task_spec) override {
+    std::promise<void> promise;
+    auto status = gcs_client_->Actors().AsyncRegisterActor(
+        task_spec, [&promise](const Status &status) { promise.set_value(); });
+    if (status.ok()) {
+      promise.get_future().wait();
+    }
+    return status;
   }
 
   Status AsyncReportActorDependenciesResolved(

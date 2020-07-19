@@ -276,11 +276,11 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   void DestroyActor(const ActorID &actor_id);
 
   /// Cancel any unresolved actors that were submitted from the specified node.
-  absl::flat_hash_set<ActorID> CancelUnresolvedActors(const ClientID &node_id);
+  absl::flat_hash_set<ActorID> GetUnresolvedActors(const ClientID &node_id);
 
   /// Cancel any unresolved actors that were submitted from the specified worker.
-  absl::flat_hash_set<ActorID> CancelUnresolvedActors(const ClientID &node_id,
-                                                      const WorkerID &worker_id);
+  absl::flat_hash_set<ActorID> GetUnresolvedActors(const ClientID &node_id,
+                                                   const WorkerID &worker_id);
 
  private:
   /// Reconstruct the specified actor.
@@ -296,6 +296,11 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// network problems.
   absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
       actor_to_register_callbacks_;
+  /// Callbacks of actor registration requests that are not yet flushed.
+  /// This map is used to filter duplicated messages from a Driver/Worker caused by some
+  /// network problems.
+  absl::flat_hash_map<ActorID, std::vector<ReportActorDependenciesResolvedCallback>>
+      actor_to_report_callbacks_;
   /// All registered actors (pending actors are also included).
   /// TODO(swang): Use unique_ptr instead of shared_ptr.
   absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> registered_actors_;

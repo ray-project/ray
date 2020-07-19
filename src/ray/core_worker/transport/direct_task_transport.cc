@@ -37,13 +37,10 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     // the GCS Server will mark the Actor died, so that it will not cause a cluster hang.
 
     // Step1: Synchronously register the actor to GCS server.
-    std::promise<void> promise;
-    RAY_CHECK_OK(
-        actor_creator_->AsyncRegisterActor(task_spec, [&promise](const Status &status) {
-          RAY_CHECK_OK(status);
-          promise.set_value();
-        }));
-    promise.get_future().wait();
+    auto status = actor_creator_->RegisterActor(task_spec);
+    if (!status.ok()) {
+      return status;
+    }
   }
 
   resolver_.ResolveDependencies(task_spec, [this, task_spec]() {
