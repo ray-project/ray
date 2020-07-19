@@ -19,6 +19,7 @@
 #include <ray/protobuf/gcs.pb.h>
 #include <ray/rpc/client_call.h>
 #include <ray/rpc/gcs_server/gcs_rpc_server.h>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "gcs_table_storage.h"
@@ -78,6 +79,16 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   void HandleDeleteResources(const rpc::DeleteResourcesRequest &request,
                              rpc::DeleteResourcesReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle setting internal config.
+  void HandleSetInternalConfig(const rpc::SetInternalConfigRequest &request,
+                               rpc::SetInternalConfigReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle getting internal config.
+  void HandleGetInternalConfig(const rpc::GetInternalConfigRequest &request,
+                               rpc::GetInternalConfigReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
 
   /// Add an alive node.
   ///

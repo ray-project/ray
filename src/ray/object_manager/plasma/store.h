@@ -47,16 +47,8 @@ using flatbuf::PlasmaError;
 
 struct GetRequest;
 
-struct NotificationQueue {
-  /// The object notifications for clients. We notify the client about the
-  /// objects in the order that the objects were sealed or deleted.
-  std::deque<std::unique_ptr<uint8_t[]>> object_notifications;
-};
-
 class PlasmaStore {
  public:
-  using NotificationMap = std::unordered_map<int, NotificationQueue>;
-
   // TODO: PascalCase PlasmaStore methods.
   PlasmaStore(EventLoop* loop, std::string directory, bool hugepages_enabled,
               const std::string& socket_name,
@@ -94,7 +86,7 @@ class PlasmaStore {
   ///    plasma_release.
   PlasmaError CreateObject(const ObjectID& object_id, bool evict_if_full,
                            int64_t data_size, int64_t metadata_size, int device_num,
-                           Client* client, PlasmaObject* result);
+                           const std::shared_ptr<Client> &client, PlasmaObject* result);
 
   /// Abort a created but unsealed object. If the client is not the
   /// creator, then the abort will fail.
@@ -103,7 +95,7 @@ class PlasmaStore {
   /// \param client The client who created the object. If this does not
   ///   match the creator of the object, then the abort will fail.
   /// \return 1 if the abort succeeds, else 0.
-  int AbortObject(const ObjectID& object_id, Client* client);
+  int AbortObject(const ObjectID& object_id, const std::shared_ptr<Client> &client);
 
   /// Delete a specific object by object_id that have been created in the hash table.
   ///
@@ -130,7 +122,7 @@ class PlasmaStore {
   /// \param client The client making this request.
   /// \param object_ids Object IDs of the objects to be gotten.
   /// \param timeout_ms The timeout for the get request in milliseconds.
-  void ProcessGetRequest(Client* client, const std::vector<ObjectID>& object_ids,
+  void ProcessGetRequest(const std::shared_ptr<Client> &client, const std::vector<ObjectID>& object_ids,
                          int64_t timeout_ms);
 
   /// Seal a vector of objects. The objects are now immutable and can be accessed with
@@ -150,12 +142,12 @@ class PlasmaStore {
   ///
   /// \param object_id The object ID of the object that is being released.
   /// \param client The client making this request.
-  void ReleaseObject(const ObjectID& object_id, Client* client);
+  void ReleaseObject(const ObjectID& object_id, const std::shared_ptr<Client> &client);
 
   /// Subscribe a file descriptor to updates about new sealed objects.
   ///
   /// \param client The client making this request.
-  void SubscribeToUpdates(Client* client);
+  void SubscribeToUpdates(const std::shared_ptr<Client> &client);
 
   /// Connect a new client to the PlasmaStore.
   ///
@@ -164,12 +156,13 @@ class PlasmaStore {
 
   /// Disconnect a client from the PlasmaStore.
   ///
-  /// \param client_fd The client file descriptor that is disconnected.
-  void DisconnectClient(int client_fd);
+  /// \param client The client that is disconnected.
+  void DisconnectClient(const std::shared_ptr<Client> &client);
 
-  NotificationMap::iterator SendNotifications(NotificationMap::iterator it);
+  Status SendNotifications(
+      const std::shared_ptr<Client>& client, const std::vector<ObjectInfoT> &object_info);
 
-  Status ProcessMessage(Client* client);
+  Status ProcessMessage(const std::shared_ptr<Client> &client);
 
   void SetNotificationListener(
       const std::shared_ptr<ray::ObjectStoreNotificationManager> &notification_listener) {
@@ -193,10 +186,8 @@ class PlasmaStore {
 
   void PushNotifications(const std::vector<ObjectInfoT>& object_notifications);
 
-  void PushNotification(ObjectInfoT* object_notification, int client_fd);
-
   void AddToClientObjectIds(const ObjectID& object_id, ObjectTableEntry* entry,
-                            Client* client);
+                            const std::shared_ptr<Client> &client);
 
   /// Remove a GetRequest and clean up the relevant data structures.
   ///
@@ -206,19 +197,19 @@ class PlasmaStore {
   /// Remove all of the GetRequests for a given client.
   ///
   /// \param client The client whose GetRequests should be removed.
-  void RemoveGetRequestsForClient(Client* client);
+  void RemoveGetRequestsForClient(const std::shared_ptr<Client> &client);
 
   void ReturnFromGet(GetRequest* get_req);
 
   void UpdateObjectGetRequests(const ObjectID& object_id);
 
   int RemoveFromClientObjectIds(const ObjectID& object_id, ObjectTableEntry* entry,
-                                Client* client);
+                                const std::shared_ptr<Client> &client);
 
   void EraseFromObjectTable(const ObjectID& object_id);
 
   uint8_t* AllocateMemory(size_t size, bool evict_if_full, int* fd, int64_t* map_size,
-                          ptrdiff_t* offset, Client* client, bool is_create);
+                          ptrdiff_t* offset, const std::shared_ptr<Client> &client, bool is_create);
 #ifdef PLASMA_CUDA
   Status AllocateCudaMemory(int device_num, int64_t size, uint8_t** out_pointer,
                             std::shared_ptr<CudaIpcMemHandle>* out_ipc_handle);
@@ -239,14 +230,8 @@ class PlasmaStore {
   /// A hash table mapping object IDs to a vector of the get requests that are
   /// waiting for the object to arrive.
   std::unordered_map<ObjectID, std::vector<GetRequest*>> object_get_requests_;
-  /// The pending notifications that have not been sent to subscribers because
-  /// the socket send buffers were full. This is a hash table from client file
-  /// descriptor to an array of object_ids to send to that client.
-  /// TODO(pcm): Consider putting this into the Client data structure and
-  /// reorganize the code slightly.
-  NotificationMap pending_notifications_;
-
-  std::unordered_map<int, std::unique_ptr<Client>> connected_clients_;
+  /// The registered client for receiving notifications.
+  std::unordered_set<std::shared_ptr<Client>> notification_clients_;
 
   std::unordered_set<ObjectID> deletion_cache_;
 

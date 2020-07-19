@@ -178,6 +178,14 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, DeleteResources,
                              node_info_grpc_client_, )
 
+  /// Set internal config of the cluster in the GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, SetInternalConfig,
+                             node_info_grpc_client_, )
+
+  /// Get internal config of the node from the GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetInternalConfig,
+                             node_info_grpc_client_, )
+
   /// Get object's locations from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(ObjectInfoGcsService, GetObjectLocations,
                              object_info_grpc_client_, )
@@ -239,6 +247,10 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService, AddWorkerInfo,
                              worker_info_grpc_client_, )
 
+  /// Create placement group via GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, CreatePlacementGroup,
+                             placement_group_info_grpc_client_, )
+
  private:
   std::function<void(GcsServiceFailureType)> gcs_service_failure_detected_;
 
@@ -251,6 +263,8 @@ class GcsRpcClient {
   std::unique_ptr<GrpcClient<StatsGcsService>> stats_grpc_client_;
   std::unique_ptr<GrpcClient<ErrorInfoGcsService>> error_info_grpc_client_;
   std::unique_ptr<GrpcClient<WorkerInfoGcsService>> worker_info_grpc_client_;
+  std::unique_ptr<GrpcClient<PlacementGroupInfoGcsService>>
+      placement_group_info_grpc_client_;
 };
 
 }  // namespace rpc

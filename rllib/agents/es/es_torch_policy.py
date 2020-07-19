@@ -65,7 +65,7 @@ def before_init(policy, observation_space, action_space, config):
         observation = policy.observation_filter(
             observation[None], update=update)
 
-        observation = convert_to_torch_tensor(observation)
+        observation = convert_to_torch_tensor(observation, policy.device)
         dist_inputs, _ = policy.model({
             SampleBatch.CUR_OBS: observation
         }, [], None)

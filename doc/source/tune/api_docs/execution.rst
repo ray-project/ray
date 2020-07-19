@@ -1,5 +1,5 @@
-Training (tune.run, tune.Experiment)
-====================================
+Execution (tune.run, tune.Experiment)
+=====================================
 
 .. _tune-run-ref:
 

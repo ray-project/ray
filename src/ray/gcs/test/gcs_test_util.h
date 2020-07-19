@@ -23,6 +23,7 @@
 #include "ray/common/test_util.h"
 #include "ray/protobuf/gcs_service.grpc.pb.h"
 #include "ray/util/asio_util.h"
+#include "src/ray/common/placement_group.h"
 
 namespace ray {
 
@@ -62,6 +63,32 @@ struct Mocker {
     return request;
   }
 
+  static PlacementGroupSpecification GenPlacementGroupCreation(
+      const std::string &name,
+      std::vector<std::unordered_map<std::string, double>> &bundles,
+      rpc::PlacementStrategy strategy) {
+    PlacementGroupSpecBuilder builder;
+
+    auto placement_group_id = PlacementGroupID::FromRandom();
+    builder.SetPlacementGroupSpec(placement_group_id, name, bundles, strategy);
+    return builder.Build();
+  }
+
+  static rpc::CreatePlacementGroupRequest GenCreatePlacementGroupRequest(
+      const std::string name = "") {
+    rpc::CreatePlacementGroupRequest request;
+    std::vector<std::unordered_map<std::string, double>> bundles;
+    rpc::PlacementStrategy strategy = rpc::PlacementStrategy::SPREAD;
+    std::unordered_map<std::string, double> bundle;
+    bundle["CPU"] = 1.0;
+    bundles.push_back(bundle);
+    bundles.push_back(bundle);
+    auto placement_group_creation_spec =
+        GenPlacementGroupCreation(name, bundles, strategy);
+    request.mutable_placement_group_spec()->CopyFrom(
+        placement_group_creation_spec.GetMessage());
+    return request;
+  }
   static std::shared_ptr<rpc::GcsNodeInfo> GenNodeInfo(
       uint16_t port = 0, const std::string address = "127.0.0.1") {
     auto node = std::make_shared<rpc::GcsNodeInfo>();

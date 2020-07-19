@@ -86,8 +86,17 @@ class NodeManagerWorkerClient
   /// Return a worker lease.
   RPC_CLIENT_METHOD(NodeManagerService, ReturnWorker, grpc_client_, )
 
+  /// Release unused workers.
+  RPC_CLIENT_METHOD(NodeManagerService, ReleaseUnusedWorkers, grpc_client_, )
+
   /// Cancel a pending worker lease request.
   RPC_CLIENT_METHOD(NodeManagerService, CancelWorkerLease, grpc_client_, )
+
+  /// Request resource lease.
+  RPC_CLIENT_METHOD(NodeManagerService, RequestResourceReserve, grpc_client_, )
+
+  /// Return resource lease.
+  RPC_CLIENT_METHOD(NodeManagerService, CancelResourceReserve, grpc_client_, )
 
   /// Notify the raylet to pin the provided object IDs.
   RPC_CLIENT_METHOD(NodeManagerService, PinObjectIDs, grpc_client_, )
