@@ -1,14 +1,15 @@
 import copy
 import hashlib
 import json
+import logging
 import os
+import random
+import sys
 import tempfile
 import time
-import logging
-import sys
-import click
-import random
+from typing import Any, Dict, Optional
 
+import click
 import yaml
 try:  # py3
     from shlex import quote
@@ -84,9 +85,11 @@ def request_resources(num_cpus=None, bundles=None):
         r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps(bundles))
 
 
-def create_or_update_cluster(config_file: str, override_min_workers: Optional[int],
-                             override_max_workers: Optional[int], no_restart: bool, restart_only: bool,
-                             yes: bool, override_cluster_name: Optional[str], no_config_cache: bool) -> None:
+def create_or_update_cluster(
+        config_file: str, override_min_workers: Optional[int],
+        override_max_workers: Optional[int], no_restart: bool,
+        restart_only: bool, yes: bool, override_cluster_name: Optional[str],
+        no_config_cache: bool) -> None:
     """Create or updates an autoscaling Ray cluster from a config json."""
     config = yaml.safe_load(open(config_file).read())
     if override_min_workers is not None:
@@ -100,7 +103,8 @@ def create_or_update_cluster(config_file: str, override_min_workers: Optional[in
                             override_cluster_name)
 
 
-def _bootstrap_config(config: Dict[str, Any], no_config_cache: bool=False) -> Dict[str, Any]:
+def _bootstrap_config(config: Dict[str, Any],
+                      no_config_cache: bool = False) -> Dict[str, Any]:
     config = prepare_config(config)
 
     hasher = hashlib.sha1()
@@ -125,7 +129,8 @@ def _bootstrap_config(config: Dict[str, Any], no_config_cache: bool=False) -> Di
     return resolved_config
 
 
-def teardown_cluster(config_file: str, yes: bool, workers_only: bool, override_cluster_name: Optional[str],
+def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
+                     override_cluster_name: Optional[str],
                      keep_min_workers: bool):
     """Destroys all nodes of a Ray cluster described by a config json."""
 
@@ -410,8 +415,9 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
         provider.cleanup()
 
 
-def attach_cluster(config_file: str, start: bool, use_screen: bool, use_tmux: bool,
-                   override_cluster_name: Optional[str], new: bool, port_forward: Any):
+def attach_cluster(config_file: str, start: bool, use_screen: bool,
+                   use_tmux: bool, override_cluster_name: Optional[str],
+                   new: bool, port_forward: Any):
     """Attaches to a screen for the specified cluster.
 
     Arguments:
@@ -454,15 +460,15 @@ def attach_cluster(config_file: str, start: bool, use_screen: bool, use_tmux: bo
 
 def exec_cluster(config_file: str,
                  *,
-                 cmd: Any=None,
-                 run_env: str="auto",
-                 screen: bool=False,
-                 tmux: bool=False,
-                 stop: bool=False,
-                 start: bool=False,
-                 override_cluster_name: Optional[str]=None,
-                 port_forward: Any=None,
-                 with_output: bool=False):
+                 cmd: Any = None,
+                 run_env: str = "auto",
+                 screen: bool = False,
+                 tmux: bool = False,
+                 stop: bool = False,
+                 start: bool = False,
+                 override_cluster_name: Optional[str] = None,
+                 port_forward: Any = None,
+                 with_output: bool = False):
     """Runs a command on the specified cluster.
 
     Arguments:
@@ -576,7 +582,7 @@ def rsync(config_file: str,
           target: Optional[str],
           override_cluster_name: Optional[str],
           down: bool,
-          all_nodes: bool=False):
+          all_nodes: bool = False):
     """Rsyncs files.
 
     Arguments:
@@ -698,7 +704,7 @@ def _get_worker_nodes(config, override_cluster_name):
 def _get_head_node(config: Dict[str, Any],
                    config_file: str,
                    override_cluster_name: Optional[str],
-                   create_if_needed: bool=False) -> str:
+                   create_if_needed: bool = False) -> str:
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
         head_node_tags = {

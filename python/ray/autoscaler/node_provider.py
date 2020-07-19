@@ -1,6 +1,8 @@
 import importlib
 import logging
 import os
+from typing import Any, Dict
+
 import yaml
 
 from ray.autoscaler.command_runner import SSHCommandRunner, DockerCommandRunner
@@ -102,7 +104,8 @@ def load_class(path):
     return getattr(module, class_str)
 
 
-def get_node_provider(provider_config: Dict[str, Any], cluster_name: str) -> Any:
+def get_node_provider(provider_config: Dict[str, Any],
+                      cluster_name: str) -> Any:
     importer = NODE_PROVIDERS.get(provider_config["type"])
     if importer is None:
         raise NotImplementedError("Unsupported node provider: {}".format(
