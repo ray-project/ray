@@ -1778,6 +1778,7 @@ pyx_library(
         "//:serialization_cc_proto",
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",
+        "//:stats_lib",
     ],
 )
 

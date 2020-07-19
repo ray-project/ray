@@ -92,13 +92,19 @@ class Metric {
   std::string GetName() const { return name_; }
 
   /// Record the value for this metric.
-  void Record(double value) { Record(value, {}); }
+  void Record(double value) { Record(value, TagsType{}); }
 
   /// Record the value for this metric.
   ///
   /// \param value The value that we record.
   /// \param tags The tag values that we want to record for this metric record.
   void Record(double value, const TagsType &tags);
+
+  /// Record the value for this metric.
+  ///
+  /// \param value The value that we record.
+  /// \param tags The map tag values that we want to record for this metric record.
+  void Record(double value, std::unordered_map<std::string, std::string> &tags);
 
  protected:
   virtual void RegisterView() = 0;
