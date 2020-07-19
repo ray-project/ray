@@ -18,6 +18,8 @@ from ray.test_utils import (
     wait_for_pid_to_exit,
     generate_internal_config_map,
     get_other_nodes,
+    SignalActor,
+    _pid_alive,
 )
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
@@ -913,25 +915,32 @@ def test_location_resolution_worker_failure(ray_start_cluster):
             return self.dependency
 
     @ray.remote
-    def slow_dependency():
-        time.sleep(15)
-        return 3
-
-    @ray.remote
     class Owner:
+        def get_pid(self):
+            return os.getpid()
+
         def create_actor(self, caller_handle):
-            actor_handle = Actor.remote(slow_dependency.remote())
-            caller_handle.call.remote(actor_handle)
-            # Wait a little bit to make sure actor the above call doesn't fail.
-            time.sleep(0.5)
+            s = SignalActor.remote()
+            # Create an actor which depends on an object that can never be
+            # resolved.
+            actor_handle = Actor.remote(s.wait.remote())
+
+            pid = os.getpid()
+            signal_handle = SignalActor.remote()
+            caller_handle.call.remote(pid, signal_handle, actor_handle)
+            # Wait untill the `Caller` start executing the remote `call` method.
+            ray.get(signal_handle.wait.remote())
+            # exit
             os._exit(0)
 
     @ray.remote
     class Caller:
-        def call(self, actor_handle):
-            # Wait enough just in case owner is not killed
-            # before remote call happens
-            time.sleep(3.0)
+        def call(self, owner_pid, signal_handle, actor_handle):
+            # Notify the `Owner` that the `Caller` is executing the remote
+            # `call` method.
+            ray.get(signal_handle.send.remote())
+            # Wait for the `Owner` to exit.
+            wait_for_pid_to_exit(owner_pid)
             oid = actor_handle.f.remote()
             # It will hang without location resolution protocol.
             ray.get(oid)
@@ -940,9 +949,12 @@ def test_location_resolution_worker_failure(ray_start_cluster):
             return True
 
     owner = Owner.remote()
+    owner_pid = ray.get(owner.get_pid.remote())
+
     caller = Caller.remote()
     owner.create_actor.remote(caller)
-    time.sleep(3.0)
+    # Wait for the `Owner` to exit.
+    wait_for_pid_to_exit(owner_pid)
     # It will hang here if location is not properly resolved.
     assert (wait_for_condition(lambda: ray.get(caller.hang.remote())))
 
@@ -970,26 +982,33 @@ def test_location_resolution_node_failure(ray_start_cluster):
         def f(self):
             return self.dependency
 
-    @ray.remote
-    def slow_dependency():
-        time.sleep(15)
-        return 3
-
     # Make sure it is scheduled in the second node.
     @ray.remote(resources={"node": 1}, num_cpus=1)
     class Owner:
+        def get_pid(self):
+            return os.getpid()
+
         def create_actor(self, caller_handle):
-            actor_handle = Actor.remote(slow_dependency.remote())
-            caller_handle.call.remote(actor_handle)
-            # Wait a little bit to make sure actor the above call doesn't fail.
-            time.sleep(0.5)
+            s = SignalActor.remote()
+            # Create an actor which depends on an object that can never be
+            # resolved.
+            actor_handle = Actor.remote(s.wait.remote())
+
+            pid = os.getpid()
+            signal_handle = SignalActor.remote()
+            caller_handle.call.remote(pid, signal_handle, actor_handle)
+            # Wait untill the `Caller` start executing the remote `call` method.
+            ray.get(signal_handle.wait.remote())
+
 
     @ray.remote
     class Caller:
-        def call(self, actor_handle):
-            # Wait enough just in case owner is not killed
-            # before remote call happens
-            time.sleep(3.0)
+        def call(self, owner_pid, signal_handle, actor_handle):
+            # Notify the `Owner` that the `Caller` is executing the remote
+            # `call` method.
+            ray.get(signal_handle.send.remote())
+            # Wait for the `Owner` to exit.
+            wait_for_pid_to_exit(owner_pid)
             oid = actor_handle.f.remote()
             # It will hang without location resolution protocol.
             ray.get(oid)
@@ -998,10 +1017,14 @@ def test_location_resolution_node_failure(ray_start_cluster):
             return True
 
     owner = Owner.remote()
+    owner_pid = ray.get(owner.get_pid.remote())
+
     caller = Caller.remote()
     owner.create_actor.remote(caller)
-    time.sleep(3.0)
     cluster.remove_node(node_to_be_broken)
+    # Wait for the `Owner` to exit.
+    wait_for_pid_to_exit(owner_pid)
+
     # It will hang here if location is not properly resolved.
     assert (wait_for_condition(lambda: ray.get(caller.hang.remote())))
 

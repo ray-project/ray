@@ -60,7 +60,7 @@ class GcsActor {
     actor_table_data_.set_name(actor_creation_task_spec.name());
     actor_table_data_.mutable_owner_address()->CopyFrom(task_spec.caller_address());
 
-    actor_table_data_.set_state(rpc::ActorTableData::UNRESOLVED);
+    actor_table_data_.set_state(rpc::ActorTableData::PENDING_DEPENDENCY_RESOLUTION);
     actor_table_data_.mutable_task_spec()->CopyFrom(task_spec);
 
     actor_table_data_.mutable_address()->set_raylet_id(ClientID::Nil().Binary());
@@ -251,6 +251,12 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   const absl::flat_hash_map<ClientID, absl::flat_hash_map<WorkerID, ActorID>>
       &GetCreatedActors() const;
 
+  const absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> &GetRegisteredActors()
+      const;
+
+  const absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
+      &GetActorRegisterCallbacks() const;
+
  private:
   /// A data structure representing an actor's owner.
   struct Owner {
@@ -275,10 +281,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// deregisters the actor.
   void DestroyActor(const ActorID &actor_id);
 
-  /// Cancel any unresolved actors that were submitted from the specified node.
+  /// Get unresolved actors that were submitted from the specified node.
   absl::flat_hash_set<ActorID> GetUnresolvedActors(const ClientID &node_id);
 
-  /// Cancel any unresolved actors that were submitted from the specified worker.
+  /// Get unresolved actors that were submitted from the specified worker.
   absl::flat_hash_set<ActorID> GetUnresolvedActors(const ClientID &node_id,
                                                    const WorkerID &worker_id);
 
@@ -291,24 +297,26 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// again.
   void ReconstructActor(const ActorID &actor_id, bool need_reschedule = true);
 
-  /// Callbacks of actor registration requests that are not yet flushed.
-  /// This map is used to filter duplicated messages from a Driver/Worker caused by some
-  /// network problems.
+  /// Callbacks of actor registration requests.
+  /// Maps actor ID to actor registration callbacks, which is used to filter duplicated
+  /// messages from a Driver/Worker caused by some network problems.
   absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
       actor_to_register_callbacks_;
-  /// Callbacks of actor registration requests that are not yet flushed.
-  /// This map is used to filter duplicated messages from a Driver/Worker caused by some
-  /// network problems.
+  /// Callbacks of reporting actor dependencies resolved requests.
+  /// Maps actor ID to reporting actor dependencies callbacks, which is used to
+  /// filter duplicated messages come from a Driver/Worker caused by some network
+  /// problems.
   absl::flat_hash_map<ActorID, std::vector<ReportActorDependenciesResolvedCallback>>
       actor_to_report_callbacks_;
-  /// All registered actors (pending actors are also included).
+  /// All registered actors (unresoved and pending actors are also included).
   /// TODO(swang): Use unique_ptr instead of shared_ptr.
   absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> registered_actors_;
   /// Maps actor names to their actor ID for lookups by name.
   absl::flat_hash_map<std::string, ActorID> named_actors_;
   /// The actors which dependencies have not been resolved.
-  /// Maps from wroker ID to a client and the IDs of the actors owned by that worker.
-  /// This
+  /// Maps from worker ID to a client and the IDs of the actors owned by that worker.
+  /// The actor that dependencies are not resolved should be destroyed once it creator
+  /// dies.
   absl::flat_hash_map<ClientID,
                       absl::flat_hash_map<WorkerID, absl::flat_hash_set<ActorID>>>
       unresolved_actors_;

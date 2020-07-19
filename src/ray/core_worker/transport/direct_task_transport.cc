@@ -21,22 +21,14 @@ namespace ray {
 Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
 
-  // The creation of actor is divided into two steps:
-  // Step1: Synchronously register the actor which local dependencies are not resolved to
-  // the gcs server which will reply after persisting the unresolved actor.
-  // Step2: Report actor dependencies resolved to the gcs server after its local
-  // dependencies are resolved successfully, and the gcs server will reply after the actor
-  // is created successfully. This step is asynchronously.
   if (actor_creator_ && task_spec.IsActorCreationTask()) {
-    // Since the step2 is asynchronously, the ActorHandler may be passed to other Workers.
-    // If the worker who got the ActorHandler submitted a task through this ActionHandler
-    // and executes GetObject, while the local dependencies of this actor creation task
-    // have not been resolved. Then the owner of this actor exits, it will cause the
-    // cluster hang.
-    // So we need the step1. If the owner exits before resolving the local dependencies,
-    // the GCS Server will mark the Actor died, so that it will not cause a cluster hang.
-
-    // Step1: Synchronously register the actor to GCS server.
+    // Synchronously register the actor to GCS server.
+    // Before, the actor was registered to GCS after all its dependencies were resolved
+    // asynchronously. Before the actor was registered to GCS, the actor handler might
+    // be obtained by other workers. If the owner of the actor hangs up at this time, the
+    // cluster will hang forever. So we should synchronous register the actor to GCS
+    // server, so that if the owner of the actor dies before the dependencies are
+    // resolved, GCS server can notify works to prevent the cluster from hanging.
     auto status = actor_creator_->RegisterActor(task_spec);
     if (!status.ok()) {
       return status;

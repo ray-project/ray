@@ -726,7 +726,7 @@ TEST_F(GcsActorManagerTest, TestRegisterActor) {
   auto registered_actor = RegisterActor(job_id);
   // Make sure the actor state is `UNRESOLVED`.
   ASSERT_EQ(registered_actor->GetState(),
-            rpc::ActorTableData_ActorState_PENDING_DEPENDENCY_RESOLUTION);
+            rpc::ActorTableData::PENDING_DEPENDENCY_RESOLUTION);
   // Make sure the actor has not been scheduled yet.
   ASSERT_TRUE(mock_actor_scheduler_->actors.empty());
 
@@ -743,11 +743,11 @@ TEST_F(GcsActorManagerTest, TestRegisterActor) {
   auto actor = mock_actor_scheduler_->actors.back();
   mock_actor_scheduler_->actors.pop_back();
   // Make sure the actor state is `PENDING`.
-  ASSERT_EQ(actor->GetState(), rpc::ActorTableData_ActorState_PENDING_CREATION);
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::PENDING_CREATION);
 
   actor->UpdateAddress(RandomAddress());
   gcs_actor_manager_->OnActorCreationSuccess(actor);
-  ASSERT_EQ(actor->GetState(), rpc::ActorTableData_ActorState_ALIVE);
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
 }
 
 TEST_F(GcsActorManagerTest, TestOwnerWorkerDieBeforeActorDependenciesResolved) {
@@ -757,7 +757,29 @@ TEST_F(GcsActorManagerTest, TestOwnerWorkerDieBeforeActorDependenciesResolved) {
   auto node_id = ClientID::FromBinary(owner_address.raylet_id());
   auto worker_id = WorkerID::FromBinary(owner_address.worker_id());
   gcs_actor_manager_->OnWorkerDead(node_id, worker_id);
-  ASSERT_EQ(registered_actor->GetState(), rpc::ActorTableData_ActorState_DEAD);
+  ASSERT_EQ(registered_actor->GetState(), rpc::ActorTableData::DEAD);
+
+  // Make sure the actor gets cleaned up.
+  const auto &registered_actors = gcs_actor_manager_->GetRegisteredActors();
+  ASSERT_FALSE(registered_actors.count(registered_actor->GetActorID()));
+  const auto &callbacks = gcs_actor_manager_->GetActorRegisterCallbacks();
+  ASSERT_FALSE(callbacks.count(registered_actor->GetActorID()));
+}
+
+TEST_F(GcsActorManagerTest, TestOwnerWorkerDieBeforeDetachedActorDependenciesResolved) {
+  auto job_id = JobID::FromInt(1);
+  auto registered_actor = RegisterActor(job_id, /*max_restarts=*/1, /*detached=*/true);
+  const auto &owner_address = registered_actor->GetOwnerAddress();
+  auto node_id = ClientID::FromBinary(owner_address.raylet_id());
+  auto worker_id = WorkerID::FromBinary(owner_address.worker_id());
+  gcs_actor_manager_->OnWorkerDead(node_id, worker_id);
+  ASSERT_EQ(registered_actor->GetState(), rpc::ActorTableData::DEAD);
+
+  // Make sure the actor gets cleaned up.
+  const auto &registered_actors = gcs_actor_manager_->GetRegisteredActors();
+  ASSERT_FALSE(registered_actors.count(registered_actor->GetActorID()));
+  const auto &callbacks = gcs_actor_manager_->GetActorRegisterCallbacks();
+  ASSERT_FALSE(callbacks.count(registered_actor->GetActorID()));
 }
 
 TEST_F(GcsActorManagerTest, TestOwnerNodeDieBeforeActorDependenciesResolved) {
@@ -766,7 +788,28 @@ TEST_F(GcsActorManagerTest, TestOwnerNodeDieBeforeActorDependenciesResolved) {
   const auto &owner_address = registered_actor->GetOwnerAddress();
   auto node_id = ClientID::FromBinary(owner_address.raylet_id());
   gcs_actor_manager_->OnNodeDead(node_id);
-  ASSERT_EQ(registered_actor->GetState(), rpc::ActorTableData_ActorState_DEAD);
+  ASSERT_EQ(registered_actor->GetState(), rpc::ActorTableData::DEAD);
+
+  // Make sure the actor gets cleaned up.
+  const auto &registered_actors = gcs_actor_manager_->GetRegisteredActors();
+  ASSERT_FALSE(registered_actors.count(registered_actor->GetActorID()));
+  const auto &callbacks = gcs_actor_manager_->GetActorRegisterCallbacks();
+  ASSERT_FALSE(callbacks.count(registered_actor->GetActorID()));
+}
+
+TEST_F(GcsActorManagerTest, TestOwnerNodeDieBeforeDetachedActorDependenciesResolved) {
+  auto job_id = JobID::FromInt(1);
+  auto registered_actor = RegisterActor(job_id, /*max_restarts=*/1, /*detached=*/true);
+  const auto &owner_address = registered_actor->GetOwnerAddress();
+  auto node_id = ClientID::FromBinary(owner_address.raylet_id());
+  gcs_actor_manager_->OnNodeDead(node_id);
+  ASSERT_EQ(registered_actor->GetState(), rpc::ActorTableData::DEAD);
+
+  // Make sure the actor gets cleaned up.
+  const auto &registered_actors = gcs_actor_manager_->GetRegisteredActors();
+  ASSERT_FALSE(registered_actors.count(registered_actor->GetActorID()));
+  const auto &callbacks = gcs_actor_manager_->GetActorRegisterCallbacks();
+  ASSERT_FALSE(callbacks.count(registered_actor->GetActorID()));
 }
 
 }  // namespace ray

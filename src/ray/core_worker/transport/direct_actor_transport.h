@@ -121,7 +121,8 @@ class CoreWorkerDirectActorTaskSubmitter
     /// The current state of the actor. If this is ALIVE, then we should have
     /// an RPC client to the actor. If this is DEAD, then all tasks in the
     /// queue will be marked failed and all other ClientQueue state is ignored.
-    rpc::ActorTableData::ActorState state = rpc::ActorTableData::UNRESOLVED;
+    rpc::ActorTableData::ActorState state =
+        rpc::ActorTableData::PENDING_DEPENDENCY_RESOLUTION;
     /// How many times this actor has been restarted before. Starts at -1 to
     /// indicate that the actor is not yet created. This is used to drop stale
     /// messages from the GCS.

@@ -46,11 +46,11 @@ class DefaultActorCreator : public ActorCreatorInterface {
       : gcs_client_(std::move(gcs_client)) {}
 
   Status RegisterActor(const TaskSpecification &task_spec) override {
-    std::promise<void> promise;
+    auto promise = std::make_shared<std::promise<void>>();
     auto status = gcs_client_->Actors().AsyncRegisterActor(
-        task_spec, [&promise](const Status &status) { promise.set_value(); });
+        task_spec, [promise](const Status &status) { promise->set_value(); });
     if (status.ok()) {
-      promise.get_future().wait();
+      promise->get_future().wait();
     }
     return status;
   }

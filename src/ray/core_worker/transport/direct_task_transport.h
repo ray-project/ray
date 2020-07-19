@@ -163,9 +163,10 @@ class CoreWorkerDirectTaskSubmitter {
   /// if a remote raylet tells us to spill the task back to the local raylet.
   const ClientID local_raylet_id_;
 
-  /// A function to override actor creation. The callback will be called once the actor
-  /// creation task has been accepted for submission, but the actor may not be created
-  /// yet.
+  /// An interface to create actor. It provides two methods, one of them is
+  /// `RegisterActor` which is synchronously, while another is
+  /// `AsyncReportActorDependenciesResolved` which is invoked when the dependencies of the
+  /// actor are all resolved.
   std::shared_ptr<ActorCreatorInterface> actor_creator_;
 
   // Protects task submission state below.
