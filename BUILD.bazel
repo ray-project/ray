@@ -1446,7 +1446,7 @@ cc_library(
     hdrs = [
         "src/ray/thirdparty/sha256.h",
     ],
-    #copts = COPTS,
+    copts = COPTS,
     strip_include_prefix = "src",
 )
 
