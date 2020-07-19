@@ -67,31 +67,29 @@ class PPOLoss:
             use_gae (bool): If true, use the Generalized Advantage Estimator.
         """
         if valid_mask is not None:
-            num_valid = torch.sum(valid_mask)
-
-            def reduce_mean_valid(t):
-                return torch.sum(t[valid_mask]) / num_valid
-
-        else:
-
-            def reduce_mean_valid(t):
-                return torch.mean(t)
+            prev_logits = prev_logits[valid_mask]
+            prev_actions_logp = prev_actions_logp[valid_mask]
+            actions = actions[valid_mask]
+            advantages = advantages[valid_mask]
+            value_targets = value_targets[valid_mask]
+            vf_preds = vf_preds[valid_mask]
+            value_fn = value_fn[valid_mask]
 
         prev_dist = dist_class(prev_logits, model)
         # Make loss functions.
         logp_ratio = torch.exp(
             curr_action_dist.logp(actions) - prev_actions_logp)
         action_kl = prev_dist.kl(curr_action_dist)
-        self.mean_kl = reduce_mean_valid(action_kl)
+        self.mean_kl = torch.mean(action_kl)
 
         curr_entropy = curr_action_dist.entropy()
-        self.mean_entropy = reduce_mean_valid(curr_entropy)
+        self.mean_entropy = torch.mean(curr_entropy)
 
         surrogate_loss = torch.min(
             advantages * logp_ratio,
             advantages * torch.clamp(logp_ratio, 1 - clip_param,
                                      1 + clip_param))
-        self.mean_policy_loss = reduce_mean_valid(-surrogate_loss)
+        self.mean_policy_loss = torch.mean(-surrogate_loss)
 
         if use_gae:
             vf_loss1 = torch.pow(value_fn - value_targets, 2.0)
@@ -99,13 +97,13 @@ class PPOLoss:
                                                 -vf_clip_param, vf_clip_param)
             vf_loss2 = torch.pow(vf_clipped - value_targets, 2.0)
             vf_loss = torch.max(vf_loss1, vf_loss2)
-            self.mean_vf_loss = reduce_mean_valid(vf_loss)
-            loss = reduce_mean_valid(
+            self.mean_vf_loss = torch.mean(vf_loss)
+            loss = torch.mean(
                 -surrogate_loss + cur_kl_coeff * action_kl +
                 vf_loss_coeff * vf_loss - entropy_coeff * curr_entropy)
         else:
             self.mean_vf_loss = 0.0
-            loss = reduce_mean_valid(-surrogate_loss +
+            loss = torch.mean(-surrogate_loss +
                                      cur_kl_coeff * action_kl -
                                      entropy_coeff * curr_entropy)
         self.loss = loss
@@ -113,13 +111,15 @@ class PPOLoss:
 
 def ppo_surrogate_loss(policy, model, dist_class, train_batch):
     logits, state = model.from_batch(train_batch)
-    action_dist = dist_class(logits, model)
 
     mask = None
     if state:
         max_seq_len = torch.max(train_batch["seq_lens"])
         mask = sequence_mask(train_batch["seq_lens"], max_seq_len)
         mask = torch.reshape(mask, [-1])
+        action_dist = dist_class(logits[mask], model)
+    else:
+        action_dist = dist_class(logits, model)
 
     policy.loss_obj = PPOLoss(
         dist_class,

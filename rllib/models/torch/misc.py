@@ -1,7 +1,8 @@
 """ Code adapted from https://github.com/ikostrikov/pytorch-a3c"""
 import numpy as np
+from typing import Callable, Optional, Union
 
-from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.framework import get_activation_fn, try_import_torch
 
 torch, nn = try_import_torch()
 
@@ -88,12 +89,12 @@ class SlimFC(nn.Module):
     """Simple PyTorch version of `linear` function"""
 
     def __init__(self,
-                 in_size,
-                 out_size,
-                 initializer=None,
-                 activation_fn=None,
-                 use_bias=True,
-                 bias_init=0.0):
+                 in_size: int,
+                 out_size: int,
+                 initializer: Optional[Callable] = None,
+                 activation_fn: Optional[Union[str, Callable]] = None,
+                 use_bias: bool = True,
+                 bias_init: float = 0.0):
         super(SlimFC, self).__init__()
         layers = []
         linear = nn.Linear(in_size, out_size, bias=use_bias)
@@ -102,8 +103,9 @@ class SlimFC(nn.Module):
         if use_bias is True:
             nn.init.constant_(linear.bias, bias_init)
         layers.append(linear)
-        if activation_fn:
-            layers.append(activation_fn())
+        torch_activation_fn = get_activation_fn(activation_fn, "torch")
+        if torch_activation_fn:
+            layers.append(torch_activation_fn())
         self._model = nn.Sequential(*layers)
 
     def forward(self, x):
