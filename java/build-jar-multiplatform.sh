@@ -14,10 +14,8 @@ JAR_BASE_DIR="$WORKSPACE_DIR"/.jar
 
 build_jars() {
   local platform=$1
-  local bazel_build=true
-  if [[ $# = 2 ]]; then
-    bazel_build=$2
-  fi
+  local bazel_build="${2:-true}"
+  echo "bazel_build $bazel_build"
   echo "Start building jar for $platform"
   JAR_DIR="$JAR_BASE_DIR"/$platform
   mkdir -p "$JAR_DIR"
@@ -54,9 +52,8 @@ copy_jars() {
   cp -f "$WORKSPACE_DIR"/streaming/build/java/streaming*.jar "$JAR_DIR"
 }
 
-# This function should be run in a docker container. See `build_jars_multiplatform`
+# This function assuem all dependencies are installed already.
 build_jars_linux() {
-  . "${WORKSPACE_DIR}"/ci/travis/install-dependencies.sh
   build_jars linux
 }
 
