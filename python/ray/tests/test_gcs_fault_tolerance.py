@@ -2,8 +2,11 @@ import sys
 
 import ray
 import pytest
-import time
-from ray.test_utils import generate_internal_config_map
+from ray.test_utils import (
+    generate_internal_config_map,
+    wait_for_condition,
+    wait_for_pid_to_exit,
+)
 
 
 @ray.remote
@@ -58,32 +61,60 @@ def test_gcs_server_restart_during_actor_creation(ray_start_regular):
 def test_node_failure_detector_when_gcs_server_restart(ray_start_cluster_head):
     """Checks that the node failure detector is correct when gcs server restart.
 
-    We set the cluster to timeout nodes after 2 seconds of heartbeats. We
-    then remove a node and restart gcs server again to check
-    that the alive node count is 2, then wait another 2.5 seconds to check that
-    the one of the node is timed out.
+    We set the cluster to timeout nodes after 2 seconds of heartbeats. We then
+    kill gcs server and remove the worker node and restart gcs server again to
+    check that the removed node is alive when the GCS server is just restarted
+    but dead finally.
     """
     cluster = ray_start_cluster_head
     worker = cluster.add_node()
     cluster.wait_for_nodes()
 
+    # Make sure both head and worker node are alive.
+    nodes = ray.nodes()
+    assert len(nodes) == 2
+    assert nodes[0]["alive"] and nodes[1]["alive"]
+
+    to_be_removed_node = None
+    for node in nodes:
+        if node["RayletSocketName"] == worker.raylet_socket_name:
+            to_be_removed_node = node
+    assert to_be_removed_node is not None
+
+    head_node = cluster.head_node
+    gcs_server_process = head_node.all_processes["gcs_server"][0].process
+    gcs_server_pid = gcs_server_process.pid
+    # Kill gcs server.
     cluster.head_node.kill_gcs_server()
+    # Wait to prevent the gcs server process becoming zombie.
+    gcs_server_process.wait()
+    wait_for_pid_to_exit(gcs_server_pid, 1000)
+
+    raylet_process = worker.all_processes["raylet"][0].process
+    raylet_pid = raylet_process.pid
+    # Remove worker node.
     cluster.remove_node(worker, allow_graceful=False)
+    # Wait to prevent the raylet process becoming zombie.
+    raylet_process.wait()
+    wait_for_pid_to_exit(raylet_pid)
+
+    # Restart gcs server process.
     cluster.head_node.start_gcs_server()
 
     nodes = ray.nodes()
     assert len(nodes) == 2
     assert nodes[0]["alive"] and nodes[1]["alive"]
 
-    time.sleep(2.5)
-    nodes = ray.nodes()
-    assert len(nodes) == 2
+    def condition():
+        nodes = ray.nodes()
+        assert len(nodes) == 2
+        for node in nodes:
+            if node["NodeID"] == to_be_removed_node["NodeID"]:
+                return node["alive"]
+        return False
 
-    dead_count = 0
-    for node in nodes:
-        if not node["alive"]:
-            dead_count += 1
-    assert dead_count == 1
+    # Wait for the removed node dead.
+    assert wait_for_condition(condition, timeout=10)
 
 
 if __name__ == "__main__":
