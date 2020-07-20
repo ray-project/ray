@@ -868,11 +868,16 @@ TEST_F(ServiceBasedGcsClientTest, TestJobTableResubscribe) {
   };
   ASSERT_TRUE(SubscribeToAllJobs(subscribe));
 
+  ASSERT_TRUE(AddJob(job_table_data));
+  WaitPendingDone(job_update_count, 1);
   RestartGcsServer();
 
-  ASSERT_TRUE(AddJob(job_table_data));
-  ASSERT_TRUE(MarkJobFinished(job_id));
+  // The GCS client will fetch data from the GCS server after the GCS server is restarted,
+  // and the GCS server keeps a job record, so `job_update_count` plus one.
   WaitPendingDone(job_update_count, 2);
+
+  ASSERT_TRUE(MarkJobFinished(job_id));
+  WaitPendingDone(job_update_count, 3);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {

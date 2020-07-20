@@ -23,7 +23,6 @@
 #include "opencensus/stats/internal/delta_producer.h"
 #include "opencensus/stats/stats.h"
 #include "opencensus/tags/tag_key.h"
-
 #include "ray/common/ray_config.h"
 #include "ray/stats/metric.h"
 #include "ray/stats/metric_exporter.h"
@@ -37,10 +36,10 @@ namespace stats {
 #include <boost/asio.hpp>
 
 /// Include metric_defs.h to define measure items.
-#include "metric_defs.h"
+#include "ray/stats/metric_defs.h"
 
 /// Initialize stats.
-static void Init(
+static inline void Init(
     const TagsType &global_tags, const int metrics_agent_port,
     boost::asio::io_service &io_service,
     std::shared_ptr<MetricExporterClient> exporter_to_use = nullptr,

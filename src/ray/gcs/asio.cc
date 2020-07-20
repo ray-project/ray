@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "asio.h"
+#include "ray/gcs/asio.h"
 
 #include "ray/util/logging.h"
 
