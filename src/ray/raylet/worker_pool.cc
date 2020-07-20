@@ -245,10 +245,11 @@ Process WorkerPool::StartWorkerProcess(const Language &language, const JobID &jo
         // The value of `num_workers_per_process_java` may change depends on whether
         // dynamic options is empty, so we can't use the value in `RayConfig`. We always
         // overwrite the value here.
-        worker_command_args.push_back(
-            "-Dray.raylet.config.num_workers_per_process_java=" +
-            std::to_string(workers_to_start));
-        if (RayConfig::instance().enable_multi_tenancy()) {
+        if (!RayConfig::instance().enable_multi_tenancy()) {
+          worker_command_args.push_back(
+              "-Dray.raylet.config.num_workers_per_process_java=" +
+              std::to_string(workers_to_start));
+        } else {
           worker_command_args.push_back("-Dray.job.num-java-workers-per-process=" +
                                         std::to_string(workers_to_start));
         }

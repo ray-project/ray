@@ -223,11 +223,21 @@ public class RayConfig {
       jobResourcePath = null;
     }
 
-    final int localNumWorkersPerProcess = config.getInt("ray.job.num-java-workers-per-process");
-    if (localNumWorkersPerProcess <= 0) {
-      numWorkersPerProcess = DEFAULT_NUM_JAVA_WORKER_PER_PROCESS;
+    boolean enableMultiTenancy = false;
+    if (config.hasPath("ray.raylet.config.enable_multi_tenancy")) {
+      enableMultiTenancy =
+          Boolean.valueOf(config.getString("ray.raylet.config.enable_multi_tenancy"));
+    }
+
+    if (!enableMultiTenancy) {
+      numWorkersPerProcess = config.getInt("ray.raylet.config.num_workers_per_process_java");
     } else {
-      numWorkersPerProcess = localNumWorkersPerProcess;
+      final int localNumWorkersPerProcess = config.getInt("ray.job.num-java-workers-per-process");
+      if (localNumWorkersPerProcess <= 0) {
+        numWorkersPerProcess = DEFAULT_NUM_JAVA_WORKER_PER_PROCESS;
+      } else {
+        numWorkersPerProcess = localNumWorkersPerProcess;
+      }
     }
 
     // Validate config.

@@ -26,6 +26,7 @@ namespace raylet {
 
 int NUM_WORKERS_PER_PROCESS_JAVA = 3;
 int MAXIMUM_STARTUP_CONCURRENCY = 5;
+JobID JOB_ID = JobID::FromInt(1);
 
 std::vector<Language> LANGUAGES = {Language::PYTHON, Language::JAVA};
 
@@ -120,18 +121,18 @@ class WorkerPoolTest : public ::testing::Test {
                                  "worker", {}, error_message_type_);
     std::shared_ptr<Worker> worker = std::make_shared<Worker>(
         WorkerID::FromRandom(), language, "127.0.0.1", client, client_call_manager_);
+    worker->AssignJobId(JOB_ID);
     if (!proc.IsNull()) {
       worker->SetProcess(proc);
     }
     return worker;
   }
 
-  std::shared_ptr<Worker> CreateDriver(JobID job_id,
-                                       const Language &language = Language::PYTHON) {
+  std::shared_ptr<Worker> CreateDriver(const Language &language = Language::PYTHON) {
     auto driver = CreateWorker(Process::CreateNewDummy(), language);
-    driver->AssignTaskId(TaskID::ForDriverTask(job_id));
+    driver->AssignTaskId(TaskID::ForDriverTask(JOB_ID));
     int assigned_port;
-    RAY_CHECK_OK(worker_pool_->RegisterDriver(driver, job_id, &assigned_port));
+    RAY_CHECK_OK(worker_pool_->RegisterDriver(driver, JOB_ID, &assigned_port));
     return driver;
   }
 
@@ -142,7 +143,6 @@ class WorkerPoolTest : public ::testing::Test {
 
   void TestStartupWorkerProcessCount(Language language, int num_workers_per_process,
                                      std::vector<std::string> expected_worker_command) {
-    const auto job_id = JobID::FromInt(1);
     int desired_initial_worker_process_count = 100;
     int expected_worker_process_count = static_cast<int>(std::ceil(
         static_cast<double>(MAXIMUM_STARTUP_CONCURRENCY) / num_workers_per_process));
@@ -150,7 +150,7 @@ class WorkerPoolTest : public ::testing::Test {
                 static_cast<int>(desired_initial_worker_process_count));
     Process last_started_worker_process;
     for (int i = 0; i < desired_initial_worker_process_count; i++) {
-      worker_pool_->StartWorkerProcess(language, job_id);
+      worker_pool_->StartWorkerProcess(language, JOB_ID);
       ASSERT_TRUE(worker_pool_->NumWorkerProcessesStarting() <=
                   expected_worker_process_count);
       Process prev = worker_pool_->LastStartedWorkerProcess();
@@ -186,6 +186,7 @@ static inline TaskSpecification ExampleTaskSpec(
     const ActorID actor_creation_id = ActorID::Nil(),
     const std::vector<std::string> &dynamic_worker_options = {}) {
   rpc::TaskSpec message;
+  message.set_job_id(JOB_ID.Binary());
   message.set_language(language);
   if (!actor_id.IsNil()) {
     message.set_type(TaskType::ACTOR_TASK);
@@ -217,8 +218,7 @@ TEST_F(WorkerPoolTest, CompareWorkerProcessObjects) {
 }
 
 TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
-  const auto job_id = JobID::FromInt(1);
-  Process proc = worker_pool_->StartWorkerProcess(Language::JAVA, job_id);
+  Process proc = worker_pool_->StartWorkerProcess(Language::JAVA, JOB_ID);
   std::vector<std::shared_ptr<Worker>> workers;
   for (int i = 0; i < NUM_WORKERS_PER_PROCESS_JAVA; i++) {
     workers.push_back(CreateWorker(Process(), Language::JAVA));
@@ -251,8 +251,6 @@ TEST_F(WorkerPoolTest, StartupJavaWorkerProcessCount) {
   TestStartupWorkerProcessCount(
       Language::JAVA, NUM_WORKERS_PER_PROCESS_JAVA,
       {"dummy_java_worker_command",
-       std::string("-Dray.raylet.config.num_workers_per_process_java=") +
-           std::to_string(NUM_WORKERS_PER_PROCESS_JAVA),
        std::string("-Dray.job.num-java-workers-per-process=") +
            std::to_string(NUM_WORKERS_PER_PROCESS_JAVA)});
 }
@@ -293,8 +291,7 @@ TEST_F(WorkerPoolTest, PopActorWorker) {
   // Assign an actor ID to the worker.
   const auto task_spec = ExampleTaskSpec();
   auto actor = worker_pool_->PopWorker(task_spec);
-  const auto job_id = JobID::FromInt(1);
-  auto actor_id = ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1);
+  auto actor_id = ActorID::Of(JOB_ID, TaskID::ForDriverTask(JOB_ID), 1);
   actor->AssignActorId(actor_id);
   worker_pool_->PushWorker(actor);
 
@@ -332,17 +329,15 @@ TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
   SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}},
                      {Language::JAVA, java_worker_command}});
 
-  const auto job_id = JobID::FromInt(1);
   TaskSpecification task_spec = ExampleTaskSpec(
       ActorID::Nil(), Language::JAVA,
-      ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1), {"test_op_0", "test_op_1"});
-  worker_pool_->StartWorkerProcess(Language::JAVA, job_id,
+      ActorID::Of(JOB_ID, TaskID::ForDriverTask(JOB_ID), 1), {"test_op_0", "test_op_1"});
+  worker_pool_->StartWorkerProcess(Language::JAVA, JOB_ID,
                                    task_spec.DynamicWorkerOptions());
   const auto real_command =
       worker_pool_->GetWorkerCommand(worker_pool_->LastStartedWorkerProcess());
   ASSERT_EQ(real_command, std::vector<std::string>(
                               {"test_op_0", "dummy_java_worker_command",
-                               "-Dray.raylet.config.num_workers_per_process_java=1",
                                "-Dray.job.num-java-workers-per-process=1", "test_op_1"}));
 }
 
