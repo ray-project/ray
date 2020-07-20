@@ -9,9 +9,6 @@ from typing import Callable, Any, List, Dict, Tuple, Union, Optional, \
     TYPE_CHECKING, TypeVar
 
 import ray
-from ray.util.debug import log_once, disable_log_once_globally, \
-    enable_periodic_logging
-from ray.util.iter import ParallelIteratorWorker
 from ray.rllib.env.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
@@ -21,17 +18,17 @@ from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
 from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
-from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
-from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.tf_policy import TFPolicy
-from ray.rllib.policy.torch_policy import TorchPolicy
+from ray.rllib.models import ModelCatalog
+from ray.rllib.models.preprocessors import NoPreprocessor, Preprocessor
 from ray.rllib.offline import NoopOutput, IOContext, OutputWriter, InputReader
 from ray.rllib.offline.off_policy_estimator import OffPolicyEstimator, \
     OffPolicyEstimate
 from ray.rllib.offline.is_estimator import ImportanceSamplingEstimator
 from ray.rllib.offline.wis_estimator import WeightedImportanceSamplingEstimator
-from ray.rllib.models import ModelCatalog
-from ray.rllib.models.preprocessors import NoPreprocessor, Preprocessor
+from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
+from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.tf_policy import TFPolicy
+from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.debug import summarize
@@ -42,6 +39,9 @@ from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.types import EnvType, AgentID, PolicyID, EnvConfigDict, \
     ModelConfigDict, TrainerConfigDict, SampleBatchType, ModelWeights, \
     ModelGradients, MultiAgentPolicyConfigDict
+from ray.util.debug import log_once, disable_log_once_globally, \
+    enable_periodic_logging
+from ray.util.iter import ParallelIteratorWorker
 
 if TYPE_CHECKING:
     from ray.rllib.agents.callbacks import DefaultCallbacks
@@ -399,21 +399,29 @@ class RolloutWorker(ParallelIteratorWorker):
                         tf1.set_random_seed(seed)
                     self.policy_map, self.preprocessors = \
                         self._build_policy_map(policy_dict, policy_config)
-            if (ray.is_initialized()
-                    and ray.worker._mode() != ray.worker.LOCAL_MODE):
-                if not ray.get_gpu_ids():
-                    logger.debug(
-                        "Creating policy evaluation worker {}".format(
-                            worker_index) +
-                        " on CPU (please ignore any CUDA init errors)")
-                elif not tf1.test.is_gpu_available():
-                    raise RuntimeError(
-                        "GPUs were assigned to this worker by Ray, but "
-                        "TensorFlow reports GPU acceleration is disabled. "
-                        "This could be due to a bad CUDA or TF installation.")
         else:
             self.policy_map, self.preprocessors = self._build_policy_map(
                 policy_dict, policy_config)
+
+        if (ray.is_initialized() and
+                ray.worker._mode() != ray.worker.LOCAL_MODE):
+            # Check available number of GPUs
+            if not ray.get_gpu_ids():
+                logger.debug(
+                    "Creating policy evaluation worker {}".format(
+                        worker_index) +
+                    " on CPU (please ignore any CUDA init errors)")
+            elif (policy_config["framework"] in ["tf2", "tf", "tfe"] and
+                  not tf.config.list_physical_devices("GPU")) or \
+                    (policy_config["framework"] == "torch" and
+                     not torch.cuda.is_available()):
+                raise RuntimeError(
+                    "GPUs were assigned to this worker by Ray, but "
+                    "your DL framework ({}) reports GPU acceleration is "
+                    "disabled. This could be due to a bad CUDA- or {} "
+                    "installation.".format(
+                        policy_config["framework"],
+                        policy_config["framework"]))
 
         self.multiagent: bool = set(
             self.policy_map.keys()) != {DEFAULT_POLICY_ID}

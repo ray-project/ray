@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <ray/gcs/gcs_server/test/gcs_server_test_util.h>
-#include <ray/gcs/test/gcs_test_util.h>
-
 #include <memory>
+
 #include "gtest/gtest.h"
+#include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
+#include "ray/gcs/test/gcs_test_util.h"
 
 namespace ray {
 
@@ -163,8 +163,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestSchedulePlacementGroupReturnResource)
   ASSERT_TRUE(raylet_client_->GrantResourceReserve());
   ASSERT_TRUE(raylet_client_->GrantResourceReserve(false));
   ASSERT_EQ(1, raylet_client_->num_return_requested);
-  //   // Reply the placement_group creation request, then the placement_group should be
-  //   scheduled successfully.
+  // Reply the placement_group creation request, then the placement_group should be
+  //  scheduled successfully.
   ASSERT_EQ(1, failure_placement_groups_.size());
   ASSERT_EQ(0, success_placement_groups_.size());
   ASSERT_EQ(placement_group, failure_placement_groups_.front());

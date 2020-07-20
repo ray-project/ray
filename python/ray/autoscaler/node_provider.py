@@ -8,34 +8,29 @@ from ray.autoscaler.command_runner import SSHCommandRunner, DockerCommandRunner
 logger = logging.getLogger(__name__)
 
 
-def import_aws():
-    from ray.autoscaler.aws.config import bootstrap_aws
+def import_aws(provider_config):
     from ray.autoscaler.aws.node_provider import AWSNodeProvider
-    return bootstrap_aws, AWSNodeProvider
+    return AWSNodeProvider
 
 
-def import_gcp():
-    from ray.autoscaler.gcp.config import bootstrap_gcp
+def import_gcp(provider_config):
     from ray.autoscaler.gcp.node_provider import GCPNodeProvider
-    return bootstrap_gcp, GCPNodeProvider
+    return GCPNodeProvider
 
 
-def import_azure():
-    from ray.autoscaler.azure.config import bootstrap_azure
+def import_azure(provider_config):
     from ray.autoscaler.azure.node_provider import AzureNodeProvider
-    return bootstrap_azure, AzureNodeProvider
+    return AzureNodeProvider
 
 
-def import_local():
-    from ray.autoscaler.local.config import bootstrap_local
+def import_local(provider_config):
     from ray.autoscaler.local.node_provider import LocalNodeProvider
-    return bootstrap_local, LocalNodeProvider
+    return LocalNodeProvider
 
 
-def import_kubernetes():
-    from ray.autoscaler.kubernetes.config import bootstrap_kubernetes
+def import_kubernetes(provider_config):
     from ray.autoscaler.kubernetes.node_provider import KubernetesNodeProvider
-    return bootstrap_kubernetes, KubernetesNodeProvider
+    return KubernetesNodeProvider
 
 
 def load_local_example_config():
@@ -66,13 +61,9 @@ def load_azure_example_config():
         os.path.dirname(ray_azure.__file__), "example-full.yaml")
 
 
-def import_external():
-    """Mock a normal provider importer."""
-
-    def return_it_back(config):
-        return config
-
-    return return_it_back, None
+def import_external(provider_config):
+    provider_cls = load_class(path=provider_config["module"])
+    return provider_cls
 
 
 NODE_PROVIDERS = {
@@ -112,16 +103,11 @@ def load_class(path):
 
 
 def get_node_provider(provider_config, cluster_name):
-    if provider_config["type"] == "external":
-        provider_cls = load_class(path=provider_config["module"])
-        return provider_cls(provider_config, cluster_name)
-
     importer = NODE_PROVIDERS.get(provider_config["type"])
-
     if importer is None:
         raise NotImplementedError("Unsupported node provider: {}".format(
             provider_config["type"]))
-    _, provider_cls = importer()
+    provider_cls = importer(provider_config)
     return provider_cls(provider_config, cluster_name)
 
 
@@ -226,6 +212,11 @@ class NodeProvider:
         This is an optional method only required if using the resource
         demand scheduler."""
         return None
+
+    @staticmethod
+    def bootstrap_config(cluster_config):
+        """Bootstraps the cluster config by adding env defaults if needed."""
+        return cluster_config
 
     def get_command_runner(self,
                            log_prefix,

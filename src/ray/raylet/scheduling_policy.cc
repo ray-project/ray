@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/raylet/scheduling_policy.h"
+
 #include <algorithm>
 #include <chrono>
 #include <random>
-
-#include "scheduling_policy.h"
 
 #include "ray/util/logging.h"
 
