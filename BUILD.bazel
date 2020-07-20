@@ -355,6 +355,7 @@ cc_library(
     linkopts = PLASMA_LINKOPTS,
     strip_include_prefix = "src",
     deps = [
+        ":common_cc_proto",
         ":object_manager_fbs",
         ":plasma_fbs",
         ":ray_common",
