@@ -38,6 +38,8 @@ install_ray() {
 
 uninstall_ray() {
   pip uninstall -y ray
+
+  rm -r -f "${WORKSPACE_DIR}"/python/ray/thirdparty_files
 }
 
 build_wheel_windows() {

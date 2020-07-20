@@ -21,8 +21,8 @@
 #include "ray/common/task/task.h"
 #include "ray/core_worker/actor_reporter.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/protobuf/core_worker.pb.h"
-#include "ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/core_worker.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 

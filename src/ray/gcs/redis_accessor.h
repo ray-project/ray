@@ -14,9 +14,8 @@
 
 #pragma once
 
-#include <ray/common/task/task_spec.h>
-
 #include "ray/common/id.h"
+#include "ray/common/task/task_spec.h"
 #include "ray/gcs/accessor.h"
 #include "ray/gcs/callback.h"
 #include "ray/gcs/subscription_executor.h"
