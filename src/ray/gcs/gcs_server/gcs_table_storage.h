@@ -18,7 +18,7 @@
 
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/redis_store_client.h"
-#include "ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace gcs {

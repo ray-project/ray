@@ -37,7 +37,7 @@ class RandomKiller:
         serve.init()
 
     def _get_all_serve_actors(self):
-        master = serve.api._get_master_actor()
+        master = serve.api._get_controller()
         [router] = ray.get(master.get_router.remote())
         [http_proxy] = ray.get(master.get_http_proxy.remote())
         all_handles = [master, router, http_proxy]

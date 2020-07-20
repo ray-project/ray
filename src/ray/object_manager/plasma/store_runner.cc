@@ -8,7 +8,6 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "ray/object_manager/plasma/io.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
 
 namespace plasma {
@@ -97,9 +96,7 @@ void PlasmaStoreRunner::Start() {
   }
   RAY_LOG(DEBUG) << "starting server listening on " << socket_name_;
 
-  // Create the event loop.
-  loop_.reset(new EventLoop);
-  store_.reset(new PlasmaStore(loop_.get(), plasma_directory_, hugepages_enabled_,
+  store_.reset(new PlasmaStore(main_service_, plasma_directory_, hugepages_enabled_,
                                socket_name_, external_store));
   plasma_config = store_->GetPlasmaStoreInfo();
 
@@ -115,14 +112,9 @@ void PlasmaStoreRunner::Start() {
   PlasmaAllocator::Free(
       pointer, PlasmaAllocator::GetFootprintLimit() - 256 * sizeof(size_t));
 
-  int socket = ConnectOrListenIpcSock(socket_name_, true);
-  // TODO(pcm): Check return value.
-  RAY_CHECK(socket >= 0);
+  store_->Start();
 
-  loop_->AddFileEvent(socket, kEventLoopRead, [this, socket](int events) {
-    this->store_->ConnectClient(socket);
-  });
-  loop_->Start();
+  main_service_.run();
 
   Shutdown();
 #ifdef _WINSOCKAPI_
@@ -131,16 +123,12 @@ void PlasmaStoreRunner::Start() {
 }
 
 void PlasmaStoreRunner::Stop() {
-  if (loop_) {
-    loop_->Stop();
-  } else {
-    RAY_LOG(ERROR) << "Expected loop_ to be non-NULL; this may be a bug";
-  }
+  store_->Stop();
+  main_service_.stop();
 }
 
 void PlasmaStoreRunner::Shutdown() {
-  loop_->Shutdown();
-  loop_ = nullptr;
+  store_->Stop();
   store_ = nullptr;
 }
 

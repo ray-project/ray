@@ -16,11 +16,10 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
-
 #include "ray/gcs/callback.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/redis_context.h"
-#include "ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace gcs {

@@ -942,6 +942,32 @@ TEST_F(SchedulingTest, UpdateLocalAvailableResourcesFromResourceInstancesTest) {
   }
 }
 
+TEST_F(SchedulingTest, TaskResourceInstanceWithHardRequestTest) {
+  NodeResources node_resources;
+  vector<FixedPoint> pred_capacities{4. /* CPU */, 2. /* MEM */, 4. /* GPU */};
+  initNodeResources(node_resources, pred_capacities, EmptyIntVector,
+                    EmptyFixedPointVector);
+  ClusterResourceScheduler cluster_resources(0, node_resources);
+
+  TaskRequest task_req;
+  vector<FixedPoint> pred_demands = {2. /* CPU */, 2. /* MEM */, 1.5 /* GPU */};
+  vector<bool> pred_soft = {false, false, true};
+  initTaskRequest(task_req, pred_demands, pred_soft, EmptyIntVector,
+                  EmptyFixedPointVector, EmptyBoolVector, EmptyIntVector);
+
+  std::shared_ptr<TaskResourceInstances> task_allocation =
+      std::make_shared<TaskResourceInstances>();
+  bool success =
+      cluster_resources.AllocateTaskResourceInstances(task_req, task_allocation);
+
+  ASSERT_EQ(success, true);
+
+  vector<FixedPoint> cpu_instances = task_allocation->GetGPUInstances();
+  vector<FixedPoint> expect_cpu_instance{1., 0.5, 0., 0.};
+
+  ASSERT_TRUE(EqualVectors(cpu_instances, expect_cpu_instance));
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
