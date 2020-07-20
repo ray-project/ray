@@ -38,6 +38,7 @@ class RemoteFunction:
         _object_store_memory: The object store memory request for this task.
         _resources: The default custom resource requirements for invocations of
             this remote function.
+        _constraints: The default constraints for invocations of this function.
         _num_return_vals: The default number of return values for invocations
             of this remote function.
         _max_calls: The number of times a worker can execute this function
@@ -59,7 +60,7 @@ class RemoteFunction:
     """
 
     def __init__(self, language, function, function_descriptor, num_cpus,
-                 num_gpus, memory, object_store_memory, resources,
+                 num_gpus, memory, object_store_memory, resources, constraints,
                  num_return_vals, max_calls, max_retries):
         self._language = language
         self._function = function
@@ -76,6 +77,7 @@ class RemoteFunction:
                 "setting object_store_memory is not implemented for tasks")
         self._object_store_memory = None
         self._resources = resources
+        self._constraints = constraints
         self._num_return_vals = (DEFAULT_REMOTE_FUNCTION_NUM_RETURN_VALS if
                                  num_return_vals is None else num_return_vals)
         self._max_calls = (DEFAULT_REMOTE_FUNCTION_MAX_CALLS
@@ -148,6 +150,7 @@ class RemoteFunction:
                 memory=None,
                 object_store_memory=None,
                 resources=None,
+                constraints=None,
                 max_retries=None):
         """Submit the remote function for execution."""
         worker = ray.worker.global_worker
@@ -187,8 +190,9 @@ class RemoteFunction:
 
         resources = ray.utils.resources_from_resource_arguments(
             self._num_cpus, self._num_gpus, self._memory,
-            self._object_store_memory, self._resources, num_cpus, num_gpus,
-            memory, object_store_memory, resources)
+            self._object_store_memory, self._resources, self._constraints,
+            num_cpus, num_gpus, memory, object_store_memory, resources,
+            constraints)
 
         def invocation(args, kwargs):
             if self._is_cross_language:

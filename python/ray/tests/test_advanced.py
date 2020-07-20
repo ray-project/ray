@@ -13,6 +13,7 @@ import pytest
 import ray
 import ray.cluster_utils
 import ray.test_utils
+import ray.resource_spec
 
 from ray.test_utils import RayTestTimeoutException
 
@@ -526,6 +527,45 @@ def test_wait_makes_object_local(ray_start_cluster):
     ok, _ = ray.wait([x_id])
     assert len(ok) == 1
     assert ray.worker.global_worker.core_worker.object_exists(x_id)
+
+
+def test_constraints(ray_start_cluster):
+    constraint_name = "ResourceConstraint:constraint"
+
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1, resources={"custom1": 1})
+    cluster.add_node(num_cpus=1, resources=
+                     {"custom2": 1, constraint_name: 1})
+    ray.init(address=cluster.address)
+
+    # Task tests
+    @ray.remote(num_cpus=0, constraints={constraint_name})
+    def foo():
+        assert "custom2" in ray.available_resources()
+        return True
+
+    ref1 = foo.remote()
+    ref2 = foo.options(constraints=constraint_name).remote()
+
+    assert all(ray.get([ref1, ref2]))
+
+    # Actor tests
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            assert "custom2" in ray.available_resources()
+            pass
+
+        def bar(self):
+            assert "custom2" in ray.available_resources()
+            return True
+
+    actor = Actor.options(constraints=constraint_name).remote()
+
+    ref = actor.bar.remote()
+
+    assert ray.get(ref)
+
 
 
 if __name__ == "__main__":

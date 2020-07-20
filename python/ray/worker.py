@@ -1742,10 +1742,10 @@ def _mode(worker=global_worker):
 def make_decorator(num_return_vals=None,
                    num_cpus=None,
                    num_gpus=None,
-                   constraints=None,
                    memory=None,
                    object_store_memory=None,
                    resources=None,
+                   constraints=None,
                    max_calls=None,
                    max_retries=None,
                    max_restarts=None,
@@ -1764,8 +1764,8 @@ def make_decorator(num_return_vals=None,
 
             return ray.remote_function.RemoteFunction(
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
-                memory, object_store_memory, resources, num_return_vals,
-                max_calls, max_retries)
+                memory, object_store_memory, resources, constraints,
+                num_return_vals, max_calls, max_retries)
 
         if inspect.isclass(function_or_class):
             if num_return_vals is not None:
@@ -1777,7 +1777,8 @@ def make_decorator(num_return_vals=None,
 
             return ray.actor.make_actor(function_or_class, num_cpus, num_gpus,
                                         memory, object_store_memory, resources,
-                                        max_restarts, max_task_retries)
+                                        constraints, max_restarts,
+                                        max_task_retries)
 
         raise TypeError("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -1836,6 +1837,9 @@ def remote(*args, **kwargs):
       number of times that the remote function should be rerun when the worker
       process executing it crashes unexpectedly. The minimum valid value is 0,
       the default is 4 (default), and a value of -1 indicates infinite retries.
+    * **constraints**: Specify constraints for a task or actor. For example, an
+      IP address or device constraint (see ray.devices.*). To pass in multiple
+      constraints by passing in a set of constraints.
 
     This can be done as follows:
 
@@ -1896,11 +1900,11 @@ def remote(*args, **kwargs):
             "memory",
             "object_store_memory",
             "resources",
+            "constraints",
             "max_calls",
             "max_restarts",
             "max_task_retries",
             "max_retries",
-            "constraints",
         ], error_string
 
     num_cpus = kwargs.get("num_cpus", None)
@@ -1915,13 +1919,6 @@ def remote(*args, **kwargs):
         assert "GPU" not in resources, "Use the 'num_gpus' argument."
 
     constraints = kwargs.get("constraints", None)
-    if constraints is not None:
-        if isinstance(constraints, str):
-            constraints = {constraints}
-        assert isinstance(constraints,
-                          set), "constraints must be a string or a set."
-        for constraint in constraints:
-            resources[constraint] = 0.0001
 
     # Handle other arguments.
     num_return_vals = kwargs.get("num_return_vals")
@@ -1939,6 +1936,7 @@ def remote(*args, **kwargs):
         memory=memory,
         object_store_memory=object_store_memory,
         resources=resources,
+        constraints=constraints,
         max_calls=max_calls,
         max_restarts=max_restarts,
         max_task_retries=max_task_retries,
