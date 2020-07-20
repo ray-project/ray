@@ -23,16 +23,17 @@ import SortableTableHead, {
 import { getComparator, Order, stableSort } from "../../../common/tableUtils";
 import { StoreState } from "../../../store";
 import { dashboardActions } from "../state";
-import { MemoryTableRow } from "./MemoryTableRow";
+import ExpanderRow from "./ExpanderRow";
 import MemoryRowGroup from "./MemoryRowGroup";
+import { MemoryTableRow } from "./MemoryTableRow";
 
-DEFAULT_ENTRIES_PER_GROUP = 10;
+const DEFAULT_ENTRIES_PER_GROUP = 10;
+const DEFAULT_UNGROUPED_ENTRIES = 25;
 
 type GroupedMemoryRowsProps = {
-  memoryTableGroups: MemoryTableGroups,
-  order: Order,
-  orderBy: keyof MemoryTableEntry | null,
-  visibleEntries?: number
+  memoryTableGroups: MemoryTableGroups;
+  order: Order;
+  orderBy: keyof MemoryTableEntry | null;
 };
 
 const GroupedMemoryRows: React.FC<GroupedMemoryRowsProps> = ({
@@ -41,29 +42,31 @@ const GroupedMemoryRows: React.FC<GroupedMemoryRowsProps> = ({
   orderBy,
 }) => {
   const comparator = orderBy && getComparator(order, orderBy);
-  return <>
-    {Object.entries(memoryTableGroups).map(([groupKey, group]) => {
-      const sortedEntries = comparator
-        ? stableSort(group.entries, comparator)
-        : group.entries;
+  return (
+    <React.Fragment>
+      {Object.entries(memoryTableGroups).map(([groupKey, group]) => {
+        const sortedEntries = comparator
+          ? stableSort(group.entries, comparator)
+          : group.entries;
 
-      return (
-        <MemoryRowGroup
-          groupKey={groupKey}
-          summary={group.summary}
-          entries={sortedEntries}
-          initialExpanded={false}
-          visibleEntries={visibleEntries ?? DEFAULT_ENTRIES_PER_GROUP}
-        />
-      );
-    })}
-  </>
+        return (
+          <MemoryRowGroup
+            groupKey={groupKey}
+            summary={group.summary}
+            entries={sortedEntries}
+            initialExpanded={true}
+            initialVisibleEntries={DEFAULT_ENTRIES_PER_GROUP}
+          />
+        );
+      })}
+    </React.Fragment>
+  );
 };
 
 type UngroupedMemoryRowsProps = {
-  memoryTableGroups: MemoryTableGroups,
-  order: Order,
-  orderBy: memoryColumnId | null,
+  memoryTableGroups: MemoryTableGroups;
+  order: Order;
+  orderBy: memoryColumnId | null;
 };
 
 const UngroupedMemoryRows: React.FC<UngroupedMemoryRowsProps> = ({
@@ -71,6 +74,10 @@ const UngroupedMemoryRows: React.FC<UngroupedMemoryRowsProps> = ({
   order,
   orderBy,
 }) => {
+  const [visibleEntries, setVisibleEntries] = useState(
+    DEFAULT_UNGROUPED_ENTRIES,
+  );
+  const onExpand = () => setVisibleEntries(visibleEntries + 10);
   const allEntries = Object.values(memoryTableGroups).reduce(
     (allEntries: Array<MemoryTableEntry>, memoryTableGroup) => {
       const groupEntries = memoryTableGroup.entries;
@@ -82,12 +89,18 @@ const UngroupedMemoryRows: React.FC<UngroupedMemoryRowsProps> = ({
     orderBy === null
       ? allEntries
       : stableSort(allEntries, getComparator(order, orderBy));
-  return <> {sortedEntries.map((memoryTableEntry, index) => (
-    <MemoryTableRow
-      memoryTableEntry={memoryTableEntry}
-      key={`mem-row-${index}`}
-    />
-  ))}</>
+  return (
+    <React.Fragment>
+      {" "}
+      {sortedEntries.slice(0, visibleEntries).map((memoryTableEntry, index) => (
+        <MemoryTableRow
+          memoryTableEntry={memoryTableEntry}
+          key={`mem-row-${index}`}
+        />
+      ))}
+      <ExpanderRow onExpand={onExpand} />
+    </React.Fragment>
+  );
 };
 
 type memoryColumnId =
@@ -195,19 +208,19 @@ const MemoryInfo: React.FC<{}> = () => {
               firstColumnEmpty={false}
             />
             <TableBody>
-              {isGrouped
-                ? <GroupedMemoryRows
+              {isGrouped ? (
+                <GroupedMemoryRows
                   memoryTableGroups={memoryTable.group}
                   order={order}
                   orderBy={orderBy}
-                /> : 
+                />
+              ) : (
                 <UngroupedMemoryRows
                   memoryTableGroups={memoryTable.group}
                   order={order}
                   orderBy={orderBy}
                 />
-              }
-
+              )}
             </TableBody>
           </Table>
         </React.Fragment>
