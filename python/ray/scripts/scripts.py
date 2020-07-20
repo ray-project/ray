@@ -341,6 +341,12 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     is_flag=True,
     default=False,
     help="Specify whether LRU evict will be used for this cluster.")
+@click.option(
+    "--enable-object-reconstruction",
+    is_flag=True,
+    default=False,
+    help="Specify whether object reconstruction will be used for this cluster."
+)
 def start(node_ip_address, redis_address, address, redis_port, port,
           num_redis_shards, redis_max_clients, redis_password,
           redis_shard_ports, object_manager_port, node_manager_port,
@@ -351,7 +357,7 @@ def start(node_ip_address, redis_address, address, redis_port, port,
           autoscaling_config, no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
           java_worker_options, load_code_from_local, internal_config,
-          lru_evict):
+          lru_evict, enable_object_reconstruction):
     """Start Ray processes manually on the local machine."""
     if gcs_server_port and not head:
         raise ValueError(
@@ -429,7 +435,8 @@ def start(node_ip_address, redis_address, address, redis_port, port,
         java_worker_options=java_worker_options,
         load_code_from_local=load_code_from_local,
         _internal_config=internal_config,
-        lru_evict=lru_evict)
+        lru_evict=lru_evict,
+        enable_object_reconstruction=enable_object_reconstruction)
     if head:
         # Start Ray on the head node.
         if redis_shard_ports is not None:
@@ -1113,12 +1120,18 @@ def statistics(address):
     required=False,
     type=str,
     help="Override the address to connect to.")
-def memory(address):
+@click.option(
+    "--redis_password",
+    required=False,
+    type=str,
+    default=ray_constants.REDIS_DEFAULT_PASSWORD,
+    help="Connect to ray with redis_password.")
+def memory(address, redis_password):
     """Print object references held in a Ray cluster."""
     if not address:
         address = services.find_redis_address_or_die()
     logger.info("Connecting to Ray instance at {}.".format(address))
-    ray.init(address=address)
+    ray.init(address=address, redis_password=redis_password)
     print(ray.internal.internal_api.memory_summary())
 
 

@@ -56,9 +56,17 @@ class MockExporter : public opencensus::stats::StatsExporter::Handler {
   }
 };
 
+/// Default report flush interval is 500ms, so we may wait a while for data
+/// exporting.
+uint32_t kReportFlushInterval = 500;
+
 class StatsTest : public ::testing::Test {
  public:
   void SetUp() {
+    absl::Duration report_interval = absl::Milliseconds(kReportFlushInterval);
+    absl::Duration harvest_interval = absl::Milliseconds(kReportFlushInterval / 2);
+    ray::stats::StatsConfig::instance().SetReportInterval(report_interval);
+    ray::stats::StatsConfig::instance().SetHarvestInterval(harvest_interval);
     const stats::TagsType global_tags = {{stats::LanguageKey, "CPP"},
                                          {stats::WorkerPidKey, "1000"}};
     std::shared_ptr<stats::MetricExporterClient> exporter(
@@ -74,7 +82,7 @@ class StatsTest : public ::testing::Test {
 };
 
 TEST_F(StatsTest, F) {
-  for (size_t i = 0; i < 500; ++i) {
+  for (size_t i = 0; i < 20; ++i) {
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     stats::CurrentWorker().Record(2345);
   }
