@@ -296,8 +296,6 @@ PROPAGATED_WINDOWS_DEFINES = ["ARROW_STATIC"]
 
 PLASMA_COPTS = COPTS + select({
     "@bazel_tools//src/conditions:windows": [
-        "-D" + "WIN32_REPLACE_FD_APIS",
-        "/FI" + "win32fd.h",
     ] + ["-D" + define for define in PROPAGATED_WINDOWS_DEFINES],
     "//conditions:default": [
         "-DARROW_USE_GLOG",
@@ -316,12 +314,18 @@ cc_library(
     name = "plasma_client",
     srcs = [
         "src/ray/object_manager/plasma/client.cc",
-        "src/ray/object_manager/plasma/fling.cc",
-        "src/ray/object_manager/plasma/io.cc",
+        "src/ray/object_manager/plasma/connection.cc",
         "src/ray/object_manager/plasma/malloc.cc",
         "src/ray/object_manager/plasma/plasma.cc",
         "src/ray/object_manager/plasma/protocol.cc",
-    ],
+        "src/ray/object_manager/plasma/shared_memory.cc",
+    ] + select({
+        "@bazel_tools//src/conditions:windows": [
+        ],
+        "//conditions:default": [
+            "src/ray/object_manager/plasma/fling.cc",
+        ],
+    }),
     hdrs = [
         "src/ray/object_manager/format/object_manager_generated.h",
         "src/ray/object_manager/notification/object_store_notification_manager.h",
@@ -329,13 +333,19 @@ cc_library(
         "src/ray/object_manager/plasma/common.h",
         "src/ray/object_manager/plasma/compat.h",
         "src/ray/object_manager/plasma/external_store.h",
-        "src/ray/object_manager/plasma/fling.h",
-        "src/ray/object_manager/plasma/io.h",
+        "src/ray/object_manager/plasma/connection.h",
         "src/ray/object_manager/plasma/malloc.h",
         "src/ray/object_manager/plasma/plasma.h",
         "src/ray/object_manager/plasma/plasma_generated.h",
         "src/ray/object_manager/plasma/protocol.h",
-    ],
+        "src/ray/object_manager/plasma/shared_memory.h",
+    ] + select({
+        "@bazel_tools//src/conditions:windows": [
+        ],
+        "//conditions:default": [
+            "src/ray/object_manager/plasma/fling.h",
+        ],
+    }),
     copts = PLASMA_COPTS,
     defines = select({
         "@bazel_tools//src/conditions:windows": PROPAGATED_WINDOWS_DEFINES,
@@ -355,31 +365,9 @@ cc_library(
 )
 
 cc_library(
-    name = "ae",
-    srcs = [
-        "src/ray/thirdparty/ae/ae.c",
-    ],
-    hdrs = [
-        "src/ray/thirdparty/ae/ae.h",
-        "src/ray/thirdparty/ae/ae_epoll.c",
-        "src/ray/thirdparty/ae/ae_evport.c",
-        "src/ray/thirdparty/ae/ae_kqueue.c",
-        "src/ray/thirdparty/ae/ae_select.c",
-        "src/ray/thirdparty/ae/config.h",
-        "src/ray/thirdparty/ae/zmalloc.h",
-    ],
-    copts = PLASMA_COPTS,
-    strip_include_prefix = "src",
-    deps = [
-        ":platform_shims",
-    ],
-)
-
-cc_library(
     name = "plasma_store_server_lib",
     srcs = [
         "src/ray/object_manager/plasma/dlmalloc.cc",
-        "src/ray/object_manager/plasma/events.cc",
         "src/ray/object_manager/plasma/eviction_policy.cc",
         "src/ray/object_manager/plasma/external_store.cc",
         "src/ray/object_manager/plasma/plasma_allocator.cc",
@@ -388,7 +376,6 @@ cc_library(
         "src/ray/object_manager/plasma/store_runner.cc",
     ],
     hdrs = [
-        "src/ray/object_manager/plasma/events.h",
         "src/ray/object_manager/plasma/eviction_policy.h",
         "src/ray/object_manager/plasma/external_store.h",
         "src/ray/object_manager/plasma/plasma_allocator.h",
@@ -401,7 +388,6 @@ cc_library(
     linkopts = PLASMA_LINKOPTS,
     strip_include_prefix = "src",
     deps = [
-        ":ae",
         ":plasma_client",
         "@com_github_google_glog//:glog",
     ],
