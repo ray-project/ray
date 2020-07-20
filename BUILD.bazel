@@ -572,6 +572,7 @@ cc_binary(
     deps = [
         ":gcs_server_lib",
         "@com_github_gflags_gflags//:gflags",
+        ":stats_lib"
     ],
 )
 

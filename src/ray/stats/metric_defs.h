@@ -24,6 +24,9 @@
 ///
 /// You can follow these examples to define your metrics.
 
+///
+/// Raylet Metrics
+///
 static Gauge CurrentWorker("current_worker",
                            "This metric is used for reporting states of workers."
                            "Through this, we can see the worker's state on dashboard.",
@@ -74,3 +77,8 @@ static Gauge ReconstructionPolicyStats(
 static Gauge ConnectionPoolStats("connection_pool_stats",
                                  "Stats the connection pool metrics.", "pcs",
                                  {ValueTypeKey});
+
+///
+/// GCS Server Metrics
+///
+statis Gauge

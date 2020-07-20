@@ -128,9 +128,7 @@ class MetricExporterClientTest : public ::testing::Test {
 
   virtual void TearDown() override { Shutdown(); }
 
-  void Shutdown() {
-    opencensus::stats::StatsExporterImpl::Get()->ClearHandlersForTesting();
-  }
+  void Shutdown() { stats::Shutdown(); }
 
  protected:
   std::shared_ptr<MetricExporterClient> exporter;
@@ -178,6 +176,7 @@ TEST_F(MetricExporterClientTest, exporter_client_caculation_test) {
   opencensus::stats::StatsExporterImpl::Get()->Export();
   RAY_LOG(INFO) << "Min " << mock1->GetLastestHistMin() << ", mean "
                 << mock1->GetLastestHistMean() << ", max " << mock1->GetLastestHistMax();
+  RAY_LOG(ERROR) << "sangbin " << mock1->GetLastestHistMean();
   ASSERT_TRUE(DoubleEqualTo(mock1->GetLastestHistMin(), 0.0));
   ASSERT_TRUE(DoubleEqualTo(mock1->GetLastestHistMean(), 249.5));
   ASSERT_TRUE(DoubleEqualTo(mock1->GetLastestHistMax(), 499.0));

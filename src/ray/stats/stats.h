@@ -18,8 +18,8 @@
 #include <string>
 #include <unordered_map>
 
-#include "opencensus/exporters/stats/prometheus/prometheus_exporter.h"
-#include "opencensus/exporters/stats/stdout/stdout_exporter.h"
+#include "absl/synchronization/mutex.h"
+
 #include "opencensus/stats/internal/delta_producer.h"
 #include "opencensus/stats/stats.h"
 #include "opencensus/tags/tag_key.h"
@@ -42,6 +42,7 @@ namespace stats {
 
 static std::shared_ptr<IOServicePool> metrics_io_service_pool;
 static std::shared_ptr<MetricExporterClient> exporter;
+static absl::Mutex stats_mutex;
 
 /// Initialize stats.
 static void Init(
@@ -49,32 +50,35 @@ static void Init(
     std::shared_ptr<MetricExporterClient> exporter_to_use = nullptr,
     int64_t metrics_report_batch_size = RayConfig::instance().metrics_report_batch_size(),
     bool disable_stats = !RayConfig::instance().enable_metrics_collection()) {
+  absl::MutexLock lock(&stats_mutex);
+  if (StatsConfig::instance().IsInitialized()) {
+    RAY_CHECK(metrics_io_service_pool != nullptr);
+    RAY_CHECK(exporter != nullptr);
+    return;
+  }
+
+  RAY_CHECK(metrics_io_service_pool == nullptr);
+  RAY_CHECK(exporter == nullptr);
   StatsConfig::instance().SetIsDisableStats(disable_stats);
   if (disable_stats) {
     RAY_LOG(INFO) << "Disabled stats.";
     return;
   }
 
-  if (StatsConfig::instance().IsInitialized()) {
-    return;
-  }
-
   metrics_io_service_pool = std::make_shared<IOServicePool>(1);
-  boost::asio::io_service *metrics_io_serve = metrics_io_service_pool->Get();
+  metrics_io_service_pool->Run();
+  boost::asio::io_service *metrics_io_service = metrics_io_service_pool->Get();
+  RAY_CHECK(metrics_io_service != nullptr);
 
   // Default exporter is metrics agent exporter.
   if (exporter_to_use == nullptr) {
     std::shared_ptr<MetricExporterClient> stdout_exporter(new StdoutExporterClient());
     exporter.reset(new MetricsAgentExporter(stdout_exporter, metrics_agent_port,
-                                            (*metrics_io_serve), "127.0.0.1"));
+                                            (*metrics_io_service), "127.0.0.1"));
   } else {
     exporter = exporter_to_use;
   }
 
-  metrics_io_service_pool->Run();
-
-  // TODO(sang): Currently, we don't do any cleanup. This can lead us to lose last 10
-  // seconds data before we exit the main script.
   MetricExporter::Register(exporter, metrics_report_batch_size);
   opencensus::stats::StatsExporter::SetInterval(
       StatsConfig::instance().GetReportInterval());
@@ -84,11 +88,9 @@ static void Init(
   StatsConfig::instance().SetIsInitialized(true);
 }
 
-/// NOTE: OpenCensus doesn't have APIs to  stop metrics collection & export.
-/// This method simply stops exporting metrics. It has to be called only when the
-/// process is terminated.
-static void Cleanup() {
-  MetricExporter::StopExportMetricsGraceful();
+static void Shutdown() {
+  absl::MutexLock lock(&stats_mutex);
+  opencensus::stats::StatsExporter::Shutdown();
   metrics_io_service_pool->Stop();
   metrics_io_service_pool = nullptr;
   exporter = nullptr;

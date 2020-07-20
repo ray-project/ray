@@ -164,6 +164,7 @@ class ClientCallManager {
   /// posted.
   explicit ClientCallManager(boost::asio::io_service &main_service, int num_threads = 1)
       : main_service_(main_service), num_threads_(num_threads), shutdown_(false) {
+    RAY_LOG(ERROR) << "sang call amnager constructor";
     rr_index_ = rand() % num_threads_;
     // Start the polling threads.
     cqs_.reserve(num_threads_);

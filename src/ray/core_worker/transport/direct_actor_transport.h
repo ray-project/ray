@@ -220,7 +220,7 @@ class CoreWorkerDirectActorTaskSubmitter
   /// Factory for producing new core worker clients.
   rpc::ClientFactoryFn client_factory_;
 
-  /// Mutex to proect the various maps below.
+  /// Mutex to protect the various maps below.
   mutable absl::Mutex mu_;
 
   absl::flat_hash_map<ActorID, ClientQueue> client_queues_ GUARDED_BY(mu_);

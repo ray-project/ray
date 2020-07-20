@@ -25,21 +25,11 @@ void MetricExporter::ExportToPoints(
         &view_data,
     const std::string &metric_name, std::vector<std::string> &keys,
     std::vector<MetricPoint> &points) {
-  RAY_CHECK(is_exporting_ == false);
   // Return if no raw data found in view map.
   if (view_data.size() == 0) {
     return;
   }
 
-  if (should_be_cleaned_up_) {
-    return;
-  }
-
-  // NOTE: This flag is used to figure out if export progress is going on or not.
-  // It is important because cpp OpenCensus client does not support clean up, and we
-  // should have a way to figure out if it is safe to clean up the exporter. We should not
-  // return the method without flagging off this flag.
-  is_exporting_ = true;
   // NOTE(lingxuan.zlx): No sampling in histogram data, so all points all be filled in.
   std::unordered_map<std::string, std::string> tags;
   for (size_t i = 0; i < view_data.begin()->first.size(); ++i) {
@@ -79,7 +69,6 @@ void MetricExporter::ExportToPoints(
     metric_exporter_client_->ReportMetrics(points);
     points.clear();
   }
-  is_exporting_ = false;
 }
 
 void MetricExporter::ExportViewData(

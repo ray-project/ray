@@ -238,6 +238,7 @@ int main(int argc, char *argv[]) {
   auto handler = [&main_service, &raylet_socket_name, &server, &gcs_client](
                      const boost::system::error_code &error, int signal_number) {
     RAY_LOG(INFO) << "Raylet received SIGTERM, shutting down...";
+    ray::stats::Shutdown();
     server->Stop();
     gcs_client->Disconnect();
     main_service.stop();

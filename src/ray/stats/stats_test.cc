@@ -75,6 +75,8 @@ class StatsTest : public ::testing::Test {
     MockExporter::Register();
   }
 
+  virtual void TearDown() override { Shutdown(); }
+
   void Shutdown() {}
 
  private:
