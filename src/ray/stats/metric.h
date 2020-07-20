@@ -74,20 +74,6 @@ class StatsConfig final {
   absl::Duration harvest_interval_ = absl::Seconds(5);
 };
 
-class MetricDefRegistry {
- public:
-  explicit MetricDefRegistry() {}
-  ~MetricDefRegistry() {}
-
-  void RegisterNewEntry();
-
-  void RegisterEntries(std::vector<Metric> entries);
-
- private:
-  mutable absl::Mutex mutex_;
-  absl::flat_hash_map<std::string, Metric> metrics_def_registry_ GUARDED_BY(mutex_);
-};
-
 /// A thin wrapper that wraps the `opencensus::tag::measure` for using it simply.
 class Metric {
  public:

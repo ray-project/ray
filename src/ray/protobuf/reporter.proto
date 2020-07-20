@@ -39,6 +39,7 @@ message ReportMetricsRequest {
 }
 
 message ReportMetricsReply {
+  bool metrcs_description_required = 1;
 }
 
 // Service for communicating with the reporter.py process on a remote node.

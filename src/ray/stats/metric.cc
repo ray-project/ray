@@ -72,19 +72,6 @@ const absl::Duration &StatsConfig::GetHarvestInterval() const {
 }
 
 ///
-/// MetricDefRegistry
-///
-void RegisterNewEntry() {
-  absl::MutexLock lock(&mutex_);
-  // TODO-Implement
-}
-
-void RegisterEntries(std::vector<Metric> entries) {
-  absl::MutexLock lock(&mutex_);
-  // TODO-Implement
-}
-
-///
 /// Metric
 ///
 
