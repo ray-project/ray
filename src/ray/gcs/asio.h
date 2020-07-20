@@ -42,8 +42,6 @@
 #include <boost/asio/error.hpp>
 #include <boost/bind.hpp>
 
-#include "hiredis/async.h"
-#include "hiredis/hiredis.h"
 #include "ray/gcs/redis_async_context.h"
 
 class RedisAsioClient {

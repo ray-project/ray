@@ -89,9 +89,18 @@ Status ServiceBasedJobInfoAccessor::AsyncSubscribeAll(
 
 void ServiceBasedJobInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
   RAY_LOG(INFO) << "Reestablishing subscription for job info.";
-  // If the pub-sub server has restarted, we need to resubscribe to the pub-sub server.
-  if (subscribe_operation_ != nullptr && is_pubsub_server_restarted) {
-    RAY_CHECK_OK(subscribe_operation_(nullptr));
+  // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
+  // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
+  // server first, then fetch data from the GCS server.
+  if (is_pubsub_server_restarted) {
+    if (subscribe_operation_ != nullptr) {
+      RAY_CHECK_OK(subscribe_operation_(
+          [this](const Status &status) { fetch_all_data_operation_(nullptr); }));
+    }
+  } else {
+    if (fetch_all_data_operation_ != nullptr) {
+      fetch_all_data_operation_(nullptr);
+    }
   }
 }
 
@@ -1378,6 +1387,29 @@ Status ServiceBasedWorkerInfoAccessor::AsyncAdd(
       request, [callback](const Status &status, const rpc::AddWorkerInfoReply &reply) {
         if (callback) {
           callback(status);
+        }
+      });
+  return Status::OK();
+}
+
+ServiceBasedPlacementGroupInfoAccessor::ServiceBasedPlacementGroupInfoAccessor(
+    ServiceBasedGcsClient *client_impl)
+    : client_impl_(client_impl) {}
+
+Status ServiceBasedPlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
+    const ray::PlacementGroupSpecification &placement_group_spec) {
+  rpc::CreatePlacementGroupRequest request;
+  request.mutable_placement_group_spec()->CopyFrom(placement_group_spec.GetMessage());
+  client_impl_->GetGcsRpcClient().CreatePlacementGroup(
+      request, [placement_group_spec](const Status &,
+                                      const rpc::CreatePlacementGroupReply &reply) {
+        auto status =
+            reply.status().code() == (int)StatusCode::OK
+                ? Status()
+                : Status(StatusCode(reply.status().code()), reply.status().message());
+        if (status.ok()) {
+          RAY_LOG(DEBUG) << "Finished registering placement group. placement group id = "
+                         << placement_group_spec.PlacementGroupId();
         }
       });
   return Status::OK();

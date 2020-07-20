@@ -42,7 +42,7 @@ if __name__ == "__main__":
         # for continuous dimensions: (continuous, search_range, precision)
         "height": (ValueType.CONTINUOUS, [-10, 10], 1e-2),
         # for discrete dimensions: (discrete, search_range, has_order)
-        "width": (ValueType.DISCRETE, [-10, 10], False)
+        "width": (ValueType.DISCRETE, [0, 10], False)
     }
 
     config = {

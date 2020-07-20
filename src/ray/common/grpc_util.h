@@ -20,7 +20,7 @@
 
 #include <sstream>
 
-#include "status.h"
+#include "ray/common/status.h"
 
 namespace ray {
 

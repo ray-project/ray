@@ -13,6 +13,7 @@ from azure.mgmt.resource.resources.models import DeploymentMode
 from knack.util import CLIError
 
 from ray.autoscaler.node_provider import NodeProvider
+from ray.autoscaler.azure.config import bootstrap_azure
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 
 VM_NAME_MAX_LEN = 64
@@ -291,3 +292,7 @@ class AzureNodeProvider(NodeProvider):
         if node_id in self.cached_nodes:
             return self.cached_nodes[node_id]
         return self._get_node(node_id=node_id)
+
+    @staticmethod
+    def bootstrap_config(cluster_config):
+        return bootstrap_azure(cluster_config)

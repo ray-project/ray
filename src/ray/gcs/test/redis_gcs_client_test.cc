@@ -14,16 +14,15 @@
 
 #include "gtest/gtest.h"
 
-// TODO(pcm): get rid of this and replace with the type safe plasma event loop
-extern "C" {
-#include "hiredis/hiredis.h"
-}
-
 #include "ray/common/ray_config.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/gcs/tables.h"
+
+extern "C" {
+#include "hiredis/hiredis.h"
+}
 
 namespace ray {
 
