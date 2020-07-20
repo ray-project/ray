@@ -1,6 +1,8 @@
 import argparse
+import errno
 import glob
 import io
+import logging
 import os
 import re
 import shutil
@@ -15,6 +17,8 @@ from itertools import chain
 import urllib.error
 import urllib.parse
 import urllib.request
+
+logger = logging.getLogger(__name__)
 
 # Ideally, we could include these files by putting them in a
 # MANIFEST.in or using the package_data argument to setup, but the
@@ -218,12 +222,18 @@ def build(build_python, build_java):
             ] + pip_packages,
             env=dict(os.environ, CC="gcc"))
 
-    bazel = os.getenv("BAZEL_EXECUTABLE", "bazel")
+    version_info = subprocess.check_output(["--version"])
+    bazel_version_str = version_info.rstrip().decode("utf-8").split(" ", 1)[1]
+    bazel_version = tuple(map(int, bazel_version_str.split(".")))
+    if bazel_version <= SUPPORTED_BAZEL:
+        logger.warning("Expected Bazel version {} but found {}",
+                       bazel_version, SUPPORTED_BAZEL)
+
     bazel_targets = []
     bazel_targets += ["//:ray_pkg"] if build_python else []
     bazel_targets += ["//java:ray_java_pkg"] if build_java else []
     return subprocess.check_call(
-        [bazel, "build", "--verbose_failures", "--"] + bazel_targets,
+        ["build", "--verbose_failures", "--"] + bazel_targets,
         env=dict(os.environ, PYTHON3_BIN_PATH=sys.executable))
 
 
