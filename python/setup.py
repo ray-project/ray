@@ -23,6 +23,7 @@ import urllib.request
 # manually.
 
 SUPPORTED_PYTHONS = [(3, 5), (3, 6), (3, 7), (3, 8)]
+SUPPORTED_BAZEL = (3, 2, 0)
 
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
@@ -312,7 +313,8 @@ def pip_run(build_ext):
 
 def api_main(program, *args):
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", type=str, choices=["build", "help"])
+    choices = ["build", "bazel_version", "help"]
+    parser.add_argument("command", type=str, choices=choices)
     parser.add_argument(
         "-l",
         "--language",
@@ -335,6 +337,8 @@ def api_main(program, *args):
             else:
                 raise ValueError("invalid language: {!r}".format(lang))
         result = build(**kwargs)
+    elif parsed_args.command == "bazel_version":
+        print(".".join(map(str, SUPPORTED_BAZEL)))
     elif parsed_args.command == "help":
         parser.print_help()
     else:

@@ -6,7 +6,6 @@ ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
 arg1="${1-}"
 
-version="3.2.0"
 achitecture="${HOSTTYPE}"
 platform="unknown"
 case "${OSTYPE}" in
@@ -45,6 +44,8 @@ esac
   fi
 )
 
+python="$(command -v python3 || command -v python || echo python)"
+version="$("${python}" -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" bazel_version "${ROOT_DIR}/../../python/setup.py")"
 if [ "${OSTYPE}" = "msys" ]; then
   target="${MINGW_DIR-/usr}/bin/bazel.exe"
   mkdir -p "${target%/*}"
