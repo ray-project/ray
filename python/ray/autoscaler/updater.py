@@ -137,6 +137,11 @@ class NodeUpdater:
 
         node_tags = self.provider.node_tags(self.node_id)
         logger.debug("Node tags: {}".format(str(node_tags)))
+        # file_mounts_content_hash will only change whenever the user restarts
+        # or updates their cluster with `get_or_create_head_node` unless
+        # continuous mode is on. In that case, the file_mounts_content_hash
+        # will be recalculated at a regular interval while the cluster is
+        # running.
         if node_tags.get(
                 TAG_RAY_RUNTIME_CONFIG) == self.runtime_hash and node_tags.get(
                     TAG_RAY_FILE_MOUNTS_CONTENTS
@@ -149,7 +154,7 @@ class NodeUpdater:
                 self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SYNCING_FILES})
             self.sync_file_mounts(self.rsync_up)
 
-            # Only run init/setup commands when runtime config has changed
+            # Only run init/setup commands when runtime config has changed.
             if node_tags.get(TAG_RAY_RUNTIME_CONFIG) != self.runtime_hash:
                 # Run init commands
                 self.provider.set_node_tags(

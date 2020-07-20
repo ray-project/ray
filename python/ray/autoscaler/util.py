@@ -128,7 +128,7 @@ def hash_runtime_conf(file_mounts, extra_objs, use_cached_contents_hash=True):
     conf_str = (json.dumps(file_mounts, sort_keys=True).encode("utf-8") +
                 json.dumps(extra_objs, sort_keys=True).encode("utf-8"))
 
-    # Only hash the files once unless use_chaced_contents_hash is false.
+    # Only hash the files once, unless use_cached_contents_hash is false.
     if not use_cached_contents_hash or conf_str not in _hash_cache:
         config_hasher.update(conf_str)
         for local_path in sorted(file_mounts.values()):
