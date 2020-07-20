@@ -36,6 +36,10 @@ static void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
   view_descriptor.RegisterForExport();
 }
 
+///
+/// Stats Config
+///
+
 StatsConfig &StatsConfig::instance() {
   static StatsConfig instance;
   return instance;
@@ -66,6 +70,23 @@ void StatsConfig::SetHarvestInterval(const absl::Duration interval) {
 const absl::Duration &StatsConfig::GetHarvestInterval() const {
   return harvest_interval_;
 }
+
+///
+/// MetricDefRegistry
+///
+void RegisterNewEntry() {
+  absl::MutexLock lock(&mutex_);
+  // TODO-Implement
+}
+
+void RegisterEntries(std::vector<Metric> entries) {
+  absl::MutexLock lock(&mutex_);
+  // TODO-Implement
+}
+
+///
+/// Metric
+///
 
 void Metric::Record(double value, const TagsType &tags) {
   if (StatsConfig::instance().IsStatsDisabled()) {

@@ -29,6 +29,8 @@ namespace stats {
 /// Include tag_defs.h to define tag items
 #include "ray/stats/tag_defs.h"
 
+static MetricsDefRegistry MetricsRegistry();
+
 class StatsConfig final {
  public:
   static StatsConfig &instance();
@@ -70,6 +72,20 @@ class StatsConfig final {
   // report interval. So harvest interval is suggusted to be half of report
   // interval.
   absl::Duration harvest_interval_ = absl::Seconds(5);
+};
+
+class MetricDefRegistry {
+ public:
+  explicit MetricDefRegistry() {}
+  ~MetricDefRegistry() {}
+
+  void RegisterNewEntry();
+
+  void RegisterEntries(std::vector<Metric> entries);
+
+ private:
+  mutable absl::Mutex mutex_;
+  absl::flat_hash_map<std::string, Metric> metrics_def_registry_ GUARDED_BY(mutex_);
 };
 
 /// A thin wrapper that wraps the `opencensus::tag::measure` for using it simply.
@@ -172,6 +188,7 @@ struct MetricPoint {
   double value;
   std::unordered_map<std::string, std::string> tags;
 };
+
 }  // namespace stats
 
 }  // namespace ray
