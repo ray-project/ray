@@ -204,6 +204,9 @@ class CoreWorkerProcess {
   /// Start stats/metric service for core worker process.
   static void RunStatsService();
 
+  /// Start stats/metric service for core worker process.
+  static void StopStatsService();
+
   // The destructor is not to be used as a public API, but it's required by smart
   // pointers.
   ~CoreWorkerProcess();
@@ -263,14 +266,14 @@ class CoreWorkerProcess {
   /// Event loop where the metric exporting are handled. e.g. async gRPC operations.
   static boost::asio::io_service stats_io_service_;
 
-  /// Stats io worker keep stats io service alive.
-  static boost::asio::io_service::work stats_io_work_;
-
   /// Stats service worker thread and it will be detached.
   static std::shared_ptr<std::thread> stats_thread_;
 
   /// Make thread-safe for core worker stats initialization.
-  static absl::Mutex stats_mutex_;
+  static absl::Mutex stats_initialization_mutex_;
+
+  /// Atomic count for stats.
+  static std::atomic<int> enable_stats_count_;
 };
 
 /// The root class that contains all the core and language-independent functionalities
@@ -285,6 +288,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_id);
 
   CoreWorker(CoreWorker const &) = delete;
+
   void operator=(CoreWorker const &other) = delete;
 
   ///

@@ -64,17 +64,16 @@ thread_local std::weak_ptr<CoreWorker> CoreWorkerProcess::current_core_worker_;
 
 boost::asio::io_service CoreWorkerProcess::stats_io_service_;
 
-boost::asio::io_service::work CoreWorkerProcess::stats_io_work_(
-    CoreWorkerProcess::stats_io_service_);
-
 std::shared_ptr<std::thread> CoreWorkerProcess::stats_thread_;
 
-absl::Mutex CoreWorkerProcess::stats_mutex_;
+std::atomic<int> CoreWorkerProcess::enable_stats_count_(0);
+
+absl::Mutex CoreWorkerProcess::stats_initialization_mutex_;
 
 void CoreWorkerProcess::Initialize(const CoreWorkerOptions &options) {
   RAY_CHECK(!instance_) << "The process is already initialized for core worker.";
   instance_ = std::unique_ptr<CoreWorkerProcess>(new CoreWorkerProcess(options));
-  CoreWorkerProcess::RunStatsService();
+  RunStatsService();
 }
 
 void CoreWorkerProcess::Shutdown() {
@@ -84,6 +83,7 @@ void CoreWorkerProcess::Shutdown() {
   RAY_CHECK(instance_->options_.worker_type == WorkerType::DRIVER)
       << "The `Shutdown` interface is for driver only.";
   RAY_CHECK(instance_->global_worker_);
+  StopStatsService();
   instance_->global_worker_->Disconnect();
   instance_->global_worker_->Shutdown();
   instance_->RemoveWorker(instance_->global_worker_);
@@ -250,8 +250,16 @@ void CoreWorkerProcess::RunTaskExecutionLoop() {
 }
 
 void CoreWorkerProcess::RunStatsService() {
-  absl::MutexLock lock(&CoreWorkerProcess::stats_mutex_);
-  // Initialize stats.
+  absl::MutexLock lock(&CoreWorkerProcess::stats_initialization_mutex_);
+  enable_stats_count_++;
+  // Assume stats module will be initialized exactly once in once process.
+  if (stats_thread_) {
+    RAY_LOG(INFO) << "Stats module has been initialized and it does not need to "
+                  << "setup twice.";
+    return;
+  }
+  RAY_LOG(DEBUG) << "Stats setup.";
+  // Initialize stats in core worker global tags.
   const ray::stats::TagsType global_tags = {{ray::stats::ComponentKey, "core_worker"},
                                             {ray::stats::VersionKey, "0.9.0.dev0"}};
 
@@ -262,9 +270,30 @@ void CoreWorkerProcess::RunStatsService() {
                    CoreWorkerProcess::stats_io_service_);
   CoreWorkerProcess::stats_thread_.reset(
       new std::thread([]() { CoreWorkerProcess::stats_io_service_.run(); }));
-  // TODO(lingxuan.zlx): Should shutdown if opencensus disabled.
-  // Detach to avoid crash when process exit if it's driver.
-  CoreWorkerProcess::stats_thread_->detach();
+  // NOTE(lingxuan.zlx): Should shutdown if opencensus has stats shutdown
+  // api. But currently no such shutdown api has been provided in opencensus.
+  // For sake of running without crashed we need detach the stats thread if
+  // it stands for a driver. Besides, detached exporter thread might be halted
+  // when process has been terminated without side effects.
+  // CoreWorkerProcess::stats_thread_->detach();
+}
+
+void CoreWorkerProcess::StopStatsService() {
+  absl::MutexLock lock(&CoreWorkerProcess::stats_initialization_mutex_);
+  RAY_LOG(DEBUG) << "Stats stop.";
+  if (!stats_thread_) {
+    return;
+  }
+  enable_stats_count_--;
+  if (enable_stats_count_ > 0) {
+    return;
+  }
+  CoreWorkerProcess::stats_io_service_.stop();
+  if (stats_thread_->joinable()) {
+    stats_thread_->join();
+  }
+  stats_thread_.reset();
+  ray::stats::Shutdown();
 }
 
 CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_id)

@@ -50,21 +50,18 @@ static inline void Init(
     RAY_LOG(INFO) << "Disabled stats.";
     return;
   }
-  RAY_LOG(INFO) << "Initialize stats";
+  RAY_LOG(DEBUG) << "Initialize stats";
 
   // Force to have a singleton exporter.
   static std::shared_ptr<MetricExporterClient> exporter;
-  // Default exporter is metrics agent exporter.
+  // Default exporter is metrics agent exporter and it will be register to stats
+  // if metric agent port is valid.
   if (exporter_to_use == nullptr) {
     std::shared_ptr<MetricExporterClient> stdout_exporter(new StdoutExporterClient());
-    try {
-      // To catch exception if core worker fails to init stats when metric agent
-      // is disabled.
+    if (metrics_agent_port > 0) {
       exporter.reset(new MetricsAgentExporter(stdout_exporter, metrics_agent_port,
                                               io_service, "127.0.0.1"));
-    } catch (std::exception &e) {
-      RAY_LOG(WARNING) << "Failed to connect metrics agent or reset exporter. Caused by"
-                       << e.what();
+    } else {
       exporter = stdout_exporter;
     }
   } else {
@@ -79,6 +76,11 @@ static inline void Init(
   opencensus::stats::DeltaProducer::Get()->SetHarvestInterval(
       StatsConfig::instance().GetHarvestInterval());
   StatsConfig::instance().SetGlobalTags(global_tags);
+}
+
+static inline void Shutdown() {
+  RAY_LOG(DEBUG) << "Stats shutdown.";
+  opencensus::stats::StatsExporter::Shutdown();
 }
 
 }  // namespace stats
