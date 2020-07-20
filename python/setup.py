@@ -1,5 +1,4 @@
 import argparse
-import errno
 import glob
 import io
 import logging
