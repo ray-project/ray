@@ -254,8 +254,8 @@ void CoreWorkerProcess::RunStatsService() {
   enable_stats_count_++;
   // Assume stats module will be initialized exactly once in once process.
   if (stats_thread_) {
-    RAY_LOG(INFO) << "Stats module has been initialized and it does not need to "
-                  << "setup twice.";
+    RAY_LOG(DEBUG) << "Stats module has been initialized and it does not need to "
+                   << "setup twice.";
     return;
   }
   RAY_LOG(DEBUG) << "Stats setup.";
