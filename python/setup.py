@@ -178,8 +178,13 @@ def build(build_python, build_java):
                "Detected: {}\n  at: {!r}".format(sys.version, sys.executable))
         raise OSError(msg)
 
+    bazel_env = dict(os.environ, PYTHON3_BIN_PATH=sys.executable)
+
     if is_native_windows_or_msys():
-        BAZEL_SH = os.getenv("BAZEL_SH")
+        SHELL = bazel_env.get("SHELL")
+        if SHELL:
+            bazel_env.setdefault("BAZEL_SH", os.path.normpath(SHELL))
+        BAZEL_SH = bazel_env["BAZEL_SH"]
         SYSTEMROOT = os.getenv("SystemRoot")
         wsl_bash = os.path.join(SYSTEMROOT, "System32", "bash.exe")
         if (not BAZEL_SH) and SYSTEMROOT and os.path.isfile(wsl_bash):
@@ -222,7 +227,7 @@ def build(build_python, build_java):
     bazel_targets += ["//java:ray_java_pkg"] if build_java else []
     return subprocess.check_call(
         [bazel, "build", "--verbose_failures", "--"] + bazel_targets,
-        env=dict(os.environ, PYTHON3_BIN_PATH=sys.executable))
+        env=bazel_env)
 
 
 def walk_directory(directory):
