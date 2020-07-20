@@ -160,10 +160,13 @@ Academic Papers
    :maxdepth: -1
    :caption: Ray Tune
 
-   tune.rst
-   Tutorials, Guides, Examples <tune/tutorials/overview.rst>
+   tune/index.rst
+   tune/key-concepts.rst
+   tune/tutorials/overview.rst
+   tune/integrations.rst
+   tune/advanced.rst
    tune/api_docs/overview.rst
-   tune-contrib.rst
+   tune/contrib.rst
 
 .. toctree::
    :hidden:

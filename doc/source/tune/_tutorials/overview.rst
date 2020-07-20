@@ -1,13 +1,9 @@
 .. _tune-guides-overview:
 
-Tutorials, User Guides, Examples
-================================
+Tutorials
+=========
 
 In this section, you can find material on how to use Tune and its various features. If any of the materials is out of date or broken, or if you'd like to add an example to this page, feel free to raise an issue on our Github repository.
-
-
-Tutorials
----------
 
 Take a look at any of the below tutorials to get started with Tune.
 
@@ -34,67 +30,6 @@ Take a look at any of the below tutorials to get started with Tune.
 
    tune-60-seconds.rst
    tune-tutorial.rst
-
-
-User Guides
------------
-
-These pages will demonstrate the various features and configurations of Tune.
-
-.. raw:: html
-
-    <div class="sphx-glr-bigcontainer">
-
-.. customgalleryitem::
-   :tooltip: Tune User Guide
-   :figure: /images/tune.png
-   :description: :doc:`Tune User Guide <tune-usage>`
-
-.. customgalleryitem::
-   :tooltip: A simple guide to Population-based Training
-   :figure: /images/tune-pbt-small.png
-   :description: :doc:`A simple guide to Population-based Training <tune-advanced-tutorial>`
-
-.. customgalleryitem::
-   :tooltip: A guide to distributed hyperparameter tuning
-   :figure: /images/tune.png
-   :description: :doc:`A guide to distributed hyperparameter tuning <tune-distributed>`
-
-.. customgalleryitem::
-   :tooltip: Tune's Scikit-Learn Adapters
-   :figure: /images/tune-sklearn.png
-   :description: :doc:`Tune's Scikit-Learn Adapters <tune-sklearn>`
-
-.. customgalleryitem::
-   :tooltip: Tuning PyTorch Lightning modules
-   :figure: /images/pytorch_lightning_small.png
-   :description: :doc:`Tuning PyTorch Lightning modules <tune-pytorch-lightning>`
-
-.. customgalleryitem::
-   :tooltip: How to use Tune with PyTorch
-   :figure: /images/pytorch_logo.png
-   :description: :doc:`How to use Tune with PyTorch <tune-pytorch-cifar>`
-
-.. customgalleryitem::
-   :tooltip: Tuning XGBoost parameters.
-   :figure: /images/xgboost_logo.png
-   :description: :doc:`A guide to tuning XGBoost parameters with Tune <tune-xgboost>`
-
-
-.. raw:: html
-
-    </div>
-
-.. toctree::
-   :hidden:
-
-   tune-usage.rst
-   tune-advanced-tutorial.rst
-   tune-distributed.rst
-   tune-sklearn.rst
-   tune-pytorch-cifar.rst
-   tune-pytorch-lightning.rst
-   tune-xgboost.rst
 
 Colab Exercises
 ---------------
