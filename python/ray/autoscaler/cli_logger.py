@@ -113,19 +113,7 @@ class _CliLogger():
         return IndentedContextManager()
 
     def timed(self, msg, *args, **kwargs):
-        self.print(msg, *args, **kwargs)
-
-        # todo: implement timer
-        cli_logger = self
-
-        class TimedContextManager():
-            def __enter__(self):
-                cli_logger.indent_level += 1
-
-            def __exit__(self, type, value, tb):
-                cli_logger.indent_level -= 1
-
-        return TimedContextManager()
+        return self.group(msg, *args, **kwargs)
 
     def group(self, msg, *args, **kwargs):
         self._print(_format_msg(cf.cornflowerBlue(msg), *args, **kwargs))

@@ -686,7 +686,8 @@ def stop(force, verbose):
     default=False,
     help="Disable the local cluster config cache.")
 @click.option(
-    "--log-old-style", is_flag=True, default=False, help=("Use old logging."))
+    "--log-old-style/--log-new-style",
+    is_flag=True, default=True, help=("Use old logging."))
 @click.option(
     "--log-color",
     required=False,
@@ -742,7 +743,8 @@ def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
     default=False,
     help="Retain the minimal amount of workers specified in the config.")
 @click.option(
-    "--log-old-style", is_flag=True, default=False, help=("Use old logging."))
+    "--log-old-style/--log-new-style",
+    is_flag=True, default=True, help=("Use old logging."))
 @click.option(
     "--log-color",
     required=False,

@@ -100,11 +100,53 @@ def _arn_to_name(arn):
 
 
 def log_to_cli(config):
-    provider_name = PROVIDER_PRETTY_NAMES.get("aws", "Unknown provider")
-    with cli_logger.group("{} config", provider_name):
+    provider_name = PROVIDER_PRETTY_NAMES.get("aws", None)
 
+    cli_logger.doassert(
+        provider_name is not None,
+        "Could not find a pretty name for the AWS provider.")
+
+    with cli_logger.group("{} config", provider_name):
         def same_everywhere(key):
             return config["head_node"][key] == config["worker_nodes"][key]
+
+        def print_info(resource_string, key,
+                   head_src_key, workers_src_key,
+                   allowed_tags=["default"], list_value=False):
+
+            head_tags = {}
+            workers_tags = {}
+
+            if _log_info[head_src_key] in allowed_tags:
+                head_tags[_log_info[head_src_key]] = True
+            if _log_info[workers_src_key] in allowed_tags:
+                workers_tags[_log_info[workers_src_key]] = True
+
+            head_value_str = config["head_node"][key]
+            if list_value:
+                head_value_str = cli_logger.render_list(head_value_str)
+
+            if same_everywhere(key):
+                cli_logger.labeled_value(  # todo: handle plural vs singular?
+                    resource_string + " (head & workers)",
+                    "{}",
+                    head_value_str,
+                    _tags=head_tags)
+            else:
+                head_value_str = config["head_node"][key]
+                if list_value:
+                    workers_value_str = cli_logger.render_list(workers_value_str)
+
+                cli_logger.labeled_value(
+                    resource_string + " (head)",
+                    "{}",
+                    head_value_str,
+                    _tags=head_tags)
+                cli_logger.labeled_value(
+                    resource_string + " (workers)",
+                    "{}",
+                    workers_value_str,
+                    _tags=workers_tags)
 
         tags = {"default": _log_info["head_instance_profile_src"] == "default"}
         cli_logger.labeled_value(
@@ -113,94 +155,25 @@ def log_to_cli(config):
             _arn_to_name(config["head_node"]["IamInstanceProfile"]["Arn"]),
             _tags=tags)
 
-        if same_everywhere("KeyName"):
-            tags = {"default": _log_info["keypair_src"] == "default"}
-            cli_logger.labeled_value(
-                "Key pair (head & workers)",
-                "{}",
-                config["head_node"]["KeyName"],
-                _tags=tags)
-        else:
-            # cannot be default
-            cli_logger.labeled_value("EC2 Key pair (head)", "{}",
-                                     config["head_node"]["KeyName"])
-            cli_logger.labeled_value("EC2 Key pair (workers)", "{}",
-                                     config["worker_nodes"]["KeyName"])
-
-        if same_everywhere("SubnetIds"):
-            tags = {"default": _log_info["head_subnet_src"] == "default"}
-            cli_logger.labeled_value(  # todo: handle plural vs singular?
-                "VPC Subnets (head & workers)",
-                "{}",
-                cli_logger.render_list(config["head_node"]["SubnetIds"]),
-                _tags=tags)
-        else:
-            tags = {"default": _log_info["head_subnet_src"] == "default"}
-            cli_logger.labeled_value(
-                "VPC Subnets (head)",
-                "{}",
-                cli_logger.render_list(config["head_node"]["SubnetIds"]),
-                _tags=tags)
-
-            tags = {"default": _log_info["workers_subnet_src"] == "default"}
-            cli_logger.labeled_value(
-                "VPC Subnets (workers)",
-                "{}",
-                cli_logger.render_list(config["worker_nodes"]["SubnetIds"]),
-                _tags=tags)
-
-        if same_everywhere("SecurityGroupIds"):
-            tags = {
-                "default": _log_info["head_security_group_src"] == "default"
-            }
-            cli_logger.labeled_value(
-                "EC2 Security groups (head & workers)",
-                "{}",
-                cli_logger.render_list(
-                    config["head_node"]["SecurityGroupIds"]),
-                _tags=tags)
-        else:
-            tags = {
-                "default": _log_info["head_security_group_src"] == "default"
-            }
-            cli_logger.labeled_value(  # todo: handle plural vs singular?
-                "EC2 Security groups (head)",
-                "{}",
-                cli_logger.render_list(
-                    config["head_node"]["SecurityGroupIds"]),
-                _tags=tags)
-
-            tags = {
-                "default": _log_info["workers_security_group_src"] == "default"
-            }
-            cli_logger.labeled_value(
-                "EC2 Security groups (workers)",
-                "{}",
-                cli_logger.render_list(
-                    config["worker_nodes"]["SecurityGroupIds"]),
-                _tags=tags)
-
-        if same_everywhere("ImageId"):
-            tags = {"dlami": _log_info["head_ami_src"] == "dlami"}
-            cli_logger.labeled_value(
-                "EC2 AMI (head & workers)",
-                "{}",
-                config["head_node"]["ImageId"],
-                _tags=tags)
-        else:
-            tags = {"dlami": _log_info["head_ami_src"] == "dlami"}
-            cli_logger.labeled_value(
-                "EC2 AMI (head)",
-                "{}",
-                config["head_node"]["ImageId"],
-                _tags=tags)
-
-            tags = {"dlami": _log_info["workers_ami_src"] == "dlami"}
-            cli_logger.labeled_value(
-                "EC2 AMI (workers)",
-                "{}",
-                config["worker_nodes"]["ImageId"],
-                _tags=tags)
+        print_info(
+            "EC2 Key pair",
+            "KeyName",
+            "keypair_src", "keypair_src")
+        print_info(
+            "VPC Subnets",
+            "SubnetIds",
+            "head_subnet_src", "workers_subnet_src",
+            list_value=True)
+        print_info(
+            "EC2 Security groups",
+            "SecurityGroupIds",
+            "head_security_group_src", "workers_security_group_src",
+            list_value=True)
+        print_info(
+            "EC2 AMI",
+            "ImageId",
+            "head_ami_src", "workers_ami_src",
+            allowed_tags=["dlami"])
 
     cli_logger.newline()
 

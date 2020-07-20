@@ -279,10 +279,10 @@ class SSHCommandRunner(CommandRunnerInterface):
 
     def wait_for_ip(self, deadline):
         # if we have IP do not print waiting info
-        # ip = self.get_node_ip()
-        # if ip is not None:
-        #     cli_logger.labeled_value("Fetched IP", ip)
-        #     return ip
+        ip = self._get_node_ip()
+        if ip is not None:
+            cli_logger.labeled_value("Fetched IP", ip)
+            return ip
 
         interval = 10
         with cli_logger.timed("Waiting for IP"):
