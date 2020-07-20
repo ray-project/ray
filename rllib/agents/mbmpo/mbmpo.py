@@ -18,6 +18,7 @@ from ray.rllib.utils.torch_ops import convert_to_torch_tensor
 from ray.rllib.evaluation.metrics import collect_episodes
 from ray.rllib.agents.mbmpo.model_vector_env import custom_model_vector_env
 from ray.rllib.evaluation.metrics import collect_metrics
+from ray.rllib.agents.mbmpo.utils import calculate_gae_advantages
 
 logger = logging.getLogger(__name__)
 
@@ -66,13 +67,13 @@ DEFAULT_CONFIG = with_common_config({
     "dynamics_model": {
         "custom_model": DynamicsEnsembleCustomModel,
         # Number of Transition-Dynamics Models for Ensemble
-        "model_ensemble_size": 1,
+        "model_ensemble_size": 5,
         # Hidden Layers for Model Ensemble
         "model_hiddens": [512, 512],
         # Model Learning Rate
         "model_lr": 1e-3,
         # Max number of training epochs per MBMPO iter
-        "model_train_epochs": 1,
+        "model_train_epochs": 500,
         # Model Batch Size
         "model_batch_size": 500,
         # Training/Validation Split
@@ -83,9 +84,9 @@ DEFAULT_CONFIG = with_common_config({
     # Workers sample from dynamics models
     "custom_vector_env": custom_model_vector_env,
     # How many enviornments there are per worker (vectorized)
-    "num_worker_envs": 50,
+    "num_worker_envs": 20,
     # How many iterations through MAML per MBMPO iteration
-    "num_maml_steps": 5,
+    "num_maml_steps": 10,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -157,6 +158,7 @@ class MetaUpdate:
             self.step_counter += 1
 
             # Sync workers with meta policy
+            print("Syncing Weights with Workers")
             self.workers.sync_weights()
             return []
 
@@ -229,6 +231,29 @@ def sync_stats(workers):
             e.foreach_policy.remote(
                 set_func, normalizations=normalization_dict)
 
+def post_process_samples(samples, config):
+    # Instead of using NN for value function, we use regression
+    split_lst = []
+    for sample in samples:
+        indexes = np.where(sample['dones']==True)[0]
+        indexes = indexes+1
+
+        reward_list = np.split(sample['rewards'], indexes)[:-1]
+        observation_list = np.split(sample['obs'], indexes)[:-1]
+
+        paths = []
+        for i in range(0, len(reward_list)):
+            paths.append({"rewards": reward_list[i], 
+                "observations": observation_list[i]})
+
+        paths = calculate_gae_advantages(paths, config["gamma"], config["lambda"])
+
+        advantages = np.concatenate([path["advantages"] for path in paths])
+        sample["advantages"] = standardized(advantages)
+        split_lst.append(sample.count)
+    return samples, split_lst
+
+
 
 # Similar to MAML Execution Plan
 def execution_plan(workers, config):
@@ -263,10 +288,7 @@ def execution_plan(workers, config):
         for samples in itr:
             print("Collecting Samples, Inner Adaptation {}".format(len(split)))
             # Processing Samples (Standardize Advantages)
-            split_lst = []
-            for sample in samples:
-                sample["advantages"] = standardized(sample["advantages"])
-                split_lst.append(sample.count)
+            samples, split_lst = post_process_samples(samples, config)
 
             buf.extend(samples)
             split.append(split_lst)

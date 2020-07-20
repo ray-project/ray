@@ -7,7 +7,6 @@ from ray.rllib.evaluation.rollout_worker import get_global_worker
 
 logger = logging.getLogger(__name__)
 
-
 def custom_model_vector_env(**kwargs):
     worker_index = kwargs["env_context"].worker_index
     env = kwargs["env"]
@@ -18,7 +17,8 @@ def custom_model_vector_env(**kwargs):
             num_envs=kwargs["num_worker_envs"],
             observation_space=env.observation_space,
             action_space=env.action_space,
-            env_config=kwargs["env_config"])
+            env_config=kwargs["env_config"]
+            )
     else:
         # This env will become vectorized later
         return env
@@ -49,32 +49,33 @@ class _VectorizedModelGymEnv(VectorEnv):
             num_envs=num_envs)
         worker = get_global_worker()
         self.model, self.device = worker.foreach_policy(
-            lambda x, y: (x.dynamics_model, x.device))[0]
+            lambda x,y: (x.dynamics_model, x.device))[0]
 
     @override(VectorEnv)
     def vector_reset(self):
-        self.cur_obs = [e.reset() for e in self.envs]
+        self.cur_obs =  [e.reset() for e in self.envs]
         return self.cur_obs
 
     @override(VectorEnv)
     def reset_at(self, index):
-        return self.envs[index].reset()
+        obs = self.envs[index].reset()
+        self.cur_obs[index] = obs
+        return obs
 
     @override(VectorEnv)
     def vector_step(self, actions):
         if self.cur_obs is None:
             raise ValueError("Need to reset env first")
-
+        
         obs_batch = np.stack(self.cur_obs, axis=0)
         action_batch = np.stack(actions, axis=0)
 
-        next_obs_batch = self.model.predict_model_batches(
-            obs_batch, action_batch, device=self.device)
+        next_obs_batch = self.model.predict_model_batches(obs_batch, 
+            action_batch, device = self.device)
 
-        next_obs_batch = np.clip(next_obs_batch, -1000, 1000)
+        next_obs_batch = np.clip(next_obs_batch, -50, 50)
 
-        rew_batch = self.envs[0].reward(obs_batch, action_batch,
-                                        next_obs_batch)
+        rew_batch = self.envs[0].reward(obs_batch, action_batch, next_obs_batch)
 
         if hasattr(self.envs[0], "done"):
             dones_batch = self.envs[0].done(next_obs_batch)

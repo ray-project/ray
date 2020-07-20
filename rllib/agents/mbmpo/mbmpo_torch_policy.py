@@ -15,7 +15,6 @@ torch, nn = try_import_torch()
 
 logger = logging.getLogger(__name__)
 
-
 def make_model_and_action_dist(policy, obs_space, action_space, config):
     # Get the output distribution class for predicting rewards and next-obs.
     policy.distr_cls_next_obs, num_outputs = ModelCatalog.get_action_dist(
@@ -24,6 +23,8 @@ def make_model_and_action_dist(policy, obs_space, action_space, config):
     # Build one dynamics model if we are a Worker.
     # If we are the main MAML learner, build n (num_workers) dynamics Models
     # for being able to create checkpoints for the current state of training.
+    device = (torch.device("cuda")
+              if torch.cuda.is_available() else torch.device("cpu"))
     policy.dynamics_model = ModelCatalog.get_model_v2(
         obs_space,
         action_space,
@@ -31,7 +32,7 @@ def make_model_and_action_dist(policy, obs_space, action_space, config):
         model_config=config["dynamics_model"],
         framework="torch",
         name="dynamics_ensemble",
-    )
+    ).to(device)
 
     action_dist, num_outputs = ModelCatalog.get_action_dist(
         action_space, config, framework="torch")
