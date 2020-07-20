@@ -60,6 +60,8 @@ class DQNTorchModel(TorchModelV2, nn.Module):
 
         self.dueling = dueling
         self.num_atoms = num_atoms
+        self.v_min = v_min
+        self.v_max = v_max
         self.sigma0 = sigma0
         ins = num_outputs
 
@@ -70,14 +72,14 @@ class DQNTorchModel(TorchModelV2, nn.Module):
         for i, n in enumerate(q_hiddens):
             if use_noisy:
                 advantage_module.add_module(
-                    "dueling_A_{}".format(i), NoisyLayer(ins, n, sigma0=self.sigma0, activation=dueling_activation))  #nn.Linear(ins, n))
+                    "dueling_A_{}".format(i), NoisyLayer(ins, n, sigma0=self.sigma0, activation=dueling_activation))
                 value_module.add_module(
                     "dueling_V_{}".format(i), NoisyLayer(ins, n, sigma0=self.sigma0, activation=dueling_activation))
             else:
                 advantage_module.add_module(
-                    "dueling_A_{}".format(i), SlimFC(ins, n, activation_fn=dueling_activation))  #nn.Linear(ins, n)
+                    "dueling_A_{}".format(i), SlimFC(ins, n, activation_fn=dueling_activation))
                 value_module.add_module(
-                    "dueling_V_{}".format(i), SlimFC(ins, n, activation_fn=dueling_activation))  #nn.Linear(ins, n)
+                    "dueling_V_{}".format(i), SlimFC(ins, n, activation_fn=dueling_activation))
                 # Add LayerNorm after each Dense.
                 if add_layer_norm:
                     advantage_module.add_module(
@@ -94,29 +96,49 @@ class DQNTorchModel(TorchModelV2, nn.Module):
                 sigma0,
                 activation=None))
         elif q_hiddens:
-            advantage_module.add_module("A", nn.Linear(ins, action_space.n * self.num_atoms))
+            advantage_module.add_module("A", SlimFC(ins, action_space.n * self.num_atoms, activation_fn=None))
 
         self.advantage_module = advantage_module
 
         # Value layer (nodes=1).
         if self.dueling:
-            value_module.add_module("V", nn.Linear(ins, 1))
+            value_module.add_module("V", SlimFC(ins, 1, activation_fn=None))
             self.value_module = value_module
 
-    def get_advantages_or_q_values(self, model_out):
+    def get_q_value_distributions(self, model_out):
         """Returns distributional values for Q(s, a) given a state embedding.
 
         Override this in your custom model to customize the Q output head.
 
-        Arguments:
-            model_out (Tensor): embedding from the model layers
+        Args:
+            model_out (Tensor): Embedding from the model layers.
 
         Returns:
             (action_scores, logits, dist) if num_atoms == 1, otherwise
             (action_scores, z, support_logits_per_action, logits, dist)
         """
+        action_scores = self.advantage_module(model_out)
 
-        return self.advantage_module(model_out)
+        if self.num_atoms > 1:
+            # Distributional Q-learning uses a discrete support z
+            # to represent the action value distribution
+            z = torch.range(self.num_atoms, dtype=torch.float32)
+            z = self.v_min + z * (self.v_max - self.v_min) / float(self.num_atoms - 1)
+
+            support_logits_per_action = torch.reshape(
+                action_scores, shape=(-1, self.action_space.n, self.num_atoms))
+            support_prob_per_action = nn.F.softmax(
+                logits=support_logits_per_action)
+            action_scores = torch.sum(
+                input_tensor=z * support_prob_per_action, dim=-1)
+            logits = support_logits_per_action
+            probs = support_prob_per_action
+            return [action_scores, z, support_logits_per_action, logits, probs]
+            #return tf.keras.layers.Lambda(_layer)(action_scores)
+        else:
+            logits = torch.unsqueeze(torch.ones_like(action_scores), -1)
+            #probs = logits  #torch.unsqueeze(torch.ones_like(action_scores), -1)
+            return [action_scores, logits, logits]
 
     def get_state_value(self, model_out):
         """Returns the state value prediction for the given state embedding."""

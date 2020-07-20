@@ -19,17 +19,21 @@ def same_padding(in_size, filter_size, stride_size):
     """Note: Padding is added to match TF conv2d `same` padding. See
     www.tensorflow.org/versions/r0.12/api_docs/python/nn/convolution
 
-    Params:
+    Args:
         in_size (tuple): Rows (Height), Column (Width) for input
-        stride_size (tuple): Rows (Height), Column (Width) for stride
-        filter_size (tuple): Rows (Height), Column (Width) for filter
+        stride_size (Union[int,Tuple[int, int]]): Rows (Height), column (Width)
+            for stride. If int, height == width.
+        filter_size (tuple): Rows (Height), column (Width) for filter
 
-    Output:
+    Returns:
         padding (tuple): For input into torch.nn.ZeroPad2d.
         output (tuple): Output shape after padding and convolution.
     """
     in_height, in_width = in_size
-    filter_height, filter_width = filter_size
+    if isinstance(filter_size, int):
+        filter_height, filter_width = filter_size, filter_size
+    else:
+        filter_height, filter_width = filter_size
     stride_height, stride_width = stride_size
 
     out_height = np.ceil(float(in_height) / float(stride_height))
