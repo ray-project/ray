@@ -30,7 +30,7 @@ esac
 
 # Sanity check: Verify we have symlinks where we expect them, or Bazel can produce weird "missing input file" errors.
 # This is most likely to occur on Windows, where symlinks are sometimes disabled by default.
-{ git ls-files -s || true; } | {
+{ git ls-files -s 2>/dev/null || true; } | {
   missing_symlinks=()
   while read -r mode digest sn path; do
     if [ "${mode}" = 120000 ]; then
