@@ -59,27 +59,48 @@ Status ServiceBasedJobInfoAccessor::AsyncMarkFinished(const JobID &job_id,
   return Status::OK();
 }
 
-Status ServiceBasedJobInfoAccessor::AsyncSubscribeToFinishedJobs(
+Status ServiceBasedJobInfoAccessor::AsyncSubscribeAll(
     const SubscribeCallback<JobID, JobTableData> &subscribe, const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
+  fetch_all_data_operation_ = [this, subscribe](const StatusCallback &done) {
+    auto callback = [subscribe, done](
+                        const Status &status,
+                        const std::vector<rpc::JobTableData> &job_info_list) {
+      for (auto &job_info : job_info_list) {
+        subscribe(JobID::FromBinary(job_info.job_id()), job_info);
+      }
+      if (done) {
+        done(status);
+      }
+    };
+    RAY_CHECK_OK(AsyncGetAll(callback));
+  };
   subscribe_operation_ = [this, subscribe](const StatusCallback &done) {
     auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
       JobTableData job_data;
       job_data.ParseFromString(data);
-      if (job_data.is_dead()) {
-        subscribe(JobID::FromBinary(id), job_data);
-      }
+      subscribe(JobID::FromBinary(id), job_data);
     };
     return client_impl_->GetGcsPubSub().SubscribeAll(JOB_CHANNEL, on_subscribe, done);
   };
-  return subscribe_operation_(done);
+  return subscribe_operation_(
+      [this, done](const Status &status) { fetch_all_data_operation_(done); });
 }
 
 void ServiceBasedJobInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
   RAY_LOG(INFO) << "Reestablishing subscription for job info.";
-  // If the pub-sub server has restarted, we need to resubscribe to the pub-sub server.
-  if (subscribe_operation_ != nullptr && is_pubsub_server_restarted) {
-    RAY_CHECK_OK(subscribe_operation_(nullptr));
+  // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
+  // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
+  // server first, then fetch data from the GCS server.
+  if (is_pubsub_server_restarted) {
+    if (subscribe_operation_ != nullptr) {
+      RAY_CHECK_OK(subscribe_operation_(
+          [this](const Status &status) { fetch_all_data_operation_(nullptr); }));
+    }
+  } else {
+    if (fetch_all_data_operation_ != nullptr) {
+      fetch_all_data_operation_(nullptr);
+    }
   }
 }
 
@@ -1366,6 +1387,29 @@ Status ServiceBasedWorkerInfoAccessor::AsyncAdd(
       request, [callback](const Status &status, const rpc::AddWorkerInfoReply &reply) {
         if (callback) {
           callback(status);
+        }
+      });
+  return Status::OK();
+}
+
+ServiceBasedPlacementGroupInfoAccessor::ServiceBasedPlacementGroupInfoAccessor(
+    ServiceBasedGcsClient *client_impl)
+    : client_impl_(client_impl) {}
+
+Status ServiceBasedPlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
+    const ray::PlacementGroupSpecification &placement_group_spec) {
+  rpc::CreatePlacementGroupRequest request;
+  request.mutable_placement_group_spec()->CopyFrom(placement_group_spec.GetMessage());
+  client_impl_->GetGcsRpcClient().CreatePlacementGroup(
+      request, [placement_group_spec](const Status &,
+                                      const rpc::CreatePlacementGroupReply &reply) {
+        auto status =
+            reply.status().code() == (int)StatusCode::OK
+                ? Status()
+                : Status(StatusCode(reply.status().code()), reply.status().message());
+        if (status.ok()) {
+          RAY_LOG(DEBUG) << "Finished registering placement group. placement group id = "
+                         << placement_group_spec.PlacementGroupId();
         }
       });
   return Status::OK();

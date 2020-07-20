@@ -126,7 +126,7 @@ TEST_F(GcsPubSubTest, TestPubSubApi) {
   WaitPendingDone(all_result, 1);
   Unsubscribe(channel, id);
   Publish(channel, id, data);
-  usleep(100 * 1000);
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
   EXPECT_EQ(result.size(), 1);
 
   Subscribe(channel, id, result);
