@@ -1,5 +1,6 @@
-class ObjectRef(object):
+class ObjectRef:
     pass
 
-class ObjectID(object):
+
+class ObjectID:
     pass
