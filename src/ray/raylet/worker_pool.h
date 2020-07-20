@@ -50,6 +50,7 @@ class WorkerPool {
   /// process should create and register the specified number of workers, and add them to
   /// the pool.
   ///
+  /// \param num_workers The number of workers to start, per language.
   /// \param default_num_initial_workers Number of initial workers to start per job if
   /// num_initial_***_workers of any language is not specified in the job config.
   /// \param maximum_startup_concurrency The maximum number of worker processes
@@ -65,7 +66,7 @@ class WorkerPool {
   /// \param starting_worker_timeout_callback The callback that will be triggered once
   /// it times out to start a worker.
   /// \param job_config_reader The callback to get the job config.
-  WorkerPool(boost::asio::io_service &io_service, uint32_t default_num_initial_workers,
+  WorkerPool(boost::asio::io_service &io_service, int num_workers, uint32_t default_num_initial_workers,
              int maximum_startup_concurrency, int min_worker_port, int max_worker_port,
              std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands,
@@ -254,6 +255,12 @@ class WorkerPool {
   std::unordered_map<Language, State, std::hash<int>> states_by_lang_;
 
  private:
+  /// Force-start at least num_workers workers for this language. Used for internal and
+  /// test purpose only.
+  ///
+  /// \param num_workers The number of workers to start, per language.
+  void Start(int num_workers);
+
   /// A helper function that returns the reference of the pool state
   /// for a given language.
   State &GetStateForLanguage(const Language &language);
@@ -282,7 +289,7 @@ class WorkerPool {
   boost::asio::io_service *io_service_;
   /// Number of initial workers to start per job if a negative num_initial_workers value
   /// is specified in the job config.
-  uint32_t adaptive_num_initial_workers_;
+  uint32_t default_num_initial_workers_;
   /// The maximum number of worker processes that can be started concurrently.
   int maximum_startup_concurrency_;
   /// Keeps track of unused ports that newly-created workers can bind on.

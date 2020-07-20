@@ -65,6 +65,8 @@ struct NodeManagerConfig {
   /// The highest port number that workers started will bind on.
   /// If this is not set to 0, min_worker_port must also not be set to 0.
   int max_worker_port;
+  /// The initial number of workers to create.
+  int num_initial_workers;
   /// Number of initial workers to start per job if num_initial_***_workers
   /// is not specified in the job config.
   uint32_t default_num_initial_workers;

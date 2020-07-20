@@ -107,13 +107,17 @@ const std::unordered_set<TaskID> &Worker::GetBlockedTaskIds() const {
 }
 
 void Worker::AssignJobId(const JobID &job_id) {
-  if (!assigned_job_id_.IsNil()) {
-    RAY_CHECK(assigned_job_id_ == job_id)
-        << "The worker " << worker_id_ << " is already assigned to job "
-        << assigned_job_id_ << ". It cannot be reassigned to job " << job_id;
-  } else {
+  if (!RayConfig::instance().enable_multi_tenancy()) {
     assigned_job_id_ = job_id;
-    RAY_LOG(INFO) << "Assigned worker " << worker_id_ << " to job " << job_id;
+  } else {
+    if (!assigned_job_id_.IsNil()) {
+      RAY_CHECK(assigned_job_id_ == job_id)
+          << "The worker " << worker_id_ << " is already assigned to job "
+          << assigned_job_id_ << ". It cannot be reassigned to job " << job_id;
+    } else {
+      assigned_job_id_ = job_id;
+      RAY_LOG(INFO) << "Assigned worker " << worker_id_ << " to job " << job_id;
+    }
   }
 }
 

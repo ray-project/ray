@@ -41,8 +41,8 @@ class WorkerPoolMock : public WorkerPool {
   explicit WorkerPoolMock(boost::asio::io_service &io_service,
                           const WorkerCommandMap &worker_commands)
       : WorkerPool(
-            io_service, 0, MAXIMUM_STARTUP_CONCURRENCY, 0, 0, nullptr, worker_commands,
-            {}, []() {}, [this](const JobID &job_id) { return &mock_job_config; }),
+            io_service, 0, 0, MAXIMUM_STARTUP_CONCURRENCY, 0, 0, nullptr, worker_commands,
+            {}, []() {}, [this](const JobID &job_id) { return mock_job_config; }),
         last_worker_process_() {
     states_by_lang_[ray::Language::JAVA].num_workers_per_process =
         NUM_WORKERS_PER_PROCESS_JAVA;
@@ -380,5 +380,6 @@ TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
+  RayConfig::instance().initialize({{"enable_multi_tenancy", "true"}});
   return RUN_ALL_TESTS();
 }
