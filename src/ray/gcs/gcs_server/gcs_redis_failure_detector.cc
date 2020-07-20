@@ -12,8 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "gcs_redis_failure_detector.h"
+#include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
+
 #include "ray/common/ray_config.h"
+
+extern "C" {
+#include "hiredis/hiredis.h"
+}
 
 namespace ray {
 namespace gcs {

@@ -1,5 +1,6 @@
 package io.ray.api.call;
 
+import io.ray.api.Ray;
 import io.ray.api.options.ActorCreationOptions;
 import java.util.Map;
 
@@ -10,6 +11,35 @@ import java.util.Map;
  */
 public class BaseActorCreator<T extends BaseActorCreator> {
   protected ActorCreationOptions.Builder builder = new ActorCreationOptions.Builder();
+
+  /**
+   * Set the actor name of a named actor.
+   * This named actor is only accessible from this job by this name via
+   * {@link Ray#getActor(java.lang.String)}. If you want create a named actor that is accessible
+   * from all jobs, use {@link BaseActorCreator#setGlobalName(java.lang.String)} instead.
+   *
+   * @param name The name of the named actor.
+   * @return self
+   * @see io.ray.api.options.ActorCreationOptions.Builder#setName(String)
+   */
+  public T setName(String name) {
+    builder.setName(name);
+    return self();
+  }
+
+  /**
+   * Set the name of this actor. This actor will be accessible from all jobs by this name via
+   * {@link Ray#getGlobalActor(java.lang.String)}. If you want to create a named actor that is
+   * only accessible from this job, use {@link BaseActorCreator#setName(java.lang.String)} instead.
+   *
+   * @param name The name of the named actor.
+   * @return self
+   * @see io.ray.api.options.ActorCreationOptions.Builder#setGlobalName(String)
+   */
+  public T setGlobalName(String name) {
+    builder.setGlobalName(name);
+    return self();
+  }
 
   /**
    * Set a custom resource requirement to reserve for the lifetime of this actor.
@@ -55,9 +85,9 @@ public class BaseActorCreator<T extends BaseActorCreator> {
   }
 
   /**
-   /**
+   * /**
    * Set the max number of concurrent calls to allow for this actor.
-   *
+   * <p>
    * The max concurrency defaults to 1 for threaded execution.
    * Note that the execution order is not guaranteed when max_concurrency > 1.
    *

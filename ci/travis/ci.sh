@@ -233,13 +233,19 @@ install_go() {
   fi
 }
 
-bazel_ensure_buildable_on_windows() {
+_bazel_build_before_install() {
+  local target
   if [ "${OSTYPE}" = msys ]; then
-    # This performs as full of a build as possible, to ensure the repository always remains buildable on Windows.
+    # On Windows, we perform as full of a build as possible, to ensure the repository always remains buildable on Windows.
     # (Pip install will not perform a full build.)
-    # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
-    bazel build -k "//:*"
+    target="//:*"
+  else
+    # Just build Python on other platforms.
+    # This because pip install captures & suppresses the build output, which causes a timeout on CI.
+    target="//:ray_pkg"
   fi
+  # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
+  bazel build -k "${target}"
 }
 
 install_ray() {
@@ -247,7 +253,7 @@ install_ray() {
   (
     cd "${WORKSPACE_DIR}"/python
     build_dashboard_front_end
-    pip install -v -v -e .
+    keep_alive pip install -v -e .
   )
 }
 
@@ -431,7 +437,7 @@ init() {
 }
 
 build() {
-  bazel_ensure_buildable_on_windows
+  _bazel_build_before_install
 
   if ! need_wheels; then
     install_ray

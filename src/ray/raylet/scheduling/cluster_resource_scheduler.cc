@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "cluster_resource_scheduler.h"
+#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 
 std::string VectorToString(const std::vector<FixedPoint> &vector) {
   std::stringstream buffer;
