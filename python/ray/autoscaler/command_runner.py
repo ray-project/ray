@@ -76,20 +76,6 @@ class CommandRunnerInterface:
         """Return the command the user can use to open a shell."""
         raise NotImplementedError
 
-    def run_init(self, init_cmds: List[str], as_head: bool) -> bool:
-        """"Run custom initialization inside the CommandRunner
-
-        Args:
-            init_cmds (List): The Initialization Commands to run
-            as_head (bool): If this is the head node
-         """
-        for cmd in init_cmds:
-            self.run(
-                cmd,
-                ssh_options_override=SSHOptions(
-                    self.auth_config.get("ssh_private_key")),
-                run_env="host")
-
 
 class KubernetesCommandRunner(CommandRunnerInterface):
     def __init__(self, log_prefix, namespace, node_id, auth_config,
@@ -390,7 +376,6 @@ class DockerCommandRunner(CommandRunnerInterface):
         self.docker_name = docker_config["container_name"]
         self.docker_config = docker_config
         self.home_dir = None
-        self.auth_config = common_args["auth_config"]
         self.shutdown = False
         self.initialized = False
 
@@ -487,10 +472,7 @@ class DockerCommandRunner(CommandRunnerInterface):
 
         return string
 
-    def run_init(self, init_cmds, as_head):
-        # Run actual init commands
-        super().run_init(init_cmds, as_head)
-
+    def run_init(self, as_head):
         image = self.docker_config.get("image")
         if image is None:
             image = self.docker_config.get(

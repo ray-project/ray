@@ -9,7 +9,8 @@ from threading import Thread
 from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, STATUS_WAITING_FOR_SSH, \
     STATUS_SETTING_UP, STATUS_SYNCING_FILES
-from ray.autoscaler.command_runner import NODE_START_WAIT_S
+from ray.autoscaler.command_runner import NODE_START_WAIT_S, SSHOptions, \
+    DockerCommandRunner
 from ray.autoscaler.log_timer import LogTimer
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,7 @@ class NodeUpdater:
         self.setup_commands = setup_commands
         self.ray_start_commands = ray_start_commands
         self.runtime_hash = runtime_hash
+        self.auth_config = auth_config
         self.initialize_as_head = initialize_as_head
 
     def run(self):
@@ -149,9 +151,13 @@ class NodeUpdater:
             with LogTimer(
                     self.log_prefix + "Initialization commands",
                     show_status=True):
-                self.cmd_runner.run_init(
-                    init_cmds=self.initialization_commands,
-                    as_head=self.initialize_as_head)
+                for cmd in self.initialization_commands:
+                    self.cmd_runner.run(
+                        cmd,
+                        ssh_options_override=SSHOptions(
+                            self.auth_config.get("ssh_private_key")))
+                if isinstance(self.cmd_runner, DockerCommandRunner):
+                    self.cmd_runner.run_init(self.initialize_as_head)
 
             with LogTimer(
                     self.log_prefix + "Setup commands", show_status=True):
