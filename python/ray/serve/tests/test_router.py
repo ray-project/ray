@@ -4,7 +4,6 @@ from collections import defaultdict
 import pytest
 import ray
 
-
 from ray.serve.controller import TrafficPolicy
 from ray.serve.router import Router, Query
 from ray.serve.request_params import RequestMetadata
