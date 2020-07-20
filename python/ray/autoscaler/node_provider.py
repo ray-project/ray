@@ -228,7 +228,7 @@ class NodeProvider:
                            cluster_name,
                            process_runner,
                            use_internal_ip,
-                           docker_config=None):
+                           docker_config=None) -> Any:
         """ Returns the CommandRunner class used to perform SSH commands.
 
         Args:
