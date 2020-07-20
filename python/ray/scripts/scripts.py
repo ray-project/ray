@@ -1120,12 +1120,18 @@ def statistics(address):
     required=False,
     type=str,
     help="Override the address to connect to.")
-def memory(address):
+@click.option(
+    "--redis_password",
+    required=False,
+    type=str,
+    default=ray_constants.REDIS_DEFAULT_PASSWORD,
+    help="Connect to ray with redis_password.")
+def memory(address, redis_password):
     """Print object references held in a Ray cluster."""
     if not address:
         address = services.find_redis_address_or_die()
     logger.info("Connecting to Ray instance at {}.".format(address))
-    ray.init(address=address)
+    ray.init(address=address, redis_password=redis_password)
     print(ray.internal.internal_api.memory_summary())
 
 

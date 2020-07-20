@@ -29,6 +29,8 @@
 
 namespace plasma {
 
+class Client;
+
 // ==== The eviction policy ====
 //
 // This file contains declaration for all functions and data structures that
