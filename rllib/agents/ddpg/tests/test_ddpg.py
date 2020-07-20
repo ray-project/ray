@@ -9,12 +9,13 @@ from ray.rllib.agents.ddpg.ddpg_torch_policy import ddpg_actor_critic_loss as \
 from ray.rllib.agents.sac.tests.test_sac import SimpleEnv
 from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import fc, huber_loss, l2_loss, relu, sigmoid
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \
     framework_iterator
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor
 
+tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
@@ -404,14 +405,15 @@ class TestDDPG(unittest.TestCase):
         policy_t = sigmoid(2.0 * fc(
             relu(
                 fc(model_out_t, weights[ks[1]], weights[ks[0]], framework=fw)),
-            weights[ks[5]], weights[ks[4]]))
+            weights[ks[5]], weights[ks[4]], framework=fw))
         # Get policy output for t+1 (target model).
         policy_tp1 = sigmoid(2.0 * fc(
             relu(
                 fc(target_model_out_tp1,
                    weights[ks[3]],
                    weights[ks[2]],
-                   framework=fw)), weights[ks[7]], weights[ks[6]]))
+                   framework=fw)),
+            weights[ks[7]], weights[ks[6]], framework=fw))
         # Assume no smooth target policy.
         policy_tp1_smoothed = policy_tp1
 

@@ -53,7 +53,6 @@ enum class ObjectType : uint8_t {
 
 using ObjectIDFlagsType = uint16_t;
 using ObjectIDIndexType = uint32_t;
-
 // Declaration.
 uint64_t MurmurHash64A(const void *key, int len, unsigned int seed);
 
@@ -345,6 +344,24 @@ class ObjectID : public BaseID<ObjectID> {
   uint8_t id_[kLength];
 };
 
+class PlacementGroupID : public BaseID<PlacementGroupID> {
+ public:
+  static constexpr size_t kLength = 16;
+
+  /// Size of `PlacementGroupID` in bytes.
+  ///
+  /// \return Size of `PlacementGroupID` in bytes.
+  static size_t Size() { return kLength; }
+
+  /// Constructor of `PlacementGroupID`.
+  PlacementGroupID() : BaseID() {}
+
+  MSGPACK_DEFINE(id_);
+
+ private:
+  uint8_t id_[kLength];
+};
+
 static_assert(sizeof(JobID) == JobID::kLength + sizeof(size_t),
               "JobID size is not as expected");
 static_assert(sizeof(ActorID) == ActorID::kLength + sizeof(size_t),
@@ -353,12 +370,15 @@ static_assert(sizeof(TaskID) == TaskID::kLength + sizeof(size_t),
               "TaskID size is not as expected");
 static_assert(sizeof(ObjectID) == ObjectID::kLength + sizeof(size_t),
               "ObjectID size is not as expected");
+static_assert(sizeof(PlacementGroupID) == PlacementGroupID::kLength + sizeof(size_t),
+              "PlacementGroupID size is not as expected");
 
 std::ostream &operator<<(std::ostream &os, const UniqueID &id);
 std::ostream &operator<<(std::ostream &os, const JobID &id);
 std::ostream &operator<<(std::ostream &os, const ActorID &id);
 std::ostream &operator<<(std::ostream &os, const TaskID &id);
 std::ostream &operator<<(std::ostream &os, const ObjectID &id);
+std::ostream &operator<<(std::ostream &os, const PlacementGroupID &id);
 
 #define DEFINE_UNIQUE_ID(type)                                                 \
   class RAY_EXPORT type : public UniqueID {                                    \
@@ -380,7 +400,7 @@ std::ostream &operator<<(std::ostream &os, const ObjectID &id);
     }                                                                          \
   };
 
-#include "id_def.h"
+#include "ray/common/id_def.h"
 
 #undef DEFINE_UNIQUE_ID
 
@@ -462,7 +482,7 @@ std::string BaseID<T>::Hex() const {
   constexpr char hex[] = "0123456789abcdef";
   const uint8_t *id = Data();
   std::string result;
-  for (int i = 0; i < T::Size(); i++) {
+  for (size_t i = 0; i < T::Size(); i++) {
     unsigned int val = id[i];
     result.push_back(hex[val >> 4]);
     result.push_back(hex[val & 0xf]);
@@ -489,7 +509,8 @@ DEFINE_UNIQUE_ID(JobID);
 DEFINE_UNIQUE_ID(ActorID);
 DEFINE_UNIQUE_ID(TaskID);
 DEFINE_UNIQUE_ID(ObjectID);
-#include "id_def.h"
+DEFINE_UNIQUE_ID(PlacementGroupID);
+#include "ray/common/id_def.h"
 
 #undef DEFINE_UNIQUE_ID
 }  // namespace std

@@ -25,17 +25,19 @@
 #include "ray/common/client_connection.h"
 #include "ray/common/task/task_common.h"
 #include "ray/common/task/scheduling_resources.h"
-#include "ray/common/scheduling/scheduling_ids.h"
-#include "ray/common/scheduling/cluster_resource_scheduler.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/actor_registration.h"
 #include "ray/raylet/lineage_cache.h"
+#include "ray/raylet/scheduling/scheduling_ids.h"
+#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
+#include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/raylet/scheduling_policy.h"
 #include "ray/raylet/scheduling_queue.h"
 #include "ray/raylet/reconstruction_policy.h"
 #include "ray/raylet/task_dependency_manager.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/util/ordered_set.h"
+#include "ray/common/bundle_spec.h"
 // clang-format on
 
 namespace ray {
@@ -298,6 +300,17 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// resource_map argument.
   /// \return Void.
   void ScheduleTasks(std::unordered_map<ClientID, SchedulingResources> &resource_map);
+
+  /// Make a placement decision for the resource_map.
+  ///
+  /// \param resource_map A mapping from node manager ID to an estimate of the
+  /// resources available to that node manager. Scheduling decisions will only
+  /// consider the local node manager and the node managers in the keys of the
+  /// resource_map argument.
+  /// \return ResourceIdSet.
+  ResourceIdSet ScheduleBundle(
+      std::unordered_map<ClientID, SchedulingResources> &resource_map,
+      const BundleSpecification &bundle_spec);
   /// Handle a task whose return value(s) must be reconstructed.
   ///
   /// \param task_id The relevant task ID.
@@ -353,14 +366,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// wait call.
   ///
   /// \param client The client that is executing the blocked task.
-  /// \param required_object_ids The IDs that the client is blocked waiting for.
+  /// \param required_object_refs The objects that the client is blocked waiting for.
   /// \param current_task_id The task that is blocked.
   /// \param ray_get Whether the task is blocked in a `ray.get` call.
   /// \param mark_worker_blocked Whether to mark the worker as blocked. This
   ///                            should be False for direct calls.
   /// \return Void.
   void AsyncResolveObjects(const std::shared_ptr<ClientConnection> &client,
-                           const std::vector<ObjectID> &required_object_ids,
+                           const std::vector<rpc::ObjectReference> &required_object_refs,
                            const TaskID &current_task_id, bool ray_get,
                            bool mark_worker_blocked);
 
@@ -428,6 +441,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param object_id The object that has been evicted locally.
   /// \return Void.
   void HandleObjectMissing(const ObjectID &object_id);
+
+  /// Handles the event that a job is started.
+  ///
+  /// \param job_id ID of the started job.
+  /// \param job_data Data associated with the started job.
+  /// \return Void
+  void HandleJobStarted(const JobID &job_id, const JobTableData &job_data);
 
   /// Handles the event that a job is finished.
   ///
@@ -578,6 +598,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Status indicating whether setup was successful.
   ray::Status SetupPlasmaSubscription();
 
+  /// Handle a `ResourcesLease` request.
+  void HandleRequestResourceReserve(const rpc::RequestResourceReserveRequest &request,
+                                    rpc::RequestResourceReserveReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle a `ResourcesReturn` request.
+  void HandleCancelResourceReserve(const rpc::CancelResourceReserveRequest &request,
+                                   rpc::CancelResourceReserveReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `WorkerLease` request.
   void HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest &request,
                                 rpc::RequestWorkerLeaseReply *reply,
@@ -587,6 +617,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
                           rpc::ReturnWorkerReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle a `ReleaseUnusedWorkers` request.
+  void HandleReleaseUnusedWorkers(const rpc::ReleaseUnusedWorkersRequest &request,
+                                  rpc::ReleaseUnusedWorkersReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ReturnWorker` request.
   void HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &request,
@@ -635,7 +670,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// in the system (local or remote) that has enough resources available to
   /// run the task, if any such node exist.
   /// Repeat the process as long as we can schedule a task.
-  void NewSchedulerSchedulePendingTasks();
+  /// NEW SCHEDULER_FUNCTION
+  void ScheduleAndDispatch();
 
   /// Whether a task is an actor creation task.
   bool IsActorCreationTask(const TaskID &task_id);
@@ -743,20 +779,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// on all local workers of this raylet.
   bool should_local_gc_ = false;
 
-  /// The new resource scheduler for direct task calls.
+  /// These two classes make up the new scheduler. ClusterResourceScheduler is
+  /// responsible for maintaining a view of the cluster state w.r.t resource
+  /// usage. ClusterTaskManager is responsible for queuing, spilling back, and
+  /// dispatching tasks.
   std::shared_ptr<ClusterResourceScheduler> new_resource_scheduler_;
-
-  typedef std::function<void(std::shared_ptr<Worker>, ClientID spillback_to,
-                             std::string address, int port)>
-      ScheduleFn;
-
-  /// Queue of lease requests that are waiting for resources to become available.
-  /// TODO this should be a queue for each SchedulingClass
-  std::deque<std::pair<ScheduleFn, Task>> tasks_to_schedule_;
-  /// Queue of lease requests that should be scheduled onto workers.
-  std::deque<std::pair<ScheduleFn, Task>> tasks_to_dispatch_;
-  /// Queue tasks waiting for arguments to be transferred locally.
-  absl::flat_hash_map<TaskID, std::pair<ScheduleFn, Task>> waiting_tasks_;
+  std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
 
   /// Cache of gRPC clients to workers (not necessarily running on this node).
   /// Also includes the number of inflight requests to each worker - when this
@@ -766,9 +794,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
       worker_rpc_clients_;
 
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
-
-  /// Wait for a task's arguments to become ready.
-  void WaitForTaskArgsRequests(std::pair<ScheduleFn, Task> &work);
 
   // TODO(swang): Evict entries from these caches.
   /// Cache for the WorkerTable in the GCS.

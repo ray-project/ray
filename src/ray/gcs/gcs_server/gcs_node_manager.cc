@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "gcs_node_manager.h"
+#include "ray/gcs/gcs_server/gcs_node_manager.h"
 
-#include <ray/common/ray_config.h>
-#include <ray/gcs/pb_util.h>
-#include <ray/protobuf/gcs.pb.h>
+#include "ray/common/ray_config.h"
+#include "ray/gcs/pb_util.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace gcs {
@@ -99,8 +99,8 @@ void GcsNodeManager::NodeFailureDetector::ScheduleTick() {
       RayConfig::instance().raylet_heartbeat_timeout_milliseconds());
   detect_timer_.expires_from_now(heartbeat_period);
   detect_timer_.async_wait([this](const boost::system::error_code &error) {
-    if (error == boost::system::errc::operation_canceled) {
-      // `operation_canceled` is set when `detect_timer_` is canceled or destroyed.
+    if (error == boost::asio::error::operation_aborted) {
+      // `operation_aborted` is set when `detect_timer_` is canceled or destroyed.
       // The Monitor lifetime may be short than the object who use it. (e.g. gcs_server)
       return;
     }

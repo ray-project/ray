@@ -21,10 +21,10 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
-#include "ray/protobuf/common.pb.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/util/logging.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 
@@ -190,12 +190,29 @@ class ReferenceCounter : public ReferenceCounterInterface {
   bool AddBorrowedObject(const ObjectID &object_id, const ObjectID &outer_id,
                          const rpc::Address &owner_address) LOCKS_EXCLUDED(mutex_);
 
-  /// Get the owner ID and address of the given object.
+  /// Get the owner address of the given object.
   ///
   /// \param[in] object_id The ID of the object to look up.
   /// \param[out] owner_address The address of the object owner.
+  /// \return false if the object is out of scope or we do not yet have
+  /// ownership information. The latter can happen when object IDs are pasesd
+  /// out of band.
   bool GetOwner(const ObjectID &object_id, rpc::Address *owner_address = nullptr) const
       LOCKS_EXCLUDED(mutex_);
+
+  /// Get the owner addresses of the given objects. The owner address
+  /// must be registered for these objects.
+  ///
+  /// \param[in] object_ids The IDs of the object to look up.
+  /// \return The addresses of the objects' owners.
+  std::vector<rpc::Address> GetOwnerAddresses(
+      const std::vector<ObjectID> object_ids) const;
+
+  /// Check whether an object value has been freed.
+  ///
+  /// \param[in] object_id The object to check.
+  /// \return Whether the object value has been freed.
+  bool IsPlasmaObjectFreed(const ObjectID &object_id) const;
 
   /// Release the underlying value from plasma (if any) for these objects.
   ///
@@ -353,8 +370,8 @@ class ReferenceCounter : public ReferenceCounterInterface {
           object_size(object_size),
           owned_by_us(true),
           owner_address(owner_address),
-          is_reconstructable(is_reconstructable),
-          pinned_at_raylet_id(pinned_at_raylet_id) {}
+          pinned_at_raylet_id(pinned_at_raylet_id),
+          is_reconstructable(is_reconstructable) {}
 
     /// Constructor from a protobuf. This is assumed to be a message from
     /// another process, so the object defaults to not being owned by us.
@@ -497,6 +514,10 @@ class ReferenceCounter : public ReferenceCounterInterface {
   };
 
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
+
+  bool GetOwnerInternal(const ObjectID &object_id,
+                        rpc::Address *owner_address = nullptr) const
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Release the pinned plasma object, if any. Also unsets the raylet address
   /// that the object was pinned at, if the address was set.

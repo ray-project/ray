@@ -45,6 +45,8 @@ enum TablePrefix {
   WORKERS = 19;
   INTERNAL_CONFIG = 20;
   TABLE_PREFIX_MAX = 21;
+  PLACEMENT_GROUP_SCHEDULE = 22;
+  PLACEMENT_GROUP = 23;
 }
 
 // The channel that Add operations to the Table should be published on, if any.
@@ -126,7 +128,9 @@ message ActorTableData {
   // Max number of times this actor should be restarted,
   // a value of -1 indicates an infinite number of reconstruction attempts.
   int64 max_restarts = 7;
-  // Number of restarts that have already been performed on this actor.
+  // Number of restarts that have been successfully performed on this
+  // actor. This is the equal to the number of ALIVE messages that have been
+  // previously published for this actor.
   uint64 num_restarts = 8;
   // The address of the the actor.
   Address address = 9;
@@ -154,6 +158,33 @@ message ErrorTableData {
   string error_message = 3;
   // The timestamp of the error message.
   double timestamp = 4;
+}
+
+message PlacementGroupTableData {
+  // State of a placement group.
+  enum PlacementGroupState {
+    // Placement Group is pending or scheduling
+    PENDING = 0;
+    // Placement Group is alive.
+    ALIVE = 1;
+    // Placement Group is already dead and won't be reschedule.
+    DEAD = 2;
+  }
+
+  // ID of the PlacementGroup.
+  bytes placement_group_id = 1;
+  // The name of the placement group.
+  string name = 2;
+  // The array of the bundle in Placement Group.
+  repeated Bundle bundles = 3;
+  // The schedule strategy of this Placement Group.
+  PlacementStrategy strategy = 4;
+  // Current state of this placement group.
+  PlacementGroupState state = 5;
+}
+
+message ScheduleData {
+  map<string, bytes> schedule_plan = 1;
 }
 
 message ProfileTableData {
@@ -253,6 +284,21 @@ message TaskLeaseData {
   uint64 timeout = 4;
 }
 
+message JobConfigs {
+  // The initial Python workers to start per node. If a negative value is specified, it
+  // fallbacks to `num_cpus`.
+  int32 num_initial_python_workers = 1;
+  // The initial Java workers to start per node. If a negative value is specified, it
+  // fallbacks to `num_cpus`.
+  int32 num_initial_java_workers = 2;
+  // Environment variables to be set on worker processes.
+  map<string, string> worker_env = 3;
+  // The number of java workers per worker process.
+  uint32 num_java_workers_per_process = 4;
+  // The jvm options for java workers of the job.
+  repeated string jvm_options = 5;
+}
+
 message JobTableData {
   // The job ID.
   bytes job_id = 1;
@@ -264,6 +310,8 @@ message JobTableData {
   string driver_ip_address = 4;
   // Process ID of the driver running this job.
   int64 driver_pid = 5;
+  // The configs of this job.
+  JobConfigs configs = 6;
 }
 
 // This table stores the actor checkpoint data. An actor checkpoint

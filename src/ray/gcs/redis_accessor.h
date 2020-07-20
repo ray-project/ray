@@ -14,9 +14,8 @@
 
 #pragma once
 
-#include <ray/common/task/task_spec.h>
-
 #include "ray/common/id.h"
+#include "ray/common/task/task_spec.h"
 #include "ray/gcs/accessor.h"
 #include "ray/gcs/callback.h"
 #include "ray/gcs/subscription_executor.h"
@@ -175,9 +174,8 @@ class RedisJobInfoAccessor : public JobInfoAccessor {
 
   Status AsyncMarkFinished(const JobID &job_id, const StatusCallback &callback) override;
 
-  Status AsyncSubscribeToFinishedJobs(
-      const SubscribeCallback<JobID, JobTableData> &subscribe,
-      const StatusCallback &done) override;
+  Status AsyncSubscribeAll(const SubscribeCallback<JobID, JobTableData> &subscribe,
+                           const StatusCallback &done) override;
 
   Status AsyncGetAll(const MultiItemCallback<rpc::JobTableData> &callback) override {
     return Status::NotImplemented("AsyncGetAll not implemented");

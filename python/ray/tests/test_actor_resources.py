@@ -631,12 +631,12 @@ def test_creating_more_actors_than_resources(shutdown_only):
     results = []
     for _ in range(3):
         actor = ResourceActor2.remote()
-        object_id = actor.method.remote()
-        results.append(object_id)
+        object_ref = actor.method.remote()
+        results.append(object_ref)
         # Wait for the task to execute. We do this because otherwise it may
         # be possible for the __ray_terminate__ task to execute before the
         # method.
-        ray.wait([object_id])
+        ray.wait([object_ref])
 
     ray.get(results)
 

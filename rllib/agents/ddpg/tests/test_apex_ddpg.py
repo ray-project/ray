@@ -24,7 +24,7 @@ class TestApexDDPG(unittest.TestCase):
         config["learning_starts"] = 0
         config["optimizer"]["num_replay_buffer_shards"] = 1
         num_iterations = 1
-        for _ in framework_iterator(config, frameworks=("tf", "torch")):
+        for _ in framework_iterator(config):
             plain_config = config.copy()
             trainer = apex_ddpg.ApexDDPGTrainer(
                 config=plain_config, env="Pendulum-v0")

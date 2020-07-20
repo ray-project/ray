@@ -14,8 +14,8 @@
 
 #pragma once
 
+#include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "ray/rpc/server_call.h"
-#include "service_based_gcs_client.h"
 
 namespace ray {
 namespace gcs {

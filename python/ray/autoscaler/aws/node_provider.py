@@ -9,6 +9,7 @@ import botocore
 from botocore.config import Config
 
 from ray.autoscaler.node_provider import NodeProvider
+from ray.autoscaler.aws.config import bootstrap_aws
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME, \
     TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_TYPE, TAG_RAY_INSTANCE_TYPE
 from ray.ray_constants import BOTO_MAX_RETRIES, BOTO_CREATE_MAX_RETRIES
@@ -399,3 +400,7 @@ class AWSNodeProvider(NodeProvider):
     def cleanup(self):
         self.tag_cache_update_event.set()
         self.tag_cache_kill_event.set()
+
+    @staticmethod
+    def bootstrap_config(cluster_config):
+        return bootstrap_aws(cluster_config)

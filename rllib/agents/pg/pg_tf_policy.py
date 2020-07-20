@@ -27,7 +27,7 @@ def pg_tf_loss(policy, model, dist_class, train_batch):
     action_dist = dist_class(logits, model)
     return -tf.reduce_mean(
         action_dist.logp(train_batch[SampleBatch.ACTIONS]) *
-        train_batch[Postprocessing.ADVANTAGES])
+        tf.cast(train_batch[Postprocessing.ADVANTAGES], dtype=tf.float32))
 
 
 PGTFPolicy = build_tf_policy(

@@ -12,13 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <ray/gcs/gcs_server/test/gcs_server_test_util.h>
-#include <ray/gcs/test/gcs_test_util.h>
-#include "ray/common/test_util.h"
-
 #include <memory>
 
 #include "gtest/gtest.h"
+#include "ray/common/test_util.h"
+#include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
+#include "ray/gcs/test/gcs_test_util.h"
 
 namespace ray {
 
@@ -31,6 +30,8 @@ class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
 
   void Schedule(std::shared_ptr<gcs::GcsActor> actor) { actors.push_back(actor); }
   void Reschedule(std::shared_ptr<gcs::GcsActor> actor) {}
+  void ReleaseUnusedWorkers(
+      const std::unordered_map<ClientID, std::vector<WorkerID>> &node_to_workers) {}
 
   MOCK_METHOD1(CancelOnNode, std::vector<ActorID>(const ClientID &node_id));
   MOCK_METHOD2(CancelOnWorker,

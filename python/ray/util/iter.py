@@ -402,10 +402,10 @@ class ParallelIterator(Generic[T]):
                 else:
                     ready, _ = ray.wait(
                         pending, num_returns=len(pending), timeout=timeout)
-                for obj_id in ready:
-                    actor = futures.pop(obj_id)
+                for obj_ref in ready:
+                    actor = futures.pop(obj_ref)
                     try:
-                        batch = ray.get(obj_id)
+                        batch = ray.get(obj_ref)
                         futures[actor.par_iter_slice_batch.remote(
                             step=num_partitions,
                             start=partition_index,
@@ -545,11 +545,11 @@ class ParallelIterator(Generic[T]):
                 else:
                     ready, _ = ray.wait(
                         pending, num_returns=len(pending), timeout=timeout)
-                for obj_id in ready:
-                    actor = futures.pop(obj_id)
+                for obj_ref in ready:
+                    actor = futures.pop(obj_ref)
                     try:
                         local_iter.shared_metrics.get().current_actor = actor
-                        batch = ray.get(obj_id)
+                        batch = ray.get(obj_ref)
                         futures[actor.par_iter_next_batch.remote(
                             batch_ms)] = actor
                         for item in batch:

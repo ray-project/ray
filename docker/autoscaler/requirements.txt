@@ -23,3 +23,6 @@ mlflow
 kubernetes
 boto3
 ipython
+google-oauth
+google-api-python-client
+oauth2client

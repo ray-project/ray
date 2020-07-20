@@ -22,6 +22,7 @@
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/status.h"
+#include "ray/core_worker/core_worker.h"
 #include "ray/stats/metric.h"
 
 #include "opencensus/tags/tag_key.h"
@@ -35,6 +36,11 @@ extern jmethodID java_boolean_init;
 extern jclass java_double_class;
 /// doubleValue method of Double class
 extern jmethodID java_double_double_value;
+
+/// Object class
+extern jclass java_object_class;
+/// equals method of Object class
+extern jmethodID java_object_equals;
 
 /// List class
 extern jclass java_list_class;
@@ -115,6 +121,10 @@ extern jfieldID java_base_task_options_resources;
 
 /// ActorCreationOptions class
 extern jclass java_actor_creation_options_class;
+/// global field of ActorCreationOptions class
+extern jfieldID java_actor_creation_options_global;
+/// name field of ActorCreationOptions class
+extern jfieldID java_actor_creation_options_name;
 /// maxRestarts field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_max_restarts;
 /// jvmOptions field of ActorCreationOptions class
@@ -463,4 +473,11 @@ inline void MetricTransform(JNIEnv *env, jstring j_name, jstring j_description,
   std::transform(tag_key_str_list.begin(), tag_key_str_list.end(),
                  std::back_inserter(tag_keys),
                  [](std::string tag_key) { return TagKeyType::Register(tag_key); });
+}
+
+// Return an actor fullname with job id prepended if this tis a global actor.
+inline std::string GetActorFullName(bool global, std::string name) {
+  return global ? name
+                : ::ray::CoreWorkerProcess::GetCoreWorker().GetCurrentJobId().Hex() + "-" +
+                      name;
 }
