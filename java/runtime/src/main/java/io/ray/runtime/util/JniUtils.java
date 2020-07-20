@@ -39,9 +39,8 @@ public class JniUtils {
       LOGGER.debug("Loading native library {}.", libraryName);
       // Load native library.
       String fileName = System.mapLibraryName(libraryName);
-      String fileDir = SystemUtils.IS_OS_MAC ? "native/darwin/" : "native/linux/";
       final String sessionDir = RayConfig.getInstance().sessionDir;
-      final File file = BinaryFileUtil.getFile(sessionDir, fileDir + fileName);
+      final File file = BinaryFileUtil.getNativeFile(sessionDir, fileName);
 
       if (exportSymbols) {
         // Expose library symbols using RTLD_GLOBAL which may be depended by other shared

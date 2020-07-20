@@ -9,6 +9,7 @@ import java.nio.channels.FileLock;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.SystemUtils;
 
 public class BinaryFileUtil {
   public static final String REDIS_SERVER_BINARY_NAME = "redis-server";
@@ -25,7 +26,7 @@ public class BinaryFileUtil {
       System.mapLibraryName("core_worker_library_java");
 
   /**
-   * Extract a resource file to <code>destDir</code>.
+   * Extract a platform-native resource file to <code>destDir</code>.
    * Note that this a process-safe operation. If multi processes extract the file to same
    * directory concurrently, this operation will be protected by a file lock.
    *
@@ -33,7 +34,7 @@ public class BinaryFileUtil {
    * @param fileName resource file name
    * @return extracted resource file
    */
-  public static File getFile(String destDir, String fileName) {
+  public static File getNativeFile(String destDir, String fileName) {
     final File dir = new File(destDir);
     if (!dir.exists()) {
       try {
@@ -45,17 +46,19 @@ public class BinaryFileUtil {
     String lockFilePath = destDir + File.separator + "file_lock";
     try (FileLock ignored = new RandomAccessFile(lockFilePath, "rw")
         .getChannel().lock()) {
-      File file = new File(String.format("%s/%s", destDir, fileName));
+      String fileDir = SystemUtils.IS_OS_MAC ? "native/darwin/" : "native/linux/";
+      String filePath = fileDir + fileName;
+      File file = new File(String.format("%s/%s", destDir, filePath));
       if (file.exists()) {
         return file;
       }
 
       // File does not exist.
-      try (InputStream is = BinaryFileUtil.class.getResourceAsStream("/" + fileName)) {
-        Preconditions.checkNotNull(is, "{} doesn't exist.", fileName);
+      try (InputStream is = BinaryFileUtil.class.getResourceAsStream("/" + filePath)) {
+        Preconditions.checkNotNull(is, "{} doesn't exist.", filePath);
         Files.copy(is, Paths.get(file.getCanonicalPath()));
       } catch (IOException e) {
-        throw new RuntimeException("Couldn't get temp file from resource " + fileName, e);
+        throw new RuntimeException("Couldn't get temp file from resource " + filePath, e);
       }
       return file;
     } catch (IOException e) {
