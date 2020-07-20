@@ -16,8 +16,8 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "ray/common/scheduling/cluster_resource_scheduler.h"
-#include "ray/common/scheduling/scheduling_ids.h"
+#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
+#include "ray/raylet/scheduling/scheduling_ids.h"
 
 #ifdef UNORDERED_VS_ABSL_MAPS_EVALUATION
 #include <chrono>
@@ -575,7 +575,7 @@ TEST_F(SchedulingTest, GetLocalAvailableResourcesTest) {
       cluster_resources.GetLocalResources().GetAvailableResourceInstances();
 
   TaskResourceInstances expected_cluster_resources;
-  addTaskResourceInstances(true, {3.}, 0, &expected_cluster_resources);
+  addTaskResourceInstances(true, {1., 1., 1.}, 0, &expected_cluster_resources);
   addTaskResourceInstances(true, {4.}, 1, &expected_cluster_resources);
   addTaskResourceInstances(true, {1., 1., 1., 1., 1.}, 2, &expected_cluster_resources);
 
@@ -704,7 +704,7 @@ TEST_F(SchedulingTest, TaskResourceInstancesTest) {
     ASSERT_EQ(success, true);
 
     TaskResourceInstances expected_task_allocation;
-    addTaskResourceInstances(true, {0.}, CPU, &expected_task_allocation);
+    addTaskResourceInstances(true, {0., 0., 0.}, CPU, &expected_task_allocation);
     addTaskResourceInstances(true, {2.}, MEM, &expected_task_allocation);
     addTaskResourceInstances(true, {0., 0.5, 1., 1., 1.}, GPU, &expected_task_allocation);
 
@@ -797,7 +797,7 @@ TEST_F(SchedulingTest, TaskResourceInstancesTest) {
     ASSERT_EQ(success, true);
 
     TaskResourceInstances expected_task_allocation;
-    addTaskResourceInstances(true, {0.}, CPU, &expected_task_allocation);
+    addTaskResourceInstances(true, {0., 0., 0.}, CPU, &expected_task_allocation);
     addTaskResourceInstances(true, {2.}, MEM, &expected_task_allocation);
     addTaskResourceInstances(true, {0., 0.5, 1., 1., 1.}, GPU, &expected_task_allocation);
     addTaskResourceInstances(false, {1.}, 1, &expected_task_allocation);
@@ -940,6 +940,32 @@ TEST_F(SchedulingTest, UpdateLocalAvailableResourcesFromResourceInstancesTest) {
       ASSERT_TRUE(nr.predefined_resources[GPU].available == 3.8);
     }
   }
+}
+
+TEST_F(SchedulingTest, TaskResourceInstanceWithHardRequestTest) {
+  NodeResources node_resources;
+  vector<FixedPoint> pred_capacities{4. /* CPU */, 2. /* MEM */, 4. /* GPU */};
+  initNodeResources(node_resources, pred_capacities, EmptyIntVector,
+                    EmptyFixedPointVector);
+  ClusterResourceScheduler cluster_resources(0, node_resources);
+
+  TaskRequest task_req;
+  vector<FixedPoint> pred_demands = {2. /* CPU */, 2. /* MEM */, 1.5 /* GPU */};
+  vector<bool> pred_soft = {false, false, true};
+  initTaskRequest(task_req, pred_demands, pred_soft, EmptyIntVector,
+                  EmptyFixedPointVector, EmptyBoolVector, EmptyIntVector);
+
+  std::shared_ptr<TaskResourceInstances> task_allocation =
+      std::make_shared<TaskResourceInstances>();
+  bool success =
+      cluster_resources.AllocateTaskResourceInstances(task_req, task_allocation);
+
+  ASSERT_EQ(success, true);
+
+  vector<FixedPoint> cpu_instances = task_allocation->GetGPUInstances();
+  vector<FixedPoint> expect_cpu_instance{1., 0.5, 0., 0.};
+
+  ASSERT_TRUE(EqualVectors(cpu_instances, expect_cpu_instance));
 }
 
 }  // namespace ray

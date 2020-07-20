@@ -438,8 +438,8 @@ class MultiAgentBatch:
         steps = []
         for policy_id, batch in self.policy_batches.items():
             for row in batch.rows():
-                steps.append((row[SampleBatch.EPS_ID], row["t"], policy_id,
-                              row))
+                steps.append((row[SampleBatch.EPS_ID], row["t"],
+                              row["agent_index"], policy_id, row))
         steps.sort()
 
         finished_slices = []
@@ -458,7 +458,7 @@ class MultiAgentBatch:
         # For each unique env timestep.
         for _, group in itertools.groupby(steps, lambda x: x[:2]):
             # Accumulate into the current slice.
-            for _, _, policy_id, row in group:
+            for _, _, _, policy_id, row in group:
                 cur_slice[policy_id].add_values(**row)
             cur_slice_size += 1
             # Slice has reached target number of env steps.

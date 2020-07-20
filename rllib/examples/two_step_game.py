@@ -83,8 +83,10 @@ if __name__ == "__main__":
         config = {
             "rollout_fragment_length": 4,
             "train_batch_size": 32,
-            "exploration_fraction": .4,
-            "exploration_final_eps": 0.0,
+            "exploration_config": {
+                "epsilon_timesteps": 5000,
+                "final_epsilon": 0.05,
+            },
             "num_workers": 0,
             "mixer": grid_search([None, "qmix", "vdn"]),
             "env_config": {
@@ -109,7 +111,7 @@ if __name__ == "__main__":
         "env": "grouped_twostep" if group else TwoStepGame,
     })
 
-    results = tune.run(args.run, stop=stop, config=config)
+    results = tune.run(args.run, stop=stop, config=config, verbose=1)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

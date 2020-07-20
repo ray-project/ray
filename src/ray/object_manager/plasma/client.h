@@ -208,38 +208,6 @@ class RAY_EXPORT PlasmaClient {
   /// \return The return status.
   Status Refresh(const std::vector<ObjectID>& object_ids);
 
-  /// Compute the hash of an object in the object store.
-  ///
-  /// \param object_id The ID of the object we want to hash.
-  /// \param digest A pointer at which to return the hash digest of the object.
-  ///        The pointer must have at least kDigestSize bytes allocated.
-  /// \return The return status.
-  Status Hash(const ObjectID& object_id, uint8_t* digest);
-
-  /// Subscribe to notifications when objects are sealed in the object store.
-  /// Whenever an object is sealed, a message will be written to the client
-  /// socket that is returned by this method.
-  ///
-  /// \param fd Out parameter for the file descriptor the client should use to
-  /// read notifications
-  ///         from the object store about sealed objects.
-  /// \return The return status.
-  Status Subscribe(int* fd);
-
-  /// Receive next object notification for this client if Subscribe has been called.
-  ///
-  /// \param fd The file descriptor we are reading the notification from.
-  /// \param object_id Out parameter, the object_id of the object that was sealed.
-  /// \param data_size Out parameter, the data size of the object that was sealed.
-  /// \param metadata_size Out parameter, the metadata size of the object that was sealed.
-  /// \return The return status.
-  Status GetNotification(int fd, ObjectID* object_id, int64_t* data_size,
-                         int64_t* metadata_size);
-
-  Status DecodeNotifications(const uint8_t* buffer, std::vector<ObjectID>* object_ids,
-                             std::vector<int64_t>* data_sizes,
-                             std::vector<int64_t>* metadata_sizes);
-
   /// Disconnect from the local plasma instance, including the local store and
   /// manager.
   ///

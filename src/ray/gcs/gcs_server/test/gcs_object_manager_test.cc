@@ -13,9 +13,10 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_server/gcs_object_manager.h"
-#include <ray/gcs/gcs_server/test/gcs_server_test_util.h>
-#include <ray/gcs/test/gcs_test_util.h>
+
 #include "gtest/gtest.h"
+#include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
+#include "ray/gcs/test/gcs_test_util.h"
 
 namespace ray {
 

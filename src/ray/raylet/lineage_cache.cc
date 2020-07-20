@@ -12,8 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "lineage_cache.h"
+#include "ray/raylet/lineage_cache.h"
+
 #include <sstream>
+
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/stats/stats.h"
 
