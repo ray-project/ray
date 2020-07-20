@@ -510,8 +510,8 @@ TEST_F(GcsActorSchedulerTest, TestReleaseUnusedWorkers) {
   // won't send `RequestWorkerLease` request to node immediately. But instead, it will
   // invoke the `RetryLeasingWorkerFromNode` to retry later.
   auto job_id = JobID::FromInt(1);
-  auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
-  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request);
+  auto request = Mocker::GenReportActorDependenciesResolvedRequest(job_id);
+  auto actor = std::make_shared<gcs::GcsActor>(request.task_spec());
   gcs_actor_scheduler_->Schedule(actor);
   ASSERT_EQ(2, gcs_actor_scheduler_->num_retry_leasing_count_);
   ASSERT_EQ(raylet_client_->num_workers_requested, 0);
