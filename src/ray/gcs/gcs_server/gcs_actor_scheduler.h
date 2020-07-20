@@ -142,7 +142,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   ///
   /// \param node_to_workers Workers used by each node.
   void ReleaseUnusedWorkers(const std::unordered_map<ClientID, std::vector<WorkerID>>
-                            &node_to_workers) override;
+                                &node_to_workers) override;
 
  protected:
   /// The GcsLeasedWorker is kind of abstraction of remote leased worker inside raylet. It

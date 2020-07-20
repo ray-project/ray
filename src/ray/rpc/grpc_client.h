@@ -32,10 +32,10 @@ namespace rpc {
       &SERVICE::Stub::PrepareAsync##METHOD, request, callback))
 
 // Define a void RPC client method.
-#define VOID_RPC_CLIENT_METHOD(SERVICE, METHOD, rpc_client, SPECS)               \
-  void METHOD(const METHOD##Request &request,                                    \
-              const ClientCallback<METHOD##Reply> &callback) SPECS {             \
-    INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client);             \
+#define VOID_RPC_CLIENT_METHOD(SERVICE, METHOD, rpc_client, SPECS)   \
+  void METHOD(const METHOD##Request &request,                        \
+              const ClientCallback<METHOD##Reply> &callback) SPECS { \
+    INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client); \
   }
 
 template <class GrpcService>

@@ -278,43 +278,42 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   request->mutable_resource_mapping()->CopyFrom(assigned_resources);
   request->set_intended_worker_id(addr.worker_id.Binary());
-  client.PushNormalTask(
-      std::move(request),
-      [this, task_id, is_actor, is_actor_creation, scheduling_key, addr,
-       assigned_resources](Status status, const rpc::PushTaskReply &reply) {
-        {
-          absl::MutexLock lock(&mu_);
-          executing_tasks_.erase(task_id);
+  client.PushNormalTask(std::move(request), [this, task_id, is_actor, is_actor_creation,
+                                             scheduling_key, addr, assigned_resources](
+                                                Status status,
+                                                const rpc::PushTaskReply &reply) {
+    {
+      absl::MutexLock lock(&mu_);
+      executing_tasks_.erase(task_id);
 
-          // Decrement the number of tasks in flight to the worker
-          auto &lease_entry = worker_to_lease_entry_[addr];
-          RAY_CHECK(lease_entry.tasks_in_flight_ > 0);
-          lease_entry.tasks_in_flight_--;
-        }
-        if (reply.worker_exiting()) {
-          // The worker is draining and will shutdown after it is done. Don't return
-          // it to the Raylet since that will kill it early.
-          absl::MutexLock lock(&mu_);
-          worker_to_lease_entry_.erase(addr);
-        } else if (!status.ok() || !is_actor_creation) {
-          // Successful actor creation leases the worker indefinitely from the raylet.
-          absl::MutexLock lock(&mu_);
-          OnWorkerIdle(addr, scheduling_key,
-                       /*error=*/!status.ok(), assigned_resources);
-        }
-        if (!status.ok()) {
-          // TODO: It'd be nice to differentiate here between process vs node
-          // failure (e.g., by contacting the raylet). If it was a process
-          // failure, it may have been an application-level error and it may
-          // not make sense to retry the task.
-          RAY_UNUSED(task_finisher_->PendingTaskFailed(
-              task_id,
-              is_actor ? rpc::ErrorType::ACTOR_DIED : rpc::ErrorType::WORKER_DIED,
-              &status));
-        } else {
-          task_finisher_->CompletePendingTask(task_id, reply, addr.ToProto());
-        }
-      });
+      // Decrement the number of tasks in flight to the worker
+      auto &lease_entry = worker_to_lease_entry_[addr];
+      RAY_CHECK(lease_entry.tasks_in_flight_ > 0);
+      lease_entry.tasks_in_flight_--;
+    }
+    if (reply.worker_exiting()) {
+      // The worker is draining and will shutdown after it is done. Don't return
+      // it to the Raylet since that will kill it early.
+      absl::MutexLock lock(&mu_);
+      worker_to_lease_entry_.erase(addr);
+    } else if (!status.ok() || !is_actor_creation) {
+      // Successful actor creation leases the worker indefinitely from the raylet.
+      absl::MutexLock lock(&mu_);
+      OnWorkerIdle(addr, scheduling_key,
+                   /*error=*/!status.ok(), assigned_resources);
+    }
+    if (!status.ok()) {
+      // TODO: It'd be nice to differentiate here between process vs node
+      // failure (e.g., by contacting the raylet). If it was a process
+      // failure, it may have been an application-level error and it may
+      // not make sense to retry the task.
+      RAY_UNUSED(task_finisher_->PendingTaskFailed(
+          task_id, is_actor ? rpc::ErrorType::ACTOR_DIED : rpc::ErrorType::WORKER_DIED,
+          &status));
+    } else {
+      task_finisher_->CompletePendingTask(task_id, reply, addr.ToProto());
+    }
+  });
 }
 
 Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,

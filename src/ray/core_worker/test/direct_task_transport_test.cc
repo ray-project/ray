@@ -31,9 +31,8 @@ int64_t kLongTimeout = 1024 * 1024 * 1024;
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
-  void PushNormalTask(
-      std::unique_ptr<rpc::PushTaskRequest> request,
-      const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {
+  void PushNormalTask(std::unique_ptr<rpc::PushTaskRequest> request,
+                      const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {
     callbacks.push_back(callback);
   }
 
@@ -51,9 +50,8 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     return true;
   }
 
-  void CancelTask(
-      const rpc::CancelTaskRequest &request,
-      const rpc::ClientCallback<rpc::CancelTaskReply> &callback) override {
+  void CancelTask(const rpc::CancelTaskRequest &request,
+                  const rpc::ClientCallback<rpc::CancelTaskReply> &callback) override {
     kill_requests.push_front(request);
   }
 
@@ -111,8 +109,7 @@ class MockRayletClient : public WorkerLeaseInterface {
 
   void ReleaseUnusedWorkers(
       const std::vector<WorkerID> &workers_in_use,
-      const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) override {
-  }
+      const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) override {}
 
   void CancelWorkerLease(
       const TaskID &task_id,

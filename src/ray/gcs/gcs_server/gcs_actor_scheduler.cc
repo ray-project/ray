@@ -184,8 +184,7 @@ void GcsActorScheduler::ReleaseUnusedWorkers(
     // nodes do not have leased workers. In this case, GCS will send an empty list.
     auto workers_in_use =
         iter != node_to_workers.end() ? iter->second : std::vector<WorkerID>{};
-    lease_client->ReleaseUnusedWorkers(
-        workers_in_use, release_unused_workers_callback);
+    lease_client->ReleaseUnusedWorkers(workers_in_use, release_unused_workers_callback);
   }
 }
 
