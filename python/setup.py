@@ -96,7 +96,6 @@ if os.getenv("RAY_USE_NEW_GCS") == "on":
 
 extras = {
     "debug": [],
-    "dashboard": ["requests", "gpustat"],
     "serve": ["uvicorn", "flask", "blist", "requests"],
     "tune": ["tabulate", "tensorboardX", "pandas"]
 }
@@ -268,6 +267,7 @@ install_requires = [
     "colorama",
     "filelock",
     "google",
+    "gpustat",
     "grpcio",
     "jsonschema",
     "msgpack >= 0.6.0, < 2.0.0",
@@ -275,6 +275,7 @@ install_requires = [
     "protobuf >= 3.8.0",
     "py-spy >= 0.2.0",
     "pyyaml",
+    "requests",
     "redis >= 3.3.2, < 3.5.0",
 ]
 
