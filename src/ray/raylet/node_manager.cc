@@ -671,6 +671,15 @@ void NodeManager::NodeRemoved(const GcsNodeInfo &node_info) {
     return;
   }
 
+  // Remove the client from the resource map.
+  if (new_scheduler_enabled_) {
+    if (!new_resource_scheduler_->RemoveNode(node_id.Binary())) {
+      RAY_LOG(DEBUG) << "Received NodeRemoved callback for an unknown node: " << node_id
+                     << ".";
+      return;
+    }
+  }
+
   // Remove the node manager client.
   const auto client_entry = remote_node_manager_clients_.find(node_id);
   if (client_entry != remote_node_manager_clients_.end()) {
