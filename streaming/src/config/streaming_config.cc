@@ -1,6 +1,7 @@
+#include "config/streaming_config.h"
+
 #include <unistd.h>
 
-#include "streaming_config.h"
 #include "util/streaming_logging.h"
 
 namespace ray {

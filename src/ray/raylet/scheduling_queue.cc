@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "scheduling_queue.h"
+#include "ray/raylet/scheduling_queue.h"
 
 #include <sstream>
 

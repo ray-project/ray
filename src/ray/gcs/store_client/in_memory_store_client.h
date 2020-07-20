@@ -17,7 +17,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/gcs/store_client/store_client.h"
-#include "ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 

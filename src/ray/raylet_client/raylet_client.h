@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include <ray/protobuf/gcs.pb.h>
-
 #include <mutex>
 #include <unordered_map>
 #include <vector>
@@ -25,6 +23,7 @@
 #include "ray/common/status.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 using ray::ActorCheckpointID;
 using ray::ActorID;

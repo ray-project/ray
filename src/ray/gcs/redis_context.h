@@ -23,10 +23,9 @@
 
 #include "ray/common/id.h"
 #include "ray/common/status.h"
-#include "ray/util/logging.h"
-
 #include "ray/gcs/redis_async_context.h"
-#include "ray/protobuf/gcs.pb.h"
+#include "ray/util/logging.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 struct redisContext;
 struct redisAsyncContext;
