@@ -1,7 +1,7 @@
 """ Code adapted from https://github.com/ikostrikov/pytorch-a3c"""
 import numpy as np
 
-from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.framework import get_activation_fn, try_import_torch
 
 torch, nn = try_import_torch()
 
@@ -106,7 +106,9 @@ class SlimFC(nn.Module):
         if use_bias is True:
             nn.init.constant_(linear.bias, bias_init)
         layers.append(linear)
-        if activation_fn:
+        if isinstance(activation_fn, str):
+            activation_fn = get_activation_fn(activation_fn, "torch")
+        if activation_fn is not None:
             layers.append(activation_fn())
         self._model = nn.Sequential(*layers)
 

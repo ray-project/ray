@@ -14,7 +14,8 @@ from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.exploration.parameter_noise import ParameterNoise
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import huber_loss, reduce_mean_ignore_inf
+from ray.rllib.utils.torch_ops import huber_loss, reduce_mean_ignore_inf, \
+    softmax_cross_entropy_with_logits
 
 torch, nn = try_import_torch()
 F = None
@@ -39,7 +40,7 @@ class QLoss:
 
         if num_atoms > 1:
             # Distributional Q-learning which corresponds to an entropy loss
-            z = torch.range(num_atoms, dtype=torch.float32)
+            z = torch.range(0.0, num_atoms - 1, dtype=torch.float32)
             z = v_min + z * (v_max - v_min) / float(num_atoms - 1)
 
             # (batch_size, 1) * (1, num_atoms) = (batch_size, num_atoms)
@@ -50,28 +51,29 @@ class QLoss:
             b = (r_tau - v_min) / ((v_max - v_min) / float(num_atoms - 1))
             lb = torch.floor(b)
             ub = torch.ceil(b)
-            # indispensable judgement which is missed in most implementations
+
+            # Indispensable judgement which is missed in most implementations
             # when b happens to be an integer, lb == ub, so pr_j(s', a*) will
-            # be discarded because (ub-b) == (b-lb) == 0
-            floor_equal_ceil = tf.less(ub - lb, 0.5).float()
+            # be discarded because (ub-b) == (b-lb) == 0.
+            floor_equal_ceil = (ub - lb < 0.5).float()
 
             # (batch_size, num_atoms, num_atoms)
-            l_project = F.one_hot(lb.int(), num_atoms)
+            l_project = F.one_hot(lb.long(), num_atoms)
             # (batch_size, num_atoms, num_atoms)
-            u_project = F.one_hot(ub.int(), num_atoms)
+            u_project = F.one_hot(ub.long(), num_atoms)
             ml_delta = q_probs_tp1_best * (ub - b + floor_equal_ceil)
             mu_delta = q_probs_tp1_best * (b - lb)
             ml_delta = torch.sum(
-                l_project * torch.unsqueeze(ml_delta, -1), axis=1)
+                l_project * torch.unsqueeze(ml_delta, -1), dim=1)
             mu_delta = torch.sum(
-                u_project * torch.unsqueeze(mu_delta, -1), axis=1)
+                u_project * torch.unsqueeze(mu_delta, -1), dim=1)
             m = ml_delta + mu_delta
 
             # Rainbow paper claims that using this cross entropy loss for
             # priority is robust and insensitive to `prioritized_replay_alpha`
-            self.td_error = tf.nn.softmax_cross_entropy_with_logits(
-                labels=m, logits=q_logits_t_selected)
-            self.loss = torch.mean(self.td_error * importance_weights.float())
+            self.td_error = softmax_cross_entropy_with_logits(
+                logits=q_logits_t_selected, labels=m)
+            self.loss = torch.mean(self.td_error * importance_weights)
             self.stats = {
                 # TODO: better Q stats for dist dqn
                 "mean_td_error": torch.mean(self.td_error),
@@ -141,9 +143,12 @@ def build_q_model_and_distribution(policy, obs_space, action_space, config):
         framework="torch",
         model_interface=DQNTorchModel,
         name=Q_SCOPE,
-        dueling=config["dueling"],
         q_hiddens=config["hiddens"],
+        dueling=config["dueling"],
+        num_atoms=config["num_atoms"],
         use_noisy=config["noisy"],
+        v_min=config["v_min"],
+        v_max=config["v_max"],
         sigma0=config["sigma0"],
         # TODO(sven): Move option to add LayerNorm after each Dense
         #  generically into ModelCatalog.
@@ -159,9 +164,12 @@ def build_q_model_and_distribution(policy, obs_space, action_space, config):
         framework="torch",
         model_interface=DQNTorchModel,
         name=Q_TARGET_SCOPE,
-        dueling=config["dueling"],
         q_hiddens=config["hiddens"],
+        dueling=config["dueling"],
+        num_atoms=config["num_atoms"],
         use_noisy=config["noisy"],
+        v_min=config["v_min"],
+        v_max=config["v_max"],
         sigma0=config["sigma0"],
         # TODO(sven): Move option to add LayerNorm after each Dense
         #  generically into ModelCatalog.
@@ -231,10 +239,9 @@ def build_q_losses(policy, model, _, train_batch):
     else:
         q_tp1_best_one_hot_selection = F.one_hot(
             torch.argmax(q_tp1, 1), policy.action_space.n)
-
-    q_tp1_best = torch.sum(
-        torch.where(q_tp1 > -float("inf"), q_tp1, torch.tensor(0.0)) *
-        q_tp1_best_one_hot_selection, 1)
+        q_tp1_best = torch.sum(
+            torch.where(q_tp1 > -float("inf"), q_tp1, torch.tensor(0.0)) *
+            q_tp1_best_one_hot_selection, 1)
         q_probs_tp1_best = torch.sum(
             q_probs_tp1 * torch.unsqueeze(q_tp1_best_one_hot_selection, -1), 1)
 
@@ -290,16 +297,15 @@ def compute_q_values(policy, model, obs, explore, is_training=False):
         state_score = model.get_state_value(model_out)
         if policy.config["num_atoms"] > 1:
             support_logits_per_action_mean = torch.mean(
-                support_logits_per_action, 1)
+                support_logits_per_action, dim=1)
             support_logits_per_action_centered = (
                 support_logits_per_action - torch.unsqueeze(
-                    support_logits_per_action_mean, 1))
+                    support_logits_per_action_mean, dim=1))
             support_logits_per_action = torch.unsqueeze(
-                state_score, 1) + support_logits_per_action_centered
-            support_prob_per_action = nn.F.softmax(
+                state_score, dim=1) + support_logits_per_action_centered
+            support_prob_per_action = nn.functional.softmax(
                 support_logits_per_action)
-            value = torch.sum(
-                input_tensor=z * support_prob_per_action, axis=-1)
+            value = torch.sum(z * support_prob_per_action, dim=-1)
             logits = support_logits_per_action
             probs_or_logits = support_prob_per_action
         else:
@@ -317,7 +323,7 @@ def grad_process_and_td_error_fn(policy, optimizer, loss):
     # Clip grads if configured.
     info = apply_grad_clipping(policy, optimizer, loss)
     # Add td-error to info dict.
-    info["td_error"] = policy.q_loss.td_error
+    info["td_error"] = policy.q_loss.td_error.detach()
     return info
 
 

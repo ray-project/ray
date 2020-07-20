@@ -1,8 +1,7 @@
 import numpy as np
 
 from ray.rllib.utils.framework import get_activation_fn, try_import_torch
-#from ray.rllib.utils.framework import , get_variable, \
-#    try_import_tf
+from ray.rllib.utils.framework import get_variable
 
 torch, nn = try_import_torch()
 
@@ -31,28 +30,41 @@ class NoisyLayer(nn.Module):
         self.in_size = in_size
         self.out_size = out_size
         self.sigma0 = sigma0
-        self.activation = activation
+        self.activation = get_activation_fn(activation, framework="torch")
+        if self.activation is not None:
+            self.activation = self.activation()
 
-        self.sigma_w = torch.Tensor(
-            data=np.random.uniform(
+        self.sigma_w = get_variable(
+            np.random.uniform(
                 low=-1.0 / np.sqrt(float(self.in_size)),
                 high=1.0 / np.sqrt(float(self.in_size)),
                 size=[self.in_size, out_size]),
+            framework="torch",
             dtype=torch.float32,
-            requires_grad=True)
-        # TF noise generation can be unreliable on GPU
-        # If generating the noise on the CPU,
-        # lowering sigma0 to 0.1 may be helpful
-        self.sigma_b = torch.Tensor(
-            data=np.full(
-                shape=[out_size], fill_value=sigma0 / np.sqrt(float(self.in_size))),
-            requires_grad=True)
-        self.w = torch.Tensor(
-            data=np.full(
+            torch_tensor=True,
+            trainable=True)
+        self.sigma_b = get_variable(
+            np.full(
+                shape=[out_size],
+                fill_value=sigma0 / np.sqrt(float(self.in_size))),
+            framework="torch",
+            dtype=torch.float32,
+            torch_tensor=True,
+            trainable=True)
+        self.w = get_variable(
+            np.full(
                 shape=[self.in_size, self.out_size],
                 fill_value=6 / np.sqrt(float(in_size) + float(out_size))),
-            requires_grad=True)
-        self.b = torch.Tensor(data=np.zeros([out_size]), requires_grad=True)
+            framework="torch",
+            dtype=torch.float32,
+            torch_tensor=True,
+            trainable=True)
+        self.b = get_variable(
+            np.zeros([out_size]),
+            framework="torch",
+            dtype=torch.float32,
+            torch_tensor=True,
+            trainable=True)
 
     def forward(self, inputs):
         epsilon_in = self._f_epsilon(torch.normal(
@@ -68,9 +80,8 @@ class NoisyLayer(nn.Module):
             inputs, self.w + self.sigma_w * epsilon_w
         ) + self.b + self.sigma_b * epsilon_b
 
-        fn = get_activation_fn(self.activation, framework="torch")
-        if fn is not None:
-            action_activation = fn(action_activation)
+        if self.activation is not None:
+            action_activation = self.activation(action_activation)
         return action_activation
 
     def _f_epsilon(self, x):

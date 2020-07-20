@@ -122,23 +122,20 @@ class DQNTorchModel(TorchModelV2, nn.Module):
         if self.num_atoms > 1:
             # Distributional Q-learning uses a discrete support z
             # to represent the action value distribution
-            z = torch.range(self.num_atoms, dtype=torch.float32)
+            z = torch.range(0.0, self.num_atoms - 1, dtype=torch.float32)
             z = self.v_min + z * (self.v_max - self.v_min) / float(self.num_atoms - 1)
 
             support_logits_per_action = torch.reshape(
                 action_scores, shape=(-1, self.action_space.n, self.num_atoms))
-            support_prob_per_action = nn.F.softmax(
-                logits=support_logits_per_action)
-            action_scores = torch.sum(
-                input_tensor=z * support_prob_per_action, dim=-1)
+            support_prob_per_action = nn.functional.softmax(
+                support_logits_per_action)
+            action_scores = torch.sum(z * support_prob_per_action, dim=-1)
             logits = support_logits_per_action
             probs = support_prob_per_action
-            return [action_scores, z, support_logits_per_action, logits, probs]
-            #return tf.keras.layers.Lambda(_layer)(action_scores)
+            return action_scores, z, support_logits_per_action, logits, probs
         else:
             logits = torch.unsqueeze(torch.ones_like(action_scores), -1)
-            #probs = logits  #torch.unsqueeze(torch.ones_like(action_scores), -1)
-            return [action_scores, logits, logits]
+            return action_scores, logits, logits
 
     def get_state_value(self, model_out):
         """Returns the state value prediction for the given state embedding."""

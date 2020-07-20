@@ -4,7 +4,7 @@ import tree
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.utils.framework import try_import_torch
 
-torch, _ = try_import_torch()
+torch, nn = try_import_torch()
 
 
 def atanh(x):
@@ -90,7 +90,7 @@ def sequence_mask(lengths, maxlen=None, dtype=None):
     return mask
 
 
-def softmax_cross_entropy_with_logits(x):
+def softmax_cross_entropy_with_logits(logits, labels):
     """Same behavior as tf.nn.softmax_cross_entropy_with_logits.
 
     Args:
@@ -99,7 +99,8 @@ def softmax_cross_entropy_with_logits(x):
     Returns:
 
     """
-    pass
+    return torch.sum(-labels * nn.functional.log_softmax(logits, -1), -1)
+
 
 def convert_to_non_torch_type(stats):
     """Converts values in `stats` to non-Tensor numpy or python types.
