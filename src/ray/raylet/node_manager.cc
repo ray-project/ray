@@ -159,6 +159,12 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       light_heartbeat_enabled_(RayConfig::instance().light_heartbeat_enabled()),
       initial_config_(config),
       local_available_resources_(config.resource_config),
+      first_job_registered_python_worker_count_(0),
+      first_job_driver_wait_num_python_workers_(
+          std::min(config.num_initial_python_workers_for_first_job,
+                   config.maximum_startup_concurrency)),
+      num_initial_python_workers_for_first_job_(
+          config.num_initial_python_workers_for_first_job),
       worker_pool_(
           io_service, config.num_initial_workers, config.maximum_startup_concurrency,
           config.min_worker_port, config.max_worker_port, gcs_client_,
@@ -355,6 +361,15 @@ void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_
   RAY_CHECK(!job_data.is_dead());
 
   if (RayConfig::instance().enable_multi_tenancy()) {
+    // This is a workaround to start initial workers on this node if and only if Raylet is
+    // started by a Python driver and the job config is not set in `ray.init(...)`.
+    if (first_job_.IsNil()) {
+      first_job_ = job_id;
+      if (num_initial_python_workers_for_first_job_ > 0) {
+        worker_pool_.StartInitialPythonWorkersForJob(
+            job_id, num_initial_python_workers_for_first_job_);
+      }
+    }
     // Tasks of this job may already arrived but failed to pop a worker because the job
     // config is not local yet. So we trigger dispatching again here to try to
     // reschedule these tasks.
@@ -1228,6 +1243,23 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     if (!worker_pool_.RegisterWorker(worker, pid, &assigned_port).ok()) {
       // Return -1 to signal to the worker that registration failed.
       assigned_port = -1;
+    } else {
+      // This is a workaround to finish driver registration after all initial workers are
+      // registered to Raylet if and only if Raylet is started by a Python driver and the
+      // job config is not set in `ray.init(...)`.
+      if (RayConfig::instance().enable_multi_tenancy()) {
+        RAY_CHECK(!worker->GetAssignedJobId().IsNil());
+        if (first_job_ == worker->GetAssignedJobId() &&
+            worker->GetLanguage() == Language::PYTHON) {
+          ++first_job_registered_python_worker_count_;
+          if (first_job_send_register_client_reply_to_driver_ != nullptr &&
+              first_job_registered_python_worker_count_ ==
+                  first_job_driver_wait_num_python_workers_) {
+            first_job_send_register_client_reply_to_driver_();
+            first_job_send_register_client_reply_to_driver_ = nullptr;
+          }
+        }
+      }
     }
   } else {
     // Register the new driver.
@@ -1255,25 +1287,35 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     }
   }
 
-  flatbuffers::FlatBufferBuilder fbb;
-  std::vector<std::string> internal_config_keys;
-  std::vector<std::string> internal_config_values;
-  for (auto kv : initial_config_.raylet_config) {
-    internal_config_keys.push_back(kv.first);
-    internal_config_values.push_back(kv.second);
+  auto send_reply = [this, client, assigned_port]() {
+    flatbuffers::FlatBufferBuilder fbb;
+    std::vector<std::string> internal_config_keys;
+    std::vector<std::string> internal_config_values;
+    for (auto kv : initial_config_.raylet_config) {
+      internal_config_keys.push_back(kv.first);
+      internal_config_values.push_back(kv.second);
+    }
+    auto reply = ray::protocol::CreateRegisterClientReply(
+        fbb, to_flatbuf(fbb, self_node_id_), assigned_port,
+        string_vec_to_flatbuf(fbb, internal_config_keys),
+        string_vec_to_flatbuf(fbb, internal_config_values));
+    fbb.Finish(reply);
+    client->WriteMessageAsync(
+        static_cast<int64_t>(protocol::MessageType::RegisterClientReply), fbb.GetSize(),
+        fbb.GetBufferPointer(), [this, client](const ray::Status &status) {
+          if (!status.ok()) {
+            ProcessDisconnectClientMessage(client);
+          }
+        });
+  };
+
+  if (message->is_worker() || !RayConfig().instance().enable_multi_tenancy() ||
+      !first_job_.IsNil() || num_initial_python_workers_for_first_job_ == 0 ||
+      first_job_send_register_client_reply_to_driver_ != nullptr) {
+    send_reply();
+  } else {
+    first_job_send_register_client_reply_to_driver_ = std::move(send_reply);
   }
-  auto reply = ray::protocol::CreateRegisterClientReply(
-      fbb, to_flatbuf(fbb, self_node_id_), assigned_port,
-      string_vec_to_flatbuf(fbb, internal_config_keys),
-      string_vec_to_flatbuf(fbb, internal_config_values));
-  fbb.Finish(reply);
-  client->WriteMessageAsync(
-      static_cast<int64_t>(protocol::MessageType::RegisterClientReply), fbb.GetSize(),
-      fbb.GetBufferPointer(), [this, client](const ray::Status &status) {
-        if (!status.ok()) {
-          ProcessDisconnectClientMessage(client);
-        }
-      });
 }
 
 void NodeManager::ProcessAnnounceWorkerPortMessage(

@@ -95,10 +95,11 @@ class WorkerPool {
   Status RegisterDriver(const std::shared_ptr<Worker> &worker, const JobID &job_id,
                         int *port);
 
-  /// Start initial workers for a new job.
+  /// Start initial Python workers for a new job.
   /// \param job_id The job ID.
+  /// \param num_workers The number of initial Python workers.
   /// \return Void.
-  void StartInitialWorkersForJob(const JobID &job_id);
+  void StartInitialPythonWorkersForJob(const JobID &job_id, int num_workers);
 
   /// Get the client connection's registered worker.
   ///

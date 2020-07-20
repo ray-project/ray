@@ -716,6 +716,7 @@ def init(address=None,
             temp_dir=temp_dir,
             load_code_from_local=load_code_from_local,
             java_worker_options=java_worker_options,
+            start_initial_python_workers_for_first_job=True,
             _internal_config=_internal_config,
             lru_evict=lru_evict,
             enable_object_reconstruction=enable_object_reconstruction)

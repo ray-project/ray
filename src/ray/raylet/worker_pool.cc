@@ -413,33 +413,12 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<Worker> &driver,
   return Status::OK();
 }
 
-void WorkerPool::StartInitialWorkersForJob(const JobID &job_id) {
+void WorkerPool::StartInitialPythonWorkersForJob(const JobID &job_id, int num_workers) {
   RAY_CHECK(RayConfig::instance().enable_multi_tenancy());
   auto job_config = job_config_getter_(job_id);
   RAY_CHECK(job_config);
-  for (auto &entry : states_by_lang_) {
-    auto &state = entry.second;
-    uint32_t num_initial_workers = default_num_initial_workers_;
-    int32_t config_value;
-    switch (entry.first) {
-    case Language::PYTHON:
-      config_value = job_config->num_initial_python_workers();
-      break;
-    case Language::JAVA:
-      config_value = job_config->num_initial_java_workers();
-      break;
-    default:
-      config_value = 0;
-      break;
-    }
-    if (config_value >= 0) {
-      num_initial_workers = static_cast<uint32_t>(config_value);
-    }
-    int num_worker_processes = static_cast<int>(std::ceil(
-        static_cast<double>(num_initial_workers) / state.num_workers_per_process));
-    for (int i = 0; i < num_worker_processes; i++) {
-      StartWorkerProcess(entry.first, job_id);
-    }
+  for (int i = 0; i < num_workers; i++) {
+    StartWorkerProcess(Language::PYTHON, job_id);
   }
 }
 
