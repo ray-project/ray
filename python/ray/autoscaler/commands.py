@@ -645,7 +645,8 @@ def rsync(config_file: str,
         provider.cleanup()
 
 
-def get_head_node_ip(config_file: str, override_cluster_name: Optional[str]) -> str:
+def get_head_node_ip(config_file: str,
+                     override_cluster_name: Optional[str]) -> str:
     """Returns head node IP for given configuration file if exists."""
 
     config = yaml.safe_load(open(config_file).read())
@@ -665,7 +666,8 @@ def get_head_node_ip(config_file: str, override_cluster_name: Optional[str]) -> 
     return head_node_ip
 
 
-def get_worker_node_ips(config_file: str, override_cluster_name: Optional[str]) -> str:
+def get_worker_node_ips(config_file: str,
+                        override_cluster_name: Optional[str]) -> str:
     """Returns worker node IPs for given configuration file."""
 
     config = yaml.safe_load(open(config_file).read())
