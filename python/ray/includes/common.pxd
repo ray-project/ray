@@ -135,7 +135,7 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
                                  int parent_task_counter)
 
 
-cdef extern from "ray/protobuf/common.pb.h" nogil:
+cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef cppclass CLanguage "Language":
         pass
     cdef cppclass CWorkerType "ray::WorkerType":
@@ -150,16 +150,16 @@ cdef extern from "ray/protobuf/common.pb.h" nogil:
 
 # This is a workaround for C++ enum class since Cython has no corresponding
 # representation.
-cdef extern from "ray/protobuf/common.pb.h" nogil:
+cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CLanguage LANGUAGE_PYTHON "Language::PYTHON"
     cdef CLanguage LANGUAGE_CPP "Language::CPP"
     cdef CLanguage LANGUAGE_JAVA "Language::JAVA"
 
-cdef extern from "ray/protobuf/common.pb.h" nogil:
+cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CWorkerType WORKER_TYPE_WORKER "ray::WorkerType::WORKER"
     cdef CWorkerType WORKER_TYPE_DRIVER "ray::WorkerType::DRIVER"
 
-cdef extern from "ray/protobuf/common.pb.h" nogil:
+cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CTaskType TASK_TYPE_NORMAL_TASK "ray::TaskType::NORMAL_TASK"
     cdef CTaskType TASK_TYPE_ACTOR_CREATION_TASK "ray::TaskType::ACTOR_CREATION_TASK"  # noqa: E501
     cdef CTaskType TASK_TYPE_ACTOR_TASK "ray::TaskType::ACTOR_TASK"
