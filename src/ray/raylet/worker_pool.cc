@@ -75,31 +75,28 @@ WorkerPool::WorkerPool(
   for (const auto &entry : worker_commands) {
     // Initialize the pool state for this language.
     auto &state = states_by_lang_[entry.first];
-    switch (entry.first) {
-    case Language::PYTHON:
-      state.num_workers_per_process =
-          RayConfig::instance().num_workers_per_process_python();
-      break;
-    case Language::JAVA:
-      state.num_workers_per_process =
-          RayConfig::instance().num_workers_per_process_java();
-      break;
-    default:
-      RAY_LOG(FATAL) << "The number of workers per process for "
-                     << Language_Name(entry.first) << " worker is not set.";
-    }
     if (!RayConfig::instance().enable_multi_tenancy()) {
+      switch (entry.first) {
+      case Language::PYTHON:
+        state.num_workers_per_process =
+            RayConfig::instance().num_workers_per_process_python();
+        break;
+      case Language::JAVA:
+        state.num_workers_per_process =
+            RayConfig::instance().num_workers_per_process_java();
+        break;
+      default:
+        RAY_LOG(FATAL) << "The number of workers per process for "
+                       << Language_Name(entry.first) << " worker is not set.";
+      }
       RAY_CHECK(state.num_workers_per_process > 0)
           << "Number of workers per process of language " << Language_Name(entry.first)
           << " must be positive.";
-    }
-    if (!RayConfig::instance().enable_multi_tenancy()) {
       state.multiple_for_warning =
           std::max(state.num_workers_per_process,
                    std::max(num_workers, maximum_startup_concurrency));
     } else {
-      state.multiple_for_warning =
-          std::max(state.num_workers_per_process, maximum_startup_concurrency);
+      state.multiple_for_warning = maximum_startup_concurrency;
     }
     // Set worker command for this language.
     state.worker_command = entry.second;
@@ -167,6 +164,7 @@ Process WorkerPool::StartWorkerProcess(const Language &language, const JobID &jo
                                        std::vector<std::string> dynamic_options) {
   boost::optional<rpc::JobConfig> job_config;
   if (RayConfig::instance().enable_multi_tenancy()) {
+    RAY_CHECK(!job_id.IsNil());
     job_config = job_config_getter_(job_id);
     if (!job_config) {
       RAY_LOG(INFO) << "Job config of job " << job_id << " are not local yet.";
@@ -193,15 +191,13 @@ Process WorkerPool::StartWorkerProcess(const Language &language, const JobID &jo
                  << state.idle_actor.size() << " actor workers, and " << state.idle.size()
                  << " non-actor workers";
 
-  int workers_to_start;
-  if (dynamic_options.empty() && language == Language::JAVA) {
+  int workers_to_start = 1;
+  if (dynamic_options.empty()) {
     if (!RayConfig::instance().enable_multi_tenancy()) {
       workers_to_start = state.num_workers_per_process;
-    } else {
+    } else if (language == Language::JAVA) {
       workers_to_start = job_config->num_java_workers_per_process();
     }
-  } else {
-    workers_to_start = 1;
   }
 
   if (RayConfig::instance().enable_multi_tenancy() &&
@@ -288,7 +284,7 @@ Process WorkerPool::StartWorkerProcess(const Language &language, const JobID &jo
   MonitorStartingWorkerProcess(proc, language);
   state.starting_worker_processes.emplace(proc, workers_to_start);
   return proc;
-}
+}  // namespace raylet
 
 void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
                                               const Language &language) {
@@ -407,9 +403,7 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<Worker> &driver,
   driver->SetAssignedPort(*port);
   auto &state = GetStateForLanguage(driver->GetLanguage());
   state.registered_drivers.insert(std::move(driver));
-  if (RayConfig::instance().enable_multi_tenancy()) {
-    driver->AssignJobId(job_id);
-  }
+  driver->AssignJobId(job_id);
 
   return Status::OK();
 }

@@ -725,7 +725,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ResourceIdSet local_available_resources_;
   std::unordered_map<ClientID, SchedulingResources> cluster_resource_map_;
 
-  /// Whether this node has received the first job.
+  /// The Job ID of the firstly received job.
   JobID first_job_;
 
   /// The callback to send RegisterClientReply to the driver of the first job.
@@ -734,11 +734,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// The number of registered workers of the first job.
   int first_job_registered_python_worker_count_;
 
-  /// Number of initial Python workers to wait for the first job before driver receives
-  /// RegisterClientReply.
+  /// The umber of initial Python workers to wait for the first job before the driver
+  /// receives RegisterClientReply.
   int first_job_driver_wait_num_python_workers_;
 
-  /// Number of initial Python workers for the first job.
+  /// The number of initial Python workers for the first job.
   int num_initial_python_workers_for_first_job_;
 
   /// This map tracks the latest infos of unfinished jobs.

@@ -218,7 +218,6 @@ class WorkerPool {
     /// The commands and arguments used to start the worker process
     std::vector<std::string> worker_command;
     /// The number of workers per process.
-    /// Note that this field is not used for Java workers any more.
     int num_workers_per_process;
     /// The pool of dedicated workers for actor creation tasks
     /// with prefix or suffix worker command.
@@ -286,9 +285,6 @@ class WorkerPool {
 
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   boost::asio::io_service *io_service_;
-  /// Number of initial workers to start per job if a negative num_initial_workers value
-  /// is specified in the job config.
-  uint32_t default_num_initial_workers_;
   /// The maximum number of worker processes that can be started concurrently.
   int maximum_startup_concurrency_;
   /// Keeps track of unused ports that newly-created workers can bind on.

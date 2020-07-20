@@ -1269,9 +1269,6 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     // Compute a dummy driver task id from a given driver.
     const TaskID driver_task_id = TaskID::ComputeDriverTaskId(worker_id);
     worker->AssignTaskId(driver_task_id);
-    if (!RayConfig::instance().enable_multi_tenancy()) {
-      worker->AssignJobId(job_id);
-    }
     Status status = worker_pool_.RegisterDriver(worker, job_id, &assigned_port);
     if (status.ok()) {
       local_queues_.AddDriverTaskId(driver_task_id);
@@ -1310,7 +1307,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   };
 
   if (message->is_worker() || !RayConfig().instance().enable_multi_tenancy() ||
-      !first_job_.IsNil() || num_initial_python_workers_for_first_job_ == 0 ||
+      !first_job_.IsNil() || first_job_driver_wait_num_python_workers_ == 0 ||
       first_job_send_register_client_reply_to_driver_ != nullptr) {
     send_reply();
   } else {
