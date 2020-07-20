@@ -123,7 +123,7 @@ struct PlacementGroupCreationOptions {
   PlacementGroupCreationOptions(
       const std::string &name, PlacementStrategy strategy,
       const std::vector<std::unordered_map<std::string, double>> &bundles)
-      : name(name), strategy(strategy), bundles(bundles) {}
+      : strategy(strategy), bundles(bundles), name(name) {}
 
   /// The strategy to place the bundle in Placement Group.
   const PlacementStrategy strategy = rpc::PACK;

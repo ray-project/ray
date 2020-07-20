@@ -46,12 +46,12 @@ class ObjectRecoveryManager {
                         std::function<void(const ObjectID &object_id, bool pin_object)>
                             reconstruction_failure_callback,
                         bool lineage_reconstruction_enabled)
-      : rpc_address_(rpc_address),
+      : task_resubmitter_(task_resubmitter),
+        reference_counter_(reference_counter),
+        rpc_address_(rpc_address),
         client_factory_(client_factory),
         local_object_pinning_client_(local_object_pinning_client),
         object_lookup_(object_lookup),
-        task_resubmitter_(task_resubmitter),
-        reference_counter_(reference_counter),
         in_memory_store_(in_memory_store),
         reconstruction_failure_callback_(reconstruction_failure_callback),
         lineage_reconstruction_enabled_(lineage_reconstruction_enabled) {}

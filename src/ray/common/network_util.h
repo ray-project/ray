@@ -20,7 +20,7 @@
 #include <boost/date_time/posix_time/posix_time_types.hpp>
 #include <boost/system/error_code.hpp>
 
-#include "constants.h"
+#include "ray/common/constants.h"
 
 using boost::asio::deadline_timer;
 using boost::asio::io_service;

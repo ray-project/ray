@@ -12,19 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "gcs_server.h"
+#include "ray/gcs/gcs_server/gcs_server.h"
 
-#include "error_info_handler_impl.h"
-#include "gcs_actor_manager.h"
-#include "gcs_job_manager.h"
-#include "gcs_node_manager.h"
-#include "gcs_object_manager.h"
-#include "gcs_placement_group_manager.h"
-#include "gcs_worker_manager.h"
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
-#include "stats_handler_impl.h"
-#include "task_info_handler_impl.h"
+#include "ray/gcs/gcs_server/error_info_handler_impl.h"
+#include "ray/gcs/gcs_server/gcs_actor_manager.h"
+#include "ray/gcs/gcs_server/gcs_job_manager.h"
+#include "ray/gcs/gcs_server/gcs_node_manager.h"
+#include "ray/gcs/gcs_server/gcs_object_manager.h"
+#include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
+#include "ray/gcs/gcs_server/gcs_worker_manager.h"
+#include "ray/gcs/gcs_server/stats_handler_impl.h"
+#include "ray/gcs/gcs_server/task_info_handler_impl.h"
 
 namespace ray {
 namespace gcs {
