@@ -8,8 +8,6 @@ from ray.serve.handle import RayServeHandle
 from ray.serve.utils import (block_until_http_ready, format_actor_name)
 from ray.serve.exceptions import RayServeException
 from ray.serve.config import BackendConfig, ReplicaConfig
-from ray.serve.router import Query
-from ray.serve.request_params import RequestMetadata
 from ray.serve.metric import InMemoryExporter
 
 master_actor = None
@@ -95,13 +93,6 @@ def init(name=None,
         return
     except ValueError:
         pass
-
-    # Register serialization context once
-    ray.register_custom_serializer(Query, Query.ray_serialize,
-                                   Query.ray_deserialize)
-    ray.register_custom_serializer(RequestMetadata,
-                                   RequestMetadata.ray_serialize,
-                                   RequestMetadata.ray_deserialize)
 
     # TODO(edoakes): for now, always start the HTTP proxy on the node that
     # serve.init() was run on. We should consider making this configurable
