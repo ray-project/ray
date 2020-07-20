@@ -44,12 +44,20 @@ static std::shared_ptr<IOServicePool> metrics_io_service_pool;
 static std::shared_ptr<MetricExporterClient> exporter;
 static absl::Mutex stats_mutex;
 
-/// Initialize stats.
-static void Init(
-    const TagsType &global_tags, const int metrics_agent_port,
-    std::shared_ptr<MetricExporterClient> exporter_to_use = nullptr,
-    int64_t metrics_report_batch_size = RayConfig::instance().metrics_report_batch_size(),
-    bool disable_stats = !RayConfig::instance().enable_metrics_collection()) {
+/// Initialize stats for a process.
+/// NOTE:
+/// - stats::Init should be called only once per PROCESS. Redundant calls will be just
+/// ignored.
+/// - If you want to reinitialize, you should call stats::Shutdown().
+/// - It is thread-safe.
+/// We recommend you to use this only once inside a main script and add Shutdown() method
+/// to any signal handler. \param global_tags Tags that will be appended to all metrics in
+/// this process. \param metrics_agent_port The port to export metrics at each node.
+/// \param exporter_to_use The exporter client you will use for this process' metrics.
+static void Init(const TagsType &global_tags, const int metrics_agent_port,
+                 std::shared_ptr<MetricExporterClient> exporter_to_use = nullptr,
+                 int64_t metrics_report_batch_size =
+                     RayConfig::instance().metrics_report_batch_size()) {
   absl::MutexLock lock(&stats_mutex);
   if (StatsConfig::instance().IsInitialized()) {
     RAY_CHECK(metrics_io_service_pool != nullptr);
@@ -59,6 +67,7 @@ static void Init(
 
   RAY_CHECK(metrics_io_service_pool == nullptr);
   RAY_CHECK(exporter == nullptr);
+  bool disable_stats = !RayConfig::instance().enable_metrics_collection();
   StatsConfig::instance().SetIsDisableStats(disable_stats);
   if (disable_stats) {
     RAY_LOG(INFO) << "Disabled stats.";
@@ -70,7 +79,7 @@ static void Init(
   boost::asio::io_service *metrics_io_service = metrics_io_service_pool->Get();
   RAY_CHECK(metrics_io_service != nullptr);
 
-  // Default exporter is metrics agent exporter.
+  // Default exporter is a metrics agent exporter.
   if (exporter_to_use == nullptr) {
     std::shared_ptr<MetricExporterClient> stdout_exporter(new StdoutExporterClient());
     exporter.reset(new MetricsAgentExporter(stdout_exporter, metrics_agent_port,
@@ -88,6 +97,8 @@ static void Init(
   StatsConfig::instance().SetIsInitialized(true);
 }
 
+/// Shutdown the initialized stats library.
+/// This cleans up various threads and metadata for stats library.
 static void Shutdown() {
   absl::MutexLock lock(&stats_mutex);
   opencensus::stats::StatsExporter::Shutdown();

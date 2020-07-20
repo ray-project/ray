@@ -25,6 +25,7 @@ void MetricExporter::ExportToPoints(
         &view_data,
     const std::string &metric_name, std::vector<std::string> &keys,
     std::vector<MetricPoint> &points) {
+  RAY_LOG(ERROR) << "metrics export happened!, " << metric_name;
   // Return if no raw data found in view map.
   if (view_data.size() == 0) {
     return;

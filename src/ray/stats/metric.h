@@ -30,6 +30,9 @@ namespace stats {
 /// Include tag_defs.h to define tag items
 #include "tag_defs.h"
 
+/// StatsConfig per process.
+/// Note that this is not thread-safe. Don't modify its internal values
+/// outside stats::Init() or stats::Shutdown() method.
 class StatsConfig final {
  public:
   static StatsConfig &instance();
