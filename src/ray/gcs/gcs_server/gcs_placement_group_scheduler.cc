@@ -13,8 +13,9 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_server/gcs_placement_group_scheduler.h"
-#include <ray/protobuf/gcs.pb.h>
+
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace gcs {

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "queue_handler.h"
-#include "transport.h"
+#include "queue/queue_handler.h"
+#include "queue/transport.h"
 
 namespace ray {
 namespace streaming {

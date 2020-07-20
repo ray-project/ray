@@ -20,7 +20,6 @@
 #include "opencensus/stats/stats.h"
 #include "opencensus/stats/stats_exporter.h"
 #include "opencensus/tags/tag_key.h"
-
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -28,7 +27,7 @@ namespace ray {
 namespace stats {
 
 /// Include tag_defs.h to define tag items
-#include "tag_defs.h"
+#include "ray/stats/tag_defs.h"
 
 class StatsConfig final {
  public:
@@ -78,11 +77,11 @@ class Metric {
  public:
   Metric(const std::string &name, const std::string &description, const std::string &unit,
          const std::vector<opencensus::tags::TagKey> &tag_keys = {})
-      : measure_(nullptr),
-        name_(name),
+      : name_(name),
         description_(description),
         unit_(unit),
-        tag_keys_(tag_keys){};
+        tag_keys_(tag_keys),
+        measure_(nullptr) {}
 
   virtual ~Metric() { opencensus::stats::StatsExporter::RemoveView(name_); }
 

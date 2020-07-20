@@ -14,9 +14,9 @@
 
 #pragma once
 
-#include "ray/protobuf/gcs_service.grpc.pb.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
+#include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
 namespace ray {
 namespace rpc {

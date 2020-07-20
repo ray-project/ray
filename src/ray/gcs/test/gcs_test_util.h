@@ -18,12 +18,12 @@
 #include <utility>
 
 #include "gmock/gmock.h"
+#include "ray/common/placement_group.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
-#include "ray/protobuf/gcs_service.grpc.pb.h"
 #include "ray/util/asio_util.h"
-#include "src/ray/common/placement_group.h"
+#include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
 namespace ray {
 

@@ -19,7 +19,7 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/callback.h"
 #include "ray/gcs/entry_change_notification.h"
-#include "ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 
@@ -722,6 +722,8 @@ class WorkerInfoAccessor {
 
 class PlacementGroupInfoAccessor {
  public:
+  virtual ~PlacementGroupInfoAccessor() = default;
+
   // TODO(AlisaWu): fill the accessor.
   /// Create an placement group to GCS asynchronously.
   ///
