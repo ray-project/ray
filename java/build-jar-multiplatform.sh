@@ -14,14 +14,20 @@ JAR_BASE_DIR="$WORKSPACE_DIR"/.jar
 
 build_jars() {
   local platform=$1
+  local bazel_build=true
+  if [[ $# = 2 ]]; then
+    bazel_build=$2
+  fi
   echo "Start building jar for $platform"
   JAR_DIR="$JAR_BASE_DIR"/$platform
   mkdir -p "$JAR_DIR"
   for p in "${JAVA_DIRS_PATH[@]}"; do
     cd "$WORKSPACE_DIR"/"$p"
-    echo "Starting building java native dependencies for $p"
-    bazel build gen_maven_deps
-    echo "Finished building java native dependencies for $p"
+    if [[ $bazel_build == "true" ]]; then
+      echo "Starting building java native dependencies for $p"
+      bazel build gen_maven_deps
+      echo "Finished building java native dependencies for $p"
+    fi
     echo "Start building jars for $p"
     mvn -T16 clean package install -Dmaven.test.skip=true -Dcheckstyle.skip
     mvn -T16 source:jar -Dmaven.test.skip=true -Dcheckstyle.skip
@@ -60,16 +66,38 @@ build_jars_darwin() {
 }
 
 build_jars_multiplatform() {
-  build_jars_darwin
-
-  # The -f flag is passed twice to also run git clean in the arrow subdirectory.
-  # The -d flag removes directories. The -x flag ignores the .gitignore file,
-  # and the -e flag ensures that we don't remove the .jar directory.
-#  cd "$WORKSPACE_DIR" && git clean -f -f -x -d -e .jar && cd -
-#  docker run -e --rm -w /ray -v "$WORKSPACE_DIR":/ray -ti maven:3.6-adoptopenjdk-8 /ray/java/build-jar-multiplatform.sh linux
-
+  download_jars
   prepare_native
-  build_jars multiplatform
+  build_jars multiplatform false
+}
+
+# download linux/darwin ray-runtime-$version.jar from s3
+download_jars() {
+   local version
+   # ray jar version, ex: 0.1-SNAPSHORT
+   version=$(python -c "import xml.etree.ElementTree as ET;  r = ET.parse('pom.xml').getroot(); print(r.find(r.tag.replace('project', 'version')).text);" | tail -n 1)
+  wait_time=0
+  sleep_time_units=1
+  for os in 'darwin' 'linux'; do
+    url=https://ray-wheels.s3-us-west-2.amazonaws.com/jars/"$TRAVIS_BRANCH/$TRAVIS_COMMIT/$os/ray-runtime-$version.jar"
+    dest_file="$JAR_BASE_DIR/$os/ray-runtime-$version.jar"
+    echo "Jar url: $url"
+    echo "Jar dest_file: $dest_file"
+    while true; do
+      if ! wget -q "$url" -O "$dest_file">/dev/; then
+        echo "Waiting $url to be ready for $wait_time seconds..."
+        sleep $sleep_time_units
+        wait_time=$((wait_time + sleep_time_units))
+        if [[ wait_time == $((60 * 30)) ]]; then
+          echo "Download $url timeout"
+          exit -1
+        fi
+      else
+        echo "Download $url to $dest_file succeed"
+        break
+      fi
+    done
+  done
 }
 
 # prepare native binaries and libraries.
@@ -102,10 +130,10 @@ deploy_jars() {
 
 case $1 in
 linux)
-  build_jar_linux
+  build_jars_linux
   ;;
 darwin)
-  build_jar_darwin
+  build_jars_darwin
   ;;
 multiplatform)
   build_jars_multiplatform
@@ -114,9 +142,8 @@ deploy)
   deploy_jars
   ;;
 *)
-  echo "ERROR: unknown option \"$1\", please pass linux/darwin/multiplatform"
-  echo
-  exit -1
+  echo "Execute command $1"
+  $1
   ;;
 esac
 
