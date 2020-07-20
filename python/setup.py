@@ -135,6 +135,23 @@ def is_invalid_windows_platform():
     return platform == "msys" or (platform == "win32" and ver and "GCC" in ver)
 
 
+# Calls Bazel, falling back to a well-known path if it isn't found.
+def bazel_invoke(invoker, cmdline, *args, **kwargs):
+    home = os.path.expanduser("~")
+    candidates = ["bazel"]
+    if sys.platform != "win32":
+        candidates.append(os.path.join(home, ".bazel", "bin", "bazel"))
+    result = None
+    for i, cmd in enumerate(candidates):
+        try:
+            result = invoker([cmd] + cmdline, *args, **kwargs)
+            break
+        except IOError:
+            if i >= len(candidates) - 1:
+                raise
+    return result
+
+
 def download(url):
     try:
         result = urllib.request.urlopen(url).read()
@@ -222,7 +239,7 @@ def build(build_python, build_java):
             ] + pip_packages,
             env=dict(os.environ, CC="gcc"))
 
-    version_info = subprocess.check_output(["--version"])
+    version_info = bazel_invoke(subprocess.check_output, ["--version"])
     bazel_version_str = version_info.rstrip().decode("utf-8").split(" ", 1)[1]
     bazel_version = tuple(map(int, bazel_version_str.split(".")))
     if bazel_version <= SUPPORTED_BAZEL:
@@ -232,7 +249,8 @@ def build(build_python, build_java):
     bazel_targets = []
     bazel_targets += ["//:ray_pkg"] if build_python else []
     bazel_targets += ["//java:ray_java_pkg"] if build_java else []
-    return subprocess.check_call(
+    return bazel_invoke(
+        subprocess.check_call,
         ["build", "--verbose_failures", "--"] + bazel_targets,
         env=dict(os.environ, PYTHON3_BIN_PATH=sys.executable))
 
