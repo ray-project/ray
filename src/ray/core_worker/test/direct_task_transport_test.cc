@@ -31,11 +31,10 @@ int64_t kLongTimeout = 1024 * 1024 * 1024;
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
-  ray::Status PushNormalTask(
+  void PushNormalTask(
       std::unique_ptr<rpc::PushTaskRequest> request,
       const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {
     callbacks.push_back(callback);
-    return Status::OK();
   }
 
   bool ReplyPushTask(Status status = Status::OK(), bool exit = false) {
@@ -52,11 +51,10 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     return true;
   }
 
-  ray::Status CancelTask(
+  void CancelTask(
       const rpc::CancelTaskRequest &request,
       const rpc::ClientCallback<rpc::CancelTaskReply> &callback) override {
     kill_requests.push_front(request);
-    return Status::OK();
   }
 
   std::list<rpc::ClientCallback<rpc::PushTaskReply>> callbacks;

@@ -32,11 +32,10 @@ namespace ray {
 struct GcsServerMocker {
   class MockWorkerClient : public rpc::CoreWorkerClientInterface {
    public:
-    ray::Status PushNormalTask(
+    void PushNormalTask(
         std::unique_ptr<rpc::PushTaskRequest> request,
         const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {
       callbacks.push_back(callback);
-      return Status::OK();
     }
 
     bool ReplyPushTask(Status status = Status::OK(), bool exit = false) {
