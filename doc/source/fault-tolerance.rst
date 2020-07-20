@@ -10,7 +10,7 @@ When a worker is executing a task, if the worker dies unexpectedly, either
 because the process crashed or because the machine failed, Ray will rerun
 the task (after a delay of several seconds) until either the task succeeds
 or the maximum number of retries is exceeded. The default number of retries
-is 4.
+is 3.
 
 You can experiment with this behavior by running the following code.
 
@@ -40,6 +40,19 @@ You can experiment with this behavior by running the following code.
             print('SUCCESS')
         except ray.exceptions.RayWorkerError:
             print('FAILURE')
+
+Task outputs over a configurable threshold (default 100KB) may be stored in
+Ray's distributed object store. Thus, a node failure can cause the loss of a
+task output. If this occurs, Ray will automatically attempt to recover the
+value by looking for copies of the same object on other nodes. If there are no
+other copies left, an ``UnreconstructableError`` will be raised.
+
+When there are no copies of an object left, Ray also provides an option to
+automatically recover the value by re-executing the task that created the
+value. Arguments to the task are recursively reconstructed with the same
+method. This option can be enabled with
+``ray.init(enable_object_reconstruction=True)`` in standalone mode or ``ray
+start --enable-object-reconstruction`` in cluster mode.
 
 
 Actors
