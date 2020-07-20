@@ -20,7 +20,7 @@ READY_CHECK_INTERVAL = 5
 
 class NodeUpdater:
     """A process for syncing files and running init commands on a node.
-    
+
     Arguments:
         initialize_as_head: Whether to use head start/setup commands
     """

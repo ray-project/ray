@@ -450,8 +450,8 @@ class DockerCommandRunner(CommandRunnerInterface):
             check_docker_running_cmd(self.docker_name),
             with_output=True).decode("utf-8").strip()
         # Checks for the false positive where "true" is in the container name
-        return "true" in output.lower(
-        ) and "No such object" not in output.lower()
+        return ("true" in output.lower()
+                and "No such object" not in output.lower())
 
     def _docker_expand_user(self, string, any_char=False):
         user_pos = string.find("~")
