@@ -30,7 +30,8 @@ esac
 
 # Sanity check: Verify we have symlinks where we expect them, or Bazel can produce weird "missing input file" errors.
 # This is most likely to occur on Windows, where symlinks are sometimes disabled by default.
-{ git ls-files -s 2>/dev/null || true; } | {
+{ git ls-files -s 2>/dev/null || true; } | (
+  set +x
   missing_symlinks=()
   while read -r mode digest sn path; do
     if [ "${mode}" = 120000 ]; then
@@ -42,7 +43,7 @@ esac
     echo "For a correct build, please run 'git config --local core.symlinks true' and re-run git checkout." 1>&2
     false
   fi
-}
+)
 
 if [ "${OSTYPE}" = "msys" ]; then
   target="${MINGW_DIR-/usr}/bin/bazel.exe"
