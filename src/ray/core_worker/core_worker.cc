@@ -74,6 +74,7 @@ absl::Mutex CoreWorkerProcess::stats_mutex_;
 void CoreWorkerProcess::Initialize(const CoreWorkerOptions &options) {
   RAY_CHECK(!instance_) << "The process is already initialized for core worker.";
   instance_ = std::unique_ptr<CoreWorkerProcess>(new CoreWorkerProcess(options));
+  CoreWorkerProcess::RunStatsService();
 }
 
 void CoreWorkerProcess::Shutdown() {
@@ -250,19 +251,19 @@ void CoreWorkerProcess::RunTaskExecutionLoop() {
 
 void CoreWorkerProcess::RunStatsService() {
   absl::MutexLock lock(&CoreWorkerProcess::stats_mutex_);
-  if (CoreWorkerProcess::stats_thread_) {
-    return;
-  }
   // Initialize stats.
   const ray::stats::TagsType global_tags = {{ray::stats::ComponentKey, "core_worker"},
                                             {ray::stats::VersionKey, "0.9.0.dev0"}};
 
+  // NOTE(lingxuan.zlx): We assume RayConfig is initialized before it's used.
+  // RayConfig is generated in Java_io_ray_runtime_RayNativeRuntime_nativeInitialize
+  // for java worker or in constructor of CoreWorker for python worker.
   ray::stats::Init(global_tags, RayConfig::instance().metrics_agent_port(),
                    CoreWorkerProcess::stats_io_service_);
   CoreWorkerProcess::stats_thread_.reset(
       new std::thread([]() { CoreWorkerProcess::stats_io_service_.run(); }));
   // TODO(lingxuan.zlx): Should shutdown if opencensus disabled.
-  // Detach to avoid crash when process exit.
+  // Detach to avoid crash when process exit if it's driver.
   CoreWorkerProcess::stats_thread_->detach();
 }
 
@@ -322,7 +323,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   // NOTE(edoakes): any initialization depending on RayConfig must happen after this line.
   RayConfig::instance().initialize(internal_config);
-  CoreWorkerProcess::RunStatsService();
   // Start RPC server after all the task receivers are properly initialized and we have
   // our assigned port from the raylet.
   core_worker_server_ = std::unique_ptr<rpc::GrpcServer>(
