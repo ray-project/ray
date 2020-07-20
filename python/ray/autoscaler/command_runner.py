@@ -393,9 +393,7 @@ class DockerCommandRunner(CommandRunnerInterface):
 
         if run_env == "docker":
             cmd = self._docker_expand_user(cmd, any_char=True)
-            # MAYBE KEEP TODO(ilr)
             cmd = " ".join(_with_interactive(cmd))
-            #
             cmd = with_docker_exec(
                 [cmd], container_name=self.docker_name,
                 with_interactive=True)[0]

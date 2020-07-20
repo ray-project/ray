@@ -19,7 +19,11 @@ READY_CHECK_INTERVAL = 5
 
 
 class NodeUpdater:
-    """A process for syncing files and running init commands on a node."""
+    """A process for syncing files and running init commands on a node.
+    
+    Arguments:
+        initialize_as_head: Whether to use head start/setup commands
+    """
 
     def __init__(self,
                  node_id,
@@ -162,12 +166,12 @@ class NodeUpdater:
             with LogTimer(
                     self.log_prefix + "Setup commands", show_status=True):
                 for cmd in self.setup_commands:
-                    self.cmd_runner.run(cmd, run_env="docker")  # TBD TODO(ilr)
+                    self.cmd_runner.run(cmd, run_env="docker")
 
         with LogTimer(
                 self.log_prefix + "Ray start commands", show_status=True):
             for cmd in self.ray_start_commands:
-                self.cmd_runner.run(cmd, run_env="docker")  # TBD TODO(ilr)
+                self.cmd_runner.run(cmd, run_env="docker")
 
     def rsync_up(self, source, target):
         logger.info(self.log_prefix +
