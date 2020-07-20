@@ -289,8 +289,8 @@ def test_specific_job_id():
     ray.shutdown()
 
 
-# Test that when `redis_address` and `job_config` is not set in `ray.init(...)`,
-# Raylet will start `num_cpus` Python workers for the driver.
+# Test that when `redis_address` and `job_config` is not set in
+# `ray.init(...)`, Raylet will start `num_cpus` Python workers for the driver.
 def test_num_initial_workers(shutdown_only):
     ray.init(
         num_cpus=3,

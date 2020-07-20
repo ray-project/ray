@@ -64,13 +64,13 @@ class WorkerPool {
   /// \param starting_worker_timeout_callback The callback that will be triggered once
   /// it times out to start a worker.
   /// \param job_config_reader The callback to get the job config.
-  WorkerPool(boost::asio::io_service &io_service, int num_workers,
-             int maximum_startup_concurrency, int min_worker_port, int max_worker_port,
-             std::shared_ptr<gcs::GcsClient> gcs_client,
-             const WorkerCommandMap &worker_commands,
-             const std::unordered_map<std::string, std::string> &raylet_config,
-             std::function<void()> starting_worker_timeout_callback,
-             std::function<boost::optional<rpc::JobConfig>(const JobID &)> job_config_getter);
+  WorkerPool(
+      boost::asio::io_service &io_service, int num_workers,
+      int maximum_startup_concurrency, int min_worker_port, int max_worker_port,
+      std::shared_ptr<gcs::GcsClient> gcs_client, const WorkerCommandMap &worker_commands,
+      const std::unordered_map<std::string, std::string> &raylet_config,
+      std::function<void()> starting_worker_timeout_callback,
+      std::function<boost::optional<rpc::JobConfig>(const JobID &)> job_config_getter);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   virtual ~WorkerPool();

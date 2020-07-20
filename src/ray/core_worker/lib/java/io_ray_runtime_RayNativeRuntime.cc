@@ -153,7 +153,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
       false,                                         // is_local_mode
       static_cast<int>(numWorkersPerProcess),        // num_workers
       nullptr,                                       // terminate_asyncio_thread
-      serialized_job_config,                        // serialized_job_config
+      serialized_job_config,                         // serialized_job_config
   };
 
   ray::CoreWorkerProcess::Initialize(options);

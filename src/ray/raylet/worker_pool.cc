@@ -54,9 +54,9 @@ namespace ray {
 namespace raylet {
 
 WorkerPool::WorkerPool(
-    boost::asio::io_service &io_service, int num_workers,
-    int maximum_startup_concurrency, int min_worker_port, int max_worker_port,
-    std::shared_ptr<gcs::GcsClient> gcs_client, const WorkerCommandMap &worker_commands,
+    boost::asio::io_service &io_service, int num_workers, int maximum_startup_concurrency,
+    int min_worker_port, int max_worker_port, std::shared_ptr<gcs::GcsClient> gcs_client,
+    const WorkerCommandMap &worker_commands,
     const std::unordered_map<std::string, std::string> &raylet_config,
     std::function<void()> starting_worker_timeout_callback,
     std::function<boost::optional<rpc::JobConfig>(const JobID &)> job_config_getter)
@@ -94,8 +94,9 @@ WorkerPool::WorkerPool(
           << " must be positive.";
     }
     if (!RayConfig::instance().enable_multi_tenancy()) {
-      state.multiple_for_warning = std::max(state.num_workers_per_process,
-               std::max(num_workers, maximum_startup_concurrency));
+      state.multiple_for_warning =
+          std::max(state.num_workers_per_process,
+                   std::max(num_workers, maximum_startup_concurrency));
     } else {
       state.multiple_for_warning =
           std::max(state.num_workers_per_process, maximum_startup_concurrency);
@@ -203,8 +204,8 @@ Process WorkerPool::StartWorkerProcess(const Language &language, const JobID &jo
     workers_to_start = 1;
   }
 
-  if (RayConfig::instance().enable_multi_tenancy()
-      && !job_config->jvm_options().empty()) {
+  if (RayConfig::instance().enable_multi_tenancy() &&
+      !job_config->jvm_options().empty()) {
     // Note that we push the item to the front of the vector to make
     // sure this is the freshest option than others.
     dynamic_options.insert(dynamic_options.begin(), job_config->jvm_options().begin(),

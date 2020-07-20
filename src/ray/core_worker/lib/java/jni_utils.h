@@ -443,6 +443,6 @@ inline jobject NativeRayFunctionDescriptorToJavaStringList(
 // Return an actor fullname with job id prepended if this tis a global actor.
 inline std::string GetActorFullName(bool global, std::string name) {
   return global ? name
-                : ::ray::CoreWorkerProcess::GetCoreWorker().GetCurrentJobId().Hex() + "-" +
-                      name;
+                : ::ray::CoreWorkerProcess::GetCoreWorker().GetCurrentJobId().Hex() +
+                      "-" + name;
 }
