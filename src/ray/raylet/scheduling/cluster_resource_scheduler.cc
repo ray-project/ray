@@ -496,7 +496,9 @@ bool ClusterResourceScheduler::RemoveNode(int64_t node_id) {
 
 bool ClusterResourceScheduler::RemoveNode(const std::string &node_id_string) {
   auto node_id = string_to_int_map_.Get(node_id_string);
-  RAY_CHECK(node_id != -1);
+  if (node_id == -1) {
+    return false;
+  }
 
   return RemoveNode(node_id);
 }
