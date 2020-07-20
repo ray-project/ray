@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "gcs_actor_manager.h"
-
-#include <ray/common/ray_config.h>
+#include "ray/gcs/gcs_server/gcs_actor_manager.h"
 
 #include <utility>
+
+#include "ray/common/ray_config.h"
 
 namespace ray {
 namespace gcs {
@@ -652,7 +652,6 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
                    << " at node " << node_id << ", need_reschedule = " << need_reschedule
                    << ", remaining_restarts = " << remaining_restarts;
   if (remaining_restarts != 0) {
-    mutable_actor_table_data->set_num_restarts(++num_restarts);
     mutable_actor_table_data->set_state(rpc::ActorTableData::RESTARTING);
     const auto actor_table_data = actor->GetActorTableData();
     // Make sure to reset the address before flushing to GCS. Otherwise,
@@ -668,6 +667,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
                                              nullptr));
         }));
     gcs_actor_scheduler_->Schedule(actor);
+    mutable_actor_table_data->set_num_restarts(num_restarts + 1);
   } else {
     // Remove actor from `named_actors_` if its name is not empty.
     if (!actor->GetName().empty()) {
@@ -760,6 +760,7 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
   RAY_LOG(INFO) << "Loading initial data.";
   auto callback = [this,
                    done](const std::unordered_map<ActorID, ActorTableData> &result) {
+    std::unordered_map<ClientID, std::vector<WorkerID>> node_to_workers;
     for (auto &item : result) {
       if (item.second.state() != ray::rpc::ActorTableData::DEAD) {
         auto actor = std::make_shared<GcsActor>(item.second);
@@ -779,7 +780,17 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
               worker_client_factory_(actor->GetOwnerAddress());
           workers.emplace(actor->GetOwnerID(), Owner(std::move(client)));
         }
+
+        if (!actor->GetWorkerID().IsNil()) {
+          RAY_CHECK(!actor->GetNodeID().IsNil());
+          node_to_workers[actor->GetNodeID()].emplace_back(actor->GetWorkerID());
+        }
       }
+    }
+
+    // Notify raylets to release unused workers.
+    if (RayConfig::instance().gcs_actor_service_enabled()) {
+      gcs_actor_scheduler_->ReleaseUnusedWorkers(node_to_workers);
     }
 
     RAY_LOG(DEBUG) << "The number of registered actors is " << registered_actors_.size()

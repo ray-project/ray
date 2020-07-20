@@ -31,10 +31,10 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
-#include "ray/protobuf/core_worker.pb.h"
-#include "ray/protobuf/gcs.pb.h"
-#include "ray/raylet/raylet_client.h"
+#include "ray/raylet_client/raylet_client.h"
 #include "ray/util/filesystem.h"
+#include "src/ray/protobuf/core_worker.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace {
 
@@ -710,7 +710,7 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
   provider.Delete(ids_set, &plasma_object_ids);
   ASSERT_TRUE(plasma_object_ids.empty());
 
-  usleep(200 * 1000);
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
   ASSERT_TRUE(provider.Get(ids_set, 0, ctx, &results, &got_exception).IsTimedOut());
   ASSERT_TRUE(!got_exception);
   ASSERT_EQ(results.size(), 0);
@@ -725,7 +725,7 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
   }
 
   auto thread_func = [&unready_ids, &provider, &buffers]() {
-    sleep(1);
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
     for (size_t i = 0; i < unready_ids.size(); i++) {
       RAY_CHECK(provider.Put(buffers[i], unready_ids[i]));
@@ -821,13 +821,13 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   // Note that Delete() calls RayletClient::FreeObjects and would not
   // wait for objects being deleted, so wait a while for plasma store
   // to process the command.
-  usleep(200 * 1000);
-  ASSERT_TRUE(core_worker.Get(ids, 0, &results).IsTimedOut());
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  ASSERT_TRUE(core_worker.Get(ids, 0, &results).ok());
   // Since array2 has been deleted from the plasma store, the Get should
-  // timeout and return nullptr for all results.
+  // return UnreconstructableError for all results.
   ASSERT_EQ(results.size(), 2);
-  ASSERT_TRUE(!results[0]);
-  ASSERT_TRUE(!results[1]);
+  ASSERT_TRUE(results[0]->IsException());
+  ASSERT_TRUE(results[1]->IsException());
 }
 
 TEST_F(SingleNodeTest, TestNormalTaskLocal) {

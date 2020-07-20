@@ -117,8 +117,8 @@ def _bootstrap_config(config, no_config_cache=False):
         raise NotImplementedError("Unsupported provider {}".format(
             config["provider"]))
 
-    bootstrap_config, _ = importer()
-    resolved_config = bootstrap_config(config)
+    provider_cls = importer(config["provider"])
+    resolved_config = provider_cls.bootstrap_config(config)
     if not no_config_cache:
         with open(cache_key, "w") as f:
             f.write(json.dumps(resolved_config))
@@ -321,6 +321,9 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
 
         # Rewrite the auth config so that the head node can update the workers
         remote_config = copy.deepcopy(config)
+        # drop proxy options if they exist, otherwise
+        # head node won't be able to connect to workers
+        remote_config["auth"].pop("ssh_proxy_command", None)
         if config["provider"]["type"] != "kubernetes":
             remote_key_path = "~/ray_bootstrap_key.pem"
             remote_config["auth"]["ssh_private_key"] = remote_key_path

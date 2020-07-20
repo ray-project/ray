@@ -86,32 +86,48 @@ void CoreWorkerDirectTaskSubmitter::AddWorkerLeaseClient(
     RAY_LOG(INFO) << "Connected to " << addr.ip_address << ":" << addr.port;
   }
   int64_t expiration = current_time_ms() + lease_timeout_ms_;
-  worker_to_lease_client_.emplace(addr,
-                                  std::make_pair(std::move(lease_client), expiration));
+  LeaseEntry new_lease_entry = LeaseEntry(std::move(lease_client), expiration, 0);
+  worker_to_lease_entry_.emplace(addr, new_lease_entry);
 }
 
 void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
     const rpc::WorkerAddress &addr, const SchedulingKey &scheduling_key, bool was_error,
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources) {
-  auto lease_entry = worker_to_lease_client_[addr];
-  RAY_CHECK(lease_entry.first);
+  auto &lease_entry = worker_to_lease_entry_[addr];
+  if (!lease_entry.lease_client_) {
+    return;
+  }
+  RAY_CHECK(lease_entry.lease_client_);
+
   auto queue_entry = task_queues_.find(scheduling_key);
   // Return the worker if there was an error executing the previous task,
   // the previous task is an actor creation task,
   // there are no more applicable queued tasks, or the lease is expired.
   if (was_error || queue_entry == task_queues_.end() ||
-      current_time_ms() > lease_entry.second) {
-    auto status = lease_entry.first->ReturnWorker(addr.port, addr.worker_id, was_error);
-    if (!status.ok()) {
-      RAY_LOG(ERROR) << "Error returning worker to raylet: " << status.ToString();
+      current_time_ms() > lease_entry.lease_expiration_time_) {
+    // Return the worker only if there are no tasks in flight
+    if (lease_entry.tasks_in_flight_ == 0) {
+      auto status =
+          lease_entry.lease_client_->ReturnWorker(addr.port, addr.worker_id, was_error);
+      if (!status.ok()) {
+        RAY_LOG(ERROR) << "Error returning worker to raylet: " << status.ToString();
+      }
+      worker_to_lease_entry_.erase(addr);
     }
-    worker_to_lease_client_.erase(addr);
+
   } else {
     auto &client = *client_cache_[addr];
-    auto task_spec = queue_entry->second.front();
-    PushNormalTask(addr, client, scheduling_key, task_spec, assigned_resources);
-    executing_tasks_.emplace(task_spec.TaskId(), addr);
-    queue_entry->second.pop_front();
+
+    while (!queue_entry->second.empty() &&
+           lease_entry.tasks_in_flight_ < max_tasks_in_flight_per_worker_) {
+      auto task_spec = queue_entry->second.front();
+      lease_entry
+          .tasks_in_flight_++;  // Increment the number of tasks in flight to the worker
+      executing_tasks_.emplace(task_spec.TaskId(), addr);
+      PushNormalTask(addr, client, scheduling_key, task_spec, assigned_resources);
+      queue_entry->second.pop_front();
+    }
+
     // Delete the queue if it's now empty. Note that the queue cannot already be empty
     // because this is the only place tasks are removed from it.
     if (queue_entry->second.empty()) {
@@ -269,12 +285,17 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
         {
           absl::MutexLock lock(&mu_);
           executing_tasks_.erase(task_id);
+
+          // Decrement the number of tasks in flight to the worker
+          auto &lease_entry = worker_to_lease_entry_[addr];
+          RAY_CHECK(lease_entry.tasks_in_flight_ > 0);
+          lease_entry.tasks_in_flight_--;
         }
         if (reply.worker_exiting()) {
           // The worker is draining and will shutdown after it is done. Don't return
           // it to the Raylet since that will kill it early.
           absl::MutexLock lock(&mu_);
-          worker_to_lease_client_.erase(addr);
+          worker_to_lease_entry_.erase(addr);
         } else if (!status.ok() || !is_actor_creation) {
           // Successful actor creation leases the worker indefinitely from the raylet.
           absl::MutexLock lock(&mu_);

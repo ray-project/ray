@@ -742,16 +742,9 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
     RemoveFromClientObjectIds(entry.first, entry.second, client);
   }
 
-  if (client->notification_fd > 0) {
-    // This client has subscribed for notifications.
-    auto notify_fd = client->notification_fd;
-    loop_->RemoveFileEvent(notify_fd);
-    // Close socket.
-    close(notify_fd);
-    // Remove notification queue for this fd from global map.
-    pending_notifications_.erase(notify_fd);
-    // Reset fd.
-    client->notification_fd = -1;
+  if (notification_clients_.find(client) != notification_clients_.end()) {
+    // Remove notification for this client from global map.
+    notification_clients_.erase(client);
   }
 
   // We lose the last borrower of the Client instance here.
@@ -761,16 +754,28 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
 /// Send notifications about sealed objects to the subscribers. This is called
 /// in SealObject. If the socket's send buffer is full, the notification will
 /// be buffered, and this will be called again when the send buffer has room.
-/// Since we call erase on pending_notifications_, all iterators get
-/// invalidated, which is why we return a valid iterator to the next client to
-/// be used in PushNotification.
 ///
-/// \param it Iterator that points to the client to send the notification to.
-/// \return Iterator pointing to the next client.
-PlasmaStore::NotificationMap::iterator PlasmaStore::SendNotifications(
-    PlasmaStore::NotificationMap::iterator it) {
-  int client_fd = it->first;
-  auto& notifications = it->second.object_notifications;
+/// \param client The client to push notifications to.
+/// \param object_info The notifications.
+Status PlasmaStore::SendNotifications(
+    const std::shared_ptr<Client>& client, const std::vector<ObjectInfoT> &object_info) {
+  namespace protocol = ray::object_manager::protocol;
+  flatbuffers::FlatBufferBuilder fbb;
+  std::vector<flatbuffers::Offset<protocol::ObjectInfo>> info;
+  for (size_t i = 0; i < object_info.size(); ++i) {
+    info.push_back(protocol::CreateObjectInfo(fbb, &object_info[i]));
+  }
+  auto info_array = fbb.CreateVector(info);
+  auto message = protocol::CreatePlasmaNotification(fbb, info_array);
+  fbb.Finish(message);
+
+  RAY_LOG(DEBUG) << "Send notifications to fd = " << client->fd;
+  auto& notifications = client->object_notifications;
+  auto new_notifications =
+      std::unique_ptr<uint8_t[]>(new uint8_t[sizeof(int64_t) + fbb.GetSize()]);
+  *(reinterpret_cast<int64_t*>(new_notifications.get())) = fbb.GetSize();
+  memcpy(new_notifications.get() + sizeof(int64_t), fbb.GetBufferPointer(), fbb.GetSize());
+  notifications.emplace_back(std::move(new_notifications));
 
   int num_processed = 0;
   bool closed = false;
@@ -782,7 +787,7 @@ PlasmaStore::NotificationMap::iterator PlasmaStore::SendNotifications(
     int64_t size = *(reinterpret_cast<int64_t*>(notification.get()));
 
     // Attempt to send a notification about this object ID.
-    ssize_t nbytes = send(client_fd, notification.get(), sizeof(int64_t) + size, 0);
+    ssize_t nbytes = send(client->fd, notification.get(), sizeof(int64_t) + size, 0);
     if (nbytes >= 0) {
       RAY_CHECK(nbytes == static_cast<ssize_t>(sizeof(int64_t)) + size);
     } else if (nbytes == -1 &&
@@ -795,12 +800,16 @@ PlasmaStore::NotificationMap::iterator PlasmaStore::SendNotifications(
       // at the end of the method.
       // TODO(pcm): Introduce status codes and check in case the file descriptor
       // is added twice.
-      loop_->AddFileEvent(client_fd, kEventLoopWrite, [this, client_fd](int events) {
-        SendNotifications(pending_notifications_.find(client_fd));
+      loop_->AddFileEvent(client->fd, kEventLoopWrite, [this, client](int events) {
+        Status s = SendNotifications(client, {});
+        if (!s.ok()) {
+          notification_clients_.erase(client);
+        }
       });
       break;
     } else {
-      RAY_LOG(WARNING) << "Failed to send notification to client on fd " << client_fd;
+      RAY_LOG(WARNING) << "Failed to send notification to client on fd " << client->fd
+                       << ", errno = " << errno;
       if (errno == EPIPE) {
         closed = true;
         break;
@@ -813,16 +822,10 @@ PlasmaStore::NotificationMap::iterator PlasmaStore::SendNotifications(
 
   // If we have sent all notifications, remove the fd from the event loop.
   if (notifications.empty()) {
-    loop_->RemoveFileEvent(client_fd);
+    loop_->RemoveFileEvent(client->fd);
   }
-
   // Stop sending notifications if the pipe was broken.
-  if (closed) {
-    close(client_fd);
-    return pending_notifications_.erase(it);
-  } else {
-    return ++it;
-  }
+  return closed ? Status::IOError("Send notifications failed") : Status::OK();
 }
 
 void PlasmaStore::PushNotification(ObjectInfoT* object_info) {
@@ -840,44 +843,31 @@ void PlasmaStore::PushNotifications(const std::vector<ObjectInfoT>& object_info)
     }
   }
 
-  auto it = pending_notifications_.begin();
-  while (it != pending_notifications_.end()) {
-    auto notifications = CreatePlasmaNotificationBuffer(object_info);
-    it->second.object_notifications.emplace_back(std::move(notifications));
-    it = SendNotifications(it);
-  }
-}
-
-void PlasmaStore::PushNotification(ObjectInfoT* object_info, int client_fd) {
-  auto it = pending_notifications_.find(client_fd);
-  if (it != pending_notifications_.end()) {
-    auto notification = CreatePlasmaNotificationBuffer({*object_info});
-    it->second.object_notifications.emplace_back(std::move(notification));
-    SendNotifications(it);
+  auto it = notification_clients_.begin();
+  while (it != notification_clients_.end()) {
+    Status s = SendNotifications(*it, object_info);
+    if (s.ok()) {
+      ++it;
+    } else {
+      it = notification_clients_.erase(it);
+    }
   }
 }
 
 // Subscribe to notifications about sealed objects.
 void PlasmaStore::SubscribeToUpdates(const std::shared_ptr<Client> &client) {
   RAY_LOG(DEBUG) << "subscribing to updates on fd " << client->fd;
-  if (client->notification_fd > 0) {
-    // This client has already subscribed. Return.
-    return;
-  }
-
-  // TODO(rkn): The store could block here if the client doesn't send a file
-  // descriptor.
-  int fd = recv_fd(client->fd);
-  if (fd < 0) {
-    // This may mean that the client died before sending the file descriptor.
-    RAY_LOG(WARNING) << "Failed to receive file descriptor from client on fd "
-                       << client << ".";
-    return;
-  }
-
   // Add this fd to global map, which is needed for this client to receive notifications.
-  pending_notifications_[fd];
-  client->notification_fd = fd;
+  notification_clients_.insert(client);
+
+  // Make the socket non-blocking.
+#ifdef _WINSOCKAPI_
+  unsigned long value = 1;
+  RAY_CHECK(ioctlsocket(client->fd, FIONBIO, &value) == 0);
+#else
+  int flags = fcntl(client->fd, F_GETFL, 0);
+  RAY_CHECK(fcntl(client->fd, F_SETFL, flags | O_NONBLOCK) == 0);
+#endif
 
   // Push notifications to the new subscriber about existing sealed objects.
   for (const auto& entry : store_info_.objects) {
@@ -886,7 +876,10 @@ void PlasmaStore::SubscribeToUpdates(const std::shared_ptr<Client> &client) {
       info.object_id = entry.first.Binary();
       info.data_size = entry.second->data_size;
       info.metadata_size = entry.second->metadata_size;
-      PushNotification(&info, fd);
+      Status s = SendNotifications(client, {info});
+      if (!s.ok()) {
+        notification_clients_.erase(client);
+      }
     }
   }
 }
@@ -926,87 +919,6 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client) {
         WarnIfSigpipe(send_fd(client->fd, object.store_fd), client->fd);
         client->used_fds.insert(object.store_fd);
       }
-    } break;
-    case fb::MessageType::PlasmaCreateAndSealRequest: {
-      bool evict_if_full;
-      std::string data;
-      std::string metadata;
-      RAY_RETURN_NOT_OK(ReadCreateAndSealRequest(input, input_size, &object_id,
-                                             &evict_if_full, &data, &metadata));
-      // CreateAndSeal currently only supports device_num = 0, which corresponds
-      // to the host.
-      int device_num = 0;
-      PlasmaError error_code = CreateObject(object_id, evict_if_full, data.size(),
-                                            metadata.size(), device_num, client, &object);
-
-      // If the object was successfully created, fill out the object data and seal it.
-      if (error_code == PlasmaError::OK) {
-        auto entry = GetObjectTableEntry(&store_info_, object_id);
-        RAY_CHECK(entry != nullptr);
-        // Write the inlined data and metadata into the allocated object.
-        std::memcpy(entry->pointer, data.data(), data.size());
-        std::memcpy(entry->pointer + data.size(), metadata.data(), metadata.size());
-        SealObjects({object_id});
-        // Remove the client from the object's array of clients because the
-        // object is not being used by any client. The client was added to the
-        // object's array of clients in CreateObject. This is analogous to the
-        // Release call that happens in the client's Seal method.
-        RAY_CHECK(RemoveFromClientObjectIds(object_id, entry, client) == 1);
-      }
-
-      // Reply to the client.
-      HANDLE_SIGPIPE(SendCreateAndSealReply(client, error_code), client->fd);
-    } break;
-    case fb::MessageType::PlasmaCreateAndSealBatchRequest: {
-      bool evict_if_full;
-      std::vector<ObjectID> object_ids;
-      std::vector<std::string> data;
-      std::vector<std::string> metadata;
-
-      RAY_RETURN_NOT_OK(ReadCreateAndSealBatchRequest(
-          input, input_size, &object_ids, &evict_if_full, &data, &metadata));
-
-      // CreateAndSeal currently only supports device_num = 0, which corresponds
-      // to the host.
-      int device_num = 0;
-      size_t i = 0;
-      PlasmaError error_code = PlasmaError::OK;
-      for (i = 0; i < object_ids.size(); i++) {
-        error_code = CreateObject(object_ids[i], evict_if_full, data[i].size(),
-                                  metadata[i].size(), device_num, client, &object);
-        if (error_code != PlasmaError::OK) {
-          break;
-        }
-      }
-
-      // if OK, seal all the objects,
-      // if error, abort the previous i objects immediately
-      if (error_code == PlasmaError::OK) {
-        for (i = 0; i < object_ids.size(); i++) {
-          auto entry = GetObjectTableEntry(&store_info_, object_ids[i]);
-          RAY_CHECK(entry != nullptr);
-          // Write the inlined data and metadata into the allocated object.
-          std::memcpy(entry->pointer, data[i].data(), data[i].size());
-          std::memcpy(entry->pointer + data[i].size(), metadata[i].data(),
-                      metadata[i].size());
-        }
-
-        SealObjects(object_ids);
-        // Remove the client from the object's array of clients because the
-        // object is not being used by any client. The client was added to the
-        // object's array of clients in CreateObject. This is analogous to the
-        // Release call that happens in the client's Seal method.
-        for (i = 0; i < object_ids.size(); i++) {
-          auto entry = GetObjectTableEntry(&store_info_, object_ids[i]);
-          RAY_CHECK(RemoveFromClientObjectIds(object_ids[i], entry, client) == 1);
-        }
-      } else {
-        for (size_t j = 0; j < i; j++) {
-          AbortObject(object_ids[j], client);
-        }
-      }
-
-      HANDLE_SIGPIPE(SendCreateAndSealBatchReply(client, error_code), client->fd);
     } break;
     case fb::MessageType::PlasmaAbortRequest: {
       RAY_RETURN_NOT_OK(ReadAbortRequest(input, input_size, &object_id));
