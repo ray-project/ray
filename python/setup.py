@@ -135,7 +135,8 @@ def is_invalid_windows_platform():
     return platform == "msys" or (platform == "win32" and ver and "GCC" in ver)
 
 
-# Calls Bazel, falling back to a well-known path if it isn't found.
+# Calls Bazel in PATH, falling back to the standard user installatation path
+# (~/.bazel/bin/bazel) if it isn't found.
 def bazel_invoke(invoker, cmdline, *args, **kwargs):
     home = os.path.expanduser("~")
     candidates = ["bazel"]
