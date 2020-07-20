@@ -186,6 +186,7 @@ matrix:
         - . ./ci/travis/ci.sh build
       script:
         - ./java/build-jar-multiplatform.sh multiplatform
+        - if [ $TRAVIS_BRANCH == "master" ]; then ./java/build-jar-multiplatform.sh deploy; fi
 
     # RLlib: Learning tests (from rllib/tuned_examples/*.yaml).
     - os: linux

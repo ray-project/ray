@@ -115,7 +115,7 @@ prepare_native() {
   done
 }
 
-# This function assuem all multiplatform binaries are prepared already.
+# This function assume all multiplatform binaries are prepared already.
 deploy_jars() {
   echo "Start deploying jars"
   cd "$WORKSPACE_DIR"/java
