@@ -41,7 +41,7 @@ class WorkerPoolMock : public WorkerPool {
   explicit WorkerPoolMock(boost::asio::io_service &io_service,
                           const WorkerCommandMap &worker_commands)
       : WorkerPool(
-            io_service, 0, 0, MAXIMUM_STARTUP_CONCURRENCY, 0, 0, nullptr, worker_commands,
+            io_service, 0, MAXIMUM_STARTUP_CONCURRENCY, 0, 0, nullptr, worker_commands,
             {}, []() {}, [this](const JobID &job_id) { return mock_job_config; }),
         last_worker_process_() {
     states_by_lang_[ray::Language::JAVA].num_workers_per_process =
@@ -55,19 +55,6 @@ class WorkerPoolMock : public WorkerPool {
   }
 
   using WorkerPool::StartWorkerProcess;  // we need this to be public for testing
-
-  void SetNumInitialWorkers(Language language, int num_initial_workers) {
-    switch (language) {
-    case Language::PYTHON:
-      mock_job_config.set_num_initial_python_workers(num_initial_workers);
-      break;
-    case Language::JAVA:
-      mock_job_config.set_num_initial_java_workers(num_initial_workers);
-      break;
-    default:
-      RAY_LOG(FATAL) << "Unknown language: " << language;
-    }
-  }
 
   Process StartProcess(const std::vector<std::string> &worker_command_args) override {
     // Use a bogus process ID that won't conflict with those in the system
@@ -268,21 +255,6 @@ TEST_F(WorkerPoolTest, StartupJavaWorkerProcessCount) {
            std::to_string(NUM_WORKERS_PER_PROCESS_JAVA),
        std::string("-Dray.job.num-java-workers-per-process=") +
            std::to_string(NUM_WORKERS_PER_PROCESS_JAVA)});
-}
-
-TEST_F(WorkerPoolTest, InitialWorkerProcessCount) {
-  auto job_id = JobID::FromInt(1);
-  worker_pool_->SetNumInitialWorkers(ray::Language::JAVA, 1);
-  worker_pool_->SetNumInitialWorkers(ray::Language::PYTHON, 1);
-  RAY_UNUSED(CreateDriver(job_id));
-  worker_pool_->StartInitialWorkersForJob(job_id);
-  // Here we try to start only 1 worker for each worker language. But since each Java
-  // worker process contains exactly NUM_WORKERS_PER_PROCESS_JAVA (3) workers here,
-  // it's expected to see 3 workers for Java and 1 worker for Python, instead of 1 for
-  // each worker language.
-  ASSERT_NE(worker_pool_->NumWorkersStarting(), 1 * LANGUAGES.size());
-  ASSERT_EQ(worker_pool_->NumWorkersStarting(), 1 + NUM_WORKERS_PER_PROCESS_JAVA);
-  ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), LANGUAGES.size());
 }
 
 TEST_F(WorkerPoolTest, HandleWorkerPushPop) {

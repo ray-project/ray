@@ -160,10 +160,9 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       initial_config_(config),
       local_available_resources_(config.resource_config),
       worker_pool_(
-          io_service, config.num_initial_workers, config.default_num_initial_workers,
-          config.maximum_startup_concurrency, config.min_worker_port,
-          config.max_worker_port, gcs_client_, config.worker_commands,
-          config.raylet_config,
+          io_service, config.num_initial_workers, config.maximum_startup_concurrency,
+          config.min_worker_port, config.max_worker_port, gcs_client_,
+          config.worker_commands, config.raylet_config,
           /*starting_worker_timeout_callback=*/
           [this]() { this->DispatchTasks(this->local_queues_.GetReadyTasksByClass()); },
           [this](const JobID &job_id) -> boost::optional<rpc::JobConfig> {
@@ -356,8 +355,9 @@ void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_
   RAY_CHECK(!job_data.is_dead());
 
   if (RayConfig::instance().enable_multi_tenancy()) {
-    worker_pool_.StartInitialWorkersForJob(job_id);
-    // Trigger dispatching in case this job has no initial workers.
+    // Tasks of this job may already arrived but failed to pop a worker because the job
+    // config is not local yet. So we trigger dispatching again here to try to
+    // reschedule these tasks.
     DispatchTasks(local_queues_.GetReadyTasksByClass());
   }
 }

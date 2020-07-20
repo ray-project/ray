@@ -54,14 +54,13 @@ namespace ray {
 namespace raylet {
 
 WorkerPool::WorkerPool(
-    boost::asio::io_service &io_service, int num_workers, uint32_t default_num_initial_workers,
+    boost::asio::io_service &io_service, int num_workers,
     int maximum_startup_concurrency, int min_worker_port, int max_worker_port,
     std::shared_ptr<gcs::GcsClient> gcs_client, const WorkerCommandMap &worker_commands,
     const std::unordered_map<std::string, std::string> &raylet_config,
     std::function<void()> starting_worker_timeout_callback,
     std::function<boost::optional<rpc::JobConfig>(const JobID &)> job_config_getter)
     : io_service_(&io_service),
-      default_num_initial_workers_(default_num_initial_workers),
       maximum_startup_concurrency_(maximum_startup_concurrency),
       gcs_client_(std::move(gcs_client)),
       raylet_config_(raylet_config),

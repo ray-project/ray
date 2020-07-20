@@ -92,8 +92,6 @@ public class RayConfig {
 
 
   public final int numWorkersPerProcess;
-  public final int numInitialPythonWorkers;
-  public final int numInitialJavaWorkers;
 
   public final List<String> jvmOptionsForJavaWorker;
   public final Map<String, String> workerEnv;
@@ -231,8 +229,6 @@ public class RayConfig {
     } else {
       numWorkersPerProcess = localNumWorkersPerProcess;
     }
-    numInitialPythonWorkers = config.getInt("ray.job.num-initial-python-workers");
-    numInitialJavaWorkers = config.getInt("ray.job.num-initial-java-workers");
 
     // Validate config.
     validate();

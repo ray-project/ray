@@ -67,9 +67,8 @@ struct NodeManagerConfig {
   int max_worker_port;
   /// The initial number of workers to create.
   int num_initial_workers;
-  /// Number of initial workers to start per job if num_initial_***_workers
-  /// is not specified in the job config.
-  uint32_t default_num_initial_workers;
+  /// Number of initial Python workers for the first job.
+  int num_initial_python_workers_for_first_job;
   /// The maximum number of workers that can be started concurrently by a
   /// worker pool.
   int maximum_startup_concurrency;

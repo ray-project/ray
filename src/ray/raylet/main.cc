@@ -216,8 +216,6 @@ int main(int argc, char *argv[]) {
                        << ", object_chunk_size = "
                        << object_manager_config.object_chunk_size;
 
-        node_manager_config.default_num_initial_workers =
-            static_cast<uint32_t>(num_cpus);
         // Initialize the node manager.
         server.reset(new ray::raylet::Raylet(
             main_service, raylet_socket_name, node_ip_address, redis_address, redis_port,

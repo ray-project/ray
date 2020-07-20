@@ -51,8 +51,6 @@ class WorkerPool {
   /// the pool.
   ///
   /// \param num_workers The number of workers to start, per language.
-  /// \param default_num_initial_workers Number of initial workers to start per job if
-  /// num_initial_***_workers of any language is not specified in the job config.
   /// \param maximum_startup_concurrency The maximum number of worker processes
   /// that can be started in parallel (typically this should be set to the number of CPU
   /// resources on the machine).
@@ -66,7 +64,7 @@ class WorkerPool {
   /// \param starting_worker_timeout_callback The callback that will be triggered once
   /// it times out to start a worker.
   /// \param job_config_reader The callback to get the job config.
-  WorkerPool(boost::asio::io_service &io_service, int num_workers, uint32_t default_num_initial_workers,
+  WorkerPool(boost::asio::io_service &io_service, int num_workers,
              int maximum_startup_concurrency, int min_worker_port, int max_worker_port,
              std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands,
