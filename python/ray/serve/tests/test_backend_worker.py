@@ -7,7 +7,7 @@ import ray
 from ray import serve
 import ray.serve.context as context
 from ray.serve.backend_worker import create_backend_worker, wrap_to_ray_error
-from ray.serve.master import TrafficPolicy
+from ray.serve.controller import TrafficPolicy
 from ray.serve.request_params import RequestMetadata
 from ray.serve.router import Router
 from ray.serve.config import BackendConfig
