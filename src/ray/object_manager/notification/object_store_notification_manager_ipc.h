@@ -14,21 +14,15 @@
 
 #pragma once
 
-#include <list>
 #include <memory>
 #include <vector>
 
-#include <boost/asio.hpp>
-#include <boost/asio/error.hpp>
-#include <boost/bind.hpp>
-
-#include "ray/common/client_connection.h"
-#include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/notification/object_store_notification_manager.h"
-#include "ray/object_manager/plasma/client.h"
 
 namespace ray {
+
+class ServerConnection;
 
 /// \class ObjectStoreNotificationManagerIPC
 ///
@@ -53,13 +47,12 @@ class ObjectStoreNotificationManagerIPC : public ObjectStoreNotificationManager 
  private:
   /// Async loop for handling object store notifications.
   void NotificationWait();
-  void ProcessStoreLength(const boost::system::error_code &error);
-  void ProcessStoreNotification(const boost::system::error_code &error);
+  void ProcessStoreLength(const ray::Status &s);
+  void ProcessStoreNotification(const ray::Status &s);
 
-  plasma::PlasmaClient store_client_;
+  std::shared_ptr<ServerConnection> store_client_;
   int64_t length_;
   std::vector<uint8_t> notification_;
-  local_stream_socket socket_;
 
   /// Flag to indicate whether or not to exit the process when received socket
   /// error. When it is false, socket error will be ignored. This flag is needed

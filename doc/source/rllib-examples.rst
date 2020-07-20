@@ -80,7 +80,7 @@ Multi-Agent and Hierarchical
 
 - `Rock-paper-scissors <https://github.com/ray-project/ray/blob/master/rllib/examples/rock_paper_scissors_multiagent.py>`__:
    Example of different heuristic and learned policies competing against each other in rock-paper-scissors.
-- `Two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/twostep_game.py>`__:
+- `Two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/two_step_game.py>`__:
    Example of the two-step game from the `QMIX paper <https://arxiv.org/pdf/1803.11485.pdf>`__.
 - `PPO with centralized critic on two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic.py>`__:
    Example of customizing PPO to leverage a centralized value function.

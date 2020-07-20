@@ -33,11 +33,12 @@ def test_internal_free(shutdown_only):
 
     sampler = Sampler.remote()
 
-    # Free does not delete from in-memory store.
+    # Free deletes from in-memory store.
     obj_ref = sampler.sample.remote()
     ray.get(obj_ref)
     ray.internal.free(obj_ref)
-    assert ray.get(obj_ref) == [1, 2, 3, 4, 5]
+    with pytest.raises(Exception):
+        ray.get(obj_ref)
 
     # Free deletes big objects from plasma store.
     big_id = sampler.sample_big.remote()

@@ -400,7 +400,7 @@ std::ostream &operator<<(std::ostream &os, const PlacementGroupID &id);
     }                                                                          \
   };
 
-#include "id_def.h"
+#include "ray/common/id_def.h"
 
 #undef DEFINE_UNIQUE_ID
 
@@ -482,7 +482,7 @@ std::string BaseID<T>::Hex() const {
   constexpr char hex[] = "0123456789abcdef";
   const uint8_t *id = Data();
   std::string result;
-  for (int i = 0; i < T::Size(); i++) {
+  for (size_t i = 0; i < T::Size(); i++) {
     unsigned int val = id[i];
     result.push_back(hex[val >> 4]);
     result.push_back(hex[val & 0xf]);
@@ -510,7 +510,7 @@ DEFINE_UNIQUE_ID(ActorID);
 DEFINE_UNIQUE_ID(TaskID);
 DEFINE_UNIQUE_ID(ObjectID);
 DEFINE_UNIQUE_ID(PlacementGroupID);
-#include "id_def.h"
+#include "ray/common/id_def.h"
 
 #undef DEFINE_UNIQUE_ID
 }  // namespace std

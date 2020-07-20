@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/common/task/scheduling_resources.h"
+
 #include <memory>
 
 #include "gtest/gtest.h"
 #include "ray/common/id.h"
-#include "scheduling_resources.h"
 
 namespace ray {
 class SchedulingResourcesTest : public ::testing::Test {
@@ -63,14 +64,7 @@ TEST_F(SchedulingResourcesTest, ReturnBundleResources) {
   resource_labels.push_back(bundle_id.Binary() + "_" + "CPU");
   ResourceSet result_resource(resource_labels, resource_capacity);
   ASSERT_EQ(1, resource_set->IsEqual(result_resource));
-
   resource_set->ReturnBundleResources(bundle_id.Binary());
   ASSERT_EQ(1, resource_set->IsEqual(resource));
 }
-
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

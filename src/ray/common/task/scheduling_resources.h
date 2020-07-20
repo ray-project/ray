@@ -429,6 +429,7 @@ class ResourceIdSet {
   /// \brief  remove a Bundle resource in the ResourceIdSet.
   ///
   /// \param resource_name the name of the resource to remove.
+
   void CancelResourceReserve(const std::string &resource_name);
   /// \brief Deletes a resource in the ResourceIdSet. This does not raise an exception,
   /// just deletes the resource. Tasks with acquired resources keep running.
