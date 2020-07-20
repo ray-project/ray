@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "task_dependency_manager.h"
+#include "ray/raylet/task_dependency_manager.h"
 
 #include "absl/time/clock.h"
 #include "ray/stats/stats.h"

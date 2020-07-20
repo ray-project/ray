@@ -25,23 +25,6 @@
 
 #pragma once
 
-#include <errno.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#ifndef _WIN32
-#include <sys/un.h>
-#endif
-#include <unistd.h>
-
-// This is necessary for Mac OS X, see http://www.apuebook.com/faqs2e.html
-// (10).
-#if !defined(CMSG_SPACE) && !defined(CMSG_LEN)
-#define CMSG_SPACE(len) (__DARWIN_ALIGN32(sizeof(struct cmsghdr)) + __DARWIN_ALIGN32(len))
-#define CMSG_LEN(len) (__DARWIN_ALIGN32(sizeof(struct cmsghdr)) + (len))
-#endif
-
-void init_msg(struct msghdr* msg, struct iovec* iov, char* buf, size_t buf_len);
-
 // Send a file descriptor over a unix domain socket.
 //
 // \param conn Unix domain socket to send the file descriptor over.

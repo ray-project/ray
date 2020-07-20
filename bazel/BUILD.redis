@@ -35,6 +35,8 @@ cc_library(
     name = "_hiredis",
     hdrs = [
         "deps/hiredis/dict.c",
+        "deps/hiredis/dict.h",
+        "deps/hiredis/fmacros.h",
     ],
     strip_include_prefix = "deps/hiredis",
 )
@@ -55,7 +57,6 @@ cc_library(
         "deps/hiredis/*.h",
         "deps/hiredis/adapters/*.h",
     ]),
-    includes = ["deps/hiredis"],
     strip_include_prefix = "deps",
     deps = [
         ":_hiredis",

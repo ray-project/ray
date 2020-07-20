@@ -3,7 +3,7 @@
 #include "ray/common/buffer.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/protobuf/common.pb.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 

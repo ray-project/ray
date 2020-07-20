@@ -17,7 +17,7 @@
 #include "ray/common/bundle_spec.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
-#include "ray/protobuf/common.pb.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 
@@ -71,7 +71,7 @@ class PlacementGroupSpecBuilder {
     message_->set_placement_group_id(placement_group_id.Binary());
     message_->set_name(name);
     message_->set_strategy(strategy);
-    for (int i = 0; i < bundles.size(); i++) {
+    for (size_t i = 0; i < bundles.size(); i++) {
       auto resources = bundles[i];
       auto message_bundle = message_->add_bundles();
       auto mutable_bundle_id = message_bundle->mutable_bundle_id();

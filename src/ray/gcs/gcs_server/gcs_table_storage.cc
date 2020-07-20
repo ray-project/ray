@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "gcs_table_storage.h"
+#include "ray/gcs/gcs_server/gcs_table_storage.h"
 
 #include "ray/common/id.h"
 #include "ray/common/status.h"

@@ -20,6 +20,7 @@
 #include <inttypes.h>
 #include <stddef.h>
 
+#include "ray/object_manager/plasma/compat.h"
 #include <unordered_map>
 
 namespace plasma {
@@ -30,16 +31,16 @@ namespace plasma {
 /// (in the client we cannot guarantee that these mmaps are contiguous).
 constexpr int64_t kMmapRegionsGap = sizeof(size_t);
 
-void GetMallocMapinfo(void* addr, int* fd, int64_t* map_length, ptrdiff_t* offset);
+void GetMallocMapinfo(void* addr, MEMFD_TYPE* fd, int64_t* map_length, ptrdiff_t* offset);
 
 /// Get the mmap size corresponding to a specific file descriptor.
 ///
 /// \param fd The file descriptor to look up.
 /// \return The size of the corresponding memory-mapped file.
-int64_t GetMmapSize(int fd);
+int64_t GetMmapSize(MEMFD_TYPE fd);
 
 struct MmapRecord {
-  int fd;
+  MEMFD_TYPE fd;
   int64_t size;
 };
 
