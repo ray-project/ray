@@ -139,7 +139,11 @@ def is_invalid_windows_platform():
 def bazel_invoke(invoker, cmdline, *args, **kwargs):
     home = os.path.expanduser("~")
     candidates = ["bazel"]
-    if sys.platform != "win32":
+    if sys.platform == "win32":
+        mingw_dir = os.getenv("MINGW_DIR")
+        if mingw_dir:
+            candidates.append(mingw_dir + "/bin/bazel.exe")
+    else:
         candidates.append(os.path.join(home, ".bazel", "bin", "bazel"))
     result = None
     for i, cmd in enumerate(candidates):
