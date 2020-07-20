@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "cluster_resource_scheduler.h"
+#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 
 std::string VectorToString(const std::vector<FixedPoint> &vector) {
   std::stringstream buffer;
@@ -494,6 +494,15 @@ bool ClusterResourceScheduler::RemoveNode(int64_t node_id) {
   }
 }
 
+bool ClusterResourceScheduler::RemoveNode(const std::string &node_id_string) {
+  auto node_id = string_to_int_map_.Get(node_id_string);
+  if (node_id == -1) {
+    return false;
+  }
+
+  return RemoveNode(node_id);
+}
+
 int64_t ClusterResourceScheduler::IsSchedulable(const TaskRequest &task_req,
                                                 int64_t node_id,
                                                 const NodeResources &resources) {
@@ -929,7 +938,7 @@ bool ClusterResourceScheduler::AllocateResourceInstances(
         (*allocation)[i] = remaining_demand;
         return true;
       } else {
-        (*allocation)[i] = available[i];
+        (*allocation)[i] += available[i];
         remaining_demand -= available[i];
         available[i] = 0;
       }
