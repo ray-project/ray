@@ -28,6 +28,16 @@
 #include "ray/object_manager/plasma/common.h"
 #include "ray/util/visibility.h"
 
+// This macro is used to replace the "ARROW_CHECK_OK_PREPEND" macro.
+#define RAY_ARROW_CHECK_OK_PREPEND(to_call, msg)          \
+  do {                                                    \
+    ::arrow::Status _s = (to_call);                       \
+    RAY_CHECK(_s.ok()) << (msg) << ": " << _s.ToString(); \
+  } while (0)
+
+// This macro is used to replace the "ARROW_CHECK_OK" macro.
+#define RAY_ARROW_CHECK_OK(s) RAY_ARROW_CHECK_OK_PREPEND(s, "Bad status")
+
 using arrow::Buffer;
 
 namespace plasma {

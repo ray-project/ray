@@ -148,6 +148,9 @@ message PlasmaStatus {
   string message = 2;
 }
 
+// Note that we separate Create and Seal requests even over the RPC protocol
+// since create may be retried many times until space is reserved. This makes
+// the protocol stateful, but better preserves the Plasma store semantics.
 message PlasmaCreateRequest {
   bytes object_id = 1;
   int64 data_size = 2;
@@ -182,8 +185,15 @@ message PlasmaCreateReply {
   PlasmaStatus status = 1;
 }
 
+message PlasmaBuffer {
+  bytes data = 1;
+  bytes metadata = 2;
+  int32 device_num = 3;
+}
+
 message PlasmaGetReply {
   PlasmaStatus status = 1;
+  repeated PlasmaBuffer objects = 2; 
 }
 
 message PlasmaReleaseReply {

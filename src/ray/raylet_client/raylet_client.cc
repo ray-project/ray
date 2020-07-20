@@ -384,13 +384,15 @@ Status raylet::RayletClient::Create(const ObjectID &object_id, int64_t data_size
   request.set_evict_if_full(evict_if_full);
   absl::Notification done;
   RAY_RETURN_NOT_OK(grpc_client_->PlasmaCreate(
-      request, [&done, &status](const Status &s, const rpc::PlasmaCreateReply &reply) {
+      request, [this, &done, &status, data, data_size, object_id](
+                   const Status &s, const rpc::PlasmaCreateReply &reply) {
         if (!s.ok()) {
           status = s;
         } else {
           status = Status(static_cast<StatusCode>(reply.status().code()),
                           reply.status().message());
-          RAY_CHECK(false);  // TODO(ekl) create return buffer
+          RAY_ARROW_CHECK_OK(arrow::AllocateBuffer(data_size, data));
+          created_buffers_[object_id] = *data;
         }
         done.Notify();
       }));
@@ -409,13 +411,29 @@ Status raylet::RayletClient::Get(const std::vector<ObjectID> &object_ids,
   request.set_timeout_ms(timeout_ms);
   absl::Notification done;
   RAY_RETURN_NOT_OK(grpc_client_->PlasmaGet(
-      request, [&done, &status](const Status &s, const rpc::PlasmaGetReply &reply) {
+      request, [&done, &status, &object_buffers](const Status &s,
+                                                 const rpc::PlasmaGetReply &reply) {
         if (!s.ok()) {
           status = s;
         } else {
           status = Status(static_cast<StatusCode>(reply.status().code()),
                           reply.status().message());
-          RAY_CHECK(false);  // TODO(ekl) populate return buffers
+          for (auto i = 0; i < reply.objects_size(); i++) {
+            plasma::ObjectBuffer buffer;
+
+            size_t data_size = reply.objects(i).data().length();
+            RAY_ARROW_CHECK_OK(arrow::AllocateBuffer(data_size, &buffer.data));
+            memcpy(buffer.data->mutable_data(), reply.objects(i).data().c_str(),
+                   data_size);
+
+            size_t metadata_size = reply.objects(i).metadata().length();
+            RAY_ARROW_CHECK_OK(arrow::AllocateBuffer(metadata_size, &buffer.metadata));
+            memcpy(buffer.metadata->mutable_data(), reply.objects(i).metadata().c_str(),
+                   metadata_size);
+
+            buffer.device_num = reply.objects(i).device_num();
+            object_buffers->push_back(buffer);
+          }
         }
         done.Notify();
       }));
@@ -467,7 +485,13 @@ Status raylet::RayletClient::Seal(const ObjectID &object_id) {
   Status status;
   rpc::PlasmaSealRequest request;
   request.set_object_id(object_id.Binary());
-  RAY_CHECK(false);  // TODO(ekl) we need to send back the actual written data.
+
+  auto it = created_buffers_.find(object_id);
+  RAY_CHECK(it != created_buffers_.end())
+      << "Tried to seal object that wasn't created " << object_id.Hex();
+  request.set_data(it->second->data(), it->second->size());
+  created_buffers_.erase(it);
+
   absl::Notification done;
   RAY_RETURN_NOT_OK(grpc_client_->PlasmaSeal(
       request, [&done, &status](const Status &s, const rpc::PlasmaSealReply &reply) {

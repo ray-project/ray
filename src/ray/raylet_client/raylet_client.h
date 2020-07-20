@@ -20,6 +20,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "arrow/buffer.h"
 
 #include "ray/common/bundle_spec.h"
@@ -400,6 +401,8 @@ class RayletClient : public PinObjectsInterface,
   ResourceMappingType resource_ids_;
   /// The connection to the raylet server.
   std::unique_ptr<RayletConnection> conn_;
+  /// Pending plasma objects, if this is client is used as a proxy plasma client.
+  absl::flat_hash_map<ObjectID, std::shared_ptr<arrow::Buffer>> created_buffers_;
 };
 
 }  // namespace raylet
