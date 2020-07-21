@@ -299,6 +299,7 @@ class RolloutWorker(ParallelIteratorWorker):
             enable_periodic_logging()
 
         env_context = EnvContext(env_config or {}, worker_index)
+        self.env_context = env_context
         self.policy_config: TrainerConfigDict = policy_config
         if callbacks:
             self.callbacks: "DefaultCallbacks" = callbacks()
@@ -363,6 +364,7 @@ class RolloutWorker(ParallelIteratorWorker):
                         worker_index=worker_index,
                         vector_index=vector_index,
                         remote=remote_worker_envs)))
+        self.make_env_fn = make_env
 
         self.tf_sess = None
         policy_dict = _validate_and_canonicalize(policy, self.env)
@@ -405,13 +407,14 @@ class RolloutWorker(ParallelIteratorWorker):
             self.policy_map, self.preprocessors = self._build_policy_map(
                 policy_dict, policy_config)
 
-        if (ray.is_initialized()
-                and ray.worker._mode() != ray.worker.LOCAL_MODE):
+        if (ray.is_initialized() and
+                ray.worker._mode() != ray.worker.LOCAL_MODE):
             # Check available number of GPUs
             if not ray.get_gpu_ids():
-                logger.debug("Creating policy evaluation worker {}".format(
-                    worker_index) +
-                             " on CPU (please ignore any CUDA init errors)")
+                logger.debug(
+                    "Creating policy evaluation worker {}".format(
+                        worker_index) +
+                    " on CPU (please ignore any CUDA init errors)")
             elif (policy_config["framework"] in ["tf2", "tf", "tfe"] and
                   not tf.config.list_physical_devices("GPU")) or \
                     (policy_config["framework"] == "torch" and
@@ -420,8 +423,9 @@ class RolloutWorker(ParallelIteratorWorker):
                     "GPUs were assigned to this worker by Ray, but "
                     "your DL framework ({}) reports GPU acceleration is "
                     "disabled. This could be due to a bad CUDA- or {} "
-                    "installation.".format(policy_config["framework"],
-                                           policy_config["framework"]))
+                    "installation.".format(
+                        policy_config["framework"],
+                        policy_config["framework"]))
 
         self.multiagent: bool = set(
             self.policy_map.keys()) != {DEFAULT_POLICY_ID}
@@ -443,26 +447,19 @@ class RolloutWorker(ParallelIteratorWorker):
         if self.worker_index == 0:
             logger.info("Built filter map: {}".format(self.filters))
 
-        if "custom_vector_env" in policy_config:
-            custom_env_dict = dict(policy_config)
-            custom_env_dict.update({
-                "env": self.env,
-                "make_env": make_env,
-                "existing_envs": [self.env],
-                "num_envs": num_envs,
-                "env_context": env_context,
-            })
-            custom_vec = policy_config["custom_vector_env"]
-            self.env = custom_vec(**custom_env_dict)
-
-        # Always use vector env for consistency even if num_envs = 1.
-        self.async_env: BaseEnv = BaseEnv.to_base_env(
-            self.env,
-            make_env=make_env,
-            num_envs=num_envs,
-            remote_envs=remote_worker_envs,
-            remote_env_batch_wait_ms=remote_env_batch_wait_ms)
         self.num_envs: int = num_envs
+
+        if "custom_vector_env" in policy_config:
+            custom_vec_wrapper = policy_config["custom_vector_env"]
+            self.async_env = custom_vec_wrapper(self.env)
+        else:
+            # Always use vector env for consistency even if num_envs = 1.
+            self.async_env: BaseEnv = BaseEnv.to_base_env(
+                self.env,
+                make_env=make_env,
+                num_envs=num_envs,
+                remote_envs=remote_worker_envs,
+                remote_env_batch_wait_ms=remote_env_batch_wait_ms)
 
         # `truncate_episodes`: Allow a batch to contain more than one episode
         # (fragments) and always make the batch `rollout_fragment_length`

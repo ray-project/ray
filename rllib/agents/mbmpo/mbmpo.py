@@ -166,6 +166,7 @@ class MetaUpdate:
             metrics.counters[STEPS_SAMPLED_COUNTER] = td_metric[
                 STEPS_SAMPLED_COUNTER]
 
+            # Modify to CollectMetrics
             res = self.metric_gen.__call__(None)
             res.update(self.metrics)
             self.step_counter = 0
@@ -270,7 +271,7 @@ def post_process_samples(samples, config):
     # Instead of using NN for value function, we use regression
     split_lst = []
     for sample in samples:
-        indexes = np.asarray(sample["dones"]).nonzero()
+        indexes = np.asarray(sample["dones"]).nonzero()[0]
         indexes = indexes+1
 
         reward_list = np.split(sample["rewards"], indexes)[:-1]

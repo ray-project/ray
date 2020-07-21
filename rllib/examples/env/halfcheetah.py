@@ -19,6 +19,11 @@ def get_all_function_arguments(function, locals):
 
 
 class HalfCheetahWrapper(HalfCheetahEnv):
+    """HalfCheetah Wrapper that wraps Mujoco Halfcheetah-v2 env
+    with an additional defined reward function for model-based RL.
+
+    This is currently used for MBMPO.
+    """
     def __init__(self, *args, **kwargs):
         HalfCheetahEnv.__init__(self, *args, **kwargs)
 
