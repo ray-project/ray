@@ -744,12 +744,12 @@ def test_object_id_backward_compatibility(ray_start_regular):
 
 
 def test_nonascii_in_function_body(ray_start_regular):
-
     @ray.remote
     def return_a_greek_char():
         return "φ"
 
     assert ray.get(return_a_greek_char.remote()) == "φ"
+
 
 if __name__ == "__main__":
     import pytest
