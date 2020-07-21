@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 # This script automatically download ray and run the sanity check (sanity_check.py)
 # in various Python version. This script requires conda command to exist.
 
