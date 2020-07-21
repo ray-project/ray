@@ -11,7 +11,7 @@
 #include "message/message_bundle.h"
 #include "ring_buffer.h"
 
-#include "queue_tests_base.h"
+#include "test/queue_tests_base.h"
 
 using namespace std::placeholders;
 namespace ray {
