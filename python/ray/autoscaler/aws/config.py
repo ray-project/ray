@@ -102,17 +102,20 @@ def _arn_to_name(arn):
 def log_to_cli(config):
     provider_name = PROVIDER_PRETTY_NAMES.get("aws", None)
 
-    cli_logger.doassert(
-        provider_name is not None,
-        "Could not find a pretty name for the AWS provider.")
+    cli_logger.doassert(provider_name is not None,
+                        "Could not find a pretty name for the AWS provider.")
 
     with cli_logger.group("{} config", provider_name):
+
         def same_everywhere(key):
             return config["head_node"][key] == config["worker_nodes"][key]
 
-        def print_info(resource_string, key,
-                   head_src_key, workers_src_key,
-                   allowed_tags=["default"], list_value=False):
+        def print_info(resource_string,
+                       key,
+                       head_src_key,
+                       workers_src_key,
+                       allowed_tags=["default"],
+                       list_value=False):
 
             head_tags = {}
             workers_tags = {}
@@ -133,9 +136,10 @@ def log_to_cli(config):
                     head_value_str,
                     _tags=head_tags)
             else:
-                head_value_str = config["head_node"][key]
+                workers_value_str = config["worker_nodes"][key]
                 if list_value:
-                    workers_value_str = cli_logger.render_list(workers_value_str)
+                    workers_value_str = cli_logger.render_list(
+                        workers_value_str)
 
                 cli_logger.labeled_value(
                     resource_string + " (head)",
@@ -155,24 +159,24 @@ def log_to_cli(config):
             _arn_to_name(config["head_node"]["IamInstanceProfile"]["Arn"]),
             _tags=tags)
 
-        print_info(
-            "EC2 Key pair",
-            "KeyName",
-            "keypair_src", "keypair_src")
+        print_info("EC2 Key pair", "KeyName", "keypair_src", "keypair_src")
         print_info(
             "VPC Subnets",
             "SubnetIds",
-            "head_subnet_src", "workers_subnet_src",
+            "head_subnet_src",
+            "workers_subnet_src",
             list_value=True)
         print_info(
             "EC2 Security groups",
             "SecurityGroupIds",
-            "head_security_group_src", "workers_security_group_src",
+            "head_security_group_src",
+            "workers_security_group_src",
             list_value=True)
         print_info(
             "EC2 AMI",
             "ImageId",
-            "head_ami_src", "workers_ami_src",
+            "head_ami_src",
+            "workers_ami_src",
             allowed_tags=["dlami"])
 
     cli_logger.newline()

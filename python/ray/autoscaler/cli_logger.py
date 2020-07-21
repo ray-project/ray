@@ -14,7 +14,12 @@ def _strip_codes(msg):
 
 # we could bold "{}" strings automatically but do we want that?
 # todo:
-def _format_msg(msg, *args, _tags=None, _numbered=None, _no_format=None, **kwargs):
+def _format_msg(msg,
+                *args,
+                _tags=None,
+                _numbered=None,
+                _no_format=None,
+                **kwargs):
     if isinstance(msg, str) or isinstance(msg, ColorfulString):
         tags_str = ""
         if _tags is not None:
