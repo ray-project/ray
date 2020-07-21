@@ -1,6 +1,6 @@
 # --------------------------------------------------------------------
-# Tests from the python/ray/tune/tests directory
-# Covers all tests starting with test_.
+# Tests from the python/ray/tune/tests directory.
+# Covers all tests starting with `test_`.
 # Please keep these sorted alphabetically.
 # --------------------------------------------------------------------
 py_test(
@@ -218,8 +218,8 @@ py_test(
 )
 
 # --------------------------------------------------------------------
-# Tests from the python/ray/tune/tests directory
-# Covers all remaining tests that do not start with test_
+# Tests from the python/ray/tune/tests directory.
+# Covers all remaining tests that do not start with `test_`.
 # Please keep these sorted alphabetically.
 # --------------------------------------------------------------------
 py_test(
