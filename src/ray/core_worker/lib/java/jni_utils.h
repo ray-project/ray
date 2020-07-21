@@ -478,6 +478,9 @@ inline void MetricTransform(JNIEnv *env, jstring j_name, jstring j_description,
 
 // Return an actor fullname with job id prepended if this tis a global actor.
 inline std::string GetActorFullName(bool global, std::string name) {
+  if (name.empty()) {
+    return "";
+  }
   return global ? name
                 : ::ray::CoreWorkerProcess::GetCoreWorker().GetCurrentJobId().Hex() +
                       "-" + name;
