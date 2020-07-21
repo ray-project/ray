@@ -464,22 +464,23 @@ Status raylet::RayletClient::Get(const std::vector<ObjectID> &object_ids,
 }
 
 Status raylet::RayletClient::Release(const ObjectID &object_id) {
-  Status status;
-  rpc::PlasmaReleaseRequest request;
-  request.set_object_id(object_id.Binary());
-  absl::Notification done;
-  RAY_RETURN_NOT_OK(grpc_client_->PlasmaRelease(
-      request, [&done, &status](const Status &s, const rpc::PlasmaReleaseReply &reply) {
-        if (!s.ok()) {
-          status = s;
-        } else {
-          status = Status(static_cast<StatusCode>(reply.status().code()),
-                          reply.status().message());
-        }
-        done.Notify();
-      }));
-  done.WaitForNotification();
-  return status;
+  return Status::OK();
+//  Status status;
+//  rpc::PlasmaReleaseRequest request;
+//  request.set_object_id(object_id.Binary());
+//  absl::Notification done;
+//  RAY_RETURN_NOT_OK(grpc_client_->PlasmaRelease(
+//      request, [&done, &status](const Status &s, const rpc::PlasmaReleaseReply &reply) {
+//        if (!s.ok()) {
+//          status = s;
+//        } else {
+//          status = Status(static_cast<StatusCode>(reply.status().code()),
+//                          reply.status().message());
+//        }
+//        done.Notify();
+//      }));
+//  done.WaitForNotification();
+//  return status;
 }
 
 Status raylet::RayletClient::Contains(const ObjectID &object_id, bool *has_object) {

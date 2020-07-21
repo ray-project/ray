@@ -3827,17 +3827,33 @@ void NodeManager::HandlePlasmaCreate(const rpc::PlasmaCreateRequest &request,
 void NodeManager::HandlePlasmaGet(const rpc::PlasmaGetRequest &request,
                                   rpc::PlasmaGetReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) {
-  RAY_CHECK(false);
+  std::vector<ObjectID> object_ids;
+  for (int i=0; i < request.object_ids_size(); i++) {
+    auto object_id = ObjectID::FromBinary(request.object_ids(i));
+    object_ids.push_back(object_id);
+  }
+  std::vector<plasma::ObjectBuffer> output;
+  auto status = store_client_.Get(object_ids, request.timeout_ms(), &output);
+  for (auto buf : output) {
+    auto entry = reply->add_objects();
+    entry->set_data(buf.data->data(), buf.data->size());
+    entry->set_metadata(buf.metadata->data(), buf.metadata->size());
+    entry->set_device_num(buf.device_num);
+  }
+  reply->mutable_status()->set_code(static_cast<int32_t>(status.code()));
+  reply->mutable_status()->set_message(status.message());
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::HandlePlasmaRelease(const rpc::PlasmaReleaseRequest &request,
                                       rpc::PlasmaReleaseReply *reply,
                                       rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(ERROR) << "release start";
   auto object_id = ObjectID::FromBinary(request.object_id());
   auto status = store_client_.Release(object_id);
   reply->mutable_status()->set_code(static_cast<int32_t>(status.code()));
   reply->mutable_status()->set_message(status.message());
+  RAY_LOG(ERROR) << "release end " << status;
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

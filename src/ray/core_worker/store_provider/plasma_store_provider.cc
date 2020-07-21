@@ -58,6 +58,7 @@ CoreWorkerPlasmaStoreProvider::~CoreWorkerPlasmaStoreProvider() {
 
 Status CoreWorkerPlasmaStoreProvider::SetClientOptions(std::string name,
                                                        int64_t limit_bytes) {
+    RAY_LOG(ERROR) << "lock7";
   std::lock_guard<std::mutex> guard(store_client_mutex_);
   RAY_RETURN_NOT_OK(store_client_->SetClientOptions(name, limit_bytes));
   return Status::OK();
@@ -103,6 +104,7 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
     Status plasma_status;
     std::shared_ptr<arrow::Buffer> arrow_buffer;
     {
+      RAY_LOG(ERROR) << "lock1";
       std::lock_guard<std::mutex> guard(store_client_mutex_);
       plasma_status = store_client_->Create(
           object_id, data_size, metadata ? metadata->Data() : nullptr,
@@ -110,6 +112,7 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
           /*device_num=*/0, evict_if_full);
       // Always try to evict after the first attempt.
       evict_if_full = true;
+    RAY_LOG(ERROR) << "lock1 exit";
     }
     if (plasma_status.IsObjectStoreFull()) {
       std::ostringstream message;
@@ -149,16 +152,21 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
 
 Status CoreWorkerPlasmaStoreProvider::Seal(const ObjectID &object_id) {
   {
+    RAY_LOG(ERROR) << "lock2";
     std::lock_guard<std::mutex> guard(store_client_mutex_);
     RAY_RETURN_NOT_OK(store_client_->Seal(object_id));
+    RAY_LOG(ERROR) << "lock2 exit";
   }
   return Status::OK();
 }
 
 Status CoreWorkerPlasmaStoreProvider::Release(const ObjectID &object_id) {
   {
+    RAY_LOG(ERROR) << "lock3";
     std::lock_guard<std::mutex> guard(store_client_mutex_);
-    RAY_RETURN_NOT_OK(store_client_->Release(object_id));
+    RAY_LOG(ERROR) << "lock3 acquired";
+    RAY_LOG(ERROR) << "lock3 " << store_client_->Release(object_id);
+    RAY_LOG(ERROR) << "lock3 exit";
   }
   return Status::OK();
 }
@@ -175,11 +183,11 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
 
   std::vector<plasma::ObjectBuffer> plasma_results;
   {
-    RAY_LOG(ERROR) << "plasma 1";
+    RAY_LOG(ERROR) << "lock4";
     std::lock_guard<std::mutex> guard(store_client_mutex_);
-    RAY_LOG(ERROR) << "plasma 2";
+    RAY_LOG(ERROR) << "lock4 acquired";
     RAY_RETURN_NOT_OK(store_client_->Get(batch_ids, timeout_ms, &plasma_results));
-    RAY_LOG(ERROR) << "plasma 3";
+    RAY_LOG(ERROR) << "lock4 exit";
   }
 
   // Add successfully retrieved objects to the result map and remove them from
@@ -327,6 +335,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
 
 Status CoreWorkerPlasmaStoreProvider::Contains(const ObjectID &object_id,
                                                bool *has_object) {
+    RAY_LOG(ERROR) << "lock5";
   std::lock_guard<std::mutex> guard(store_client_mutex_);
   RAY_RETURN_NOT_OK(store_client_->Contains(object_id, has_object));
   return Status::OK();
@@ -382,6 +391,7 @@ Status CoreWorkerPlasmaStoreProvider::Delete(
 }
 
 std::string CoreWorkerPlasmaStoreProvider::MemoryUsageString() {
+    RAY_LOG(ERROR) << "lock6";
   std::lock_guard<std::mutex> guard(store_client_mutex_);
   return store_client_->DebugString();
 }
