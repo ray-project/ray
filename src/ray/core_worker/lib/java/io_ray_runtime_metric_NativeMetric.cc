@@ -1,5 +1,5 @@
-#include "ray/core_worker/lib/java/io_ray_runtime_metric_NativeMetric.h"
-#include "ray/core_worker/lib/java/jni_utils.h"
+#include "io_ray_runtime_metric_NativeMetric.h"
+#include "jni_utils.h"
 #include "ray/stats/metric.h"
 
 #include <jni.h>
@@ -13,14 +13,15 @@ using TagsType = std::vector<std::pair<opencensus::tags::TagKey, std::string>>;
 #ifdef __cplusplus
 extern "C" {
 #endif
+
 JNIEXPORT void JNICALL Java_io_ray_runtime_metric_NativeMetric_registerTagkeyNative(
-    JNIEnv *env, jobject obj, jstring str) {
+    JNIEnv *env, jclass obj, jstring str) {
   std::string tag_key_name = JavaStringToNativeString(env, static_cast<jstring>(str));
   RAY_IGNORE_EXPR(TagKeyType::Register(tag_key_name));
 }
 
 JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_NativeMetric_registerGaugeNative(
-    JNIEnv *env, jobject obj, jstring j_name, jstring j_description, jstring j_unit,
+    JNIEnv *env, jclass obj, jstring j_name, jstring j_description, jstring j_unit,
     jobject tag_key_list) {
   std::string metric_name;
   std::string description;
@@ -33,7 +34,7 @@ JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_NativeMetric_registerGaugeNat
 }
 
 JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_NativeMetric_registerCountNative(
-    JNIEnv *env, jobject obj, jstring j_name, jstring j_description, jstring j_unit,
+    JNIEnv *env, jclass obj, jstring j_name, jstring j_description, jstring j_unit,
     jobject tag_key_list) {
   std::string metric_name;
   std::string description;
@@ -45,8 +46,8 @@ JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_NativeMetric_registerCountNat
   return reinterpret_cast<long>(count);
 }
 
-JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_NativeMetric_registerCountNative(
-    JNIEnv *env, jobject obj, jstring j_name, jstring j_description, jstring j_unit,
+JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_NativeMetric_registerSumNative(
+    JNIEnv *env, jclass obj, jstring j_name, jstring j_description, jstring j_unit,
     jobject tag_key_list) {
   std::string metric_name;
   std::string description;
@@ -54,12 +55,12 @@ JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_NativeMetric_registerCountNat
   std::vector<TagKeyType> tag_keys;
   MetricTransform(env, j_name, j_description, j_unit, tag_key_list, &metric_name,
                   &description, &unit, tag_keys);
-  auto *count = new ray::stats::Count(metric_name, description, unit, tag_keys);
-  return reinterpret_cast<long>(count);
+  auto *sum = new ray::stats::Sum(metric_name, description, unit, tag_keys);
+  return reinterpret_cast<long>(sum);
 }
 
 JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_NativeMetric_registerHistogramNative(
-    JNIEnv *env, jobject obj, jstring j_name, jstring j_description, jstring j_unit,
+    JNIEnv *env, jclass obj, jstring j_name, jstring j_description, jstring j_unit,
     jdoubleArray j_boundaries, jobject tag_key_list) {
   std::string metric_name;
   std::string description;
@@ -77,14 +78,14 @@ JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_NativeMetric_registerHistogra
 }
 
 JNIEXPORT void JNICALL Java_io_ray_runtime_metric_NativeMetric_unregisterMetricNative(
-    JNIEnv *env, jobject obj, jlong metric_native_pointer) {
+    JNIEnv *env, jclass obj, jlong metric_native_pointer) {
   ray::stats::Metric *metric =
       reinterpret_cast<ray::stats::Metric *>(metric_native_pointer);
   delete metric;
 }
 
 JNIEXPORT void JNICALL Java_io_ray_runtime_metric_NativeMetric_recordNative(
-    JNIEnv *env, jobject obj, jlong metric_native_pointer, jdouble value,
+    JNIEnv *env, jclass obj, jlong metric_native_pointer, jdouble value,
     jobject tag_key_list, jobject tag_value_list) {
   ray::stats::Metric *metric =
       reinterpret_cast<ray::stats::Metric *>(metric_native_pointer);
