@@ -162,8 +162,9 @@ inline ray::PlacementGroupCreationOptions ToPlacementGroupCreationOptions(JNIEnv
               return value;
             });
       });
-  // TODO(ffbin): name, strategy
-  return ray::PlacementGroupCreationOptions("", ray::rpc::PACK, bundles);
+  // TODO(ffbin): Do we need to set name?
+  auto strategy = 0 == java_strategy ? ray::rpc::PACK : ray::rpc::SPREAD;
+  return ray::PlacementGroupCreationOptions("", strategy, bundles);
 }
 
 #ifdef __cplusplus

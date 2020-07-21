@@ -114,7 +114,7 @@ public final class Ray extends RayCall {
    * @return Two lists, one containing locally available objects, one containing the rest.
    */
   public static <T> WaitResult<T> wait(List<ObjectRef<T>> waitList, int numReturns,
-      int timeoutMs) {
+                                       int timeoutMs) {
     return runtime.wait(waitList, numReturns, timeoutMs);
   }
 
