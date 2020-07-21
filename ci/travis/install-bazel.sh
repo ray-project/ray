@@ -6,7 +6,6 @@ ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
 arg1="${1-}"
 
-version="3.2.0"
 achitecture="${HOSTTYPE}"
 platform="unknown"
 case "${OSTYPE}" in
@@ -30,7 +29,8 @@ esac
 
 # Sanity check: Verify we have symlinks where we expect them, or Bazel can produce weird "missing input file" errors.
 # This is most likely to occur on Windows, where symlinks are sometimes disabled by default.
-{ git ls-files -s || true; } | {
+{ git ls-files -s 2>/dev/null || true; } | (
+  set +x
   missing_symlinks=()
   while read -r mode digest sn path; do
     if [ "${mode}" = 120000 ]; then
@@ -42,8 +42,10 @@ esac
     echo "For a correct build, please run 'git config --local core.symlinks true' and re-run git checkout." 1>&2
     false
   fi
-}
+)
 
+python="$(command -v python3 || command -v python || echo python)"
+version="$("${python}" -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" bazel_version "${ROOT_DIR}/../../python/setup.py")"
 if [ "${OSTYPE}" = "msys" ]; then
   target="${MINGW_DIR-/usr}/bin/bazel.exe"
   mkdir -p "${target%/*}"
