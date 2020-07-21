@@ -113,8 +113,30 @@ def git_remotes():
 
 def get_current_ci():
     result = None
-    result = result or os.getenv("TRAVIS")
-    result = result or os.getenv("GITHUB_WORKFLOW")
+    if "GITHUB_WORKFLOW" in os.environ:
+        result = "GitHub"
+    elif "TRAVIS" in os.environ:
+        result = "Travis"
+    return result
+
+
+def get_event_name():
+    result = None
+    ci = get_current_ci()
+    if ci.startswith("GitHub"):
+        result = os.environ["GITHUB_EVENT_NAME"]
+    elif ci.startswith("Travis"):
+        result = os.environ["TRAVIS_EVENT_TYPE"]
+    return result
+
+
+def get_repo_slug():
+    ci = get_current_ci()
+    result = None
+    if ci.startswith("GitHub"):
+        result = os.environ["GITHUB_REPOSITORY"]
+    elif ci.startswith("Travis"):
+        result = os.environ["TRAVIS_REPO_SLUG"]
     return result
 
 
@@ -271,7 +293,7 @@ def monitor(process_handle=None, server_poll_interval=None, sleeps=None):
     return result
 
 
-def main(program, pid="", server_poll_interval="", sleeps=""):
+def main(program, pid="", skipped_repos="", server_poll_interval="", sleeps=""):
     if pid:
         pid = int(pid)
     else:
@@ -286,12 +308,20 @@ def main(program, pid="", server_poll_interval="", sleeps=""):
     else:
         sleeps = None
     result = 0
-    process_handle = open_process(pid) if pid else 0
-    try:
-        result = monitor(process_handle, server_poll_interval, sleeps)
-    finally:
-        if process_handle:
-            close_process(process_handle)
+    repo_slug = get_repo_slug()
+    skipped_repo_list = []
+    if skipped_repos:
+        skipped_repo_list.extend(skipped_repos.split(","))
+    event_name = get_event_name()
+    if repo_slug not in skipped_repo_list or event_name == "pull_request":
+        process_handle = open_process(pid) if pid else 0
+        try:
+            result = monitor(process_handle, server_poll_interval, sleeps)
+        finally:
+            if process_handle:
+                close_process(process_handle)
+    else:
+        logger.info("Skipping monitoring %s %s build", repo_slug, event_name)
     return result
 
 

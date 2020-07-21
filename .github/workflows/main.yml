@@ -100,7 +100,9 @@ jobs:
       env:
         SIGOPT_KEY: ${{ secrets.TUNE_SIGOPT_KEY }}
         TEST_CASE: ${{ matrix.jenkins-test }}
-      run: env "${TEST_CASE}=1" HOME="${PWD}" ci/jenkins_tests/entry_point.sh
+      run: |
+        ci/remote-watch.py "$$" ray-project/ray &
+        env "${TEST_CASE}=1" HOME="${PWD}" ci/jenkins_tests/entry_point.sh
     - name: Run CI script
       shell: bash -e -o pipefail -l {0}
       if: matrix.jenkins-test == ''
@@ -112,6 +114,7 @@ jobs:
         RAY_DEFAULT_BUILD: 1
         WINDOWS_WHEELS: 1
       run: |
+        ci/remote-watch.py "$$" ray-project/ray &
         . ./ci/travis/ci.sh init
         . ./ci/travis/ci.sh build
         . ./ci/travis/ci.sh upload_wheels || true
