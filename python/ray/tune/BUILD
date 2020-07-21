@@ -284,7 +284,7 @@ py_test(
     size = "medium",
     srcs = ["examples/cifar10_pytorch.py"],
     deps = [":tune_lib"],
-    tags = ["exclusive", "example"],
+    tags = ["exclusive", "example", "pytorch"],
     args = ["--smoke-test"]
 )
 
@@ -374,7 +374,7 @@ py_test(
     size = "medium",
     srcs = ["examples/mnist_pytorch.py"],
     deps = [":tune_lib"],
-    tags = ["exclusive", "example"],
+    tags = ["exclusive", "example", "pytorch"],
     args = ["--smoke-test"]
 )
 
@@ -383,7 +383,7 @@ py_test(
     size = "medium",
     srcs = ["examples/mnist_pytorch_lightning.py"],
     deps = [":tune_lib"],
-    tags = ["exclusive", "example"],
+    tags = ["exclusive", "example", "pytorch"],
     args = ["--smoke-test"]
 )
 
@@ -392,7 +392,7 @@ py_test(
     size = "medium",
     srcs = ["examples/mnist_pytorch_trainable.py"],
     deps = [":tune_lib"],
-    tags = ["exclusive", "example"],
+    tags = ["exclusive", "example", "pytorch"],
     args = ["--smoke-test"]
 )
 
@@ -482,7 +482,7 @@ py_test(
     size = "medium",
     srcs = ["examples/tf_mnist_example.py"],
     deps = [":tune_lib"],
-    tags = ["exclusive", "example"],
+    tags = ["exclusive", "example", "tf"],
     args = ["--smoke-test"]
 )
 
