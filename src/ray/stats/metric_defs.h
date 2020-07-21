@@ -74,4 +74,3 @@ static Gauge ReconstructionPolicyStats(
 static Gauge ConnectionPoolStats("connection_pool_stats",
                                  "Stats the connection pool metrics.", "pcs",
                                  {ValueTypeKey});
-

@@ -62,10 +62,20 @@ void MetricsAgentExporter::ReportMetrics(const std::vector<MetricPoint> &points)
     for (auto &tag : point.tags) {
       (*mutable_tags)[tag.first] = tag.second;
     }
+    // If description and units information is requested from
+    // the metrics agent, append the information.
+    if (should_update_description_) {
+      metric_point->set_description(point.measure_descriptor.description());
+      metric_point->set_units(point.measure_descriptor.units());
+    }
   }
+  should_update_description_ = false;
 
   // TODO(sang): Should retry metrics report if it fails.
-  client_->ReportMetrics(request, nullptr);
+  client_->ReportMetrics(
+      request, [this](const Status &status, const rpc::ReportMetricsReply &reply) {
+        should_update_description_ = reply.metrcs_description_required();
+      });
 }
 
 }  // namespace stats

@@ -35,10 +35,11 @@ class Options(object):
     :type registry: :class:`~prometheus_client.core.CollectorRegistry`
     :param registry: A Prometheus collector registry instance.
     """
+
     def __init__(self,
-                 namespace='',
+                 namespace="",
                  port=8000,
-                 address='',
+                 address="",
                  registry=CollectorRegistry()):
         self._namespace = namespace
         self._registry = registry
@@ -73,6 +74,7 @@ class Options(object):
 class Collector(object):
     """ Collector represents the Prometheus Collector object
     """
+
     def __init__(self, options=Options(), view_name_to_data_map=None):
         if view_name_to_data_map is None:
             view_name_to_data_map = {}
@@ -113,9 +115,11 @@ class Collector(object):
         v_name = get_view_name(self.options.namespace, view)
 
         if v_name not in self.registered_views:
-            desc = {'name': v_name,
-                    'documentation': view.description,
-                    'labels': list(map(sanitize, view.columns))}
+            desc = {
+                "name": v_name,
+                "documentation": view.description,
+                "labels": list(map(sanitize, view.columns))
+            }
             self.registered_views[v_name] = desc
             self.registry.register(self)
 
@@ -146,28 +150,28 @@ class Collector(object):
                 :class:`~prometheus_client.core.GaugeMetricFamily`
         :returns: A Prometheus metric object
         """
-        metric_name = desc['name']
-        metric_description = desc['documentation']
-        label_keys = desc['labels']
+        metric_name = desc["name"]
+        metric_description = desc["documentation"]
+        label_keys = desc["labels"]
 
-        assert(len(tag_values) == len(label_keys))
+        assert (len(tag_values) == len(label_keys))
         # Prometheus requires that all tag values be strings hence
         # the need to cast none to the empty string before exporting. See
         # https://github.com/census-instrumentation/opencensus-python/issues/480
         tag_values = [tv if tv else "" for tv in tag_values]
 
         if isinstance(agg_data, aggregation_data_module.CountAggregationData):
-            metric = CounterMetricFamily(name=metric_name,
-                                         documentation=metric_description,
-                                         labels=label_keys)
-            metric.add_metric(labels=tag_values,
-                              value=agg_data.count_data)
+            metric = CounterMetricFamily(
+                name=metric_name,
+                documentation=metric_description,
+                labels=label_keys)
+            metric.add_metric(labels=tag_values, value=agg_data.count_data)
             return metric
 
         elif isinstance(agg_data,
                         aggregation_data_module.DistributionAggregationData):
 
-            assert(agg_data.bounds == sorted(agg_data.bounds))
+            assert (agg_data.bounds == sorted(agg_data.bounds))
             # buckets are a list of buckets. Each bucket is another list with
             # a pair of bucket name and value, or a triple of bucket name,
             # value, and exemplar. buckets need to be in order.
@@ -181,35 +185,37 @@ class Collector(object):
             # In OpenCensus we don't have +Inf in the bucket bonds so need to
             # append it here.
             buckets.append(["+Inf", agg_data.count_data])
-            metric = HistogramMetricFamily(name=metric_name,
-                                           documentation=metric_description,
-                                           labels=label_keys)
-            metric.add_metric(labels=tag_values,
-                              buckets=buckets,
-                              sum_value=agg_data.sum,)
+            metric = HistogramMetricFamily(
+                name=metric_name,
+                documentation=metric_description,
+                labels=label_keys)
+            metric.add_metric(
+                labels=tag_values,
+                buckets=buckets,
+                sum_value=agg_data.sum,
+            )
             return metric
 
-        elif isinstance(agg_data,
-                        aggregation_data_module.SumAggregationData):
-            metric = UnknownMetricFamily(name=metric_name,
-                                         documentation=metric_description,
-                                         labels=label_keys)
-            metric.add_metric(labels=tag_values,
-                              value=agg_data.sum_data)
+        elif isinstance(agg_data, aggregation_data_module.SumAggregationData):
+            metric = UnknownMetricFamily(
+                name=metric_name,
+                documentation=metric_description,
+                labels=label_keys)
+            metric.add_metric(labels=tag_values, value=agg_data.sum_data)
             return metric
 
         elif isinstance(agg_data,
                         aggregation_data_module.LastValueAggregationData):
-            metric = GaugeMetricFamily(name=metric_name,
-                                       documentation=metric_description,
-                                       labels=label_keys)
-            metric.add_metric(labels=tag_values,
-                              value=agg_data.value)
+            metric = GaugeMetricFamily(
+                name=metric_name,
+                documentation=metric_description,
+                labels=label_keys)
+            metric.add_metric(labels=tag_values, value=agg_data.value)
             return metric
 
         else:
-            raise ValueError("unsupported aggregation type %s"
-                             % type(agg_data))
+            raise ValueError(
+                "unsupported aggregation type %s" % type(agg_data))
 
     def collect(self):  # pragma: NO COVER
         """Collect fetches the statistics from OpenCensus
@@ -221,9 +227,7 @@ class Collector(object):
             if v_name not in self.registered_views:
                 continue
             desc = self.registered_views[v_name]
-            print(desc)
             for tag_values in view_data.tag_value_aggregation_data_map:
-                print(tag_values)
                 agg_data = view_data.tag_value_aggregation_data_map[tag_values]
                 metric = self.to_metric(desc, tag_values, agg_data)
                 yield metric
@@ -247,6 +251,7 @@ class PrometheusStatsExporter(base_exporter.StatsExporter):
         :class:`~opencensus.ext.prometheus.stats_exporter.Collector`
     :param collector: An instance of the Prometheus Collector object.
     """
+
     def __init__(self,
                  options,
                  gatherer,
@@ -310,8 +315,8 @@ class PrometheusStatsExporter(base_exporter.StatsExporter):
     def serve_http(self):
         """ serve_http serves the Prometheus endpoint.
         """
-        start_http_server(port=self.options.port,
-                          addr=str(self.options.address))
+        start_http_server(
+            port=self.options.port, addr=str(self.options.address))
 
 
 def new_stats_exporter(option):
@@ -323,9 +328,8 @@ def new_stats_exporter(option):
 
     collector = new_collector(option)
 
-    exporter = PrometheusStatsExporter(options=option,
-                                       gatherer=option.registry,
-                                       collector=collector)
+    exporter = PrometheusStatsExporter(
+        options=option, gatherer=option.registry, collector=collector)
     return exporter
 
 
@@ -346,11 +350,11 @@ def get_view_name(namespace, view):
     return sanitize(name + view.name)
 
 
-_NON_LETTERS_NOR_DIGITS_RE = re.compile(r'[^\w]', re.UNICODE | re.IGNORECASE)
+_NON_LETTERS_NOR_DIGITS_RE = re.compile(r"[^\w]", re.UNICODE | re.IGNORECASE)
 
 
 def sanitize(key):
     """ sanitize the given metric name or label according to Prometheus rule.
     Replace all characters other than [A-Za-z0-9_] with '_'.
     """
-    return _NON_LETTERS_NOR_DIGITS_RE.sub('_', key)
+    return _NON_LETTERS_NOR_DIGITS_RE.sub("_", key)

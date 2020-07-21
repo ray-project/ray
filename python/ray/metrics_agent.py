@@ -1,6 +1,7 @@
 import logging
 import threading
 
+from collections import defaultdict
 from typing import List
 
 from opencensus.stats import aggregation
@@ -15,17 +16,15 @@ from ray import prometheus_exporter
 
 logger = logging.getLogger(__name__)
 
+
 # Since metrics agent only collects the point data from cpp processes,
 # we don't need any metrics types other than gauge.
 class Gauge(view.View):
-    def __init__(self, name, description, unit, tags: List[tag_key_module.TagKey]):
+    def __init__(self, name, description, unit,
+                 tags: List[tag_key_module.TagKey]):
         self._measure = measure_module.MeasureInt(name, description, unit)
-        self._view = view.View(
-            name,
-            description,
-            tags,
-            self.measure,
-            aggregation.LastValueAggregation())
+        self._view = view.View(name, description, tags, self.measure,
+                               aggregation.LastValueAggregation())
 
     @property
     def measure(self):
@@ -35,62 +34,71 @@ class Gauge(view.View):
     def view(self):
         return self._view
 
+    def __dict__(self):
+        return {
+            "name": self.measure.name,
+            "description": self.measure.description,
+            "units": self.measure.unit,
+            "tags": self.view.columns,
+        }
 
-def get_metrics_info():
-    """Get metrics name, description, and unit.
+    def __str__(self):
+        return self.__repr__()
 
-    This method should be in sync with metrics_def.h.
-    We are using this method to dynamically create the same
-    schema as cpp metrics def.
-    """
-    return {
-        "task_count_received": {
-            "description": "",
-            "unit": "1pc"
-        }}
+    def __repr__(self):
+        return str(self.__dict__())
 
 
 class MetricsAgent:
-    def __init__(self, metrics_export_port=8888):
+    def __init__(self, metrics_export_port):
+        if not metrics_export_port:
+            metrics_export_port = 8888
+
+        # OpenCensus classes.
         self.stats = stats_module.stats
         self.view_manager = self.stats.view_manager
         self.stats_recorder = self.stats.stats_recorder
-        # Registry is updated dynamically.
-        # Every metrics coming from cpp processes will be registered.
-        self.registry = {}
-        self.metrics_info = get_metrics_info()
+        # Port where we will expose metrics.
         self.metrics_export_port = metrics_export_port
-        self._measure_map_lock = threading.Lock()
-        self.measure_map = self.stats_recorder.new_measurement_map()
-
-        # Initialize all metrics.
-        for metric in self.registry.values():
-            self.view_manager.register_view(metric.view)
+        # Measure to record metrics.
+        self._measure_map = self.stats_recorder.new_measurement_map()
+        # metric name(str) -> view (view.View)
+        # It is updated dynamically as new metrics
+        # are delivered from cpp processes.
+        self._registry = defaultdict(lambda: None)
+        # Lock required because gRPC server uses multi-threads.
+        self._lock = threading.Lock()
+        # Whether or not there are metrics that are missing description and
+        # units information. This is used to dynamically update registry.
+        self._missing_information = False
 
         # Configure exporter. (We currently only support prometheus).
         self.view_manager.register_exporter(
             prometheus_exporter.new_stats_exporter(
                 prometheus_exporter.Options(
-                    namespace="ray",
-                    port=metrics_export_port)))
+                    namespace="ray", port=metrics_export_port)))
 
     def record_metrics_points(self, metrics_points):
-        for metric_point in metrics_points:
-            self._register_if_needed(metric_point)
-            self.record(metric_point)
-    
-    def record(self, metric_point):
-        # NOTE: When we record this metric, timestamp will be renewed.
+        with self._lock:
+            for metric_point in metrics_points:
+                self._register_if_needed(metric_point)
+                self._record(metric_point)
+            return self._missing_information
+
+    def _record(self, metric_point):
+        """Record a single metric point to export.
+
+        NOTE: When this method is called, the caller should acquire a lock.
+
+        Args:
+            metric_point metric point defined in common.proto
+        """
         metric_name = metric_point.metric_name
         tags = metric_point.tags
 
-        metric = self.registry.get(metric_name)
-        # Q: The check is generous now. Should we assert here instead?
-        if not metric:
-            # logger.warning(
-            # "metric of name {} is not processed. Please add "
-            # "metric to MetricsAgent.registry".format(metric_name))
-            return
+        metric = self._registry.get(metric_name)
+        # Metrics should be always registered dynamically.
+        assert metric
 
         tag_map = tag_map_module.TagMap()
         for key, value in tags.items():
@@ -99,30 +107,53 @@ class MetricsAgent:
             tag_map.insert(tag_key, tag_value)
 
         metric_value = metric_point.value
-        # The class should be thread-safe because GRPC server 
+        # The class should be thread-safe because GRPC server
         # uses it with a threadpool.
-        with self._measure_map_lock:
-            self.measure_map.measure_float_put(metric.measure, metric_value)
-            self.measure_map.record(tag_map)
+        self._measure_map.measure_float_put(metric.measure, metric_value)
+        # NOTE: When we record this metric, timestamp will be renewed.
+        self._measure_map.record(tag_map)
 
     def _register_if_needed(self, metric_point):
-        metric_name = metric_point.metric_name
-        if metric_name not in self.registry:
-            info = self.metrics_info.get(metric_name)
-            # TODO(sang): We should assert this.
-            if not info:
-                return
-            metric_description = info["description"]
-            metric_unit = info["unit"]
+        """Register metrics if they are not registered.
 
+        NOTE: When this method is called, the caller should acquire a lock.
+
+        Unseen metrics:
+            Register it with Gauge type metrics. Note that all metrics in
+            the agent will be gauge because sampling is already done
+            within cpp processes.
+        Metrics that are missing description & units:
+            In this case, we will notify cpp proceses that we need this
+            information. Cpp processes will then report description and units
+            of all metrics they have.
+
+        Args:
+            metric_point metric point defined in common.proto
+        Return:
+            True if given metrics are missing description and units.
+            False otherwise.
+        """
+        metric_name = metric_point.metric_name
+        metric_description = metric_point.description
+        metric_units = metric_point.units
+
+        if self._registry[metric_name] is None:
             tags = metric_point.tags
             metric_tags = []
             for tag_key in tags:
                 metric_tags.append(tag_key_module.TagKey(tag_key))
 
-            metric = Gauge(metric_name,
-                           metric_description,
-                           metric_unit,
+            metric = Gauge(metric_name, metric_description, metric_units,
                            metric_tags)
-            self.registry[metric_name] = metric
+            self._registry[metric_name] = metric
             self.view_manager.register_view(metric.view)
+
+            # If there are missing description & unit information,
+            # we should notify cpp processes that we need them.
+            if not metric_description or not metric_units:
+                self._missing_information = True
+
+        if metric_description and metric_units:
+            self._registry[metric_name].view._description = metric_description
+            self._registry[metric_name].view.measure._unit = metric_units
+            self._missing_information = False

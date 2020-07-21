@@ -345,5 +345,5 @@ message MetricPoint {
   // [Optional] Description of the metric.
   string description = 5;
   // [Optional] Unit of the metric.
-  string unit = 5;
+  string units = 6;
 }

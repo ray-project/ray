@@ -29,8 +29,6 @@ namespace stats {
 /// Include tag_defs.h to define tag items
 #include "ray/stats/tag_defs.h"
 
-static MetricsDefRegistry MetricsRegistry();
-
 class StatsConfig final {
  public:
   static StatsConfig &instance();
@@ -173,6 +171,7 @@ struct MetricPoint {
   int64_t timestamp;
   double value;
   std::unordered_map<std::string, std::string> tags;
+  const opencensus::stats::MeasureDescriptor &measure_descriptor;
 };
 
 }  // namespace stats

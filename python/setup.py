@@ -283,7 +283,6 @@ install_requires = [
     "requests",
     "redis >= 3.3.2, < 3.5.0",
     "opencensus",
-    "opencensus-ext-prometheus",
     "prometheus_client",
 ]
 

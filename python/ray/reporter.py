@@ -11,14 +11,9 @@ import subprocess
 import sys
 from concurrent import futures
 
+import ray
 import psutil
 
-from opencensus.stats import aggregation
-from opencensus.stats import view
-from opencensus.stats import stats
-from opencensus.stats import measure
-
-import ray
 import ray.ray_constants as ray_constants
 import ray.services
 import ray.utils
@@ -64,12 +59,20 @@ class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
             profiling_stats=profiling_stats, std_out=stdout, std_err=stderr)
 
     def ReportMetrics(self, request, context):
-        # Exceptions are not propagated for some reasons.
+        # NOTE: Exceptions are not propagated properly
+        # when we don't catch them here.
         try:
-            self.metrics_agent.record_metrics_points(request.metrics_points)
+            metrcs_description_required = (
+                self.metrics_agent.record_metrics_points(
+                    request.metrics_points))
         except Exception as e:
+            logger.error(e)
             logger.error(traceback.format_exc())
-        return reporter_pb2.ReportMetricsReply()
+
+        # If metrics description is missing, we should notify cpp processes
+        # that we need them. Cpp processes will then report them to here.
+        return reporter_pb2.ReportMetricsReply(
+            metrcs_description_required=metrcs_description_required)
 
 
 def recursive_asdict(o):
@@ -116,7 +119,7 @@ class Reporter:
         self.ip = ray.services.get_node_ip_address()
         self.hostname = platform.node()
         self.port = port
-        self.metrics_agent = MetricsAgent()
+        self.metrics_agent = MetricsAgent(os.getenv("METRICS_EXPORT_PORT"))
         self.reporter_grpc_server = ReporterServer(self.metrics_agent)
 
         _ = psutil.cpu_percent()  # For initialization
