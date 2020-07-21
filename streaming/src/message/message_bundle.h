@@ -186,7 +186,6 @@ struct DataBundle {
   uint8_t *data = nullptr;
   uint32_t data_size;
   ObjectID from;
-  uint64_t seq_id;
   StreamingMessageBundleMetaPtr meta;
   bool is_reallocated = false;
   

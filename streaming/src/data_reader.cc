@@ -18,14 +18,12 @@ const uint32_t DataReader::kReadItemTimeout = 1000;
 
 void DataReader::Init(const std::vector<ObjectID> &input_ids,
                       const std::vector<ChannelCreationParameter> &init_params,
-                      const std::vector<uint64_t> &queue_seq_ids,
                       const std::vector<uint64_t> &streaming_msg_ids,
                       int64_t timer_interval) {
   Init(input_ids, init_params, timer_interval);
   for (size_t i = 0; i < input_ids.size(); ++i) {
     auto &q_id = input_ids[i];
     last_message_id_[q_id] = streaming_msg_ids[i];
-    channel_info_map_[q_id].current_seq_id = queue_seq_ids[i];
     channel_info_map_[q_id].current_message_id = streaming_msg_ids[i];
   }
 }
@@ -181,7 +179,7 @@ StreamingStatus DataReader::GetMessageFromChannel(
     return StreamingStatus::GetBundleTimeOut;
   }
 
-  STREAMING_LOG(DEBUG) << "[Reader] received queue seq id => " << message->seq_id
+  STREAMING_LOG(DEBUG) << "[Reader] received message id => " << message->meta->GetLastMessageId()
                        << ", queue id => " << qid;
   last_message_id_[message->from] = message->meta->GetLastMessageId();
   return StreamingStatus::OK;
@@ -270,8 +268,8 @@ StreamingStatus DataReader::GetMergedMessageBundle(std::shared_ptr<DataBundle> &
   STREAMING_LOG(DEBUG) << "[Reader] [Bundle] from q_id =>" << message->from << "cur => "
                        << cur_queue_previous_msg_id << ", message list size"
                        << message->meta->GetMessageListSize() << ", lst message id =>"
-                       << message->meta->GetLastMessageId() << ", q seq id => "
-                       << message->seq_id << ", last barrier id => " << message->data_size
+                       << message->meta->GetLastMessageId() << ", last barrier id => "
+                       << message->data_size
                        << ", " << message->meta->GetMessageBundleTs();
 
   if (message->meta->IsBundle()) {
@@ -288,8 +286,7 @@ StreamingStatus DataReader::GetMergedMessageBundle(std::shared_ptr<DataBundle> &
 
   STREAMING_LOG(DEBUG) << "[Reader] [Bundle] message type =>"
                        << static_cast<int>(message->meta->GetBundleType())
-                       << " from id => " << message->from << ", queue seq id =>"
-                       << message->seq_id << ", message id => "
+                       << " from id => " << message->from << ", message id => "
                        << message->meta->GetLastMessageId();
   return StreamingStatus::OK;
 }
@@ -363,9 +360,6 @@ void DataReader::GetOffsetInfo(
 
 void DataReader::NotifyConsumedItem(ConsumerChannelInfo &channel_info, uint64_t offset) {
   channel_map_[channel_info.channel_id]->NotifyChannelConsumed(offset);
-  if (offset == channel_info.queue_info.last_seq_id) {
-    STREAMING_LOG(DEBUG) << "notify seq id equal to last seq id => " << offset;
-  }
 }
 
 DataReader::DataReader(std::shared_ptr<RuntimeContext> &runtime_context)
@@ -381,26 +375,25 @@ void DataReader::NotifyConsumed(std::shared_ptr<DataBundle> &message) {
   auto &channel_info = channel_info_map_[message->from];
   auto &queue_info = channel_info.queue_info;
   channel_info.notify_cnt++;
-  if (queue_info.target_seq_id <= message->seq_id) {
-    NotifyConsumedItem(channel_info, message->seq_id);
+  if (queue_info.target_message_id <= message->meta->GetLastMessageId()) {
+    NotifyConsumedItem(channel_info, message->meta->GetLastMessageId());
 
     channel_map_[channel_info.channel_id]->RefreshChannelInfo();
-    if (queue_info.last_seq_id != QUEUE_INVALID_SEQ_ID) {
-      uint64_t original_target_seq_id = queue_info.target_seq_id;
-      queue_info.target_seq_id = std::min(
-          queue_info.last_seq_id,
-          message->seq_id + runtime_context_->GetConfig().GetReaderConsumedStep());
+    if (queue_info.last_message_id != QUEUE_INVALID_SEQ_ID) {
+      uint64_t original_target_message_id = queue_info.target_message_id;
+      queue_info.target_message_id = std::min(
+          queue_info.last_message_id,
+          message->meta->GetLastMessageId() + runtime_context_->GetConfig().GetReaderConsumedStep());
       channel_info.last_queue_target_diff =
-          queue_info.target_seq_id - original_target_seq_id;
+          queue_info.target_message_id - original_target_message_id;
     } else {
       STREAMING_LOG(WARNING) << "[Reader] [QueueInfo] channel id " << message->from
-                             << ", last seq id " << queue_info.last_seq_id;
+                             << ", last message id " << queue_info.last_message_id;
     }
     STREAMING_LOG(DEBUG) << "[Reader] [Consumed] Trigger notify consumed"
-                         << ", channel id => " << message->from << ", last seq id => "
-                         << queue_info.last_seq_id << ", target seq id => "
-                         << queue_info.target_seq_id << ", consumed seq id => "
-                         << message->seq_id << ", last message id => "
+                         << ", channel id => " << message->from << ", last message id => "
+                         << queue_info.last_message_id << ", target message id => "
+                         << queue_info.target_message_id << ", consumed message id => "
                          << message->meta->GetLastMessageId() << ", bundle type => "
                          << static_cast<uint32_t>(message->meta->GetBundleType())
                          << ", last message bundle ts => "

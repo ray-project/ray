@@ -20,9 +20,9 @@ enum class TransferCreationStatus : uint32_t {
 
 struct StreamingQueueInfo {
   uint64_t first_seq_id = 0;
-  uint64_t last_seq_id = 0;
-  uint64_t target_seq_id = 0;
-  uint64_t consumed_seq_id = 0;
+  uint64_t last_message_id = 0;
+  uint64_t target_message_id = 0;
+  uint64_t consumed_message_id = 0;
 };
 
 struct ChannelCreationParameter {
@@ -37,7 +37,6 @@ struct ProducerChannelInfo {
   ObjectID channel_id;
   StreamingRingBufferPtr writer_ring_buffer;
   uint64_t current_message_id;
-  uint64_t current_seq_id;
   uint64_t message_last_commit_id;
   StreamingQueueInfo queue_info;
   uint32_t queue_size;
@@ -59,7 +58,6 @@ struct ProducerChannelInfo {
 struct ConsumerChannelInfo {
   ObjectID channel_id;
   uint64_t current_message_id;
-  uint64_t current_seq_id;
   uint64_t barrier_id;
   uint64_t partial_barrier_id;
 

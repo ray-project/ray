@@ -7,34 +7,34 @@
 
 namespace ray {
 namespace streaming {
-StreamingStatus StreamingBarrierHelper::GetSeqIdByBarrierId(const ObjectID &q_id,
+StreamingStatus StreamingBarrierHelper::GetMsgIdByBarrierId(const ObjectID &q_id,
                                                             uint64_t barrier_id,
-                                                            uint64_t &seq_id) {
+                                                            uint64_t &msg_id) {
   std::lock_guard<std::mutex> lock(global_barrier_mutex_);
   auto queue_map = global_barrier_map_.find(barrier_id);
   if (queue_map == global_barrier_map_.end()) {
     return StreamingStatus::NoSuchItem;
   }
-  auto seq_id_map = queue_map->second.find(q_id);
-  if (seq_id_map == queue_map->second.end()) {
+  auto msg_id_map = queue_map->second.find(q_id);
+  if (msg_id_map == queue_map->second.end()) {
     return StreamingStatus::QueueIdNotFound;
   }
-  seq_id = seq_id_map->second;
+  msg_id = msg_id_map->second;
   return StreamingStatus::OK;
 }
 
-void StreamingBarrierHelper::SetSeqIdByBarrierId(const ObjectID &q_id,
-                                                 uint64_t barrier_id, uint64_t seq_id) {
+void StreamingBarrierHelper::SetMsgIdByBarrierId(const ObjectID &q_id,
+                                                 uint64_t barrier_id, uint64_t msg_id) {
   std::lock_guard<std::mutex> lock(global_barrier_mutex_);
-  global_barrier_map_[barrier_id][q_id] = seq_id;
+  global_barrier_map_[barrier_id][q_id] = msg_id;
 }
 
-void StreamingBarrierHelper::ReleaseBarrierMapSeqIdById(uint64_t barrier_id) {
+void StreamingBarrierHelper::ReleaseBarrierMapById(uint64_t barrier_id) {
   std::lock_guard<std::mutex> lock(global_barrier_mutex_);
   global_barrier_map_.erase(barrier_id);
 }
 
-void StreamingBarrierHelper::ReleaseAllBarrierMapSeqId() {
+void StreamingBarrierHelper::ReleaseAllBarrierMap() {
   std::lock_guard<std::mutex> lock(global_barrier_mutex_);
   global_barrier_map_.clear();
 }

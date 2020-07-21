@@ -293,7 +293,6 @@ StreamingStatus DataWriter::WriteEmptyMessage(ProducerChannelInfo &channel_info)
 
   q_ringbuffer->FreeTransientBuffer();
   RETURN_IF_NOT_OK(status)
-  channel_info.current_seq_id++;
   channel_info.message_pass_by_ts = current_time_ms();
   return StreamingStatus::OK;
 }
@@ -304,7 +303,6 @@ StreamingStatus DataWriter::WriteTransientBufferToChannel(
   StreamingStatus status = channel_map_[channel_info.channel_id]->ProduceItemToChannel(
       buffer_ptr->GetTransientBufferMutable(), buffer_ptr->GetTransientBufferSize());
   RETURN_IF_NOT_OK(status)
-  channel_info.current_seq_id++;
   auto transient_bundle_meta =
       StreamingMessageBundleMeta::FromBytes(buffer_ptr->GetTransientBuffer());
   bool is_barrier_bundle = transient_bundle_meta->IsBarrier();
@@ -483,14 +481,14 @@ void DataWriter::RefreshChannelAndNotifyConsumed(ProducerChannelInfo &channel_in
   // Refresh current downstream consumed seq id.
   channel_map_[channel_info.channel_id]->RefreshChannelInfo();
   // Notify the consumed information to local channel.
-  NotifyConsumedItem(channel_info, channel_info.queue_info.consumed_seq_id);
+  NotifyConsumedItem(channel_info, channel_info.queue_info.consumed_message_id);
 }
 
 void DataWriter::NotifyConsumedItem(ProducerChannelInfo &channel_info, uint32_t offset) {
-  if (offset > channel_info.current_seq_id) {
+  if (offset > channel_info.current_message_id) {
     STREAMING_LOG(WARNING) << "Can not notify consumed this offset " << offset
                            << " that's out of range, max seq id "
-                           << channel_info.current_seq_id;
+                           << channel_info.current_message_id;
   } else {
     channel_map_[channel_info.channel_id]->NotifyChannelConsumed(offset);
   }
@@ -534,44 +532,44 @@ void DataWriter::ClearCheckpoint(uint64_t barrier_id) {
     return;
   }
 
-  std::string global_barrier_id_str = "|";
+  std::string global_barrier_id_list_str = "|";
 
   for (auto &queue_id : output_queue_ids_) {
-    uint64_t q_global_barrier_seq_id = 0;
-    StreamingStatus status = barrier_helper_.GetSeqIdByBarrierId(queue_id, barrier_id,
-                                                                 q_global_barrier_seq_id);
+    uint64_t q_global_barrier_msg_id = 0;
+    StreamingStatus status = barrier_helper_.GetMsgIdByBarrierId(queue_id, barrier_id,
+                                                                 q_global_barrier_msg_id);
     ProducerChannelInfo &channel_info = channel_info_map_[queue_id];
     if (status == StreamingStatus::OK) {
-      ClearCheckpointId(channel_info, q_global_barrier_seq_id);
+      ClearCheckpointId(channel_info, q_global_barrier_msg_id);
     } else {
       STREAMING_LOG(WARNING) << "no seq record in q => " << queue_id << ", barrier id => "
                              << barrier_id;
     }
-    global_barrier_id_str +=
-        queue_id.Hex() + " : " + std::to_string(q_global_barrier_seq_id) + "| ";
+    global_barrier_id_list_str +=
+        queue_id.Hex() + " : " + std::to_string(q_global_barrier_msg_id) + "| ";
     reliability_helper_->CleanupCheckpoint(channel_info, barrier_id);
   }
 
   STREAMING_LOG(INFO)
       << "[Writer] [Barrier] [clear] global barrier flag, global barrier id => "
-      << barrier_id << ", seq id map => " << global_barrier_id_str;
+      << barrier_id << ", seq id map => " << global_barrier_id_list_str;
 
-  barrier_helper_.ReleaseBarrierMapSeqIdById(barrier_id);
+  barrier_helper_.ReleaseBarrierMapById(barrier_id);
   barrier_helper_.ReleaseBarrierMapCheckpointByBarrierId(barrier_id);
 }
 
-void DataWriter::ClearCheckpointId(ProducerChannelInfo &channel_info, uint64_t seq_id) {
+void DataWriter::ClearCheckpointId(ProducerChannelInfo &channel_info, uint64_t msg_id) {
   AutoSpinLock lock(notify_flag_);
 
-  uint64_t current_seq_id = channel_info.current_seq_id;
-  if (seq_id > current_seq_id) {
-    STREAMING_LOG(WARNING) << "current_seq_id=" << current_seq_id << ", seq_id=" << seq_id
+  uint64_t current_msg_id = channel_info.current_message_id;
+  if (msg_id > current_msg_id) {
+    STREAMING_LOG(WARNING) << "current_msg_id=" << current_msg_id << ", msg_id to be cleared=" << msg_id
                            << ", channel id = " << channel_info.channel_id;
   }
-  channel_map_[channel_info.channel_id]->NotifyChannelConsumed(seq_id);
+  channel_map_[channel_info.channel_id]->NotifyChannelConsumed(msg_id);
 
-  STREAMING_LOG(DEBUG) << "clearing current queue seq in writer. qid: "
-                       << channel_info.channel_id << ", q_seq_id: " << seq_id;
+  STREAMING_LOG(DEBUG) << "clearing data from msg_id=" << msg_id << ", qid= "
+                       << channel_info.channel_id;
 }
 
 }  // namespace streaming

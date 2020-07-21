@@ -91,7 +91,6 @@ class DataReader {
   ///  \param timer_interval
   void Init(const std::vector<ObjectID> &input_ids,
             const std::vector<ChannelCreationParameter> &init_params,
-            const std::vector<uint64_t> &channel_seq_ids,
             const std::vector<uint64_t> &msg_ids, int64_t timer_interval);
 
   void Init(const std::vector<ObjectID> &input_ids,

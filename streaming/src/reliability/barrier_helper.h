@@ -11,7 +11,7 @@ class StreamingBarrierHelper {
   using BarrierIdQueue = std::shared_ptr<std::queue<uint64_t>>;
 
  private:
-  // Global barrier map set (global barrier id -> (channel id -> seq id))
+  // Global barrier map set (global barrier id -> (channel id -> msg id))
   std::unordered_map<uint64_t, std::unordered_map<ObjectID, uint64_t>>
       global_barrier_map_;
 
@@ -36,12 +36,12 @@ class StreamingBarrierHelper {
   std::mutex barrier_map_checkpoint_mutex_;
 
  public:
-  StreamingStatus GetSeqIdByBarrierId(const ObjectID &q_id, uint64_t barrier_id,
-                                      uint64_t &seq_id);
-  void SetSeqIdByBarrierId(const ObjectID &q_id, uint64_t barrier_id, uint64_t seq_id);
+  StreamingStatus GetMsgIdByBarrierId(const ObjectID &q_id, uint64_t barrier_id,
+                                      uint64_t &msg_id);
+  void SetMsgIdByBarrierId(const ObjectID &q_id, uint64_t barrier_id, uint64_t seq_id);
   bool Contains(uint64_t barrier_id);
-  void ReleaseBarrierMapSeqIdById(uint64_t barrier_id);
-  void ReleaseAllBarrierMapSeqId();
+  void ReleaseBarrierMapById(uint64_t barrier_id);
+  void ReleaseAllBarrierMap();
   void GetAllBarrier(std::vector<uint64_t> &barrier_id_vec);
   uint32_t GetBarrierMapSize();
 

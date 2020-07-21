@@ -259,7 +259,7 @@ void UpstreamQueueMessageHandler::OnNotify(
                            << queue::protobuf::StreamingQueueMessageType_Name(
                                   notify_msg->Type())
                            << ", maybe queue has been destroyed, ignore it."
-                           << " seq id: " << notify_msg->SeqId();
+                           << " msg id: " << notify_msg->MsgId();
     return;
   }
   queue->OnNotify(notify_msg);

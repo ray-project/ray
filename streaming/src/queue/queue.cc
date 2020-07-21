@@ -139,33 +139,41 @@ void WriterQueue::Send() {
 }
 
 Status WriterQueue::TryEvictItems() {
-  STREAMING_LOG(INFO) << "TryEvictItems";
   QueueItem item = FrontProcessed();
-  uint64_t first_seq_id = item.SeqId();
-  STREAMING_LOG(INFO) << "TryEvictItems first_seq_id: " << first_seq_id
-                      << " min_consumed_id_: " << min_consumed_id_
-                      << " eviction_limit_: " << eviction_limit_;
-  if (min_consumed_id_ == QUEUE_INVALID_SEQ_ID || first_seq_id > min_consumed_id_) {
+  STREAMING_LOG(DEBUG) << "TryEvictItems queue_id: " << queue_id_ << " first_item: ("
+                       << item.MsgIdStart() << "," << item.MsgIdEnd() << ")"
+                       << " min_consumed_msg_id_: " << min_consumed_msg_id_
+                       << " eviction_limit_: " << eviction_limit_
+                       << " max_data_size_: " << max_data_size_
+                       << " data_size_sent_: " << data_size_sent_
+                       << " data_size_: " << data_size_;
+
+  if (min_consumed_msg_id_ == QUEUE_INVALID_SEQ_ID ||
+      min_consumed_msg_id_ < item.MsgIdEnd()) {
     return Status::OutOfMemory("The queue is full and some reader doesn't consume");
   }
 
-  if (eviction_limit_ == QUEUE_INVALID_SEQ_ID || first_seq_id > eviction_limit_) {
+  if (eviction_limit_ == QUEUE_INVALID_SEQ_ID || eviction_limit_ < item.MsgIdEnd()) {
     return Status::OutOfMemory("The queue is full and eviction limit block evict");
   }
 
-  uint64_t evict_target_seq_id = std::min(min_consumed_id_, eviction_limit_);
+  uint64_t evict_target_msg_id = std::min(min_consumed_msg_id_, eviction_limit_);
 
-  while (item.SeqId() <= evict_target_seq_id) {
+  int count = 0;
+  while (item.MsgIdEnd() <= evict_target_msg_id) {
     PopProcessed();
-    STREAMING_LOG(INFO) << "TryEvictItems directly " << item.SeqId();
+    STREAMING_LOG(INFO) << "TryEvictItems directly " << item.MsgIdEnd();
     item = FrontProcessed();
+    count++;
   }
+  STREAMING_LOG(DEBUG) << count << " items evicted, current item: (" << item.MsgIdStart()
+                       << "," << item.MsgIdEnd() << ")";
   return Status::OK();
 }
 
 void WriterQueue::OnNotify(std::shared_ptr<NotificationMessage> notify_msg) {
-  STREAMING_LOG(INFO) << "OnNotify target seq_id: " << notify_msg->SeqId();
-  min_consumed_id_ = notify_msg->SeqId();
+  STREAMING_LOG(INFO) << "OnNotify target msg_id: " << notify_msg->MsgId();
+  min_consumed_msg_id_ = notify_msg->MsgId();
 }
 
 void WriterQueue::ResendItem(QueueItem &item, uint64_t first_seq_id,
@@ -277,22 +285,22 @@ void WriterQueue::OnPull(
            });
 }
 
-void ReaderQueue::OnConsumed(uint64_t seq_id) {
-  STREAMING_LOG(INFO) << "OnConsumed: " << seq_id;
+void ReaderQueue::OnConsumed(uint64_t msg_id) {
+  STREAMING_LOG(INFO) << "OnConsumed: " << msg_id;
   QueueItem item = FrontProcessed();
-  while (item.SeqId() <= seq_id) {
+  while (item.MsgIdEnd() <= msg_id) {
     PopProcessed();
     item = FrontProcessed();
   }
-  Notify(seq_id);
+  Notify(msg_id);
 }
 
-void ReaderQueue::Notify(uint64_t seq_id) {
+void ReaderQueue::Notify(uint64_t msg_id) {
   std::vector<TaskArg> task_args;
-  CreateNotifyTask(seq_id, task_args);
+  CreateNotifyTask(msg_id, task_args);
   // SubmitActorTask
 
-  NotificationMessage msg(actor_id_, peer_actor_id_, queue_id_, seq_id);
+  NotificationMessage msg(actor_id_, peer_actor_id_, queue_id_, msg_id);
   std::unique_ptr<LocalMemoryBuffer> buffer = msg.ToBytes();
 
   transport_->Send(std::move(buffer));
@@ -302,7 +310,10 @@ void ReaderQueue::CreateNotifyTask(uint64_t seq_id, std::vector<TaskArg> &task_a
 
 void ReaderQueue::OnData(QueueItem &item) {
   last_recv_seq_id_ = item.SeqId();
-  STREAMING_LOG(DEBUG) << "ReaderQueue::OnData seq_id: " << last_recv_seq_id_;
+  last_recv_msg_id_ = item.MsgIdEnd();
+  STREAMING_LOG(DEBUG) << "ReaderQueue::OnData queue_id: " << queue_id_
+                       << " seq_id: " << last_recv_seq_id_ << " msg_id: ("
+                       << item.MsgIdStart() << "," << item.MsgIdEnd() << ")";
 
   Push(item);
 }

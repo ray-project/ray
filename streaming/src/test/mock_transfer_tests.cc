@@ -148,7 +148,7 @@ TEST_F(StreamingTransferTest, flow_control_test) {
   });
   std::unordered_map<ObjectID, ProducerChannelInfo> *writer_offset_info = nullptr;
   std::unordered_map<ObjectID, ConsumerChannelInfo> *reader_offset_info = nullptr;
-  writer->GetOffsetInfo(writer_offset_info);
+  writer->GetOffsetInfo(writer_offset_info); 
   reader->GetOffsetInfo(reader_offset_info);
   uint32_t writer_step = writer_runtime_context->GetConfig().GetWriterConsumedStep();
   uint32_t reader_step = reader_runtime_context->GetConfig().GetReaderConsumedStep();

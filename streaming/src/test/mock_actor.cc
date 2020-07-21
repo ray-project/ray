@@ -180,7 +180,7 @@ class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
 
         for (auto &q_id : queue_id_vec) {
           reader_client->NotifyConsumedItem((*offset_map)[q_id],
-                                            (*offset_map)[q_id].current_seq_id);
+                                            (*offset_map)[q_id].current_message_id);
         }
         // writer_client->ClearCheckpoint(msg->last_barrier_id);
 
