@@ -153,6 +153,8 @@ def train_transformer(config, model_name, task_name, num_epochs=3, data_dir="./d
 # __tune_begin__
 def tune_transformer(num_samples=8, num_epochs=3, gpus_per_trial=0):
     data_dir = os.path.abspath(os.path.join(os.getcwd(), "./data"))
+    if not os.path.exists(data_dir):
+        os.mkdir(data_dir, 0o755)
     model_name = "bert-base-uncased"
     task_name = "rte"
     task_data_dir = os.path.join(data_dir, task_name.upper())
