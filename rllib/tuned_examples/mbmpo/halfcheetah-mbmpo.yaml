@@ -3,8 +3,8 @@ halfcheetah-mb-mpo:
     run: MBMPO
     stop:
         training_iteration: 500
-    local_dir: ~/mbmpo-testing
     config:
+         # Only supported in torch right now
         framework: torch
         horizon: 200
         num_envs_per_worker: 20

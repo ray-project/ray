@@ -67,15 +67,15 @@ DEFAULT_CONFIG = with_common_config({
     "dynamics_model": {
         "custom_model": DynamicsEnsembleCustomModel,
         # Number of Transition-Dynamics Models for Ensemble
-        "model_ensemble_size": 5,
+        "ensemble_size": 5,
         # Hidden Layers for Model Ensemble
-        "model_hiddens": [512, 512],
+        "fcnet_hiddens": [512, 512],
         # Model Learning Rate
-        "model_lr": 1e-3,
+        "lr": 1e-3,
         # Max number of training epochs per MBMPO iter
-        "model_train_epochs": 500,
+        "train_epochs": 500,
         # Model Batch Size
-        "model_batch_size": 500,
+        "batch_size": 500,
         # Training/Validation Split
         "valid_split_ratio": 0.2,
         # Normalize Data (obs, action, and deltas)
@@ -99,6 +99,18 @@ METRICS_KEYS = [
 
 class MetaUpdate:
     def __init__(self, workers, num_steps, maml_steps, metric_gen):
+        """Computes the MetaUpdate step in MAML, adapted for MBMPO
+        for multiple MAML Iterations
+
+        Arguments:
+            workers (WorkerSet): Set of Workers
+            num_steps (int): Number of meta-update steps per MAML Iteration
+            maml_steps (int): MAML Iterations per MBMPO Iteration
+            metric_gen (Iterator): Generates metrics dictionary
+
+        Returns:
+            metrics (dict): MBMPO metrics for logging
+        """
         self.workers = workers
         self.num_steps = num_steps
         self.step_counter = 0
@@ -107,13 +119,17 @@ class MetaUpdate:
         self.metrics = {}
 
     def __call__(self, data_tuple):
+        """Arguments:
+            data_tuple (tuple): 1st element is samples collected from MAML
+            Inner adaptation steps and 2nd element is accumulated metrics
+        """
         # Metaupdate Step
         print("Meta-Update Step")
         samples = data_tuple[0]
         adapt_metrics_dict = data_tuple[1]
         self.postprocess_metrics(
             adapt_metrics_dict, prefix="MAMLIter{}".format(self.step_counter))
-
+        
         # MAML Meta-update
         for i in range(self.maml_optimizer_steps):
             fetches = self.workers.local_worker().learn_on_batch(samples)
@@ -165,12 +181,24 @@ class MetaUpdate:
             return []
 
     def postprocess_metrics(self, metrics, prefix=""):
+        """Appends prefix to current metrics
+
+        Arguments:
+            metrics (dict): Dictionary of current metrics
+            prefix (str): Prefix string to be appended
+        """
         for key in metrics.keys():
             self.metrics[prefix + "_" + key] = metrics[key]
 
 
 def post_process_metrics(prefix, workers, metrics):
-    # Obtain Current Dataset Metrics and filter out
+    """Update Current Dataset Metrics and filter out specific keys
+
+    Arguments:
+        prefix (str): Prefix string to be appended
+        workers (WorkerSet): Set of workers
+        metrics (dict): Current metrics dictionary
+    """
     res = collect_metrics(remote_workers=workers.remote_workers())
     for key in METRICS_KEYS:
         metrics[prefix + "_" + key] = res[key]
@@ -187,7 +215,12 @@ def fit_dynamics(policy, pid):
     return policy.dynamics_model.fit()
 
 
-def sync_ensemble(workers, model_attr="dynamics_model"):
+def sync_ensemble(workers):
+    """Syncs dynamics ensemble weights from main to workers
+
+    Arguments:
+        workers (WorkerSet): Set of workers, including main
+    """
     def get_ensemble_weights(worker):
         policy_map = worker.policy_map
         policies = policy_map.keys()
@@ -233,26 +266,22 @@ def sync_stats(workers):
             e.foreach_policy.remote(
                 set_func, normalizations=normalization_dict)
 
-
 def post_process_samples(samples, config):
     # Instead of using NN for value function, we use regression
     split_lst = []
     for sample in samples:
         indexes = np.asarray(sample["dones"]).nonzero()
-        indexes = indexes + 1
+        indexes = indexes+1
 
         reward_list = np.split(sample["rewards"], indexes)[:-1]
         observation_list = np.split(sample["obs"], indexes)[:-1]
 
         paths = []
         for i in range(0, len(reward_list)):
-            paths.append({
-                "rewards": reward_list[i],
-                "observations": observation_list[i]
-            })
+            paths.append({"rewards": reward_list[i], 
+                "observations": observation_list[i]})
 
-        paths = calculate_gae_advantages(paths, config["gamma"],
-                                         config["lambda"])
+        paths = calculate_gae_advantages(paths, config["gamma"], config["lambda"])
 
         advantages = np.concatenate([path["advantages"] for path in paths])
         sample["advantages"] = standardized(advantages)
@@ -260,10 +289,11 @@ def post_process_samples(samples, config):
     return samples, split_lst
 
 
+
 # Similar to MAML Execution Plan
 def execution_plan(workers, config):
     # Train TD Models
-    workers.local_worker().foreach_policy(fit_dynamics)[0]
+    workers.local_worker().foreach_policy(fit_dynamics)
 
     # Sync workers policy with workers
     workers.sync_weights()
@@ -326,14 +356,13 @@ def execution_plan(workers, config):
 
 
 def get_policy_class(config):
-    # @mluo: TODO
-    config["framework"] = "torch"
-    if config["framework"] == "tf":
-        raise ValueError("MB-MPO not supported in Tensorflow yet!")
     return MBMPOTorchPolicy
 
 
 def validate_config(config):
+    config["framework"] = "torch"
+    if config["framework"] != "torch":
+        raise ValueError("MB-MPO not supported in Tensorflow yet!")
     if config["inner_adaptation_steps"] <= 0:
         raise ValueError("Inner Adaptation Steps must be >=1.")
     if config["maml_optimizer_steps"] <= 0:

@@ -76,7 +76,6 @@ class TDDataset(torch.utils.data.Dataset):
     def __getitem__(self, index):
         return self.x[index], self.y[index]
 
-
 def normalize(data_array, stats):
     mean, std = stats
     return (data_array - mean) / (std + 1e-10)
@@ -101,11 +100,10 @@ def mean_std_stats(dataset: SampleBatchType):
 
     return norm_dict
 
-
 def process_samples(samples: SampleBatchType):
-    filter_keys = [
-        SampleBatch.CUR_OBS, SampleBatch.ACTIONS, SampleBatch.NEXT_OBS
-    ]
+    filter_keys = [SampleBatch.CUR_OBS, 
+    SampleBatch.ACTIONS, 
+    SampleBatch.NEXT_OBS]
     filtered = {}
     for key in filter_keys:
         filtered[key] = samples[key]
@@ -134,22 +132,21 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
         super(DynamicsEnsembleCustomModel, self).__init__(
             input_space, action_space, num_outputs, model_config, name)
 
-        self.num_models = model_config["model_ensemble_size"]
-        self.model_lr = model_config["model_lr"]
-        self.max_epochs = model_config["model_train_epochs"]
-        self.lr = model_config["model_lr"]
+        self.num_models = model_config["ensemble_size"]
+        self.max_epochs = model_config["train_epochs"]
+        self.lr = model_config["lr"]
         self.valid_split = model_config["valid_split_ratio"]
-        self.batch_size = model_config["model_batch_size"]
+        self.batch_size = model_config["batch_size"]
         self.normalize_data = model_config["normalize_data"]
         self.normalizations = {}
         self.dynamics_ensemble = [
             TDModel(
                 input_size=input_space.shape[0],
                 output_size=obs_space.shape[0],
-                hidden_layers=model_config["model_hiddens"],
+                hidden_layers=model_config["fcnet_hiddens"],
                 hidden_nonlinearity=nn.ReLU,
                 output_nonlinearity=None,
-                weight_normalization=False) for _ in range(self.num_models)
+                weight_normalization=True) for _ in range(self.num_models)
         ]
 
         for i in range(self.num_models):
@@ -169,7 +166,7 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
         self.sample_index = np.random.randint(self.num_models)
         self.global_itr = 0
         self.device = (torch.device("cuda")
-                       if torch.cuda.is_available() else torch.device("cpu"))
+              if torch.cuda.is_available() else torch.device("cpu"))
 
     def forward(self, x):
         """Outputs the delta between next and current observation.
@@ -182,8 +179,8 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
         ys = torch.chunk(y, self.num_models)
         return [
             torch.mean(
-                torch.pow(self.dynamics_ensemble[i](xs[i]) - ys[i], 2.0))
-            for i in range(self.num_models)
+                    torch.pow(self.dynamics_ensemble[i](xs[i]) - ys[i], 2.0))
+                    for i in range(self.num_models)
         ]
 
     # Fitting Dynamics Ensembles per MBMPO Iter
@@ -217,17 +214,15 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
         train_loaders = []
         val_loaders = []
         for i in range(self.num_models):
-            t, v = self.split_train_val(self.replay_buffer)
-            train_loaders.append(
-                torch.utils.data.DataLoader(
-                    TDDataset(t, self.normalizations),
-                    batch_size=self.batch_size,
-                    shuffle=True))
-            val_loaders.append(
-                torch.utils.data.DataLoader(
-                    TDDataset(v, self.normalizations),
-                    batch_size=v.count,
-                    shuffle=False))
+            t,v = self.split_train_val(self.replay_buffer)
+            train_loaders.append(torch.utils.data.DataLoader(
+                TDDataset(t, self.normalizations),
+                batch_size=self.batch_size,
+                shuffle=True))
+            val_loaders.append(torch.utils.data.DataLoader(
+                TDDataset(v, self.normalizations),
+                batch_size=v.count,
+                shuffle=False))
 
         # List of which models in ensemble to train
         indexes = [i for i in range(self.num_models)]
@@ -241,8 +236,8 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
         for epoch in range(self.max_epochs):
             # Training
             for data in zip(*train_loaders):
-                x = torch.cat([d[0] for d in data], dim=0).to(self.device)
-                y = torch.cat([d[1] for d in data], dim=0).to(self.device)
+                x = torch.cat([d[0] for d in data],dim=0).to(self.device)
+                y = torch.cat([d[1] for d in data],dim=0).to(self.device)
                 train_losses = self.loss(x, y)
                 for ind in indexes:
                     self.optimizers[ind].zero_grad()
@@ -254,8 +249,8 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
             # Validation
             val_lists = []
             for data in zip(*val_loaders):
-                x = torch.cat([d[0] for d in data], dim=0).to(self.device)
-                y = torch.cat([d[1] for d in data], dim=0).to(self.device)
+                x = torch.cat([d[0] for d in data],dim=0).to(self.device)
+                y = torch.cat([d[1] for d in data],dim=0).to(self.device)
                 val_losses = self.loss(x, y)
                 val_lists.append(val_losses)
                 for ind in indexes:
@@ -270,8 +265,8 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
                 valid_loss_roll_avg = 1.5 * avg_val_losses
                 valid_loss_roll_avg_prev = 2.0 * avg_val_losses
 
-            valid_loss_roll_avg = roll_avg_persitency * valid_loss_roll_avg
-            valid_loss_roll_avg += (1.0 - roll_avg_persitency) * avg_val_losses
+            valid_loss_roll_avg = roll_avg_persitency*valid_loss_roll_avg
+            valid_loss_roll_avg += (1.0-roll_avg_persitency)* avg_val_losses
 
             print("Training Dynamics Ensemble - Epoch #%i:"
                   "Train loss: %s, Valid Loss: %s,  Moving Avg Valid Loss: %s"
@@ -295,7 +290,7 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
         dataset_size = samples.count
         indices = np.arange(dataset_size)
         np.random.shuffle(indices)
-        split_idx = int(dataset_size * (1 - self.valid_split))
+        split_idx = int(dataset_size * (1-self.valid_split))
         idx_train = indices[:split_idx]
         idx_test = indices[split_idx:]
 
@@ -308,7 +303,6 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
 
     """Used by worker who gather trajectories via TD models
     """
-
     def predict_model_batches(self, obs, actions, device=None):
         pre_obs = obs
         if self.normalize_data:
