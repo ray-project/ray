@@ -175,8 +175,11 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
 
   std::vector<plasma::ObjectBuffer> plasma_results;
   {
+    RAY_LOG(ERROR) << "plasma 1";
     std::lock_guard<std::mutex> guard(store_client_mutex_);
+    RAY_LOG(ERROR) << "plasma 2";
     RAY_RETURN_NOT_OK(store_client_->Get(batch_ids, timeout_ms, &plasma_results));
+    RAY_LOG(ERROR) << "plasma 3";
   }
 
   // Add successfully retrieved objects to the result map and remove them from

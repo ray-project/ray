@@ -3952,19 +3952,30 @@ void NodeManager::HandlePlasmaCreate(const rpc::PlasmaCreateRequest &request,
 void NodeManager::HandlePlasmaGet(const rpc::PlasmaGetRequest &request,
                                   rpc::PlasmaGetReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) {
-  send_reply_callback(Status::NotImplemented("todo"), nullptr, nullptr);
+  RAY_CHECK(false);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::HandlePlasmaRelease(const rpc::PlasmaReleaseRequest &request,
                                       rpc::PlasmaReleaseReply *reply,
                                       rpc::SendReplyCallback send_reply_callback) {
-  send_reply_callback(Status::NotImplemented("todo"), nullptr, nullptr);
+  auto object_id = ObjectID::FromBinary(request.object_id());
+  auto status = store_client_.Release(object_id);
+  reply->mutable_status()->set_code(static_cast<int32_t>(status.code()));
+  reply->mutable_status()->set_message(status.message());
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::HandlePlasmaContains(const rpc::PlasmaContainsRequest &request,
                                        rpc::PlasmaContainsReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
-  send_reply_callback(Status::NotImplemented("todo"), nullptr, nullptr);
+  bool value = false;
+  auto object_id = ObjectID::FromBinary(request.object_id());
+  auto status = store_client_.Contains(object_id, &value);
+  reply->set_has_object(value);
+  reply->mutable_status()->set_code(static_cast<int32_t>(status.code()));
+  reply->mutable_status()->set_message(status.message());
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::HandlePlasmaSeal(const rpc::PlasmaSealRequest &request,
@@ -3979,18 +3990,28 @@ void NodeManager::HandlePlasmaSeal(const rpc::PlasmaSealRequest &request,
   }
   size_t data_size = it->second->size();
   if (data_size != request.data().length()) {
-    send_reply_callback(Status::Invalid("object size mismatch"), nullptr, nullptr);
+    send_reply_callback(Status::Invalid("object size changed"), nullptr, nullptr);
     return;
   }
   memcpy(it->second->mutable_data(), request.data().c_str(), data_size);
-  store_client_->Seal(object_id);
+  auto status = store_client_.Seal(object_id);
+  reply->mutable_status()->set_code(static_cast<int32_t>(status.code()));
+  reply->mutable_status()->set_message(status.message());
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::HandlePlasmaDelete(const rpc::PlasmaDeleteRequest &request,
                                      rpc::PlasmaDeleteReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
-  send_reply_callback(Status::NotImplemented("todo"), nullptr, nullptr);
+  std::vector<ObjectID> object_ids;
+  for (int i=0; i < request.object_ids_size(); i++) {
+    auto object_id = ObjectID::FromBinary(request.object_ids(i));
+    object_ids.push_back(object_id);
+  }
+  auto status = store_client_.Delete(object_ids);
+  reply->mutable_status()->set_code(static_cast<int32_t>(status.code()));
+  reply->mutable_status()->set_message(status.message());
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::RecordMetrics() {
