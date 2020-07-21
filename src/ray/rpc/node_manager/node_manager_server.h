@@ -33,7 +33,13 @@ namespace rpc {
   RPC_SERVICE_HANDLER(NodeManagerService, GlobalGC)               \
   RPC_SERVICE_HANDLER(NodeManagerService, FormatGlobalMemoryInfo) \
   RPC_SERVICE_HANDLER(NodeManagerService, RequestResourceReserve) \
-  RPC_SERVICE_HANDLER(NodeManagerService, CancelResourceReserve)
+  RPC_SERVICE_HANDLER(NodeManagerService, CancelResourceReserve)  \
+  RPC_SERVICE_HANDLER(NodeManagerService, PlasmaCreate)           \
+  RPC_SERVICE_HANDLER(NodeManagerService, PlasmaGet)              \
+  RPC_SERVICE_HANDLER(NodeManagerService, PlasmaRelease)          \
+  RPC_SERVICE_HANDLER(NodeManagerService, PlasmaContains)         \
+  RPC_SERVICE_HANDLER(NodeManagerService, PlasmaSeal)             \
+  RPC_SERVICE_HANDLER(NodeManagerService, PlasmaDelete)
 
 /// Interface of the `NodeManagerService`, see `src/ray/protobuf/node_manager.proto`.
 class NodeManagerServiceHandler {
@@ -89,6 +95,28 @@ class NodeManagerServiceHandler {
   virtual void HandleFormatGlobalMemoryInfo(const FormatGlobalMemoryInfoRequest &request,
                                             FormatGlobalMemoryInfoReply *reply,
                                             SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandlePlasmaCreate(const PlasmaCreateRequest &request,
+                                  PlasmaCreateReply *reply,
+                                  SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandlePlasmaGet(const PlasmaGetRequest &request, PlasmaGetReply *reply,
+                               SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandlePlasmaRelease(const PlasmaReleaseRequest &request,
+                                   PlasmaReleaseReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandlePlasmaContains(const PlasmaContainsRequest &request,
+                                    PlasmaContainsReply *reply,
+                                    SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandlePlasmaSeal(const PlasmaSealRequest &request, PlasmaSealReply *reply,
+                                SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandlePlasmaDelete(const PlasmaDeleteRequest &request,
+                                  PlasmaDeleteReply *reply,
+                                  SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeManagerService`.

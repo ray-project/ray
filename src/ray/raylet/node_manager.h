@@ -646,6 +646,33 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                     rpc::FormatGlobalMemoryInfoReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) override;
 
+  ///
+  /// Plasma RPC proxy requests.
+  ///
+
+  void HandlePlasmaCreate(const rpc::PlasmaCreateRequest &request,
+                          rpc::PlasmaCreateReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandlePlasmaGet(const rpc::PlasmaGetRequest &request, rpc::PlasmaGetReply *reply,
+                       rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandlePlasmaRelease(const rpc::PlasmaReleaseRequest &request,
+                           rpc::PlasmaReleaseReply *reply,
+                           rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandlePlasmaContains(const rpc::PlasmaContainsRequest &request,
+                            rpc::PlasmaContainsReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandlePlasmaSeal(const rpc::PlasmaSealRequest &request,
+                        rpc::PlasmaSealReply *reply,
+                        rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandlePlasmaDelete(const rpc::PlasmaDeleteRequest &request,
+                          rpc::PlasmaDeleteReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override;
+
   /// Trigger global GC across the cluster to free up references to actors or
   /// object ids.
   void TriggerGlobalGC();

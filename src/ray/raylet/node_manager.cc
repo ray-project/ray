@@ -3932,6 +3932,30 @@ void NodeManager::TriggerGlobalGC() {
   should_local_gc_ = true;
 }
 
+void NodeManager::HandlePlasmaCreate(const rpc::PlasmaCreateRequest &request,
+                                     rpc::PlasmaCreateReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) {}
+
+void NodeManager::HandlePlasmaGet(const rpc::PlasmaGetRequest &request,
+                                  rpc::PlasmaGetReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) {}
+
+void NodeManager::HandlePlasmaRelease(const rpc::PlasmaReleaseRequest &request,
+                                      rpc::PlasmaReleaseReply *reply,
+                                      rpc::SendReplyCallback send_reply_callback) {}
+
+void NodeManager::HandlePlasmaContains(const rpc::PlasmaContainsRequest &request,
+                                       rpc::PlasmaContainsReply *reply,
+                                       rpc::SendReplyCallback send_reply_callback) {}
+
+void NodeManager::HandlePlasmaSeal(const rpc::PlasmaSealRequest &request,
+                                   rpc::PlasmaSealReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) {}
+
+void NodeManager::HandlePlasmaDelete(const rpc::PlasmaDeleteRequest &request,
+                                     rpc::PlasmaDeleteReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) {}
+
 void NodeManager::RecordMetrics() {
   recorded_metrics_ = true;
   if (stats::StatsConfig::instance().IsStatsDisabled()) {
