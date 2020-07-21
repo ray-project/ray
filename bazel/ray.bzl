@@ -1,5 +1,6 @@
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_library_public")
 load("@com_github_checkstyle_java//checkstyle:checkstyle.bzl", "checkstyle_test")
+load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@bazel_common//tools/maven:pom_file.bzl", "pom_file")
 
 COPTS = ["-DRAY_USE_GLOG"] + select({
@@ -142,20 +143,17 @@ def copy_to_workspace(name, srcs, dstdir = ""):
     )
 
 def native_java_binary(module_name, name, native_binary_name):
-    native.genrule(
+    """Copy native binary file to different path based on operating systems"""
+    copy_file(
         name = name + "_darwin",
-        srcs = [native_binary_name],
-        outs = [module_name + "/src/main/resources/native/darwin/" + name],
-        cmd = "cp $< $@",
-        output_to_bindir = 1,
+        src = native_binary_name,
+        out = module_name + "/src/main/resources/native/darwin/" + name,
     )
 
-    native.genrule(
+    copy_file(
         name = name + "_linux",
-        srcs = [native_binary_name],
-        outs = [module_name + "/src/main/resources/native/linux/" + name],
-        cmd = "cp $< $@",
-        output_to_bindir = 1,
+        src = native_binary_name,
+        out = module_name + "/src/main/resources/native/linux/" + name,
     )
 
     native.filegroup(
@@ -168,20 +166,17 @@ def native_java_binary(module_name, name, native_binary_name):
         )
 
 def native_java_library(module_name, name, native_library_name):
-    native.genrule(
+    """Copy native library file to different path based on operating systems"""
+    copy_file(
         name = name + "_darwin",
-        srcs = [native_library_name],
-        outs = [module_name + "/src/main/resources/native/darwin/lib{}.dylib".format(name)],
-        cmd = "cp $< $@",
-        output_to_bindir = 1,
+        src = native_library_name,
+        out = module_name + "/src/main/resources/native/darwin/lib{}.dylib".format(name),
     )
 
-    native.genrule(
+    copy_file(
         name = name + "_linux",
-        srcs = [native_library_name],
-        outs = [module_name + "/src/main/resources/native/linux/lib{}.so".format(name)],
-        cmd = "cp $< $@",
-        output_to_bindir = 1,
+        src = native_library_name,
+        out = module_name + "/src/main/resources/native/linux/lib{}.so".format(name),
     )
 
     native.filegroup(
