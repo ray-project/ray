@@ -51,6 +51,12 @@ install_base() {
 }
 
 install_miniconda() {
+  if [ "${OSTYPE}" = msys ]; then
+    # Windows is on GitHub Actions, whose built-in Python installations we added direct support for.
+    python --version
+    return 0
+  fi
+
   local conda="${CONDA_EXE-}"  # Try to get the activated conda executable
 
   if [ -z "${conda}" ]; then  # If no conda is found, try to find it in PATH
