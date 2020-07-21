@@ -23,7 +23,7 @@
 #include "ray/common/ray_object.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/core_worker.h"
-#include "ray/stats/metric.h" 
+#include "ray/stats/metric.h"
 
 #include "opencensus/tags/tag_key.h"
 
@@ -458,6 +458,7 @@ inline jobject NativeRayFunctionDescriptorToJavaStringList(
 
 using TagKeyType = opencensus::tags::TagKey;
 
+/// Convert jni metric related data to native type for stats.
 inline void MetricTransform(JNIEnv *env, jstring j_name, jstring j_description,
                             jstring j_unit, jobject tag_key_list,
                             std::string *metric_name, std::string *description,
@@ -478,6 +479,6 @@ inline void MetricTransform(JNIEnv *env, jstring j_name, jstring j_description,
 // Return an actor fullname with job id prepended if this tis a global actor.
 inline std::string GetActorFullName(bool global, std::string name) {
   return global ? name
-                : ::ray::CoreWorkerProcess::GetCoreWorker().GetCurrentJobId().Hex() + "-" +
-                      name;
+                : ::ray::CoreWorkerProcess::GetCoreWorker().GetCurrentJobId().Hex() +
+                      "-" + name;
 }

@@ -20,16 +20,13 @@ public class Histogram extends Metric {
   public Histogram(String name, String description, String unit, List<Double> boundaries,
                    Map<TagKey, String> tags) {
     super(name, tags);
-    metricNativePointer = registerHistogramNative(name, description, unit,
+    metricNativePointer = NativeMetric.registerHistogramNative(name, description, unit,
       boundaries.stream().mapToDouble(Double::doubleValue).toArray(),
       tags.keySet().stream().map(TagKey::getTagKey).collect(Collectors.toList()));
     Preconditions.checkState(metricNativePointer != 0,
         "Histogram native pointer must not be 0.");
     histogramWindow = new ArrayList<>();
   }
-
-  private native long registerHistogramNative(String name, String description,
-                                          String unit, double[] boundaries, List<String> tagKeys);
 
   private void updateForWindow(double value) {
     if (histogramWindow.size() == HISTOGRAM_WINDOW_SIZE) {

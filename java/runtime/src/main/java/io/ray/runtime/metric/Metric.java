@@ -44,14 +44,9 @@ public abstract class Metric {
       tagValues.add(entry.getValue());
     }
     // Get tag value list from map;
-    recordNative(metricNativePointer, value, nativeTagKeyList.stream()
+    NativeMetric.recordNative(metricNativePointer, value, nativeTagKeyList.stream()
         .map(TagKey::getTagKey).collect(Collectors.toList()), tagValues);
   }
-
-  private native void recordNative(long metricNativePointer, double value,
-                                   List tagKeys,
-                                   List<String> tagValues);
-
 
   /** Update gauge value without tags.
    * Update metric info for user.
@@ -71,14 +66,12 @@ public abstract class Metric {
     this.tags = tags;
   }
 
-  private native void unregisterMetricNative(long gaugePtr);
-
   /**
    * Deallocate object from stats and reset native pointer in null.
    */
   public void unregister() {
     if (0 != metricNativePointer) {
-      unregisterMetricNative(metricNativePointer);
+      NativeMetric.unregisterMetricNative(metricNativePointer);
     }
     metricNativePointer = 0;
   }

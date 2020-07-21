@@ -11,7 +11,7 @@ public class TagKey {
 
   public TagKey(String key) {
     tagKey =  key;
-    registerTagkeyNative(key);
+    NativeMetric.registerTagkeyNative(key);
   }
 
   public String getTagKey() {
@@ -34,8 +34,6 @@ public class TagKey {
   public int hashCode() {
     return Objects.hash(tagKey);
   }
-
-  private native void registerTagkeyNative(String tagKey);
 
   @Override
   public String toString() {
