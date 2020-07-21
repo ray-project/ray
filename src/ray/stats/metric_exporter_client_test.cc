@@ -100,8 +100,6 @@ class MockExporterClient2 : public MetricExporterDecorator {
     client2_count++;
     RAY_LOG(DEBUG) << "Client 2 " << client2_count << " last metric "
                    << points.back().metric_name << ", value " << points.back().value;
-    RAY_LOG(ERROR) << "sang count for client 2: " << client2_identity << " "
-                   << client2_count;
     client2_value = points.back().value;
   }
   int GetCount() { return client2_count; }
@@ -133,10 +131,7 @@ class MetricExporterClientTest : public ::testing::Test {
     ray::stats::Init(global_tags, MetricsAgentPort, mock2, kMockReportBatchSize);
   }
 
-  virtual void TearDown() override {
-    Shutdown();
-    RAY_LOG(ERROR) << "shutdown called";
-  }
+  virtual void TearDown() override { Shutdown(); }
 
   void Shutdown() { ray::stats::Shutdown(); }
 
