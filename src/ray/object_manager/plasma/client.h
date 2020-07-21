@@ -17,7 +17,6 @@
 
 #pragma once
 
-#include <boost/asio/io_service.hpp>
 #include <functional>
 #include <memory>
 #include <string>
@@ -27,6 +26,7 @@
 
 #include "ray/common/status.h"
 #include "ray/object_manager/plasma/common.h"
+#include "ray/object_manager/plasma/connection.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/shared_memory.h"
 #include "ray/util/visibility.h"
@@ -36,7 +36,6 @@ using arrow::Buffer;
 namespace plasma {
 
 using ray::Status;
-class StoreConn;
 
 /// Object buffer data structure.
 struct ObjectBuffer {
