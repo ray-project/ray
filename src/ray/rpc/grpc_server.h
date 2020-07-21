@@ -133,7 +133,7 @@ class GrpcService {
       : main_service_(main_service) {}
 
   /// Destruct this gRPC service.
-  ~GrpcService() = default;
+  virtual ~GrpcService() = default;
 
  protected:
   /// Return the underlying grpc::Service object for this class.

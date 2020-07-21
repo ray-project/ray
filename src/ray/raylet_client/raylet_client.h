@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include <ray/protobuf/gcs.pb.h>
-
 #include <mutex>
 #include <unordered_map>
 #include <vector>
@@ -29,6 +27,7 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/object_manager/plasma/client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 using ray::ActorCheckpointID;
 using ray::ActorID;
@@ -76,6 +75,14 @@ class WorkerLeaseInterface {
   /// \return ray::Status
   virtual ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
                                    bool disconnect_worker) = 0;
+
+  /// Notify raylets to release unused workers.
+  /// \param workers_in_use Workers currently in use.
+  /// \param callback Callback that will be called after raylet completes the release of
+  /// unused workers. \return ray::Status
+  virtual ray::Status ReleaseUnusedWorkers(
+      const std::vector<WorkerID> &workers_in_use,
+      const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) = 0;
 
   virtual ray::Status CancelWorkerLease(
       const TaskID &task_id,
@@ -324,6 +331,11 @@ class RayletClient : public PinObjectsInterface,
   /// Implements WorkerLeaseInterface.
   ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
                            bool disconnect_worker) override;
+
+  /// Implements WorkerLeaseInterface.
+  ray::Status ReleaseUnusedWorkers(
+      const std::vector<WorkerID> &workers_in_use,
+      const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) override;
 
   ray::Status CancelWorkerLease(
       const TaskID &task_id,
