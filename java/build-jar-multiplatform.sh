@@ -5,22 +5,26 @@ set -x
 # Cause the script to exit if a single command fails.
 set -e
 
-FILE_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)"
-WORKSPACE_DIR="${FILE_DIR}/.."
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)"
+WORKSPACE_DIR="${ROOT_DIR}/.."
 JAVA_DIRS_PATH=('java' 'streaming/java')
 RAY_JAVA_MODULES=('api' 'runtime')
 RAY_STREAMING_JAVA_MODULES=('streaming-api' 'streaming-runtime' 'streaming-state')
 JAR_BASE_DIR="$WORKSPACE_DIR"/.jar
+cd "$WORKSPACE_DIR/java"
+# ray jar version, ex: 0.1-SNAPSHORT
+version=$(python -c "import xml.etree.ElementTree as ET;  r = ET.parse('pom.xml').getroot(); print(r.find(r.tag.replace('project', 'version')).text);" | tail -n 1)
+cd -
 
 build_jars() {
-  local platform=$1
+  local platform="$1"
   local bazel_build="${2:-true}"
   echo "bazel_build $bazel_build"
   echo "Start building jar for $platform"
-  JAR_DIR="$JAR_BASE_DIR"/$platform
+  local JAR_DIR="$JAR_BASE_DIR/$platform"
   mkdir -p "$JAR_DIR"
   for p in "${JAVA_DIRS_PATH[@]}"; do
-    cd "$WORKSPACE_DIR"/"$p"
+    cd "$WORKSPACE_DIR/$p"
     if [[ $bazel_build == "true" ]]; then
       echo "Starting building java native dependencies for $p"
       bazel build gen_maven_deps
@@ -39,7 +43,7 @@ build_jars() {
 }
 
 copy_jars() {
-  JAR_DIR=$1
+  local JAR_DIR="$1"
   echo "Copy to dir $JAR_DIR"
   for module in "${RAY_JAVA_MODULES[@]}"; do
     cp -f "$WORKSPACE_DIR"/java/"$module"/target/*jar "$JAR_DIR"
@@ -63,36 +67,36 @@ build_jars_darwin() {
 }
 
 build_jars_multiplatform() {
-  download_jars
+  download_jars "ray-runtime-$version.jar" "streaming-runtime-$version.jar"
   prepare_native
   build_jars multiplatform false
 }
 
 # download linux/darwin ray-runtime-$version.jar from s3
 download_jars() {
-   local version
-   # ray jar version, ex: 0.1-SNAPSHORT
-   version=$(python -c "import xml.etree.ElementTree as ET;  r = ET.parse('pom.xml').getroot(); print(r.find(r.tag.replace('project', 'version')).text);" | tail -n 1)
-  wait_time=0
-  sleep_time_units=1
-  for os in 'darwin' 'linux'; do
-    url=https://ray-wheels.s3-us-west-2.amazonaws.com/jars/"$TRAVIS_BRANCH/$TRAVIS_COMMIT/$os/ray-runtime-$version.jar"
-    dest_file="$JAR_BASE_DIR/$os/ray-runtime-$version.jar"
-    echo "Jar url: $url"
-    echo "Jar dest_file: $dest_file"
-    while true; do
-      if ! wget -q "$url" -O "$dest_file">/dev/; then
-        echo "Waiting $url to be ready for $wait_time seconds..."
-        sleep $sleep_time_units
-        wait_time=$((wait_time + sleep_time_units))
-        if [[ wait_time == $((60 * 30)) ]]; then
-          echo "Download $url timeout"
-          exit -1
+  local wait_time=0
+  local sleep_time_units=60
+
+  for f in "$@"; do
+    for os in 'darwin' 'linux'; do
+      local url="https://ray-wheels.s3-us-west-2.amazonaws.com/jars/$TRAVIS_BRANCH/$TRAVIS_COMMIT/$os/$f"
+      local dest_file="$JAR_BASE_DIR/$os/$f"
+      echo "Jar url: $url"
+      echo "Jar dest_file: $dest_file"
+      while true; do
+        if ! wget -q "$url" -O "$dest_file">/dev/null; then
+          echo "Waiting $url to be ready for $wait_time seconds..."
+          sleep $sleep_time_units
+          wait_time=$((wait_time + sleep_time_units))
+          if [[ wait_time == $((60 * 30)) ]]; then
+            echo "Download $url timeout"
+            exit 1
+          fi
+        else
+          echo "Download $url to $dest_file succeed"
+          break
         fi
-      else
-        echo "Download $url to $dest_file succeed"
-        break
-      fi
+      done
     done
   done
 }
@@ -100,17 +104,16 @@ download_jars() {
 # prepare native binaries and libraries.
 prepare_native() {
   for os in 'darwin' 'linux'; do
-    cd "$JAR_BASE_DIR"/"$os"
-    jar xf "$(ls ray-runtime*.jar | grep -v sources | grep -v grep)" "$os"
-    local native_dir="$WORKSPACE_DIR"/java/runtime/native_dependencies/native/"$os"
+    cd "$JAR_BASE_DIR/$os"
+    jar xf "ray-runtime-$version.jar" "native/$os"
+    local native_dir="$WORKSPACE_DIR/java/runtime/native_dependencies/native/$os"
     mkdir -p "$native_dir"
     rm -rf "$native_dir"
-    jar xf "$(ls ray-runtime*.jar | grep -v sources | grep -v grep)" "native/$os"
     mv "native/$os" "$native_dir"
-    local native_dir="$WORKSPACE_DIR"/streaming/java/streaming-runtime/native_dependencies/native/"$os"
+    jar xf "streaming-runtime-$version.jar" "native/$os"
+    local native_dir="$WORKSPACE_DIR/streaming/java/streaming-runtime/native_dependencies/native/$os"
     mkdir -p "$native_dir"
     rm -rf "$native_dir"
-    jar xf "$(ls streaming-runtime*.jar | grep -v sources | grep -v grep)" "native/$os"
     mv "native/$os" "$native_dir"
   done
 }
@@ -125,7 +128,7 @@ deploy_jars() {
   echo "Finished deploying jars"
 }
 
-case $1 in
+case "$1" in
 linux)
   build_jars_linux
   ;;
@@ -139,8 +142,8 @@ deploy)
   deploy_jars
   ;;
 *)
-  echo "Execute command $1"
-  $1
+  echo "Execute command $*"
+  "$@"
   ;;
 esac
 

@@ -232,7 +232,7 @@ genrule(
         case "$${OSTYPE}" in
           linux*) OS_NAME="linux";;
           darwin*) OS_NAME="darwin";;
-          *) echo "$${OSTYPE} is not supported currently"; exit -1;;
+          *) echo "$${OSTYPE} is not supported currently"; exit 1;;
         esac
         NATIVE_DEPS_DIR="$$WORK_DIR/streaming/java/streaming-runtime/native_dependencies/native/$$OS_NAME"
         rm -rf "$$NATIVE_DEPS_DIR"
