@@ -26,99 +26,7 @@ import time
 
 from timeit import default_timer  # monotonic timer
 
-if sys.platform == "win32":
-    import ctypes
-    from ctypes.wintypes import HANDLE, DWORD, BOOL
-    CloseHandle = ctypes.WINFUNCTYPE(BOOL, HANDLE)(
-        ("CloseHandle", ctypes.windll.kernel32))
-    GetProcessId = ctypes.WINFUNCTYPE(DWORD, HANDLE)(
-        ("GetProcessId", ctypes.windll.kernel32))
-    OpenProcess = ctypes.WINFUNCTYPE(HANDLE, DWORD, BOOL, DWORD)(
-        ("OpenProcess", ctypes.windll.kernel32))
-    WaitForSingleObject = ctypes.WINFUNCTYPE(DWORD, HANDLE, DWORD)(
-        ("WaitForSingleObject", ctypes.windll.kernel32))
-
 logger = logging.getLogger(__name__)
-
-
-def get_real_pid(posix_pid):
-    result = None
-    if sys.platform == "win32":
-        try:
-            pid_index = None
-            winpid_index = None
-            for line in subprocess.check_output(["ps"]).splitlines():
-                if pid_index is None:
-                    headers = line.split()
-                    pid_index = headers.index(b"PID")
-                    winpid_index = headers.index(b"WINPID")
-                else:
-                    maxsplit = 1 + max(pid_index, winpid_index)
-                    row = line.split(maxsplit=maxsplit)
-                    print(row)
-                    if str(posix_pid) == row[pid_index].decode("utf-8"):
-                        result = int(row[winpid_index].decode("utf-8"))
-                        break
-        except IOError:
-            result = posix_pid
-    else:
-        result = posix_pid
-    return result
-
-
-def open_process(pid):
-    if sys.platform == "win32":
-        # access masks defined in <winnt.h>
-        SYNCHRONIZE = 0x00100000
-        PROCESS_TERMINATE = 0x0001
-        handle = OpenProcess(SYNCHRONIZE | PROCESS_TERMINATE, False, pid)
-        if not handle:
-            raise OSError(errno.EBADF, "invalid PID: {}".format(pid))
-    else:
-        handle = pid
-    return handle
-
-
-def get_process_id(handle):
-    if sys.platform == "win32":
-        pid = GetProcessId(handle)
-    else:
-        pid = handle
-    return pid
-
-
-def wait_process(handle, timeout_ms=None):
-    no_such_process = errno.EINVAL if sys.platform == "win32" else errno.ESRCH
-    dead = False
-    try:
-        if sys.platform == "win32":
-            WAIT_OBJECT_0 = 0
-            if timeout_ms is None:
-                timeout_ms = 0xFFFFFFFF
-            dead = WaitForSingleObject(handle, timeout_ms) == WAIT_OBJECT_0
-        else:
-            os.kill(handle, 0)  # Quick test
-            time.sleep(0)  # If alive, do minimal sleep; maybe it'll die now
-            tstart = default_timer()
-            tsleep = 1.0 / (1 << 20)  # Start with small granularity
-            while True:  # Exponentially increase interval
-                os.kill(handle, 0)
-                tremaining = tstart + (timeout_ms / 1000.0) - default_timer()
-                if tremaining <= 0:
-                    break
-                tsleep = min(tremaining, tsleep * 2)
-                time.sleep(tremaining)
-            # If we reach here, the process is still alive (kill() never threw)
-    except OSError as ex:
-        if ex.errno != no_such_process:
-            raise
-        dead = True
-    return dead
-
-
-def close_process(handle):
-    if sys.platform == "win32":
-        CloseHandle(handle)
 
 
 def git(*args, **kwargs):
@@ -130,10 +38,6 @@ def git(*args, **kwargs):
     else:
         result = subprocess.check_call(cmdline)
     return result
-
-
-def git_remotes():
-    return git("remote", "show", "-n").splitlines()
 
 
 def get_current_ci():
@@ -197,9 +101,9 @@ def git_branch_info():
     return (ref, remote, expected_sha)
 
 
-def terminate_process(handle, sleeps):
+def terminate_parent_or_process_group(sleeps):
     result = 0
-    pid = get_process_id(handle) if handle else 0
+    pid = 0 if sys.platform == "win32" else os.getppid()
     is_posix = True
     nonsignals = []
     if sys.platform == "win32":
@@ -233,8 +137,7 @@ def terminate_process(handle, sleeps):
                 finally:
                     if pid == 0 and old_handler is not None:  # Restore handler
                         signal.signal(sig, old_handler)
-                if wait_process(handle, tsleep):
-                    break
+                time.sleep(tsleep)
     except OSError as ex:
         if ex.errno not in (errno.EBADF, errno.ESRCH):
             raise
@@ -244,7 +147,7 @@ def terminate_process(handle, sleeps):
     return result
 
 
-def monitor(process_handle=None, server_poll_interval=None, sleeps=None):
+def monitor(server_poll_interval=None, sleeps=None):
     if sleeps is None:
         sleeps = [5, 15]
     if not server_poll_interval:
@@ -276,11 +179,7 @@ def monitor(process_handle=None, server_poll_interval=None, sleeps=None):
         # Try to increase waiting time gradually, for better responsiveness
         to_wait = min(to_wait, max(default_timer() - tstart, 5.0))
 
-        if not process_handle:
-            time.sleep(to_wait)
-        elif wait_process(process_handle, to_wait):
-            # The process has exited, so there's no need to keep polling
-            break
+        time.sleep(to_wait)
         status = 0
         line = None
         try:
@@ -314,16 +213,11 @@ def monitor(process_handle=None, server_poll_interval=None, sleeps=None):
             break
         tprev = default_timer()
     if terminate:
-        result = terminate_process(process_handle, sleeps)
+        result = terminate_parent_or_process_group(sleeps)
     return result
 
 
-def main(program, pid="", skipped_repos="", server_poll_interval="", sleeps=""):
-    if pid:
-        pid = int(pid)
-    else:
-        logger.info("No PID provided; monitoring entire process group...")
-        pid = 0
+def main(program, skipped_repos="", server_poll_interval="", sleeps=""):
     if server_poll_interval:
         server_poll_interval = float(server_poll_interval)
     else:
@@ -332,19 +226,13 @@ def main(program, pid="", skipped_repos="", server_poll_interval="", sleeps=""):
         sleeps = [float(s) for s in sleeps.strip().split(",") if s.strip()]
     else:
         sleeps = None
-    result = 0
     repo_slug = get_repo_slug()
     skipped_repo_list = []
     if skipped_repos:
         skipped_repo_list.extend(skipped_repos.split(","))
     event_name = get_event_name()
     if repo_slug not in skipped_repo_list or event_name == "pull_request":
-        process_handle = open_process(pid) if pid else 0
-        try:
-            result = monitor(process_handle, server_poll_interval, sleeps)
-        finally:
-            if process_handle:
-                close_process(process_handle)
+        result = monitor(server_poll_interval, sleeps)
     else:
         logger.info("Skipping monitoring %s %s build", repo_slug, event_name)
     return result

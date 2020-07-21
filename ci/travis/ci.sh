@@ -381,8 +381,6 @@ _check_job_triggers() {
   local job_names
   job_names="$1"
 
-  "${WORKSPACE_DIR}"/ci/remote-watch.py &
-
   local variable_definitions
   # shellcheck disable=SC2031
   variable_definitions=($(python "${ROOT_DIR}"/determine_tests_to_run.py))
