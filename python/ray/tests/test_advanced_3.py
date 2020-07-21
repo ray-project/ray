@@ -292,8 +292,9 @@ def test_specific_job_id():
 # Test that when `redis_address` and `job_config` is not set in
 # `ray.init(...)`, Raylet will start `num_cpus` Python workers for the driver.
 def test_num_initial_workers(shutdown_only):
+    # `num_cpus` should be <=2 because a Travis CI machine only has 2 CPU cores.
     ray.init(
-        num_cpus=3,
+        num_cpus=1,
         include_dashboard=True,
         _internal_config=json.dumps({
             "enable_multi_tenancy": True
@@ -306,7 +307,7 @@ def test_num_initial_workers(shutdown_only):
     assert wait_for_condition(
         lambda: len([worker for worker in stub.GetNodeStats(
             node_manager_pb2.GetNodeStatsRequest()).workers_stats
-            if not worker.is_driver]) == 3,
+            if not worker.is_driver]) == 1,
         timeout=10)
 
 
