@@ -21,7 +21,7 @@ To scale out a backend to multiple workers, simplify configure the number of rep
 .. code-block:: python
 
   config = {"num_replicas": 10}
-  serve.create_backend("my_scaled_endpoint_backend", handle_request, config)
+  serve.create_backend("my_scaled_endpoint_backend", handle_request, config=config)
 
   # scale it back down...
   config = {"num_replicas": 2}
