@@ -230,6 +230,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
       // but we just set it to the default of -1 to avoid taking the lock.
       request->set_client_processed_up_to(-1);
       INVOKE_RPC_CALL(CoreWorkerService, PushTask, *request, callback, grpc_client_);
+      return;
     }
 
     {
