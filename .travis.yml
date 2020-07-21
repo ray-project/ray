@@ -267,6 +267,7 @@ matrix:
     # Tune: Tests and examples.
     - os: linux
       env:
+        - TUNE_TESTING=1
         - PYTHON=3.6
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
@@ -285,6 +286,7 @@ matrix:
     # SGD: Tests and examples.
     - os: linux
       env:
+        - SGD_TESTING=1
         - PYTHON=3.6
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
@@ -302,6 +304,7 @@ matrix:
     # Docs: Tests and examples.
     - os: linux
       env:
+        - DOC_TESTING=1
         - PYTHON=3.6
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
