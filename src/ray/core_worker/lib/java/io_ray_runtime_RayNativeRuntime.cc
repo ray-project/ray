@@ -18,10 +18,10 @@
 
 #include <sstream>
 
+#include "jni_utils.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/core_worker.h"
-#include "jni_utils.h"
 
 thread_local JNIEnv *local_env = nullptr;
 jobject java_task_executor = nullptr;
@@ -126,8 +126,8 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
             metadatas.push_back(return_objects[i]->GetMetadata());
             contained_object_ids.push_back(return_objects[i]->GetNestedIds());
           }
-          ray::CoreWorkerProcess::GetCoreWorker().AllocateReturnObjects(
-              return_ids, data_sizes, metadatas, contained_object_ids, results);
+          RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().AllocateReturnObjects(
+              return_ids, data_sizes, metadatas, contained_object_ids, results));
           for (size_t i = 0; i < data_sizes.size(); i++) {
             auto result = (*results)[i];
             // A nullptr is returned if the object already exists.

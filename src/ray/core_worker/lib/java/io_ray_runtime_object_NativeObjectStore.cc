@@ -14,10 +14,10 @@
 
 #include "io_ray_runtime_object_NativeObjectStore.h"
 #include <jni.h>
+#include "jni_utils.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker.h"
-#include "jni_utils.h"
 
 ray::Status PutSerializedObject(JNIEnv *env, jobject obj, ray::ObjectID object_id,
                                 ray::ObjectID *out_object_id, bool pin_object = true) {
@@ -50,8 +50,8 @@ ray::Status PutSerializedObject(JNIEnv *env, jobject obj, ray::ObjectID object_i
     if (data->Size() > 0) {
       memcpy(data->Data(), native_ray_object->GetData()->Data(), data->Size());
     }
-    ray::CoreWorkerProcess::GetCoreWorker().Seal(*out_object_id,
-                                                 pin_object && object_id.IsNil());
+    RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().Seal(
+        *out_object_id, pin_object && object_id.IsNil()));
   }
   return ray::Status::OK();
 }
