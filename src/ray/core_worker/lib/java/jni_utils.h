@@ -459,6 +459,14 @@ inline jobject NativeRayFunctionDescriptorToJavaStringList(
 using TagKeyType = opencensus::tags::TagKey;
 
 /// Convert jni metric related data to native type for stats.
+/// \param[in] j_name metric name in jni string.
+/// \param[in] j_description metric description in jni string.
+/// \param[in] j_unit metric measurement unit in jni string.
+/// \param[in] tag_key_list tag key list in java list.
+/// \param[out] metric_name metric name in native string.
+/// \param[out] description metric description in native string.
+/// \param[out] unit metric measurement unit in native string.
+/// \param[out] tag_keys metric tag key vector unit in native vector.
 inline void MetricTransform(JNIEnv *env, jstring j_name, jstring j_description,
                             jstring j_unit, jobject tag_key_list,
                             std::string *metric_name, std::string *description,
