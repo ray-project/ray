@@ -20,14 +20,14 @@ copy_file(
     visibility = ["//visibility:public"],
 )
 
-# This library is for internal hiredis use, because hiredis assumes a
-# different include prefix for itself than external libraries do.
 cc_library(
-    name = "_hiredis",
+    name = "hiredis_deps",
     hdrs = [
+        "deps/hiredis/async.h",
         "deps/hiredis/dict.c",
         "deps/hiredis/dict.h",
         "deps/hiredis/fmacros.h",
+        "deps/hiredis/read.h",
     ],
     strip_include_prefix = "deps/hiredis",
 )
@@ -41,18 +41,17 @@ cc_library(
         ],
         exclude =
         [
+            "deps/hiredis/dict.c",
             "deps/hiredis/test.c",
         ],
     ),
-    hdrs = glob([
-        "deps/hiredis/*.h",
-        "deps/hiredis/adapters/*.h",
-    ]),
-    strip_include_prefix = "deps",
-    deps = [
-        ":_hiredis",
+    hdrs = [
+        "deps/hiredis/hiredis.h",
     ],
-    visibility = ["//visibility:public"],
+    strip_include_prefix = "deps/hiredis",
+    deps = [
+        "hiredis_deps",
+    ],
 )
 
 write_file(
@@ -74,7 +73,6 @@ cc_library(
     ],
     hdrs = ["deps/linenoise/linenoise.h"],
     strip_include_prefix = "deps/linenoise",
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -93,42 +91,50 @@ cc_library(
         "LUA_ANSI",
     ],
     strip_include_prefix = "deps/lua/src",
-    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "dict",
+    srcs = [
+        "src/dict.c",
+        "src/dict.h",
+        "src/fmacros.h",
+        "src/redisassert.h",
+        "src/zmalloc.h",
+    ],
+    strip_include_prefix = "src",
 )
 
 cc_library(
     name = "libredis",
     srcs = [],
-    hdrs = glob([
+    hdrs = [
+        "src/release.h",
+    ] + glob([
         "src/*.h",
         "src/ae_*.c",
     ]),
     strip_include_prefix = "src",
-    visibility = ["//visibility:public"],
 )
 
 cc_binary(
     name = "_redis-cli",
-    srcs = glob(
-        [
-            # These must end up equal to REDIS_CLI_OBJ in redis/src/Makefile
-            "src/adlist.c",
-            "src/ae.c",
-            "src/anet.c",
-            "src/crc*.c",
-            "src/dict.c",
-            "src/redis-cli.c",
-            "src/release.c",
-            "src/siphash.c",
-            "src/zmalloc.c",
-        ],
-    ) + [
-        # Other items not listed directly in the Makefile
-        ":mkreleasehdr",
-    ],
-    includes = ["src"],
+    srcs = [
+        # These must end up equal to REDIS_CLI_OBJ in redis/src/Makefile
+        "src/adlist.c",
+        "src/adlist.h",
+        "src/ae.c",
+        "src/anet.c",
+        "src/redis-cli.c",
+        "src/release.c",
+        "src/siphash.c",
+        "src/zmalloc.c",
+    ] + glob([
+        "src/crc*.c",
+    ]),
     visibility = ["//visibility:public"],
     deps = [
+        ":dict",
         ":hiredis",
         ":libredis",
         ":linenoise",
@@ -146,14 +152,11 @@ cc_binary(
         exclude =
         [
             "src/ae_*.c",
+            "src/dict.c",
             "src/redis-benchmark.c",
             "src/redis-cli.c",
         ],
-    ) + [
-        # Other items not listed directly in the Makefile
-        ":mkreleasehdr",
-    ],
-    includes = ["src"],
+    ),
     local_defines = [
         "REDIS_STATIC=",
     ],
@@ -169,7 +172,9 @@ cc_binary(
             "-lrt",
         ],
     }),
+    visibility = ["//visibility:public"],
     deps = [
+        ":dict",
         ":hiredis",
         ":libredis",
         ":lua",
