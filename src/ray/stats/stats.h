@@ -39,6 +39,8 @@ namespace stats {
 /// Include metric_defs.h to define measure items.
 #include "ray/stats/metric_defs.h"
 
+// TODO(sang): The current implementation is dangerous. We should
+// put every states and logic into a single class including `StatsConfig`.
 static std::shared_ptr<IOServicePool> metrics_io_service_pool;
 static std::shared_ptr<MetricExporterClient> exporter;
 static absl::Mutex stats_mutex;
@@ -50,13 +52,14 @@ static absl::Mutex stats_mutex;
 /// - If you want to reinitialize, you should call stats::Shutdown().
 /// - It is thread-safe.
 /// We recommend you to use this only once inside a main script and add Shutdown() method
-/// to any signal handler. \param global_tags Tags that will be appended to all metrics in
-/// this process. \param metrics_agent_port The port to export metrics at each node.
-/// \param exporter_to_use The exporter client you will use for this process' metrics.
-static void Init(const TagsType &global_tags, const int metrics_agent_port,
-                 std::shared_ptr<MetricExporterClient> exporter_to_use = nullptr,
-                 int64_t metrics_report_batch_size =
-                     RayConfig::instance().metrics_report_batch_size()) {
+/// to any signal handler.
+/// \param global_tags[in] Tags that will be appended to all metrics in this process.
+/// \param metrics_agent_port[in] The port to export metrics at each node.
+/// \param exporter_to_use[in] The exporter client you will use for this process' metrics.
+static inline void Init(const TagsType &global_tags, const int metrics_agent_port,
+                        std::shared_ptr<MetricExporterClient> exporter_to_use = nullptr,
+                        int64_t metrics_report_batch_size =
+                            RayConfig::instance().metrics_report_batch_size()) {
   absl::MutexLock lock(&stats_mutex);
   if (StatsConfig::instance().IsInitialized()) {
     RAY_CHECK(metrics_io_service_pool != nullptr);
@@ -98,10 +101,11 @@ static void Init(const TagsType &global_tags, const int metrics_agent_port,
 
 /// Shutdown the initialized stats library.
 /// This cleans up various threads and metadata for stats library.
-static void Shutdown() {
+static inline void Shutdown() {
+  // TODO(sang): Harvest thread is not currently cleaned up.
   absl::MutexLock lock(&stats_mutex);
-  opencensus::stats::StatsExporter::Shutdown();
   metrics_io_service_pool->Stop();
+  opencensus::stats::StatsExporter::Shutdown();
   metrics_io_service_pool = nullptr;
   exporter = nullptr;
   StatsConfig::instance().SetIsInitialized(false);

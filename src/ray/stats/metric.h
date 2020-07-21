@@ -83,7 +83,7 @@ class StatsConfig final {
   // interval.
   absl::Duration harvest_interval_ = absl::Seconds(5);
   // Whether or not if the stats has been initialized.
-  std::atomic<bool> is_initialized_{false};
+  bool is_initialized_ = false;
 };
 
 /// A thin wrapper that wraps the `opencensus::tag::measure` for using it simply.

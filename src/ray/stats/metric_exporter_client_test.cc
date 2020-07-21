@@ -31,6 +31,7 @@ namespace ray {
 using namespace stats;
 
 const size_t kMockReportBatchSize = 10;
+const int MetricsAgentPort = 10054;
 
 class MockExporterClient1 : public MetricExporterDecorator {
  public:
@@ -86,8 +87,11 @@ class MockExporterClient1 : public MetricExporterDecorator {
 
 class MockExporterClient2 : public MetricExporterDecorator {
  public:
-  MockExporterClient2(std::shared_ptr<MetricExporterClient> exporter)
-      : MetricExporterDecorator(exporter), client2_count(0), client2_value(0) {}
+  MockExporterClient2(std::shared_ptr<MetricExporterClient> exporter, int identity = 0)
+      : MetricExporterDecorator(exporter),
+        client2_count(0),
+        client2_value(0),
+        client2_identity(identity) {}
   void ReportMetrics(const std::vector<MetricPoint> &points) override {
     if (points.empty()) {
       return;
@@ -96,6 +100,8 @@ class MockExporterClient2 : public MetricExporterDecorator {
     client2_count++;
     RAY_LOG(DEBUG) << "Client 2 " << client2_count << " last metric "
                    << points.back().metric_name << ", value " << points.back().value;
+    RAY_LOG(ERROR) << "sang count for client 2: " << client2_identity << " "
+                   << client2_count;
     client2_value = points.back().value;
   }
   int GetCount() { return client2_count; }
@@ -104,6 +110,7 @@ class MockExporterClient2 : public MetricExporterDecorator {
  private:
   int client2_count;
   int client2_value;
+  int client2_identity;
 };
 
 /// Default report flush interval is 500ms, so we may wait a while for data
@@ -123,12 +130,15 @@ class MetricExporterClientTest : public ::testing::Test {
     exporter.reset(new stats::StdoutExporterClient());
     mock1.reset(new MockExporterClient1(exporter));
     mock2.reset(new MockExporterClient2(mock1));
-    ray::stats::Init(global_tags, 10054, mock2, kMockReportBatchSize);
+    ray::stats::Init(global_tags, MetricsAgentPort, mock2, kMockReportBatchSize);
   }
 
-  virtual void TearDown() override { Shutdown(); }
+  virtual void TearDown() override {
+    Shutdown();
+    RAY_LOG(ERROR) << "shutdown called";
+  }
 
-  void Shutdown() { stats::Shutdown(); }
+  void Shutdown() { ray::stats::Shutdown(); }
 
  protected:
   std::shared_ptr<MetricExporterClient> exporter;

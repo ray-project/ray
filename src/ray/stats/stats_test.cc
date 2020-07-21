@@ -25,6 +25,8 @@
 
 namespace ray {
 
+const int MetricsAgentPort = 10054;
+
 class MockExporter : public opencensus::stats::StatsExporter::Handler {
  public:
   static void Register() {
@@ -71,7 +73,7 @@ class StatsTest : public ::testing::Test {
                                          {stats::WorkerPidKey, "1000"}};
     std::shared_ptr<stats::MetricExporterClient> exporter(
         new stats::StdoutExporterClient());
-    ray::stats::Init(global_tags, 10054, exporter);
+    ray::stats::Init(global_tags, MetricsAgentPort, exporter);
     MockExporter::Register();
   }
 
@@ -96,7 +98,7 @@ TEST_F(StatsTest, InitializationTest) {
     std::shared_ptr<stats::MetricExporterClient> exporter(
         new stats::StdoutExporterClient());
     ray::stats::Init({{stats::LanguageKey, test_tag_value_that_shouldnt_be_applied}},
-                     10054, exporter);
+                     MetricsAgentPort, exporter);
   }
 
   auto &first_tag = ray::stats::StatsConfig::instance().GetGlobalTags()[0];
@@ -111,7 +113,7 @@ TEST_F(StatsTest, InitializationTest) {
   std::shared_ptr<stats::MetricExporterClient> exporter(
       new stats::StdoutExporterClient());
 
-  ray::stats::Init(global_tags, 10054, exporter);
+  ray::stats::Init(global_tags, MetricsAgentPort, exporter);
   ASSERT_TRUE(ray::stats::StatsConfig::instance().IsInitialized());
   auto &new_first_tag = ray::stats::StatsConfig::instance().GetGlobalTags()[0];
   ASSERT_TRUE(new_first_tag.second == test_tag_value_that_shouldnt_be_applied);
