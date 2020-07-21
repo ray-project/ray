@@ -1,9 +1,22 @@
+# --------------------------------------------------------------------
+# Tests from the python/ray/tune/tests directory
+# Covers all tests starting with test_.
+# Please keep these sorted alphabetically.
+# --------------------------------------------------------------------
 py_test(
     name = "test_actor_reuse",
     size = "medium",
     srcs = ["tests/test_actor_reuse.py"],
     tags = ["jenkins_only"],
     deps = [":tune_lib"],
+)
+
+py_test(
+    name = "test_api",
+    size = "large",
+    srcs = ["tests/test_api.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
 )
 
 py_test(
@@ -52,6 +65,13 @@ py_test(
 )
 
 py_test(
+    name = "test_experiment",
+    size = "small",
+    srcs = ["tests/test_experiment.py"],
+    deps = [":tune_lib"],
+)
+
+py_test(
     name = "test_experiment_analysis",
     size = "medium",
     srcs = ["tests/test_experiment_analysis.py"],
@@ -66,10 +86,11 @@ py_test(
 )
 
 py_test(
-    name = "test_experiment",
-    size = "small",
-    srcs = ["tests/test_experiment.py"],
+    name = "test_function_api",
+    size = "medium",
+    srcs = ["tests/test_function_api.py"],
     deps = [":tune_lib"],
+    tags = ["exclusive"],
 )
 
 py_test(
@@ -95,6 +116,22 @@ py_test(
 )
 
 py_test(
+    name = "test_run_experiment",
+    size = "medium",
+    srcs = ["tests/test_run_experiment.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+)
+
+py_test(
+    name = "test_sync",
+    size = "medium",
+    srcs = ["tests/test_sync.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+)
+
+py_test(
     name = "test_track",
     size = "small",
     srcs = ["tests/test_track.py"],
@@ -102,11 +139,10 @@ py_test(
 )
 
 py_test(
-    name = "test_run_experiment",
-    size = "medium",
-    srcs = ["tests/test_run_experiment.py"],
+    name = "test_trainable_util",
+    size = "small",
+    srcs = ["tests/test_trainable_util.py"],
     deps = [":tune_lib"],
-    tags = ["exclusive"],
 )
 
 py_test(
@@ -139,37 +175,6 @@ py_test(
     srcs = ["tests/test_var.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],
-)
-
-py_test(
-    name = "test_api",
-    size = "large",
-    srcs = ["tests/test_api.py"],
-    deps = [":tune_lib"],
-    tags = ["exclusive"],
-)
-
-py_test(
-    name = "test_function_api",
-    size = "medium",
-    srcs = ["tests/test_function_api.py"],
-    deps = [":tune_lib"],
-    tags = ["exclusive"],
-)
-
-py_test(
-    name = "test_sync",
-    size = "medium",
-    srcs = ["tests/test_sync.py"],
-    deps = [":tune_lib"],
-    tags = ["exclusive"],
-)
-
-py_test(
-    name = "test_trainable_util",
-    size = "small",
-    srcs = ["tests/test_trainable_util.py"],
-    deps = [":tune_lib"],
 )
 
 py_test(
