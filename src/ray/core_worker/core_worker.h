@@ -221,7 +221,7 @@ class CoreWorkerProcess {
   /// Check that the core worker environment is initialized for this process.
   ///
   /// \return Void.
-  static void EnsureInitialized() SHARED_LOCKS_REQUIRED(instance_mutex_);
+  static void EnsureInitialized();
 
   /// Get the `CoreWorker` instance by worker ID.
   ///
@@ -243,8 +243,6 @@ class CoreWorkerProcess {
 
   /// The global instance of `CoreWorkerProcess`.
   static std::unique_ptr<CoreWorkerProcess> instance_;
-
-  static absl::Mutex instance_mutex_;
 
   /// The various options.
   const CoreWorkerOptions options_;

@@ -7,6 +7,8 @@ import io.ray.runtime.context.WorkerContext;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReadWriteLock;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,8 +20,11 @@ public class NativeObjectStore extends ObjectStore {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(NativeObjectStore.class);
 
-  public NativeObjectStore(WorkerContext workerContext) {
+  private final ReadWriteLock shutdownLock;
+
+  public NativeObjectStore(WorkerContext workerContext, ReadWriteLock shutdownLock) {
     super(workerContext);
+    this.shutdownLock = shutdownLock;
   }
 
   @Override
@@ -54,7 +59,13 @@ public class NativeObjectStore extends ObjectStore {
 
   @Override
   public void removeLocalReference(UniqueId workerId, ObjectId objectId) {
-    nativeRemoveLocalReference(workerId.getBytes(), objectId.getBytes());
+    Lock readLock = shutdownLock.readLock();
+    readLock.lock();
+    try {
+      nativeRemoveLocalReference(workerId.getBytes(), objectId.getBytes());
+    } finally {
+      readLock.unlock();
+    }
   }
 
   public Map<ObjectId, long[]> getAllReferenceCounts() {
