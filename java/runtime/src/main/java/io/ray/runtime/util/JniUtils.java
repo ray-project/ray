@@ -7,7 +7,6 @@ import io.ray.runtime.config.RayConfig;
 import java.io.File;
 import java.lang.reflect.Field;
 import java.util.Set;
-import org.apache.commons.lang3.SystemUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

@@ -22,8 +22,7 @@ public class BinaryFileUtil {
 
   public static final String REDIS_MODULE_LIBRARY_NAME = "libray_redis_module.so";
 
-  public static final String CORE_WORKER_JAVA_LIBRARY =
-      System.mapLibraryName("core_worker_library_java");
+  public static final String CORE_WORKER_JAVA_LIBRARY = "core_worker_library_java";
 
   /**
    * Extract a platform-native resource file to <code>destDir</code>.
@@ -46,19 +45,19 @@ public class BinaryFileUtil {
     String lockFilePath = destDir + File.separator + "file_lock";
     try (FileLock ignored = new RandomAccessFile(lockFilePath, "rw")
         .getChannel().lock()) {
-      String fileDir = SystemUtils.IS_OS_MAC ? "native/darwin/" : "native/linux/";
-      String filePath = fileDir + fileName;
-      File file = new File(String.format("%s/%s", destDir, filePath));
+      String resourceDir = SystemUtils.IS_OS_MAC ? "native/darwin/" : "native/linux/";
+      String resourcePath = resourceDir + fileName;
+      File file = new File(String.format("%s/%s", destDir, fileName));
       if (file.exists()) {
         return file;
       }
 
       // File does not exist.
-      try (InputStream is = BinaryFileUtil.class.getResourceAsStream("/" + filePath)) {
-        Preconditions.checkNotNull(is, "{} doesn't exist.", filePath);
+      try (InputStream is = BinaryFileUtil.class.getResourceAsStream("/" + resourcePath)) {
+        Preconditions.checkNotNull(is, "{} doesn't exist.", resourcePath);
         Files.copy(is, Paths.get(file.getCanonicalPath()));
       } catch (IOException e) {
-        throw new RuntimeException("Couldn't get temp file from resource " + filePath, e);
+        throw new RuntimeException("Couldn't get temp file from resource " + resourcePath, e);
       }
       return file;
     } catch (IOException e) {
