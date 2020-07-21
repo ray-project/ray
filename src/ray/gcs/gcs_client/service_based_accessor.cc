@@ -89,9 +89,18 @@ Status ServiceBasedJobInfoAccessor::AsyncSubscribeAll(
 
 void ServiceBasedJobInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
   RAY_LOG(INFO) << "Reestablishing subscription for job info.";
-  // If the pub-sub server has restarted, we need to resubscribe to the pub-sub server.
-  if (subscribe_operation_ != nullptr && is_pubsub_server_restarted) {
-    RAY_CHECK_OK(subscribe_operation_(nullptr));
+  // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
+  // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
+  // server first, then fetch data from the GCS server.
+  if (is_pubsub_server_restarted) {
+    if (subscribe_operation_ != nullptr) {
+      RAY_CHECK_OK(subscribe_operation_(
+          [this](const Status &status) { fetch_all_data_operation_(nullptr); }));
+    }
+  } else {
+    if (fetch_all_data_operation_ != nullptr) {
+      fetch_all_data_operation_(nullptr);
+    }
   }
 }
 

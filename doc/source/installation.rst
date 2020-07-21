@@ -70,33 +70,6 @@ For example, here are the Ray 0.9.0.dev0 wheels for Python 3.5, MacOS for commit
 
     pip install https://ray-wheels.s3-us-west-2.amazonaws.com/master/a0ba4499ac645c9d3e82e68f3a281e48ad57f873/ray-0.9.0.dev0-cp35-cp35m-macosx_10_13_intel.whl
 
-
-Installing Dashboard
---------------------
-
-The dashboard requires a few additional Python packages, which can be installed
-via pip.
-
-.. code-block:: bash
-
-  pip install ray[dashboard]
-
-The command ``ray.init()`` or ``ray start --head`` will print out the address of
-the dashboard. For example,
-
-.. code-block:: python
-
-  >>> import ray
-  >>> ray.init()
-  ======================================================================
-  View the dashboard at http://127.0.0.1:8265.
-  Note: If Ray is running on a remote node, you will need to set up an
-  SSH tunnel with local port forwarding in order to access the dashboard
-  in your browser, e.g. by running 'ssh -L 8265:127.0.0.1:8265
-  <username>@<host>'. Alternatively, you can set dashboard_host="0.0.0.0" in
-  the call to ray.init() to allow direct access from external machines.
-  ======================================================================
-
 .. _windows-support:
 
 Windows Support

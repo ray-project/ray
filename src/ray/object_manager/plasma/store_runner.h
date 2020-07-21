@@ -2,6 +2,8 @@
 
 #include <memory>
 
+#include <boost/asio.hpp>
+
 #include "ray/object_manager/notification/object_store_notification_manager.h"
 #include "ray/object_manager/plasma/store.h"
 
@@ -26,7 +28,7 @@ class PlasmaStoreRunner {
   bool hugepages_enabled_;
   std::string plasma_directory_;
   std::string external_store_endpoint_;
-  std::unique_ptr<EventLoop> loop_;
+  boost::asio::io_service main_service_;
   std::unique_ptr<PlasmaStore> store_;
   std::shared_ptr<ray::ObjectStoreNotificationManager> listener_;
 };
