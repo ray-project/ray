@@ -12,6 +12,8 @@ import io.ray.api.id.TaskId;
 import io.ray.api.id.UniqueId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
+import io.ray.api.placementgroup.PlacementGroup;
+import io.ray.api.placementgroup.PlacementStrategy;
 import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.actor.LocalModeActorHandle;
 import io.ray.runtime.context.LocalModeWorkerContext;
@@ -208,6 +210,13 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
       return ImmutableList.of(returnIds.get(0));
     }
   }
+
+  @Override
+  public PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
+      PlacementStrategy strategy) {
+    return null;
+  }
+
 
   @Override
   public BaseActorHandle getActor(ActorId actorId) {

@@ -1259,15 +1259,13 @@ Status CoreWorker::CreateActor(const RayFunction &function,
 }
 
 Status CoreWorker::CreatePlacementGroup(
-    const PlacementGroupCreationOptions &placement_group_creation_options,
-    PlacementGroupID *return_placement_group_id) {
+    const PlacementGroupCreationOptions &placement_group_creation_options) {
   const PlacementGroupID placement_group_id = PlacementGroupID ::FromRandom();
   PlacementGroupSpecBuilder builder;
   builder.SetPlacementGroupSpec(placement_group_id, placement_group_creation_options.name,
                                 placement_group_creation_options.bundles,
                                 placement_group_creation_options.strategy);
   PlacementGroupSpecification placement_group_spec = builder.Build();
-  *return_placement_group_id = placement_group_id;
   RAY_LOG(INFO) << "Submitting Placement Group creation to GCS: " << placement_group_id;
   RAY_CHECK_OK(
       gcs_client_->PlacementGroups().AsyncCreatePlacementGroup(placement_group_spec));

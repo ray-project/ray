@@ -2,11 +2,14 @@ package io.ray.api;
 
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.UniqueId;
+import io.ray.api.placementgroup.PlacementGroup;
+import io.ray.api.placementgroup.PlacementStrategy;
 import io.ray.api.runtime.RayRuntime;
 import io.ray.api.runtime.RayRuntimeFactory;
 import io.ray.api.runtimecontext.RuntimeContext;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 
@@ -239,5 +242,17 @@ public final class Ray extends RayCall {
    */
   public static RuntimeContext getRuntimeContext() {
     return runtime.getRuntimeContext();
+  }
+
+  /**
+   * Create a placement group and preallocate the resources.
+   *
+   * @param bundles
+   * @param strategy
+   * @return A handle to the created placement group.
+   */
+  public static PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
+      PlacementStrategy strategy) {
+    return runtime.createPlacementGroup(bundles, strategy);
   }
 }

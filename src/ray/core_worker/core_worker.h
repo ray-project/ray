@@ -596,14 +596,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Create a placement group.
   ///
-  /// \param[in] function The remote function that generates the placement group object.
   /// \param[in] placement_group_creation_options Options for this placement group
-  /// creation task. \param[out] placement_group_id ID of the created placement group.
-  /// This can be used to shedule actor in node \return Status error if placement group
-  /// creation fails, likely due to raylet failure.
+  /// creation task.
+  /// \return Status error if placement group creation fails, likely due to raylet failure.
   Status CreatePlacementGroup(
-      const PlacementGroupCreationOptions &placement_group_creation_options,
-      PlacementGroupID *placement_group_id);
+      const PlacementGroupCreationOptions &placement_group_creation_options);
 
   /// Submit an actor task.
   ///

@@ -13,15 +13,18 @@ public class ActorCreationOptions extends BaseTaskOptions {
   public final int maxRestarts;
   public final String jvmOptions;
   public final int maxConcurrency;
+  public final Map<String, Double> bundle;
 
   private ActorCreationOptions(boolean global, String name, Map<String, Double> resources,
-                               int maxRestarts, String jvmOptions, int maxConcurrency) {
+                               int maxRestarts, String jvmOptions, int maxConcurrency,
+                               Map<String, Double> bundle) {
     super(resources);
     this.global = global;
     this.name = name;
     this.maxRestarts = maxRestarts;
     this.jvmOptions = jvmOptions;
     this.maxConcurrency = maxConcurrency;
+    this.bundle = bundle;
   }
 
   /**
@@ -34,6 +37,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
     private int maxRestarts = 0;
     private String jvmOptions = null;
     private int maxConcurrency = 1;
+    private Map<String, Double> bundle = new HashMap<>();
 
     /**
      * Set the actor name of a named actor.
@@ -135,9 +139,14 @@ public class ActorCreationOptions extends BaseTaskOptions {
       return this;
     }
 
+    public Builder setBundle(Map<String, Double> bundle) {
+      this.bundle.putAll(bundle);
+      return this;
+    }
+
     public ActorCreationOptions build() {
       return new ActorCreationOptions(
-          global, name, resources, maxRestarts, jvmOptions, maxConcurrency);
+          global, name, resources, maxRestarts, jvmOptions, maxConcurrency, bundle);
     }
   }
 

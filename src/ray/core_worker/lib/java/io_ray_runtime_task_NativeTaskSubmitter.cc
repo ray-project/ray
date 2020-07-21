@@ -146,6 +146,26 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   return actor_creation_options;
 }
 
+inline ray::PlacementGroupCreationOptions ToPlacementGroupCreationOptions(JNIEnv *env, jobject java_bundles,
+                                                                          jint java_strategy) {
+  std::vector<std::unordered_map<std::string, double>> bundles;
+  JavaListToNativeVector<std::unordered_map<std::string, double>>(
+      env, java_bundles, &bundles, [](JNIEnv *env, jobject java_bundle) {
+        return JavaMapToNativeMap<std::string, double>(
+            env, java_bundle,
+            [](JNIEnv *env, jobject java_key) {
+              return JavaStringToNativeString(env, (jstring)java_key);
+            },
+            [](JNIEnv *env, jobject java_value) {
+              double value = env->CallDoubleMethod(java_value, java_double_double_value);
+              RAY_CHECK_JAVA_EXCEPTION(env);
+              return value;
+            });
+      });
+  // TODO(ffbin): name, strategy
+  return ray::PlacementGroupCreationOptions("", ray::rpc::PACK, bundles);
+}
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -210,6 +230,13 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
   }
 
   return NativeIdVectorToJavaByteArrayList(env, return_ids);
+}
+
+JNIEXPORT void JNICALL Java_io_ray_runtime_task_NativeTaskSubmitter_nativeCreatePlacementGroup(
+    JNIEnv *env, jclass, jobject bundles, jint strategy) {
+  auto options = ToPlacementGroupCreationOptions(env, bundles, strategy);
+  auto status = ray::CoreWorkerProcess::GetCoreWorker().CreatePlacementGroup(options);
+  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
 }
 
 #ifdef __cplusplus

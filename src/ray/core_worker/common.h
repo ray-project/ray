@@ -119,11 +119,11 @@ struct ActorCreationOptions {
 using PlacementStrategy = rpc::PlacementStrategy;
 
 struct PlacementGroupCreationOptions {
-  PlacementGroupCreationOptions() {}
+  PlacementGroupCreationOptions() = default;
   PlacementGroupCreationOptions(
-      const std::string &name, PlacementStrategy strategy,
-      const std::vector<std::unordered_map<std::string, double>> &bundles)
-      : strategy(strategy), bundles(bundles), name(name) {}
+      std::string name, PlacementStrategy strategy,
+      std::vector<std::unordered_map<std::string, double>> bundles)
+      : name(std::move(name)), strategy(strategy), bundles(std::move(bundles)) {}
 
   /// The strategy to place the bundle in Placement Group.
   const PlacementStrategy strategy = rpc::PACK;

@@ -100,6 +100,11 @@ public class BaseActorCreator<T extends BaseActorCreator> {
     return self();
   }
 
+  public T setBundle(Map<String, Double> bundle) {
+    builder.setBundle(bundle);
+    return self();
+  }
+
   @SuppressWarnings("unchecked")
   private T self() {
     return (T) this;
