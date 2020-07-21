@@ -18,7 +18,7 @@
 
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 

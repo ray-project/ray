@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/lib/java/io_ray_runtime_RayNativeRuntime.h"
+#include "io_ray_runtime_RayNativeRuntime.h"
 
 #include <jni.h>
 
@@ -21,7 +21,7 @@
 #include "ray/common/id.h"
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/core_worker.h"
-#include "ray/core_worker/lib/java/jni_utils.h"
+#include "jni_utils.h"
 
 thread_local JNIEnv *local_env = nullptr;
 jobject java_task_executor = nullptr;
@@ -219,8 +219,8 @@ Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(JNIEnv *env, j
   const char *native_actor_name = env->GetStringUTFChars(actor_name, JNI_FALSE);
   auto full_name = GetActorFullName(global, native_actor_name);
 
-  auto *actor_handle =
-      ray::CoreWorkerProcess::GetCoreWorker().GetNamedActorHandle(full_name);
+  const auto *actor_handle =
+      ray::CoreWorkerProcess::GetCoreWorker().GetNamedActorHandle(full_name).first;
   ray::ActorID actor_id;
   if (actor_handle) {
     actor_id = actor_handle->GetActorID();
