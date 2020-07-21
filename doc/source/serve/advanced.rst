@@ -269,3 +269,31 @@ Once a endpoint is deleted, its tag can be reused.
 .. code-block:: python
 
   serve.delete_endpoint("simple_endpoint")
+
+How do I get a reference to a "backend" class?
+----------------------------------------------
+
+See :ref:`session-affinity`.
+
+How do I call a method on my backend class besides __call__?
+-------------------------------------------------------------
+
+To call a method via HTTP use the header field ``X-SERVE-CALL-METHOD``.
+
+To call a method via Python, do the following:
+
+.. code-block:: python
+
+    class StatefulProcessor:
+        def __init__(self):
+            self.count = 1
+
+        def __call__(self, request):
+            return {"current": self.count}
+
+        def other_method(self, inc):
+            self.count += inc
+            return True
+
+    handle = serve.get_handle("backend_name")
+    handle.options(method_name="other_method").remote(5)
