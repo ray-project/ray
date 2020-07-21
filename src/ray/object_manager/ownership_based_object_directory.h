@@ -85,6 +85,8 @@ class OwnershipBasedObjectDirectory : public ObjectDirectoryInterface {
 
   /// Reference to the event loop.
   boost::asio::io_service &io_service_;
+  /// Reference to the gcs client.
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// Info about subscribers to object locations.
   std::unordered_map<ObjectID, LocationListenerState> listeners_;
 };

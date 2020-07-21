@@ -16,8 +16,10 @@
 
 namespace ray {
 
-OwnershipBasedObjectDirectory::OwnershipBasedObjectDirectory(boost::asio::io_service &io_service)
-    : io_service_(io_service) {}
+OwnershipBasedObjectDirectory::OwnershipBasedObjectDirectory(
+    boost::asio::io_service &io_service,
+    std::shared_ptr<gcs::GcsClient> &gcs_client)
+    : io_service_(io_service), gcs_client_(gcs_client) {}
 
 ray::Status OwnershipBasedObjectDirectory::ReportObjectAdded(
     const ObjectID &object_id, const ClientID &client_id,
@@ -31,16 +33,49 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectRemoved(
   return ray::Status::OK();
 };
 
-void OwnershipBasedObjectDirectory::LookupRemoteConnectionInfo(
+void ObjectDirectory::LookupRemoteConnectionInfo(
     RemoteConnectionInfo &connection_info) const {
+  auto node_info = gcs_client_->Nodes().Get(connection_info.client_id);
+  if (node_info) {
+    ClientID result_node_id = ClientID::FromBinary(node_info->node_id());
+    RAY_CHECK(result_node_id == connection_info.client_id);
+    if (node_info->state() == GcsNodeInfo::ALIVE) {
+      connection_info.ip = node_info->node_manager_address();
+      connection_info.port = static_cast<uint16_t>(node_info->object_manager_port());
+    }
+  }
 }
 
-std::vector<RemoteConnectionInfo> OwnershipBasedObjectDirectory::LookupAllRemoteConnections() const {
+std::vector<RemoteConnectionInfo> ObjectDirectory::LookupAllRemoteConnections() const {
   std::vector<RemoteConnectionInfo> remote_connections;
+  const auto &node_map = gcs_client_->Nodes().GetAll();
+  for (const auto &item : node_map) {
+    RemoteConnectionInfo info(item.first);
+    LookupRemoteConnectionInfo(info);
+    if (info.Connected() && info.client_id != gcs_client_->Nodes().GetSelfId()) {
+      remote_connections.push_back(info);
+    }
+  }
   return remote_connections;
 }
 
-void OwnershipBasedObjectDirectory::HandleClientRemoved(const ClientID &client_id) {
+void ObjectDirectory::HandleClientRemoved(const ClientID &client_id) {
+  for (auto &listener : listeners_) {
+    const ObjectID &object_id = listener.first;
+    if (listener.second.current_object_locations.count(client_id) > 0) {
+      // If the subscribed object has the removed client as a location, update
+      // its locations with an empty update so that the location will be removed.
+      UpdateObjectLocations(/*is_added*/ true, {}, gcs_client_,
+                            &listener.second.current_object_locations);
+      // Re-call all the subscribed callbacks for the object, since its
+      // locations have changed.
+      for (const auto &callback_pair : listener.second.callbacks) {
+        // It is safe to call the callback directly since this is already running
+        // in the subscription callback stack.
+        callback_pair.second(object_id, listener.second.current_object_locations);
+      }
+    }
+  }
 }
 
 ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_id,
