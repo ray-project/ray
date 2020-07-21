@@ -1009,6 +1009,10 @@ cdef class CoreWorker:
         return resources_dict
 
     def profile_event(self, c_string event_type, object extra_data=None):
+        # Turn off profiling by default.
+        if not RayConfig.instance().run_profiling():
+            return NoopProfileEvent()
+
         return ProfileEvent.make(
             CCoreWorkerProcess.GetCoreWorker().CreateProfileEvent(event_type),
             extra_data)

@@ -46,3 +46,12 @@ cdef class ProfileEvent:
         # Deleting the CProfileEvent will add it to a queue to be pushed to
         # the driver.
         self.inner.reset()
+
+
+cdef class NoopProfileEvent:
+    """Noop profile event used when profiling is turned off."""
+    def __enter__(self):
+        pass
+
+    def __exit__(self, type, value, tb):
+        pass
