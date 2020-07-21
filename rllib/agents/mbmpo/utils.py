@@ -15,9 +15,11 @@ class LinearFeatureBaseline():
 
     def _features(self, path):
         o = np.clip(path["observations"], -10, 10)
-        l = len(path["rewards"])
-        al = np.arange(l).reshape(-1, 1) / 100.0
-        return np.concatenate([o, o ** 2, al, al ** 2, al ** 3, np.ones((l, 1))], axis=1)
+        ll = len(path["rewards"])
+        al = np.arange(ll).reshape(-1, 1) / 100.0
+        return np.concatenate(
+            [o, o**2, al, al**2, al**3,
+             np.ones((ll, 1))], axis=1)
 
     def fit(self, paths):
         featmat = np.concatenate([self._features(path) for path in paths])
@@ -25,9 +27,9 @@ class LinearFeatureBaseline():
         reg_coeff = self._reg_coeff
         for _ in range(5):
             self._coeffs = np.linalg.lstsq(
-                featmat.T.dot(featmat) + reg_coeff * np.identity(featmat.shape[1]),
-                featmat.T.dot(returns)
-            )[0]
+                featmat.T.dot(featmat) +
+                reg_coeff * np.identity(featmat.shape[1]),
+                featmat.T.dot(returns))[0]
             if not np.any(np.isnan(self._coeffs)):
                 break
             reg_coeff *= 10
@@ -36,6 +38,7 @@ class LinearFeatureBaseline():
         if self._coeffs is None:
             return np.zeros(len(path["rewards"]))
         return self._features(path).dot(self._coeffs)
+
 
 def calculate_gae_advantages(paths, discount, gae_lambda):
     baseline = LinearFeatureBaseline()
@@ -49,19 +52,17 @@ def calculate_gae_advantages(paths, discount, gae_lambda):
     for idx, path in enumerate(paths):
         path_baselines = np.append(all_path_baselines[idx], 0)
         deltas = path["rewards"] + \
-                 discount * path_baselines[1:] - \
-                 path_baselines[:-1]
-        path["advantages"] = discount_cumsum(
-            deltas, discount * gae_lambda)
+            discount * path_baselines[1:] - \
+            path_baselines[:-1]
+        path["advantages"] = discount_cumsum(deltas, discount * gae_lambda)
     return paths
 
+
 def discount_cumsum(x, discount):
-        """
-        See https://docs.scipy.org/doc/scipy/reference/tutorial/signal.html#difference-equation-filtering
+    """
         Returns:
-            (float) : y[t] - discount*y[t+1] = x[t] or rev(y)[t] - discount*rev(y)[t-1] = rev(x)[t]
+            (float) : y[t] - discount*y[t+1] = x[t] or rev(y)[t]
+            - discount*rev(y)[t-1] = rev(x)[t]
         """
-        return scipy.signal.lfilter([1], [1, float(-discount)], x[::-1], axis=0)[::-1]
-
-
-
+    return scipy.signal.lfilter(
+        [1], [1, float(-discount)], x[::-1], axis=0)[::-1]

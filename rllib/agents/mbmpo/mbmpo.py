@@ -113,7 +113,7 @@ class MetaUpdate:
         adapt_metrics_dict = data_tuple[1]
         self.postprocess_metrics(
             adapt_metrics_dict, prefix="MAMLIter{}".format(self.step_counter))
-        
+
         # MAML Meta-update
         for i in range(self.maml_optimizer_steps):
             fetches = self.workers.local_worker().learn_on_batch(samples)
@@ -149,7 +149,7 @@ class MetaUpdate:
 
             metrics.counters[STEPS_SAMPLED_COUNTER] = td_metric[
                 STEPS_SAMPLED_COUNTER]
-            #import pdb; pdb.set_trace()
+
             res = self.metric_gen.__call__(None)
             res.update(self.metrics)
             self.step_counter = 0
@@ -233,28 +233,31 @@ def sync_stats(workers):
             e.foreach_policy.remote(
                 set_func, normalizations=normalization_dict)
 
+
 def post_process_samples(samples, config):
     # Instead of using NN for value function, we use regression
     split_lst = []
     for sample in samples:
-        indexes = np.where(sample['dones']==True)[0]
-        indexes = indexes+1
+        indexes = np.asarray(sample["dones"]).nonzero()
+        indexes = indexes + 1
 
-        reward_list = np.split(sample['rewards'], indexes)[:-1]
-        observation_list = np.split(sample['obs'], indexes)[:-1]
+        reward_list = np.split(sample["rewards"], indexes)[:-1]
+        observation_list = np.split(sample["obs"], indexes)[:-1]
 
         paths = []
         for i in range(0, len(reward_list)):
-            paths.append({"rewards": reward_list[i], 
-                "observations": observation_list[i]})
+            paths.append({
+                "rewards": reward_list[i],
+                "observations": observation_list[i]
+            })
 
-        paths = calculate_gae_advantages(paths, config["gamma"], config["lambda"])
+        paths = calculate_gae_advantages(paths, config["gamma"],
+                                         config["lambda"])
 
         advantages = np.concatenate([path["advantages"] for path in paths])
         sample["advantages"] = standardized(advantages)
         split_lst.append(sample.count)
     return samples, split_lst
-
 
 
 # Similar to MAML Execution Plan

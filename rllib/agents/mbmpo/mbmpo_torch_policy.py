@@ -15,6 +15,7 @@ torch, nn = try_import_torch()
 
 logger = logging.getLogger(__name__)
 
+
 def make_model_and_action_dist(policy, obs_space, action_space, config):
     # Get the output distribution class for predicting rewards and next-obs.
     policy.distr_cls_next_obs, num_outputs = ModelCatalog.get_action_dist(

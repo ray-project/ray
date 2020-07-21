@@ -71,8 +71,8 @@ def PPOLoss(dist_class,
     entropy_loss = torch.mean(entropy_loss(pi_new_dist))
 
     total_loss = -surr_loss + cur_kl_coeff * kl_loss
-    #total_loss += vf_loss_coeff * vf_loss 
-    #total_loss -= entropy_coeff * entropy_loss
+    total_loss += vf_loss_coeff * vf_loss
+    total_loss -= entropy_coeff * entropy_loss
     return total_loss, surr_loss, kl_loss, vf_loss, entropy_loss
 
 
