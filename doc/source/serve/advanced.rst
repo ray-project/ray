@@ -270,10 +270,12 @@ Once a endpoint is deleted, its tag can be reused.
 
   serve.delete_endpoint("simple_endpoint")
 
-How do I get a reference to a "backend" class?
-----------------------------------------------
+How do I call an endpoint from Python code?
+-------------------------------------------
 
-Simple!
+To do so, you need to get a "handle" to that endpoint. To do so,
+use the following:
+
 
 .. code-block:: python
     
