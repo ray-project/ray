@@ -13,9 +13,8 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.models.torch.misc import SlimFC
-from ray.rllib.utils.exploration import EpsilonGreedy, GaussianNoise
+from ray.rllib.utils.exploration import EpsilonGreedy, GaussianNoise, Random
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-
 
 torch, nn = try_import_torch()
 
@@ -54,7 +53,6 @@ class CuriosityExploration(Exploration):
             if params:
                 self.device = params[0].device
 
-
         # TODO (tanay): get from the config
         self.obs_space_dim = 16
         self.embedding_dim = 6
@@ -63,8 +61,9 @@ class CuriosityExploration(Exploration):
         # List of dimension of each layer
         features_dims = [self.obs_space_dim, 3, self.embedding_dim]
         inverse_dims = [2 * self.obs_space_dim, 4, self.action_space]
-        forwards_dims = [self.embedding_dim + self.action_space, 5,
-                         self.embedding_dim]
+        forwards_dims = [
+            self.embedding_dim + self.action_space, 5, self.embedding_dim
+        ]
 
         # Pass in activation_fn in model config
         # Two layer relu nets
@@ -107,10 +106,9 @@ class CuriosityExploration(Exploration):
 
         self.criterion = torch.nn.MSELoss(reduction="sum")
         self.optimizer = torch.optim.Adam(
-            torch.cat(
-                self.forwards_model.parameters(),
-                self.inverse_model.parameters()
-            ), lr=1e-3)
+            torch.cat(self.forwards_model.parameters(),
+                      self.inverse_model.parameters()),
+            lr=1e-3)
         # TODO lr=config["lr"]
 
         submodule_type = "EpsilonGreedy"
@@ -123,7 +121,7 @@ class CuriosityExploration(Exploration):
         elif submodule_type != "":
             raise NotImplementedError("Called with a sub-exploration module "
                                       "we don't support!")
-        else: # what's the correct default?
+        else:  # what's the correct default?
             self.exploration_submodule = EpsilonGreedy(
                 action_space=action_space, framework=framework)
 
@@ -181,23 +179,10 @@ class CuriosityExploration(Exploration):
     def predict_action(self, obs, next_obs):
         return self.inverse_model(
             torch.cat(
-                (self.get_latent_vector(obs), self.get_latent_vector(next_obs)),
-                axis=-1
-            )
-        )
+                (self.get_latent_vector(obs),
+                 self.get_latent_vector(next_obs)),
+                axis=-1))
 
     def predict_next_obs(self, obs, action):
         return self.forwards_model(
-            torch.cat(
-                (self.get_latent_vector(obs), action),
-                axis=-1
-            )
-        )
-
-
-
-
-
-
-
-
+            torch.cat((self.get_latent_vector(obs), action), axis=-1))

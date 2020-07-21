@@ -7,6 +7,7 @@ from ray.rllib.utils.exploration import ParameterNoise
 from ray.rllib.utils import check
 import ray.rllib.agents.ppo as ppo
 
+from ray.rllib.utils.exploration.curiosity_exploration import CuriosityExploration
 
 class TestCuriosity(unittest.TestCase):
 
@@ -49,6 +50,8 @@ class TestCuriosity(unittest.TestCase):
         print(actions)
 #        trainer.train()
 
+    def test_curiosity(self):
+        curiosity = CuriosityExploration()
 
 if __name__ == "__main__":
     import pytest
