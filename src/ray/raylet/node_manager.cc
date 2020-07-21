@@ -2135,7 +2135,7 @@ void NodeManager::MarkObjectsAsFailed(const ErrorType &error_type,
     rpc::Address owner_address;
     bool have_owner = task_dependency_manager_.GetOwnerAddress(object_id, &owner_address);
     // TODO(zhuohan): This should only happen for failures in actor creation
-    // task.
+    // task. Try to put an empty address and check whether tests still break.
     RAY_CHECK(have_owner);
     status = store_client_.Create(object_id, owner_address, 0,
                                   reinterpret_cast<const uint8_t *>(meta.c_str()),
