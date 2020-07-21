@@ -116,8 +116,7 @@ matrix:
     # Build Linux wheels.
     - os: linux
       env:
-        - LINUX_WHEELS=1
-        - LINUX_JARS=1
+        - LINUX_WHEELS=1 LINUX_JARS=1
         - PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
         - RAY_GCS_ACTOR_SERVICE_ENABLED=true
@@ -127,15 +126,14 @@ matrix:
         - . ./ci/travis/ci.sh build
       script:
         - . ./ci/travis/ci.sh test_wheels
-        - ./java/build-jar-multiplatform.sh linux
+        - sh ./java/build-jar-multiplatform.sh linux
       cache: false
 
     # Build MacOS wheels.
     - os: osx
       osx_image: xcode7
       env:
-        - MAC_WHEELS=1
-        - MAC_JARS=1
+        - MAC_WHEELS=1 MAC_JARS=1
         - PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
         - RAY_GCS_ACTOR_SERVICE_ENABLED=true
@@ -145,7 +143,7 @@ matrix:
         - . ./ci/travis/ci.sh build
       script:
         - . ./ci/travis/ci.sh test_wheels
-        - ./java/build-jar-multiplatform.sh darwin
+        - sh ./java/build-jar-multiplatform.sh darwin
 
     # Build multi-platform jars.
     - os: linux
@@ -159,8 +157,8 @@ matrix:
       before_script:
         - . ./ci/travis/ci.sh build
       script:
-        - ./java/build-jar-multiplatform.sh multiplatform
-        - if [ $TRAVIS_BRANCH == "master" ]; then ./java/build-jar-multiplatform.sh deploy; fi
+        - sh ./java/build-jar-multiplatform.sh multiplatform
+        - if [ $TRAVIS_BRANCH == "master" ]; then sh ./java/build-jar-multiplatform.sh deploy; fi
 
     # RLlib: Learning tests (from rllib/tuned_examples/*.yaml).
     - os: linux
