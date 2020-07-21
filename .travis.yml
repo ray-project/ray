@@ -154,8 +154,6 @@ matrix:
         - RAY_GCS_ACTOR_SERVICE_ENABLED=true
       install:
         - . ./ci/travis/ci.sh init RAY_CI_JAVA_AFFECTED,RAY_CI_STREAMING_JAVA_AFFECTED
-      before_script:
-        - . ./ci/travis/ci.sh build
       script:
         - sh ./java/build-jar-multiplatform.sh multiplatform
         - if [ $TRAVIS_BRANCH == "master" ]; then sh ./java/build-jar-multiplatform.sh deploy; fi
