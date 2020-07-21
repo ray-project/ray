@@ -1,12 +1,11 @@
 #include "ray/object_manager/plasma/store_runner.h"
 
-#include <fcntl.h>
-#include <stdio.h>
 #ifndef _WIN32
+#include <fcntl.h>
 #include <sys/statvfs.h>
-#endif
 #include <sys/types.h>
 #include <unistd.h>
+#endif
 
 #include "ray/object_manager/plasma/plasma_allocator.h"
 
@@ -77,10 +76,6 @@ PlasmaStoreRunner::PlasmaStoreRunner(std::string socket_name, int64_t system_mem
 }
 
 void PlasmaStoreRunner::Start() {
-#ifdef _WINSOCKAPI_
-  WSADATA wsadata;
-  WSAStartup(MAKEWORD(2, 2), &wsadata);
-#endif
    // Get external store
   std::shared_ptr<plasma::ExternalStore> external_store{nullptr};
   if (!external_store_endpoint_.empty()) {
@@ -113,13 +108,8 @@ void PlasmaStoreRunner::Start() {
       pointer, PlasmaAllocator::GetFootprintLimit() - 256 * sizeof(size_t));
 
   store_->Start();
-
   main_service_.run();
-
   Shutdown();
-#ifdef _WINSOCKAPI_
-  WSACleanup();
-#endif
 }
 
 void PlasmaStoreRunner::Stop() {
