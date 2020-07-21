@@ -22,6 +22,7 @@ public class MetricTest extends BaseTest {
 
   @Test
   public void testAddGauge() {
+    TestUtils.skipTestUnderSingleProcess();
     Map<TagKey, String> tags = new HashMap<>();
     tags.put(new TagKey("tag1"), "value1");
 
@@ -34,6 +35,7 @@ public class MetricTest extends BaseTest {
 
   @Test
   public void testAddCount() {
+    TestUtils.skipTestUnderSingleProcess();
     Map<TagKey, String> tags = new HashMap<>();
     tags.put(new TagKey("tag1"), "value1");
     tags.put(new TagKey("count_tag"), "default");
@@ -48,6 +50,7 @@ public class MetricTest extends BaseTest {
 
   @Test
   public void testAddSum() {
+    TestUtils.skipTestUnderSingleProcess();
     Map<TagKey, String> tags = new HashMap<>();
     tags.put(new TagKey("tag1"), "value1");
     tags.put(new TagKey("sum_tag"), "default");
@@ -62,6 +65,7 @@ public class MetricTest extends BaseTest {
 
   @Test
   public void testAddHistogram() {
+    TestUtils.skipTestUnderSingleProcess();
     Map<TagKey, String> tags = new HashMap<>();
     tags.put(new TagKey("tag1"), "value1");
     tags.put(new TagKey("histogram_tag"), "default");
