@@ -31,11 +31,11 @@ class PBTBenchmarkExample(Trainable):
     faster convergence. Training will not converge without PBT.
     """
 
-    def _setup(self, config):
+    def setup(self, config):
         self.lr = config["lr"]
         self.accuracy = 0.0  # end = 1000
 
-    def _train(self):
+    def step(self):
         midpoint = 100  # lr starts decreasing after acc > midpoint
         q_tolerance = 3  # penalize exceeding lr by more than this multiple
         noise_level = 2  # add gaussian noise to the acc increase
@@ -66,13 +66,13 @@ class PBTBenchmarkExample(Trainable):
             "done": self.accuracy > midpoint * 2,
         }
 
-    def _save(self, checkpoint_dir):
+    def save_checkpoint(self, checkpoint_dir):
         return {
             "accuracy": self.accuracy,
             "lr": self.lr,
         }
 
-    def _restore(self, checkpoint):
+    def load_checkpoint(self, checkpoint):
         self.accuracy = checkpoint["accuracy"]
 
     def reset_config(self, new_config):

@@ -23,6 +23,11 @@
 #include "ray/common/status.h"
 #include "ray/common/test_util.h"
 #include "ray/util/filesystem.h"
+#include "src/ray/protobuf/common.pb.h"
+
+extern "C" {
+#include "hiredis/hiredis.h"
+}
 
 namespace {
 int64_t wait_timeout_ms;
@@ -142,7 +147,7 @@ class TestObjectManagerBase : public ::testing::Test {
     uint8_t metadata[] = {5};
     int64_t metadata_size = sizeof(metadata);
     std::shared_ptr<arrow::Buffer> data;
-    RAY_CHECK_OK(client.Create(object_id, data_size, metadata, metadata_size, &data));
+    RAY_CHECK_OK(client.Create(object_id, ray::rpc::Address(), data_size, metadata, metadata_size, &data));
     RAY_CHECK_OK(client.Seal(object_id));
     return object_id;
   }

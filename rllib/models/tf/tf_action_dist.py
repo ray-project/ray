@@ -1,17 +1,17 @@
 from math import log
 import numpy as np
 import functools
+import tree
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.utils import MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT, \
-    SMALL_NUMBER, try_import_tree
+    SMALL_NUMBER
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
-tree = try_import_tree()
 
 
 @DeveloperAPI
@@ -178,12 +178,13 @@ class GumbelSoftmax(TFActionDistribution):
         assert temperature >= 0.0
         self.dist = tfp.distributions.RelaxedOneHotCategorical(
             temperature=temperature, logits=inputs)
+        self.probs = tf.nn.softmax(self.dist._distribution.logits)
         super().__init__(inputs, model)
 
     @override(ActionDistribution)
     def deterministic_sample(self):
         # Return the dist object's prob values.
-        return self.dist._distribution.probs
+        return self.probs
 
     @override(ActionDistribution)
     def logp(self, x):

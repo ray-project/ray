@@ -21,6 +21,9 @@ export const formatUsage = (
 export const MiBRatio = (used: number, total: number) =>
   `${used} MiB / ${total} MiB (${(100 * (used / total)).toFixed(1)}%)`;
 
+export const MiBRatioNoPercent = (used: number, total: number) =>
+  `${used} MiB / ${total} MiB`;
+
 export const formatDuration = (durationInSeconds: number) => {
   const durationSeconds = Math.floor(durationInSeconds) % 60;
   const durationMinutes = Math.floor(durationInSeconds / 60) % 60;

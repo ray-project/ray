@@ -19,12 +19,13 @@
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/raylet/raylet_client.h"
+#include "ray/raylet_client/raylet_client.h"
 #include "ray/util/util.h"
 
 namespace ray {
 
 using WorkerType = rpc::WorkerType;
+using PlacementOptions = std::pair<PlacementGroupID, int64_t>;
 
 // Return a string representation of the worker type.
 std::string WorkerTypeString(WorkerType type);
@@ -50,63 +51,6 @@ class RayFunction {
   ray::FunctionDescriptor function_descriptor_;
 };
 
-/// Argument of a task.
-class TaskArg {
- public:
-  virtual void ToProto(rpc::TaskArg *arg_proto) const = 0;
-  virtual ~TaskArg(){};
-};
-
-class TaskArgByReference : public TaskArg {
- public:
-  /// Create a pass-by-reference task argument.
-  ///
-  /// \param[in] object_id Id of the argument.
-  /// \return The task argument.
-  TaskArgByReference(const ObjectID &object_id, const rpc::Address &owner_address)
-      : id_(object_id), owner_address_(owner_address) {}
-
-  void ToProto(rpc::TaskArg *arg_proto) const {
-    auto ref = arg_proto->mutable_object_ref();
-    ref->set_object_id(id_.Binary());
-    ref->mutable_owner_address()->CopyFrom(owner_address_);
-  }
-
- private:
-  /// Id of the argument if passed by reference, otherwise nullptr.
-  const ObjectID id_;
-  const rpc::Address &owner_address_;
-};
-
-class TaskArgByValue : public TaskArg {
- public:
-  /// Create a pass-by-value task argument.
-  ///
-  /// \param[in] value Value of the argument.
-  /// \return The task argument.
-  TaskArgByValue(const std::shared_ptr<RayObject> &value) : value_(value) {
-    RAY_CHECK(value) << "Value can't be null.";
-  }
-
-  void ToProto(rpc::TaskArg *arg_proto) const {
-    if (value_->HasData()) {
-      const auto &data = value_->GetData();
-      arg_proto->set_data(data->Data(), data->Size());
-    }
-    if (value_->HasMetadata()) {
-      const auto &metadata = value_->GetMetadata();
-      arg_proto->set_metadata(metadata->Data(), metadata->Size());
-    }
-    for (const auto &nested_id : value_->GetNestedIds()) {
-      arg_proto->add_nested_inlined_ids(nested_id.Binary());
-    }
-  }
-
- private:
-  /// Value of the argument.
-  const std::shared_ptr<RayObject> value_;
-};
-
 /// Options for all tasks (actor and non-actor) except for actor creation.
 struct TaskOptions {
   TaskOptions() {}
@@ -122,12 +66,13 @@ struct TaskOptions {
 /// Options for actor creation tasks.
 struct ActorCreationOptions {
   ActorCreationOptions() {}
-  ActorCreationOptions(int64_t max_restarts, int64_t max_task_retries,
-                       int max_concurrency,
-                       const std::unordered_map<std::string, double> &resources,
-                       const std::unordered_map<std::string, double> &placement_resources,
-                       const std::vector<std::string> &dynamic_worker_options,
-                       bool is_detached, std::string &name, bool is_asyncio)
+  ActorCreationOptions(
+      int64_t max_restarts, int64_t max_task_retries, int max_concurrency,
+      const std::unordered_map<std::string, double> &resources,
+      const std::unordered_map<std::string, double> &placement_resources,
+      const std::vector<std::string> &dynamic_worker_options, bool is_detached,
+      std::string &name, bool is_asyncio,
+      PlacementOptions placement_options = std::make_pair(PlacementGroupID::Nil(), -1))
       : max_restarts(max_restarts),
         max_task_retries(max_task_retries),
         max_concurrency(max_concurrency),
@@ -136,7 +81,8 @@ struct ActorCreationOptions {
         dynamic_worker_options(dynamic_worker_options),
         is_detached(is_detached),
         name(name),
-        is_asyncio(is_asyncio){};
+        is_asyncio(is_asyncio),
+        placement_options(placement_options){};
 
   /// Maximum number of times that the actor should be restarted if it dies
   /// unexpectedly. A value of -1 indicates infinite restarts. If it's 0, the
@@ -164,6 +110,27 @@ struct ActorCreationOptions {
   const std::string name;
   /// Whether to use async mode of direct actor call.
   const bool is_asyncio = false;
+  /// The placement_options include placement_group_id and bundle_index.
+  /// If the actor doesn't belong to a placement group, the placement_group_id will be
+  /// nil, and the bundle_index will be -1.
+  PlacementOptions placement_options;
+};
+
+using PlacementStrategy = rpc::PlacementStrategy;
+
+struct PlacementGroupCreationOptions {
+  PlacementGroupCreationOptions() {}
+  PlacementGroupCreationOptions(
+      const std::string &name, PlacementStrategy strategy,
+      const std::vector<std::unordered_map<std::string, double>> &bundles)
+      : strategy(strategy), bundles(bundles), name(name) {}
+
+  /// The strategy to place the bundle in Placement Group.
+  const PlacementStrategy strategy = rpc::PACK;
+  /// The resource bundles in this placement group.
+  const std::vector<std::unordered_map<std::string, double>> bundles;
+  /// The name of the placement group.
+  const std::string name;
 };
 
 }  // namespace ray

@@ -1,9 +1,10 @@
 import numpy as np
 import gym
 from gym.envs.mujoco.mujoco_env import MujocoEnv
+from ray.rllib.env.meta_env import MetaEnv
 
 
-class HalfCheetahRandDirecEnv(MujocoEnv, gym.utils.EzPickle):
+class HalfCheetahRandDirecEnv(MujocoEnv, gym.utils.EzPickle, MetaEnv):
     """HalfCheetah Environment with two diff tasks, moving forwards or backwards
 
     Direction is defined as a scalar: +1.0 (forwards) or -1.0 (backwards)

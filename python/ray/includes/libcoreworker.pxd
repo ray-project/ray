@@ -123,17 +123,18 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus SerializeActorHandle(const CActorID &actor_id, c_string
                                         *bytes,
                                         CObjectID *c_actor_handle_id)
-        CRayStatus GetActorHandle(const CActorID &actor_id,
-                                  CActorHandle **actor_handle) const
-        CRayStatus GetNamedActorHandle(const c_string &name,
-                                       CActorHandle **actor_handle)
+        const CActorHandle* GetActorHandle(const CActorID &actor_id) const
+        pair[const CActorHandle*, CRayStatus] GetNamedActorHandle(
+            const c_string &name)
         void AddLocalReference(const CObjectID &object_id)
         void RemoveLocalReference(const CObjectID &object_id)
+        void PutObjectIntoPlasma(const CRayObject &object,
+                                 const CObjectID &object_id)
         const CAddress &GetRpcAddress() const
         CAddress GetOwnerAddress(const CObjectID &object_id) const
         void PromoteObjectToPlasma(const CObjectID &object_id)
-        void PromoteToPlasmaAndGetOwnershipInfo(const CObjectID &object_id,
-                                                CAddress *owner_address)
+        void GetOwnershipInfo(const CObjectID &object_id,
+                              CAddress *owner_address)
         void RegisterOwnershipInfoAndResolveFuture(
                 const CObjectID &object_id,
                 const CObjectID &outer_object_id,
@@ -153,6 +154,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus Create(const shared_ptr[CBuffer] &metadata,
                           const size_t data_size,
                           const CObjectID &object_id,
+                          const CAddress &owner_address,
                           shared_ptr[CBuffer] *data)
         CRayStatus Seal(const CObjectID &object_id, c_bool pin_object)
         CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
@@ -172,7 +174,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         void GetAsync(const CObjectID &object_id,
                       ray_callback_function success_callback,
-                      ray_callback_function fallback_callback,
                       void* python_future)
 
         CRayStatus PushError(const CJobID &job_id, const c_string &type,
@@ -184,10 +185,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus SetResource(const c_string &resource_name,
                                const double capacity,
                                const CClientID &client_Id)
-
-        void SetPlasmaAddedCallback(plasma_callback_function callback)
-
-        void SubscribeToPlasmaAdd(const CObjectID &object_id)
 
     cdef cppclass CCoreWorkerOptions "ray::CoreWorkerOptions":
         CWorkerType worker_type

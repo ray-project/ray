@@ -1,9 +1,6 @@
 from gym.spaces import Tuple, Dict
 import numpy as np
-
-from ray.rllib.utils import try_import_tree
-
-tree = try_import_tree()
+import tree
 
 
 def flatten_space(space):

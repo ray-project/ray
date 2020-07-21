@@ -5,10 +5,9 @@
 #include <thread>
 #include <vector>
 
-#include "ray/common/id.h"
-
-#include "message.h"
 #include "message/message_bundle.h"
+#include "queue/message.h"
+#include "ray/common/id.h"
 #include "util/streaming_logging.h"
 
 namespace ray {

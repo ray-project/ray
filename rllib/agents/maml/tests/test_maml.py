@@ -2,11 +2,8 @@ import unittest
 
 import ray
 import ray.rllib.agents.maml as maml
-from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_compute_single_action, \
     framework_iterator
-
-tf = try_import_tf()
 
 
 class TestMAML(unittest.TestCase):
@@ -27,7 +24,7 @@ class TestMAML(unittest.TestCase):
         num_iterations = 1
 
         # Test for tf framework (torch not implemented yet).
-        for _ in framework_iterator(config, frameworks=("tf")):
+        for _ in framework_iterator(config, frameworks=("tf", "torch")):
             trainer = maml.MAMLTrainer(
                 config=config,
                 env="ray.rllib.examples.env.pendulum_mass.PendulumMassEnv")

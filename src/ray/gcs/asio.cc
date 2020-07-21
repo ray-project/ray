@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "asio.h"
-
-#ifdef _WIN32
-#include <win32fd.h>
-#endif
+#include "ray/gcs/asio.h"
 
 #include "ray/util/logging.h"
+
+extern "C" {
+#include "hiredis/async.h"
+}
 
 RedisAsioClient::RedisAsioClient(boost::asio::io_service &io_service,
                                  ray::gcs::RedisAsyncContext &redis_async_context)
@@ -37,7 +37,7 @@ RedisAsioClient::RedisAsioClient(boost::asio::io_service &io_service,
 #ifdef _WIN32
   SOCKET sock = SOCKET_ERROR;
   WSAPROTOCOL_INFO pi;
-  if (WSADuplicateSocket(fh_get(c->fd), GetCurrentProcessId(), &pi) == 0) {
+  if (WSADuplicateSocket(c->fd, GetCurrentProcessId(), &pi) == 0) {
     DWORD flag = WSA_FLAG_OVERLAPPED;
     sock = WSASocket(pi.iAddressFamily, pi.iSocketType, pi.iProtocol, &pi, 0, flag);
   }

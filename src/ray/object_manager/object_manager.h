@@ -134,11 +134,13 @@ class ObjectManager : public ObjectManagerInterface,
   /// contains only one chunk
   /// \param push_id Unique push id to indicate this push request
   /// \param object_id Object id
+  /// \param owner_address The address of the object's owner
   /// \param data_size Data size
   /// \param metadata_size Metadata size
   /// \param chunk_index Chunk index of this object chunk, start with 0
   /// \param rpc_client Rpc client used to send message to remote object manager
   ray::Status SendObjectChunk(const UniqueID &push_id, const ObjectID &object_id,
+                              const rpc::Address &owner_address,
                               const ClientID &client_id, uint64_t data_size,
                               uint64_t metadata_size, uint64_t chunk_index,
                               std::shared_ptr<rpc::ObjectManagerClient> rpc_client);
@@ -147,13 +149,15 @@ class ObjectManager : public ObjectManagerInterface,
   ///
   /// \param client_id Client id of remote object manager which sends this chunk
   /// \param object_id Object id
+  /// \param owner_address The address of the object's owner
   /// \param data_size Data size
   /// \param metadata_size Metadata size
   /// \param chunk_index Chunk index
   /// \param data Chunk data
   ray::Status ReceiveObjectChunk(const ClientID &client_id, const ObjectID &object_id,
-                                 uint64_t data_size, uint64_t metadata_size,
-                                 uint64_t chunk_index, const std::string &data);
+                                 const rpc::Address &owner_address, uint64_t data_size,
+                                 uint64_t metadata_size, uint64_t chunk_index,
+                                 const std::string &data);
 
   /// Send pull request
   ///

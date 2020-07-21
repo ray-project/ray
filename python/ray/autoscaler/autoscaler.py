@@ -206,7 +206,7 @@ class StandardAutoscaler:
                               self.max_concurrent_launches - num_pending)
 
             num_launches = min(max_allowed, target_workers - num_workers)
-            self.launch_new_node(num_launches, instance_type=None)
+            self.launch_new_node(num_launches)
             nodes = self.workers()
             self.log_info_string(nodes, target_workers)
         elif self.load_metrics.num_workers_connected() >= target_workers:
@@ -400,14 +400,13 @@ class StandardAutoscaler:
             return False
         return True
 
-    def launch_new_node(self, count, instance_type):
+    def launch_new_node(self, count, instance_type=None):
         logger.info(
             "StandardAutoscaler: Queue {} new nodes for launch".format(count))
         # Try to fill in the default instance type so we can tag it properly.
         if not instance_type:
             instance_type = self.provider.get_instance_type(
                 self.config["worker_nodes"])
-            assert instance_type is not None
         self.pending_launches.inc(instance_type, count)
         config = copy.deepcopy(self.config)
         self.launch_queue.put((config, count, instance_type))

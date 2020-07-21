@@ -447,7 +447,7 @@ void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,
   if (spec.IsActorCreationTask()) {
     // Publish actor death if actor creation task failed after
     // a number of retries.
-    actor_manager_->PublishTerminatedActor(spec);
+    actor_reporter_->PublishTerminatedActor(spec);
   }
 }
 

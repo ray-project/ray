@@ -9,7 +9,7 @@ import io.ray.streaming.api.function.impl.FlatMapFunction;
 import io.ray.streaming.api.function.impl.ReduceFunction;
 import io.ray.streaming.api.stream.DataStreamSource;
 import io.ray.streaming.runtime.BaseUnitTest;
-import io.ray.streaming.runtime.transfer.ChannelID;
+import io.ray.streaming.runtime.transfer.ChannelId;
 import io.ray.streaming.runtime.util.EnvUtil;
 import io.ray.streaming.util.Config;
 import java.io.File;
@@ -99,7 +99,7 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
     List<String> inputQueueList = new ArrayList<>();
     int queueNum = 2;
     for (int i = 0; i < queueNum; ++i) {
-      String qid = ChannelID.genRandomIdStr();
+      String qid = ChannelId.genRandomIdStr();
       LOGGER.info("getRandomQueueId: {}", qid);
       inputQueueList.add(qid);
       outputQueueList.add(qid);

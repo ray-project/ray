@@ -623,18 +623,18 @@ def test_cluster_interrupt(start_connected_cluster, tmpdir):
     class _Mock(tune.Trainable):
         """Finishes on the 4th iteration."""
 
-        def _setup(self, config):
+        def setup(self, config):
             self.state = {"hi": 0}
 
-        def _train(self):
+        def step(self):
             self.state["hi"] += 1
             time.sleep(0.5)
             return {"done": self.state["hi"] >= 4}
 
-        def _save(self, path):
+        def save_checkpoint(self, path):
             return self.state
 
-        def _restore(self, state):
+        def load_checkpoint(self, state):
             self.state = state
 
     # Removes indent from class.
