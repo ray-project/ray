@@ -12,9 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "asio.h"
+#include "ray/gcs/asio.h"
 
 #include "ray/util/logging.h"
+
+extern "C" {
+#include "hiredis/async.h"
+}
 
 RedisAsioClient::RedisAsioClient(boost::asio::io_service &io_service,
                                  ray::gcs::RedisAsyncContext &redis_async_context)

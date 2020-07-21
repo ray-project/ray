@@ -22,15 +22,15 @@ Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
 
 EXPECTED_RESULT_2 = """Result logdir: /foo
 Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
-+--------------+------------+-------+-----+-----+
-|   Trial name | status     | loc   |   a |   b |
-|--------------+------------+-------+-----+-----|
-|        00000 | TERMINATED | here  |   0 |   0 |
-|        00001 | PENDING    | here  |   1 |   2 |
-|        00002 | RUNNING    | here  |   2 |   4 |
-|        00003 | RUNNING    | here  |   3 |   6 |
-|        00004 | RUNNING    | here  |   4 |   8 |
-+--------------+------------+-------+-----+-----+"""
++--------------+------------+-------+-----+-----+---------+---------+
+|   Trial name | status     | loc   |   a |   b |   n/k/0 |   n/k/1 |
+|--------------+------------+-------+-----+-----+---------+---------|
+|        00000 | TERMINATED | here  |   0 |   0 |       0 |       0 |
+|        00001 | PENDING    | here  |   1 |   2 |       1 |       2 |
+|        00002 | RUNNING    | here  |   2 |   4 |       2 |       4 |
+|        00003 | RUNNING    | here  |   3 |   6 |       3 |       6 |
+|        00004 | RUNNING    | here  |   4 |   8 |       4 |       8 |
++--------------+------------+-------+-----+-----+---------+---------+"""
 
 EXPECTED_RESULT_3 = """Result logdir: /foo
 Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
@@ -246,21 +246,29 @@ class ProgressReporterTest(unittest.TestCase):
             t.trial_id = "%05d" % i
             t.local_dir = "/foo"
             t.location = "here"
-            t.config = {"a": i, "b": i * 2}
-            t.evaluated_params = t.config
+            t.config = {"a": i, "b": i * 2, "n": {"k": [i, 2 * i]}}
+            t.evaluated_params = {
+                "a": i,
+                "b": i * 2,
+                "n/k/0": i,
+                "n/k/1": 2 * i
+            }
             t.last_result = {
                 "config": {
                     "a": i,
-                    "b": i * 2
+                    "b": i * 2,
+                    "n": {
+                        "k": [i, 2 * i]
+                    }
                 },
                 "metric_1": i / 2,
                 "metric_2": i / 4
             }
             t.__str__ = lambda self: self.trial_id
             trials.append(t)
-        # One metric, all parameters
+        # One metric, two parameters
         prog1 = trial_progress_str(
-            trials, ["metric_1"], None, fmt="psql", max_rows=3)
+            trials, ["metric_1"], ["a", "b"], fmt="psql", max_rows=3)
         print(prog1)
         assert prog1 == EXPECTED_RESULT_1
 

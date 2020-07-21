@@ -29,53 +29,88 @@ cdef class GlobalStateAccessor:
         )
 
     def connect(self):
-        return self.inner.get().Connect()
+        cdef c_bool result
+        with nogil:
+            result = self.inner.get().Connect()
+        return result
 
     def disconnect(self):
-        self.inner.get().Disconnect()
+        with nogil:
+            self.inner.get().Disconnect()
 
     def get_job_table(self):
-        return self.inner.get().GetAllJobInfo()
+        cdef c_vector[c_string] result
+        with nogil:
+            result = self.inner.get().GetAllJobInfo()
+        return result
 
     def get_node_table(self):
-        return self.inner.get().GetAllNodeInfo()
+        cdef c_vector[c_string] result
+        with nogil:
+            result = self.inner.get().GetAllNodeInfo()
+        return result
 
     def get_profile_table(self):
-        return self.inner.get().GetAllProfileInfo()
+        cdef c_vector[c_string] result
+        with nogil:
+            result = self.inner.get().GetAllProfileInfo()
+        return result
 
     def get_object_table(self):
-        return self.inner.get().GetAllObjectInfo()
+        cdef c_vector[c_string] result
+        with nogil:
+            result = self.inner.get().GetAllObjectInfo()
+        return result
 
-    def get_object_info(self, object_ref):
-        object_info = self.inner.get().GetObjectInfo(
-            CObjectID.FromBinary(object_ref.binary()))
+    def get_object_info(self, object_id):
+        cdef unique_ptr[c_string] object_info
+        cdef CObjectID cobject_id = CObjectID.FromBinary(object_id.binary())
+        with nogil:
+            object_info = self.inner.get().GetObjectInfo(cobject_id)
         if object_info:
             return c_string(object_info.get().data(), object_info.get().size())
         return None
 
     def get_actor_table(self):
-        return self.inner.get().GetAllActorInfo()
+        cdef c_vector[c_string] result
+        with nogil:
+            result = self.inner.get().GetAllActorInfo()
+        return result
 
     def get_actor_info(self, actor_id):
-        actor_info = self.inner.get().GetActorInfo(
-            CActorID.FromBinary(actor_id.binary()))
+        cdef unique_ptr[c_string] actor_info
+        cdef CActorID cactor_id = CActorID.FromBinary(actor_id.binary())
+        with nogil:
+            actor_info = self.inner.get().GetActorInfo(cactor_id)
         if actor_info:
             return c_string(actor_info.get().data(), actor_info.get().size())
         return None
 
     def get_node_resource_info(self, node_id):
-        return self.inner.get().GetNodeResourceInfo(
-            CClientID.FromBinary(node_id.binary()))
+        cdef c_string result
+        cdef CClientID cnode_id = CClientID.FromBinary(node_id.binary())
+        with nogil:
+            result = self.inner.get().GetNodeResourceInfo(cnode_id)
+        return result
 
     def get_worker_table(self):
-        return self.inner.get().GetAllWorkerInfo()
+        cdef c_vector[c_string] result
+        with nogil:
+            self.inner.get().GetAllWorkerInfo()
+        return result
 
     def get_worker_info(self, worker_id):
-        worker_info = self.inner.get().GetWorkerInfo(
-            CWorkerID.FromBinary(worker_id.binary()))
+        cdef unique_ptr[c_string] worker_info
+        cdef CWorkerID cworker_id = CWorkerID.FromBinary(worker_id.binary())
+        with nogil:
+            worker_info = self.inner.get().GetWorkerInfo(cworker_id)
         if worker_info:
             return c_string(worker_info.get().data(), worker_info.get().size())
         return None
 
     def add_worker_info(self, serialized_string):
-        return self.inner.get().AddWorkerInfo(serialized_string)
+        cdef c_bool result
+        cdef c_string cserialized_string = serialized_string
+        with nogil:
+            result = self.inner.get().AddWorkerInfo(cserialized_string)
+        return result

@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/lib/java/io_ray_runtime_task_NativeTaskSubmitter.h"
+#include "io_ray_runtime_task_NativeTaskSubmitter.h"
 
 #include <jni.h>
 
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker.h"
-#include "ray/core_worker/lib/java/jni_utils.h"
+#include "jni_utils.h"
 
 /// Store C++ instances of ray function in the cache to avoid unnessesary JNI operations.
 thread_local std::unordered_map<jint, std::vector<std::pair<jobject, ray::RayFunction>>>
@@ -102,11 +102,20 @@ inline ray::TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject call
 
 inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
                                                         jobject actorCreationOptions) {
+  bool global = false;
+  std::string name = "";
   int64_t max_restarts = 0;
   std::unordered_map<std::string, double> resources;
   std::vector<std::string> dynamic_worker_options;
   uint64_t max_concurrency = 1;
   if (actorCreationOptions) {
+    global =
+        env->GetBooleanField(actorCreationOptions, java_actor_creation_options_global);
+    auto java_name = (jstring)env->GetObjectField(actorCreationOptions,
+                                                  java_actor_creation_options_name);
+    if (java_name) {
+      name = JavaStringToNativeString(env, java_name);
+    }
     max_restarts =
         env->GetIntField(actorCreationOptions, java_actor_creation_options_max_restarts);
     jobject java_resources =
@@ -122,7 +131,7 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
         actorCreationOptions, java_actor_creation_options_max_concurrency));
   }
 
-  std::string name = "";
+  auto full_name = GetActorFullName(global, name);
   ray::ActorCreationOptions actor_creation_options{
       max_restarts,
       0,  // TODO: Allow setting max_task_retries from Java.
@@ -131,7 +140,7 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
       resources,
       dynamic_worker_options,
       /*is_detached=*/false,
-      name,
+      full_name,
       /*is_asyncio=*/false};
   return actor_creation_options;
 }

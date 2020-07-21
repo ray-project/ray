@@ -13,8 +13,9 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_server/gcs_placement_group_scheduler.h"
-#include <ray/protobuf/gcs.pb.h>
+
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace gcs {
@@ -188,8 +189,8 @@ void GcsPlacementGroupScheduler::ReserveResourceFromNode(
             if (iter->second.empty()) {
               node_to_bundles_when_leasing_.erase(iter);
             }
+            callback(status, reply);
           }
-          callback(status, reply);
         }
       });
   if (!status.ok()) {
@@ -229,7 +230,7 @@ void GcsPlacementGroupScheduler::CancelResourceReserve(
               });
         }
       });
-}  // namespace gcs
+}
 
 std::shared_ptr<ResourceReserveInterface>
 GcsPlacementGroupScheduler::GetOrConnectLeaseClient(const rpc::Address &raylet_address) {

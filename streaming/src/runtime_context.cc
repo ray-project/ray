@@ -1,8 +1,8 @@
-#include "ray/common/id.h"
-#include "ray/protobuf/common.pb.h"
-#include "ray/util/util.h"
-
 #include "runtime_context.h"
+
+#include "ray/common/id.h"
+#include "ray/util/util.h"
+#include "src/ray/protobuf/common.pb.h"
 #include "util/streaming_logging.h"
 
 namespace ray {
