@@ -187,7 +187,7 @@ class TorchPolicy(Policy):
                 self.model, trajectories, is_training=False))
             # TODO: (sven) support RNNs w/ fast sampling.
             state_batches = [input_dict[k] for k in input_dict.keys() if "state_" in k[:6]]
-            seq_lens = np.array([1] * len(trajectories))
+            seq_lens = np.array([1] * len(trajectories.forward_pass_indices[0]))
 
             actions, state_out, extra_fetches, logp = \
                 self._compute_action_helper(

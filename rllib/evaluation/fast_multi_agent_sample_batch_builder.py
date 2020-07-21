@@ -4,8 +4,9 @@ from typing import Dict, Optional, Union
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.evaluation.episode import MultiAgentEpisode
-from ray.rllib.evaluation.policy_trajectories import PolicyTrajectories
-from ray.rllib.evaluation.trajectory import Trajectory
+#from ray.rllib.evaluation.policy_trajectories import PolicyTrajectories
+#from ray.rllib.evaluation.trajectory import Trajectory
+from ray.rllib.evaluation.rollout_sample_collector import RolloutSampleCollector
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.debug import summarize
@@ -37,7 +38,8 @@ class _FastMultiAgentSampleBatchBuilder:
     def __init__(self, policy_map: Dict[PolicyID, Policy],
                  clip_rewards: Union[bool, float],
                  callbacks: "DefaultCallbacks",
-                 buffer_size: Optional[Union[float, int]] = None):
+                 B = 100):
+                 #buffer_size: Optional[Union[float, int]] = None):
         """Initializes a _FastMultiAgentSampleBatchBuilder object.
 
         Args:
@@ -53,22 +55,22 @@ class _FastMultiAgentSampleBatchBuilder:
         self.policy_map = policy_map
         self.clip_rewards = clip_rewards
         self.callbacks = callbacks
-        if buffer_size == float("inf") or buffer_size is None:
-            buffer_size = 1000
-        self.buffer_size = int(buffer_size)
+        if B == float("inf") or B is None:
+            B = 1000
+        self.buffer_size = int(B)
 
         # Collect SampleBatches per-policy in PolicyTrajectories objects.
-        self.policy_trajectories = {}
+        self.rollout_sample_collectors = {}
         for pid, policy in policy_map.items():
             kwargs = {}
             if policy.is_recurrent():
-                kwargs["T"] = \
+                kwargs["num_timesteps"] = \
                     policy.model.model_config["max_seq_len"]
-            self.policy_trajectories[pid] = PolicyTrajectories(
-                B=self.buffer_size, **kwargs)
+            self.rollout_sample_collectors[pid] = RolloutSampleCollector(
+                num_agents=self.buffer_size, **kwargs)
         # Whenever we observe a new agent, add a new Trajectory object for
         # this agent.
-        self.single_agent_trajectories = {}
+        #self.single_agent_trajectories = {}
 
         # Internal agent-to-policy map.
         self.agent_to_policy = {}
@@ -83,8 +85,7 @@ class _FastMultiAgentSampleBatchBuilder:
             int: The number of steps taken in total in the environment over all
                 agents.
         """
-
-        return sum(a.timestep for a in self.single_agent_trajectories.values())
+        return sum(a.timesteps_since_last_reset for a in self.rollout_sample_collectors.values())
 
     def has_pending_agent_data(self) -> bool:
         """Returns whether there is pending unprocessed data.
@@ -117,12 +118,12 @@ class _FastMultiAgentSampleBatchBuilder:
             assert self.agent_to_policy[agent_id] == policy_id
 
         # We don't have a Trajcetory for this agent ID yet, create a new one.
-        if agent_id not in self.single_agent_trajectories:
-            self.single_agent_trajectories[agent_id] = Trajectory(
-                buffer_size=self.buffer_size)
+        #if agent_id not in self.single_agent_trajectories:
+        #    self.single_agent_trajectories[agent_id] = Trajectory(
+        #        buffer_size=self.buffer_size)
         # Add initial obs to Trajectory.
-        self.single_agent_trajectories[agent_id].add_init_obs(
-            env_id, agent_id, policy_id, obs)
+        self.rollout_sample_collectors[policy_id].add_init_obs(
+            env_id, agent_id, obs)
 
     def add_action_reward_next_obs(self,
                                    env_id: EnvID,
@@ -138,7 +139,7 @@ class _FastMultiAgentSampleBatchBuilder:
             policy_id (PolicyID): Unique id for policy controlling the agent.
             values (Dict[str,TensorType]): Row of values to add for this agent.
         """
-        assert agent_id in self.single_agent_trajectories
+        assert policy_id in self.rollout_sample_collectors
 
         # Make sure our mappings are up to date.
         if agent_id not in self.agent_to_policy:
@@ -152,8 +153,8 @@ class _FastMultiAgentSampleBatchBuilder:
         #values["env_id"] = env_id
 
         # Add action/reward/next-obs (and other data) to Trajectory.
-        self.single_agent_trajectories[agent_id].add_action_reward_next_obs(
-            env_id, agent_id, policy_id, values)
+        self.rollout_sample_collectors[policy_id].add_action_reward_next_obs(
+            env_id, agent_id, values)
 
     def postprocess_batch_so_far(
         self,

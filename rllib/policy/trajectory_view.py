@@ -69,14 +69,14 @@ class ViewRequirement:
 
 def get_trajectory_view(
         model,
-        trajectories,
+        collector,
         is_training: bool = False) -> Dict[str, TensorType]:
     """Returns an input_dict for a Model's forward pass given some data.
 
     Args:
         model (ModelV2): The ModelV2 object for which to generate the view
             (input_dict) from `data`.
-        trajectories (List[Trajectory]): The data from which to generate
+        collector (RolloutSampleCollector): The data from which to generate
             an input_dict.
         is_training (bool): Whether the view should be generated for training
             purposes or inference (default).
@@ -97,26 +97,31 @@ def get_trajectory_view(
         #   single(!) np buffer per column across all currently ongoing
         #   agents + episodes (which seems very hard to realize).
         data_col = view_req.data_col or view_col
-        batch = []
-        for traj in trajectories:
-            if traj.cursor + view_req.timesteps < 0:
-                if data_col == SampleBatch.OBS:
-                    batch.append(traj.initial_obs)
-                else:
-                    if view_req.fill == "zeros":
-                        batch.append(np.zeros(view_req.space.shape))
-                    else:
-                        raise NotImplementedError
-            elif data_col in traj.buffers:
-                batch.append(traj.buffers[data_col][traj.cursor + view_req.timesteps])
+        #batch = []
+        #for traj in trajectories:
+        #    if traj.cursor + view_req.timesteps < 0:
+        #        if data_col == SampleBatch.OBS:
+        #            batch.append(traj.initial_obs)
+        #        else:
+        #            if view_req.fill == "zeros":
+        #                batch.append(np.zeros(view_req.space.shape))
+        #            else:
+        #                raise NotImplementedError
+        if data_col not in collector.buffers:
+            collector._build_buffers({data_col: view_req.space.sample()})
+
+        #if data_col in collector.buffers:
+            #batch.append(traj.buffers[data_col][traj.cursor + view_req.timesteps])
             # TODO
             #elif view_req.fill == "tile":
             #    batch.append(np.zeros(view_req.space.shape))
-            else:
-                raise NotImplementedError
-        if torch and isinstance(batch[0], torch.Tensor):
-            view[view_col] = torch.stack(batch)
-        else:
-            view[view_col] = np.array(batch)
+        view[view_col] = collector.buffers[data_col][collector.forward_pass_indices]
+        #else:
+        #    view[view_col]
+        #    raise NotImplementedError
+        #if torch and isinstance(batch[0], torch.Tensor):
+        #    view[view_col] = torch.stack(batch)
+        #else:
+        #    view[view_col] = np.array(batch)
 
     return view
