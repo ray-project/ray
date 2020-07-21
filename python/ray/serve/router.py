@@ -3,10 +3,10 @@ import copy
 from collections import defaultdict, deque
 import time
 from typing import DefaultDict, List
+import pickle
 
 import blist
 
-import ray.cloudpickle as pickle
 from ray.exceptions import RayTaskError
 
 import ray
@@ -50,7 +50,7 @@ class Query:
         # worker without removing async_future.
         clone = copy.copy(self).__dict__
         clone.pop("async_future")
-        return pickle.dumps(clone, protocol=5)
+        return pickle.dumps(clone)
 
     @staticmethod
     def ray_deserialize(value):
@@ -133,27 +133,27 @@ class Router:
 
         # -- State Restoration -- #
         # Fetch the worker handles, traffic policies, and backend configs from
-        # the master actor. We use a "pull-based" approach instead of pushing
-        # them from the master so that the router can transparently recover
+        # the controller. We use a "pull-based" approach instead of pushing
+        # them from the controller so that the router can transparently recover
         # from failure.
         serve.init(name=instance_name)
-        master_actor = serve.api._get_master_actor()
+        controller = serve.api._get_controller()
 
-        traffic_policies = ray.get(master_actor.get_traffic_policies.remote())
+        traffic_policies = ray.get(controller.get_traffic_policies.remote())
         for endpoint, traffic_policy in traffic_policies.items():
             await self.set_traffic(endpoint, traffic_policy)
 
-        backend_dict = ray.get(master_actor.get_all_worker_handles.remote())
+        backend_dict = ray.get(controller.get_all_worker_handles.remote())
         for backend_tag, replica_dict in backend_dict.items():
             for replica_tag, worker in replica_dict.items():
                 await self.add_new_worker(backend_tag, replica_tag, worker)
 
-        backend_configs = ray.get(master_actor.get_backend_configs.remote())
+        backend_configs = ray.get(controller.get_backend_configs.remote())
         for backend, backend_config in backend_configs.items():
             await self.set_backend_config(backend, backend_config)
 
         # -- Metric Registration -- #
-        [metric_exporter] = ray.get(master_actor.get_metric_exporter.remote())
+        [metric_exporter] = ray.get(controller.get_metric_exporter.remote())
         self.metric_client = MetricClient(metric_exporter)
         self.num_router_requests = self.metric_client.new_counter(
             "num_router_requests",
@@ -316,13 +316,14 @@ class Router:
         start = time.time()
         worker = self.replicas[backend_replica_tag]
         try:
+            object_ref = worker.handle_request.remote(req.ray_serialize())
             if req.is_shadow_query:
                 # No need to actually get the result, but we do need to wait
                 # until the call completes to mark the worker idle.
-                asyncio.wait([worker.handle_request.remote(req)])
+                await asyncio.wait([object_ref])
                 result = ""
             else:
-                result = await worker.handle_request.remote(req)
+                result = await object_ref
         except RayTaskError as error:
             self.num_error_backend_request.labels(backend=backend).add()
             result = error

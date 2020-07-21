@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "scheduling_ids.h"
+#include "ray/raylet/scheduling/scheduling_ids.h"
 
 int64_t StringIdMap::Get(const std::string &string_id) {
   auto it = string_to_int_.find(string_id);

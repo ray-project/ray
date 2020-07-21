@@ -34,7 +34,7 @@ public class NativeTaskSubmitter implements TaskSubmitter {
   @Override
   public BaseActorHandle createActor(FunctionDescriptor functionDescriptor, List<FunctionArg> args,
                                      ActorCreationOptions options) throws IllegalArgumentException {
-    if (StringUtils.isNotBlank(options.name)) {
+    if (options != null && StringUtils.isNotBlank(options.name)) {
       Optional<BaseActorHandle> actor =
           options.global ? Ray.getGlobalActor(options.name) : Ray.getActor(options.name);
       Preconditions.checkArgument(!actor.isPresent(),

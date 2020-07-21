@@ -1,4 +1,5 @@
 load("//bazel:ray.bzl", "define_java_module")
+load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@rules_proto_grpc//java:defs.bzl", "java_proto_compile")
 
 exports_files([
@@ -144,24 +145,18 @@ filegroup(
 
 # plasma_store_server binary should be located in jar root path
 # and keep in sync with mvn resource
-genrule(
+copy_file(
     name = "cp_plasma_store_server",
-    srcs = [
-        "//:plasma_store_server",
-    ],
-    outs = ["plasma_store_server"],
-    cmd = """
-        cp -f $(location //:plasma_store_server) $@
-    """,
+    src = "//:plasma_store_server",
+    out = "plasma_store_server",
 )
 
 # `//:redis-server`'s full path is `external/com_github_antirez_redis/redis-server`,
 # This rule removes the prefix, and only keeps `redis-server`.
-genrule(
+copy_file(
     name = "redis-server-without-prefix",
-    srcs = ["//:redis-server"],
-    outs = ["redis-server"],
-    cmd = "cp $< $@",
+    src = "//:redis-server",
+    out = "redis-server",
 )
 
 filegroup(

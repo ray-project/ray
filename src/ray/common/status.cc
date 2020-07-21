@@ -50,6 +50,7 @@ namespace ray {
 #define STATUS_CODE_UNEXPECTED_SYSTEM_EXIT "UnexpectedSystemExit"
 #define STATUS_CODE_UNKNOWN "Unknown"
 #define STATUS_CODE_NOT_FOUND "NotFound"
+#define STATUS_CODE_DISCONNECTED "Disconnected"
 // object store status
 #define STATUS_CODE_OBJECT_EXISTS "ObjectExists"
 #define STATUS_CODE_OBJECT_NOT_FOUND "ObjectNotFound"
@@ -92,6 +93,7 @@ std::string Status::CodeAsString() const {
       {StatusCode::IntentionalSystemExit, STATUS_CODE_INTENTIONAL_SYSTEM_EXIT},
       {StatusCode::UnexpectedSystemExit, STATUS_CODE_UNEXPECTED_SYSTEM_EXIT},
       {StatusCode::NotFound, STATUS_CODE_NOT_FOUND},
+      {StatusCode::Disconnected, STATUS_CODE_DISCONNECTED},
       {StatusCode::ObjectExists, STATUS_CODE_OBJECT_EXISTS},
       {StatusCode::ObjectNotFound, STATUS_CODE_OBJECT_NOT_FOUND},
       {StatusCode::ObjectAlreadySealed, STATUS_CODE_OBJECT_STORE_ALREADY_SEALED},
