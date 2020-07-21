@@ -21,11 +21,7 @@
 #include "ray/common/function_descriptor.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
-#include "ray/common/status.h"
 #include "ray/core_worker/core_worker.h"
-#include "ray/stats/metric.h"
-
-#include "opencensus/tags/tag_key.h"
 
 /// Boolean class
 extern jclass java_boolean_class;
@@ -454,34 +450,6 @@ inline jobject NativeRayFunctionDescriptorToJavaStringList(
   }
   RAY_LOG(FATAL) << "Unknown function descriptor type: " << function_descriptor->Type();
   return NativeStringVectorToJavaStringList(env, std::vector<std::string>());
-}
-
-using TagKeyType = opencensus::tags::TagKey;
-
-/// Convert jni metric related data to native type for stats.
-/// \param[in] j_name metric name in jni string.
-/// \param[in] j_description metric description in jni string.
-/// \param[in] j_unit metric measurement unit in jni string.
-/// \param[in] tag_key_list tag key list in java list.
-/// \param[out] metric_name metric name in native string.
-/// \param[out] description metric description in native string.
-/// \param[out] unit metric measurement unit in native string.
-/// \param[out] tag_keys metric tag key vector unit in native vector.
-inline void MetricTransform(JNIEnv *env, jstring j_name, jstring j_description,
-                            jstring j_unit, jobject tag_key_list,
-                            std::string *metric_name, std::string *description,
-                            std::string *unit, std::vector<TagKeyType> &tag_keys) {
-  *metric_name = JavaStringToNativeString(env, static_cast<jstring>(j_name));
-  *description = JavaStringToNativeString(env, static_cast<jstring>(j_description));
-  *unit = JavaStringToNativeString(env, static_cast<jstring>(j_unit));
-  std::vector<std::string> tag_key_str_list;
-  JavaStringListToNativeStringVector(env, tag_key_list, &tag_key_str_list);
-  // We just call TagKeyType::Register to get tag object since opencensus tags
-  // registry is thread-safe and registry can return a new tag or registered
-  // item when it already exists.
-  std::transform(tag_key_str_list.begin(), tag_key_str_list.end(),
-                 std::back_inserter(tag_keys),
-                 [](std::string tag_key) { return TagKeyType::Register(tag_key); });
 }
 
 // Return an actor fullname with job id prepended if this tis a global actor.
