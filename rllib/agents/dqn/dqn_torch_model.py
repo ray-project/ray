@@ -1,5 +1,3 @@
-import numpy as np
-
 from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.models.torch.modules.noisy_layer import NoisyLayer
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
@@ -72,14 +70,22 @@ class DQNTorchModel(TorchModelV2, nn.Module):
         for i, n in enumerate(q_hiddens):
             if use_noisy:
                 advantage_module.add_module(
-                    "dueling_A_{}".format(i), NoisyLayer(ins, n, sigma0=self.sigma0, activation=dueling_activation))
+                    "dueling_A_{}".format(i),
+                    NoisyLayer(
+                        ins, n, sigma0=self.sigma0,
+                        activation=dueling_activation))
                 value_module.add_module(
-                    "dueling_V_{}".format(i), NoisyLayer(ins, n, sigma0=self.sigma0, activation=dueling_activation))
+                    "dueling_V_{}".format(i),
+                    NoisyLayer(
+                        ins, n, sigma0=self.sigma0,
+                        activation=dueling_activation))
             else:
                 advantage_module.add_module(
-                    "dueling_A_{}".format(i), SlimFC(ins, n, activation_fn=dueling_activation))
+                    "dueling_A_{}".format(i),
+                    SlimFC(ins, n, activation_fn=dueling_activation))
                 value_module.add_module(
-                    "dueling_V_{}".format(i), SlimFC(ins, n, activation_fn=dueling_activation))
+                    "dueling_V_{}".format(i),
+                    SlimFC(ins, n, activation_fn=dueling_activation))
                 # Add LayerNorm after each Dense.
                 if add_layer_norm:
                     advantage_module.add_module(
@@ -96,7 +102,11 @@ class DQNTorchModel(TorchModelV2, nn.Module):
                 sigma0,
                 activation=None))
         elif q_hiddens:
-            advantage_module.add_module("A", SlimFC(ins, action_space.n * self.num_atoms, activation_fn=None))
+            advantage_module.add_module(
+                "A",
+                SlimFC(
+                    ins, action_space.n * self.num_atoms,
+                    activation_fn=None))
 
         self.advantage_module = advantage_module
 
@@ -123,7 +133,8 @@ class DQNTorchModel(TorchModelV2, nn.Module):
             # Distributional Q-learning uses a discrete support z
             # to represent the action value distribution
             z = torch.range(0.0, self.num_atoms - 1, dtype=torch.float32)
-            z = self.v_min + z * (self.v_max - self.v_min) / float(self.num_atoms - 1)
+            z = self.v_min + \
+                z * (self.v_max - self.v_min) / float(self.num_atoms - 1)
 
             support_logits_per_action = torch.reshape(
                 action_scores, shape=(-1, self.action_space.n, self.num_atoms))

@@ -68,9 +68,11 @@ class NoisyLayer(nn.Module):
 
     def forward(self, inputs):
         epsilon_in = self._f_epsilon(torch.normal(
-            mean=torch.zeros([self.in_size]), std=torch.ones([self.in_size])))
+            mean=torch.zeros([self.in_size]),
+            std=torch.ones([self.in_size])))
         epsilon_out = self._f_epsilon(torch.normal(
-            mean=torch.zeros([self.out_size]), std=torch.ones([self.out_size])))
+            mean=torch.zeros([self.out_size]),
+            std=torch.ones([self.out_size])))
         epsilon_w = torch.matmul(
             torch.unsqueeze(epsilon_in, -1),
             other=torch.unsqueeze(epsilon_out, 0))
