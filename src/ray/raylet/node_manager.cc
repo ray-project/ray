@@ -3934,27 +3934,64 @@ void NodeManager::TriggerGlobalGC() {
 
 void NodeManager::HandlePlasmaCreate(const rpc::PlasmaCreateRequest &request,
                                      rpc::PlasmaCreateReply *reply,
-                                     rpc::SendReplyCallback send_reply_callback) {}
+                                     rpc::SendReplyCallback send_reply_callback) {
+  std::shared_ptr<arrow::Buffer> buf;
+  auto object_id = ObjectID::FromBinary(request.object_id());
+  auto status = store_client_.Create(
+      object_id, request.data_size(),
+      reinterpret_cast<const uint8_t *>(request.metadata().c_str()),
+      request.metadata().length(), &buf, request.device_num(), request.evict_if_full());
+  reply->mutable_status()->set_code(static_cast<int32_t>(status.code()));
+  reply->mutable_status()->set_message(status.message());
+  if (status.ok()) {
+    created_buffers_[object_id] = buf;
+  }
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
 
 void NodeManager::HandlePlasmaGet(const rpc::PlasmaGetRequest &request,
                                   rpc::PlasmaGetReply *reply,
-                                  rpc::SendReplyCallback send_reply_callback) {}
+                                  rpc::SendReplyCallback send_reply_callback) {
+  send_reply_callback(Status::NotImplemented("todo"), nullptr, nullptr);
+}
 
 void NodeManager::HandlePlasmaRelease(const rpc::PlasmaReleaseRequest &request,
                                       rpc::PlasmaReleaseReply *reply,
-                                      rpc::SendReplyCallback send_reply_callback) {}
+                                      rpc::SendReplyCallback send_reply_callback) {
+  send_reply_callback(Status::NotImplemented("todo"), nullptr, nullptr);
+}
 
 void NodeManager::HandlePlasmaContains(const rpc::PlasmaContainsRequest &request,
                                        rpc::PlasmaContainsReply *reply,
-                                       rpc::SendReplyCallback send_reply_callback) {}
+                                       rpc::SendReplyCallback send_reply_callback) {
+  send_reply_callback(Status::NotImplemented("todo"), nullptr, nullptr);
+}
 
 void NodeManager::HandlePlasmaSeal(const rpc::PlasmaSealRequest &request,
                                    rpc::PlasmaSealReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback) {}
+                                   rpc::SendReplyCallback send_reply_callback) {
+  auto object_id = ObjectID::FromBinary(request.object_id());
+  auto it = created_buffers_.find(object_id);
+  if (it == created_buffers_.end()) {
+    send_reply_callback(Status::ObjectNotFound("tried to seal nonexistent object"),
+                        nullptr, nullptr);
+    return;
+  }
+  size_t data_size = it->second->size();
+  if (data_size != request.data().length()) {
+    send_reply_callback(Status::Invalid("object size mismatch"), nullptr, nullptr);
+    return;
+  }
+  memcpy(it->second->mutable_data(), request.data().c_str(), data_size);
+  store_client_->Seal(object_id);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
 
 void NodeManager::HandlePlasmaDelete(const rpc::PlasmaDeleteRequest &request,
                                      rpc::PlasmaDeleteReply *reply,
-                                     rpc::SendReplyCallback send_reply_callback) {}
+                                     rpc::SendReplyCallback send_reply_callback) {
+  send_reply_callback(Status::NotImplemented("todo"), nullptr, nullptr);
+}
 
 void NodeManager::RecordMetrics() {
   recorded_metrics_ = true;

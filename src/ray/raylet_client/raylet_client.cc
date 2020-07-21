@@ -386,11 +386,14 @@ Status raylet::RayletClient::Create(const ObjectID &object_id, int64_t data_size
   RAY_RETURN_NOT_OK(grpc_client_->PlasmaCreate(
       request, [this, &done, &status, data, data_size, object_id](
                    const Status &s, const rpc::PlasmaCreateReply &reply) {
+        RAY_LOG(ERROR) << "STATUS " << s;
         if (!s.ok()) {
           status = s;
         } else {
           status = Status(static_cast<StatusCode>(reply.status().code()),
                           reply.status().message());
+          RAY_LOG(ERROR) << "SS" << reply.status().code();
+          RAY_LOG(ERROR) << "SS" << reply.status().message();
           RAY_ARROW_CHECK_OK(arrow::AllocateBuffer(data_size, data));
           created_buffers_[object_id] = *data;
         }

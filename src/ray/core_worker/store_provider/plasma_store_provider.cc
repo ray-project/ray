@@ -48,9 +48,8 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     std::unique_ptr<plasma::PlasmaClient> client(new plasma::PlasmaClient());
     RAY_CHECK_OK(client->Connect(store_socket));
     store_client_ = std::move(client);
+    RAY_CHECK_OK(WarmupStore());
   }
-
-  RAY_CHECK_OK(WarmupStore());
 }
 
 CoreWorkerPlasmaStoreProvider::~CoreWorkerPlasmaStoreProvider() {

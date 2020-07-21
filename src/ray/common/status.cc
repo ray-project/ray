@@ -57,10 +57,13 @@ namespace ray {
 #define STATUS_CODE_OBJECT_STORE_FULL "ObjectStoreFull"
 
 Status::Status(StatusCode code, const std::string &msg) {
-  assert(code != StatusCode::OK);
-  state_ = new State;
-  state_->code = code;
-  state_->msg = msg;
+  if (code == StatusCode::OK) {
+    state_ = NULL;
+  } else {
+    state_ = new State;
+    state_->code = code;
+    state_->msg = msg;
+  }
 }
 
 void Status::CopyFrom(const State *state) {

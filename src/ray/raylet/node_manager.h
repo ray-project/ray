@@ -839,6 +839,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   absl::flat_hash_map<ObjectID, absl::flat_hash_set<std::shared_ptr<Worker>>>
       async_plasma_objects_notification_ GUARDED_BY(plasma_object_notification_lock_);
 
+  /// Keeps track of pending buffers created by the plasma gRPC proxy. These buffers
+  /// are deleted once sealed.
+  absl::flat_hash_map<ObjectID, std::shared_ptr<arrow::Buffer>> created_buffers_;
+
   /// Objects that are out of scope in the application and that should be freed
   /// from plasma. The cache is flushed when it reaches the config's
   /// free_objects_batch_size, or if objects have been in the cache for longer
