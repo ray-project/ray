@@ -18,12 +18,12 @@ from ray.serve.utils import (format_actor_name, get_random_letters, logger,
 
 import numpy as np
 
-# Used for testing purposes only. If this is set, the master actor will crash
+# Used for testing purposes only. If this is set, the controller will crash
 # after writing each checkpoint with the specified probability.
 _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0.0
-CHECKPOINT_KEY = "serve-master-checkpoint"
+CHECKPOINT_KEY = "serve-controller-checkpoint"
 
-# Feature flag for master actor resource checking. If true, master actor will
+# Feature flag for controller resource checking. If true, controller will
 # error if the desired replicas exceed current resource availability.
 _RESOURCE_CHECK_ENABLED = True
 
@@ -62,10 +62,10 @@ BackendInfo = namedtuple("BackendInfo",
 
 
 @ray.remote
-class ServeMaster:
+class ServeController:
     """Responsible for managing the state of the serving system.
 
-    The master actor implements fault tolerance by persisting its state in
+    The controller implements fault tolerance by persisting its state in
     a new checkpoint each time a state change is made. If the actor crashes,
     the latest checkpoint is loaded and the state is recovered. Checkpoints
     are written/read using a provided KV-store interface.
@@ -75,13 +75,13 @@ class ServeMaster:
     those actors from this actor on startup and updates are pushed out from
     this actor.
 
-    All other actors started by the master actor are named, detached actors
-    so they will not fate share with the master if it crashes.
+    All other actors started by the controller are named, detached actors
+    so they will not fate share with the controller if it crashes.
 
     The following guarantees are provided for state-changing calls to the
-    master actor:
+    controller:
         - If the call succeeds, the change was made and will be reflected in
-          the system even if the master actor or other actors die unexpectedly.
+          the system even if the controller or other actors die unexpectedly.
         - If the call fails, the change may have been made but isn't guaranteed
           to have been. The client should retry in this case. Note that this
           requires all implementations here to be idempotent.

@@ -437,7 +437,9 @@ init() {
 }
 
 build() {
-  _bazel_build_before_install
+  if [ "${LINT-}" != 1 ]; then
+    _bazel_build_before_install
+  fi
 
   if ! need_wheels; then
     install_ray
