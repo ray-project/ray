@@ -72,13 +72,17 @@ build_jars_multiplatform() {
   build_jars multiplatform false
 }
 
-# download linux/darwin ray-runtime-$version.jar from s3
+# Download darwin/windows ray-runtime-$version.jar from s3
+# This function assumes linux jars exist already.
 download_jars() {
   local wait_time=0
   local sleep_time_units=60
 
   for f in "$@"; do
-    for os in 'darwin' 'linux'; do
+    for os in 'darwin' 'windows'; do
+      if [[ "$os" == "windows" ]]; then
+        break
+      fi
       local url="https://ray-wheels.s3-us-west-2.amazonaws.com/jars/$TRAVIS_BRANCH/$TRAVIS_COMMIT/$os/$f"
       local dest_file="$JAR_BASE_DIR/$os/$f"
       echo "Jar url: $url"

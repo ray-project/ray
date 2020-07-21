@@ -127,6 +127,8 @@ matrix:
       script:
         - . ./ci/travis/ci.sh test_wheels
         - sh ./java/build-jar-multiplatform.sh linux
+        - sh ./java/build-jar-multiplatform.sh multiplatform
+        # - if [ $TRAVIS_BRANCH == "master" ]; then sh ./java/build-jar-multiplatform.sh deploy; fi
       cache: false
 
     # Build MacOS wheels.
@@ -144,19 +146,6 @@ matrix:
       script:
         - . ./ci/travis/ci.sh test_wheels
         - sh ./java/build-jar-multiplatform.sh darwin
-
-    # Build multi-platform jars.
-    - os: linux
-      env:
-        - MULTIPLATFORM_JARS=1
-        - PYTHONWARNINGS=ignore
-        - RAY_INSTALL_JAVA=1
-        - RAY_GCS_ACTOR_SERVICE_ENABLED=true
-      install:
-        - . ./ci/travis/ci.sh init RAY_CI_JAVA_AFFECTED,RAY_CI_STREAMING_JAVA_AFFECTED
-      script:
-        - sh ./java/build-jar-multiplatform.sh multiplatform
-        - if [ $TRAVIS_BRANCH == "master" ]; then sh ./java/build-jar-multiplatform.sh deploy; fi
 
     # RLlib: Learning tests (from rllib/tuned_examples/*.yaml).
     - os: linux
@@ -359,7 +348,7 @@ deploy:
     on:
       repo: ray-project/ray
       all_branches: true
-      condition: $LINUX_JARS = 1 || $MAC_JARS=1 || MULTIPLATFORM_JARS=1
+      condition: $LINUX_JARS = 1 || $MAC_JARS=1
 
   - provider: s3
     edge: true # This supposedly opts in to deploy v2.
@@ -375,7 +364,7 @@ deploy:
     on:
       repo: ray-project/ray
       branch: master
-      condition: $LINUX_JARS = 1 || $MAC_JARS=1 || MULTIPLATFORM_JARS=1
+      condition: $LINUX_JARS = 1 || $MAC_JARS=1
 
   - provider: script
     edge: true # This supposedly opts in to deploy v2.
