@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "gcs_object_manager.h"
+#include "ray/gcs/gcs_server/gcs_object_manager.h"
+
 #include "ray/gcs/pb_util.h"
 
 namespace ray {

@@ -76,6 +76,14 @@ struct GcsServerMocker {
       return Status::OK();
     }
 
+    ray::Status ReleaseUnusedWorkers(
+        const std::vector<WorkerID> &workers_in_use,
+        const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) override {
+      num_release_unused_workers += 1;
+      release_callbacks.push_back(callback);
+      return Status::OK();
+    }
+
     ray::Status CancelWorkerLease(
         const TaskID &task_id,
         const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override {
@@ -127,15 +135,29 @@ struct GcsServerMocker {
       }
     }
 
+    bool ReplyReleaseUnusedWorkers() {
+      rpc::ReleaseUnusedWorkersReply reply;
+      if (release_callbacks.size() == 0) {
+        return false;
+      } else {
+        auto callback = release_callbacks.front();
+        callback(Status::OK(), reply);
+        release_callbacks.pop_front();
+        return true;
+      }
+    }
+
     ~MockRayletClient() {}
 
     int num_workers_requested = 0;
     int num_workers_returned = 0;
     int num_workers_disconnected = 0;
     int num_leases_canceled = 0;
+    int num_release_unused_workers = 0;
     ClientID node_id = ClientID::FromRandom();
     std::list<rpc::ClientCallback<rpc::RequestWorkerLeaseReply>> callbacks = {};
     std::list<rpc::ClientCallback<rpc::CancelWorkerLeaseReply>> cancel_callbacks = {};
+    std::list<rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply>> release_callbacks = {};
   };
 
   class MockRayletResourceClient : public ResourceReserveInterface {
@@ -193,11 +215,18 @@ struct GcsServerMocker {
       client_factory_ = std::move(client_factory);
     }
 
+    void TryLeaseWorkerFromNodeAgain(std::shared_ptr<gcs::GcsActor> actor,
+                                     std::shared_ptr<rpc::GcsNodeInfo> node) {
+      DoRetryLeasingWorkerFromNode(std::move(actor), std::move(node));
+    }
+
    protected:
     void RetryLeasingWorkerFromNode(std::shared_ptr<gcs::GcsActor> actor,
                                     std::shared_ptr<rpc::GcsNodeInfo> node) override {
       ++num_retry_leasing_count_;
-      DoRetryLeasingWorkerFromNode(actor, node);
+      if (num_retry_leasing_count_ <= 1) {
+        DoRetryLeasingWorkerFromNode(actor, node);
+      }
     }
 
     void RetryCreatingActorOnWorker(std::shared_ptr<gcs::GcsActor> actor,

@@ -14,8 +14,8 @@
 
 #pragma once
 
-#include "gcs_node_manager.h"
-#include "gcs_table_storage.h"
+#include "ray/gcs/gcs_server/gcs_node_manager.h"
+#include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_gcs_client.h"
 
