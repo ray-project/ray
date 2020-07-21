@@ -14,12 +14,6 @@
 
 #pragma once
 
-#ifdef __clang__
-// TODO(mehrdadn): Remove this when the warnings are addressed
-#pragma clang diagnostic push
-#pragma clang diagnostic warning "-Wunused-result"
-#endif
-
 #include <boost/asio/thread_pool.hpp>
 #include <boost/thread.hpp>
 #include <list>
@@ -280,7 +274,7 @@ class DependencyWaiterImpl : public DependencyWaiter {
             std::function<void()> on_dependencies_available) override {
     auto tag = next_request_id_++;
     requests_[tag] = on_dependencies_available;
-    dependency_client_.WaitForDirectActorCallArgs(dependencies, tag);
+    RAY_CHECK_OK(dependency_client_.WaitForDirectActorCallArgs(dependencies, tag));
   }
 
   /// Fulfills the callback stored by Wait().
@@ -531,7 +525,3 @@ class CoreWorkerDirectTaskReceiver {
 };
 
 }  // namespace ray
-
-#ifdef __clang__
-#pragma clang diagnostic pop
-#endif
