@@ -156,10 +156,17 @@ def native_java_binary(module_name, name, native_binary_name):
         out = module_name + "/src/main/resources/native/linux/" + name,
     )
 
+    copy_file(
+        name = name + "_windows",
+        src = native_binary_name,
+        out = module_name + "/src/main/resources/native/windows/" + name,
+    )
+
     native.filegroup(
             name = name,
             srcs = select({
                 "@bazel_tools//src/conditions:darwin": [name + "_darwin"],
+                "@bazel_tools//src/conditions:windows": [name + "_windows"],
                 "//conditions:default": [name + "_linux"],
             }),
             visibility = ["//visibility:public"],
@@ -183,6 +190,7 @@ def native_java_library(module_name, name, native_library_name):
             name = name,
             srcs = select({
                 "@bazel_tools//src/conditions:darwin": [name + "_darwin"],
+                "@bazel_tools//src/conditions:windows": [],
                 "//conditions:default": [name + "_linux"],
             }),
             visibility = ["//visibility:public"],
