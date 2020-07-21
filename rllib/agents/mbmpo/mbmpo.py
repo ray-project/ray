@@ -113,6 +113,8 @@ class MetaUpdate:
         adapt_metrics_dict = data_tuple[1]
         self.postprocess_metrics(
             adapt_metrics_dict, prefix="MAMLIter{}".format(self.step_counter))
+        
+        # MAML Meta-update
         for i in range(self.maml_optimizer_steps):
             fetches = self.workers.local_worker().learn_on_batch(samples)
         fetches = get_learner_stats(fetches)
@@ -147,7 +149,7 @@ class MetaUpdate:
 
             metrics.counters[STEPS_SAMPLED_COUNTER] = td_metric[
                 STEPS_SAMPLED_COUNTER]
-
+            #import pdb; pdb.set_trace()
             res = self.metric_gen.__call__(None)
             res.update(self.metrics)
             self.step_counter = 0
