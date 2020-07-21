@@ -273,7 +273,11 @@ Once a endpoint is deleted, its tag can be reused.
 How do I get a reference to a "backend" class?
 ----------------------------------------------
 
-See :ref:`session-affinity`.
+Simple!
+
+.. code-block:: python
+    
+    handle = serve.get_handle("api_endpoint")
 
 How do I call a method on my backend class besides __call__?
 -------------------------------------------------------------
