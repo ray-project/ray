@@ -196,6 +196,7 @@ def update_backend_config(backend_tag, config_options):
         backend_tag(str): A registered backend.
         config_options(dict): Backend config options to update.
             Supported options:
+
             - "num_replicas": number of worker processes to start up that
             will handle requests to this backend.
             - "max_batch_size": the maximum number of requests that will
