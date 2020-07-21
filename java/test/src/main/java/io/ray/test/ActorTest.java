@@ -133,8 +133,8 @@ public class ActorTest extends BaseTest {
     Ray.internal().free(ImmutableList.of(value.getId()), false, false);
     // Wait for delete RPC to propagate
     TimeUnit.SECONDS.sleep(1);
-    // Free does not delete from in-memory store.
-    Assert.assertEquals(value.get(), Integer.valueOf(100));
+    // Free deletes from in-memory store.
+    Assert.expectThrows(UnreconstructableException.class, () -> value.get());
 
     // Call an actor method.
     ObjectRef<TestUtils.LargeObject> largeValue = counter.task(Counter::createLargeObject).remote();
@@ -143,13 +143,7 @@ public class ActorTest extends BaseTest {
     Ray.internal().free(ImmutableList.of(largeValue.getId()), false, false);
     // Wait for delete RPC to propagate
     TimeUnit.SECONDS.sleep(1);
-    try {
-      // Try getting the object again, this should throw an UnreconstructableException.
-      largeValue.get();
-      Assert.fail("This line should not be reachable.");
-    } catch (UnreconstructableException e) {
-      // Free deletes big objects from plasma store.
-      Assert.assertEquals(largeValue.getId(), e.objectId);
-    }
+    // Free deletes big objects from plasma store.
+    Assert.expectThrows(UnreconstructableException.class, () -> largeValue.get());
   }
 }
