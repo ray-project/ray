@@ -41,6 +41,31 @@ if sys.platform == "win32":
 logger = logging.getLogger(__name__)
 
 
+def get_real_pid(posix_pid):
+    result = None
+    if sys.platform == "win32":
+        try:
+            pid_index = None
+            winpid_index = None
+            for line in subprocess.check_output(["ps"]).splitlines():
+                if pid_index is None:
+                    headers = line.split()
+                    pid_index = headers.index(b"PID")
+                    winpid_index = headers.index(b"WINPID")
+                else:
+                    maxsplit = 1 + max(pid_index, winpid_index)
+                    row = line.split(maxsplit=maxsplit)
+                    print(row)
+                    if str(posix_pid) == row[pid_index].decode("utf-8"):
+                        result = int(row[winpid_index].decode("utf-8"))
+                        break
+        except IOError:
+            result = posix_pid
+    else:
+        result = posix_pid
+    return result
+
+
 def open_process(pid):
     if sys.platform == "win32":
         # access masks defined in <winnt.h>
