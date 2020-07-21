@@ -63,8 +63,7 @@ def test_node_failure_detector_when_gcs_server_restart(ray_start_cluster_head):
 
     We set the cluster to timeout nodes after 2 seconds of heartbeats. We then
     kill gcs server and remove the worker node and restart gcs server again to
-    check that the removed node is alive when the GCS server is just restarted
-    but dead finally.
+    check that the removed node will die finally.
     """
     cluster = ray_start_cluster_head
     worker = cluster.add_node()
@@ -101,16 +100,12 @@ def test_node_failure_detector_when_gcs_server_restart(ray_start_cluster_head):
     # Restart gcs server process.
     cluster.head_node.start_gcs_server()
 
-    nodes = ray.nodes()
-    assert len(nodes) == 2
-    assert nodes[0]["alive"] and nodes[1]["alive"]
-
     def condition():
         nodes = ray.nodes()
         assert len(nodes) == 2
         for node in nodes:
             if node["NodeID"] == to_be_removed_node["NodeID"]:
-                return node["alive"]
+                return not node["alive"]
         return False
 
     # Wait for the removed node dead.
