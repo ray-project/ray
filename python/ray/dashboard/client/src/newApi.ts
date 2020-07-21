@@ -1,8 +1,8 @@
 import { get } from "./common/requestUtils";
 
-type HostnamesResponse = APIResponse<HostnamesResponseData>;
-type NodeSummaryResponse = APIResponse<NodeSummaryResponseData>;
-type NodeDetailsResponse = APIResponse<NodeDetailsResponseData>;
+export type HostnamesResponse = APIResponse<HostnamesResponseData>;
+export type NodeSummaryResponse = APIResponse<NodeSummaryResponseData>;
+export type NodeDetailsResponse = APIResponse<NodeDetailsResponseData>;
 
 export type GPUProcessStats = {
   // Sub stat of GPU stats, this type represents the GPU
@@ -50,7 +50,15 @@ type RayletAddressInformation = {
   port: number;
   workerId: string;
 };
-type ActorState = "ALIVE" | string; // todo flesh out once ant provides other values
+
+export enum ActorState {
+  Pending = "PENDING",
+  Alive = "ALIVE",
+  Dead = "DEAD",
+  Creating = "CREATING",
+  Restarting = "RESTARTING",
+  Invalid = "INVALID",
+};
 
 type NodeSummary = BaseNodeInfo;
 
@@ -86,9 +94,10 @@ type BaseNodeInfo = {
   };
 };
 
-type Actor = {
+export type Actor = {
   actorId: string;
   parentId: string;
+  actorTitle: string;
   actorCreationDummyObjectId: string;
   jobId: string;
   address: RayletAddressInformation;
@@ -103,7 +112,7 @@ type Actor = {
   isDetached: boolean;
 };
 
-type Worker = {
+export type Worker = {
   pid: number;
   createTime: number;
   memoryInfo: {
@@ -126,7 +135,7 @@ type Worker = {
   coreWorkerStats: CoreWorkerStats[];
 };
 
-type CoreWorkerStats = {
+export type CoreWorkerStats = {
   ipAddress: string;
   port: number;
   usedResources: { [resource: string]: number };
@@ -142,5 +151,5 @@ type HostnamesResponseData = {
 type APIResponse<T> = {
   result: boolean;
   msg: string;
-  data: T;
+  data?: T;
 };

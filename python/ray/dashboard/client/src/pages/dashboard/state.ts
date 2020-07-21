@@ -7,6 +7,9 @@ import {
   TuneAvailabilityResponse,
   TuneJobResponse,
 } from "../../api";
+import {
+  NodeSummaryResponse
+} from "../../newApi";
 import { filterObj } from "../../common/util";
 
 const name = "dashboard";
@@ -15,6 +18,7 @@ type State = {
   tab: number;
   rayConfig: RayConfigResponse | null;
   nodeInfo: NodeInfoResponse | null;
+  nodeSummaries: NodeSummaryResponse | null;
   rayletInfo: RayletInfoResponse | null;
   tuneInfo: TuneJobResponse | null;
   tuneAvailability: TuneAvailabilityResponse | null;
@@ -28,6 +32,7 @@ const initialState: State = {
   tab: 0,
   rayConfig: null,
   nodeInfo: null,
+  nodeSummaries: null,
   rayletInfo: null,
   tuneInfo: null,
   tuneAvailability: null,
@@ -80,6 +85,12 @@ const slice = createSlice({
       action: PayloadAction<MemoryTableResponse | null>,
     ) => {
       state.memoryTable = action.payload;
+    },
+    setNodeSummaries: (
+      state,
+      action: PayloadAction<NodeSummaryResponse>,
+    ) => {
+      state.nodeSummaries = action.payload;
     },
     setShouldObtainMemoryTable: (state, action: PayloadAction<boolean>) => {
       state.shouldObtainMemoryTable = action.payload;
