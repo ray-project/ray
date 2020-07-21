@@ -13,6 +13,7 @@ import io.ray.api.id.UniqueId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
 import io.ray.api.placementgroup.PlacementGroup;
+import io.ray.api.placementgroup.PlacementGroupImpl;
 import io.ray.api.placementgroup.PlacementStrategy;
 import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.actor.LocalModeActorHandle;
@@ -214,7 +215,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   @Override
   public PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
       PlacementStrategy strategy) {
-    return null;
+    return new PlacementGroupImpl(bundles);
   }
 
 

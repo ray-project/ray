@@ -125,12 +125,12 @@ struct PlacementGroupCreationOptions {
       std::vector<std::unordered_map<std::string, double>> bundles)
       : name(std::move(name)), strategy(strategy), bundles(std::move(bundles)) {}
 
+  /// The name of the placement group.
+  const std::string name;
   /// The strategy to place the bundle in Placement Group.
   const PlacementStrategy strategy = rpc::PACK;
   /// The resource bundles in this placement group.
   const std::vector<std::unordered_map<std::string, double>> bundles;
-  /// The name of the placement group.
-  const std::string name;
 };
 
 }  // namespace ray

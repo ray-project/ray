@@ -177,7 +177,6 @@ public interface RayRuntime {
 
   RuntimeContext getRuntimeContext();
 
-
   Object getAsyncContext();
 
   void setAsyncContext(Object asyncContext);

@@ -114,7 +114,7 @@ public final class Ray extends RayCall {
    * @return Two lists, one containing locally available objects, one containing the rest.
    */
   public static <T> WaitResult<T> wait(List<ObjectRef<T>> waitList, int numReturns,
-                                       int timeoutMs) {
+      int timeoutMs) {
     return runtime.wait(waitList, numReturns, timeoutMs);
   }
 
@@ -245,10 +245,16 @@ public final class Ray extends RayCall {
   }
 
   /**
-   * Create a placement group and preallocate the resources.
+   * Create a placement group.
+   * A placement group is used to place actors according to a specific strategy
+   * and resource constraints.
+   * It will sends a request to GCS to preallocate the specified resources, which is asynchronous.
+   * If the specified resource cannot be allocated, it will wait for the resource
+   * to be updated and rescheduled.
+   * This function only works when gcs actor manager is turned on.
    *
-   * @param bundles
-   * @param strategy
+   * @param bundles Preallocated resource list.
+   * @param strategy Actor placement strategy, the default is `PACK`.
    * @return A handle to the created placement group.
    */
   public static PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
