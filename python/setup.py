@@ -303,6 +303,7 @@ install_requires = [
     "aiohttp",
     "click >= 7.0",
     "colorama",
+    "colorful",
     "filelock",
     "google",
     "gpustat",
