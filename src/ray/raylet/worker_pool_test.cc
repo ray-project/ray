@@ -248,11 +248,10 @@ TEST_F(WorkerPoolTest, StartupPythonWorkerProcessCount) {
 }
 
 TEST_F(WorkerPoolTest, StartupJavaWorkerProcessCount) {
-  TestStartupWorkerProcessCount(
-      Language::JAVA, NUM_WORKERS_PER_PROCESS_JAVA,
-      {"dummy_java_worker_command",
-       std::string("-Dray.job.num-java-workers-per-process=") +
-           std::to_string(NUM_WORKERS_PER_PROCESS_JAVA)});
+  TestStartupWorkerProcessCount(Language::JAVA, NUM_WORKERS_PER_PROCESS_JAVA,
+                                {"dummy_java_worker_command",
+                                 std::string("-Dray.job.num-java-workers-per-process=") +
+                                     std::to_string(NUM_WORKERS_PER_PROCESS_JAVA)});
 }
 
 TEST_F(WorkerPoolTest, HandleWorkerPushPop) {
