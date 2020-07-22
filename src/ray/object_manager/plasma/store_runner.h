@@ -4,6 +4,7 @@
 
 #include <boost/asio.hpp>
 
+#include "absl/synchronization/mutex.h"
 #include "ray/object_manager/notification/object_store_notification_manager.h"
 #include "ray/object_manager/plasma/store.h"
 
@@ -16,13 +17,14 @@ class PlasmaStoreRunner {
                     const std::string external_store_endpoint);
   void Start();
   void Stop();
-  void Shutdown();
   void SetNotificationListener(
       const std::shared_ptr<ray::ObjectStoreNotificationManager> &notification_listener) {
     store_->SetNotificationListener(notification_listener);
   }
 
  private:
+  void Shutdown();
+  absl::Mutex store_runner_mutex_;
   std::string socket_name_;
   int64_t system_memory_;
   bool hugepages_enabled_;
