@@ -2,11 +2,11 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.schedules.schedule import Schedule
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
-def _linear_interpolation(l, r, alpha):
-    return l + alpha * (r - l)
+def _linear_interpolation(left, right, alpha):
+    return left + alpha * (right - left)
 
 
 class PiecewiseSchedule(Schedule):

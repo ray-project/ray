@@ -2,21 +2,29 @@
 
 It also checks that it is usable with a separate scheduler.
 """
+import time
+
 import ray
-from ray.tune import run
+from ray import tune
 from ray.tune.suggest.zoopt import ZOOptSearch
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from zoopt import ValueType
 
 
-def easy_objective(config, reporter):
-    import time
-    time.sleep(0.2)
-    for i in range(config["iterations"]):
-        reporter(
-            timesteps_total=i,
-            mean_loss=(config["height"] - 14)**2 - abs(config["width"] - 3))
-        time.sleep(0.02)
+def evaluation_fn(step, width, height):
+    return (0.1 + width * step / 100)**(-1) + height * 0.1
+
+
+def easy_objective(config):
+    # Hyperparameters
+    width, height = config["width"], config["height"]
+
+    for step in range(config["steps"]):
+        # Iterative training function - can be any arbitrary training procedure
+        intermediate_score = evaluation_fn(step, width, height)
+        # Feed the score back back to Tune.
+        tune.report(iterations=step, mean_loss=intermediate_score)
+        time.sleep(0.1)
 
 
 if __name__ == "__main__":
@@ -34,16 +42,13 @@ if __name__ == "__main__":
         # for continuous dimensions: (continuous, search_range, precision)
         "height": (ValueType.CONTINUOUS, [-10, 10], 1e-2),
         # for discrete dimensions: (discrete, search_range, has_order)
-        "width": (ValueType.DISCRETE, [-10, 10], False)
+        "width": (ValueType.DISCRETE, [0, 10], False)
     }
 
     config = {
         "num_samples": 10 if args.smoke_test else 1000,
         "config": {
-            "iterations": 10,  # evaluation times
-        },
-        "stop": {
-            "timesteps_total": 10  # cumstom stop rules
+            "steps": 10,  # evaluation times
         }
     }
 
@@ -56,7 +61,8 @@ if __name__ == "__main__":
 
     scheduler = AsyncHyperBandScheduler(metric="mean_loss", mode="min")
 
-    run(easy_objective,
+    tune.run(
+        easy_objective,
         search_alg=zoopt_search,
         name="zoopt_search",
         scheduler=scheduler,

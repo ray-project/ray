@@ -32,8 +32,11 @@ def test_shutdown():
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster_head",
-    [generate_internal_config_map(num_heartbeats_timeout=20)],
+    "ray_start_cluster_head", [
+        generate_internal_config_map(
+            num_heartbeats_timeout=20,
+            initial_reconstruction_timeout_milliseconds=12345)
+    ],
     indirect=True)
 def test_internal_config(ray_start_cluster_head):
     """Checks that the internal configuration setting works.
@@ -41,11 +44,19 @@ def test_internal_config(ray_start_cluster_head):
     We set the cluster to timeout nodes after 2 seconds of no timeouts. We
     then remove a node, wait for 1 second to check that the cluster is out
     of sync, then wait another 2 seconds (giving 1 second of leeway) to check
-    that the client has timed out.
+    that the client has timed out. We also check to see if the config is set.
     """
     cluster = ray_start_cluster_head
     worker = cluster.add_node()
     cluster.wait_for_nodes()
+
+    @ray.remote
+    def f():
+        assert ray._config.initial_reconstruction_timeout_milliseconds(
+        ) == 12345
+        assert ray._config.num_heartbeats_timeout() == 20
+
+    ray.get([f.remote() for _ in range(5)])
 
     cluster.remove_node(worker, allow_graceful=False)
     time.sleep(1)

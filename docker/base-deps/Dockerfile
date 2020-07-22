@@ -1,7 +1,7 @@
 # The base-deps Docker image installs main libraries needed to run Ray
 
-FROM ubuntu:xenial
-RUN apt-get update \
+FROM ubuntu:focal
+RUN apt-get update -y && apt-get upgrade -y \
     && apt-get install -y \
         git \
         wget \
@@ -12,6 +12,9 @@ RUN apt-get update \
         libgtk2.0-dev \
         zlib1g-dev \
         libgl1-mesa-dev \
+        tmux \
+        screen \
+        rsync \
     && apt-get clean \
     && echo 'export PATH=/opt/conda/bin:$PATH' > /etc/profile.d/conda.sh \
     && wget \

@@ -64,7 +64,7 @@ class RepeatedValues:
             >>> print(max(len(x) for x in items) <= N)
             True
             >>> print(items)
-            ... [[<Tensor_1 shape=(K)>, ..., <Tensor_N, shape=(K)>],
+            ...  [<Tensor_1 shape=(K)>, ..., <Tensor_N, shape=(K)>],
             ...  ...
             ...  [<Tensor_1 shape=(K)>, <Tensor_2 shape=(K)>],
             ...  ...

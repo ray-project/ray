@@ -1,9 +1,10 @@
 import collections
-import os
-import json
-import threading
 import hashlib
+import json
 import jsonschema
+import os
+import threading
+from typing import Any, Dict
 
 import ray
 import ray.services as services
@@ -13,6 +14,10 @@ from ray.autoscaler.docker import dockerize_if_needed
 REQUIRED, OPTIONAL = True, False
 RAY_SCHEMA_PATH = os.path.join(
     os.path.dirname(ray.autoscaler.__file__), "ray-schema.json")
+
+# Internal kv keys for storing debug status.
+DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
+DEBUG_AUTOSCALING_STATUS = "__autoscaling_status"
 
 
 class ConcurrentCounter:
@@ -41,7 +46,7 @@ class ConcurrentCounter:
             return sum(self._counter.values())
 
 
-def validate_config(config):
+def validate_config(config: Dict[str, Any]) -> None:
     """Required Dicts indicate that no extra fields can be introduced."""
     if not isinstance(config, dict):
         raise ValueError("Config {} is not a dictionary".format(config))
@@ -61,7 +66,7 @@ def prepare_config(config):
     return with_defaults
 
 
-def fillout_defaults(config):
+def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     defaults = get_default_config(config["provider"])
     defaults.update(config)
     defaults["auth"] = defaults.get("auth", {})

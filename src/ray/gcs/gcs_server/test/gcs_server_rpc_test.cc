@@ -391,6 +391,53 @@ class GcsServerTest : public ::testing::Test {
         request,
         [&promise](const Status &status, const rpc::ReportWorkerFailureReply &reply) {
           RAY_CHECK_OK(status);
+          promise.set_value(status.ok());
+        });
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  boost::optional<rpc::WorkerTableData> GetWorkerInfo(const std::string &worker_id) {
+    rpc::GetWorkerInfoRequest request;
+    request.set_worker_id(worker_id);
+    boost::optional<rpc::WorkerTableData> worker_table_data_opt;
+    std::promise<bool> promise;
+    client_->GetWorkerInfo(
+        request, [&worker_table_data_opt, &promise](
+                     const Status &status, const rpc::GetWorkerInfoReply &reply) {
+          RAY_CHECK_OK(status);
+          if (reply.has_worker_table_data()) {
+            worker_table_data_opt = reply.worker_table_data();
+          } else {
+            worker_table_data_opt = boost::none;
+          }
+          promise.set_value(true);
+        });
+    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
+    return worker_table_data_opt;
+  }
+
+  std::vector<rpc::WorkerTableData> GetAllWorkerInfo() {
+    std::vector<rpc::WorkerTableData> worker_table_data;
+    rpc::GetAllWorkerInfoRequest request;
+    std::promise<bool> promise;
+    client_->GetAllWorkerInfo(
+        request, [&worker_table_data, &promise](const Status &status,
+                                                const rpc::GetAllWorkerInfoReply &reply) {
+          RAY_CHECK_OK(status);
+          for (int index = 0; index < reply.worker_table_data_size(); ++index) {
+            worker_table_data.push_back(reply.worker_table_data(index));
+          }
+          promise.set_value(true);
+        });
+    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
+    return worker_table_data;
+  }
+
+  bool AddWorkerInfo(const rpc::AddWorkerInfoRequest &request) {
+    std::promise<bool> promise;
+    client_->AddWorkerInfo(
+        request, [&promise](const Status &status, const rpc::AddWorkerInfoReply &reply) {
+          RAY_CHECK_OK(status);
           promise.set_value(true);
         });
     return WaitReady(promise.get_future(), timeout_ms_);
@@ -725,12 +772,29 @@ TEST_F(GcsServerTest, TestErrorInfo) {
 }
 
 TEST_F(GcsServerTest, TestWorkerInfo) {
-  rpc::WorkerFailureData worker_failure_data;
-  worker_failure_data.mutable_worker_address()->set_ip_address("127.0.0.1");
-  worker_failure_data.mutable_worker_address()->set_port(5566);
+  // Report worker failure
+  auto worker_failure_data = Mocker::GenWorkerTableData();
+  worker_failure_data->mutable_worker_address()->set_ip_address("127.0.0.1");
+  worker_failure_data->mutable_worker_address()->set_port(5566);
   rpc::ReportWorkerFailureRequest report_worker_failure_request;
-  report_worker_failure_request.mutable_worker_failure()->CopyFrom(worker_failure_data);
+  report_worker_failure_request.mutable_worker_failure()->CopyFrom(*worker_failure_data);
   ASSERT_TRUE(ReportWorkerFailure(report_worker_failure_request));
+  std::vector<rpc::WorkerTableData> worker_table_data = GetAllWorkerInfo();
+  ASSERT_TRUE(worker_table_data.size() == 0);
+
+  // Add worker info
+  auto worker_data = Mocker::GenWorkerTableData();
+  worker_data->mutable_worker_address()->set_worker_id(WorkerID::FromRandom().Binary());
+  rpc::AddWorkerInfoRequest add_worker_request;
+  add_worker_request.mutable_worker_data()->CopyFrom(*worker_data);
+  ASSERT_TRUE(AddWorkerInfo(add_worker_request));
+  ASSERT_TRUE(GetAllWorkerInfo().size() == 1);
+
+  // Get worker info
+  boost::optional<rpc::WorkerTableData> result =
+      GetWorkerInfo(worker_data->worker_address().worker_id());
+  ASSERT_TRUE(result->worker_address().worker_id() ==
+              worker_data->worker_address().worker_id());
 }
 
 }  // namespace ray

@@ -12,7 +12,6 @@ import io.ray.runtime.functionmanager.PyFunctionDescriptor;
 import io.ray.streaming.runtime.worker.JobWorker;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Save channel initial parameters needed by DataWriter/DataReader.
@@ -108,26 +107,28 @@ public class ChannelCreationParametersBuilder {
 
   public ChannelCreationParametersBuilder buildInputQueueParameters(
       List<String> queues,
-      Map<String, BaseActorHandle> actors) {
+      List<BaseActorHandle> actors) {
     return buildParameters(queues, actors, javaWriterAsyncFuncDesc, javaWriterSyncFuncDesc,
       pyWriterAsyncFunctionDesc, pyWriterSyncFunctionDesc);
   }
 
   public ChannelCreationParametersBuilder buildOutputQueueParameters(List<String> queues,
-      Map<String, BaseActorHandle> actors) {
+                                                                     List<BaseActorHandle> actors) {
     return buildParameters(queues, actors, javaReaderAsyncFuncDesc, javaReaderSyncFuncDesc,
       pyReaderAsyncFunctionDesc, pyReaderSyncFunctionDesc);
   }
 
   private ChannelCreationParametersBuilder buildParameters(List<String> queues,
-      Map<String, BaseActorHandle> actors,
+      List<BaseActorHandle> actors,
       JavaFunctionDescriptor javaAsyncFunctionDesc, JavaFunctionDescriptor javaSyncFunctionDesc,
       PyFunctionDescriptor pyAsyncFunctionDesc, PyFunctionDescriptor pySyncFunctionDesc
   ) {
     parameters = new ArrayList<>(queues.size());
-    for (String queue : queues) {
+
+    for (int i = 0; i < queues.size(); ++i) {
+      String queue = queues.get(i);
+      BaseActorHandle actor = actors.get(i);
       Parameter parameter = new Parameter();
-      BaseActorHandle actor = actors.get(queue);
       Preconditions.checkArgument(actor != null);
       parameter.setActorId(actor.getId());
       /// LocalModeRayActor used in single-process mode.

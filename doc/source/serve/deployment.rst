@@ -3,12 +3,12 @@ Deploying Ray Serve
 ===================
 
 In the :doc:`key-concepts`, you saw some of the basics of how to write serve applications.
-This section will dive a bit deeper into how Ray Serve runs on a Ray cluster and how you're able 
+This section will dive a bit deeper into how Ray Serve runs on a Ray cluster and how you're able
 to deploy and update your serve application over time.
 
 To deploy a Ray Serve instance you're going to need several things.
 
-1. A running Ray cluster (you can deploy one on your local machine for testing). To learn more about Ray clusters see :doc:`../cluster-index`.
+1. A running Ray cluster (you can deploy one on your local machine for testing). To learn more about Ray clusters see :ref:`cluster-index`.
 2. A Ray Serve instance.
 3. Your Ray Serve endpoint(s) and backend(s).
 
@@ -20,8 +20,8 @@ Deploying a Model with Ray Serve
 ================================
 
 Let's get started deploying our first Ray Serve application. The first thing you'll need
-to do is start a Ray cluster. You can do that using the Ray autoscaler, but in our case
-we'll create it on our local machine. To learn more about Ray Clusters see :doc:`../cluster-index`.
+to do is start a Ray cluster. You can do that using the Ray cluster launcher, but in our case
+we'll create it on our local machine. To learn more about Ray Clusters see :ref:`cluster-index`.
 
 Starting the Cluster
 --------------------
@@ -31,8 +31,8 @@ We do that by running:
 
     ray start --head
 
-That starts a cluster on our local machine. We can shut that down by running ``ray stop``. You should 
-run this after we complete this tutorial. 
+That starts a cluster on our local machine. We can shut that down by running ``ray stop``. You should
+run this after we complete this tutorial.
 
 Setup: Training a Model
 -----------------------
@@ -72,7 +72,7 @@ a backend in serve for our model (and versioned it with a string).
     :start-after: __doc_create_deploy_begin__
     :end-before: __doc_create_deploy_end__
 
-What serve does when we run this code is store the model as a Ray actor 
+What serve does when we run this code is store the model as a Ray actor
 and route traffic to it as the endpoint is queried, in this case over HTTP.
 Note that in order for this endpoint to be accessible from other machines, we
 need to specify ``http_host="0.0.0.0"`` in :mod:`serve.init <ray.serve.init>` like we did here.
@@ -95,8 +95,8 @@ this model with a new set of code.
 Updating Your Model Over Time
 =============================
 
-Updating our model is as simple as deploying the first one. While the code snippet includes 
-a lot of information, all that we're doing is we are defining a new model, saving it, then loading 
+Updating our model is as simple as deploying the first one. While the code snippet includes
+a lot of information, all that we're doing is we are defining a new model, saving it, then loading
 it into serve. The key lines are at the end.
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/tutorial_deploy.py
@@ -113,12 +113,12 @@ these two models.
 
     serve.set_traffic("iris_classifier", {"lr:v2": 0.25, "lr:v1": 0.75})
 
-While this is a simple operation, you may want to see :ref:`serve-split-traffic` for more information. 
+While this is a simple operation, you may want to see :ref:`serve-split-traffic` for more information.
 One thing you may want to consider as well is
 :ref:`session-affinity` which gives you the ability to ensure that queries from users/clients always get mapped to the same backend.
 versions.
 
-Now that we're up and running serving two models in production, let's query 
+Now that we're up and running serving two models in production, let's query
 our results several times to see some results. You'll notice that we're now splitting
 traffic between these two different models.
 
@@ -131,10 +131,10 @@ We'll use the requests library to query our endpoint and be able to get a result
     :start-after: __doc_query_begin__
     :end-before: __doc_query_end__
 
-If you run this code several times, you'll notice that the output will change - this 
+If you run this code several times, you'll notice that the output will change - this
 is due to us running the two models in parallel that we created above.
 
-Upon concluding the above tutorial, you'll want to run ``ray stop`` to 
+Upon concluding the above tutorial, you'll want to run ``ray stop`` to
 shutdown the Ray cluster on your local machine.
 
 Deploying as a Kubernetes Service
@@ -146,10 +146,10 @@ In order to deploy Ray Serve on Kubernetes, we need to do the following:
 2. Expose the head node of the cluster as a `Service`_.
 3. Start Ray Serve on the cluster.
 
-There are multiple ways to start a Ray cluster on Kubernetes, see :doc:`../deploy-on-kubernetes` for more information.
-Here, we will be using the :doc:`../autoscaling` tool, which has support for Kubernetes as a backend.
+There are multiple ways to start a Ray cluster on Kubernetes, see :ref:`ray-k8s-deploy` for more information.
+Here, we will be using the :ref:`Ray Cluster Launcher <ref-automatic-cluster>` tool, which has support for Kubernetes as a backend.
 
-The autoscaler takes in a yaml config file that describes the cluster.
+The cluster launcher takes in a yaml config file that describes the cluster.
 Here, we'll be using the `Kubernetes default config`_ with a few small modifications.
 First, we need to make sure that the head node of the cluster, where Ray Serve will run its HTTP server, is exposed as a Kubernetes `Service`_.
 There is already a default head node service defined in the ``services`` field of the config, so we just need to make sure that it's exposing the right port: 8000, which Ray Serve binds on by default.
@@ -228,7 +228,7 @@ With the cluster now running, we can run a simple script to start Ray Serve and 
 
     import ray
     from ray import serve
-    
+
     # Connect to the running Ray cluster.
     ray.init(address="auto")
     # Bind on 0.0.0.0 to expose the HTTP server on external IPs.
@@ -272,10 +272,10 @@ Deployment FAQ
 Best practices for local development
 ------------------------------------
 
-One thing you may notice is that we never have to declare a ``while True`` loop or 
-something to keep the Ray Serve process running. In general, we don't recommend using forever loops and therefore 
+One thing you may notice is that we never have to declare a ``while True`` loop or
+something to keep the Ray Serve process running. In general, we don't recommend using forever loops and therefore
 opt for launching a Ray Cluster locally. Specify a Ray cluster like we did in :ref:`serve-deploy-tutorial`.
-To learn more, in general, about Ray Clusters see :doc:`../cluster-index`.
+To learn more, in general, about Ray Clusters see :ref:`cluster-index`.
 
 
 Deploying Multiple Serve Instaces on a Single Ray Cluster

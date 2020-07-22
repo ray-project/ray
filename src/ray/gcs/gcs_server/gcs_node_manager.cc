@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "gcs_node_manager.h"
-#include <ray/common/ray_config.h>
-#include <ray/gcs/pb_util.h>
-#include <ray/protobuf/gcs.pb.h>
+#include "ray/gcs/gcs_server/gcs_node_manager.h"
+
+#include "ray/common/ray_config.h"
+#include "ray/gcs/pb_util.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace gcs {
@@ -28,9 +29,15 @@ GcsNodeManager::NodeFailureDetector::NodeFailureDetector(
     : gcs_table_storage_(std::move(gcs_table_storage)),
       on_node_death_callback_(std::move(on_node_death_callback)),
       num_heartbeats_timeout_(RayConfig::instance().num_heartbeats_timeout()),
+      light_heartbeat_enabled_(RayConfig::instance().light_heartbeat_enabled()),
       detect_timer_(io_service),
-      gcs_pub_sub_(std::move(gcs_pub_sub)) {
-  Tick();
+      gcs_pub_sub_(std::move(gcs_pub_sub)) {}
+
+void GcsNodeManager::NodeFailureDetector::Start() {
+  if (!is_started_) {
+    Tick();
+    is_started_ = true;
+  }
 }
 
 void GcsNodeManager::NodeFailureDetector::AddNode(const ray::ClientID &node_id) {
@@ -48,7 +55,12 @@ void GcsNodeManager::NodeFailureDetector::HandleHeartbeat(
   }
 
   iter->second = num_heartbeats_timeout_;
-  heartbeat_buffer_[node_id] = heartbeat_data;
+  if (!light_heartbeat_enabled_ || heartbeat_data.should_global_gc() ||
+      heartbeat_data.resources_available_size() > 0 ||
+      heartbeat_data.resources_total_size() > 0 ||
+      heartbeat_data.resource_load_size() > 0) {
+    heartbeat_buffer_[node_id] = heartbeat_data;
+  }
 }
 
 /// A periodic timer that checks for timed out clients.
@@ -92,8 +104,8 @@ void GcsNodeManager::NodeFailureDetector::ScheduleTick() {
       RayConfig::instance().raylet_heartbeat_timeout_milliseconds());
   detect_timer_.expires_from_now(heartbeat_period);
   detect_timer_.async_wait([this](const boost::system::error_code &error) {
-    if (error == boost::system::errc::operation_canceled) {
-      // `operation_canceled` is set when `detect_timer_` is canceled or destroyed.
+    if (error == boost::asio::error::operation_aborted) {
+      // `operation_aborted` is set when `detect_timer_` is canceled or destroyed.
       // The Monitor lifetime may be short than the object who use it. (e.g. gcs_server)
       return;
     }
@@ -122,7 +134,7 @@ GcsNodeManager::GcsNodeManager(boost::asio::io_service &io_service,
                 RAY_CHECK_OK(
                     gcs_table_storage_->NodeResourceTable().Delete(node_id, on_done));
               };
-              RAY_CHECK_OK(gcs_table_storage_->NodeTable().Delete(node_id, on_done));
+              RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_done));
             }
           })),
       gcs_pub_sub_(gcs_pub_sub),
@@ -282,6 +294,32 @@ void GcsNodeManager::HandleDeleteResources(const rpc::DeleteResourcesRequest &re
   }
 }
 
+void GcsNodeManager::HandleSetInternalConfig(const rpc::SetInternalConfigRequest &request,
+                                             rpc::SetInternalConfigReply *reply,
+                                             rpc::SendReplyCallback send_reply_callback) {
+  auto on_done = [reply, send_reply_callback, request](const Status status) {
+    RAY_LOG(DEBUG) << "Set internal config: " << request.config().DebugString();
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  };
+  RAY_CHECK_OK(gcs_table_storage_->InternalConfigTable().Put(UniqueID::Nil(),
+                                                             request.config(), on_done));
+}
+
+void GcsNodeManager::HandleGetInternalConfig(const rpc::GetInternalConfigRequest &request,
+                                             rpc::GetInternalConfigReply *reply,
+                                             rpc::SendReplyCallback send_reply_callback) {
+  auto get_internal_config = [reply, send_reply_callback](
+                                 ray::Status status,
+                                 const boost::optional<rpc::StoredConfig> &config) {
+    if (config.has_value()) {
+      reply->mutable_config()->CopyFrom(config.get());
+    }
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  };
+  RAY_CHECK_OK(gcs_table_storage_->InternalConfigTable().Get(UniqueID::Nil(),
+                                                             get_internal_config));
+}
+
 std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::GetNode(
     const ray::ClientID &node_id) const {
   auto iter = alive_nodes_.find(node_id);
@@ -310,6 +348,7 @@ void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
 
 std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     const ray::ClientID &node_id, bool is_intended /*= false*/) {
+  RAY_LOG(INFO) << "Removing node, node id = " << node_id;
   std::shared_ptr<rpc::GcsNodeInfo> removed_node;
   auto iter = alive_nodes_.find(node_id);
   if (iter != alive_nodes_.end()) {
@@ -347,7 +386,9 @@ void GcsNodeManager::LoadInitialData(const EmptyCallback &done) {
                                const std::unordered_map<ClientID, GcsNodeInfo> &result) {
     for (auto &item : result) {
       if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
-        alive_nodes_.emplace(item.first, std::make_shared<rpc::GcsNodeInfo>(item.second));
+        // Call `AddNode` for this node to make sure it is tracked by the failure
+        // detector.
+        AddNode(std::make_shared<rpc::GcsNodeInfo>(item.second));
       } else if (item.second.state() == rpc::GcsNodeInfo::DEAD) {
         dead_nodes_.emplace(item.first, std::make_shared<rpc::GcsNodeInfo>(item.second));
       }
@@ -356,7 +397,9 @@ void GcsNodeManager::LoadInitialData(const EmptyCallback &done) {
     auto get_node_resource_callback =
         [this, done](const std::unordered_map<ClientID, ResourceMap> &result) {
           for (auto &item : result) {
-            cluster_resources_.emplace(item.first, item.second);
+            if (alive_nodes_.count(item.first)) {
+              cluster_resources_[item.first] = item.second;
+            }
           }
           RAY_LOG(INFO) << "Finished loading initial data.";
           done();
@@ -366,6 +409,8 @@ void GcsNodeManager::LoadInitialData(const EmptyCallback &done) {
   };
   RAY_CHECK_OK(gcs_table_storage_->NodeTable().GetAll(get_node_callback));
 }
+
+void GcsNodeManager::StartNodeFailureDetector() { node_failure_detector_->Start(); }
 
 }  // namespace gcs
 }  // namespace ray

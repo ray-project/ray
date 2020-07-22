@@ -2,27 +2,53 @@ import enum
 from typing import Tuple, List, Dict, Optional
 from collections import namedtuple
 
+
+class MetricType(enum.IntEnum):
+    COUNTER = 1
+    MEASURE = 2
+
+
 # We split the information about a metric into two parts: the MetricMetadata
 # and MetricRecord. Metadata is declared at creation time and include names
 # and the label names. The label values will be supplied at observation time.
-MetricMetadata = namedtuple(
-    "MetricMetadata",
-    ["name", "type", "description", "label_names", "default_labels"])
-MetricRecord = namedtuple("MetricRecord", ["name", "labels", "value"])
+class MetricMetadata:
+    def __init__(self, name: str, type: MetricType, description: str,
+                 label_names: Tuple[str], default_labels: Dict[str, str]):
+        self.name = name
+        self.type = type
+        self.description = description
+        self.label_names = label_names
+        self.default_labels = default_labels
+
+    def __eq__(self, value: "MetricMetadata"):
+        if not isinstance(value, MetricMetadata):
+            return False
+
+        return (self.name == value.name and self.type == self.type
+                and self.description == value.description
+                and self.label_names == value.label_names
+                and self.default_labels == value.default_labels)
+
+    def __hash__(self):
+        return hash((self.name, self.type, self.description, self.label_names,
+                     frozenset(self.default_labels.items())))
+
+
+MetricRecord = namedtuple("MetricRecord", ["key", "labels", "value"])
 MetricBatch = List[MetricRecord]
 
 
 class BaseMetric:
     def __init__(self,
                  client,
-                 name: str,
+                 key: int,
                  label_names: Tuple[str],
                  dynamic_labels: Optional[Dict[str, str]] = None):
         """Represent a single metric stream
 
         Args:
             client(MetricClient): The client object to push update to.
-            name(str): The name of the metric.
+            key(int): The unique hash key of the metric.
             label_names(Tuple[str]): The names of the labels that must be set
                 before an observation.
             dynamic_labels(Optional[Dict[str,str]]): A partially preset labels.
@@ -30,7 +56,7 @@ class BaseMetric:
                 ``metric.labels(a=b).labels(c=d)``.
         """
         self.client = client
-        self.name = name
+        self.key = key
         self.dynamic_labels = dynamic_labels or dict()
         self.label_names = label_names
 
@@ -56,7 +82,7 @@ class BaseMetric:
                     "label names. Allowed label names are {}.".format(
                         k, self.label_names))
             new_dynamic_labels[k] = str(v)
-        return type(self)(self.client, self.name, self.label_names,
+        return type(self)(self.client, self.key, self.label_names,
                           new_dynamic_labels)
 
 
@@ -67,7 +93,7 @@ class Counter(BaseMetric):
         """Increment the counter by some amount. Default is 1"""
         self.check_all_labels_fulfilled_or_error()
         self.client.metric_records.append(
-            MetricRecord(self.name, self.dynamic_labels, increment))
+            MetricRecord(self.key, self.dynamic_labels, increment))
 
 
 class Measure(BaseMetric):
@@ -75,12 +101,7 @@ class Measure(BaseMetric):
         """Record the given value for the measure"""
         self.check_all_labels_fulfilled_or_error()
         self.client.metric_records.append(
-            MetricRecord(self.name, self.dynamic_labels, value))
-
-
-class MetricType(enum.IntEnum):
-    COUNTER = 1
-    MEASURE = 2
+            MetricRecord(self.key, self.dynamic_labels, value))
 
 
 def convert_event_type_to_class(event_type: MetricType) -> BaseMetric:

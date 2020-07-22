@@ -17,6 +17,24 @@ def test_select_shards(ray_start_regular_shared):
     assert it2.take(4) == [2, 4]
 
 
+def test_transform(ray_start_regular_shared):
+    def f(it):
+        for item in it:
+            yield item * 2
+
+    def g(it):
+        for item in it:
+            if item >= 2:
+                yield item
+
+    it = from_range(4).transform(f)
+    assert repr(it) == "ParallelIterator[from_range[4, shards=2].transform()]"
+    assert list(it.gather_sync()) == [0, 4, 2, 6]
+
+    it = from_range(4)
+    assert list(it.gather_sync().transform(g)) == [2, 3]
+
+
 def test_metrics(ray_start_regular_shared):
     it = from_items([1, 2, 3, 4], num_shards=1)
     it2 = from_items([1, 2, 3, 4], num_shards=1)

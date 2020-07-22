@@ -24,7 +24,7 @@ class TestA3C(unittest.TestCase):
         num_iterations = 1
 
         # Test against all frameworks.
-        for fw in framework_iterator(config, ("tf", "torch")):
+        for fw in framework_iterator(config):
             config["sample_async"] = fw == "tf"
             for env in ["CartPole-v0", "Pendulum-v0", "PongDeterministic-v0"]:
                 trainer = a3c.A3CTrainer(config=config, env=env)
@@ -32,6 +32,7 @@ class TestA3C(unittest.TestCase):
                     results = trainer.train()
                     print(results)
                 check_compute_single_action(trainer)
+                trainer.stop()
 
 
 if __name__ == "__main__":

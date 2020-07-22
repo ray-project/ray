@@ -139,6 +139,23 @@
                 "project_id": {
                     "type": ["string", "null"],
                     "description": "GCP globally unique project id"
+                },
+                "gcp_credentials": {
+                    "type": "object",
+                    "description": "Credentials for authenticating with the GCP client",
+                    "required": [ "type" ],
+                    "additionalProperties": false,
+                    "properties": {
+                        "type": {
+                            "type": "string",
+                            "enum": ["credentials_token", "service_account"],
+                            "description": "Credentials type: either temporary OAuth 2.0 token or permanent service account credentials blob."
+                        },
+                        "credentials": {
+                            "type": "string",
+                            "description": "Oauth token or JSON string constituting service account credentials"
+                        }
+                    }
                 }
             }
         },
@@ -155,6 +172,10 @@
                     "type": "string"
                 },
                 "ssh_private_key": { 
+                    "type": "string"
+                },
+                "ssh_proxy_command": {
+                    "description": "A value for ProxyCommand ssh option, for connecting through proxies. Example: nc -x proxy.example.com:1234 %h %p",
                     "type": "string"
                 }
             }
@@ -237,6 +258,24 @@
         },
         "no_restart": {
             "description": "Whether to avoid restarting the cluster during updates. This field is controlled by the ray --no-restart flag and cannot be set by the user."
+        },
+        "available_instance_types": {
+            "type": "object",
+            "description": "A list of instance types available for launching with 'auto' worker type.",
+            "patternProperties": {
+                ".*": {
+                    "type": "object",
+                    "properties": {
+                       "max_workers": {"type": "integer"},
+                       "resources": {
+                           "type": "object",
+                           ".*": {"type": "number"}
+                       }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            "additionalProperties": false
         }
     }
 }

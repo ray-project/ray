@@ -14,19 +14,19 @@
 
 #pragma once
 
-#include <ray/common/id.h>
-#include <ray/common/task/task_execution_spec.h>
-#include <ray/common/task/task_spec.h>
-#include <ray/protobuf/gcs_service.pb.h>
-#include <ray/rpc/worker/core_worker_client.h>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
-#include "gcs_actor_scheduler.h"
-#include "gcs_table_storage.h"
+#include "ray/common/id.h"
+#include "ray/common/task/task_execution_spec.h"
+#include "ray/common/task/task_spec.h"
+#include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
+#include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
+#include "ray/rpc/worker/core_worker_client.h"
+#include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
 namespace gcs {
@@ -228,6 +228,12 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param job_id The id of finished job.
   void OnJobFinished(const JobID &job_id);
 
+  /// Get the created actors.
+  ///
+  /// \return The created actors.
+  const absl::flat_hash_map<ClientID, absl::flat_hash_map<WorkerID, ActorID>>
+      &GetCreatedActors() const;
+
  private:
   /// A data structure representing an actor's owner.
   struct Owner {
@@ -269,7 +275,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// All registered actors (pending actors are also included).
   /// TODO(swang): Use unique_ptr instead of shared_ptr.
   absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> registered_actors_;
-  /// Maps detached actor names to their actor ID for lookups by name.
+  /// Maps actor names to their actor ID for lookups by name.
   absl::flat_hash_map<std::string, ActorID> named_actors_;
   /// The pending actors which will not be scheduled until there's a resource change.
   std::vector<std::shared_ptr<GcsActor>> pending_actors_;

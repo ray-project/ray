@@ -50,7 +50,7 @@ class DYNATorchModel(TorchModelV2, nn.Module):
 
         # One-hot the actions.
         actions_flat = nn.functional.one_hot(
-            actions, num_classes=self.action_space.n).float()
+            actions.long(), num_classes=self.action_space.n).float()
         # Push through our underlying Model.
         next_obs, _ = self.forward({
             "obs_flat": torch.cat([observations, actions_flat], -1)

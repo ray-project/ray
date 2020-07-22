@@ -216,11 +216,55 @@ Tune will schedule the trials to run in parallel on your Ray cluster:
      - PPO_CartPole-v0_0_lr=0.01:	RUNNING [pid=21940], 16 s, 4013 ts, 22 rew
      - PPO_CartPole-v0_1_lr=0.001:	RUNNING [pid=21942], 27 s, 8111 ts, 54.7 rew
 
+``tune.run()`` returns an ExperimentAnalysis object that allows further analysis of the training results and retrieving the checkpoint(s) of the trained agent.
+It also simplifies saving the trained agent. For example:
+
+.. code-block:: python
+
+    # tune.run() allows setting a custom log directory (other than ``~/ray-results``)
+    # and automatically saving the trained agent
+    analysis = ray.tune.run(
+        ppo.PPOTrainer,
+        config=config,
+        local_dir=log_dir,
+        stop=stop_criteria,
+        checkpoint_at_end=True)
+
+    # list of lists: one list per checkpoint; each checkpoint list contains
+    # 1st the path, 2nd the metric value
+    checkpoints = analysis.get_trial_checkpoints_paths(
+        trial=analysis.get_best_trial("episode_reward_mean"),
+        metric="episode_reward_mean")
+													  
+Loading and restoring a trained agent from a checkpoint is simple:
+
+.. code-block:: python
+	
+    agent = ppo.PPOTrainer(config=config, env=env_class)
+    agent.restore(checkpoint_path)
+
+
 Computing Actions
 ~~~~~~~~~~~~~~~~~
 
 The simplest way to programmatically compute actions from a trained agent is to use ``trainer.compute_action()``.
 This method preprocesses and filters the observation before passing it to the agent policy.
+Here is a simple example of testing a trained agent for one episode:
+
+.. code-block:: python
+
+    # instantiate env class
+    env = env_class(env_config)
+
+    # run until episode ends
+    episode_reward = 0
+    done = False
+    obs = env.reset()
+    while not done:
+        action = agent.compute_action(obs)
+        obs, reward, done, info = env.step(action)
+        episode_reward += reward
+
 For more advanced usage, you can access the ``workers`` and policies held by the trainer
 directly as ``compute_action()`` does:
 

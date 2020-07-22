@@ -107,7 +107,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   /// Implements the Stats() interface.
   ProfileTable &profile_table();
   /// Implements the Workers() interface.
-  WorkerFailureTable &worker_failure_table();
+  WorkerTable &worker_table();
 
  private:
   // GCS command type. If CommandType::kChain, chain-replicated versions of the tables
@@ -130,7 +130,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   std::unique_ptr<ActorCheckpointTable> actor_checkpoint_table_;
   std::unique_ptr<ActorCheckpointIdTable> actor_checkpoint_id_table_;
   std::unique_ptr<DynamicResourceTable> resource_table_;
-  std::unique_ptr<WorkerFailureTable> worker_failure_table_;
+  std::unique_ptr<WorkerTable> worker_table_;
   std::unique_ptr<JobTable> job_table_;
 };
 

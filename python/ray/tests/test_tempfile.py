@@ -1,12 +1,12 @@
 import os
 import shutil
-import subprocess
 import sys
 import time
 
 import pytest
 import ray
 from ray.cluster_utils import Cluster
+from ray.test_utils import check_call_ray
 
 
 def unix_socket_create_path(name):
@@ -73,8 +73,8 @@ def test_tempdir(shutdown_only):
 
 def test_tempdir_commandline():
     shutil.rmtree(ray.utils.get_ray_temp_dir(), ignore_errors=True)
-    subprocess.check_call([
-        "ray", "start", "--head", "--temp-dir=" + os.path.join(
+    check_call_ray([
+        "start", "--head", "--temp-dir=" + os.path.join(
             ray.utils.get_user_temp_dir(), "i_am_a_temp_dir2")
     ])
     assert os.path.exists(
@@ -82,7 +82,7 @@ def test_tempdir_commandline():
                      "i_am_a_temp_dir2")), "Specified temp dir not found."
     assert not os.path.exists(
         ray.utils.get_ray_temp_dir()), "Default temp dir should not exist."
-    subprocess.check_call(["ray", "stop"])
+    check_call_ray(["stop"])
     shutil.rmtree(
         os.path.join(ray.utils.get_user_temp_dir(), "i_am_a_temp_dir2"),
         ignore_errors=True)
@@ -150,11 +150,12 @@ def test_raylet_tempfiles(shutdown_only):
         "log_monitor.out", "log_monitor.err", "plasma_store.out",
         "plasma_store.err", "monitor.out", "monitor.err", "redis-shard_0.out",
         "redis-shard_0.err", "redis.out", "redis.err", "raylet.out",
-        "raylet.err"
+        "raylet.err", "gcs_server.out", "gcs_server.err"
     }
 
-    log_files_expected.update({"gcs_server.out", "gcs_server.err"})
-
+    for expected in log_files_expected:
+        assert expected in log_files
+    assert log_files_expected.issubset(log_files)
     assert log_files.issuperset(log_files_expected)
 
     socket_files = set(os.listdir(node.get_sockets_dir_path()))

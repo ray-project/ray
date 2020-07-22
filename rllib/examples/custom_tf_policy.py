@@ -7,7 +7,7 @@ from ray.rllib.evaluation.postprocessing import discount
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--stop-iters", type=int, default=200)

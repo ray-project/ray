@@ -2,17 +2,15 @@
 
 #include <fcntl.h>
 #include <stdio.h>
+#ifndef _WIN32
 #include <sys/statvfs.h>
+#endif
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "ray/object_manager/plasma/io.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
 
 namespace plasma {
-
-using arrow::util::ArrowLog;
-using arrow::util::ArrowLogLevel;
 
 void SetMallocGranularity(int value);
 
@@ -20,22 +18,21 @@ PlasmaStoreRunner::PlasmaStoreRunner(std::string socket_name, int64_t system_mem
                      bool hugepages_enabled, std::string plasma_directory,
                      const std::string external_store_endpoint):
     hugepages_enabled_(hugepages_enabled), external_store_endpoint_(external_store_endpoint) {
-  ArrowLog::StartArrowLog("plasma_store", ArrowLogLevel::ARROW_INFO);
   // Sanity check.
   if (socket_name.empty()) {
-    ARROW_LOG(FATAL) << "please specify socket for incoming connections with -s switch";
+    RAY_LOG(FATAL) << "please specify socket for incoming connections with -s switch";
   }
   socket_name_ = socket_name;
   if (system_memory == -1) {
-    ARROW_LOG(FATAL) << "please specify the amount of system memory with -m switch";
+    RAY_LOG(FATAL) << "please specify the amount of system memory with -m switch";
   }
   // Set system memory capacity
   PlasmaAllocator::SetFootprintLimit(static_cast<size_t>(system_memory));
-  ARROW_LOG(INFO) << "Allowing the Plasma store to use up to "
+  RAY_LOG(INFO) << "Allowing the Plasma store to use up to "
                   << static_cast<double>(system_memory) / 1000000000
                   << "GB of memory.";
   if (hugepages_enabled && plasma_directory.empty()) {
-    ARROW_LOG(FATAL) << "if you want to use hugepages, please specify path to huge pages "
+    RAY_LOG(FATAL) << "if you want to use hugepages, please specify path to huge pages "
                         "filesystem with -d";
   }
   if (plasma_directory.empty()) {
@@ -45,7 +42,7 @@ PlasmaStoreRunner::PlasmaStoreRunner(std::string socket_name, int64_t system_mem
     plasma_directory = "/tmp";
 #endif
   }
-  ARROW_LOG(INFO) << "Starting object store with directory " << plasma_directory
+  RAY_LOG(INFO) << "Starting object store with directory " << plasma_directory
                   << " and huge page support "
                   << (hugepages_enabled ? "enabled" : "disabled");
 #ifdef __linux__
@@ -62,7 +59,7 @@ PlasmaStoreRunner::PlasmaStoreRunner(std::string socket_name, int64_t system_mem
     // Keep some safety margin for allocator fragmentation.
     shm_mem_avail = 9 * shm_mem_avail / 10;
     if (system_memory > shm_mem_avail) {
-      ARROW_LOG(WARNING)
+      RAY_LOG(WARNING)
           << "System memory request exceeds memory available in " << plasma_directory
           << ". The request is for " << system_memory
           << " bytes, and the amount available is " << shm_mem_avail
@@ -88,20 +85,18 @@ void PlasmaStoreRunner::Start() {
   std::shared_ptr<plasma::ExternalStore> external_store{nullptr};
   if (!external_store_endpoint_.empty()) {
     std::string name;
-    ARROW_CHECK_OK(
+    RAY_CHECK_OK(
         plasma::ExternalStores::ExtractStoreName(external_store_endpoint_, &name));
     external_store = plasma::ExternalStores::GetStore(name);
     if (external_store == nullptr) {
-      ARROW_LOG(FATAL) << "No such external store \"" << name << "\"";
+      RAY_LOG(FATAL) << "No such external store \"" << name << "\"";
     }
-    ARROW_LOG(DEBUG) << "connecting to external store...";
-    ARROW_CHECK_OK(external_store->Connect(external_store_endpoint_));
+    RAY_LOG(DEBUG) << "connecting to external store...";
+    RAY_CHECK_OK(external_store->Connect(external_store_endpoint_));
   }
-  ARROW_LOG(DEBUG) << "starting server listening on " << socket_name_;
+  RAY_LOG(DEBUG) << "starting server listening on " << socket_name_;
 
-  // Create the event loop.
-  loop_.reset(new EventLoop);
-  store_.reset(new PlasmaStore(loop_.get(), plasma_directory_, hugepages_enabled_,
+  store_.reset(new PlasmaStore(main_service_, plasma_directory_, hugepages_enabled_,
                                socket_name_, external_store));
   plasma_config = store_->GetPlasmaStoreInfo();
 
@@ -111,39 +106,29 @@ void PlasmaStoreRunner::Start() {
   // bookkeeping.
   void* pointer = PlasmaAllocator::Memalign(
       kBlockSize, PlasmaAllocator::GetFootprintLimit() - 256 * sizeof(size_t));
-  ARROW_CHECK(pointer != nullptr);
+  RAY_CHECK(pointer != nullptr);
   // This will unmap the file, but the next one created will be as large
   // as this one (this is an implementation detail of dlmalloc).
   PlasmaAllocator::Free(
       pointer, PlasmaAllocator::GetFootprintLimit() - 256 * sizeof(size_t));
 
-  int socket = ConnectOrListenIpcSock(socket_name_, true);
-  // TODO(pcm): Check return value.
-  ARROW_CHECK(socket >= 0);
+  store_->Start();
 
-  loop_->AddFileEvent(socket, kEventLoopRead, [this, socket](int events) {
-    this->store_->ConnectClient(socket);
-  });
-  loop_->Start();
+  main_service_.run();
 
   Shutdown();
 #ifdef _WINSOCKAPI_
   WSACleanup();
 #endif
-  ArrowLog::ShutDownArrowLog();
 }
 
 void PlasmaStoreRunner::Stop() {
-  if (loop_) {
-    loop_->Stop();
-  } else {
-    ARROW_LOG(ERROR) << "Expected loop_ to be non-NULL; this may be a bug";
-  }
+  store_->Stop();
+  main_service_.stop();
 }
 
 void PlasmaStoreRunner::Shutdown() {
-  loop_->Shutdown();
-  loop_ = nullptr;
+  store_->Stop();
   store_ = nullptr;
 }
 

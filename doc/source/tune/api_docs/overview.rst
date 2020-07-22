@@ -18,6 +18,7 @@ on `Github`_.
    grid_random.rst
    suggestion.rst
    schedulers.rst
+   sklearn.rst
    logging.rst
    internals.rst
    client.rst

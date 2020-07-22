@@ -47,7 +47,8 @@ def test_tune_train(ray_start_2_cpus, num_replicas):  # noqa: F811
         "data_creator": tune.function(simple_dataset),
         "num_replicas": num_replicas,
         "use_gpu": False,
-        "trainer_config": SIMPLE_CONFIG
+        "trainer_config": SIMPLE_CONFIG,
+        "num_cpus_per_worker": 1
     }
 
     tune.run(

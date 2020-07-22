@@ -20,6 +20,7 @@ def build_torch_policy(name,
                        extra_action_out_fn=None,
                        extra_grad_process_fn=None,
                        optimizer_fn=None,
+                       validate_spaces=None,
                        before_init=None,
                        after_init=None,
                        action_sampler_fn=None,
@@ -48,6 +49,9 @@ def build_torch_policy(name,
             called after gradients are computed and returns processing info.
         optimizer_fn (Optional[callable]): Optional callable that returns a
             torch optimizer given the policy and config.
+        validate_spaces (Optional[callable]): Optional callable that takes the
+            Policy, observation_space, action_space, and config to check for
+            correctness.
         before_init (Optional[callable]): Optional callable to run at the
             beginning of `Policy.__init__` that takes the same arguments as
             the Policy constructor.
@@ -94,8 +98,11 @@ def build_torch_policy(name,
                 config = dict(get_default_config(), **config)
             self.config = config
 
+            if validate_spaces:
+                validate_spaces(self, obs_space, action_space, self.config)
+
             if before_init:
-                before_init(self, obs_space, action_space, config)
+                before_init(self, obs_space, action_space, self.config)
 
             # Model is customized (use default action dist class).
             if make_model:

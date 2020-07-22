@@ -1,4 +1,4 @@
-#include "scheduling_resources.h"
+#include "ray/common/task/scheduling_resources.h"
 
 #include <cmath>
 #include <sstream>
@@ -223,6 +223,30 @@ void ResourceSet::AddResources(const ResourceSet &other) {
     const std::string &resource_label = resource_pair.first;
     const FractionalResourceQuantity &resource_capacity = resource_pair.second;
     resource_capacity_[resource_label] += resource_capacity;
+  }
+}
+
+void ResourceSet::AddBundleResources(const std::string &bundle_id,
+                                     const ResourceSet &other) {
+  for (const auto &resource_pair : other.GetResourceAmountMap()) {
+    const std::string &resource_label = bundle_id + "_" + resource_pair.first;
+    const FractionalResourceQuantity &resource_capacity = resource_pair.second;
+    resource_capacity_[resource_label] += resource_capacity;
+  }
+}
+
+void ResourceSet::ReturnBundleResources(const std::string &bundle_id) {
+  for (auto iter = resource_capacity_.begin(); iter != resource_capacity_.end();) {
+    const std::string &bundle_resource_label = iter->first;
+    if (bundle_resource_label.find(bundle_id) != std::string::npos) {
+      const std::string &resource_label =
+          bundle_resource_label.substr(bundle_resource_label.find_last_of("_") + 1);
+      const FractionalResourceQuantity &resource_capacity = iter->second;
+      resource_capacity_[resource_label] += resource_capacity;
+      iter = resource_capacity_.erase(iter);
+    } else {
+      iter++;
+    }
   }
 }
 
@@ -639,6 +663,26 @@ void ResourceIdSet::AddOrUpdateResource(const std::string &resource_name,
   }
 }
 
+void ResourceIdSet::AddBundleResource(const std::string &resource_name,
+                                      ResourceIds &resource_ids) {
+  available_resources_[resource_name] = resource_ids;
+}
+
+void ResourceIdSet::CancelResourceReserve(const std::string &resource_name) {
+  std::string origin_resource_name = resource_name.substr(resource_name.find("_") + 1);
+  auto iter_orig = available_resources_.find(origin_resource_name);
+  auto iter_bundle = available_resources_.find(resource_name);
+  if (iter_bundle == available_resources_.end()) {
+    return;
+  } else {
+    if (iter_orig == available_resources_.end()) {
+      available_resources_[origin_resource_name] = iter_bundle->second;
+    } else {
+      iter_orig->second.Release(iter_bundle->second);
+    }
+    available_resources_.erase(iter_bundle);
+  }
+}
 void ResourceIdSet::DeleteResource(const std::string &resource_name) {
   available_resources_.erase(resource_name);
 }
@@ -743,12 +787,16 @@ const ResourceSet &SchedulingResources::GetTotalResources() const {
   return resources_total_;
 }
 
-void SchedulingResources::SetLoadResources(ResourceSet &&newset) {
-  resources_load_ = newset;
+void SchedulingResources::SetTotalResources(ResourceSet &&newset) {
+  resources_total_ = newset;
 }
 
 const ResourceSet &SchedulingResources::GetLoadResources() const {
   return resources_load_;
+}
+
+void SchedulingResources::SetLoadResources(ResourceSet &&newset) {
+  resources_load_ = newset;
 }
 
 // Return specified resources back to SchedulingResources.
@@ -785,6 +833,19 @@ void SchedulingResources::UpdateResourceCapacity(const std::string &resource_nam
     resources_total_.AddOrUpdateResource(resource_name, new_capacity);
     resources_available_.AddOrUpdateResource(resource_name, new_capacity);
   }
+}
+
+void SchedulingResources::UpdateBundleResource(const std::string &bundle_id,
+                                               const ResourceSet &resource_set) {
+  resources_available_.SubtractResourcesStrict(resource_set);
+  resources_available_.AddBundleResources(bundle_id, resource_set);
+  resources_total_.SubtractResourcesStrict(resource_set);
+  resources_total_.AddBundleResources(bundle_id, resource_set);
+}
+
+void SchedulingResources::ReturnBundleResource(const std::string &bundle_id) {
+  resources_available_.ReturnBundleResources(bundle_id);
+  resources_total_.ReturnBundleResources(bundle_id);
 }
 
 void SchedulingResources::DeleteResource(const std::string &resource_name) {

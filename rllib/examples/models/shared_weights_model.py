@@ -7,7 +7,7 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
 
 
@@ -15,7 +15,7 @@ class SharedWeightsModel1(TFModelV2):
     """Example of weight sharing between two different TFModelV2s.
 
     Here, we share the variables defined in the 'shared' variable scope
-    by entering it explicitly with tf.AUTO_REUSE. This creates the
+    by entering it explicitly with tf1.AUTO_REUSE. This creates the
     variables for the 'fc1' layer in a global scope called 'shared'
     (outside of the Policy's normal variable scope).
     """
@@ -26,9 +26,9 @@ class SharedWeightsModel1(TFModelV2):
                          model_config, name)
 
         inputs = tf.keras.layers.Input(observation_space.shape)
-        with tf.variable_scope(
-                tf.VariableScope(tf.AUTO_REUSE, "shared"),
-                reuse=tf.AUTO_REUSE,
+        with tf1.variable_scope(
+                tf1.VariableScope(tf1.AUTO_REUSE, "shared"),
+                reuse=tf1.AUTO_REUSE,
                 auxiliary_name_scope=False):
             last_layer = tf.keras.layers.Dense(
                 units=64, activation=tf.nn.relu, name="fc1")(inputs)
@@ -60,9 +60,9 @@ class SharedWeightsModel2(TFModelV2):
         inputs = tf.keras.layers.Input(observation_space.shape)
 
         # Weights shared with SharedWeightsModel1.
-        with tf.variable_scope(
-                tf.VariableScope(tf.AUTO_REUSE, "shared"),
-                reuse=tf.AUTO_REUSE,
+        with tf1.variable_scope(
+                tf1.VariableScope(tf1.AUTO_REUSE, "shared"),
+                reuse=tf1.AUTO_REUSE,
                 auxiliary_name_scope=False):
             last_layer = tf.keras.layers.Dense(
                 units=64, activation=tf.nn.relu, name="fc1")(inputs)
