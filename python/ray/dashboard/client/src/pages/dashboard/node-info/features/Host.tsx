@@ -2,8 +2,8 @@ import React from "react";
 import { Accessor } from "../../../../common/tableUtils";
 import {
   ClusterFeature,
-  NodeFeatureData,
   NodeFeature,
+  NodeFeatureData,
   NodeInfoFeature,
   WorkerFeature,
 } from "./types";

@@ -1,25 +1,24 @@
 import { Box, Tooltip, Typography } from "@material-ui/core";
 import React from "react";
-import { GPUStats } from "../../../../api";
 import { RightPaddedTypography } from "../../../../common/CustomTypography";
 import { MiBRatioNoPercent } from "../../../../common/formatUtils";
 import { Accessor } from "../../../../common/tableUtils";
 import UsageBar from "../../../../common/UsageBar";
 import { getWeightedAverage, sum } from "../../../../common/util";
+import { GPUStats, NodeDetails, Worker } from "../../../../newApi";
 import {
   ClusterFeature,
-  Node,
-  NodeFeatureData,
   NodeFeature,
+  NodeFeatureData,
   NodeInfoFeature,
-  WorkerFeatureData,
   WorkerFeature,
+  WorkerFeatureData,
 } from "./types";
 
 const GRAM_COL_WIDTH = 120;
 
-const nodeGRAMUtilization = (node: Node) => {
-  const utilization = (gpu: GPUStats) => gpu.memory_used / gpu.memory_total;
+const nodeGRAMUtilization = (node: NodeDetails) => {
+  const utilization = (gpu: GPUStats) => gpu.memoryUsed / gpu.memoryTotal;
   if (node.gpus.length === 0) {
     return NaN;
   }
@@ -34,7 +33,7 @@ const nodeGRAMAccessor: Accessor<NodeFeatureData> = ({ node }) => {
   return isNaN(nodeGRAMUtil) ? -1 : nodeGRAMUtil;
 };
 
-const clusterGRAMUtilization = (nodes: Array<Node>) => {
+const clusterGRAMUtilization = (nodes: NodeDetails[]) => {
   const utils = nodes
     .map((node) => ({
       weight: node.gpus.length,
@@ -69,8 +68,8 @@ export const NodeGRAM: NodeFeature = ({ node }) => {
   const nodeGRAMEntries = node.gpus.map((gpu, i) => {
     const props = {
       gpuName: gpu.name,
-      utilization: gpu.memory_used,
-      total: gpu.memory_total,
+      utilization: gpu.memoryUsed,
+      total: gpu.memoryTotal,
       slot: i,
     };
     return <GRAMEntry {...props} />;
@@ -124,8 +123,8 @@ export const WorkerGRAM: WorkerFeature = ({ worker, node }) => {
       }
       const props = {
         gpuName: gpu.name,
-        total: gpu.memory_total,
-        utilization: process.gpu_memory_usage,
+        total: gpu.memoryTotal,
+        utilization: process.gpuMemoryUsage,
         slot: i,
       };
       return <GRAMEntry {...props} />;
@@ -141,14 +140,14 @@ export const WorkerGRAM: WorkerFeature = ({ worker, node }) => {
   );
 };
 
-const workerGRAMUtilization = (worker: any, node: Node) => {
+const workerGRAMUtilization = (worker: Worker, node: NodeDetails) => {
   const workerProcessPerGPU = node.gpus
     .map((gpu) => gpu.processes)
     .map((processes) =>
       processes.find((process) => process.pid === worker.pid),
     );
   const workerUtilPerGPU = workerProcessPerGPU.map(
-    (proc) => proc?.gpu_memory_usage || 0,
+    (proc) => proc?.gpuMemoryUsage || 0,
   );
   return sum(workerUtilPerGPU);
 };

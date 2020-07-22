@@ -1,4 +1,5 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
+import { NodeDetailsResponse } from "../../../../../../../bazel-ray/python/ray/dashboard/client/src/newApi";
 import {
   MemoryTableResponse,
   NodeInfoResponse,
@@ -7,10 +8,8 @@ import {
   TuneAvailabilityResponse,
   TuneJobResponse,
 } from "../../api";
-import {
-  NodeSummaryResponse
-} from "../../newApi";
 import { filterObj } from "../../common/util";
+import { NodeDetails, NodeSummaryResponse } from "../../newApi";
 
 const name = "dashboard";
 
@@ -19,6 +18,7 @@ type State = {
   rayConfig: RayConfigResponse | null;
   nodeInfo: NodeInfoResponse | null;
   nodeSummaries: NodeSummaryResponse | null;
+  nodeDetails: { [hostname: string]: NodeDetails };
   rayletInfo: RayletInfoResponse | null;
   tuneInfo: TuneJobResponse | null;
   tuneAvailability: TuneAvailabilityResponse | null;
@@ -33,6 +33,7 @@ const initialState: State = {
   rayConfig: null,
   nodeInfo: null,
   nodeSummaries: null,
+  nodeDetails: {},
   rayletInfo: null,
   tuneInfo: null,
   tuneAvailability: null,
@@ -86,11 +87,13 @@ const slice = createSlice({
     ) => {
       state.memoryTable = action.payload;
     },
-    setNodeSummaries: (
-      state,
-      action: PayloadAction<NodeSummaryResponse>,
-    ) => {
+    setNodeSummaries: (state, action: PayloadAction<NodeSummaryResponse>) => {
       state.nodeSummaries = action.payload;
+    },
+    setNodeDetails: (state, action: PayloadAction<NodeDetailsResponse>) => {
+      if (!action.payload.data) {return;}
+      const details = action.payload.data.details;
+      state.nodeDetails[details.hostname] = details;
     },
     setShouldObtainMemoryTable: (state, action: PayloadAction<boolean>) => {
       state.shouldObtainMemoryTable = action.payload;

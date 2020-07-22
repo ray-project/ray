@@ -4,12 +4,21 @@ export type HostnamesResponse = APIResponse<HostnamesResponseData>;
 export type NodeSummaryResponse = APIResponse<NodeSummaryResponseData>;
 export type NodeDetailsResponse = APIResponse<NodeDetailsResponseData>;
 
+export type ResourceSlot = {
+  slot: number;
+  allocation: number;
+};
+
+export type ResourceAllocations = {
+  resourceSlots: ResourceSlot[];
+};
+
 export type GPUProcessStats = {
   // Sub stat of GPU stats, this type represents the GPU
   // utilization of a single process of a single GPU.
   username: string;
   command: string;
-  gpu_memory_usage: number;
+  gpuMemoryUsage: number;
   pid: number;
 };
 
@@ -17,13 +26,13 @@ export type GPUStats = {
   // This represents stats fetched from a node about a single GPU
   uuid: string;
   name: string;
-  temperature_gpu: number;
-  fan_speed: number;
-  utilization_gpu: number;
-  power_draw: number;
-  enforced_power_limit: number;
-  memory_used: number;
-  memory_total: number;
+  temperatureGpu: number;
+  fanSpeed: number;
+  utilizationGpu: number;
+  powerDraw: number;
+  enforcedPowerLimit: number;
+  memoryUsed: number;
+  memoryTotal: number;
   processes: GPUProcessStats[];
 };
 
@@ -58,7 +67,7 @@ export enum ActorState {
   Creating = "CREATING",
   Restarting = "RESTARTING",
   Invalid = "INVALID",
-};
+}
 
 export type NodeSummary = BaseNodeInfo;
 
@@ -132,13 +141,16 @@ export type Worker = {
     childrenSystem: number;
     iowait: number;
   };
+  cpuPercent: number;
+  logCount: number;
+  errorCount: number;
   coreWorkerStats: CoreWorkerStats[];
 };
 
 export type CoreWorkerStats = {
   ipAddress: string;
   port: number;
-  usedResources: { [resource: string]: number };
+  usedResources: { [key: string]: ResourceAllocations };
   numExecutedTasks: number;
   workerId: string;
   // We need the below but Ant's API does not yet support it.

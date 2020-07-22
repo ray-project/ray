@@ -4,11 +4,11 @@ import { Accessor } from "../../../../common/tableUtils";
 import UsageBar from "../../../../common/UsageBar";
 import {
   ClusterFeature,
-  NodeFeatureData,
   NodeFeature,
+  NodeFeatureData,
   NodeInfoFeature,
-  WorkerFeatureData,
   WorkerFeature,
+  WorkerFeatureData,
 } from "./types";
 
 export const ClusterRAM: ClusterFeature = ({ nodes }) => {

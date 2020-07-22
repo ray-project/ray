@@ -5,19 +5,15 @@ import { Accessor } from "../../../../common/tableUtils";
 import { sum } from "../../../../common/util";
 import {
   ClusterFeature,
-  Node,
-  NodeFeatureData,
   NodeFeature,
+  NodeFeatureData,
   NodeInfoFeature,
-  WorkerFeatureData,
   WorkerFeature,
+  WorkerFeatureData,
 } from "./types";
 
-const nodeLogCount = (node: Node) =>
-  node.log_count ? sum(Object.values(node.log_count)) : 0;
-
 const ClusterLogs: ClusterFeature = ({ nodes }) => {
-  const totalLogCount = sum(nodes.map(nodeLogCount));
+  const totalLogCount = sum(nodes.map((node) => node.logCounts));
   return totalLogCount === 0 ? (
     <Typography color="textSecondary" component="span" variant="inherit">
       No logs
@@ -31,43 +27,38 @@ const ClusterLogs: ClusterFeature = ({ nodes }) => {
 
 const makeNodeLogs = (
   setLogDialog: (hostname: string, pid: number | null) => void,
-): NodeFeature => ({ node }) => {
-  const logCount = nodeLogCount(node);
-  return logCount === 0 ? (
+): NodeFeature => ({ node }) =>
+  node.logCounts === 0 ? (
     <Typography color="textSecondary" component="span" variant="inherit">
       No logs
     </Typography>
   ) : (
     <SpanButton onClick={() => setLogDialog(node.hostname, null)}>
-      View all logs ({logCount.toLocaleString()}{" "}
-      {logCount === 1 ? "line" : "lines"})
+      View all logs ({node.logCounts.toLocaleString()}{" "}
+      {node.logCounts === 1 ? "line" : "lines"})
     </SpanButton>
   );
-};
 
 const nodeLogsAccessor: Accessor<NodeFeatureData> = ({ node }) =>
-  node.log_count ? sum(Object.values(node.log_count)) : 0;
+  node.logCounts;
 
+// TODO(mfitton) Make this work with new API
 const makeWorkerLogs = (
   setLogDialog: (hostname: string, pid: number | null) => void,
-): WorkerFeature => ({ node, worker }) => {
-  const workerLogCount = node.log_count?.[worker.pid] || 0;
-  return workerLogCount !== 0 ? (
+): WorkerFeature => ({ node, worker }) =>
+  worker.logCount !== 0 ? (
     <SpanButton onClick={() => setLogDialog(node.hostname, worker.pid)}>
-      View log ({workerLogCount.toLocaleString()}{" "}
-      {workerLogCount === 1 ? "line" : "lines"})
+      View log ({worker.logCount.toLocaleString()}{" "}
+      {worker.logCount === 1 ? "line" : "lines"})
     </SpanButton>
   ) : (
     <Typography color="textSecondary" component="span" variant="inherit">
       No logs
     </Typography>
   );
-};
 
-const workerLogsAccessor: Accessor<WorkerFeatureData> = ({ worker, node }) => {
-  const workerLogCount = node.log_count?.[worker.pid] || 0;
-  return workerLogCount;
-};
+const workerLogsAccessor: Accessor<WorkerFeatureData> = ({ worker }) =>
+  worker.logCount;
 
 const makeLogsFeature = (
   setLogDialog: (hostname: string, pid: number | null) => void,

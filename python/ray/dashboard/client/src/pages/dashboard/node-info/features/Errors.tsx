@@ -5,19 +5,15 @@ import { Accessor } from "../../../../common/tableUtils";
 import { sum } from "../../../../common/util";
 import {
   ClusterFeature,
-  Node,
-  NodeFeatureData,
   NodeFeature,
+  NodeFeatureData,
   NodeInfoFeature,
-  WorkerFeatureData,
   WorkerFeature,
+  WorkerFeatureData,
 } from "./types";
 
-const nodeErrCount = (node: Node) =>
-  node.error_count ? sum(Object.values(node.error_count)) : 0;
-
 const ClusterErrors: ClusterFeature = ({ nodes }) => {
-  const totalErrCount = sum(nodes.map(nodeErrCount));
+  const totalErrCount = sum(nodes.map((node) => node.errorCounts));
   return totalErrCount === 0 ? (
     <Typography color="textSecondary" component="span" variant="inherit">
       No errors
@@ -32,31 +28,25 @@ const ClusterErrors: ClusterFeature = ({ nodes }) => {
 
 const makeNodeErrors = (
   setErrorDialog: (hostname: string, pid: number | null) => void,
-): NodeFeature => ({ node }) => {
-  const nodeErrorCount = nodeErrCount(node);
-  return nodeErrorCount === 0 ? (
+): NodeFeature => ({ node }) =>
+  node.errorCounts === 0 ? (
     <Typography color="textSecondary" component="span" variant="inherit">
       No errors
     </Typography>
   ) : (
     <SpanButton onClick={() => setErrorDialog(node.hostname, null)}>
-      View all errors ({nodeErrorCount.toLocaleString()})
+      View all errors ({node.errorCounts.toLocaleString()})
     </SpanButton>
   );
-};
 
 const nodeErrorsAccessor: Accessor<NodeFeatureData> = ({ node }) =>
-  nodeErrCount(node);
+  node.errorCounts;
 
 const makeWorkerErrors = (
   setErrorDialog: (hostname: string, pid: number | null) => void,
 ): WorkerFeature => ({ node, worker }) => {
-  const workerErrorCount = node.error_count?.[worker.pid] || 0;
-  return workerErrorCount !== 0 ? (
-    <SpanButton onClick={() => setErrorDialog(node.hostname, worker.pid)}>
-      View errors ({workerErrorCount.toLocaleString()})
-    </SpanButton>
-  ) : (
+  // Todo, support this calculation in the new API.
+  return (
     <Typography color="textSecondary" component="span" variant="inherit">
       No errors
     </Typography>
@@ -64,7 +54,7 @@ const makeWorkerErrors = (
 };
 
 const workerErrorsAccessor: Accessor<WorkerFeatureData> = ({ node, worker }) =>
-  node.error_count?.[worker.pid] || 0;
+  0;
 
 const makeErrorsFeature = (
   setErrorDialog: (hostname: string, pid: number | null) => void,

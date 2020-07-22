@@ -1,6 +1,6 @@
 import React from "react";
 import { Accessor } from "../../../../common/tableUtils";
-import { NodeDetails, Worker } from '../../../../newApi';
+import { NodeDetails, Worker } from "../../../../newApi";
 
 export type ClusterFeatureData = { nodes: NodeDetails[] };
 export type NodeFeatureData = { node: NodeDetails };

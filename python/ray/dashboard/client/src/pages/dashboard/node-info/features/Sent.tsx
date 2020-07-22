@@ -4,8 +4,8 @@ import { formatByteAmount } from "../../../../common/formatUtils";
 import { Accessor } from "../../../../common/tableUtils";
 import {
   ClusterFeature,
-  NodeFeatureData,
   NodeFeature,
+  NodeFeatureData,
   NodeInfoFeature,
   WorkerFeature,
 } from "./types";
