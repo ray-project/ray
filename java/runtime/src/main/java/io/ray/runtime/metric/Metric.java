@@ -14,7 +14,6 @@ import java.util.stream.Collectors;
 public abstract class Metric {
   protected String name;
 
-  protected double value;
   // Native pointer mapping to gauge object of stats.
   protected long metricNativePointer = 0L;
 
@@ -25,7 +24,6 @@ public abstract class Metric {
     Preconditions.checkNotNull(name, "Metric name must not be null.");
     this.name = name;
     this.tags = tags;
-    this.value = 0.0d;
   }
 
   // Sync metric with core worker stats for registry.
@@ -44,25 +42,37 @@ public abstract class Metric {
       tagValues.add(entry.getValue());
     }
     // Get tag value list from map;
-    NativeMetric.recordNative(metricNativePointer, value, nativeTagKeyList.stream()
+    NativeMetric.recordNative(metricNativePointer, getValue(), nativeTagKeyList.stream()
         .map(TagKey::getTagKey).collect(Collectors.toList()), tagValues);
   }
+
+  private native void recordNative(long gaugePtr, double value,
+                                   List tagKeys,
+                                   List<String> tagValues);
+
+  /**
+   * It's abstract method for each metric measurements, so metric registry can store transient
+   * value and aggregate historical data for flushing.
+   */
+  public abstract void reset();
+
+  /**
+   * @return latest updating value.
+   */
+  public abstract double getValue();
 
   /** Update gauge value without tags.
    * Update metric info for user.
    * @param value lastest value for updating
    */
-  public void update(double value) {
-    this.value = value;
-
-  }
+  public abstract void update(double value);
 
   /** Update gauge value with dynamic tag values.
-   * @param value lastest value for updating
+   * @param value latest value for updating
    * @param tags tag map
    */
   public void update(double value, Map<TagKey, String> tags) {
-    this.value = value;
+    update(value);
     this.tags = tags;
   }
 
@@ -76,16 +86,4 @@ public abstract class Metric {
     metricNativePointer = 0;
   }
 
-  /**
-   * @return lastest updating value.
-   */
-  public double getValue() {
-    return value;
-  }
-
-  /**
-   * It's abstract method for each metric measurements, so metric registry can store transient
-   * value and aggregate historical data for flushing.
-   */
-  public abstract void reset();
 }

@@ -3,6 +3,7 @@ package io.ray.runtime.metric;
 import com.google.common.base.Preconditions;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -25,7 +26,7 @@ public class Histogram extends Metric {
       tags.keySet().stream().map(TagKey::getTagKey).collect(Collectors.toList()));
     Preconditions.checkState(metricNativePointer != 0,
         "Histogram native pointer must not be 0.");
-    histogramWindow = new ArrayList<>();
+    histogramWindow = Collections.synchronizedList(new ArrayList<>());
   }
 
   private void updateForWindow(double value) {
@@ -37,19 +38,23 @@ public class Histogram extends Metric {
 
   @Override
   public void update(double value) {
-    super.update(value);
-    updateForWindow(value);
-  }
-
-  @Override
-  public void update(double value, Map<TagKey, String> tags) {
-    super.update(value, tags);
     updateForWindow(value);
   }
 
   @Override
   public void reset() {
+    histogramWindow.clear();
+  }
 
+  /**
+   * @return latest updating value.
+   */
+  @Override
+  public double getValue() {
+    if (histogramWindow.size() == 0) {
+      return 0.0d;
+    }
+    return histogramWindow.get(histogramWindow.size() - 1);
   }
 
   public List<Double> getHistogramWindow() {
