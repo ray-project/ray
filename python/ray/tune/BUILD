@@ -38,7 +38,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_cluster.py"],
     deps = [":tune_lib"],
-    tags = ["jenkins_only", "exclusive"],
+    tags = ["flaky", "jenkins_only", "exclusive"],
 )
 
 py_test(
@@ -233,7 +233,7 @@ py_test(
 # Todo: Ensure MPLBACKEND=Agg
 py_test(
     name = "tutorial",
-    size = "small",
+    size = "moderate",
     srcs = ["tests/tutorial.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"],
@@ -275,8 +275,7 @@ py_test(
     size = "medium",
     srcs = ["examples/bohb_example.py"],
     deps = [":tune_lib"],
-    tags = ["exclusive", "example"],
-    args = ["--smoke-test"]
+    tags = ["exclusive", "example"]
 )
 
 py_test(
@@ -303,7 +302,7 @@ py_test(
     srcs = ["examples/durable_trainable_example.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"],
-    args = ["--smoke-test"]
+    args = ["--local", "--mock-storage"]
 )
 
 py_test(
@@ -320,8 +319,7 @@ py_test(
     size = "medium",
     srcs = ["examples/hyperband_example.py"],
     deps = [":tune_lib"],
-    tags = ["exclusive", "example"],
-    args = ["--smoke-test"]
+    tags = ["exclusive", "example"]
 )
 
 py_test(
@@ -347,8 +345,7 @@ py_test(
     size = "medium",
     srcs = ["examples/lightgbm_example.py"],
     deps = [":tune_lib"],
-    tags = ["exclusive", "example"],
-    args = ["--smoke-test"]
+    tags = ["exclusive", "example"]
 )
 
 py_test(
@@ -365,13 +362,12 @@ py_test(
     size = "medium",
     srcs = ["examples/mlflow_example.py"],
     deps = [":tune_lib"],
-    tags = ["exclusive", "example"],
-    args = ["--smoke-test"]
+    tags = ["exclusive", "example"]
 )
 
 py_test(
     name = "mnist_pytorch",
-    size = "medium",
+    size = "small",
     srcs = ["examples/mnist_pytorch.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example", "pytorch"],
@@ -389,7 +385,7 @@ py_test(
 
 py_test(
     name = "mnist_pytorch_trainable",
-    size = "medium",
+    size = "small",
     srcs = ["examples/mnist_pytorch_trainable.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example", "pytorch"],
@@ -434,39 +430,42 @@ py_test(
 
 py_test(
     name = "pbt_memnn_example",
-    size = "medium",
+    size = "large",
     srcs = ["examples/pbt_memnn_example.py"],
     deps = [":tune_lib"],
-    tags = ["exclusive", "example"],
+    tags = ["flaky", "exclusive", "example"],
     args = ["--smoke-test"]
 )
 
-py_test(
-    name = "pbt_ppo_example",
-    size = "medium",
-    srcs = ["examples/pbt_ppo_example.py"],
-    deps = [":tune_lib"],
-    tags = ["exclusive", "example"],
-    args = ["--smoke-test"]
-)
+# Requires GPUs. Add smoke test?
+# py_test(
+#     name = "pbt_ppo_example",
+#     size = "medium",
+#     srcs = ["examples/pbt_ppo_example.py"],
+#     deps = [":tune_lib"],
+#     tags = ["exclusive", "example"],
+#     args = ["--smoke-test"]
+# )
 
-py_test(
-    name = "pbt_tune_cifar10_with_keras",
-    size = "medium",
-    srcs = ["examples/pbt_tune_cifar10_with_keras.py"],
-    deps = [":tune_lib"],
-    tags = ["exclusive", "example"],
-    args = ["--smoke-test"]
-)
+# Requires GPUs. Add smoke test?
+# py_test(
+#     name = "pbt_tune_cifar10_with_keras",
+#     size = "medium",
+#     srcs = ["examples/pbt_tune_cifar10_with_keras.py"],
+#     deps = [":tune_lib"],
+#     tags = ["exclusive", "example"],
+#     args = ["--smoke-test"]
+# )
 
-py_test(
-    name = "sigopt_example",
-    size = "medium",
-    srcs = ["examples/sigopt_example.py"],
-    deps = [":tune_lib"],
-    tags = ["exclusive", "example"],
-    args = ["--smoke-test"]
-)
+# Needs SigOpt API key.
+# py_test(
+#     name = "sigopt_example",
+#     size = "medium",
+#     srcs = ["examples/sigopt_example.py"],
+#     deps = [":tune_lib"],
+#     tags = ["exclusive", "example"],
+#     args = ["--smoke-test"]
+# )
 
 py_test(
     name = "skopt_example",
@@ -505,26 +504,16 @@ py_test(
 )
 
 py_test(
-    name = "utils",
-    size = "medium",
-    srcs = ["examples/utils.py"],
-    deps = [":tune_lib"],
-    tags = ["exclusive", "example"],
-    args = ["--smoke-test"]
-)
-
-py_test(
     name = "xgboost_example",
-    size = "medium",
+    size = "small",
     srcs = ["examples/xgboost_example.py"],
     deps = [":tune_lib"],
-    tags = ["exclusive", "example"],
-    args = ["--smoke-test"]
+    tags = ["exclusive", "example"]
 )
 
 py_test(
     name = "zoopt_example",
-    size = "medium",
+    size = "small",
     srcs = ["examples/zoopt_example.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"],

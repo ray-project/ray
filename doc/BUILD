@@ -7,21 +7,21 @@ py_test(
     name = "plot_hyperparameter",
     size = "small",
     srcs = ["examples/plot_hyperparameter.py"],
-    tags = []
+    tags = ["exclusive"]
 )
 
 py_test(
     name = "plot_parameter_server",
     size = "small",
     srcs = ["examples/plot_parameter_server.py"],
-    tags = []
+    tags = ["exclusive"]
 )
 
 py_test(
     name = "plot_pong_example",
     size = "small",
     srcs = ["examples/plot_pong_example.py"],
-    tags = []
+    tags = ["exclusive"]
 )
 
 # Directory: examples/doc_code
@@ -30,7 +30,7 @@ py_test(
     size = "small",
     main = "examples/doc_code/tf_example.py",
     srcs = ["examples/doc_code/tf_example.py"],
-    tags = ["tf"]
+    tags = ["exclusive", "tf"]
 )
 
 py_test(
@@ -38,7 +38,7 @@ py_test(
     size = "small",
     main = "examples/doc_code/torch_example.py",
     srcs = ["examples/doc_code/torch_example.py"],
-    tags = ["pytorch"]
+    tags = ["exclusive", "pytorch"]
 )
 
 # --------------------------------------------------------------------
@@ -52,5 +52,5 @@ py_test(
     main = "source/tune/_tutorials/tune-sklearn.py",
     srcs = ["source/tune/_tutorials/tune-sklearn.py"],
     tags = ["exclusive", "example"],
-    args = ["--smoke-test"]
+    args = ["exclusive", "--smoke-test"]
 )

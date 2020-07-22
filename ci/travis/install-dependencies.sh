@@ -285,9 +285,6 @@ install_dependencies() {
     pip install tensorflow-probability=="${TFP_VERSION-0.8}" \
       torch=="${TORCH_VERSION-1.4}"
     pip install -r "${WORKSPACE_DIR}"/docker/tune_test/requirements.txt
-    if [ "${PYTHON-}" = "3.7" ]; then
-        pip install ax-platform
-    fi
   fi
 
   # Additional RaySGD test dependencies.

@@ -12,7 +12,7 @@ py_test(
 
 py_test(
     name = "test_torch",
-    size = "small",
+    size = "moderate",
     srcs = ["tests/test_torch.py"],
     tags = ["exclusive", "pytorch"],
     deps = [":sgd_lib"],
@@ -20,7 +20,7 @@ py_test(
 
 py_test(
     name = "test_torch_runner",
-    size = "small",
+    size = "moderate",
     srcs = ["tests/test_torch_runner.py"],
     tags = ["exclusive", "pytorch"],
     deps = [":sgd_lib"],
@@ -52,7 +52,7 @@ py_test(
 
 py_test(
     name = "cifar_tf_example_2b",
-    size = "medium",
+    size = "small",
     main = "tf/examples/cifar_tf_example.py",
     srcs = ["tf/examples/cifar_tf_example.py"],
     tags = ["exclusive", "tf"],
@@ -62,7 +62,7 @@ py_test(
 
 py_test(
     name = "tensorflow_train_example_1",
-    size = "medium",
+    size = "small",
     main = "tf/examples/tensorflow_train_example.py",
     srcs = ["tf/examples/tensorflow_train_example.py"],
     tags = ["exclusive", "tf"],
@@ -72,7 +72,7 @@ py_test(
 
 py_test(
     name = "tensorflow_train_example_2",
-    size = "medium",
+    size = "small",
     main = "tf/examples/tensorflow_train_example.py",
     srcs = ["tf/examples/tensorflow_train_example.py"],
     tags = ["exclusive", "tf"],
@@ -82,7 +82,7 @@ py_test(
 
 py_test(
     name = "tensorflow_train_example_tune",
-    size = "medium",
+    size = "small",
     main = "tf/examples/tensorflow_train_example.py",
     srcs = ["tf/examples/tensorflow_train_example.py"],
     tags = ["exclusive", "tf"],
