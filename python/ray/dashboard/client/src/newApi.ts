@@ -60,9 +60,9 @@ export enum ActorState {
   Invalid = "INVALID",
 };
 
-type NodeSummary = BaseNodeInfo;
+export type NodeSummary = BaseNodeInfo;
 
-type NodeDetails = {
+export type NodeDetails = {
   workers: Worker[];
 } & BaseNodeInfo;
 
@@ -79,7 +79,7 @@ type BaseNodeInfo = {
   disk: {
     [dir: string]: {
       total: number;
-      user: number;
+      used: number;
       free: number;
       percent: number;
     };

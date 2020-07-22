@@ -4,14 +4,14 @@ import { formatUsage } from "../../../../common/formatUtils";
 import { Accessor } from "../../../../common/tableUtils";
 import UsageBar from "../../../../common/UsageBar";
 import {
-  ClusterFeatureRenderFn,
+  ClusterFeature,
   NodeFeatureData,
-  NodeFeatureRenderFn,
+  NodeFeature,
   NodeInfoFeature,
-  WorkerFeatureRenderFn,
+  WorkerFeature,
 } from "./types";
 
-export const ClusterDisk: ClusterFeatureRenderFn = ({ nodes }) => {
+export const ClusterDisk: ClusterFeature = ({ nodes }) => {
   let used = 0;
   let total = 0;
   for (const node of nodes) {
@@ -26,7 +26,7 @@ export const ClusterDisk: ClusterFeatureRenderFn = ({ nodes }) => {
   );
 };
 
-export const NodeDisk: NodeFeatureRenderFn = ({ node }) => (
+export const NodeDisk: NodeFeature = ({ node }) => (
   <UsageBar
     percent={(100 * node.disk["/"].used) / node.disk["/"].total}
     text={formatUsage(node.disk["/"].used, node.disk["/"].total, "gibibyte")}
@@ -36,7 +36,7 @@ export const NodeDisk: NodeFeatureRenderFn = ({ node }) => (
 export const nodeDiskAccessor: Accessor<NodeFeatureData> = ({ node }) =>
   node.disk["/"].used;
 
-export const WorkerDisk: WorkerFeatureRenderFn = () => (
+export const WorkerDisk: WorkerFeature = () => (
   <Typography color="textSecondary" component="span" variant="inherit">
     N/A
   </Typography>
@@ -44,9 +44,9 @@ export const WorkerDisk: WorkerFeatureRenderFn = () => (
 
 const diskFeature: NodeInfoFeature = {
   id: "disk",
-  ClusterFeatureRenderFn: ClusterDisk,
-  NodeFeatureRenderFn: NodeDisk,
-  WorkerFeatureRenderFn: WorkerDisk,
+  ClusterFeature: ClusterDisk,
+  NodeFeature: NodeDisk,
+  WorkerFeature: WorkerDisk,
   nodeAccessor: nodeDiskAccessor,
 };
 

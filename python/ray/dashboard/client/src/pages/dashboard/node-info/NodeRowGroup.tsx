@@ -60,7 +60,7 @@ const NodeRowGroup: React.FC<NodeRowGroupProps> = ({
   const toggleExpand = () => setExpanded(!expanded);
   const classes = useNodeRowGroupStyles();
   const renderedNodeFeatures = features.map((nodeInfoFeature, i) => {
-    const FeatureComponent = nodeInfoFeature.NodeFeatureRenderFn;
+    const FeatureComponent = nodeInfoFeature.NodeFeature;
     return (
       <StyledTableCell className={classes.cell} key={i}>
         <FeatureComponent node={node} />
@@ -100,7 +100,7 @@ const NodeRowGroup: React.FC<NodeRowGroupProps> = ({
               <NodeWorkerRow
                 key={index}
                 features={features.map(
-                  (feature) => feature.WorkerFeatureRenderFn,
+                  (feature) => feature.WorkerFeature,
                 )}
                 data={featureData}
               />

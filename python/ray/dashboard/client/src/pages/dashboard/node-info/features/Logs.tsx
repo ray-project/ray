@@ -4,19 +4,19 @@ import SpanButton from "../../../../common/SpanButton";
 import { Accessor } from "../../../../common/tableUtils";
 import { sum } from "../../../../common/util";
 import {
-  ClusterFeatureRenderFn,
+  ClusterFeature,
   Node,
   NodeFeatureData,
-  NodeFeatureRenderFn,
+  NodeFeature,
   NodeInfoFeature,
   WorkerFeatureData,
-  WorkerFeatureRenderFn,
+  WorkerFeature,
 } from "./types";
 
 const nodeLogCount = (node: Node) =>
   node.log_count ? sum(Object.values(node.log_count)) : 0;
 
-const ClusterLogs: ClusterFeatureRenderFn = ({ nodes }) => {
+const ClusterLogs: ClusterFeature = ({ nodes }) => {
   const totalLogCount = sum(nodes.map(nodeLogCount));
   return totalLogCount === 0 ? (
     <Typography color="textSecondary" component="span" variant="inherit">
@@ -31,7 +31,7 @@ const ClusterLogs: ClusterFeatureRenderFn = ({ nodes }) => {
 
 const makeNodeLogs = (
   setLogDialog: (hostname: string, pid: number | null) => void,
-): NodeFeatureRenderFn => ({ node }) => {
+): NodeFeature => ({ node }) => {
   const logCount = nodeLogCount(node);
   return logCount === 0 ? (
     <Typography color="textSecondary" component="span" variant="inherit">
@@ -50,7 +50,7 @@ const nodeLogsAccessor: Accessor<NodeFeatureData> = ({ node }) =>
 
 const makeWorkerLogs = (
   setLogDialog: (hostname: string, pid: number | null) => void,
-): WorkerFeatureRenderFn => ({ node, worker }) => {
+): WorkerFeature => ({ node, worker }) => {
   const workerLogCount = node.log_count?.[worker.pid] || 0;
   return workerLogCount !== 0 ? (
     <SpanButton onClick={() => setLogDialog(node.hostname, worker.pid)}>
@@ -73,9 +73,9 @@ const makeLogsFeature = (
   setLogDialog: (hostname: string, pid: number | null) => void,
 ): NodeInfoFeature => ({
   id: "logs",
-  ClusterFeatureRenderFn: ClusterLogs,
-  WorkerFeatureRenderFn: makeWorkerLogs(setLogDialog),
-  NodeFeatureRenderFn: makeNodeLogs(setLogDialog),
+  ClusterFeature: ClusterLogs,
+  WorkerFeature: makeWorkerLogs(setLogDialog),
+  NodeFeature: makeNodeLogs(setLogDialog),
   workerAccessor: workerLogsAccessor,
   nodeAccessor: nodeLogsAccessor,
 });

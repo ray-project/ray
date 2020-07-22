@@ -1,32 +1,23 @@
 import React from "react";
-import { NodeInfoResponse, RayletWorkerStats } from "../../../../api";
 import { Accessor } from "../../../../common/tableUtils";
+import { NodeDetails, Worker } from '../../../../newApi';
 
-type ArrayType<T> = T extends Array<infer U> ? U : never;
-export type Node = ArrayType<NodeInfoResponse["clients"]>;
-export type Worker = ArrayType<Node["workers"]>;
-
-type ClusterFeatureData = { nodes: Node[] };
-export type NodeFeatureData = { node: Node };
+export type ClusterFeatureData = { nodes: NodeDetails[] };
+export type NodeFeatureData = { node: NodeDetails };
 export type WorkerFeatureData = {
-  node: Node;
+  node: NodeDetails;
   worker: Worker;
-  rayletWorker: RayletWorkerStats | null;
 };
 
-export type ClusterFeatureRenderFn = (
-  data: ClusterFeatureData,
-) => React.ReactElement;
-export type NodeFeatureRenderFn = (data: NodeFeatureData) => React.ReactElement;
-export type WorkerFeatureRenderFn = (
-  data: WorkerFeatureData,
-) => React.ReactElement;
+export type ClusterFeature = React.FC<ClusterFeatureData>;
+export type NodeFeature = React.FC<NodeFeatureData>;
+export type WorkerFeature = React.FC<WorkerFeatureData>;
 
 export type NodeInfoFeature = {
   id: nodeInfoColumnId;
-  WorkerFeatureRenderFn: WorkerFeatureRenderFn;
-  NodeFeatureRenderFn: NodeFeatureRenderFn;
-  ClusterFeatureRenderFn?: ClusterFeatureRenderFn;
+  WorkerFeature: WorkerFeature;
+  NodeFeature: NodeFeature;
+  ClusterFeature?: ClusterFeature;
   workerAccessor?: Accessor<WorkerFeatureData>;
   nodeAccessor?: Accessor<NodeFeatureData>;
 };

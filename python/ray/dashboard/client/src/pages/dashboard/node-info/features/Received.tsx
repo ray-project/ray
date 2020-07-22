@@ -3,14 +3,14 @@ import React from "react";
 import { formatByteAmount } from "../../../../common/formatUtils";
 import { Accessor } from "../../../../common/tableUtils";
 import {
-  ClusterFeatureRenderFn,
+  ClusterFeature,
   NodeFeatureData,
-  NodeFeatureRenderFn,
+  NodeFeature,
   NodeInfoFeature,
-  WorkerFeatureRenderFn,
+  WorkerFeature,
 } from "./types";
 
-export const ClusterReceived: ClusterFeatureRenderFn = ({ nodes }) => {
+export const ClusterReceived: ClusterFeature = ({ nodes }) => {
   let totalReceived = 0;
   for (const node of nodes) {
     totalReceived += node.net[1];
@@ -22,14 +22,14 @@ export const ClusterReceived: ClusterFeatureRenderFn = ({ nodes }) => {
   );
 };
 
-export const NodeReceived: NodeFeatureRenderFn = ({ node }) => (
+export const NodeReceived: NodeFeature = ({ node }) => (
   <React.Fragment>{formatByteAmount(node.net[1], "mebibyte")}/s</React.Fragment>
 );
 
 export const nodeReceivedAccessor: Accessor<NodeFeatureData> = ({ node }) =>
   node.net[1];
 
-export const WorkerReceived: WorkerFeatureRenderFn = () => (
+export const WorkerReceived: WorkerFeature = () => (
   <Typography color="textSecondary" component="span" variant="inherit">
     N/A
   </Typography>
@@ -37,9 +37,9 @@ export const WorkerReceived: WorkerFeatureRenderFn = () => (
 
 const receivedFeature: NodeInfoFeature = {
   id: "received",
-  ClusterFeatureRenderFn: ClusterReceived,
-  NodeFeatureRenderFn: NodeReceived,
-  WorkerFeatureRenderFn: WorkerReceived,
+  ClusterFeature: ClusterReceived,
+  NodeFeature: NodeReceived,
+  WorkerFeature: WorkerReceived,
   nodeAccessor: nodeReceivedAccessor,
 };
 

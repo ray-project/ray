@@ -1,11 +1,11 @@
 import { TableRow } from "@material-ui/core";
 import React from "react";
 import { StyledTableCell } from "../../../common/TableCell";
-import { WorkerFeatureData, WorkerFeatureRenderFn } from "./features/types";
+import { WorkerFeatureData, WorkerFeature } from "./features/types";
 
 type NodeWorkerRowProps = {
   key: string | number;
-  features: WorkerFeatureRenderFn[];
+  features: WorkerFeature[];
   data: WorkerFeatureData;
 };
 

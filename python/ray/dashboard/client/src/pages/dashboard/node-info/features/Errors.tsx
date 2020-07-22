@@ -4,19 +4,19 @@ import SpanButton from "../../../../common/SpanButton";
 import { Accessor } from "../../../../common/tableUtils";
 import { sum } from "../../../../common/util";
 import {
-  ClusterFeatureRenderFn,
+  ClusterFeature,
   Node,
   NodeFeatureData,
-  NodeFeatureRenderFn,
+  NodeFeature,
   NodeInfoFeature,
   WorkerFeatureData,
-  WorkerFeatureRenderFn,
+  WorkerFeature,
 } from "./types";
 
 const nodeErrCount = (node: Node) =>
   node.error_count ? sum(Object.values(node.error_count)) : 0;
 
-const ClusterErrors: ClusterFeatureRenderFn = ({ nodes }) => {
+const ClusterErrors: ClusterFeature = ({ nodes }) => {
   const totalErrCount = sum(nodes.map(nodeErrCount));
   return totalErrCount === 0 ? (
     <Typography color="textSecondary" component="span" variant="inherit">
@@ -32,7 +32,7 @@ const ClusterErrors: ClusterFeatureRenderFn = ({ nodes }) => {
 
 const makeNodeErrors = (
   setErrorDialog: (hostname: string, pid: number | null) => void,
-): NodeFeatureRenderFn => ({ node }) => {
+): NodeFeature => ({ node }) => {
   const nodeErrorCount = nodeErrCount(node);
   return nodeErrorCount === 0 ? (
     <Typography color="textSecondary" component="span" variant="inherit">
@@ -50,7 +50,7 @@ const nodeErrorsAccessor: Accessor<NodeFeatureData> = ({ node }) =>
 
 const makeWorkerErrors = (
   setErrorDialog: (hostname: string, pid: number | null) => void,
-): WorkerFeatureRenderFn => ({ node, worker }) => {
+): WorkerFeature => ({ node, worker }) => {
   const workerErrorCount = node.error_count?.[worker.pid] || 0;
   return workerErrorCount !== 0 ? (
     <SpanButton onClick={() => setErrorDialog(node.hostname, worker.pid)}>
@@ -70,9 +70,9 @@ const makeErrorsFeature = (
   setErrorDialog: (hostname: string, pid: number | null) => void,
 ): NodeInfoFeature => ({
   id: "errors",
-  ClusterFeatureRenderFn: ClusterErrors,
-  WorkerFeatureRenderFn: makeWorkerErrors(setErrorDialog),
-  NodeFeatureRenderFn: makeNodeErrors(setErrorDialog),
+  ClusterFeature: ClusterErrors,
+  WorkerFeature: makeWorkerErrors(setErrorDialog),
+  NodeFeature: makeNodeErrors(setErrorDialog),
   nodeAccessor: nodeErrorsAccessor,
   workerAccessor: workerErrorsAccessor,
 });

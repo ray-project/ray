@@ -3,15 +3,15 @@ import { formatByteAmount, formatUsage } from "../../../../common/formatUtils";
 import { Accessor } from "../../../../common/tableUtils";
 import UsageBar from "../../../../common/UsageBar";
 import {
-  ClusterFeatureRenderFn,
+  ClusterFeature,
   NodeFeatureData,
-  NodeFeatureRenderFn,
+  NodeFeature,
   NodeInfoFeature,
   WorkerFeatureData,
-  WorkerFeatureRenderFn,
+  WorkerFeature,
 } from "./types";
 
-export const ClusterRAM: ClusterFeatureRenderFn = ({ nodes }) => {
+export const ClusterRAM: ClusterFeature = ({ nodes }) => {
   let used = 0;
   let total = 0;
   for (const node of nodes) {
@@ -26,7 +26,7 @@ export const ClusterRAM: ClusterFeatureRenderFn = ({ nodes }) => {
   );
 };
 
-export const NodeRAM: NodeFeatureRenderFn = ({ node }) => (
+export const NodeRAM: NodeFeature = ({ node }) => (
   <UsageBar
     percent={(100 * (node.mem[0] - node.mem[1])) / node.mem[0]}
     text={formatUsage(node.mem[0] - node.mem[1], node.mem[0], "gibibyte")}
@@ -36,21 +36,21 @@ export const NodeRAM: NodeFeatureRenderFn = ({ node }) => (
 export const nodeRAMAccessor: Accessor<NodeFeatureData> = ({ node }) =>
   100 * (node.mem[0] - node.mem[1]);
 
-export const WorkerRAM: WorkerFeatureRenderFn = ({ node, worker }) => (
+export const WorkerRAM: WorkerFeature = ({ node, worker }) => (
   <UsageBar
-    percent={(100 * worker.memory_info.rss) / node.mem[0]}
-    text={formatByteAmount(worker.memory_info.rss, "mebibyte")}
+    percent={(100 * worker.memoryInfo.rss) / node.mem[0]}
+    text={formatByteAmount(worker.memoryInfo.rss, "mebibyte")}
   />
 );
 
 export const workerRAMAccessor: Accessor<WorkerFeatureData> = ({ worker }) =>
-  worker.memory_info.rss;
+  worker.memoryInfo.rss;
 
 const ramFeature: NodeInfoFeature = {
   id: "ram",
-  ClusterFeatureRenderFn: ClusterRAM,
-  NodeFeatureRenderFn: NodeRAM,
-  WorkerFeatureRenderFn: WorkerRAM,
+  ClusterFeature: ClusterRAM,
+  NodeFeature: NodeRAM,
+  WorkerFeature: WorkerRAM,
   nodeAccessor: nodeRAMAccessor,
   workerAccessor: workerRAMAccessor,
 };

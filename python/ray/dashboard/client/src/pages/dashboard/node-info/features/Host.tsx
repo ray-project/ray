@@ -1,21 +1,21 @@
 import React from "react";
 import { Accessor } from "../../../../common/tableUtils";
 import {
-  ClusterFeatureRenderFn,
+  ClusterFeature,
   NodeFeatureData,
-  NodeFeatureRenderFn,
+  NodeFeature,
   NodeInfoFeature,
-  WorkerFeatureRenderFn,
+  WorkerFeature,
 } from "./types";
 
-export const ClusterHost: ClusterFeatureRenderFn = ({ nodes }) => (
+export const ClusterHost: ClusterFeature = ({ nodes }) => (
   <React.Fragment>
     Totals ({nodes.length.toLocaleString()}{" "}
     {nodes.length === 1 ? "host" : "hosts"})
   </React.Fragment>
 );
 
-export const NodeHost: NodeFeatureRenderFn = ({ node }) => (
+export const NodeHost: NodeFeature = ({ node }) => (
   <React.Fragment>
     {node.hostname} ({node.ip})
   </React.Fragment>
@@ -28,17 +28,17 @@ export const nodeHostAccessor: Accessor<NodeFeatureData> = ({ node }) =>
 // `ray::function()`, `ray::Class`, or `ray::Class.method()`. We extract the
 // first portion here for display in the "Host" column. Note that this will
 // always be `ray` under the current setup, but it may vary in the future.
-export const WorkerHost: WorkerFeatureRenderFn = ({ worker }) => (
+export const WorkerHost: WorkerFeature = ({ worker }) => (
   <React.Fragment>
-    {worker.cmdline[0].split("::", 2)[0]} (PID: {worker.pid})
+    {worker.cmdLine[0].split("::", 2)[0]} (PID: {worker.pid})
   </React.Fragment>
 );
 
 const hostFeature: NodeInfoFeature = {
   id: "host",
-  ClusterFeatureRenderFn: ClusterHost,
-  NodeFeatureRenderFn: NodeHost,
-  WorkerFeatureRenderFn: WorkerHost,
+  ClusterFeature: ClusterHost,
+  NodeFeature: NodeHost,
+  WorkerFeature: WorkerHost,
   nodeAccessor: nodeHostAccessor,
 };
 

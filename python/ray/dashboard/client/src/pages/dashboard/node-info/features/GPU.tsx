@@ -7,13 +7,13 @@ import { Accessor } from "../../../../common/tableUtils";
 import UsageBar from "../../../../common/UsageBar";
 import { getWeightedAverage, sum } from "../../../../common/util";
 import {
-  ClusterFeatureRenderFn,
+  ClusterFeature,
   Node,
   NodeFeatureData,
-  NodeFeatureRenderFn,
+  NodeFeature,
   NodeInfoFeature,
   WorkerFeatureData,
-  WorkerFeatureRenderFn,
+  WorkerFeature,
 } from "./types";
 
 const GPU_COL_WIDTH = 120;
@@ -43,7 +43,7 @@ const nodeGPUUtilization = (node: Node): number => {
 const nodeGPUAccessor: Accessor<NodeFeatureData> = ({ node }) =>
   nodeGPUUtilization(node);
 
-const ClusterGPU: ClusterFeatureRenderFn = ({ nodes }) => {
+const ClusterGPU: ClusterFeature = ({ nodes }) => {
   const clusterAverageUtilization = clusterGPUUtilization(nodes);
   return (
     <div style={{ minWidth: GPU_COL_WIDTH }}>
@@ -61,7 +61,7 @@ const ClusterGPU: ClusterFeatureRenderFn = ({ nodes }) => {
   );
 };
 
-const NodeGPU: NodeFeatureRenderFn = ({ node }) => {
+const NodeGPU: NodeFeature = ({ node }) => {
   const hasGPU = node.gpus !== undefined && node.gpus.length !== 0;
   return (
     <div style={{ minWidth: GPU_COL_WIDTH }}>
@@ -119,7 +119,7 @@ const WorkerGPUEntry: React.FC<WorkerGPUEntryProps> = ({ resourceSlot }) => {
   );
 };
 
-const WorkerGPU: WorkerFeatureRenderFn = ({ rayletWorker }) => {
+const WorkerGPU: WorkerFeature = ({ rayletWorker }) => {
   const workerRes = rayletWorker?.coreWorkerStats.usedResources;
   const workerUsedGPUResources = workerRes?.["GPU"];
   let message;
@@ -166,9 +166,9 @@ const workerGPUAccessor: Accessor<WorkerFeatureData> = ({ rayletWorker }) => {
 
 const gpuFeature: NodeInfoFeature = {
   id: "gpu",
-  ClusterFeatureRenderFn: ClusterGPU,
-  NodeFeatureRenderFn: NodeGPU,
-  WorkerFeatureRenderFn: WorkerGPU,
+  ClusterFeature: ClusterGPU,
+  NodeFeature: NodeGPU,
+  WorkerFeature: WorkerGPU,
   nodeAccessor: nodeGPUAccessor,
   workerAccessor: workerGPUAccessor,
 };

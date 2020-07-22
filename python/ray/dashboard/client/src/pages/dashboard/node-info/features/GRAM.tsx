@@ -7,13 +7,13 @@ import { Accessor } from "../../../../common/tableUtils";
 import UsageBar from "../../../../common/UsageBar";
 import { getWeightedAverage, sum } from "../../../../common/util";
 import {
-  ClusterFeatureRenderFn,
+  ClusterFeature,
   Node,
   NodeFeatureData,
-  NodeFeatureRenderFn,
+  NodeFeature,
   NodeInfoFeature,
   WorkerFeatureData,
-  WorkerFeatureRenderFn,
+  WorkerFeature,
 } from "./types";
 
 const GRAM_COL_WIDTH = 120;
@@ -47,7 +47,7 @@ const clusterGRAMUtilization = (nodes: Array<Node>) => {
   return getWeightedAverage(utils);
 };
 
-export const ClusterGRAM: ClusterFeatureRenderFn = ({ nodes }) => {
+export const ClusterGRAM: ClusterFeature = ({ nodes }) => {
   const clusterAverageUtilization = clusterGRAMUtilization(nodes);
   return (
     <div style={{ minWidth: 60 }}>
@@ -65,7 +65,7 @@ export const ClusterGRAM: ClusterFeatureRenderFn = ({ nodes }) => {
   );
 };
 
-export const NodeGRAM: NodeFeatureRenderFn = ({ node }) => {
+export const NodeGRAM: NodeFeature = ({ node }) => {
   const nodeGRAMEntries = node.gpus.map((gpu, i) => {
     const props = {
       gpuName: gpu.name,
@@ -113,7 +113,7 @@ const GRAMEntry: React.FC<GRAMEntryProps> = ({
   );
 };
 
-export const WorkerGRAM: WorkerFeatureRenderFn = ({ worker, node }) => {
+export const WorkerGRAM: WorkerFeature = ({ worker, node }) => {
   const workerGRAMEntries = node.gpus
     .map((gpu, i) => {
       const process = gpu.processes.find(
@@ -162,9 +162,9 @@ const workerGRAMAccessor: Accessor<WorkerFeatureData> = ({ worker, node }) => {
 
 const gramFeature: NodeInfoFeature = {
   id: "gram",
-  ClusterFeatureRenderFn: ClusterGRAM,
-  NodeFeatureRenderFn: NodeGRAM,
-  WorkerFeatureRenderFn: WorkerGRAM,
+  ClusterFeature: ClusterGRAM,
+  NodeFeature: NodeGRAM,
+  WorkerFeature: WorkerGRAM,
   nodeAccessor: nodeGRAMAccessor,
   workerAccessor: workerGRAMAccessor,
 };
