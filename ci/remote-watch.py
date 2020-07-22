@@ -25,8 +25,6 @@ import subprocess
 import sys
 import time
 
-from timeit import default_timer  # monotonic timer
-
 logger = logging.getLogger(__name__)
 
 GITHUB = "GitHub"
@@ -176,7 +174,6 @@ def monitor():
                     "    to:  \t%s",
                 ]), ref, remote, expected_line, line)
             break
-        tprev = default_timer()
     if terminate:
         result = terminate_my_process_group()
     return result
