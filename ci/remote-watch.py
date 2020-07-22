@@ -62,10 +62,15 @@ def get_repo_slug():
     return None
 
 
-def git_branch_info():
+def git_remote_branch_info():
+    # Obtains the remote branch name, remote name, and commit hash that
+    # correspond to the local HEAD.
+    # Example: ("refs/heads/mybranch", "origin", "1A2B3C4...")
     ref = None
     try:
+        # Try to get the local branch ref. (e.g. refs/heads/mybranch)
         head = git("symbolic-ref", "-q", "HEAD")
+        # Try to get the remotely tracked ref, if any. (e.g. origin/mybranch)
         ref = git("for-each-ref", "--format=%(upstream:short)", head)
     except subprocess.CalledProcessError:
         pass
@@ -125,7 +130,7 @@ def yield_poll_schedule():
 
 def monitor():
     ci = get_current_ci() or ""
-    (ref, remote, expected_sha) = git_branch_info()
+    (ref, remote, expected_sha) = git_remote_branch_info()
     expected_line = "{}\t{}".format(expected_sha, ref)
     keep_alive = False
     for line in git("show", "-s", "--format=%B", "HEAD^-").splitlines():
@@ -139,6 +144,7 @@ def monitor():
         logger.info("Not monitoring %s on %s due to keep-alive on: %s",
                     ref, remote, expected_line)
         return
+    # Show which branch on which remote we are monitoring.
     logger.info("Monitoring %s (%s) for changes in %s: %s",
                 remote, git("ls-remote", "--get-url", remote),
                 ref, expected_line)
@@ -148,6 +154,7 @@ def monitor():
         status = 0
         line = None
         try:
+            # Query the commit on the remote ref (without fetching the commit).
             line = git("ls-remote", "--exit-code", remote, ref)
         except subprocess.CalledProcessError as ex:
             status = ex.returncode
@@ -180,9 +187,10 @@ def main(program, *args):
     p = argparse.ArgumentParser()
     p.add_argument("--skip_repo", action="append", help="Repo to exclude.")
     parsed_args = p.parse_args(args)
+    skipped_repos = parsed_args.skip_repo or []
     repo_slug = get_repo_slug()
     event_name = get_ci_event_name()
-    if repo_slug not in parsed_args.skip_repo or event_name == "pull_request":
+    if repo_slug not in skipped_repos or event_name == "pull_request":
         result = monitor()
     else:
         logger.info("Skipping monitoring %s %s build", repo_slug, event_name)
