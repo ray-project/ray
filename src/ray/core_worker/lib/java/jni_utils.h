@@ -15,12 +15,12 @@
 #pragma once
 
 #include <jni.h>
+#include <algorithm>
 
 #include "ray/common/buffer.h"
 #include "ray/common/function_descriptor.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
-#include "ray/common/status.h"
 #include "ray/core_worker/core_worker.h"
 
 /// Boolean class
@@ -282,6 +282,26 @@ inline void JavaStringListToNativeStringVector(JNIEnv *env, jobject java_list,
       });
 }
 
+/// Convert a Java long array to C++ std::vector<long>.
+inline void JavaLongArrayToNativeLongVector(JNIEnv *env, jlongArray long_array,
+                                            std::vector<long> *native_vector) {
+  jlong *long_array_ptr = env->GetLongArrayElements(long_array, nullptr);
+  jsize vec_size = env->GetArrayLength(long_array);
+  native_vector->insert(native_vector->begin(), long_array_ptr,
+                        long_array_ptr + vec_size);
+  env->ReleaseLongArrayElements(long_array, long_array_ptr, 0);
+}
+
+/// Convert a Java double array to C++ std::vector<double>.
+inline void JavaDoubleArrayToNativeDoubleVector(JNIEnv *env, jdoubleArray double_array,
+                                                std::vector<double> *native_vector) {
+  jdouble *double_array_ptr = env->GetDoubleArrayElements(double_array, nullptr);
+  jsize vec_size = env->GetArrayLength(double_array);
+  native_vector->insert(native_vector->begin(), double_array_ptr,
+                        double_array_ptr + vec_size);
+  env->ReleaseDoubleArrayElements(double_array, double_array_ptr, 0);
+}
+
 /// Convert a C++ std::vector to a Java List.
 template <typename NativeT>
 inline jobject NativeVectorToJavaList(
@@ -438,6 +458,6 @@ inline std::string GetActorFullName(bool global, std::string name) {
     return "";
   }
   return global ? name
-                : ::ray::CoreWorkerProcess::GetCoreWorker().GetCurrentJobId().Hex() + "-" +
-                      name;
+                : ::ray::CoreWorkerProcess::GetCoreWorker().GetCurrentJobId().Hex() +
+                      "-" + name;
 }
