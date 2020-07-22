@@ -405,6 +405,7 @@ class StandardAutoscaler:
             ray_start_commands=with_head_node_ip(ray_start_commands),
             runtime_hash=self.runtime_hash,
             file_mounts_contents_hash=self.file_mounts_contents_hash,
+            run_setup_commands_on_file_mounts_change=False,
             process_runner=self.process_runner,
             use_internal_ip=True,
             docker_config=self.config.get("docker"))
