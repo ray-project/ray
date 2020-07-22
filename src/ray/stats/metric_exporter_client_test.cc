@@ -87,11 +87,10 @@ class MockExporterClient1 : public MetricExporterDecorator {
 
 class MockExporterClient2 : public MetricExporterDecorator {
  public:
-  MockExporterClient2(std::shared_ptr<MetricExporterClient> exporter, int identity = 0)
+  MockExporterClient2(std::shared_ptr<MetricExporterClient> exporter)
       : MetricExporterDecorator(exporter),
         client2_count(0),
-        client2_value(0),
-        client2_identity(identity) {}
+        client2_value(0) {}
   void ReportMetrics(const std::vector<MetricPoint> &points) override {
     if (points.empty()) {
       return;
@@ -108,7 +107,6 @@ class MockExporterClient2 : public MetricExporterDecorator {
  private:
   int client2_count;
   int client2_value;
-  int client2_identity;
 };
 
 /// Default report flush interval is 500ms, so we may wait a while for data
