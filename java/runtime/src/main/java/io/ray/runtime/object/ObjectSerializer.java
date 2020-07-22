@@ -5,7 +5,7 @@ import io.ray.api.exception.RayTaskException;
 import io.ray.api.exception.RayWorkerException;
 import io.ray.api.exception.UnreconstructableException;
 import io.ray.api.id.ObjectId;
-import io.ray.runtime.generated.Gcs.ErrorType;
+import io.ray.runtime.generated.Common.ErrorType;
 import io.ray.runtime.serializer.Serializer;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
