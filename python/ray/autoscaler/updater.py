@@ -79,12 +79,15 @@ class NodeUpdater:
                 return
             raise
 
-        self.provider.set_node_tags(
-            self.node_id, {
-                TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
-                TAG_RAY_RUNTIME_CONFIG: self.runtime_hash,
-                TAG_RAY_FILE_MOUNTS_CONTENTS: self.file_mounts_contents_hash,
-            })
+        tags_to_set = {
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
+            TAG_RAY_RUNTIME_CONFIG: self.runtime_hash,
+        }
+        if self.file_mounts_contents_hash is not None:
+            tags_to_set[
+                TAG_RAY_FILE_MOUNTS_CONTENTS] = self.file_mounts_contents_hash
+
+        self.provider.set_node_tags(self.node_id, tags_to_set)
 
         self.exitcode = 0
 
