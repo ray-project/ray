@@ -336,8 +336,7 @@ Once a endpoint is deleted, its tag can be reused.
 How do I call an endpoint from Python code?
 -------------------------------------------
 
-To do so, you need to get a "handle" to that endpoint. To do so,
-use the following:
+use the following  to get a "handle" to that endpoint.
 
 
 .. code-block:: python
