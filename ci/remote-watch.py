@@ -29,7 +29,6 @@ from timeit import default_timer  # monotonic timer
 
 logger = logging.getLogger(__name__)
 
-
 GITHUB = "GitHub"
 TRAVIS = "Travis"
 
