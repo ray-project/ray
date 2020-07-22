@@ -228,16 +228,16 @@ def test_updating_config(serve_instance):
         })
     serve.create_endpoint("bsimple", backend="bsimple:v1", route="/bsimple")
 
-    master_actor = serve.api._get_master_actor()
+    controller = serve.api._get_controller()
     old_replica_tag_list = ray.get(
-        master_actor._list_replicas.remote("bsimple:v1"))
+        controller._list_replicas.remote("bsimple:v1"))
 
     serve.update_backend_config("bsimple:v1", {"max_batch_size": 5})
     new_replica_tag_list = ray.get(
-        master_actor._list_replicas.remote("bsimple:v1"))
+        controller._list_replicas.remote("bsimple:v1"))
     new_all_tag_list = []
     for worker_dict in ray.get(
-            master_actor.get_all_worker_handles.remote()).values():
+            controller.get_all_worker_handles.remote()).values():
         new_all_tag_list.extend(list(worker_dict.keys()))
 
     # the old and new replica tag list should be identical
@@ -550,7 +550,7 @@ def test_create_infeasible_error(serve_instance):
             config={"num_replicas": current_cpus + 20})
 
     # No replica should be created!
-    replicas = ray.get(serve.api.master_actor._list_replicas.remote("f1"))
+    replicas = ray.get(serve.api.controller._list_replicas.remote("f1"))
     assert len(replicas) == 0
 
 
@@ -569,7 +569,7 @@ def test_shutdown(serve_instance):
 
     def check_dead():
         for actor_name in [
-                constants.SERVE_MASTER_NAME, constants.SERVE_PROXY_NAME,
+                constants.SERVE_CONTROLLER_NAME, constants.SERVE_PROXY_NAME,
                 constants.SERVE_METRIC_SINK_NAME
         ]:
             try:

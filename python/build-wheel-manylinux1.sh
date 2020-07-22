@@ -32,7 +32,7 @@ export PATH=$PATH:/root/bin
 # Install and use the latest version of Node.js in order to build the dashboard.
 set +x
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | bash
-source $HOME/.nvm/nvm.sh
+source "$HOME"/.nvm/nvm.sh
 nvm install node
 nvm use node
 
@@ -57,7 +57,7 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
   pushd python
     # Fix the numpy version because this will be the oldest numpy version we can
     # support.
-    /opt/python/${PYTHON}/bin/pip install -q numpy==${NUMPY_VERSION} cython==0.29.15
+    /opt/python/"${PYTHON}"/bin/pip install -q numpy=="${NUMPY_VERSION}" cython==0.29.15
     # Set the commit SHA in __init__.py.
     if [ -n "$TRAVIS_COMMIT" ]; then
       sed -i.bak "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ray/__init__.py && rm ray/__init__.py.bak
@@ -66,7 +66,7 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
       exit 1
     fi
 
-    PATH=/opt/python/${PYTHON}/bin:$PATH /opt/python/${PYTHON}/bin/python setup.py bdist_wheel
+    PATH=/opt/python/${PYTHON}/bin:$PATH /opt/python/"${PYTHON}"/bin/python setup.py bdist_wheel
     # In the future, run auditwheel here.
     mv dist/*.whl ../.whl/
   popd

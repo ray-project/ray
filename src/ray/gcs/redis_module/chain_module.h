@@ -16,7 +16,7 @@
 
 #include <functional>
 
-#include "redismodule.h"
+#include "ray/gcs/redis_module/redismodule.h"
 
 // NOTE(zongheng): this duplicated declaration serves as forward-declaration
 // only.  The implementation is supposed to be linked in from credis.  In

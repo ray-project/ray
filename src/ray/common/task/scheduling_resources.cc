@@ -1,4 +1,4 @@
-#include "scheduling_resources.h"
+#include "ray/common/task/scheduling_resources.h"
 
 #include <cmath>
 #include <sstream>

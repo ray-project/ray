@@ -14,14 +14,21 @@
 
 #include "ray/object_manager/plasma/fling.h"
 
+#include <errno.h>
 #include <string.h>
 
 #include "ray/util/logging.h"
 
-#ifdef _WIN32
-#include <ws2tcpip.h>  // socklen_t
-#else
-typedef int SOCKET;
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/un.h>
+#include <unistd.h>
+
+// This is necessary for Mac OS X, see http://www.apuebook.com/faqs2e.html
+// (10).
+#if !defined(CMSG_SPACE) && !defined(CMSG_LEN)
+#define CMSG_SPACE(len) (__DARWIN_ALIGN32(sizeof(struct cmsghdr)) + __DARWIN_ALIGN32(len))
+#define CMSG_LEN(len) (__DARWIN_ALIGN32(sizeof(struct cmsghdr)) + (len))
 #endif
 
 void init_msg(struct msghdr* msg, struct iovec* iov, char* buf, size_t buf_len) {
@@ -40,12 +47,7 @@ void init_msg(struct msghdr* msg, struct iovec* iov, char* buf, size_t buf_len) 
 int send_fd(int conn, int fd) {
   struct msghdr msg;
   struct iovec iov;
-#ifdef _WIN32
-  SOCKET to_send = fh_get(fd);
-#else
-  SOCKET to_send = fd;
-#endif
-  char buf[CMSG_SPACE(sizeof(to_send))];
+  char buf[CMSG_SPACE(sizeof(fd))];
   memset(&buf, 0, sizeof(buf));
 
   init_msg(&msg, &iov, buf, sizeof(buf));
@@ -56,17 +58,12 @@ int send_fd(int conn, int fd) {
   }
   header->cmsg_level = SOL_SOCKET;
   header->cmsg_type = SCM_RIGHTS;
-  header->cmsg_len = CMSG_LEN(sizeof(to_send));
-  memcpy(CMSG_DATA(header), reinterpret_cast<void*>(&to_send), sizeof(to_send));
+  header->cmsg_len = CMSG_LEN(sizeof(fd));
+  memcpy(CMSG_DATA(header), reinterpret_cast<void*>(&fd), sizeof(fd));
 
-#ifdef _WIN32
-  SOCKET sock = fh_get(conn);
-#else
-  SOCKET sock = conn;
-#endif
   // Send file descriptor.
   while (true) {
-    ssize_t r = sendmsg(sock, &msg, 0);
+    ssize_t r = sendmsg(conn, &msg, 0);
     if (r < 0) {
       if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
         continue;
@@ -97,16 +94,11 @@ int send_fd(int conn, int fd) {
 int recv_fd(int conn) {
   struct msghdr msg;
   struct iovec iov;
-  char buf[CMSG_SPACE(sizeof(SOCKET))];
+  char buf[CMSG_SPACE(sizeof(int))];
   init_msg(&msg, &iov, buf, sizeof(buf));
 
-#ifdef _WIN32
-  SOCKET sock = fh_get(conn);
-#else
-  int sock = conn;
-#endif
   while (true) {
-    ssize_t r = recvmsg(sock, &msg, 0);
+    ssize_t r = recvmsg(conn, &msg, 0);
     if (r == -1) {
       if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
         continue;
@@ -119,24 +111,20 @@ int recv_fd(int conn) {
     }
   }
 
-  SOCKET found_fd = -1;
+  int found_fd = -1;
   int oh_noes = 0;
   for (struct cmsghdr* header = CMSG_FIRSTHDR(&msg); header != NULL;
        header = CMSG_NXTHDR(&msg, header))
     if (header->cmsg_level == SOL_SOCKET && header->cmsg_type == SCM_RIGHTS) {
       ssize_t count = (header->cmsg_len -
                        (CMSG_DATA(header) - reinterpret_cast<unsigned char*>(header))) /
-                      sizeof(SOCKET);
+                      sizeof(int);
       for (int i = 0; i < count; ++i) {
-        SOCKET fd = (reinterpret_cast<SOCKET*>(CMSG_DATA(header)))[i];
+        int fd = (reinterpret_cast<int*>(CMSG_DATA(header)))[i];
         if (found_fd == -1) {
           found_fd = fd;
         } else {
-#ifdef _WIN32
-          closesocket(fd) == 0 || ((WSAGetLastError() == WSAENOTSOCK || WSAGetLastError() == WSANOTINITIALISED) && CloseHandle(reinterpret_cast<HANDLE>(fd)));
-#else
           close(fd);
-#endif
           oh_noes = 1;
         }
       }
@@ -146,19 +134,9 @@ int recv_fd(int conn) {
   // them all to prevent fd leaks but notify the caller that we got
   // a bad message.
   if (oh_noes) {
-#ifdef _WIN32
-    closesocket(found_fd) == 0 || ((WSAGetLastError() == WSAENOTSOCK || WSAGetLastError() == WSANOTINITIALISED) && CloseHandle(reinterpret_cast<HANDLE>(found_fd)));
-#else
     close(found_fd);
-#endif
     errno = EBADMSG;
     return -1;
   }
-
-#ifdef _WIN32
-  int to_receive = fh_open(found_fd, -1);
-#else
-  int to_receive = found_fd;
-#endif
-  return to_receive;
+  return found_fd;
 }
