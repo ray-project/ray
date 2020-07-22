@@ -394,9 +394,9 @@ class Node:
         raise FileExistsError(errno.EEXIST,
                               "No usable temporary filename found")
 
-    def get_log_file_handlers(self, name, unique=False):
+    def get_log_file_handles(self, name, unique=False):
         """Open log files with partially randomized filenames, returning the
-        file handlers. If output redirection has been disabled, no files will
+        file handles. If output redirection has been disabled, no files will
         be opened and `(None, None)` will be returned.
 
         Args:
@@ -405,7 +405,7 @@ class Node:
                 ensure the returned filename is not already used.
 
         Returns:
-            A tuple of two file names for redirecting (stdout, stderr), or
+            A tuple of two file handles for redirecting (stdout, stderr), or
             `(None, None)` if output redirection is disabled.
         """
         redirect_output = self._ray_params.redirect_output
@@ -519,10 +519,10 @@ class Node:
     def start_redis(self):
         """Start the Redis servers."""
         assert self._redis_address is None
-        redis_log_files = [self.get_log_file_handlers("redis", unique=True)]
+        redis_log_files = [self.get_log_file_handles("redis", unique=True)]
         for i in range(self._ray_params.num_redis_shards):
             redis_log_files.append(
-                self.get_log_file_handlers(
+                self.get_log_file_handles(
                     "redis-shard_{}".format(i), unique=True))
 
         (self._redis_address, redis_shards,
@@ -545,7 +545,7 @@ class Node:
 
     def start_log_monitor(self):
         """Start the log monitor."""
-        stdout_file, stderr_file = self.get_log_file_handlers(
+        stdout_file, stderr_file = self.get_log_file_handles(
             "log_monitor", unique=True)
         process_info = ray.services.start_log_monitor(
             self.redis_address,
@@ -561,7 +561,7 @@ class Node:
 
     def start_reporter(self):
         """Start the reporter."""
-        stdout_file, stderr_file = self.get_log_file_handlers(
+        stdout_file, stderr_file = self.get_log_file_handles(
             "reporter", unique=True)
         process_info = ray.services.start_reporter(
             self.redis_address,
@@ -584,7 +584,7 @@ class Node:
                 if we fail to start the dashboard. Otherwise it will print
                 a warning if we fail to start the dashboard.
         """
-        stdout_file, stderr_file = self.get_log_file_handlers(
+        stdout_file, stderr_file = self.get_log_file_handles(
             "dashboard", unique=True)
         self._webui_url, process_info = ray.services.start_dashboard(
             require_dashboard,
@@ -606,7 +606,7 @@ class Node:
 
     def start_plasma_store(self):
         """Start the plasma store."""
-        stdout_file, stderr_file = self.get_log_file_handlers(
+        stdout_file, stderr_file = self.get_log_file_handles(
             "plasma_store", unique=True)
         process_info = ray.services.start_plasma_store(
             self.get_resource_spec(),
@@ -626,7 +626,7 @@ class Node:
     def start_gcs_server(self):
         """Start the gcs server.
         """
-        stdout_file, stderr_file = self.get_log_file_handlers(
+        stdout_file, stderr_file = self.get_log_file_handles(
             "gcs_server", unique=True)
         process_info = ray.services.start_gcs_server(
             self._redis_address,
@@ -651,7 +651,7 @@ class Node:
             use_profiler (bool): True if we should start the process in the
                 valgrind profiler.
         """
-        stdout_file, stderr_file = self.get_log_file_handlers(
+        stdout_file, stderr_file = self.get_log_file_handles(
             "raylet", unique=True)
         process_info = ray.services.start_raylet(
             self._redis_address,
@@ -725,7 +725,7 @@ class Node:
 
     def start_monitor(self):
         """Start the monitor."""
-        stdout_file, stderr_file = self.get_log_file_handlers(
+        stdout_file, stderr_file = self.get_log_file_handles(
             "monitor", unique=True)
         process_info = ray.services.start_monitor(
             self._redis_address,
