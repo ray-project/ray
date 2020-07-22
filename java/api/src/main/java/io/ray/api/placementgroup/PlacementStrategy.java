@@ -1,5 +1,8 @@
 package io.ray.api.placementgroup;
 
+/**
+ * The actor placement strategy.
+ */
 public enum PlacementStrategy {
   /**
    * Packs Bundles close together inside processes or nodes as tight as possible.
@@ -11,7 +14,6 @@ public enum PlacementStrategy {
   SPREAD(1);
 
   private int value = 0;
-
 
   PlacementStrategy(int value) {
     this.value = value;

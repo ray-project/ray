@@ -233,11 +233,13 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
   return NativeIdVectorToJavaByteArrayList(env, return_ids);
 }
 
-JNIEXPORT void JNICALL Java_io_ray_runtime_task_NativeTaskSubmitter_nativeCreatePlacementGroup(
+JNIEXPORT jbyteArray JNICALL Java_io_ray_runtime_task_NativeTaskSubmitter_nativeCreatePlacementGroup(
     JNIEnv *env, jclass, jobject bundles, jint strategy) {
   auto options = ToPlacementGroupCreationOptions(env, bundles, strategy);
-  auto status = ray::CoreWorkerProcess::GetCoreWorker().CreatePlacementGroup(options);
-  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
+  ray::PlacementGroupID placement_group_id;
+  auto status = ray::CoreWorkerProcess::GetCoreWorker().CreatePlacementGroup(options, &placement_group_id);
+  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
+  return IdToJavaByteArray<ray::PlacementGroupID>(env, placement_group_id);
 }
 
 #ifdef __cplusplus

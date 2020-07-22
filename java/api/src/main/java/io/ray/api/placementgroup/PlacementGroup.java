@@ -1,16 +1,13 @@
 package io.ray.api.placementgroup;
 
-import java.util.List;
-import java.util.Map;
-
 /**
  * A handle to a placement group.
  */
 public interface PlacementGroup {
 
-
   /**
-   * @return All bundles in this group.
+   * Gets the bundle of the specified index.
+   * @return The bundle of the specified index. If the index is invalid, return NULL.
    */
-  List<Map<String, Double>> getBundles();
+  Bundle getBundle(int index);
 }

@@ -596,11 +596,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Create a placement group.
   ///
-  /// \param[in] placement_group_creation_options Options for this placement group
-  /// creation task.
-  /// \return Status error if placement group creation fails, likely due to raylet failure.
+  /// \param[in] options Options for this placement group creation task.
+  /// \param[out] return_placement_group_id ID of the created placement group.
+  /// \return Status.
   Status CreatePlacementGroup(
-      const PlacementGroupCreationOptions &placement_group_creation_options);
+      const PlacementGroupCreationOptions &options,
+      PlacementGroupID *return_placement_group_id);
 
   /// Submit an actor task.
   ///

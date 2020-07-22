@@ -1,24 +1,24 @@
 package io.ray.api.placementgroup;
 
+import io.ray.api.id.UniqueId;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 /**
  * The default implementation of `PlacementGroup` interface.
  */
 public class PlacementGroupImpl implements PlacementGroup {
 
-  private List<Map<String, Double>> bundles;
+  private List<Bundle> bundles = new ArrayList<>();
 
-  public PlacementGroupImpl(List<Map<String, Double>> bundles) {
-    this.bundles = bundles;
+  public PlacementGroupImpl(UniqueId placementGroupId, int bundleCount) {
+    for (int index = 0; index < bundleCount; ++index) {
+      this.bundles.add(new Bundle(placementGroupId, index));
+    }
   }
 
-  /**
-   * @return All bundles in this group.
-   */
   @Override
-  public List<Map<String, Double>> getBundles() {
-    return bundles;
+  public Bundle getBundle(int index) {
+    return bundles.get(index);
   }
 }
