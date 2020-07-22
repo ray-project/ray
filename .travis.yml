@@ -271,7 +271,7 @@ matrix:
         - PYTHON=3.6
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
-        - TORCH_VERSION=1.4
+        - TORCH_VERSION=1.5
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init RAY_CI_TUNE_AFFECTED
@@ -290,7 +290,7 @@ matrix:
         - PYTHON=3.6
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
-        - TORCH_VERSION=1.4
+        - TORCH_VERSION=1.5
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init
@@ -308,7 +308,7 @@ matrix:
         - PYTHON=3.6
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
-        - TORCH_VERSION=1.4
+        - TORCH_VERSION=1.5
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init
