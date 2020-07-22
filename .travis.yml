@@ -291,6 +291,10 @@ script:
   # ray operator tests
   - (cd deploy/ray-operator && export CC=gcc && suppress_output go build && suppress_output go test ./...)
 
+  # test ray typing
+  - mypy --strict ./ci/travis/check_typing_good.py
+  - mypy --strict ./ci/travis/check_typing_bad.py && return 1 || return 0
+
   # bazel python tests. This should be run last to keep its logs at the end of travis logs.
   - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci --test_tag_filters=-jenkins_only python/ray/tests/...; fi
   - if [ $RAY_CI_TUNE_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci --test_tag_filters=-jenkins_only python/ray/tune/...; fi
