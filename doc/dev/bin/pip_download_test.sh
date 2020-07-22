@@ -54,7 +54,7 @@ do
     echo "=========================================================\n\n\n"
 
     conda deactivate
-    conda remove -y --name ${env_name} --all
+    conda remove -y --name "${env_name}" --all
     if [ "$failed" = true ]; then
         echo "PYTHON ${PYTHON_VERSION} failed sanity check."
         exit 1
