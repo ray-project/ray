@@ -251,15 +251,15 @@ py_test(
     tags = ["exclusive", "example"],
     args = ["--smoke-test"]
 )
-# Requires Python 3.7. Todo: enable after moving to 3.7
-# py_test(
-#     name = "ax_example",
-#     size = "medium",
-#     srcs = ["examples/ax_example.py"],
-#     deps = [":tune_lib"],
-#     tags = ["exclusive", "example"],
-#     args = ["--smoke-test"]
-# )
+
+py_test(
+    name = "ax_example",
+    size = "medium",
+    srcs = ["examples/ax_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example", "py37"],
+    args = ["--smoke-test"]
+)
 
 py_test(
     name = "bayesopt_example",
