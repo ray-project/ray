@@ -307,14 +307,16 @@ class FunctionRunner(Trainable):
             checkpoint, parent_dir, state)
         return checkpoint_path
 
-    def save_to_object(self):
+    def save_to_object(self, remove=False):
         checkpoint_path = self.save()
-        data_dict = TrainableUtil.pickle_checkpoint(checkpoint_path)
-        out = io.BytesIO()
-        if len(data_dict) > 10e6:  # getting pretty large
-            logger.info("Checkpoint size is {} bytes".format(len(data_dict)))
-        out.write(data_dict)
-        return out.getvalue()
+        obj = TrainableUtil.checkpoint_to_object(checkpoint_path)
+
+        if remove:
+            checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
+            shutil.rmtree(checkpoint_dir)
+            logger.debug("Removing checkpoint_dir: %s", checkpoint_dir)
+
+        return obj
 
     def load_checkpoint(self, checkpoint):
         # This should be removed once Trainables are refactored.
