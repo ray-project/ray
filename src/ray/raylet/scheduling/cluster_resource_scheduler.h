@@ -250,6 +250,7 @@ class ClusterResourceScheduler {
   ///
   /// \param ID of the node to be removed.
   bool RemoveNode(int64_t node_id);
+  bool RemoveNode(const std::string &node_id_string);
 
   /// Check whether a task request can be scheduled given a node.
   ///

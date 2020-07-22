@@ -1,6 +1,7 @@
 import argparse
 import glob
 import io
+import logging
 import os
 import re
 import shutil
@@ -16,6 +17,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+logger = logging.getLogger(__name__)
+
 # Ideally, we could include these files by putting them in a
 # MANIFEST.in or using the package_data argument to setup, but the
 # MANIFEST.in gets applied at the very beginning when setup.py runs
@@ -23,6 +26,7 @@ import urllib.request
 # manually.
 
 SUPPORTED_PYTHONS = [(3, 5), (3, 6), (3, 7), (3, 8)]
+SUPPORTED_BAZEL = (3, 2, 0)
 
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
@@ -96,7 +100,6 @@ if os.getenv("RAY_USE_NEW_GCS") == "on":
 
 extras = {
     "debug": [],
-    "dashboard": ["requests", "gpustat"],
     "serve": ["uvicorn", "flask", "blist", "requests"],
     "tune": ["tabulate", "tensorboardX", "pandas"]
 }
@@ -128,6 +131,28 @@ def is_invalid_windows_platform():
     platform = sys.platform
     ver = sys.version
     return platform == "msys" or (platform == "win32" and ver and "GCC" in ver)
+
+
+# Calls Bazel in PATH, falling back to the standard user installatation path
+# (~/.bazel/bin/bazel) if it isn't found.
+def bazel_invoke(invoker, cmdline, *args, **kwargs):
+    home = os.path.expanduser("~")
+    candidates = ["bazel"]
+    if sys.platform == "win32":
+        mingw_dir = os.getenv("MINGW_DIR")
+        if mingw_dir:
+            candidates.append(mingw_dir + "/bin/bazel.exe")
+    else:
+        candidates.append(os.path.join(home, ".bazel", "bin", "bazel"))
+    result = None
+    for i, cmd in enumerate(candidates):
+        try:
+            result = invoker([cmd] + cmdline, *args, **kwargs)
+            break
+        except IOError:
+            if i >= len(candidates) - 1:
+                raise
+    return result
 
 
 def download(url):
@@ -179,8 +204,13 @@ def build(build_python, build_java):
                "Detected: {}\n  at: {!r}".format(sys.version, sys.executable))
         raise OSError(msg)
 
+    bazel_env = dict(os.environ, PYTHON3_BIN_PATH=sys.executable)
+
     if is_native_windows_or_msys():
-        BAZEL_SH = os.getenv("BAZEL_SH")
+        SHELL = bazel_env.get("SHELL")
+        if SHELL:
+            bazel_env.setdefault("BAZEL_SH", os.path.normpath(SHELL))
+        BAZEL_SH = bazel_env["BAZEL_SH"]
         SYSTEMROOT = os.getenv("SystemRoot")
         wsl_bash = os.path.join(SYSTEMROOT, "System32", "bash.exe")
         if (not BAZEL_SH) and SYSTEMROOT and os.path.isfile(wsl_bash):
@@ -217,13 +247,20 @@ def build(build_python, build_java):
             ] + pip_packages,
             env=dict(os.environ, CC="gcc"))
 
-    bazel = os.getenv("BAZEL_EXECUTABLE", "bazel")
+    version_info = bazel_invoke(subprocess.check_output, ["--version"])
+    bazel_version_str = version_info.rstrip().decode("utf-8").split(" ", 1)[1]
+    bazel_version = tuple(map(int, bazel_version_str.split(".")))
+    if bazel_version < SUPPORTED_BAZEL:
+        logger.warning("Expected Bazel version {} but found {}".format(
+            ".".join(map(str, SUPPORTED_BAZEL)), bazel_version_str))
+
     bazel_targets = []
     bazel_targets += ["//:ray_pkg"] if build_python else []
     bazel_targets += ["//java:ray_java_pkg"] if build_java else []
-    return subprocess.check_call(
-        [bazel, "build", "--verbose_failures", "--"] + bazel_targets,
-        env=dict(os.environ, PYTHON3_BIN_PATH=sys.executable))
+    return bazel_invoke(
+        subprocess.check_call,
+        ["build", "--verbose_failures", "--"] + bazel_targets,
+        env=bazel_env)
 
 
 def walk_directory(directory):
@@ -268,6 +305,7 @@ install_requires = [
     "colorama",
     "filelock",
     "google",
+    "gpustat",
     "grpcio",
     "jsonschema",
     "msgpack >= 0.6.0, < 2.0.0",
@@ -275,6 +313,7 @@ install_requires = [
     "protobuf >= 3.8.0",
     "py-spy >= 0.2.0",
     "pyyaml",
+    "requests",
     "redis >= 3.3.2, < 3.5.0",
 ]
 
@@ -312,7 +351,8 @@ def pip_run(build_ext):
 
 def api_main(program, *args):
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", type=str, choices=["build", "help"])
+    choices = ["build", "bazel_version", "help"]
+    parser.add_argument("command", type=str, choices=choices)
     parser.add_argument(
         "-l",
         "--language",
@@ -335,6 +375,8 @@ def api_main(program, *args):
             else:
                 raise ValueError("invalid language: {!r}".format(lang))
         result = build(**kwargs)
+    elif parsed_args.command == "bazel_version":
+        print(".".join(map(str, SUPPORTED_BAZEL)))
     elif parsed_args.command == "help":
         parser.print_help()
     else:

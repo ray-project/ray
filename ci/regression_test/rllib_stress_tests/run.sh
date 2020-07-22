@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 
 source activate tensorflow_p36
 
