@@ -207,6 +207,7 @@ def update_backend_config(backend_tag, config_options):
             - "max_concurrent_queries": the maximum number of queries
             that will be sent to a replica of this backend
             without receiving a response.
+
     """
     if not isinstance(config_options, dict):
         raise ValueError("config_options must be a dictionary.")
