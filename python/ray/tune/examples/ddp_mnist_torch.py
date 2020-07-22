@@ -10,7 +10,8 @@ import ray
 from ray import tune
 from ray.tune.examples.mnist_pytorch import (train, test, get_data_loaders,
                                              ConvNet)
-from ray.util.sgd.torch.torch_trainable import DistributedTrainable
+from ray.util.sgd.torch.torch_trainable import (DistributedTrainableCreator,
+                                                distributed_checkpoint)
 
 logger = logging.getLogger(__name__)
 
@@ -36,20 +37,17 @@ def train_mnist(config, checkpoint=False):
         acc = test(model, test_loader, device)
 
         if epoch % 3 == 0:
-            checkpoint_dir = tune.make_checkpoint_dir(step=epoch)
-            path = os.path.join(checkpoint_dir, "checkpoint")
-            with open(path, "wb") as f:
+            with distributed_checkpoint(label=epoch) as f:
                 torch.save((model.state_dict(), optimizer.state_dict()), f)
-            tune.save_checkpoint(path)
         tune.report(mean_accuracy=acc)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     ray.init()
 
-    trainable_cls = DistributedTrainable(train_mnist, num_workers=2)
-    # trainable = trainable_cls()
-    # for i in range(10):
-    #     print(trainable.train())
+    trainable_cls = DistributedTrainableCreator(train_mnist, num_workers=2)
+    trainable = trainable_cls()
+    for i in range(10):
+        print(trainable.train())
 
-    tune.run(trainable_cls, num_samples=2, stop={"training_iteration": 2})
+    # tune.run(trainable_cls, num_samples=2, stop={"training_iteration": 2})

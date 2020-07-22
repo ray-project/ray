@@ -103,12 +103,12 @@ class _TorchTrainable(tune.Trainable):
         ray.get([worker.stop.remote() for worker in self.workers])
 
 
-def DistributedTrainable(func,
-                         use_gpu=False,
-                         num_workers=1,
-                         num_cpus_per_worker=1,
-                         backend="gloo",
-                         timeout_s=NCCL_TIMEOUT_S):
+def DistributedTrainableCreator(func,
+                                use_gpu=False,
+                                num_workers=1,
+                                num_cpus_per_worker=1,
+                                backend="gloo",
+                                timeout_s=NCCL_TIMEOUT_S):
     class WrappedDistributedTorchTrainable(_TorchTrainable):
         _function = func
         _num_workers = num_workers
@@ -131,3 +131,23 @@ def DistributedTrainable(func,
                 extra_gpu=num_workers_ if use_gpu_ else 0)
 
     return WrappedDistributedTorchTrainable
+
+
+class distributed_checkpoint:
+    def __init__(self, label):
+        self.label = label
+        self.file = None
+
+    def __enter__(self):
+        if torch.distributed.get_rank() == 0:
+            checkpoint_dir = tune.make_checkpoint_dir(step=self.label)
+            path = os.path.join(checkpoint_dir, "checkpoint")
+        else:
+            path = "/dev/null"
+        self.file = open(path, "wb")
+        return self.file
+
+    def __exit__(self, type, value, traceback):
+        self.file.close()
+        if torch.distributed.get_rank() == 0:
+            tune.save_checkpoint(self.file.name)

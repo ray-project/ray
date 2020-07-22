@@ -2,25 +2,16 @@ from unittest.mock import patch
 import numpy as np
 import os
 import pytest
-import time
 import torch
-import torch.nn as nn
 import torch.distributed as dist
-from torch.utils.data import DataLoader
+import torch.optim as optim
+from torch.nn.parallel import DistributedDataParallel
 
 import ray
 from ray import tune
-from ray.util.sgd.torch import TorchTrainer
-from ray.util.sgd.torch.training_operator import (_TestingOperator,
-                                                  _TestMetricsOperator)
-from ray.util.sgd.torch.constants import SCHEDULER_STEP
-from ray.util.sgd.utils import (check_for_failure, NUM_SAMPLES, BATCH_COUNT,
-                                BATCH_SIZE)
-
-from ray.util.sgd.data.examples import mlp_identity
-from ray.util.sgd.torch.examples.train_example import (
-    model_creator, optimizer_creator, data_creator, LinearDataset)
-from ray.util.sgd.torch.torch_trainable import to_distributed
+from ray.util.sgd.torch.torch_trainable import DistributedTrainableCreator
+from ray.tune.examples.mnist_pytorch import (train, test, get_data_loaders,
+                                             model_creator)
 
 
 @pytest.fixture
@@ -43,6 +34,7 @@ def ray_start_4_cpus():
     # Ensure that tests don't ALL fail
     if dist.is_initialized():
         dist.destroy_process_group()
+
 
 def train_mnist(config, checkpoint=False):
     use_cuda = config.get("use_gpu") and torch.cuda.is_available()
@@ -69,7 +61,7 @@ def train_mnist(config, checkpoint=False):
 
 
 def test_single_step(ray_start_2_cpus):  # noqa: F811
-    trainable_cls = to_distributed(train_mnist, num_workers=2)
+    trainable_cls = DistributedTrainableCreator(train_mnist, num_workers=2)
     trainer = trainable_cls()
     result = trainer.train()
     print(result)
@@ -87,7 +79,6 @@ def test_single_step(ray_start_2_cpus):  # noqa: F811
 #     trainer.max_replicas = 2
 #     results = trainer.train(num_steps=1, reduce_results=False)
 #     assert len(results) == 2
-
 
 if __name__ == "__main__":
     import pytest
