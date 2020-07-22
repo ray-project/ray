@@ -88,9 +88,7 @@ class MockExporterClient1 : public MetricExporterDecorator {
 class MockExporterClient2 : public MetricExporterDecorator {
  public:
   MockExporterClient2(std::shared_ptr<MetricExporterClient> exporter)
-      : MetricExporterDecorator(exporter),
-        client2_count(0),
-        client2_value(0) {}
+      : MetricExporterDecorator(exporter), client2_count(0), client2_value(0) {}
   void ReportMetrics(const std::vector<MetricPoint> &points) override {
     if (points.empty()) {
       return;
