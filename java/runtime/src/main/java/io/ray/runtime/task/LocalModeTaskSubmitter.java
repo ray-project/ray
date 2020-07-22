@@ -218,7 +218,6 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     return new PlacementGroupImpl();
   }
 
-
   @Override
   public BaseActorHandle getActor(ActorId actorId) {
     return actorHandles.get(actorId).copy();
