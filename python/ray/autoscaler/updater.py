@@ -33,7 +33,6 @@ class NodeUpdater:
                  ray_start_commands,
                  runtime_hash,
                  file_mounts_contents_hash,
-                 run_setup_commands_on_file_mounts_change=True,
                  process_runner=subprocess,
                  use_internal_ip=False,
                  docker_config=None):
@@ -58,10 +57,6 @@ class NodeUpdater:
         self.ray_start_commands = ray_start_commands
         self.runtime_hash = runtime_hash
         self.file_mounts_contents_hash = file_mounts_contents_hash
-        # Whether setup commands should be run when file_mounts contents
-        # have changed but otherwise the cluster config has not changed.
-        self.run_setup_commands_on_file_mounts_change = \
-            run_setup_commands_on_file_mounts_change
         self.auth_config = auth_config
 
     def run(self):
@@ -142,15 +137,12 @@ class NodeUpdater:
 
         node_tags = self.provider.node_tags(self.node_id)
         logger.debug("Node tags: {}".format(str(node_tags)))
-        # file_mounts_content_hash will only change whenever the user restarts
-        # or updates their cluster with `get_or_create_head_node` unless
-        # continuous mode is on. In that case, the file_mounts_content_hash
-        # will be recalculated at a regular interval while the cluster is
-        # running.
-        if node_tags.get(
-                TAG_RAY_RUNTIME_CONFIG) == self.runtime_hash and node_tags.get(
-                    TAG_RAY_FILE_MOUNTS_CONTENTS
-                ) == self.file_mounts_contents_hash:
+        # runtime_hash will only change whenever the user restarts
+        # or updates their cluster with `get_or_create_head_node`
+        if node_tags.get(TAG_RAY_RUNTIME_CONFIG) == self.runtime_hash and (
+                self.file_mounts_contents_hash is None
+                or node_tags.get(TAG_RAY_FILE_MOUNTS_CONTENTS) ==
+                self.file_mounts_contents_hash):
             logger.info(self.log_prefix +
                         "{} already up-to-date, skip to ray start".format(
                             self.node_id))
@@ -159,12 +151,10 @@ class NodeUpdater:
                 self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SYNCING_FILES})
             self.sync_file_mounts(self.rsync_up)
 
-            # Skip setup commands when only file_mounts contents change unless
-            # run_setup_commands_on_file_mounts_change is True.
-            if node_tags.get(TAG_RAY_RUNTIME_CONFIG) != self.runtime_hash or (
-                    node_tags.get(TAG_RAY_FILE_MOUNTS_CONTENTS) !=
-                    self.file_mounts_contents_hash
-                    and self.run_setup_commands_on_file_mounts_change):
+            # Only run setup commands if runtime_hash has changed because
+            # we don't want to run setup_commands every time the head node
+            # file_mounts folders have changed.
+            if node_tags.get(TAG_RAY_RUNTIME_CONFIG) != self.runtime_hash:
                 # Run init commands
                 self.provider.set_node_tags(
                     self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SETTING_UP})

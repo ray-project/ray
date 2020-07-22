@@ -101,8 +101,20 @@ def hash_launch_conf(node_conf, auth):
 _hash_cache = {}
 
 
-def hash_runtime_conf(file_mounts, extra_objs, use_cached_contents_hash=True):
-    config_hasher = hashlib.sha1()
+def hash_runtime_conf(file_mounts,
+                      extra_objs,
+                      generate_file_mounts_contents_hash=False):
+    """Returns two hashes, a runtime hash and file_mounts_content hash.
+
+    The runtime hash is used to determine if the configuration or file_mounts
+    contents have changed. It is used at launch time (ray up) to determine if
+    a restart is needed.
+
+    The file_mounts_content hash is used to determine if the file_mounts
+    contents have changed. It is used at monitor time to determine if
+    additional file syncing is needed.
+    """
+    runtime_hasher = hashlib.sha1()
     contents_hasher = hashlib.sha1()
 
     def add_content_hashes(path):
@@ -128,12 +140,20 @@ def hash_runtime_conf(file_mounts, extra_objs, use_cached_contents_hash=True):
     conf_str = (json.dumps(file_mounts, sort_keys=True).encode("utf-8") +
                 json.dumps(extra_objs, sort_keys=True).encode("utf-8"))
 
-    # Only hash the files once, unless use_cached_contents_hash is false.
-    if not use_cached_contents_hash or conf_str not in _hash_cache:
-        config_hasher.update(conf_str)
+    # Only generate a contents hash if generate_contents_hash is true or
+    # if we need to generate the runtime_hash
+    if conf_str not in _hash_cache or generate_file_mounts_contents_hash:
         for local_path in sorted(file_mounts.values()):
             add_content_hashes(local_path)
-        _hash_cache[conf_str] = (config_hasher.hexdigest(),
-                                 contents_hasher.hexdigest())
+        contents_hash = contents_hasher.hexdigest()
 
-    return _hash_cache[conf_str]
+        # Generate a new runtime_hash if its not cached
+        if conf_str not in _hash_cache:
+            runtime_hasher.update(conf_str)
+            runtime_hasher.update(contents_hash)
+            _hash_cache[conf_str] = runtime_hasher.hexdigest()
+
+    else:
+        contents_hash = None
+
+    return (_hash_cache[conf_str], contents_hash)

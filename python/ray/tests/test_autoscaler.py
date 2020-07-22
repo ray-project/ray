@@ -1112,6 +1112,7 @@ class AutoscalingTest(unittest.TestCase):
             2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
 
         for i in [0, 1]:
+            runner.assert_has_call("172.0.0.{}".format(i), "setup_cmd")
             runner.assert_has_call(
                 "172.0.0.{}".format(i),
                 "{}/ ubuntu@172.0.0.{}:/home/test-folder/".format(
@@ -1130,6 +1131,7 @@ class AutoscalingTest(unittest.TestCase):
             2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
 
         for i in [0, 1]:
+            runner.assert_not_has_call("172.0.0.{}".format(i), "setup_cmd")
             runner.assert_has_call(
                 "172.0.0.{}".format(i),
                 "{}/ ubuntu@172.0.0.{}:/home/test-folder/".format(
@@ -1159,6 +1161,7 @@ class AutoscalingTest(unittest.TestCase):
             2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
 
         for i in [0, 1]:
+            runner.assert_has_call("172.0.0.{}".format(i), "setup_cmd")
             runner.assert_has_call(
                 "172.0.0.{}".format(i),
                 "{}/ ubuntu@172.0.0.{}:/home/test-folder/".format(
@@ -1176,10 +1179,34 @@ class AutoscalingTest(unittest.TestCase):
             2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
 
         for i in [0, 1]:
+            runner.assert_not_has_call("172.0.0.{}".format(i), "setup_cmd")
             runner.assert_not_has_call(
                 "172.0.0.{}".format(i),
                 "{}/ ubuntu@172.0.0.{}:/home/test-folder/".format(
                     file_mount_dir, i))
+
+        # Simulate a second `ray up` call
+        autoscaler = StandardAutoscaler(
+            config_path,
+            lm,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+
+        autoscaler.update()
+        self.waitForNodes(2)
+        self.provider.finish_starting_nodes()
+        autoscaler.update()
+        self.waitForNodes(
+            2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+
+        for i in [0, 1]:
+            runner.assert_has_call("172.0.0.{}".format(i), "setup_cmd")
+            runner.assert_has_call(
+                "172.0.0.{}".format(i),
+                "{}/ ubuntu@172.0.0.{}:/home/test-folder/".format(
+                    file_mount_dir, i))
+
 
 
 if __name__ == "__main__":

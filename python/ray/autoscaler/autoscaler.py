@@ -271,7 +271,8 @@ class StandardAutoscaler:
                      new_config["worker_setup_commands"],
                      new_config["worker_start_ray_commands"],
                  ],
-                 use_cached_contents_hash=not file_mounts_sync_continuously,
+                 generate_file_mounts_contents_hash=
+                 file_mounts_sync_continuously,
              )
             self.config = new_config
             self.launch_hash = new_launch_hash
@@ -328,8 +329,9 @@ class StandardAutoscaler:
         applied_file_mounts_contents_hash = node_tags.get(
             TAG_RAY_FILE_MOUNTS_CONTENTS)
         if (applied_config_hash != self.runtime_hash
-                or applied_file_mounts_contents_hash !=
-                self.file_mounts_contents_hash):
+                or (self.file_mounts_contents_hash is not None
+                    and self.file_mounts_contents_hash !=
+                    applied_file_mounts_contents_hash)):
             logger.info("StandardAutoscaler: "
                         "{}: Runtime state is ({},{}), want ({},{})".format(
                             node_id, applied_config_hash,
@@ -405,7 +407,6 @@ class StandardAutoscaler:
             ray_start_commands=with_head_node_ip(ray_start_commands),
             runtime_hash=self.runtime_hash,
             file_mounts_contents_hash=self.file_mounts_contents_hash,
-            run_setup_commands_on_file_mounts_change=False,
             process_runner=self.process_runner,
             use_internal_ip=True,
             docker_config=self.config.get("docker"))
