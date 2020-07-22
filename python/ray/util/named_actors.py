@@ -42,7 +42,7 @@ def _get_actor(name):
     return handle
 
 
-def get_actor(name):
+def get_actor(name: str) -> ray.actor.ActorHandle:
     """Get a named actor which was previously created.
 
     If the actor doesn't exist, an exception will be raised.

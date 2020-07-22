@@ -10,10 +10,10 @@ cd "$(dirname "$0")"
 function generate_one()
 {
   file=${1//./_}.h
-  javah -classpath ../bazel-bin/java/all_tests_deploy.jar $1
-  clang-format -i $file
+  javah -classpath ../bazel-bin/java/all_tests_deploy.jar "$1"
+  clang-format -i "$file"
 
-  cat <<EOF > ../src/ray/core_worker/lib/java/$file
+  cat <<EOF > ../src/ray/core_worker/lib/java/"$file"
 // Copyright 2017 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,8 +29,8 @@ function generate_one()
 // limitations under the License.
 
 EOF
-  cat $file >> ../src/ray/core_worker/lib/java/$file
-  rm -f $file
+  cat "$file" >> ../src/ray/core_worker/lib/java/"$file"
+  rm -f "$file"
 }
 
 generate_one io.ray.runtime.RayNativeRuntime
@@ -40,6 +40,7 @@ generate_one io.ray.runtime.actor.NativeActorHandle
 generate_one io.ray.runtime.object.NativeObjectStore
 generate_one io.ray.runtime.task.NativeTaskExecutor
 generate_one io.ray.runtime.gcs.GlobalStateAccessor
+generate_one io.ray.runtime.metric.NativeMetric
 
 # Remove empty files
 rm -f io_ray_runtime_RayNativeRuntime_AsyncContext.h

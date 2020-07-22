@@ -311,8 +311,9 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
         ? ((LocalModeTaskExecutor.LocalActorContext) actorContext).getWorkerId()
         : UniqueId.randomId();
     ((LocalModeWorkerContext) runtime.getWorkerContext()).setCurrentWorkerId(workerId);
-    List<NativeRayObject> returnObjects = taskExecutor
-        .execute(getJavaFunctionDescriptor(taskSpec).toList(), args);
+    List<String> rayFunctionInfo = getJavaFunctionDescriptor(taskSpec).toList();
+    taskExecutor.checkByteBufferArguments(rayFunctionInfo);
+    List<NativeRayObject> returnObjects = taskExecutor.execute(rayFunctionInfo, args);
     if (taskSpec.getType() == TaskType.ACTOR_CREATION_TASK) {
       // Update actor context map ASAP in case objectStore.putRaw triggered the next actor task
       // on this actor.

@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 # This script automatically download ray and run the sanity check (sanity_check.py)
 # in various Python version. This script requires conda command to exist.
 
@@ -56,7 +58,7 @@ do
     printf "\n\n\n"
 
     conda deactivate
-    conda remove -y --name ${env_name} --all
+    conda remove -y --name "${env_name}" --all
     if [ "$failed" = true ]; then
         echo "PYTHON ${PYTHON_VERSION} failed sanity check."
         exit 1

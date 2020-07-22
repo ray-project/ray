@@ -31,13 +31,13 @@ function retry {
 }
 
 if [[ -n "$RUN_TUNE_TESTS" ]]; then 
-    retry bash $ROOT_DIR/run_tune_tests.sh ${MEMORY_SIZE} ${SHM_SIZE}
+    retry bash "$ROOT_DIR"/run_tune_tests.sh ${MEMORY_SIZE} ${SHM_SIZE}
 fi
 
 if [[ -n "$RUN_DOC_TESTS" ]]; then
-    retry bash $ROOT_DIR/run_doc_tests.sh ${MEMORY_SIZE} ${SHM_SIZE}
+    retry bash "$ROOT_DIR"/run_doc_tests.sh ${MEMORY_SIZE} ${SHM_SIZE}
 fi
 
 if [[ -n "$RUN_SGD_TESTS" ]]; then
-    retry bash $ROOT_DIR/run_sgd_tests.sh ${MEMORY_SIZE} ${SHM_SIZE}
+    retry bash "$ROOT_DIR"/run_sgd_tests.sh ${MEMORY_SIZE} ${SHM_SIZE}
 fi

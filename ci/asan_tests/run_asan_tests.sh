@@ -52,7 +52,7 @@ asan_recompile() {
 }
 
 if [ 0 -lt "$#" ]; then
-  asan_"$@"
+  "asan_$1" "${@:2}"
 else
   echo "Available commands: setup, run, recompile"
 fi
