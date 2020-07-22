@@ -55,9 +55,12 @@ def train_mnist(config, checkpoint=False):
     for epoch in range(10):
         train(model, optimizer, train_loader, device)
         acc = test(model, test_loader, device)
-        with ray.util.sgd.torch.create_checkpoint(step=epoch) as f:
-            torch.save((model.state_dict(), optimizer.state_dict()), f)
+
+        if epoch % 3 == 0:
+            with distributed_checkpoint(label=epoch) as f:
+                torch.save((model.state_dict(), optimizer.state_dict()), f)
         tune.report(mean_accuracy=acc)
+
 
 
 def test_single_step(ray_start_2_cpus):  # noqa: F811

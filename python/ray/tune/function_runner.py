@@ -87,7 +87,7 @@ class StatusReporter:
     def make_checkpoint_dir(self, step=None):
         checkpoint_dir = TrainableUtil.make_checkpoint_dir(
             self.logdir, index=step)
-        logger.info("Making checkpoint dir at %s", checkpoint_dir)
+        logger.debug("Making checkpoint dir at %s", checkpoint_dir)
         return checkpoint_dir
 
     def save_checkpoint(self, checkpoint):

@@ -45,9 +45,9 @@ def train_mnist(config, checkpoint=False):
 if __name__ == "__main__":
     ray.init()
 
-    trainable_cls = DistributedTrainableCreator(train_mnist, num_workers=2)
-    trainable = trainable_cls()
-    for i in range(10):
-        print(trainable.train())
+    trainable_cls = DistributedTrainableCreator(train_mnist, num_workers=8)
+    # trainable = trainable_cls()
+    # for i in range(10):
+    #     print(trainable.train())
 
-    # tune.run(trainable_cls, num_samples=2, stop={"training_iteration": 2})
+    tune.run(trainable_cls, num_samples=4, stop={"training_iteration": 2})
