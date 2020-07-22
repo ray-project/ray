@@ -189,8 +189,8 @@ class HTTPProxyActor:
         # same port. Kernel will evenly load balance among the port listeners.
         # Note: this will only work on Linux.
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-        print("binding to socket ", self.host, self.port)
+        if hasattr(socket, "SO_REUSEPORT"):
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
         sock.bind((self.host, self.port))
 
         # Note(simon): we have to use lower level uvicorn Config and Server

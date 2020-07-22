@@ -556,7 +556,7 @@ class ServeController:
         self._checkpoint()
         await self.broadcast_routers(
             lambda router: router.set_traffic.remote(
-                endpoint_name, traffic_dict=traffic_policy
+                endpoint_name, traffic_policy,
             )
         )
 
