@@ -120,7 +120,7 @@ class FunctionActorManager:
             function_or_class.__name__ + ":" + string_file.getvalue())
 
         # Return a hash of the identifier in case it is too large.
-        return hashlib.sha1(collision_identifier.encode("ascii")).digest()
+        return hashlib.sha1(collision_identifier.encode("utf-8")).digest()
 
     def export(self, remote_function):
         """Pickle a remote function and export it to redis.

@@ -135,8 +135,6 @@ public class GlobalStateAccessor {
 
   private native boolean nativeConnect(long nativePtr);
 
-  private native void nativeDisconnect(long nativePtr);
-
   private native List<byte[]> nativeGetAllJobInfo(long nativePtr);
 
   private native List<byte[]> nativeGetAllNodeInfo(long nativePtr);
