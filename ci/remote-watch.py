@@ -19,7 +19,6 @@ import argparse
 import errno
 import logging
 import os
-import re
 import signal
 import subprocess
 import sys
@@ -135,7 +134,7 @@ def monitor():
     keep_alive = False
     commit_msg = git("show", "-s", "--format=%B", "HEAD^-")
     for line in commit_msg.splitlines():
-        parts = line.strip("# ").split(':', 1)
+        parts = line.strip("# ").split(":", 1)
         (key, val) = parts if len(parts) > 1 else (parts[0], "")
         if key == "CI_KEEP_ALIVE":
             ci_names = val.replace(",", " ").lower().split() if val else []
