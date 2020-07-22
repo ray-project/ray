@@ -133,7 +133,8 @@ def monitor():
     (ref, remote, expected_sha) = git_remote_branch_info()
     expected_line = "{}\t{}".format(expected_sha, ref)
     keep_alive = False
-    for line in git("show", "-s", "--format=%B", "HEAD^-").splitlines():
+    commit_msg = git("show", "-s", "--format=%B", "HEAD^-")
+    for line in commit_msg.splitlines():
         parts = line.strip("# ").split(':', 1)
         (key, val) = parts if len(parts) > 1 else (parts[0], "")
         if key == "CI_KEEP_ALIVE":
