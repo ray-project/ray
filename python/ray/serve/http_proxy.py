@@ -180,6 +180,9 @@ class HTTPProxyActor:
         # Start running the HTTP server on the event loop.
         asyncio.get_event_loop().create_task(self.run())
 
+    def ready(self):
+        return True
+
     async def run(self):
         sock = socket.socket()
         # These two socket options will allow multiple process to bind the the
@@ -187,6 +190,7 @@ class HTTPProxyActor:
         # Note: this will only work on Linux.
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        print("binding to socket ", self.host, self.port)
         sock.bind((self.host, self.port))
 
         # Note(simon): we have to use lower level uvicorn Config and Server

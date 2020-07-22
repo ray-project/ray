@@ -73,23 +73,19 @@ def init(
         name (str): A unique name for this serve instance. This allows
             multiple serve instances to run on the same ray cluster. Must be
             specified in all subsequent serve.init() calls.
-        http_host (str): Host for HTTP server. Default to "0.0.0.0".
+        http_host (str): Host for HTTP servers. Default to "0.0.0.0". Serve
+            starts one HTTP server per node.
         http_port (int, List[int]): Port for HTTP server. Default to 8000. If
             a list of integers are passed in, multiple instance of the HTTP
             servers will be started and bind to each port. On linux machine,
             the ports can be repeated.
         metric_exporter(ExporterInterface): The class aggregates metrics from
             all RayServe actors and optionally export them to external
-            services. RayServe has two options built in: InMemoryExporter and
+            services. Ray Serve has two options built in: InMemoryExporter and
             PrometheusExporter
     """
     if name is not None and not isinstance(name, str):
         raise TypeError("name must be a string.")
-
-    if isinstance(http_port, int):
-        http_ports = [http_port]
-    else:
-        http_ports = http_port
 
     # Initialize ray if needed.
     if not ray.is_initialized():
@@ -104,26 +100,27 @@ def init(
     except ValueError:
         pass
 
-    # TODO(edoakes): for now, always start the HTTP proxy on the node that
-    # serve.init() was run on. We should consider making this configurable
-    # in the future.
-    http_node_id = ray.state.current_node_id()
     controller = ServeController.options(
         name=controller_name,
         max_restarts=-1,
         max_task_retries=-1,
     ).remote(
         name,
-        http_node_id,
         http_host,
-        http_ports,
+        http_port,
         metric_exporter,
     )
 
-    for port in http_ports:
-        block_until_http_ready(
-            "http://{}:{}/-/routes".format(http_host, port),
-            timeout=HTTP_PROXY_TIMEOUT)
+    futures = []
+    for node_id in ray.state.node_ids():
+        future = block_until_http_ready.options(
+            num_cpus=0, resources={
+                node_id: 0.01
+            }).remote(
+                "http://{}:{}/-/routes".format(http_host, http_port),
+                timeout=HTTP_PROXY_TIMEOUT)
+        futures.append(future)
+    ray.get(futures)
 
 
 @_ensure_connected
