@@ -61,6 +61,10 @@ def get_repo_slug():
     return None
 
 
+def get_remote_url(remote):
+    return git("ls-remote", "--get-url", remote)
+
+
 def git_remote_branch_info():
     # Obtains the remote branch name, remote name, and commit hash that
     # correspond to the local HEAD.
@@ -98,6 +102,22 @@ def git_remote_branch_info():
     return (ref, remote, expected_sha)
 
 
+def get_commit_metadata(hash):
+    # Get the commit info (content hash, parents, message, etc.)
+    info = git("cat-file", "-p", hash)
+    parts = info.split("\n\n", 1)  # Split off the commit message
+    records = parts[0]
+    message = parts[1] if len(parts) > 1 else None
+    result = []
+    records = records.replace("\n ", "\0 ")  # Join multiple lines into one
+    for record in records.splitlines(True):
+        (key, value) = record.split(" ", 1)
+        value = value.replace("\0 ", "\n ")  # Re-split lines
+        result.append((key, value))
+    result.append(("message", message))
+    return result
+
+
 def terminate_my_process_group():
     result = 0
     timeout = 15
@@ -127,6 +147,28 @@ def yield_poll_schedule():
         yield schedule[-1]
 
 
+def detect_spurious_commit(actual, expected, remote):
+    # GitHub sometimes spuriously generates commits multiple times with
+    # different dates but identical contents. See here:
+    # https://github.com/travis-ci/travis-ci/issues/7459#issuecomment-601346831
+    # We need to detect whether this might be the case, and we do so by
+    # comparing the commits' contents ("tree" objects) and their parents.
+    # If these match, we tell the caller to expect the new commit from now on.
+    # Otherwise, we return the same expected commit as before.
+    actual_hash = actual.split(None, 1)[0]
+    expected_hash = expected.split(None, 1)[0]
+    relevant = ["tree", "parent"]  # relevant parts of a commit for comparison
+    if actual != expected:
+        git("fetch", "-q", remote, actual_hash)
+        actual_info = get_commit_metadata(actual_hash)
+        expected_info = get_commit_metadata(expected_hash)
+        a = [pair for pair in actual_info if pair[0] in relevant]
+        b = [pair for pair in expected_info if pair[0] in relevant]
+        if a == b:
+            expected = actual
+    return expected
+
+
 def monitor():
     ci = get_current_ci() or ""
     (ref, remote, expected_sha) = git_remote_branch_info()
@@ -144,10 +186,8 @@ def monitor():
         logger.info("Not monitoring %s on %s due to keep-alive on: %s",
                     ref, remote, expected_line)
         return
-    # Show which branch on which remote we are monitoring.
-    logger.info("Monitoring %s (%s) for changes in %s: %s",
-                remote, git("ls-remote", "--get-url", remote),
-                ref, expected_line)
+    logger.info("Monitoring %s (%s) for changes in %s: %s", remote,
+                get_remote_url(remote), ref, expected_line)
     terminate = False
     for to_wait in yield_poll_schedule():
         time.sleep(to_wait)
@@ -167,17 +207,18 @@ def monitor():
         elif status != 0:
             logger.error("Error %d: unable to check %s on %s: %s",
                          status, ref, remote, expected_line)
-        elif line == expected_line:
-            pass  # everything good
         else:
-            terminate = True
-            logger.info("\n".join(
-                [
-                    "Terminating job as %s has changed on %s",
-                    "    from:\t%s",
-                    "    to:  \t%s",
-                ]), ref, remote, expected_line, line)
-            break
+            expected_line = detect_spurious_commit(line, expected_line, remote)
+            if expected_line != line:
+                terminate = True
+                logger.info("\n".join(
+                    [
+                        "Terminating job as %s has changed on %s",
+                        "    from:\t%s",
+                        "    to:  \t%s",
+                    ]), ref, remote, expected_line, line)
+                time.sleep(1)  # wait for CI to flush output
+                break
     if terminate:
         result = terminate_my_process_group()
     return result
