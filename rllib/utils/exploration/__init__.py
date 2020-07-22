@@ -1,3 +1,4 @@
+from ray.rllib.utils.exploration.curiosity_exploration import Curiosity
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.exploration.epsilon_greedy import EpsilonGreedy
 from ray.rllib.utils.exploration.gaussian_noise import GaussianNoise
@@ -14,7 +15,6 @@ from ray.rllib.utils.exploration.random import Random
 from ray.rllib.utils.exploration.soft_q import SoftQ
 from ray.rllib.utils.exploration.stochastic_sampling import \
     StochasticSampling
-from ray.rllib.utils.exploration.curiosity_exploration import Curiosity
 
 
 __all__ = [

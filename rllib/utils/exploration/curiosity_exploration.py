@@ -7,8 +7,9 @@ from gym.spaces import Space
 from typing import Union
 
 #TODO initialization
-# TODO alphabetize imports, remove unused, alphabetize method names, type annotations, linting at end
+# TODO alphabetize imports, check type annotations, lint
 from ray.rllib.utils.framework import try_import_torch, TensorType
+from ray.rllib.utils.types import TensorType, TensorStructType
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -36,11 +37,8 @@ class Curiosity(Exploration):
         """
         Args:
             action_space (Space): The action space in which to explore.
-            framework (str): One of "tf" or "torch".
-            policy_config (dict): The Policy's config dict.
-            model (ModelV2): The Policy's model.
-            num_workers (int): The overall number of workers used.
-            worker_index (int): The index of the worker using this class.
+            framework (str): One of "tf" or "torch". Currently only torch is
+                supported.
         """
         if framework != "torch":
             raise NotImplementedError("only torch is currently supported for "
@@ -145,7 +143,7 @@ class Curiosity(Exploration):
         # TODO vectorize loss or not?
         return 0
 
-    def _get_latent_vector(self, obs):
+    def _get_latent_vector(self, obs: TensorType):
         return self.features_model(obs)
 
     def postprocess_trajectory(self, policy, sample_batch, tf_sess=None):
@@ -162,8 +160,6 @@ class Curiosity(Exploration):
         actions_pred = self._predict_action(obs_list, next_obs_list)
         embedding_pred = self._predict_next_obs(obs_list, actions_list)
 
-        # ask sven about gpu/cpu and which operations should happen on both
-        # also when do we convert from numpy array to tensor
 
 
         # Gives a vector of losses, of L2 losses corresponding to each observation
@@ -171,6 +167,9 @@ class Curiosity(Exploration):
             self.criterion(emb_next_obs_list, embedding_pred),
             dim=-1)
         actions_loss = self.criterion(actions_pred.squeeze(1), actions_list)
+
+        # todo ask sven about gpu/cpu and which operations should happen on both
+        # also when do we convert from numpy array to tensor
 
         # does MSE loss turn it to a scalar first
         sample_batch["rewards"] = sample_batch["rewards"] \
@@ -188,7 +187,7 @@ class Curiosity(Exploration):
         return sample_batch
 
     # raw observation from the environment as a tensor
-    def _predict_action(self, obs, next_obs):
+    def _predict_action(self, obs: TensorType, next_obs: TensorType):
         return self.inverse_model(
             torch.cat(
                 (self._get_latent_vector(obs),
@@ -196,7 +195,7 @@ class Curiosity(Exploration):
                 axis=-1))
 
     # raw obs (not embedded)
-    def _predict_next_obs(self, obs, action):
+    def _predict_next_obs(self, obs: TensorType, action: TensorType):
         return self.forwards_model(
             torch.cat(
                 (self._get_latent_vector(obs), action.unsqueeze(1)),

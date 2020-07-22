@@ -3,9 +3,7 @@ import ray
 import sys
 import unittest
 
-from ray.rllib.utils.exploration import ParameterNoise
 from ray.rllib.utils import check
-from ray.rllib.utils.exploration.curiosity_exploration import Curiosity
 import ray.rllib.agents.ppo as ppo
 
 
@@ -46,15 +44,13 @@ class TestCuriosity(unittest.TestCase):
                     explore=False,
                     prev_action=prev_a,
                     prev_reward=1.0 if prev_a is not None else None))
-            #check(actions[-1], actions[0])
+            check(actions[-1], actions[0])
         print(actions)
 #        trainer.train()
 
     def test_curiosity(self):
         config = ppo.DEFAULT_CONFIG
         env = "CartPole-v0"
-        dummy_obs = np.array([0.0, 0.1, 0.0, 0.0])
-        prev_a = np.array(0)
 
         config["framework"] = "torch"
         config["exploration_config"] = {"type": "Curiosity"}
