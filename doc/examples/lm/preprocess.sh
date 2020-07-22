@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 cd ~/efs/lm
 
 # download the dataset

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "raylet.h"
+#include "ray/raylet/raylet.h"
 
 #include <boost/asio.hpp>
 #include <boost/bind.hpp>

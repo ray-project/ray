@@ -1,7 +1,7 @@
+#include "event_service.h"
+
 #include <chrono>
 #include <unordered_set>
-
-#include "event_service.h"
 
 namespace ray {
 namespace streaming {
@@ -61,7 +61,8 @@ void EventQueue::WaitFor(std::unique_lock<std::mutex> &lock) {
   // To avoid deadlock when EventQueue is empty but is_active is changed in other
   // thread, Event queue should awaken this condtion variable and check it again.
   while (is_active_ && Empty()) {
-    if (!no_empty_cv_.wait_for(lock, std::chrono::milliseconds(kConditionTimeoutMs),
+    int timeout = kConditionTimeoutMs;  // This avoids const & to static (linking error)
+    if (!no_empty_cv_.wait_for(lock, std::chrono::milliseconds(timeout),
                                [this]() { return !is_active_ || !Empty(); })) {
       STREAMING_LOG(DEBUG) << "No empty condition variable wait timeout."
                            << " Empty => " << Empty() << ", is active " << is_active_;

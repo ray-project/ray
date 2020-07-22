@@ -1,5 +1,5 @@
-#: Actor name used to register master actor
-SERVE_MASTER_NAME = "SERVE_MASTER_ACTOR"
+#: Actor name used to register controller
+SERVE_CONTROLLER_NAME = "SERVE_CONTROLLER_ACTOR"
 
 #: Actor name used to register HTTP proxy actor
 SERVE_PROXY_NAME = "SERVE_PROXY_ACTOR"

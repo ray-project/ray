@@ -8,9 +8,9 @@ import click
 
 from ray import serve
 from ray.serve.constants import DEFAULT_HTTP_ADDRESS
-from ray.serve import master
+from ray.serve import controller
 
-master._TRACING_ENABLED = True
+controller._TRACING_ENABLED = True
 
 
 def block_until_ready(url):
