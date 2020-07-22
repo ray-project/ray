@@ -8,10 +8,16 @@ env:
   GITHUB_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
   GITHUB_PULL_REQUEST: ${{ github.event.number }}
 
+defaults:
+  run:
+    # We add -l to process .bashrc, but need -e -o pipefail for consistency with GitHub Actions's default behavior.
+    shell: bash -e -o pipefail -l {0}
+
 jobs:
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
@@ -25,6 +31,11 @@ jobs:
             python-version: 3.8
             # Can be 'msvc' or 'clang-cl'
             config: msvc
+          - name: windows-msvc (merge build)
+            os: windows-2019
+            python-version: 3.8
+            merge: true
+            config: msvc
           - name: macos
             os: macos-10.15
             python-version: 3.6
@@ -34,24 +45,38 @@ jobs:
       TRAVIS_COMMIT: ${{ github.sha }}
       #TRAVIS_PULL_REQUEST is defined in the scripts to account for "false"
     steps:
+    - name: Check if job should be skipped
+      id: skip
+      if: matrix.merge && (github.event_name == 'pull_request' || github.repository == 'ray-project/ray')
+      continue-on-error: true
+      run: |
+        echo "Skipping job as this is a merge build. Try visiting the following URL:" 1>&2
+        branch="${GITHUB_HEAD_REF#refs/heads/}"
+        if [ -z "${branch}" ]; then branch="${GITHUB_REF#refs/heads/}"; fi
+        echo "${GITHUB_SERVER_URL}/${GITHUB_ACTOR}/ray/actions?query=event%3Apush+actor%3A${GITHUB_ACTOR}+branch%3A${branch}" 1>&2
+        false
     - name: Pre-checkout system configuration
-      # We add -l to process .bashrc, but need -e -o pipefail for consistency with GitHub Actions's default behavior.
-      shell: bash -e -o pipefail -l {0}
+      if: steps.skip.outcome != 'failure'
       run: |
         # Note: only configure settings here that are required _before_ the repository is cloned (such as Git settings).
         # Different machines behave very differently with Bash initialization -- make them more uniform
         rm -f -- ~/.bash_profile ~/.profile ~/.bashrc
         printf '\n%s\n' 'if [ -n "${BASH_VERSION}" ] && [ -f ~/.bashrc ]; then . ~/.bashrc; fi' >> ~/.profile
+        git config --global user.name nobody && git config --global user.email "<>"
         git config --global core.symlinks true && git config --global core.autocrlf false
         if command -v dpkg > /dev/null; then sudo dpkg-reconfigure debconf -f noninteractive -p high; fi
     - name: Checkout repository
+      if: steps.skip.outcome != 'failure'
       uses: actions/checkout@v2
       with:
         # we need full history to diff against the original for linting etc.
         fetch-depth: 0
+    - name: Merge master
+      if: steps.skip.outcome != 'failure' && matrix.merge
+      run: git pull --rebase=false --no-edit origin master
     - name: Configure AWS Credentials
       continue-on-error: true
-      if: github.repository == 'ray-project/ray' && github.event_name != 'pull_request'
+      if: steps.skip.outcome != 'failure' && github.repository == 'ray-project/ray' && github.event_name != 'pull_request'
       uses: aws-actions/configure-aws-credentials@v1
       with:
         aws-access-key-id: ${{ secrets.GHA_AWS_ACCESS_KEY_ID }}
@@ -59,7 +84,7 @@ jobs:
         aws-region: us-west-2
     - name: Prepare caching
       id: info
-      shell: bash
+      if: steps.skip.outcome != 'failure'
       run: |
         case "${OSTYPE}" in
           linux*) pip_cache=~/.cache/pip;;
@@ -73,7 +98,7 @@ jobs:
     - name: Cache (pip)
       uses: actions/cache@v1.1.2
       continue-on-error: true
-      if: steps.info.outputs.pip_cache
+      if: steps.skip.outcome != 'failure' && steps.info.outputs.pip_cache
       with:
         path: ${{ steps.info.outputs.pip_cache }}
         key: |
@@ -82,7 +107,7 @@ jobs:
           pip-${{ runner.os }}-
           pip-
     - name: Run CI script
-      shell: bash -e -o pipefail -l {0}
+      if: steps.skip.outcome != 'failure'
       env:
         BAZEL_CACHE_CREDENTIAL_B64: ${{ secrets.BAZEL_CACHE_CREDENTIAL_B64 }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -99,8 +124,7 @@ jobs:
         . ./ci/travis/ci.sh test_wheels
     - name: Run Clang Include-What-You-Use
       continue-on-error: true
-      if: runner.os == 'Linux'
-      shell: bash -e -o pipefail -l {0}
+      if: steps.skip.outcome != 'failure' && runner.os == 'Linux'
       run: |
         sudo apt-get install -qq -o=Dpkg::Use-Pty=0 iwyu
         bazel build \
