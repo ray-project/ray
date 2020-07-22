@@ -14,9 +14,11 @@ from ray.rllib.utils.exploration.random import Random
 from ray.rllib.utils.exploration.soft_q import SoftQ
 from ray.rllib.utils.exploration.stochastic_sampling import \
     StochasticSampling
+from ray.rllib.utils.exploration.curiosity_exploration import Curiosity
 
 
 __all__ = [
+    "Curiosity",
     "Exploration",
     "EpsilonGreedy",
     "GaussianNoise",

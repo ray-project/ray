@@ -5,9 +5,9 @@ import unittest
 
 from ray.rllib.utils.exploration import ParameterNoise
 from ray.rllib.utils import check
+from ray.rllib.utils.exploration.curiosity_exploration import Curiosity
 import ray.rllib.agents.ppo as ppo
 
-from ray.rllib.utils.exploration.curiosity_exploration import CuriosityExploration
 
 class TestCuriosity(unittest.TestCase):
 
@@ -39,7 +39,7 @@ class TestCuriosity(unittest.TestCase):
         # observations.
 
         actions = []
-        for _ in range(25):
+        for _ in range(5):
             actions.append(
                 trainer.compute_action(
                     observation=dummy_obs,
@@ -51,7 +51,22 @@ class TestCuriosity(unittest.TestCase):
 #        trainer.train()
 
     def test_curiosity(self):
-        curiosity = CuriosityExploration()
+        config = ppo.DEFAULT_CONFIG
+        env = "CartPole-v0"
+        dummy_obs = np.array([0.0, 0.1, 0.0, 0.0])
+        prev_a = np.array(0)
+
+        config["framework"] = "torch"
+        config["exploration_config"] = {"type": "Curiosity"}
+
+#                                        "obs_dim": 16,
+#                                        "emb_dim": 6,
+#                                        "action_dim": 1,
+#                                        "submodule": "EpsilonGreedy"}
+
+        trainer = ppo.PPOTrainer(config=config, env=env)
+        trainer.train()
+
 
 if __name__ == "__main__":
     import pytest
