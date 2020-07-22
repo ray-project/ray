@@ -94,7 +94,8 @@ def create_or_update_cluster(
         config_file: str, override_min_workers: Optional[int],
         override_max_workers: Optional[int], no_restart: bool,
         restart_only: bool, yes: bool, override_cluster_name: Optional[str],
-        no_config_cache: bool, log_old_style: bool, log_color: str, verbose: int) -> None:
+        no_config_cache: bool, log_old_style: bool, log_color: str,
+        verbose: int) -> None:
     """Create or updates an autoscaling Ray cluster from a config json."""
     cli_logger.old_style = log_old_style
     cli_logger.color_mode = log_color
@@ -239,7 +240,8 @@ def _bootstrap_config(config: Dict[str, Any],
 
 def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
                      override_cluster_name: Optional[str],
-                     keep_min_workers: bool, log_old_style: bool, log_color: str, verbose: int):
+                     keep_min_workers: bool, log_old_style: bool,
+                     log_color: str, verbose: int):
     """Destroys all nodes of a Ray cluster described by a config json."""
     cli_logger.old_style = log_old_style
     cli_logger.color_mode = log_color
