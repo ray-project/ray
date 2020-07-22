@@ -118,7 +118,8 @@ class Collector(object):
             desc = {
                 "name": v_name,
                 "documentation": view.description,
-                "labels": list(map(sanitize, view.columns))
+                "labels": list(map(sanitize, view.columns)),
+                "units": view.measure.unit
             }
             self.registered_views[v_name] = desc
             self.registry.register(self)
@@ -153,6 +154,7 @@ class Collector(object):
         metric_name = desc["name"]
         metric_description = desc["documentation"]
         label_keys = desc["labels"]
+        metric_units = desc["units"]
 
         assert (len(tag_values) == len(label_keys))
         # Prometheus requires that all tag values be strings hence
@@ -164,6 +166,7 @@ class Collector(object):
             metric = CounterMetricFamily(
                 name=metric_name,
                 documentation=metric_description,
+                unit=metric_units,
                 labels=label_keys)
             metric.add_metric(labels=tag_values, value=agg_data.count_data)
             return metric
@@ -188,6 +191,7 @@ class Collector(object):
             metric = HistogramMetricFamily(
                 name=metric_name,
                 documentation=metric_description,
+                unit=metric_units,
                 labels=label_keys)
             metric.add_metric(
                 labels=tag_values,
@@ -200,6 +204,7 @@ class Collector(object):
             metric = UnknownMetricFamily(
                 name=metric_name,
                 documentation=metric_description,
+                unit=metric_units,
                 labels=label_keys)
             metric.add_metric(labels=tag_values, value=agg_data.sum_data)
             return metric
@@ -209,6 +214,7 @@ class Collector(object):
             metric = GaugeMetricFamily(
                 name=metric_name,
                 documentation=metric_description,
+                unit=metric_units,
                 labels=label_keys)
             metric.add_metric(labels=tag_values, value=agg_data.value)
             return metric

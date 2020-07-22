@@ -34,6 +34,22 @@ class Gauge(view.View):
     def view(self):
         return self._view
 
+    @property
+    def name(self):
+        return self.measure.name
+
+    @property
+    def description(self):
+        return self.measure.description
+
+    @property
+    def units(self):
+        return self.measure.unit
+
+    @property
+    def tags(self):
+        return self.view.columns
+
     def __dict__(self):
         return {
             "name": self.measure.name,
@@ -77,6 +93,10 @@ class MetricsAgent:
             prometheus_exporter.new_stats_exporter(
                 prometheus_exporter.Options(
                     namespace="ray", port=metrics_export_port)))
+
+    @property
+    def registry(self):
+        return self._registry
 
     def record_metrics_points(self, metrics_points):
         with self._lock:
@@ -136,7 +156,6 @@ class MetricsAgent:
         metric_name = metric_point.metric_name
         metric_description = metric_point.description
         metric_units = metric_point.units
-
         if self._registry[metric_name] is None:
             tags = metric_point.tags
             metric_tags = []
@@ -155,5 +174,7 @@ class MetricsAgent:
 
         if metric_description and metric_units:
             self._registry[metric_name].view._description = metric_description
+            self._registry[
+                metric_name].view.measure._description = metric_description
             self._registry[metric_name].view.measure._unit = metric_units
             self._missing_information = False

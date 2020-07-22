@@ -301,9 +301,9 @@ py_test(
 )
 
 py_test(
-    name = "test_metrics_export",
+    name = "test_metrics_agent",
     size = "small",
-    srcs = SRCS + ["test_metrics_export.py"],
+    srcs = SRCS + ["test_metrics_agent.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
