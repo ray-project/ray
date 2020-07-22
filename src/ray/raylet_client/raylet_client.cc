@@ -411,8 +411,6 @@ Status raylet::RayletClient::Create(const ObjectID &object_id, int64_t data_size
         } else {
           status = Status(static_cast<StatusCode>(reply.status().code()),
                           reply.status().message());
-          RAY_LOG(ERROR) << "SS" << reply.status().code();
-          RAY_LOG(ERROR) << "SS" << reply.status().message();
           RAY_ARROW_CHECK_OK(arrow::AllocateBuffer(data_size, data));
           created_buffers_[object_id] = *data;
         }

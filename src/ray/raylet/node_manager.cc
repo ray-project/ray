@@ -3810,17 +3810,21 @@ void NodeManager::TriggerGlobalGC() {
 void NodeManager::HandlePlasmaCreate(const rpc::PlasmaCreateRequest &request,
                                      rpc::PlasmaCreateReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(ERROR) << "Create 1";
   std::shared_ptr<arrow::Buffer> buf;
   auto object_id = ObjectID::FromBinary(request.object_id());
+  RAY_LOG(ERROR) << "Create 2 " << object_id;
   auto status = store_client_.Create(
       object_id, request.data_size(),
       reinterpret_cast<const uint8_t *>(request.metadata().c_str()),
       request.metadata().length(), &buf, request.device_num(), request.evict_if_full());
+  RAY_LOG(ERROR) << "Create 3";
   reply->mutable_status()->set_code(static_cast<int32_t>(status.code()));
   reply->mutable_status()->set_message(status.message());
   if (status.ok()) {
     created_buffers_[object_id] = buf;
   }
+  RAY_LOG(ERROR) << "Create 4";
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -3873,14 +3877,17 @@ void NodeManager::HandlePlasmaSeal(const rpc::PlasmaSealRequest &request,
                                    rpc::PlasmaSealReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) {
   auto object_id = ObjectID::FromBinary(request.object_id());
+  RAY_LOG(ERROR) << "Seal 1 " << object_id;
   auto it = created_buffers_.find(object_id);
   if (it == created_buffers_.end()) {
+    RAY_LOG(ERROR) << "Seal BAD";
     send_reply_callback(Status::ObjectNotFound("tried to seal nonexistent object"),
                         nullptr, nullptr);
     return;
   }
   size_t data_size = it->second->size();
   if (data_size != request.data().length()) {
+    RAY_LOG(ERROR) << "Seal BAD2";
     send_reply_callback(Status::Invalid("object size changed"), nullptr, nullptr);
     return;
   }
@@ -3888,6 +3895,7 @@ void NodeManager::HandlePlasmaSeal(const rpc::PlasmaSealRequest &request,
   auto status = store_client_.Seal(object_id);
   reply->mutable_status()->set_code(static_cast<int32_t>(status.code()));
   reply->mutable_status()->set_message(status.message());
+  RAY_LOG(ERROR) << "Seal OK";
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
