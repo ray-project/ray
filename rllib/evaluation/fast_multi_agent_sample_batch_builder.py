@@ -4,14 +4,13 @@ from typing import Dict, Optional, Union
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.evaluation.episode import MultiAgentEpisode
-#from ray.rllib.evaluation.policy_trajectories import PolicyTrajectories
-#from ray.rllib.evaluation.trajectory import Trajectory
 from ray.rllib.evaluation.rollout_sample_collector import RolloutSampleCollector
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import deprecation_warning
-from ray.rllib.utils.types import AgentID, EnvID, PolicyID, TensorType
+from ray.rllib.utils.types import AgentID, EnvID, EpisodeID, PolicyID, \
+    TensorType
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
@@ -36,24 +35,23 @@ class _FastMultiAgentSampleBatchBuilder:
     """
 
     def __init__(self, policy_map: Dict[PolicyID, Policy],
-                 clip_rewards: Union[bool, float],
+                 #clip_rewards: Union[bool, float],
                  callbacks: "DefaultCallbacks",
                  B = 100):
-                 #buffer_size: Optional[Union[float, int]] = None):
         """Initializes a _FastMultiAgentSampleBatchBuilder object.
 
         Args:
             policy_map (Dict[PolicyID,Policy]): Maps policy ids to policy
                 instances.
-            clip_rewards (Union[bool,float]): Whether to clip rewards before
-                postprocessing (at +/-1.0) or the actual value to +/- clip.
+            #clip_rewards (Union[bool,float]): Whether to clip rewards before
+            #    postprocessing (at +/-1.0) or the actual value to +/- clip.
             callbacks (DefaultCallbacks): RLlib callbacks.
             buffer_size (Optional[Union[int,float]]): The max number of
                 timesteps to fit into one buffer column.
         """
 
         self.policy_map = policy_map
-        self.clip_rewards = clip_rewards
+        #self.clip_rewards = clip_rewards
         self.callbacks = callbacks
         if B == float("inf") or B is None:
             B = 1000
@@ -156,92 +154,88 @@ class _FastMultiAgentSampleBatchBuilder:
         self.rollout_sample_collectors[policy_id].add_action_reward_next_obs(
             env_id, agent_id, values)
 
-    def postprocess_batch_so_far(
+    def postprocess_batches_so_far(
         self,
         episode: Optional[MultiAgentEpisode] = None) -> None:
-        """Apply policy postprocessors to any unprocessed rows.
+        """Apply policy postprocessing to any unprocessed data.
 
-        This pushes the postprocessed per-agent data into the
-        per-policy PolicyTrajectories and clears per-agent state so far
-        (only leaving any currently ongoing trajectories still available
-        for (backward) view-generation).
+        TODO: docstring
 
         Args:
             episode (Optional[MultiAgentEpisode]): The Episode object that
                 holds this _FastMultiAgentBatchBuilder object.
         """
 
+        # Loop through each per-policy collector and create a view from
+        # its buffers for policy post-processing (one view for each agent).
+        #agent_batches_for_post_processing = {}
+        for pid, rc in self.rollout_sample_collectors.items():
+            policy = self.policy_map[pid]
+            model = policy.model
+            agent_batches = rc.get_single_agent_sample_batches(model)
+
         # Materialize the per-agent batches so far.
-        pre_batches = {}
-        for agent_id, trajectory in self.single_agent_trajectories.items():
-            # Only if this trajectory has any data.
-            if trajectory.timestep > 0:
-                pre_batches[agent_id] = (
-                    self.policy_map[self.agent_to_policy[agent_id]],
-                    trajectory.get_sample_batch_and_reset())
+        #pre_batches = {}
+        #for agent_id, trajectory in self.single_agent_trajectories.items():
+        #    # Only if this trajectory has any data.
+        #    if trajectory.timestep > 0:
+        #        pre_batches[agent_id] = (
+        #            self.policy_map[self.agent_to_policy[agent_id]],
+        #            trajectory.get_sample_batch_and_reset())
 
-        # Apply postprocessor.
-        post_batches = {}
-        if self.clip_rewards is True:
-            for _, (_, pre_batch) in pre_batches.items():
-                pre_batch["rewards"] = np.sign(pre_batch["rewards"])
-        elif self.clip_rewards:
-            for _, (_, pre_batch) in pre_batches.items():
-                pre_batch["rewards"] = np.clip(
-                    pre_batch["rewards"],
-                    a_min=-self.clip_rewards,
-                    a_max=self.clip_rewards)
-        for agent_id, (_, pre_batch) in pre_batches.items():
-            if any(pre_batch["dones"][:-1]) or len(set(
-                    pre_batch["eps_id"])) > 1:
-                raise ValueError(
-                    "Batches sent to postprocessing must only contain steps "
-                    "from a single episode!", pre_batch)
+            for agent_key, batch in agent_batches.items():
+                #if any(batch["dones"][:-1]) or len(set(
+                #        batch["eps_id"])) > 1:
+                #    raise ValueError(
+                #        "Batches sent to postprocessing must only contain steps "
+                #        "from a single episode!", pre_batch)
 
-            other_batches = None
-            if len(pre_batches) > 1:
-                other_batches = pre_batches.copy()
-                del other_batches[agent_id]
+                other_batches = None
+                if len(agent_batches) > 1:
+                    other_batches = agent_batches.copy()
+                    del other_batches[agent_key]
 
-            policy = self.policy_map[self.agent_to_policy[agent_id]]
-            post_batches[agent_id] = policy.postprocess_trajectory(
-                pre_batch, other_batches, episode)
-            # Call the Policy's Exploration's postprocess method.
-            if getattr(policy, "exploration", None) is not None:
-                policy.exploration.postprocess_trajectory(
-                    policy, post_batches[agent_id],
-                    getattr(policy, "_sess", None))
+                agent_batches[agent_key] = policy.postprocess_trajectory(
+                    batch, other_batches, episode)
+                # Call the Policy's Exploration's postprocess method.
+                if getattr(policy, "exploration", None) is not None:
+                    agent_batches[agent_key] = policy.exploration.postprocess_trajectory(
+                        policy, agent_batches[agent_key],
+                        getattr(policy, "_sess", None))
 
         if log_once("after_post"):
             logger.info(
                 "Trajectory fragment after postprocess_trajectory():"
-                "\n\n{}\n".format(summarize(post_batches)))
+                "\n\n{}\n".format(summarize(agent_batches)))
 
         # Append into policy batches and reset
         from ray.rllib.evaluation.rollout_worker import get_global_worker
-        for agent_id, post_batch in sorted(post_batches.items()):
+        for agent_key, batch in sorted(agent_batches.items()):
             self.callbacks.on_postprocess_trajectory(
                 worker=get_global_worker(),
                 episode=episode,
-                agent_id=agent_id,
-                policy_id=self.agent_to_policy[agent_id],
+                agent_id=agent_key[0],
+                policy_id=self.agent_to_policy[agent_key[0]],
                 policies=self.policy_map,
-                postprocessed_batch=post_batch,
-                original_batches=pre_batches)
-            self.policy_trajectories[self.agent_to_policy[
-                agent_id]].add_sample_batch(post_batch)
+                postprocessed_batch=batch,
+                original_batches=None)  # TODO: (sven) do we really need this?
+            #self.policy_trajectories[self.agent_to_policy[
+            #    agent_id]].add_sample_batch(post_batch)
 
-    def check_missing_dones(self) -> None:
-        for agent_id, trajectory in self.single_agent_trajectories.items():
-            if not trajectory.buffers["dones"][trajectory.cursor - 1]:
-                raise ValueError(
-                    "The environment terminated for all agents, but we still "
-                    "don't have a last observation for "
-                    "agent {} (policy {}). ".format(
-                        agent_id, self.agent_to_policy[agent_id]) +
-                    "Please ensure that you include the last observations "
-                    "of all live agents when setting '__all__' done to True. "
-                    "Alternatively, set no_done_at_end=True to allow this.")
+    def check_missing_dones(self, episode_id: EpisodeID) -> None:
+        for pid, rc in self.rollout_sample_collectors.items():
+            for agent_key, slot in rc.agent_key_to_slot.items():
+                if agent_key[1] == episode_id:
+                    t = rc.agent_key_to_timestep[agent_key] - 1
+                    b = rc.agent_key_to_slot[agent_key]
+                    if not rc.buffers["dones"][t][b]:
+                        raise ValueError(
+                            "Episode {} terminated for all agents, but we still "
+                            "don't have a last observation for "
+                            "agent {} (policy {}). ".format(agent_key[0], pid) +
+                            "Please ensure that you include the last observations "
+                            "of all live agents when setting '__all__' done to True. "
+                            "Alternatively, set no_done_at_end=True to allow this.")
 
     def get_multi_agent_batch_and_reset(
         self,

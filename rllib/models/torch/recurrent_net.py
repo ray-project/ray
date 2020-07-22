@@ -127,15 +127,12 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
             initializer=torch.nn.init.xavier_uniform_)
 
         initial_state = self.get_initial_state()
-        self._trajectory_view = {
-            SampleBatch.OBS: ViewRequirement(timesteps=-1),
-            "state_in_0": ViewRequirement("state_out_0", fill="zeros", space=Box(-1.0, 1.0, shape=(self.cell_size, )), timesteps=-1),
-            "state_in_1": ViewRequirement("state_out_1", fill="zeros", space=Box(-1.0, 1.0, shape=(self.cell_size, )), timesteps=-1),
-            #"seq_lens": ViewRequirement(fill="zeros",
-            #    space=Box(-1.0, 1.0, shape=(self.cell_size,)), timesteps=-1),
-            SampleBatch.PREV_ACTIONS: ViewRequirement(SampleBatch.ACTIONS, timesteps=-1),
-            SampleBatch.PREV_REWARDS: ViewRequirement(SampleBatch.REWARDS, timesteps=-1),
-        }
+        for i in range(2):
+            self._trajectory_view["state_in_{}".format(i)] = \
+                ViewRequirement("state_out_{}".format(i), postprocessing=False, shift=-1, space=Box(-1.0, 1.0, shape=(self.cell_size, )))
+            self._trajectory_view["state_out_{}".format(i)] = \
+                ViewRequirement(sampling=False, training=False, space=Box(-1.0, 1.0, shape=(self.cell_size,)))
+
         """
         1) Normal case:
         - sample_collection_mode: T-shuffled

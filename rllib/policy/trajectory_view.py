@@ -1,10 +1,10 @@
 from gym.spaces import Box, Space
-import numpy as np
-from typing import Dict, Optional
+#import numpy as np
+from typing import Optional
 
-from ray.rllib.policy.sample_batch import SampleBatch
+#from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.types import TensorType
+#from ray.rllib.utils.types import TensorType
 
 torch, _ = try_import_torch()
 
@@ -31,9 +31,12 @@ class ViewRequirement:
     def __init__(self,
                  data_col: Optional[str] = None,
                  space: Space = None,
-                 timesteps: int = 0,
-                 fill: str = "zeros",
-                 repeat_mode: str = "all"):
+                 shift: int = 0,
+                 sampling: bool = True,
+                 postprocessing: bool = True,
+                 training: bool = True):
+                 #fill: str = "zeros",
+                 #repeat_mode: str = "all"):
         """Initializes a ViewRequirement object.
 
         Args:
@@ -43,7 +46,7 @@ class ViewRequirement:
             space (Space): The gym Space used in case we need to pad data in
                 unaccessible areas of the trajectory (t<0 or t>H).
                 Default: Simple box space, e.g. rewards.
-            timesteps (Union[List[int], int]): List of relative (or absolute
+            shift (Union[List[int], int]): List of relative (or absolute
                 timesteps) to be present in the input_dict.
             fill (str): The fill mode in case t<0 or t>H.
                 One of "zeros", "tile", or a TensorType to be used for filling.
@@ -53,75 +56,18 @@ class ViewRequirement:
         """
         self.data_col = data_col
         self.space = space or Box(float("-inf"), float("inf"), shape=())
-        self.timesteps = timesteps
+        self.shift = shift
+        self.sampling = sampling
+        self.postprocessing = postprocessing
+        self.training = training
 
         # Switch on absolute timestep mode. Default: False.
         # TODO: (sven)
         # "absolute_timesteps",
 
-        self.fill = fill
-        self.repeat_mode = repeat_mode
+        #self.fill = fill
+        #self.repeat_mode = repeat_mode
 
         # Provide all data as time major (default: False).
         # TODO: (sven)
         # "time_major",
-
-
-def get_trajectory_view(
-        model,
-        collector,
-        is_training: bool = False) -> Dict[str, TensorType]:
-    """Returns an input_dict for a Model's forward pass given some data.
-
-    Args:
-        model (ModelV2): The ModelV2 object for which to generate the view
-            (input_dict) from `data`.
-        collector (RolloutSampleCollector): The data from which to generate
-            an input_dict.
-        is_training (bool): Whether the view should be generated for training
-            purposes or inference (default).
-
-    Returns:
-        Dict[str, TensorType]: The input_dict to be passed into the ModelV2
-            for inference/training.
-    """
-    # Get ModelV2's view requirements.
-    view_reqs = model.get_view_requirements(is_training=is_training)
-
-    # Construct the view dict.
-    view = {}
-    for view_col, view_req in view_reqs.items():
-        # Create the batch of data from the different buffers in `data`.
-        # TODO: (sven): Here, we actually do create a copy of the data (from a
-        #   list). The only way to avoid this entirely would be to keep a
-        #   single(!) np buffer per column across all currently ongoing
-        #   agents + episodes (which seems very hard to realize).
-        data_col = view_req.data_col or view_col
-        #batch = []
-        #for traj in trajectories:
-        #    if traj.cursor + view_req.timesteps < 0:
-        #        if data_col == SampleBatch.OBS:
-        #            batch.append(traj.initial_obs)
-        #        else:
-        #            if view_req.fill == "zeros":
-        #                batch.append(np.zeros(view_req.space.shape))
-        #            else:
-        #                raise NotImplementedError
-        if data_col not in collector.buffers:
-            collector._build_buffers({data_col: view_req.space.sample()})
-
-        #if data_col in collector.buffers:
-            #batch.append(traj.buffers[data_col][traj.cursor + view_req.timesteps])
-            # TODO
-            #elif view_req.fill == "tile":
-            #    batch.append(np.zeros(view_req.space.shape))
-        view[view_col] = collector.buffers[data_col][collector.forward_pass_indices]
-        #else:
-        #    view[view_col]
-        #    raise NotImplementedError
-        #if torch and isinstance(batch[0], torch.Tensor):
-        #    view[view_col] = torch.stack(batch)
-        #else:
-        #    view[view_col] = np.array(batch)
-
-    return view

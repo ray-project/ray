@@ -66,7 +66,7 @@ class SampleBatch:
         # Placeholder for a last_obs value (in an n x sars'-trajectory).
         # Only used if _fast_sampling=True in the Policy's config to be able to
         # deprecate the SampleBatch.NEXT_OBS field entirely soon.
-        self._inputs = kwargs.pop("_initial_inputs", {})
+        #self._inputs = kwargs.pop("_initial_inputs", {})
         self._seq_lens = kwargs.pop("_seq_lens", None)
 
         # The actual data, accessible by column name (str).
@@ -80,7 +80,7 @@ class SampleBatch:
             raise ValueError("Empty sample batch")
         assert len(set(lengths)) == 1, \
             "Data columns must be same length, but lens are {}".format(lengths)
-        self.count = len(self.data[self.ACTIONS])
+        self.count = len(self.data[k])
 
     @staticmethod
     @PublicAPI
@@ -109,7 +109,8 @@ class SampleBatch:
         out = {}
         for k in concat_samples[0].keys():
             out[k] = concat_aligned([s[k] for s in concat_samples])
-        return SampleBatch(out, _initial_inputs=inputs, _seq_lens=seq_lens)
+        #return SampleBatch(out, _initial_inputs=inputs, _seq_lens=seq_lens)
+        return SampleBatch(out, _seq_lens=seq_lens)
 
     @PublicAPI
     def concat(self, other: "SampleBatch") -> "SampleBatch":
@@ -229,7 +230,7 @@ class SampleBatch:
 
     @PublicAPI
     def slice(self, start: int, end: int) -> "SampleBatch":
-        """Returns a slice of the row data of this batch.
+        """Returns a slice of the row data of this batch (w/o copying).
 
         Args:
             start (int): Starting index.
@@ -239,12 +240,12 @@ class SampleBatch:
             SampleBatch: A new SampleBatch, which has a slice of this batch's
                 data.
         """
-        inputs = {
-            s: self._inputs[s] for s in set(self.data["unroll_id"][start:end])
-        } if self._inputs else {}
+        #inputs = {
+        #    s: self._inputs[s] for s in set(self.data["unroll_id"][start:end])
+        #} if self._inputs else {}
         return SampleBatch(
-            {k: v[start:end] for k, v in self.data.items()},
-            _initial_inputs=inputs)
+            {k: v[start:end] for k, v in self.data.items()})
+            #_initial_inputs=inputs)
 
     @PublicAPI
     def timeslices(self, k: int) -> List["SampleBatch"]:

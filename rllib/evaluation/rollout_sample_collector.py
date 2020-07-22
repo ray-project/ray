@@ -24,7 +24,7 @@ class RolloutSampleCollector:
     """
 
     def __init__(self, num_agents: Optional[int] = None, num_timesteps: Optional[int] = None,
-                 shift_before=1, shift_after=1, policy_id=None):
+                 shift_before=1, shift_after=0, policy_id=None):
         """Initializes a ... object.
 
         Args:
@@ -47,6 +47,8 @@ class RolloutSampleCollector:
         self.agent_dim_cursor = 0
         # Maps agent/env IDs to an agent slot.
         self.agent_key_to_slot = {}
+        # Maps agent slot number to agent keys.
+        self.slot_to_agent_key = {}
         # Maps agent/env IDs to a time step cursor.
         self.agent_key_to_timestep = {}
 
@@ -56,8 +58,8 @@ class RolloutSampleCollector:
         # Indices (T,B) to pick from the buffers for the next forward pass.
         self.forward_pass_indices = [[], []]
         self.forward_pass_size = 0
-        # Maps index from the forward pass batch to (agent_id, episode_id) tuple.
-        self.forward_pass_index_to_agent_key = {}
+        # Maps index from the forward pass batch to (agent_id, episode_id, env_id) tuple.
+        self.forward_pass_index_to_agent_info = {}
         self.agent_key_to_forward_pass_index = {}
 
     def add_init_obs(self,
@@ -78,6 +80,7 @@ class RolloutSampleCollector:
         agent_key = (agent_id, episode_id)
         agent_slot = self.agent_dim_cursor
         self.agent_key_to_slot[agent_key] = agent_slot
+        self.slot_to_agent_key[agent_slot] = agent_key
         self.agent_dim_cursor += 1
 
         if SampleBatch.OBS not in self.buffers:
@@ -134,13 +137,16 @@ class RolloutSampleCollector:
 
         self.timesteps_since_last_reset += 1
 
-    def add_to_forward_pass(self, episode_id, agent_id):
+    def add_to_forward_pass(self, agent_id, episode_id, env_id):
         agent_key = (agent_id, episode_id)
         b = self.agent_key_to_slot[agent_key]
         t = self.agent_key_to_timestep[agent_key]
         idx = self.forward_pass_size
-        self.forward_pass_index_to_agent_key[idx] = agent_key
+        self.forward_pass_index_to_agent_info[idx] = (agent_id, episode_id, env_id)
         self.agent_key_to_forward_pass_index[agent_key] = idx
+        if self.forward_pass_size == 0:
+            self.forward_pass_indices[0].clear()
+            self.forward_pass_indices[1].clear()
         self.forward_pass_indices[0].append(t)
         self.forward_pass_indices[1].append(b)
         self.forward_pass_size += 1
@@ -149,7 +155,7 @@ class RolloutSampleCollector:
         self.forward_pass_size = 0
         #self.forward_pass_indices[0].clear()
         #self.forward_pass_indices[1].clear()
-        #self.forward_pass_index_to_agent_key.clear()
+        #self.forward_pass_index_to_agent_info.clear()
         #self.agent_key_to_forward_pass_index.clear()
 
     def get_sample_batch_and_reset(self) -> SampleBatch:
@@ -182,6 +188,99 @@ class RolloutSampleCollector:
         self.sample_batch_offset = self.agent_dim_cursor
         self.seq_lens = []
         return batch
+
+    def get_trajectory_view(self, model, is_training: bool = False) -> \
+            Dict[str, TensorType]:
+        """Returns an input_dict for a Model's forward pass given our data.
+
+        Args:
+            model (ModelV2): The ModelV2 object for which to generate the view
+                (input_dict) from `data`.
+            is_training (bool): Whether the view should be generated for training
+                purposes or inference (default).
+
+        Returns:
+            Dict[str, TensorType]: The input_dict to be passed into the ModelV2
+                for inference/training.
+        """
+        # Get ModelV2's view requirements.
+        view_reqs = model.get_view_requirements(is_training=is_training)
+
+        # Construct the view dict.
+        view = {}
+        for view_col, view_req in view_reqs.items():
+            # Skip columns that do not need to be included for sampling.
+            if not view_req.sampling:
+                continue
+            # Create the batch of data from the different buffers in `data`.
+            # TODO: (sven): Here, we actually do create a copy of the data (from self.forward_pass_indices).
+            #  And there is not way to avoid that as np is not able to create views from scattered indices.
+            data_col = view_req.data_col or view_col
+            # batch = []
+            # for traj in trajectories:
+            #    if traj.cursor + view_req.timesteps < 0:
+            #        if data_col == SampleBatch.OBS:
+            #            batch.append(traj.initial_obs)
+            #        else:
+            #            if view_req.fill == "zeros":
+            #                batch.append(np.zeros(view_req.space.shape))
+            #            else:
+            #                raise NotImplementedError
+            if data_col not in self.buffers:
+                self._build_buffers({data_col: view_req.space.sample()})
+
+            # if data_col in collector.buffers:
+            # batch.append(traj.buffers[data_col][traj.cursor + view_req.timesteps])
+            # TODO
+            # elif view_req.fill == "tile":
+            #    batch.append(np.zeros(view_req.space.shape))
+            # For OBS, indices must be shifted by -1.
+            if data_col == SampleBatch.OBS:
+                t = self.forward_pass_indices[0]
+                indices = (list(np.array(t) - 1), self.forward_pass_indices[1])
+                view[view_col] = self.buffers[data_col][indices]
+            else:
+                view[view_col] = self.buffers[data_col][self.forward_pass_indices]
+            # else:
+            #    view[view_col]
+            #    raise NotImplementedError
+            # if torch and isinstance(batch[0], torch.Tensor):
+            #    view[view_col] = torch.stack(batch)
+            # else:
+            #    view[view_col] = np.array(batch)
+
+        return view
+
+    def get_single_agent_sample_batches(self, model):
+        # Loop through all agents and create a SampleBatch
+        # (as "view"; no copying).
+        view_reqs = model.get_view_requirements(is_training=False)
+
+        # Construct the view dict.
+        sample_batch_data = {}
+        for view_col, view_req in view_reqs.items():
+            # Skip columns that do not need to be included for sampling.
+            if not view_req.postprocessing:
+                continue
+
+            data_col = view_req.data_col or view_col
+            shift = view_req.shift
+            if data_col == SampleBatch.OBS:
+                shift -= 1
+
+            for i in range(self.agent_dim_cursor - self.sample_batch_offset):
+                agent_slot = self.sample_batch_offset + i
+                agent_key = self.slot_to_agent_key[agent_slot]
+                if agent_key not in sample_batch_data:
+                    sample_batch_data[agent_key] = {}
+                batch = sample_batch_data[agent_key]
+                end = self.agent_key_to_timestep[agent_key]
+                batch[view_col] = self.buffers[data_col][self.shift_before + shift:end + shift, agent_slot]
+
+        batches = {}
+        for agent_key, data in sample_batch_data.items():
+            batches[agent_key] = SampleBatch(data)
+        return batches
 
     def _build_buffers(self, single_row) -> None:
         """

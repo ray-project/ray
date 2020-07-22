@@ -11,7 +11,7 @@ from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
-from ray.rllib.policy.trajectory_view import get_trajectory_view
+#from ray.rllib.policy.trajectory_view import get_trajectory_view
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
@@ -171,7 +171,7 @@ class TorchPolicy(Policy):
     @override(Policy)
     def compute_actions_from_trajectories(
             self,
-            trajectories: List["Trajectory"],
+            rollout_collector: "RolloutSampleCollector",
             other_trajectories: Optional[Dict[AgentID, "Trajectory"]] = None,
             explore: bool = None,
             timestep: Optional[int] = None,
@@ -183,11 +183,11 @@ class TorchPolicy(Policy):
 
         with torch.no_grad():
             # Create a view and pass that to Model as `input_dict`.
-            input_dict = self._lazy_tensor_dict(get_trajectory_view(
-                self.model, trajectories, is_training=False))
+            input_dict = self._lazy_tensor_dict(rollout_collector.get_trajectory_view(
+                self.model, is_training=False))
             # TODO: (sven) support RNNs w/ fast sampling.
             state_batches = [input_dict[k] for k in input_dict.keys() if "state_" in k[:6]]
-            seq_lens = np.array([1] * len(trajectories.forward_pass_indices[0]))
+            seq_lens = np.array([1] * len(rollout_collector.forward_pass_indices[0]))
 
             actions, state_out, extra_fetches, logp = \
                 self._compute_action_helper(

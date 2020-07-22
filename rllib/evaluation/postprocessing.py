@@ -152,6 +152,6 @@ def compute_advantages(rollout: SampleBatch,
     rollout[Postprocessing.ADVANTAGES] = rollout[
         Postprocessing.ADVANTAGES].copy().astype(np.float32)
 
-    assert all(val.shape[0] == trajsize for key, val in rollout.items() if key != SampleBatch.OBS), \
+    assert all(val.shape[0] == trajsize for key, val in rollout.items()), \
         "Rollout stacked incorrectly!"
     return rollout
