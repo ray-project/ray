@@ -16,10 +16,10 @@
 
 #include <jni.h>
 
+#include "jni_utils.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker.h"
-#include "jni_utils.h"
 
 /// Store C++ instances of ray function in the cache to avoid unnessesary JNI operations.
 thread_local std::unordered_map<jint, std::vector<std::pair<jobject, ray::RayFunction>>>
@@ -146,8 +146,12 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   return actor_creation_options;
 }
 
-inline ray::PlacementGroupCreationOptions ToPlacementGroupCreationOptions(JNIEnv *env, jobject java_bundles,
-                                                                          jint java_strategy) {
+inline ray::PlacementStrategy ConvertStrategy(jint java_strategy) {
+  return 0 == java_strategy ? ray::rpc::PACK : ray::rpc::SPREAD;
+}
+
+inline ray::PlacementGroupCreationOptions ToPlacementGroupCreationOptions(
+    JNIEnv *env, jobject java_bundles, jint java_strategy) {
   std::vector<std::unordered_map<std::string, double>> bundles;
   JavaListToNativeVector<std::unordered_map<std::string, double>>(
       env, java_bundles, &bundles, [](JNIEnv *env, jobject java_bundle) {
@@ -162,9 +166,7 @@ inline ray::PlacementGroupCreationOptions ToPlacementGroupCreationOptions(JNIEnv
               return value;
             });
       });
-  // TODO(ffbin): Do we need to set name?
-  auto strategy = 0 == java_strategy ? ray::rpc::PACK : ray::rpc::SPREAD;
-  return ray::PlacementGroupCreationOptions("", strategy, bundles);
+  return ray::PlacementGroupCreationOptions("", ConvertStrategy(java_strategy), bundles);
 }
 
 #ifdef __cplusplus
@@ -233,11 +235,15 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
   return NativeIdVectorToJavaByteArrayList(env, return_ids);
 }
 
-JNIEXPORT jbyteArray JNICALL Java_io_ray_runtime_task_NativeTaskSubmitter_nativeCreatePlacementGroup(
-    JNIEnv *env, jclass, jobject bundles, jint strategy) {
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_task_NativeTaskSubmitter_nativeCreatePlacementGroup(JNIEnv *env,
+                                                                        jclass,
+                                                                        jobject bundles,
+                                                                        jint strategy) {
   auto options = ToPlacementGroupCreationOptions(env, bundles, strategy);
   ray::PlacementGroupID placement_group_id;
-  auto status = ray::CoreWorkerProcess::GetCoreWorker().CreatePlacementGroup(options, &placement_group_id);
+  auto status = ray::CoreWorkerProcess::GetCoreWorker().CreatePlacementGroup(
+      options, &placement_group_id);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   return IdToJavaByteArray<ray::PlacementGroupID>(env, placement_group_id);
 }

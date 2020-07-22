@@ -1,6 +1,7 @@
 package io.ray.api.options;
 
 import io.ray.api.Ray;
+import io.ray.api.placementgroup.Bundle;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -13,11 +14,11 @@ public class ActorCreationOptions extends BaseTaskOptions {
   public final int maxRestarts;
   public final String jvmOptions;
   public final int maxConcurrency;
-  public final Map<String, Double> bundle;
+  public final Bundle bundle;
 
   private ActorCreationOptions(boolean global, String name, Map<String, Double> resources,
                                int maxRestarts, String jvmOptions, int maxConcurrency,
-                               Map<String, Double> bundle) {
+                               Bundle bundle) {
     super(resources);
     this.global = global;
     this.name = name;
@@ -37,7 +38,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
     private int maxRestarts = 0;
     private String jvmOptions = null;
     private int maxConcurrency = 1;
-    private Map<String, Double> bundle = new HashMap<>();
+    private Bundle bundle;
 
     /**
      * Set the actor name of a named actor.
@@ -139,8 +140,8 @@ public class ActorCreationOptions extends BaseTaskOptions {
       return this;
     }
 
-    public Builder setBundle(Map<String, Double> bundle) {
-      this.bundle.putAll(bundle);
+    public Builder setBundle(Bundle bundle) {
+      this.bundle = bundle;
       return this;
     }
 

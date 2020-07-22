@@ -1,7 +1,6 @@
 package io.ray.test;
 
 import io.ray.api.ActorHandle;
-import io.ray.api.PyActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.id.ActorId;
 import io.ray.api.placementgroup.PlacementGroup;
@@ -10,16 +9,11 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 @Test
 public class PlacementGroupTest extends BaseTest {
-
-  private static final Logger LOGGER = LoggerFactory.getLogger(PlacementGroupTest.class);
 
   public static class Counter {
 
@@ -30,20 +24,6 @@ public class PlacementGroupTest extends BaseTest {
     }
 
     public int getValue() {
-      return value;
-    }
-
-    public void increase(int delta) {
-      value += delta;
-    }
-
-    public int increaseAndGet(int delta) {
-      value += delta;
-      return value;
-    }
-
-    public int accessLargeObject(TestUtils.LargeObject largeObject) {
-      value += largeObject.data.length;
       return value;
     }
   }
@@ -58,14 +38,10 @@ public class PlacementGroupTest extends BaseTest {
 
     // Test creating an actor from a constructor
     ActorHandle<Counter> actor = Ray.actor(Counter::new, 1)
-        .setBundle(placementGroup.getBundles().get(0)).remote();
+        .setBundle(placementGroup.getBundle(0)).remote();
     Assert.assertNotEquals(actor.getId(), ActorId.NIL);
-    // A java actor is not a python actor
-    Assert.assertFalse(actor instanceof PyActorHandle);
+
     // Test calling an actor
     Assert.assertEquals(Integer.valueOf(1), actor.task(Counter::getValue).remote().get());
-    actor.task(Counter::increase, 1).remote();
-    Assert.assertEquals(Integer.valueOf(3),
-        actor.task(Counter::increaseAndGet, 1).remote().get());
   }
 }

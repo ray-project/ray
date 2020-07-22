@@ -6,6 +6,7 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
+import io.ray.api.id.PlacementGroupId;
 import io.ray.api.id.UniqueId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
@@ -71,8 +72,8 @@ public class NativeTaskSubmitter implements TaskSubmitter {
   @Override
   public PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
       PlacementStrategy strategy) {
-    byte[] placementGroupId = nativeCreatePlacementGroup(bundles, strategy.value());
-    return new PlacementGroupImpl(new UniqueId(placementGroupId), bundles.size());
+    byte[] bytes = nativeCreatePlacementGroup(bundles, strategy.value());
+    return new PlacementGroupImpl(PlacementGroupId.fromBytes(bytes), bundles.size());
   }
 
   private static native List<byte[]> nativeSubmitTask(FunctionDescriptor functionDescriptor,

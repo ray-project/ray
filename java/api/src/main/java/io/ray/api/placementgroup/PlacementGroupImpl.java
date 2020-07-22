@@ -1,6 +1,6 @@
 package io.ray.api.placementgroup;
 
-import io.ray.api.id.UniqueId;
+import io.ray.api.id.PlacementGroupId;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -11,7 +11,10 @@ public class PlacementGroupImpl implements PlacementGroup {
 
   private List<Bundle> bundles = new ArrayList<>();
 
-  public PlacementGroupImpl(UniqueId placementGroupId, int bundleCount) {
+  public PlacementGroupImpl() {
+  }
+
+  public PlacementGroupImpl(PlacementGroupId placementGroupId, int bundleCount) {
     for (int index = 0; index < bundleCount; ++index) {
       this.bundles.add(new Bundle(placementGroupId, index));
     }

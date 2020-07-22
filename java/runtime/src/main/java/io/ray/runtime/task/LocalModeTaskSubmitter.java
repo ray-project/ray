@@ -215,7 +215,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   @Override
   public PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
       PlacementStrategy strategy) {
-    return new PlacementGroupImpl(bundles);
+    return new PlacementGroupImpl();
   }
 
 

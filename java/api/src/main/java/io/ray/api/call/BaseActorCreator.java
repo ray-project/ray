@@ -2,6 +2,7 @@ package io.ray.api.call;
 
 import io.ray.api.Ray;
 import io.ray.api.options.ActorCreationOptions;
+import io.ray.api.placementgroup.Bundle;
 import java.util.Map;
 
 /**
@@ -100,7 +101,7 @@ public class BaseActorCreator<T extends BaseActorCreator> {
     return self();
   }
 
-  public T setBundle(Map<String, Double> bundle) {
+  public T setBundle(Bundle bundle) {
     builder.setBundle(bundle);
     return self();
   }
