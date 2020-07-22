@@ -150,7 +150,7 @@ def hash_runtime_conf(file_mounts,
         # Generate a new runtime_hash if its not cached
         if conf_str not in _hash_cache:
             runtime_hasher.update(conf_str)
-            runtime_hasher.update(contents_hash)
+            runtime_hasher.update(contents_hash.encode("utf-8"))
             _hash_cache[conf_str] = runtime_hasher.hexdigest()
 
     else:

@@ -1186,6 +1186,10 @@ class AutoscalingTest(unittest.TestCase):
                     file_mount_dir, i))
 
         # Simulate a second `ray up` call
+        from ray.autoscaler import util
+        util._hash_cache = {}
+        runner = MockProcessRunner()
+        lm = LoadMetrics()
         autoscaler = StandardAutoscaler(
             config_path,
             lm,
@@ -1193,9 +1197,6 @@ class AutoscalingTest(unittest.TestCase):
             process_runner=runner,
             update_interval_s=0)
 
-        autoscaler.update()
-        self.waitForNodes(2)
-        self.provider.finish_starting_nodes()
         autoscaler.update()
         self.waitForNodes(
             2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
@@ -1206,7 +1207,6 @@ class AutoscalingTest(unittest.TestCase):
                 "172.0.0.{}".format(i),
                 "{}/ ubuntu@172.0.0.{}:/home/test-folder/".format(
                     file_mount_dir, i))
-
 
 
 if __name__ == "__main__":
