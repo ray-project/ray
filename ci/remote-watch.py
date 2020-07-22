@@ -85,7 +85,7 @@ def git_branch_info():
                 ref = "refs/heads/{}".format(TRAVIS_PULL_REQUEST)
             expected_sha = os.getenv("TRAVIS_COMMIT")
         else:
-            ref = os.getenv("CI_REF")
+            ref = os.getenv("GITHUB_REF")
     if not remote:
         raise ValueError("Invalid remote: {!r}".format(remote))
     if not ref:
@@ -127,19 +127,21 @@ def monitor():
     ci = get_current_ci() or ""
     (ref, remote, expected_sha) = git_branch_info()
     expected_line = "{}\t{}".format(expected_sha, ref)
-    commit_msg = git("show", "-s", "--format=%B", "HEAD^-")
     keep_alive = False
-    for match in re.findall("(?m)^([# ]*CI_KEEP_ALIVE(:(.*))?)$", commit_msg):
-        if not match[2].strip():
-            keep_alive = True
-        else:
-            for ci_name in match[2].split(","):
-                if ci_name.strip().lower() == ci.lower():
-                    keep_alive = True
+    for line in git("show", "-s", "--format=%B", "HEAD^-").splitlines():
+        parts = line.strip("# ").split(':', 1)
+        (key, val) = parts if len(parts) > 1 else (parts[0], "")
+        if key == "CI_KEEP_ALIVE":
+            ci_names = val.replace(",", " ").lower().split() if val else []
+            if len(ci_names) == 0 or ci.lower() in ci_names:
+                keep_alive = True
+    if keep_alive:
+        logger.info("Not monitoring %s on %s due to keep-alive on: %s",
+                    ref, remote, expected_line)
+        return
     logger.info("Monitoring %s (%s) for changes in %s: %s",
                 remote, git("ls-remote", "--get-url", remote),
                 ref, expected_line)
-    prev_ignored_line = None
     terminate = False
     for to_wait in yield_poll_schedule():
         time.sleep(to_wait)
@@ -149,6 +151,7 @@ def monitor():
             line = git("ls-remote", "--exit-code", remote, ref)
         except subprocess.CalledProcessError as ex:
             status = ex.returncode
+
         if status == 2:
             terminate = True
             logger.info("Terminating job as %s has been deleted on %s: %s",
@@ -159,12 +162,6 @@ def monitor():
                          status, ref, remote, expected_line)
         elif line == expected_line:
             pass  # everything good
-        elif keep_alive:
-            if prev_ignored_line != line:
-                logger.info("Not terminating job even though %s has changed "
-                            "on %s due to keep-alive on: %s",
-                            ref, remote, expected_line)
-                prev_ignored_line = line
         else:
             terminate = True
             logger.info("\n".join(

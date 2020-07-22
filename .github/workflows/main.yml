@@ -30,7 +30,6 @@ jobs:
             python-version: 3.6
     env:
       BAZEL_CONFIG: ${{ matrix.config }}
-      CI_REF: ${{ github.ref }}
       PYTHON: ${{ matrix.python-version }}
       TRAVIS_COMMIT: ${{ github.sha }}
       #TRAVIS_PULL_REQUEST is defined in the scripts to account for "false"
