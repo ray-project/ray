@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "bundle_spec.h"
+#include "ray/common/bundle_spec.h"
+
 namespace ray {
 
 void BundleSpecification::ComputeResources() {

@@ -23,7 +23,6 @@
 
 #include "ray/common/id.h"
 #include "ray/common/status.h"
-#include "ray/util/util.h"
 
 namespace ray {
 
@@ -209,8 +208,8 @@ class ClientConnection : public ServerConnection {
   /// ProcessClientMessage handler will be called.
   void ProcessMessages();
 
- private:
-  /// A private constructor for a node client connection.
+ protected:
+  /// A protected constructor for a node client connection.
   ClientConnection(MessageHandler &message_handler, local_stream_socket &&socket,
                    const std::string &debug_label,
                    const std::vector<std::string> &message_type_enum_names,

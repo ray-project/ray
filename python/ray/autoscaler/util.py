@@ -1,9 +1,10 @@
 import collections
-import os
-import json
-import threading
 import hashlib
+import json
 import jsonschema
+import os
+import threading
+from typing import Any, Dict
 
 import ray
 import ray.services as services
@@ -45,7 +46,7 @@ class ConcurrentCounter:
             return sum(self._counter.values())
 
 
-def validate_config(config):
+def validate_config(config: Dict[str, Any]) -> None:
     """Required Dicts indicate that no extra fields can be introduced."""
     if not isinstance(config, dict):
         raise ValueError("Config {} is not a dictionary".format(config))
@@ -65,7 +66,7 @@ def prepare_config(config):
     return with_defaults
 
 
-def fillout_defaults(config):
+def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     defaults = get_default_config(config["provider"])
     defaults.update(config)
     defaults["auth"] = defaults.get("auth", {})

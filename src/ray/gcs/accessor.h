@@ -15,10 +15,11 @@
 #pragma once
 
 #include "ray/common/id.h"
+#include "ray/common/placement_group.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/callback.h"
 #include "ray/gcs/entry_change_notification.h"
-#include "ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 
@@ -709,6 +710,23 @@ class WorkerInfoAccessor {
 
  protected:
   WorkerInfoAccessor() = default;
+};
+
+class PlacementGroupInfoAccessor {
+ public:
+  virtual ~PlacementGroupInfoAccessor() = default;
+
+  // TODO(AlisaWu): fill the accessor.
+  /// Create an placement group to GCS asynchronously.
+  ///
+  /// \param placement_group_spec The specification for the placement group creation task.
+  /// \param callback Callback that will be called after the placement group info is
+  /// written to GCS. \return Status
+  virtual Status AsyncCreatePlacementGroup(
+      const PlacementGroupSpecification &placement_group_spec) = 0;
+
+ protected:
+  PlacementGroupInfoAccessor() = default;
 };
 
 }  // namespace gcs
