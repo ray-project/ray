@@ -77,6 +77,15 @@ NODE_PROVIDERS = {
     "docker": None,
     "external": import_external  # Import an external module
 }
+PROVIDER_PRETTY_NAMES = {
+    "local": "Local",
+    "aws": "AWS",
+    "gcp": "GCP",
+    "azure": "Azure",
+    "kubernetes": "Kubernetes",
+    # "docker": "Docker", # not supported
+    "external": "External"
+}
 
 DEFAULT_CONFIGS = {
     "local": load_local_example_config,
@@ -86,6 +95,26 @@ DEFAULT_CONFIGS = {
     "kubernetes": load_kubernetes_example_config,
     "docker": None,
 }
+
+
+def try_logging_config(config):
+    if config["provider"]["type"] == "aws":
+        from ray.autoscaler.aws.config import log_to_cli
+        log_to_cli(config)
+
+
+def try_get_log_state(provider_config):
+    if provider_config["type"] == "aws":
+        from ray.autoscaler.aws.config import get_log_state
+        return get_log_state()
+
+
+def try_reload_log_state(provider_config, log_state):
+    if not log_state:
+        return
+    if provider_config["type"] == "aws":
+        from ray.autoscaler.aws.config import reload_log_state
+        return reload_log_state(log_state)
 
 
 def load_class(path):
