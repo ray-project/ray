@@ -33,6 +33,7 @@ py_test(
 py_test(
     name = "cifar_tf_example_1",
     size = "medium",
+    main = "tf/examples/cifar_tf_example.py",
     srcs = ["tf/examples/cifar_tf_example.py"],
     tags = ["exclusive", "tf"],
     deps = [":sgd_lib"],
@@ -42,6 +43,7 @@ py_test(
 py_test(
     name = "cifar_tf_example_2",
     size = "medium",
+    main = "tf/examples/cifar_tf_example.py",
     srcs = ["tf/examples/cifar_tf_example.py"],
     tags = ["exclusive", "tf"],
     deps = [":sgd_lib"],
@@ -51,6 +53,7 @@ py_test(
 py_test(
     name = "cifar_tf_example_2b",
     size = "medium",
+    main = "tf/examples/cifar_tf_example.py",
     srcs = ["tf/examples/cifar_tf_example.py"],
     tags = ["exclusive", "tf"],
     deps = [":sgd_lib"],
@@ -60,6 +63,7 @@ py_test(
 py_test(
     name = "tensorflow_train_example_1",
     size = "medium",
+    main = "tf/examples/tensorflow_train_example.py",
     srcs = ["tf/examples/tensorflow_train_example.py"],
     tags = ["exclusive", "tf"],
     deps = [":sgd_lib"],
@@ -69,6 +73,7 @@ py_test(
 py_test(
     name = "tensorflow_train_example_2",
     size = "medium",
+    main = "tf/examples/tensorflow_train_example.py",
     srcs = ["tf/examples/tensorflow_train_example.py"],
     tags = ["exclusive", "tf"],
     deps = [":sgd_lib"],
@@ -78,6 +83,7 @@ py_test(
 py_test(
     name = "tensorflow_train_example_tune",
     size = "medium",
+    main = "tf/examples/tensorflow_train_example.py",
     srcs = ["tf/examples/tensorflow_train_example.py"],
     tags = ["exclusive", "tf"],
     deps = [":sgd_lib"],
@@ -92,6 +98,7 @@ py_test(
 py_test(
     name = "cifar_pytorch_example_1",
     size = "medium",
+    main = "torch/examples/cifar_pytorch_example.py",
     srcs = ["torch/examples/cifar_pytorch_example.py"],
     tags = ["exclusive", "pytorch"],
     deps = [":sgd_lib"],
@@ -101,6 +108,7 @@ py_test(
 py_test(
     name = "cifar_pytorch_example_2",
     size = "medium",
+    main = "torch/examples/cifar_pytorch_example.py",
     srcs = ["torch/examples/cifar_pytorch_example.py"],
     tags = ["exclusive", "pytorch"],
     deps = [":sgd_lib"],
@@ -117,7 +125,7 @@ py_test(
 )
 
 py_test(
-    name = "dcgan_2",
+    name = "dcgan",
     size = "medium",
     srcs = ["torch/examples/dcgan.py"],
     tags = ["exclusive", "pytorch"],
@@ -136,6 +144,7 @@ py_test(
 py_test(
     name = "train_example_1",
     size = "medium",
+    main = "torch/examples/train_example.py",
     srcs = ["torch/examples/train_example.py"],
     tags = ["exclusive", "pytorch"],
     deps = [":sgd_lib"],
@@ -145,6 +154,7 @@ py_test(
 py_test(
     name = "train_example_2",
     size = "medium",
+    main = "torch/examples/train_example.py",
     srcs = ["torch/examples/train_example.py"],
     tags = ["exclusive", "pytorch"],
     deps = [":sgd_lib"],
@@ -154,6 +164,7 @@ py_test(
 py_test(
     name = "tune_example_1",
     size = "medium",
+    main = "torch/examples/tune_example.py",
     srcs = ["torch/examples/tune_example.py"],
     tags = ["exclusive", "pytorch"],
     deps = [":sgd_lib"],
@@ -163,6 +174,7 @@ py_test(
 py_test(
     name = "tune_example_2",
     size = "medium",
+    main = "torch/examples/tune_example.py",
     srcs = ["torch/examples/tune_example.py"],
     tags = ["exclusive", "pytorch"],
     deps = [":sgd_lib"],
@@ -186,6 +198,7 @@ py_test(
 py_test(
     name = "image_models",
     size = "medium",
+    main = "torch/examples/image_models/train.py",
     srcs = ["torch/examples/image_models/train.py"],
     tags = ["exclusive", "pytorch"],
     deps = [":sgd_lib"],

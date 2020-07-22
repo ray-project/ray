@@ -28,6 +28,7 @@ py_test(
 py_test(
     name = "doc_code_tf_example",
     size = "small",
+    main = "examples/doc_code/tf_example.py",
     srcs = ["examples/doc_code/tf_example.py"],
     tags = ["tf"]
 )
@@ -35,6 +36,21 @@ py_test(
 py_test(
     name = "doc_code_torch_example",
     size = "small",
+    main = "examples/doc_code/torch_example.py",
     srcs = ["examples/doc_code/torch_example.py"],
     tags = ["pytorch"]
+)
+
+# --------------------------------------------------------------------
+# Tests from the doc/source/tune/_tutorials directory.
+# Please keep these sorted alphabetically.
+# --------------------------------------------------------------------
+
+py_test(
+    name = "tune_sklearn",
+    size = "medium",
+    main = "source/tune/_tutorials/tune-sklearn.py",
+    srcs = ["source/tune/_tutorials/tune-sklearn.py"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
 )

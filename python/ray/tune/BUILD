@@ -531,20 +531,6 @@ py_test(
     args = ["--smoke-test"]
 )
 
-# --------------------------------------------------------------------
-# Tests from the doc/source/tune/_tutorials directory.
-# Please keep these sorted alphabetically.
-# --------------------------------------------------------------------
-
-py_test(
-    name = "tune_sklearn",
-    size = "medium",
-    srcs = ["../../doc/source/tune/_tutorials/tune-sklearn.py"],
-    deps = [":tune_lib"],
-    tags = ["exclusive", "example"],
-    args = ["--smoke-test"]
-)
-
 # This is a dummy test dependency that causes the above tests to be
 # re-run if any of these files changes.
 py_library(
