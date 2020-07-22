@@ -88,7 +88,7 @@ matrix:
         - TESTSUITE=streaming
         - JDK='Oracle JDK 8'
         - RAY_INSTALL_JAVA=1
-        - RAY_GCS_ACTOR_SERVICE_ENABLED=true\
+        - RAY_GCS_ACTOR_SERVICE_ENABLED=true
         - PYTHON=3.6 PYTHONWARNINGS=ignore
         - RAY_USE_RANDOM_PORTS=1
       install:

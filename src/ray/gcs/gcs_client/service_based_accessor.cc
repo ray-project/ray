@@ -1415,6 +1415,5 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
   return Status::OK();
 }
 
-
 }  // namespace gcs
 }  // namespace ray
