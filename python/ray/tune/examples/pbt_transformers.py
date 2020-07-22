@@ -5,6 +5,7 @@ from functools import partial
 from typing import Callable, Dict, Optional
 
 import numpy as np
+from ray.tune import CLIReporter
 from ray.tune.schedulers import PopulationBasedTraining
 
 from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer, EvalPrediction, GlueDataset
@@ -82,7 +83,7 @@ def get_trainer(data_args, model_args, training_args):
             elif output_mode == "regression":
                 preds = np.squeeze(p.predictions)
             metrics = glue_compute_metrics(task_name, preds, p.label_ids)
-            tune.report(**metrics)
+            tune.report(mean_accuracy=metrics["acc"])
             return metrics
 
         return compute_metrics_fn
@@ -96,6 +97,7 @@ def get_trainer(data_args, model_args, training_args):
     )
     return trainer
 # __huggingface_end__
+
 
 # __download_begin__
 def download_data(model_name, task_name, data_dir="./data"):
@@ -168,7 +170,7 @@ def tune_transformer(num_samples=8, num_epochs=3, gpus_per_trial=0):
     }
 
     scheduler = PopulationBasedTraining(
-        metric="acc",
+        metric="mean_accuracy",
         mode="max",
         perturbation_interval=4,
         hyperparam_mutations={
@@ -176,6 +178,10 @@ def tune_transformer(num_samples=8, num_epochs=3, gpus_per_trial=0):
             "lr": lambda: tune.loguniform(1e-4, 1e-1).func(None),
             "weight_decay": lambda: tune.loguniform(1e-3, 1e-1).func(None),
         })
+
+    reporter = CLIReporter(
+        parameter_columns=["weight_decay", "lr", "batch_size"],
+        metric_columns=["mean_accuracy", "training_iteration"])
 
     tune.run(
         partial(
@@ -188,6 +194,7 @@ def tune_transformer(num_samples=8, num_epochs=3, gpus_per_trial=0):
         config=config,
         num_samples=num_samples,
         scheduler=scheduler,
+        progress_reporter=reporter,
         name="tune_transformer_pbt")
 # __tune_end__
 
