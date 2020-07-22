@@ -180,7 +180,7 @@ def build_torch_policy(name,
             if extra_grad_process_fn:
                 return extra_grad_process_fn(self, optimizer, loss)
             else:
-                return base.extra_grad_process(self, optimizer, loss)
+                return TorchPolicy.extra_grad_process(self, optimizer, loss)
 
         @override(TorchPolicy)
         def extra_compute_grad_fetches(self):
@@ -190,14 +190,14 @@ def build_torch_policy(name,
                 # Auto-add empty learner stats dict if needed.
                 return dict({LEARNER_STATS_KEY: {}}, **fetches)
             else:
-                return base.extra_compute_grad_fetches(self)
+                return TorchPolicy.extra_compute_grad_fetches(self)
 
         @override(TorchPolicy)
         def apply_gradients(self, gradients):
             if apply_gradients_fn:
                 apply_gradients_fn(self, gradients)
             else:
-                base.apply_gradients(self, gradients)
+                TorchPolicy.apply_gradients(self, gradients)
 
         @override(TorchPolicy)
         def extra_action_out(self, input_dict, state_batches, model,
@@ -207,7 +207,7 @@ def build_torch_policy(name,
                     stats_dict = extra_action_out_fn(
                         self, input_dict, state_batches, model, action_dist)
                 else:
-                    stats_dict = base.extra_action_out(
+                    stats_dict = TorchPolicy.extra_action_out(
                         self, input_dict, state_batches, model, action_dist)
                 return convert_to_non_torch_type(stats_dict)
 
@@ -216,7 +216,7 @@ def build_torch_policy(name,
             if optimizer_fn:
                 return optimizer_fn(self, self.config)
             else:
-                return base.optimizer(self)
+                return TorchPolicy.optimizer(self)
 
         @override(TorchPolicy)
         def extra_grad_info(self, train_batch):
@@ -224,7 +224,7 @@ def build_torch_policy(name,
                 if stats_fn:
                     stats_dict = stats_fn(self, train_batch)
                 else:
-                    stats_dict = base.extra_grad_info(self, train_batch)
+                    stats_dict = TorchPolicy.extra_grad_info(self, train_batch)
                 return convert_to_non_torch_type(stats_dict)
 
     def with_updates(**overrides):

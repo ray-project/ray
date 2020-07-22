@@ -569,8 +569,8 @@ class TorchPolicy(Policy):
 
     def _lazy_tensor_dict(self, postprocessed_batch):
         train_batch = UsageTrackingDict(postprocessed_batch)
-        train_batch.set_get_interceptor(functools.partial(
-            convert_to_torch_tensor, device=self.device))
+        train_batch.set_get_interceptor(
+            functools.partial(convert_to_torch_tensor, device=self.device))
         return train_batch
 
 
