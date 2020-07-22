@@ -8,7 +8,6 @@ from cpython.pystate cimport PyThreadState_Get
 from libcpp cimport bool as c_bool
 from libcpp.string cimport string as c_string
 from libcpp.vector cimport vector as c_vector
-
 from libcpp.memory cimport (
     shared_ptr,
     unique_ptr

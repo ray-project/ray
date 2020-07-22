@@ -5,7 +5,6 @@ except ImportError:
     pytest_timeout = None
 import sys
 import os
-import time
 
 import ray
 import ray.test_utils
@@ -131,7 +130,7 @@ def test_placement_group_spread_best_effort(ray_start_cluster):
 
         def value(self):
             return self.n
-        
+
     # TODO(Shanly):
     pass
 
