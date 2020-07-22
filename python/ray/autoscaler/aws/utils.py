@@ -1,6 +1,11 @@
 from collections import defaultdict
+from functools import lru_cache
 
+from botocore.config import Config
+from boto3.exceptions import ResourceNotExistsError
 from ray.autoscaler.cli_logger import cli_logger
+from ray.ray_constants import BOTO_MAX_RETRIES
+import boto3
 import colorful as cf
 
 
@@ -120,3 +125,30 @@ def boto_exception_handler(msg, *args, **kwargs):
                 handle_boto_error(value, msg, *args, **kwargs)
 
     return ExceptionHandlerContextManager()
+
+
+@lru_cache()
+def resource_cache(name, region, **kwargs):
+    boto_config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
+    return boto3.resource(
+        name,
+        region,
+        config=boto_config,
+        **kwargs,
+    )
+
+
+@lru_cache()
+def client_cache(name, region, **kwargs):
+    try:
+        # try to re-use a client from the resource cache first
+        return resource_cache(name, region, **kwargs).meta.client
+    except ResourceNotExistsError:
+        # fall back for clients without an associated resource
+        boto_config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
+        return boto3.client(
+            name,
+            region,
+            config=boto_config,
+            **kwargs,
+        )

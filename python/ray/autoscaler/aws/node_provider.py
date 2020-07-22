@@ -14,6 +14,8 @@ from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME, \
     TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_TYPE, TAG_RAY_INSTANCE_TYPE
 from ray.ray_constants import BOTO_MAX_RETRIES, BOTO_CREATE_MAX_RETRIES
 from ray.autoscaler.log_timer import LogTimer
+from ray.autoscaler.aws.cloudwatch.cloudwatch_helper import CloudwatchHelper, \
+    cloudwatch_config_exists
 
 from ray.autoscaler.aws.utils import boto_exception_handler
 from ray.autoscaler.cli_logger import cli_logger
@@ -367,6 +369,25 @@ class AWSNodeProvider(NodeProvider):
                     # todo: err msg
                     cli_logger.abort(exc)
                     cli_logger.old_error(logger, exc)
+
+        node_ids = [n.id for n in created]
+        # check if user specifies a cloudwatch agent config file path.
+        # if so, install and run the agent
+        cloudwatch_helper = CloudwatchHelper(self.provider_config, node_ids,
+                                             self.cluster_name)
+        if cloudwatch_config_exists(self.provider_config, "agent", "config"):
+            cloudwatch_helper.ssm_install_cloudwatch_agent()
+
+        # check if user specifies a cloudwatch dashboard config file path.
+        # if so, put cloudwatch dashboard
+        if cloudwatch_config_exists(self.provider_config, "dashboard",
+                                    "config"):
+            cloudwatch_helper.put_cloudwatch_dashboard()
+
+        # check if user specifies a cloudwatch alarm config file path.
+        # if so, put cloudwatch alarms
+        if cloudwatch_config_exists(self.provider_config, "alarm", "config"):
+            cloudwatch_helper.put_cloudwatch_alarm()
 
     def terminate_node(self, node_id):
         node = self._get_cached_node(node_id)

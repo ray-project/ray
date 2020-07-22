@@ -54,7 +54,6 @@ def test_create_sg_different_vpc_same_rules(iam_client_stub, ec2_client_stub):
     # given the prior modification to the worker security group...
     # expect the next read of a worker security group property to reload it
     stubs.describe_sg_echo(ec2_client_stub, DEFAULT_SG_WITH_RULES_AUX_SUBNET)
-
     # given our mocks and an example config file as input...
     # expect the config to be loaded, validated, and bootstrapped successfully
     config = helpers.bootstrap_aws_example_config_file("example-subnets.yaml")
@@ -71,6 +70,77 @@ def test_create_sg_different_vpc_same_rules(iam_client_stub, ec2_client_stub):
     ec2_client_stub.assert_no_pending_responses()
 
 
+def test_cloudwatch_agent_setup(ec2_client_stub, ssm_client_stub):
+    # create test cluster node IDs and an associated cloudwatch helper
+    node_ids = ["i-abc", "i-def"]
+    cloudwatch_helper = helpers.get_cloudwatch_helper(node_ids)
+
+    # given a directive to install CloudWatch Agent on all nodes...
+    # expect to wait for each EC2 instance status to report on OK state
+    stubs.describe_instance_status_ok(ec2_client_stub, node_ids)
+    # given all cluster EC2 instance status checks passed...
+    # expect to send a CloudWatch Agent install command to all nodes via SSM
+    stubs.send_command_cwa_install(ssm_client_stub, node_ids)
+    # given a CloudWatch Agent install command sent to all nodes...
+    # expect to wait for the command to complete successfully on every node
+    stubs.get_command_invocation_success(ssm_client_stub, node_ids)
+    # given a successful CloudWatch Agent install on all nodes...
+    # expect to store the CloudWatch Agent config as an SSM parameter
+    stubs.put_parameter_cloudwatch_agent_config(ssm_client_stub)
+    # given a successful CloudWatch Agent install on all nodes...
+    # expect to send a command to satisfy CWA collectd preconditions via SSM
+    stubs.send_command_cwa_collectd_setup_script(ssm_client_stub, node_ids)
+    # given that all CloudWatch Agent start preconditions are satisfied...
+    # expect to send an SSM command to start CloudWatch Agent on all nodes
+    stubs.send_command_start_cwa(ssm_client_stub, node_ids)
+
+    # given our mocks and the example CloudWatch Agent config as input...
+    # expect CloudWatch Agent to be installed on each cluster node successfully
+    cloudwatch_helper.ssm_install_cloudwatch_agent()
+
+    # expect no pending responses left in client stub queues
+    ec2_client_stub.assert_no_pending_responses()
+    ssm_client_stub.assert_no_pending_responses()
+
+
+def test_cloudwatch_dashboard_creation(cloudwatch_client_stub):
+    # create test cluster node IDs and an associated cloudwatch helper
+    node_ids = ["i-abc", "i-def"]
+    cloudwatch_helper = helpers.get_cloudwatch_helper(node_ids)
+
+    # given a directive to create a cluster CloudWatch dashboard...
+    # expect to make a call to create a dashboard for each node in the cluster
+    stubs.put_cluster_dashboard_success(
+        cloudwatch_client_stub,
+        cloudwatch_helper,
+    )
+
+    # given our mocks and the example cloudwatch dashboard config as input...
+    # expect a cluster CloudWatch dashboard to be created successfully
+    cloudwatch_helper.put_cloudwatch_dashboard()
+
+    # expect no pending responses left in the CloudWatch client stub queue
+    cloudwatch_client_stub.assert_no_pending_responses()
+
+
+def test_cloudwatch_alarm_creation(cloudwatch_client_stub):
+    # create test cluster node IDs and an associated cloudwatch helper
+    node_ids = ["i-abc", "i-def"]
+    cloudwatch_helper = helpers.get_cloudwatch_helper(node_ids)
+
+    # given a directive to create cluster CloudWatch alarms...
+    # expect to make a call to create alarms for each node in the cluster
+    stubs.put_cluster_alarms_success(cloudwatch_client_stub, cloudwatch_helper)
+
+    # given our mocks and the example cloudwatch alarm config as input...
+    # expect cluster alarms to be created successfully
+    cloudwatch_helper.put_cloudwatch_alarm()
+
+    # expect no pending responses left in the CloudWatch client stub queue
+    cloudwatch_client_stub.assert_no_pending_responses()
+
+
 if __name__ == "__main__":
     import sys
-    sys.exit(pytest.main(["-v", __file__]))
+
+    sys.exit(pytest.main(["-s", __file__]))
