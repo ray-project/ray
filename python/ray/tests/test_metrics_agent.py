@@ -9,18 +9,20 @@ from prometheus_client.parser import text_string_to_metric_families
 from ray.core.generated.common_pb2 import MetricPoint
 from ray.metrics_agent import Gauge, MetricsAgent
 
+
 def generate_metrics_point(name: str,
                            value: float,
                            timestamp: int,
                            tags: dict,
                            description: str = None,
                            units: str = None):
-    return MetricPoint(metric_name=name,
-                       timestamp=timestamp,
-                       value=value,
-                       tags=tags,
-                       description=description,
-                       units=units)
+    return MetricPoint(
+        metric_name=name,
+        timestamp=timestamp,
+        value=value,
+        tags=tags,
+        description=description,
+        units=units)
 
 
 def get_unused_port():
@@ -42,7 +44,7 @@ def get_unused_port():
         s.close()
         new_s.close()
         return new_port
-    logger.error("Unable to succeed in selecting a random port.")
+    print("Unable to succeed in selecting a random port.")
     s.close()
     return port
 
@@ -69,17 +71,12 @@ def test_basic_e2e(metrics_agent):
     tag = {"TAG_KEY": "TAG_VALUE"}
     metrics_points = [
         generate_metrics_point(
-            str(i),
-            float(i),
-            i,
-            tag,
-            description=str(i),
-            units=str(i)
-        ) for i in range(3)
+            str(i), float(i), i, tag, description=str(i), units=str(i))
+        for i in range(3)
     ]
     metrics_points_dict = {
-        metric_point.metric_name: metric_point 
-            for metric_point in metrics_points
+        metric_point.metric_name: metric_point
+        for metric_point in metrics_points
     }
     assert metrics_agent.record_metrics_points(metrics_points) is False
     # Make sure all metrics are registered.
@@ -89,14 +86,11 @@ def test_basic_e2e(metrics_agent):
         assert metric_entry.name == str(i)
         assert metric_entry.description == str(i)
         assert metric_entry.units == str(i)
-        assert metric_entry.tags == [
-            tag_key_module.TagKey(key) for key in tag
-        ]
+        assert metric_entry.tags == [tag_key_module.TagKey(key) for key in tag]
 
     # Make sure all metrics are available through a port.
-    response = requests.get(
-        "http://localhost:{}".format(
-            metrics_agent.metrics_export_port))
+    response = requests.get("http://localhost:{}".format(
+        metrics_agent.metrics_export_port))
     response.raise_for_status()
     for line in response.text.split("\n"):
         for family in text_string_to_metric_families(line):
@@ -104,12 +98,11 @@ def test_basic_e2e(metrics_agent):
 
             if metric_name not in metrics_points_dict:
                 continue
-            
+
             if line.startswith("# HELP"):
                 # description
-                assert (
-                    family.documentation\
-                        == metrics_points_dict[metric_name].description)
+                assert (family.documentation == metrics_points_dict[
+                    metric_name].description)
             else:
                 for sample in family.samples:
                     metrics_points_dict[metric_name].value == sample.value
@@ -127,10 +120,6 @@ def test_missing_def(metrics_agent):
             tag,
         ) for i in range(3)
     ]
-    metrics_points_dict = {
-        metric_point.metric_name: metric_point 
-            for metric_point in metrics_points
-    }
 
     # At first, metrics shouldn't have description and units.
     assert metrics_agent.record_metrics_points(metrics_points) is True
@@ -140,21 +129,14 @@ def test_missing_def(metrics_agent):
         assert metric_entry.name == str(i)
         assert metric_entry.description == ""
         assert metric_entry.units == ""
-        assert metric_entry.tags == [
-            tag_key_module.TagKey(key) for key in tag
-        ]
+        assert metric_entry.tags == [tag_key_module.TagKey(key) for key in tag]
 
     # The points are coming again with description and units.
     # Make sure they are updated.
     metrics_points = [
         generate_metrics_point(
-            str(i),
-            float(i),
-            i,
-            tag,
-            description=str(i),
-            units=str(i)
-        ) for i in range(3)
+            str(i), float(i), i, tag, description=str(i), units=str(i))
+        for i in range(3)
     ]
     assert metrics_agent.record_metrics_points(metrics_points) is False
     for i, metric_entry in enumerate(metrics_agent.registry.items()):
@@ -163,9 +145,8 @@ def test_missing_def(metrics_agent):
         assert metric_entry.name == str(i)
         assert metric_entry.description == str(i)
         assert metric_entry.units == str(i)
-        assert metric_entry.tags == [
-            tag_key_module.TagKey(key) for key in tag
-        ]
+        assert metric_entry.tags == [tag_key_module.TagKey(key) for key in tag]
+
 
 if __name__ == "__main__":
     import sys
