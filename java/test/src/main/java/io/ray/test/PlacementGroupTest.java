@@ -36,12 +36,12 @@ public class PlacementGroupTest extends BaseTest {
     PlacementStrategy strategy = PlacementStrategy.PACK;
     PlacementGroup placementGroup = Ray.createPlacementGroup(bundles, strategy);
 
-    // Test creating an actor from a constructor
+    // Test creating an actor from a constructor.
     ActorHandle<Counter> actor = Ray.actor(Counter::new, 1)
         .setBundle(placementGroup.getBundle(0)).remote();
     Assert.assertNotEquals(actor.getId(), ActorId.NIL);
 
-    // Test calling an actor
+    // Test calling an actor.
     Assert.assertEquals(Integer.valueOf(1), actor.task(Counter::getValue).remote().get());
   }
 }

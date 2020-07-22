@@ -127,6 +127,8 @@ extern jfieldID java_actor_creation_options_max_restarts;
 extern jfieldID java_actor_creation_options_jvm_options;
 /// maxConcurrency field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_max_concurrency;
+/// bundle field of ActorCreationOptions class
+extern jfieldID java_actor_creation_options_bundle;
 
 /// GcsClientOptions class
 extern jclass java_gcs_client_options_class;
@@ -152,6 +154,13 @@ extern jclass java_task_executor_class;
 extern jmethodID java_task_executor_parse_function_arguments;
 /// execute method of TaskExecutor class
 extern jmethodID java_task_executor_execute;
+
+/// Bundle class
+extern jclass java_bundle_class;
+/// placementGroupId field of Bundle class
+extern jfieldID java_bundle_placement_group_id;
+/// bundleIndex field of Bundle class
+extern jfieldID java_bundle_bundle_index;
 
 #define CURRENT_JNI_VERSION JNI_VERSION_1_8
 

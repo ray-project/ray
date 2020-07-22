@@ -10,4 +10,20 @@ public class Bundle {
     this.placementGroupId = placementGroupId;
     this.bundleIndex = bundleIndex;
   }
+
+  public PlacementGroupId getPlacementGroupId() {
+    return placementGroupId;
+  }
+
+  public void setPlacementGroupId(PlacementGroupId placementGroupId) {
+    this.placementGroupId = placementGroupId;
+  }
+
+  public int getBundleIndex() {
+    return bundleIndex;
+  }
+
+  public void setBundleIndex(int bundleIndex) {
+    this.bundleIndex = bundleIndex;
+  }
 }

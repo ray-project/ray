@@ -7,7 +7,7 @@ public interface PlacementGroup {
 
   /**
    * Gets the bundle of the specified index.
-   * @return The bundle of the specified index. If the index is invalid, return NULL.
+   * @return The bundle of the specified index.
    */
   Bundle getBundle(int index);
 }
