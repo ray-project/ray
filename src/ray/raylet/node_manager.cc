@@ -1986,8 +1986,8 @@ ResourceIdSet NodeManager::ScheduleBundle(
       std::string resource_name = bundle_id_str + "_" + resource.first;
       local_available_resources_.AddBundleResource(resource_name, resource.second);
     }
-    cluster_resource_map_[self_node_id_].UpdateBundleResource(
-        bundle_id_str, bundle_spec.GetRequiredResources());
+    resource_map[self_node_id_].UpdateBundleResource(bundle_id_str,
+                                                     bundle_spec.GetRequiredResources());
   }
   return acquired_resources;
 }
