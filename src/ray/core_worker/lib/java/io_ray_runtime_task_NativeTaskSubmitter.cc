@@ -16,10 +16,10 @@
 
 #include <jni.h>
 
+#include "jni_utils.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker.h"
-#include "jni_utils.h"
 
 /// Store C++ instances of ray function in the cache to avoid unnessesary JNI operations.
 thread_local std::unordered_map<jint, std::vector<std::pair<jobject, ray::RayFunction>>>
@@ -62,8 +62,14 @@ inline std::vector<std::unique_ptr<ray::TaskArg>> ToTaskArgs(JNIEnv *env, jobjec
               env->CallObjectMethod(java_id, java_base_id_get_bytes));
           RAY_CHECK_JAVA_EXCEPTION(env);
           auto id = JavaByteArrayToId<ray::ObjectID>(env, java_id_bytes);
-          return std::unique_ptr<ray::TaskArg>(new ray::TaskArgByReference(
-              id, ray::CoreWorkerProcess::GetCoreWorker().GetOwnerAddress(id)));
+          auto java_owner_address =
+              env->GetObjectField(arg, java_function_arg_owner_address);
+          RAY_CHECK(java_owner_address);
+          auto owner_address =
+              JavaProtobufObjectToNativeProtobufObject<ray::rpc::Address>(
+                  env, java_owner_address);
+          return std::unique_ptr<ray::TaskArg>(
+              new ray::TaskArgByReference(id, owner_address));
         }
         auto java_value =
             static_cast<jbyteArray>(env->GetObjectField(arg, java_function_arg_value));

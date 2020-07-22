@@ -5,6 +5,7 @@ import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.context.WorkerContext;
 import io.ray.runtime.functionmanager.FunctionManager;
 import io.ray.runtime.gcs.GcsClient;
+import io.ray.runtime.generated.Common.Address;
 import io.ray.runtime.object.ObjectStore;
 
 /**

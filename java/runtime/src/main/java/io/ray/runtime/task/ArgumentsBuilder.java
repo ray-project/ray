@@ -4,6 +4,7 @@ import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.id.ObjectId;
 import io.ray.runtime.RayRuntimeInternal;
+import io.ray.runtime.generated.Common.Address;
 import io.ray.runtime.generated.Common.Language;
 import io.ray.runtime.object.NativeRayObject;
 import io.ray.runtime.object.ObjectSerializer;
@@ -35,9 +36,11 @@ public class ArgumentsBuilder {
     List<FunctionArg> ret = new ArrayList<>();
     for (Object arg : args) {
       ObjectId id = null;
+      Address address = null;
       NativeRayObject value = null;
       if (arg instanceof ObjectRef) {
         id = ((ObjectRef) arg).getId();
+        address = ((RayRuntimeInternal) Ray.internal()).getObjectStore().getOwnerAddress(id);
       } else {
         value = ObjectSerializer.serialize(arg);
         if (language != Language.JAVA) {
@@ -52,6 +55,7 @@ public class ArgumentsBuilder {
         if (value.data.length > LARGEST_SIZE_PASS_BY_VALUE) {
           id = ((RayRuntimeInternal) Ray.internal()).getObjectStore()
               .putRaw(value);
+          address = ((RayRuntimeInternal) Ray.internal()).getWorkerContext().getRpcAddress();
           value = null;
         }
       }
@@ -59,7 +63,7 @@ public class ArgumentsBuilder {
         ret.add(FunctionArg.passByValue(PYTHON_DUMMY_TYPE));
       }
       if (id != null) {
-        ret.add(FunctionArg.passByReference(id));
+        ret.add(FunctionArg.passByReference(id, address));
       } else {
         ret.add(FunctionArg.passByValue(value));
       }

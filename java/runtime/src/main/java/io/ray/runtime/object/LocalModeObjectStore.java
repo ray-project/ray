@@ -3,6 +3,7 @@ package io.ray.runtime.object;
 import com.google.common.base.Preconditions;
 import io.ray.api.id.ObjectId;
 import io.ray.runtime.context.WorkerContext;
+import io.ray.runtime.generated.Common.Address;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -95,5 +96,10 @@ public class LocalModeObjectStore extends ObjectStore {
     for (ObjectId objectId : objectIds) {
       pool.remove(objectId);
     }
+  }
+
+  @Override
+  public Address getOwnerAddress(ObjectId id) {
+    return Address.getDefaultInstance();
   }
 }

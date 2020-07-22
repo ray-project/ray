@@ -91,6 +91,11 @@ extern jclass java_base_id_class;
 /// getBytes method of BaseId class
 extern jmethodID java_base_id_get_bytes;
 
+/// AbstractMessageLite class
+extern jclass java_abstract_message_lite_class;
+/// toByteArray method of AbstractMessageLite class
+extern jmethodID java_abstract_message_lite_to_byte_array;
+
 /// FunctionDescriptor interface
 extern jclass java_function_descriptor_class;
 /// getLanguage method of FunctionDescriptor interface
@@ -107,6 +112,8 @@ extern jmethodID java_language_get_number;
 extern jclass java_function_arg_class;
 /// id field of FunctionArg class
 extern jfieldID java_function_arg_id;
+/// ownerAddress field of FunctionArg class
+extern jfieldID java_function_arg_owner_address;
 /// value field of FunctionArg class
 extern jfieldID java_function_arg_value;
 
@@ -450,6 +457,21 @@ inline jobject NativeRayFunctionDescriptorToJavaStringList(
   }
   RAY_LOG(FATAL) << "Unknown function descriptor type: " << function_descriptor->Type();
   return NativeStringVectorToJavaStringList(env, std::vector<std::string>());
+}
+
+/// Convert a Java protobuf object to a C++ protobuf object
+template <typename NativeT>
+inline NativeT JavaProtobufObjectToNativeProtobufObject(JNIEnv *env, jobject java_obj) {
+  NativeT native_obj;
+  if (java_obj) {
+    jbyteArray bytes = static_cast<jbyteArray>(
+        env->CallObjectMethod(java_obj, java_abstract_message_lite_to_byte_array));
+    auto buffer = JavaByteArrayToNativeBuffer(env, bytes);
+    RAY_CHECK(buffer);
+    native_obj.ParseFromArray(buffer->Data(), buffer->Size());
+    env->DeleteLocalRef(bytes);
+  }
+  return native_obj;
 }
 
 // Return an actor fullname with job id prepended if this tis a global actor.

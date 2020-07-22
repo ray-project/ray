@@ -6,6 +6,7 @@ import io.ray.api.WaitResult;
 import io.ray.api.exception.RayException;
 import io.ray.api.id.ObjectId;
 import io.ray.runtime.context.WorkerContext;
+import io.ray.runtime.generated.Common.Address;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -164,4 +165,6 @@ public abstract class ObjectStore {
    */
   public abstract void delete(List<ObjectId> objectIds, boolean localOnly,
       boolean deleteCreatingTasks);
+
+  public abstract Address getOwnerAddress(ObjectId id);
 }

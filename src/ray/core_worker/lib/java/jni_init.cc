@@ -54,6 +54,9 @@ jmethodID java_jni_exception_util_get_stack_trace;
 jclass java_base_id_class;
 jmethodID java_base_id_get_bytes;
 
+jclass java_abstract_message_lite_class;
+jmethodID java_abstract_message_lite_to_byte_array;
+
 jclass java_function_descriptor_class;
 jmethodID java_function_descriptor_get_language;
 jmethodID java_function_descriptor_to_list;
@@ -63,6 +66,7 @@ jmethodID java_language_get_number;
 
 jclass java_function_arg_class;
 jfieldID java_function_arg_id;
+jfieldID java_function_arg_owner_address;
 jfieldID java_function_arg_value;
 
 jclass java_base_task_options_class;
@@ -155,6 +159,11 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_base_id_class = LoadClass(env, "io/ray/api/id/BaseId");
   java_base_id_get_bytes = env->GetMethodID(java_base_id_class, "getBytes", "()[B");
 
+  java_abstract_message_lite_class =
+      LoadClass(env, "com/google/protobuf/AbstractMessage");
+  java_abstract_message_lite_to_byte_array =
+      env->GetMethodID(java_abstract_message_lite_class, "toByteArray", "()[B");
+
   java_function_descriptor_class =
       LoadClass(env, "io/ray/runtime/functionmanager/FunctionDescriptor");
   java_function_descriptor_get_language =
@@ -169,6 +178,9 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_function_arg_class = LoadClass(env, "io/ray/runtime/task/FunctionArg");
   java_function_arg_id =
       env->GetFieldID(java_function_arg_class, "id", "Lio/ray/api/id/ObjectId;");
+  java_function_arg_owner_address =
+      env->GetFieldID(java_function_arg_class, "ownerAddress",
+                      "Lio/ray/runtime/generated/Common$Address;");
   java_function_arg_value = env->GetFieldID(java_function_arg_class, "value",
                                             "Lio/ray/runtime/object/NativeRayObject;");
 
@@ -228,6 +240,7 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   env->DeleteGlobalRef(java_ray_exception_class);
   env->DeleteGlobalRef(java_jni_exception_util_class);
   env->DeleteGlobalRef(java_base_id_class);
+  env->DeleteGlobalRef(java_abstract_message_lite_class);
   env->DeleteGlobalRef(java_function_descriptor_class);
   env->DeleteGlobalRef(java_language_class);
   env->DeleteGlobalRef(java_function_arg_class);

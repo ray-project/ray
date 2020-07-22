@@ -1,8 +1,10 @@
 package io.ray.runtime.object;
 
+import com.google.protobuf.InvalidProtocolBufferException;
 import io.ray.api.id.BaseId;
 import io.ray.api.id.ObjectId;
 import io.ray.runtime.context.WorkerContext;
+import io.ray.runtime.generated.Common.Address;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -44,6 +46,15 @@ public class NativeObjectStore extends ObjectStore {
     nativeDelete(toBinaryList(objectIds), localOnly, deleteCreatingTasks);
   }
 
+  @Override
+  public Address getOwnerAddress(ObjectId id) {
+    try {
+      return Address.parseFrom(nativeGetOwnerAddress(id.getBytes()));
+    } catch (InvalidProtocolBufferException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
   private static List<byte[]> toBinaryList(List<ObjectId> ids) {
     return ids.stream().map(BaseId::getBytes).collect(Collectors.toList());
   }
@@ -59,4 +70,6 @@ public class NativeObjectStore extends ObjectStore {
 
   private static native void nativeDelete(List<byte[]> objectIds, boolean localOnly,
       boolean deleteCreatingTasks);
+
+  private static native byte[] nativeGetOwnerAddress(byte[] objectId);
 }

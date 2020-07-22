@@ -14,10 +14,10 @@
 
 #include "io_ray_runtime_object_NativeObjectStore.h"
 #include <jni.h>
+#include "jni_utils.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker.h"
-#include "jni_utils.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -86,6 +86,15 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeDelete
   auto status = ray::CoreWorkerProcess::GetCoreWorker().Delete(
       object_ids, (bool)localOnly, (bool)deleteCreatingTasks);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_object_NativeObjectStore_nativeGetOwnerAddress(JNIEnv *env, jclass,
+                                                                   jbyteArray objectId) {
+  auto object_id = JavaByteArrayToId<ray::ObjectID>(env, objectId);
+  const auto &rpc_address =
+      ray::CoreWorkerProcess::GetCoreWorker().GetOwnerAddress(object_id);
+  return NativeStringToJavaByteArray(env, rpc_address.SerializeAsString());
 }
 
 #ifdef __cplusplus
