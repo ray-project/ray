@@ -15,6 +15,7 @@ If no PID is given, then the entire process group of this process is killed.
 # Prefer to keep this file Python 2-compatible so that it can easily run early
 # in the CI process on any system.
 
+import argparse
 import errno
 import logging
 import os
@@ -29,44 +30,39 @@ from timeit import default_timer  # monotonic timer
 logger = logging.getLogger(__name__)
 
 
-def git(*args, **kwargs):
-    capture = kwargs.pop("capture", True)
-    assert len(kwargs) == 0, "Unexpected kwargs: {}".format(kwargs)
+GITHUB = "GitHub"
+TRAVIS = "Travis"
+
+
+def git(*args):
     cmdline = ["git"] + list(args)
-    if capture:
-        result = subprocess.check_output(cmdline).decode("utf-8").rstrip()
-    else:
-        result = subprocess.check_call(cmdline)
-    return result
+    return subprocess.check_output(cmdline).decode("utf-8").rstrip()
 
 
 def get_current_ci():
-    result = None
     if "GITHUB_WORKFLOW" in os.environ:
-        result = "GitHub"
+        return GITHUB
     elif "TRAVIS" in os.environ:
-        result = "Travis"
-    return result
+        return TRAVIS
+    return None
 
 
-def get_event_name():
-    result = None
+def get_ci_event_name():
     ci = get_current_ci()
-    if ci.startswith("GitHub"):
-        result = os.environ["GITHUB_EVENT_NAME"]
-    elif ci.startswith("Travis"):
-        result = os.environ["TRAVIS_EVENT_TYPE"]
-    return result
+    if ci == GITHUB:
+        return os.environ["GITHUB_EVENT_NAME"]
+    elif ci == TRAVIS:
+        return os.environ["TRAVIS_EVENT_TYPE"]
+    return None
 
 
 def get_repo_slug():
     ci = get_current_ci()
-    result = None
-    if ci.startswith("GitHub"):
-        result = os.environ["GITHUB_REPOSITORY"]
-    elif ci.startswith("Travis"):
-        result = os.environ["TRAVIS_REPO_SLUG"]
-    return result
+    if ci == GITHUB:
+        return os.environ["GITHUB_REPOSITORY"]
+    elif ci == TRAVIS:
+        return os.environ["TRAVIS_REPO_SLUG"]
+    return None
 
 
 def git_branch_info():
@@ -101,57 +97,36 @@ def git_branch_info():
     return (ref, remote, expected_sha)
 
 
-def terminate_parent_or_process_group(sleeps):
+def terminate_my_process_group():
     result = 0
-    pid = 0 if sys.platform == "win32" else os.getppid()
-    is_posix = True
-    nonsignals = []
-    if sys.platform == "win32":
-        is_posix = False
-        nonsignals.append(signal.CTRL_C_EVENT)
-        nonsignals.append(signal.CTRL_BREAK_EVENT)
-    sig = None
+    timeout = 15
     try:
-        attempts = [
-            signal.SIGINT if is_posix else signal.CTRL_C_EVENT,
-            signal.SIGTERM if is_posix else signal.CTRL_BREAK_EVENT,
-            signal.SIGKILL if is_posix else signal.SIGTERM,
-        ]
-        for i, sig in enumerate(attempts):
-            tsleep = sleeps[i] if i < len(sleeps) else None
-            if pid == 0 or sig not in nonsignals:
-                logger.info("Attempting os.kill(%s, %s)...", pid, sig)
-                old_handler = None
-                if pid == 0:  # Ignore our own signal
-                    try:
-                        old_handler = signal.signal(sig, signal.SIG_IGN)
-                    except (OSError, RuntimeError, ValueError):
-                        pass  # Some signals can't be ignored; just continue
-                try:
-                    os.kill(pid, sig)
-                except OSError as ex:
-                    if sys.platform == "win32" and ex.winerror == 87:
-                        pass  # This can sometimes happen; just ignore it
-                    else:
-                        raise
-                finally:
-                    if pid == 0 and old_handler is not None:  # Restore handler
-                        signal.signal(sig, old_handler)
-                time.sleep(tsleep)
+        logger.warning("Attempting kill...")
+        if sys.platform == "win32":
+            os.kill(0, signal.CTRL_BREAK_EVENT)  # this might get ignored
+            time.sleep(timeout)
+            os.kill(os.getppid(), signal.SIGTERM)
+        else:
+            os.kill(os.getppid(), signal.SIGTERM)  # apparently this is needed
+            time.sleep(timeout)
+            os.kill(0, signal.SIGKILL)
     except OSError as ex:
         if ex.errno not in (errno.EBADF, errno.ESRCH):
             raise
-        logger.error("os.kill(%r, %r) error %s: %s", pid, sig, ex.errno,
-                     ex.strerror)
+        logger.error("Kill error %s: %s", ex.errno, ex.strerror)
         result = ex.errno
     return result
 
 
-def monitor(server_poll_interval=None, sleeps=None):
-    if sleeps is None:
-        sleeps = [5, 15]
-    if not server_poll_interval:
-        server_poll_interval = 30
+def yield_poll_schedule():
+    schedule = [0, 5, 5, 10, 20, 40, 40] + [60] * 5 + [120] * 10 + [300, 600]
+    for item in schedule:
+        yield item
+    while True:
+        yield schedule[-1]
+
+
+def monitor():
     ci = get_current_ci() or ""
     (ref, remote, expected_sha) = git_branch_info()
     expected_line = "{}\t{}".format(expected_sha, ref)
@@ -164,21 +139,12 @@ def monitor(server_poll_interval=None, sleeps=None):
             for ci_name in match[2].split(","):
                 if ci_name.strip().lower() == ci.lower():
                     keep_alive = True
-    logger.info("Monitoring %s (%s) for changes in %s every %s seconds: %s",
+    logger.info("Monitoring %s (%s) for changes in %s: %s",
                 remote, git("ls-remote", "--get-url", remote),
-                ref, server_poll_interval, expected_line)
+                ref, expected_line)
     prev_ignored_line = None
-    tstart = default_timer()
-    tprev = None
     terminate = False
-    while True:
-        to_wait = 0
-        if tprev is not None:
-            to_wait = max(tprev + server_poll_interval - default_timer(), 0)
-
-        # Try to increase waiting time gradually, for better responsiveness
-        to_wait = min(to_wait, max(default_timer() - tstart, 5.0))
-
+    for to_wait in yield_poll_schedule():
         time.sleep(to_wait)
         status = 0
         line = None
@@ -213,26 +179,18 @@ def monitor(server_poll_interval=None, sleeps=None):
             break
         tprev = default_timer()
     if terminate:
-        result = terminate_parent_or_process_group(sleeps)
+        result = terminate_my_process_group()
     return result
 
 
-def main(program, skipped_repos="", server_poll_interval="", sleeps=""):
-    if server_poll_interval:
-        server_poll_interval = float(server_poll_interval)
-    else:
-        server_poll_interval = None
-    if sleeps.strip():
-        sleeps = [float(s) for s in sleeps.strip().split(",") if s.strip()]
-    else:
-        sleeps = None
+def main(program, *args):
+    p = argparse.ArgumentParser()
+    p.add_argument("--skip_repo", action="append", help="Repo to exclude.")
+    parsed_args = p.parse_args(args)
     repo_slug = get_repo_slug()
-    skipped_repo_list = []
-    if skipped_repos:
-        skipped_repo_list.extend(skipped_repos.split(","))
-    event_name = get_event_name()
-    if repo_slug not in skipped_repo_list or event_name == "pull_request":
-        result = monitor(server_poll_interval, sleeps)
+    event_name = get_ci_event_name()
+    if repo_slug not in parsed_args.skip_repo or event_name == "pull_request":
+        result = monitor()
     else:
         logger.info("Skipping monitoring %s %s build", repo_slug, event_name)
     return result
