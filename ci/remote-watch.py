@@ -80,7 +80,7 @@ def git_remote_branch_info():
         (remote, ref) = ref.split("/", 1)
         ref = "refs/heads/" + ref
     else:
-        remote = git_remotes()[0]
+        remote = git("remote", "show", "-n").splitlines()[0]
         ref = os.getenv("TRAVIS_PULL_REQUEST_BRANCH")
         if ref:
             TRAVIS_PULL_REQUEST = os.environ["TRAVIS_PULL_REQUEST"]
