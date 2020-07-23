@@ -54,14 +54,13 @@ class TestCuriosity(unittest.TestCase):
 
         config["framework"] = "torch"
         config["exploration_config"] = {"type": "Curiosity"}
+        trainer = ppo.PPOTrainer(config=config, env=env)
+        trainer.train()
 
 #                                        "obs_dim": 16,
 #                                        "emb_dim": 6,
 #                                        "action_dim": 1,
 #                                        "submodule": "EpsilonGreedy"}
-
-        trainer = ppo.PPOTrainer(config=config, env=env)
-        trainer.train()
 
 
 if __name__ == "__main__":

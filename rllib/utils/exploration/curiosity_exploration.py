@@ -2,6 +2,22 @@
 Curiosity-driven Exploration by Self-supervised Prediction - Pathak, Agrawal,
 Efros, and Darrell - UC Berkeley - ICML 2017.
 https://arxiv.org/pdf/1705.05363.pdf
+This implements the curiosty-based loss function from
+https://arxiv.org/pdf/1705.05363.pdf. We learn a simplified model of the
+environment based on three networks:
+    1) embedding states into latent space (the "features" network)
+    2) predicting the next embedded state, given a state and action (the
+        "forwards" network)
+    3) predicting the action, given two consecutive embedded state (the
+        "inverse" network)
+
+If the agent was unable to successfully predict the state-action-next_state
+sequence, we modify the standard reward with a penalty. Therefore, if a state
+transition was unexpected, the agent becomes "curious" and further explores
+this transition.
+
+This is tailored for sparse reward environments, as it generates an intrinsic
+reward.
 """
 from gym.spaces import Space
 from typing import Union
@@ -22,12 +38,6 @@ torch, nn = try_import_torch()
 
 
 class Curiosity(Exploration):
-    """Implements an exploration strategy for Policies.
-
-    An Exploration takes model outputs, a distribution, and a timestep from
-    the agent and computes an action to apply to the environment using an
-    implemented exploration schema.
-    """
 
     def __init__(self,
                  action_space: Space,
@@ -140,7 +150,7 @@ class Curiosity(Exploration):
             action_distribution=action_distribution, timestep=timestep)
 
     def get_intrinsic_loss(self):
-        # TODO vectorize loss or not?
+        # how do we want to do this
         return 0
 
     def _get_latent_vector(self, obs: TensorType):
