@@ -133,16 +133,16 @@ deploy_jars() {
 }
 
 case "$1" in
-linux)
+linux) # build jars that only contains Linux binaries.
   build_jars_linux
   ;;
-darwin)
+darwin) # build jars that only contains macos binaries.
   build_jars_darwin
   ;;
-multiplatform)
+multiplatform) # downloading jars of multiple platforms and packaging them into one jar.
   build_jars_multiplatform
   ;;
-deploy)
+deploy) # Deploy jars to maven repository.
   deploy_jars
   ;;
 *)

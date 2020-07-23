@@ -98,7 +98,7 @@ matrix:
       script:
         - true  # we still need this block to exist, otherwise it will fall back to the global one
 
-    # Build Linux wheels.
+    # Build Linux wheels and multi-platform jars.
     - os: linux
       env:
         - LINUX_WHEELS=1 MULTIPLATFORM_JARS=1
@@ -115,7 +115,7 @@ matrix:
         # - if [ $TRAVIS_BRANCH == "master" ]; then sh ./java/build-jar-multiplatform.sh deploy; fi
       cache: false
 
-    # Build MacOS wheels.
+    # Build MacOS wheels and MacOS jars
     - os: osx
       osx_image: xcode7
       env:
