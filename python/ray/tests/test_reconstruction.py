@@ -274,13 +274,14 @@ def test_basic_reconstruction_actor_task(ray_start_cluster,
     obj = a.large_object.remote()
     ray.get(dependent_task.options(resources={"node1": 1}).remote(obj))
 
+    # Workaround to kill the actor process too since there is a bug where the
+    # actor's plasma client hangs after the plasma store has exited.
+    os.kill(pid, SIGKILL)
+
     cluster.remove_node(node_to_kill, allow_graceful=False)
     cluster.add_node(
         num_cpus=1, resources={"node1": 2}, object_store_memory=10**8)
 
-    # Workaround to kill the actor process too since there is a bug where the
-    # actor's plasma client hangs after the plasma store has exited.
-    os.kill(pid, SIGKILL)
     wait_for_pid_to_exit(pid)
 
     if reconstruction_enabled:
