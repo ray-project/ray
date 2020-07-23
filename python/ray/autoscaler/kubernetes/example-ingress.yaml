@@ -289,8 +289,8 @@ worker_nodes:
                 paths:
                 - path: /
                   backend:
-                    # The value of the serviceName will be
-                    # automatically set to the name of the pod
+                    # The value of the serviceName must be set to `${RAY_POD_NAME} and will be
+                    # automatically replaced by the name of the pod.
                     serviceName: ${RAY_POD_NAME}
                     servicePort: 8000
 
