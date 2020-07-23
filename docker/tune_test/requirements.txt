@@ -32,3 +32,4 @@ xgboost
 zoopt>=0.4.0
 timm
 dataclasses
+tune-sklearn==0.0.5

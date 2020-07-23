@@ -114,37 +114,47 @@ upload_wheels() {
 }
 
 test_core() {
-  bazel test --config=ci --build_tests_only -- //:all -rllib/...
+  local args=(
+    "//:*"
+  )
+  case "${OSTYPE}" in
+    msys)
+      args+=(
+        -//:redis_gcs_client_test
+        -//:core_worker_test
+        -//:gcs_pub_sub_test
+        -//:gcs_server_test
+        -//:gcs_server_rpc_test
+        -//:subscription_executor_test
+      )
+      ;;
+  esac
+  bazel test --config=ci --build_tests_only -- "${args[@]}"
 }
 
 test_python() {
   if [ "${OSTYPE}" = msys ]; then
     local args=(python/ray/tests/...)
     args+=(
-      -python/ray/tests:test_actor_advanced
-      -python/ray/tests:test_actor_failures
       -python/ray/tests:test_advanced_2
-      -python/ray/tests:test_advanced_3
-      -python/ray/tests:test_array  # timeout
+      -python/ray/tests:test_advanced_3  # test_invalid_unicode_in_worker_log() fails on Windows
       -python/ray/tests:test_autoscaler_aws
-      -python/ray/tests:test_autoscaler_yaml
       -python/ray/tests:test_component_failures
       -python/ray/tests:test_cython
       -python/ray/tests:test_failure
       -python/ray/tests:test_global_gc
+      -python/ray/tests:test_job
       -python/ray/tests:test_memstat
       -python/ray/tests:test_metrics
       -python/ray/tests:test_multi_node
       -python/ray/tests:test_multi_node_2
-      -python/ray/tests:test_multiprocessing  # flaky
+      -python/ray/tests:test_multiprocessing  # test_connect_to_ray() fails to connect to raylet
       -python/ray/tests:test_node_manager
       -python/ray/tests:test_object_manager
       -python/ray/tests:test_projects
-      -python/ray/tests:test_queue  # timeout
-      -python/ray/tests:test_ray_init  # flaky
-      -python/ray/tests:test_reconstruction  # UnreconstructableError
-      -python/ray/tests:test_stress
-      -python/ray/tests:test_stress_sharded
+      -python/ray/tests:test_ray_init  # test_redis_port() seems to fail here, but pass in isolation
+      -python/ray/tests:test_stress  # timeout
+      -python/ray/tests:test_stress_sharded  # timeout
       -python/ray/tests:test_webui
     )
     bazel test -k --config=ci --test_timeout=600 --build_tests_only -- "${args[@]}";
@@ -200,7 +210,7 @@ build_sphinx_docs() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      sphinx-build -q -E -T -b html source _build/html
+      sphinx-build -q -E -W -T -b html source _build/html
     fi
   )
 }
@@ -223,14 +233,27 @@ install_go() {
   fi
 }
 
-install_ray() {
-  (
-    # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
-    bazel build -k "//:*"  # Full build first, since pip install will build only a subset of targets
+_bazel_build_before_install() {
+  local target
+  if [ "${OSTYPE}" = msys ]; then
+    # On Windows, we perform as full of a build as possible, to ensure the repository always remains buildable on Windows.
+    # (Pip install will not perform a full build.)
+    target="//:*"
+  else
+    # Just build Python on other platforms.
+    # This because pip install captures & suppresses the build output, which causes a timeout on CI.
+    target="//:ray_pkg"
+  fi
+  # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
+  bazel build -k "${target}"
+}
 
+install_ray() {
+  # TODO(mehrdadn): This function should be unified with the one in python/build-wheel-windows.sh.
+  (
     cd "${WORKSPACE_DIR}"/python
     build_dashboard_front_end
-    pip install -v -e .
+    keep_alive pip install -v -e .
   )
 }
 
@@ -260,43 +283,7 @@ build_wheels() {
       suppress_output "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
       ;;
     msys*)
-      (
-        local backup_conda="${CONDA_PREFIX}.bak" ray_uninstall_status=0
-        test ! -d "${backup_conda}"
-        pip uninstall -y ray || ray_uninstall_status=1
-        mv -n -T -- "${CONDA_PREFIX}" "${backup_conda}"  # Back up conda
-
-        local pyversion pyversions=()
-        for pyversion in 3.6 3.7 3.8; do
-          if [ "${pyversion}" = "${PYTHON-}" ]; then continue; fi  # we'll build ${PYTHON} last
-          pyversions+=("${pyversion}")
-        done
-
-        pyversions+=("${PYTHON-}")  # build this last so any subsequent steps use the right version
-        local local_dir="python/dist"
-        for pyversion in "${pyversions[@]}"; do
-          if [ -z "${pyversion}" ]; then continue; fi
-          "${ROOT_DIR}"/bazel-preclean.sh
-          git clean -q -f -f -x -d -e "${local_dir}" -e python/ray/dashboard/client
-          git checkout -q -f -- .
-          cp -R -f -a -T -- "${backup_conda}" "${CONDA_PREFIX}"
-          local existing_version
-          existing_version="$(python -s -c "import sys; print('%s.%s' % sys.version_info[:2])")"
-          if [ "${pyversion}" != "${existing_version}" ]; then
-            suppress_output conda install python="${pyversion}"
-          fi
-          install_ray
-          (cd "${WORKSPACE_DIR}"/python && python setup.py --quiet bdist_wheel)
-          pip uninstall -y ray
-          rm -r -f -- "${CONDA_PREFIX}"
-        done
-
-        mv -n -T -- "${backup_conda}" "${CONDA_PREFIX}"
-        "${ROOT_DIR}"/bazel-preclean.sh
-        if [ 0 -eq "${ray_uninstall_status}" ]; then  # If Ray was previously installed, restore it
-          install_ray
-        fi
-      )
+      suppress_output "${WORKSPACE_DIR}"/python/build-wheel-windows.sh
       ;;
   esac
 }
@@ -325,7 +312,7 @@ lint_bazel() {
   # Run buildifier without affecting external environment variables
   (
     mkdir -p -- "${GOPATH}"
-    export PATH="${GOPATH}/bin":"${GOROOT}/bin":"${PATH}"
+    export PATH="${GOPATH}/bin:${GOROOT}/bin:${PATH}"
 
     # Build buildifier
     go get github.com/bazelbuild/buildtools/buildifier
@@ -342,8 +329,11 @@ lint_web() {
     . "${HOME}/.nvm/nvm.sh"
     install_npm_project
     nvm use --silent node
-    node_modules/.bin/eslint --max-warnings 0 $(find src -name "*.ts" -or -name "*.tsx")
-    node_modules/.bin/prettier --check $(find src -name "*.ts" -or -name "*.tsx")
+    local filenames
+    # shellcheck disable=SC2207
+    filenames=($(find src -name "*.ts" -or -name "*.tsx"))
+    node_modules/.bin/eslint --max-warnings 0 "${filenames[@]}"
+    node_modules/.bin/prettier --check "${filenames[@]}"
     node_modules/.bin/prettier --check public/index.html
   )
 }
@@ -380,6 +370,7 @@ lint() {
   # Checkout a clean copy of the repo to avoid seeing changes that have been made to the current one
   (
     WORKSPACE_DIR="$(TMPDIR="${WORKSPACE_DIR}/.." mktemp -d)"
+    # shellcheck disable=SC2030
     ROOT_DIR="${WORKSPACE_DIR}"/ci/travis
     git worktree add -q "${WORKSPACE_DIR}"
     pushd "${WORKSPACE_DIR}"
@@ -394,6 +385,7 @@ _check_job_triggers() {
   job_names="$1"
 
   local variable_definitions
+  # shellcheck disable=SC2031
   variable_definitions=($(python "${ROOT_DIR}"/determine_tests_to_run.py))
   if [ 0 -lt "${#variable_definitions[@]}" ]; then
     local expression restore_shell_state=""
@@ -405,6 +397,7 @@ _check_job_triggers() {
     eval "${restore_shell_state}" "${expression}"  # Restore set -x, then evaluate expression
   fi
 
+  # shellcheck disable=SC2086
   if ! (set +x && should_run_job ${job_names//,/ }); then
     if [ "${GITHUB_ACTIONS-}" = true ]; then
       # If this job is to be skipped, emit 'exit' into .bashrc to quickly exit all following steps.
@@ -446,10 +439,15 @@ init() {
 
   configure_system
 
+  # shellcheck disable=SC2031
   . "${ROOT_DIR}"/install-dependencies.sh  # Script is sourced to propagate up environment changes
 }
 
 build() {
+  if [ "${LINT-}" != 1 ]; then
+    _bazel_build_before_install
+  fi
+
   if ! need_wheels; then
     install_ray
     if [ "${LINT-}" = 1 ]; then

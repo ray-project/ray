@@ -5,7 +5,7 @@ set -e
 
 TOOLS_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
-pushd $TOOLS_DIR
+pushd "$TOOLS_DIR"
 
 # Download Prometheus server.
 unamestr="$(uname)"

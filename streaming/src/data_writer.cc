@@ -1,15 +1,14 @@
-#include <memory>
-
-#include <memory>
+#include "data_writer.h"
 
 #include <signal.h>
 #include <unistd.h>
+
 #include <chrono>
 #include <functional>
 #include <list>
+#include <memory>
 #include <numeric>
 
-#include "data_writer.h"
 #include "util/streaming_util.h"
 
 namespace ray {

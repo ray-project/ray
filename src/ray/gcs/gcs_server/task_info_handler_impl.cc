@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "task_info_handler_impl.h"
+#include "ray/gcs/gcs_server/task_info_handler_impl.h"
 
 namespace ray {
 namespace rpc {

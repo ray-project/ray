@@ -1,5 +1,6 @@
 import asyncio
 import errno
+import io
 import json
 import fnmatch
 import os
@@ -7,9 +8,14 @@ import subprocess
 import sys
 import time
 import socket
+import math
+
+from contextlib import redirect_stdout, redirect_stderr
 
 import ray
 import ray.services
+import ray.utils
+from ray.scripts.scripts import main as ray_main
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
 
@@ -49,6 +55,63 @@ def _pid_alive(pid):
             raise
         alive = False
     return alive
+
+
+def check_call_module(main, argv, capture_stdout=False, capture_stderr=False):
+    # We use this function instead of calling the "ray" command to work around
+    # some deadlocks that occur when piping ray's output on Windows
+    stream = io.TextIOWrapper(io.BytesIO(), encoding=sys.stdout.encoding)
+    old_argv = sys.argv[:]
+    try:
+        sys.argv = argv[:]
+        try:
+            with redirect_stderr(stream if capture_stderr else sys.stderr):
+                with redirect_stdout(stream if capture_stdout else sys.stdout):
+                    main()
+        finally:
+            stream.flush()
+    except SystemExit as ex:
+        if ex.code:
+            output = stream.buffer.getvalue()
+            raise subprocess.CalledProcessError(ex.code, argv, output)
+    except Exception as ex:
+        output = stream.buffer.getvalue()
+        raise subprocess.CalledProcessError(1, argv, output, ex.args[0])
+    finally:
+        sys.argv = old_argv
+        if capture_stdout:
+            sys.stdout.buffer.write(stream.buffer.getvalue())
+        elif capture_stderr:
+            sys.stderr.buffer.write(stream.buffer.getvalue())
+    return stream.buffer.getvalue()
+
+
+def check_call_ray(args, capture_stdout=False, capture_stderr=False):
+    # We use this function instead of calling the "ray" command to work around
+    # some deadlocks that occur when piping ray's output on Windows
+    argv = ["ray"] + args
+    if sys.platform == "win32":
+        result = check_call_module(
+            ray_main,
+            argv,
+            capture_stdout=capture_stdout,
+            capture_stderr=capture_stderr)
+    else:
+        stdout_redir = None
+        stderr_redir = None
+        if capture_stdout:
+            stdout_redir = subprocess.PIPE
+        if capture_stderr and capture_stdout:
+            stderr_redir = subprocess.STDOUT
+        elif capture_stderr:
+            stderr_redir = subprocess.PIPE
+        proc = subprocess.Popen(argv, stdout=stdout_redir, stderr=stderr_redir)
+        (stdout, stderr) = proc.communicate()
+        if proc.returncode:
+            raise subprocess.CalledProcessError(proc.returncode, argv, stdout,
+                                                stderr)
+        result = b"".join([s for s in [stdout, stderr] if s is not None])
+    return result
 
 
 def wait_for_pid_to_exit(pid, timeout=20):
@@ -112,6 +175,7 @@ def run_string_as_driver(driver_script):
     with proc:
         output = proc.communicate(driver_script.encode("ascii"))[0]
         if proc.returncode:
+            print(ray.utils.decode(output))
             raise subprocess.CalledProcessError(proc.returncode, proc.args,
                                                 output, proc.stderr)
         out = ray.utils.decode(output)
@@ -153,6 +217,15 @@ def flat_errors():
 
 def relevant_errors(error_type):
     return [error for error in flat_errors() if error["type"] == error_type]
+
+
+def wait_for_num_actors(num_actors, timeout=10):
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        if len(ray.actors()) >= num_actors:
+            return
+        time.sleep(0.1)
+    raise RayTestTimeoutException("Timed out while waiting for global state.")
 
 
 def wait_for_errors(error_type, num_errors, timeout=20):
@@ -266,6 +339,22 @@ class Semaphore:
 
     async def locked(self):
         return self._sema.locked()
+
+
+def dicts_equal(dict1, dict2, abs_tol=1e-4):
+    """Compares to dicts whose values may be floating point numbers."""
+
+    if dict1.keys() != dict2.keys():
+        return False
+
+    for k, v in dict1.items():
+        if isinstance(v, float) and \
+           isinstance(dict2[k], float) and \
+           math.isclose(v, dict2[k], abs_tol=abs_tol):
+            continue
+        if v != dict2[k]:
+            return False
+    return True
 
 
 @ray.remote
