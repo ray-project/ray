@@ -71,6 +71,8 @@ class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
 
         # If metrics description is missing, we should notify cpp processes
         # that we need them. Cpp processes will then report them to here.
+        # We need it when (1) a new metric is reported (application metric)
+        # (2) a reporter goes down and restarted (currently not implemented).
         return reporter_pb2.ReportMetricsReply(
             metrcs_description_required=metrcs_description_required)
 

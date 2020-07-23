@@ -64,6 +64,8 @@ void MetricsAgentExporter::ReportMetrics(const std::vector<MetricPoint> &points)
     }
     // If description and units information is requested from
     // the metrics agent, append the information.
+    // TODO(sang): It can be inefficient if there are lots of new registered metrics.
+    // We should make it more efficient if there's compelling use cases.
     if (should_update_description_) {
       metric_point->set_description(point.measure_descriptor.description());
       metric_point->set_units(point.measure_descriptor.units());

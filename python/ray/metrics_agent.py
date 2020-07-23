@@ -6,6 +6,7 @@ from typing import List
 
 from opencensus.stats import aggregation
 from opencensus.stats import measure as measure_module
+from opencensus.stats.measurement_map import MeasurementMap
 from opencensus.stats import stats as stats_module
 from opencensus.tags import tag_key as tag_key_module
 from opencensus.tags import tag_map as tag_map_module
@@ -13,12 +14,15 @@ from opencensus.tags import tag_value as tag_value_module
 from opencensus.stats import view
 
 from ray import prometheus_exporter
+from ray.core.generated.common_pb2 import MetricPoint
+from ray.ray_constants import DEFAULT_METRICS_EXPORT_PORT
 
 logger = logging.getLogger(__name__)
 
 
-# Since metrics agent only collects the point data from cpp processes,
-# we don't need any metrics types other than gauge.
+# We don't need counter, histogram, or sum because reporter just needs to
+# collect momental values (gauge) that are already counted or sampled
+# (histogram for example), or summed inside cpp processes.
 class Gauge(view.View):
     def __init__(self, name, description, unit,
                  tags: List[tag_key_module.TagKey]):
@@ -66,23 +70,19 @@ class Gauge(view.View):
 
 
 class MetricsAgent:
-    def __init__(self, metrics_export_port):
+    def __init__(self, metrics_export_port: int = None):
         if not metrics_export_port:
-            metrics_export_port = 8888
+            metrics_export_port = DEFAULT_METRICS_EXPORT_PORT
 
         # OpenCensus classes.
-        self.stats = stats_module.stats
-        self.view_manager = self.stats.view_manager
-        self.stats_recorder = self.stats.stats_recorder
+        self.view_manager = stats_module.stats.view_manager
+        self.stats_recorder = stats_module.stats.stats_recorder
         # Port where we will expose metrics.
         self.metrics_export_port = metrics_export_port
-        # Measure to record metrics.
-        self._measure_map = self.stats_recorder.new_measurement_map()
         # metric name(str) -> view (view.View)
-        # It is updated dynamically as new metrics
-        # are delivered from cpp processes.
         self._registry = defaultdict(lambda: None)
-        # Lock required because gRPC server uses multi-threads.
+        # Lock required because gRPC server uses
+        # multiple threads to process requests.
         self._lock = threading.Lock()
         # Whether or not there are metrics that are missing description and
         # units information. This is used to dynamically update registry.
@@ -96,22 +96,30 @@ class MetricsAgent:
 
     @property
     def registry(self):
+        """Return metric definition registry.
+
+        Metrics definition registry is dynamically updated
+        by metrics reported by Ray processes.
+        """
         return self._registry
 
-    def record_metrics_points(self, metrics_points):
+    def record_metrics_points(self, metrics_points: List[MetricPoint]):
         with self._lock:
+            measurement_map = self.stats_recorder.new_measurement_map()
             for metric_point in metrics_points:
                 self._register_if_needed(metric_point)
-                self._record(metric_point)
+                self._record(metric_point, measurement_map)
             return self._missing_information
 
-    def _record(self, metric_point):
+    def _record(self, metric_point: MetricPoint,
+                measurement_map: MeasurementMap):
         """Record a single metric point to export.
 
         NOTE: When this method is called, the caller should acquire a lock.
 
         Args:
-            metric_point metric point defined in common.proto
+            metric_point(MetricPoint) metric point defined in common.proto
+            measurement_map(MeasurementMap): Measurement map to record metrics.
         """
         metric_name = metric_point.metric_name
         tags = metric_point.tags
@@ -127,13 +135,11 @@ class MetricsAgent:
             tag_map.insert(tag_key, tag_value)
 
         metric_value = metric_point.value
-        # The class should be thread-safe because GRPC server
-        # uses it with a threadpool.
-        self._measure_map.measure_float_put(metric.measure, metric_value)
+        measurement_map.measure_float_put(metric.measure, metric_value)
         # NOTE: When we record this metric, timestamp will be renewed.
-        self._measure_map.record(tag_map)
+        measurement_map.record(tag_map)
 
-    def _register_if_needed(self, metric_point):
+    def _register_if_needed(self, metric_point: MetricPoint):
         """Register metrics if they are not registered.
 
         NOTE: When this method is called, the caller should acquire a lock.
