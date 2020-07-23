@@ -63,7 +63,7 @@ public class MetricRegistry {
           scheduledExecutorService = null;
           LOG.info("Metric registry has been shut down.");
         } else {
-          LOG.warn("Failed to shut down metric registry");
+          LOG.warn("Failed to shut down metric registry service.");
         }
       }
     }

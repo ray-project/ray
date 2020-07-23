@@ -4,6 +4,12 @@ import com.google.common.base.MoreObjects;
 import java.util.Map;
 import java.util.Objects;
 
+/**
+ * MetricId represents a metric with a given type, name and tags.
+ * If two metrics have the same type and name but different tags(including key and value), they have
+ * a different MetricId. And in this way, {@link MetricRegistry} can register two metrics with same
+ * name but different tags.
+ */
 public class MetricId {
 
   private final MetricType type;
