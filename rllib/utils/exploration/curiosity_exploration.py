@@ -1,7 +1,7 @@
 """
 Curiosity-driven Exploration by Self-supervised Prediction - Pathak, Agrawal,
 Efros, and Darrell - UC Berkeley - ICML 2017.
-https://arxiv.org/pdf/1705.05363.pdf
+
 This implements the curiosty-based loss function from
 https://arxiv.org/pdf/1705.05363.pdf. We learn a simplified model of the
 environment based on three networks:
@@ -22,8 +22,9 @@ reward.
 from gym.spaces import Space
 from typing import Union
 
-#TODO initialization
 # TODO alphabetize imports, check type annotations, lint
+# TODO how to test if action space is discrete
+# TODO should i use the default docstring format. also check the types with sven
 from ray.rllib.utils.framework import try_import_torch, TensorType
 from ray.rllib.utils.types import TensorType, TensorStructType
 from ray.rllib.models.action_dist import ActionDistribution
@@ -36,7 +37,11 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 
 torch, nn = try_import_torch()
 
+"""
+Example: give a full example config
 
+TODO
+"""
 class Curiosity(Exploration):
 
     def __init__(self,
@@ -60,10 +65,10 @@ class Curiosity(Exploration):
             **kwargs)
 
 
-        # TODO (tanay): get from the config
-        self.obs_space_dim = 4 #self.model.obs_space.shape[0]
+        # TODO (tanay): config fc_net_hiddens. ask sven what the convention is
+        self.obs_space_dim = self.model.obs_space.shape[0]
         self.embedding_dim = 6
-        self.action_space_dim = 1
+        self.action_space_dim = 1 # TODO can we always assume 1?
 
         # List of dimension of each layer
         features_dims = [self.obs_space_dim, 3, self.embedding_dim]
@@ -72,8 +77,8 @@ class Curiosity(Exploration):
             self.embedding_dim + self.action_space_dim, 5, self.embedding_dim
         ]
 
-        # Pass in activation_fn in model config
-        # Two layer relu nets
+        # Pass in activation_fn in model config. ask sven for convention
+        # Two layer relu nets. look over hidden_dims instead
         self.forwards_model = nn.Sequential(
             SlimFC(
                 in_size=forwards_dims[0],
@@ -119,12 +124,11 @@ class Curiosity(Exploration):
         self.optimizer = torch.optim.Adam(
             forward_params + inverse_params + feature_params,
             lr=1e-3)
-        # TODO lr=config["lr"]
 
+        # TODO lr, submodule, framework should all be config parameters
         submodule_type = "EpsilonGreedy"
         framework = "torch"
 
-        # TODO get from policy config
         if submodule_type == "EpsilonGreedy":
             self.exploration_submodule = EpsilonGreedy(
                 action_space=action_space,
@@ -146,58 +150,89 @@ class Curiosity(Exploration):
                                action_distribution: ActionDistribution,
                                timestep: Union[int, TensorType],
                                explore: bool = True):
+        """
+        Returns the action to take next
+
+        Args:
+            action_distribution (ActionDistribution): The probabilistic
+                distribution we sample actions from
+            timestep (Union[int, TensorType]):
+            explore (bool): If true, uses the submodule strategy to select the
+                next action
+        """
         return self.exploration_submodule.get_exploration_action(
             action_distribution=action_distribution, timestep=timestep)
 
     def get_intrinsic_loss(self):
+        """
+        Returns the intrinsic losses, as a batch
+        """
         # how do we want to do this
         return 0
 
+    # TODO what is TensorType under the hood? should it return TensorType as well?
     def _get_latent_vector(self, obs: TensorType):
+        """
+        Returns the embedded vector phi(state)
+            obs (TensorType): a batch of states
+        """
         return self.features_model(obs)
 
     def postprocess_trajectory(self, policy, sample_batch, tf_sess=None):
-        # np arrays from sample_batch
+        """
+        Calculates the intrinsic curiosity based loss
+        policy (TODO what type should this be): The model policy
+        sample_batch (SampleBatch): a SampleBatch object containing
+            data from worker environmental rollouts
+        tf_sess (TODO what type): If tensorflow was supported, this would be
+            the execution session
+        """
 
+        # Extract the relevant data from the SampleBatch, and cast to Tensors
         obs_list = torch.from_numpy(sample_batch["obs"]).float()
         next_obs_list = torch.from_numpy(sample_batch["new_obs"]).float()
         emb_next_obs_list = self._get_latent_vector(next_obs_list).float()
-
         actions_list = torch.from_numpy(sample_batch["actions"]).float()
         rewards_list = torch.from_numpy(sample_batch["rewards"]).float()
 
-        # Equations (2) and (3) in paper.
+        # Equation (2) in paper.
         actions_pred = self._predict_action(obs_list, next_obs_list)
         embedding_pred = self._predict_next_obs(obs_list, actions_list)
 
 
-
-        # Gives a vector of losses, of L2 losses corresponding to each observation
+        # A vector of L2 losses corresponding to each observation, Equation (7) in paper
         embedding_loss = torch.sum(
             self.criterion(emb_next_obs_list, embedding_pred),
             dim=-1)
+
+        # Equation (3) in paper. TODO discrete action space
         actions_loss = self.criterion(actions_pred.squeeze(1), actions_list)
 
         # todo ask sven about gpu/cpu and which operations should happen on both
         # also when do we convert from numpy array to tensor
 
-        # does MSE loss turn it to a scalar first
+        # Modifies environment rewards by subtracting intrinsic rewards
         sample_batch["rewards"] = sample_batch["rewards"] \
                                   - embedding_loss.clone().detach().numpy() \
                                   - actions_loss.clone().detach().numpy()
 
-        loss = torch.sum(embedding_loss) + torch.sum(actions_loss)
 
-        # Normally the gradient update is batched.
-        # sample_batch is also batched so we backprop over everything.
+        # sample_batch is already batched so we backprop over everything.
         self.optimizer.zero_grad()
+        loss = torch.sum(embedding_loss) + torch.sum(actions_loss)
         loss.backward()
         self.optimizer.step()
 
         return sample_batch
 
-    # raw observation from the environment as a tensor
     def _predict_action(self, obs: TensorType, next_obs: TensorType):
+        """
+        Returns the predicted action, given two states. This is the inverse
+        dynamics model.
+
+        obs (TensorType): Observed state at time t.
+        next_obs (TensorType): Observed state at time t+1
+        """
         return self.inverse_model(
             torch.cat(
                 (self._get_latent_vector(obs),
@@ -206,6 +241,12 @@ class Curiosity(Exploration):
 
     # raw obs (not embedded)
     def _predict_next_obs(self, obs: TensorType, action: TensorType):
+        """
+        Returns the predicted next state, given an action and state.
+
+        obs (TensorType): Observed state at time t.
+        action (TensorType): Action taken at time t
+        """
         return self.forwards_model(
             torch.cat(
                 (self._get_latent_vector(obs), action.unsqueeze(1)),
