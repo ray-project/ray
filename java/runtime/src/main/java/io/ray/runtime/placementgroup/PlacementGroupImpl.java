@@ -1,6 +1,7 @@
-package io.ray.api.placementgroup;
+package io.ray.runtime.placementgroup;
 
-import io.ray.api.id.PlacementGroupId;
+import io.ray.api.placementgroup.PlacementBundle;
+import io.ray.api.placementgroup.PlacementGroup;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -9,19 +10,19 @@ import java.util.List;
  */
 public class PlacementGroupImpl implements PlacementGroup {
 
-  private List<Bundle> bundles = new ArrayList<>();
+  private List<PlacementBundle> placementBundles = new ArrayList<>();
 
   public PlacementGroupImpl() {
   }
 
   public PlacementGroupImpl(PlacementGroupId placementGroupId, int bundleCount) {
     for (int index = 0; index < bundleCount; ++index) {
-      this.bundles.add(new Bundle(placementGroupId, index));
+      this.placementBundles.add(new PlacementBundleImpl(placementGroupId, index));
     }
   }
 
   @Override
-  public Bundle getBundle(int index) {
-    return bundles.get(index);
+  public PlacementBundle getBundle(int index) {
+    return placementBundles.get(index);
   }
 }

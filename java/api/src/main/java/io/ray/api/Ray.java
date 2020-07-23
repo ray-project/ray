@@ -254,7 +254,7 @@ public final class Ray extends RayCall {
    * This function only works when gcs actor manager is turned on.
    *
    * @param bundles Preallocated resource list.
-   * @param strategy Actor placement strategy, the default is `PACK`.
+   * @param strategy Actor placement strategy.
    * @return A handle to the created placement group.
    */
   public static PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,

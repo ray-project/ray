@@ -1,10 +1,14 @@
-package io.ray.api.id;
+package io.ray.runtime.placementgroup;
 
+import io.ray.api.id.BaseId;
 import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Random;
 
+/**
+ * Represents the id of a placement group.
+ */
 public class PlacementGroupId extends BaseId implements Serializable {
 
   public static final int LENGTH = 16;
@@ -15,10 +19,16 @@ public class PlacementGroupId extends BaseId implements Serializable {
     super(id);
   }
 
+  /**
+   * Creates a PlacementGroupId from the given ByteBuffer.
+   */
   public static PlacementGroupId fromByteBuffer(ByteBuffer bb) {
     return new PlacementGroupId(byteBuffer2Bytes(bb));
   }
 
+  /**
+   * Create a PlacementGroupId instance according to the given bytes.
+   */
   public static PlacementGroupId fromBytes(byte[] bytes) {
     return new PlacementGroupId(bytes);
   }

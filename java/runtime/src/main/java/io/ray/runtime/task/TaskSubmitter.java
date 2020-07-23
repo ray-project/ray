@@ -50,6 +50,12 @@ public interface TaskSubmitter {
   List<ObjectId> submitActorTask(BaseActorHandle actor, FunctionDescriptor functionDescriptor,
                                  List<FunctionArg> args, int numReturns, CallOptions options);
 
+  /**
+   * Create a placement group.
+   * @param bundles Preallocated resource list.
+   * @param strategy Actor placement strategy.
+   * @return A handle to the created placement group.
+   */
   PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
       PlacementStrategy strategy);
 

@@ -1,7 +1,8 @@
 package io.ray.api.options;
 
 import io.ray.api.Ray;
-import io.ray.api.placementgroup.Bundle;
+import io.ray.api.placementgroup.PlacementBundle;
+import io.ray.api.placementgroup.PlacementGroup;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -14,18 +15,18 @@ public class ActorCreationOptions extends BaseTaskOptions {
   public final int maxRestarts;
   public final String jvmOptions;
   public final int maxConcurrency;
-  public final Bundle bundle;
+  public final PlacementBundle placementBundle;
 
   private ActorCreationOptions(boolean global, String name, Map<String, Double> resources,
                                int maxRestarts, String jvmOptions, int maxConcurrency,
-                               Bundle bundle) {
+                               PlacementBundle placementBundle) {
     super(resources);
     this.global = global;
     this.name = name;
     this.maxRestarts = maxRestarts;
     this.jvmOptions = jvmOptions;
     this.maxConcurrency = maxConcurrency;
-    this.bundle = bundle;
+    this.placementBundle = placementBundle;
   }
 
   /**
@@ -38,7 +39,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
     private int maxRestarts = 0;
     private String jvmOptions = null;
     private int maxConcurrency = 1;
-    private Bundle bundle;
+    private PlacementBundle placementBundle;
 
     /**
      * Set the actor name of a named actor.
@@ -140,14 +141,21 @@ public class ActorCreationOptions extends BaseTaskOptions {
       return this;
     }
 
-    public Builder setBundle(Bundle bundle) {
-      this.bundle = bundle;
+    /**
+     * Set the placement bundle of the actor.
+     * The placement bundle is get by index via {@link PlacementGroup#getBundle(int)}.
+     *
+     * @param placementBundle The placement bundle of the actor.
+     * @return self
+     */
+    public Builder setPlacementBundle(PlacementBundle placementBundle) {
+      this.placementBundle = placementBundle;
       return this;
     }
 
     public ActorCreationOptions build() {
       return new ActorCreationOptions(
-          global, name, resources, maxRestarts, jvmOptions, maxConcurrency, bundle);
+          global, name, resources, maxRestarts, jvmOptions, maxConcurrency, placementBundle);
     }
   }
 
