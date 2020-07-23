@@ -178,15 +178,6 @@ class MultiAgentSampleBatchBuilder:
 
         # Apply postprocessor.
         post_batches = {}
-        #if self.clip_rewards is True:
-        #    for _, (_, pre_batch) in pre_batches.items():
-        #        pre_batch["rewards"] = np.sign(pre_batch["rewards"])
-        #elif self.clip_rewards:
-        #    for _, (_, pre_batch) in pre_batches.items():
-        #        pre_batch["rewards"] = np.clip(
-        #            pre_batch["rewards"],
-        #            a_min=-self.clip_rewards,
-        #            a_max=self.clip_rewards)
         for agent_id, (_, pre_batch) in pre_batches.items():
             other_batches = pre_batches.copy()
             del other_batches[agent_id]
