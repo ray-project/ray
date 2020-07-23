@@ -38,6 +38,7 @@ provider:
     type: local
     head_ip: YOUR_HEAD_NODE_HOSTNAME
     worker_ips: [WORKER_NODE_1_HOSTNAME, WORKER_NODE_2_HOSTNAME, ... ]
+#    server_address: "<host>:<port>" # optional when running automatic cluster management on prem.
 
 # How Ray will authenticate with newly launched nodes.
 auth:

@@ -4,13 +4,26 @@ import json
 import os
 import socket
 import logging
+import getpass
+from http.client import RemoteDisconnected
 
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.local.config import bootstrap_local
-from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, NODE_TYPE_WORKER, \
-    NODE_TYPE_HEAD
+from ray.autoscaler.tags import (
+    TAG_RAY_NODE_TYPE,
+    NODE_TYPE_WORKER,
+    NODE_TYPE_HEAD,
+)
 
 logger = logging.getLogger(__name__)
+
+try:
+    import requests  # `requests` is not part of stdlib.
+    from requests.exceptions import ConnectionError
+except ImportError:
+    requests = None
+    logger.exception("Couldn't import `requests` library. "
+                     "Be sure to install it on the client side.")
 
 filelock_logger = logging.getLogger("filelock")
 filelock_logger.setLevel(logging.WARNING)
@@ -45,8 +58,8 @@ class ClusterState:
                             "state": "terminated",
                         }
                     else:
-                        assert workers[worker_ip]["tags"][
-                            TAG_RAY_NODE_TYPE] == NODE_TYPE_WORKER
+                        assert (workers[worker_ip]["tags"][TAG_RAY_NODE_TYPE]
+                                == NODE_TYPE_WORKER)
                 if provider_config["head_ip"] not in workers:
                     workers[provider_config["head_ip"]] = {
                         "tags": {
@@ -55,8 +68,14 @@ class ClusterState:
                         "state": "terminated",
                     }
                 else:
-                    assert workers[provider_config["head_ip"]]["tags"][
-                        TAG_RAY_NODE_TYPE] == NODE_TYPE_HEAD
+                    assert (workers[provider_config["head_ip"]]["tags"][
+                        TAG_RAY_NODE_TYPE] == NODE_TYPE_HEAD)
+                # Ameer: relevant when a user reduces the number of workers
+                # without changing the headnode.
+                for worker_ip in list(workers):
+                    if worker_ip not in provider_config["worker_ips"]:
+                        del workers[worker_ip]
+
                 assert len(workers) == len(provider_config["worker_ips"]) + 1
                 with open(self.save_path, "w") as f:
                     logger.debug("ClusterState: "
@@ -90,12 +109,75 @@ class LocalNodeProvider(NodeProvider):
     """
 
     def __init__(self, provider_config, cluster_name):
+        self.auto_scheduling_mode = False
+        if "server_address" in provider_config:
+            self.auto_scheduling_mode = True
+            self.server_address = provider_config["server_address"]
+            provider_config, cluster_name = self._get_node_configs(
+                provider_config, cluster_name)
+
         NodeProvider.__init__(self, provider_config, cluster_name)
-        self.state = ClusterState("/tmp/cluster-{}.lock".format(cluster_name),
-                                  "/tmp/cluster-{}.state".format(cluster_name),
-                                  provider_config)
+        self.state = ClusterState(
+            "/tmp/cluster-{}.lock".format(cluster_name),
+            "/tmp/cluster-{}.state".format(cluster_name),
+            provider_config,
+        )
+
+    def _get_node_configs(self, provider_config, cluster_name):
+        # Concatenate user_id to make cluster names unique between users.
+        new_cluster_name = cluster_name + "_" + getpass.getuser()
+        request = {
+            "request_type": "get_node_ips",
+            "cluster_name": new_cluster_name,
+            "num_workers": provider_config["max_workers"],
+        }
+        node_ips = self.get_http_response(request, self.server_address)
+        if "head_ip" not in node_ips:
+            raise OSError("Not enough nodes are available." +
+                          " Consider requesting less workers.")
+        else:
+            provider_config["head_ip"] = node_ips["head_ip"]
+            provider_config["worker_ips"] = node_ips["worker_ips"]
+        return provider_config, new_cluster_name
+
+    @staticmethod
+    def get_http_response(request, server_address):
+        headers = {
+            "Content-Type": "application/json",
+        }
+        request_message = json.dumps(request).encode()
+        http_server_address = "http://" + server_address
+        try:
+            r = requests.get(
+                http_server_address,
+                data=request_message,
+                headers=headers,
+                timeout=None,
+            )
+        except (RemoteDisconnected, ConnectionError):
+            logger.error(
+                "Could not connect to: " + server_address +
+                ". Did you run ray onprem-server start <on-prem-server.yaml>?")
+            raise
+
+        response = r.json()
+        return response
+
+    def _still_valid_cluster(self):
+        if self.auto_scheduling_mode:
+            request = {
+                "request_type": "still_valid_cluster",
+                "cluster_name": self.cluster_name,
+                "provider_config": self.provider_config,
+            }
+            is_valid = self.get_http_response(request, self.server_address)
+            if not is_valid:
+                raise OSError(
+                    "Cluster: " + self.cluster_name +
+                    " is not valid any more. Please restart the cluster.")
 
     def non_terminated_nodes(self, tag_filters):
+        self._still_valid_cluster()
         workers = self.state.get()
         matching_ips = []
         for worker_ip, info in workers.items():
@@ -111,27 +193,34 @@ class LocalNodeProvider(NodeProvider):
         return matching_ips
 
     def is_running(self, node_id):
+        self._still_valid_cluster()
         return self.state.get()[node_id]["state"] == "running"
 
     def is_terminated(self, node_id):
+        self._still_valid_cluster()
         return not self.is_running(node_id)
 
     def node_tags(self, node_id):
+        self._still_valid_cluster()
         return self.state.get()[node_id]["tags"]
 
     def external_ip(self, node_id):
+        self._still_valid_cluster()
         return socket.gethostbyname(node_id)
 
     def internal_ip(self, node_id):
+        self._still_valid_cluster()
         return socket.gethostbyname(node_id)
 
     def set_node_tags(self, node_id, tags):
+        self._still_valid_cluster()
         with self.state.file_lock:
             info = self.state.get()[node_id]
             info["tags"].update(tags)
             self.state.put(node_id, info)
 
     def create_node(self, node_config, tags, count):
+        self._still_valid_cluster()
         node_type = tags[TAG_RAY_NODE_TYPE]
         with self.state.file_lock:
             workers = self.state.get()
@@ -144,10 +233,18 @@ class LocalNodeProvider(NodeProvider):
                     return
 
     def terminate_node(self, node_id):
+        self._still_valid_cluster()
         workers = self.state.get()
         info = workers[node_id]
         info["state"] = "terminated"
         self.state.put(node_id, info)
+        if (self.auto_scheduling_mode
+                and node_id == self.provider_config["head_ip"]):
+            request = {
+                "request_type": "release_cluster",
+                "cluster_name": self.cluster_name,
+            }
+            self.get_http_response(request, self.server_address)
 
     @staticmethod
     def bootstrap_config(cluster_config):
