@@ -647,7 +647,8 @@ class Node:
             use_profiler (bool): True if we should start the process in the
                 valgrind profiler.
         """
-        raylet_out_name, raylet_err_name = self.get_log_file_names("raylet")
+        raylet_out_name, raylet_err_name = self.get_log_file_names(
+            "raylet", unique=True)
         stdout_file, stderr_file = (open_log(raylet_out_name),
                                     open_log(raylet_err_name))
         process_info = ray.services.start_raylet(

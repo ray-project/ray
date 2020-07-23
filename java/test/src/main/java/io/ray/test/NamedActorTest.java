@@ -52,26 +52,28 @@ public class NamedActorTest extends BaseTest {
     Assert.assertEquals(namedActor.get().task(Counter::increment).remote().get(),
         Integer.valueOf(2));
 
-    // Get the global actor from another driver.
-    RayConfig rayConfig = TestUtils.getRuntime().getRayConfig();
-    ProcessBuilder builder = new ProcessBuilder(
-        "java",
-        "-cp",
-        System.getProperty("java.class.path"),
-        "-Dray.redis.address=" + rayConfig.getRedisAddress(),
-        "-Dray.object-store.socket-name=" + rayConfig.objectStoreSocketName,
-        "-Dray.raylet.socket-name=" + rayConfig.rayletSocketName,
-        "-Dray.raylet.node-manager-port=" + rayConfig.getNodeManagerPort(),
-        NamedActorTest.class.getName(),
-        name);
-    builder.redirectError(ProcessBuilder.Redirect.INHERIT);
-    Process driver = builder.start();
-    Assert.assertTrue(driver.waitFor(60, TimeUnit.SECONDS));
-    Assert.assertEquals(driver.exitValue(), 0,
-        "The driver exited with code " + driver.exitValue());
+    if (!TestUtils.isSingleProcessMode()) {
+      // Get the global actor from another driver.
+      RayConfig rayConfig = TestUtils.getRuntime().getRayConfig();
+      ProcessBuilder builder = new ProcessBuilder(
+          "java",
+          "-cp",
+          System.getProperty("java.class.path"),
+          "-Dray.redis.address=" + rayConfig.getRedisAddress(),
+          "-Dray.object-store.socket-name=" + rayConfig.objectStoreSocketName,
+          "-Dray.raylet.socket-name=" + rayConfig.rayletSocketName,
+          "-Dray.raylet.node-manager-port=" + rayConfig.getNodeManagerPort(),
+          NamedActorTest.class.getName(),
+          name);
+      builder.redirectError(ProcessBuilder.Redirect.INHERIT);
+      Process driver = builder.start();
+      Assert.assertTrue(driver.waitFor(60, TimeUnit.SECONDS));
+      Assert.assertEquals(driver.exitValue(), 0,
+          "The driver exited with code " + driver.exitValue());
 
-    Assert.assertEquals(namedActor.get().task(Counter::increment).remote().get(),
-        Integer.valueOf(4));
+      Assert.assertEquals(namedActor.get().task(Counter::increment).remote().get(),
+          Integer.valueOf(4));
+    }
   }
 
   public static void main(String[] args) {
