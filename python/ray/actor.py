@@ -440,7 +440,7 @@ class ActorClass:
             detached: DEPRECATED.
             placement_group_id: the placement group this actor belongs to, 
                 if none means no placement group belongs to.
-            placement_group_bundle_index: the bundle index of the bundle 
+            placement_group_bundle_index: the index of the bundle
                 if the actor benlongs to a placment group. 
                 If it's none, it's means don't belong to a placement group.
 
@@ -507,7 +507,6 @@ class ActorClass:
         if placement_group_id is not None and placement_group_bundle_index is None:
             raise ValueError("The placement_group_id is set."
                              "But the bundle_index is not set.")
-            pass
 
         # Set the actor's default resources if not already set. First three
         # conditions are to check that no resources were specified in the
