@@ -344,13 +344,14 @@ def test_basic_reconstruction_actor_constructor(ray_start_cluster,
     ray.get(a.dependent_task.remote(obj))
     pid = ray.get(a.pid.remote())
 
+    # Workaround to kill the actor process too since there is a bug where the
+    # actor's plasma client hangs after the plasma store has exited.
+    os.kill(pid, SIGKILL)
+
     cluster.remove_node(node_to_kill, allow_graceful=False)
     cluster.add_node(
         num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
 
-    # Workaround to kill the actor process too since there is a bug where the
-    # actor's plasma client hangs after the plasma store has exited.
-    os.kill(pid, SIGKILL)
     wait_for_pid_to_exit(pid)
 
     # Wait for the actor to restart.
