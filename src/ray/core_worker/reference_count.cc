@@ -888,7 +888,7 @@ void ReferenceCounter::SetReleaseLineageCallback(
   on_lineage_released_ = callback;
 }
 
-void AddObjectLocation(const ObjectID &object_id, const ClientID &node_id) {
+void ReferenceCounter::AddObjectLocation(const ObjectID &object_id, const ClientID &node_id) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   // TODO (zhuohan): This will not hold in some cases. We can find out the cases
@@ -901,12 +901,24 @@ void AddObjectLocation(const ObjectID &object_id, const ClientID &node_id) {
   it->second.locations.insert(node_id);
 }
 
-void RemoveObjectLocation(const ObjectID &object_id, const ClientID &node_id) {
+void ReferenceCounter::RemoveObjectLocation(const ObjectID &object_id, const ClientID &node_id) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   RAY_CHECK(it != object_id_refs_.end());
   RAY_CHECK(it->second.owned_by_us);
   it->second.locations.erase(node_id);
+}
+
+std::unordered_set<ClientID> ReferenceCounter::GetObjectLocations(const ObjectID &object_id) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  RAY_CHECK(it != object_id_refs_.end());
+  RAY_CHECK(it->second.owned_by_us);
+  std::unordered_set<ClientID> locations;
+  for (const auto &location : it->second.locations) {
+    locations.insert(location);
+  }
+  return locations;
 }
 
 ReferenceCounter::Reference ReferenceCounter::Reference::FromProto(

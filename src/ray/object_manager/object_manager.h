@@ -28,6 +28,8 @@
 #include <boost/bind.hpp>
 
 #include "absl/time/clock.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
@@ -308,6 +310,8 @@ class ObjectManager : public ObjectManagerInterface,
     WaitCallback callback;
     /// Ordered input object_ids.
     std::vector<ObjectID> object_id_order;
+    /// Objects' owners.
+    absl::flat_hash_map<ObjectID, rpc::Address> owner_addresses;
     /// The objects that have not yet been found.
     std::unordered_set<ObjectID> remaining;
     /// The objects that have been found. Note that if wait_local is true, then

@@ -166,15 +166,21 @@ class CoreWorkerClientInterface {
     return Status::NotImplemented("");
   }
 
-  virtual ray::Status AddObjectLocation(
-      const AddObjectLocationRequest &request,
-      const ClientCallback<AddObjectLocationReply> &callback) {
+  virtual ray::Status AddObjectLocationOwner(
+      const AddObjectLocationOwnerRequest &request,
+      const ClientCallback<AddObjectLocationOwnerReply> &callback) {
     return Status::NotImplemented("");
   }
 
-  virtual ray::Status RemoveObjectLocation(
-      const RemoveObjectLocationRequest &request,
-      const ClientCallback<RemoveObjectLocationReply> &callback) {
+  virtual ray::Status RemoveObjectLocationOwner(
+      const RemoveObjectLocationOwnerRequest &request,
+      const ClientCallback<RemoveObjectLocationOwnerReply> &callback) {
+    return Status::NotImplemented("");
+  }
+
+  virtual ray::Status GetObjectLocationsOwner(
+      const GetObjectLocationsOwnerRequest &request,
+      const ClientCallback<GetObjectLocationsOwnerReply> &callback) {
     return Status::NotImplemented("");
   }
 
@@ -256,9 +262,11 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   RPC_CLIENT_METHOD(CoreWorkerService, WaitForObjectEviction, grpc_client_, override)
 
-  RPC_CLIENT_METHOD(CoreWorkerService, AddObjectLocation, grpc_client_, override)
+  RPC_CLIENT_METHOD(CoreWorkerService, AddObjectLocationOwner, grpc_client_, override)
 
-  RPC_CLIENT_METHOD(CoreWorkerService, RemoveObjectLocation, grpc_client_, override)
+  RPC_CLIENT_METHOD(CoreWorkerService, RemoveObjectLocationOwner, grpc_client_, override)
+
+  RPC_CLIENT_METHOD(CoreWorkerService, GetObjectLocationsOwner, grpc_client_, override)
 
   RPC_CLIENT_METHOD(CoreWorkerService, GetCoreWorkerStats, grpc_client_, override)
 

@@ -20,11 +20,13 @@
 #include <unordered_set>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/object_directory.h"
+#include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
 
@@ -37,7 +39,8 @@ class OwnershipBasedObjectDirectory : public ObjectDirectoryInterface {
   /// usually be the same event loop that the given gcs_client runs on.
   /// \param gcs_client A Ray GCS client to request object and client
   /// information from.
-  OwnershipBasedObjectDirectory(boost::asio::io_service &io_service);
+  OwnershipBasedObjectDirectory(boost::asio::io_service &io_service,
+                                std::shared_ptr<gcs::GcsClient> &gcs_client);
 
   virtual ~OwnershipBasedObjectDirectory() {}
 
@@ -46,6 +49,7 @@ class OwnershipBasedObjectDirectory : public ObjectDirectoryInterface {
   std::vector<RemoteConnectionInfo> LookupAllRemoteConnections() const override;
 
   ray::Status LookupLocations(const ObjectID &object_id,
+                              const rpc::Address &owner_address,
                               const OnLocationsFound &callback) override;
 
   void HandleClientRemoved(const ClientID &client_id) override;
@@ -89,6 +93,13 @@ class OwnershipBasedObjectDirectory : public ObjectDirectoryInterface {
   std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// Info about subscribers to object locations.
   std::unordered_map<ObjectID, LocationListenerState> listeners_;
+
+  rpc::ClientCallManager client_call_manager_;
+
+  absl::flat_hash_map<WorkerID, std::pair<std::unique_ptr<rpc::CoreWorkerClient>, size_t>>
+      worker_rpc_clients_;
+
+  absl::flat_hash_map<WorkerID, std::unique_ptr<rpc::CoreWorkerClient>> owner_clients_;
 };
 
 }  // namespace ray

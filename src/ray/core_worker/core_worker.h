@@ -760,13 +760,18 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
-  void HandleAddObjectLocation(const rpc::AddObjectLocationRequest &request,
-                               rpc::AddObjectLocationReply *reply,
+  void HandleAddObjectLocationOwner(const rpc::AddObjectLocationOwnerRequest &request,
+                               rpc::AddObjectLocationOwnerReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
-  void HandleRemoveObjectLocation(const rpc::RemoveObjectLocationRequest &request,
-                               rpc::RemoveObjectLocationReply *reply,
+  void HandleRemoveObjectLocationOwner(const rpc::RemoveObjectLocationOwnerRequest &request,
+                               rpc::RemoveObjectLocationOwnerReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Implements gRPC server handler.
+  void HandleGetObjectLocationsOwner(const rpc::GetObjectLocationsOwnerRequest &request,
+                               rpc::GetObjectLocationsOwnerReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.

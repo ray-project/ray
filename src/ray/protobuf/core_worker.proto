@@ -179,22 +179,31 @@ message WaitForObjectEvictionRequest {
 message WaitForObjectEvictionReply {
 }
 
-message AddObjectLocationRequest {
+message AddObjectLocationOwnerRequest {
   bytes intended_worker_id = 1;
   bytes object_id = 2;
   bytes client_id = 3;
 }
 
-message AddObjectLocationReply {
+message AddObjectLocationOwnerReply {
 }
 
-message RemoveObjectLocationRequest {
+message RemoveObjectLocationOwnerRequest {
   bytes intended_worker_id = 1;
   bytes object_id = 2;
   bytes client_id = 3;
 }
 
-message RemoveObjectLocationReply {
+message RemoveObjectLocationOwnerReply {
+}
+
+message GetObjectLocationsOwnerRequest {
+  bytes intended_worker_id = 1;
+  bytes object_id = 2;
+}
+
+message GetObjectLocationsOwnerReply {
+  repeated bytes client_ids = 1;
 }
 
 message KillActorRequest {
@@ -322,8 +331,9 @@ service CoreWorkerService {
   // to this message indicates that the raylet should unpin the object.
   rpc WaitForObjectEviction(WaitForObjectEvictionRequest)
       returns (WaitForObjectEvictionReply);
-  rpc AddObjectLocation(AddObjectLocationRequest) returns (AddObjectLocationReply);
-  rpc RemoveObjectLocation(RemoveObjectLocationRequest) returns (RemoveObjectLocationReply);
+  rpc AddObjectLocationOwner(AddObjectLocationOwnerRequest) returns (AddObjectLocationOwnerReply);
+  rpc RemoveObjectLocationOwner(RemoveObjectLocationOwnerRequest) returns (RemoveObjectLocationOwnerReply);
+  rpc GetObjectLocationsOwner(GetObjectLocationsOwnerRequest) returns (GetObjectLocationsOwnerReply);
   // Request that the worker shut down without completing outstanding work.
   rpc KillActor(KillActorRequest) returns (KillActorReply);
   // Request that a worker cancels a task.

@@ -68,6 +68,7 @@ class ObjectDirectoryInterface {
   /// \param callback Invoked with (possibly empty) list of client ids and object_id.
   /// \return Status of whether async call to backend succeeded.
   virtual ray::Status LookupLocations(const ObjectID &object_id,
+                                      const rpc::Address &owner_address,
                                       const OnLocationsFound &callback) = 0;
 
   /// Handle the removal of an object manager client. This updates the
@@ -149,6 +150,7 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   std::vector<RemoteConnectionInfo> LookupAllRemoteConnections() const override;
 
   ray::Status LookupLocations(const ObjectID &object_id,
+                              const rpc::Address &owner_address,
                               const OnLocationsFound &callback) override;
 
   void HandleClientRemoved(const ClientID &client_id) override;

@@ -1852,27 +1852,47 @@ void CoreWorker::HandleWaitForObjectEviction(
   }
 }
 
-void CoreWorker::HandleAddObjectLocation(
-    const rpc::AddObjectLocationRequest &request,
-    rpc::AddObjectLocationReply *reply,
+void CoreWorker::HandleAddObjectLocationOwner(
+    const rpc::AddObjectLocationOwnerRequest &request,
+    rpc::AddObjectLocationOwnerReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
                            send_reply_callback)) {
     return;
   }
-  reference_counter_->AddObjectLocation(request.object_id(), request.client_id());
+  reference_counter_->AddObjectLocation(
+      ObjectID::FromBinary(request.object_id()),
+      ClientID::FromBinary(request.client_id()));
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void CoreWorker::HandleRemoveObjectLocation(
-    const rpc::RemoveObjectLocationRequest &request,
-    rpc::RemoveObjectLocationReply *reply,
+void CoreWorker::HandleRemoveObjectLocationOwner(
+    const rpc::RemoveObjectLocationOwnerRequest &request,
+    rpc::RemoveObjectLocationOwnerReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
                            send_reply_callback)) {
     return;
   }
-  reference_counter_->RemoveObjectLocation(request.object_id(), request.client_id());
+  reference_counter_->RemoveObjectLocation(
+      ObjectID::FromBinary(request.object_id()),
+      ClientID::FromBinary(request.client_id()));
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void CoreWorker::HandleGetObjectLocationsOwner(
+    const rpc::GetObjectLocationsOwnerRequest &request,
+    rpc::GetObjectLocationsOwnerReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
+                           send_reply_callback)) {
+    return;
+  }
+  std::unordered_set<ClientID> client_ids = reference_counter_->GetObjectLocations(
+      ObjectID::FromBinary(request.object_id()));
+  for (const auto& client_id : client_ids) {
+    reply->add_client_ids(client_id.Binary());
+  }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

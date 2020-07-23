@@ -102,6 +102,8 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
 
     // The objects created by this task that we are listening for notifications for.
     std::unordered_set<ObjectID> created_objects;
+    // Owner addresses of created objects.
+    std::unordered_map<ObjectID, rpc::Address> owner_addresses;
     // The time at which the timer for this task expires, according to this
     // node's steady clock.
     int64_t expires_at;

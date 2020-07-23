@@ -358,6 +358,7 @@ class ReferenceCounter : public ReferenceCounterInterface {
 
   void AddObjectLocation(const ObjectID &object_id, const ClientID &node_id);
   void RemoveObjectLocation(const ObjectID &object_id, const ClientID &node_id);
+  std::unordered_set<ClientID> GetObjectLocations(const ObjectID &object_id);
 
  private:
   struct Reference {

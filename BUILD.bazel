@@ -1314,6 +1314,7 @@ cc_library(
     strip_include_prefix = "src",
     deps = [
         ":gcs",
+        ":core_worker_lib",
         ":object_manager_fbs",
         ":object_manager_rpc",
         ":plasma_store_server_lib",
