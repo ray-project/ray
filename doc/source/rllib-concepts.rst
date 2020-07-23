@@ -214,7 +214,7 @@ In the above section you saw how to compose a simple policy gradient algorithm w
 
 Besides some boilerplate for defining the PPO configuration and some warnings, the most important argument to take note of is the ``execution_plan``.
 
-The trainer's `execution plan <#execution-plan>`__ defines the distributed training workflow. Depending on the ``simple_optimizer`` trainer config, PPO can switch between a simple synchronous plan, or a multi-GPU plan that implements minibatch SGD (the default):
+The trainer's `execution plan <#execution-plans>`__ defines the distributed training workflow. Depending on the ``simple_optimizer`` trainer config, PPO can switch between a simple synchronous plan, or a multi-GPU plan that implements minibatch SGD (the default):
 
 .. code-block:: python
 
@@ -581,12 +581,61 @@ Here is an example of creating a set of rollout workers and using them gather ex
         for w in workers.remote_workers():
             w.set_weights.remote(weights)
 
-Execution Plan
---------------
+Execution Plans
+---------------
 
-.. note::
+Execution plans let you easily express the execution of an RL algorithm as a sequence of steps that
+occur either sequentially in a single process, or in parallel across many processes.
+They translate directly into ``ray.get()`` and ``ray.wait()`` operations over Ray actors, so you easily write
+high-performance algorithms without needing to manage individual low-level Ray actor calls.
 
-    Policy optimizers have been replaced by the execution plan API. This documentation will be updated in the future.
+Big idea: execution plan represents the dataflow of the RL training job. For example, if I want to express A2C:
+
+(code)
+ParallelRollouts(...).for_each(Concat())...
+
+The code expresses the following logical dataflow:
+
+(diagram)
+
+Under the hood, RLlib executes the described dataflow using Ray actor calls.
+
+Understanding and Debugging Execution Plans
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Execution plans are based on Ray Parallel iterators and can be inspected similarly.
+
+It's actually quite simple to introspect. For example.
+
+Execution Plan Concepts
+~~~~~~~~~~~~~~~~~~~~~~~
+
+Organized into several types of operators.
+
+Train ops
+
+Rollout ops
+
+Replay ops
+
+Concurrency ops
+
+Metric ops
+
+Example: Asynchrony
+~~~~~~~~~~~~~~~~~~~~
+
+Suppose we wanted to make the above example asynchronous. See also real examples.
+
+Example: Replay
+~~~~~~~~~~~~~~~
+
+Suppose we wanted to introduce a simple replay buffer. See also real examples.
+
+Example: Multi-agent
+~~~~~~~~~~~~~~~~~~~~
+
+Suppose we wanted to define a custom multi-agent training run. See also real examples.
 
 Trainers
 --------
