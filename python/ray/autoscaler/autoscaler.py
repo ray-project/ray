@@ -254,9 +254,9 @@ class StandardAutoscaler:
             self.recover_if_needed(node_id, now)
 
     def reload_config(self, errors_fatal=False):
-        file_mounts_sync_continuously = False
+        sync_continuously = False
         if hasattr(self, "config"):
-            file_mounts_sync_continuously = self.config.get(
+            sync_continuously = self.config.get(
                 "file_mounts_sync_continuously", False)
         try:
             with open(self.config_path) as f:
@@ -271,8 +271,7 @@ class StandardAutoscaler:
                      new_config["worker_setup_commands"],
                      new_config["worker_start_ray_commands"],
                  ],
-                 generate_file_mounts_contents_hash=
-                 file_mounts_sync_continuously,
+                 generate_file_mounts_contents_hash=sync_continuously,
              )
             self.config = new_config
             self.launch_hash = new_launch_hash

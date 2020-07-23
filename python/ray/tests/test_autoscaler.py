@@ -1090,10 +1090,12 @@ class AutoscalingTest(unittest.TestCase):
     def testContinuousFileMounts(self):
         file_mount_dir = tempfile.mkdtemp()
 
-        self.provider = MockProvider(cache_stopped=True)
+        self.provider = MockProvider()
         config = SMALL_CLUSTER.copy()
         config["file_mounts"] = {"/home/test-folder": file_mount_dir}
         config["file_mounts_sync_continuously"] = True
+        config["min_workers"] = 2
+        config["max_workers"] = 2
         config_path = self.write_config(config)
         runner = MockProcessRunner()
         lm = LoadMetrics()
@@ -1110,6 +1112,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(
             2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+        autoscaler.update()
 
         for i in [0, 1]:
             runner.assert_has_call("172.0.0.{}".format(i), "setup_cmd")
@@ -1129,6 +1132,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(
             2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+        autoscaler.update()
 
         for i in [0, 1]:
             runner.assert_not_has_call("172.0.0.{}".format(i), "setup_cmd")
@@ -1140,9 +1144,11 @@ class AutoscalingTest(unittest.TestCase):
     def testFileMountsNonContinuous(self):
         file_mount_dir = tempfile.mkdtemp()
 
-        self.provider = MockProvider(cache_stopped=True)
+        self.provider = MockProvider()
         config = SMALL_CLUSTER.copy()
         config["file_mounts"] = {"/home/test-folder": file_mount_dir}
+        config["min_workers"] = 2
+        config["max_workers"] = 2
         config_path = self.write_config(config)
         runner = MockProcessRunner()
         lm = LoadMetrics()
@@ -1159,6 +1165,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(
             2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+        autoscaler.update()
 
         for i in [0, 1]:
             runner.assert_has_call("172.0.0.{}".format(i), "setup_cmd")
@@ -1198,8 +1205,11 @@ class AutoscalingTest(unittest.TestCase):
             update_interval_s=0)
 
         autoscaler.update()
+        self.waitForNodes(2)
+        self.provider.finish_starting_nodes()
         self.waitForNodes(
             2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+        autoscaler.update()
 
         for i in [0, 1]:
             runner.assert_has_call("172.0.0.{}".format(i), "setup_cmd")

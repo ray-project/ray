@@ -403,9 +403,9 @@ class SSHCommandRunner(CommandRunnerInterface):
 
         if cli_logger.verbosity > 0:
             with cli_logger.indented():
-                start_process()
+                return start_process()
         else:
-            start_process()
+            return start_process()
 
     def run_rsync_up(self, source, target):
         self._set_ssh_ip_if_required()
