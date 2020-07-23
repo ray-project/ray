@@ -21,6 +21,38 @@ Take a look at any of the below tutorials to get started with Tune.
    :figure: /images/tune.png
    :description: :doc:`A walkthrough to setup your first Tune experiment <tune-tutorial>`
 
+
+.. customgalleryitem::
+   :tooltip: Tune's Scikit-Learn Adapters
+   :figure: /images/tune-sklearn.png
+   :description: :doc:`Tune's Scikit-Learn Adapters <tutorials/tune-sklearn>`
+
+.. customgalleryitem::
+   :tooltip: Tuning PyTorch Lightning modules
+   :figure: /images/pytorch_lightning_small.png
+   :description: :doc:`Tuning PyTorch Lightning modules <tutorials/tune-pytorch-lightning>`
+
+.. customgalleryitem::
+   :tooltip: How to use Tune with PyTorch
+   :figure: /images/pytorch_logo.png
+   :description: :doc:`How to use Tune with PyTorch <tutorials/tune-pytorch-cifar>`
+
+.. customgalleryitem::
+   :tooltip: Tuning XGBoost parameters.
+   :figure: /images/xgboost_logo.png
+   :description: :doc:`A guide to tuning XGBoost parameters with Tune <tutorials/tune-xgboost>`
+
+.. customgalleryitem::
+   :tooltip: A simple guide to Population-based Training
+   :figure: /images/tune-pbt-small.png
+   :description: :doc:`A simple guide to Population-based Training <tutorials/tune-advanced-tutorial>`
+
+.. customgalleryitem::
+   :tooltip: A guide to distributed hyperparameter tuning
+   :figure: /images/tune.png
+   :description: :doc:`A guide to distributed hyperparameter tuning <tutorials/tune-distributed>`
+
+
 .. raw:: html
 
     </div>
@@ -30,6 +62,12 @@ Take a look at any of the below tutorials to get started with Tune.
 
    tune-60-seconds.rst
    tune-tutorial.rst
+   tutorials/tune-sklearn.rst
+   tutorials/tune-pytorch-cifar.rst
+   tutorials/tune-pytorch-lightning.rst
+   tutorials/tune-xgboost.rst
+   tutorials/tune-advanced-tutorial.rst
+   tutorials/tune-distributed.rst
 
 Colab Exercises
 ---------------
@@ -77,9 +115,6 @@ Learn how to use Tune in your browser with the following Colab-based exercises.
 
 Tutorial source files `can be found here <https://github.com/ray-project/tutorial>`_.
 
-Tune Examples
--------------
-
 .. Keep this in sync with ray/python/ray/tune/examples/README.rst
 
 If any example is broken, or if you'd like to add an example to this page, feel free to raise an issue on our Github repository.
@@ -87,7 +122,7 @@ If any example is broken, or if you'd like to add an example to this page, feel 
 .. _tune-general-examples:
 
 General Examples
-~~~~~~~~~~~~~~~~
+--------------------------
 
 - :doc:`/tune/examples/async_hyperband_example`: Example of using a Trainable class with AsyncHyperBandScheduler.
 - :doc:`/tune/examples/hyperband_example`: Example of using a Trainable class with HyperBandScheduler. Also uses the Experiment class API for specifying the experiment configuration. Also uses the AsyncHyperBandScheduler.
@@ -97,7 +132,7 @@ General Examples
 - :doc:`/tune/examples/logging_example`: Example of custom loggers and custom trial directory naming.
 
 Search Algorithm Examples
-~~~~~~~~~~~~~~~~~~~~~~~~~
+--------------------------
 
 - :doc:`/tune/examples/ax_example`: Optimize a Hartmann function with `Ax <https://ax.dev>`_ with 4 parallel workers.
 - :doc:`/tune/examples/hyperopt_example`: Optimizes a basic function using the function-based API and the HyperOptSearch (SearchAlgorithm wrapper for HyperOpt TPE).
@@ -105,7 +140,7 @@ Search Algorithm Examples
 - :doc:`/tune/examples/bayesopt_example`: Optimize a simple toy function using `Bayesian Optimization <https://github.com/fmfn/BayesianOptimization>`_ with 4 parallel workers.
 
 Tensorflow/Keras Examples
-~~~~~~~~~~~~~~~~~~~~~~~~~
+--------------------------
 
 - :doc:`/tune/examples/tune_mnist_keras`: Converts the Keras MNIST example to use Tune with the function-based API and a Keras callback. Also shows how to easily convert something relying on argparse to use Tune.
 - :doc:`/tune/examples/pbt_memnn_example`: Example of training a Memory NN on bAbI with Keras using PBT.
@@ -113,27 +148,27 @@ Tensorflow/Keras Examples
 
 
 PyTorch Examples
-~~~~~~~~~~~~~~~~
+--------------------------
 
 - :doc:`/tune/examples/mnist_pytorch`: Converts the PyTorch MNIST example to use Tune with the function-based API. Also shows how to easily convert something relying on argparse to use Tune.
 - :doc:`/tune/examples/mnist_pytorch_trainable`: Converts the PyTorch MNIST example to use Tune with Trainable API. Also uses the HyperBandScheduler and checkpoints the model at the end.
 
 
 XGBoost Example
-~~~~~~~~~~~~~~~
+--------------------------
 
 - :ref:`XGBoost tutorial <tune-xgboost>`: A guide to tuning XGBoost parameters with Tune.
 - :doc:`/tune/examples/xgboost_example`: Trains a basic XGBoost model with Tune with the function-based API and an XGBoost callback.
 
 
 LightGBM Example
-~~~~~~~~~~~~~~~~
+--------------------------
 
 - :doc:`/tune/examples/lightgbm_example`: Trains a basic LightGBM model with Tune with the function-based API and a LightGBM callback.
 
 
 Contributed Examples
-~~~~~~~~~~~~~~~~~~~~
+--------------------------
 
 - :doc:`/tune/examples/pbt_tune_cifar10_with_keras`: A contributed example of tuning a Keras model on CIFAR10 with the PopulationBasedTraining scheduler.
 - :doc:`/tune/examples/genetic_example`: Optimizing the michalewicz function using the contributed GeneticSearch algorithm with AsyncHyperBandScheduler.
