@@ -227,13 +227,18 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
 
   worker_rpc_clients_[worker_id].second++;
   RAY_CHECK_OK(it->second.first->GetObjectLocationsOwner(
-      request, [this, worker_id, object_id](
+      request, [this, worker_id, object_id, callback](
                         Status status, const rpc::GetObjectLocationsOwnerReply &reply) {
         if (!status.ok()) {
           RAY_LOG(ERROR) << "Worker " << worker_id << " failed to get the location for "
                             << object_id;
         }
-        // TODO: call the callback here
+        std::unordered_set<ClientID> client_ids;
+        for (auto const &client_id : reply.client_ids()) {
+          client_ids.emplace(ClientID::FromBinary(client_id));
+        }
+        // TODO(zhuohan): Do we need to filter out the clients that are not in the GCS?
+        callback(object_id, client_ids);
         // Remove the cached worker client if there are no more pending requests.
         if (--worker_rpc_clients_[worker_id].second == 0) {
           worker_rpc_clients_.erase(worker_id);
