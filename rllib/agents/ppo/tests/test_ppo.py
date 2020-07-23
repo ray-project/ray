@@ -91,6 +91,10 @@ class TestPPO(unittest.TestCase):
         config["num_sgd_iter"] = 2
         config["model"]["use_lstm"] = True
         config["model"]["lstm_use_prev_action_reward"] = True
+        #TEST
+        config["train_batch_size"] = 128
+        config["sgd_minibatch_size"] = 32
+        #END: TEST
         policies = {
             "pol0": (None, obs_space, action_space, {}),
         }

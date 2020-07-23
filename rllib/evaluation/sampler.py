@@ -474,7 +474,7 @@ def _env_runner(worker: "RolloutWorker",
     batch_builder_pool: List[MultiAgentSampleBatchBuilder] = []
 
     # Only one builder per sampler (all samples are collected in a per-policy fashion).
-    _fast_sample_batch_builder = _FastMultiAgentSampleBatchBuilder(policies, callbacks, B=100)
+    _fast_sample_batch_builder = _FastMultiAgentSampleBatchBuilder(policies, callbacks, num_agents=100)
 
     def get_batch_builder():
         if batch_builder_pool:
@@ -791,10 +791,12 @@ def _process_observations(
                     **episode.last_pi_info_for(agent_id))
             elif _use_trajectory_view_api:
                 if last_observation is None:
-                    batch_builder.add_init_obs(episode.episode_id, agent_id,
-                                                       policy_id, filtered_obs)
+                    batch_builder.add_init_obs(
+                        episode.episode_id, agent_id,
+                        policy_id, filtered_obs)
                 else:
-                    eval_idx = batch_builder.rollout_sample_collectors[policy_id].agent_key_to_forward_pass_index[(agent_id, episode.episode_id)]
+                    rc = batch_builder.rollout_sample_collectors[policy_id]
+                    eval_idx = rc.agent_key_to_forward_pass_index[(agent_id, episode.episode_id)]  #, rc.agent_key_to_chunk_num[(agent_id, episode.episode_id)])]
                     values_dict = {
                         "t": episode.length - 1,
                         "eps_id": episode.episode_id,
@@ -857,8 +859,7 @@ def _process_observations(
                 #  should a model require this.
                 if _use_trajectory_view_api:
                     outputs.append(
-                        batch_builder.get_multi_agent_batch_and_reset(
-                            episode))
+                        batch_builder.get_multi_agent_batch_and_reset())
                 else:
                     outputs.append(
                         batch_builder.build_and_reset(episode))
@@ -925,9 +926,11 @@ def _process_observations(
                     if _use_trajectory_view_api:
                         # Add initial obs to buffer.
                         batch_builder.add_init_obs(
-                            env_id, agent_id, policy_id, filtered_obs)
-                        item = batch_builder.single_agent_trajectories[
-                            agent_id]
+                            episode.episode_id, agent_id, policy_id, filtered_obs)
+                        batch_builder.rollout_sample_collectors[
+                            policy_id].add_to_forward_pass(agent_id,
+                            episode.episode_id, env_id)
+                        to_eval[policy_id] = batch_builder.rollout_sample_collectors[policy_id]
                     else:
                         item = PolicyEvalData(
                             env_id, agent_id, filtered_obs,
@@ -936,11 +939,8 @@ def _process_observations(
                             np.zeros_like(
                                 flatten_to_single_ndarray(
                                     policy.action_space.sample())), 0.0)
-                    #eval_idx_map[policy_id][env_id][agent_id] = len(
-                    #    to_eval[policy_id])
-                    to_eval[policy_id].append(item)
+                        to_eval[policy_id].append(item)
 
-    #return active_envs, to_eval, outputs, eval_idx_map
     return active_envs, to_eval, outputs
 
 

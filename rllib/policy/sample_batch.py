@@ -80,7 +80,10 @@ class SampleBatch:
             raise ValueError("Empty sample batch")
         assert len(set(lengths)) == 1, \
             "Data columns must be same length, but lens are {}".format(lengths)
-        self.count = len(self.data[k])
+        if self._seq_lens is not None:
+            self.count = sum(self._seq_lens)
+        else:
+            self.count = len(self.data[k])
 
     @staticmethod
     @PublicAPI
@@ -97,19 +100,17 @@ class SampleBatch:
         """
         if isinstance(samples[0], MultiAgentBatch):
             return MultiAgentBatch.concat_samples(samples)
-        inputs = {}
         seq_lens = []
         concat_samples = []
         for s in samples:
             if s.count > 0:
                 concat_samples.append(s)
-                inputs.update(s._inputs)
                 seq_lens.extend(s._seq_lens)
 
         out = {}
         for k in concat_samples[0].keys():
-            out[k] = concat_aligned([s[k] for s in concat_samples])
-        #return SampleBatch(out, _initial_inputs=inputs, _seq_lens=seq_lens)
+            out[k] = concat_aligned(
+                [s[k] for s in concat_samples], time_major=len(seq_lens) > 0)
         return SampleBatch(out, _seq_lens=seq_lens)
 
     @PublicAPI

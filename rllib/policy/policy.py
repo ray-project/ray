@@ -5,7 +5,6 @@ import tree
 from typing import Dict, List, Optional
 
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.evaluation.trajectory import Trajectory
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_torch
@@ -217,8 +216,9 @@ class Policy(metaclass=ABCMeta):
 
     def compute_actions_from_trajectories(
             self,
-            trajectories: List["Trajectory"],
-            other_trajectories: Optional[Dict[AgentID, "Trajectory"]] = None,
+            rollout_sample_collector: "RolloutSampleCollector",
+            other_collectors: Optional[Dict[
+                AgentID, "RolloutSampleCollector"]] = None,
             explore: bool = None,
             timestep: Optional[int] = None,
             **kwargs) -> \
@@ -231,10 +231,12 @@ class Policy(metaclass=ABCMeta):
         (also only supported for torch).
 
         Args:
-            trajectories (List[Trajectory]): A List of Trajectory data used
-                to create a view for the Model forward call.
-            other_trajectories (Optional[Dict[AgentID, Trajectory]]): Optional
-                dict mapping AgentIDs to Trajectory objects.
+            rollout_sample_collector (RolloutSampleCollector): A
+                RolloutSampleCollector object to used to create a view for the
+                Model forward call.
+            other_collectors (Optional[Dict[AgentID, RolloutSampleCollector]]):
+                Optional dict mapping AgentIDs to RolloutSampleCollector
+                objects.
             explore (bool): Whether to pick an exploitation or exploration
                 action (default: None -> use self.config["explore"]).
             timestep (Optional[int]): The current (sampling) time step.

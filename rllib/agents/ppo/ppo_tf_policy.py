@@ -168,7 +168,7 @@ def postprocess_ppo_gae(policy,
                         episode=None):
     """Adds the policy logits, VF preds, and advantages to the trajectory."""
 
-    completed = sample_batch["dones"][-1]
+    completed = sample_batch[SampleBatch.DONES][-1]
     if completed:
         last_r = 0.0
     else:
