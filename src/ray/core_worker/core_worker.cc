@@ -1666,8 +1666,12 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
         metadata = std::make_shared<LocalMemoryBuffer>(
             const_cast<uint8_t *>(task.ArgMetadata(i)), task.ArgMetadataSize(i));
       }
-      args->at(i) = std::make_shared<RayObject>(data, metadata, task.ArgInlinedIds(i),
-                                                /*copy_data*/ true);
+      // NOTE: this is a workaround to avoid an extra copy for Java workers.
+      // Python workers need this copy to pass test case
+      // test_inline_arg_memory_corruption.
+      bool copy_data = options_.language == Language::PYTHON;
+      args->at(i) =
+          std::make_shared<RayObject>(data, metadata, task.ArgInlinedIds(i), copy_data);
       arg_reference_ids->at(i) = ObjectID::Nil();
       // The task borrows all ObjectIDs that were serialized in the inlined
       // arguments. The task will receive references to these IDs, so it is
