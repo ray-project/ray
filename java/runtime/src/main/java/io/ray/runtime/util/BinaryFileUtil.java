@@ -45,7 +45,14 @@ public class BinaryFileUtil {
     String lockFilePath = destDir + File.separator + "file_lock";
     try (FileLock ignored = new RandomAccessFile(lockFilePath, "rw")
         .getChannel().lock()) {
-      String resourceDir = SystemUtils.IS_OS_MAC ? "native/darwin/" : "native/linux/";
+      String resourceDir;
+      if (SystemUtils.IS_OS_MAC) {
+        resourceDir = "native/darwin/";
+      } else if (SystemUtils.IS_OS_LINUX) {
+        resourceDir = "native/linux/";
+      } else {
+        throw new UnsupportedOperationException("Unsupported os " + SystemUtils.OS_NAME);
+      }
       String resourcePath = resourceDir + fileName;
       File file = new File(String.format("%s/%s", destDir, fileName));
       if (file.exists()) {
