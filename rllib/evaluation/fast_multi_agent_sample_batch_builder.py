@@ -166,8 +166,8 @@ class _FastMultiAgentSampleBatchBuilder:
                 to post-process data.
         """
 
-        # Loop through each per-policy collector and create a view from
-        # its buffers for policy post-processing (one view for each agent).
+        # Loop through each per-policy collector and create a view (for each
+        # agent as SampleBatch) from its buffers for post-processing
         all_agent_batches = {}
         for pid, rc in self.rollout_sample_collectors.items():
             policy = self.policy_map[pid]
@@ -175,10 +175,6 @@ class _FastMultiAgentSampleBatchBuilder:
             agent_batches = rc.get_postprocessing_sample_batches(model, episode)
 
             for agent_key, batch in agent_batches.items():
-                ## Skip other episodes.
-                #if agent_key[1] != episode.episode_id:
-                #    continue
-
                 other_batches = None
                 if len(agent_batches) > 1:
                     other_batches = agent_batches.copy()
@@ -191,6 +187,13 @@ class _FastMultiAgentSampleBatchBuilder:
                     agent_batches[agent_key] = policy.exploration.postprocess_trajectory(
                         policy, agent_batches[agent_key],
                         getattr(policy, "_sess", None))
+
+                # Add new columns' data to buffers.
+                for col in agent_batches[agent_key].new_columns:
+                    data = agent_batches[agent_key].data[col]
+                    rc._build_buffers({col: data[0]})
+                    timesteps = data.shape[0]
+                    rc.buffers[col][rc.shift_before:rc.shift_before+timesteps,rc.agent_key_to_slot[agent_key]] = data
 
             all_agent_batches.update(agent_batches)
 

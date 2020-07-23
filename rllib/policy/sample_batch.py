@@ -63,10 +63,7 @@ class SampleBatch:
     def __init__(self, *args, **kwargs):
         """Constructs a sample batch (same params as dict constructor)."""
 
-        # Placeholder for a last_obs value (in an n x sars'-trajectory).
-        # Only used if _fast_sampling=True in the Policy's config to be able to
-        # deprecate the SampleBatch.NEXT_OBS field entirely soon.
-        #self._inputs = kwargs.pop("_initial_inputs", {})
+        # Possible
         self._seq_lens = kwargs.pop("_seq_lens", None)
 
         # The actual data, accessible by column name (str).
@@ -84,6 +81,9 @@ class SampleBatch:
             self.count = sum(self._seq_lens)
         else:
             self.count = len(self.data[k])
+
+        # Keeps track of new columns added after initial ones.
+        self.new_columns = []
 
     @staticmethod
     @PublicAPI
@@ -325,6 +325,8 @@ class SampleBatch:
             key (str): The column name to set a value for.
             item (TensorType): The data to insert.
         """
+        if key not in self.data:
+            self.new_columns.append(key)
         self.data[key] = item
 
     @DeveloperAPI
