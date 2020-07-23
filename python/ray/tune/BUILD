@@ -431,7 +431,7 @@ py_test(
 
 py_test(
     name = "pbt_memnn_example",
-    size = "large",
+    size = "enormous",
     srcs = ["examples/pbt_memnn_example.py"],
     deps = [":tune_lib"],
     tags = ["flaky", "exclusive", "example"],
