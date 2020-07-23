@@ -132,7 +132,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
 }
 
 void ClusterTaskManager::QueueTask(const Task &task, rpc::RequestWorkerLeaseReply *reply,
-                                    rpc::SendReplyCallback send_reply_callback)  {
+                                   rpc::SendReplyCallback send_reply_callback) {
   Work work = std::make_tuple(task, reply, send_reply_callback);
   tasks_to_schedule_.push_back(work);
 }

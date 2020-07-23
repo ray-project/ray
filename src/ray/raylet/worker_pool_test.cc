@@ -100,8 +100,8 @@ class WorkerPoolTest : public ::testing::Test {
     worker_pool_ = std::unique_ptr<WorkerPoolMock>(new WorkerPoolMock(io_service_));
   }
 
-  std::shared_ptr<WorkerInterface> CreateWorker(Process proc,
-                                       const Language &language = Language::PYTHON) {
+  std::shared_ptr<WorkerInterface> CreateWorker(
+      Process proc, const Language &language = Language::PYTHON) {
     std::function<void(ClientConnection &)> client_handler =
         [this](ClientConnection &client) { HandleNewClient(client); };
     std::function<void(std::shared_ptr<ClientConnection>, int64_t,
@@ -117,7 +117,8 @@ class WorkerPoolTest : public ::testing::Test {
                                  "worker", {}, error_message_type_);
     std::shared_ptr<Worker> worker_ = std::make_shared<Worker>(
         WorkerID::FromRandom(), language, "127.0.0.1", client, client_call_manager_);
-    std::shared_ptr<WorkerInterface> worker = std::dynamic_pointer_cast<WorkerInterface>(worker_);
+    std::shared_ptr<WorkerInterface> worker =
+        std::dynamic_pointer_cast<WorkerInterface>(worker_);
     if (!proc.IsNull()) {
       worker->SetProcess(proc);
     }
