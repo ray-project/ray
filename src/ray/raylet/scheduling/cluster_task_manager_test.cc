@@ -197,24 +197,12 @@ class MockWorker : public WorkerInterface {
     RAY_CHECK(false) << "Method unused";
   }
 
-  const std::unordered_set<ObjectID> &GetActiveObjectIds() const {
-    RAY_CHECK(false) << "Method unused";
-    auto *t = new std::unordered_set<ObjectID>();
-    return *t;
-  }
-  void SetActiveObjectIds(const std::unordered_set<ObjectID> &&object_ids) {
-    RAY_CHECK(false) << "Method unused";
-  }
-
   Status AssignTask(const Task &task, const ResourceIdSet &resource_id_set) {
     RAY_CHECK(false) << "Method unused";
     Status s;
     return s;
   }
   void DirectActorCallArgWaitComplete(int64_t tag) {
-    RAY_CHECK(false) << "Method unused";
-  }
-  void WorkerLeaseGranted(const std::string &address, int port) {
     RAY_CHECK(false) << "Method unused";
   }
 
@@ -321,15 +309,14 @@ TEST_F(ClusterTaskManagerTest, SampleTest) {
 
   ASSERT_FALSE(callback_occurred);
 
-  // rpc::Address address;
-  // std::shared_ptr<MockWorker> worker =
-  //     std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
-  // WorkerInterface worker = MockWorker();
-  // pool.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
 
-  RAY_LOG(INFO) << "asdffffffffffffffffffff";
+  task_manager.DispatchScheduledTasksToWorkers(pool, leased_workers);
 
-  // task_manager.DispatchScheduledTasksToWorkers(pool, leased_workers);
+  ASSERT_TRUE(leased_workers.size() == 1);
+  ASSERT_TRUE(pool.workers.size() == 0);
 }
 
 }  // namespace raylet
