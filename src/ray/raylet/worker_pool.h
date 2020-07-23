@@ -103,7 +103,8 @@ class WorkerPool : public WorkerPoolInterface {
   /// \param[out] port The port that this worker's gRPC server should listen on.
   /// Returns 0 if the worker should bind on a random port.
   /// \return If the registration is successful.
-  Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker, pid_t pid, int *port);
+  Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker, pid_t pid,
+                        int *port);
 
   /// Register a new driver.
   ///

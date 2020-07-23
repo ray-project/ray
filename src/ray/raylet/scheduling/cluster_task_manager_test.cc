@@ -321,13 +321,15 @@ TEST_F(ClusterTaskManagerTest, SampleTest) {
 
   ASSERT_FALSE(callback_occurred);
 
-  rpc::Address address;
-  std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  // rpc::Address address;
+  // std::shared_ptr<MockWorker> worker =
+  //     std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
   // WorkerInterface worker = MockWorker();
-  pool.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+  // pool.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
 
-  task_manager.DispatchScheduledTasksToWorkers(pool, leased_workers);
+  RAY_LOG(INFO) << "asdffffffffffffffffffff";
+
+  // task_manager.DispatchScheduledTasksToWorkers(pool, leased_workers);
 }
 
 }  // namespace raylet

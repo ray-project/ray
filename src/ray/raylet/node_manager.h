@@ -582,8 +582,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param task_id Id of the task.
   /// \param success Whether or not assigning the task was successful.
   /// \return void.
-  void FinishAssignTask(const std::shared_ptr<WorkerInterface> &worker, const TaskID &task_id,
-                        bool success);
+  void FinishAssignTask(const std::shared_ptr<WorkerInterface> &worker,
+                        const TaskID &task_id, bool success);
 
   /// Process worker subscribing to plasma.
   ///

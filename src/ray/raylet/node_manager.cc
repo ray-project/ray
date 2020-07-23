@@ -105,7 +105,8 @@ namespace raylet {
 
 // A helper function to print the leased workers.
 std::string LeasedWorkersSring(
-    const std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers) {
+    const std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>>
+        &leased_workers) {
   std::stringstream buffer;
   buffer << "  @leased_workers: (";
   for (const auto &pair : leased_workers) {
@@ -117,7 +118,8 @@ std::string LeasedWorkersSring(
 }
 
 // A helper function to print the workers in worker_pool_.
-std::string WorkerPoolString(const std::vector<std::shared_ptr<WorkerInterface>> &worker_pool) {
+std::string WorkerPoolString(
+    const std::vector<std::shared_ptr<WorkerInterface>> &worker_pool) {
   std::stringstream buffer;
   buffer << "   @worker_pool: (";
   for (const auto &worker : worker_pool) {
@@ -1617,7 +1619,8 @@ void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
       object_ids, -1, object_ids.size(), false,
       [this, client, tag](std::vector<ObjectID> found, std::vector<ObjectID> remaining) {
         RAY_CHECK(remaining.empty());
-        std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
+        std::shared_ptr<WorkerInterface> worker =
+            worker_pool_.GetRegisteredWorker(client);
         if (!worker) {
           RAY_LOG(ERROR) << "Lost worker for wait request " << client;
         } else {
@@ -2325,7 +2328,8 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
   }
 }
 
-void NodeManager::HandleDirectCallTaskBlocked(const std::shared_ptr<WorkerInterface> &worker) {
+void NodeManager::HandleDirectCallTaskBlocked(
+    const std::shared_ptr<WorkerInterface> &worker) {
   if (new_scheduler_enabled_) {
     if (!worker) {
       return;
@@ -2354,7 +2358,8 @@ void NodeManager::HandleDirectCallTaskBlocked(const std::shared_ptr<WorkerInterf
   DispatchTasks(local_queues_.GetReadyTasksByClass());
 }
 
-void NodeManager::HandleDirectCallTaskUnblocked(const std::shared_ptr<WorkerInterface> &worker) {
+void NodeManager::HandleDirectCallTaskUnblocked(
+    const std::shared_ptr<WorkerInterface> &worker) {
   if (new_scheduler_enabled_) {
     if (!worker) {
       return;
@@ -2545,7 +2550,8 @@ void NodeManager::EnqueuePlaceableTask(const Task &task) {
   task_dependency_manager_.TaskPending(task);
 }
 
-void NodeManager::AssignTask(const std::shared_ptr<WorkerInterface> &worker, const Task &task,
+void NodeManager::AssignTask(const std::shared_ptr<WorkerInterface> &worker,
+                             const Task &task,
                              std::vector<std::function<void()>> *post_assign_callbacks) {
   const TaskSpecification &spec = task.GetTaskSpecification();
   RAY_CHECK(post_assign_callbacks);
@@ -3353,7 +3359,8 @@ void NodeManager::FinishAssignTask(const std::shared_ptr<WorkerInterface> &worke
 
 void NodeManager::ProcessSubscribePlasmaReady(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
-  std::shared_ptr<WorkerInterface> associated_worker = worker_pool_.GetRegisteredWorker(client);
+  std::shared_ptr<WorkerInterface> associated_worker =
+      worker_pool_.GetRegisteredWorker(client);
   if (associated_worker == nullptr) {
     associated_worker = worker_pool_.GetRegisteredDriver(client);
   }
