@@ -52,5 +52,5 @@ py_test(
     main = "source/tune/_tutorials/tune-sklearn.py",
     srcs = ["source/tune/_tutorials/tune-sklearn.py"],
     tags = ["exclusive", "example"],
-    args = ["exclusive", "--smoke-test"]
+    args = ["--smoke-test"]
 )
