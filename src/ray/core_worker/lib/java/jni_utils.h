@@ -290,7 +290,7 @@ inline void JavaLongArrayToNativeLongVector(JNIEnv *env, jlongArray long_array,
   jlong *long_array_ptr = env->GetLongArrayElements(long_array, nullptr);
   jsize vec_size = env->GetArrayLength(long_array);
   for (size_t i = 0; i < vec_size; ++i) {
-    native_vector->push_back(static_cast<long>(long_array_ptr[i]))
+    native_vector->push_back(static_cast<long>(long_array_ptr[i]));
   }
   env->ReleaseLongArrayElements(long_array, long_array_ptr, 0);
 }
@@ -301,7 +301,7 @@ inline void JavaDoubleArrayToNativeDoubleVector(JNIEnv *env, jdoubleArray double
   jdouble *double_array_ptr = env->GetDoubleArrayElements(double_array, nullptr);
   jsize vec_size = env->GetArrayLength(double_array);
   for (size_t i = 0; i < vec_size; ++i) {
-    native_vector->push_back(static_cast<double>(double_array_ptr[i]))
+    native_vector->push_back(static_cast<double>(double_array_ptr[i]));
   }
   env->ReleaseDoubleArrayElements(double_array, double_array_ptr, 0);
 }
