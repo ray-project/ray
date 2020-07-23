@@ -5,7 +5,7 @@ import unittest
 import yaml
 
 from ray.autoscaler.local.onprem_server import LocalNodeProviderServer
-from ray.autoscaler.node_provider import NODE_PROVIDERS
+from ray.autoscaler.node_provider import NODE_PROVIDERS, NodeProvider
 from ray.autoscaler.tags import (
     TAG_RAY_NODE_TYPE,
     NODE_TYPE_WORKER,
@@ -406,6 +406,27 @@ class LocalNodeProviderServerTest(unittest.TestCase):
         assert available_node_ips == ["0.0.0.0:2", "0.0.0.0:1"]
         assert total_node_ips == ["0.0.0.0:1", "0.0.0.0:2"]
         assert not running_clusters
+
+    def testLocalNodeProviderManuallyManaged(self):
+        """Test functionality of LocalNodeProvider in manual mode."""
+        config = {
+            "cluster_name": "random_name",
+            "min_workers": 0,
+            "max_workers": 0,
+            "initial_workers": 0,
+            "provider": {
+                "type": "local",
+                "head_ip": "0.0.0.0:2",
+                "worker_ips": ["0.0.0.0:1"]
+            },
+        }
+        # Check bootstrap_config.
+        new_config = self.local_node_provider_cls.bootstrap_config(config)
+        assert config == new_config
+        # Check if initializing the cluster works (LocalNodeProvider).
+        node_provider = self.local_node_provider_cls(
+            new_config["provider"], new_config["cluster_name"])
+        assert isinstance(node_provider, NodeProvider)
 
     def testLocalNodeProviderAutoManaged(self):
         """Test functionality of LocalNodeProvider with the on prem server."""
