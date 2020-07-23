@@ -94,7 +94,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
     auto spec = task.GetTaskSpecification();
     tasks_to_dispatch_.pop_front();
 
-    std::shared_ptr<WorkerInterface> worker = worker_pool.PopWorker_(spec);
+    std::shared_ptr<WorkerInterface> worker = worker_pool.PopWorker(spec);
     if (!worker) {
       // No worker available to schedule this task.
       // Put the task back in the dispatch queue.

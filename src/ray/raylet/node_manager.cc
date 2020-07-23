@@ -2631,7 +2631,7 @@ void NodeManager::AssignTask(const std::shared_ptr<WorkerInterface> &worker, con
   }
 }
 
-bool NodeManager::FinishAssignedTask(Worker &worker) {
+bool NodeManager::FinishAssignedTask(WorkerInterface &worker) {
   TaskID task_id = worker.GetAssignedTaskId();
   RAY_LOG(DEBUG) << "Finished task " << task_id;
 
@@ -2740,7 +2740,7 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
   return actor_info_ptr;
 }
 
-void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
+void NodeManager::FinishAssignedActorTask(WorkerInterface &worker, const Task &task) {
   RAY_LOG(DEBUG) << "Finishing assigned actor task";
   ActorID actor_id;
   TaskID caller_id;

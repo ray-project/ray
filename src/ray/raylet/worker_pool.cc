@@ -29,7 +29,7 @@
 namespace {
 
 // A helper function to get a worker from a list.
-std::shared_ptr<ray::raylet::Worker> GetWorker(
+std::shared_ptr<ray::raylet::WorkerInterface> GetWorker(
     const std::unordered_set<std::shared_ptr<ray::raylet::WorkerInterface>> &worker_pool,
     const std::shared_ptr<ray::ClientConnection> &connection) {
   for (auto it = worker_pool.begin(); it != worker_pool.end(); it++) {
@@ -43,7 +43,7 @@ std::shared_ptr<ray::raylet::Worker> GetWorker(
 // A helper function to remove a worker from a list. Returns true if the worker
 // was found and removed.
 bool RemoveWorker(std::unordered_set<std::shared_ptr<ray::raylet::WorkerInterface>> &worker_pool,
-                  const std::shared_ptr<ray::raylet::Worker> &worker) {
+                  const std::shared_ptr<ray::raylet::WorkerInterface> &worker) {
   return worker_pool.erase(worker) > 0;
 }
 
@@ -401,13 +401,6 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   }
 }
 
-void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
-  std::shared_ptr<WorkerInterface> worker_ptr = std::dynamic_pointer_cast<Worker>(worker);
-  RAY_CHECK(worker_ptr != nullptr) << "worker must be of type raylet::Worker. "
-                                      "raylet::WorkerInterface is for testing only!";
-  return PushWorker(worker_ptr);
-}
-
 std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(const TaskSpecification &task_spec) {
   auto &state = GetStateForLanguage(task_spec.GetLanguage());
 
@@ -460,12 +453,6 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(const TaskSpecification &
   }
 
   return worker;
-}
-
-std::shared_ptr<WorkerInterface> WorkerPool::PopWorker_(
-    const TaskSpecification &task_spec) {
-  std::shared_ptr<WorkerInterface> orig = PopWorker(task_spec);
-  return std::dynamic_pointer_cast<WorkerInterface>(orig);
 }
 
 bool WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker) {

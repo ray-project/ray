@@ -145,11 +145,6 @@ class WorkerPool : public WorkerPoolInterface {
   /// \param The idle worker to add.
   void PushWorker(const std::shared_ptr<WorkerInterface> &worker);
 
-  /// Explicit type cast. Useful for testing.
-  ///
-  /// \param The idle worker to add.
-  void PushWorker(const std::shared_ptr<WorkerInterface> &worker);
-
   /// Pop an idle worker from the pool. The caller is responsible for pushing
   /// the worker back onto the pool once the worker has completed its work.
   ///

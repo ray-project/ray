@@ -48,7 +48,7 @@ class MockWorkerPool : public WorkerPoolInterface {
   /// \param task_spec The returned worker must be able to execute this task.
   /// \return An idle worker with the requested task spec. Returns nullptr if no
   /// such worker exists.
-  std::shared_ptr<WorkerInterface> PopWorker_(const TaskSpecification &task_spec) {
+  std::shared_ptr<WorkerInterface> PopWorker(const TaskSpecification &task_spec) {
     if (workers.empty()) {
       return nullptr;
     }
