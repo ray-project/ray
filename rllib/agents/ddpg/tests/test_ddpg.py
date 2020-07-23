@@ -215,6 +215,18 @@ class TestDDPG(unittest.TestCase):
                 assert fw == "torch"  # Then transfer that to torch Model.
                 model_dict = self._translate_weights_to_torch(
                     weights_dict, map_)
+                model_dict_torch = policy.model.state_dict()
+                if "policy_model.action_out_squashed.low_action" in \
+                        model_dict_torch:
+                    model_dict["policy_model.action_out_squashed.low_action"] \
+                        = model_dict_torch[
+                        "policy_model.action_out_squashed.low_action"]
+                if "policy_model.action_out_squashed.action_range" in \
+                        model_dict_torch:
+                    model_dict[
+                        "policy_model.action_out_squashed.action_range"] = \
+                        model_dict_torch[
+                            "policy_model.action_out_squashed.action_range"]
                 policy.model.load_state_dict(model_dict)
                 policy.target_model.load_state_dict(model_dict)
 
