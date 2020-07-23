@@ -3,7 +3,6 @@ from collections import defaultdict, namedtuple
 import os
 import random
 import time
-from typing import Callable
 
 import ray
 import ray.cloudpickle as pickle
@@ -183,11 +182,6 @@ class ServeController:
         """Returns a handle to the HTTP proxy managed by this actor."""
         return self.routers
 
-    async def broadcast_routers(
-            self, apply: Callable[[HTTPProxyActor], ray.ObjectRef]):
-        object_refs = [apply(router) for router in self.routers]
-        await asyncio.gather(*object_refs)
-
     def get_router_config(self):
         """Called by the HTTP proxy on startup to fetch required state."""
         return self.routes
@@ -271,31 +265,31 @@ class ServeController:
         # Push configuration state to the router.
         # TODO(edoakes): should we make this a pull-only model for simplicity?
         for endpoint, traffic_policy in self.traffic_policies.items():
-            await self.broadcast_routers(
-                lambda router: router.set_traffic.remote(
-                    endpoint, traffic_policy
-                )
-            )
+            await asyncio.gather(*[
+                router.set_traffic.remote(endpoint, traffic_policy)
+                for router in self.routers
+            ])
 
         for backend_tag, replica_dict in self.workers.items():
             for replica_tag, worker in replica_dict.items():
-                await self.broadcast_routers(
-                    lambda router: router.add_new_worker.remote(
-                        backend_tag, replica_tag, worker
-                    )
-                )
+                await asyncio.gather(*[
+                    router.add_new_worker.remote(backend_tag, replica_tag,
+                                                 worker)
+                    for router in self.routers
+                ])
 
         for backend, info in self.backends.items():
-            await self.broadcast_routers(
-                lambda router: router.set_backend_config.remote(
-                    backend, info.backend_config
-                )
-            )
+            await asyncio.gather(*[
+                router.set_backend_config.remote(backend, info.backend_config)
+                for router in self.routers
+            ])
             await self.broadcast_backend_config(backend)
 
         # Push configuration state to the HTTP proxy.
-        await self.broadcast_routers(
-            lambda router: router.set_route_table.remote(self.routes))
+        await asyncio.gather(*[
+            router.set_route_table.remote(self.routes)
+            for router in self.routers
+        ])
 
         # Start/stop any pending backend replicas.
         await self._start_pending_replicas()
@@ -368,11 +362,11 @@ class ServeController:
         self.workers[backend_tag][replica_tag] = worker_handle
 
         # Register the worker with the router.
-        await self.broadcast_routers(
-            lambda router: router.add_new_worker.remote(
-                backend_tag, replica_tag, worker_handle
-            )
-        )
+        await asyncio.gather(*[
+            router.add_new_worker.remote(backend_tag, replica_tag,
+                                         worker_handle)
+            for router in self.routers
+        ])
 
     async def _start_pending_replicas(self):
         """Starts the pending backend replicas in self.replicas_to_start.
@@ -410,11 +404,10 @@ class ServeController:
                     continue
 
                 # Remove the replica from router. This call is idempotent.
-                await self.broadcast_routers(
-                    lambda router: router.remove_worker.remote(
-                        backend_tag, replica_tag
-                    )
-                )
+                await asyncio.gather(*[
+                    router.remove_worker.remote(backend_tag, replica_tag)
+                    for router in self.routers
+                ])
 
                 # TODO(edoakes): this logic isn't ideal because there may be
                 # pending tasks still executing on the replica. However, if we
@@ -431,8 +424,10 @@ class ServeController:
         Clears self.backends_to_remove.
         """
         for backend_tag in self.backends_to_remove:
-            await self.broadcast_routers(
-                lambda router: router.remove_backend.remote(backend_tag))
+            await asyncio.gather(*[
+                router.remove_backend.remote(backend_tag)
+                for router in self.routers
+            ])
         self.backends_to_remove.clear()
 
     async def _remove_pending_endpoints(self):
@@ -441,8 +436,10 @@ class ServeController:
         Clears self.endpoints_to_remove.
         """
         for endpoint_tag in self.endpoints_to_remove:
-            await self.broadcast_routers(
-                lambda router: router.remove_endpoint.remote(endpoint_tag))
+            await asyncio.gather(*[
+                router.remove_endpoint.remote(endpoint_tag)
+                for router in self.routers
+            ])
         self.endpoints_to_remove.clear()
 
     def _scale_replicas(self, backend_tag, num_replicas):
@@ -556,11 +553,10 @@ class ServeController:
         # update to avoid inconsistent state if we crash after pushing the
         # update.
         self._checkpoint()
-        await self.broadcast_routers(
-            lambda router: router.set_traffic.remote(
-                endpoint_name, traffic_policy,
-            )
-        )
+        await asyncio.gather(*[
+            router.set_traffic.remote(endpoint_name, traffic_policy)
+            for router in self.routers
+        ])
 
     async def set_traffic(self, endpoint_name, traffic_dict):
         """Sets the traffic policy for the specified endpoint."""
@@ -587,11 +583,11 @@ class ServeController:
             # update to avoid inconsistent state if we crash after pushing the
             # update.
             self._checkpoint()
-            await self.broadcast_routers(
-                lambda router: router.set_traffic.remote(
-                    endpoint_name, self.traffic_policies[endpoint_name]
-                )
-            )
+            await asyncio.gather(*[
+                router.set_traffic.remote(endpoint_name,
+                                          self.traffic_policies[endpoint_name])
+                for router in self.routers
+            ])
 
     async def create_endpoint(self, endpoint, traffic_dict, route, methods):
         """Create a new endpoint with the specified route and methods.
@@ -630,8 +626,10 @@ class ServeController:
 
             # NOTE(edoakes): checkpoint is written in self._set_traffic.
             await self._set_traffic(endpoint, traffic_dict)
-            await self.broadcast_routers(
-                lambda router: router.set_route_table.remote(self.routes))
+            await asyncio.gather(*[
+                router.set_route_table.remote(self.routes)
+                for router in self.routers
+            ])
 
     async def delete_endpoint(self, endpoint):
         """Delete the specified endpoint.
@@ -666,8 +664,10 @@ class ServeController:
 
             # Update the HTTP proxy first to ensure no new requests for the
             # endpoint are sent to the router.
-            await self.broadcast_routers(
-                lambda router: router.set_route_table.remote(self.routes))
+            await asyncio.gather(*[
+                router.set_route_table.remote(self.routes)
+                for router in self.routers
+            ])
             await self._remove_pending_endpoints()
 
     async def create_backend(self, backend_tag, backend_config,
@@ -692,11 +692,10 @@ class ServeController:
 
             # Set the backend config inside the router
             # (particularly for max-batch-size).
-            await self.broadcast_routers(
-                lambda router: router.set_backend_config.remote(
-                    backend_tag, backend_config
-                )
-            )
+            await asyncio.gather(*[
+                router.set_backend_config.remote(backend_tag, backend_config)
+                for router in self.routers
+            ])
             await self.broadcast_backend_config(backend_tag)
 
     async def delete_backend(self, backend_tag):
@@ -752,11 +751,10 @@ class ServeController:
 
             # Inform the router about change in configuration
             # (particularly for setting max_batch_size).
-            await self.broadcast_routers(
-                lambda router: router.set_backend_config.remote(
-                    backend_tag, backend_config
-                )
-            )
+            await asyncio.gather(*[
+                router.set_backend_config.remote(backend_tag, backend_config)
+                for router in self.routers
+            ])
 
             await self._start_pending_replicas()
             await self._stop_pending_replicas()

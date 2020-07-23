@@ -21,7 +21,7 @@ def test_multiple_routers():
 
     # two actors should be started
     head_http = ray.get_actor(SERVE_PROXY_NAME + "-0")
-    worker_http = ray.get_actor(SERVE_PROXY_NAME + "-1")
+    ray.get_actor(SERVE_PROXY_NAME + "-1")
 
     # we can send requests to them
     assert requests.get("http://127.0.0.1:8000/-/routes").status_code == 200
