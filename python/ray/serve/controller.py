@@ -155,6 +155,8 @@ class ServeController:
 
         If the HTTP proxy does not already exist, it will be started.
         """
+        # TODO(simon): We don't handle nodes being added/removed. To do that,
+        # we should implement some sort of control loop in master actor.
         for i, node_id in enumerate(ray.state.node_ids()):
             proxy_name = format_actor_name(SERVE_PROXY_NAME,
                                            self.instance_name)

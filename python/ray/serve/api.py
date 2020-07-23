@@ -75,10 +75,7 @@ def init(
             specified in all subsequent serve.init() calls.
         http_host (str): Host for HTTP servers. Default to "0.0.0.0". Serve
             starts one HTTP server per node.
-        http_port (int, List[int]): Port for HTTP server. Default to 8000. If
-            a list of integers are passed in, multiple instance of the HTTP
-            servers will be started and bind to each port. On linux machine,
-            the ports can be repeated.
+        http_port (int, List[int]): Port for HTTP server. Default to 8000.
         metric_exporter(ExporterInterface): The class aggregates metrics from
             all RayServe actors and optionally export them to external
             services. Ray Serve has two options built in: InMemoryExporter and

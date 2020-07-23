@@ -23,10 +23,6 @@ def test_multiple_routers():
     head_http = ray.get_actor(SERVE_PROXY_NAME + "-0")
     worker_http = ray.get_actor(SERVE_PROXY_NAME + "-1")
 
-    # they should be healthy
-    assert ray.get(head_http.ready.remote())
-    assert ray.get(worker_http.ready.remote())
-
     # we can send requests to them
     assert requests.get("http://127.0.0.1:8000/-/routes").status_code == 200
 
