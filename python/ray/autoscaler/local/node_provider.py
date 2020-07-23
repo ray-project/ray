@@ -72,8 +72,10 @@ class ClusterState:
                         TAG_RAY_NODE_TYPE] == NODE_TYPE_HEAD)
                 # Ameer: relevant when a user reduces the number of workers
                 # without changing the headnode.
+                list_of_node_ips = list(provider_config["worker_ips"])
+                list_of_node_ips.append(provider_config["head_ip"])
                 for worker_ip in list(workers):
-                    if worker_ip not in provider_config["worker_ips"]:
+                    if worker_ip not in list_of_node_ips:
                         del workers[worker_ip]
 
                 assert len(workers) == len(provider_config["worker_ips"]) + 1
