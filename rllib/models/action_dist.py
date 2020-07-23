@@ -83,7 +83,7 @@ class ActionDistribution:
     @staticmethod
     def required_model_output_shape(
             action_space: gym.Space,
-            model_config: ModelConfigDict) -> Union[int, np.ndarray[int]]:
+            model_config: ModelConfigDict) -> Union[int, np.ndarray]:
         """Returns the required shape of an input parameter tensor for a
         particular action space and an optional dict of distribution-specific
         options.
