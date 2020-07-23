@@ -23,7 +23,8 @@ def build_ddpg_models_and_action_dist(policy, obs_space, action_space, config):
     #  one Model per policy. Note: Device placement is done automatically
     #  already for `policy.model` (but not for the target model).
     device = (torch.device("cuda")
-              if torch.cuda.is_available() else torch.device("cpu"))
+              if torch.cuda.is_available() and ray.get_gpu_ids()
+              else torch.device("cpu"))
     policy.target_model = policy.target_model.to(device)
     return model, TorchDeterministic
 
