@@ -19,7 +19,7 @@ py_test(
 
 py_test(
     name = "plot_pong_example",
-    size = "medium",
+    size = "large",
     srcs = ["examples/plot_pong_example.py"],
     tags = ["exclusive"]
 )
