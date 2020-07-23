@@ -89,20 +89,19 @@ def git_remote_branch_info():
         ref = "refs/heads/" + ref
     else:
         remote = git("remote", "show", "-n").splitlines()[0]
-        ref = os.getenv("TRAVIS_PULL_REQUEST_BRANCH")
-
-        if ref:
-            TRAVIS_PULL_REQUEST = os.environ["TRAVIS_PULL_REQUEST"]
-            if os.getenv("TRAVIS_EVENT_TYPE") == "pull_request":
-                ref = "refs/pull/{}/merge".format(TRAVIS_PULL_REQUEST)
+        ci = get_current_ci()
+        if ci == TRAVIS:
+            travis_pr = os.getenv("TRAVIS_PULL_REQUEST")
+            if travis_pr is not None:
+                ref = "refs/pull/{}/merge".format(travis_pr)
             else:
-                ref = "refs/heads/{}".format(TRAVIS_PULL_REQUEST)
+                ref = "refs/heads/{}".format(os.environ["TRAVIS_BRANCH"])
             expected_sha = os.getenv("TRAVIS_COMMIT")
-        else:
+        elif ci == GITHUB:
             ref = os.getenv("GITHUB_REF")
 
     if not remote or not ref:
-        raise ValueError("Invalid ref {!r} or remote {!r}".format(ref, remote))
+        raise ValueError("Invalid remote {!r} or ref {!r}".format(remote, ref))
 
     return (ref, remote, expected_sha)
 
