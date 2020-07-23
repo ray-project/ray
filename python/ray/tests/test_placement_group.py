@@ -37,10 +37,10 @@ def test_placement_group_pack(ray_start_cluster):
         }, {
             "CPU": 2
         }])
-    actor_1 = Actor.options(
-        placement_group_id=placement_group_id, bundle_index=0).remote()
-    actor_2 = Actor.options(
-        placement_group_id=placement_group_id, bundle_index=1).remote()
+    actor_1 = Actor.options(placement_group_id=placement_group_id,
+                            placement_group_bundle_index=0).remote()
+    actor_2 = Actor.options(placement_group_id=placement_group_id,
+                            placement_group_bundle_index=1).remote()
 
     print(ray.get(actor_1.value.remote()))
     print(ray.get(actor_2.value.remote()))
