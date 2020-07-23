@@ -413,7 +413,7 @@ class ActorClass:
                 name=None,
                 detached=False,
                 placement_group_id=None,
-                bundle_index=None):
+                placement_group_bundle_index=None):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -438,6 +438,11 @@ class ActorClass:
                 guaranteed when max_concurrency > 1.
             name: The globally unique name for the actor.
             detached: DEPRECATED.
+            placement_group_id: the placement group this actor belongs to, 
+                if none means no placement group belongs to.
+            placement_group_bundle_index: the bundle index of the bundle 
+                if the actor benlongs to a placment group. 
+                If it's none, it's means don't belong to a placement group.
 
         Returns:
             A handle to the newly created actor.
@@ -499,7 +504,7 @@ class ActorClass:
         else:
             detached = False
 
-        if placement_group_id is not None and bundle_index is None:
+        if placement_group_id is not None and placement_group_bundle_index is None:
             raise ValueError("The placement_group_id is set."
                              "But the bundle_index is not set.")
             pass
@@ -576,7 +581,8 @@ class ActorClass:
             is_asyncio,
             placement_group_id
             if placement_group_id is not None else ray.PlacementGroupID.nil(),
-            bundle_index if bundle_index is not None else -1,
+            placement_group_bundle_index
+            if placement_group_bundle_index is not None else -1,
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu))
 

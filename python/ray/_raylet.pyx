@@ -914,7 +914,7 @@ cdef class CoreWorker:
                      c_string name,
                      c_bool is_asyncio,
                      PlacementGroupID placement_group_id,
-                     int64_t bundle_index,
+                     int64_t placement_group_bundle_index,
                      c_string extension_data
                      ):
         cdef:
@@ -941,7 +941,7 @@ cdef class CoreWorker:
                         max_restarts, max_task_retries, max_concurrency,
                         c_resources, c_placement_resources,
                         dynamic_worker_options, is_detached, name, is_asyncio,
-                        c_pair[CPlacementGroupID, int64_t](c_placement_group_id, bundle_index)),
+                        c_pair[CPlacementGroupID, int64_t](c_placement_group_id, placement_group_bundle_index)),
                     extension_data,
                     &c_actor_id))
 
@@ -955,24 +955,27 @@ cdef class CoreWorker:
         cdef:
             CPlacementGroupID c_placement_group_id
             CPlacementStrategy c_strategy
-        with self.profile_event(b"submit_task"):
-            if strategy == b"PACK":
-                c_strategy = PLACEMENT_STRATEGY_PACK
-            else:
+        
+        if strategy == b"PACK":
+            c_strategy = PLACEMENT_STRATEGY_PACK
+        else:
+            if strategy == b"SPREAD":
                 c_strategy = PLACEMENT_STRATEGY_SPREAD
+            else:
+                raise TypeError(strategy)
 
-            with nogil:
-                check_status(
-                            CCoreWorkerProcess.GetCoreWorker().
-                            CreatePlacementGroup(
-                                CPlacementGroupCreationOptions(
-                                    name,
-                                    c_strategy,
-                                    bundles
-                                ),
-                                &c_placement_group_id))
+        with nogil:
+            check_status(
+                        CCoreWorkerProcess.GetCoreWorker().
+                        CreatePlacementGroup(
+                            CPlacementGroupCreationOptions(
+                                name,
+                                c_strategy,
+                                bundles
+                            ),
+                            &c_placement_group_id))
 
-            return PlacementGroupID(c_placement_group_id.Binary())
+        return PlacementGroupID(c_placement_group_id.Binary())
 
     def submit_actor_task(self,
                           Language language,
