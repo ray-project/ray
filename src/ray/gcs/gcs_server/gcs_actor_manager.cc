@@ -391,10 +391,9 @@ Status GcsActorManager::RegisterActor(
   auto iter = registered_actors_.find(actor_id);
   if (iter != registered_actors_.end() &&
       iter->second->GetState() == rpc::ActorTableData::ALIVE) {
-    // When the network fails, Driver/Worker is not sure whether GcsServer has received
-    // the request, so Driver/Worker will try again and again until receiving the reply
-    // from GcsServer. If the actor has been created successfully then just reply to the
-    // caller.
+    // In case of temporary network failures, workers will re-send multiple duplicate
+    // requests to GCS server.
+    // In this case, we can just reply.
     callback(iter->second);
     return Status::OK();
   }
@@ -435,11 +434,11 @@ Status GcsActorManager::RegisterActor(
     PollOwnerForActorOutOfScope(actor);
   }
 
-  // The backend storage is reliable in the future, so the status must be ok.
+  // The backend storage is supposed to be reliable, so the status must be ok.
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
       actor->GetActorID(), *actor->GetMutableActorTableData(),
       [this, actor](const Status &status) {
-        // The backend storage is reliable in the future, so the status must be ok.
+        // The backend storage is supposed to be reliable, so the status must be ok.
         RAY_CHECK_OK(status);
         // Invoke all callbacks for all registration requests of this actor (duplicated
         // requests are included) and remove all of them from
@@ -674,7 +673,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
       }));
 }
 
-absl::flat_hash_set<ActorID> GcsActorManager::GetUnresolvedActors(
+absl::flat_hash_set<ActorID> GcsActorManager::GetUnresolvedActorsByOwnerNode(
     const ClientID &node_id) {
   absl::flat_hash_set<ActorID> actor_ids;
   auto iter = unresolved_actors_.find(node_id);
@@ -686,7 +685,7 @@ absl::flat_hash_set<ActorID> GcsActorManager::GetUnresolvedActors(
   return actor_ids;
 }
 
-absl::flat_hash_set<ActorID> GcsActorManager::GetUnresolvedActors(
+absl::flat_hash_set<ActorID> GcsActorManager::GetUnresolvedActorsByOwnerWorker(
     const ClientID &node_id, const WorkerID &worker_id) {
   absl::flat_hash_set<ActorID> actor_ids;
   auto iter = unresolved_actors_.find(node_id);
@@ -717,7 +716,7 @@ void GcsActorManager::OnWorkerDead(const ray::ClientID &node_id,
   // The creator worker of these actors died before resolving their dependencies. In this
   // case, these actors will never be created successfully. So we need to destroy them,
   // to prevent actor tasks hang forever.
-  auto unresolved_actors = GetUnresolvedActors(node_id, worker_id);
+  auto unresolved_actors = GetUnresolvedActorsByOwnerWorker(node_id, worker_id);
   for (auto &actor_id : unresolved_actors) {
     if (registered_actors_.count(actor_id)) {
       DestroyActor(actor_id);
@@ -787,7 +786,7 @@ void GcsActorManager::OnNodeDead(const ClientID &node_id) {
   // The creator node of these actors died before resolving their dependencies. In this
   // case, these actors will never be created successfully. So we need to destroy them,
   // to prevent actor tasks hang forever.
-  auto unresolved_actors = GetUnresolvedActors(node_id);
+  auto unresolved_actors = GetUnresolvedActorsByOwnerNode(node_id);
   for (auto &actor_id : unresolved_actors) {
     if (registered_actors_.count(actor_id)) {
       DestroyActor(actor_id);

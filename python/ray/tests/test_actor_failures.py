@@ -19,7 +19,6 @@ from ray.test_utils import (
     generate_internal_config_map,
     get_other_nodes,
     SignalActor,
-    _pid_alive,
 )
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
@@ -928,7 +927,7 @@ def test_location_resolution_worker_failure(ray_start_cluster):
             pid = os.getpid()
             signal_handle = SignalActor.remote()
             caller_handle.call.remote(pid, signal_handle, actor_handle)
-            # Wait untill the `Caller` start executing the remote `call` method.
+            # Wait until the `Caller` start executing the remote `call` method.
             ray.get(signal_handle.wait.remote())
             # exit
             os._exit(0)
@@ -997,9 +996,8 @@ def test_location_resolution_node_failure(ray_start_cluster):
             pid = os.getpid()
             signal_handle = SignalActor.remote()
             caller_handle.call.remote(pid, signal_handle, actor_handle)
-            # Wait untill the `Caller` start executing the remote `call` method.
+            # Wait until the `Caller` start executing the remote `call` method.
             ray.get(signal_handle.wait.remote())
-
 
     @ray.remote
     class Caller:

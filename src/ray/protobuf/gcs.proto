@@ -103,9 +103,9 @@ message TaskTableData {
 message ActorTableData {
   // State of an actor.
   enum ActorState {
-    // Actor dependencies are resolving.
+    // Actor info ins registered in GCS. But its dependencies are not ready.
     PENDING_DEPENDENCY_RESOLUTION = 0;
-    // Actor is creating and the dependencies of this actor are resolved.
+    // Actor dependencies are ready. This actor is being created.
     PENDING_CREATION = 1;
     // Actor is alive.
     ALIVE = 2;

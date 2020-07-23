@@ -23,12 +23,12 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
 
   if (actor_creator_ && task_spec.IsActorCreationTask()) {
     // Synchronously register the actor to GCS server.
-    // Before, the actor was registered to GCS after all its dependencies were resolved
-    // asynchronously. Before the actor was registered to GCS, the actor handler might
-    // be obtained by other workers. If the owner of the actor hangs up at this time, the
-    // cluster will hang forever. So we should synchronous register the actor to GCS
-    // server, so that if the owner of the actor dies before the dependencies are
-    // resolved, GCS server can notify works to prevent the cluster from hanging.
+    // Previously, we asynchronously registered the actor after all its dependencies were
+    // resolved. This caused a problem: if the owner of the actor dies before dependencies
+    // are resolved, the actor will never be created. But the actor handle may already be
+    // passed to other workers. In this case, the actor tasks will hang forever.
+    // So we fixed this issue by synchronously registering the actor. If the owner dies
+    // before dependencies are resolved, GCS will notice this and mark the actor as dead.
     auto status = actor_creator_->RegisterActor(task_spec);
     if (!status.ok()) {
       return status;

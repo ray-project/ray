@@ -164,7 +164,7 @@ class CoreWorkerDirectTaskSubmitter {
   const ClientID local_raylet_id_;
 
   /// An interface to create actor. It provides two methods, one of them is
-  /// `RegisterActor` which is synchronously, while another is
+  /// `RegisterActor` which is synchronous, while another is
   /// `AsyncReportActorDependenciesResolved` which is invoked when the dependencies of the
   /// actor are all resolved.
   std::shared_ptr<ActorCreatorInterface> actor_creator_;
