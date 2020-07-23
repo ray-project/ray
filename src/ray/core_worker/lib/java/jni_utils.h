@@ -466,9 +466,15 @@ inline NativeT JavaProtobufObjectToNativeProtobufObject(JNIEnv *env, jobject jav
   if (java_obj) {
     jbyteArray bytes = static_cast<jbyteArray>(
         env->CallObjectMethod(java_obj, java_abstract_message_lite_to_byte_array));
+    RAY_CHECK_JAVA_EXCEPTION(env);
+    RAY_CHECK(bytes != nullptr);
     auto buffer = JavaByteArrayToNativeBuffer(env, bytes);
     RAY_CHECK(buffer);
     native_obj.ParseFromArray(buffer->Data(), buffer->Size());
+    // Destroy the buffer before deleting the local ref of `bytes`. We need to make sure
+    // that `bytes` is still available when invoking the destructor of
+    // `JavaByteArrayBuffer`.
+    buffer.reset();
     env->DeleteLocalRef(bytes);
   }
   return native_obj;
