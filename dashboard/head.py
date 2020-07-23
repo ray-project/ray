@@ -70,28 +70,29 @@ class DashboardHead:
                 nodes = await self._get_nodes()
                 self._gcs_rpc_error_counter = 0
                 node_ips = [node["nodeManagerAddress"] for node in nodes]
+                node_hostnames = [
+                    node["nodeManagerHostname"] for node in nodes
+                ]
 
-                agents = {}
+                agents = dict(DataSource.agents)
                 for node in nodes:
                     node_ip = node["nodeManagerAddress"]
-                    if node_ip not in DataSource.agents:
+                    if node_ip not in agents:
                         key = "{}{}".format(
                             dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX,
                             node_ip)
                         agent_port = await self.aioredis_client.get(key)
                         if agent_port:
                             agents[node_ip] = agent_port
+                for ip in agents.keys() - set(node_ips):
+                    agents.pop(ip, None)
 
                 DataSource.agents.reset(agents)
                 DataSource.nodes.reset(dict(zip(node_ips, nodes)))
                 DataSource.hostname_to_ip.reset(
-                    dict(
-                        zip([node["nodeManagerHostname"] for node in nodes],
-                            node_ips)))
+                    dict(zip(node_hostnames, node_ips)))
                 DataSource.ip_to_hostname.reset(
-                    dict(
-                        zip(node_ips,
-                            [node["nodeManagerHostname"] for node in nodes])))
+                    dict(zip(node_ips, node_hostnames)))
             except aiogrpc.AioRpcError as ex:
                 logger.exception(ex)
                 self._gcs_rpc_error_counter += 1

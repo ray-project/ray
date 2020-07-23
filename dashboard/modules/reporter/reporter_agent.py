@@ -116,7 +116,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
     def _get_workers(self):
         curr_proc = psutil.Process()
         parent = curr_proc.parent()
-        if parent.pid == 1:
+        if parent is None or parent.pid == 1:
             return []
         else:
             workers = set(parent.children())

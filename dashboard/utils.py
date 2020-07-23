@@ -278,6 +278,10 @@ class Change:
         self.old = old
         self.new = new
 
+    def __str__(self):
+        return "Change(owner: {}, old: {}, new: {}".format(
+            self.owner, self.old, self.new)
+
 
 class NotifyQueue:
     """Asyncio notify queue for Dict signal."""
