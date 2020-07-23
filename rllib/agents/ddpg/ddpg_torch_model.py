@@ -88,9 +88,16 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
         # emulate behaviour of tanh activation used in DDPG and TD3 papers.
         # After sigmoid squashing, re-scale to env action space bounds.
         class _Lambda(nn.Module):
+            def __init__(self_):
+                super(_Lambda, self_).__init__()
+                self_.action_range = nn.Parameter(
+                    self.action_range, requires_grad=False)
+                self_.low_action = nn.Parameter(
+                    self.low_action, requires_grad=False)
+
             def forward(self_, x):
                 sigmoid_out = nn.Sigmoid()(2.0 * x)
-                squashed = self.action_range * sigmoid_out + self.low_action
+                squashed = self_.action_range * sigmoid_out + self_.low_action
                 return squashed
 
         # Only squash if we have bounded actions.
