@@ -98,9 +98,8 @@ class LocalNodeProviderServer(threading.Thread):
 
         config = yaml.safe_load(open(on_prem_server_config_path).read())
         if sorted(config.keys()) != ["list_of_node_ips", "server_address"]:
-            raise ValueError(
-                'on_prem_server_config_path should only include'
-                + ' "server_address" and "list_of_node_ips".')
+            raise ValueError("on_prem_server_config_path should only include" +
+                             " \"server_address\" and \"list_of_node_ips\".")
         try:
             host, port = config["server_address"].split(":")
             port = int(port)
