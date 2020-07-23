@@ -53,6 +53,7 @@ from ray.utils import (_random_string, check_oversized_pickle, is_cython,
 SCRIPT_MODE = 0
 WORKER_MODE = 1
 LOCAL_MODE = 2
+IO_WORKER_MODE = 3
 
 ERROR_KEY_PREFIX = b"Error:"
 
@@ -1206,7 +1207,7 @@ def connect(node,
     worker.redis_client = node.create_redis_client()
 
     # Initialize some fields.
-    if mode is WORKER_MODE:
+    if mode is WORKER_MODE or mode is IO_WORKER_MODE:
         # We should not specify the job_id if it's `WORKER_MODE`.
         assert job_id is None
         job_id = JobID.nil()
@@ -1260,7 +1261,7 @@ def connect(node,
         import __main__ as main
         driver_name = (main.__file__
                        if hasattr(main, "__file__") else "INTERACTIVE MODE")
-    elif mode == WORKER_MODE:
+    elif mode == WORKER_MODE or mode == IO_WORKER_MODE:
         # Check the RedirectOutput key in Redis and based on its value redirect
         # worker output and error to their own files.
         # This key is set in services.py when Redis is started.
@@ -1295,7 +1296,7 @@ def connect(node,
         job_config = ray.job_config.JobConfig()
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
-        (mode == SCRIPT_MODE or mode == LOCAL_MODE),
+        mode,
         node.plasma_store_socket_name, node.raylet_socket_name, job_id,
         gcs_options, node.get_logs_dir_path(), node.node_ip_address,
         node.node_manager_port, node.raylet_ip_address, (mode == LOCAL_MODE),

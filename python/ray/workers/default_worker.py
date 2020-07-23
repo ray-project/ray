@@ -1,5 +1,6 @@
 import argparse
 import json
+import time
 
 import ray
 import ray.actor
@@ -81,6 +82,12 @@ parser.add_argument(
     action="store_true",
     help="True if cloudpickle should be used for serialization.")
 parser.add_argument(
+    "--worker-type",
+    required=False,
+    type=str,
+    default="WORKER",
+    help="Specify the type of the worker process")
+parser.add_argument(
     "--metrics-agent-port",
     required=True,
     type=int,
@@ -125,5 +132,17 @@ if __name__ == "__main__":
         spawn_reaper=False,
         connect_only=True)
     ray.worker._global_node = node
-    ray.worker.connect(node, mode=ray.WORKER_MODE)
-    ray.worker.global_worker.main_loop()
+
+    if args.worker_type == "WORKER":
+        mode = ray.WORKER_MODE
+    elif args.worker_type == "IO_WORKER":
+        mode = ray.IO_WORKER_MODE
+    else:
+        raise ValueError("Unknown worker type: " + args.worker_type)
+
+    ray.worker.connect(node, mode=mode)
+    if mode == ray.WORKER_MODE:
+        ray.worker.global_worker.main_loop()
+    else:
+        while True:
+            time.sleep(100000)

@@ -162,6 +162,19 @@ class WorkerPool : public WorkerPoolInterface {
   /// \param The driver to disconnect. The driver must be registered.
   void DisconnectDriver(const std::shared_ptr<WorkerInterface> &driver);
 
+  /// Add an idle I/O worker to the pool.
+  ///
+  /// \param worker The idle I/O worker to add.
+  void PushIOWorker(const std::shared_ptr<WorkerInterface> &worker);
+
+  /// Pop an idle I/O worker from the pool and trigger a callback when
+  /// an I/O worker is available.
+  /// The caller is responsible for pushing the worker back onto the
+  /// pool once the worker has completed its work.
+  ///
+  /// \param callback The callback that returns an available I/O worker.
+  void PopIOWorker(std::function<void(std::shared_ptr<WorkerInterface>)> callback);
+
   /// Add an idle worker to the pool.
   ///
   /// \param The idle worker to add.
@@ -229,11 +242,13 @@ class WorkerPool : public WorkerPoolInterface {
   /// any workers.
   ///
   /// \param language Which language this worker process should be.
+  /// \param worker_type The type of the worker.
   /// \param job_id The ID of the job to which the started worker process belongs.
   /// \param dynamic_options The dynamic options that we should add for worker command.
   /// \return The id of the process that we started if it's positive,
   /// otherwise it means we didn't start a process.
-  Process StartWorkerProcess(const Language &language, const JobID &job_id,
+  Process StartWorkerProcess(const Language &language, const rpc::WorkerType worker_type,
+                             const JobID &job_id,
                              std::vector<std::string> dynamic_options = {});
 
   /// The implementation of how to start a new worker process with command arguments.
@@ -263,6 +278,10 @@ class WorkerPool : public WorkerPoolInterface {
     std::unordered_set<std::shared_ptr<WorkerInterface>> idle;
     /// The pool of idle actor workers.
     std::unordered_map<ActorID, std::shared_ptr<WorkerInterface>> idle_actor;
+    /// The pool of idle I/O workers.
+    std::queue<std::shared_ptr<WorkerInterface>> idle_io_workers;
+    /// The queue of pending I/O tasks.
+    std::queue<std::function<void(std::shared_ptr<WorkerInterface>)>> pending_io_tasks;
     /// All workers that have registered and are still connected, including both
     /// idle and executing.
     std::unordered_set<std::shared_ptr<WorkerInterface>> registered_workers;
