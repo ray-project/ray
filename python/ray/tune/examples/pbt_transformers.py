@@ -149,7 +149,7 @@ def train_transformer(config, model_name, task_name, num_epochs=3, data_dir="./d
         do_train=True,
         do_eval=True,
         evaluate_during_training=True,
-        eval_steps=30,
+        eval_steps=10,
         num_train_epochs=num_epochs,
         per_device_train_batch_size=config["batch_size"],
         per_device_eval_batch_size=config["batch_size"],
@@ -185,7 +185,7 @@ def tune_transformer(num_samples=8, num_epochs=3, gpus_per_trial=0):
         mode="max",
         perturbation_interval=4,
         hyperparam_mutations={
-            "batch_size": [32, 64, 128],
+            "batch_size": [16, 32, 64],
             "lr": lambda: tune.loguniform(1e-4, 1e-1).func(None),
             "weight_decay": lambda: tune.loguniform(1e-3, 1e-1).func(None),
         })
