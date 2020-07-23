@@ -1708,9 +1708,6 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
 void NodeManager::ScheduleAndDispatch() {
   RAY_CHECK(new_scheduler_enabled_);
   cluster_task_manager_->SchedulePendingTasks();
-
-  // std::unordered_map<Worker, std::shared_ptr<WorkerInterface>> leased_workers;
-
   cluster_task_manager_->DispatchScheduledTasksToWorkers(worker_pool_, leased_workers_);
 }
 
@@ -1736,9 +1733,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
 
   if (new_scheduler_enabled_) {
     auto task_spec = task.GetTaskSpecification();
-    cluster_task_manager_->QueueTask(task, reply, [send_reply_callback]() {
-      send_reply_callback(Status::OK(), nullptr, nullptr);
-    });
+    cluster_task_manager_->QueueTask(task, reply);
     ScheduleAndDispatch();
     return;
   }
