@@ -74,7 +74,7 @@ def init(
             multiple serve instances to run on the same ray cluster. Must be
             specified in all subsequent serve.init() calls.
         http_host (str): Host for HTTP servers. Default to "0.0.0.0". Serve
-            starts one HTTP server per node.
+            starts one HTTP server per node in the Ray cluster.
         http_port (int, List[int]): Port for HTTP server. Default to 8000.
         metric_exporter(ExporterInterface): The class aggregates metrics from
             all RayServe actors and optionally export them to external
