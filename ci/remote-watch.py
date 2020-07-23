@@ -66,10 +66,16 @@ def get_remote_url(remote):
 
 
 def git_remote_branch_info():
-    # Obtains the remote branch name, remote name, and commit hash that
-    # correspond to the local HEAD.
-    # Example: ("refs/heads/mybranch", "origin", "1A2B3C4...")
+    """Obtains the remote branch name, remote name, and commit hash that
+    correspond to the local HEAD.
+
+    Returns:
+        ("refs/heads/mybranch", "origin", "1A2B3C4...")
+    """
     ref = None
+    remote = None
+    expected_sha = None
+
     try:
         # Try to get the local branch ref. (e.g. refs/heads/mybranch)
         head = git("symbolic-ref", "-q", "HEAD")
@@ -77,14 +83,14 @@ def git_remote_branch_info():
         ref = git("for-each-ref", "--format=%(upstream:short)", head)
     except subprocess.CalledProcessError:
         pass
-    remote = None
-    expected_sha = None
+
     if ref:
         (remote, ref) = ref.split("/", 1)
         ref = "refs/heads/" + ref
     else:
         remote = git("remote", "show", "-n").splitlines()[0]
         ref = os.getenv("TRAVIS_PULL_REQUEST_BRANCH")
+
         if ref:
             TRAVIS_PULL_REQUEST = os.environ["TRAVIS_PULL_REQUEST"]
             if os.getenv("TRAVIS_EVENT_TYPE") == "pull_request":
@@ -94,16 +100,22 @@ def git_remote_branch_info():
             expected_sha = os.getenv("TRAVIS_COMMIT")
         else:
             ref = os.getenv("GITHUB_REF")
+
     if not remote:
         raise ValueError("Invalid remote: {!r}".format(remote))
     if not ref:
         raise ValueError("Invalid ref: {!r}".format(ref))
-    expected_sha = git("rev-parse", "--verify", "HEAD")
+
+    if not expected_sha:
+        expected_sha = git("rev-parse", "--verify", "HEAD")
+
     return (ref, remote, expected_sha)
 
 
 def get_commit_metadata(hash):
-    # Get the commit info (content hash, parents, message, etc.)
+    """Get the commit info (content hash, parents, message, etc.) as a list of
+    key-value pairs.
+    """
     info = git("cat-file", "-p", hash)
     parts = info.split("\n\n", 1)  # Split off the commit message
     records = parts[0]
@@ -124,11 +136,12 @@ def terminate_my_process_group():
     try:
         logger.warning("Attempting kill...")
         if sys.platform == "win32":
-            os.kill(0, signal.CTRL_BREAK_EVENT)  # this might get ignored
+            os.kill(0, signal.CTRL_BREAK_EVENT)  # This might get ignored.
             time.sleep(timeout)
             os.kill(os.getppid(), signal.SIGTERM)
         else:
-            os.kill(os.getppid(), signal.SIGTERM)  # apparently this is needed
+            # This SIGTERM seems to be needed to prevent jobs from lingering.
+            os.kill(os.getppid(), signal.SIGTERM)
             time.sleep(timeout)
             os.kill(0, signal.SIGKILL)
     except OSError as ex:
@@ -148,13 +161,21 @@ def yield_poll_schedule():
 
 
 def detect_spurious_commit(actual, expected, remote):
-    # GitHub sometimes spuriously generates commits multiple times with
-    # different dates but identical contents. See here:
-    # https://github.com/travis-ci/travis-ci/issues/7459#issuecomment-601346831
-    # We need to detect whether this might be the case, and we do so by
-    # comparing the commits' contents ("tree" objects) and their parents.
-    # If these match, we tell the caller to expect the new commit from now on.
-    # Otherwise, we return the same expected commit as before.
+    """GitHub sometimes spuriously generates commits multiple times with
+    different dates but identical contents. See here:
+    https://github.com/travis-ci/travis-ci/issues/7459#issuecomment-601346831
+    We need to detect whether this might be the case, and we do so by
+    comparing the commits' contents ("tree" objects) and their parents.
+
+    Args:
+        actual: The commit line on the remote from git ls-remote, e.g.:
+            da39a3ee5e6b4b0d3255bfef95601890afd80709    refs/heads/master
+        expected: The commit line initially expected.
+
+    Returns:
+        The new (actual) commit line, if it is suspected to be spurious.
+        Otherwise, the previously expected commit line.
+    """
     actual_hash = actual.split(None, 1)[0]
     expected_hash = expected.split(None, 1)[0]
     relevant = ["tree", "parent"]  # relevant parts of a commit for comparison
@@ -169,26 +190,31 @@ def detect_spurious_commit(actual, expected, remote):
     return expected
 
 
-def monitor():
+def should_keep_alive(commit_msg):
+    result = False
     ci = get_current_ci() or ""
-    (ref, remote, expected_sha) = git_remote_branch_info()
-    expected_line = "{}\t{}".format(expected_sha, ref)
-    keep_alive = False
-    commit_msg = git("show", "-s", "--format=%B", "HEAD^-")
     for line in commit_msg.splitlines():
         parts = line.strip("# ").split(":", 1)
         (key, val) = parts if len(parts) > 1 else (parts[0], "")
         if key == "CI_KEEP_ALIVE":
             ci_names = val.replace(",", " ").lower().split() if val else []
             if len(ci_names) == 0 or ci.lower() in ci_names:
-                keep_alive = True
-    if keep_alive:
+                result = True
+    return result
+
+
+def monitor():
+    (ref, remote, expected_sha) = git_remote_branch_info()
+    expected_line = "{}\t{}".format(expected_sha, ref)
+
+    if should_keep_alive(git("show", "-s", "--format=%B", "HEAD^-")):
         logger.info("Not monitoring %s on %s due to keep-alive on: %s",
                     ref, remote, expected_line)
         return
+
     logger.info("Monitoring %s (%s) for changes in %s: %s", remote,
                 get_remote_url(remote), ref, expected_line)
-    terminate = False
+
     for to_wait in yield_poll_schedule():
         time.sleep(to_wait)
         status = 0
@@ -200,7 +226,6 @@ def monitor():
             status = ex.returncode
 
         if status == 2:
-            terminate = True
             logger.info("Terminating job as %s has been deleted on %s: %s",
                         ref, remote, expected_line)
             break
@@ -210,18 +235,13 @@ def monitor():
         else:
             expected_line = detect_spurious_commit(line, expected_line, remote)
             if expected_line != line:
-                terminate = True
-                logger.info("\n".join(
-                    [
-                        "Terminating job as %s has changed on %s",
-                        "    from:\t%s",
-                        "    to:  \t%s",
-                    ]), ref, remote, expected_line, line)
+                logger.info("Terminating job as %s has changed on %s\n"
+                            "    from:\t%s\n"
+                            "    to:  \t%s", ref, remote, expected_line, line)
                 time.sleep(1)  # wait for CI to flush output
                 break
-    if terminate:
-        result = terminate_my_process_group()
-    return result
+
+    return terminate_my_process_group()
 
 
 def main(program, *args):
