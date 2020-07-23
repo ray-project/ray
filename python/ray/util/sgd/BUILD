@@ -12,7 +12,7 @@ py_test(
 
 py_test(
     name = "test_torch",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_torch.py"],
     tags = ["exclusive", "pytorch"],
     deps = [":sgd_lib"],
@@ -20,7 +20,7 @@ py_test(
 
 py_test(
     name = "test_torch_runner",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_torch_runner.py"],
     tags = ["exclusive", "pytorch"],
     deps = [":sgd_lib"],
@@ -126,7 +126,7 @@ py_test(
 
 py_test(
     name = "dcgan",
-    size = "medium",
+    size = "small",
     srcs = ["torch/examples/dcgan.py"],
     tags = ["exclusive", "pytorch"],
     deps = [":sgd_lib"],
@@ -135,7 +135,7 @@ py_test(
 
 py_test(
     name = "raysgd_torch_signatures",
-    size = "medium",
+    size = "small",
     srcs = ["torch/examples/raysgd_torch_signatures.py"],
     tags = ["exclusive", "pytorch"],
     deps = [":sgd_lib"]
@@ -143,7 +143,7 @@ py_test(
 
 py_test(
     name = "train_example_1",
-    size = "medium",
+    size = "small",
     main = "torch/examples/train_example.py",
     srcs = ["torch/examples/train_example.py"],
     tags = ["exclusive", "pytorch"],
@@ -153,7 +153,7 @@ py_test(
 
 py_test(
     name = "train_example_2",
-    size = "medium",
+    size = "small",
     main = "torch/examples/train_example.py",
     srcs = ["torch/examples/train_example.py"],
     tags = ["exclusive", "pytorch"],
@@ -163,7 +163,7 @@ py_test(
 
 py_test(
     name = "tune_example_1",
-    size = "medium",
+    size = "small",
     main = "torch/examples/tune_example.py",
     srcs = ["torch/examples/tune_example.py"],
     tags = ["exclusive", "pytorch"],
@@ -173,7 +173,7 @@ py_test(
 
 py_test(
     name = "tune_example_2",
-    size = "medium",
+    size = "small",
     main = "torch/examples/tune_example.py",
     srcs = ["torch/examples/tune_example.py"],
     tags = ["exclusive", "pytorch"],
@@ -188,7 +188,7 @@ py_test(
 # --------------------------------------------------------------------
 py_test(
     name = "benchmark",
-    size = "medium",
+    size = "small",
     srcs = ["torch/examples/benchmarks/benchmark.py"],
     tags = ["exclusive", "pytorch"],
     deps = [":sgd_lib"],
@@ -197,7 +197,7 @@ py_test(
 
 py_test(
     name = "image_models",
-    size = "medium",
+    size = "small",
     main = "torch/examples/image_models/train.py",
     srcs = ["torch/examples/image_models/train.py"],
     tags = ["exclusive", "pytorch"],

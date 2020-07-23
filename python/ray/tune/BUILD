@@ -296,14 +296,15 @@ py_test(
     args = ["--smoke-test"]
 )
 
-py_test(
-    name = "durable_trainable_example",
-    size = "medium",
-    srcs = ["examples/durable_trainable_example.py"],
-    deps = [":tune_lib"],
-    tags = ["exclusive", "example"],
-    args = ["--local", "--mock-storage"]
-)
+# Does not work without awscli tool installed. Check if can be mocked.
+# py_test(
+#     name = "durable_trainable_example",
+#     size = "medium",
+#     srcs = ["examples/durable_trainable_example.py"],
+#     deps = [":tune_lib"],
+#     tags = ["exclusive", "example"],
+#     args = ["--local", "--mock-storage"]
+# )
 
 py_test(
     name = "genetic_example",

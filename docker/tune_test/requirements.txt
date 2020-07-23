@@ -4,6 +4,7 @@ bayesian-optimization
 boto3
 dm_tree
 dragonfly-opt
+gluoncv
 gym[atari]
 h5py
 hpbandster
