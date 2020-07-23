@@ -1,14 +1,65 @@
 import os
+from fnmatch import fnmatch
+from traceback import format_exception
 
 import colorama
 
 import ray
+import ray.cloudpickle as pickle
+from ray.core.generated.common_pb2 import RayException
 import setproctitle
 
 
 class RayError(Exception):
     """Super class of all ray exception types."""
-    pass
+
+    def to_bytes(self):
+        # Extract exc_info from exception object.
+        exc_info = (type(self), self, self.__traceback__)
+        formatted_exception_string = "\n".join(format_exception(*exc_info))
+        return RayException(
+            language=ray.Language.PYTHON.value(),
+            serialized_exception=pickle.dumps(self),
+            formatted_exception_string=formatted_exception_string
+        ).SerializeToString()
+
+    @staticmethod
+    def from_bytes(b):
+        ray_exception = RayException()
+        ray_exception.ParseFromString(b)
+        if ray_exception.language == ray.Language.PYTHON.value():
+            return pickle.loads(ray_exception.serialized_exception)
+        else:
+            return CrossLanguageError(ray_exception.formatted_exception_string)
+
+    @staticmethod
+    def _strip_traceback(tb):
+        """Strip traceback stack, remove unused traceback."""
+
+        def _is_stripped(tb):
+            filename = tb.tb_frame.f_code.co_filename
+            if fnmatch(filename, "*/ray/tests/*"):
+                return False
+            return any(
+                fnmatch(filename, p) for p in ("*/ray/*.py", "*/ray/*.pyx"))
+
+        while tb:
+            if _is_stripped(tb):
+                tb = tb.tb_next
+            else:
+                tb2 = tb
+                while tb2.tb_next:
+                    if _is_stripped(tb2.tb_next):
+                        tb2.tb_next = tb2.tb_next.tb_next
+                    else:
+                        tb2 = tb2.tb_next
+                break
+
+        return tb
+
+
+class CrossLanguageError(RayError):
+    """Raised from another language."""
 
 
 class RayConnectionError(RayError):
