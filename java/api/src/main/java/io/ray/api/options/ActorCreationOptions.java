@@ -1,7 +1,6 @@
 package io.ray.api.options;
 
 import io.ray.api.Ray;
-import io.ray.api.placementgroup.PlacementBundle;
 import io.ray.api.placementgroup.PlacementGroup;
 import java.util.HashMap;
 import java.util.Map;
@@ -15,18 +14,20 @@ public class ActorCreationOptions extends BaseTaskOptions {
   public final int maxRestarts;
   public final String jvmOptions;
   public final int maxConcurrency;
-  public final PlacementBundle placementBundle;
+  public final PlacementGroup group;
+  public final int bundleIndex;
 
   private ActorCreationOptions(boolean global, String name, Map<String, Double> resources,
                                int maxRestarts, String jvmOptions, int maxConcurrency,
-                               PlacementBundle placementBundle) {
+                               PlacementGroup group, int bundleIndex) {
     super(resources);
     this.global = global;
     this.name = name;
     this.maxRestarts = maxRestarts;
     this.jvmOptions = jvmOptions;
     this.maxConcurrency = maxConcurrency;
-    this.placementBundle = placementBundle;
+    this.group = group;
+    this.bundleIndex = bundleIndex;
   }
 
   /**
@@ -39,7 +40,8 @@ public class ActorCreationOptions extends BaseTaskOptions {
     private int maxRestarts = 0;
     private String jvmOptions = null;
     private int maxConcurrency = 1;
-    private PlacementBundle placementBundle;
+    private PlacementGroup group;
+    private int bundleIndex;
 
     /**
      * Set the actor name of a named actor.
@@ -142,20 +144,21 @@ public class ActorCreationOptions extends BaseTaskOptions {
     }
 
     /**
-     * Set the placement bundle of the actor.
-     * The placement bundle is get by index via {@link PlacementGroup#getBundle(int)}.
+     * Set the placement group of the actor.
      *
-     * @param placementBundle The placement bundle of the actor.
+     * @param group The placement group of the actor.
+     * @param bundleIndex The index of the bundle.
      * @return self
      */
-    public Builder setPlacementBundle(PlacementBundle placementBundle) {
-      this.placementBundle = placementBundle;
+    public Builder setPlacementGroup(PlacementGroup group, int bundleIndex) {
+      this.group = group;
+      this.bundleIndex = bundleIndex;
       return this;
     }
 
     public ActorCreationOptions build() {
       return new ActorCreationOptions(
-          global, name, resources, maxRestarts, jvmOptions, maxConcurrency, placementBundle);
+          global, name, resources, maxRestarts, jvmOptions, maxConcurrency, group, bundleIndex);
     }
   }
 

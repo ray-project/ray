@@ -38,7 +38,7 @@ public class PlacementGroupTest extends BaseTest {
 
     // Test creating an actor from a constructor.
     ActorHandle<Counter> actor = Ray.actor(Counter::new, 1)
-        .setPlacementBundle(placementGroup.getBundle(0)).remote();
+        .setPlacementGroup(placementGroup, 0).remote();
     Assert.assertNotEquals(actor.getId(), ActorId.NIL);
 
     // Test calling an actor.

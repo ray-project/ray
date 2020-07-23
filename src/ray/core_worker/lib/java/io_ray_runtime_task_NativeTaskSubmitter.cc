@@ -132,16 +132,16 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
     max_concurrency = static_cast<uint64_t>(env->GetIntField(
         actorCreationOptions, java_actor_creation_options_max_concurrency));
 
-    auto bundle =
-        env->GetObjectField(actorCreationOptions, java_actor_creation_options_placement_bundle);
-    if (bundle) {
-      auto placement_group_id =
-          env->GetObjectField(bundle, java_placement_bundle_placement_group_id);
+    auto group =
+        env->GetObjectField(actorCreationOptions, java_actor_creation_options_group);
+    if (group) {
+      auto placement_group_id = env->GetObjectField(group, java_placement_group_id);
       auto java_id_bytes = static_cast<jbyteArray>(
           env->CallObjectMethod(placement_group_id, java_base_id_get_bytes));
       RAY_CHECK_JAVA_EXCEPTION(env);
       auto id = JavaByteArrayToId<ray::PlacementGroupID>(env, java_id_bytes);
-      auto index = env->GetIntField(bundle, java_placement_bundle_bundle_index);
+      auto index = env->GetIntField(actorCreationOptions,
+                                    java_actor_creation_options_bundle_index);
       placement_options = std::make_pair(id, index);
     }
   }

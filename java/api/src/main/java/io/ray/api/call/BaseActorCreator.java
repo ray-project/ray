@@ -2,7 +2,6 @@ package io.ray.api.call;
 
 import io.ray.api.Ray;
 import io.ray.api.options.ActorCreationOptions;
-import io.ray.api.placementgroup.PlacementBundle;
 import io.ray.api.placementgroup.PlacementGroup;
 import java.util.Map;
 
@@ -102,15 +101,15 @@ public class BaseActorCreator<T extends BaseActorCreator> {
   }
 
   /**
-   * Set the placement bundle of the actor.
-   * The placement bundle is get by index via {@link PlacementGroup#getBundle(int)}.
+   * Set the placement group of the actor.
    *
-   * @param placementBundle The placement bundle of the actor.
+   * @param group The placement group of the actor.
+   * @param bundleIndex The index of the bundle.
    * @return self
-   * @see ActorCreationOptions.Builder#setPlacementBundle(PlacementBundle)
+   * @see ActorCreationOptions.Builder#setPlacementGroup(PlacementGroup, int)
    */
-  public T setPlacementBundle(PlacementBundle placementBundle) {
-    builder.setPlacementBundle(placementBundle);
+  public T setPlacementGroup(PlacementGroup group, int bundleIndex) {
+    builder.setPlacementGroup(group, bundleIndex);
     return self();
   }
 

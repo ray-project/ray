@@ -39,11 +39,20 @@ public class NativeTaskSubmitter implements TaskSubmitter {
   @Override
   public BaseActorHandle createActor(FunctionDescriptor functionDescriptor, List<FunctionArg> args,
                                      ActorCreationOptions options) throws IllegalArgumentException {
-    if (options != null && StringUtils.isNotBlank(options.name)) {
-      Optional<BaseActorHandle> actor =
-          options.global ? Ray.getGlobalActor(options.name) : Ray.getActor(options.name);
-      Preconditions.checkArgument(!actor.isPresent(),
-          String.format("Actor of name %s exists", options.name));
+    if (options != null) {
+      if (options.group != null) {
+        PlacementGroupImpl group = (PlacementGroupImpl)options.group;
+        Preconditions.checkArgument(options.bundleIndex >= 0
+                && options.bundleIndex < group.getBundleCount(),
+            String.format("Bundle index %s is invalid", options.bundleIndex));
+      }
+      
+      if (StringUtils.isNotBlank(options.name)) {
+        Optional<BaseActorHandle> actor =
+            options.global ? Ray.getGlobalActor(options.name) : Ray.getActor(options.name);
+        Preconditions.checkArgument(!actor.isPresent(),
+            String.format("Actor of name %s exists", options.name));
+      }
     }
     byte[] actorId = nativeCreateActor(functionDescriptor, functionDescriptor.hashCode(), args,
         options);

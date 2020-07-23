@@ -6,10 +6,4 @@ package io.ray.api.placementgroup;
  * A placement group consists of one or more bundles plus a specific placement strategy.
  */
 public interface PlacementGroup {
-
-  /**
-   * Gets the bundle of the specified index.
-   * @return The bundle of the specified index.
-   */
-  PlacementBundle getBundle(int index);
 }
