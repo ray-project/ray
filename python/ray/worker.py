@@ -590,7 +590,7 @@ def init(address=None,
         dashboard_port: The port to bind the dashboard server to. Defaults to
             8265.
         job_id: The ID of this job.
-        job_config (ray.job_config.JobConfig): The job configurations.
+        job_config (ray.job_config.JobConfig): The job configuration.
         configure_logging: True (default) if configuration of logging is
             allowed here. Otherwise, the user may want to configure it
             separately.
@@ -1166,7 +1166,7 @@ def connect(node,
         driver_object_store_memory: Limit the amount of memory the driver can
             use in the object store when creating objects.
         job_id: The ID of job. If it's None, then we will generate one.
-        job_config (ray.job_config.JobConfig): The job configurations.
+        job_config (ray.job_config.JobConfig): The job configuration.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
