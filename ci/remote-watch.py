@@ -229,7 +229,7 @@ def monitor():
         else:
             expected_line = detect_spurious_commit(line, expected_line, remote)
             if expected_line != line:
-                logger.info("Terminating job as %s has changed on %s\n"
+                logger.info("Terminating job as %s has been updated on %s\n"
                             "    from:\t%s\n"
                             "    to:  \t%s", ref, remote, expected_line, line)
                 time.sleep(1)  # wait for CI to flush output
