@@ -1,5 +1,6 @@
 import asyncio
 from collections import defaultdict, namedtuple
+from itertools import groupby
 import os
 import random
 import time
@@ -156,27 +157,29 @@ class ServeController:
         """
         # TODO(simon): We don't handle nodes being added/removed. To do that,
         # we should implement some sort of control loop in master actor.
-        for i, node_id in enumerate(ray.state.node_ids()):
-            proxy_name = format_actor_name(SERVE_PROXY_NAME,
-                                           self.instance_name)
-            proxy_name += "-{}".format(i)
-            try:
-                router = ray.get_actor(proxy_name)
-            except ValueError:
-                logger.info("Starting HTTP proxy with name '{}' on node '{}' "
-                            "listening on port {}".format(
-                                proxy_name, node_id, port))
-                router = HTTPProxyActor.options(
-                    name=proxy_name,
-                    max_concurrency=ASYNC_CONCURRENCY,
-                    max_restarts=-1,
-                    max_task_retries=-1,
-                    resources={
-                        node_id: 0.01
-                    },
-                ).remote(
-                    host, port, instance_name=self.instance_name)
-            self.routers.append(router)
+        for _, node_id_group in groupby(sorted(ray.state.node_ids())):
+            for index, node_id in enumerate(node_id_group):
+                proxy_name = format_actor_name(SERVE_PROXY_NAME,
+                                               self.instance_name)
+                proxy_name += "-{}-{}".format(node_id, index)
+                try:
+                    router = ray.get_actor(proxy_name)
+                except ValueError:
+                    logger.info(
+                        "Starting HTTP proxy with name '{}' on node '{}' "
+                        "listening on port {}".format(proxy_name, node_id,
+                                                      port))
+                    router = HTTPProxyActor.options(
+                        name=proxy_name,
+                        max_concurrency=ASYNC_CONCURRENCY,
+                        max_restarts=-1,
+                        max_task_retries=-1,
+                        resources={
+                            node_id: 0.01
+                        },
+                    ).remote(
+                        host, port, instance_name=self.instance_name)
+                self.routers.append(router)
 
     def get_router(self):
         """Returns a handle to the HTTP proxy managed by this actor."""
@@ -584,9 +587,10 @@ class ServeController:
             # update.
             self._checkpoint()
             await asyncio.gather(*[
-                router.set_traffic.remote(endpoint_name,
-                                          self.traffic_policies[endpoint_name])
-                for router in self.routers
+                router.set_traffic.remote(
+                    endpoint_name,
+                    self.traffic_policies[endpoint_name],
+                ) for router in self.routers
             ])
 
     async def create_endpoint(self, endpoint, traffic_dict, route, methods):
