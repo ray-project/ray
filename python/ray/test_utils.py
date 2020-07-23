@@ -208,17 +208,6 @@ def run_string_as_driver_nonblocking(driver_script):
     return proc
 
 
-def flat_errors():
-    errors = []
-    for job_errors in ray.errors(all_jobs=True).values():
-        errors.extend(job_errors)
-    return errors
-
-
-def relevant_errors(error_type):
-    return [error for error in flat_errors() if error["type"] == error_type]
-
-
 def wait_for_num_actors(num_actors, timeout=10):
     start_time = time.time()
     while time.time() - start_time < timeout:
@@ -226,16 +215,6 @@ def wait_for_num_actors(num_actors, timeout=10):
             return
         time.sleep(0.1)
     raise RayTestTimeoutException("Timed out while waiting for global state.")
-
-
-def wait_for_errors(error_type, num_errors, timeout=20):
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        if len(relevant_errors(error_type)) >= num_errors:
-            return
-        time.sleep(0.1)
-    raise RayTestTimeoutException("Timed out waiting for {} {} errors.".format(
-        num_errors, error_type))
 
 
 def wait_for_condition(condition_predictor, timeout=30, retry_interval_ms=100):

@@ -16,7 +16,6 @@
 
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
-#include "ray/gcs/gcs_server/error_info_handler_impl.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_job_manager.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
@@ -94,11 +93,6 @@ void GcsServer::Start() {
   stats_handler_ = InitStatsHandler();
   stats_service_.reset(new rpc::StatsGrpcService(main_service_, *stats_handler_));
   rpc_server_.RegisterService(*stats_service_);
-
-  error_info_handler_ = InitErrorInfoHandler();
-  error_info_service_.reset(
-      new rpc::ErrorInfoGrpcService(main_service_, *error_info_handler_));
-  rpc_server_.RegisterService(*error_info_service_);
 
   gcs_worker_manager_ = InitGcsWorkerManager();
   worker_info_service_.reset(
@@ -277,11 +271,6 @@ std::unique_ptr<rpc::TaskInfoHandler> GcsServer::InitTaskInfoHandler() {
 std::unique_ptr<rpc::StatsHandler> GcsServer::InitStatsHandler() {
   return std::unique_ptr<rpc::DefaultStatsHandler>(
       new rpc::DefaultStatsHandler(gcs_table_storage_));
-}
-
-std::unique_ptr<rpc::ErrorInfoHandler> GcsServer::InitErrorInfoHandler() {
-  return std::unique_ptr<rpc::DefaultErrorInfoHandler>(
-      new rpc::DefaultErrorInfoHandler(*redis_gcs_client_));
 }
 
 std::unique_ptr<GcsWorkerManager> GcsServer::InitGcsWorkerManager() {
