@@ -175,9 +175,9 @@ def tune_transformer(num_samples=8, num_epochs=3, gpus_per_trial=0):
     download_data(model_name, task_name, data_dir)
 
     config = {
-        "batch_size": 64,
-        "lr": 1e-3,
-        "weight_decay": 1e-2
+        "batch_size": tune.choice([16, 32, 64]),
+        "lr": tune.loguniform(1e-4, 1e-1),
+        "weight_decay": tune.loguniform(1e-3, 1e-1)
     }
 
     scheduler = PopulationBasedTraining(
