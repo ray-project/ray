@@ -5,11 +5,12 @@ from ray.rllib.agents.ddpg.ddpg_tf_policy import build_ddpg_models, \
     get_distribution_inputs_and_class, validate_spaces
 from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio, \
     PRIO_WEIGHTS
+from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
 from ray.rllib.models.torch.torch_action_dist import TorchDeterministic
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import huber_loss, minimize_and_clip, l2_loss
+from ray.rllib.utils.torch_ops import huber_loss, l2_loss
 
 torch, nn = try_import_torch()
 
@@ -187,12 +188,6 @@ def apply_gradients_fn(policy):
     policy.global_step += 1
 
 
-def gradients_fn(policy, optimizer, loss):
-    if policy.config["grad_norm_clipping"] is not None:
-        minimize_and_clip(optimizer, policy.config["grad_norm_clipping"])
-    return {}
-
-
 def build_ddpg_stats(policy, batch):
     stats = {
         "actor_loss": policy.actor_loss,
@@ -267,7 +262,7 @@ DDPGTorchPolicy = build_torch_policy(
     get_default_config=lambda: ray.rllib.agents.ddpg.ddpg.DEFAULT_CONFIG,
     stats_fn=build_ddpg_stats,
     postprocess_fn=postprocess_nstep_and_prio,
-    extra_grad_process_fn=gradients_fn,
+    extra_grad_process_fn=apply_grad_clipping,
     optimizer_fn=make_ddpg_optimizers,
     validate_spaces=validate_spaces,
     before_init=before_init_fn,
