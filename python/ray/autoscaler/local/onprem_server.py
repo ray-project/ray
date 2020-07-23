@@ -69,11 +69,11 @@ class LocalNodeProviderServer(threading.Thread):
     It handles requests and responses from the remote local node provider.
     """
 
-    def __init__(self, on_prem_server_file):
+    def __init__(self, on_prem_server_config_path):
         """Initialize HTTPServer and serve forever by invoking self.run()."""
 
         host, port, node_ips = self.get_and_validate_config(
-            on_prem_server_file)
+            on_prem_server_config_path)
         logger.info("Running on prem server on address " + host + ":" +
                     str(port))
         threading.Thread.__init__(self)
@@ -94,13 +94,13 @@ class LocalNodeProviderServer(threading.Thread):
 
     @staticmethod
     def get_and_validate_config(on_prem_server_config_path):
-        """Parse the on_prem_server_file_path and validate it."""
+        """Parse the on_prem_server_config_path and validate it."""
 
         config = yaml.safe_load(open(on_prem_server_config_path).read())
         if sorted(config.keys()) != ["list_of_node_ips", "server_address"]:
             raise ValueError(
-                'on_prem_server_file should only include "server_address"' +
-                ' and "list_of_node_ips".')
+                'on_prem_server_config_path should only include'
+                + ' "server_address" and "list_of_node_ips".')
         try:
             host, port = config["server_address"].split(":")
             port = int(port)
