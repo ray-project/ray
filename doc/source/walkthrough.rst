@@ -4,9 +4,9 @@ Ray Core Walkthrough
 This walkthrough will overview the core concepts of Ray:
 
 1. Starting Ray
-2. Using remote functions (tasks) [``ray.remote``]
-3. Fetching results (object refs) [``ray.put``, ``ray.get``, ``ray.wait``]
-4. Using remote classes (actors) [``ray.remote``]
+2. Using remote functions (tasks)
+3. Fetching results (object refs)
+4. Using remote classes (actors)
 
 With Ray, your code will work on a single machine and can be easily scaled to large cluster.
 
@@ -18,17 +18,32 @@ To run this walkthrough, install Ray with ``pip install -U ray``. For the latest
 Starting Ray
 ------------
 
-You can start Ray on a single machine by adding this to your python script.
+You can start Ray on a single machine by adding this to your code.
 
-.. code-block:: python
+.. tabs::
+  .. code-tab:: python
 
-  import ray
+    import ray
 
-  # Start Ray. If you're connecting to an existing cluster, you would use
-  # ray.init(address=<cluster-address>) instead.
-  ray.init()
+    # Start Ray. If you're connecting to an existing cluster, you would use
+    # ray.init(address=<cluster-address>) instead.
+    ray.init()
 
-  ...
+    ...
+
+  .. code-tab:: java
+
+    import io.ray.Ray;
+
+    public class MyRayApp {
+
+      public static void main(String[] args) {
+        // Start Ray. If you're connecting to an existing cluster, you should set
+        // the `-Dray.redis.address=<cluster-address>` java system property.
+        Ray.init()
+        ...
+      }
+    }
 
 Ray will then be able to utilize all cores of your machine. Find out how to configure the number of cores Ray will use at :ref:`configuring-ray`.
 
@@ -39,59 +54,80 @@ To start a multi-node Ray cluster, see the :ref:`cluster setup page <cluster-ind
 Remote functions (Tasks)
 ------------------------
 
-Ray enables arbitrary Python functions to be executed asynchronously. These asynchronous Ray functions are called "remote functions". The standard way to turn a Python function into a remote function is to add the ``@ray.remote`` decorator. Here is an example.
+Ray enables arbitrary functions to be executed asynchronously. These asynchronous Ray functions are called "remote functions". Here is an example.
 
-.. code:: python
-
-    # A regular Python function.
-    def regular_function():
-        return 1
-
-    # A Ray remote function.
-    @ray.remote
-    def remote_function():
-        return 1
-
-This causes a few changes in behavior:
-
-    1. **Invocation:** The regular version is called with ``regular_function()``, whereas the remote version is called with ``remote_function.remote()``.
-    2. **Return values:** ``regular_function`` immediately executes and returns ``1``, whereas ``remote_function`` immediately returns an object ref (a future) and then creates a task that will be executed on a worker process. The result can be retrieved with ``ray.get``.
+.. tabs::
+  .. group-tab:: Python
 
     .. code:: python
 
-        assert regular_function() == 1
+      # A regular Python function.
+      def my_function():
+          return 1
 
-        object_ref = remote_function.remote()
+      # By adding the `@ray.remote` decorator, a regular Python function
+      # becomes a Ray remote function.
+      @ray.remote
+      def my_function():
+          return 1
 
-        # The value of the original `regular_function`
-        assert ray.get(object_ref) == 1
+      # To invoke this remote function, use the `remote` method.
+      # This will immediately returns an object ref (a future) and then creates
+      # a task that will be executed on a worker process.
+      obj_ref = my_function.remote()
 
-3. **Parallelism:** Invocations of ``regular_function`` happen
-   **serially**, for example
+      # The result can be retrieved with ``ray.get``.
+      assert ray.get(obj_ref) == 1
 
-   .. code:: python
+      @ray.remote
+      def slow_function():
+        time.sleep(10)
+        return 1
 
-       # These happen serially.
-       for _ in range(4):
-           regular_function()
+      # Invocation of Ray remote functions happen in parralel.
+      # All computation is performed in the background, driven by Ray's internal event loop.
+      for _ in range(4):
+          # This doesn't block
+          slow_function.remote()
 
-   whereas invocations of ``remote_function`` happen in **parallel**,
-   for example
+    See the `ray.remote package reference <package-ref.html>`__ page for specific documentation on how to use ``ray.remote``.
 
-   .. code:: python
+  .. group-tab:: Java
 
-       # These happen in parallel.
-       for _ in range(4):
-           remote_function.remote()
+    .. code:: java
 
-The invocations are executed in parallel because the call to ``remote_function.remote()`` doesn't block.
-All computation is performed in the background, driven by Ray's internal event loop.
+      public class MyRayApp {
+        // A regular Java static method.
+        public static int myFunction() {
+          return 1;
+        }
+      }
 
-See the `ray.remote package reference <package-ref.html>`__ page for specific documentation on how to use ``ray.remote``.
+      // Invoke the above method as a Ray remote function.
+      // This will immediately returns an object ref (a future) and then creates
+      // a task that will be executed on a worker process.
+      ObjectRef<Integer> res = Ray.task(MyRayApp::myFunction).remote();
 
-.. _ray-object-ids:
+      // The result can be retrieved with ``ray.get``.
+      Assert.assertEqual(res.get(), 1);
 
-**Object refs** can also be passed into remote functions. When the function actually gets executed, **the argument will be a retrieved as a regular Python object**. For example, take this function:
+      public class MyRayApp {
+        public static int slowFunction() {
+          TimeUnit.SECOND.sleep(10);
+          return 1;
+        }
+      }
+
+      // Invocation of Ray remote functions happen in parralel.
+      // All computation is performed in the background, driven by Ray's internal event loop.
+      for(int i = 0; i < 4; i++) {
+        // This doesn't block.
+        Ray.task(MyRayApp::slowFunction).remote();
+      }
+
+.. _ray-object-refs:
+
+**Object refs** can also be passed into remote functions. When the function actually gets executed, **the argument will be a retrieved as a regular object**. For example, take this function:
 
 .. code:: python
 
