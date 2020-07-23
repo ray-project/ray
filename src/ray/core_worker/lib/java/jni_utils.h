@@ -148,6 +148,8 @@ extern jfieldID java_native_ray_object_metadata;
 
 /// TaskExecutor class
 extern jclass java_task_executor_class;
+/// checkByteBufferArguments method of TaskExecutor class
+extern jmethodID java_task_executor_parse_function_arguments;
 /// execute method of TaskExecutor class
 extern jmethodID java_task_executor_execute;
 
