@@ -1,3 +1,10 @@
+# flake8: noqa
+# yapf: disable
+
+"""
+Please note that this example requires Python >= 3.7 to run.
+"""
+
 # __import_begin__
 import os
 from dataclasses import dataclass, field
@@ -20,6 +27,7 @@ from transformers import (
 
 from ray import tune
 # __import_end__
+
 
 # __huggingface_begin__
 @dataclass
@@ -125,6 +133,7 @@ def download_data(model_name, task_name, data_dir="./data"):
         print("Downloaded data for task {} to {}".format(task_name, data_dir))
 # __download_end__
 
+
 # __train_begin__
 def train_transformer(config, model_name, task_name, num_epochs=3, data_dir="./data"):
     data_args = DataTrainingArguments(
@@ -144,7 +153,7 @@ def train_transformer(config, model_name, task_name, num_epochs=3, data_dir="./d
         per_device_eval_batch_size=config["batch_size"],
         warmup_steps=500,
         weight_decay=config["weight_decay"],
-        logging_dir='./logs',
+        logging_dir="./logs",
     )
 
     trainer = get_trainer(data_args, model_args, training_args)
