@@ -233,7 +233,7 @@ py_test(
 # Todo: Ensure MPLBACKEND=Agg
 py_test(
     name = "tutorial",
-    size = "moderate",
+    size = "medium",
     srcs = ["tests/tutorial.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"],

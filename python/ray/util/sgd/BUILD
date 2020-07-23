@@ -12,7 +12,7 @@ py_test(
 
 py_test(
     name = "test_torch",
-    size = "moderate",
+    size = "medium",
     srcs = ["tests/test_torch.py"],
     tags = ["exclusive", "pytorch"],
     deps = [":sgd_lib"],
@@ -20,7 +20,7 @@ py_test(
 
 py_test(
     name = "test_torch_runner",
-    size = "moderate",
+    size = "medium",
     srcs = ["tests/test_torch_runner.py"],
     tags = ["exclusive", "pytorch"],
     deps = [":sgd_lib"],

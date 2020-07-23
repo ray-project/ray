@@ -12,14 +12,14 @@ py_test(
 
 py_test(
     name = "plot_parameter_server",
-    size = "small",
+    size = "medium",
     srcs = ["examples/plot_parameter_server.py"],
     tags = ["exclusive"]
 )
 
 py_test(
     name = "plot_pong_example",
-    size = "small",
+    size = "medium",
     srcs = ["examples/plot_pong_example.py"],
     tags = ["exclusive"]
 )
