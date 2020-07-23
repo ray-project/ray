@@ -86,6 +86,7 @@ jfieldID java_native_ray_object_data;
 jfieldID java_native_ray_object_metadata;
 
 jclass java_task_executor_class;
+jmethodID java_task_executor_parse_function_arguments;
 jmethodID java_task_executor_execute;
 
 JavaVM *jvm;
@@ -205,6 +206,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       env->GetFieldID(java_native_ray_object_class, "metadata", "[B");
 
   java_task_executor_class = LoadClass(env, "io/ray/runtime/task/TaskExecutor");
+  java_task_executor_parse_function_arguments = env->GetMethodID(
+      java_task_executor_class, "checkByteBufferArguments", "(Ljava/util/List;)[Z");
   java_task_executor_execute =
       env->GetMethodID(java_task_executor_class, "execute",
                        "(Ljava/util/List;Ljava/util/List;)Ljava/util/List;");
