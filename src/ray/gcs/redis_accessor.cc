@@ -73,10 +73,10 @@ Status RedisLogBasedActorInfoAccessor::AsyncRegisterActor(
   return Status::Invalid(error_msg);
 }
 
-Status RedisLogBasedActorInfoAccessor::AsyncReportActorDependenciesResolved(
+Status RedisLogBasedActorInfoAccessor::AsyncCreateActor(
     const ray::TaskSpecification &task_spec, const ray::gcs::StatusCallback &callback) {
   const std::string error_msg =
-      "Unsupported method of AsyncReportActorDependenciesResolved in "
+      "Unsupported method of AsyncCreateActor in "
       "RedisLogBasedActorInfoAccessor.";
   RAY_LOG(FATAL) << error_msg;
   return Status::Invalid(error_msg);

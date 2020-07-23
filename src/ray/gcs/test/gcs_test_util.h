@@ -45,10 +45,10 @@ struct Mocker {
     return builder.Build();
   }
 
-  static rpc::ReportActorDependenciesResolvedRequest
-  GenReportActorDependenciesResolvedRequest(const JobID &job_id, int max_restarts = 0,
-                                            bool detached = false,
-                                            const std::string name = "") {
+  static rpc::CreateActorRequest GenCreateActorRequest(const JobID &job_id,
+                                                       int max_restarts = 0,
+                                                       bool detached = false,
+                                                       const std::string name = "") {
     rpc::Address owner_address;
     owner_address.set_raylet_id(ClientID::FromRandom().Binary());
     owner_address.set_ip_address("1234");
@@ -56,7 +56,7 @@ struct Mocker {
     owner_address.set_worker_id(WorkerID::FromRandom().Binary());
     auto actor_creation_task_spec =
         GenActorCreationTask(job_id, max_restarts, detached, name, owner_address);
-    rpc::ReportActorDependenciesResolvedRequest request;
+    rpc::CreateActorRequest request;
     request.mutable_task_spec()->CopyFrom(actor_creation_task_spec.GetMessage());
     return request;
   }

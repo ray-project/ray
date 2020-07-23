@@ -143,9 +143,8 @@ message GetActorCheckpointIDReply {
 service ActorInfoGcsService {
   // Register actor to gcs service.
   rpc RegisterActor(RegisterActorRequest) returns (RegisterActorReply);
-  // Report actor dependencies resolved to gcs service.
-  rpc ReportActorDependenciesResolved(ReportActorDependenciesResolvedRequest)
-      returns (ReportActorDependenciesResolvedReply);
+  // Create actor which local dependencies are resolved.
+  rpc CreateActor(CreateActorRequest) returns (CreateActorReply);
   // Get actor data from GCS Service by actor id.
   rpc GetActorInfo(GetActorInfoRequest) returns (GetActorInfoReply);
   // Get actor data from GCS Service by name.
@@ -488,11 +487,11 @@ service WorkerInfoGcsService {
   rpc AddWorkerInfo(AddWorkerInfoRequest) returns (AddWorkerInfoReply);
 }
 
-message ReportActorDependenciesResolvedRequest {
+message CreateActorRequest {
   TaskSpec task_spec = 1;
 }
 
-message ReportActorDependenciesResolvedReply {
+message CreateActorReply {
   GcsStatus status = 1;
 }
 

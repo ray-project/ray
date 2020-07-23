@@ -112,24 +112,22 @@ void GcsActorManager::HandleRegisterActor(const rpc::RegisterActorRequest &reque
   }
 }
 
-void GcsActorManager::HandleReportActorDependenciesResolved(
-    const rpc::ReportActorDependenciesResolvedRequest &request,
-    rpc::ReportActorDependenciesResolvedReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+void GcsActorManager::HandleCreateActor(const rpc::CreateActorRequest &request,
+                                        rpc::CreateActorReply *reply,
+                                        rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(request.task_spec().type() == TaskType::ACTOR_CREATION_TASK);
   auto actor_id =
       ActorID::FromBinary(request.task_spec().actor_creation_task_spec().actor_id());
 
-  RAY_LOG(INFO) << "Reporting actor dependencies resolved, actor id = " << actor_id;
-  Status status = ReportActorDependenciesResolved(
-      request, [reply, send_reply_callback,
-                actor_id](const std::shared_ptr<gcs::GcsActor> &actor) {
-        RAY_LOG(INFO) << "Reported actor dependencies resolved, actor id = " << actor_id;
-        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-      });
+  RAY_LOG(INFO) << "Creating actor, actor id = " << actor_id;
+  Status status = CreateActor(request, [reply, send_reply_callback, actor_id](
+                                           const std::shared_ptr<gcs::GcsActor> &actor) {
+    RAY_LOG(INFO) << "Created actor, actor id = " << actor_id;
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  });
   if (!status.ok()) {
-    RAY_LOG(ERROR) << "Failed to report actor dependencies resolved, actor: "
-                   << status.ToString();
+    RAY_LOG(ERROR) << "Failed to create actor, actor id = " << actor_id
+                   << "  status: " << status.ToString();
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   }
 }
@@ -454,9 +452,8 @@ Status GcsActorManager::RegisterActor(
   return Status::OK();
 }
 
-Status GcsActorManager::ReportActorDependenciesResolved(
-    const ray::rpc::ReportActorDependenciesResolvedRequest &request,
-    ReportActorDependenciesResolvedCallback callback) {
+Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
+                                    CreateActorCallback callback) {
   RAY_CHECK(callback);
   const auto &actor_creation_task_spec = request.task_spec().actor_creation_task_spec();
   auto actor_id = ActorID::FromBinary(actor_creation_task_spec.actor_id());
@@ -472,16 +469,16 @@ Status GcsActorManager::ReportActorDependenciesResolved(
     return Status::OK();
   }
 
-  auto pending_report_iter = actor_to_report_callbacks_.find(actor_id);
-  if (pending_report_iter != actor_to_report_callbacks_.end()) {
+  auto actor_creation_iter = actor_to_create_callbacks_.find(actor_id);
+  if (actor_creation_iter != actor_to_create_callbacks_.end()) {
     // It is a duplicate message, just mark the callback as pending and invoke it after
     // the actor has been successfully created.
-    pending_report_iter->second.emplace_back(std::move(callback));
+    actor_creation_iter->second.emplace_back(std::move(callback));
     return Status::OK();
   }
   // Mark the callback as pending and invoke it after the actor has been successfully
   // created.
-  actor_to_report_callbacks_[actor_id].emplace_back(std::move(callback));
+  actor_to_create_callbacks_[actor_id].emplace_back(std::move(callback));
 
   // Remove the actor from the unresolved actor map.
   auto actor = std::make_shared<GcsActor>(request.task_spec());
@@ -555,7 +552,7 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
 void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   RAY_LOG(DEBUG) << "Destroying actor " << actor_id;
   actor_to_register_callbacks_.erase(actor_id);
-  actor_to_report_callbacks_.erase(actor_id);
+  actor_to_create_callbacks_.erase(actor_id);
   auto it = registered_actors_.find(actor_id);
   RAY_CHECK(it != registered_actors_.end())
       << "Tried to destroy actor that does not exist " << actor_id;
@@ -892,13 +889,13 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
 
         // Invoke all callbacks for all registration requests of this actor (duplicated
         // requests are included) and remove all of them from
-        // actor_to_report_callbacks_.
-        auto iter = actor_to_report_callbacks_.find(actor_id);
-        if (iter != actor_to_report_callbacks_.end()) {
+        // actor_to_create_callbacks_.
+        auto iter = actor_to_create_callbacks_.find(actor_id);
+        if (iter != actor_to_create_callbacks_.end()) {
           for (auto &callback : iter->second) {
             callback(actor);
           }
-          actor_to_report_callbacks_.erase(iter);
+          actor_to_create_callbacks_.erase(iter);
         }
 
         auto worker_id = actor->GetWorkerID();

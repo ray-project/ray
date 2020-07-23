@@ -70,10 +70,8 @@ TEST_F(GcsActorSchedulerTest, TestScheduleFailedWithZeroNode) {
   ASSERT_EQ(0, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto job_id = JobID::FromInt(1);
-  auto report_actor_dependencies_resolved_request =
-      Mocker::GenReportActorDependenciesResolvedRequest(job_id);
-  auto actor = std::make_shared<gcs::GcsActor>(
-      report_actor_dependencies_resolved_request.task_spec());
+  auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
+  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request.task_spec());
 
   // Schedule the actor with zero node.
   gcs_actor_scheduler_->Schedule(actor);
@@ -94,10 +92,8 @@ TEST_F(GcsActorSchedulerTest, TestScheduleActorSuccess) {
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto job_id = JobID::FromInt(1);
-  auto report_actor_dependencies_resolved_request =
-      Mocker::GenReportActorDependenciesResolvedRequest(job_id);
-  auto actor = std::make_shared<gcs::GcsActor>(
-      report_actor_dependencies_resolved_request.task_spec());
+  auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
+  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request.task_spec());
 
   // Schedule the actor with 1 available node, and the lease request should be send to the
   // node.
@@ -131,10 +127,8 @@ TEST_F(GcsActorSchedulerTest, TestScheduleRetryWhenLeasing) {
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto job_id = JobID::FromInt(1);
-  auto report_actor_dependencies_resolved_request =
-      Mocker::GenReportActorDependenciesResolvedRequest(job_id);
-  auto actor = std::make_shared<gcs::GcsActor>(
-      report_actor_dependencies_resolved_request.task_spec());
+  auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
+  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request.task_spec());
 
   // Schedule the actor with 1 available node, and the lease request should be send to the
   // node.
@@ -178,10 +172,8 @@ TEST_F(GcsActorSchedulerTest, TestScheduleRetryWhenCreating) {
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto job_id = JobID::FromInt(1);
-  auto report_actor_dependencies_resolved_request =
-      Mocker::GenReportActorDependenciesResolvedRequest(job_id);
-  auto actor = std::make_shared<gcs::GcsActor>(
-      report_actor_dependencies_resolved_request.task_spec());
+  auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
+  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request.task_spec());
 
   // Schedule the actor with 1 available node, and the lease request should be send to the
   // node.
@@ -221,10 +213,8 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenLeasing) {
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto job_id = JobID::FromInt(1);
-  auto report_actor_dependencies_resolved_request =
-      Mocker::GenReportActorDependenciesResolvedRequest(job_id);
-  auto actor = std::make_shared<gcs::GcsActor>(
-      report_actor_dependencies_resolved_request.task_spec());
+  auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
+  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request.task_spec());
 
   // Schedule the actor with 1 available node, and the lease request should be send to the
   // node.
@@ -261,10 +251,8 @@ TEST_F(GcsActorSchedulerTest, TestLeasingCancelledWhenLeasing) {
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto job_id = JobID::FromInt(1);
-  auto report_actor_dependencies_resolved_request =
-      Mocker::GenReportActorDependenciesResolvedRequest(job_id);
-  auto actor = std::make_shared<gcs::GcsActor>(
-      report_actor_dependencies_resolved_request.task_spec());
+  auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
+  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request.task_spec());
 
   // Schedule the actor with 1 available node, and the lease request should be send to the
   // node.
@@ -296,10 +284,8 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenCreating) {
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto job_id = JobID::FromInt(1);
-  auto report_actor_dependencies_resolved_request =
-      Mocker::GenReportActorDependenciesResolvedRequest(job_id);
-  auto actor = std::make_shared<gcs::GcsActor>(
-      report_actor_dependencies_resolved_request.task_spec());
+  auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
+  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request.task_spec());
 
   // Schedule the actor with 1 available node, and the lease request should be send to the
   // node.
@@ -340,10 +326,8 @@ TEST_F(GcsActorSchedulerTest, TestWorkerFailedWhenCreating) {
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto job_id = JobID::FromInt(1);
-  auto report_actor_dependencies_resolved_request =
-      Mocker::GenReportActorDependenciesResolvedRequest(job_id);
-  auto actor = std::make_shared<gcs::GcsActor>(
-      report_actor_dependencies_resolved_request.task_spec());
+  auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
+  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request.task_spec());
 
   // Schedule the actor with 1 available node, and the lease request should be send to the
   // node.
@@ -381,10 +365,8 @@ TEST_F(GcsActorSchedulerTest, TestSpillback) {
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto job_id = JobID::FromInt(1);
-  auto report_actor_dependencies_resolved_request =
-      Mocker::GenReportActorDependenciesResolvedRequest(job_id);
-  auto actor = std::make_shared<gcs::GcsActor>(
-      report_actor_dependencies_resolved_request.task_spec());
+  auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
+  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request.task_spec());
 
   // Schedule the actor with 1 available node, and the lease request should be send to the
   // node.
@@ -444,10 +426,8 @@ TEST_F(GcsActorSchedulerTest, TestReschedule) {
 
   // 1.Actor is already tied to a leased worker.
   auto job_id = JobID::FromInt(1);
-  auto report_actor_dependencies_resolved_request =
-      Mocker::GenReportActorDependenciesResolvedRequest(job_id);
-  auto actor = std::make_shared<gcs::GcsActor>(
-      report_actor_dependencies_resolved_request.task_spec());
+  auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
+  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request.task_spec());
   rpc::Address address;
   WorkerID worker_id = WorkerID::FromRandom();
   address.set_raylet_id(node_id_1.Binary());
@@ -510,7 +490,7 @@ TEST_F(GcsActorSchedulerTest, TestReleaseUnusedWorkers) {
   // won't send `RequestWorkerLease` request to node immediately. But instead, it will
   // invoke the `RetryLeasingWorkerFromNode` to retry later.
   auto job_id = JobID::FromInt(1);
-  auto request = Mocker::GenReportActorDependenciesResolvedRequest(job_id);
+  auto request = Mocker::GenCreateActorRequest(job_id);
   auto actor = std::make_shared<gcs::GcsActor>(request.task_spec());
   gcs_actor_scheduler_->Schedule(actor);
   ASSERT_EQ(2, gcs_actor_scheduler_->num_retry_leasing_count_);

@@ -165,7 +165,7 @@ class CoreWorkerDirectTaskSubmitter {
 
   /// An interface to create actor. It provides two methods, one of them is
   /// `RegisterActor` which is synchronous, while another is
-  /// `AsyncReportActorDependenciesResolved` which is invoked when the dependencies of the
+  /// `AsyncCreateActor` which is invoked when the dependencies of the
   /// actor are all resolved.
   std::shared_ptr<ActorCreatorInterface> actor_creator_;
 

@@ -109,8 +109,7 @@ class GcsActor {
 };
 
 using RegisterActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;
-using ReportActorDependenciesResolvedCallback =
-    std::function<void(std::shared_ptr<GcsActor>)>;
+using CreateActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;
 /// GcsActorManager is responsible for managing the lifecycle of all actors.
 /// This class is not thread-safe.
 class GcsActorManager : public rpc::ActorInfoHandler {
@@ -131,10 +130,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
                            rpc::RegisterActorReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleReportActorDependenciesResolved(
-      const rpc::ReportActorDependenciesResolvedRequest &request,
-      rpc::ReportActorDependenciesResolvedReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
+  void HandleCreateActor(const rpc::CreateActorRequest &request,
+                         rpc::CreateActorReply *reply,
+                         rpc::SendReplyCallback send_reply_callback) override;
 
   void HandleGetActorInfo(const rpc::GetActorInfoRequest &request,
                           rpc::GetActorInfoReply *reply,
@@ -179,7 +177,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   Status RegisterActor(const rpc::RegisterActorRequest &request,
                        RegisterActorCallback callback);
 
-  /// Register actor asynchronously.
+  /// Create actor asynchronously.
   ///
   /// \param request Contains the meta info to create the actor.
   /// \param callback Will be invoked after the actor is created successfully or be
@@ -187,9 +185,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// its state is `ALIVE`.
   /// \return Status::Invalid if this is a named actor and an actor with the specified
   /// name already exists. The callback will not be called in this case.
-  Status ReportActorDependenciesResolved(
-      const rpc::ReportActorDependenciesResolvedRequest &request,
-      ReportActorDependenciesResolvedCallback callback);
+  Status CreateActor(const rpc::CreateActorRequest &request,
+                     CreateActorCallback callback);
 
   /// Get the actor ID for the named actor. Returns nil if the actor was not found.
   /// \param name The name of the detached actor to look up.
@@ -302,12 +299,11 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// messages from a Driver/Worker caused by some network problems.
   absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
       actor_to_register_callbacks_;
-  /// Callbacks of reporting actor dependencies resolved requests.
-  /// Maps actor ID to reporting actor dependencies callbacks, which is used to
-  /// filter duplicated messages come from a Driver/Worker caused by some network
-  /// problems.
-  absl::flat_hash_map<ActorID, std::vector<ReportActorDependenciesResolvedCallback>>
-      actor_to_report_callbacks_;
+  /// Callbacks of actor creation requests.
+  /// Maps actor ID to actor creation callbacks, which is used to filter duplicated
+  /// messages come from a Driver/Worker caused by some network problems.
+  absl::flat_hash_map<ActorID, std::vector<CreateActorCallback>>
+      actor_to_create_callbacks_;
   /// All registered actors (unresoved and pending actors are also included).
   /// TODO(swang): Use unique_ptr instead of shared_ptr.
   absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> registered_actors_;

@@ -44,17 +44,16 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       // https://docs.google.com/document/d/1EAWide-jy05akJp6OMtDn58XOK7bUyruWMia4E-fV28/edit?usp=sharing
       auto actor_id = task_spec.ActorCreationId();
       auto task_id = task_spec.TaskId();
-      RAY_LOG(INFO) << "Reporting actor dependencies resolved to GCS: " << actor_id;
-      RAY_CHECK_OK(actor_creator_->AsyncReportActorDependenciesResolved(
+      RAY_LOG(INFO) << "Creating actor via GCS actor id = : " << actor_id;
+      RAY_CHECK_OK(actor_creator_->AsyncCreateActor(
           task_spec, [this, actor_id, task_id](Status status) {
             if (status.ok()) {
-              RAY_LOG(INFO) << "Actor dependencies resolved reported to GCS: "
-                            << actor_id;
+              RAY_LOG(INFO) << "Created actor, actor id = " << actor_id;
               task_finisher_->CompletePendingTask(task_id, rpc::PushTaskReply(),
                                                   rpc::Address());
             } else {
-              RAY_LOG(ERROR) << "Failed to report dependencies resolved of actor "
-                             << actor_id << " with: " << status.ToString();
+              RAY_LOG(ERROR) << "Failed to create actor " << actor_id
+                             << " with status: " << status.ToString();
               RAY_UNUSED(task_finisher_->PendingTaskFailed(
                   task_id, rpc::ErrorType::ACTOR_CREATION_FAILED, &status));
             }

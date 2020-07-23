@@ -55,8 +55,8 @@ class RedisLogBasedActorInfoAccessor : public ActorInfoAccessor {
   Status AsyncRegisterActor(const TaskSpecification &task_spec,
                             const StatusCallback &callback) override;
 
-  Status AsyncReportActorDependenciesResolved(const TaskSpecification &task_spec,
-                                              const StatusCallback &callback) override;
+  Status AsyncCreateActor(const TaskSpecification &task_spec,
+                          const StatusCallback &callback) override;
 
   Status AsyncRegister(const std::shared_ptr<ActorTableData> &data_ptr,
                        const StatusCallback &callback) override;

@@ -163,13 +163,13 @@ class GcsActorManagerTest : public ::testing::Test {
 TEST_F(GcsActorManagerTest, TestBasic) {
   auto job_id = JobID::FromInt(1);
   auto registered_actor = RegisterActor(job_id);
-  rpc::ReportActorDependenciesResolvedRequest report_actor_dependencies_resolved_request;
-  report_actor_dependencies_resolved_request.mutable_task_spec()->CopyFrom(
+  rpc::CreateActorRequest create_actor_request;
+  create_actor_request.mutable_task_spec()->CopyFrom(
       registered_actor->GetActorTableData().task_spec());
 
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
-  Status status = gcs_actor_manager_->ReportActorDependenciesResolved(
-      report_actor_dependencies_resolved_request,
+  Status status = gcs_actor_manager_->CreateActor(
+      create_actor_request,
       [&finished_actors](const std::shared_ptr<gcs::GcsActor> &actor) {
         finished_actors.emplace_back(actor);
       });
@@ -193,14 +193,13 @@ TEST_F(GcsActorManagerTest, TestBasic) {
 TEST_F(GcsActorManagerTest, TestSchedulingFailed) {
   auto job_id = JobID::FromInt(1);
   auto registered_actor = RegisterActor(job_id);
-  rpc::ReportActorDependenciesResolvedRequest report_actor_dependencies_resolved_request;
-  report_actor_dependencies_resolved_request.mutable_task_spec()->CopyFrom(
+  rpc::CreateActorRequest create_actor_request;
+  create_actor_request.mutable_task_spec()->CopyFrom(
       registered_actor->GetActorTableData().task_spec());
 
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
-  RAY_CHECK_OK(gcs_actor_manager_->ReportActorDependenciesResolved(
-      report_actor_dependencies_resolved_request,
-      [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
+  RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
+      create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
         finished_actors.emplace_back(actor);
       }));
 
@@ -225,14 +224,13 @@ TEST_F(GcsActorManagerTest, TestSchedulingFailed) {
 TEST_F(GcsActorManagerTest, TestWorkerFailure) {
   auto job_id = JobID::FromInt(1);
   auto registered_actor = RegisterActor(job_id);
-  rpc::ReportActorDependenciesResolvedRequest report_actor_dependencies_resolved_request;
-  report_actor_dependencies_resolved_request.mutable_task_spec()->CopyFrom(
+  rpc::CreateActorRequest create_actor_request;
+  create_actor_request.mutable_task_spec()->CopyFrom(
       registered_actor->GetActorTableData().task_spec());
 
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
-  RAY_CHECK_OK(gcs_actor_manager_->ReportActorDependenciesResolved(
-      report_actor_dependencies_resolved_request,
-      [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
+  RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
+      create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
         finished_actors.emplace_back(actor);
       }));
 
@@ -268,14 +266,13 @@ TEST_F(GcsActorManagerTest, TestWorkerFailure) {
 TEST_F(GcsActorManagerTest, TestNodeFailure) {
   auto job_id = JobID::FromInt(1);
   auto registered_actor = RegisterActor(job_id);
-  rpc::ReportActorDependenciesResolvedRequest report_actor_dependencies_resolved_request;
-  report_actor_dependencies_resolved_request.mutable_task_spec()->CopyFrom(
+  rpc::CreateActorRequest create_actor_request;
+  create_actor_request.mutable_task_spec()->CopyFrom(
       registered_actor->GetActorTableData().task_spec());
 
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
-  Status status = gcs_actor_manager_->ReportActorDependenciesResolved(
-      report_actor_dependencies_resolved_request,
-      [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
+  Status status = gcs_actor_manager_->CreateActor(
+      create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
         finished_actors.emplace_back(actor);
       });
   RAY_CHECK_OK(status);
@@ -313,14 +310,13 @@ TEST_F(GcsActorManagerTest, TestActorReconstruction) {
   auto job_id = JobID::FromInt(1);
   auto registered_actor = RegisterActor(job_id, /*max_restarts=*/1,
                                         /*detached=*/false);
-  rpc::ReportActorDependenciesResolvedRequest report_actor_dependencies_resolved_request;
-  report_actor_dependencies_resolved_request.mutable_task_spec()->CopyFrom(
+  rpc::CreateActorRequest create_actor_request;
+  create_actor_request.mutable_task_spec()->CopyFrom(
       registered_actor->GetActorTableData().task_spec());
 
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
-  Status status = gcs_actor_manager_->ReportActorDependenciesResolved(
-      report_actor_dependencies_resolved_request,
-      [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
+  Status status = gcs_actor_manager_->CreateActor(
+      create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
         finished_actors.emplace_back(actor);
       });
   RAY_CHECK_OK(status);
@@ -377,14 +373,13 @@ TEST_F(GcsActorManagerTest, TestActorRestartWhenOwnerDead) {
   auto job_id = JobID::FromInt(1);
   auto registered_actor = RegisterActor(job_id, /*max_restarts=*/1,
                                         /*detached=*/false);
-  rpc::ReportActorDependenciesResolvedRequest report_actor_dependencies_resolved_request;
-  report_actor_dependencies_resolved_request.mutable_task_spec()->CopyFrom(
+  rpc::CreateActorRequest create_actor_request;
+  create_actor_request.mutable_task_spec()->CopyFrom(
       registered_actor->GetActorTableData().task_spec());
 
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
-  RAY_CHECK_OK(gcs_actor_manager_->ReportActorDependenciesResolved(
-      report_actor_dependencies_resolved_request,
-      [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
+  RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
+      create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
         finished_actors.emplace_back(actor);
       }));
 
@@ -423,14 +418,13 @@ TEST_F(GcsActorManagerTest, TestDetachedActorRestartWhenCreatorDead) {
   auto job_id = JobID::FromInt(1);
   auto registered_actor = RegisterActor(job_id, /*max_restarts=*/1,
                                         /*detached=*/true);
-  rpc::ReportActorDependenciesResolvedRequest report_actor_dependencies_resolved_request;
-  report_actor_dependencies_resolved_request.mutable_task_spec()->CopyFrom(
+  rpc::CreateActorRequest create_actor_request;
+  create_actor_request.mutable_task_spec()->CopyFrom(
       registered_actor->GetActorTableData().task_spec());
 
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
-  RAY_CHECK_OK(gcs_actor_manager_->ReportActorDependenciesResolved(
-      report_actor_dependencies_resolved_request,
-      [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
+  RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
+      create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
         finished_actors.emplace_back(actor);
       }));
 
@@ -457,7 +451,7 @@ TEST_F(GcsActorManagerTest, TestDetachedActorRestartWhenCreatorDead) {
 TEST_F(GcsActorManagerTest, TestActorWithEmptyName) {
   auto job_id = JobID::FromInt(1);
 
-  // Gen `ReportActorDependenciesResolvedRequest` with an empty name.
+  // Gen `CreateActorRequest` with an empty name.
   // (name,actor_id) => ("", actor_id_1)
   auto request1 = Mocker::GenRegisterActorRequest(job_id, /*max_restarts=*/0,
                                                   /*detached=*/true, /*name=*/"");
@@ -468,7 +462,7 @@ TEST_F(GcsActorManagerTest, TestActorWithEmptyName) {
   // Make sure actor who empty name is not treated as a named actor.
   ASSERT_TRUE(gcs_actor_manager_->GetActorIDByName("").IsNil());
 
-  // Gen another `ReportActorDependenciesResolvedRequest` with an empty name.
+  // Gen another `CreateActorRequest` with an empty name.
   // (name,actor_id) => ("", actor_id_2)
   auto request2 = Mocker::GenRegisterActorRequest(job_id, /*max_restarts=*/0,
                                                   /*detached=*/true, /*name=*/"");
@@ -526,11 +520,11 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionWorkerFailure) {
   const auto job_id_1 = JobID::FromInt(1);
   auto registered_actor_1 = RegisterActor(job_id_1, /*max_restarts=*/0,
                                           /*detached=*/true, /*name=*/actor_name);
-  rpc::ReportActorDependenciesResolvedRequest request1;
+  rpc::CreateActorRequest request1;
   request1.mutable_task_spec()->CopyFrom(
       registered_actor_1->GetActorTableData().task_spec());
 
-  Status status = gcs_actor_manager_->ReportActorDependenciesResolved(
+  Status status = gcs_actor_manager_->CreateActor(
       request1, [](std::shared_ptr<gcs::GcsActor> actor) {});
   ASSERT_TRUE(status.ok());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName(actor_name).Binary(),
@@ -556,12 +550,12 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionWorkerFailure) {
   // deleted.
   auto registered_actor_2 = RegisterActor(job_id_1, /*max_restarts=*/0,
                                           /*detached=*/true, /*name=*/actor_name);
-  rpc::ReportActorDependenciesResolvedRequest request2;
+  rpc::CreateActorRequest request2;
   request2.mutable_task_spec()->CopyFrom(
       registered_actor_2->GetActorTableData().task_spec());
 
-  status = gcs_actor_manager_->ReportActorDependenciesResolved(
-      request2, [](std::shared_ptr<gcs::GcsActor> actor) {});
+  status = gcs_actor_manager_->CreateActor(request2,
+                                           [](std::shared_ptr<gcs::GcsActor> actor) {});
   ASSERT_TRUE(status.ok());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName(actor_name).Binary(),
             request2.task_spec().actor_creation_task_spec().actor_id());
@@ -572,11 +566,11 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionNodeFailure) {
   const auto job_id_1 = JobID::FromInt(1);
   auto registered_actor_1 = RegisterActor(job_id_1, /*max_restarts=*/0,
                                           /*detached=*/true, /*name=*/"actor");
-  rpc::ReportActorDependenciesResolvedRequest request1;
+  rpc::CreateActorRequest request1;
   request1.mutable_task_spec()->CopyFrom(
       registered_actor_1->GetActorTableData().task_spec());
 
-  Status status = gcs_actor_manager_->ReportActorDependenciesResolved(
+  Status status = gcs_actor_manager_->CreateActor(
       request1, [](std::shared_ptr<gcs::GcsActor> actor) {});
   ASSERT_TRUE(status.ok());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor").Binary(),
@@ -601,12 +595,12 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionNodeFailure) {
   // deleted.
   auto registered_actor_2 = RegisterActor(job_id_1, /*max_restarts=*/0,
                                           /*detached=*/true, /*name=*/"actor");
-  rpc::ReportActorDependenciesResolvedRequest request2;
+  rpc::CreateActorRequest request2;
   request2.mutable_task_spec()->CopyFrom(
       registered_actor_2->GetActorTableData().task_spec());
 
-  status = gcs_actor_manager_->ReportActorDependenciesResolved(
-      request2, [](std::shared_ptr<gcs::GcsActor> actor) {});
+  status = gcs_actor_manager_->CreateActor(request2,
+                                           [](std::shared_ptr<gcs::GcsActor> actor) {});
   ASSERT_TRUE(status.ok());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor").Binary(),
             request2.task_spec().actor_creation_task_spec().actor_id());
@@ -618,11 +612,11 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionNotHappendWhenReconstructed) {
   // The dead actor will be reconstructed.
   auto registered_actor_1 = RegisterActor(job_id_1, /*max_restarts=*/1,
                                           /*detached=*/true, /*name=*/"actor");
-  rpc::ReportActorDependenciesResolvedRequest request1;
+  rpc::CreateActorRequest request1;
   request1.mutable_task_spec()->CopyFrom(
       registered_actor_1->GetActorTableData().task_spec());
 
-  Status status = gcs_actor_manager_->ReportActorDependenciesResolved(
+  Status status = gcs_actor_manager_->CreateActor(
       request1, [](std::shared_ptr<gcs::GcsActor> actor) {});
   ASSERT_TRUE(status.ok());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor").Binary(),
@@ -660,14 +654,13 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionNotHappendWhenReconstructed) {
 TEST_F(GcsActorManagerTest, TestDestroyActorBeforeActorCreationCompletes) {
   auto job_id = JobID::FromInt(1);
   auto registered_actor = RegisterActor(job_id);
-  rpc::ReportActorDependenciesResolvedRequest report_actor_dependencies_resolved_request;
-  report_actor_dependencies_resolved_request.mutable_task_spec()->CopyFrom(
+  rpc::CreateActorRequest create_actor_request;
+  create_actor_request.mutable_task_spec()->CopyFrom(
       registered_actor->GetActorTableData().task_spec());
 
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
-  RAY_CHECK_OK(gcs_actor_manager_->ReportActorDependenciesResolved(
-      report_actor_dependencies_resolved_request,
-      [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
+  RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
+      create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
         finished_actors.emplace_back(actor);
       }));
 
@@ -690,14 +683,13 @@ TEST_F(GcsActorManagerTest, TestRaceConditionCancelLease) {
   auto job_id = JobID::FromInt(1);
   auto registered_actor = RegisterActor(job_id, /*max_restarts=*/1,
                                         /*detached=*/false);
-  rpc::ReportActorDependenciesResolvedRequest report_actor_dependencies_resolved_request;
-  report_actor_dependencies_resolved_request.mutable_task_spec()->CopyFrom(
+  rpc::CreateActorRequest create_actor_request;
+  create_actor_request.mutable_task_spec()->CopyFrom(
       registered_actor->GetActorTableData().task_spec());
 
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
-  RAY_CHECK_OK(gcs_actor_manager_->ReportActorDependenciesResolved(
-      report_actor_dependencies_resolved_request,
-      [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
+  RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
+      create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
         finished_actors.emplace_back(actor);
       }));
 
@@ -730,10 +722,10 @@ TEST_F(GcsActorManagerTest, TestRegisterActor) {
   ASSERT_TRUE(mock_actor_scheduler_->actors.empty());
 
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
-  rpc::ReportActorDependenciesResolvedRequest request;
+  rpc::CreateActorRequest request;
   request.mutable_task_spec()->CopyFrom(
       registered_actor->GetActorTableData().task_spec());
-  RAY_CHECK_OK(gcs_actor_manager_->ReportActorDependenciesResolved(
+  RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
       request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
         finished_actors.emplace_back(std::move(actor));
       }));
