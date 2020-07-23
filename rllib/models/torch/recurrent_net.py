@@ -65,10 +65,11 @@ class RecurrentNetwork(TorchModelV2):
         You should implement forward_rnn() in your subclass."""
         if isinstance(seq_lens, np.ndarray):
             seq_lens = torch.Tensor(seq_lens).int()
-        output, new_state = self.forward_rnn(
-            add_time_dimension(
-                input_dict["obs_flat"].float(), seq_lens, framework="torch"),
-            state, seq_lens)
+        inputs = add_time_dimension(
+            input_dict["obs_flat"].float(), seq_lens, framework="torch",
+            time_major=self.model_config.get("_time_major", False),
+        )
+        output, new_state = self.forward_rnn(inputs, state, seq_lens)
         return torch.reshape(output, [-1, self.num_outputs]), new_state
 
     def forward_rnn(self, inputs, state, seq_lens):
@@ -104,13 +105,15 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
         super().__init__(obs_space, action_space, None, model_config, name)
 
         self.cell_size = model_config["lstm_cell_size"]
+        self.time_major = model_config.get("_time_major", False)
         self.use_prev_action_reward = model_config[
             "lstm_use_prev_action_reward"]
         self.action_dim = int(np.product(action_space.shape))
         # Add prev-action/reward nodes to input to LSTM.
         if self.use_prev_action_reward:
             self.num_outputs += 1 + self.action_dim
-        self.lstm = nn.LSTM(self.num_outputs, self.cell_size, batch_first=True)
+        self.lstm = nn.LSTM(
+            self.num_outputs, self.cell_size, batch_first=not self.time_major)
 
         self.num_outputs = num_outputs
 
@@ -126,12 +129,20 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
             activation_fn=None,
             initializer=torch.nn.init.xavier_uniform_)
 
-        initial_state = self.get_initial_state()
         for i in range(2):
             self._trajectory_view["state_in_{}".format(i)] = \
                 ViewRequirement("state_out_{}".format(i), postprocessing=False, shift=-1, space=Box(-1.0, 1.0, shape=(self.cell_size, )))
             self._trajectory_view["state_out_{}".format(i)] = \
                 ViewRequirement(sampling=False, training=False, space=Box(-1.0, 1.0, shape=(self.cell_size,)))
+        #TODO: move into PPO policy (recurrent models cannot know that they need these for training).
+        self._trajectory_view["advantages"] = \
+            ViewRequirement(sampling=False, postprocessing=False)
+        self._trajectory_view["value_targets"] = \
+            ViewRequirement(sampling=False, postprocessing=False)
+        self._trajectory_view["action_dist_inputs"] = \
+            ViewRequirement(sampling=False, postprocessing=False)
+        self._trajectory_view["action_logp"] = \
+            ViewRequirement(sampling=False, postprocessing=False)
 
         """
         1) Normal case:
@@ -269,8 +280,6 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
 
         # Concat. prev-action/reward if required.
         if self.model_config["lstm_use_prev_action_reward"]:
-            #bla
-            print(end="")
             wrapped_out = torch.cat(
                 [
                     wrapped_out,

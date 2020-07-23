@@ -84,9 +84,7 @@ class RolloutSampleCollector:
         self.agent_key_to_slot[agent_key] = agent_slot
         self.agent_key_to_chunk_num[agent_key[:2]] = chunk_num
         self.slot_to_agent_key[agent_slot] = agent_key
-        self.agent_slot_cursor += 1
-        if self.agent_slot_cursor >= self.num_agents:
-            raise NotImplementedError
+        self.next_agent_slot()
 
         if SampleBatch.OBS not in self.buffers:
             self._build_buffers(single_row={SampleBatch.OBS: init_obs})
@@ -109,22 +107,13 @@ class RolloutSampleCollector:
                 row) to be added to buffer. Must contain keys:
                 SampleBatch.ACTIONS, REWARDS, DONES, and OBS.
         """
-        #assert self.initial_obs is not None
         assert (SampleBatch.ACTIONS in values and SampleBatch.REWARDS in values
                 and SampleBatch.NEXT_OBS in values)
-        #assert episode_id == self.episode_id
-        #assert agent_id == self.agent_id
-        #assert policy_id == self.policy_id
 
         if SampleBatch.NEXT_OBS in values:
             assert SampleBatch.OBS not in values
             values[SampleBatch.OBS] = values[SampleBatch.NEXT_OBS]
             del values[SampleBatch.NEXT_OBS]
-
-        # Only obs exists so far in buffers:
-        # Initialize all other columns.
-        #if len(self.buffers) == 0:
-        #    self._build_buffers(single_row=values)
 
         chunk_num = self.agent_key_to_chunk_num[(agent_id, episode_id)]
         agent_key = (agent_id, episode_id, chunk_num)
@@ -141,11 +130,15 @@ class RolloutSampleCollector:
             agent_key] - self.shift_before == self.num_timesteps and \
                 not values[SampleBatch.DONES]:
             self.new_chunk_from(agent_slot, agent_key, self.agent_key_to_timestep[agent_key])
-            #self.add_init_obs(episode_id, agent_id, chunk_num=chunk_num + 1, init_obs=values[SampleBatch.OBS])
-            if self.agent_slot_cursor >= self.num_agents:
-                raise NotImplementedError
 
         self.timesteps_since_last_reset += 1
+
+    def next_agent_slot(self):
+        self.agent_slot_cursor += 1
+        if self.agent_slot_cursor >= self.num_agents:
+            self.agent_slot_cursor = 0
+        # Just make sure, there is space in our buffer.
+        assert self.slot_to_agent_key[self.agent_slot_cursor] is None
 
     def new_chunk_from(self, agent_slot, agent_key, timestep):
         new_agent_slot = self.agent_slot_cursor
@@ -157,9 +150,7 @@ class RolloutSampleCollector:
         self.agent_key_to_slot[new_agent_key] = new_agent_slot
         self.agent_key_to_chunk_num[new_agent_key[:2]] = new_agent_key[2]
         self.slot_to_agent_key[new_agent_slot] = new_agent_key
-        self.agent_slot_cursor += 1
-        if self.agent_slot_cursor >= self.num_agents:
-            raise NotImplementedError
+        self.next_agent_slot()
         self.agent_key_to_timestep[new_agent_key] = self.shift_before
 
     def add_to_forward_pass(self, agent_id, episode_id, env_id):
@@ -199,7 +190,7 @@ class RolloutSampleCollector:
         # Construct the view dict.
         view = {}
         for view_col, view_req in view_reqs.items():
-            # Skip columns that do not need to be included for sampling.
+            # Skip columns that do not need to be included for training.
             if not view_req.training:
                 continue
             data_col = view_req.data_col or view_col
@@ -208,10 +199,25 @@ class RolloutSampleCollector:
             # For OBS, indices must be shifted by -1.
             if data_col == SampleBatch.OBS:
                 extra_shift = -1
-            view[view_col] = self.buffers[data_col][self.shift_before + extra_shift:self.shift_before + self.num_timesteps + extra_shift,self.sample_batch_offset:self.agent_slot_cursor]
+            t_start = self.shift_before + extra_shift
+            t_end = t_start + self.num_timesteps
+            # If agent_slot has been rolled-over to beginning, we have to copy
+            # here.
+            if self.agent_slot_cursor < self.sample_batch_offset:
+                time_slice = self.buffers[data_col][t_start:t_end]
+                one_ = time_slice[:,self.sample_batch_offset:]
+                two_ = time_slice[:,:self.agent_slot_cursor]
+                if torch and isinstance(time_slice, torch.Tensor):
+                    view[view_col] = torch.cat([one_, two_], dim=1)
+                else:
+                    view[view_col] = np.concatenate([one_, two_], axis=1)
+            else:
+                view[view_col] = \
+                    self.buffers[data_col][t_start:t_end,
+                    self.sample_batch_offset:self.agent_slot_cursor]
 
         seq_lens = [self.agent_key_to_timestep[k] - 1 for k in self.slot_to_agent_key if k is not None]
-        batch = SampleBatch(view, _seq_lens=np.array(seq_lens))
+        batch = SampleBatch(view, _seq_lens=np.array(seq_lens), _time_major=True)
 
         call_args = []
 
@@ -219,7 +225,9 @@ class RolloutSampleCollector:
         for i, seq_len in enumerate(seq_lens):
             if seq_len < self.num_timesteps:
                 agent_slot = self.sample_batch_offset + i
-                if not self.buffers[SampleBatch.DONES][seq_len][agent_slot]:
+                if agent_slot >= self.num_agents:
+                    agent_slot = agent_slot % self.num_agents
+                if not self.buffers[SampleBatch.DONES][seq_len - 1 + self.shift_before][agent_slot]:
                     agent_key = self.slot_to_agent_key[agent_slot]
                     call_args.append((agent_slot, agent_key, self.agent_key_to_timestep[agent_key]))
 
@@ -264,28 +272,11 @@ class RolloutSampleCollector:
             # Skip columns that do not need to be included for sampling.
             if not view_req.sampling:
                 continue
-            # Create the batch of data from the different buffers in `data`.
-            # TODO: (sven): Here, we actually do create a copy of the data (from self.forward_pass_indices).
-            #  And there is not way to avoid that as np is not able to create views from scattered indices.
+            # Create the batch of data from the different buffers.
             data_col = view_req.data_col or view_col
-            # batch = []
-            # for traj in trajectories:
-            #    if traj.cursor + view_req.timesteps < 0:
-            #        if data_col == SampleBatch.OBS:
-            #            batch.append(traj.initial_obs)
-            #        else:
-            #            if view_req.fill == "zeros":
-            #                batch.append(np.zeros(view_req.space.shape))
-            #            else:
-            #                raise NotImplementedError
             if data_col not in self.buffers:
                 self._build_buffers({data_col: view_req.space.sample()})
 
-            # if data_col in collector.buffers:
-            # batch.append(traj.buffers[data_col][traj.cursor + view_req.timesteps])
-            # TODO
-            # elif view_req.fill == "tile":
-            #    batch.append(np.zeros(view_req.space.shape))
             # For OBS, indices must be shifted by -1.
             if data_col == SampleBatch.OBS:
                 t = self.forward_pass_indices[0]
@@ -293,13 +284,6 @@ class RolloutSampleCollector:
                 view[view_col] = self.buffers[data_col][indices]
             else:
                 view[view_col] = self.buffers[data_col][self.forward_pass_indices]
-            # else:
-            #    view[view_col]
-            #    raise NotImplementedError
-            # if torch and isinstance(batch[0], torch.Tensor):
-            #    view[view_col] = torch.stack(batch)
-            # else:
-            #    view[view_col] = np.array(batch)
 
         return view
 
@@ -311,8 +295,13 @@ class RolloutSampleCollector:
         # Construct the view dict.
         sample_batch_data = {}
 
-        for i in range(self.agent_slot_cursor - self.sample_batch_offset):
+        range_ = self.agent_slot_cursor - self.sample_batch_offset
+        if range_ < 0:
+            range_ = self.num_agents + range_
+        for i in range(range_):
             agent_slot = self.sample_batch_offset + i
+            if agent_slot >= self.num_agents:
+                agent_slot = agent_slot % self.num_agents
             # Do not postprocess the same slot twice.
             if self.postprocessed_slots[agent_slot]:
                 continue

@@ -37,7 +37,7 @@ class _FastMultiAgentSampleBatchBuilder:
     def __init__(self, policy_map: Dict[PolicyID, Policy],
                  #clip_rewards: Union[bool, float],
                  callbacks: "DefaultCallbacks",
-                 num_agents = 100):
+                 num_agents = 1000):
         """Initializes a _FastMultiAgentSampleBatchBuilder object.
 
         Args:
@@ -183,6 +183,7 @@ class _FastMultiAgentSampleBatchBuilder:
                 agent_batches[agent_key] = policy.postprocess_trajectory(
                     batch, other_batches, episode)
                 # Call the Policy's Exploration's postprocess method.
+                import torch
                 if getattr(policy, "exploration", None) is not None:
                     agent_batches[agent_key] = policy.exploration.postprocess_trajectory(
                         policy, agent_batches[agent_key],
@@ -224,7 +225,6 @@ class _FastMultiAgentSampleBatchBuilder:
                     t = rc.agent_key_to_timestep[agent_key] - 1
                     b = rc.agent_key_to_slot[agent_key]
                     if not rc.buffers["dones"][t][b]:
-                        print()
                         raise ValueError(
                             "Episode {} terminated for all agents, but we still "
                             "don't have a last observation for "

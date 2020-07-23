@@ -64,7 +64,7 @@ def minibatches(samples, sgd_minibatch_size, policy=None):
         raise NotImplementedError(
             "Minibatching not implemented for multi-agent in simple mode")
 
-    # Replace with `if samples._seq_lens` check.
+    # Replace with `if samples.seq_lens` check.
     if "state_in_0" in samples.data or "state_out_0" in samples.data:
         if log_once("not_shuffling_rnn_data_in_simple_mode"):
             logger.warning("Not shuffling RNN data for SGD in simple mode")
@@ -73,21 +73,17 @@ def minibatches(samples, sgd_minibatch_size, policy=None):
 
     i = 0
     slices = []
-    if samples._seq_lens:
-        max_seq_len = policy.model.model_config["max_seq_len"]
+    if samples.seq_lens:
         seq_no = 0
-        seq_index = 0
         while i < samples.count:
-            seq_no_ = seq_no
+            seq_no_end = seq_no
             actual_count = 0
-            while actual_count < sgd_minibatch_size:
-                actual_count += samples._seq_lens[seq_no_]
-                seq_no_ += 1
-            if actual_count > sgd_minibatch_size:
-                seq_index = sgd_minibatch_size - actual_count
-            slices.append((i, i + (seq_no_ - seq_no) * max_seq_len - seq_index))
-            i += (seq_no_ - seq_no) * max_seq_len - seq_index
-            seq_no = seq_no_
+            while actual_count < sgd_minibatch_size and len(samples.seq_lens) > seq_no_end:
+                actual_count += samples.seq_lens[seq_no_end]
+                seq_no_end += 1
+            slices.append((seq_no, seq_no_end))
+            i += actual_count
+            seq_no = seq_no_end
     else:
         while i < samples.count:
             slices.append((i, i + sgd_minibatch_size))

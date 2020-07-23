@@ -316,11 +316,17 @@ class TorchPolicy(Policy):
     @DeveloperAPI
     def learn_on_batch(self, postprocessed_batch: SampleBatch) -> Dict[
             str, TensorType]:
-        #print()
         if self.config["_use_trajectory_view_api"]:
-            #postprocessed_batch = get_trajectory_view(self.model, [postprocessed_batch],
-            #    is_training=True)
-            pass
+            if postprocessed_batch.time_major is not None:
+                postprocessed_batch["seq_lens"] = torch.tensor(postprocessed_batch.seq_lens)
+                t = 0 if postprocessed_batch.time_major else 1
+                for col in postprocessed_batch.data.keys():
+                    # Cut time-dim from states.
+                    if "state_" in col[:6]:
+                        postprocessed_batch[col] = postprocessed_batch[col][t]
+                    # Flatten all other data.
+                    else:
+                        postprocessed_batch[col] = postprocessed_batch[col].reshape((-1, ) + postprocessed_batch[col].shape[2:])
         else:
             # Get batch ready for RNNs, if applicable.
             pad_batch_to_sequences_of_same_size(

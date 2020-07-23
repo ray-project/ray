@@ -474,7 +474,8 @@ def _env_runner(worker: "RolloutWorker",
     batch_builder_pool: List[MultiAgentSampleBatchBuilder] = []
 
     # Only one builder per sampler (all samples are collected in a per-policy fashion).
-    _fast_sample_batch_builder = _FastMultiAgentSampleBatchBuilder(policies, callbacks, num_agents=100)
+    _fast_sample_batch_builder = _FastMultiAgentSampleBatchBuilder(
+        policies, callbacks)
 
     def get_batch_builder():
         if batch_builder_pool:
@@ -507,9 +508,7 @@ def _env_runner(worker: "RolloutWorker",
         return episode
 
     active_episodes: Dict[str, MultiAgentEpisode] = defaultdict(new_episode)
-
     eval_results = None
-    #eval_idx_map = None
 
     while True:
         perf_stats.iters += 1
@@ -529,7 +528,6 @@ def _env_runner(worker: "RolloutWorker",
         t1 = time.time()
         # type: Set[EnvID], Dict[PolicyID, List[PolicyEvalData]],
         #       List[Union[RolloutMetrics, SampleBatchType]]
-        #active_envs, to_eval, outputs, eval_idx_map = _process_observations(
         active_envs, to_eval, outputs = _process_observations(
             worker=worker,
             base_env=base_env,
@@ -538,7 +536,6 @@ def _env_runner(worker: "RolloutWorker",
             active_episodes=active_episodes,
             prev_policy_outputs=eval_results,
             _fast_batch_builder=_fast_sample_batch_builder,
-            #prev_eval_idx_map=eval_idx_map,
             unfiltered_obs=unfiltered_obs,
             rewards=rewards,
             dones=dones,
@@ -599,7 +596,6 @@ def _process_observations(
         prev_policy_outputs: Dict[PolicyID, Tuple[TensorStructType, StateBatch,
                                                   dict]],
         _fast_batch_builder = None,
-        #prev_eval_idx_map: Dict[PolicyID, Dict[EnvID, Dict[AgentID, int]]],
         unfiltered_obs: Dict[EnvID, Dict[AgentID, EnvObsType]],
         rewards: Dict[EnvID, Dict[AgentID, float]],
         dones: Dict[EnvID, Dict[AgentID, bool]],
@@ -625,9 +621,6 @@ def _process_observations(
             episode ID to currently ongoing MultiAgentEpisode object.
         prev_policy_outputs (Dict[str,List]): The prev policy output dict
             (by policy-id -> List[action, state outs, extra fetches]).
-        #prev_eval_idx_map (dict): Map allowing to retrieve the slot for an
-        #    action/extra-fetch from a `policy_output` given policy-id, env-id,
-        #    and agent-id.
         unfiltered_obs (dict): Doubly keyed dict of env-ids -> agent ids
             -> unfiltered observation tensor, returned by a `BaseEnv.poll()`
             call.
@@ -673,14 +666,14 @@ def _process_observations(
 
     large_batch_threshold: int = max(1000, rollout_fragment_length * 10) if \
         rollout_fragment_length != float("inf") else 5000
-    #eval_idx_map = defaultdict(partial(defaultdict, dict))
 
     # For each environment.
     # type: EnvID, Dict[AgentID, EnvObsType]
     for env_id, agent_obs in unfiltered_obs.items():
         is_new_episode: bool = env_id not in active_episodes
         episode: MultiAgentEpisode = active_episodes[env_id]
-        batch_builder = episode.batch_builder if not _use_trajectory_view_api else _fast_batch_builder
+        batch_builder = episode.batch_builder if not _use_trajectory_view_api \
+            else _fast_batch_builder
         if not is_new_episode:
             episode.length += 1
             batch_builder.count += 1
@@ -791,12 +784,14 @@ def _process_observations(
                     **episode.last_pi_info_for(agent_id))
             elif _use_trajectory_view_api:
                 if last_observation is None:
+                    #print("init obs {}:{}".format(agent_id, episode.episode_id))
                     batch_builder.add_init_obs(
                         episode.episode_id, agent_id,
                         policy_id, filtered_obs)
                 else:
                     rc = batch_builder.rollout_sample_collectors[policy_id]
                     eval_idx = rc.agent_key_to_forward_pass_index[(agent_id, episode.episode_id)]  #, rc.agent_key_to_chunk_num[(agent_id, episode.episode_id)])]
+                    #print("ts {}:{}".format(agent_id, episode.episode_id))
                     values_dict = {
                         "t": episode.length - 1,
                         "eps_id": episode.episode_id,
@@ -1085,7 +1080,8 @@ def _process_policy_eval_results(
 
     # type: PolicyID, List[PolicyEvalData]
     for policy_id, eval_data in to_eval.items():
-        eval_data.reset_forward_pass()
+        if _use_trajectory_view_api:
+            eval_data.reset_forward_pass()
 
         actions: TensorStructType = eval_results[policy_id][0]
         actions = convert_to_numpy(actions)

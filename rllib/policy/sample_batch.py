@@ -63,8 +63,9 @@ class SampleBatch:
     def __init__(self, *args, **kwargs):
         """Constructs a sample batch (same params as dict constructor)."""
 
-        # Possible
-        self._seq_lens = kwargs.pop("_seq_lens", None)
+        # Possible seq_lens (TxB or BxT) setup.
+        self.time_major = kwargs.pop("_time_major", None)
+        self.seq_lens = kwargs.pop("_seq_lens", None)
 
         # The actual data, accessible by column name (str).
         self.data = dict(*args, **kwargs)
@@ -77,8 +78,8 @@ class SampleBatch:
             raise ValueError("Empty sample batch")
         assert len(set(lengths)) == 1, \
             "Data columns must be same length, but lens are {}".format(lengths)
-        if self._seq_lens is not None:
-            self.count = sum(self._seq_lens)
+        if self.seq_lens is not None and len(self.seq_lens) > 0:
+            self.count = sum(self.seq_lens)
         else:
             self.count = len(self.data[k])
 
@@ -105,13 +106,14 @@ class SampleBatch:
         for s in samples:
             if s.count > 0:
                 concat_samples.append(s)
-                seq_lens.extend(s._seq_lens)
+                if s.seq_lens is not None:
+                    seq_lens.extend(s.seq_lens)
 
         out = {}
         for k in concat_samples[0].keys():
             out[k] = concat_aligned(
-                [s[k] for s in concat_samples], time_major=len(seq_lens) > 0)
-        return SampleBatch(out, _seq_lens=seq_lens)
+                [s[k] for s in concat_samples], time_major=concat_samples[0].time_major)
+        return SampleBatch(out, _seq_lens=seq_lens, _time_major=concat_samples[0].time_major)
 
     @PublicAPI
     def concat(self, other: "SampleBatch") -> "SampleBatch":
@@ -241,12 +243,14 @@ class SampleBatch:
             SampleBatch: A new SampleBatch, which has a slice of this batch's
                 data.
         """
-        #inputs = {
-        #    s: self._inputs[s] for s in set(self.data["unroll_id"][start:end])
-        #} if self._inputs else {}
-        return SampleBatch(
-            {k: v[start:end] for k, v in self.data.items()})
-            #_initial_inputs=inputs)
+        seq_lens = None
+        if self.time_major is not None:
+            seq_lens = self.seq_lens[start:end]
+            return SampleBatch(
+                {k: v[:,start:end] for k, v in self.data.items()}, _seq_lens=seq_lens, _time_major=self.time_major)
+        else:
+            return SampleBatch(
+                {k: v[start:end] for k, v in self.data.items()}, _seq_lens=seq_lens, _time_major=self.time_major)
 
     @PublicAPI
     def timeslices(self, k: int) -> List["SampleBatch"]:

@@ -22,7 +22,7 @@ def aligned_array(size, dtype, align=64):
     return output
 
 
-def concat_aligned(items, time_major=False):
+def concat_aligned(items, time_major=None):
     """Concatenate arrays, ensuring the output is 64-byte aligned.
 
     We only align float arrays; other arrays are concatenated as normal.
@@ -49,9 +49,13 @@ def concat_aligned(items, time_major=False):
           and items[0].dtype in [np.float32, np.float64, np.uint8]):
         dtype = items[0].dtype
         flat = aligned_array(sum(s.size for s in items), dtype)
-        if time_major:
-            batch_dim = sum(s.shape[1] for s in items)
-            new_shape = (items[0].shape[0], batch_dim,) + items[0].shape[2:]
+        if time_major is not None:
+            if time_major is True:
+                batch_dim = sum(s.shape[1] for s in items)
+                new_shape = (items[0].shape[0], batch_dim,) + items[0].shape[2:]
+            else:
+                batch_dim = sum(s.shape[0] for s in items)
+                new_shape = (batch_dim, items[0].shape[1],) + items[0].shape[2:]
         else:
             batch_dim = sum(s.shape[0] for s in items)
             new_shape = (batch_dim, ) + items[0].shape[1:]
