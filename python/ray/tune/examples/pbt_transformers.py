@@ -148,10 +148,12 @@ def train_transformer(config, model_name, task_name, num_epochs=3, data_dir="./d
         learning_rate=config["lr"],
         do_train=True,
         do_eval=True,
+        evaluate_during_training=True,
+        eval_steps=500,
         num_train_epochs=num_epochs,
         per_device_train_batch_size=config["batch_size"],
         per_device_eval_batch_size=config["batch_size"],
-        warmup_steps=500,
+        warmup_steps=0,
         weight_decay=config["weight_decay"],
         logging_dir="./logs",
     )
