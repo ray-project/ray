@@ -219,4 +219,5 @@ if __name__ == "__main__":
     if args.smoke_test:
         tune_transformer(num_samples=1, num_epochs=1, gpus_per_trial=0)
     else:
+        # You can change the number of GPUs here:
         tune_transformer(num_samples=8, num_epochs=3, gpus_per_trial=0)
