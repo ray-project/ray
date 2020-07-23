@@ -149,7 +149,7 @@ def train_transformer(config, model_name, task_name, num_epochs=3, data_dir="./d
         do_train=True,
         do_eval=True,
         evaluate_during_training=True,
-        eval_steps=500,
+        eval_steps=30,
         num_train_epochs=num_epochs,
         per_device_train_batch_size=config["batch_size"],
         per_device_eval_batch_size=config["batch_size"],
