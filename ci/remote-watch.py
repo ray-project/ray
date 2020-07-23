@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-
 """
 This command must be run in a git repository.
 
@@ -202,8 +201,8 @@ def monitor():
     expected_line = "{}\t{}".format(expected_sha, ref)
 
     if should_keep_alive(git("show", "-s", "--format=%B", "HEAD^-")):
-        logger.info("Not monitoring %s on %s due to keep-alive on: %s",
-                    ref, remote, expected_line)
+        logger.info("Not monitoring %s on %s due to keep-alive on: %s", ref,
+                    remote, expected_line)
         return
 
     logger.info("Monitoring %s (%s) for changes in %s: %s", remote,
@@ -224,14 +223,15 @@ def monitor():
                         ref, remote, expected_line)
             break
         elif status != 0:
-            logger.error("Error %d: unable to check %s on %s: %s",
-                         status, ref, remote, expected_line)
+            logger.error("Error %d: unable to check %s on %s: %s", status, ref,
+                         remote, expected_line)
         else:
             expected_line = detect_spurious_commit(line, expected_line, remote)
             if expected_line != line:
-                logger.info("Terminating job as %s has been updated on %s\n"
-                            "    from:\t%s\n"
-                            "    to:  \t%s", ref, remote, expected_line, line)
+                logger.info(
+                    "Terminating job as %s has been updated on %s\n"
+                    "    from:\t%s\n"
+                    "    to:  \t%s", ref, remote, expected_line, line)
                 time.sleep(1)  # wait for CI to flush output
                 break
 
@@ -253,8 +253,10 @@ def main(program, *args):
 
 
 if __name__ == "__main__":
-    logging.basicConfig(format="%(levelname)s: %(message)s",
-                        stream=sys.stderr, level=logging.DEBUG)
+    logging.basicConfig(
+        format="%(levelname)s: %(message)s",
+        stream=sys.stderr,
+        level=logging.DEBUG)
     try:
         raise SystemExit(main(*sys.argv) or 0)
     except KeyboardInterrupt:
