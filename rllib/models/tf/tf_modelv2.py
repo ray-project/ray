@@ -19,7 +19,7 @@ class TFModelV2(ModelV2):
 
     def __init__(self, obs_space: gym.spaces.Space,
                  action_space: gym.spaces.Space, num_outputs: int,
-                 model_config: ModelConfigDict, name: str, framework: str):
+                 model_config: ModelConfigDict, name: str):
         """Initialize a TFModelV2.
 
         Here is an example implementation for a subclass
