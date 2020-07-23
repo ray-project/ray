@@ -461,10 +461,9 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
   auto iter = registered_actors_.find(actor_id);
   if (iter != registered_actors_.end() &&
       iter->second->GetState() == rpc::ActorTableData::ALIVE) {
-    // When the network fails, Driver/Worker is not sure whether GcsServer has received
-    // the request, so Driver/Worker will try again and again until receiving the reply
-    // from GcsServer. If the actor has been created successfully then just reply to the
-    // caller.
+    // In case of temporary network failures, workers will re-send multiple duplicate
+    // requests to GCS server.
+    // In this case, we can just reply.
     callback(iter->second);
     return Status::OK();
   }

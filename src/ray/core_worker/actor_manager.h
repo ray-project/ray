@@ -31,7 +31,7 @@ class ActorCreatorInterface {
   /// \return Status
   virtual Status RegisterActor(const TaskSpecification &task_spec) = 0;
 
-  /// Create actor which local dependencies are resolved via GCS asynchronously.
+  /// Asynchronously request GCS to create the actor.
   ///
   /// \param task_spec The specification for the actor creation task.
   /// \param callback Callback that will be called after the actor info is written to GCS.

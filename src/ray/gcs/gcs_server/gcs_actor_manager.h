@@ -294,9 +294,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// again.
   void ReconstructActor(const ActorID &actor_id, bool need_reschedule = true);
 
-  /// Callbacks of actor registration requests.
+  /// Callbacks of pending `RegisterActor` requests.
   /// Maps actor ID to actor registration callbacks, which is used to filter duplicated
-  /// messages from a Driver/Worker caused by some network problems.
+  /// messages from a driver/worker caused by some network problems.
   absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
       actor_to_register_callbacks_;
   /// Callbacks of actor creation requests.
@@ -311,7 +311,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   absl::flat_hash_map<std::string, ActorID> named_actors_;
   /// The actors which dependencies have not been resolved.
   /// Maps from worker ID to a client and the IDs of the actors owned by that worker.
-  /// The actor that dependencies are not resolved should be destroyed once it creator
+  /// The actor whose dependencies are not resolved should be destroyed once it creator
   /// dies.
   absl::flat_hash_map<ClientID,
                       absl::flat_hash_map<WorkerID, absl::flat_hash_set<ActorID>>>
