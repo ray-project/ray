@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
+
 #include <string>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 
 #ifdef UNORDERED_VS_ABSL_MAPS_EVALUATION
@@ -895,7 +896,8 @@ TEST_F(ClusterResourceSchedulerTest, TaskGPUResourceInstancesTest) {
   }
 }
 
-TEST_F(ClusterResourceSchedulerTest, UpdateLocalAvailableResourcesFromResourceInstancesTest) {
+TEST_F(ClusterResourceSchedulerTest,
+       UpdateLocalAvailableResourcesFromResourceInstancesTest) {
   {
     NodeResources node_resources;
     vector<FixedPoint> pred_capacities{1 /* CPU */, 1 /* MEM */, 4 /* GPU */};
