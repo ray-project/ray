@@ -1095,16 +1095,11 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
 
     # Really we should just subscribe to the errors for this specific job.
     # However, currently all errors seem to be published on the same channel.
-    error_pubsub_channel = str(
-        ray.gcs_utils.TablePubsub.Value("ERROR_INFO_PUBSUB")).encode("ascii")
-    worker.error_message_pubsub_client.subscribe(error_pubsub_channel)
-    # worker.error_message_pubsub_client.psubscribe("*")
+    error_pubsub_channel = ray.gcs_utils.RAY_ERROR_PUBSUB_PATTERN
+    worker.error_message_pubsub_client.psubscribe(error_pubsub_channel)
 
     try:
         # Get the errors that occurred before the call to subscribe.
-        error_messages = ray.errors()
-        for error_message in error_messages:
-            logger.error(error_message)
 
         while True:
             # Exit if we received a signal that we should stop.
@@ -1115,10 +1110,9 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
             if msg is None:
                 threads_stopped.wait(timeout=0.01)
                 continue
-            gcs_entry = ray.gcs_utils.GcsEntry.FromString(msg["data"])
-            assert len(gcs_entry.entries) == 1
+            pubsub_msg = ray.gcs_utils.PubSubMessage.FromString(msg["data"])
             error_data = ray.gcs_utils.ErrorTableData.FromString(
-                gcs_entry.entries[0])
+                pubsub_msg.data)
             job_id = error_data.job_id
             if job_id not in [
                     worker.current_job_id.binary(),

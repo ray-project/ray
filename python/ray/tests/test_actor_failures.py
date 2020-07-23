@@ -12,9 +12,7 @@ import ray.ray_constants as ray_constants
 import ray.test_utils
 import ray.cluster_utils
 from ray.test_utils import (
-    relevant_errors,
     wait_for_condition,
-    wait_for_errors,
     wait_for_pid_to_exit,
     generate_internal_config_map,
     get_other_nodes,
@@ -22,6 +20,28 @@ from ray.test_utils import (
 )
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
+
+
+def init_pubsub():
+    p = ray.worker.global_worker.redis_client.pubsub(
+        ignore_subscribe_messages=True)
+    error_pubsub_channel = ray.gcs_utils.RAY_ERROR_PUBSUB_PATTERN
+    p.psubscribe(error_pubsub_channel)
+    return p
+
+
+def wait_for_message(p, num, timeout=10):
+    start_time = time.time()
+    msgs = []
+    while time.time() - start_time < timeout and len(msgs) < num:
+        msg = p.get_message()
+        if msg is None:
+            time.sleep(0.01)
+            continue
+        pubsub_msg = ray.gcs_utils.PubSubMessage.FromString(msg["data"])
+        error_data = ray.gcs_utils.ErrorTableData.FromString(pubsub_msg.data)
+        msgs.append(error_data)
+    return msgs
 
 
 @pytest.fixture
@@ -631,6 +651,8 @@ def test_checkpointing_save_exception(ray_start_regular,
                                       ray_checkpointable_actor_cls):
     """Test actor can still be recovered if checkpoints fail to complete."""
 
+    p = init_pubsub()
+
     @ray.remote(max_restarts=2)
     class RemoteCheckpointableActor(ray_checkpointable_actor_cls):
         def save_checkpoint(self, actor_id, checkpoint_context):
@@ -663,13 +685,18 @@ def test_checkpointing_save_exception(ray_start_regular,
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
 
     # Check that the checkpoint error was pushed to the driver.
-    wait_for_errors(ray_constants.CHECKPOINT_PUSH_ERROR, 1)
+    errors = wait_for_message(p, 2)
+    assert len(errors) == 1
+    assert errors[0].type == ray_constants.CHECKPOINT_PUSH_ERROR
+    p.close()
 
 
 @pytest.mark.skip(reason="TODO: Actor checkpointing")
 def test_checkpointing_load_exception(ray_start_regular,
                                       ray_checkpointable_actor_cls):
     """Test actor can still be recovered if checkpoints fail to load."""
+
+    p = init_pubsub()
 
     @ray.remote(max_restarts=2)
     class RemoteCheckpointableActor(ray_checkpointable_actor_cls):
@@ -704,7 +731,10 @@ def test_checkpointing_load_exception(ray_start_regular,
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
 
     # Check that the checkpoint error was pushed to the driver.
-    wait_for_errors(ray_constants.CHECKPOINT_PUSH_ERROR, 1)
+    errors = wait_for_message(p, 2)
+    assert len(errors) == 1
+    assert errors[0].type == ray_constants.CHECKPOINT_PUSH_ERROR
+    p.close()
 
 
 @pytest.mark.parametrize(
@@ -767,6 +797,8 @@ def test_init_exception_in_checkpointable_actor(ray_start_regular,
     error_message1 = "actor constructor failed"
     error_message2 = "actor method failed"
 
+    p = init_pubsub()
+
     @ray.remote
     class CheckpointableFailedActor(ray_checkpointable_actor_cls):
         def __init__(self):
@@ -781,17 +813,16 @@ def test_init_exception_in_checkpointable_actor(ray_start_regular,
     a = CheckpointableFailedActor.remote()
 
     # Make sure that we get errors from a failed constructor.
-    wait_for_errors(ray_constants.TASK_PUSH_ERROR, 1)
-    errors = relevant_errors(ray_constants.TASK_PUSH_ERROR)
+    errors = wait_for_message(p, 1)
     assert len(errors) == 1
-    assert error_message1 in errors[0]["message"]
+    assert error_message1 in errors[0].error_message
 
     # Make sure that we get errors from a failed method.
     a.fail_method.remote()
-    wait_for_errors(ray_constants.TASK_PUSH_ERROR, 2)
-    errors = relevant_errors(ray_constants.TASK_PUSH_ERROR)
-    assert len(errors) == 2
-    assert error_message1 in errors[1]["message"]
+    errors = wait_for_message(p, 1)
+    assert len(errors) == 1
+    assert error_message1 in errors[0].error_message
+    p.close()
 
 
 def test_decorated_method(ray_start_regular):
