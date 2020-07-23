@@ -74,7 +74,7 @@ def git_remote_branch_info():
     """
     ref = None
     remote = None
-    expected_sha = None
+    expected_sha = git("rev-parse", "--verify", "HEAD")
 
     try:
         # Try to get the local branch ref. (e.g. refs/heads/mybranch)
@@ -101,13 +101,8 @@ def git_remote_branch_info():
         else:
             ref = os.getenv("GITHUB_REF")
 
-    if not remote:
-        raise ValueError("Invalid remote: {!r}".format(remote))
-    if not ref:
-        raise ValueError("Invalid ref: {!r}".format(ref))
-
-    if not expected_sha:
-        expected_sha = git("rev-parse", "--verify", "HEAD")
+    if not remote or not ref:
+        raise ValueError("Invalid ref {!r} or remote {!r}".format(ref, remote))
 
     return (ref, remote, expected_sha)
 
