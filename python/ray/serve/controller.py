@@ -179,7 +179,7 @@ class ServeController:
                     host, port, instance_name=self.instance_name)
             self.routers.append(router)
 
-    def get_http_proxy(self):
+    def get_router(self):
         """Returns a handle to the HTTP proxy managed by this actor."""
         return self.routers
 
@@ -188,7 +188,7 @@ class ServeController:
         object_refs = [apply(router) for router in self.routers]
         await asyncio.gather(*object_refs)
 
-    def get_http_proxy_config(self):
+    def get_router_config(self):
         """Called by the HTTP proxy on startup to fetch required state."""
         return self.routes
 

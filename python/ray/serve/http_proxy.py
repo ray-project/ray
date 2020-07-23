@@ -31,7 +31,7 @@ class HTTPProxy:
         assert ray.is_initialized()
         controller = serve.api._get_controller()
 
-        self.route_table = await controller.get_http_proxy_config.remote()
+        self.route_table = await controller.get_router_config.remote()
 
         # The exporter is required to return results for /-/metrics endpoint.
         [self.metric_exporter] = await controller.get_metric_exporter.remote()
