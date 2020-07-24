@@ -50,6 +50,9 @@ jclass java_map_entry_class;
 jmethodID java_map_entry_get_key;
 jmethodID java_map_entry_get_value;
 
+jclass java_system_class;
+jmethodID java_system_gc;
+
 jclass java_ray_exception_class;
 
 jclass java_jni_exception_util_class;
@@ -156,6 +159,9 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_map_entry_get_value =
       env->GetMethodID(java_map_entry_class, "getValue", "()Ljava/lang/Object;");
 
+  java_system_class = LoadClass(env, "java/lang/System");
+  java_system_gc = env->GetStaticMethodID(java_system_class, "gc", "()V");
+
   java_ray_exception_class = LoadClass(env, "io/ray/api/exception/RayException");
 
   java_jni_exception_util_class = LoadClass(env, "io/ray/runtime/util/JniExceptionUtil");
@@ -241,6 +247,7 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   env->DeleteGlobalRef(java_set_class);
   env->DeleteGlobalRef(java_iterator_class);
   env->DeleteGlobalRef(java_map_entry_class);
+  env->DeleteGlobalRef(java_system_class);
   env->DeleteGlobalRef(java_ray_exception_class);
   env->DeleteGlobalRef(java_jni_exception_util_class);
   env->DeleteGlobalRef(java_base_id_class);

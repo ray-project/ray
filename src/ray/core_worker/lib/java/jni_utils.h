@@ -85,6 +85,11 @@ extern jmethodID java_map_entry_get_key;
 /// getValue method of Map.Entry interface
 extern jmethodID java_map_entry_get_value;
 
+/// System class
+extern jclass java_system_class;
+/// gc method of System class
+extern jmethodID java_system_gc;
+
 /// RayException class
 extern jclass java_ray_exception_class;
 

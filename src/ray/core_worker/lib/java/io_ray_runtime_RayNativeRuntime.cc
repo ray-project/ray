@@ -72,6 +72,19 @@ jobject ToJavaArgs(JNIEnv *env, jbooleanArray java_check_results,
   }
 }
 
+JNIEnv *GetJNIEnv() {
+  JNIEnv *env = local_env;
+  if (!env) {
+    // Attach the native thread to JVM.
+    auto status =
+        jvm->AttachCurrentThreadAsDaemon(reinterpret_cast<void **>(&env), nullptr);
+    RAY_CHECK(status == JNI_OK) << "Failed to get JNIEnv. Return code: " << status;
+    local_env = env;
+  }
+  RAY_CHECK(env);
+  return env;
+}
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -98,16 +111,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
          const std::vector<ObjectID> &arg_reference_ids,
          const std::vector<ObjectID> &return_ids,
          std::vector<std::shared_ptr<ray::RayObject>> *results) {
-        JNIEnv *env = local_env;
-        if (!env) {
-          // Attach the native thread to JVM.
-          auto status =
-              jvm->AttachCurrentThreadAsDaemon(reinterpret_cast<void **>(&env), nullptr);
-          RAY_CHECK(status == JNI_OK) << "Failed to get JNIEnv. Return code: " << status;
-          local_env = env;
-        }
-
-        RAY_CHECK(env);
+        JNIEnv *env = GetJNIEnv();
         RAY_CHECK(java_task_executor);
 
         // convert RayFunction
@@ -179,6 +183,12 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
         return ray::Status::OK();
       };
 
+  auto gc_collect = []() {
+    JNIEnv *env = GetJNIEnv();
+    RAY_LOG(INFO) << "Calling System.gc() ...";
+    env->CallStaticObjectMethod(java_system_class, java_system_gc);
+  };
+
   ray::CoreWorkerOptions options = {
       static_cast<ray::WorkerType>(workerMode),     // worker_type
       ray::Language::JAVA,                          // langauge
@@ -198,7 +208,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
       "",                                            // stderr_file
       task_execution_callback,                       // task_execution_callback
       nullptr,                                       // check_signals
-      nullptr,                                       // gc_collect
+      gc_collect,                                    // gc_collect
       nullptr,                                       // get_lang_stack
       nullptr,                                       // kill_main
       true,                                          // ref_counting_enabled
