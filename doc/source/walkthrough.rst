@@ -38,7 +38,7 @@ You can start Ray on a single machine by adding this to your code.
     public class MyRayApp {
 
       public static void main(String[] args) {
-        // Start Ray. If you're connecting to an existing cluster, you should set
+        // Start Ray runtime. If you're connecting to an existing cluster, you can set
         // the `-Dray.redis.address=<cluster-address>` java system property.
         Ray.init()
         ...
@@ -84,7 +84,7 @@ Ray enables arbitrary functions to be executed asynchronously. These asynchronou
         time.sleep(10)
         return 1
 
-      # Invocation of Ray remote functions happen in parralel.
+      # Invocation of Ray remote functions happen in parallel.
       # All computation is performed in the background, driven by Ray's internal event loop.
       for _ in range(4):
           # This doesn't block.
@@ -109,14 +109,14 @@ Ray enables arbitrary functions to be executed asynchronously. These asynchronou
       ObjectRef<Integer> res = Ray.task(MyRayApp::myFunction).remote();
 
       // The result can be retrieved with ``ray.get``.
-      Assert.assertEqual(res.get(), 1);
+      Assert.assertTrue(res.get() == 1);
 
-      public static int slowFunction() {
-        TimeUnit.SECOND.sleep(10);
+      public static int slowFunction() throws InterruptedException {
+        TimeUnit.SECONDS.sleep(10);
         return 1;
       }
 
-      // Invocation of Ray remote functions happen in parralel.
+      // Invocation of Ray remote functions happen in parallel.
       // All computation is performed in the background, driven by Ray's internal event loop.
       for(int i = 0; i < 4; i++) {
         // This doesn't block.
@@ -152,11 +152,11 @@ Passing object refs to remote functions
     }
 
     ObjectRef<Integer> objRef1 = Ray.task(MyRayApp::myFunction).remote();
-    Assert.assertEqual(objRef1.get(), 1);
+    Assert.assertTrue(objRef1.get() == 1);
 
     // You can pass an `ObjectRef` as an argument to another Ray remote function.
-    RayObject<Integer> objRef2 = Ray.call(MyRayApp::chainFunction, objRef1).;
-    Assert.assertEqual(objRef2.get(), 2);
+    ObjectRef<Integer> objRef2 = Ray.task(MyRayApp::functionWithAnArgument, objRef1).remote();
+    Assert.assertTrue(objRef2.get() == 2);
 
 Note the following behaviors:
 
@@ -191,13 +191,15 @@ available to execute the task.
 .. tabs::
   .. code-tab:: python
 
+    # Specify required resources.
     @ray.remote(num_cpus=4, num_gpus=2)
     def my_function():
         return 1
 
   .. code-tab:: java
 
-    Ray.task(MyApp::myFunction).setResource("CPU", 2).setResource("GPU", 4).remote();
+    // Specify required resources.
+    Ray.task(MyRayApp::myFunction).setResource("CPU", 1.0).setResource("GPU", 4.0).remote();
 
 .. note::
 
@@ -233,7 +235,7 @@ Below are more examples of resource specifications:
   .. code-tab:: java
 
     // Ray aslo supports fractional and custom resources.
-    Ray.task(MyApp::myFunction).setResource("GPU", 0.5).setResource("Custom", 1).remote();
+    Ray.task(MyRayApp::myFunction).setResource("GPU", 0.5).setResource("Custom", 1).remote();
 
 Multiple returns
 ~~~~~~~~~~~~~~~~
@@ -293,11 +295,13 @@ Object refs can be created in multiple ways.
 .. tabs::
   .. code-tab:: python
 
+    # Put an object in Ray's object store.
     y = 1
     object_ref = ray.put(y)
 
   .. code-tab:: java
 
+    // Put an object in Ray's object store.
     int y = 1;
     ObjectRef<Integer> objectRef = Ray.put(y);
 
@@ -327,7 +331,7 @@ If the current node's object store does not contain the object, the object is do
       obj_ref = ray.put(1)
       assert ray.get(obj_ref) == 1
 
-      # Get the values of multiple object refs in parralel.
+      # Get the values of multiple object refs in parallel.
       assert ray.get([ray.put(i) for i in range(3)]) == [1, 2, 3]
 
       # You can also set a timeout to return early from a ``get`` that's blocking for too long.
@@ -349,12 +353,14 @@ If the current node's object store does not contain the object, the object is do
 
       // Get the value of one object ref.
       ObjectRef<Integer> objRef = Ray.put(1);
-      Assert.assertEqual(object.get(), 1);
+      // Get the value of one object ref.
+      ObjectRef<Integer> objRef = Ray.put(1);
+      Assert.assertTrue(object.get() == 1);
 
       // Get the values of multiple object refs in parallel.
       List<ObjectRef<Integer>> objRefs = new ArrayList<>();
       for (int i = 0; i < 3; i++) {
-        objectRefs.add(Ray.put(i));
+	objectRefs.add(Ray.put(i));
       }
       List<Integer> results = Ray.get(objectRefs);
       Assert.assertEquals(results, ImmutableList.of(1, 2, 3));
@@ -370,7 +376,7 @@ works as follows.
 
   .. code-tab:: java
 
-    WaitResult<Integer> waitResult = Ray.wait(objRefs, /*num_returns=*/1, /*timeoutMs=*/1000);
+    WaitResult<Integer> waitResult = Ray.wait(objectRefs, /*num_returns=*/0, /*timeoutMs=*/1000);
     System.out.println(waitResult.getReady());  // List of ready objects.
     System.out.println(waitResult.getUnready());  // list of unready objects.
 
@@ -447,13 +453,15 @@ You can specify resource requirements in actors too (see the `Actors section
 .. tabs::
   .. code-tab:: python
 
+    # Specify required resources for an actor.
     @ray.remote(num_cpus=2, num_gpus=0.5)
     class Actor(object):
         pass
 
   .. code-tab:: java
 
-    Ray.actor(Counter::new).setResource("CPU", 2).setResource("GPU", 0.5).remote();
+    // Specify required resources for an actor.
+    Ray.actor(Counter::new).setResource("CPU", 2.0).setResource("GPU", 0.5).remote();
 
 
 Calling the actor
@@ -466,13 +474,15 @@ value.
 .. tabs::
   .. code-tab:: python
 
+    # Call the actor.
     obj_ref = counter.increment.remote()
     ray.get(obj_ref) == 1
 
   .. code-tab:: java
 
+    // Call the actor.
     ObjectRef<Integer> objectRef = counter.task(Counter::increment).remote();
-    Assert.assertEqual(objectRef.get(), 1);
+    Assert.assertTrue(objectRef.get() == 1);
 
 Methods called on different actors can execute in parallel, and methods called on the same actor are executed serially in the order that they are called. Methods on the same actor will share state with one another, as shown below.
 
@@ -502,20 +512,20 @@ Methods called on different actors can execute in parallel, and methods called o
 
     // Increment each Counter once and get the results. These tasks all happen in
     // parallel.
-    ObjectRef<Integer> objectRefs = new ArrayList<>();
-    for (ActorHandle<Counter> counter : counters) {
-      objectRefs.add(counter.task(Counter::increment).remote());
+    List<ObjectRef<Integer>> objectRefs = new ArrayList<>();
+    for (ActorHandle<Counter> counterActor : counters) {
+      objectRefs.add(counterActor.task(Counter::increment).remote());
     }
     // prints [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-    System.out.println(Ray.get(objectRefs))
+    System.out.println(Ray.get(objectRefs));
 
     // Increment the first Counter five times. These tasks are executed serially
     // and share state.
     objectRefs = new ArrayList<>();
     for (int i = 0; i < 5; i++) {
-      results.add(counters.get(0).task(Counter::increment).remote();
+      objectRefs.add(counters.get(0).task(Counter::increment).remote();
     }
     // prints [2, 3, 4, 5, 6]
-    System.out.println(Ray.get(objectRefs))
+    System.out.println(Ray.get(objectRefs));
 
 To learn more about Ray Actors, see the `Actors section <actors.html>`__.
