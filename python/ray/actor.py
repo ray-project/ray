@@ -439,10 +439,9 @@ class ActorClass:
             name: The globally unique name for the actor.
             detached: DEPRECATED.
             placement_group_id: the placement group this actor belongs to, 
-                if none means no placement group belongs to.
+                or None if it doesn't belong to any group.
             placement_group_bundle_index: the index of the bundle
-                if the actor benlongs to a placment group. 
-                If it's none, it's means don't belong to a placement group.
+                if the actor belongs to a placement group.
 
         Returns:
             A handle to the newly created actor.
