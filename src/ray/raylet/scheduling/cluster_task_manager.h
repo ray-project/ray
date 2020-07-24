@@ -12,6 +12,9 @@
 namespace ray {
 namespace raylet {
 
+/// Work represents all the information needed to make a scheduling decision.
+/// This includes the task, the information we need to communicate to
+/// dispatch/spillback and the callback to trigger it.
 typedef std::tuple<Task, rpc::RequestWorkerLeaseReply *, std::function<void(void)>> Work;
 
 typedef std::function<boost::optional<rpc::GcsNodeInfo>(const ClientID &node_id)>

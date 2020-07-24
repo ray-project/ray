@@ -42,12 +42,6 @@ namespace raylet {
 
 class MockWorkerPool : public WorkerPoolInterface {
  public:
-  /// Pop an idle worker from the pool. The caller is responsible for pushing
-  /// the worker back onto the pool once the worker has completed its work.
-  ///
-  /// \param task_spec The returned worker must be able to execute this task.
-  /// \return An idle worker with the requested task spec. Returns nullptr if no
-  /// such worker exists.
   std::shared_ptr<WorkerInterface> PopWorker(const TaskSpecification &task_spec) {
     if (workers.empty()) {
       return nullptr;
@@ -56,9 +50,7 @@ class MockWorkerPool : public WorkerPoolInterface {
     workers.pop_front();
     return worker_ptr;
   }
-  /// Add an idle worker to the pool.
-  ///
-  /// \param The idle worker to add.
+
   void PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
     workers.push_front(worker);
   }
@@ -112,7 +104,7 @@ class MockWorker : public WorkerInterface {
     RAY_CHECK(false) << "Method unused";
     return false;
   }
-  /// Return the worker process.
+
   Process GetProcess() const {
     RAY_CHECK(false) << "Method unused";
     return Process::CreateNewDummy();
@@ -122,8 +114,9 @@ class MockWorker : public WorkerInterface {
     RAY_CHECK(false) << "Method unused";
     return Language::PYTHON;
   }
-  /// Connect this worker's gRPC client.
+
   void Connect(int port) { RAY_CHECK(false) << "Method unused"; }
+
   int AssignedPort() const {
     RAY_CHECK(false) << "Method unused";
     return -1;
@@ -206,8 +199,6 @@ class MockWorker : public WorkerInterface {
     RAY_CHECK(false) << "Method unused";
   }
 
-  // Setter, geter, and clear methods  for allocated_instances_.
-
   void ClearAllocatedInstances() { RAY_CHECK(false) << "Method unused"; }
 
   void ClearLifetimeAllocatedInstances() { RAY_CHECK(false) << "Method unused"; }
@@ -276,47 +267,55 @@ Task CreateTask(const std::unordered_map<std::string, double> &required_resource
 
 class ClusterTaskManagerTest : public ::testing::Test {
  public:
+  ClusterTaskManagerTest() :
+    id_(ClientID::FromRandom()),
+    single_node_resource_scheduler_(CreateSingleNodeScheduler(id_.Binary()))
+  {}
+
   void SetUp() {}
 
   void Shutdown() {}
+
+  ClientID id_;
+  std::shared_ptr<ClusterResourceScheduler> single_node_resource_scheduler_;
+  MockWorkerPool pool_;
+  std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
+
 };
 
-TEST_F(ClusterTaskManagerTest, SampleTest) {
-  ClientID id = ClientID::FromRandom();
+TEST_F(ClusterTaskManagerTest, BasicTest) {
+  /*
+    Test basic scheduler functionality:
+    1. Queue and attempt to schedule/dispatch atest with no workers available
+    2. A worker becomes available, dispatch again.
+   */
   // Task has no dependencies and shouldn't spill so these functions should never be
   // called.
-  std::function<bool(const Task &)> fulfills_dependencies_func = nullptr;
-  std::function<boost::optional<rpc::GcsNodeInfo>(const ClientID &node_id)>
-      get_node_info_func = nullptr;
-  auto task_manager = ClusterTaskManager(id, CreateSingleNodeScheduler(id.Binary()),
-                                         fulfills_dependencies_func, get_node_info_func);
+  auto task_manager = ClusterTaskManager(id_, single_node_resource_scheduler_, nullptr, nullptr);
 
   Task task = CreateTask({{ray::kCPU_ResourceLabel, 4}});
-
-  MockWorkerPool pool;
-
   rpc::RequestWorkerLeaseReply reply;
-
   bool callback_occurred = false;
   bool *callback_occurred_ptr = &callback_occurred;
   auto callback = [callback_occurred_ptr]() { *callback_occurred_ptr = true; };
 
-  std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers;
-
   task_manager.QueueTask(task, &reply, callback);
   task_manager.SchedulePendingTasks();
-  task_manager.DispatchScheduledTasksToWorkers(pool, leased_workers);
+  task_manager.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
 
   ASSERT_FALSE(callback_occurred);
+  ASSERT_TRUE(leased_workers_.size() == 0);
+  ASSERT_TRUE(pool_.workers.size() == 0);
 
   std::shared_ptr<MockWorker> worker =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
-  pool.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
 
-  task_manager.DispatchScheduledTasksToWorkers(pool, leased_workers);
+  task_manager.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
 
-  ASSERT_TRUE(leased_workers.size() == 1);
-  ASSERT_TRUE(pool.workers.size() == 0);
+  ASSERT_TRUE(callback_occurred == true);
+  ASSERT_TRUE(leased_workers_.size() == 1);
+  ASSERT_TRUE(pool_.workers.size() == 0);
 }
 
 }  // namespace raylet
