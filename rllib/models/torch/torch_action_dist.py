@@ -308,7 +308,7 @@ class TorchDeterministic(TorchDistributionWrapper):
 
     @override(TorchDistributionWrapper)
     def sampled_action_logp(self):
-        return 0.0
+        return torch.zeros((self.inputs.size()[0], ), dtype=torch.float32)
 
     @override(TorchDistributionWrapper)
     def sample(self):
