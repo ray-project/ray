@@ -82,6 +82,10 @@ SHELLCHECK_FLAGS=(
   --exclude=2207  # "Prefer mapfile or read -a to split command output (or quote to avoid splitting)." -- these aren't compatible with macOS's old Bash
 )
 
+SHELLCHECK_BAZEL_FLAGS=(
+  --exclude=2043  # "This loop will only ever run once. Bad quoting or missing glob/expansion?" -- Bazel preprocessing can trigger this needlessly
+)
+
 YAPF_FLAGS=(
     '--style' "$ROOT/.style.yapf"
     '--recursive'
@@ -100,7 +104,7 @@ shellcheck_scripts() {
 }
 
 shellcheck_bazel() {
-  "${ROOT}"/ci/travis/bazel.py shellcheck "mnemonic(\"Genrule\", deps(//:*))" shellcheck "${SHELLCHECK_FLAGS[@]}" "$@"
+  "${ROOT}"/ci/travis/bazel.py shellcheck "mnemonic(\"Genrule\", deps(//:*))" shellcheck "${SHELLCHECK_FLAGS[@]}" "${SHELLCHECK_BAZEL_FLAGS[@]}" "$@"
 }
 
 # Format specified files
