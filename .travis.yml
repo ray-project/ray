@@ -267,7 +267,7 @@ matrix:
     # Tune: Tests and examples.
     - os: linux
       env:
-        - TUNE_EXAMPLES=1
+        - TUNE_TESTING=1 TUNE_EXAMPLES=1
         - PYTHON=3.6
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
@@ -323,7 +323,7 @@ matrix:
     # Tune/SGD/Docs: Python >= 3.7 tests and examples.
     - os: linux
       env:
-        - PYTHON=3.7 TUNE_EXAMPLES=1
+        - PYTHON=3.7 TUNE_TESTING=1 TUNE_EXAMPLES=1
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.5
