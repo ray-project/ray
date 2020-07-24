@@ -36,17 +36,12 @@ def train_mnist(config, checkpoint=False):
         acc = test(model, test_loader, device)
 
         if epoch % 3 == 0:
-            with distributed_checkpoint(label=epoch) as f:
-                torch.save((model.state_dict(), optimizer.state_dict()), f)
+            with distributed_checkpoint(label=epoch) as path:
+                torch.save((model.state_dict(), optimizer.state_dict()), path)
         tune.report(mean_accuracy=acc)
 
 
 if __name__ == "__main__":
     ray.init(num_cpus=2)
-    train_mnist(None)
     trainable_cls = DistributedTrainableCreator(train_mnist, num_workers=2)
-    # trainable = trainable_cls()
-    # for i in range(10):
-    #     print(trainable.train())
-
-    # tune.run(trainable_cls, num_samples=4, stop={"training_iteration": 2})
+    tune.run(trainable_cls, num_samples=4, stop={"training_iteration": 2})
