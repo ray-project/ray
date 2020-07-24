@@ -44,7 +44,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
       client_io_service_->run();
     }));
 
-    io_service_pool_ = std::make_shared<IOServicePool>(io_service_num_);
+    io_service_pool_ = std::make_shared<IOServicePool>(kGcsIoServiceNum);
     io_service_pool_->Run();
     gcs_server_.reset(new gcs::GcsServer(config_, io_service_pool_->GetAll()));
     gcs_server_->Start();
@@ -79,7 +79,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     gcs_server_.reset();
     RAY_LOG(INFO) << "Finished stopping GCS service.";
 
-    io_service_pool_ = std::make_shared<IOServicePool>(io_service_num_);
+    io_service_pool_ = std::make_shared<IOServicePool>(kGcsIoServiceNum);
     io_service_pool_->Run();
     gcs_server_.reset(new gcs::GcsServer(config_, io_service_pool_->GetAll()));
     gcs_server_->Start();
@@ -488,7 +488,6 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   // GCS server.
   gcs::GcsServerConfig config_;
   std::unique_ptr<gcs::GcsServer> gcs_server_;
-  size_t io_service_num_{2};
   std::shared_ptr<IOServicePool> io_service_pool_;
 
   // GCS client.

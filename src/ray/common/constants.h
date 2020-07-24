@@ -42,3 +42,7 @@ constexpr char kWorkerRayletConfigPlaceholder[] = "RAY_WORKER_RAYLET_CONFIG_PLAC
 /// Public DNS address which is is used to connect and get local IP.
 constexpr char kPublicDNSServerIp[] = "8.8.8.8";
 constexpr int kPublicDNSServerPort = 53;
+
+/// Number of io services used by gcs. The extra one is used by node failure detector to
+/// avoid heartbeat delay.
+constexpr size_t kGcsIoServiceNum{2};

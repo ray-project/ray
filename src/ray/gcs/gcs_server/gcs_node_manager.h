@@ -218,6 +218,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   gcs::ErrorInfoAccessor &error_info_accessor_;
   /// Detector to detect the failure of node.
   std::unique_ptr<NodeFailureDetector> node_failure_detector_;
+  /// The event loop for node failure detector.
+  boost::asio::io_service &node_failure_detector_service_;
   /// Alive nodes.
   absl::flat_hash_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes_;
   /// Dead nodes.

@@ -137,6 +137,7 @@ GcsNodeManager::GcsNodeManager(boost::asio::io_service &io_service,
               RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_done));
             }
           })),
+      node_failure_detector_service_(io_service),
       gcs_pub_sub_(gcs_pub_sub),
       gcs_table_storage_(gcs_table_storage) {}
 
@@ -203,7 +204,9 @@ void GcsNodeManager::HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &re
   ClientID node_id = ClientID::FromBinary(request.heartbeat().client_id());
   auto heartbeat_data = std::make_shared<rpc::HeartbeatTableData>();
   heartbeat_data->CopyFrom(request.heartbeat());
-  node_failure_detector_->HandleHeartbeat(node_id, *heartbeat_data);
+  node_failure_detector_service_.post([this, node_id, heartbeat_data] {
+    node_failure_detector_->HandleHeartbeat(node_id, *heartbeat_data);
+  });
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   RAY_CHECK_OK(gcs_pub_sub_->Publish(HEARTBEAT_CHANNEL, node_id.Hex(),
                                      heartbeat_data->SerializeAsString(), nullptr));
@@ -338,7 +341,9 @@ void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
     // Add an empty resources for this node.
     RAY_CHECK(cluster_resources_.emplace(node_id, rpc::ResourceMap()).second);
     // Register this node to the `node_failure_detector_` which will start monitoring it.
-    node_failure_detector_->AddNode(node_id);
+    node_failure_detector_service_.post(
+        [this, node_id] { node_failure_detector_->AddNode(node_id); });
+
     // Notify all listeners.
     for (auto &listener : node_added_listeners_) {
       listener(node);

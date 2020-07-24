@@ -56,9 +56,8 @@ int main(int argc, char *argv[]) {
 
   RayConfig::instance().initialize(config_map);
 
-  size_t io_service_num_{2};
   std::shared_ptr<ray::IOServicePool> io_service_pool =
-      std::make_shared<ray::IOServicePool>(io_service_num_);
+      std::make_shared<ray::IOServicePool>(kGcsIoServiceNum);
   io_service_pool->Run();
 
   // IO Service for signals handler.

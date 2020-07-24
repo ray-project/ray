@@ -37,7 +37,7 @@ class GlobalStateAccessorTest : public ::testing::Test {
     config.is_test = true;
     config.redis_port = TEST_REDIS_SERVER_PORTS.front();
 
-    io_service_pool_ = std::make_shared<IOServicePool>(io_service_num_);
+    io_service_pool_ = std::make_shared<IOServicePool>(kGcsIoServiceNum);
     io_service_pool_->Run();
 
     io_service_.reset(new boost::asio::io_service());
@@ -91,7 +91,6 @@ class GlobalStateAccessorTest : public ::testing::Test {
   std::unique_ptr<gcs::GcsServer> gcs_server_;
   std::unique_ptr<std::thread> thread_io_service_;
   std::unique_ptr<boost::asio::io_service> io_service_;
-  size_t io_service_num_{2};
   std::shared_ptr<IOServicePool> io_service_pool_;
 
   // GCS client.

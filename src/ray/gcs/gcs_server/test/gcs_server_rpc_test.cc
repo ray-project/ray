@@ -34,7 +34,7 @@ class GcsServerTest : public ::testing::Test {
     config.redis_address = "127.0.0.1";
     config.is_test = true;
     config.redis_port = TEST_REDIS_SERVER_PORTS.front();
-    io_service_pool_ = std::make_shared<IOServicePool>(io_service_num_);
+    io_service_pool_ = std::make_shared<IOServicePool>(kGcsIoServiceNum);
     io_service_pool_->Run();
     gcs_server_.reset(new gcs::GcsServer(config, io_service_pool_->GetAll()));
     gcs_server_->Start();
@@ -446,7 +446,6 @@ class GcsServerTest : public ::testing::Test {
  protected:
   // Gcs server
   std::unique_ptr<gcs::GcsServer> gcs_server_;
-  size_t io_service_num_{2};
   std::shared_ptr<IOServicePool> io_service_pool_;
 
   // Gcs client

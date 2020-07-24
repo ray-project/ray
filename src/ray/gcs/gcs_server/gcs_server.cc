@@ -37,7 +37,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       rpc_server_(config.grpc_server_name, config.grpc_server_port,
                   config.grpc_server_thread_num),
       client_call_manager_(*io_services[0]) {
-  RAY_CHECK(io_services.size() >= 2);
+  RAY_CHECK(io_services.size() == kGcsIoServiceNum);
 }
 
 GcsServer::~GcsServer() { Stop(); }
