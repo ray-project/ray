@@ -45,10 +45,7 @@ jobs:
         git config --global core.symlinks true && git config --global core.autocrlf false
         if command -v dpkg > /dev/null; then sudo dpkg-reconfigure debconf -f noninteractive -p high; fi
     - name: Checkout repository
-      uses: actions/checkout@v2
-      with:
-        # we need full history to diff against the original for linting etc.
-        fetch-depth: 0
+      uses: actions/checkout@v1
     - name: Configure AWS Credentials
       continue-on-error: true
       if: github.repository == 'ray-project/ray' && github.event_name != 'pull_request'
