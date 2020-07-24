@@ -9,7 +9,8 @@ from threading import Thread
 from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, STATUS_WAITING_FOR_SSH, \
     STATUS_SETTING_UP, STATUS_SYNCING_FILES
-from ray.autoscaler.command_runner import NODE_START_WAIT_S, SSHOptions
+from ray.autoscaler.command_runner import NODE_START_WAIT_S, SSHOptions, \
+    ProcessRunnerError
 from ray.autoscaler.log_timer import LogTimer
 
 from ray.autoscaler.cli_logger import cli_logger
@@ -18,6 +19,7 @@ import colorful as cf
 logger = logging.getLogger(__name__)
 
 READY_CHECK_INTERVAL = 5
+CONN_REFUSED_PATIENCE = 30 # how long to wait for sshd to run
 
 
 class NodeUpdater:
@@ -143,6 +145,7 @@ class NodeUpdater:
                                     self.log_prefix)
 
                 cli_logger.print("Running `{}` as a test.", cf.bold("uptime"))
+                first_conn_refused_time = None
                 while time.time() < deadline and \
                         not self.provider.is_terminated(self.node_id):
                     try:
@@ -154,7 +157,53 @@ class NodeUpdater:
                         cli_logger.old_debug(logger, "Uptime succeeded.")
                         cli_logger.success("Success.")
                         return True
+                    except ProcessRunnerError as e:
+                        if e.msg_type == "ssh_command_failed":
+                            if e.message_discovered == "ssh_conn_refused":
+                                if first_conn_refused_time is not None and \
+                                    time.time() - first_conn_refused_time > \
+                                    CONN_REFUSED_PATIENCE:
+                                    cli_logger.error(
+                                        "SSH connection was being refused "
+                                        "for {} seconds. Head node assumed "
+                                        "unreachable.",
+                                        cf.bold(str(CONN_REFUSED_PATIENCE)))
+                                    cli_logger.abort(
+                                        "Check the node's firewall settings "
+                                        "and the cloud network configuration.")
+
+                                cli_logger.warning(
+                                    "SSH connection was refused.")
+                                cli_logger.warning(
+                                    "This might mean that the SSH daemon is "
+                                    "still setting up, or that "
+                                    "the host is inaccessable (e.g. due to "
+                                    "a firewall).")
+
+                                first_conn_refused_time = time.time()
+
+                            if e.message_discovered in [
+                                "ssh_timeout",
+                                "ssh_conn_refused"]:
+
+                                cli_logger.print(
+                                    "SSH still not available, "
+                                    "retrying in {} seconds.",
+                                    cf.bold(str(READY_CHECK_INTERVAL)))
+                            else:
+                                raise e
+
+                        time.sleep(READY_CHECK_INTERVAL)
                     except Exception as e:
+                        if not cli_logger.old_style:
+                            # we used to catch literaly all exceptions,
+                            # but now we have a special exception type for
+                            # things we should handle
+                            #
+                            # so we can raise everything since it indicates
+                            # something actually went bad
+                            raise e
+
                         retry_str = str(e)
                         if hasattr(e, "cmd"):
                             retry_str = "(Exit Status {}): {}".format(
@@ -234,7 +283,7 @@ class NodeUpdater:
 
                         total = len(self.setup_commands)
                         for i, cmd in enumerate(self.setup_commands):
-                            if cli_logger.verbosity == 0:
+                            if cli_logger.verbosity == 0 and len(cmd) > 30:
                                 cmd_to_print = cf.bold(cmd[:30]) + "..."
                             else:
                                 cmd_to_print = cf.bold(cmd)

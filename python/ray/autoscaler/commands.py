@@ -101,8 +101,7 @@ def create_or_update_cluster(
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
 
-    # todo: disable by default when the command output handling PR makes it in
-    cli_logger.dump_command_output = True
+    cli_logger.dump_command_output = False # todo: flag
 
     cli_logger.detect_colors()
 
