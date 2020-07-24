@@ -371,7 +371,7 @@ cc_binary(
     name = "raylet",
     srcs = ["src/ray/raylet/main.cc"],
     copts = COPTS,
-    visibility = ["//java:__subpackages__"],
+    visibility = ["//java:__subpackages__", "//cpp:__subpackages__"],
     deps = [
         ":ray_util",
         ":raylet_lib",
@@ -456,7 +456,7 @@ cc_binary(
         "src/ray/gcs/gcs_server/gcs_server_main.cc",
     ],
     copts = COPTS,
-    visibility = ["//java:__subpackages__"],
+    visibility = ["//java:__subpackages__", "//cpp:__subpackages__"],
     deps = [
         ":gcs_server_lib",
         ":stats_lib",
@@ -1828,7 +1828,7 @@ cc_binary(
     copts = COPTS,
     linkshared = 1,
     linkstatic = 1,
-    visibility = ["//java:__subpackages__"],
+    visibility = ["//java:__subpackages__", "//cpp:__subpackages__"],
     deps = [
         ":ray_common",
         ":ray_redis_module",
