@@ -104,7 +104,7 @@ message ActorTableData {
   // State of an actor.
   enum ActorState {
     // Actor info ins registered in GCS. But its dependencies are not ready.
-    PENDING_DEPENDENCY_RESOLUTION = 0;
+    DEPENDENCIES_UNREADY = 0;
     // Actor local dependencies are ready. This actor is being created.
     PENDING_CREATION = 1;
     // Actor is alive.

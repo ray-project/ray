@@ -60,7 +60,7 @@ class GcsActor {
     actor_table_data_.set_name(actor_creation_task_spec.name());
     actor_table_data_.mutable_owner_address()->CopyFrom(task_spec.caller_address());
 
-    actor_table_data_.set_state(rpc::ActorTableData::PENDING_DEPENDENCY_RESOLUTION);
+    actor_table_data_.set_state(rpc::ActorTableData::DEPENDENCIES_UNREADY);
     actor_table_data_.mutable_task_spec()->CopyFrom(task_spec);
 
     actor_table_data_.mutable_address()->set_raylet_id(ClientID::Nil().Binary());
@@ -279,11 +279,12 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   void DestroyActor(const ActorID &actor_id);
 
   /// Get unresolved actors that were submitted from the specified node.
-  absl::flat_hash_set<ActorID> GetUnresolvedActorsByOwnerNode(const ClientID &node_id);
+  absl::flat_hash_set<ActorID> GetUnresolvedActorsByOwnerNode(
+      const ClientID &node_id) const;
 
   /// Get unresolved actors that were submitted from the specified worker.
   absl::flat_hash_set<ActorID> GetUnresolvedActorsByOwnerWorker(
-      const ClientID &node_id, const WorkerID &worker_id);
+      const ClientID &node_id, const WorkerID &worker_id) const;
 
  private:
   /// Reconstruct the specified actor.

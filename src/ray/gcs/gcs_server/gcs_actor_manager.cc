@@ -496,8 +496,8 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
       unresolved_actors_.erase(it);
     }
   }
-  // Update the resolved actor to the `registered_actors_` as the task specification is
-  // changed.
+  // Update the registered actor as its creation task specification may have changed due
+  // to resolved dependencies.
   registered_actors_[actor_id] = actor;
 
   // Schedule the actor.
@@ -582,10 +582,9 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
     return;
   }
 
-  if (actor->GetState() == rpc::ActorTableData::PENDING_DEPENDENCY_RESOLUTION) {
-    // It indicates that the actor has not been scheduled if the actor is still in the
-    // state of PENDING_DEPENDENCY_RESOLUTION. So it should be removed from unresolved
-    // actors map.
+  if (actor->GetState() == rpc::ActorTableData::DEPENDENCIES_UNREADY) {
+    // The actor creation task still has unresolved dependencies. Remove from the
+    // unresolved actors map.
     const auto &owner_address = actor->GetOwnerAddress();
     auto node_id = ClientID::FromBinary(owner_address.raylet_id());
     auto worker_id = WorkerID::FromBinary(owner_address.worker_id());
@@ -670,7 +669,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
 }
 
 absl::flat_hash_set<ActorID> GcsActorManager::GetUnresolvedActorsByOwnerNode(
-    const ClientID &node_id) {
+    const ClientID &node_id) const {
   absl::flat_hash_set<ActorID> actor_ids;
   auto iter = unresolved_actors_.find(node_id);
   if (iter != unresolved_actors_.end()) {
@@ -682,7 +681,7 @@ absl::flat_hash_set<ActorID> GcsActorManager::GetUnresolvedActorsByOwnerNode(
 }
 
 absl::flat_hash_set<ActorID> GcsActorManager::GetUnresolvedActorsByOwnerWorker(
-    const ClientID &node_id, const WorkerID &worker_id) {
+    const ClientID &node_id, const WorkerID &worker_id) const {
   absl::flat_hash_set<ActorID> actor_ids;
   auto iter = unresolved_actors_.find(node_id);
   if (iter != unresolved_actors_.end()) {

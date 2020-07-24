@@ -898,10 +898,11 @@ def test_ray_wait_dead_actor(ray_start_cluster):
         "num_nodes": 1,
     }], indirect=True)
 def test_location_resolution_worker_failure(ray_start_cluster):
-    """Test location resolution protocol when actor is not persisted to GCS
-    This test verifies the scneario where owner worker
-    has failed before actor is persisted to GCS.
-    Reference: https://github.com/ray-project/ray/pull/8679
+    """Test location resolution protocol when actor dependencies are not
+    resolved.
+    This test verifies the scenario where owner worker
+    has failed before actor dependencies are resolved.
+    Reference: https://github.com/ray-project/ray/pull/8045
     """
 
     @ray.remote
@@ -964,10 +965,11 @@ def test_location_resolution_worker_failure(ray_start_cluster):
         "num_nodes": 1,
     }], indirect=True)
 def test_location_resolution_node_failure(ray_start_cluster):
-    """Test location resolution protocol when actor is not persisted to GCS
-    This test verifies the scneario where owner node
-    has failed before actor is persisted to GCS.
-    Reference: https://github.com/ray-project/ray/pull/8679
+    """Test location resolution protocol when actor dependencies
+    are not resolved.
+    This test verifies the scenario where owner node
+    has failed before actor dependencies are resolved.
+    Reference: https://github.com/ray-project/ray/pull/8045
     """
     cluster = ray_start_cluster
     node_to_be_broken = cluster.add_node(num_cpus=1, resources={"node": 1})

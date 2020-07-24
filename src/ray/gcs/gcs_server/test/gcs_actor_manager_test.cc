@@ -91,7 +91,7 @@ class GcsActorManagerTest : public ::testing::Test {
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     gcs_actor_manager_.reset(new gcs::GcsActorManager(
         mock_actor_scheduler_, gcs_table_storage_, gcs_pub_sub_,
-        [&](const rpc::Address &addr) { return worker_client_; }));
+        [this](const rpc::Address &addr) { return worker_client_; }));
   }
 
   virtual ~GcsActorManagerTest() {
@@ -716,8 +716,7 @@ TEST_F(GcsActorManagerTest, TestRegisterActor) {
   auto job_id = JobID::FromInt(1);
   auto registered_actor = RegisterActor(job_id);
   // Make sure the actor state is `UNRESOLVED`.
-  ASSERT_EQ(registered_actor->GetState(),
-            rpc::ActorTableData::PENDING_DEPENDENCY_RESOLUTION);
+  ASSERT_EQ(registered_actor->GetState(), rpc::ActorTableData::DEPENDENCIES_UNREADY);
   // Make sure the actor has not been scheduled yet.
   ASSERT_TRUE(mock_actor_scheduler_->actors.empty());
 
