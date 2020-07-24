@@ -56,7 +56,7 @@ Dynamic Custom Resources
 ------------------------
 
 Ray enables explicit developer control with respect to the task and actor placement by using custom resources. Further, users are able to dynamically adjust custom resources programmatically with ``ray.experimental.set_resource``. This allows the Ray application to implement virtually any scheduling policy, including task affinity, data locality, anti-affinity,
-load balancing, gang scheduling, and priority-based scheduling.
+load balancing, gang scheduling, and priority-based scheduling. A custom resource cannot begin with `ResourceConstraint:`.
 
 
 .. code-block:: python
@@ -81,26 +81,6 @@ load balancing, gang scheduling, and priority-based scheduling.
 .. autofunction:: ray.experimental.set_resource
     :noindex:
 
-
-Resource Constraints
---------------------
-
-Ray supports resource constraints. Resource constraints can be used to force to a task to run on a node with specific resources.
-
-.. code-block:: python
-
-    from ray.devices import GPU_TYPE_V100
-    ray.init()
-
-    @ray.remote(num_gpus=1, constraints=GPU_TYPE_V100)
-    def train(data):
-        return "This function was run on a node with a Tesla V100 GPU"
-
-    print(ray.get(train.remote(None)))
-
-See ray.devices for built in constraint types. On Linux, GPU types are automatically detected. To create a custom constraint type, create a custom resource with quantity >= 1.
-
-.. tip:: Constraints are built on top of custom resources. Using a resource as both a custom resource and a constraint is **not** reccomended. 
 
 
 Nested Remote Functions

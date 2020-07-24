@@ -308,9 +308,9 @@ def set_cuda_visible_devices(gpu_ids):
 
 def resources_from_resource_arguments(
         default_num_cpus, default_num_gpus, default_memory,
-        default_object_store_memory, default_resources, default_constraints, runtime_num_cpus,
+        default_object_store_memory, default_resources, runtime_num_cpus,
         runtime_num_gpus, runtime_memory, runtime_object_store_memory,
-        runtime_resources, constraints):
+        runtime_resources):
     """Determine a task's resource requirements.
 
     Args:
@@ -369,26 +369,6 @@ def resources_from_resource_arguments(
     if object_store_memory is not None:
         resources["object_store_memory"] = ray_constants.to_memory_units(
             object_store_memory, round_up=True)
-
-
-    def constraints_to_resources(constraints):
-        as_resources = {}
-        if isinstance(constraints, set):
-            # A set of constraints.
-            for constraint in constraints:
-                as_resources[constraint] = 0.0001
-        else:
-            # A single constraint was passed in.
-            as_resources[constraints] = 0.0001
-        return as_resources
-
-    constraints_as_resources = {}
-    if constraints is not None:
-        constraints_as_resources = constraints_to_resources(constraints)
-    elif default_constraints is not None:
-        constraints_as_resources = constraints_to_resources(default_constraints)
-
-    resources.update(constraints_as_resources)
 
     return resources
 

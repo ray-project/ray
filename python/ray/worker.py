@@ -496,7 +496,8 @@ def init(address=None,
          java_worker_options=None,
          use_pickle=True,
          _internal_config=None,
-         lru_evict=False):
+         lru_evict=False,
+         enable_object_reconstruction=False):
     """
     Connect to an existing Ray cluster or start one and connect to it.
 
@@ -615,6 +616,12 @@ def init(address=None,
             reference counting will be used to decide which objects are safe
             to evict and when under memory pressure, ray.ObjectStoreFullError
             may be thrown.
+        enable_object_reconstruction (bool): If True, when an object stored in
+            the distributed plasma store is lost due to node failure, Ray will
+            attempt to reconstruct the object by re-executing the task that
+            created the object. Arguments to the task will be recursively
+            reconstructed. If False, then ray.UnreconstructableError will be
+            thrown.
 
     Returns:
         Address information about the started processes.
@@ -707,7 +714,8 @@ def init(address=None,
             load_code_from_local=load_code_from_local,
             java_worker_options=java_worker_options,
             _internal_config=_internal_config,
-            lru_evict=lru_evict)
+            lru_evict=lru_evict,
+            enable_object_reconstruction=enable_object_reconstruction)
         # Start the Ray processes. We set shutdown_at_exit=False because we
         # shutdown the node in the ray.shutdown call that happens in the atexit
         # handler. We still spawn a reaper process in case the atexit handler
@@ -765,6 +773,10 @@ def init(address=None,
         if lru_evict:
             raise ValueError("When connecting to an existing cluster, "
                              "lru_evict must not be provided.")
+        if enable_object_reconstruction:
+            raise ValueError(
+                "When connecting to an existing cluster, "
+                "enable_object_reconstruction must not be provided.")
 
         # In this case, we only need to connect the node.
         ray_params = ray.parameter.RayParams(
@@ -776,7 +788,8 @@ def init(address=None,
             temp_dir=temp_dir,
             load_code_from_local=load_code_from_local,
             _internal_config=_internal_config,
-            lru_evict=lru_evict)
+            lru_evict=lru_evict,
+            enable_object_reconstruction=enable_object_reconstruction)
         _global_node = ray.node.Node(
             ray_params,
             head=False,
@@ -1745,7 +1758,6 @@ def make_decorator(num_return_vals=None,
                    memory=None,
                    object_store_memory=None,
                    resources=None,
-                   constraints=None,
                    max_calls=None,
                    max_retries=None,
                    max_restarts=None,
@@ -1764,8 +1776,8 @@ def make_decorator(num_return_vals=None,
 
             return ray.remote_function.RemoteFunction(
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
-                memory, object_store_memory, resources, constraints,
-                num_return_vals, max_calls, max_retries)
+                memory, object_store_memory, resources, num_return_vals,
+                max_calls, max_retries)
 
         if inspect.isclass(function_or_class):
             if num_return_vals is not None:
@@ -1777,8 +1789,7 @@ def make_decorator(num_return_vals=None,
 
             return ray.actor.make_actor(function_or_class, num_cpus, num_gpus,
                                         memory, object_store_memory, resources,
-                                        constraints, max_restarts,
-                                        max_task_retries)
+                                        max_restarts, max_task_retries)
 
         raise TypeError("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -1837,9 +1848,6 @@ def remote(*args, **kwargs):
       number of times that the remote function should be rerun when the worker
       process executing it crashes unexpectedly. The minimum valid value is 0,
       the default is 4 (default), and a value of -1 indicates infinite retries.
-    * **constraints**: Specify constraints for a task or actor. For example, an
-      IP address or device constraint (see ray.devices.*). To pass in multiple
-      constraints by passing in a set of constraints.
 
     This can be done as follows:
 
@@ -1900,16 +1908,15 @@ def remote(*args, **kwargs):
             "memory",
             "object_store_memory",
             "resources",
-            "constraints",
             "max_calls",
             "max_restarts",
             "max_task_retries",
             "max_retries",
         ], error_string
 
-    num_cpus = kwargs.get("num_cpus", None)
-    num_gpus = kwargs.get("num_gpus", None)
-    resources = kwargs.get("resources", {})
+    num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None
+    num_gpus = kwargs["num_gpus"] if "num_gpus" in kwargs else None
+    resources = kwargs.get("resources")
     if not isinstance(resources, dict) and resources is not None:
         raise TypeError("The 'resources' keyword argument must be a "
                         "dictionary, but received type {}.".format(
@@ -1917,8 +1924,6 @@ def remote(*args, **kwargs):
     if resources is not None:
         assert "CPU" not in resources, "Use the 'num_cpus' argument."
         assert "GPU" not in resources, "Use the 'num_gpus' argument."
-
-    constraints = kwargs.get("constraints", None)
 
     # Handle other arguments.
     num_return_vals = kwargs.get("num_return_vals")
@@ -1936,7 +1941,6 @@ def remote(*args, **kwargs):
         memory=memory,
         object_store_memory=object_store_memory,
         resources=resources,
-        constraints=constraints,
         max_calls=max_calls,
         max_restarts=max_restarts,
         max_task_retries=max_task_retries,
