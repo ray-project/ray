@@ -199,7 +199,8 @@ def test_multiple_record(cleanup_agent):
             # Lines for recorded metrics values.
             for sample in family.samples:
                 sample_values.append(sample.value)
-
+    print(sample_values)
+    print([point.value for point in points])
     assert sample_values == [point.value for point in points]
 
 
