@@ -20,13 +20,16 @@ This is tailored for sparse reward environments, as it generates an intrinsic
 reward.
 """
 from gym.spaces import Space
-from typing import Union
+from typing import Union, Optional
+
+from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.sample_batch import SampleBatch
 
 # TODO alphabetize imports, lint
 # TODO how to test if action space is discrete
 # TODO should i use the default docstring format. also check the types with sven
 from ray.rllib.utils.framework import try_import_torch, TensorType
-from ray.rllib.utils.types import TensorType, TensorStructType
+from ray.rllib.utils.types import TensorType, TensorStructType, SampleBatchType
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -59,7 +62,7 @@ class Curiosity(Exploration):
             raise NotImplementedError("only torch is currently supported for "
                                       "curiosity")
 
-        # kwargs remove subexploration from config dict first
+        # TODO kwargs remove subexploration from config dict first
 
         super().__init__(
             action_space=action_space,
@@ -127,6 +130,7 @@ class Curiosity(Exploration):
         framework = "torch"
 
         #submodule = from_config( subconfig from main config )
+        """
         if submodule_type == "EpsilonGreedy":
             self.exploration_submodule = EpsilonGreedy(
                 action_space=action_space,
@@ -142,6 +146,8 @@ class Curiosity(Exploration):
         else:  # what's the correct default?
             self.exploration_submodule = EpsilonGreedy(
                 action_space=action_space, framework=framework)
+        """
+
 
     def get_exploration_action(self,
                                *,
@@ -158,28 +164,14 @@ class Curiosity(Exploration):
             explore (bool): If true, uses the submodule strategy to select the
                 next action
         """
-        return self.exploration_submodule.get_exploration_action(
-            action_distribution=action_distribution, timestep=timestep)
-
-
-    def _get_latent_vector(self, obs: TensorType) -> TensorType:
-        """
-        Returns the embedded vector phi(state)
-            obs (TensorType): a batch of states
-        """
-        return self.features_model(obs)
-
-    def get_optimizer(self):
-        forward_params = list(self.forwards_model.parameters())
-        inverse_params = list(self.inverse_model.parameters())
-        feature_params = list(self.features_model.parameters())
-
-        return torch.optim.Adam(
-            forward_params + inverse_params + feature_params,
-            lr=1e-3)
+        return 0
+        #return self.exploration_submodule.get_exploration_action(
+            #action_distribution=action_distribution, timestep=timestep)
 
     # TODO add a hook in the main exploration class. this returns scalar loss
-    def get_exploration_loss(self, policy: Policy, sample_batch: SampleBatch, tf_sess: Optional["tf.Session"] = None):
+    def get_exploration_loss(self,
+                             policy_loss,
+                             sample_batch: SampleBatchType):
         next_obs_list = torch.from_numpy(sample_batch["new_obs"]).float()
         emb_next_obs_list = self._get_latent_vector(next_obs_list).float()
         actions_list = torch.from_numpy(sample_batch["actions"]).float()
@@ -192,37 +184,32 @@ class Curiosity(Exploration):
             emb_next_obs_list, embedding_pred)
         actions_loss = self.criterion_reduced(
             actions_pred.squeeze(1), actions_list)
-        return embedding_loss + actions_loss
+        return policy_loss.append(embedding_loss + actions_loss)
 
-
-    def _predict_action(self, obs: TensorType, next_obs: TensorType):
+    def _get_latent_vector(self, obs: TensorType) -> TensorType:
         """
-        Returns the predicted action, given two states. This is the inverse
-        dynamics model.
-
-        obs (TensorType): Observed state at time t.
-        next_obs (TensorType): Observed state at time t+1
+        Returns the embedded vector phi(state)
+            obs (TensorType): a batch of states
         """
-        return self.inverse_model(
-            torch.cat(
-                (self._get_latent_vector(obs),
-                 self._get_latent_vector(next_obs)),
-                axis=-1))
+        return self.features_model(obs)
 
-    # raw obs (not embedded)
-    def _predict_next_obs(self, obs: TensorType, action: TensorType):
+    def get_optimizer(self):
         """
-        Returns the predicted next state, given an action and state.
-
-        obs (TensorType): Observed state at time t.
-        action (TensorType): Action taken at time t
+        Returns an optimizer for environmental dynamics networks, which will
+        then be handled by the Policy
         """
-        return self.forwards_model(
-            torch.cat(
-                (self._get_latent_vector(obs), action.unsqueeze(1)),
-                axis=-1))
+        forward_params = list(self.forwards_model.parameters())
+        inverse_params = list(self.inverse_model.parameters())
+        feature_params = list(self.features_model.parameters())
 
-    def postprocess_trajectory(self, policy, sample_batch, tf_sess=None):
+        return torch.optim.Adam(
+            forward_params + inverse_params + feature_params,
+            lr=1e-3)
+
+    def postprocess_trajectory(self,
+                               policy,
+                               sample_batch: SampleBatchType,
+                               tf_sess: Optional["tf.Session"] = None):
         # push sample batch through curiosity model
         # change rewards inside sample batch
         # don't return anything
@@ -268,3 +255,30 @@ class Curiosity(Exploration):
         # loss.backward()
         # self.optimizer.step()
 
+
+    def _predict_action(self, obs: TensorType, next_obs: TensorType):
+        """
+        Returns the predicted action, given two states. This is the inverse
+        dynamics model.
+
+        obs (TensorType): Observed state at time t.
+        next_obs (TensorType): Observed state at time t+1
+        """
+        return self.inverse_model(
+            torch.cat(
+                (self._get_latent_vector(obs),
+                 self._get_latent_vector(next_obs)),
+                axis=-1))
+
+    # raw obs (not embedded)
+    def _predict_next_obs(self, obs: TensorType, action: TensorType):
+        """
+        Returns the predicted next state, given an action and state.
+
+        obs (TensorType): Observed state at time t.
+        action (TensorType): Action taken at time t
+        """
+        return self.forwards_model(
+            torch.cat(
+                (self._get_latent_vector(obs), action.unsqueeze(1)),
+                axis=-1))

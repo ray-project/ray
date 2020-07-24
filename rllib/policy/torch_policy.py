@@ -107,7 +107,7 @@ class TorchPolicy(Policy):
         self.exploration = self._create_exploration()
         self.unwrapped_model = model  # used to support DistributedDataParallel
         self._loss = loss
-        self._optimizers = force_list(self.optimizer()) #TODO check this
+        self._optimizers = force_list(self.optimizer())
 
         self.dist_class = action_distribution_class
         self.action_sampler_fn = action_sampler_fn
@@ -329,10 +329,10 @@ class TorchPolicy(Policy):
         # Call Model's custom-loss with Policy loss outputs and train_batch.
         if self.model:
             loss_out = self.model.custom_loss(loss_out, train_batch)
+        if hasattr(self, "exploration"):
+            loss_out = self.exploration.get_exploration_loss(loss_out, train_batch)
         assert len(loss_out) == len(self._optimizers)
         # assert not any(torch.isnan(l) for l in loss_out)
-
-        # TODO get exploration loss
 
         # Loop through all optimizers.
         grad_info = {"allreduce_latency": 0.0}
