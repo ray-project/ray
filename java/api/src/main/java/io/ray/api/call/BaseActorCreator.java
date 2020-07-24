@@ -101,10 +101,10 @@ public class BaseActorCreator<T extends BaseActorCreator> {
   }
 
   /**
-   * Set the placement group of the actor.
+   * Set the placement group to place this actor in.
    *
    * @param group The placement group of the actor.
-   * @param bundleIndex The index of the bundle.
+   * @param bundleIndex The index of the bundle to place this actor in.
    * @return self
    * @see ActorCreationOptions.Builder#setPlacementGroup(PlacementGroup, int)
    */

@@ -5,11 +5,11 @@ package io.ray.api.placementgroup;
  */
 public enum PlacementStrategy {
   /**
-   * Packs Bundles close together inside processes or nodes as tight as possible.
+   * Packs Bundles close together inside nodes as tight as possible.
    */
   PACK(0),
   /**
-   * Places Bundles across distinct nodes or processes as even as possible.
+   * Places Bundles across distinct nodes as even as possible.
    */
   SPREAD(1);
 

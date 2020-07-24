@@ -1258,13 +1258,11 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   return status;
 }
 
-Status CoreWorker::CreatePlacementGroup(
-    const PlacementGroupCreationOptions &options,
-    PlacementGroupID *return_placement_group_id) {
+Status CoreWorker::CreatePlacementGroup(const PlacementGroupCreationOptions &options,
+                                        PlacementGroupID *return_placement_group_id) {
   const PlacementGroupID placement_group_id = PlacementGroupID ::FromRandom();
   PlacementGroupSpecBuilder builder;
-  builder.SetPlacementGroupSpec(placement_group_id, options.name,
-                                options.bundles,
+  builder.SetPlacementGroupSpec(placement_group_id, options.name, options.bundles,
                                 options.strategy);
   PlacementGroupSpecification placement_group_spec = builder.Build();
   *return_placement_group_id = placement_group_id;

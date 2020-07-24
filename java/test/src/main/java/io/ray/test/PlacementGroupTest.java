@@ -28,6 +28,9 @@ public class PlacementGroupTest extends BaseTest {
     }
   }
 
+  // TODO(ffbin): Currently Java doesn't support multi-node tests.
+  // This test just creates a placement group with one bundle.
+  // It's not comprehensive to test all placement group test cases.
   public void testCreateAndCallActor() {
     List<Map<String, Double>> bundles = new ArrayList<>();
     Map<String, Double> bundle = new HashMap<>();
