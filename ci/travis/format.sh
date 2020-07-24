@@ -21,7 +21,7 @@ check_command_exist() {
             echo "$1 is not a required dependency"
             exit 1
     esac
-    if ! [ -x "$(command -v $1)" ]; then
+    if ! [ -x "$(command -v "$1")" ]; then
         echo "$1 not installed. pip install $1==$VERSION"
         exit 1
     fi 
@@ -31,7 +31,7 @@ check_command_exist yapf
 check_command_exist flake8
 
 ver=$(yapf --version)
-if ! echo $ver | grep -q 0.23.0; then
+if ! echo "$ver" | grep -q 0.23.0; then
     echo "Wrong YAPF version installed: 0.23.0 is required, not $ver. $YAPF_DOWNLOAD_COMMAND_MSG"
     exit 1
 fi
@@ -52,7 +52,7 @@ YAPF_VERSION=$(yapf --version | awk '{print $2}')
 
 # params: tool name, tool version, required version
 tool_version_check() {
-    if [[ $2 != $3 ]]; then
+    if [ "$2" != "$3" ]; then
         echo "WARNING: Ray uses $1 $3, You currently are using $2. This might generate different results."
     fi
 }
@@ -62,7 +62,7 @@ tool_version_check "yapf" $YAPF_VERSION $YAPF_VERSION_REQUIRED
 
 if which clang-format >/dev/null; then
   CLANG_FORMAT_VERSION=$(clang-format --version | awk '{print $3}')
-  tool_version_check "clang-format" $CLANG_FORMAT_VERSION "7.0.0"
+  tool_version_check "clang-format" "$CLANG_FORMAT_VERSION" "7.0.0"
 else
     echo "WARNING: clang-format is not installed!"
 fi
