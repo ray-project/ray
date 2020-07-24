@@ -17,6 +17,7 @@ from colorful.core import ColorfulString
 import colorful as cf
 colorama.init()
 
+
 def _format_msg(msg,
                 *args,
                 _tags=None,
