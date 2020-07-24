@@ -99,7 +99,7 @@ ray.shutdown()
     all_worker_pids = set()
     for p, out in outputs:
         assert p.returncode == 0
-        for line in out.split("\n"):
+        for line in out.splitlines():
             if line.startswith("PID:"):
                 worker_pids = [int(_) for _ in line.split(":")[1].split(",")]
                 assert len(worker_pids) > 0
