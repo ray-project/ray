@@ -84,6 +84,13 @@ def get_trainer(data_args, model_args, training_args):
         else None
     )
 
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset
+    )
+
     def build_compute_metrics_fn(task_name: str) -> Callable[[EvalPrediction], Dict]:
         def compute_metrics_fn(p: EvalPrediction):
             if output_mode == "classification":
@@ -91,18 +98,16 @@ def get_trainer(data_args, model_args, training_args):
             elif output_mode == "regression":
                 preds = np.squeeze(p.predictions)
             metrics = glue_compute_metrics(task_name, preds, p.label_ids)
+            checkpoint_dir = tune.make_checkpoint_dir()
+            trainer.save_model(checkpoint_dir)
+            tune.save_checkpoint(checkpoint_dir)
             tune.report(mean_accuracy=metrics["acc"])
             return metrics
 
         return compute_metrics_fn
 
-    trainer = Trainer(
-        model=model,
-        args=training_args,
-        train_dataset=train_dataset,
-        eval_dataset=eval_dataset,
-        compute_metrics=build_compute_metrics_fn(data_args.task_name)
-    )
+    trainer.compute_metrics = build_compute_metrics_fn(data_args.task_name)
+
     return trainer
 # __huggingface_end__
 
@@ -135,13 +140,13 @@ def download_data(model_name, task_name, data_dir="./data"):
 
 
 # __train_begin__
-def train_transformer(config, model_name, task_name, num_epochs=3, data_dir="./data"):
+def train_transformer(config, checkpoint=None, model_name=None, task_name=None, num_epochs=3, data_dir="./data"):
     data_args = DataTrainingArguments(
         task_name=task_name,
         data_dir=data_dir
     )
     model_args = ModelArguments(
-        model_name_or_path=model_name
+        model_name_or_path=checkpoint if checkpoint else model_name
     )
     training_args = TrainingArguments(
         output_dir=tune.get_trial_dir(),
@@ -159,7 +164,7 @@ def train_transformer(config, model_name, task_name, num_epochs=3, data_dir="./d
     )
 
     trainer = get_trainer(data_args, model_args, training_args)
-    trainer.train(model_name)
+    trainer.train(checkpoint if checkpoint else model_name)
 # __train_end__
 
 
