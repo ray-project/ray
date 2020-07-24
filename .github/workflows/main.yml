@@ -91,6 +91,7 @@ jobs:
         RAY_DEFAULT_BUILD: 1
         WINDOWS_WHEELS: 1
       run: |
+        python -u ci/remote-watch.py --skip_repo=ray-project/ray &
         . ./ci/travis/ci.sh init
         . ./ci/travis/ci.sh build
         . ./ci/travis/ci.sh upload_wheels || true
