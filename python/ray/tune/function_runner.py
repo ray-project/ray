@@ -191,9 +191,6 @@ class FunctionRunner(Trainable):
         self._restore_tmpdir = None
         self.default_checkpoint_dir = None
 
-    def execute(self, fn):
-        return fn(self)
-
     def _trainable_func(self):
         """Subclasses can override this to set the trainable func."""
 
@@ -281,6 +278,9 @@ class FunctionRunner(Trainable):
         if self._status_reporter.has_new_checkpoint():
             result[SHOULD_CHECKPOINT] = True
         return result
+
+    def execute(self, fn):
+        return fn(self)
 
     def create_default_checkpoint_dir(self):
         self.default_checkpoint_dir = TrainableUtil.make_checkpoint_dir(

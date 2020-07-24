@@ -119,6 +119,7 @@ class distributed_checkpoint:
 
     Args:
         label (int | str): Used to label the checkpoint
+        disable (bool): Disable for prototyping.
 
     Example:
 
@@ -129,12 +130,13 @@ class distributed_checkpoint:
                 torch.save(model.state_dict(), f)
     """
 
-    def __init__(self, label):
+    def __init__(self, label, disable=False):
         self.label = label
         self.file = None
+        self.disable = disable
 
     def __enter__(self):
-        if torch.distributed.get_rank() == 0:
+        if torch.distributed.get_rank() == 0 and not self.disable:
             checkpoint_dir = tune.make_checkpoint_dir(step=self.label)
             path = os.path.join(checkpoint_dir, "checkpoint")
         else:
@@ -144,5 +146,50 @@ class distributed_checkpoint:
 
     def __exit__(self, type, value, traceback):
         self.file.close()
-        if torch.distributed.get_rank() == 0:
+        if torch.distributed.get_rank() == 0 and not self.disable:
             tune.save_checkpoint(self.file.name)
+
+
+def _train_simple(config, checkpoint=False):
+    import numpy as np
+    import torch.nn as nn
+    from torch.nn.parallel import DistributedDataParallel
+    import torch.optim as optim
+    # N is batch size; D_in is input dimension;
+    # H is hidden dimension; D_out is output dimension.
+    N, D_in, H, D_out = 8, 5, 5, 5
+
+    # Create random Tensors to hold inputs and outputs
+    x = torch.randn(N, D_in)
+    y = torch.randn(N, D_out)
+    loss_fn = nn.MSELoss()
+
+    # Use the nn package to define our model and loss function.
+    model = torch.nn.Sequential(
+        torch.nn.Linear(D_in, H),
+        torch.nn.ReLU(),
+        torch.nn.Linear(H, D_out),
+    )
+    optimizer = optim.SGD(model.parameters(), lr=0.1)
+
+    if checkpoint:
+        with open(checkpoint) as f:
+            model_state, optimizer_state = torch.load(f)
+
+        model.load_state_dict(model_state)
+        optimizer.load_state_dict(optimizer_state)
+
+    model = DistributedDataParallel(model)
+
+    for epoch in range(config.get("epochs", 10)):
+        optimizer.zero_grad()
+        output = model(x)
+        loss = loss_fn(output, y)
+        loss.backward()
+        optimizer.step()
+
+        if epoch % 3 == 0:
+            if config.get("enable_checkpoint", True):
+                with distributed_checkpoint(label=epoch) as f:
+                    torch.save((model.state_dict(), optimizer.state_dict()), f)
+        tune.report(mean_loss=loss.item())

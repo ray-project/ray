@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 def train_mnist(config, checkpoint=False):
-    use_cuda = config.get("use_gpu") and torch.cuda.is_available()
+    use_cuda = torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
     train_loader, test_loader = get_data_loaders()
     model = ConvNet().to(device)
@@ -43,10 +43,10 @@ def train_mnist(config, checkpoint=False):
 
 if __name__ == "__main__":
     ray.init(num_cpus=2)
-
+    train_mnist(None)
     trainable_cls = DistributedTrainableCreator(train_mnist, num_workers=2)
     # trainable = trainable_cls()
     # for i in range(10):
     #     print(trainable.train())
 
-    tune.run(trainable_cls, num_samples=4, stop={"training_iteration": 2})
+    # tune.run(trainable_cls, num_samples=4, stop={"training_iteration": 2})

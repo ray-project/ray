@@ -1,15 +1,11 @@
 import pytest
 import torch
 import torch.distributed as dist
-import torch.optim as optim
-from torch.nn.parallel import DistributedDataParallel
 
 import ray
 from ray import tune
-from ray.util.sgd.torch.func_trainable import (DistributedTrainableCreator,
-                                               distributed_checkpoint)
-from ray.tune.examples.mnist_pytorch import (train, test, get_data_loaders,
-                                             model_creator)
+from ray.util.sgd.torch.func_trainable import (
+    DistributedTrainableCreator, distributed_checkpoint, _train_simple)
 
 
 @pytest.fixture
@@ -34,38 +30,48 @@ def ray_start_4_cpus():
         dist.destroy_process_group()
 
 
-def train_mnist(config, checkpoint=False):
-    use_cuda = config.get("use_gpu") and torch.cuda.is_available()
-    device = torch.device("cuda" if use_cuda else "cpu")
-    train_loader, test_loader = get_data_loaders()
-    model = model_creator(config).to(device)
-    optimizer = optim.SGD(model.parameters(), lr=0.1)
-
-    if checkpoint:
-        with open(checkpoint) as f:
-            model_state, optimizer_state = torch.load(f)
-
-        model.load_state_dict(model_state)
-        optimizer.load_state_dict(optimizer_state)
-
-    model = DistributedDataParallel(model)
-
-    for epoch in range(10):
-        train(model, optimizer, train_loader, device)
-        acc = test(model, test_loader, device)
-
-        if epoch % 3 == 0:
-            with distributed_checkpoint(label=epoch) as f:
-                torch.save((model.state_dict(), optimizer.state_dict()), f)
-        tune.report(mean_accuracy=acc)
+# def test_simple(ray_start_2_cpus):
+#     _train_simple(None)
 
 
 def test_single_step(ray_start_2_cpus):  # noqa: F811
-    trainable_cls = DistributedTrainableCreator(train_mnist, num_workers=2)
+    trainable_cls = DistributedTrainableCreator(_train_simple, num_workers=2)
     trainer = trainable_cls()
     result = trainer.train()
     print(result)
     trainer.stop()
+
+
+def test_after_completion(ray_start_2_cpus):  # noqa: F811
+    trainable_cls = DistributedTrainableCreator(_train_simple, num_workers=2)
+    trainer = trainable_cls(config={"epochs": 1})
+    for i in range(10):
+        result = trainer.train()
+    print(result)
+    trainer.stop()
+
+
+def test_save_checkpoint(ray_start_2_cpus):  # noqa: F811
+    trainable_cls = DistributedTrainableCreator(_train_simple, num_workers=2)
+    trainer = trainable_cls(config={"epochs": 1})
+    result = trainer.train()
+    path = trainer.save()
+    with open(path) as f:
+        model_state_dict = torch.load(f)
+    print(result)
+    trainer.stop()
+
+
+@pytest.mark.parametrize("enabled_checkpoint", [True, False])
+def test_simple_tune(ray_start_4_cpus, enabled_checkpoint):
+    trainable_cls = DistributedTrainableCreator(_train_simple, num_workers=2)
+    analysis = tune.run(
+        trainable_cls,
+        config={"enable_checkpoint": enabled_checkpoint},
+        num_samples=2,
+        stop={"training_iteration": 2})
+    assert analysis.trials[0].last_result["training_iteration"] == 2
+    assert analysis.trials[0].has_checkpoint() == enabled_checkpoint
 
 
 # def test_resize(ray_start_2_cpus):  # noqa: F811
