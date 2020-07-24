@@ -140,6 +140,9 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \param done Callback that will be called when load is complete.
   void LoadInitialData(const EmptyCallback &done);
 
+  /// Start node failure detector.
+  void StartNodeFailureDetector();
+
  protected:
   class NodeFailureDetector {
    public:
@@ -155,6 +158,9 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
         std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
         std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
         std::function<void(const ClientID &)> on_node_death_callback);
+
+    /// Start failure detector.
+    void Start();
 
     /// Register node to this detector.
     /// Only if the node has registered, its heartbeat data will be accepted.
@@ -203,6 +209,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     absl::flat_hash_map<ClientID, rpc::HeartbeatTableData> heartbeat_buffer_;
     /// A publisher for publishing gcs messages.
     std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
+    /// Is the detect started.
+    bool is_started_ = false;
   };
 
  private:
