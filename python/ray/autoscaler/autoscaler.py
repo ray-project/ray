@@ -388,7 +388,7 @@ class StandardAutoscaler:
             process_runner=self.process_runner,
             use_internal_ip=True,
             docker_config=self.config.get("docker"),
-            initialize_as_head=False)
+            is_head_node=False)
         updater.start()
         self.updaters[node_id] = updater
 

@@ -40,7 +40,7 @@ class NodeUpdater:
         use_internal_ip: Wwhether the node_id belongs to an internal ip
             or external ip.
         docker_config: Docker section of autoscaler yaml
-        initialize_as_head: Whether to use head start/setup commands
+        is_head_node: Whether to use head start/setup commands
     """
 
     def __init__(self,
@@ -57,7 +57,7 @@ class NodeUpdater:
                  process_runner=subprocess,
                  use_internal_ip=False,
                  docker_config=None,
-                 initialize_as_head=False):
+                 is_head_node=False):
 
         self.log_prefix = "NodeUpdater: {}: ".format(node_id)
         use_internal_ip = (use_internal_ip
@@ -79,7 +79,7 @@ class NodeUpdater:
         self.ray_start_commands = ray_start_commands
         self.runtime_hash = runtime_hash
         self.auth_config = auth_config
-        self.initialize_as_head = initialize_as_head
+        self.is_head_node = is_head_node
 
     def run(self):
         cli_logger.old_info(logger, "{}Updating to {}", self.log_prefix,
@@ -242,7 +242,7 @@ class NodeUpdater:
                                 ssh_options_override=SSHOptions(
                                     self.auth_config.get("ssh_private_key")))
                         if isinstance(self.cmd_runner, DockerCommandRunner):
-                            self.cmd_runner.run_init(self.initialize_as_head)
+                            self.cmd_runner.run_init(self.is_head_node)
             else:
                 cli_logger.print(
                     "No initialization commands to run.",
@@ -265,8 +265,8 @@ class NodeUpdater:
 
                             cli_logger.print(
                                 cmd_to_print, _numbered=("()", i, total))
-
-                            self.cmd_runner.run(cmd, run_env="docker")
+                            # Runs in the container if docker is in use
+                            self.cmd_runner.run(cmd, run_env="auto")
             else:
                 cli_logger.print(
                     "No setup commands to run.", _numbered=("[]", 4, 5))
@@ -276,7 +276,8 @@ class NodeUpdater:
             with LogTimer(
                     self.log_prefix + "Ray start commands", show_status=True):
                 for cmd in self.ray_start_commands:
-                    self.cmd_runner.run(cmd, run_env="docker")
+                    # Runs in the container if docker is in use
+                    self.cmd_runner.run(cmd, run_env="auto")
 
     def rsync_up(self, source, target):
         cli_logger.old_info(logger, "{}Syncing {} to {}...", self.log_prefix,
