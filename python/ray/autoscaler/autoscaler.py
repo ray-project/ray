@@ -143,6 +143,10 @@ class StandardAutoscaler:
 
         self.last_update_time = now
         nodes = self.workers()
+        # Check pending nodes immediately after fetching the number of running
+        # nodes to minimize chance number of pending nodes changing after
+        # additional nodes are launched.
+        num_pending = self.pending_launches.value
         self.load_metrics.prune_active_ips(
             [self.provider.internal_ip(node_id) for node_id in nodes])
         target_workers = self.target_num_workers()
@@ -200,7 +204,6 @@ class StandardAutoscaler:
                 self.launch_new_node(count, instance_type=instance_type)
 
         # Launch additional nodes of the default type, if still needed.
-        num_pending = self.pending_launches.value
         num_workers = len(nodes) + num_pending
         if num_workers < target_workers:
             max_allowed = min(self.max_launch_batch,
