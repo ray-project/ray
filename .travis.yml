@@ -111,7 +111,7 @@ matrix:
       script:
         - . ./ci/travis/ci.sh test_wheels
         - bash ./java/build-jar-multiplatform.sh linux
-        - bash ./java/build-jar-multiplatform.sh multiplatform
+        # - bash ./java/build-jar-multiplatform.sh multiplatform
         # - if [ $TRAVIS_BRANCH == "master" ]; then sh ./java/build-jar-multiplatform.sh deploy; fi
       cache: false
 
