@@ -19,6 +19,7 @@ import ray.services
 import ray.utils
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
+from ray.dashboard.util import get_unused_port
 from ray.metrics_agent import MetricsAgent
 
 # Logger for this module. It should be configured at the entry point
@@ -121,7 +122,10 @@ class Reporter:
         self.ip = ray.services.get_node_ip_address()
         self.hostname = platform.node()
         self.port = port
-        self.metrics_agent = MetricsAgent(self.port)
+        metrics_agent_port = os.getenv("METRICS_AGENT_PORT")
+        if not metrics_agent_port:
+            metrics_agent_port = get_unused_port()
+        self.metrics_agent = MetricsAgent(metrics_agent_port)
         self.reporter_grpc_server = ReporterServer(self.metrics_agent)
 
         _ = psutil.cpu_percent()  # For initialization

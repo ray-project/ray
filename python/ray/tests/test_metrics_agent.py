@@ -1,6 +1,4 @@
 import pytest
-import random
-import socket
 
 from collections import defaultdict
 
@@ -10,6 +8,7 @@ from opencensus.tags import tag_key as tag_key_module
 from prometheus_client.parser import text_string_to_metric_families
 
 from ray.core.generated.common_pb2 import MetricPoint
+from ray.dashboard.util import get_unused_port
 from ray.metrics_agent import Gauge, MetricsAgent
 
 
@@ -26,30 +25,6 @@ def generate_metrics_point(name: str,
         tags=tags,
         description=description,
         units=units)
-
-
-def get_unused_port():
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind(("", 0))
-    port = s.getsockname()[1]
-
-    # Try to generate a port that is far above the 'next available' one.
-    # This solves issue #8254 where GRPC fails because the port assigned
-    # from this method has been used by a different process.
-    for _ in range(30):
-        new_port = random.randint(port, 65535)
-        new_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            new_s.bind(("", new_port))
-        except OSError:
-            new_s.close()
-            continue
-        s.close()
-        new_s.close()
-        return new_port
-    print("Unable to succeed in selecting a random port.")
-    s.close()
-    return port
 
 
 # NOTE: Opencensus metrics is a singleton per process.

@@ -15,7 +15,6 @@ from opencensus.stats import view
 
 from ray import prometheus_exporter
 from ray.core.generated.common_pb2 import MetricPoint
-from ray.ray_constants import DEFAULT_METRICS_EXPORT_PORT
 
 logger = logging.getLogger(__name__)
 
@@ -70,10 +69,8 @@ class Gauge(view.View):
 
 
 class MetricsAgent:
-    def __init__(self, metrics_export_port: int = None):
-        if not metrics_export_port:
-            metrics_export_port = DEFAULT_METRICS_EXPORT_PORT
-
+    def __init__(self, metrics_export_port):
+        assert metrics_export_port is not None
         # OpenCensus classes.
         self.view_manager = stats_module.stats.view_manager
         self.stats_recorder = stats_module.stats.stats_recorder
