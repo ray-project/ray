@@ -100,8 +100,8 @@ jobs:
       if: runner.os == 'Linux'
       shell: bash -e -o pipefail -l {0}
       run: |
-        sudo apt-get install -qq -o=Dpkg::Use-Pty=0 iwyu
-        bazel build \
+        sudo apt-get install -qq -o=Dpkg::Use-Pty=0 clang iwyu
+        CC=clang bazel build \
           --keep_going \
           --config=iwyu \
           "//:*"
