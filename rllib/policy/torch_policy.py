@@ -350,6 +350,7 @@ class TorchPolicy(Policy):
 
         assert len(loss_out) == len(self._optimizers)
         # assert not any(torch.isnan(l) for l in loss_out)
+        fetches = self.extra_compute_grad_fetches()
 
         # Loop through all optimizers.
         grad_info = {"allreduce_latency": 0.0}
@@ -389,7 +390,7 @@ class TorchPolicy(Policy):
 
         grad_info["allreduce_latency"] /= len(self._optimizers)
         grad_info.update(self.extra_grad_info(train_batch))
-        return {LEARNER_STATS_KEY: grad_info}
+        return dict(fetches, **{LEARNER_STATS_KEY: grad_info})
 
     @override(Policy)
     @DeveloperAPI
@@ -399,6 +400,7 @@ class TorchPolicy(Policy):
         loss_out = force_list(
             self._loss(self, self.model, self.dist_class, train_batch))
         assert len(loss_out) == len(self._optimizers)
+        fetches = self.extra_compute_grad_fetches()
 
         grad_process_info = {}
         grads = []
@@ -418,7 +420,7 @@ class TorchPolicy(Policy):
 
         grad_info = self.extra_grad_info(train_batch)
         grad_info.update(grad_process_info)
-        return grads, {LEARNER_STATS_KEY: grad_info}
+        return grads, dict(fetches, **{LEARNER_STATS_KEY: grad_info})
 
     @override(Policy)
     @DeveloperAPI
@@ -502,6 +504,16 @@ class TorchPolicy(Policy):
                 processing step.
         """
         return {}
+
+    @DeveloperAPI
+    def extra_compute_grad_fetches(self) -> Dict[str, any]:
+        """Extra values to fetch and return from compute_gradients().
+
+        Returns:
+            Dict[str, any]: Extra fetch dict to be added to the fetch dict
+                of the compute_gradients call.
+        """
+        return {LEARNER_STATS_KEY: {}}  # e.g, stats, td error, etc.
 
     @DeveloperAPI
     def extra_action_out(
