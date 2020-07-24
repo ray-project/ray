@@ -25,7 +25,7 @@ To scale out a backend to multiple workers, simplify configure the number of rep
 
   # scale it back down...
   config = {"num_replicas": 2}
-  serve.set_backend_config("my_scaled_endpoint_backend", handle_request, config=config)
+  serve.update_backend_config("my_scaled_endpoint_backend", config)
 
 This will scale up or down the number of workers that can accept requests.
 
@@ -336,3 +336,35 @@ Once a endpoint is deleted, its tag can be reused.
 
   serve.delete_endpoint("simple_endpoint")
 
+How do I call an endpoint from Python code?
+-------------------------------------------
+
+use the following  to get a "handle" to that endpoint.
+
+.. code-block:: python
+    
+    handle = serve.get_handle("api_endpoint")
+
+
+How do I call a method on my backend class besides __call__?
+-------------------------------------------------------------
+
+To call a method via HTTP use the header field ``X-SERVE-CALL-METHOD``.
+
+To call a method via Python, do the following:
+
+.. code-block:: python
+
+    class StatefulProcessor:
+        def __init__(self):
+            self.count = 1
+
+        def __call__(self, request):
+            return {"current": self.count}
+
+        def other_method(self, inc):
+            self.count += inc
+            return True
+
+    handle = serve.get_handle("backend_name")
+    handle.options(method_name="other_method").remote(5)
