@@ -12,18 +12,15 @@ import sys
 from collections import defaultdict, OrderedDict
 
 
-def textproto_format(space, key, value, json_encoder=None):
-    """Rewrites a key-value pair from textproto as Javascript or Python."""
-    if json_encoder is None:
-        lookup = {b"true": b"True", b"false": b"False", b"null": b"None"}
-        value = lookup.get(value, value)
-    elif value.startswith(b"\""):
+def textproto_format(space, key, value, json_encoder):
+    """Rewrites a key-value pair from textproto as JSON."""
+    if value.startswith(b"\""):
         evaluated = ast.literal_eval(value.decode("utf-8"))
         value = json_encoder.encode(evaluated).encode("utf-8")
     return b"%s[\"%s\", %s]" % (space, key, value)
 
 
-def textproto_split(input_lines, json_encoder=None):
+def textproto_split(input_lines, json_encoder):
     """When given e.g. the output of "bazel aquery --output=textproto",
     yields each top-level item as a string formatted as JSON (if an encoder is
     given) or Python AST.
@@ -72,15 +69,9 @@ def textproto_split(input_lines, json_encoder=None):
         del outputs[:]
 
 
-def textproto_parse(stream, encoding):
-    json_encoder = json.JSONEncoder()
-    for item in textproto_split(stream, json_encoder=json_encoder):
-        decoded = None
-        if json_encoder:
-            decoded = json.loads(item)
-        else:
-            decoded = ast.literal_eval(item.decode(encoding))
-        yield decoded
+def textproto_parse(stream, encoding, json_encoder):
+    for item in textproto_split(stream, json_encoder):
+        yield json.loads(item)
 
 
 class Bazel(object):
@@ -108,7 +99,7 @@ class Bazel(object):
 
     def aquery(self, *args):
         lines = self._call("aquery", "--output=textproto", *args).splitlines()
-        return textproto_parse(lines, self.encoding)
+        return textproto_parse(lines, self.encoding, json.JSONEncoder())
 
 
 def parse_aquery_shell_calls(aquery_results):
@@ -130,6 +121,13 @@ def parse_aquery_output_artifacts(aquery_results):
             output_ids = [pair[1] for pair in val if pair[0] == "output_ids"]
             for output_id in output_ids:
                 yield artifacts[output_id]
+
+
+def textproto2json(infile, outfile):
+    json_encoder = json.JSONEncoder(indent=2)
+    encoding = "utf-8"
+    for obj in textproto_parse(infile, encoding, json_encoder):
+        outfile.write((json_encoder.encode(obj) + "\n").encode(encoding))
 
 
 def preclean(bazel_aquery):
@@ -213,7 +211,10 @@ def shellcheck(bazel_aquery, *shellcheck_args):
 
 def main(program, command, *command_args):
     result = 0
-    if command == shellcheck.__name__:
+    if command == textproto2json.__name__:
+        result = textproto2json(sys.stdin.buffer, sys.stdout.buffer,
+                                *command_args)
+    elif command == shellcheck.__name__:
         result = shellcheck(*command_args)
     elif command == preclean.__name__:
         result = preclean(*command_args)
