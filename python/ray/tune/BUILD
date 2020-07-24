@@ -245,7 +245,7 @@ py_test(
 # --------------------------------------------------------------------
 py_test(
     name = "async_hyperband_example",
-    size = "medium",
+    size = "small",
     srcs = ["examples/async_hyperband_example.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"],
@@ -272,7 +272,7 @@ py_test(
 
 py_test(
     name = "bohb_example",
-    size = "medium",
+    size = "small",
     srcs = ["examples/bohb_example.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"]
@@ -308,7 +308,7 @@ py_test(
 
 py_test(
     name = "genetic_example",
-    size = "medium",
+    size = "small",
     srcs = ["examples/genetic_example.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"],
