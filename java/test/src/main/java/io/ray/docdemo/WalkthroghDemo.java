@@ -59,7 +59,7 @@ public class WalkthroghDemo {
 
     // Specify required resources.
     Ray.task(MyRayApp::myFunction).setResource("CPU", 2.0).setResource("GPU", 4.0).remote();
-    
+
     // Ray aslo supports fractional and custom resources.
     Ray.task(MyRayApp::myFunction).setResource("GPU", 0.5).setResource("Custom", 1).remote();
   }
