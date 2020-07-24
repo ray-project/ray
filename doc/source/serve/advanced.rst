@@ -338,10 +338,10 @@ How do I call an endpoint from Python code?
 
 use the following  to get a "handle" to that endpoint.
 
-
 .. code-block:: python
     
     handle = serve.get_handle("api_endpoint")
+
 
 How do I call a method on my backend class besides __call__?
 -------------------------------------------------------------
