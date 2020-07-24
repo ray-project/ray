@@ -118,14 +118,9 @@ class Curiosity(Exploration):
                 use_bias=False,
                 activation_fn=nn.ReLU))
 
-        forward_params = list(self.forwards_model.parameters())
-        inverse_params = list(self.inverse_model.parameters())
-        feature_params = list(self.features_model.parameters())
 
         self.criterion = torch.nn.MSELoss(reduction="none")
-        self.optimizer = torch.optim.Adam(
-            forward_params + inverse_params + feature_params,
-            lr=1e-3)
+        self.criterion_reduced = torch.nn.MSELoss(reduction="sum")
 
         # TODO lr, submodule, framework should all be config parameters
         submodule_type = "EpsilonGreedy"
@@ -175,56 +170,30 @@ class Curiosity(Exploration):
         return self.features_model(obs)
 
     def get_optimizer(self):
+        forward_params = list(self.forwards_model.parameters())
+        inverse_params = list(self.inverse_model.parameters())
+        feature_params = list(self.features_model.parameters())
 
+        return torch.optim.Adam(
+            forward_params + inverse_params + feature_params,
+            lr=1e-3)
 
     # TODO add a hook in the main exploration class. this returns scalar loss
     def get_exploration_loss(self, policy: Policy, sample_batch: SampleBatch, tf_sess: Optional["tf.Session"] = None):
-        """
-        Calculates the intrinsic curiosity based loss
-        policy (TODO what type should this be): The model policy
-        sample_batch (SampleBatch): a SampleBatch object containing
-            data from worker environmental rollouts
-        tf_sess (TODO what type): If tensorflow was supported, this would be
-            the execution session
-        """
-
-        # Extract the relevant data from the SampleBatch, and cast to Tensors
-        obs_list = torch.from_numpy(sample_batch["obs"]).float()
         next_obs_list = torch.from_numpy(sample_batch["new_obs"]).float()
         emb_next_obs_list = self._get_latent_vector(next_obs_list).float()
         actions_list = torch.from_numpy(sample_batch["actions"]).float()
-        rewards_list = torch.from_numpy(sample_batch["rewards"]).float()
 
-        # Equation (2) in paper.
         actions_pred = self._predict_action(obs_list, next_obs_list)
         embedding_pred = self._predict_next_obs(obs_list, actions_list)
 
+        # L2 losses for predicted action and next state
+        embedding_loss = self.criterion_reduced(
+            emb_next_obs_list, embedding_pred)
+        actions_loss = self.criterion_reduced(
+            actions_pred.squeeze(1), actions_list)
+        return embedding_loss + actions_loss
 
-        # A vector of L2 losses corresponding to each observation, Equation (7) in paper
-        embedding_loss = torch.sum(
-            self.criterion(emb_next_obs_list, embedding_pred),
-            dim=-1)
-
-        # Equation (3) in paper. TODO discrete action space
-        actions_loss = self.criterion(actions_pred.squeeze(1), actions_list)
-
-        # todo ask sven about gpu/cpu and which operations should happen on both
-        # also when do we convert from numpy array to tensor
-
-        # Modifies environment rewards by subtracting intrinsic rewards
-#        sample_batch["rewards"] = sample_batch["rewards"] \
-#                                  - embedding_loss.clone().detach().numpy() \
-#                                  - actions_loss.clone().detach().numpy()
-
-
-        # sample_batch is already batched so we backprop over everything.
-        #self.optimizer.zero_grad()
-        loss = torch.sum(embedding_loss) + torch.sum(actions_loss)
-        #loss.backward()
-        #self.optimizer.step()
-
-
-        return loss
 
     def _predict_action(self, obs: TensorType, next_obs: TensorType):
         """
@@ -258,5 +227,44 @@ class Curiosity(Exploration):
         # change rewards inside sample batch
         # don't return anything
 
+        """
+        Calculates the intrinsic curiosity based loss
+        policy (TODO what type should this be): The model policy
+        sample_batch (SampleBatch): a SampleBatch object containing
+            data from worker environmental rollouts
+        tf_sess (TODO what type): If tensorflow was supported, this would be
+            the execution session
+        """
 
+        # Extract the relevant data from the SampleBatch, and cast to Tensors
+        obs_list = torch.from_numpy(sample_batch["obs"]).float()
+        next_obs_list = torch.from_numpy(sample_batch["new_obs"]).float()
+        emb_next_obs_list = self._get_latent_vector(next_obs_list).float()
+        actions_list = torch.from_numpy(sample_batch["actions"]).float()
+
+        # Equation (2) in paper.
+        actions_pred = self._predict_action(obs_list, next_obs_list)
+        embedding_pred = self._predict_next_obs(obs_list, actions_list)
+
+        # A vector of L2 losses corresponding to each observation, Equation (7) in paper
+        embedding_loss = torch.sum(
+            self.criterion(emb_next_obs_list, embedding_pred),
+            dim=-1)
+
+        # Equation (3) in paper. TODO discrete action space
+        actions_loss = self.criterion(actions_pred.squeeze(1), actions_list)
+
+        # todo ask sven about gpu/cpu and which operations should happen on both
+        # also when do we convert from numpy array to tensor
+
+        # Modifies environment rewards by subtracting intrinsic rewards
+        sample_batch["rewards"] = sample_batch["rewards"] \
+                                  - embedding_loss.clone().detach().numpy() \
+                                  - actions_loss.clone().detach().numpy()
+
+        # sample_batch is already batched so we backprop over everything.
+        # self.optimizer.zero_grad()
+        loss = torch.sum(embedding_loss) + torch.sum(actions_loss)
+        # loss.backward()
+        # self.optimizer.step()
 
