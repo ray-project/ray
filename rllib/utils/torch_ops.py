@@ -10,11 +10,8 @@ torch, _ = try_import_torch()
 def explained_variance(y, pred):
     y_var = torch.var(y, dim=[0])
     diff_var = torch.var(y - pred, dim=[0])
-    min_ = torch.Tensor([-1.0])
-    return torch.max(
-        min_.to(device=torch.device("cuda"))
-        if torch.cuda.is_available() else min_,
-        1 - (diff_var / y_var))
+    min_ = torch.tensor([-1.0]).to(pred.device)
+    return torch.max(min_, 1 - (diff_var / y_var))
 
 
 def global_norm(tensors):
@@ -69,7 +66,7 @@ def minimize_and_clip(optimizer, clip_val=10):
                 torch.nn.utils.clip_grad_norm_(p.grad, clip_val)
 
 
-def sequence_mask(lengths, maxlen=None, dtype=None):
+def sequence_mask(lengths, maxlen=None, dtype=None, time_major=False):
     """Offers same behavior as tf.sequence_mask for torch.
 
     Thanks to Dimitris Papatheodorou
@@ -79,8 +76,10 @@ def sequence_mask(lengths, maxlen=None, dtype=None):
     if maxlen is None:
         maxlen = int(lengths.max())
 
-    mask = ~(torch.ones((len(lengths), maxlen)).to(
-        lengths.device).cumsum(dim=1).t() > lengths).t()
+    mask = ~(torch.ones(
+        (len(lengths), maxlen)).to(lengths.device).cumsum(dim=1).t() > lengths)
+    if not time_major:
+        mask = mask.t()
     mask.type(dtype or torch.bool)
 
     return mask

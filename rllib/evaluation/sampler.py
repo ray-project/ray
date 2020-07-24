@@ -104,7 +104,6 @@ class SyncSampler(SamplerInput):
                  policy_mapping_fn: Callable[[AgentID], PolicyID],
                  preprocessors: Dict[PolicyID, Preprocessor],
                  obs_filters: Dict[PolicyID, Filter],
-                 clip_rewards: bool,
                  rollout_fragment_length: int,
                  callbacks: "DefaultCallbacks",
                  horizon: int = None,
@@ -128,8 +127,8 @@ class SyncSampler(SamplerInput):
                 Preprocessor object for the observations prior to filtering.
             obs_filters (Dict[str,Filter]): Mapping from policy ID to
                 env Filter object.
-            clip_rewards (Union[bool,float]): True for +/-1.0 clipping, actual
-                float value for +/- value clipping. False for no clipping.
+            #clip_rewards (Union[bool,float]): True for +/-1.0 clipping, actual
+            #    float value for +/- value clipping. False for no clipping.
             rollout_fragment_length (int): The length of a fragment to collect
                 before building a SampleBatch from the data and resetting
                 the SampleBatchBuilder object.
@@ -169,7 +168,7 @@ class SyncSampler(SamplerInput):
         self.rollout_provider = _env_runner(
             worker, self.base_env, self.extra_batches.put, self.policies,
             self.policy_mapping_fn, self.rollout_fragment_length, self.horizon,
-            self.preprocessors, self.obs_filters, clip_rewards, clip_actions,
+            self.preprocessors, self.obs_filters, clip_actions,
             pack_multiple_episodes_in_batch, callbacks, tf_sess,
             self.perf_stats, soft_horizon, no_done_at_end, observation_fn,
             _use_trajectory_view_api)
@@ -222,7 +221,6 @@ class AsyncSampler(threading.Thread, SamplerInput):
                  policy_mapping_fn: Callable[[AgentID], PolicyID],
                  preprocessors: Dict[PolicyID, Preprocessor],
                  obs_filters: Dict[PolicyID, Filter],
-                 clip_rewards: bool,
                  rollout_fragment_length: int,
                  callbacks: "DefaultCallbacks",
                  horizon: int = None,
@@ -247,8 +245,6 @@ class AsyncSampler(threading.Thread, SamplerInput):
                 Preprocessor object for the observations prior to filtering.
             obs_filters (Dict[str, Filter]): Mapping from policy ID to
                 env Filter object.
-            clip_rewards (Union[bool, float]): True for +/-1.0 clipping, actual
-                float value for +/- value clipping. False for no clipping.
             rollout_fragment_length (int): The length of a fragment to collect
                 before building a SampleBatch from the data and resetting
                 the SampleBatchBuilder object.
@@ -291,7 +287,6 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self.policy_mapping_fn = policy_mapping_fn
         self.preprocessors = preprocessors
         self.obs_filters = obs_filters
-        self.clip_rewards = clip_rewards
         self.daemon = True
         self.pack_multiple_episodes_in_batch = pack_multiple_episodes_in_batch
         self.tf_sess = tf_sess
@@ -324,8 +319,8 @@ class AsyncSampler(threading.Thread, SamplerInput):
         rollout_provider = _env_runner(
             self.worker, self.base_env, extra_batches_putter, self.policies,
             self.policy_mapping_fn, self.rollout_fragment_length, self.horizon,
-            self.preprocessors, self.obs_filters, self.clip_rewards,
-            self.clip_actions, self.pack_multiple_episodes_in_batch,
+            self.preprocessors, self.obs_filters, self.clip_actions,
+            self.pack_multiple_episodes_in_batch,
             self.callbacks, self.tf_sess, self.perf_stats, self.soft_horizon,
             self.no_done_at_end, self.observation_fn,
             self._use_trajectory_view_api)
@@ -345,7 +340,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
             raise RuntimeError("Sampling thread has died")
         rollout = self.queue.get(timeout=600.0)
 
-        # Propagate errors
+        # Propagate errors.
         if isinstance(rollout, BaseException):
             raise rollout
 
@@ -382,7 +377,6 @@ def _env_runner(worker: "RolloutWorker",
                 horizon: int,
                 preprocessors: Dict[PolicyID, Preprocessor],
                 obs_filters: Dict[PolicyID, Filter],
-                clip_rewards: bool,
                 clip_actions: bool,
                 pack_multiple_episodes_in_batch: bool,
                 callbacks: "DefaultCallbacks",
@@ -412,7 +406,6 @@ def _env_runner(worker: "RolloutWorker",
             observations prior to filtering.
         obs_filters (dict): Map of policy id to filter used to process
             observations for the policy.
-        clip_rewards (bool): Whether to clip rewards before postprocessing.
         pack_multiple_episodes_in_batch (bool): Whether to pack multiple
             episodes into each batch. This guarantees batches will be exactly
             `rollout_fragment_length` in size.
@@ -436,8 +429,8 @@ def _env_runner(worker: "RolloutWorker",
             terminal condition, and other fields as dictated by `policy`.
     """
 
-    # Try to get Env's max_episode_steps prop. If it doesn't exist, catch
-    # error and continue.
+    # Try to get Env's `max_episode_steps` prop. If it doesn't exist, ignore
+    # error and continue with max_episode_steps=None.
     max_episode_steps = None
     try:
         max_episode_steps = base_env.get_unwrapped()[0].spec.max_episode_steps
@@ -472,8 +465,7 @@ def _env_runner(worker: "RolloutWorker",
         if batch_builder_pool:
             return batch_builder_pool.pop()
         else:
-            return MultiAgentSampleBatchBuilder(policies, clip_rewards,
-                                                callbacks)
+            return MultiAgentSampleBatchBuilder(policies, callbacks)
 
     def new_episode():
         episode = MultiAgentEpisode(policies, policy_mapping_fn,
@@ -642,6 +634,7 @@ def _process_observations(
     large_batch_threshold: int = max(1000, rollout_fragment_length * 10) if \
         rollout_fragment_length != float("inf") else 5000
 
+    # For each environment.
     # type: EnvID, Dict[AgentID, EnvObsType]
     for env_id, agent_obs in unfiltered_obs.items():
         is_new_episode: bool = env_id not in active_episodes
@@ -757,8 +750,10 @@ def _process_observations(
         callbacks.on_episode_step(
             worker=worker, base_env=base_env, episode=episode)
 
-        # Cut the batch if we're not packing multiple episodes into one,
-        # or if we've exceeded the requested batch size.
+        # Cut the batch if ...
+        # - all-agents-done and not packing multiple episodes into one
+        #   (batch_mode="complete_episodes")
+        # - or if we've exceeded the rollout_fragment_length.
         if episode.batch_builder.has_pending_agent_data():
             # Sanity check, whether all agents have done=True, if done[__all__]
             # is True.
@@ -775,6 +770,7 @@ def _process_observations(
             elif all_agents_done:
                 episode.batch_builder.postprocess_batch_so_far(episode)
 
+        # Episode is done.
         if all_agents_done:
             # Handle episode termination.
             batch_builder_pool.append(episode.batch_builder)
@@ -959,7 +955,8 @@ def _process_policy_eval_results(
             available to Models. Default: False.
 
     Returns:
-        actions_to_send: Nested dict of env id -> agent id -> agent replies.
+        actions_to_send: Nested dict of env id -> agent id -> actions to be
+            sent to Env (np.ndarrays).
     """
 
     actions_to_send: Dict[EnvID, Dict[AgentID, EnvActionType]] = \

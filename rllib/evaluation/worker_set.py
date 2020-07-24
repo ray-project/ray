@@ -272,7 +272,6 @@ class WorkerSet:
             num_envs=config["num_envs_per_worker"],
             observation_fn=config["multiagent"]["observation_fn"],
             observation_filter=config["observation_filter"],
-            clip_rewards=config["clip_rewards"],
             clip_actions=config["clip_actions"],
             env_config=config["env_config"],
             model_config=config["model"],
