@@ -25,6 +25,21 @@ class NodeUpdater:
     """A process for syncing files and running init commands on a node.
 
     Arguments:
+        node_id: the Node ID
+        provider_config: Provider section of autoscaler yaml
+        provider: NodeProvider Class
+        auth_config: Auth section of autoscaler yaml
+        cluster_name: the name of the cluster.
+        file_mounts: Map of remote to local paths
+        initialization_commands: Commands run before container launch
+        setup_commands: Commands run before ray starts
+        ray_start_commands: Commands to start ray
+        runtime_hash: Used to check for config changes
+        process_runner: the module to use to run the commands
+            in the CommandRunner. E.g., subprocess.
+        use_internal_ip: Wwhether the node_id belongs to an internal ip
+            or external ip.
+        docker_config: Docker section of autoscaler yaml
         initialize_as_head: Whether to use head start/setup commands
     """
 

@@ -609,9 +609,6 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             updater.start()
             updater.join()
 
-        # Refresh the node cache so we see the external ip if available
-        provider.non_terminated_nodes(head_node_tags)
-
             # Refresh the node cache so we see the external ip if available
             provider.non_terminated_nodes(head_node_tags)
 

@@ -455,7 +455,7 @@ class DockerCommandRunner(CommandRunnerInterface):
             exit_on_fail=False,
             port_forward=None,
             with_output=False,
-            run_env=True,
+            run_env="auto",
             ssh_options_override=None,
             **kwargs):
         if run_env == "auto":
@@ -548,7 +548,8 @@ class DockerCommandRunner(CommandRunnerInterface):
 
         self._check_docker_installed()
         if self.docker_config.get("pull_before_run", True):
-            assert image, "Image must be included"
+            assert image, "Image must be included in config if "
+            "pull_before_run is specified"
 
             self.run("docker pull {}".format(image), run_env="host")
 
