@@ -438,7 +438,7 @@ class ActorClass:
                 guaranteed when max_concurrency > 1.
             name: The globally unique name for the actor.
             detached: DEPRECATED.
-            placement_group_id: the placement group this actor belongs to, 
+            placement_group_id: the placement group this actor belongs to,
                 or None if it doesn't belong to any group.
             placement_group_bundle_index: the index of the bundle
                 if the actor belongs to a placement group.
@@ -503,7 +503,8 @@ class ActorClass:
         else:
             detached = False
 
-        if placement_group_id is not None and placement_group_bundle_index is None:
+        if placement_group_id is not None\
+            and placement_group_bundle_index is None:
             raise ValueError("The placement_group_id is set."
                              "But the bundle_index is not set.")
 
