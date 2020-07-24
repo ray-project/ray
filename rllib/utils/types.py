@@ -80,6 +80,9 @@ ModelWeights = dict
 # Some kind of sample batch.
 SampleBatchType = Union["SampleBatch", "MultiAgentBatch"]
 
+# Represents a generic Serial type
+SerializedType = Any
+
 # Either a plain tensor, or a dict or tuple of tensors (or StructTensors).
 TensorStructType = Union[TensorType, dict, tuple]
 
