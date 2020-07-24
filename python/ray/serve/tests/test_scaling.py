@@ -6,6 +6,7 @@ import pytest
 import ray
 from ray import serve
 from ray.serve.constants import SERVE_PROXY_NAME
+from ray.serve.utils import block_until_http_ready
 from ray.cluster_utils import Cluster
 
 
@@ -23,6 +24,9 @@ def test_multiple_routers():
     head_http = ray.get_actor(SERVE_PROXY_NAME +
                               "-{}-{}".format(node_ids[0], 0))
     ray.get_actor(SERVE_PROXY_NAME + "-{}-{}".format(node_ids[0], 1))
+
+    # wait for the actors to come up
+    ray.get(block_until_http_ready.remote("http://127.0.0.1:8005/-/routes"))
 
     # we can send requests to them
     assert requests.get("http://127.0.0.1:8005/-/routes").status_code == 200
