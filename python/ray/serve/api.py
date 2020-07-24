@@ -196,7 +196,6 @@ def update_backend_config(backend_tag, config_options):
         backend_tag(str): A registered backend.
         config_options(dict): Backend config options to update.
             Supported options:
-
             - "num_replicas": number of worker processes to start up that
             will handle requests to this backend.
             - "max_batch_size": the maximum number of requests that will
@@ -207,7 +206,6 @@ def update_backend_config(backend_tag, config_options):
             - "max_concurrent_queries": the maximum number of queries
             that will be sent to a replica of this backend
             without receiving a response.
-
     """
     if not isinstance(config_options, dict):
         raise ValueError("config_options must be a dictionary.")
