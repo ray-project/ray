@@ -18,7 +18,7 @@ export const MemoryTableRow = (props: Props) => {
     memoryTableEntry.node_ip_address,
     memoryTableEntry.pid,
     memoryTableEntry.type,
-    memoryTableEntry.object_id,
+    memoryTableEntry.object_ref,
     object_size,
     memoryTableEntry.reference_type,
     memoryTableEntry.call_site,

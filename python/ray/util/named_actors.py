@@ -42,7 +42,7 @@ def _get_actor(name):
     return handle
 
 
-def get_actor(name):
+def get_actor(name: str) -> ray.actor.ActorHandle:
     """Get a named actor which was previously created.
 
     If the actor doesn't exist, an exception will be raised.
@@ -74,7 +74,9 @@ def _register_actor(name, actor_handle):
         exists = False
 
     if exists:
-        raise ValueError("An actor with name={} already exists".format(name))
+        raise ValueError("An actor with name={} already exists or there "
+                         "was timeout in getting this actor handle."
+                         .format(name))
 
     # Add the actor to Redis if it does not already exist.
     _internal_kv_put(actor_name, pickle.dumps(actor_handle), overwrite=True)

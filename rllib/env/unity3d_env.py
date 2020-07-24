@@ -103,19 +103,18 @@ class Unity3DEnv(MultiAgentEnv):
         Args:
             action_dict (dict): Multi-agent action dict with:
                 keys=agent identifier consisting of
-                     [MLagents behavior name, e.g. "Goalie?team=1"] + "_" +
-                     [Agent index, a unique MLAgent-assigned index per single
-                      agent]
+                [MLagents behavior name, e.g. "Goalie?team=1"] + "_" +
+                [Agent index, a unique MLAgent-assigned index per single agent]
 
         Returns:
             tuple:
-                obs: Multi-agent observation dict.
+                - obs: Multi-agent observation dict.
                     Only those observations for which to get new actions are
                     returned.
-                rewards: Rewards dict matching `obs`.
-                dones: Done dict with only an __all__ multi-agent entry in it.
-                    __all__=True, if episode is done for all agents.
-                infos: An (empty) info dict.
+                - rewards: Rewards dict matching `obs`.
+                - dones: Done dict with only an __all__ multi-agent entry in
+                    it. __all__=True, if episode is done for all agents.
+                - infos: An (empty) info dict.
         """
 
         # Set only the required actions (from the DecisionSteps) in Unity3D.

@@ -10,7 +10,6 @@ import io
 import os
 
 import requests
-from pygments import formatters, highlight, lexers
 
 import ray
 from ray.serve.constants import HTTP_PROXY_TIMEOUT
@@ -77,16 +76,6 @@ class ServeEncoder(json.JSONEncoder):
                 o = o.astype(int)
             return o.tolist()
         return super().default(o)
-
-
-def pformat_color_json(d):
-    """Use pygments to pretty format and colroize dictionary"""
-    formatted_json = json.dumps(d, sort_keys=True, indent=4)
-
-    colorful_json = highlight(formatted_json, lexers.JsonLexer(),
-                              formatters.TerminalFormatter())
-
-    return colorful_json
 
 
 def block_until_http_ready(http_endpoint,

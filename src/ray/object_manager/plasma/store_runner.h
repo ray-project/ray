@@ -2,6 +2,10 @@
 
 #include <memory>
 
+#include <boost/asio.hpp>
+
+#include "absl/synchronization/mutex.h"
+#include "ray/object_manager/notification/object_store_notification_manager.h"
 #include "ray/object_manager/plasma/store.h"
 
 namespace plasma {
@@ -13,16 +17,22 @@ class PlasmaStoreRunner {
                     const std::string external_store_endpoint);
   void Start();
   void Stop();
-  void Shutdown();
+  void SetNotificationListener(
+      const std::shared_ptr<ray::ObjectStoreNotificationManager> &notification_listener) {
+    store_->SetNotificationListener(notification_listener);
+  }
 
  private:
+  void Shutdown();
+  absl::Mutex store_runner_mutex_;
   std::string socket_name_;
   int64_t system_memory_;
   bool hugepages_enabled_;
   std::string plasma_directory_;
   std::string external_store_endpoint_;
-  std::unique_ptr<EventLoop> loop_;
+  boost::asio::io_service main_service_;
   std::unique_ptr<PlasmaStore> store_;
+  std::shared_ptr<ray::ObjectStoreNotificationManager> listener_;
 };
 
 // We use a global variable for Plasma Store instance here because:

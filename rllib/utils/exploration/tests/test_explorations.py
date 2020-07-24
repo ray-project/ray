@@ -11,9 +11,7 @@ import ray.rllib.agents.impala as impala
 import ray.rllib.agents.pg as pg
 import ray.rllib.agents.ppo as ppo
 import ray.rllib.agents.sac as sac
-from ray.rllib.utils import check, framework_iterator, try_import_tf
-
-tf = try_import_tf()
+from ray.rllib.utils import check, framework_iterator
 
 
 def do_test_explorations(run,
@@ -29,12 +27,7 @@ def do_test_explorations(run,
         core_config["num_workers"] = 0
 
     # Test all frameworks.
-    for fw in framework_iterator(core_config):
-        if fw == "tfe" and run in [
-                ddpg.DDPGTrainer, sac.SACTrainer, td3.TD3Trainer
-        ]:
-            continue
-
+    for _ in framework_iterator(core_config):
         print("Agent={}".format(run))
 
         # Test for both the default Agent's exploration AND the `Random`

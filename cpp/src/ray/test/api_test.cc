@@ -44,9 +44,9 @@ TEST(RayApiTest, PutTest) {
 
 TEST(RayApiTest, WaitTest) {
   Ray::Init();
-  auto r0 = Ray::Call(Return1);
-  auto r1 = Ray::Call(Plus1, 3);
-  auto r2 = Ray::Call(Plus, 2, 3);
+  auto r0 = Ray::Task(Return1).Remote();
+  auto r1 = Ray::Task(Plus1, 3).Remote();
+  auto r2 = Ray::Task(Plus, 2, 3).Remote();
   std::vector<ObjectID> objects = {r0.ID(), r1.ID(), r2.ID()};
   WaitResult result = Ray::Wait(objects, 3, 1000);
   EXPECT_EQ(result.ready.size(), 3);
@@ -59,9 +59,9 @@ TEST(RayApiTest, WaitTest) {
 }
 
 TEST(RayApiTest, CallWithValueTest) {
-  auto r0 = Ray::Call(Return1);
-  auto r1 = Ray::Call(Plus1, 3);
-  auto r2 = Ray::Call(Plus, 2, 3);
+  auto r0 = Ray::Task(Return1).Remote();
+  auto r1 = Ray::Task(Plus1, 3).Remote();
+  auto r2 = Ray::Task(Plus, 2, 3).Remote();
 
   int result0 = *(r0.Get());
   int result1 = *(r1.Get());
@@ -73,11 +73,11 @@ TEST(RayApiTest, CallWithValueTest) {
 }
 
 TEST(RayApiTest, CallWithObjectTest) {
-  auto rt0 = Ray::Call(Return1);
-  auto rt1 = Ray::Call(Plus1, rt0);
-  auto rt2 = Ray::Call(Plus, rt1, 3);
-  auto rt3 = Ray::Call(Plus1, 3);
-  auto rt4 = Ray::Call(Plus, rt2, rt3);
+  auto rt0 = Ray::Task(Return1).Remote();
+  auto rt1 = Ray::Task(Plus1, rt0).Remote();
+  auto rt2 = Ray::Task(Plus, rt1, 3).Remote();
+  auto rt3 = Ray::Task(Plus1, 3).Remote();
+  auto rt4 = Ray::Task(Plus, rt2, rt3).Remote();
 
   int return0 = *(rt0.Get());
   int return1 = *(rt1.Get());
@@ -94,11 +94,11 @@ TEST(RayApiTest, CallWithObjectTest) {
 
 TEST(RayApiTest, ActorTest) {
   Ray::Init();
-  RayActor<Counter> actor = Ray::CreateActor(Counter::FactoryCreate);
-  auto rt1 = actor.Call(&Counter::Add, 1);
-  auto rt2 = actor.Call(&Counter::Add, 2);
-  auto rt3 = actor.Call(&Counter::Add, 3);
-  auto rt4 = actor.Call(&Counter::Add, rt3);
+  ActorHandle<Counter> actor = Ray::Actor(Counter::FactoryCreate).Remote();
+  auto rt1 = actor.Task(&Counter::Add, 1).Remote();
+  auto rt2 = actor.Task(&Counter::Add, 2).Remote();
+  auto rt3 = actor.Task(&Counter::Add, 3).Remote();
+  auto rt4 = actor.Task(&Counter::Add, rt3).Remote();
 
   int return1 = *(rt1.Get());
   int return2 = *(rt2.Get());
@@ -124,7 +124,7 @@ TEST(RayApiTest, CompareWithFuture) {
 
   // Ray API
   Ray::Init();
-  auto f3 = Ray::Call(Plus1, 1);
+  auto f3 = Ray::Task(Plus1, 1).Remote();
   int rt3 = *f3.Get();
 
   EXPECT_EQ(rt1, 2);

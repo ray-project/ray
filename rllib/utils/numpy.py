@@ -1,8 +1,9 @@
 import numpy as np
+import tree
 
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 SMALL_NUMBER = 1e-6
@@ -247,3 +248,38 @@ def lstm(x,
             unrolled_outputs[:, t, :] = h_states
 
     return unrolled_outputs, (c_states, h_states)
+
+
+# TODO: (sven) this will replace `TorchPolicy._convert_to_non_torch_tensor()`.
+def convert_to_numpy(x, reduce_floats=False):
+    """Converts values in `stats` to non-Tensor numpy or python types.
+
+    Args:
+        stats (any): Any (possibly nested) struct, the values in which will be
+            converted and returned as a new struct with all torch/tf tensors
+            being converted to numpy types.
+        reduce_floats (bool): Whether to reduce all float64 data into float32
+            automatically.
+
+    Returns:
+        Any: A new struct with the same structure as `stats`, but with all
+            values converted to numpy arrays (on CPU).
+    """
+
+    # The mapping function used to numpyize torch/tf Tensors (and move them
+    # to the CPU beforehand).
+    def mapping(item):
+        if torch and isinstance(item, torch.Tensor):
+            ret = item.cpu().item() if len(item.size()) == 0 else \
+                item.cpu().detach().numpy()
+        elif tf and isinstance(item, tf.Tensor):
+            assert tf.executing_eagerly()
+            ret = item.cpu().numpy()
+        else:
+            ret = item
+        if reduce_floats and isinstance(ret, np.ndarray) and \
+                ret.dtype == np.float64:
+            ret = ret.astype(np.float32)
+        return ret
+
+    return tree.map_structure(mapping, x)

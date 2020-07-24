@@ -5,7 +5,7 @@ import ray
 import ray.experimental.tf_utils
 from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
 from ray.rllib.agents.sac.sac_tf_policy import build_sac_model, \
-    postprocess_trajectory
+    postprocess_trajectory, validate_spaces
 from ray.rllib.agents.dqn.dqn_tf_policy import PRIO_WEIGHTS
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy_template import build_torch_policy
@@ -336,6 +336,7 @@ SACTorchPolicy = build_torch_policy(
     postprocess_fn=postprocess_trajectory,
     extra_grad_process_fn=apply_grad_clipping,
     optimizer_fn=optimizer_fn,
+    validate_spaces=validate_spaces,
     after_init=setup_late_mixins,
     make_model_and_action_dist=build_sac_model_and_action_dist,
     mixins=[TargetNetworkMixin, ComputeTDErrorMixin],

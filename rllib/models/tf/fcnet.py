@@ -4,7 +4,7 @@ from ray.rllib.models.tf.misc import normc_initializer
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.utils.framework import get_activation_fn, try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
 class FullyConnectedNetwork(TFModelV2):

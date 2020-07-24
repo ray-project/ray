@@ -1,10 +1,10 @@
 import numpy as np
+import tree
 
-from ray.rllib.utils import try_import_tree
+from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.utils.framework import try_import_torch
 
 torch, _ = try_import_torch()
-tree = try_import_tree()
 
 
 def explained_variance(y, pred):
@@ -77,7 +77,7 @@ def sequence_mask(lengths, maxlen=None, dtype=None):
     39036).
     """
     if maxlen is None:
-        maxlen = lengths.max()
+        maxlen = int(lengths.max())
 
     mask = ~(torch.ones((len(lengths), maxlen)).to(
         lengths.device).cumsum(dim=1).t() > lengths).t()
@@ -110,10 +110,10 @@ def convert_to_non_torch_type(stats):
     return tree.map_structure(mapping, stats)
 
 
-def convert_to_torch_tensor(stats, device=None):
+def convert_to_torch_tensor(x, device=None):
     """Converts any struct to torch.Tensors.
 
-    stats (any): Any (possibly nested) struct, the values in which will be
+    x (any): Any (possibly nested) struct, the values in which will be
         converted and returned as a new struct with all leaves converted
         to torch tensors.
 
@@ -123,15 +123,21 @@ def convert_to_torch_tensor(stats, device=None):
     """
 
     def mapping(item):
+        # Already torch tensor -> make sure it's on right device.
         if torch.is_tensor(item):
             return item if device is None else item.to(device)
+        # Special handling of "Repeated" values.
+        elif isinstance(item, RepeatedValues):
+            return RepeatedValues(
+                tree.map_structure(mapping, item.values),
+                item.lengths, item.max_len)
         tensor = torch.from_numpy(np.asarray(item))
         # Floatify all float64 tensors.
         if tensor.dtype == torch.double:
             tensor = tensor.float()
         return tensor if device is None else tensor.to(device)
 
-    return tree.map_structure(mapping, stats)
+    return tree.map_structure(mapping, x)
 
 
 def atanh(x):

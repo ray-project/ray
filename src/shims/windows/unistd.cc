@@ -22,7 +22,8 @@ typedef NTSTATUS WINAPI NtQueryInformationProcess_t(HANDLE ProcessHandle,
 static std::atomic<NtQueryInformationProcess_t *> NtQueryInformationProcess_ =
     ATOMIC_VAR_INIT(NULL);
 
-pid_t getppid() {
+typedef int pid_t;
+int getppid() {
   NtQueryInformationProcess_t *NtQueryInformationProcess = ::NtQueryInformationProcess_;
   if (!NtQueryInformationProcess) {
     NtQueryInformationProcess = reinterpret_cast<NtQueryInformationProcess_t *>(
@@ -35,7 +36,7 @@ pid_t getppid() {
   ULONG cb = sizeof(info);
   NTSTATUS status = NtQueryInformationProcess(GetCurrentProcess(), 0, &info, cb, &cb);
   if ((status >= 0 || status == STATUS_BUFFER_OVERFLOW) && cb >= sizeof(info)) {
-    ppid = reinterpret_cast<DWORD>(info.Reserved3);
+    ppid = static_cast<DWORD>(reinterpret_cast<uintptr_t>(info.Reserved3));
   }
   pid_t result = 0;
   if (ppid > 0) {
@@ -60,14 +61,4 @@ pid_t getppid() {
     }
   }
   return result;
-}
-
-int usleep(useconds_t usec) {
-  Sleep((usec + (1000 - 1)) / 1000);
-  return 0;
-}
-
-unsigned sleep(unsigned seconds) {
-  Sleep(seconds * 1000);
-  return 0;
 }

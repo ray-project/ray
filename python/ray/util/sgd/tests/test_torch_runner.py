@@ -185,12 +185,13 @@ class TestLocalDistributedRunner(unittest.TestCase):
         clear_dummy_actor()
         ray.shutdown()
 
-    def _testWithInitialized(self, init_mock):
+    def _testReserveCUDAResource(self, init_mock, num_cpus):
         mock_runner = MagicMock()
         mock_runner._set_cuda_device = MagicMock()
         preset_devices = os.environ.get("CUDA_VISIBLE_DEVICES")
 
-        LocalDistributedRunner._try_reserve_and_set_cuda(mock_runner)
+        LocalDistributedRunner._try_reserve_and_set_resources(
+            mock_runner, num_cpus, 1)
 
         self.assertTrue(mock_runner._set_cuda_device.called)
         local_device = mock_runner._set_cuda_device.call_args[0][0]
@@ -202,52 +203,79 @@ class TestLocalDistributedRunner(unittest.TestCase):
             self.assertIn(env_set_device, visible_devices)
             device_int = int(local_device)
             self.assertLess(device_int, len(visible_devices))
+            self.assertEquals(len(os.environ["CUDA_VISIBLE_DEVICES"]), 1)
         else:
             self.assertEquals(local_device, env_set_device)
 
     def testNoVisibleWithInitialized(self):
         with patch("torch.cuda.is_initialized") as init_mock:
             init_mock.return_value = True
-            self._testWithInitialized(init_mock)
+            self._testReserveCUDAResource(init_mock, 0)
 
-    def test2VisibleWithInitialized(self):
-        os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"
+    def testNoVisibleWithInitializedAndReserveCPUResource(self):
         with patch("torch.cuda.is_initialized") as init_mock:
             init_mock.return_value = True
-            self._testWithInitialized(init_mock)
+            self._testReserveCUDAResource(init_mock, 2)
 
     def test1VisibleWithInitialized(self):
         os.environ["CUDA_VISIBLE_DEVICES"] = "0"
         with patch("torch.cuda.is_initialized") as init_mock:
             init_mock.return_value = True
-            self._testWithInitialized(init_mock)
+            self._testReserveCUDAResource(init_mock, 0)
 
-    def test2VisibleNotInitialized(self):
+    def test2VisibleWithInitialized(self):
         os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"
         with patch("torch.cuda.is_initialized") as init_mock:
-            init_mock.return_value = False
-            mock_runner = MagicMock()
-            mock_runner._set_cuda_device = MagicMock()
-            LocalDistributedRunner._try_reserve_and_set_cuda(mock_runner)
-            args, _ = mock_runner._set_cuda_device.call_args
-            self.assertTrue(("1" in args) or "0" in args)
-            self.assertEquals(len(os.environ["CUDA_VISIBLE_DEVICES"]), 1)
+            init_mock.return_value = True
+            self._testReserveCUDAResource(init_mock, 0)
+
+    def test2VisibleWithInitializedAndReserveCPUResource(self):
+        os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"
+        with patch("torch.cuda.is_initialized") as init_mock:
+            init_mock.return_value = True
+            self._testReserveCUDAResource(init_mock, 2)
 
     def test1VisibleNotInitialized(self):
         os.environ["CUDA_VISIBLE_DEVICES"] = "0"
         with patch("torch.cuda.is_initialized") as init_mock:
             init_mock.return_value = False
-            mock_runner = MagicMock()
-            mock_runner._set_cuda_device = MagicMock()
-            LocalDistributedRunner._try_reserve_and_set_cuda(mock_runner)
-            mock_runner._set_cuda_device.assert_called_with("0")
-            self.assertEquals(len(os.environ["CUDA_VISIBLE_DEVICES"]), 1)
+            self._testReserveCUDAResource(init_mock, 0)
+
+    def test1VisibleNotInitializedAndReserveCPUResource(self):
+        os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+        with patch("torch.cuda.is_initialized") as init_mock:
+            init_mock.return_value = False
+            self._testReserveCUDAResource(init_mock, 2)
+
+    def test2VisibleNotInitialized(self):
+        os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"
+        with patch("torch.cuda.is_initialized") as init_mock:
+            init_mock.return_value = False
+            self._testReserveCUDAResource(init_mock, 0)
 
     @patch("torch.cuda.set_device")
     def testSetDevice(self, set_mock):
         mock_runner = MagicMock()
         mock_runner._is_set = False
         LocalDistributedRunner._set_cuda_device(mock_runner, "123")
-        self.assertEquals(mock_runner.local_device, "123")
+        self.assertEquals(mock_runner.local_cuda_device, "123")
         self.assertTrue(set_mock.called)
         set_mock.assert_called_with(123)
+
+    def testV1ReserveCPUResources(self):
+        mock_runner = MagicMock()
+        mock_runner._set_cpu_devices = MagicMock()
+        # reserve CPU only
+        LocalDistributedRunner._try_reserve_and_set_resources(
+            mock_runner, 4, 0)
+        remaining = ray.available_resources()["CPU"]
+        self.assertEquals(int(remaining), 6)
+
+    def testV2ReserveCPUResources(self):
+        mock_runner = MagicMock()
+        mock_runner._set_cpu_devices = MagicMock()
+        # reserve CPU and GPU
+        LocalDistributedRunner._try_reserve_and_set_resources(
+            mock_runner, 4, 1)
+        remaining = ray.available_resources()["CPU"]
+        self.assertEquals(int(remaining), 6)

@@ -199,7 +199,7 @@ static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
                             JobID::Nil(), RandomTaskId(), 0, RandomTaskId(), address,
                             num_returns, {}, {});
   for (const auto &arg : arguments) {
-    builder.AddByRefArg(arg);
+    builder.AddArg(TaskArgByReference(arg, rpc::Address()));
   }
   rpc::TaskExecutionSpec execution_spec_message;
   execution_spec_message.set_num_forwards(1);

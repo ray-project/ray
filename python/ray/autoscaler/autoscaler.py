@@ -1,6 +1,5 @@
 from collections import defaultdict
 import copy
-import json
 import logging
 import math
 import numpy as np
@@ -10,20 +9,21 @@ import threading
 import time
 import yaml
 
+from ray.experimental.internal_kv import _internal_kv_put, \
+    _internal_kv_initialized
 from ray.autoscaler.node_provider import get_node_provider
 from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
                                  TAG_RAY_NODE_STATUS, TAG_RAY_NODE_TYPE,
                                  STATUS_UP_TO_DATE, NODE_TYPE_WORKER)
 from ray.autoscaler.updater import NodeUpdaterThread
 from ray.autoscaler.node_launcher import NodeLauncher
+from ray.autoscaler.resource_demand_scheduler import ResourceDemandScheduler
 from ray.autoscaler.util import ConcurrentCounter, validate_config, \
-    with_head_node_ip, hash_launch_conf, hash_runtime_conf
+    with_head_node_ip, hash_launch_conf, hash_runtime_conf, \
+    DEBUG_AUTOSCALING_STATUS, DEBUG_AUTOSCALING_ERROR
 from ray.ray_constants import AUTOSCALER_MAX_NUM_FAILURES, \
     AUTOSCALER_MAX_LAUNCH_BATCH, AUTOSCALER_MAX_CONCURRENT_LAUNCHES, \
-    AUTOSCALER_UPDATE_INTERVAL_S, AUTOSCALER_HEARTBEAT_TIMEOUT_S, \
-    AUTOSCALER_RESOURCE_REQUEST_CHANNEL
-import ray.services as services
-from ray.worker import global_worker
+    AUTOSCALER_UPDATE_INTERVAL_S, AUTOSCALER_HEARTBEAT_TIMEOUT_S
 from six.moves import queue
 
 logger = logging.getLogger(__name__)
@@ -60,6 +60,15 @@ class StandardAutoscaler:
         self.load_metrics = load_metrics
         self.provider = get_node_provider(self.config["provider"],
                                           self.config["cluster_name"])
+
+        # Check whether we can enable the resource demand scheduler.
+        if "available_instance_types" in self.config:
+            self.instance_types = self.config["available_instance_types"]
+            self.resource_demand_scheduler = ResourceDemandScheduler(
+                self.provider, self.instance_types, self.config["max_workers"])
+        else:
+            self.instance_types = None
+            self.resource_demand_scheduler = None
 
         self.max_failures = max_failures
         self.max_launch_batch = max_launch_batch
@@ -100,7 +109,10 @@ class StandardAutoscaler:
         for local_path in self.config["file_mounts"].values():
             assert os.path.exists(local_path)
 
+        # Aggregate resources the user is requesting of the cluster.
         self.resource_requests = defaultdict(int)
+        # List of resource bundles the user is requesting of the cluster.
+        self.resource_demand_vector = None
 
         logger.info("StandardAutoscaler: {}".format(self.config))
 
@@ -111,6 +123,9 @@ class StandardAutoscaler:
         except Exception as e:
             logger.exception("StandardAutoscaler: "
                              "Error during autoscaling.")
+            if _internal_kv_initialized():
+                _internal_kv_put(
+                    DEBUG_AUTOSCALING_ERROR, str(e), overwrite=True)
             self.num_failures += 1
             if self.num_failures > self.max_failures:
                 logger.critical("StandardAutoscaler: "
@@ -172,6 +187,17 @@ class StandardAutoscaler:
             nodes = self.workers()
             self.log_info_string(nodes, target_workers)
 
+        # First let the resource demand scheduler launch nodes, if enabled.
+        if self.resource_demand_scheduler and self.resource_demand_vector:
+            # TODO(ekl) include head node in the node list
+            instances = (
+                self.resource_demand_scheduler.get_instances_to_launch(
+                    nodes, self.pending_launches.breakdown(),
+                    self.resource_demand_vector))
+            # TODO(ekl) also enforce max launch concurrency here?
+            for instance_type, count in instances:
+                self.launch_new_node(count, instance_type=instance_type)
+
         # Launch additional nodes of the default type, if still needed.
         num_pending = self.pending_launches.value
         num_workers = len(nodes) + num_pending
@@ -180,11 +206,10 @@ class StandardAutoscaler:
                               self.max_concurrent_launches - num_pending)
 
             num_launches = min(max_allowed, target_workers - num_workers)
-            self.launch_new_node(num_launches, instance_type=None)
+            self.launch_new_node(num_launches)
             nodes = self.workers()
             self.log_info_string(nodes, target_workers)
         elif self.load_metrics.num_workers_connected() >= target_workers:
-            logger.info("Ending bringup phase")
             self.bringup = False
             self.log_info_string(nodes, target_workers)
 
@@ -322,7 +347,7 @@ class StandardAutoscaler:
             runtime_hash=self.runtime_hash,
             process_runner=self.process_runner,
             use_internal_ip=True,
-            docker_config=self.config["docker"])
+            docker_config=self.config.get("docker"))
         updater.start()
         self.updaters[node_id] = updater
 
@@ -362,7 +387,7 @@ class StandardAutoscaler:
             runtime_hash=self.runtime_hash,
             process_runner=self.process_runner,
             use_internal_ip=True,
-            docker_config=self.config["docker"])
+            docker_config=self.config.get("docker"))
         updater.start()
         self.updaters[node_id] = updater
 
@@ -375,9 +400,13 @@ class StandardAutoscaler:
             return False
         return True
 
-    def launch_new_node(self, count, instance_type):
+    def launch_new_node(self, count, instance_type=None):
         logger.info(
             "StandardAutoscaler: Queue {} new nodes for launch".format(count))
+        # Try to fill in the default instance type so we can tag it properly.
+        if not instance_type:
+            instance_type = self.provider.get_instance_type(
+                self.config["worker_nodes"])
         self.pending_launches.inc(instance_type, count)
         config = copy.deepcopy(self.config)
         self.launch_queue.put((config, count, instance_type))
@@ -387,9 +416,17 @@ class StandardAutoscaler:
             tag_filters={TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER})
 
     def log_info_string(self, nodes, target):
-        logger.info("StandardAutoscaler: {}".format(
-            self.info_string(nodes, target)))
-        logger.info("LoadMetrics: {}".format(self.load_metrics.info_string()))
+        tmp = "Cluster status: "
+        tmp += self.info_string(nodes, target)
+        tmp += "\n"
+        tmp += self.load_metrics.info_string()
+        tmp += "\n"
+        if self.resource_demand_scheduler:
+            tmp += self.resource_demand_scheduler.debug_string(
+                nodes, self.pending_launches.breakdown())
+        if _internal_kv_initialized():
+            _internal_kv_put(DEBUG_AUTOSCALING_STATUS, tmp, overwrite=True)
+        logger.info(tmp)
 
     def info_string(self, nodes, target):
         suffix = ""
@@ -406,12 +443,20 @@ class StandardAutoscaler:
         return "{}/{} target nodes{}".format(len(nodes), target, suffix)
 
     def request_resources(self, resources):
-        for resource, count in resources.items():
-            self.resource_requests[resource] = max(
-                self.resource_requests[resource], count)
+        """Called by monitor to request resources (EXPERIMENTAL).
 
-        logger.info("StandardAutoscaler: resource_requests={}".format(
-            self.resource_requests))
+        Args:
+            resources: Either a list of resource bundles or a single resource
+                demand dictionary.
+        """
+        logger.info(
+            "StandardAutoscaler: resource_requests={}".format(resources))
+        if isinstance(resources, list):
+            self.resource_demand_vector = resources
+        else:
+            for resource, count in resources.items():
+                self.resource_requests[resource] = max(
+                    self.resource_requests[resource], count)
 
     def kill_workers(self):
         logger.error("StandardAutoscaler: kill_workers triggered")
@@ -422,32 +467,6 @@ class StandardAutoscaler:
             len(nodes)))
 
 
-# Note: this is an (experimental) user-facing API, do not move.
-def request_resources(num_cpus=None, num_gpus=None, bundles=None):
-    """Remotely request some CPU or GPU resources from the autoscaler.
-
-    This function is to be called e.g. on a node before submitting a bunch of
-    ray.remote calls to ensure that resources rapidly become available.
-
-    In the future this could be extended to do GPU cores or other custom
-    resources.
-
-    This function is non blocking.
-
-    Args:
-
-        num_cpus: int -- the number of CPU cores to request
-        num_gpus: int -- the number of GPUs to request (Not implemented)
-
-    """
-    if num_gpus is not None:
-        raise NotImplementedError(
-            "GPU resource is not yet supported through request_resources")
-    r = services.create_redis_client(
-        global_worker.node.redis_address,
-        password=global_worker.node.redis_password)
-    if num_cpus > 0:
-        r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
-                  json.dumps({
-                      "CPU": num_cpus
-                  }))
+def request_resources(num_cpus=None, num_gpus=None):
+    raise DeprecationWarning(
+        "Please use ray.autoscaler.commands.request_resources instead.")

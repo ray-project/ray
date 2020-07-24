@@ -26,7 +26,7 @@ This document describes the process for creating new releases.
 
 4. **Testing:** Before releasing, the following sets of tests should be run.
    The results of each of these tests for previous releases are checked in
-   under ``doc/dev/release_tests``, and should be compared against to identify
+   under ``doc/dev/release_logs``, and should be compared against to identify
    any regressions.
 
    1. Long-running tests
@@ -35,9 +35,19 @@ This document describes the process for creating new releases.
 
        ray/ci/long_running_tests/README.rst
 
-   Follow the instructions to kick off the tests and check the status of the workloads
-   These tests should run for at least 24 hours (printing new iterations and CPU load
+   Follow the instructions to kick off the tests and check the status of the workloads.
+   These tests should run for at least 24 hours without erroring or hanging (ensure that it is printing new iterations and CPU load is
    stable in the AWS console).
+
+   2. Long-running multi-node tests
+
+   .. code-block:: bash
+
+      ray/ci/long_running_distributed_tests/README.rst
+
+   Follow the instructions to kick off the tests and check the status of the workloads.
+   These suite of tests are similar to the standard long running tests, except these actually run in a multi-node cluster instead of just a simulated one.
+   These tests should also run for at least 24 hours without erroring or hanging.
 
    2. Multi-node regression tests
 
@@ -66,7 +76,7 @@ This document describes the process for creating new releases.
 
    The results should be checked in under ``doc/dev/release_logs/<version>``.
 
-   You can also get the performance change rate from the previous version using 
+   You can also get the performance change rate from the previous version using
    microbenchmark_analysis.py
 
 5. **Resolve release-blockers:** If a release blocking issue arises, there are
@@ -111,14 +121,14 @@ This document describes the process for creating new releases.
        export RAY_VERSION=...  # e.g., 0.7.0
 
        # Linux Wheels
-       pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp35-cp35m-manylinux1_x86_64.whl
        pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp36-cp36m-manylinux1_x86_64.whl
        pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp37-cp37m-manylinux1_x86_64.whl
+       pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp38-cp38-manylinux1_x86_64.whl
 
        # Mac Wheels
-       pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp35-cp35m-macosx_10_13_intel.whl
        pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp36-cp36m-macosx_10_13_intel.whl
        pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp37-cp37m-macosx_10_13_intel.whl
+       pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp38-cp38-macosx_10_13_x86_64.whl
 
    This can be tested if you use the script source ./bin/download_wheels.sh
 
@@ -152,9 +162,9 @@ This document describes the process for creating new releases.
 
    Do this for MacOS, Linux, and Windows.
 
-   This process is automated. Run ./bin/pip_download_test.sh. 
-   This will download the ray from the test pypi repository and run the minimum 
-   sanity check from all the Python version supported. (3.5, 3.6, 3.7, 3.8)
+   This process is automated. Run ./bin/pip_download_test.sh.
+   This will download the ray from the test pypi repository and run the minimum
+   sanity check from all the Python version supported. (3.6, 3.7, 3.8)
 
    Windows sanity check test is currently not automated.
 

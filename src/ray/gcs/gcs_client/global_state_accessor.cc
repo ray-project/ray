@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <boost/algorithm/string.hpp>
+#include "ray/gcs/gcs_client/global_state_accessor.h"
 
-#include "global_state_accessor.h"
+#include <boost/algorithm/string.hpp>
 
 namespace ray {
 namespace gcs {
@@ -46,11 +46,7 @@ GlobalStateAccessor::GlobalStateAccessor(const std::string &redis_address,
   promise.get_future().get();
 }
 
-GlobalStateAccessor::~GlobalStateAccessor() {
-  Disconnect();
-  io_service_->stop();
-  thread_io_service_->join();
-}
+GlobalStateAccessor::~GlobalStateAccessor() { Disconnect(); }
 
 bool GlobalStateAccessor::Connect() {
   if (!is_connected_) {
@@ -64,6 +60,8 @@ bool GlobalStateAccessor::Connect() {
 
 void GlobalStateAccessor::Disconnect() {
   if (is_connected_) {
+    io_service_->stop();
+    thread_io_service_->join();
     gcs_client_->Disconnect();
     is_connected_ = false;
   }
@@ -150,6 +148,27 @@ std::string GlobalStateAccessor::GetNodeResourceInfo(const ClientID &node_id) {
   return node_resource_map.SerializeAsString();
 }
 
+std::string GlobalStateAccessor::GetInternalConfig() {
+  rpc::StoredConfig config_proto;
+  std::promise<void> promise;
+  auto on_done = [&config_proto, &promise](
+                     Status status,
+                     const boost::optional<std::unordered_map<std::string, std::string>>
+                         stored_raylet_config) {
+    RAY_CHECK_OK(status);
+    if (stored_raylet_config.has_value()) {
+      config_proto.mutable_config()->insert(stored_raylet_config->begin(),
+                                            stored_raylet_config->end());
+    }
+    promise.set_value();
+  };
+
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetInternalConfig(on_done));
+  promise.get_future().get();
+
+  return config_proto.SerializeAsString();
+}
+
 std::vector<std::string> GlobalStateAccessor::GetAllActorInfo() {
   std::vector<std::string> actor_table_data;
   std::promise<bool> promise;
@@ -178,6 +197,39 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetActorCheckpointId(
                     actor_checkpoint_id_data, promise)));
   promise.get_future().get();
   return actor_checkpoint_id_data;
+}
+
+std::unique_ptr<std::string> GlobalStateAccessor::GetWorkerInfo(
+    const WorkerID &worker_id) {
+  std::unique_ptr<std::string> worker_table_data;
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->Workers().AsyncGet(
+      worker_id, TransformForOptionalItemCallback<rpc::WorkerTableData>(worker_table_data,
+                                                                        promise)));
+  promise.get_future().get();
+  return worker_table_data;
+}
+
+std::vector<std::string> GlobalStateAccessor::GetAllWorkerInfo() {
+  std::vector<std::string> worker_table_data;
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->Workers().AsyncGetAll(
+      TransformForMultiItemCallback<rpc::WorkerTableData>(worker_table_data, promise)));
+  promise.get_future().get();
+  return worker_table_data;
+}
+
+bool GlobalStateAccessor::AddWorkerInfo(const std::string &serialized_string) {
+  auto data_ptr = std::make_shared<WorkerTableData>();
+  data_ptr->ParseFromString(serialized_string);
+  std::promise<bool> promise;
+  RAY_CHECK_OK(
+      gcs_client_->Workers().AsyncAdd(data_ptr, [&promise](const Status &status) {
+        RAY_CHECK_OK(status);
+        promise.set_value(true);
+      }));
+  promise.get_future().get();
+  return true;
 }
 
 }  // namespace gcs

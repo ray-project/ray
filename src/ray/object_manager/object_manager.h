@@ -32,10 +32,9 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/format/object_manager_generated.h"
+#include "ray/object_manager/notification/object_store_notification_manager_ipc.h"
 #include "ray/object_manager/object_buffer_pool.h"
 #include "ray/object_manager/object_directory.h"
-#include "ray/object_manager/object_store_notification_manager.h"
-#include "ray/object_manager/plasma/client.h"
 #include "ray/object_manager/plasma/store_runner.h"
 #include "ray/rpc/object_manager/object_manager_client.h"
 #include "ray/rpc/object_manager/object_manager_server.h"
@@ -391,7 +390,9 @@ class ObjectManager : public ObjectManagerInterface,
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;
   // Object store runner.
   ObjectStoreRunner object_store_internal_;
-  ObjectStoreNotificationManager store_notification_;
+  // Process notifications from Plasma. We make it a shared pointer because
+  // we will decide its type at runtime, and we would pass it to Plasma Store.
+  std::shared_ptr<ObjectStoreNotificationManager> store_notification_;
   ObjectBufferPool buffer_pool_;
 
   /// Weak reference to main service. We ensure this object is destroyed before

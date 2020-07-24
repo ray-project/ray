@@ -16,16 +16,27 @@
 
 #include <unistd.h>
 
+#include <boost/optional.hpp>
 #include <functional>
 #include <string>
-
-#include <boost/optional.hpp>
 
 #include "gtest/gtest.h"
 #include "ray/common/id.h"
 #include "ray/util/util.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
+
+static inline std::vector<rpc::ObjectReference> ObjectIdsToRefs(
+    std::vector<ObjectID> object_ids) {
+  std::vector<rpc::ObjectReference> refs;
+  for (const auto &object_id : object_ids) {
+    rpc::ObjectReference ref;
+    ref.set_object_id(object_id.Binary());
+    refs.push_back(ref);
+  }
+  return refs;
+}
 
 class Buffer;
 class RayObject;
@@ -75,8 +86,6 @@ extern std::string TEST_GCS_SERVER_EXEC_PATH;
 extern std::string TEST_RAYLET_EXEC_PATH;
 /// Path to mock worker executable binary. Required by raylet.
 extern std::string TEST_MOCK_WORKER_EXEC_PATH;
-/// Path to raylet monitor executable binary.
-extern std::string TEST_RAYLET_MONITOR_EXEC_PATH;
 
 //--------------------------------------------------------------------------------
 // COMPONENT MANAGEMENT CLASSES FOR TEST CASES

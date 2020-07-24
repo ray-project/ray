@@ -15,8 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-include "common.fbs";
-
 // Plasma protocol specification
 namespace plasma.flatbuf;
 
@@ -26,8 +24,6 @@ enum MessageType:long {
   // Create a new object.
   PlasmaCreateRequest,
   PlasmaCreateReply,
-  PlasmaCreateAndSealRequest,
-  PlasmaCreateAndSealReply,
   PlasmaAbortRequest,
   PlasmaAbortReply,
   // Seal an object.
@@ -45,9 +41,6 @@ enum MessageType:long {
   // See if the store contains an object (will be deprecated).
   PlasmaContainsRequest,
   PlasmaContainsReply,
-  // List all objects in the store.
-  PlasmaListRequest,
-  PlasmaListReply,
   // Get information for a newly connecting client.
   PlasmaConnectRequest,
   PlasmaConnectReply,
@@ -74,10 +67,6 @@ enum MessageType:long {
   // Get debugging information from the store.
   PlasmaGetDebugStringRequest,
   PlasmaGetDebugStringReply,
-  // Create and seal a batch of objects. This should be used to save
-  // IPC for creating many small objects.
-  PlasmaCreateAndSealBatchRequest,
-  PlasmaCreateAndSealBatchReply,
   // Touch a number of objects to bump their position in the LRU cache.
   PlasmaRefreshLRURequest,
   PlasmaRefreshLRUReply,
@@ -170,38 +159,6 @@ table PlasmaCreateReply {
   ipc_handle: CudaHandle;
 }
 
-table PlasmaCreateAndSealRequest {
-  // ID of the object to be created.
-  object_id: string;
-  // Whether to evict other objects to make room for this one.
-  evict_if_full: bool;
-  // The object's data.
-  data: string;
-  // The object's metadata.
-  metadata: string;
-  // Hash of the object data.
-  digest: string;
-}
-
-table PlasmaCreateAndSealReply {
-  // Error that occurred for this call.
-  error: PlasmaError;
-}
-
-table PlasmaCreateAndSealBatchRequest {
-    object_ids: [string];
-    // Whether to evict other objects to make room for these objects.
-    evict_if_full: bool;
-    data: [string];
-    metadata: [string];
-    digest: [string];
-}
-
-table PlasmaCreateAndSealBatchReply {
-  // Error that occurred for this call.
-  error: PlasmaError;
-}
-
 table PlasmaAbortRequest {
   // ID of the object to be aborted.
   object_id: string;
@@ -215,8 +172,6 @@ table PlasmaAbortReply {
 table PlasmaSealRequest {
   // ID of the object to be sealed.
   object_id: string;
-  // Hash of the object data.
-  digest: string;
 }
 
 table PlasmaSealReply {
@@ -294,13 +249,6 @@ table PlasmaContainsReply {
   has_object: int;
 }
 
-table PlasmaListRequest {
-}
-
-table PlasmaListReply {
-  objects: [ObjectInfo];
-}
-
 // PlasmaConnect is used by a plasma client the first time it connects with the
 // store. This is not really necessary, but is used to get some information
 // about the store such as its memory capacity.
@@ -324,10 +272,6 @@ table PlasmaEvictReply {
 }
 
 table PlasmaSubscribeRequest {
-}
-
-table PlasmaNotification {
-  object_info: [ObjectInfo];
 }
 
 table PlasmaDataRequest {

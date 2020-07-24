@@ -5,7 +5,7 @@ from ray.rllib.utils.schedules import ConstantSchedule, \
 from ray.rllib.utils import check, framework_iterator, try_import_tf
 from ray.rllib.utils.from_config import from_config
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
 class TestSchedules(unittest.TestCase):

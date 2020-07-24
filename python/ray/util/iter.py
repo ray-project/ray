@@ -193,19 +193,46 @@ class ParallelIterator(Generic[T]):
             name=self.name + name,
             parent_iterators=self.parent_iterators)
 
+    def transform(self, fn: Callable[[Iterable[T]], Iterable[U]]
+                  ) -> "ParallelIterator[U]":
+        """Remotely transform the iterator.
+
+        This is advanced version of for_each that allows you to apply arbitrary
+        generator transformations over the iterator. Prefer to use .for_each()
+        when possible for simplicity.
+
+        Args:
+            fn (func): function to use to transform the iterator. The function
+                should pass through instances of _NextValueNotReady that appear
+                in its input iterator. Note that this function is only called
+                **once** over the input iterator.
+
+        Returns:
+            ParallelIterator[U]: a parallel iterator.
+
+        Examples:
+            >>> def f(it):
+            ...     for x in it:
+            ...         if x % 2 == 0:
+            ...            yield x
+            >>> from_range(10, 1).transform(f).gather_sync().take(5)
+            ... [0, 2, 4, 6, 8]
+        """
+        return self._with_transform(lambda local_it: local_it.transform(fn),
+                                    ".transform()")
+
     def for_each(self, fn: Callable[[T], U], max_concurrency=1,
                  resources=None) -> "ParallelIterator[U]":
-        """Remotely apply fn to each item in this iterator, at most `max_concurrency`
-        at a time per shard.
+        """Remotely apply fn to each item in this iterator.
 
         If `max_concurrency` == 1 then `fn` will be executed serially by each
         shards
 
         `max_concurrency` should be used to achieve a high degree of
         parallelism without the overhead of increasing the number of shards
-        (which are actor based). This provides the semantic guarantee that
-        `fn(x_i)` will _begin_ executing before `fn(x_{i+1})` (but not
-        necessarily finish first)
+        (which are actor based). If `max_concurrency` is not 1, this function
+        provides no semantic guarantees on the output order.
+        Results will be returned as soon as they are ready.
 
         A performance note: When executing concurrently, this function
         maintains its own internal buffer. If `num_async` is `n` and
@@ -224,7 +251,6 @@ class ParallelIterator(Generic[T]):
             ParallelIterator[U]: a parallel iterator whose elements have `fn`
             applied.
 
-
         Examples:
             >>> next(from_range(4).for_each(
                         lambda x: x * 2,
@@ -234,6 +260,7 @@ class ParallelIterator(Generic[T]):
             ... [0, 2, 4, 8]
 
         """
+        assert max_concurrency >= 0, "max_concurrency must be non-negative."
         return self._with_transform(
             lambda local_it: local_it.for_each(fn, max_concurrency, resources),
             ".for_each()")
@@ -375,10 +402,10 @@ class ParallelIterator(Generic[T]):
                 else:
                     ready, _ = ray.wait(
                         pending, num_returns=len(pending), timeout=timeout)
-                for obj_id in ready:
-                    actor = futures.pop(obj_id)
+                for obj_ref in ready:
+                    actor = futures.pop(obj_ref)
                     try:
-                        batch = ray.get(obj_id)
+                        batch = ray.get(obj_ref)
                         futures[actor.par_iter_slice_batch.remote(
                             step=num_partitions,
                             start=partition_index,
@@ -518,11 +545,11 @@ class ParallelIterator(Generic[T]):
                 else:
                     ready, _ = ray.wait(
                         pending, num_returns=len(pending), timeout=timeout)
-                for obj_id in ready:
-                    actor = futures.pop(obj_id)
+                for obj_ref in ready:
+                    actor = futures.pop(obj_ref)
                     try:
                         local_iter.shared_metrics.get().current_actor = actor
-                        batch = ray.get(obj_id)
+                        batch = ray.get(obj_ref)
                         futures[actor.par_iter_next_batch.remote(
                             batch_ms)] = actor
                         for item in batch:
@@ -736,6 +763,20 @@ class LocalIterator(Generic[T]):
     def __repr__(self):
         return "LocalIterator[{}]".format(self.name)
 
+    def transform(self, fn: Callable[[Iterable[T]], Iterable[U]]
+                  ) -> "LocalIterator[U]":
+
+        # TODO(ekl) can we automatically handle NextValueNotReady here?
+        def apply_transform(it):
+            for item in fn(it):
+                yield item
+
+        return LocalIterator(
+            self.base_iterator,
+            self.shared_metrics,
+            self.local_transforms + [apply_transform],
+            name=self.name + ".transform()")
+
     def for_each(self, fn: Callable[[T], U], max_concurrency=1,
                  resources=None) -> "LocalIterator[U]":
         if max_concurrency == 1:
@@ -765,23 +806,13 @@ class LocalIterator(Generic[T]):
                     if isinstance(item, _NextValueNotReady):
                         yield item
                     else:
-                        finished, remaining = ray.wait(cur, timeout=0)
-                        if max_concurrency and len(
-                                remaining) >= max_concurrency:
-                            ray.wait(cur, num_returns=(len(finished) + 1))
+                        if max_concurrency and len(cur) >= max_concurrency:
+                            finished, cur = ray.wait(cur)
+                            yield from ray.get(finished)
                         cur.append(remote_fn(item))
-
-                        while len(cur) > 0:
-                            to_yield = cur[0]
-                            finished, remaining = ray.wait(
-                                [to_yield], timeout=0)
-                            if finished:
-                                cur.pop(0)
-                                yield ray.get(to_yield)
-                            else:
-                                break
-
-                yield from ray.get(cur)
+                while cur:
+                    finished, cur = ray.wait(cur)
+                    yield from ray.get(finished)
 
         if hasattr(fn, LocalIterator.ON_FETCH_START_HOOK_NAME):
             unwrapped = apply_foreach

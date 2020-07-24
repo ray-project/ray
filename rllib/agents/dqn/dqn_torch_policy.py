@@ -52,7 +52,6 @@ class QLoss:
             "mean_q": torch.mean(q_t_selected),
             "min_q": torch.min(q_t_selected),
             "max_q": torch.max(q_t_selected),
-            "td_error": self.td_error,
             "mean_td_error": torch.mean(self.td_error),
         }
 
@@ -169,7 +168,9 @@ def build_q_losses(policy, model, _, train_batch):
     # q scores for actions which we know were selected in the given state.
     one_hot_selection = F.one_hot(train_batch[SampleBatch.ACTIONS],
                                   policy.action_space.n)
-    q_t_selected = torch.sum(q_t * one_hot_selection, 1)
+    q_t_selected = torch.sum(
+        torch.where(q_t > -float("inf"), q_t, torch.tensor(0.0)) *
+        one_hot_selection, 1)
 
     # compute estimate of best possible value starting from state at t + 1
     if config["double_q"]:
@@ -182,11 +183,13 @@ def build_q_losses(policy, model, _, train_batch):
         q_tp1_best_using_online_net = torch.argmax(q_tp1_using_online_net, 1)
         q_tp1_best_one_hot_selection = F.one_hot(q_tp1_best_using_online_net,
                                                  policy.action_space.n)
-        q_tp1_best = torch.sum(q_tp1 * q_tp1_best_one_hot_selection, 1)
     else:
         q_tp1_best_one_hot_selection = F.one_hot(
             torch.argmax(q_tp1, 1), policy.action_space.n)
-        q_tp1_best = torch.sum(q_tp1 * q_tp1_best_one_hot_selection, 1)
+
+    q_tp1_best = torch.sum(
+        torch.where(q_tp1 > -float("inf"), q_tp1, torch.tensor(0.0)) *
+        q_tp1_best_one_hot_selection, 1)
 
     policy.q_loss = QLoss(q_t_selected, q_tp1_best, train_batch[PRIO_WEIGHTS],
                           train_batch[SampleBatch.REWARDS],
@@ -246,10 +249,7 @@ def compute_q_values(policy, model, obs, explore, is_training=False):
 
 def grad_process_and_td_error_fn(policy, optimizer, loss):
     # Clip grads if configured.
-    info = apply_grad_clipping(policy, optimizer, loss)
-    # Add td-error to info dict.
-    info["td_error"] = policy.q_loss.td_error
-    return info
+    return apply_grad_clipping(policy, optimizer, loss)
 
 
 def extra_action_out_fn(policy, input_dict, state_batches, model, action_dist):
@@ -266,6 +266,7 @@ DQNTorchPolicy = build_torch_policy(
     postprocess_fn=postprocess_nstep_and_prio,
     optimizer_fn=adam_optimizer,
     extra_grad_process_fn=grad_process_and_td_error_fn,
+    extra_learn_fetches_fn=lambda policy: {"td_error": policy.q_loss.td_error},
     extra_action_out_fn=extra_action_out_fn,
     before_init=setup_early_mixins,
     after_init=after_init,

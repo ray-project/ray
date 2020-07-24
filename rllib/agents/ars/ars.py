@@ -216,7 +216,7 @@ class ARSTrainer(Trainer):
         return self.policy
 
     @override(Trainer)
-    def _train(self):
+    def step(self):
         config = self.config
 
         theta = self.policy.get_flat_weights()
@@ -313,7 +313,7 @@ class ARSTrainer(Trainer):
         return result
 
     @override(Trainer)
-    def _stop(self):
+    def cleanup(self):
         # workaround for https://github.com/ray-project/ray/issues/1516
         for w in self.workers:
             w.__ray_terminate__.remote()

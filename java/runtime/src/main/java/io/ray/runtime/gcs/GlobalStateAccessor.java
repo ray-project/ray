@@ -78,6 +78,14 @@ public class GlobalStateAccessor {
     }
   }
 
+  public byte[] getInternalConfig() {
+    synchronized (GlobalStateAccessor.class) {
+      Preconditions.checkState(globalStateAccessorNativePointer != 0,
+          "Get internal config when global state accessor have been destroyed.");
+      return nativeGetInternalConfig(globalStateAccessorNativePointer);
+    }
+  }
+
   /**
    * @return A list of actor info with ActorInfo protobuf schema.
    */
@@ -127,13 +135,13 @@ public class GlobalStateAccessor {
 
   private native boolean nativeConnect(long nativePtr);
 
-  private native void nativeDisconnect(long nativePtr);
-
   private native List<byte[]> nativeGetAllJobInfo(long nativePtr);
 
   private native List<byte[]> nativeGetAllNodeInfo(long nativePtr);
 
   private native byte[] nativeGetNodeResourceInfo(long nativePtr, byte[] nodeId);
+
+  private native byte[] nativeGetInternalConfig(long nativePtr);
 
   private native List<byte[]> nativeGetAllActorInfo(long nativePtr);
 

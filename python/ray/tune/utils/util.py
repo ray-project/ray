@@ -2,7 +2,7 @@ import copy
 import logging
 import threading
 import time
-from collections import defaultdict
+from collections import defaultdict, deque, Mapping, Sequence
 from threading import Thread
 
 import numpy as np
@@ -97,9 +97,9 @@ class UtilMonitor(Thread):
 def pin_in_object_store(obj):
     """Deprecated, use ray.put(value, weakref=False) instead."""
 
-    obj_id = ray.put(obj, weakref=False)
-    _pinned_objects.append(obj_id)
-    return obj_id
+    obj_ref = ray.put(obj, weakref=False)
+    _pinned_objects.append(obj_ref)
+    return obj_ref
 
 
 def get_pinned_object(pinned_id):
@@ -154,26 +154,26 @@ def merge_dicts(d1, d2):
 def deep_update(original,
                 new_dict,
                 new_keys_allowed=False,
-                whitelist=None,
+                allow_new_subkey_list=None,
                 override_all_if_type_changes=None):
     """Updates original dict with values from new_dict recursively.
 
     If new key is introduced in new_dict, then if new_keys_allowed is not
     True, an error will be thrown. Further, for sub-dicts, if the key is
-    in the whitelist, then new subkeys can be introduced.
+    in the allow_new_subkey_list, then new subkeys can be introduced.
 
     Args:
         original (dict): Dictionary with default values.
         new_dict (dict): Dictionary with values to be updated
         new_keys_allowed (bool): Whether new keys are allowed.
-        whitelist (Optional[List[str]]): List of keys that correspond to dict
-            values where new subkeys can be introduced. This is only at the top
-            level.
+        allow_new_subkey_list (Optional[List[str]]): List of keys that
+            correspond to dict values where new subkeys can be introduced.
+            This is only at the top level.
         override_all_if_type_changes(Optional[List[str]]): List of top level
             keys with value=dict, for which we always simply override the
             entire value (dict), iff the "type" key in that value dict changes.
     """
-    whitelist = whitelist or []
+    allow_new_subkey_list = allow_new_subkey_list or []
     override_all_if_type_changes = override_all_if_type_changes or []
 
     for k, value in new_dict.items():
@@ -187,10 +187,10 @@ def deep_update(original,
                     "type" in value and "type" in original[k] and \
                     value["type"] != original[k]["type"]:
                 original[k] = value
-            # Whitelisted key -> ok to add new subkeys.
-            elif k in whitelist:
+            # Allowed key -> ok to add new subkeys.
+            elif k in allow_new_subkey_list:
                 deep_update(original[k], value, True)
-            # Non-whitelisted key.
+            # Non-allowed key.
             else:
                 deep_update(original[k], value, new_keys_allowed)
         # Original value not a dict OR new value not a dict:
@@ -214,6 +214,27 @@ def flatten_dict(dt, delimiter="/"):
         for k in remove:
             del dt[k]
     return dt
+
+
+def unflattened_lookup(flat_key, lookup, delimiter="/", default=None):
+    """
+    Unflatten `flat_key` and iteratively look up in `lookup`. E.g.
+    `flat_key="a/0/b"` will try to return `lookup["a"][0]["b"]`.
+    """
+    keys = deque(flat_key.split(delimiter))
+    base = lookup
+    while keys:
+        key = keys.popleft()
+        try:
+            if isinstance(base, Mapping):
+                base = base[key]
+            elif isinstance(base, Sequence):
+                base = base[int(key)]
+            else:
+                raise KeyError()
+        except KeyError:
+            return default
+    return base
 
 
 def _to_pinnable(obj):
