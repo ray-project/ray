@@ -4,11 +4,13 @@ import functools
 import tree
 
 from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils import MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT, \
     SMALL_NUMBER
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
+from ray.rllib.utils.types import TensorType, List
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
@@ -18,14 +20,14 @@ tfp = try_import_tfp()
 class TFActionDistribution(ActionDistribution):
     """TF-specific extensions for building action distributions."""
 
-    @DeveloperAPI
-    def __init__(self, inputs, model):
+    @override(ActionDistribution)
+    def __init__(self, inputs: List[TensorType], model: ModelV2):
         super().__init__(inputs, model)
         self.sample_op = self._build_sample_op()
         self.sampled_action_logp_op = self.logp(self.sample_op)
 
     @DeveloperAPI
-    def _build_sample_op(self):
+    def _build_sample_op(self) -> TensorType:
         """Implement this instead of sample(), to enable op reuse.
 
         This is needed since the sample op is non-deterministic and is shared
@@ -34,12 +36,12 @@ class TFActionDistribution(ActionDistribution):
         raise NotImplementedError
 
     @override(ActionDistribution)
-    def sample(self):
+    def sample(self) -> TensorType:
         """Draw a sample from the action distribution."""
         return self.sample_op
 
     @override(ActionDistribution)
-    def sampled_action_logp(self):
+    def sampled_action_logp(self) -> TensorType:
         """Returns the log probability of the sampled action."""
         return self.sampled_action_logp_op
 
@@ -242,9 +244,8 @@ class DiagGaussian(TFActionDistribution):
         assert isinstance(other, DiagGaussian)
         return tf.reduce_sum(
             other.log_std - self.log_std +
-            (tf.math.square(self.std) +
-             tf.math.square(self.mean - other.mean)) /
-            (2.0 * tf.math.square(other.std)) - 0.5,
+            (tf.math.square(self.std) + tf.math.square(self.mean - other.mean))
+            / (2.0 * tf.math.square(other.std)) - 0.5,
             axis=1)
 
     @override(ActionDistribution)
