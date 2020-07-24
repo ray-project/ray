@@ -283,7 +283,7 @@ build_wheels() {
       suppress_output "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
       ;;
     msys*)
-      suppress_output "${WORKSPACE_DIR}"/python/build-wheel-windows.sh
+      "${WORKSPACE_DIR}"/python/build-wheel-windows.sh
       ;;
   esac
 }
