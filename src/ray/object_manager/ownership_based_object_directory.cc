@@ -191,13 +191,85 @@ void OwnershipBasedObjectDirectory::HandleClientRemoved(const ClientID &client_i
   }
 }
 
+void OwnershipBasedObjectDirectory::SubscriptionCallback(
+    ObjectID object_id,
+    WorkerID worker_id,
+    Status status,
+    const rpc::GetObjectLocationsOwnerReply &reply) {
+  auto it = listeners_.find(object_id);
+  if (it == listeners_.end()) {
+    // Remove the cached worker client if there are no more pending requests.
+    if (--worker_rpc_clients_[worker_id].second == 0) {
+      worker_rpc_clients_.erase(worker_id);
+    }
+    return;
+  }
+
+  std::unordered_set<ClientID> client_ids;
+  for (auto const &client_id : reply.client_ids()) {
+    client_ids.emplace(ClientID::FromBinary(client_id));
+  }
+
+  if (client_ids != it->second.current_object_locations) {
+    it->second.current_object_locations = std::move(client_ids);
+    auto callbacks = it->second.callbacks;
+    // Call all callbacks associated with the object id locations we have
+    // received.  This notifies the client even if the list of locations is
+    // empty, since this may indicate that the objects have been evicted from
+    // all nodes.
+    for (const auto &callback_pair : callbacks) {
+      // It is safe to call the callback directly since this is already running
+      // in the subscription callback stack.
+      callback_pair.second(object_id, it->second.current_object_locations);
+    }
+  }
+
+  auto worker_it = worker_rpc_clients_.find(worker_id);
+  rpc::GetObjectLocationsOwnerRequest request;
+  request.set_intended_worker_id(worker_id.Binary());
+  request.set_object_id(object_id.Binary());
+  RAY_CHECK_OK(worker_it->second.first->GetObjectLocationsOwner(
+      request, std::bind(&OwnershipBasedObjectDirectory::SubscriptionCallback,
+                          this, object_id, worker_id, std::placeholders::_1,
+                          std::placeholders::_2)));
+}
+
 ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_id,
                                                       const ObjectID &object_id,
+                                                      const rpc::Address &owner_address,
                                                       const OnLocationsFound &callback) {
-  // The naive implementation is to repetitively ask the owner for the locations. Later
-  // We can optimize this by send a request to the owner with the current object locations,
-  // and the owner will only reply when the list changes.
-  return ray::Status::OK();
+  auto it = listeners_.find(object_id);
+  if (it == listeners_.end()) {
+    it = listeners_.emplace(object_id, LocationListenerState()).first;
+    WorkerID worker_id = WorkerID::FromBinary(owner_address.worker_id());
+    auto worker_it = worker_rpc_clients_.find(worker_id);
+    if (worker_it == worker_rpc_clients_.end()) {
+      auto client = std::unique_ptr<rpc::CoreWorkerClient>(
+          new rpc::CoreWorkerClient(owner_address, client_call_manager_));
+      worker_it = worker_rpc_clients_
+              .emplace(worker_id,
+                        std::make_pair<std::unique_ptr<rpc::CoreWorkerClient>, size_t>(
+                            std::move(client), 0))
+              .first;
+    }
+    worker_rpc_clients_[worker_id].second++;
+    rpc::GetObjectLocationsOwnerRequest request;
+    request.set_intended_worker_id(owner_address.worker_id());
+    request.set_object_id(object_id.Binary());
+    RAY_CHECK_OK(worker_it->second.first->GetObjectLocationsOwner(
+        request, std::bind(&OwnershipBasedObjectDirectory::SubscriptionCallback,
+                           this, object_id, worker_id, std::placeholders::_1,
+                           std::placeholders::_2)));
+  }
+  auto &listener_state = it->second;
+
+  if (listener_state.callbacks.count(callback_id) > 0) {
+    return Status::OK();
+  }
+  listener_state.callbacks.emplace(callback_id, callback);
+  // If we previously received some notifications about the object's locations,
+  // immediately notify the caller of the current known locations.
+  return Status::OK();
 }
 
 ray::Status OwnershipBasedObjectDirectory::UnsubscribeObjectLocations(const UniqueID &callback_id,

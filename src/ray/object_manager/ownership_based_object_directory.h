@@ -56,6 +56,7 @@ class OwnershipBasedObjectDirectory : public ObjectDirectoryInterface {
 
   ray::Status SubscribeObjectLocations(const UniqueID &callback_id,
                                        const ObjectID &object_id,
+                                       const rpc::Address &owner_address,
                                        const OnLocationsFound &callback) override;
   ray::Status UnsubscribeObjectLocations(const UniqueID &callback_id,
                                          const ObjectID &object_id) override;
@@ -79,12 +80,6 @@ class OwnershipBasedObjectDirectory : public ObjectDirectoryInterface {
     std::unordered_map<UniqueID, OnLocationsFound> callbacks;
     /// The current set of known locations of this object.
     std::unordered_set<ClientID> current_object_locations;
-    /// This flag will get set to true if received any notification of the object.
-    /// It means current_object_locations is up-to-date with GCS. It
-    /// should never go back to false once set to true. If this is true, and
-    /// the current_object_locations is empty, then this means that the object
-    /// does not exist on any nodes due to eviction or the object never getting created.
-    bool subscribed;
   };
 
   /// Reference to the event loop.
@@ -99,7 +94,8 @@ class OwnershipBasedObjectDirectory : public ObjectDirectoryInterface {
   absl::flat_hash_map<WorkerID, std::pair<std::unique_ptr<rpc::CoreWorkerClient>, size_t>>
       worker_rpc_clients_;
 
-  absl::flat_hash_map<WorkerID, std::unique_ptr<rpc::CoreWorkerClient>> owner_clients_;
+  void SubscriptionCallback(ObjectID object_id, WorkerID worker_id, Status status,
+                            const rpc::GetObjectLocationsOwnerReply &reply);
 };
 
 }  // namespace ray

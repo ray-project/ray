@@ -93,6 +93,7 @@ class ObjectDirectoryInterface {
   /// \return Status of whether subscription succeeded.
   virtual ray::Status SubscribeObjectLocations(const UniqueID &callback_id,
                                                const ObjectID &object_id,
+                                               const rpc::Address &owner_address,
                                                const OnLocationsFound &callback) = 0;
 
   /// Unsubscribe to object location notifications.
@@ -157,6 +158,7 @@ class ObjectDirectory : public ObjectDirectoryInterface {
 
   ray::Status SubscribeObjectLocations(const UniqueID &callback_id,
                                        const ObjectID &object_id,
+                                       const rpc::Address &owner_address,
                                        const OnLocationsFound &callback) override;
   ray::Status UnsubscribeObjectLocations(const UniqueID &callback_id,
                                          const ObjectID &object_id) override;
