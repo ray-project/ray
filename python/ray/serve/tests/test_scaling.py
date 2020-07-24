@@ -1,6 +1,6 @@
 import sys
+import socket
 
-import requests
 import pytest
 
 import ray
@@ -11,13 +11,13 @@ from ray.cluster_utils import Cluster
 
 
 @pytest.mark.skipif(
-    sys.platform != "darwin",
+    not hasattr(socket, "SO_REUSEPORT"),
     reason=("Port sharing only works on newer verion of Linux. "
-            "It's not supported in Travis CI."))
+            "This test can only be ran when port sharing is supported."))
 def test_multiple_routers():
     cluster = Cluster()
     head_node = cluster.add_node()
-    child_node = cluster.add_node()
+    cluster.add_node()
 
     ray.init(head_node.address)
     node_ids = ray.state.node_ids()
