@@ -358,13 +358,14 @@ py_test(
     args = ["--smoke-test"]
 )
 
-py_test(
-    name = "mlflow_example",
-    size = "medium",
-    srcs = ["examples/mlflow_example.py"],
-    deps = [":tune_lib"],
-    tags = ["exclusive", "example"]
-)
+# Commenting out for now because it is not idempotent
+# py_test(
+#     name = "mlflow_example",
+#     size = "medium",
+#     srcs = ["examples/mlflow_example.py"],
+#     deps = [":tune_lib"],
+#     tags = ["exclusive", "example"]
+# )
 
 py_test(
     name = "mnist_pytorch",
