@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/lib/java/io_ray_runtime_task_NativeTaskSubmitter.h"
+#include "io_ray_runtime_task_NativeTaskSubmitter.h"
 
 #include <jni.h>
 
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker.h"
-#include "ray/core_worker/lib/java/jni_utils.h"
+#include "jni_utils.h"
 
 /// Store C++ instances of ray function in the cache to avoid unnessesary JNI operations.
 thread_local std::unordered_map<jint, std::vector<std::pair<jobject, ray::RayFunction>>>

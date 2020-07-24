@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ray/protobuf/common.pb.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 

@@ -96,5 +96,5 @@ SimpleQTorchPolicy = build_torch_policy(
     make_model_and_action_dist=build_q_model_and_distribution,
     mixins=[TargetNetworkMixin],
     action_distribution_fn=get_distribution_inputs_and_class,
-    stats_fn=lambda policy, config: {"td_error": policy.td_error},
+    extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
 )

@@ -24,7 +24,7 @@ cdef extern from "google/protobuf/repeated_field.h" nogil:
     cdef cppclass RepeatedField[Element]:
         const Element* data() const
 
-cdef extern from "ray/protobuf/serialization.pb.h" nogil:
+cdef extern from "src/ray/protobuf/serialization.pb.h" nogil:
     cdef cppclass CPythonBuffer "ray::serialization::PythonBuffer":
         void set_address(uint64_t value)
         uint64_t address() const

@@ -200,6 +200,7 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
     strftime(buffer, sizeof(buffer), "%Y%m%d-%H%M%S", localtime(&rawtime));
     std::string path = dir_ends_with_slash + app_name_without_path + "." + buffer + "." +
                        std::to_string(pid) + ".log";
+    stream_logger_singleton.out_.rdbuf()->pubsetbuf(0, 0);
     stream_logger_singleton.out_.open(path.c_str(),
                                       std::ios_base::app | std::ios_base::binary);
   }
@@ -237,6 +238,7 @@ void RayLog::UninstallSignalAction() {
 }
 
 void RayLog::ShutDownRayLog() {
+  stream_logger_singleton.out_.close();
 #ifdef RAY_USE_GLOG
   UninstallSignalAction();
   google::ShutdownGoogleLogging();

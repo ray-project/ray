@@ -66,9 +66,9 @@ class CoreWorkerDirectTaskSubmitter {
         resolver_(store, task_finisher),
         task_finisher_(task_finisher),
         lease_timeout_ms_(lease_timeout_ms),
-        max_tasks_in_flight_per_worker_(max_tasks_in_flight_per_worker),
         local_raylet_id_(local_raylet_id),
         actor_create_callback_(std::move(actor_create_callback)),
+        max_tasks_in_flight_per_worker_(max_tasks_in_flight_per_worker),
         cancel_retry_timer_(std::move(cancel_timer)) {}
 
   /// Schedule a task for direct submission to a worker.
