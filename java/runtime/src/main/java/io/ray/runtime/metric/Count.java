@@ -6,6 +6,9 @@ import java.util.Map;
 import java.util.concurrent.atomic.DoubleAdder;
 import java.util.stream.Collectors;
 
+/**
+ * Count measurement is mapped to count object in stats and counts the number.
+ */
 public class Count extends Metric {
 
   private DoubleAdder count;
@@ -21,25 +24,18 @@ public class Count extends Metric {
   @Override
   public void update(double value) {
     count.add(value);
+    this.value.addAndGet(value);
   }
 
   @Override
-  public void reset() {
-    count.reset();
-  }
-
-  @Override
-  public double getValue() {
-    return getCount();
+  protected double getAndReset() {
+    return count.sumThenReset();
   }
 
   public double getCount() {
-    return count.sum();
+    return this.value.get();
   }
 
-  /**
-   * @param delta add delta for counter
-   */
   public void inc(double delta) {
     update(delta);
   }

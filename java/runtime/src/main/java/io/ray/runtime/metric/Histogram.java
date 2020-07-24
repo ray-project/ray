@@ -39,25 +39,20 @@ public class Histogram extends Metric {
   @Override
   public void update(double value) {
     updateForWindow(value);
+    this.value.set(value);
   }
 
   @Override
-  public void reset() {
+  protected double getAndReset() {
     histogramWindow.clear();
-  }
-
-  /**
-   * @return latest updating value.
-   */
-  @Override
-  public double getValue() {
-    if (histogramWindow.size() == 0) {
-      return 0.0d;
-    }
-    return histogramWindow.get(histogramWindow.size() - 1);
+    return value.doubleValue();
   }
 
   public List<Double> getHistogramWindow() {
     return histogramWindow;
+  }
+
+  public double getValue() {
+    return value.get();
   }
 }

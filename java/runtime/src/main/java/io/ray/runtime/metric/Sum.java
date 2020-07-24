@@ -1,6 +1,5 @@
 package io.ray.runtime.metric;
 
-
 import com.google.common.base.Preconditions;
 
 import java.util.Map;
@@ -26,19 +25,15 @@ public class Sum extends Metric {
   @Override
   public void update(double value) {
     sum.add(value);
+    this.value.addAndGet(value);
   }
 
   @Override
-  public void reset() {
-    sum.reset();
-  }
-
-  @Override
-  public double getValue() {
-    return getSum();
+  protected double getAndReset() {
+    return sum.sumThenReset();
   }
 
   public double getSum() {
-    return sum.sum();
+    return value.get();
   }
 }

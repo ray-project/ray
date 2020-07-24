@@ -1,7 +1,7 @@
 package io.ray.runtime.metric;
 
 import com.google.common.base.Preconditions;
-
+import com.google.common.util.concurrent.AtomicDouble;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -14,6 +14,8 @@ import java.util.stream.Collectors;
 public abstract class Metric {
   protected String name;
 
+  protected AtomicDouble value;
+
   // Native pointer mapping to gauge object of stats.
   protected long metricNativePointer = 0L;
 
@@ -24,6 +26,7 @@ public abstract class Metric {
     Preconditions.checkNotNull(name, "Metric name must not be null.");
     this.name = name;
     this.tags = tags;
+    this.value = new AtomicDouble();
   }
 
   // Sync metric with core worker stats for registry.
@@ -42,28 +45,19 @@ public abstract class Metric {
       tagValues.add(entry.getValue());
     }
     // Get tag value list from map;
-    NativeMetric.recordNative(metricNativePointer, getValue(), nativeTagKeyList.stream()
+    NativeMetric.recordNative(metricNativePointer, getAndReset(), nativeTagKeyList.stream()
         .map(TagKey::getTagKey).collect(Collectors.toList()), tagValues);
   }
 
-  private native void recordNative(long gaugePtr, double value,
-                                   List tagKeys,
-                                   List<String> tagValues);
-
   /**
-   * It's abstract method for each metric measurements, so metric registry can store transient
-   * value and aggregate historical data for flushing.
-   */
-  public abstract void reset();
-
-  /**
+   * Get the value to record and then reset.
    * @return latest updating value.
    */
-  public abstract double getValue();
+  protected abstract double getAndReset();
 
   /** Update gauge value without tags.
    * Update metric info for user.
-   * @param value lastest value for updating
+   * @param value latest value for updating
    */
   public abstract void update(double value);
 

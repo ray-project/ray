@@ -108,7 +108,6 @@ public class MetricRegistry {
   private void update() {
     registeredMetrics.forEach((id, metric) -> {
       metric.record();
-      metric.reset();
     });
   }
 

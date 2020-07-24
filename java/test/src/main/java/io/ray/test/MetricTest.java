@@ -127,12 +127,15 @@ public class MetricTest extends BaseTest {
       boundaries, tags);
     for (int i = 1; i <= 200; ++i) {
       histogram.update(i * 1.0d);
-      histogram.record();
     }
+    Assert.assertTrue(doubleEqual(200.0d, histogram.getValue()));
     List<Double> window = histogram.getHistogramWindow();
     for (int i = 0; i < Histogram.HISTOGRAM_WINDOW_SIZE; ++i) {
       Assert.assertTrue(doubleEqual(i + 101.0d, window.get(i)));
     }
+    histogram.record();
+    Assert.assertTrue(doubleEqual(200.0d, histogram.getValue()));
+    Assert.assertEquals(window.size(), 0);
   }
 
   @Test
@@ -143,7 +146,7 @@ public class MetricTest extends BaseTest {
     gauge.update(2.0);
     Assert.assertTrue(doubleEqual(gauge.getValue(), 2.0));
     TimeUnit.MILLISECONDS.sleep(MetricConfig.DEFAULT_CONFIG.timeIntervalMs() + 1000L);
-    Assert.assertTrue(doubleEqual(gauge.getValue(), 0.0));
+    Assert.assertTrue(doubleEqual(gauge.getValue(), 2.0));
     gauge.update(5.0);
     Assert.assertTrue(doubleEqual(gauge.getValue(), 5.0));
   }
@@ -157,10 +160,10 @@ public class MetricTest extends BaseTest {
     count.inc(20.0);
     Assert.assertTrue(doubleEqual(count.getCount(), 30.0));
     TimeUnit.MILLISECONDS.sleep(MetricConfig.DEFAULT_CONFIG.timeIntervalMs() + 1000L);
-    Assert.assertTrue(doubleEqual(count.getCount(), 0.0));
+    Assert.assertTrue(doubleEqual(count.getCount(), 30.0));
     count.inc(1.0);
     count.inc(2.0);
-    Assert.assertTrue(doubleEqual(count.getCount(), 3.0));
+    Assert.assertTrue(doubleEqual(count.getCount(), 33.0));
   }
 
   @Test
@@ -172,10 +175,10 @@ public class MetricTest extends BaseTest {
     sum.update(20.0);
     Assert.assertTrue(doubleEqual(sum.getSum(), 30.0));
     TimeUnit.MILLISECONDS.sleep(MetricConfig.DEFAULT_CONFIG.timeIntervalMs() + 1000L);
-    Assert.assertTrue(doubleEqual(sum.getSum(), 0.0));
+    Assert.assertTrue(doubleEqual(sum.getSum(), 30.0));
     sum.update(1.0);
     sum.update(2.0);
-    Assert.assertTrue(doubleEqual(sum.getSum(), 3.0));
+    Assert.assertTrue(doubleEqual(sum.getSum(), 33.0));
   }
 
   @Test
@@ -186,13 +189,13 @@ public class MetricTest extends BaseTest {
     for (int i = 1; i <= 200; ++i) {
       histogram.update(i * 1.0d);
     }
-    Assert.assertTrue(doubleEqual(histogram.getValue(), 200.0));
+    Assert.assertTrue(doubleEqual(histogram.getValue(), 200.0d));
     List<Double> window = histogram.getHistogramWindow();
     for (int i = 0; i < Histogram.HISTOGRAM_WINDOW_SIZE; ++i) {
       Assert.assertTrue(doubleEqual(i + 101.0d, window.get(i)));
     }
     TimeUnit.MILLISECONDS.sleep(MetricConfig.DEFAULT_CONFIG.timeIntervalMs() + 1000L);
-    Assert.assertTrue(doubleEqual(histogram.getValue(), 0.0));
+    Assert.assertTrue(doubleEqual(histogram.getValue(), 200.0d));
   }
 
   @Test
@@ -204,7 +207,7 @@ public class MetricTest extends BaseTest {
     gauge.update(2.0);
     Assert.assertTrue(doubleEqual(gauge.getValue(), 2.0));
     TimeUnit.MILLISECONDS.sleep(config.timeIntervalMs() + 1000L);
-    Assert.assertTrue(doubleEqual(gauge.getValue(), 0.0));
+    Assert.assertTrue(doubleEqual(gauge.getValue(), 2.0));
     gauge.update(5.0);
     Assert.assertTrue(doubleEqual(gauge.getValue(), 5.0));
   }
@@ -219,10 +222,10 @@ public class MetricTest extends BaseTest {
     count.inc(20.0);
     Assert.assertTrue(doubleEqual(count.getCount(), 30.0));
     TimeUnit.MILLISECONDS.sleep(config.timeIntervalMs() + 1000L);
-    Assert.assertTrue(doubleEqual(count.getCount(), 0.0));
+    Assert.assertTrue(doubleEqual(count.getCount(), 30.0));
     count.inc(1.0);
     count.inc(2.0);
-    Assert.assertTrue(doubleEqual(count.getCount(), 3.0));
+    Assert.assertTrue(doubleEqual(count.getCount(), 33.0));
   }
 
   @Test
@@ -235,10 +238,10 @@ public class MetricTest extends BaseTest {
     sum.update(20.0);
     Assert.assertTrue(doubleEqual(sum.getSum(), 30.0));
     TimeUnit.MILLISECONDS.sleep(config.timeIntervalMs() + 1000L);
-    Assert.assertTrue(doubleEqual(sum.getSum(), 0.0));
+    Assert.assertTrue(doubleEqual(sum.getSum(), 30.0));
     sum.update(1.0);
     sum.update(2.0);
-    Assert.assertTrue(doubleEqual(sum.getSum(), 3.0));
+    Assert.assertTrue(doubleEqual(sum.getSum(), 33.0));
   }
 
   @Test
@@ -250,13 +253,13 @@ public class MetricTest extends BaseTest {
     for (int i = 1; i <= 200; ++i) {
       histogram.update(i * 1.0d);
     }
-    Assert.assertTrue(doubleEqual(histogram.getValue(), 200.0));
+    Assert.assertTrue(doubleEqual(histogram.getValue(), 200.0d));
     List<Double> window = histogram.getHistogramWindow();
     for (int i = 0; i < Histogram.HISTOGRAM_WINDOW_SIZE; ++i) {
       Assert.assertTrue(doubleEqual(i + 101.0d, window.get(i)));
     }
     TimeUnit.MILLISECONDS.sleep(config.timeIntervalMs() + 1000L);
-    Assert.assertTrue(doubleEqual(histogram.getValue(), 0.0));
+    Assert.assertTrue(doubleEqual(histogram.getValue(), 200.0d));
   }
 
 }
