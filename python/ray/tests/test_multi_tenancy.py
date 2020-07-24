@@ -1,8 +1,9 @@
 # coding: utf-8
 import json
 import os
+import subprocess
 import sys
-from multiprocessing import Process, Queue
+import tempfile
 
 import grpc
 import pytest
@@ -36,58 +37,77 @@ def test_initial_workers(shutdown_only):
 
 
 def test_multi_drivers(shutdown_only):
-    def run_driver(queue, results_queue):
-        ray.init(address=queue.get())
-
-        @ray.remote
-        class Actor:
-            def get_pid(self):
-                return os.getpid()
-
-        @ray.remote
-        def get_pid():
-            return os.getpid()
-
-        pid_objs = []
-        pid_objs = pid_objs + [get_pid.remote() for _ in range(100)]
-        actors = [Actor.remote() for _ in range(10)]
-        pid_objs = pid_objs + [actor.get_pid.remote() for actor in actors]
-
-        pids = set([ray.get(obj) for obj in pid_objs])
-        results_queue.put((os.getpid(), pids))
-
-        ray.shutdown()
-
-    driver_count = 10
-    queue = Queue()
-    results_queue = Queue()
-    processes = [
-        Process(target=run_driver, args=(queue, results_queue))
-        for _ in range(driver_count)
-    ]
-    for p in processes:
-        p.start()
-
     info = ray.init(
         _internal_config=json.dumps({
             "enable_multi_tenancy": True
         }))
-    for _ in range(driver_count):
-        queue.put(info["redis_address"])
 
+    driver_code = """
+import os
+import sys
+import ray
+
+
+assert len(sys.argv) == 2
+ray.init(address=sys.argv[1])
+
+@ray.remote
+class Actor:
+    def get_pid(self):
+        return os.getpid()
+
+@ray.remote
+def get_pid():
+    return os.getpid()
+
+pid_objs = []
+pid_objs = pid_objs + [get_pid.remote() for _ in range(5)]
+actors = [Actor.remote() for _ in range(5)]
+pid_objs = pid_objs + [actor.get_pid.remote() for actor in actors]
+
+pids = set([ray.get(obj) for obj in pid_objs])
+print("PID:" + str.join(",", [str(_) for _ in pids]))
+
+ray.shutdown()
+    """
+
+    f = tempfile.NamedTemporaryFile(suffix=".py")
+    f.write(driver_code.encode("ascii"))
+    f.flush()
+
+    driver_count = 10
+    cmd = [sys.executable, f.name, info["redis_address"]]
+    processes = [
+        subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True) for _ in range(driver_count)
+    ]
+    outputs = []
     for p in processes:
-        p.join(timeout=60)
-        assert not p.is_alive()
-        assert p.exitcode == 0
+        out, err = p.communicate()
+        if p.returncode != 0:
+            print("Driver with PID {} returned error code {}".format(
+                p.pid, p.returncode))
+            print("STDOUT:\n{}".format(out))
+            print("STDERR:\n{}".format(err))
+        outputs.append((p, out))
+
+    f.close()
 
     all_worker_pids = set()
-    for _ in range(driver_count):
-        driver_pid, worker_pids = results_queue.get()
-        for worker_pid in worker_pids:
-            assert worker_pid not in all_worker_pids, (
-                "Worker process with PID {} is shared by multiple drivers." %
-                worker_pid)
-            all_worker_pids.add(worker_pid)
+    for p, out in outputs:
+        assert p.returncode == 0
+        for line in out.split("\n"):
+            if line.startswith("PID:"):
+                worker_pids = [int(_) for _ in line.split(":")[1].split(",")]
+                assert len(worker_pids) > 0
+                for worker_pid in worker_pids:
+                    assert worker_pid not in all_worker_pids, (
+                        "Worker process with PID {} is shared by multiple drivers.".
+                        format(worker_pid))
+                    all_worker_pids.add(worker_pid)
 
 
 if __name__ == "__main__":
