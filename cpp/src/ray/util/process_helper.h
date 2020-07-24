@@ -1,6 +1,6 @@
 #pragma once
-#include <string>
 #include <ray/api/ray_config.h>
+#include <string>
 #include "ray/core.h"
 
 namespace ray {
@@ -18,7 +18,7 @@ class ProcessHelper {
   }
 
  private:
-   static std::shared_ptr<ProcessHelper> ProcessHelper_;
+  static std::shared_ptr<ProcessHelper> ProcessHelper_;
 };
 }  // namespace api
 }  // namespace ray

@@ -4,7 +4,6 @@
 #include <string>
 #include "ray/core.h"
 
-
 namespace ray {
 namespace api {
 
