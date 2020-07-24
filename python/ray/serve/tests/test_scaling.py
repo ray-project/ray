@@ -10,6 +10,10 @@ from ray.serve.utils import block_until_http_ready
 from ray.cluster_utils import Cluster
 
 
+@pytest.mark.skipif(
+    sys.platform != "darwin",
+    reason=("Port sharing only works on newer verion of Linux. "
+            "It's not supported in Travis CI."))
 def test_multiple_routers():
     cluster = Cluster()
     head_node = cluster.add_node()
