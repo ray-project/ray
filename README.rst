@@ -16,6 +16,7 @@ Ray is packaged with the following libraries for accelerating machine learning w
 - `Tune`_: Scalable Hyperparameter Tuning
 - `RLlib`_: Scalable Reinforcement Learning
 - `RaySGD <https://docs.ray.io/en/latest/raysgd/raysgd.html>`__: Distributed Training Wrappers
+- `Ray Serve`_: Scalable and Programmable Serving
 
 Install Ray with: ``pip install ray``. For nightly wheels, see the
 `Installation page <https://docs.ray.io/en/latest/installation.html>`__.
@@ -213,69 +214,45 @@ This example runs serves a scikit-learn gradient boosting classifier.
 .. code-block:: python
 
     from ray import serve
-
     import pickle
     import requests
-
     from sklearn.datasets import load_iris
     from sklearn.ensemble import GradientBoostingClassifier
 
-    serve.init()
-
-    # Load data
-    iris_dataset = load_iris()
-    data, target, target_names = (
-        iris_dataset["data"],
-        iris_dataset["target"],
-        iris_dataset["target_names"],
-    )
-
     # Train model
+    iris_dataset = load_iris()
     model = GradientBoostingClassifier()
-    model.fit(data[:100], target[:100])
-
-    # Save the model and label to file
-    with open("/tmp/iris_model.pkl", "wb") as f:
-        pickle.dump({"model": model, "labels": target_names.tolist()}, f)
+    model.fit(iris_dataset["data"], iris_dataset["target"])
 
     # Define Ray Serve model,
     class BoostingModel:
         def __init__(self):
-            with open("/tmp/iris_model.pkl", "rb") as f:
-                loaded = pickle.load(f)
-                self.model = loaded["model"]
-                self.label_list = loaded["labels"]
+            self.model = model
+            self.label_list = iris_dataset["target_names"].tolist()
 
         def __call__(self, flask_request):
-            payload = flask_request.json
+            payload = flask_request.json["vector"]
             print("Worker: received flask request with data", payload)
 
-            input_vector = [
-                payload["sepal length"],
-                payload["sepal width"],
-                payload["petal length"],
-                payload["petal width"],
-            ]
-            prediction = self.model.predict([input_vector])[0]
+            prediction = self.model.predict([payload])[0]
             human_name = self.label_list[prediction]
             return {"result": human_name}
 
 
+    # Deploy model
+    serve.init()
     serve.create_backend("iris:v1", BoostingModel)
     serve.create_endpoint("iris_classifier", backend="iris:v1", route="/iris")
 
-    sample_request_input = {
-        "sepal length": 1.2,
-        "sepal width": 1.0,
-        "petal length": 1.1,
-        "petal width": 0.9,
-    }
+    # Query it!
+    sample_request_input = {"vector": [1.2, 1.0, 1.1, 0.9]}
     response = requests.get("http://localhost:8000/iris", json=sample_request_input)
     print(response.text)
     # Result:
     # {
     #  "result": "versicolor"
     # }
+
 
 .. _`Ray Serve`: https://docs.ray.io/en/latest/serve/index.html
 
