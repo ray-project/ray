@@ -1,11 +1,11 @@
 .. _cluster-config:
 
-Configuring the Cluster
-=======================
+Configuring your cluster
+========================
 
 The Ray Cluster Launcher requires a *cluster configuration file*, which specifies some important details about the cluster. At a minimum, we need to specify:
 
- * the name of our cluster,
+ * the name of your cluster,
  * the number of workers in the cluster
  * the cloud provider
  * any setup commands that should run on the node upon launch.
