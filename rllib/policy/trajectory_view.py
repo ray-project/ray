@@ -1,7 +1,10 @@
 import numpy as np
-from typing import Dict, Optional
+from typing import Dict, Optional, List, TYPE_CHECKING
 
 from ray.rllib.utils.types import TensorType
+
+if TYPE_CHECKING:
+    from ray.rllib.models import ModelV2
 
 
 class ViewRequirement:
@@ -57,10 +60,9 @@ class ViewRequirement:
         # "time_major",
 
 
-def get_trajectory_view(
-        model,
-        trajectories,
-        is_training: bool = False) -> Dict[str, TensorType]:
+def get_trajectory_view(model: "ModelV2",
+                        trajectories: List["Trajectory"],
+                        is_training: bool = False) -> Dict[str, TensorType]:
     """Returns an input_dict for a Model's forward pass given some data.
 
     Args:
