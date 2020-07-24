@@ -267,10 +267,9 @@ Task CreateTask(const std::unordered_map<std::string, double> &required_resource
 
 class ClusterTaskManagerTest : public ::testing::Test {
  public:
-  ClusterTaskManagerTest() :
-    id_(ClientID::FromRandom()),
-    single_node_resource_scheduler_(CreateSingleNodeScheduler(id_.Binary()))
-  {}
+  ClusterTaskManagerTest()
+      : id_(ClientID::FromRandom()),
+        single_node_resource_scheduler_(CreateSingleNodeScheduler(id_.Binary())) {}
 
   void SetUp() {}
 
@@ -280,7 +279,6 @@ class ClusterTaskManagerTest : public ::testing::Test {
   std::shared_ptr<ClusterResourceScheduler> single_node_resource_scheduler_;
   MockWorkerPool pool_;
   std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
-
 };
 
 TEST_F(ClusterTaskManagerTest, BasicTest) {
@@ -291,7 +289,8 @@ TEST_F(ClusterTaskManagerTest, BasicTest) {
    */
   // Task has no dependencies and shouldn't spill so these functions should never be
   // called.
-  auto task_manager = ClusterTaskManager(id_, single_node_resource_scheduler_, nullptr, nullptr);
+  auto task_manager =
+      ClusterTaskManager(id_, single_node_resource_scheduler_, nullptr, nullptr);
 
   Task task = CreateTask({{ray::kCPU_ResourceLabel, 4}});
   rpc::RequestWorkerLeaseReply reply;
