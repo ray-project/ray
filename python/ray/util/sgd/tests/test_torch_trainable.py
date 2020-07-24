@@ -42,13 +42,13 @@ def test_single_step(ray_start_2_cpus):  # noqa: F811
     trainer.stop()
 
 
-def test_after_completion(ray_start_2_cpus):  # noqa: F811
+def test_step_after_completion(ray_start_2_cpus):  # noqa: F811
     trainable_cls = DistributedTrainableCreator(_train_simple, num_workers=2)
+    print("start")
     trainer = trainable_cls(config={"epochs": 1})
-    for i in range(10):
-        result = trainer.train()
-    print(result)
-    trainer.stop()
+    with pytest.raises(RuntimeError):
+        for i in range(10):
+            result = trainer.train()
 
 
 def test_save_checkpoint(ray_start_2_cpus):  # noqa: F811
@@ -56,8 +56,7 @@ def test_save_checkpoint(ray_start_2_cpus):  # noqa: F811
     trainer = trainable_cls(config={"epochs": 1})
     result = trainer.train()
     path = trainer.save()
-    with open(path) as f:
-        model_state_dict = torch.load(f)
+    model_state_dict, opt_state_dict = torch.load(path)
     print(result)
     trainer.stop()
 

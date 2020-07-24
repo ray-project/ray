@@ -7,6 +7,7 @@ from datetime import timedelta
 
 import ray
 from ray import tune
+from ray.tune.result import DONE, RESULT_DUPLICATE
 from ray.tune.logger import NoopLogger
 from ray.tune.function_runner import wrap_function
 from ray.tune.resources import Resources
@@ -28,13 +29,14 @@ class _TorchTrainable(tune.Trainable):
     _function = None
     _num_workers = None
 
-    __slots__ = ["workers"]
+    __slots__ = ["workers", "_finished"]
 
     @classmethod
     def default_process_group_parameters(self):
         return dict(timeout=timedelta(NCCL_TIMEOUT_S), backend="gloo")
 
     def setup(self, config):
+        self._finished = False
         num_workers = self._num_workers
         logdir = self.logdir
         assert self._function
@@ -62,8 +64,12 @@ class _TorchTrainable(tune.Trainable):
         ])
 
     def step(self):
-        result = ray.get([w.step.remote() for w in self.workers])
-        return result[0]
+        if self._finished:
+            raise RuntimeError("Training has already finished.")
+        result = ray.get([w.step.remote() for w in self.workers])[0]
+        if RESULT_DUPLICATE in result:
+            self._finished = True
+        return result
 
     def save_checkpoint(self, checkpoint_dir):
         # TODO: optimize if colocated
@@ -126,8 +132,8 @@ class distributed_checkpoint:
     .. code-block::
 
         if epoch % 3 == 0:
-            with distributed_checkpoint(label=epoch) as f:
-                torch.save(model.state_dict(), f)
+            with distributed_checkpoint(label=epoch) as path:
+                torch.save(model.state_dict(), path)
     """
 
     def __init__(self, label, disable=False):
@@ -141,13 +147,12 @@ class distributed_checkpoint:
             path = os.path.join(checkpoint_dir, "checkpoint")
         else:
             path = "/dev/null"
-        self.file = open(path, "wb")
-        return self.file
+        self.file = path
+        return path
 
     def __exit__(self, type, value, traceback):
-        self.file.close()
         if torch.distributed.get_rank() == 0 and not self.disable:
-            tune.save_checkpoint(self.file.name)
+            tune.save_checkpoint(self.file)
 
 
 def _train_simple(config, checkpoint=False):
@@ -190,6 +195,6 @@ def _train_simple(config, checkpoint=False):
 
         if epoch % 3 == 0:
             if config.get("enable_checkpoint", True):
-                with distributed_checkpoint(label=epoch) as f:
-                    torch.save((model.state_dict(), optimizer.state_dict()), f)
+                with distributed_checkpoint(label=epoch) as path:
+                    torch.save((model.state_dict(), optimizer.state_dict()), path)
         tune.report(mean_loss=loss.item())
