@@ -13,10 +13,11 @@ namespace api {
 NativeObjectStore::NativeObjectStore(NativeRayRuntime &native_ray_tuntime)
     : native_ray_tuntime_(native_ray_tuntime) {}
 
-void NativeObjectStore::PutRaw(std::shared_ptr<msgpack::sbuffer> data, ObjectID *object_id) {
+void NativeObjectStore::PutRaw(std::shared_ptr<msgpack::sbuffer> data,
+                               ObjectID *object_id) {
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
   auto buffer = std::make_shared<::ray::LocalMemoryBuffer>(
-    reinterpret_cast<uint8_t *>(data->data()), data->size(), true);
+      reinterpret_cast<uint8_t *>(data->data()), data->size(), true);
   auto status = core_worker.Put(
       ::ray::RayObject(buffer, nullptr, std::vector<ObjectID>()), {}, object_id);
   if (!status.ok()) {
@@ -25,10 +26,11 @@ void NativeObjectStore::PutRaw(std::shared_ptr<msgpack::sbuffer> data, ObjectID 
   return;
 }
 
-void NativeObjectStore::PutRaw(std::shared_ptr<msgpack::sbuffer> data, const ObjectID &object_id) {
+void NativeObjectStore::PutRaw(std::shared_ptr<msgpack::sbuffer> data,
+                               const ObjectID &object_id) {
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
   auto buffer = std::make_shared<::ray::LocalMemoryBuffer>(
-    reinterpret_cast<uint8_t *>(data->data()), data->size(), true);
+      reinterpret_cast<uint8_t *>(data->data()), data->size(), true);
   auto status = core_worker.Put(
       ::ray::RayObject(buffer, nullptr, std::vector<ObjectID>()), {}, object_id);
   if (!status.ok()) {
@@ -50,8 +52,7 @@ std::vector<std::shared_ptr<msgpack::sbuffer>> NativeObjectStore::GetRaw(
     const std::vector<ObjectID> &ids, int timeout_ms) {
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
   std::vector<std::shared_ptr<::ray::RayObject>> results;
-  ::ray::Status status = 
-      core_worker.Get(ids, timeout_ms, &results);
+  ::ray::Status status = core_worker.Get(ids, timeout_ms, &results);
   if (!status.ok()) {
     throw RayException("Get object error: " + status.ToString());
   }

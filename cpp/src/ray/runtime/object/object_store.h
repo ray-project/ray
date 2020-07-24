@@ -58,12 +58,10 @@ class ObjectStore {
                           int timeout_ms) = 0;
 
  private:
+  virtual void PutRaw(std::shared_ptr<msgpack::sbuffer> data, ObjectID *object_id) = 0;
 
   virtual void PutRaw(std::shared_ptr<msgpack::sbuffer> data,
-                                                   ObjectID *object_id) = 0;
- 
-  virtual void PutRaw(std::shared_ptr<msgpack::sbuffer> data,
-                                                   const ObjectID &object_id) = 0;
+                      const ObjectID &object_id) = 0;
 
   virtual std::shared_ptr<msgpack::sbuffer> GetRaw(const ObjectID &object_id,
                                                    int timeout_ms) = 0;

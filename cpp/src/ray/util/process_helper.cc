@@ -1,8 +1,8 @@
 #include "process_helper.h"
+#include "hiredis/hiredis.h"
 #include "ray/core.h"
 #include "ray/util/process.h"
 #include "ray/util/util.h"
-#include "hiredis/hiredis.h"
 
 namespace ray {
 namespace api {
@@ -25,8 +25,9 @@ static std::string GetSessionDir(std::string redis_ip, int port, std::string pas
 }
 
 static void StartRayNode(int redis_port, std::string redis_password) {
-  std::vector<std::string> cmdargs(
-      {"ray", "start", "--head", "--redis-port", std::to_string(redis_port), "--redis-password", redis_password});
+  std::vector<std::string> cmdargs({"ray", "start", "--head", "--redis-port",
+                                    std::to_string(redis_port), "--redis-password",
+                                    redis_password});
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true).second);
   sleep(3);
@@ -42,44 +43,43 @@ static void StopRayNode() {
 }
 
 void ProcessHelper::RayStart(std::shared_ptr<RayConfig> config) {
-    
-    std::string redis_ip = config->redis_ip;
-    if (redis_ip.empty()) {
-      redis_ip = "127.0.0.1";
-      StartRayNode(config->redis_port, config->redis_password);
-    }
+  std::string redis_ip = config->redis_ip;
+  if (redis_ip.empty()) {
+    redis_ip = "127.0.0.1";
+    StartRayNode(config->redis_port, config->redis_password);
+  }
 
-    auto session_dir = GetSessionDir(redis_ip, config->redis_port, config->redis_password);
+  auto session_dir = GetSessionDir(redis_ip, config->redis_port, config->redis_password);
 
+  gcs::GcsClientOptions gcs_options =
+      gcs::GcsClientOptions(redis_ip, config->redis_port, config->redis_password);
 
-    gcs::GcsClientOptions gcs_options = gcs::GcsClientOptions(redis_ip, config->redis_port, config->redis_password);
-    
-    CoreWorkerOptions options = {
-    config->worker_type,            // worker_type
-    Language::CPP,                  // langauge
-    session_dir + "/sockets/plasma_store",      // store_socket
-    session_dir + "/sockets/raylet",            // raylet_socket
-    JobID::FromInt(1),              // job_id
-    gcs_options,                   // gcs_options
-    true,                           // enable_logging
-    "",                             // log_dir
-    true,                           // install_failure_signal_handler
-    "127.0.0.1",                    // node_ip_address
-    config->node_manager_port,      // node_manager_port
-    "127.0.0.1",                    // raylet_ip_address
-    "cpp_worker",                   // driver_name
-    "",                             // stdout_file
-    "",                             // stderr_file
-    nullptr,                        // task_execution_callback
-    nullptr,                        // check_signals
-    nullptr,                        // gc_collect
-    nullptr,                        // get_lang_stack
-    nullptr,                        // kill_main
-    true,                           // ref_counting_enabled
-    false,                          // is_local_mode
-    1,                              // num_workers
-};
-CoreWorkerProcess::Initialize(options);
+  CoreWorkerOptions options = {
+      config->worker_type,                    // worker_type
+      Language::CPP,                          // langauge
+      session_dir + "/sockets/plasma_store",  // store_socket
+      session_dir + "/sockets/raylet",        // raylet_socket
+      JobID::FromInt(1),                      // job_id
+      gcs_options,                            // gcs_options
+      true,                                   // enable_logging
+      "",                                     // log_dir
+      true,                                   // install_failure_signal_handler
+      "127.0.0.1",                            // node_ip_address
+      config->node_manager_port,              // node_manager_port
+      "127.0.0.1",                            // raylet_ip_address
+      "cpp_worker",                           // driver_name
+      "",                                     // stdout_file
+      "",                                     // stderr_file
+      nullptr,                                // task_execution_callback
+      nullptr,                                // check_signals
+      nullptr,                                // gc_collect
+      nullptr,                                // get_lang_stack
+      nullptr,                                // kill_main
+      true,                                   // ref_counting_enabled
+      false,                                  // is_local_mode
+      1,                                      // num_workers
+  };
+  CoreWorkerProcess::Initialize(options);
 }
 
 void ProcessHelper::RayStop(std::shared_ptr<RayConfig> config) {

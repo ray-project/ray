@@ -178,8 +178,10 @@ int main(int argc, char *argv[]) {
           node_manager_config.worker_commands.emplace(
               make_pair(ray::Language::CPP, ParseCommandLine(cpp_worker_command)));
         }
-        if (python_worker_command.empty() && java_worker_command.empty() && cpp_worker_command.empty()) {
-          RAY_CHECK(0) << "Python worker command or Java worker command or CPP worker command should be "
+        if (python_worker_command.empty() && java_worker_command.empty() &&
+            cpp_worker_command.empty()) {
+          RAY_CHECK(0) << "Python worker command or Java worker command or CPP worker "
+                          "command should be "
                           "provided.";
         }
 
