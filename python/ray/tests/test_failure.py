@@ -37,8 +37,8 @@ def wait_for_message(p, num, timeout=10):
             continue
         pubsub_msg = ray.gcs_utils.PubSubMessage.FromString(msg["data"])
         # skip the dashboard error message
-        if b"dashboard_died" in pubsub_msg.data:
-            continue
+        # if b"dashboard_died" in pubsub_msg.data:
+        #     continue
         error_data = ray.gcs_utils.ErrorTableData.FromString(pubsub_msg.data)
         msgs.append(error_data)
     return msgs
@@ -583,6 +583,7 @@ def test_version_mismatch(shutdown_only):
     p = init_pubsub()
 
     errors = wait_for_message(p, 1)
+    assert False, errors
     assert len(errors) == 1
     assert errors[0].type == ray_constants.VERSION_MISMATCH_PUSH_ERROR
 

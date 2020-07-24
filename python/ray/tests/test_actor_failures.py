@@ -40,8 +40,8 @@ def wait_for_message(p, num, timeout=10):
             continue
         pubsub_msg = ray.gcs_utils.PubSubMessage.FromString(msg["data"])
         # skip the dashboard error message
-        if b"dashboard_died" in pubsub_msg.data:
-            continue
+        # if b"dashboard_died" in pubsub_msg.data:
+        #     continue
         error_data = ray.gcs_utils.ErrorTableData.FromString(pubsub_msg.data)
         msgs.append(error_data)
     return msgs
