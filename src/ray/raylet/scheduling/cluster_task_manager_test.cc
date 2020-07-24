@@ -34,8 +34,6 @@
 #include "absl/container/flat_hash_map.h"
 #endif  // UNORDERED_VS_ABSL_MAPS_EVALUATION
 
-// using namespace std;
-
 namespace ray {
 
 namespace raylet {
