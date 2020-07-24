@@ -270,7 +270,7 @@ gpu model type.
         (str) The full model name.
     """
     if info_str is None:
-        return None
+        return {}
     lines = info_str.split("\n")
     full_model_name = None
     for line in lines:

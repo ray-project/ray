@@ -697,7 +697,7 @@ def test_ray_address_environment_variable(ray_start_cluster):
     ray.shutdown()
 
 
-def test_gpu_info_parsing(ray_start_cluster):
+def test_gpu_info_parsing():
     info_string = """Model:           Tesla V100-SXM2-16GB
 IRQ:             107
 GPU UUID:        GPU-8eaaebb8-bb64-8489-fda2-62256e821983
