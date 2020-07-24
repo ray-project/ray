@@ -289,12 +289,18 @@ similar.
 Object refs can be created in multiple ways.
 
   1. They are returned by remote function calls.
-  2. They are returned by ``ray.put`` (:ref:`docstring <ray-put-ref>`).
+  2. They are returned by ``put`` (:ref:`docstring <ray-put-ref>`).
 
-.. code-block:: python
+.. tabs::
+  .. code-tab:: python
 
     y = 1
     object_ref = ray.put(y)
+
+  .. code-tab:: java
+
+    int y = 1;
+    ObjectRef<Integer> objectRef = Ray.put(y);
 
 .. note::
 
@@ -306,42 +312,68 @@ Object refs can be created in multiple ways.
 Fetching Results
 ----------------
 
-The command ``ray.get(x_id, timeout=None)`` (:ref:`docstring <ray-get-ref>`) takes an object ref and creates a Python object
-from the corresponding remote object. First, if the current node's object store
-does not contain the object, the object is downloaded. Then, if the object is a `numpy array <https://docs.scipy.org/doc/numpy/reference/generated/numpy.array.html>`__
-or a collection of numpy arrays, the ``get`` call is zero-copy and returns arrays backed by shared object store memory.
-Otherwise, we deserialize the object data into a Python object.
+You can use the ``get`` method (:ref:`docstring <ray-get-ref>`) to fetch the result of a remote object from an object ref.
+If the current node's object store does not contain the object, the object is downloaded.
 
-.. code-block:: python
+.. tabs::
+  .. group-tab:: Python
 
-    y = 1
-    obj_ref = ray.put(y)
-    assert ray.get(obj_ref) == 1
+    If the object is a `numpy array <https://docs.scipy.org/doc/numpy/reference/generated/numpy.array.html>`__
+    or a collection of numpy arrays, the ``get`` call is zero-copy and returns arrays backed by shared object store memory.
+    Otherwise, we deserialize the object data into a Python object.
 
-You can also set a timeout to return early from a ``get`` that's blocking for too long.
+    .. code-block:: python
 
-.. code-block:: python
+      # Get the value of one object ref.
+      obj_ref = ray.put(1)
+      assert ray.get(obj_ref) == 1
 
-    from ray.exceptions import RayTimeoutError
+      # Get the values of multiple object refs in parralel.
+      assert ray.get([ray.put(i) for i in range(3)]) == [1, 2, 3]
 
-    @ray.remote
-    def long_running_function()
-        time.sleep(8)
+      # You can also set a timeout to return early from a ``get`` that's blocking for too long.
+      from ray.exceptions import RayTimeoutError
 
-    obj_ref = long_running_function.remote()
-    try:
-        ray.get(obj_ref, timeout=4)
-    except RayTimeoutError:
-        print("`get` timed out.")
+      @ray.remote
+      def long_running_function()
+          time.sleep(8)
 
+      obj_ref = long_running_function.remote()
+      try:
+          ray.get(obj_ref, timeout=4)
+      except RayTimeoutError:
+          print("`get` timed out.")
+
+  .. group-tab:: Java
+
+    .. code-block:: java
+
+      // Get the value of one object ref.
+      ObjectRef<Integer> objRef = Ray.put(1);
+      Assert.assertEqual(object.get(), 1);
+
+      // Get the values of multiple object refs in parallel.
+      List<ObjectRef<Integer>> objRefs = new ArrayList<>();
+      for (int i = 0; i < 3; i++) {
+        objectRefs.add(Ray.put(i));
+      }
+      List<Integer> results = Ray.get(objectRefs);
+      Assert.assertEquals(results, ImmutableList.of(1, 2, 3));
 
 After launching a number of tasks, you may want to know which ones have
-finished executing. This can be done with ``ray.wait`` (:ref:`ray-wait-ref`). The function
+finished executing. This can be done with ``wait`` (:ref:`ray-wait-ref`). The function
 works as follows.
 
-.. code:: python
+.. tabs::
+  .. code-tab:: python
 
-    ready_ids, remaining_ids = ray.wait(object_refs, num_returns=1, timeout=None)
+    ready_refs, remaining_refs = ray.wait(object_refs, num_returns=1, timeout=None)
+
+  .. code-tab:: java
+
+    WaitResult<Integer> waitResult = Ray.wait(objRefs, /*num_returns=*/1, /*timeoutMs=*/1000);
+    System.out.println(waitResult.getReady());  // List of ready objects.
+    System.out.println(waitResult.getUnready());  // list of unready objects.
 
 Object Eviction
 ---------------
