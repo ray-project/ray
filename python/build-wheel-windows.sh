@@ -39,7 +39,7 @@ install_ray() {
 uninstall_ray() {
   pip uninstall -y ray
 
-  rm -r -f "${WORKSPACE_DIR}"/python/ray/thirdparty_files
+  python -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" clean "${ROOT_DIR}"/setup.py
 }
 
 build_wheel_windows() {
