@@ -2,7 +2,12 @@
 #define SOCKET_H
 
 #include <Winsock2.h>
-#include <unistd.h>  // ssize_t
+
+#ifdef _WIN64
+typedef long long ssize_t;
+#else
+typedef int ssize_t;
+#endif
 
 int dumb_socketpair(SOCKET socks[2]);
 int socketpair(int domain, int type, int protocol, SOCKET sv[2]);

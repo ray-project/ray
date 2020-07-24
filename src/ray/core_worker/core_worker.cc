@@ -21,6 +21,7 @@
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/core_worker/transport/raylet_transport.h"
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
+#include "ray/util/process.h"
 #include "ray/util/util.h"
 
 namespace {
@@ -670,7 +671,7 @@ void CoreWorker::CheckForRayletFailure(const boost::system::error_code &error) {
   }
 
   // If the raylet fails, we will be reassigned to init (PID=1).
-  if (getppid() == 1) {
+  if (!IsParentProcessAlive()) {
     RAY_LOG(ERROR) << "Raylet failed. Shutting down.";
     Shutdown();
   }

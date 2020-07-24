@@ -15,6 +15,7 @@
 #include "ray/rpc/grpc_server.h"
 
 #include <grpcpp/impl/service_type.h>
+
 #include <boost/asio/detail/socket_holder.hpp>
 
 #include "ray/common/ray_config.h"
