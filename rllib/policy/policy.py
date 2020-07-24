@@ -306,13 +306,15 @@ class Policy(metaclass=ABCMeta):
             SampleBatch: Postprocessed sample batch.
         """
         # Default behavior: Check for reward clipping settings.
-        if self.config["clip_rewards"] is True:
+        clip_rewards = self.config.get("clip_rewards")
+        if clip_rewards is True:
             sample_batch["rewards"] = np.sign(sample_batch["rewards"])
-        elif self.config["clip_rewards"]:
+        elif isinstance(clip_rewards, (list, tuple)):
             sample_batch["rewards"] = np.clip(
-                sample_batch["rewards"],
-                a_min=-self.config["clip_rewards"],
-                a_max=self.config["clip_rewards"])
+                sample_batch["rewards"], clip_rewards[0], clip_rewards[1])
+        elif clip_rewards:
+            sample_batch["rewards"] = np.clip(
+                sample_batch["rewards"], -clip_rewards, clip_rewards)
         return sample_batch
 
     @DeveloperAPI
