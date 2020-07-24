@@ -10,6 +10,8 @@ This walkthrough will overview the core concepts of Ray:
 
 With Ray, your code will work on a single machine and can be easily scaled to large cluster.
 
+Java demo code in this documentation can be found `here<https://github.com/ray-project/ray/blob/master/java/test/src/main/java/io/ray/docdemo/WalkthroghDemo.java>`__.
+
 Installation
 ------------
 
@@ -235,7 +237,7 @@ Below are more examples of resource specifications:
   .. code-tab:: java
 
     // Ray aslo supports fractional and custom resources.
-    Ray.task(MyRayApp::myFunction).setResource("GPU", 0.5).setResource("Custom", 1).remote();
+    Ray.task(MyRayApp::myFunction).setResource("GPU", 0.5).setResource("Custom", 1.0).remote();
 
 Multiple returns
 ~~~~~~~~~~~~~~~~
@@ -523,7 +525,7 @@ Methods called on different actors can execute in parallel, and methods called o
     // and share state.
     objectRefs = new ArrayList<>();
     for (int i = 0; i < 5; i++) {
-      objectRefs.add(counters.get(0).task(Counter::increment).remote();
+      objectRefs.add(counters.get(0).task(Counter::increment).remote());
     }
     // prints [2, 3, 4, 5, 6]
     System.out.println(Ray.get(objectRefs));

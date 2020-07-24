@@ -61,7 +61,7 @@ public class WalkthroghDemo {
     Ray.task(MyRayApp::myFunction).setResource("CPU", 2.0).setResource("GPU", 4.0).remote();
 
     // Ray aslo supports fractional and custom resources.
-    Ray.task(MyRayApp::myFunction).setResource("GPU", 0.5).setResource("Custom", 1).remote();
+    Ray.task(MyRayApp::myFunction).setResource("GPU", 0.5).setResource("Custom", 1.0).remote();
   }
 
   public static void demoObjects() {
@@ -128,7 +128,7 @@ public class WalkthroghDemo {
     // and share state.
     objectRefs = new ArrayList<>();
     for (int i = 0; i < 5; i++) {
-      objectRefs.add(counters.get(0).task(Counter::increment).remote();
+      objectRefs.add(counters.get(0).task(Counter::increment).remote());
     }
     // prints [2, 3, 4, 5, 6]
     System.out.println(Ray.get(objectRefs));
