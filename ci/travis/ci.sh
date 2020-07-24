@@ -133,9 +133,11 @@ test_core() {
 }
 
 test_python() {
+  local pathsep=":" args=()
   if [ "${OSTYPE}" = msys ]; then
-    local args=(python/ray/tests/...)
+    pathsep=";"
     args+=(
+      python/ray/tests/...
       -python/ray/tests:test_advanced_2
       -python/ray/tests:test_advanced_3  # test_invalid_unicode_in_worker_log() fails on Windows
       -python/ray/tests:test_autoscaler_aws
@@ -157,7 +159,10 @@ test_python() {
       -python/ray/tests:test_stress_sharded  # timeout
       -python/ray/tests:test_webui
     )
-    bazel test -k --config=ci --test_timeout=600 --build_tests_only -- "${args[@]}";
+  fi
+  if [ 0 -lt "${#args[@]}" ]; then
+    install_ray
+    bazel test -k --config=ci --test_timeout=600 --build_tests_only --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" -- "${args[@]}";
   fi
 }
 
@@ -253,8 +258,14 @@ install_ray() {
   (
     cd "${WORKSPACE_DIR}"/python
     build_dashboard_front_end
-    keep_alive pip install -v -e .
+    keep_alive pip install -v -v -e .
   )
+}
+
+uninstall_ray() {
+  pip uninstall -y ray
+
+  python -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" clean "${WORKSPACE_DIR}"/python/setup.py
 }
 
 build_wheels() {
