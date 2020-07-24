@@ -1708,9 +1708,6 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
 void NodeManager::ScheduleAndDispatch() {
   RAY_CHECK(new_scheduler_enabled_);
   cluster_task_manager_->SchedulePendingTasks();
-
-  // std::unordered_map<Worker, std::shared_ptr<WorkerInterface>> leased_workers;
-
   cluster_task_manager_->DispatchScheduledTasksToWorkers(worker_pool_, leased_workers_);
 }
 
