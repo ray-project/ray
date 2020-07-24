@@ -111,11 +111,9 @@ Ray enables arbitrary functions to be executed asynchronously. These asynchronou
       // The result can be retrieved with ``ray.get``.
       Assert.assertEqual(res.get(), 1);
 
-      public class MyRayApp {
-        public static int slowFunction() {
-          TimeUnit.SECOND.sleep(10);
-          return 1;
-        }
+      public static int slowFunction() {
+        TimeUnit.SECOND.sleep(10);
+        return 1;
       }
 
       // Invocation of Ray remote functions happen in parralel.
@@ -127,57 +125,90 @@ Ray enables arbitrary functions to be executed asynchronously. These asynchronou
 
 .. _ray-object-refs:
 
+Passing object refs to remote functions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 **Object refs** can also be passed into remote functions. When the function actually gets executed, **the argument will be a retrieved as a regular object**. For example, take this function:
 
-.. code:: python
+.. tabs::
+  .. code-tab:: python
 
     @ray.remote
-    def remote_chain_function(value):
+    def function_with_an_argument(value):
         return value + 1
 
 
-    y1_id = remote_function.remote()
-    assert ray.get(y1_id) == 1
+    obj_ref1 = my_function.remote()
+    assert ray.get(obj_ref1) == 1
 
-    chained_id = remote_chain_function.remote(y1_id)
-    assert ray.get(chained_id) == 2
+    # You can pass an `ObjectRef` as an argument to another Ray remote function.
+    obj_ref2 = function_with_an_argument.remote(obj_ref1)
+    assert ray.get(obj_ref2) == 2
 
+  .. code-tab:: java
+
+    public static int functionWithAnArgument(int value) {
+      return value + 1;
+    }
+
+    ObjectRef<Integer> objRef1 = Ray.task(MyRayApp::myFunction).remote();
+    Assert.assertEqual(objRef1.get(), 1);
+
+    // You can pass an `ObjectRef` as an argument to another Ray remote function.
+    RayObject<Integer> objRef2 = Ray.call(MyRayApp::chainFunction, objRef1).;
+    Assert.assertEqual(objRef2.get(), 2);
 
 Note the following behaviors:
 
   -  The second task will not be executed until the first task has finished
      executing because the second task depends on the output of the first task.
   -  If the two tasks are scheduled on different machines, the output of the
-     first task (the value corresponding to ``y1_id``) will be sent over the
+     first task (the value corresponding to ``obj_ref1/objRef1``) will be sent over the
      network to the machine where the second task is scheduled.
 
-Oftentimes, you may want to specify a task's resource requirements (for example
-one task may require a GPU). The ``ray.init()`` command will automatically
-detect the available GPUs and CPUs on the machine. However, you can override
-this default behavior by passing in specific resources, e.g.,
-``ray.init(num_cpus=8, num_gpus=4, resources={'Custom': 2})``.
 
-To specify a task's CPU and GPU requirements, pass the ``num_cpus`` and
-``num_gpus`` arguments into the remote decorator. The task will only run on a
-machine if there are enough CPU and GPU (and other custom) resources available
-to execute the task. Ray can also handle arbitrary custom resources.
+Specifying required resources
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Oftentimes, you may want to specify a task's resource requirements (for example
+one task may require a GPU). Ray will automatically
+detect the available GPUs and CPUs on the machine. However, you can override
+this default behavior by passing in specific resources.
+
+.. tabs::
+  .. group-tab:: Python
+
+    ``ray.init(num_cpus=8, num_gpus=4, resources={'Custom': 2})```
+
+  .. group-tab:: Java
+
+    Set Java system property: ``-Dray.resources=CPU:8,GPU:4,Custom:2``.
+
+Ray also allows specifying a task's resources requirements (e.g., CPU, GPU, and custom resources).
+The task will only run on a machine if there are enough CPU and GPU (and other custom) resources
+available to execute the task.
+
+.. tabs::
+  .. code-tab:: python
+
+    @ray.remote(num_cpus=4, num_gpus=2)
+    def my_function():
+        return 1
+
+  .. code-tab:: java
+
+    Ray.task(MyApp::myFunction).setResource("CPU", 2).setResource("GPU", 4).remote();
 
 .. note::
 
-    * If you do not specify any resources in the ``@ray.remote`` decorator, the
-      default is 1 CPU resource and no other resources.
+    * If you do not specify any resources, the default is 1 CPU resource and
+      no other resources.
     * If specifying CPUs, Ray does not enforce isolation (i.e., your task is
       expected to honor its request).
     * If specifying GPUs, Ray does provide isolation in forms of visible devices
       (setting the environment variable ``CUDA_VISIBLE_DEVICES``), but it is the
       task's responsibility to actually use the GPUs (e.g., through a deep
       learning framework like TensorFlow or PyTorch).
-
-.. code-block:: python
-
-  @ray.remote(num_cpus=4, num_gpus=2)
-  def f():
-      return 1
 
 The resource requirements of a task have implications for the Ray's scheduling
 concurrency. In particular, the sum of the resource requirements of all of the
@@ -186,39 +217,65 @@ resources.
 
 Below are more examples of resource specifications:
 
-.. code-block:: python
+.. tabs::
+  .. code-tab:: python
 
-  # Ray also supports fractional resource requirements
-  @ray.remote(num_gpus=0.5)
-  def h():
-      return 1
+    # Ray also supports fractional resource requirements
+    @ray.remote(num_gpus=0.5)
+    def h():
 
-  # Ray support custom resources too.
-  @ray.remote(resources={'Custom': 1})
-  def f():
-      return 1
+    # Ray support custom resources too.
+    @ray.remote(resources={'Custom': 1})
+    def f():
+        return 1
 
-Further, remote functions can return multiple object refs.
+  .. code-tab:: java
 
-.. code-block:: python
+    // Ray aslo supports fractional and custom resources.
+    Ray.task(MyApp::myFunction).setResource("GPU", 0.5).setResource("Custom", 1).remote();
 
-  @ray.remote(num_return_vals=3)
-  def return_multiple():
-      return 1, 2, 3
+Multiple returns
+~~~~~~~~~~~~~~~~
 
-  a_id, b_id, c_id = return_multiple.remote()
+.. tabs::
+  .. group-tab:: Python
 
-Remote functions can be canceled by calling ``ray.cancel`` (:ref:`docstring <ray-cancel-ref>`) on the returned Object ref. Remote actor functions can be stopped by killing the actor using the ``ray.kill`` interface.
+    Python remote functions can return multiple object refs.
 
-.. code-block:: python
+    .. code-block:: python
 
-  @ray.remote
-  def blocking_operation():
-      time.sleep(10e6)
-      return 100
+      @ray.remote(num_return_vals=3)
+      def return_multiple():
+          return 1, 2, 3
 
-  obj_ref = blocking_operation.remote()
-  ray.cancel(obj_ref)
+      a, b, c = return_multiple.remote()
+
+  .. group-tab:: Java
+
+    Java remote functions doesn't support returning multiple objects.
+
+Cancelling tasks
+~~~~~~~~~~~~~~~~
+
+.. tabs::
+  .. group-tab:: Python
+
+    Remote functions can be canceled by calling ``ray.cancel`` (:ref:`docstring <ray-cancel-ref>`) on the returned Object ref. Remote actor functions can be stopped by killing the actor using the ``ray.kill`` interface.
+
+    .. code-block:: python
+
+      @ray.remote
+      def blocking_operation():
+          time.sleep(10e6)
+      obj_ref = blocking_operation.remote()
+      ray.cancel(obj_ref)
+
+    .. autofunction:: ray.cancel
+        :noindex:
+
+  .. group-tab:: Java
+
+    Task cancellation hasn't been implemented in Java yet.
 
 Objects in Ray
 --------------
