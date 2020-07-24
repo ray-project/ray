@@ -134,17 +134,17 @@ class GcsActorManagerTest : public ::testing::Test {
   std::shared_ptr<gcs::GcsActor> RegisterActor(const JobID &job_id, int max_restarts = 0,
                                                bool detached = false,
                                                const std::string name = "") {
+    auto promise = std::make_shared<std::promise<std::shared_ptr<gcs::GcsActor>>>();
     auto register_actor_request =
         Mocker::GenRegisterActorRequest(job_id, max_restarts, detached, name);
-    std::promise<std::shared_ptr<gcs::GcsActor>> promise;
     auto status = gcs_actor_manager_->RegisterActor(
-        register_actor_request, [&promise](std::shared_ptr<gcs::GcsActor> actor) {
-          promise.set_value(std::move(actor));
+        register_actor_request, [promise](std::shared_ptr<gcs::GcsActor> actor) {
+          promise->set_value(std::move(actor));
         });
     if (!status.ok()) {
-      return nullptr;
+      promise->set_value(nullptr);
     }
-    return promise.get_future().get();
+    return promise->get_future().get();
   }
 
   boost::asio::io_service io_service_;

@@ -444,10 +444,11 @@ Status GcsActorManager::RegisterActor(
         // Reply to the owner to indicate that the actor has been registered.
         auto iter = actor_to_register_callbacks_.find(actor->GetActorID());
         RAY_CHECK(iter != actor_to_register_callbacks_.end() && !iter->second.empty());
-        for (auto &callback : iter->second) {
+        auto callbacks = std::move(iter->second);
+        actor_to_register_callbacks_.erase(iter);
+        for (auto &callback : callbacks) {
           callback(actor);
         }
-        actor_to_register_callbacks_.erase(iter);
       }));
   return Status::OK();
 }
