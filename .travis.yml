@@ -368,7 +368,7 @@ script:
 
   # bazel python tests. This should be run last to keep its logs at the end of travis logs.
   - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci --test_tag_filters=-jenkins_only python/ray/tests/...; fi
-  - if [ $RAY_CI_TUNE_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci --test_tag_filters=-jenkins_only python/ray/tune/...; fi
+  - if [ $RAY_CI_TUNE_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci --test_tag_filters=-jenkins_only,-examples python/ray/tune/...; fi
   # NO MORE TESTS BELOW, keep them above.
 
 deploy:
