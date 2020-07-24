@@ -132,8 +132,11 @@ class ActorManager {
   void HandleActorStateNotification(const ActorID &actor_id,
                                     const gcs::ActorTableData &actor_data);
 
-  /// GCS client
-  std::shared_ptr<gcs::GcsClient> gcs_client_;
+  /// Mutex to protect the gcs_client_ field.
+  /// NOTE: Now gcs client is not thread safe, so we add lock protection.
+  mutable absl::Mutex gcs_client_mutex_;
+  /// GCS client.
+  std::shared_ptr<gcs::GcsClient> gcs_client_ GUARDED_BY(gcs_client_mutex_);
 
   /// Interface to submit tasks directly to other actors.
   std::shared_ptr<CoreWorkerDirectActorTaskSubmitterInterface> direct_actor_submitter_;
