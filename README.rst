@@ -182,6 +182,104 @@ RLlib Quick Start
 .. _`RLlib`: https://docs.ray.io/en/latest/rllib.html
 
 
+Ray Serve Quick Start
+---------------------
+
+.. image:: https://raw.githubusercontent.com/ray-project/ray/master/doc/source/serve/logo.svg
+
+`Ray Serve`_ is a scalable model-serving library built on Ray. It is:
+
+- Framework Agnostic: Use the same toolkit to serve everything from deep 
+  learning models built with frameworks like PyTorch or Tensorflow & Keras 
+  to Scikit-Learn models or arbitrary business logic.
+- Python First: Configure your model serving with pure Python code - no more 
+  YAMLs or JSON configs.
+- Performance Oriented: Turn on batching, pipelining, and GPU acceleration to
+  increase the throughput of your model.
+- Composition Native: Allow you to create "model pipelines" by composing multiple
+  models together to drive a single prediction.
+- Horizontally Scalable: Serve can linearly scale as you add more machines. Enable
+  your ML-powered service to handle growing traffic.
+
+To run this example, you will need to install the following:
+
+.. code-block:: bash
+
+    $ pip install scikit-learn
+    $ pip install "ray[serve]"
+
+This example runs serves a scikit-learn gradient boosting classifier.
+
+.. code-block:: python
+
+    from ray import serve
+
+    import pickle
+    import requests
+
+    from sklearn.datasets import load_iris
+    from sklearn.ensemble import GradientBoostingClassifier
+
+    serve.init()
+
+    # Load data
+    iris_dataset = load_iris()
+    data, target, target_names = (
+        iris_dataset["data"],
+        iris_dataset["target"],
+        iris_dataset["target_names"],
+    )
+
+    # Train model
+    model = GradientBoostingClassifier()
+    model.fit(data[:100], target[:100])
+
+    # Save the model and label to file
+    with open("/tmp/iris_model.pkl", "wb") as f:
+        pickle.dump({"model": model, "labels": target_names.tolist()}, f)
+
+    # Define Ray Serve model,
+    class BoostingModel:
+        def __init__(self):
+            with open("/tmp/iris_model.pkl", "rb") as f:
+                loaded = pickle.load(f)
+                self.model = loaded["model"]
+                self.label_list = loaded["labels"]
+
+        def __call__(self, flask_request):
+            payload = flask_request.json
+            print("Worker: received flask request with data", payload)
+
+            input_vector = [
+                payload["sepal length"],
+                payload["sepal width"],
+                payload["petal length"],
+                payload["petal width"],
+            ]
+            prediction = self.model.predict([input_vector])[0]
+            human_name = self.label_list[prediction]
+            return {"result": human_name}
+
+
+    serve.create_backend("iris:v1", BoostingModel)
+    serve.create_endpoint("iris_classifier", backend="iris:v1", route="/iris")
+
+    sample_request_input = {
+        "sepal length": 1.2,
+        "sepal width": 1.0,
+        "petal length": 1.1,
+        "petal width": 0.9,
+    }
+    response = requests.get("http://localhost:8000/iris", json=sample_request_input)
+    print(response.text)
+    # Result:
+    # {
+    #  "result": "versicolor"
+    # }
+
+.. _`Ray Serve`: https://docs.ray.io/en/latest/serve/index.html
+
+
 More Information
 ----------------
 
