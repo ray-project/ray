@@ -11,7 +11,7 @@ if [ "${OSTYPE-}" = msys ] && [ -z "${MINGW_DIR+x}" ]; then
   fi
 fi
 invoke_cc() {
-  local env_vars=() args=() env_parsed=0
+  local env_vars=() args=() env_parsed=0 result=0
   if [ "${OSTYPE}" = msys ]; then
     # On Windows we don't want automatic path conversion, since it can break non-path arguments
     env_vars+=(MSYS2_ARG_CONV_EXCL="*")
@@ -58,19 +58,18 @@ invoke_cc() {
   case "${cc##*/}" in
     clang*)
       # Call iwyu with the modified arguments and environment variables (env -i starts with a blank slate)
+      local output
       # shellcheck disable=SC2016
-      { PATH="${PATH}:/usr/bin" env -i "${env_vars[@]}" "${SHELL-/bin/bash}" -c 'iwyu -isystem "$("$1" -print-resource-dir "${@:2}")/include" "${@:2}"' exec "${args[@]}" 2>&1 || true; } | awk '
-        # Awk script to remove noise in the iwyu output
-        { header = 0; }
-        /^(The full include-list for .*|.* should (add|remove) these lines:)$/ { keep = 1; header = 1; }
-        /^(The full include-list for ([^\/]*\/)*external\/.*|([^\/]*\/)*external\/.* should (add|remove) these lines:)$/ { keep = 0; header = 1; }
-        /^The full include-list for .*$/ { keep = 0; header = 1; }
-        /^---$/ { keep = 0; header = 1; }
-        keep { print; n += header ? 0 : 1; }
-        END { exit n; }
-      '
+      output="$(PATH="${PATH}:/usr/bin" env -i "${env_vars[@]}" "${SHELL-/bin/bash}" -c 'iwyu -isystem "$("$1" -print-resource-dir "${@:2}")/include" "${@:2}"' exec "${args[@]}" 3>&1 1>&2 2>&3- || true)." || result=$?
+      output="${output%.}"
+      if [ 0 -eq "${result}" ]; then
+        printf "%s" "${output}"
+      else
+        printf "%s" "${output}" 1>&2
+      fi
       ;;
   esac
+  return "${result}"
 }
 
 main() {
