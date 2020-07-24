@@ -78,7 +78,8 @@ def minibatches(samples, sgd_minibatch_size, policy=None):
         while i < samples.count:
             seq_no_end = seq_no
             actual_count = 0
-            while actual_count < sgd_minibatch_size and len(samples.seq_lens) > seq_no_end:
+            while actual_count < sgd_minibatch_size and len(
+                    samples.seq_lens) > seq_no_end:
                 actual_count += samples.seq_lens[seq_no_end]
                 seq_no_end += 1
             slices.append((seq_no, seq_no_end))

@@ -76,8 +76,8 @@ def sequence_mask(lengths, maxlen=None, dtype=None, time_major=False):
     if maxlen is None:
         maxlen = int(lengths.max())
 
-    mask = ~(torch.ones((len(lengths), maxlen)).to(
-        lengths.device).cumsum(dim=1).t() > lengths)
+    mask = ~(torch.ones(
+        (len(lengths), maxlen)).to(lengths.device).cumsum(dim=1).t() > lengths)
     if not time_major:
         mask = mask.t()
     mask.type(dtype or torch.bool)
@@ -128,8 +128,8 @@ def convert_to_torch_tensor(x, device=None):
         # Special handling of "Repeated" values.
         elif isinstance(item, RepeatedValues):
             return RepeatedValues(
-                tree.map_structure(mapping, item.values),
-                item.lengths, item.max_len)
+                tree.map_structure(mapping, item.values), item.lengths,
+                item.max_len)
         tensor = torch.from_numpy(np.asarray(item))
         # Floatify all float64 tensors.
         if tensor.dtype == torch.double:

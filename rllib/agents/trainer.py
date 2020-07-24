@@ -1071,9 +1071,8 @@ class Trainer(Trainable):
                 "far!")
         elif not config.get("_use_trajectory_view_api") and \
                 config.get("model", {}).get("_time_major"):
-            raise ValueError(
-                "`model._time_major` only supported "
-                "iff `_use_trajectory_view_api` is True!")
+            raise ValueError("`model._time_major` only supported "
+                             "iff `_use_trajectory_view_api` is True!")
 
         if "policy_graphs" in config["multiagent"]:
             deprecation_warning("policy_graphs", "policies")

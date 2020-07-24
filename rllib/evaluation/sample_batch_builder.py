@@ -88,19 +88,16 @@ class MultiAgentSampleBatchBuilder:
     corresponding policy batch for the agent's policy.
     """
 
-    def __init__(self, policy_map: Dict[PolicyID, Policy], #clip_rewards: bool,
+    def __init__(self, policy_map: Dict[PolicyID, Policy],
                  callbacks: "DefaultCallbacks"):
         """Initialize a MultiAgentSampleBatchBuilder.
 
         Args:
             policy_map (Dict[str,Policy]): Maps policy ids to policy instances.
-            #clip_rewards (Union[bool,float]): Whether to clip rewards before
-            #    postprocessing (at +/-1.0) or the actual value to +/- clip.
             callbacks (DefaultCallbacks): RLlib callbacks.
         """
 
         self.policy_map = policy_map
-        #self.clip_rewards = clip_rewards
         # Build the Policies' SampleBatchBuilders.
         self.policy_builders = {
             k: SampleBatchBuilder()

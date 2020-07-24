@@ -1,6 +1,5 @@
 from abc import abstractmethod, ABCMeta
 from collections import defaultdict, namedtuple
-from functools import partial
 import logging
 import numpy as np
 import queue
@@ -108,7 +107,6 @@ class SyncSampler(SamplerInput):
                  policy_mapping_fn: Callable[[AgentID], PolicyID],
                  preprocessors: Dict[PolicyID, Preprocessor],
                  obs_filters: Dict[PolicyID, Filter],
-                 #clip_rewards: bool,
                  rollout_fragment_length: int,
                  callbacks: "DefaultCallbacks",
                  horizon: int = None,
@@ -173,8 +171,7 @@ class SyncSampler(SamplerInput):
         self.rollout_provider = _env_runner(
             worker, self.base_env, self.extra_batches.put, self.policies,
             self.policy_mapping_fn, self.rollout_fragment_length, self.horizon,
-            self.preprocessors, self.obs_filters, #clip_rewards,
-            clip_actions,
+            self.preprocessors, self.obs_filters, clip_actions,
             multiple_episodes_in_batch, callbacks, tf_sess, self.perf_stats,
             soft_horizon, no_done_at_end, observation_fn,
             _use_trajectory_view_api)
@@ -227,7 +224,6 @@ class AsyncSampler(threading.Thread, SamplerInput):
                  policy_mapping_fn: Callable[[AgentID], PolicyID],
                  preprocessors: Dict[PolicyID, Preprocessor],
                  obs_filters: Dict[PolicyID, Filter],
-                 #clip_rewards: bool,
                  rollout_fragment_length: int,
                  callbacks: "DefaultCallbacks",
                  horizon: int = None,
@@ -252,8 +248,6 @@ class AsyncSampler(threading.Thread, SamplerInput):
                 Preprocessor object for the observations prior to filtering.
             obs_filters (Dict[str, Filter]): Mapping from policy ID to
                 env Filter object.
-            #clip_rewards (Union[bool, float]): True for +/-1.0 clipping, actual
-            #    float value for +/- value clipping. False for no clipping.
             rollout_fragment_length (int): The length of a fragment to collect
                 before building a SampleBatch from the data and resetting
                 the SampleBatchBuilder object.
@@ -296,7 +290,6 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self.policy_mapping_fn = policy_mapping_fn
         self.preprocessors = preprocessors
         self.obs_filters = obs_filters
-        #self.clip_rewards = clip_rewards
         self.daemon = True
         self.multiple_episodes_in_batch = multiple_episodes_in_batch
         self.tf_sess = tf_sess
@@ -329,11 +322,10 @@ class AsyncSampler(threading.Thread, SamplerInput):
         rollout_provider = _env_runner(
             self.worker, self.base_env, extra_batches_putter, self.policies,
             self.policy_mapping_fn, self.rollout_fragment_length, self.horizon,
-            self.preprocessors, self.obs_filters, #self.clip_rewards,
-            self.clip_actions, self.multiple_episodes_in_batch,
-            self.callbacks, self.tf_sess, self.perf_stats, self.soft_horizon,
-            self.no_done_at_end, self.observation_fn,
-            self._use_trajectory_view_api)
+            self.preprocessors, self.obs_filters, self.clip_actions,
+            self.multiple_episodes_in_batch, self.callbacks, self.tf_sess,
+            self.perf_stats, self.soft_horizon, self.no_done_at_end,
+            self.observation_fn, self._use_trajectory_view_api)
         while not self.shutdown:
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
@@ -378,26 +370,25 @@ class AsyncSampler(threading.Thread, SamplerInput):
         return extra
 
 
-def _env_runner(worker: "RolloutWorker",
-                base_env: BaseEnv,
-                extra_batch_callback: Callable[[SampleBatchType], None],
-                policies: Dict[PolicyID, Policy],
-                policy_mapping_fn: Callable[[AgentID], PolicyID],
-                rollout_fragment_length: int,
-                horizon: int,
-                preprocessors: Dict[PolicyID, Preprocessor],
-                obs_filters: Dict[PolicyID, Filter],
-                #clip_rewards: bool,
-                clip_actions: bool,
-                multiple_episodes_in_batch: bool,
-                callbacks: "DefaultCallbacks",
-                tf_sess: Optional["tf.Session"],
-                perf_stats: _PerfStats,
-                soft_horizon: bool,
-                no_done_at_end: bool,
-                observation_fn: "ObservationFunction",
-                _use_trajectory_view_api: bool = False
-                ) -> Iterable[SampleBatchType]:
+def _env_runner(
+        worker: "RolloutWorker",
+        base_env: BaseEnv,
+        extra_batch_callback: Callable[[SampleBatchType], None],
+        policies: Dict[PolicyID, Policy],
+        policy_mapping_fn: Callable[[AgentID], PolicyID],
+        rollout_fragment_length: int,
+        horizon: int,
+        preprocessors: Dict[PolicyID, Preprocessor],
+        obs_filters: Dict[PolicyID, Filter],
+        clip_actions: bool,
+        multiple_episodes_in_batch: bool,
+        callbacks: "DefaultCallbacks",
+        tf_sess: Optional["tf.Session"],
+        perf_stats: _PerfStats,
+        soft_horizon: bool,
+        no_done_at_end: bool,
+        observation_fn: "ObservationFunction",
+        _use_trajectory_view_api: bool = False) -> Iterable[SampleBatchType]:
     """This implements the common experience collection logic.
 
     Args:
@@ -473,7 +464,8 @@ def _env_runner(worker: "RolloutWorker",
     # trajectory data.
     batch_builder_pool: List[MultiAgentSampleBatchBuilder] = []
 
-    # Only one builder per sampler (all samples are collected in a per-policy fashion).
+    # Only one builder per sampler (all samples are collected in a per-policy
+    # fashion).
     _fast_sample_batch_builder = _FastMultiAgentSampleBatchBuilder(
         policies, callbacks)
 
@@ -482,11 +474,8 @@ def _env_runner(worker: "RolloutWorker",
             return batch_builder_pool.pop()
         elif _use_trajectory_view_api:
             return None
-            #_FastMultiAgentSampleBatchBuilder(
-            #    policies, clip_rewards, callbacks, B=100)
         else:
-            return MultiAgentSampleBatchBuilder(policies, #clip_rewards,
-                                                callbacks)
+            return MultiAgentSampleBatchBuilder(policies, callbacks)
 
     def new_episode():
         episode = MultiAgentEpisode(policies, policy_mapping_fn,
@@ -595,16 +584,19 @@ def _process_observations(
         active_episodes: Dict[str, MultiAgentEpisode],
         prev_policy_outputs: Dict[PolicyID, Tuple[TensorStructType, StateBatch,
                                                   dict]],
-        _fast_batch_builder = None,
+        _fast_batch_builder=None,
         unfiltered_obs: Dict[EnvID, Dict[AgentID, EnvObsType]],
         rewards: Dict[EnvID, Dict[AgentID, float]],
         dones: Dict[EnvID, Dict[AgentID, bool]],
         infos: Dict[EnvID, Dict[AgentID, EnvInfoDict]],
         horizon: int,
         preprocessors: Dict[PolicyID, Preprocessor],
-        obs_filters: Dict[PolicyID, Filter], rollout_fragment_length: int,
-        multiple_episodes_in_batch: bool, callbacks: "DefaultCallbacks",
-        soft_horizon: bool, no_done_at_end: bool,
+        obs_filters: Dict[PolicyID, Filter],
+        rollout_fragment_length: int,
+        multiple_episodes_in_batch: bool,
+        callbacks: "DefaultCallbacks",
+        soft_horizon: bool,
+        no_done_at_end: bool,
         observation_fn: "ObservationFunction",
         _use_trajectory_view_api: bool = False
 ) -> Tuple[Set[EnvID], Dict[PolicyID, List[PolicyEvalData]], List[Union[
@@ -683,8 +675,8 @@ def _process_observations(
                 and log_once("large_batch_warning")):
             logger.warning(
                 "More than {} observations for {} env steps ".format(
-                    batch_builder.total(),
-                    batch_builder.count) + "are buffered in "
+                    batch_builder.total(), batch_builder.count) +
+                "are buffered in "
                 "the sampler. If this is more than you expected, check that "
                 "that you set a horizon on your environment correctly and that"
                 " it terminates at some point. "
@@ -763,8 +755,8 @@ def _process_observations(
 
             # Record transition info if applicable.
             if (not _use_trajectory_view_api and last_observation is not None
-                    and infos[env_id].get(
-                        agent_id, {}).get("training_enabled", True)):
+                    and infos[env_id].get(agent_id, {}).get(
+                        "training_enabled", True)):
                 batch_builder.add_values(
                     agent_id,
                     policy_id,
@@ -784,14 +776,12 @@ def _process_observations(
                     **episode.last_pi_info_for(agent_id))
             elif _use_trajectory_view_api:
                 if last_observation is None:
-                    #print("init obs {}:{}".format(agent_id, episode.episode_id))
-                    batch_builder.add_init_obs(
-                        episode.episode_id, agent_id,
-                        policy_id, filtered_obs)
+                    batch_builder.add_init_obs(episode.episode_id, agent_id,
+                                               policy_id, filtered_obs)
                 else:
                     rc = batch_builder.rollout_sample_collectors[policy_id]
-                    eval_idx = rc.agent_key_to_forward_pass_index[(agent_id, episode.episode_id)]  #, rc.agent_key_to_chunk_num[(agent_id, episode.episode_id)])]
-                    #print("ts {}:{}".format(agent_id, episode.episode_id))
+                    eval_idx = rc.agent_key_to_forward_pass_index[(
+                        agent_id, episode.episode_id)]
                     values_dict = {
                         "t": episode.length - 1,
                         "eps_id": episode.episode_id,
@@ -802,8 +792,8 @@ def _process_observations(
                         "rewards": rewards[env_id][agent_id],
                         # After taking a, did we reach terminal?
                         "dones": (False if (no_done_at_end
-                                     or (hit_horizon and soft_horizon))
-                           else agent_done),
+                                            or (hit_horizon and soft_horizon))
+                                  else agent_done),
                         # Next observation.
                         "new_obs": filtered_obs,
                     }
@@ -815,13 +805,12 @@ def _process_observations(
                     batch_builder.add_action_reward_next_obs(
                         episode.episode_id, agent_id, policy_id, values_dict)
                 if not agent_done:
-                    #eval_idx_map[policy_id][episode.episode_id][agent_id] = len(
-                    #    batch_builder.rollout_sample_collectors[policy_id].forward_pass_indices)
-                    batch_builder.rollout_sample_collectors[policy_id].add_to_forward_pass(agent_id, episode.episode_id, env_id)
-                    to_eval[policy_id] = batch_builder.rollout_sample_collectors[policy_id]
-                    #to_eval[policy_id].append(
-                    #    batch_builder.single_agent_trajectories[
-                    #        agent_id])
+                    batch_builder.rollout_sample_collectors[
+                        policy_id].add_to_forward_pass(
+                            agent_id, episode.episode_id, env_id)
+                    to_eval[
+                        policy_id] = batch_builder.rollout_sample_collectors[
+                            policy_id]
 
         # Invoke the step callback after the step is logged to the episode
         callbacks.on_episode_step(
@@ -836,7 +825,8 @@ def _process_observations(
             # is True.
             if dones[env_id]["__all__"] and not no_done_at_end:
                 if _use_trajectory_view_api:
-                    batch_builder.check_missing_dones(episode_id=episode.episode_id)
+                    batch_builder.check_missing_dones(
+                        episode_id=episode.episode_id)
                 else:
                     batch_builder.check_missing_dones()
 
@@ -856,8 +846,7 @@ def _process_observations(
                     outputs.append(
                         batch_builder.get_multi_agent_batch_and_reset())
                 else:
-                    outputs.append(
-                        batch_builder.build_and_reset(episode))
+                    outputs.append(batch_builder.build_and_reset(episode))
             # Make sure postprocessor stays within one episode.
             elif all_agents_done:
                 if _use_trajectory_view_api:
@@ -920,12 +909,14 @@ def _process_observations(
 
                     if _use_trajectory_view_api:
                         # Add initial obs to buffer.
-                        batch_builder.add_init_obs(
-                            episode.episode_id, agent_id, policy_id, filtered_obs)
+                        batch_builder.add_init_obs(episode.episode_id,
+                                                   agent_id, policy_id,
+                                                   filtered_obs)
                         batch_builder.rollout_sample_collectors[
-                            policy_id].add_to_forward_pass(agent_id,
-                            episode.episode_id, env_id)
-                        to_eval[policy_id] = batch_builder.rollout_sample_collectors[policy_id]
+                            policy_id].add_to_forward_pass(
+                                agent_id, episode.episode_id, env_id)
+                        to_eval[policy_id] = \
+                            batch_builder.rollout_sample_collectors[policy_id]
                     else:
                         item = PolicyEvalData(
                             env_id, agent_id, filtered_obs,
@@ -1035,8 +1026,8 @@ def _do_policy_eval(
 def _process_policy_eval_results(
         *,
         to_eval: Dict[PolicyID, List[PolicyEvalData]],
-        eval_results: Dict[PolicyID, Tuple[
-            TensorStructType, StateBatch, dict]],
+        eval_results: Dict[PolicyID, Tuple[TensorStructType, StateBatch,
+                                           dict]],
         active_episodes: Dict[str, MultiAgentEpisode],
         active_envs: Set[int],
         off_policy_actions: MultiEnvDict,
@@ -1124,7 +1115,8 @@ def _process_policy_eval_results(
             #  (entire episode is stored in Trajectory and kept until
             #  end of episode).
             if _use_trajectory_view_api:
-                agent_id, episode_id, env_id = eval_data.forward_pass_index_to_agent_info[i]
+                agent_id, episode_id, env_id = \
+                    eval_data.forward_pass_index_to_agent_info[i]
             else:
                 env_id: int = eval_data[i].env_id
                 agent_id: AgentID = eval_data[i].agent_id

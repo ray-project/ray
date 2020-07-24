@@ -19,7 +19,6 @@ from ray.rllib.utils.numpy import fc
 from ray.rllib.utils.test_utils import check, framework_iterator, \
     check_compute_single_action
 
-
 # Fake CartPole episode of n time steps.
 FAKE_BATCH = {
     SampleBatch.CUR_OBS: np.array(
@@ -57,7 +56,8 @@ class TestPPO(unittest.TestCase):
         config["train_batch_size"] = 128
         num_iterations = 2
 
-        for _ in framework_iterator(config, frameworks=("torch", "tf2", "tf", "tfe")):
+        for _ in framework_iterator(
+                config, frameworks=("torch", "tf2", "tf", "tfe")):
             for env in ["MsPacmanNoFrameskip-v4", "CartPole-v0"]:
                 print("Env={}".format(env))
                 for lstm in [True, False]:
@@ -83,8 +83,12 @@ class TestPPO(unittest.TestCase):
         from ray.rllib.examples.env.random_env import RandomMultiAgentEnv
 
         from ray.tune import register_env
-        register_env("ma_env", lambda c: RandomMultiAgentEnv(
-            {"num_agents": 2, "p_done": 0.02, "action_space": action_space, "observation_space": obs_space}))
+        register_env("ma_env", lambda c: RandomMultiAgentEnv({
+            "num_agents": 2,
+            "p_done": 0.02,
+            "action_space": action_space,
+            "observation_space": obs_space
+        }))
 
         config["num_workers"] = 0
         config["num_envs_per_worker"] = 2
@@ -118,11 +122,10 @@ class TestPPO(unittest.TestCase):
             duration_w = time.time() - start
             preprocessing_w = results["sampler_perf"]["mean_processing_ms"]
             inference_w = results["sampler_perf"]["mean_inference_ms"]
-            print(
-                "w/ _fast_sampling: Duration: {}s mean-preprocessing={}ms "
-                "mean-inference={}ms learn-time/iter={}ms".format(
-                    duration_w, preprocessing_w, inference_w,
-                    learn_time_w / num_iterations))
+            print("w/ _fast_sampling: Duration: {}s mean-preprocessing={}ms "
+                  "mean-inference={}ms learn-time/iter={}ms".format(
+                      duration_w, preprocessing_w, inference_w,
+                      learn_time_w / num_iterations))
             trainer.stop()
 
             config["_use_trajectory_view_api"] = False
@@ -136,21 +139,21 @@ class TestPPO(unittest.TestCase):
             duration_wo = time.time() - start
             preprocessing_wo = results["sampler_perf"]["mean_processing_ms"]
             inference_wo = results["sampler_perf"]["mean_inference_ms"]
-            print(
-                "w/o _fast_sampling: Duration: {}s mean-preprocessing={}ms "
-                "mean-inference={}ms learn-time/iter={}ms".format(
-                    duration_wo, preprocessing_wo,
-                    inference_wo, learn_time_wo / num_iterations))
+            print("w/o _fast_sampling: Duration: {}s mean-preprocessing={}ms "
+                  "mean-inference={}ms learn-time/iter={}ms".format(
+                      duration_wo, preprocessing_wo, inference_wo,
+                      learn_time_wo / num_iterations))
             trainer.stop()
 
             # Assert `_fasts_sampling` is faster across all affected metrics.
-            #self.assertLess(duration_w, duration_wo)
-            #self.assertLess(preprocessing_w, preprocessing_wo)
-            #self.assertLess(inference_w, inference_wo)
+            self.assertLess(duration_w, duration_wo)
+            self.assertLess(preprocessing_w, preprocessing_wo)
+            self.assertLess(inference_w, inference_wo)
 
             # Check learning success.
-            #print("w/ _fast_sampling: reward={}".format(results["episode_reward_mean"]))
-            #self.assertGreater(results["episode_reward_mean"], 80.0)
+            print("w/ _fast_sampling: reward={}".format(
+                results["episode_reward_mean"]))
+            self.assertGreater(results["episode_reward_mean"], 80.0)
 
     def test_ppo_fake_multi_gpu_learning(self):
         """Test whether PPOTrainer can learn CartPole w/ faked multi-GPU."""

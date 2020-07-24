@@ -1,10 +1,7 @@
 from gym.spaces import Box, Space
-#import numpy as np
 from typing import Optional
 
-#from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
-#from ray.rllib.utils.types import TensorType
 
 torch, _ = try_import_torch()
 
@@ -35,8 +32,6 @@ class ViewRequirement:
                  sampling: bool = True,
                  postprocessing: bool = True,
                  training: bool = True):
-                 #fill: str = "zeros",
-                 #repeat_mode: str = "all"):
         """Initializes a ViewRequirement object.
 
         Args:
@@ -60,14 +55,3 @@ class ViewRequirement:
         self.sampling = sampling
         self.postprocessing = postprocessing
         self.training = training
-
-        # Switch on absolute timestep mode. Default: False.
-        # TODO: (sven)
-        # "absolute_timesteps",
-
-        #self.fill = fill
-        #self.repeat_mode = repeat_mode
-
-        # Provide all data as time major (default: False).
-        # TODO: (sven)
-        # "time_major",

@@ -112,8 +112,10 @@ class SampleBatch:
         out = {}
         for k in concat_samples[0].keys():
             out[k] = concat_aligned(
-                [s[k] for s in concat_samples], time_major=concat_samples[0].time_major)
-        return SampleBatch(out, _seq_lens=seq_lens, _time_major=concat_samples[0].time_major)
+                [s[k] for s in concat_samples],
+                time_major=concat_samples[0].time_major)
+        return SampleBatch(
+            out, _seq_lens=seq_lens, _time_major=concat_samples[0].time_major)
 
     @PublicAPI
     def concat(self, other: "SampleBatch") -> "SampleBatch":
@@ -247,10 +249,16 @@ class SampleBatch:
         if self.time_major is not None:
             seq_lens = self.seq_lens[start:end]
             return SampleBatch(
-                {k: v[:,start:end] for k, v in self.data.items()}, _seq_lens=seq_lens, _time_major=self.time_major)
+                {k: v[:, start:end]
+                 for k, v in self.data.items()},
+                _seq_lens=seq_lens,
+                _time_major=self.time_major)
         else:
             return SampleBatch(
-                {k: v[start:end] for k, v in self.data.items()}, _seq_lens=seq_lens, _time_major=self.time_major)
+                {k: v[start:end]
+                 for k, v in self.data.items()},
+                _seq_lens=seq_lens,
+                _time_major=self.time_major)
 
     @PublicAPI
     def timeslices(self, k: int) -> List["SampleBatch"]:
@@ -334,10 +342,9 @@ class SampleBatch:
         self.data[key] = item
 
     @DeveloperAPI
-    def compress(
-            self,
-            bulk: bool = False,
-            columns: Set[str] = frozenset(["obs", "new_obs"])) -> None:
+    def compress(self,
+                 bulk: bool = False,
+                 columns: Set[str] = frozenset(["obs", "new_obs"])) -> None:
         """Compresses the data buffers (by column) in place.
 
         Args:
@@ -356,10 +363,9 @@ class SampleBatch:
                         [pack(o) for o in self.data[key]])
 
     @DeveloperAPI
-    def decompress_if_needed(
-            self,
-            columns: Set[str] = frozenset(
-                ["obs", "new_obs"])) -> "SampleBatch":
+    def decompress_if_needed(self,
+                             columns: Set[str] = frozenset(
+                                 ["obs", "new_obs"])) -> "SampleBatch":
         """Decompresses data buffers (per column if not compressed) in place.
 
         Args:
@@ -403,8 +409,7 @@ class MultiAgentBatch:
     """
 
     @PublicAPI
-    def __init__(self,
-                 policy_batches: Dict[PolicyID, SampleBatch],
+    def __init__(self, policy_batches: Dict[PolicyID, SampleBatch],
                  env_steps: int):
         """Initialize a MultiAgentBatch object.
 
@@ -570,11 +575,9 @@ class MultiAgentBatch:
         return sum(b.size_bytes() for b in self.policy_batches.values())
 
     @DeveloperAPI
-    def compress(
-            self,
-            bulk: bool = False,
-            columns: Set[str] = frozenset(
-                ["obs", "new_obs"])) -> None:
+    def compress(self,
+                 bulk: bool = False,
+                 columns: Set[str] = frozenset(["obs", "new_obs"])) -> None:
         """Compresses each policy batch (per column) in place.
 
         Args:
@@ -587,10 +590,9 @@ class MultiAgentBatch:
             batch.compress(bulk=bulk, columns=columns)
 
     @DeveloperAPI
-    def decompress_if_needed(
-            self,
-            columns: Set[str] = frozenset(
-                ["obs", "new_obs"])) -> "MultiAgentBatch":
+    def decompress_if_needed(self,
+                             columns: Set[str] = frozenset(
+                                 ["obs", "new_obs"])) -> "MultiAgentBatch":
         """Decompresses each policy batch (per column), if already compressed.
 
         Args:

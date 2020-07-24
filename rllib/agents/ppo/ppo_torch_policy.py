@@ -10,7 +10,6 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import EntropyCoeffSchedule, \
     LearningRateSchedule
 from ray.rllib.policy.torch_policy_template import build_torch_policy
-#from ray.rllib.policy.trajectory_view import get_trajectory_view
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor, \
     explained_variance, sequence_mask
@@ -201,10 +200,10 @@ class ValueNetworkMixin:
                     SampleBatch.PREV_REWARDS: convert_to_torch_tensor(
                         np.asarray([prev_reward]), self.device),
                     "is_training": False,
-                }, [convert_to_torch_tensor(np.asarray([s]), self.device) for
-                    s in state],
-                    convert_to_torch_tensor(
-                        np.asarray([1]), self.device))
+                }, [
+                    convert_to_torch_tensor(np.asarray([s]), self.device)
+                    for s in state
+                ], convert_to_torch_tensor(np.asarray([1]), self.device))
                 return self.model.value_function()[0]
 
         else:

@@ -29,13 +29,9 @@ class ModelV2:
                value_function() -> V(s)
     """
 
-    def __init__(self,
-                 obs_space: gym.spaces.Space,
-                 action_space: gym.spaces.Space,
-                 num_outputs: int,
-                 model_config: ModelConfigDict,
-                 name: str,
-                 framework: str):
+    def __init__(self, obs_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space, num_outputs: int,
+                 model_config: ModelConfigDict, name: str, framework: str):
         """Initializes a ModelV2 object.
 
         This method should create any variables used by the model.
@@ -62,15 +58,15 @@ class ModelV2:
         self._last_output = None
         self._trajectory_view = {
             SampleBatch.OBS: ViewRequirement(),
-            SampleBatch.NEXT_OBS: ViewRequirement(SampleBatch.OBS, shift=1, sampling=False, training=False),
-            SampleBatch.ACTIONS:
-                ViewRequirement(space=self.action_space, sampling=False),
-            SampleBatch.PREV_ACTIONS:
-                ViewRequirement(SampleBatch.ACTIONS, space=self.action_space, shift=-1),
-            SampleBatch.REWARDS:
-                ViewRequirement(sampling=False),
-            SampleBatch.PREV_REWARDS:
-                ViewRequirement(SampleBatch.REWARDS, shift=-1),
+            SampleBatch.NEXT_OBS: ViewRequirement(
+                SampleBatch.OBS, shift=1, sampling=False, training=False),
+            SampleBatch.ACTIONS: ViewRequirement(
+                space=self.action_space, sampling=False),
+            SampleBatch.PREV_ACTIONS: ViewRequirement(
+                SampleBatch.ACTIONS, space=self.action_space, shift=-1),
+            SampleBatch.REWARDS: ViewRequirement(sampling=False),
+            SampleBatch.PREV_REWARDS: ViewRequirement(
+                SampleBatch.REWARDS, shift=-1),
             SampleBatch.DONES: ViewRequirement(sampling=False),
             SampleBatch.VF_PREDS: ViewRequirement(sampling=False),
         }
@@ -260,8 +256,7 @@ class ModelV2:
         return self.__call__(input_dict, states, train_batch.get("seq_lens"))
 
     def get_view_requirements(
-            self,
-            is_training: bool = False) -> Dict[str, ViewRequirement]:
+            self, is_training: bool = False) -> Dict[str, ViewRequirement]:
         """Returns a list of ViewRequirements for this Model (or None).
 
         Note: This is an experimental API method.

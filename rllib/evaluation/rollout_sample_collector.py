@@ -4,7 +4,7 @@ from typing import Dict, Optional
 
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.types import AgentID, EpisodeID, PolicyID, TensorType
+from ray.rllib.utils.types import AgentID, EpisodeID, TensorType
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -12,19 +12,16 @@ torch, _ = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-#def to_float_array(v):
-#    arr = np.array(v)
-#    if arr.dtype == np.float64:
-#        return arr.astype(np.float32)  # save some memory
-#    return arr
-
-
 class RolloutSampleCollector:
     """
     """
 
-    def __init__(self, num_agents: Optional[int] = None, num_timesteps: Optional[int] = None,
-                 shift_before=1, shift_after=0, policy_id=None):
+    def __init__(self,
+                 num_agents: Optional[int] = None,
+                 num_timesteps: Optional[int] = None,
+                 shift_before=1,
+                 shift_after=0,
+                 policy_id=None):
         """Initializes a ... object.
 
         Args:
@@ -32,7 +29,8 @@ class RolloutSampleCollector:
         self.policy_id = policy_id
         self.num_agents = num_agents or 100
         self.num_timesteps = num_timesteps
-        assert num_timesteps, "Only supports RNN style PolicyTrajectories for now!"
+        assert num_timesteps, \
+            "Only supports RNN style PolicyTrajectories for now!"
         self.shift_before = shift_before
         self.shift_after = shift_after
 
@@ -59,22 +57,20 @@ class RolloutSampleCollector:
         # Indices (T,B) to pick from the buffers for the next forward pass.
         self.forward_pass_indices = [[], []]
         self.forward_pass_size = 0
-        # Maps index from the forward pass batch to (agent_id, episode_id, env_id) tuple.
+        # Maps index from the forward pass batch to (agent_id, episode_id,
+        # env_id) tuple.
         self.forward_pass_index_to_agent_info = {}
         self.agent_key_to_forward_pass_index = {}
 
-    def add_init_obs(self,
-                     episode_id: EpisodeID,
-                     agent_id: AgentID,
-                     chunk_num: int,
-                     init_obs: TensorType) -> None:
+    def add_init_obs(self, episode_id: EpisodeID, agent_id: AgentID,
+                     chunk_num: int, init_obs: TensorType) -> None:
         """Adds a single initial observation (after env.reset()) to the buffer.
 
         #Stores it in self.initial_obs.
 
         Args:
-            episode_id (EpisodeID): Unique id for the episode we are adding the initial
-                observation for.
+            episode_id (EpisodeID): Unique id for the episode we are adding the
+                initial observation for.
             agent_id (AgentID): Unique id for the agent we are adding the
                 initial observation for.
             init_obs (TensorType): Initial observation (after env.reset()).
@@ -88,32 +84,32 @@ class RolloutSampleCollector:
 
         if SampleBatch.OBS not in self.buffers:
             self._build_buffers(single_row={SampleBatch.OBS: init_obs})
-        self.buffers[SampleBatch.OBS][self.shift_before - 1][agent_slot] = init_obs
+        self.buffers[SampleBatch.OBS][self.shift_before -
+                                      1][agent_slot] = init_obs
         self.agent_key_to_timestep[agent_key] = self.shift_before
 
-    def add_action_reward_next_obs(self,
-                                   episode_id: EpisodeID,
+    def add_action_reward_next_obs(self, episode_id: EpisodeID,
                                    agent_id: AgentID,
                                    values: Dict[str, TensorType]) -> None:
         """Add the given dictionary (row) of values to this batch.
 
         Args:
-            episode_id (EpisodeID): Unique id for the episode we are adding the initial
-                observation for.
+            episode_id (EpisodeID): Unique id for the episode we are adding the
+                values for.
             agent_id (AgentID): Unique id for the agent we are adding the
-                initial observation for.
+                values for.
             policy_id (PolicyID): Unique id for policy controlling the agent.
             values (Dict[str, TensorType]): Data dict (interpreted as a single
                 row) to be added to buffer. Must contain keys:
-                SampleBatch.ACTIONS, REWARDS, DONES, and OBS.
+                SampleBatch.ACTIONS, REWARDS, DONES, and NEXT_OBS.
         """
         assert (SampleBatch.ACTIONS in values and SampleBatch.REWARDS in values
-                and SampleBatch.NEXT_OBS in values)
+                and SampleBatch.NEXT_OBS in values
+                and SampleBatch.DONES in values)
 
-        if SampleBatch.NEXT_OBS in values:
-            assert SampleBatch.OBS not in values
-            values[SampleBatch.OBS] = values[SampleBatch.NEXT_OBS]
-            del values[SampleBatch.NEXT_OBS]
+        assert SampleBatch.OBS not in values
+        values[SampleBatch.OBS] = values[SampleBatch.NEXT_OBS]
+        del values[SampleBatch.NEXT_OBS]
 
         chunk_num = self.agent_key_to_chunk_num[(agent_id, episode_id)]
         agent_key = (agent_id, episode_id, chunk_num)
@@ -129,7 +125,8 @@ class RolloutSampleCollector:
         if self.agent_key_to_timestep[
             agent_key] - self.shift_before == self.num_timesteps and \
                 not values[SampleBatch.DONES]:
-            self.new_chunk_from(agent_slot, agent_key, self.agent_key_to_timestep[agent_key])
+            self.new_chunk_from(agent_slot, agent_key,
+                                self.agent_key_to_timestep[agent_key])
 
         self.timesteps_since_last_reset += 1
 
@@ -145,7 +142,9 @@ class RolloutSampleCollector:
         new_agent_key = agent_key[:2] + (agent_key[2] + 1, )
         # Copy everything from agent_slot into new_slot.
         for k in self.buffers.keys():
-            self.buffers[k][0:self.shift_before,new_agent_slot] = self.buffers[k][timestep - self.shift_before:timestep,agent_slot]
+            self.buffers[k][
+                0:self.shift_before, new_agent_slot] = self.buffers[k][
+                    timestep - self.shift_before:timestep, agent_slot]
 
         self.agent_key_to_slot[new_agent_key] = new_agent_slot
         self.agent_key_to_chunk_num[new_agent_key[:2]] = new_agent_key[2]
@@ -154,11 +153,13 @@ class RolloutSampleCollector:
         self.agent_key_to_timestep[new_agent_key] = self.shift_before
 
     def add_to_forward_pass(self, agent_id, episode_id, env_id):
-        agent_key = (agent_id, episode_id, self.agent_key_to_chunk_num[(agent_id, episode_id)])
+        agent_key = (agent_id, episode_id,
+                     self.agent_key_to_chunk_num[(agent_id, episode_id)])
         b = self.agent_key_to_slot[agent_key]
         t = self.agent_key_to_timestep[agent_key]
         idx = self.forward_pass_size
-        self.forward_pass_index_to_agent_info[idx] = (agent_id, episode_id, env_id)
+        self.forward_pass_index_to_agent_info[idx] = (agent_id, episode_id,
+                                                      env_id)
         self.agent_key_to_forward_pass_index[agent_key[:2]] = idx
         if self.forward_pass_size == 0:
             self.forward_pass_indices[0].clear()
@@ -205,19 +206,24 @@ class RolloutSampleCollector:
             # here.
             if self.agent_slot_cursor < self.sample_batch_offset:
                 time_slice = self.buffers[data_col][t_start:t_end]
-                one_ = time_slice[:,self.sample_batch_offset:]
-                two_ = time_slice[:,:self.agent_slot_cursor]
+                one_ = time_slice[:, self.sample_batch_offset:]
+                two_ = time_slice[:, :self.agent_slot_cursor]
                 if torch and isinstance(time_slice, torch.Tensor):
                     view[view_col] = torch.cat([one_, two_], dim=1)
                 else:
                     view[view_col] = np.concatenate([one_, two_], axis=1)
             else:
                 view[view_col] = \
-                    self.buffers[data_col][t_start:t_end,
+                    self.buffers[data_col][
+                    t_start:t_end,
                     self.sample_batch_offset:self.agent_slot_cursor]
 
-        seq_lens = [self.agent_key_to_timestep[k] - 1 for k in self.slot_to_agent_key if k is not None]
-        batch = SampleBatch(view, _seq_lens=np.array(seq_lens), _time_major=True)
+        seq_lens = [
+            self.agent_key_to_timestep[k] - 1 for k in self.slot_to_agent_key
+            if k is not None
+        ]
+        batch = SampleBatch(
+            view, _seq_lens=np.array(seq_lens), _time_major=True)
 
         call_args = []
 
@@ -227,9 +233,12 @@ class RolloutSampleCollector:
                 agent_slot = self.sample_batch_offset + i
                 if agent_slot >= self.num_agents:
                     agent_slot = agent_slot % self.num_agents
-                if not self.buffers[SampleBatch.DONES][seq_len - 1 + self.shift_before][agent_slot]:
+                if not self.buffers[SampleBatch.
+                                    DONES][seq_len - 1 +
+                                           self.shift_before][agent_slot]:
                     agent_key = self.slot_to_agent_key[agent_slot]
-                    call_args.append((agent_slot, agent_key, self.agent_key_to_timestep[agent_key]))
+                    call_args.append((agent_slot, agent_key,
+                                      self.agent_key_to_timestep[agent_key]))
 
         # Reset everything for new data.
         self.postprocessed_slots = [False] * self.num_agents
@@ -239,9 +248,6 @@ class RolloutSampleCollector:
         self.agent_key_to_timestep.clear()
         self.timesteps_since_last_reset = 0
         self.forward_pass_size = 0
-        #self.forward_pass_index_to_agent_info.clear()
-        #self.agent_key_to_forward_pass_index.clear()
-
         self.sample_batch_offset = self.agent_slot_cursor
 
         for args in call_args:
@@ -256,8 +262,8 @@ class RolloutSampleCollector:
         Args:
             model (ModelV2): The ModelV2 object for which to generate the view
                 (input_dict) from `data`.
-            is_training (bool): Whether the view should be generated for training
-                purposes or inference (default).
+            is_training (bool): Whether the view should be generated for
+                training purposes or inference (default).
 
         Returns:
             Dict[str, TensorType]: The input_dict to be passed into the ModelV2
@@ -283,7 +289,8 @@ class RolloutSampleCollector:
                 indices = (list(np.array(t) - 1), self.forward_pass_indices[1])
                 view[view_col] = self.buffers[data_col][indices]
             else:
-                view[view_col] = self.buffers[data_col][self.forward_pass_indices]
+                view[view_col] = self.buffers[data_col][
+                    self.forward_pass_indices]
 
         return view
 
@@ -314,11 +321,9 @@ class RolloutSampleCollector:
             if end == self.shift_before:
                 continue
             self.postprocessed_slots[agent_slot] = True
-            if agent_key not in sample_batch_data:
-                sample_batch_data[agent_key] = {}
-            else:
-                #TODO: cannot ever go here
-                raise NotImplementedError
+
+            assert agent_key not in sample_batch_data
+            sample_batch_data[agent_key] = {}
             batch = sample_batch_data[agent_key]
 
             for view_col, view_req in view_reqs.items():
@@ -332,8 +337,7 @@ class RolloutSampleCollector:
                     shift -= 1
 
                 batch[view_col] = self.buffers[data_col][
-                                  self.shift_before + shift:end + shift,
-                                  agent_slot]
+                    self.shift_before + shift:end + shift, agent_slot]
 
         batches = {}
         for agent_key, data in sample_batch_data.items():
@@ -350,14 +354,20 @@ class RolloutSampleCollector:
                 continue
             # Python primitive -> np.array.
             if isinstance(data, (int, float, bool)):
-                shape = (time_size, self.num_agents, )
+                shape = (
+                    time_size,
+                    self.num_agents,
+                )
                 t_ = type(data)
                 dtype = np.float32 if t_ == float else \
                     np.int32 if type(data) == int else np.bool_
                 self.buffers[col] = np.zeros(shape=shape, dtype=dtype)
             # np.ndarray, torch.Tensor, or tf.Tensor.
             else:
-                shape = (time_size, self.num_agents, ) + data.shape
+                shape = (
+                    time_size,
+                    self.num_agents,
+                ) + data.shape
                 dtype = data.dtype
                 if torch and isinstance(data, torch.Tensor):
                     self.buffers[col] = torch.zeros(

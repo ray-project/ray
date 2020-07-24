@@ -109,7 +109,10 @@ def pad_batch_to_sequences_of_same_size(batch,
 
 
 @DeveloperAPI
-def add_time_dimension(padded_inputs, seq_lens, framework="tf", time_major=False):
+def add_time_dimension(padded_inputs,
+                       seq_lens,
+                       framework="tf",
+                       time_major=False):
     """Adds a time dimension to padded inputs.
 
     Arguments:
