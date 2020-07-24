@@ -191,7 +191,6 @@ class Collector(object):
             metric = HistogramMetricFamily(
                 name=metric_name,
                 documentation=metric_description,
-                unit=metric_units,
                 labels=label_keys)
             metric.add_metric(
                 labels=tag_values,
@@ -204,7 +203,6 @@ class Collector(object):
             metric = UnknownMetricFamily(
                 name=metric_name,
                 documentation=metric_description,
-                unit=metric_units,
                 labels=label_keys)
             metric.add_metric(labels=tag_values, value=agg_data.sum_data)
             return metric
@@ -214,7 +212,6 @@ class Collector(object):
             metric = GaugeMetricFamily(
                 name=metric_name,
                 documentation=metric_description,
-                unit=metric_units,
                 labels=label_keys)
             metric.add_metric(labels=tag_values, value=agg_data.value)
             return metric

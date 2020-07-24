@@ -61,6 +61,7 @@ class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
     def ReportMetrics(self, request, context):
         # NOTE: Exceptions are not propagated properly
         # when we don't catch them here.
+        print(request)
         try:
             metrcs_description_required = (
                 self.metrics_agent.record_metrics_points(
