@@ -105,7 +105,8 @@ namespace raylet {
 
 // A helper function to print the leased workers.
 std::string LeasedWorkersSring(
-    const std::unordered_map<WorkerID, std::shared_ptr<Worker>> &leased_workers) {
+    const std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>>
+        &leased_workers) {
   std::stringstream buffer;
   buffer << "  @leased_workers: (";
   for (const auto &pair : leased_workers) {
@@ -117,7 +118,8 @@ std::string LeasedWorkersSring(
 }
 
 // A helper function to print the workers in worker_pool_.
-std::string WorkerPoolString(const std::vector<std::shared_ptr<Worker>> &worker_pool) {
+std::string WorkerPoolString(
+    const std::vector<std::shared_ptr<WorkerInterface>> &worker_pool) {
   std::stringstream buffer;
   buffer << "   @worker_pool: (";
   for (const auto &worker : worker_pool) {
@@ -128,7 +130,7 @@ std::string WorkerPoolString(const std::vector<std::shared_ptr<Worker>> &worker_
 }
 
 // Helper function to print the worker's owner worker and and node owner.
-std::string WorkerOwnerString(std::shared_ptr<Worker> &worker) {
+std::string WorkerOwnerString(std::shared_ptr<WorkerInterface> &worker) {
   std::stringstream buffer;
   const auto owner_worker_id =
       WorkerID::FromBinary(worker->GetOwnerAddress().worker_id());
@@ -320,7 +322,7 @@ ray::Status NodeManager::RegisterGcs() {
   return ray::Status::OK();
 }
 
-void NodeManager::KillWorker(std::shared_ptr<Worker> worker) {
+void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker) {
 #ifdef _WIN32
   // TODO(mehrdadn): implement graceful process termination mechanism
 #else
@@ -669,6 +671,15 @@ void NodeManager::NodeRemoved(const GcsNodeInfo &node_info) {
     RAY_LOG(DEBUG) << "Received NodeRemoved callback for an unknown node: " << node_id
                    << ".";
     return;
+  }
+
+  // Remove the client from the resource map.
+  if (new_scheduler_enabled_) {
+    if (!new_resource_scheduler_->RemoveNode(node_id.Binary())) {
+      RAY_LOG(DEBUG) << "Received NodeRemoved callback for an unknown node: " << node_id
+                     << ".";
+      return;
+    }
   }
 
   // Remove the node manager client.
@@ -1063,7 +1074,7 @@ void NodeManager::DispatchTasks(
 
       // Try to get an idle worker to execute this task. If nullptr, there
       // aren't any available workers so we can't assign the task.
-      std::shared_ptr<Worker> worker =
+      std::shared_ptr<WorkerInterface> worker =
           worker_pool_.PopWorker(task.GetTaskSpecification());
       if (worker != nullptr) {
         AssignTask(worker, task, &post_assign_callbacks);
@@ -1136,11 +1147,11 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
     ProcessFetchOrReconstructMessage(client, message_data);
   } break;
   case protocol::MessageType::NotifyDirectCallTaskBlocked: {
-    std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+    std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
     HandleDirectCallTaskBlocked(worker);
   } break;
   case protocol::MessageType::NotifyDirectCallTaskUnblocked: {
-    std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+    std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
     HandleDirectCallTaskUnblocked(worker);
   } break;
   case protocol::MessageType::NotifyUnblocked: {
@@ -1205,8 +1216,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   WorkerID worker_id = from_flatbuf<WorkerID>(*message->worker_id());
   pid_t pid = message->worker_pid();
   std::string worker_ip_address = string_from_flatbuf(*message->ip_address());
-  auto worker = std::make_shared<Worker>(worker_id, language, worker_ip_address, client,
-                                         client_call_manager_);
+  auto worker = std::dynamic_pointer_cast<WorkerInterface>(std::make_shared<Worker>(
+      worker_id, language, worker_ip_address, client, client_call_manager_));
 
   int assigned_port;
   if (message->is_worker()) {
@@ -1260,7 +1271,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
 void NodeManager::ProcessAnnounceWorkerPortMessage(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   bool is_worker = true;
-  std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+  std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   if (worker == nullptr) {
     is_worker = false;
     worker = worker_pool_.GetRegisteredDriver(client);
@@ -1336,11 +1347,11 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
 }
 
 void NodeManager::HandleWorkerAvailable(const std::shared_ptr<ClientConnection> &client) {
-  std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+  std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   HandleWorkerAvailable(worker);
 }
 
-void NodeManager::HandleWorkerAvailable(const std::shared_ptr<Worker> &worker) {
+void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &worker) {
   RAY_CHECK(worker);
   bool worker_idle = true;
 
@@ -1367,7 +1378,7 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<Worker> &worker) {
 
 void NodeManager::ProcessDisconnectClientMessage(
     const std::shared_ptr<ClientConnection> &client, bool intentional_disconnect) {
-  std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+  std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   bool is_worker = false, is_driver = false;
   if (worker) {
     // The client is a worker.
@@ -1608,7 +1619,8 @@ void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
       object_ids, -1, object_ids.size(), false,
       [this, client, tag](std::vector<ObjectID> found, std::vector<ObjectID> remaining) {
         RAY_CHECK(remaining.empty());
-        std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+        std::shared_ptr<WorkerInterface> worker =
+            worker_pool_.GetRegisteredWorker(client);
         if (!worker) {
           RAY_LOG(ERROR) << "Lost worker for wait request " << client;
         } else {
@@ -1638,7 +1650,7 @@ void NodeManager::ProcessPrepareActorCheckpointRequest(
   const auto &actor_entry = actor_registry_.find(actor_id);
   RAY_CHECK(actor_entry != actor_registry_.end());
 
-  std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+  std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   RAY_CHECK(worker && worker->GetActorId() == actor_id);
 
   std::shared_ptr<ActorCheckpointData> checkpoint_data =
@@ -1813,7 +1825,7 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
                                      rpc::SendReplyCallback send_reply_callback) {
   // Read the resource spec submitted by the client.
   auto worker_id = WorkerID::FromBinary(request.worker_id());
-  std::shared_ptr<Worker> worker = leased_workers_[worker_id];
+  std::shared_ptr<WorkerInterface> worker = leased_workers_[worker_id];
 
   Status status;
   leased_workers_.erase(worker_id);
@@ -1839,6 +1851,33 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
     status = Status::Invalid("Returned worker does not exist any more");
   }
   send_reply_callback(status, nullptr, nullptr);
+}
+
+void NodeManager::HandleReleaseUnusedWorkers(
+    const rpc::ReleaseUnusedWorkersRequest &request,
+    rpc::ReleaseUnusedWorkersReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  // TODO(ffbin): At present, we have not cleaned up the lease worker requests that are
+  // still waiting to be scheduled, which will be implemented in the next pr.
+  std::unordered_set<WorkerID> in_use_worker_ids;
+  for (int index = 0; index < request.worker_ids_in_use_size(); ++index) {
+    auto worker_id = WorkerID::FromBinary(request.worker_ids_in_use(index));
+    in_use_worker_ids.emplace(worker_id);
+  }
+
+  std::vector<WorkerID> unused_worker_ids;
+  for (auto &iter : leased_workers_) {
+    // We need to exclude workers used by common tasks.
+    // Because they are not used by GCS.
+    if (!iter.second->GetActorId().IsNil() && !in_use_worker_ids.count(iter.first)) {
+      unused_worker_ids.emplace_back(iter.first);
+    }
+  }
+
+  for (auto &iter : unused_worker_ids) {
+    leased_workers_.erase(iter);
+  }
+
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &request,
@@ -2284,7 +2323,8 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
   }
 }
 
-void NodeManager::HandleDirectCallTaskBlocked(const std::shared_ptr<Worker> &worker) {
+void NodeManager::HandleDirectCallTaskBlocked(
+    const std::shared_ptr<WorkerInterface> &worker) {
   if (new_scheduler_enabled_) {
     if (!worker) {
       return;
@@ -2313,7 +2353,8 @@ void NodeManager::HandleDirectCallTaskBlocked(const std::shared_ptr<Worker> &wor
   DispatchTasks(local_queues_.GetReadyTasksByClass());
 }
 
-void NodeManager::HandleDirectCallTaskUnblocked(const std::shared_ptr<Worker> &worker) {
+void NodeManager::HandleDirectCallTaskUnblocked(
+    const std::shared_ptr<WorkerInterface> &worker) {
   if (new_scheduler_enabled_) {
     if (!worker) {
       return;
@@ -2370,7 +2411,7 @@ void NodeManager::AsyncResolveObjects(
     const std::shared_ptr<ClientConnection> &client,
     const std::vector<rpc::ObjectReference> &required_object_refs,
     const TaskID &current_task_id, bool ray_get, bool mark_worker_blocked) {
-  std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+  std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   if (worker) {
     // The client is a worker. If the worker is not already blocked and the
     // blocked task matches the one assigned to the worker, then mark the
@@ -2424,7 +2465,7 @@ void NodeManager::AsyncResolveObjects(
 void NodeManager::AsyncResolveObjectsFinish(
     const std::shared_ptr<ClientConnection> &client, const TaskID &current_task_id,
     bool was_blocked) {
-  std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+  std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
 
   // TODO(swang): Because the object dependencies are tracked in the task
   // dependency manager, we could actually remove this message entirely and
@@ -2504,7 +2545,8 @@ void NodeManager::EnqueuePlaceableTask(const Task &task) {
   task_dependency_manager_.TaskPending(task);
 }
 
-void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &task,
+void NodeManager::AssignTask(const std::shared_ptr<WorkerInterface> &worker,
+                             const Task &task,
                              std::vector<std::function<void()>> *post_assign_callbacks) {
   const TaskSpecification &spec = task.GetTaskSpecification();
   RAY_CHECK(post_assign_callbacks);
@@ -2590,7 +2632,7 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
   }
 }
 
-bool NodeManager::FinishAssignedTask(Worker &worker) {
+bool NodeManager::FinishAssignedTask(WorkerInterface &worker) {
   TaskID task_id = worker.GetAssignedTaskId();
   RAY_LOG(DEBUG) << "Finished task " << task_id;
 
@@ -2699,7 +2741,7 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
   return actor_info_ptr;
 }
 
-void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
+void NodeManager::FinishAssignedActorTask(WorkerInterface &worker, const Task &task) {
   RAY_LOG(DEBUG) << "Finishing assigned actor task";
   ActorID actor_id;
   TaskID caller_id;
@@ -3267,7 +3309,7 @@ void NodeManager::ForwardTask(
   });
 }
 
-void NodeManager::FinishAssignTask(const std::shared_ptr<Worker> &worker,
+void NodeManager::FinishAssignTask(const std::shared_ptr<WorkerInterface> &worker,
                                    const TaskID &task_id, bool success) {
   RAY_LOG(DEBUG) << "FinishAssignTask: " << task_id;
   // Remove the ASSIGNED task from the READY queue.
@@ -3312,7 +3354,8 @@ void NodeManager::FinishAssignTask(const std::shared_ptr<Worker> &worker,
 
 void NodeManager::ProcessSubscribePlasmaReady(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
-  std::shared_ptr<Worker> associated_worker = worker_pool_.GetRegisteredWorker(client);
+  std::shared_ptr<WorkerInterface> associated_worker =
+      worker_pool_.GetRegisteredWorker(client);
   if (associated_worker == nullptr) {
     associated_worker = worker_pool_.GetRegisteredDriver(client);
   }
@@ -3325,7 +3368,7 @@ void NodeManager::ProcessSubscribePlasmaReady(
     absl::MutexLock guard(&plasma_object_notification_lock_);
     if (!async_plasma_objects_notification_.contains(id)) {
       async_plasma_objects_notification_.emplace(
-          id, absl::flat_hash_set<std::shared_ptr<Worker>>());
+          id, absl::flat_hash_set<std::shared_ptr<WorkerInterface>>());
     }
 
     // Only insert a worker once
@@ -3339,7 +3382,7 @@ ray::Status NodeManager::SetupPlasmaSubscription() {
   return object_manager_.SubscribeObjAdded(
       [this](const object_manager::protocol::ObjectInfoT &object_info) {
         ObjectID object_id = ObjectID::FromBinary(object_info.object_id);
-        auto waiting_workers = absl::flat_hash_set<std::shared_ptr<Worker>>();
+        auto waiting_workers = absl::flat_hash_set<std::shared_ptr<WorkerInterface>>();
         {
           absl::MutexLock guard(&plasma_object_notification_lock_);
           auto waiting = this->async_plasma_objects_notification_.extract(object_id);

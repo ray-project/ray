@@ -868,11 +868,16 @@ TEST_F(ServiceBasedGcsClientTest, TestJobTableResubscribe) {
   };
   ASSERT_TRUE(SubscribeToAllJobs(subscribe));
 
+  ASSERT_TRUE(AddJob(job_table_data));
+  WaitPendingDone(job_update_count, 1);
   RestartGcsServer();
 
-  ASSERT_TRUE(AddJob(job_table_data));
-  ASSERT_TRUE(MarkJobFinished(job_id));
+  // The GCS client will fetch data from the GCS server after the GCS server is restarted,
+  // and the GCS server keeps a job record, so `job_update_count` plus one.
   WaitPendingDone(job_update_count, 2);
+
+  ASSERT_TRUE(MarkJobFinished(job_id));
+  WaitPendingDone(job_update_count, 3);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
@@ -976,12 +981,16 @@ TEST_F(ServiceBasedGcsClientTest, TestObjectTableResubscribe) {
 
   // Restart GCS.
   RestartGcsServer();
+  // When GCS client detects that GCS server has restarted, but the pub-sub server
+  // didn't restart, it will fetch the subscription data again from the GCS server, so
+  // `object2_change_count` plus 1.
+  WaitPendingDone(object2_change_count, 2);
 
   // Add location of object to GCS again and check if resubscribe works.
   ASSERT_TRUE(AddLocation(object1_id, node_id));
   WaitPendingDone(object1_change_count, 1);
   ASSERT_TRUE(AddLocation(object2_id, node_id));
-  WaitPendingDone(object2_change_count, 2);
+  WaitPendingDone(object2_change_count, 3);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestNodeTableResubscribe) {
