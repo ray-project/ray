@@ -1,8 +1,6 @@
 import os
 
 from ray.rllib.utils.annotations import PublicAPI
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.evaluation.sampler import SamplerInput
 
 
 @PublicAPI
@@ -24,12 +22,12 @@ class IOContext:
                  log_dir: str = None,
                  config: dict = None,
                  worker_index: int = 0,
-                 worker: RolloutWorker = None):
+                 worker: "RolloutWorker" = None):
         self.log_dir = log_dir or os.getcwd()
         self.config = config or {}
         self.worker_index = worker_index
         self.worker = worker
 
     @PublicAPI
-    def default_sampler_input(self) -> SamplerInput:
+    def default_sampler_input(self) -> "SamplerInput":
         return self.worker.sampler

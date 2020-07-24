@@ -31,7 +31,7 @@ class OffPolicyEstimator:
         self.new_estimates = []
 
     @classmethod
-    def create(cls, ioctx: IOContext) -> Any:
+    def create(cls, ioctx: IOContext) -> "OffPolicyEstimator":
         """Create an off-policy estimator from a IOContext."""
         gamma = ioctx.worker.policy_config["gamma"]
         # Grab a reference to the current model
