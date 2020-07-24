@@ -1,4 +1,3 @@
-  
 {
 	"$schema": "http://json-schema.org/draft-07/schema#",
 	"$id": "http://github.com/ray-project/ray/python/ray/autoscaler/ray-schema.json",
