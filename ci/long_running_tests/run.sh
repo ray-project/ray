@@ -53,5 +53,5 @@ wheel="https://s3-us-west-2.amazonaws.com/ray-wheels/$ray_branch/$commit/ray-$ra
 pip install -U pip
 source activate tensorflow_p36 && pip install -q -U $wheel Click
 source activate tensorflow_p36 && pip install -q ray[all] gym[atari]
-source activate tensorflow_p36 && python "workloads/$workload$.py"
+source activate tensorflow_p36 && python "workloads/$workload.py"
 
