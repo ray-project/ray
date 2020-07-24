@@ -187,6 +187,7 @@ Ray Serve Quick Start
 ---------------------
 
 .. image:: https://raw.githubusercontent.com/ray-project/ray/master/doc/source/serve/logo.svg
+  :width: 400
 
 `Ray Serve`_ is a scalable model-serving library built on Ray. It is:
 
