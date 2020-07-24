@@ -17,7 +17,7 @@ from ray.cluster_utils import Cluster
 def test_multiple_routers():
     cluster = Cluster()
     head_node = cluster.add_node()
-    cluster.add_node()
+    child_node = cluster.add_node()
 
     ray.init(head_node.address)
     node_ids = ray.state.node_ids()
@@ -35,6 +35,10 @@ def test_multiple_routers():
     # kill the head_http server, the HTTP server should still functions
     ray.kill(head_http, no_restart=True)
     ray.get(block_until_http_ready.remote("http://127.0.0.1:8005/-/routes"))
+
+    # cleanup the nodes (otherwise Ray will segfault)
+    ray.shutdown()
+    cluster.shutdown()
 
 
 if __name__ == "__main__":
