@@ -26,6 +26,11 @@ def logger_creator(log_config, logdir, rank):
 
 
 class _TorchTrainable(tune.Trainable):
+    """Base class for distributed training on Tune.
+
+    A wrapper class is needed to actually create a working
+    version of this trainable.
+    """
     _function = None
     _num_workers = None
 
@@ -93,6 +98,20 @@ def DistributedTrainableCreator(func,
                                 num_cpus_per_worker=1,
                                 backend="gloo",
                                 timeout_s=NCCL_TIMEOUT_S):
+    """Creates a class that executes distributed training.
+
+    Note that you typically should not instantiate the object
+    created.
+
+    Example:
+
+    .. code-block::
+
+        trainable_cls = DistributedTrainableCreator(
+            train_func, num_workers=2)
+        analysis = tune.run(trainable_cls)
+    """
+
     class WrappedDistributedTorchTrainable(_TorchTrainable):
         _function = func
         _num_workers = num_workers
@@ -118,7 +137,7 @@ def DistributedTrainableCreator(func,
 
 
 class distributed_checkpoint:
-    """ContextManager for creating a checkpoint.
+    """ContextManager for creating a distributed checkpoint.
 
     Only checkpoints a file on the "main" training actor, avoiding
     redundant work.
