@@ -755,7 +755,7 @@ class GlobalState:
         for available_resources in available_resources_by_id.values():
             for resource_id, num_available in available_resources.items():
                 if verbose is False and \
-                    resource_id.startswith(RESOURCE_CONSTRAINT_PREFIX):
+                        resource_id.startswith(RESOURCE_CONSTRAINT_PREFIX):
                     continue
                 total_available_resources[resource_id] += num_available
 

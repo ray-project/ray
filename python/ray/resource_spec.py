@@ -166,7 +166,6 @@ class ResourceSpec(
             if gpu_ids is not None:
                 num_gpus = min(num_gpus, len(gpu_ids))
 
-
         info_string = _get_gpu_info_string()
         gpu_types = _constraints_from_gpu_info(info_string)
         resources.update(gpu_types)
@@ -283,8 +282,9 @@ gpu model type.
             break
     pretty_name = _pretty_gpu_name(full_model_name)
     if pretty_name:
-        constraint_name = "{}{}".format(ray_constants.RESOURCE_CONSTRAINT_PREFIX, pretty_name)
-        return {constraint_name:1}
+        constraint_name = "{}{}".format(
+            ray_constants.RESOURCE_CONSTRAINT_PREFIX, pretty_name)
+        return {constraint_name: 1}
     else:
         return {}
 

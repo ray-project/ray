@@ -710,8 +710,9 @@ Device Minor:    0
 Blacklisted:     No
     """
     constraints_dict = resource_spec._constraints_from_gpu_info(info_string)
-    expected_dict = {"ResourceConstraint:V100":1}
+    expected_dict = {"ResourceConstraint:V100": 1}
     assert constraints_dict == expected_dict
+
 
 if __name__ == "__main__":
     import pytest
