@@ -1,6 +1,3 @@
-from unittest.mock import patch
-import numpy as np
-import os
 import pytest
 import torch
 import torch.distributed as dist
@@ -9,7 +6,8 @@ from torch.nn.parallel import DistributedDataParallel
 
 import ray
 from ray import tune
-from ray.util.sgd.torch.torch_trainable import DistributedTrainableCreator
+from ray.util.sgd.torch.func_trainable import (DistributedTrainableCreator,
+                                               distributed_checkpoint)
 from ray.tune.examples.mnist_pytorch import (train, test, get_data_loaders,
                                              model_creator)
 
@@ -60,7 +58,6 @@ def train_mnist(config, checkpoint=False):
             with distributed_checkpoint(label=epoch) as f:
                 torch.save((model.state_dict(), optimizer.state_dict()), f)
         tune.report(mean_accuracy=acc)
-
 
 
 def test_single_step(ray_start_2_cpus):  # noqa: F811

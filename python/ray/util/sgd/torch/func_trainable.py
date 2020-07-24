@@ -3,8 +3,7 @@
 import os
 import logging
 import torch
-import torch.distributed as dist
-from ray.util.sgd.torch.constants import NCCL_TIMEOUT_S
+from datetime import timedelta
 
 import ray
 from ray import tune
@@ -12,36 +11,11 @@ from ray.tune.logger import NoopLogger
 from ray.tune.function_runner import wrap_function
 from ray.tune.resources import Resources
 from ray.tune.trainable import TrainableUtil
-from ray.util.sgd.utils import find_free_port
-from datetime import timedelta
+from ray.util.sgd.torch.utils import setup_process_group
+from ray.util.sgd.torch.constants import NCCL_TIMEOUT_S
+from ray.util.sgd.torch.utils import setup_address
 
 logger = logging.getLogger(__name__)
-
-
-def setup_address():
-    ip = ray.services.get_node_ip_address()
-    port = find_free_port()
-    return "tcp://{ip}:{port}".format(ip=ip, port=port)
-
-
-def setup_pg(url, world_rank, world_size, timeout, backend="gloo"):
-    """Connects the distributed PyTorch backend.
-
-    Args:
-        url (str): the URL used to connect to distributed PyTorch.
-        world_rank (int): the index of the runner.
-        world_size (int): the total number of runners.
-    """
-    logger.debug("Connecting to {} world_rank: {} world_size: {}".format(
-        url, world_rank, world_size))
-    logger.debug("using {}".format(backend))
-    os.environ["NCCL_BLOCKING_WAIT"] = "1"
-    dist.init_process_group(
-        backend=backend,
-        init_method=url,
-        rank=world_rank,
-        world_size=world_size,
-        timeout=timeout)
 
 
 def logger_creator(log_config, logdir, rank):
@@ -75,11 +49,10 @@ class _TorchTrainable(tune.Trainable):
             for rank in range(num_workers)
         ]
 
-        # ### Requires tune.function_runner.FunctionRunner to be extended with this
         pgroup_params = self.default_process_group_parameters()
         ray.get([
             w.execute.remote(
-                lambda _: setup_pg(address, rank, num_workers, **pgroup_params)
+                lambda _: setup_process_group(address, rank, num_workers, **pgroup_params)
             ) for rank, w in enumerate(self.workers)
         ])
 
@@ -134,6 +107,14 @@ def DistributedTrainableCreator(func,
 
 
 class distributed_checkpoint:
+    """ContextManager for creating a checkpoint.
+
+    Only checkpoints a file on the "main" training actor.
+
+    Args:
+        label (int | str): Used to label the checkpoint
+    """
+
     def __init__(self, label):
         self.label = label
         self.file = None
