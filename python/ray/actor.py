@@ -503,8 +503,8 @@ class ActorClass:
         else:
             detached = False
 
-        if placement_group_id is not None\
-            and placement_group_bundle_index is None:
+        if placement_group_id is not None and placement_group_bundle_index is \
+           None:
             raise ValueError("The placement_group_id is set."
                              "But the bundle_index is not set.")
 
