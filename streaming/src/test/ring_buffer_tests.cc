@@ -1,7 +1,6 @@
 #include "gtest/gtest.h"
 #include "ray/util/logging.h"
 
-#include <unistd.h>
 #include <iostream>
 #include <set>
 #include <thread>

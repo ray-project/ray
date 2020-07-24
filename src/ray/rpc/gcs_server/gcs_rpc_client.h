@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include <unistd.h>
-
 #include "ray/common/network_util.h"
 #include "ray/rpc/grpc_client.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
