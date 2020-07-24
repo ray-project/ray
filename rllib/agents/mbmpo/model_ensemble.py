@@ -231,7 +231,7 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
         roll_avg_persitency = 0.95
 
         def convert_to_str(lst):
-            return " ".join([str(elem.detach().cpu().numpy()) for elem in lst])
+            return " ".join([str(elem) for elem in lst])
 
         for epoch in range(self.max_epochs):
             # Training
@@ -243,6 +243,10 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
                     self.optimizers[ind].zero_grad()
                     train_losses[ind].backward()
                     self.optimizers[ind].step()
+                
+                for ind in range(self.num_models):
+                    train_losses[ind] = train_losses[ind].detach().cpu().numpy()
+
                 del x
                 del y
 
@@ -253,10 +257,16 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
                 y = torch.cat([d[1] for d in data],dim=0).to(self.device)
                 val_losses = self.loss(x, y)
                 val_lists.append(val_losses)
+
                 for ind in indexes:
                     self.optimizers[ind].zero_grad()
+
+                for ind in range(self.num_models):
+                    val_losses[ind] = val_losses[ind].detach().cpu().numpy()
                 del x
                 del y
+
+
             val_lists = np.array(val_lists)
             avg_val_losses = np.mean(val_lists, axis=0)
 
@@ -265,8 +275,8 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
                 valid_loss_roll_avg = 1.5 * avg_val_losses
                 valid_loss_roll_avg_prev = 2.0 * avg_val_losses
 
-            valid_loss_roll_avg = roll_avg_persitency*valid_loss_roll_avg
-            valid_loss_roll_avg += (1.0-roll_avg_persitency)* avg_val_losses
+            valid_loss_roll_avg = roll_avg_persitency*valid_loss_roll_avg + \
+                (1.0-roll_avg_persitency)*avg_val_losses
 
             print("Training Dynamics Ensemble - Epoch #%i:"
                   "Train loss: %s, Valid Loss: %s,  Moving Avg Valid Loss: %s"
