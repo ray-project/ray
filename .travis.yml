@@ -267,7 +267,7 @@ matrix:
     # Tune: Tests and examples.
     - os: linux
       env:
-        - TUNE_TESTING=1
+        - TUNE_EXAMPLES=1
         - PYTHON=3.6
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
@@ -278,10 +278,10 @@ matrix:
       before_script:
         - . ./ci/travis/ci.sh build
       script:
-        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=-tf,-pytorch,-py37,-flaky python/ray/tune/...
-        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=tf,-pytorch,-py37,-flaky python/ray/tune/...
-        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=-tf,pytorch,-py37,-flaky python/ray/tune/...
-        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=-py37,flaky python/ray/tune/...
+        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=examples,-tf,-pytorch,-py37,-flaky python/ray/tune/...
+        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=examples,tf,-pytorch,-py37,-flaky python/ray/tune/...
+        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=examples,-tf,pytorch,-py37,-flaky python/ray/tune/...
+        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=examples,-py37,flaky python/ray/tune/...
 
     # SGD: Tests and examples.
     - os: linux
@@ -323,7 +323,7 @@ matrix:
     # Tune/SGD/Docs: Python >= 3.7 tests and examples.
     - os: linux
       env:
-        - PYTHON=3.7 TUNE_TESTING=1
+        - PYTHON=3.7 TUNE_EXAMPLES=1
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.5
