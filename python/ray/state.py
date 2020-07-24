@@ -979,7 +979,7 @@ def object_transfer_timeline(filename=None):
     return state.chrome_tracing_object_transfer_dump(filename=filename)
 
 
-def cluster_resources():
+def cluster_resources(verbose=False):
     """Get the current total cluster resources.
 
     Note that this information can grow stale as nodes are added to or removed
@@ -989,10 +989,10 @@ def cluster_resources():
         A dictionary mapping resource name to the total quantity of that
             resource in the cluster.
     """
-    return state.cluster_resources()
+    return state.cluster_resources(verbose=verbose)
 
 
-def available_resources():
+def available_resources(verbose=False):
     """Get the current available cluster resources.
 
     This is different from `cluster_resources` in that this will return idle
@@ -1004,7 +1004,7 @@ def available_resources():
         A dictionary mapping resource name to the total quantity of that
             resource in the cluster.
     """
-    return state.available_resources()
+    return state.available_resources(verbose=verbose)
 
 
 def errors(all_jobs=False):
