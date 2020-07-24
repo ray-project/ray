@@ -352,7 +352,7 @@ def pip_run(build_ext):
 
 def api_main(program, *args):
     parser = argparse.ArgumentParser()
-    choices = ["build", "bazel_version", "help"]
+    choices = ["build", "bazel_version", "python_versions", "help"]
     parser.add_argument("command", type=str, choices=choices)
     parser.add_argument(
         "-l",
@@ -378,6 +378,11 @@ def api_main(program, *args):
         result = build(**kwargs)
     elif parsed_args.command == "bazel_version":
         print(".".join(map(str, SUPPORTED_BAZEL)))
+    elif parsed_args.command == "python_versions":
+        for version in SUPPORTED_PYTHONS:
+            # NOTE: On Windows this will print "\r\n" on the command line.
+            # Strip it out by piping to tr -d "\r".
+            print(".".join(map(str, version)))
     elif parsed_args.command == "help":
         parser.print_help()
     else:
