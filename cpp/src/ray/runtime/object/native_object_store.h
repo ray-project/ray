@@ -17,7 +17,9 @@ class NativeObjectStore : public ObjectStore {
   WaitResult Wait(const std::vector<ObjectID> &ids, int num_objects, int timeout_ms);
 
  private:
-  void PutRaw(const ObjectID &object_id, std::shared_ptr<msgpack::sbuffer> data);
+  void PutRaw(std::shared_ptr<msgpack::sbuffer> data, ObjectID *object_id);
+
+  void PutRaw(std::shared_ptr<msgpack::sbuffer> data, const ObjectID &object_id);
 
   std::shared_ptr<msgpack::sbuffer> GetRaw(const ObjectID &object_id, int timeout_ms);
 

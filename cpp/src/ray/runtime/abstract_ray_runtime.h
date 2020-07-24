@@ -18,6 +18,8 @@ class AbstractRayRuntime : public RayRuntime {
  public:
   virtual ~AbstractRayRuntime(){};
 
+  void Put(std::shared_ptr<msgpack::sbuffer> data, ObjectID *object_id);
+
   void Put(std::shared_ptr<msgpack::sbuffer> data, const ObjectID &object_id);
 
   ObjectID Put(std::shared_ptr<msgpack::sbuffer> data);
@@ -53,6 +55,8 @@ class AbstractRayRuntime : public RayRuntime {
 
  private:
   static AbstractRayRuntime *DoInit(std::shared_ptr<RayConfig> config);
+
+  static void DoShutdown(std::shared_ptr<RayConfig> config);
 
   void Execute(const TaskSpecification &task_spec);
 
