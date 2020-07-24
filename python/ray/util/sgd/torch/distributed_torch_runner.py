@@ -1,4 +1,3 @@
-from datetime import timedelta
 import logging
 import io
 import os
@@ -8,7 +7,6 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, IterableDataset
 from torch.utils.data.distributed import DistributedSampler
-from ray.util.sgd.torch.constants import NCCL_TIMEOUT_S
 from ray.util.sgd.torch.utils import setup_process_group
 
 import ray

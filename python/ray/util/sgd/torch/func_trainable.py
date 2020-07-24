@@ -50,10 +50,15 @@ class _TorchTrainable(tune.Trainable):
         ]
 
         pgroup_params = self.default_process_group_parameters()
+        from functools import partial
+        setup_on_worker = partial(
+            setup_process_group,
+            address=address,
+            num_workers=num_workers,
+            **pgroup_params)
         ray.get([
-            w.execute.remote(
-                lambda _: setup_process_group(address, rank, num_workers, **pgroup_params)
-            ) for rank, w in enumerate(self.workers)
+            w.execute.remote(lambda _: setup_on_worker(rank=rank))
+            for rank, w in enumerate(self.workers)
         ])
 
     def step(self):
@@ -109,10 +114,19 @@ def DistributedTrainableCreator(func,
 class distributed_checkpoint:
     """ContextManager for creating a checkpoint.
 
-    Only checkpoints a file on the "main" training actor.
+    Only checkpoints a file on the "main" training actor, avoiding
+    redundant work.
 
     Args:
         label (int | str): Used to label the checkpoint
+
+    Example:
+
+    .. code-block::
+
+        if epoch % 3 == 0:
+            with distributed_checkpoint(label=epoch) as f:
+                torch.save(model.state_dict(), f)
     """
 
     def __init__(self, label):

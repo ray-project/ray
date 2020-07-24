@@ -1,6 +1,5 @@
 # Original Code here:
 # https://github.com/pytorch/examples/blob/master/mnist/main.py
-import os
 import logging
 import torch
 import torch.optim as optim
@@ -43,9 +42,9 @@ def train_mnist(config, checkpoint=False):
 
 
 if __name__ == "__main__":
-    ray.init()
+    ray.init(num_cpus=2)
 
-    trainable_cls = DistributedTrainableCreator(train_mnist, num_workers=8)
+    trainable_cls = DistributedTrainableCreator(train_mnist, num_workers=2)
     # trainable = trainable_cls()
     # for i in range(10):
     #     print(trainable.train())

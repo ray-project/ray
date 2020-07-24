@@ -1,6 +1,5 @@
 import logging
 import os
-import io
 import time
 import inspect
 import shutil
