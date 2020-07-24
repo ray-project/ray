@@ -283,7 +283,7 @@ if __name__ == "__main__":
         name="pbt_babi_memnn",
         scheduler=pbt,
         stop={"training_iteration": 4 if args.smoke_test else 100},
-        num_samples=4,
+        num_samples=2,
         config={
             "finish_fast": args.smoke_test,
             "batch_size": 32,
