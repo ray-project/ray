@@ -15,6 +15,7 @@ RUN apt-get update \
         tmux \
         screen \
         rsync \
+        openssh-client \
     && apt-get clean \
     && echo 'export PATH=/opt/conda/bin:$PATH' > /etc/profile.d/conda.sh \
     && wget \
