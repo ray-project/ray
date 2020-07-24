@@ -19,6 +19,12 @@ public class ActorCreator<A> extends BaseActorCreator<ActorCreator<A>> {
   }
 
   /**
+   * Set the JVM options for the Java worker that this actor is running in.
+   *
+   * Note, if this is set, this actor won't share Java worker with other actors or tasks.
+   *
+   * @param jvmOptions JVM options for the Java worker that this actor is running in.
+   * @return self
    * @see io.ray.api.options.ActorCreationOptions.Builder#setJvmOptions(java.lang.String)
    */
   public ActorCreator<A> setJvmOptions(String jvmOptions) {

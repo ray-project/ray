@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/lib/java/jni_utils.h"
+#include "jni_utils.h"
 
 jclass java_boolean_class;
 jmethodID java_boolean_init;
@@ -69,6 +69,8 @@ jclass java_base_task_options_class;
 jfieldID java_base_task_options_resources;
 
 jclass java_actor_creation_options_class;
+jfieldID java_actor_creation_options_global;
+jfieldID java_actor_creation_options_name;
 jfieldID java_actor_creation_options_max_restarts;
 jfieldID java_actor_creation_options_jvm_options;
 jfieldID java_actor_creation_options_max_concurrency;
@@ -84,6 +86,7 @@ jfieldID java_native_ray_object_data;
 jfieldID java_native_ray_object_metadata;
 
 jclass java_task_executor_class;
+jmethodID java_task_executor_parse_function_arguments;
 jmethodID java_task_executor_execute;
 
 JavaVM *jvm;
@@ -176,6 +179,10 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 
   java_actor_creation_options_class =
       LoadClass(env, "io/ray/api/options/ActorCreationOptions");
+  java_actor_creation_options_global =
+      env->GetFieldID(java_actor_creation_options_class, "global", "Z");
+  java_actor_creation_options_name =
+      env->GetFieldID(java_actor_creation_options_class, "name", "Ljava/lang/String;");
   java_actor_creation_options_max_restarts =
       env->GetFieldID(java_actor_creation_options_class, "maxRestarts", "I");
   java_actor_creation_options_jvm_options = env->GetFieldID(
@@ -199,6 +206,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       env->GetFieldID(java_native_ray_object_class, "metadata", "[B");
 
   java_task_executor_class = LoadClass(env, "io/ray/runtime/task/TaskExecutor");
+  java_task_executor_parse_function_arguments = env->GetMethodID(
+      java_task_executor_class, "checkByteBufferArguments", "(Ljava/util/List;)[Z");
   java_task_executor_execute =
       env->GetMethodID(java_task_executor_class, "execute",
                        "(Ljava/util/List;Ljava/util/List;)Ljava/util/List;");

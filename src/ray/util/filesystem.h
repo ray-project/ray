@@ -9,10 +9,10 @@
 namespace ray {
 
 /// \return The portable directory separator (slash on all OSes).
-static char GetAltDirSep() { return '/'; }
+static inline char GetAltDirSep() { return '/'; }
 
 /// \return The platform directory separator (backslash on Windows, slash on other OSes).
-static char GetDirSep() {
+static inline char GetDirSep() {
   char result;
 #ifdef _WIN32
   result = '\\';
@@ -23,7 +23,7 @@ static char GetDirSep() {
 }
 
 /// \return The platform PATH separator (semicolon on Windows, colon on other OSes).
-static char GetPathSep() {
+static inline char GetPathSep() {
   char result;
 #ifdef _WIN32
   result = ';';
@@ -48,7 +48,7 @@ std::string GetRayTempDir();
 std::string GetUserTempDir();
 
 /// \return Whether or not the given character is a directory separator on this platform.
-static bool IsDirSep(char ch) {
+static inline bool IsDirSep(char ch) {
   bool result = ch == GetDirSep();
 #ifdef _WIN32
   result |= ch == GetAltDirSep();
@@ -57,7 +57,7 @@ static bool IsDirSep(char ch) {
 }
 
 /// \return Whether or not the given character is a PATH separator on this platform.
-static bool IsPathSep(char ch) { return ch == GetPathSep(); }
+static inline bool IsPathSep(char ch) { return ch == GetPathSep(); }
 
 /// \return The result of joining multiple path components.
 template <class... Paths>

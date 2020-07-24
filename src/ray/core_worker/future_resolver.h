@@ -18,8 +18,8 @@
 
 #include "ray/common/id.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/protobuf/core_worker.pb.h"
 #include "ray/rpc/worker/core_worker_client.h"
+#include "src/ray/protobuf/core_worker.pb.h"
 
 namespace ray {
 
