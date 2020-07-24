@@ -10,7 +10,7 @@ from ray import tune
 from ray.tune.examples.mnist_pytorch import (train, test, get_data_loaders,
                                              ConvNet)
 from ray.util.sgd.torch.func_trainable import (DistributedTrainableCreator,
-                                                distributed_checkpoint)
+                                               distributed_checkpoint)
 
 logger = logging.getLogger(__name__)
 
