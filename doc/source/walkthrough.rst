@@ -270,9 +270,6 @@ Cancelling tasks
       obj_ref = blocking_operation.remote()
       ray.cancel(obj_ref)
 
-    .. autofunction:: ray.cancel
-        :noindex:
-
   .. group-tab:: Java
 
     Task cancellation hasn't been implemented in Java yet.
@@ -394,69 +391,130 @@ actors.
 Remote Classes (Actors)
 -----------------------
 
-Actors extend the Ray API from functions (tasks) to classes. The ``ray.remote``
-decorator indicates that instances of the ``Counter`` class will be actors. An
-actor is essentially a stateful worker. Each actor runs in its own Python
-process.
+Actors extend the Ray API from functions (tasks) to classes. An actor is essentially a stateful worker.
 
-.. code-block:: python
 
-  @ray.remote
-  class Counter(object):
-      def __init__(self):
-          self.value = 0
+.. tabs::
 
-      def increment(self):
-          self.value += 1
-          return self.value
+  .. group-tab:: Python
 
-To create a couple actors, we can instantiate this class as follows:
+    The ``ray.remote`` decorator indicates that instances of the ``Counter`` class will be actors. Each actor runs in its own Python process.
 
-.. code-block:: python
+    .. code-block:: python
 
-  a1 = Counter.remote()
-  a2 = Counter.remote()
+      @ray.remote
+      class Counter(object):
+          def __init__(self):
+              self.value = 0
 
-When an actor is instantiated, the following events happen.
+          def increment(self):
+              self.value += 1
+              return self.value
 
-1. A worker Python process is started on a node of the cluster.
-2. A ``Counter`` object is instantiated on that worker.
+      # Create an actor from this class.
+      counter = Counter.remote()
 
-You can specify resource requirements in Actors too (see the `Actors section
+  .. group-tab:: Java
+
+    ``Ray.actor`` is used to create actors from regular Java classes. Unlike Python, multiple Java actors may share one JVM process, in order to reduce JVM's memory overhead. But this is transparent to normal users.
+
+    .. code-block:: java
+
+      // A regular Java class.
+      public class Counter {
+
+        private int value = 0;
+
+        public int increment() {
+          this.value += 1;
+          return this.value;
+        }
+      }
+
+      // Create an actor from this class.
+      // `Ray.actor` takes a factory method that can produce
+      // a `Counter` object. Here, we pass `Counter`'s constructor
+      // as the argument.
+      ActorHandle<Counter> counter = Ray.actor(Counter::new).remote();
+
+Specifying required resources
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can specify resource requirements in actors too (see the `Actors section
 <actors.html>`__ for more details.)
 
-.. code-block:: python
+.. tabs::
+  .. code-tab:: python
 
-  @ray.remote(num_cpus=2, num_gpus=0.5)
-  class Actor(object):
-      pass
+    @ray.remote(num_cpus=2, num_gpus=0.5)
+    class Actor(object):
+        pass
 
-We can interact with the actor by calling its methods with the ``.remote``
-operator. We can then call ``ray.get`` on the object ref to retrieve the actual
+  .. code-tab:: java
+
+    Ray.actor(Counter::new).setResource("CPU", 2).setResource("GPU", 0.5).remote();
+
+
+Calling the actor
+~~~~~~~~~~~~~~~~~
+
+We can interact with the actor by calling its methods with the ``remote``
+operator. We can then call ``get`` on the object ref to retrieve the actual
 value.
 
-.. code-block:: python
+.. tabs::
+  .. code-tab:: python
 
-  obj_ref = a1.increment.remote()
-  ray.get(obj_ref) == 1
+    obj_ref = counter.increment.remote()
+    ray.get(obj_ref) == 1
 
+  .. code-tab:: java
+
+    ObjectRef<Integer> objectRef = counter.task(Counter::increment).remote();
+    Assert.assertEqual(objectRef.get(), 1);
 
 Methods called on different actors can execute in parallel, and methods called on the same actor are executed serially in the order that they are called. Methods on the same actor will share state with one another, as shown below.
 
-.. code-block:: python
+.. tabs::
+  .. code-tab:: python
 
-  # Create ten Counter actors.
-  counters = [Counter.remote() for _ in range(10)]
+    # Create ten Counter actors.
+    counters = [Counter.remote() for _ in range(10)]
 
-  # Increment each Counter once and get the results. These tasks all happen in
-  # parallel.
-  results = ray.get([c.increment.remote() for c in counters])
-  print(results)  # prints [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    # Increment each Counter once and get the results. These tasks all happen in
+    # parallel.
+    results = ray.get([c.increment.remote() for c in counters])
+    print(results)  # prints [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
 
-  # Increment the first Counter five times. These tasks are executed serially
-  # and share state.
-  results = ray.get([counters[0].increment.remote() for _ in range(5)])
-  print(results)  # prints [2, 3, 4, 5, 6]
+    # Increment the first Counter five times. These tasks are executed serially
+    # and share state.
+    results = ray.get([counters[0].increment.remote() for _ in range(5)])
+    print(results)  # prints [2, 3, 4, 5, 6]
 
+  .. code-tab:: java
+
+    // Create ten Counter actors.
+    List<ActorHandle<Counter>> counters = new ArrayList<>();
+    for (int i = 0; i < 10; i++) {
+      counters.add(Ray.actor(Counter::new).remote());
+    }
+
+    // Increment each Counter once and get the results. These tasks all happen in
+    // parallel.
+    ObjectRef<Integer> objectRefs = new ArrayList<>();
+    for (ActorHandle<Counter> counter : counters) {
+      objectRefs.add(counter.task(Counter::increment).remote());
+    }
+    // prints [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    System.out.println(Ray.get(objectRefs))
+
+    // Increment the first Counter five times. These tasks are executed serially
+    // and share state.
+    objectRefs = new ArrayList<>();
+    for (int i = 0; i < 5; i++) {
+      results.add(counters.get(0).task(Counter::increment).remote();
+    }
+    // prints [2, 3, 4, 5, 6]
+    System.out.println(Ray.get(objectRefs))
 
 To learn more about Ray Actors, see the `Actors section <actors.html>`__.
