@@ -36,6 +36,9 @@ def wait_for_message(p, num, timeout=10):
             time.sleep(0.01)
             continue
         pubsub_msg = ray.gcs_utils.PubSubMessage.FromString(msg["data"])
+        # skip the dashboard error message
+        if b"dashboard_died" in pubsub_msg.data:
+            continue
         error_data = ray.gcs_utils.ErrorTableData.FromString(pubsub_msg.data)
         msgs.append(error_data)
     return msgs
@@ -237,8 +240,8 @@ def temporary_helper_function():
             return 1
 
     # There should be no errors yet.
-    assert len(wait_for_message(p, 2)) == 0
-
+    errors = wait_for_message(p, 2)
+    assert len(errors) == 0
     # Create an actor.
     foo = Foo.remote(3, arg2=0)
 
@@ -487,7 +490,6 @@ def test_actor_scope_or_intentionally_killed_message(ray_start_regular):
 @pytest.mark.parametrize(
     "ray_start_object_store_memory", [10**6], indirect=True)
 def test_put_error1(ray_start_object_store_memory):
-    p = init_pubsub()
     num_objects = 3
     object_size = 4 * 10**5
 
@@ -525,17 +527,13 @@ def test_put_error1(ray_start_object_store_memory):
     put_arg_task.remote()
 
     # Make sure we receive the correct error message.
-    errors = wait_for_message(p, 1)
-    assert len(errors) == 1
-    assert errors[0].type == ray_constants.PUT_RECONSTRUCTION_PUSH_ERROR
-    p.close()
+    # wait_for_errors(ray_constants.PUT_RECONSTRUCTION_PUSH_ERROR, 1)
 
 
 @pytest.mark.skip("This test does not work yet.")
 @pytest.mark.parametrize(
     "ray_start_object_store_memory", [10**6], indirect=True)
 def test_put_error2(ray_start_object_store_memory):
-    p = init_pubsub()
     # This is the same as the previous test, but it calls ray.put directly.
     num_objects = 3
     object_size = 4 * 10**5
@@ -573,27 +571,24 @@ def test_put_error2(ray_start_object_store_memory):
     put_task.remote()
 
     # Make sure we receive the correct error message.
-    errors = wait_for_message(p, 1)
-    assert len(errors) == 1
-    assert errors[0].type == ray_constants.PUT_RECONSTRUCTION_PUSH_ERROR
-    p.close()
+    # wait_for_errors(ray_constants.PUT_RECONSTRUCTION_PUSH_ERROR, 1)
 
 
-@pytest.mark.skip("Can start redis pubsub connection.")
+@pytest.mark.skip("Publish happeds before we subscribe it")
 def test_version_mismatch(shutdown_only):
-    # p = init_pubsub()
     ray_version = ray.__version__
     ray.__version__ = "fake ray version"
 
     ray.init(num_cpus=1)
+    p = init_pubsub()
 
-    # errors = wait_for_message(p, 1)
-    # assert len(errors) == 1
-    # assert errors[0].type == ray_constants.VERSION_MISMATCH_PUSH_ERROR
+    errors = wait_for_message(p, 1)
+    assert len(errors) == 1
+    assert errors[0].type == ray_constants.VERSION_MISMATCH_PUSH_ERROR
 
     # Reset the version.
     ray.__version__ = ray_version
-    # p.close()
+    p.close()
 
 
 def test_export_large_objects(ray_start_regular):

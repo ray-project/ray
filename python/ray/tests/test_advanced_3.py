@@ -355,6 +355,7 @@ def test_ray_setproctitle(ray_start_2_cpus):
     ray.get(unique_1.remote())
 
 
+@pytest.mark.skip("Error info use pub/sub now")
 def test_duplicate_error_messages(shutdown_only):
     ray.init(num_cpus=0)
 
