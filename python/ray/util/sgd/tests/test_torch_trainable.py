@@ -1,11 +1,13 @@
+import os
 import pytest
+from unittest.mock import patch
 import torch
 import torch.distributed as dist
 
 import ray
 from ray import tune
-from ray.util.sgd.torch.func_trainable import (DistributedTrainableCreator,
-                                               _train_simple)
+from ray.util.sgd.torch.func_trainable import (
+    DistributedTrainableCreator, distributed_checkpoint, _train_simple)
 
 
 @pytest.fixture
@@ -64,6 +66,17 @@ def test_simple_tune(ray_start_4_cpus, enabled_checkpoint):
         stop={"training_iteration": 2})
     assert analysis.trials[0].last_result["training_iteration"] == 2
     assert analysis.trials[0].has_checkpoint() == enabled_checkpoint
+
+
+@pytest.mark.parametrize("rank", [0, 1])
+def test_checkpoint(ray_start_2_cpus, rank):  # noqa: F811
+    with patch("torch.distributed.get_rank") as rank_method:
+        rank_method.return_value = rank
+        with distributed_checkpoint(label="test") as path:
+            if rank == 0:
+                assert path
+            else:
+                assert path == os.devnull
 
 
 if __name__ == "__main__":

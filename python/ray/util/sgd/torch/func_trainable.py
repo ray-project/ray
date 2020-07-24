@@ -165,7 +165,7 @@ class distributed_checkpoint:
             checkpoint_dir = tune.make_checkpoint_dir(step=self.label)
             path = os.path.join(checkpoint_dir, "checkpoint")
         else:
-            path = "/dev/null"
+            path = os.devnull
         self.file = path
         return path
 
