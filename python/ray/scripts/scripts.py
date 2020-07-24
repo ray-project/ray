@@ -647,6 +647,16 @@ def stop(force, verbose):
 @cli.command()
 @click.argument("cluster_config_file", required=True, type=str)
 @click.option(
+    "--min-workers",
+    required=False,
+    type=int,
+    help="Override the configured min worker node count for the cluster.")
+@click.option(
+    "--max-workers",
+    required=False,
+    type=int,
+    help="Override the configured max worker node count for the cluster.")
+@click.option(
     "--no-restart",
     is_flag=True,
     default=False,
@@ -659,20 +669,11 @@ def stop(force, verbose):
     help=("Whether to skip running setup commands and only restart Ray. "
           "This cannot be used with 'no-restart'."))
 @click.option(
-    "--no-config-cache",
+    "--yes",
+    "-y",
     is_flag=True,
     default=False,
-    help="Disable the local cluster config cache.")
-@click.option(
-    "--min-workers",
-    required=False,
-    type=int,
-    help="Override the configured min worker node count for the cluster.")
-@click.option(
-    "--max-workers",
-    required=False,
-    type=int,
-    help="Override the configured max worker node count for the cluster.")
+    help="Don't ask for confirmation.")
 @click.option(
     "--cluster-name",
     "-n",
@@ -680,13 +681,25 @@ def stop(force, verbose):
     type=str,
     help="Override the configured cluster name.")
 @click.option(
-    "--yes",
-    "-y",
+    "--no-config-cache",
     is_flag=True,
     default=False,
-    help="Don't ask for confirmation.")
+    help="Disable the local cluster config cache.")
+@click.option(
+    "--log-old-style/--log-new-style",
+    is_flag=True,
+    default=True,
+    help=("Use old logging."))
+@click.option(
+    "--log-color",
+    required=False,
+    type=str,
+    default="auto",
+    help=("Use color logging. "
+          "Valid values are: auto (if stdout is a tty), true, false."))
+@click.option("-v", "--verbose", count=True)
 def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
-       yes, cluster_name, no_config_cache):
+       yes, cluster_name, no_config_cache, log_old_style, log_color, verbose):
     """Create or update a Ray cluster."""
     if restart_only or no_restart:
         assert restart_only != no_restart, "Cannot set both 'restart_only' " \
@@ -703,21 +716,12 @@ def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
             logger.info("Error downloading file: ", e)
     create_or_update_cluster(cluster_config_file, min_workers, max_workers,
                              no_restart, restart_only, yes, cluster_name,
-                             no_config_cache)
+                             no_config_cache, log_old_style, log_color,
+                             verbose)
 
 
 @cli.command()
 @click.argument("cluster_config_file", required=True, type=str)
-@click.option(
-    "--workers-only",
-    is_flag=True,
-    default=False,
-    help="Only destroy the workers.")
-@click.option(
-    "--keep-min-workers",
-    is_flag=True,
-    default=False,
-    help="Retain the minimal amount of workers specified in the config.")
 @click.option(
     "--yes",
     "-y",
@@ -725,16 +729,39 @@ def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
     default=False,
     help="Don't ask for confirmation.")
 @click.option(
+    "--workers-only",
+    is_flag=True,
+    default=False,
+    help="Only destroy the workers.")
+@click.option(
     "--cluster-name",
     "-n",
     required=False,
     type=str,
     help="Override the configured cluster name.")
+@click.option(
+    "--keep-min-workers",
+    is_flag=True,
+    default=False,
+    help="Retain the minimal amount of workers specified in the config.")
+@click.option(
+    "--log-old-style/--log-new-style",
+    is_flag=True,
+    default=True,
+    help=("Use old logging."))
+@click.option(
+    "--log-color",
+    required=False,
+    type=str,
+    default="auto",
+    help=("Use color logging. "
+          "Valid values are: auto (if stdout is a tty), true, false."))
+@click.option("-v", "--verbose", count=True)
 def down(cluster_config_file, yes, workers_only, cluster_name,
-         keep_min_workers):
+         keep_min_workers, log_old_style, log_color, verbose):
     """Tear down a Ray cluster."""
     teardown_cluster(cluster_config_file, yes, workers_only, cluster_name,
-                     keep_min_workers)
+                     keep_min_workers, log_old_style, log_color, verbose)
 
 
 @cli.command()

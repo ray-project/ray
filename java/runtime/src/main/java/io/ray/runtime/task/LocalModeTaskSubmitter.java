@@ -174,9 +174,11 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
         = new LocalModeActorHandle(actorId, getReturnIds(taskSpec).get(0));
     actorHandles.put(actorId, actorHandle.copy());
     if (StringUtils.isNotBlank(options.name)) {
-      Preconditions.checkArgument(!namedActors.containsKey(options.name),
-          String.format("Actor of name %s exists", options.name));
-      namedActors.put(options.name, actorHandle);
+      String fullName = options.global ? options.name :
+          String.format("%s-%s", Ray.getRuntimeContext().getCurrentJobId(), options.name);
+      Preconditions.checkArgument(!namedActors.containsKey(fullName),
+          String.format("Actor of name %s exists", fullName));
+      namedActors.put(fullName, actorHandle);
     }
     return actorHandle;
   }
@@ -215,11 +217,11 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   public Optional<BaseActorHandle> getActor(String name, boolean global) {
     String fullName = global ? name :
         String.format("%s-%s", Ray.getRuntimeContext().getCurrentJobId(), name);
-    if (namedActors.containsKey(fullName)) {
-      return Optional.of(namedActors.get(fullName));
-    } else {
+    ActorHandle actorHandle = namedActors.get(fullName);
+    if (null == actorHandle) {
       return Optional.empty();
     }
+    return Optional.of(actorHandle);
   }
 
   public void shutdown() {
@@ -311,8 +313,9 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
         ? ((LocalModeTaskExecutor.LocalActorContext) actorContext).getWorkerId()
         : UniqueId.randomId();
     ((LocalModeWorkerContext) runtime.getWorkerContext()).setCurrentWorkerId(workerId);
-    List<NativeRayObject> returnObjects = taskExecutor
-        .execute(getJavaFunctionDescriptor(taskSpec).toList(), args);
+    List<String> rayFunctionInfo = getJavaFunctionDescriptor(taskSpec).toList();
+    taskExecutor.checkByteBufferArguments(rayFunctionInfo);
+    List<NativeRayObject> returnObjects = taskExecutor.execute(rayFunctionInfo, args);
     if (taskSpec.getType() == TaskType.ACTOR_CREATION_TASK) {
       // Update actor context map ASAP in case objectStore.putRaw triggered the next actor task
       // on this actor.

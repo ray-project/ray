@@ -312,7 +312,7 @@ lint_bazel() {
   # Run buildifier without affecting external environment variables
   (
     mkdir -p -- "${GOPATH}"
-    export PATH="${GOPATH}/bin":"${GOROOT}/bin":"${PATH}"
+    export PATH="${GOPATH}/bin:${GOROOT}/bin:${PATH}"
 
     # Build buildifier
     go get github.com/bazelbuild/buildtools/buildifier
@@ -329,8 +329,11 @@ lint_web() {
     . "${HOME}/.nvm/nvm.sh"
     install_npm_project
     nvm use --silent node
-    node_modules/.bin/eslint --max-warnings 0 $(find src -name "*.ts" -or -name "*.tsx")
-    node_modules/.bin/prettier --check $(find src -name "*.ts" -or -name "*.tsx")
+    local filenames
+    # shellcheck disable=SC2207
+    filenames=($(find src -name "*.ts" -or -name "*.tsx"))
+    node_modules/.bin/eslint --max-warnings 0 "${filenames[@]}"
+    node_modules/.bin/prettier --check "${filenames[@]}"
     node_modules/.bin/prettier --check public/index.html
   )
 }

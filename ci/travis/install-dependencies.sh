@@ -159,7 +159,7 @@ install_nvm() {
       )
       printf "%s\n" \
         "export NVM_HOME=\"$(cygpath -w -- "${NVM_HOME}")\"" \
-        'nvm() { "${NVM_HOME}/nvm.exe" "$@"; }' \
+        "nvm() { \"\${NVM_HOME}/nvm.exe\" \"\$@\"; }" \
         > "${NVM_HOME}/nvm.sh"
     fi
   else
@@ -239,7 +239,7 @@ install_dependencies() {
       opencv-python-headless pyyaml pandas==1.0.5 requests feather-format lxml openpyxl xlrd \
       py-spy pytest pytest-timeout networkx tabulate aiohttp uvicorn dataclasses pygments werkzeug \
       kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio scikit-learn==0.22.2 numba \
-      Pillow prometheus_client boto3 pettingzoo)
+      Pillow prometheus_client boto3 pettingzoo mypy)
     if [ "${OSTYPE}" != msys ]; then
       # These packages aren't Windows-compatible
       pip_packages+=(blist)  # https://github.com/DanielStutzbach/blist/issues/81#issue-391460716
@@ -277,7 +277,7 @@ install_dependencies() {
   # Additional RLlib dependencies.
   if [ "${RLLIB_TESTING-}" = 1 ]; then
     pip install tensorflow-probability=="${TFP_VERSION-0.8}" gast==0.2.2 \
-      torch=="${TORCH_VERSION-1.4}" torchvision atari_py gym[atari] lz4 smart_open
+      torch=="${TORCH_VERSION-1.4}" torchvision atari_py "gym[atari]" lz4 smart_open
   fi
 
   # Additional streaming dependencies.

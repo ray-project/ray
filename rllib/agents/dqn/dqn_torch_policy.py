@@ -52,7 +52,6 @@ class QLoss:
             "mean_q": torch.mean(q_t_selected),
             "min_q": torch.min(q_t_selected),
             "max_q": torch.max(q_t_selected),
-            "td_error": self.td_error,
             "mean_td_error": torch.mean(self.td_error),
         }
 
@@ -250,10 +249,7 @@ def compute_q_values(policy, model, obs, explore, is_training=False):
 
 def grad_process_and_td_error_fn(policy, optimizer, loss):
     # Clip grads if configured.
-    info = apply_grad_clipping(policy, optimizer, loss)
-    # Add td-error to info dict.
-    info["td_error"] = policy.q_loss.td_error
-    return info
+    return apply_grad_clipping(policy, optimizer, loss)
 
 
 def extra_action_out_fn(policy, input_dict, state_batches, model, action_dist):
@@ -270,6 +266,7 @@ DQNTorchPolicy = build_torch_policy(
     postprocess_fn=postprocess_nstep_and_prio,
     optimizer_fn=adam_optimizer,
     extra_grad_process_fn=grad_process_and_td_error_fn,
+    extra_learn_fetches_fn=lambda policy: {"td_error": policy.q_loss.td_error},
     extra_action_out_fn=extra_action_out_fn,
     before_init=setup_early_mixins,
     after_init=after_init,
