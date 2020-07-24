@@ -713,6 +713,8 @@ Blacklisted:     No
     expected_dict = {"ResourceConstraint:V100": 1}
     assert constraints_dict == expected_dict
 
+    assert resource_spec._constraints_from_gpu_info(None) == {}
+
 
 if __name__ == "__main__":
     import pytest
