@@ -18,6 +18,7 @@ import ray
 import ray.ray_constants as ray_constants
 import ray.cluster_utils
 import ray.test_utils
+from ray import resource_spec
 import setproctitle
 
 from ray.test_utils import RayTestTimeoutException, wait_for_num_actors
@@ -693,6 +694,22 @@ def test_ray_address_environment_variable(ray_start_cluster):
     assert "CPU" in ray.state.cluster_resources()
     ray.shutdown()
 
+
+def test_gpu_info_parsing(ray_start_cluster):
+    info_string = """Model:           Tesla V100-SXM2-16GB
+IRQ:             107
+GPU UUID:        GPU-8eaaebb8-bb64-8489-fda2-62256e821983
+Video BIOS:      88.00.4f.00.09
+Bus Type:        PCIe
+DMA Size:        47 bits
+DMA Mask:        0x7fffffffffff
+Bus Location:    0000:00:1e.0
+Device Minor:    0
+Blacklisted:     No
+    """
+    constraints_dict = resource_spec._constraints_from_gpu_info(info_string)
+    expected_dict = {"ResourceConstraint:V100":1}
+    assert constraints_dict == expected_dict
 
 if __name__ == "__main__":
     import pytest

@@ -166,11 +166,10 @@ class ResourceSpec(
             if gpu_ids is not None:
                 num_gpus = min(num_gpus, len(gpu_ids))
 
-        gpu_type = _get_gpu_type()
-        if num_gpus and gpu_type is not None:
-            pretty_name = _pretty_gpu_name(gpu_type)
-            constraint_name = "ResourceConstraint:{}".format(pretty_name)
-            resources[constraint_name] = num_gpus
+
+        info_string = _get_gpu_info_string()
+        gpu_types = _constraints_from_gpu_info(info_string)
+        resources.update(gpu_types)
 
         # Choose a default object store size.
         system_memory = ray.utils.get_system_memory()
@@ -260,7 +259,7 @@ def _autodetect_num_gpus():
     return result
 
 
-def get_gpu_model(info_str):
+def _constraints_from_gpu_info(info_str):
     """Parse the contents of a /proc/driver/nvidia/gpus/*/information to get the
 gpu model type.
 
@@ -270,16 +269,27 @@ gpu model type.
     Returns:
         (str) The full model name.
     """
-
+    if info_str is None:
+        return None
     lines = info_str.split("\n")
+    full_model_name = None
     for line in lines:
-        k, v = line.split(":")
+        split = line.split(":")
+        if len(split) != 2:
+            continue
+        k, v = split
         if k.strip() == "Model":
-            return v.strip()
-    return None
+            full_model_name = v.strip()
+            break
+    pretty_name = _pretty_gpu_name(full_model_name)
+    if pretty_name:
+        constraint_name = "{}{}".format(ray_constants.RESOURCE_CONSTRAINT_PREFIX, pretty_name)
+        return {constraint_name:1}
+    else:
+        return {}
 
 
-def _get_gpu_type():
+def _get_gpu_info_string():
     """Get the gpu type for this machine.
 
     TODO(Alex): All the caveats of _autodetect_num_gpus and we assume only one
@@ -296,7 +306,7 @@ def _get_gpu_type():
                 gpu_info_path = "{}/{}/information".format(
                     proc_gpus_path, gpu_dirs[0])
                 info_str = open(gpu_info_path).read()
-                return get_gpu_model(info_str)
+                return info_str
     return None
 
 
@@ -306,5 +316,7 @@ GPU_NAME_PATTERN = re.compile("\w+\s+([A-Z0-9]+)")
 
 
 def _pretty_gpu_name(name):
+    if name is None:
+        return None
     match = GPU_NAME_PATTERN.match(name)
-    return match.group(1)
+    return match.group(1) if match else None

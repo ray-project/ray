@@ -1,4 +1,5 @@
 import ray
+from ray.ray_constants import RESOURCE_CONSTRAINT_PREFIX
 
 
 def set_resource(resource_name, capacity, client_id=None):
@@ -24,6 +25,7 @@ def set_resource(resource_name, capacity, client_id=None):
           ValueError: This exception is raised when a non-negative capacity is
             specified.
     """
+    assert not resource_name.startswith(RESOURCE_CONSTRAINT_PREFIX)
     if client_id is not None:
         client_id_obj = ray.ClientID(ray.utils.hex_to_binary(client_id))
     else:

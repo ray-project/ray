@@ -11,6 +11,7 @@ from ray import (
     services,
 )
 from ray.utils import (decode, binary_to_hex, hex_to_binary)
+from ray.ray_constants import RESOURCE_CONSTRAINT_PREFIX
 
 from ray._raylet import GlobalStateAccessor
 
@@ -669,7 +670,7 @@ class GlobalState:
             return 0, 0, 0
         return overall_smallest, overall_largest, num_tasks
 
-    def cluster_resources(self):
+    def cluster_resources(self, verbose=False):
         """Get the current total cluster resources.
 
         Note that this information can grow stale as nodes are added to or
@@ -687,6 +688,9 @@ class GlobalState:
             # Only count resources from latest entries of live clients.
             if client["Alive"]:
                 for key, value in client["Resources"].items():
+                    if verbose is False and \
+                       key.startswith(RESOURCE_CONSTRAINT_PREFIX):
+                        continue
                     resources[key] += value
         return dict(resources)
 
@@ -697,7 +701,7 @@ class GlobalState:
             for client in self.node_table() if (client["Alive"])
         }
 
-    def available_resources(self):
+    def available_resources(self, verbose=False):
         """Get the current available cluster resources.
 
         This is different from `cluster_resources` in that this will return
@@ -750,6 +754,9 @@ class GlobalState:
         total_available_resources = defaultdict(int)
         for available_resources in available_resources_by_id.values():
             for resource_id, num_available in available_resources.items():
+                if verbose is False and \
+                    resource_id.startswith(RESOURCE_CONSTRAINT_PREFIX):
+                    continue
                 total_available_resources[resource_id] += num_available
 
         # Close the pubsub clients to avoid leaking file descriptors.
