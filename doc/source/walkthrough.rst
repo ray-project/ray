@@ -87,7 +87,7 @@ Ray enables arbitrary functions to be executed asynchronously. These asynchronou
       # Invocation of Ray remote functions happen in parralel.
       # All computation is performed in the background, driven by Ray's internal event loop.
       for _ in range(4):
-          # This doesn't block
+          # This doesn't block.
           slow_function.remote()
 
     See the `ray.remote package reference <package-ref.html>`__ page for specific documentation on how to use ``ray.remote``.
@@ -185,7 +185,7 @@ this default behavior by passing in specific resources.
     Set Java system property: ``-Dray.resources=CPU:8,GPU:4,Custom:2``.
 
 Ray also allows specifying a task's resources requirements (e.g., CPU, GPU, and custom resources).
-The task will only run on a machine if there are enough CPU and GPU (and other custom) resources
+The task will only run on a machine if there are enough resources
 available to execute the task.
 
 .. tabs::
@@ -220,9 +220,10 @@ Below are more examples of resource specifications:
 .. tabs::
   .. code-tab:: python
 
-    # Ray also supports fractional resource requirements
+    # Ray also supports fractional resource requirements.
     @ray.remote(num_gpus=0.5)
     def h():
+        return 1
 
     # Ray support custom resources too.
     @ray.remote(resources={'Custom': 1})
@@ -267,6 +268,7 @@ Cancelling tasks
       @ray.remote
       def blocking_operation():
           time.sleep(10e6)
+
       obj_ref = blocking_operation.remote()
       ray.cancel(obj_ref)
 
@@ -392,7 +394,6 @@ Remote Classes (Actors)
 -----------------------
 
 Actors extend the Ray API from functions (tasks) to classes. An actor is essentially a stateful worker.
-
 
 .. tabs::
 
