@@ -263,7 +263,7 @@ class CoreWorkerProcess {
   /// To protect accessing the `workers_` map.
   mutable absl::Mutex worker_map_mutex_;
 
-  /// Event loop where the metric exporting are handled. e.g. async gRPC operations.
+  /// Event loop where the metric exporting are handled, e.g., async gRPC operations.
   static boost::asio::io_service stats_io_service_;
 
   /// Stats service worker thread and it will be detached.
