@@ -204,6 +204,7 @@ def build_torch_policy(name,
                 return optimizer_fn(self, self.config)
             else:
                 return TorchPolicy.optimizer(self)
+        # TODO get exploration optimizer
 
         @override(TorchPolicy)
         def extra_grad_info(self, train_batch):

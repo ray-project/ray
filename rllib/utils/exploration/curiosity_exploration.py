@@ -22,7 +22,7 @@ reward.
 from gym.spaces import Space
 from typing import Union
 
-# TODO alphabetize imports, check type annotations, lint
+# TODO alphabetize imports, lint
 # TODO how to test if action space is discrete
 # TODO should i use the default docstring format. also check the types with sven
 from ray.rllib.utils.framework import try_import_torch, TensorType
@@ -32,7 +32,7 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.models.torch.misc import SlimFC
-from ray.rllib.utils.exploration import EpsilonGreedy, GaussianNoise, Random
+# from ray.rllib.utils.exploration import EpsilonGreedy, GaussianNoise, Random
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 
 torch, nn = try_import_torch()
@@ -59,13 +59,15 @@ class Curiosity(Exploration):
             raise NotImplementedError("only torch is currently supported for "
                                       "curiosity")
 
+        # kwargs remove subexploration from config dict first
+
         super().__init__(
             action_space=action_space,
             framework=framework,
             **kwargs)
 
 
-        # TODO (tanay): config fc_net_hiddens. ask sven what the convention is
+        # TODO: config fc_net_hiddens. ask sven what the convention is
         self.obs_space_dim = self.model.obs_space.shape[0]
         self.embedding_dim = 6
         self.action_space_dim = 1 # TODO can we always assume 1?
@@ -129,6 +131,7 @@ class Curiosity(Exploration):
         submodule_type = "EpsilonGreedy"
         framework = "torch"
 
+        #submodule = from_config( subconfig from main config )
         if submodule_type == "EpsilonGreedy":
             self.exploration_submodule = EpsilonGreedy(
                 action_space=action_space,
@@ -163,22 +166,19 @@ class Curiosity(Exploration):
         return self.exploration_submodule.get_exploration_action(
             action_distribution=action_distribution, timestep=timestep)
 
-    def get_intrinsic_loss(self):
-        """
-        Returns the intrinsic losses, as a batch
-        """
-        # how do we want to do this
-        return 0
 
-    # TODO what is TensorType under the hood? should it return TensorType as well?
-    def _get_latent_vector(self, obs: TensorType):
+    def _get_latent_vector(self, obs: TensorType) -> TensorType:
         """
         Returns the embedded vector phi(state)
             obs (TensorType): a batch of states
         """
         return self.features_model(obs)
 
-    def postprocess_trajectory(self, policy, sample_batch, tf_sess=None):
+    def get_optimizer(self):
+
+
+    # TODO add a hook in the main exploration class. this returns scalar loss
+    def get_exploration_loss(self, policy: Policy, sample_batch: SampleBatch, tf_sess: Optional["tf.Session"] = None):
         """
         Calculates the intrinsic curiosity based loss
         policy (TODO what type should this be): The model policy
@@ -212,18 +212,19 @@ class Curiosity(Exploration):
         # also when do we convert from numpy array to tensor
 
         # Modifies environment rewards by subtracting intrinsic rewards
-        sample_batch["rewards"] = sample_batch["rewards"] \
-                                  - embedding_loss.clone().detach().numpy() \
-                                  - actions_loss.clone().detach().numpy()
+#        sample_batch["rewards"] = sample_batch["rewards"] \
+#                                  - embedding_loss.clone().detach().numpy() \
+#                                  - actions_loss.clone().detach().numpy()
 
 
         # sample_batch is already batched so we backprop over everything.
-        self.optimizer.zero_grad()
+        #self.optimizer.zero_grad()
         loss = torch.sum(embedding_loss) + torch.sum(actions_loss)
-        loss.backward()
-        self.optimizer.step()
+        #loss.backward()
+        #self.optimizer.step()
 
-        return sample_batch
+
+        return loss
 
     def _predict_action(self, obs: TensorType, next_obs: TensorType):
         """
@@ -251,3 +252,11 @@ class Curiosity(Exploration):
             torch.cat(
                 (self._get_latent_vector(obs), action.unsqueeze(1)),
                 axis=-1))
+
+    def postprocess_trajectory(self, policy, sample_batch, tf_sess=None):
+        # push sample batch through curiosity model
+        # change rewards inside sample batch
+        # don't return anything
+
+
+

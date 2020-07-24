@@ -27,7 +27,7 @@ class TestCuriosity(unittest.TestCase):
         env = "CartPole-v0"
         dummy_obs = np.array([0.0, 0.1, 0.0, 0.0])
         prev_a = np.array(0)
-
+        config["framework"] = "torch"
         config["exploration_config"] = {"type": "ParameterNoise"}
 
         trainer = ppo.PPOTrainer(config=config, env=env)
