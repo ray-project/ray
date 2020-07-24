@@ -61,7 +61,8 @@ worker_nodes:
 setup_commands:
   # Install ray.
   - pip install -U pip
-  - ray || pip install -U {{ray-wheel}}
+  - conda uninstall -y terminado
+  - ray || "pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/{{ray_branch}}/{{commit}}/ray-{{ray_version}}-cp36-cp36m-manylinux1_x86_64.whl"
   # Installing this without -U to make sure we don't replace the existing Ray installation
   - pip install ray[rllib]
   - pip install -U ipdb

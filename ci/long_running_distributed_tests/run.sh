@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+
+ray_version="" 
+commit=""
+ray_branch=""
+workload=""
+
+usage() {
+    echo "Start one microbenchmark trial."
+}
+
+for i in "$@"
+do
+echo $i
+case $i in
+    --ray-version=*)
+    ray_version="${i#*=}"
+
+    ;;
+    --commit=*)
+    commit="${i#*=}"
+    ;;
+    --ray-branch=*)
+    ray_branch="${i#*=}"
+    ;;
+    --workload=*)
+    workload="${i#*=}"
+    ;;
+    --help)
+    usage
+    exit
+    ;;
+    *)
+    echo "unknown arg, $i"
+    exit 1
+    ;;
+esac
+done
+
+if [[ $ray_version == "" || $commit == "" || $ray_branch == "" ]]
+then
+    echo "Provide --ray-version, --commit, and --ray-branch"
+    exit 1
+fi
+
+echo "version: $ray_version"
+echo "commit: $commit"
+echo "branch: $ray_branch"
+echo "workload: $workload"
+
+python "workloads/$workload.py"
