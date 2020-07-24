@@ -77,7 +77,7 @@ public class WalkthroghDemo {
       objectRefs.add(Ray.put(i));
     }
     List<Integer> results = Ray.get(objectRefs);
-    Assert.assertEquals(results, ImmutableList.of(1, 2, 3));
+    Assert.assertEquals(results, ImmutableList.of(0, 1, 2));
 
     WaitResult<Integer> waitResult = Ray.wait(objectRefs, /*num_returns=*/1, /*timeoutMs=*/1000);
     System.out.println(waitResult.getReady());  // List of ready objects.

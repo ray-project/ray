@@ -10,7 +10,7 @@ This walkthrough will overview the core concepts of Ray:
 
 With Ray, your code will work on a single machine and can be easily scaled to large cluster.
 
-Java demo code in this documentation can be found `here<https://github.com/ray-project/ray/blob/master/java/test/src/main/java/io/ray/docdemo/WalkthroghDemo.java>`__.
+Java demo code in this documentation can be found `here <https://github.com/ray-project/ray/blob/master/java/test/src/main/java/io/ray/docdemo/WalkthroghDemo.java>`__.
 
 Installation
 ------------
@@ -334,7 +334,7 @@ If the current node's object store does not contain the object, the object is do
       assert ray.get(obj_ref) == 1
 
       # Get the values of multiple object refs in parallel.
-      assert ray.get([ray.put(i) for i in range(3)]) == [1, 2, 3]
+      assert ray.get([ray.put(i) for i in range(3)]) == [0, 1, 2]
 
       # You can also set a timeout to return early from a ``get`` that's blocking for too long.
       from ray.exceptions import RayTimeoutError
@@ -365,7 +365,7 @@ If the current node's object store does not contain the object, the object is do
 	objectRefs.add(Ray.put(i));
       }
       List<Integer> results = Ray.get(objectRefs);
-      Assert.assertEquals(results, ImmutableList.of(1, 2, 3));
+      Assert.assertEquals(results, ImmutableList.of(0, 1, 2));
 
 After launching a number of tasks, you may want to know which ones have
 finished executing. This can be done with ``wait`` (:ref:`ray-wait-ref`). The function
