@@ -715,7 +715,7 @@ TEST_F(GcsActorManagerTest, TestRaceConditionCancelLease) {
 TEST_F(GcsActorManagerTest, TestRegisterActor) {
   auto job_id = JobID::FromInt(1);
   auto registered_actor = RegisterActor(job_id);
-  // Make sure the actor state is `UNRESOLVED`.
+  // Make sure the actor state is `DEPENDENCIES_UNREADY`.
   ASSERT_EQ(registered_actor->GetState(), rpc::ActorTableData::DEPENDENCIES_UNREADY);
   // Make sure the actor has not been scheduled yet.
   ASSERT_TRUE(mock_actor_scheduler_->actors.empty());
