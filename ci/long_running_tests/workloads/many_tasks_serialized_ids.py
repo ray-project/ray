@@ -2,7 +2,6 @@
 # returning serialized ObjectRefs.
 
 import time
-import json
 import random
 
 import numpy as np
@@ -32,8 +31,7 @@ for i in range(num_nodes):
         resources={str(i): 2},
         object_store_memory=object_store_memory,
         redis_max_memory=redis_max_memory,
-        dashboard_host="0.0.0.0"
-    )
+        dashboard_host="0.0.0.0")
 ray.init(address=cluster.address)
 
 # Run the workload.
