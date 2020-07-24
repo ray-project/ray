@@ -250,8 +250,7 @@ install_dependencies() {
     # after n seconds.
     local status="0";
     local errmsg="";
-    for i in {1..3};
-    do
+    for _ in {1..3}; do
       errmsg=$(CC=gcc pip install "${pip_packages[@]}" 2>&1) && break;
       status=$errmsg && echo "'pip install ...' failed, will retry after n seconds!" && sleep 30;
     done
