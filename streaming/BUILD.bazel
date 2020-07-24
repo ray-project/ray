@@ -276,6 +276,7 @@ genrule(
         mkdir -p "$$GENERATED_DIR"
         touch "$$GENERATED_DIR/__init__.py"
         sed -i -E 's/from streaming.src.protobuf/from ./' "$$GENERATED_DIR/remote_call_pb2.py"
+        sed -i -E 's/from protobuf/from ./' "$$GENERATED_DIR/remote_call_pb2.py"
         date > $@
     """,
     local = 1,
