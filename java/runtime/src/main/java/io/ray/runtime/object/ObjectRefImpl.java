@@ -1,6 +1,9 @@
 package io.ray.runtime.object;
 
+import com.google.common.base.FinalizableReferenceQueue;
+import com.google.common.base.FinalizableWeakReference;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.Sets;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.id.ObjectId;
@@ -10,11 +13,18 @@ import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
+import java.lang.ref.Reference;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Implementation of {@link ObjectRef}.
  */
 public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
+
+  private static final FinalizableReferenceQueue REFERENCE_QUEUE = new FinalizableReferenceQueue();
+
+  private static final Set<Reference<ObjectRefImpl<?>>> REFERENCES = Sets.newConcurrentHashSet();
 
   private ObjectId id;
 
@@ -48,15 +58,6 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
   }
 
   @Override
-  protected void finalize() throws Throwable {
-    try {
-      removeLocalReference();
-    } finally {
-      super.finalize();
-    }
-  }
-
-  @Override
   public void writeExternal(ObjectOutput out) throws IOException {
     out.writeObject(this.getId());
     out.writeObject(this.getType());
@@ -75,18 +76,36 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
     RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
     workerId = runtime.getWorkerContext().getCurrentWorkerId();
     runtime.getObjectStore().addLocalReference(workerId, id);
+    new ObjectRefImplReference(this);
   }
 
-  private synchronized void removeLocalReference() {
-    // This method may be invoked multiple times on the same instance (due to explicit invoking in
-    // unit tests). So if `workerId` is null, it means this method has been invoked.
-    if (workerId != null) {
-      RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
-      // It's possible that GC is executed after the runtime is shutdown.
-      if (runtime != null) {
-        runtime.getObjectStore().removeLocalReference(workerId, id);
+  private static final class ObjectRefImplReference extends
+      FinalizableWeakReference<ObjectRefImpl<?>> {
+
+    private final UniqueId workerId;
+    private final ObjectId objectId;
+    private final AtomicBoolean removed;
+
+    public ObjectRefImplReference(ObjectRefImpl<?> obj) {
+      super(obj, REFERENCE_QUEUE);
+      this.workerId = obj.workerId;
+      this.objectId = obj.id;
+      this.removed = new AtomicBoolean(false);
+      REFERENCES.add(this);
+    }
+
+    @Override
+    public void finalizeReferent() {
+      // This method may be invoked multiple times on the same instance (due to explicit invoking in
+      // unit tests). So if `workerId` is null, it means this method has been invoked.
+      if (!removed.getAndSet(true)) {
+        REFERENCES.remove(this);
+        RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
+        // It's possible that GC is executed after the runtime is shutdown.
+        if (runtime != null) {
+          runtime.getObjectStore().removeLocalReference(workerId, objectId);
+        }
       }
-      workerId = null;
     }
   }
 }

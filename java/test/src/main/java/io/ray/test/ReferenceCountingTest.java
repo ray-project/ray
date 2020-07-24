@@ -9,12 +9,15 @@ import io.ray.api.Ray;
 import io.ray.api.id.ObjectId;
 import io.ray.runtime.object.NativeObjectStore;
 import io.ray.runtime.object.ObjectRefImpl;
+import java.lang.ref.Reference;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -44,9 +47,19 @@ public class ReferenceCountingTest extends BaseTest {
    */
   private static void del(ObjectRef<?> obj) {
     try {
-      Method method = ObjectRefImpl.class.getDeclaredMethod("removeLocalReference");
-      method.setAccessible(true);
-      method.invoke(obj);
+      Field referencesField = ObjectRefImpl.class.getDeclaredField("REFERENCES");
+      referencesField.setAccessible(true);
+      Set<?> references = (Set<?>) referencesField.get(null);
+      Class<?> referenceClass = Class
+          .forName("io.ray.runtime.object.ObjectRefImpl$ObjectRefImplReference");
+      Method finalizeReferentMethod = referenceClass.getDeclaredMethod("finalizeReferent");
+      finalizeReferentMethod.setAccessible(true);
+      for (Object reference : references) {
+        if (obj.equals(((Reference<?>)reference).get())) {
+          finalizeReferentMethod.invoke(reference);
+          break;
+        }
+      }
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
