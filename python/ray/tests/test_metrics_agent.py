@@ -169,9 +169,9 @@ def test_multiple_record(cleanup_agent):
     # the same name is reported.
     TOTAL_POINTS = 10
     NAME = "TEST"
-    values = [i for i in range(TOTAL_POINTS)]
+    values = list(range(TOTAL_POINTS))
     tags = [{"TAG_KEY": str(i)} for i in range(TOTAL_POINTS)]
-    timestamps = [i for i in range(TOTAL_POINTS)]
+    timestamps = list(range(TOTAL_POINTS))
     points = []
 
     for i in range(TOTAL_POINTS):
