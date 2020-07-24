@@ -156,6 +156,7 @@ test_python() {
       -python/ray/tests:test_stress  # timeout
       -python/ray/tests:test_stress_sharded  # timeout
       -python/ray/tests:test_webui
+      -python/ray/tests:test_multi_tenancy
     )
     bazel test -k --config=ci --test_timeout=600 --build_tests_only -- "${args[@]}";
   fi
