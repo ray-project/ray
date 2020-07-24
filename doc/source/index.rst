@@ -163,7 +163,6 @@ Academic Papers
    tune/index.rst
    tune/key-concepts.rst
    tune/tutorials/overview.rst
-   tune/integrations.rst
    tune/advanced.rst
    tune/api_docs/overview.rst
    tune/contrib.rst
