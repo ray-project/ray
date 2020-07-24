@@ -194,6 +194,8 @@ class BroadcastUpdateLearnerWeights:
             metrics = _get_shared_metrics()
             metrics.counters["num_weight_broadcasts"] += 1
         actor.set_weights.remote(self.weights, _get_global_vars())
+        # Also update global vars of the local worker.
+        self.workers.local_worker().set_global_vars(_get_global_vars())
 
 
 def record_steps_trained(item):
