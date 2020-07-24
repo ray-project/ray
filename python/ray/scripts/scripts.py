@@ -180,6 +180,11 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     type=int,
     help="the port to use for starting the node manager")
 @click.option(
+    "--gcs-server-port",
+    required=False,
+    type=int,
+    help="Port number for the GCS server.")
+@click.option(
     "--min-worker-port",
     required=False,
     type=int,
@@ -336,18 +341,28 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     is_flag=True,
     default=False,
     help="Specify whether LRU evict will be used for this cluster.")
+@click.option(
+    "--enable-object-reconstruction",
+    is_flag=True,
+    default=False,
+    help="Specify whether object reconstruction will be used for this cluster."
+)
 def start(node_ip_address, redis_address, address, redis_port, port,
           num_redis_shards, redis_max_clients, redis_password,
           redis_shard_ports, object_manager_port, node_manager_port,
-          min_worker_port, max_worker_port, memory, object_store_memory,
-          redis_max_memory, num_cpus, num_gpus, resources, head, include_webui,
-          webui_host, include_dashboard, dashboard_host, dashboard_port, block,
-          plasma_directory, huge_pages, autoscaling_config,
-          no_redirect_worker_output, no_redirect_output,
+          gcs_server_port, min_worker_port, max_worker_port, memory,
+          object_store_memory, redis_max_memory, num_cpus, num_gpus, resources,
+          head, include_webui, webui_host, include_dashboard, dashboard_host,
+          dashboard_port, block, plasma_directory, huge_pages,
+          autoscaling_config, no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
           java_worker_options, load_code_from_local, internal_config,
-          lru_evict):
+          lru_evict, enable_object_reconstruction):
     """Start Ray processes manually on the local machine."""
+    if gcs_server_port and not head:
+        raise ValueError(
+            "gcs_server_port can be only assigned when you specify --head.")
+
     if redis_address is not None:
         raise DeprecationWarning("The --redis-address argument is "
                                  "deprecated. Please use --address instead.")
@@ -399,6 +414,7 @@ def start(node_ip_address, redis_address, address, redis_port, port,
         max_worker_port=max_worker_port,
         object_manager_port=object_manager_port,
         node_manager_port=node_manager_port,
+        gcs_server_port=gcs_server_port,
         memory=memory,
         object_store_memory=object_store_memory,
         redis_password=redis_password,
@@ -419,7 +435,8 @@ def start(node_ip_address, redis_address, address, redis_port, port,
         java_worker_options=java_worker_options,
         load_code_from_local=load_code_from_local,
         _internal_config=internal_config,
-        lru_evict=lru_evict)
+        lru_evict=lru_evict,
+        enable_object_reconstruction=enable_object_reconstruction)
     if head:
         # Start Ray on the head node.
         if redis_shard_ports is not None:
@@ -630,6 +647,16 @@ def stop(force, verbose):
 @cli.command()
 @click.argument("cluster_config_file", required=True, type=str)
 @click.option(
+    "--min-workers",
+    required=False,
+    type=int,
+    help="Override the configured min worker node count for the cluster.")
+@click.option(
+    "--max-workers",
+    required=False,
+    type=int,
+    help="Override the configured max worker node count for the cluster.")
+@click.option(
     "--no-restart",
     is_flag=True,
     default=False,
@@ -642,20 +669,11 @@ def stop(force, verbose):
     help=("Whether to skip running setup commands and only restart Ray. "
           "This cannot be used with 'no-restart'."))
 @click.option(
-    "--no-config-cache",
+    "--yes",
+    "-y",
     is_flag=True,
     default=False,
-    help="Disable the local cluster config cache.")
-@click.option(
-    "--min-workers",
-    required=False,
-    type=int,
-    help="Override the configured min worker node count for the cluster.")
-@click.option(
-    "--max-workers",
-    required=False,
-    type=int,
-    help="Override the configured max worker node count for the cluster.")
+    help="Don't ask for confirmation.")
 @click.option(
     "--cluster-name",
     "-n",
@@ -663,13 +681,25 @@ def stop(force, verbose):
     type=str,
     help="Override the configured cluster name.")
 @click.option(
-    "--yes",
-    "-y",
+    "--no-config-cache",
     is_flag=True,
     default=False,
-    help="Don't ask for confirmation.")
+    help="Disable the local cluster config cache.")
+@click.option(
+    "--log-old-style/--log-new-style",
+    is_flag=True,
+    default=True,
+    help=("Use old logging."))
+@click.option(
+    "--log-color",
+    required=False,
+    type=str,
+    default="auto",
+    help=("Use color logging. "
+          "Valid values are: auto (if stdout is a tty), true, false."))
+@click.option("-v", "--verbose", count=True)
 def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
-       yes, cluster_name, no_config_cache):
+       yes, cluster_name, no_config_cache, log_old_style, log_color, verbose):
     """Create or update a Ray cluster."""
     if restart_only or no_restart:
         assert restart_only != no_restart, "Cannot set both 'restart_only' " \
@@ -686,21 +716,12 @@ def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
             logger.info("Error downloading file: ", e)
     create_or_update_cluster(cluster_config_file, min_workers, max_workers,
                              no_restart, restart_only, yes, cluster_name,
-                             no_config_cache)
+                             no_config_cache, log_old_style, log_color,
+                             verbose)
 
 
 @cli.command()
 @click.argument("cluster_config_file", required=True, type=str)
-@click.option(
-    "--workers-only",
-    is_flag=True,
-    default=False,
-    help="Only destroy the workers.")
-@click.option(
-    "--keep-min-workers",
-    is_flag=True,
-    default=False,
-    help="Retain the minimal amount of workers specified in the config.")
 @click.option(
     "--yes",
     "-y",
@@ -708,16 +729,39 @@ def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
     default=False,
     help="Don't ask for confirmation.")
 @click.option(
+    "--workers-only",
+    is_flag=True,
+    default=False,
+    help="Only destroy the workers.")
+@click.option(
     "--cluster-name",
     "-n",
     required=False,
     type=str,
     help="Override the configured cluster name.")
+@click.option(
+    "--keep-min-workers",
+    is_flag=True,
+    default=False,
+    help="Retain the minimal amount of workers specified in the config.")
+@click.option(
+    "--log-old-style/--log-new-style",
+    is_flag=True,
+    default=True,
+    help=("Use old logging."))
+@click.option(
+    "--log-color",
+    required=False,
+    type=str,
+    default="auto",
+    help=("Use color logging. "
+          "Valid values are: auto (if stdout is a tty), true, false."))
+@click.option("-v", "--verbose", count=True)
 def down(cluster_config_file, yes, workers_only, cluster_name,
-         keep_min_workers):
+         keep_min_workers, log_old_style, log_color, verbose):
     """Tear down a Ray cluster."""
     teardown_cluster(cluster_config_file, yes, workers_only, cluster_name,
-                     keep_min_workers)
+                     keep_min_workers, log_old_style, log_color, verbose)
 
 
 @cli.command()
@@ -1103,12 +1147,18 @@ def statistics(address):
     required=False,
     type=str,
     help="Override the address to connect to.")
-def memory(address):
+@click.option(
+    "--redis_password",
+    required=False,
+    type=str,
+    default=ray_constants.REDIS_DEFAULT_PASSWORD,
+    help="Connect to ray with redis_password.")
+def memory(address, redis_password):
     """Print object references held in a Ray cluster."""
     if not address:
         address = services.find_redis_address_or_die()
     logger.info("Connecting to Ray instance at {}.".format(address))
-    ray.init(address=address)
+    ray.init(address=address, redis_password=redis_password)
     print(ray.internal.internal_api.memory_summary())
 
 

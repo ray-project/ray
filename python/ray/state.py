@@ -184,7 +184,7 @@ class GlobalState:
             for i in range(len(object_table)):
                 object_location_info = gcs_utils.ObjectLocationInfo.FromString(
                     object_table[i])
-                results[binary_to_hex(object_location_info.object_ref)] = \
+                results[binary_to_hex(object_location_info.object_id)] = \
                     self._gen_object_info(object_location_info)
             return results
 
@@ -199,7 +199,7 @@ class GlobalState:
 
         object_info = {
             "ObjectRef": ray.utils.binary_to_hex(
-                object_location_info.object_ref),
+                object_location_info.object_id),
             "Locations": locations,
         }
         return object_info

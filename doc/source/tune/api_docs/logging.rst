@@ -58,7 +58,7 @@ You can then pass in your own logger as follows:
 
 These loggers will be called along with the default Tune loggers. You can also check out `logger.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/logger.py>`__ for implementation details.
 
-An example of creating a custom logger can be found in `logging_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__.
+An example of creating a custom logger can be found in :doc:`/tune/examples/logging_example`.
 
 .. _trainable-logging:
 
@@ -77,6 +77,8 @@ You can do this in the trainable, as shown below:
 
 **Function API**:
 
+``library`` refers to whatever 3rd party logging library you are using.
+
 .. code-block:: python
 
     def trainable(config):
@@ -86,12 +88,12 @@ You can do this in the trainable, as shown below:
             resume=trial_id,
             reinit=True,
             allow_val_change=True)
-        library.set_log_path(tune.track.logdir)
+        library.set_log_path(tune.get_trial_dir())
 
         for step in range(100):
             library.log_model(...)
             library.log(results, step=step)
-            tune.track.log(results)
+            tune.report(results)
 
 
 **Class API**:
@@ -121,7 +123,7 @@ You can do this in the trainable, as shown below:
             step = result["training_iteration"]
             library.log(res_dict, step=step)
 
-Use ``self.logdir`` (only for Class API) or ``tune.track.logdir`` (only for Function API) for the trial log directory.
+Use ``self.logdir`` (only for Class API) or ``tune.get_trial_dir()`` (only for Function API) for the trial log directory.
 
 In the distributed case, these logs will be sync'ed back to the driver under your logger path. This will allow you to visualize and analyze logs of all distributed training workers on a single machine.
 
@@ -164,7 +166,7 @@ CSVLogger
 MLFLowLogger
 ------------
 
-Tune also provides a default logger for `MLFlow <https://mlflow.org>`_. You can install MLFlow via ``pip install mlflow``. An example can be found `mlflow_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/mlflow_example.py>`__. Note that this currently does not include artifact logging support. For this, you can use the native MLFlow APIs inside your Trainable definition.
+Tune also provides a default logger for `MLFlow <https://mlflow.org>`_. You can install MLFlow via ``pip install mlflow``. An example can be found in :doc:`/tune/examples/mlflow_example`. Note that this currently does not include artifact logging support. For this, you can use the native MLFlow APIs inside your Trainable definition.
 
 .. autoclass:: ray.tune.logger.MLFLowLogger
 

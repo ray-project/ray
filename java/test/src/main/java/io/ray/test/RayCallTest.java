@@ -4,6 +4,8 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import io.ray.api.Ray;
 import io.ray.api.id.ObjectId;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import org.testng.Assert;
@@ -63,6 +65,10 @@ public class RayCallTest extends BaseTest {
     TestUtils.getRuntime().getObjectStore().put(1, objectId);
   }
 
+  private static ByteBuffer testByteBuffer(ByteBuffer buffer) {
+    return buffer;
+  }
+
   /**
    * Test calling and returning different types.
    */
@@ -82,6 +88,11 @@ public class RayCallTest extends BaseTest {
     Assert.assertEquals(map, Ray.task(RayCallTest::testMap, map).remote().get());
     TestUtils.LargeObject largeObject = new TestUtils.LargeObject();
     Assert.assertNotNull(Ray.task(RayCallTest::testLargeObject, largeObject).remote().get());
+    ByteBuffer buffer1 = ByteBuffer.wrap("foo".getBytes(StandardCharsets.UTF_8));
+    ByteBuffer buffer2 = Ray.task(RayCallTest::testByteBuffer, buffer1).remote().get();
+    byte[] bytes = new byte[buffer2.remaining()];
+    buffer2.get(bytes);
+    Assert.assertEquals("foo", new String(bytes, StandardCharsets.UTF_8));
 
     // TODO(edoakes): this test doesn't work now that we've switched to direct call
     // mode. To make it work, we need to implement the same protocol for resolving

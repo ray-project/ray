@@ -25,11 +25,12 @@
 #include "ray/common/client_connection.h"
 #include "ray/common/task/task_common.h"
 #include "ray/common/task/scheduling_resources.h"
-#include "ray/common/scheduling/scheduling_ids.h"
-#include "ray/common/scheduling/cluster_resource_scheduler.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/actor_registration.h"
 #include "ray/raylet/lineage_cache.h"
+#include "ray/raylet/scheduling/scheduling_ids.h"
+#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
+#include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/raylet/scheduling_policy.h"
 #include "ray/raylet/scheduling_queue.h"
 #include "ray/raylet/reconstruction_policy.h"
@@ -255,7 +256,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param[in] task The task in question.
   /// \param[out] post_assign_callbacks Vector of callbacks that will be appended
   /// to with any logic that should run after the DispatchTasks loop runs.
-  void AssignTask(const std::shared_ptr<Worker> &worker, const Task &task,
+  void AssignTask(const std::shared_ptr<WorkerInterface> &worker, const Task &task,
                   std::vector<std::function<void()>> *post_assign_callbacks);
   /// Handle a worker finishing its assigned task.
   ///
@@ -263,7 +264,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Whether the worker should be returned to the idle pool. This is
   /// only false for direct actor creation calls, which should never be
   /// returned to idle.
-  bool FinishAssignedTask(Worker &worker);
+  bool FinishAssignedTask(WorkerInterface &worker);
   /// Helper function to produce actor table data for a newly created actor.
   ///
   /// \param task_spec Task specification of the actor creation task that created the
@@ -275,7 +276,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param worker The worker that finished the task.
   /// \param task The actor task or actor creation task.
   /// \return Void.
-  void FinishAssignedActorTask(Worker &worker, const Task &task);
+  void FinishAssignedActorTask(WorkerInterface &worker, const Task &task);
   /// Helper function for handling worker to finish its assigned actor task
   /// or actor creation task. Gets invoked when tasks's parent actor is known.
   ///
@@ -394,20 +395,20 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// arrive after the worker lease has been returned to the node manager.
   ///
   /// \param worker Shared ptr to the worker, or nullptr if lost.
-  void HandleDirectCallTaskBlocked(const std::shared_ptr<Worker> &worker);
+  void HandleDirectCallTaskBlocked(const std::shared_ptr<WorkerInterface> &worker);
 
   /// Handle a direct call task that is unblocked. Note that this callback may
   /// arrive after the worker lease has been returned to the node manager.
   /// However, it is guaranteed to arrive after DirectCallTaskBlocked.
   ///
   /// \param worker Shared ptr to the worker, or nullptr if lost.
-  void HandleDirectCallTaskUnblocked(const std::shared_ptr<Worker> &worker);
+  void HandleDirectCallTaskUnblocked(const std::shared_ptr<WorkerInterface> &worker);
 
   /// Kill a worker.
   ///
   /// \param worker The worker to kill.
   /// \return Void.
-  void KillWorker(std::shared_ptr<Worker> worker);
+  void KillWorker(std::shared_ptr<WorkerInterface> worker);
 
   /// The callback for handling an actor state transition (e.g., from ALIVE to
   /// DEAD), whether as a notification from the actor table or as a handler for
@@ -440,6 +441,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param object_id The object that has been evicted locally.
   /// \return Void.
   void HandleObjectMissing(const ObjectID &object_id);
+
+  /// Handles the event that a job is started.
+  ///
+  /// \param job_id ID of the started job.
+  /// \param job_data Data associated with the started job.
+  /// \return Void
+  void HandleJobStarted(const JobID &job_id, const JobTableData &job_data);
 
   /// Handles the event that a job is finished.
   ///
@@ -487,7 +495,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ///
   /// \param worker The pointer to the worker
   /// \return Void.
-  void HandleWorkerAvailable(const std::shared_ptr<Worker> &worker);
+  void HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &worker);
 
   /// Handle a client that has disconnected. This can be called multiple times
   /// on the same client because this is triggered both when a client
@@ -574,8 +582,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param task_id Id of the task.
   /// \param success Whether or not assigning the task was successful.
   /// \return void.
-  void FinishAssignTask(const std::shared_ptr<Worker> &worker, const TaskID &task_id,
-                        bool success);
+  void FinishAssignTask(const std::shared_ptr<WorkerInterface> &worker,
+                        const TaskID &task_id, bool success);
 
   /// Process worker subscribing to plasma.
   ///
@@ -609,6 +617,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
                           rpc::ReturnWorkerReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle a `ReleaseUnusedWorkers` request.
+  void HandleReleaseUnusedWorkers(const rpc::ReleaseUnusedWorkersRequest &request,
+                                  rpc::ReleaseUnusedWorkersReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ReturnWorker` request.
   void HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &request,
@@ -657,7 +670,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// in the system (local or remote) that has enough resources available to
   /// run the task, if any such node exist.
   /// Repeat the process as long as we can schedule a task.
-  void NewSchedulerSchedulePendingTasks();
+  /// NEW SCHEDULER_FUNCTION
+  void ScheduleAndDispatch();
 
   /// Whether a task is an actor creation task.
   bool IsActorCreationTask(const TaskID &task_id);
@@ -748,7 +762,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
       remote_node_manager_clients_;
 
   /// Map of workers leased out to direct call clients.
-  std::unordered_map<WorkerID, std::shared_ptr<Worker>> leased_workers_;
+  std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
 
   /// Map from owner worker ID to a list of worker IDs that the owner has a
   /// lease on.
@@ -765,20 +779,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// on all local workers of this raylet.
   bool should_local_gc_ = false;
 
-  /// The new resource scheduler for direct task calls.
+  /// These two classes make up the new scheduler. ClusterResourceScheduler is
+  /// responsible for maintaining a view of the cluster state w.r.t resource
+  /// usage. ClusterTaskManager is responsible for queuing, spilling back, and
+  /// dispatching tasks.
   std::shared_ptr<ClusterResourceScheduler> new_resource_scheduler_;
-
-  typedef std::function<void(std::shared_ptr<Worker>, ClientID spillback_to,
-                             std::string address, int port)>
-      ScheduleFn;
-
-  /// Queue of lease requests that are waiting for resources to become available.
-  /// TODO this should be a queue for each SchedulingClass
-  std::deque<std::pair<ScheduleFn, Task>> tasks_to_schedule_;
-  /// Queue of lease requests that should be scheduled onto workers.
-  std::deque<std::pair<ScheduleFn, Task>> tasks_to_dispatch_;
-  /// Queue tasks waiting for arguments to be transferred locally.
-  absl::flat_hash_map<TaskID, std::pair<ScheduleFn, Task>> waiting_tasks_;
+  std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
 
   /// Cache of gRPC clients to workers (not necessarily running on this node).
   /// Also includes the number of inflight requests to each worker - when this
@@ -788,9 +794,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
       worker_rpc_clients_;
 
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
-
-  /// Wait for a task's arguments to become ready.
-  void WaitForTaskArgsRequests(std::pair<ScheduleFn, Task> &work);
 
   // TODO(swang): Evict entries from these caches.
   /// Cache for the WorkerTable in the GCS.
@@ -802,7 +805,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   mutable absl::Mutex plasma_object_notification_lock_;
 
   /// Keeps track of workers waiting for objects
-  absl::flat_hash_map<ObjectID, absl::flat_hash_set<std::shared_ptr<Worker>>>
+  absl::flat_hash_map<ObjectID, absl::flat_hash_set<std::shared_ptr<WorkerInterface>>>
       async_plasma_objects_notification_ GUARDED_BY(plasma_object_notification_lock_);
 
   /// Objects that are out of scope in the application and that should be freed

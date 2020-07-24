@@ -180,22 +180,23 @@ def run(args, parser):
             parser.error("the following arguments are required: --run")
         if not exp.get("env") and not exp.get("config", {}).get("env"):
             parser.error("the following arguments are required: --env")
-        if args.eager:
-            exp["config"]["framework"] = "tfe"
-        elif args.torch:
+
+        if args.torch:
             exp["config"]["framework"] = "torch"
-        else:
-            exp["config"]["framework"] = "tf"
+        elif args.eager:
+            exp["config"]["framework"] = "tfe"
+
+        if args.trace:
+            if exp["config"]["framework"] not in ["tf2", "tfe"]:
+                raise ValueError("Must enable --eager to enable tracing.")
+            exp["config"]["eager_tracing"] = True
+
         if args.v:
             exp["config"]["log_level"] = "INFO"
             verbose = 2
         if args.vv:
             exp["config"]["log_level"] = "DEBUG"
             verbose = 3
-        if args.trace:
-            if exp["config"]["framework"] != "tfe":
-                raise ValueError("Must enable --eager to enable tracing.")
-            exp["config"]["eager_tracing"] = True
 
     if args.ray_num_nodes:
         cluster = Cluster()

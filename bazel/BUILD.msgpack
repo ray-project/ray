@@ -1,33 +1,16 @@
-filegroup(
-    name = "c_headers",
-    srcs = glob([
-        "include/*.h",
+# This library is for internal use, because the library assumes a
+# different include prefix for itself than external libraries do.
+cc_library(
+    name = "_msgpack",
+    hdrs = glob([
         "include/**/*.h",
-        "include/**/**/*.h",
-        "include/**/**/**/*.h",
-        ],
-        exclude = [
-            "include/msgpack.h",
-        ],
-        ),
-)
-
-filegroup(
-    name = "cxx_headers",
-    srcs = glob([
-        "include/*.hpp",
         "include/**/*.hpp",
-        "include/**/**/*.hpp",
-        "include/**/**/**/*.hpp",
-        ],
-         exclude = [
-            "include/msgpack.hpp",
-        ],
-    ),
+    ]),
+    strip_include_prefix = "include",
 )
 
-filegroup(
-    name = "source_files",
+cc_library(
+    name = "msgpack",
     srcs = [
         "src/objectc.c",
         "src/unpack.c",
@@ -35,25 +18,15 @@ filegroup(
         "src/vrefbuffer.c",
         "src/zone.c",
     ],
-)
-
-cc_library(
-    name = "msgpack",
-    srcs = [
-        ":c_headers",
-        ":cxx_headers",
-        ":source_files",
-    ],
     hdrs = [
         "include/msgpack.h",
         "include/msgpack.hpp",
     ],
-    includes = [
-        "include",
-    ],
     strip_include_prefix = "include",
     copts = [
-        #"-std=c++11",
+    ],
+    deps = [
+        ":_msgpack",
     ],
     visibility = ["//visibility:public"],
 )

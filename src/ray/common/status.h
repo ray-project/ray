@@ -93,6 +93,7 @@ enum class StatusCode : char {
   IntentionalSystemExit = 14,
   UnexpectedSystemExit = 15,
   NotFound = 16,
+  Disconnected = 17,
   // object store status
   ObjectExists = 21,
   ObjectNotFound = 22,
@@ -173,6 +174,10 @@ class RAY_EXPORT Status {
     return Status(StatusCode::NotFound, msg);
   }
 
+  static Status Disconnected(const std::string &msg) {
+    return Status(StatusCode::Disconnected, msg);
+  }
+
   static Status ObjectExists(const std::string &msg) {
     return Status(StatusCode::ObjectExists, msg);
   }
@@ -210,6 +215,7 @@ class RAY_EXPORT Status {
     return code() == StatusCode::IntentionalSystemExit;
   }
   bool IsNotFound() const { return code() == StatusCode::NotFound; }
+  bool IsDisconnected() const { return code() == StatusCode::Disconnected; }
   bool IsObjectExists() const { return code() == StatusCode::ObjectExists; }
   bool IsObjectNotFound() const { return code() == StatusCode::ObjectNotFound; }
   bool IsObjectAlreadySealed() const { return code() == StatusCode::ObjectAlreadySealed; }

@@ -332,3 +332,10 @@ message CoreWorkerStats {
   // Local reference table.
   repeated ObjectRefInfo object_refs = 17;
 }
+
+message MetricPoint {
+  string metric_name = 1;
+  int64 timestamp = 2;
+  double value = 3;
+  map<string, string> tags = 4;
+}

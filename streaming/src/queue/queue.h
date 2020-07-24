@@ -4,13 +4,12 @@
 #include <list>
 #include <vector>
 
+#include "queue/queue_item.h"
+#include "queue/transport.h"
+#include "queue/utils.h"
 #include "ray/common/id.h"
 #include "ray/util/util.h"
-
-#include "queue_item.h"
-#include "transport.h"
 #include "util/streaming_logging.h"
-#include "utils.h"
 
 namespace ray {
 namespace streaming {
