@@ -274,7 +274,15 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(const Unique
 
 ray::Status OwnershipBasedObjectDirectory::UnsubscribeObjectLocations(const UniqueID &callback_id,
                                                         const ObjectID &object_id) {
-  return ray::Status::OK();
+  auto entry = listeners_.find(object_id);
+  if (entry == listeners_.end()) {
+    return status;
+  }
+  entry->second.callbacks.erase(callback_id);
+  if (entry->second.callbacks.empty()) {
+    listeners_.erase(entry);
+  }
+  return Status::OK();
 }
 
 ray::Status OwnershipBasedObjectDirectory::LookupLocations(
