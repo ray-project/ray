@@ -7,7 +7,7 @@ from datetime import timedelta
 
 import ray
 from ray import tune
-from ray.tune.result import DONE, RESULT_DUPLICATE
+from ray.tune.result import RESULT_DUPLICATE
 from ray.tune.logger import NoopLogger
 from ray.tune.function_runner import wrap_function
 from ray.tune.resources import Resources
@@ -175,7 +175,8 @@ class distributed_checkpoint:
 
 
 def _train_simple(config, checkpoint=False):
-    import numpy as np
+    """For testing only. Putting this here because Ray has problems
+    serializing within the test file."""
     import torch.nn as nn
     from torch.nn.parallel import DistributedDataParallel
     import torch.optim as optim
@@ -215,5 +216,6 @@ def _train_simple(config, checkpoint=False):
         if epoch % 3 == 0:
             if config.get("enable_checkpoint", True):
                 with distributed_checkpoint(label=epoch) as path:
-                    torch.save((model.state_dict(), optimizer.state_dict()), path)
+                    torch.save((model.state_dict(), optimizer.state_dict()),
+                               path)
         tune.report(mean_loss=loss.item())
