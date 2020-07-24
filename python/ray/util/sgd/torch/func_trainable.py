@@ -53,11 +53,11 @@ class _TorchTrainable(tune.Trainable):
         from functools import partial
         setup_on_worker = partial(
             setup_process_group,
-            address=address,
-            num_workers=num_workers,
+            url=address,
+            world_size=num_workers,
             **pgroup_params)
         ray.get([
-            w.execute.remote(lambda _: setup_on_worker(rank=rank))
+            w.execute.remote(lambda _: setup_on_worker(world_rank=rank))
             for rank, w in enumerate(self.workers)
         ])
 
