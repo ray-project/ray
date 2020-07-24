@@ -6,14 +6,14 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
-import io.ray.runtime.placementgroup.PlacementGroupId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
 import io.ray.api.placementgroup.PlacementGroup;
-import io.ray.runtime.placementgroup.PlacementGroupImpl;
 import io.ray.api.placementgroup.PlacementStrategy;
 import io.ray.runtime.actor.NativeActorHandle;
 import io.ray.runtime.functionmanager.FunctionDescriptor;
+import io.ray.runtime.placementgroup.PlacementGroupId;
+import io.ray.runtime.placementgroup.PlacementGroupImpl;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -46,7 +46,7 @@ public class NativeTaskSubmitter implements TaskSubmitter {
                 && options.bundleIndex < group.getBundleCount(),
             String.format("Bundle index %s is invalid", options.bundleIndex));
       }
-      
+
       if (StringUtils.isNotBlank(options.name)) {
         Optional<BaseActorHandle> actor =
             options.global ? Ray.getGlobalActor(options.name) : Ray.getActor(options.name);
