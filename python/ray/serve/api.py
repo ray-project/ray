@@ -55,10 +55,12 @@ def accept_batch(f):
     return f
 
 
-def init(name=None,
-         http_host=DEFAULT_HTTP_HOST,
-         http_port=DEFAULT_HTTP_PORT,
-         metric_exporter=InMemoryExporter):
+def init(
+        name=None,
+        http_host=DEFAULT_HTTP_HOST,
+        http_port=DEFAULT_HTTP_PORT,
+        metric_exporter=InMemoryExporter,
+):
     """Initialize or connect to a serve cluster.
 
     If serve cluster is already initialized, this function will just return.
@@ -71,11 +73,12 @@ def init(name=None,
         name (str): A unique name for this serve instance. This allows
             multiple serve instances to run on the same ray cluster. Must be
             specified in all subsequent serve.init() calls.
-        http_host (str): Host for HTTP server. Default to "0.0.0.0".
-        http_port (int): Port for HTTP server. Default to 8000.
+        http_host (str): Host for HTTP servers. Default to "0.0.0.0". Serve
+            starts one HTTP server per node in the Ray cluster.
+        http_port (int, List[int]): Port for HTTP server. Default to 8000.
         metric_exporter(ExporterInterface): The class aggregates metrics from
             all RayServe actors and optionally export them to external
-            services. RayServe has two options built in: InMemoryExporter and
+            services. Ray Serve has two options built in: InMemoryExporter and
             PrometheusExporter
     """
     if name is not None and not isinstance(name, str):
@@ -94,19 +97,27 @@ def init(name=None,
     except ValueError:
         pass
 
-    # TODO(edoakes): for now, always start the HTTP proxy on the node that
-    # serve.init() was run on. We should consider making this configurable
-    # in the future.
-    http_node_id = ray.state.current_node_id()
     controller = ServeController.options(
         name=controller_name,
         max_restarts=-1,
         max_task_retries=-1,
-    ).remote(name, http_node_id, http_host, http_port, metric_exporter)
+    ).remote(
+        name,
+        http_host,
+        http_port,
+        metric_exporter,
+    )
 
-    block_until_http_ready(
-        "http://{}:{}/-/routes".format(http_host, http_port),
-        timeout=HTTP_PROXY_TIMEOUT)
+    futures = []
+    for node_id in ray.state.node_ids():
+        future = block_until_http_ready.options(
+            num_cpus=0, resources={
+                node_id: 0.01
+            }).remote(
+                "http://{}:{}/-/routes".format(http_host, http_port),
+                timeout=HTTP_PROXY_TIMEOUT)
+        futures.append(future)
+    ray.get(futures)
 
 
 @_ensure_connected
@@ -122,6 +133,7 @@ def shutdown():
     controller = None
 
 
+@_ensure_connected
 def create_endpoint(endpoint_name,
                     *,
                     backend=None,
@@ -356,7 +368,7 @@ def get_handle(endpoint_name,
         assert endpoint_name in ray.get(controller.get_all_endpoints.remote())
 
     return RayServeHandle(
-        ray.get(controller.get_http_proxy.remote())[0],
+        ray.get(controller.get_router.remote())[0],
         endpoint_name,
         relative_slo_ms,
         absolute_slo_ms,

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
+
 #include "gtest/gtest.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_client/service_based_accessor.h"
@@ -981,12 +982,16 @@ TEST_F(ServiceBasedGcsClientTest, TestObjectTableResubscribe) {
 
   // Restart GCS.
   RestartGcsServer();
+  // When GCS client detects that GCS server has restarted, but the pub-sub server
+  // didn't restart, it will fetch the subscription data again from the GCS server, so
+  // `object2_change_count` plus 1.
+  WaitPendingDone(object2_change_count, 2);
 
   // Add location of object to GCS again and check if resubscribe works.
   ASSERT_TRUE(AddLocation(object1_id, node_id));
   WaitPendingDone(object1_change_count, 1);
   ASSERT_TRUE(AddLocation(object2_id, node_id));
-  WaitPendingDone(object2_change_count, 2);
+  WaitPendingDone(object2_change_count, 3);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestNodeTableResubscribe) {

@@ -2,13 +2,13 @@
 Advanced Topics, Configurations, & FAQ
 ======================================
 
-Ray Serve has a number of knobs and tools for you to tune for your particular workload. 
-All Ray Serve advanced options and topics are covered on this page aside from the 
+Ray Serve has a number of knobs and tools for you to tune for your particular workload.
+All Ray Serve advanced options and topics are covered on this page aside from the
 fundamentals of :doc:`deployment`. For a more hands on take, please check out the :ref:`serve-tutorials`.
 
 There are a number of things you'll likely want to do with your serving application including
 scaling out, splitting traffic, or batching input for better performance. To do all of this,
-you will create a ``BackendConfig``, a configuration object that you'll use to set 
+you will create a ``BackendConfig``, a configuration object that you'll use to set
 the properties of a particular backend.
 
 .. contents::
@@ -107,7 +107,7 @@ When calling :mod:`set_traffic <ray.serve.set_traffic>`, you provide a dictionar
 For example, here we split traffic 50/50 between two backends:
 
 .. code-block:: python
-  
+
   serve.create_backend("backend1", MyClass1)
   serve.create_backend("backend2", MyClass2)
 
@@ -117,28 +117,31 @@ For example, here we split traffic 50/50 between two backends:
 Each request is routed randomly between the backends in the traffic dictionary according to the provided weights.
 Please see :ref:`session-affinity` for details on how to ensure that clients or users are consistently mapped to the same backend.
 
-A/B Testing
------------
+Canary Deployments
+------------------
 
-:mod:`set_traffic <ray.serve.set_traffic>` can be used to implement A/B testing by having one backend serve the majority of traffic while a fraction is routed to a second model:
+:mod:`set_traffic <ray.serve.set_traffic>` can be used to implement canary deployments, where one backend serves the majority of traffic, while a small fraction is routed to a second backend. This is especially useful for "canary testing" a new model on a small percentage of users, while the tried and true old model serves the majority. Once you are satisfied with the new model, you can reroute all traffic to it and remove the old model:
 
 .. code-block:: python
 
   serve.create_backend("default_backend", MyClass)
-  
+
   # Initially, set all traffic to be served by the "default" backend.
-  serve.create_endpoint("ab_endpoint", backend="default_backend", route="/a-b-test")
+  serve.create_endpoint("canary_endpoint", backend="default_backend", route="/canary-test")
 
   # Add a second backend and route 1% of the traffic to it.
   serve.create_backend("new_backend", MyNewClass)
-  serve.set_traffic("ab_endpoint", {"default_backend": 0.99, "new_backend": 0.01})
+  serve.set_traffic("canary_endpoint", {"default_backend": 0.99, "new_backend": 0.01})
 
   # Add a third backend that serves another 1% of the traffic.
   serve.create_backend("new_backend2", MyNewClass2)
-  serve.set_traffic("ab_endpoint", {"default_backend": 0.98, "new_backend": 0.01, "new_backend2": 0.01})
+  serve.set_traffic("canary_endpoint", {"default_backend": 0.98, "new_backend": 0.01, "new_backend2": 0.01})
 
-  # Revert to the "default" backend serving all traffic.
-  serve.set_traffic("ab_endpoint", {"default_backend": 1.0})
+  # Route all traffic to the new, better backend.
+  serve.set_traffic("canary_endpoint", {"new_backend": 1.0})
+
+  # Or, if not so succesful, revert to the "default" backend for all traffic.
+  serve.set_traffic("canary_endpoint", {"default_backend": 1.0})
 
 Incremental Rollout
 -------------------
@@ -150,7 +153,7 @@ In the example below, we do this repeatedly in one script, but in practice this 
 .. code-block:: python
 
   serve.create_backend("existing_backend", MyClass)
-  
+
   # Initially, all traffic is served by the existing backend.
   serve.create_endpoint("incremental_endpoint", backend="existing_backend", route="/incremental")
 
@@ -160,7 +163,7 @@ In the example below, we do this repeatedly in one script, but in practice this 
   serve.set_traffic("incremental_endpoint", {"existing_backend": 0.8, "new_backend": 0.2})
   serve.set_traffic("incremental_endpoint", {"existing_backend": 0.5, "new_backend": 0.5})
   serve.set_traffic("incremental_endpoint", {"new_backend": 1.0})
-  
+
   # At any time, we can roll back to the existing backend.
   serve.set_traffic("incremental_endpoint", {"existing_backend": 1.0})
 
@@ -196,7 +199,7 @@ This is demonstrated in the example below, where we create an endpoint serviced 
 .. code-block:: python
 
   serve.create_backend("existing_backend", MyClass)
-  
+
   # All traffic is served by the existing backend.
   serve.create_endpoint("shadowed_endpoint", backend="existing_backend", route="/shadow")
 
@@ -219,15 +222,15 @@ This is demonstrated in the example below, where we create an endpoint serviced 
 
 Composing Multiple Models
 =========================
-Ray Serve supports composing individually scalable models into a single model 
-out of the box. For instance, you can combine multiple models to perform 
+Ray Serve supports composing individually scalable models into a single model
+out of the box. For instance, you can combine multiple models to perform
 stacking or ensembles.
 
 To define a higher-level composed model you need to do three things:
 
-1. Define your underlying models (the ones that you will compose together) as 
+1. Define your underlying models (the ones that you will compose together) as
    Ray Serve backends
-2. Define your composed model, using the handles of the underlying models 
+2. Define your composed model, using the handles of the underlying models
    (see the example below).
 3. Define an endpoint representing this composed model and query it!
 

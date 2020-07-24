@@ -16,6 +16,7 @@ before_install:
     if [ false != "${TRAVIS_PULL_REQUEST-}" ]; then to_fetch+=("+refs/pull/${TRAVIS_PULL_REQUEST}/merge:"); fi
     git fetch -q -- origin "${to_fetch[@]}"
     git checkout -qf "${TRAVIS_COMMIT}" --
+    python -u ci/remote-watch.py --skip_repo=ray-project/ray &
 
 matrix:
   include:
