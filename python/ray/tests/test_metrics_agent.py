@@ -31,11 +31,14 @@ def generate_metrics_point(name: str,
 # That says, we should re-use the same agent for all tests.
 # Please be careful when you add new tests here. If each
 # test doesn't use different metrics, it can have some confliction.
-metrics_agent = MetricsAgent(get_unused_port())
+metrics_agent = None
 
 
 @pytest.fixture
 def cleanup_agent():
+    global metrics_agent
+    if not metrics_agent:
+        metrics_agent = MetricsAgent(get_unused_port())
     yield
     metrics_agent._registry = defaultdict(lambda: None)
 
@@ -174,8 +177,6 @@ def test_multiple_record(cleanup_agent):
             # Lines for recorded metrics values.
             for sample in family.samples:
                 sample_values.append(sample.value)
-    print(sample_values)
-    print([point.value for point in points])
     assert sample_values == [point.value for point in points]
 
 
