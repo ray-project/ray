@@ -5,8 +5,8 @@ import threading
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.framework import try_import_tf
-from typing import List
-from ray.rllib.utils.types import TensorStructType, SampleBatchType
+from typing import Dict, List
+from ray.rllib.utils.types import TensorType, SampleBatchType
 
 tf1, tf, tfv = try_import_tf()
 
@@ -27,7 +27,7 @@ class InputReader:
         raise NotImplementedError
 
     @PublicAPI
-    def tf_input_ops(self, queue_size: int = 1) -> TensorStructType:
+    def tf_input_ops(self, queue_size: int = 1) -> Dict[str, TensorType]:
         """Returns TensorFlow queue ops for reading inputs from this reader.
 
         The main use of these ops is for integration into custom model losses.

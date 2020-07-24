@@ -16,7 +16,7 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch, \
     DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.compression import unpack_if_needed
-from ray.rllib.utils.types import SerializedType, SampleBatchType
+from ray.rllib.utils.types import FileType, SampleBatchType
 from typing import List
 
 logger = logging.getLogger(__name__)
@@ -95,7 +95,7 @@ class JsonReader(InputReader):
             raise NotImplementedError(
                 "Postprocessing of multi-agent data not implemented yet.")
 
-    def _try_parse(self, line: SerializedType) -> SampleBatchType:
+    def _try_parse(self, line: str) -> SampleBatchType:
         line = line.strip()
         if not line:
             return None
@@ -106,7 +106,7 @@ class JsonReader(InputReader):
                 self.cur_file, line))
             return None
 
-    def _next_line(self) -> SerializedType:
+    def _next_line(self) -> str:
         if not self.cur_file:
             self.cur_file = self._next_file()
         line = self.cur_file.readline()
@@ -124,7 +124,7 @@ class JsonReader(InputReader):
                 self.files))
         return line
 
-    def _next_file(self) -> SerializedType:
+    def _next_file(self) -> FileType:
         path = random.choice(self.files)
         if urlparse(path).scheme not in ["", "c"]:
             if smart_open is None:
@@ -136,7 +136,7 @@ class JsonReader(InputReader):
             return open(path, "r")
 
 
-def _from_json(batch: SerializedType) -> SampleBatchType:
+def _from_json(batch: str) -> SampleBatchType:
     if isinstance(batch, bytes):  # smart_open S3 doesn't respect "r"
         batch = batch.decode("utf-8")
     data = json.loads(batch)

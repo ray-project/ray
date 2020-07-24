@@ -16,7 +16,7 @@ from ray.rllib.offline.io_context import IOContext
 from ray.rllib.offline.output_writer import OutputWriter
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.compression import pack, compression_supported
-from ray.rllib.utils.types import SerializedType, SampleBatchType
+from ray.rllib.utils.types import FileType, SampleBatchType
 from typing import Any, List
 
 logger = logging.getLogger(__name__)
@@ -74,7 +74,7 @@ class JsonWriter(OutputWriter):
             len(data), f,
             time.time() - start))
 
-    def _get_file(self) -> SerializedType:
+    def _get_file(self) -> FileType:
         if not self.cur_file or self.bytes_written >= self.max_file_size:
             if self.cur_file:
                 self.cur_file.close()
@@ -104,8 +104,7 @@ def _to_jsonable(v, compress: bool) -> Any:
     return v
 
 
-def _to_json(batch: SampleBatchType,
-             compress_columns: List[str]) -> SerializedType:
+def _to_json(batch: SampleBatchType, compress_columns: List[str]) -> str:
     out = {}
     if isinstance(batch, MultiAgentBatch):
         out["type"] = "MultiAgentBatch"
