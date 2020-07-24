@@ -18,6 +18,25 @@ class TestIMPALA(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
+    def test_impala_lr_schedule(self):
+        config = impala.DEFAULT_CONFIG.copy()
+        config["lr_schedule"] = [
+            [0, 0.0005],
+            [10000, 0.000001],
+        ]
+        local_cfg = config.copy()
+        trainer = impala.ImpalaTrainer(config=local_cfg, env="CartPole-v0")
+
+        def get_lr(result):
+            return result["info"]["learner"]["default_policy"]["cur_lr"]
+
+        try:
+            r1 = trainer.train()
+            r2 = trainer.train()
+            assert get_lr(r2) < get_lr(r1), (r1, r2)
+        finally:
+            trainer.stop()
+
     def test_impala_compilation(self):
         """Test whether an ImpalaTrainer can be built with both frameworks."""
         config = impala.DEFAULT_CONFIG.copy()

@@ -16,6 +16,7 @@ before_install:
     if [ false != "${TRAVIS_PULL_REQUEST-}" ]; then to_fetch+=("+refs/pull/${TRAVIS_PULL_REQUEST}/merge:"); fi
     git fetch -q -- origin "${to_fetch[@]}"
     git checkout -qf "${TRAVIS_COMMIT}" --
+    python -u ci/remote-watch.py --skip_repo=ray-project/ray &
 
 matrix:
   include:
@@ -57,25 +58,11 @@ matrix:
       before_script:
         - . ./ci/travis/ci.sh build
 
-    - os: osx
-      osx_image: xcode7
-      env:
-        - PYTHON=3.6 RAY_GCS_ACTOR_SERVICE_ENABLED=true
-        - PYTHONWARNINGS=ignore
-        - RAY_DEFAULT_BUILD=1
-        - RAY_CYTHON_EXAMPLES=1
-        - RAY_USE_RANDOM_PORTS=1
-      install:
-        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED
-      before_script:
-        - . ./ci/travis/ci.sh build
-
     - os: linux
       env:
         - JDK='Oracle JDK 8'
         - PYTHON=3.6 PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
-        - RAY_GCS_ACTOR_SERVICE_ENABLED=true
       install:
         - . ./ci/travis/ci.sh init RAY_CI_JAVA_AFFECTED
       before_script:
@@ -88,7 +75,6 @@ matrix:
         - TESTSUITE=streaming
         - JDK='Oracle JDK 8'
         - RAY_INSTALL_JAVA=1
-        - RAY_GCS_ACTOR_SERVICE_ENABLED=true
         - PYTHON=3.6 PYTHONWARNINGS=ignore
         - RAY_USE_RANDOM_PORTS=1
       install:
@@ -119,7 +105,6 @@ matrix:
         - LINUX_WHEELS=1
         - PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
-        - RAY_GCS_ACTOR_SERVICE_ENABLED=true
       install:
         - . ./ci/travis/ci.sh init RAY_CI_LINUX_WHEELS_AFFECTED
       before_script:
@@ -135,7 +120,6 @@ matrix:
         - MAC_WHEELS=1
         - PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
-        - RAY_GCS_ACTOR_SERVICE_ENABLED=true
       install:
         - . ./ci/travis/ci.sh init RAY_CI_MACOS_WHEELS_AFFECTED
       before_script:

@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 # before these files have been created, so we have to move the files
 # manually.
 
-SUPPORTED_PYTHONS = [(3, 5), (3, 6), (3, 7), (3, 8)]
+SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8)]
 SUPPORTED_BAZEL = (3, 2, 0)
 
 ROOT_DIR = os.path.dirname(__file__)
@@ -250,9 +250,9 @@ def build(build_python, build_java):
     version_info = bazel_invoke(subprocess.check_output, ["--version"])
     bazel_version_str = version_info.rstrip().decode("utf-8").split(" ", 1)[1]
     bazel_version = tuple(map(int, bazel_version_str.split(".")))
-    if bazel_version <= SUPPORTED_BAZEL:
-        logger.warning("Expected Bazel version {} but found {}", bazel_version,
-                       SUPPORTED_BAZEL)
+    if bazel_version < SUPPORTED_BAZEL:
+        logger.warning("Expected Bazel version {} but found {}".format(
+            ".".join(map(str, SUPPORTED_BAZEL)), bazel_version_str))
 
     bazel_targets = []
     bazel_targets += ["//:ray_pkg"] if build_python else []
@@ -304,6 +304,7 @@ install_requires = [
     "aioredis",
     "click >= 7.0",
     "colorama",
+    "colorful",
     "filelock",
     "google",
     "gpustat",
