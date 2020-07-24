@@ -28,12 +28,9 @@ def test_multiple_routers():
     # wait for the actors to come up
     ray.get(block_until_http_ready.remote("http://127.0.0.1:8005/-/routes"))
 
-    # we can send requests to them
-    assert requests.get("http://127.0.0.1:8005/-/routes").status_code == 200
-
     # kill the head_http server, the HTTP server should still functions
     ray.kill(head_http, no_restart=True)
-    assert requests.get("http://127.0.0.1:8005/-/routes").status_code == 200
+    ray.get(block_until_http_ready.remote("http://127.0.0.1:8005/-/routes"))
 
 
 if __name__ == "__main__":
