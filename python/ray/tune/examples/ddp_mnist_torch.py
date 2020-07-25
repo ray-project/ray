@@ -45,15 +45,15 @@ def train_mnist(config, checkpoint=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--num-replicas",
+        "--num-workers",
         "-n",
         type=int,
         default=2,
-        help="Sets number of replicas for training.")
+        help="Sets number of workers for training.")
 
     args = parser.parse_args()
 
     ray.init(num_cpus=2)
     trainable_cls = DistributedTrainableCreator(
-        train_mnist, num_workers=args.num_replicas)
+        train_mnist, num_workers=args.num_workers)
     tune.run(trainable_cls, num_samples=4, stop={"training_iteration": 2})
