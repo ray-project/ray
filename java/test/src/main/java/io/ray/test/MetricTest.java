@@ -14,15 +14,14 @@ import java.util.Map;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+@Test(groups = {"cluster"})
 public class MetricTest extends BaseTest {
 
   boolean doubleEqual(double value, double other) {
     return value <= other + 1e-5 && value >= other - 1e-5;
   }
 
-  @Test
   public void testAddGauge() {
-    TestUtils.skipTestUnderSingleProcess();
     Map<TagKey, String> tags = new HashMap<>();
     tags.put(new TagKey("tag1"), "value1");
 
@@ -33,9 +32,7 @@ public class MetricTest extends BaseTest {
     gauge.unregister();
   }
 
-  @Test
   public void testAddCount() {
-    TestUtils.skipTestUnderSingleProcess();
     Map<TagKey, String> tags = new HashMap<>();
     tags.put(new TagKey("tag1"), "value1");
     tags.put(new TagKey("count_tag"), "default");
@@ -48,9 +45,7 @@ public class MetricTest extends BaseTest {
     Assert.assertTrue(doubleEqual(count.getCount(), 30.0));
   }
 
-  @Test
   public void testAddSum() {
-    TestUtils.skipTestUnderSingleProcess();
     Map<TagKey, String> tags = new HashMap<>();
     tags.put(new TagKey("tag1"), "value1");
     tags.put(new TagKey("sum_tag"), "default");
@@ -63,9 +58,7 @@ public class MetricTest extends BaseTest {
     Assert.assertTrue(doubleEqual(sum.getSum(), 30.0));
   }
 
-  @Test
   public void testAddHistogram() {
-    TestUtils.skipTestUnderSingleProcess();
     Map<TagKey, String> tags = new HashMap<>();
     tags.put(new TagKey("tag1"), "value1");
     tags.put(new TagKey("histogram_tag"), "default");
