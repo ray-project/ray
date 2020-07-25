@@ -29,15 +29,16 @@ function retry {
   local max=3
 
   while true; do
-    "$@" && break || {
-      if [[ $n -lt $max ]]; then
-        ((n++))
-        echo "Command failed. Attempt $n/$max:"
-      else
-        echo "The command has failed after $n attempts."
-        exit 1
-      fi
-    }
+    if "$@"; then
+      break
+    fi
+    if [ $n -lt $max ]; then
+      ((n++))
+      echo "Command failed. Attempt $n/$max:"
+    else
+      echo "The command has failed after $n attempts."
+      exit 1
+    fi
   done
 }
 
@@ -61,7 +62,7 @@ if [[ "$platform" == "linux" ]]; then
     PIP_CMD="$HOME/miniconda3/bin/pip"
 
     # Find the right wheel by grepping for the Python version.
-    PYTHON_WHEEL=$(find "$ROOT_DIR/../../.whl" -type f -maxdepth 1 -print | grep -m1 "$PY_WHEEL_VERSION")
+    PYTHON_WHEEL="$(printf "%s\n" "$ROOT_DIR"/../../.whl/*"$PY_WHEEL_VERSION"* | head -n 1)"
 
     # Install the wheel.
     "$PIP_CMD" install -q "$PYTHON_WHEEL"
@@ -73,8 +74,6 @@ if [[ "$platform" == "linux" ]]; then
     "$PIP_CMD" install -q aiohttp google grpcio pytest requests
 
     # Run a simple test script to make sure that the wheel works.
-    INSTALLED_RAY_DIRECTORY=$(dirname "$($PYTHON_EXE -u -c "import ray; print(ray.__file__)" | tail -n1)")
-
     for SCRIPT in "${TEST_SCRIPTS[@]}"; do
         retry "$PYTHON_EXE" "$SCRIPT"
     done
@@ -84,7 +83,7 @@ if [[ "$platform" == "linux" ]]; then
   done
 
   # Check that the other wheels are present.
-  NUMBER_OF_WHEELS=$(ls -1q "$ROOT_DIR"/../../.whl/*.whl | wc -l)
+  NUMBER_OF_WHEELS="$(find "$ROOT_DIR"/../../.whl/ -mindepth 1 -maxdepth 1 -name "*.whl" | wc -l)"
   if [[ "$NUMBER_OF_WHEELS" != "3" ]]; then
     echo "Wrong number of wheels found."
     ls -l "$ROOT_DIR/../.whl/"
@@ -107,7 +106,7 @@ elif [[ "$platform" == "macosx" ]]; then
     PIP_CMD="$(dirname "$PYTHON_EXE")/pip$PY_MM"
 
     # Find the appropriate wheel by grepping for the Python version.
-    PYTHON_WHEEL=$(find "$ROOT_DIR/../../.whl" -type f -maxdepth 1 -print | grep -m1 "$PY_WHEEL_VERSION")
+    PYTHON_WHEEL="$(printf "%s\n" "$ROOT_DIR"/../../.whl/*"$PY_WHEEL_VERSION"* | head -n 1)"
 
     # Install the wheel.
     "$PIP_CMD" install -q "$PYTHON_WHEEL"
@@ -116,7 +115,6 @@ elif [[ "$platform" == "macosx" ]]; then
     "$PIP_CMD" install -q aiohttp google grpcio pytest requests
 
     # Run a simple test script to make sure that the wheel works.
-    INSTALLED_RAY_DIRECTORY=$(dirname "$($PYTHON_EXE -u -c "import ray; print(ray.__file__)" | tail -n1)")
     for SCRIPT in "${TEST_SCRIPTS[@]}"; do
       retry "$PYTHON_EXE" "$SCRIPT"
     done

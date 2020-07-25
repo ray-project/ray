@@ -33,9 +33,10 @@ class Simplex(gym.Space):
             self.concentration = [1] * self.dim
 
         super().__init__(shape, dtype)
-        self.np_random = np.random.RandomState()
 
     def seed(self, seed=None):
+        if self.np_random is None:
+            self.np_random = np.random.RandomState()
         self.np_random.seed(seed)
 
     def sample(self):
