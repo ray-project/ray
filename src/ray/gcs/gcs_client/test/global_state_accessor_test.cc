@@ -60,7 +60,7 @@ class GlobalStateAccessorTest : public ::testing::Test {
     gcs::GcsClientOptions options(config.redis_address, config.redis_port,
                                   config.redis_password, config.is_test);
     gcs_client_.reset(new gcs::ServiceBasedGcsClient(options));
-    RAY_CHECK_OK(gcs_client_->Connect(*(io_service_pool_->Get())));
+    RAY_CHECK_OK(gcs_client_->Connect(*io_service_));
 
     // Create global state.
     std::stringstream address;
