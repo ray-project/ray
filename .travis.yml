@@ -247,6 +247,82 @@ matrix:
       script:
         - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=tests_dir_M,tests_dir_N,tests_dir_O,tests_dir_P,tests_dir_Q,tests_dir_R,tests_dir_S,tests_dir_T,tests_dir_U,tests_dir_V,tests_dir_W,tests_dir_X,tests_dir_Y,tests_dir_Z rllib/...
 
+
+    # Tune: Tests and examples.
+    - os: linux
+      env:
+        - TUNE_TESTING=1
+        - PYTHON=3.6
+        - TF_VERSION=2.1.0
+        - TFP_VERSION=0.8
+        - TORCH_VERSION=1.5
+        - PYTHONWARNINGS=ignore
+      install:
+        - . ./ci/travis/ci.sh init RAY_CI_TUNE_AFFECTED
+      before_script:
+        - . ./ci/travis/ci.sh build
+      script:
+        - ./ci/keep_alive bazel test --config=ci --test_tag_filters=-jenkins_only,-example python/ray/tune/...
+        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=example,-tf,-pytorch,-py37,-flaky python/ray/tune/...
+        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=tf,-pytorch,-py37,-flaky python/ray/tune/...
+        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=-tf,pytorch,-py37,-flaky python/ray/tune/...
+        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=-py37,flaky python/ray/tune/...
+
+    # SGD: Tests and examples.
+    - os: linux
+      env:
+        - SGD_TESTING=1
+        - PYTHON=3.6
+        - TF_VERSION=2.1.0
+        - TFP_VERSION=0.8
+        - TORCH_VERSION=1.5
+        - PYTHONWARNINGS=ignore
+      install:
+        - . ./ci/travis/ci.sh init RAY_CI_SGD_AFFECTED
+      before_script:
+        - . ./ci/travis/ci.sh build
+      script:
+        # No such tests at the moment:
+        # - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=-tf,-pytorch,-py37 python/ray/util/sgd/...
+        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=tf,-pytorch,-py37 python/ray/util/sgd/...
+        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=-tf,pytorch,-py37 python/ray/util/sgd/...
+
+    # Docs: Tests and examples.
+    - os: linux
+      env:
+        - DOC_TESTING=1
+        - PYTHON=3.6
+        - TF_VERSION=2.1.0
+        - TFP_VERSION=0.8
+        - TORCH_VERSION=1.5
+        - PYTHONWARNINGS=ignore
+      install:
+        - . ./ci/travis/ci.sh init RAY_CI_PYTHON_AFFECTED
+      before_script:
+        - . ./ci/travis/ci.sh build
+      script:
+        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=-tf,-pytorch,-py37 doc/...
+        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=tf,-pytorch,-py37 doc/...
+        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=-tf,pytorch,-py37 doc/...
+
+    # Tune/SGD/Docs: Python >= 3.7 tests and examples.
+    - os: linux
+      env:
+        - PYTHON=3.7 TUNE_TESTING=1
+        - TF_VERSION=2.1.0
+        - TFP_VERSION=0.8
+        - TORCH_VERSION=1.5
+        - PYTHONWARNINGS=ignore
+      install:
+        - . ./ci/travis/ci.sh init RAY_CI_TUNE_AFFECTED,RAY_CI_SGD_AFFECTED
+      before_script:
+        - . ./ci/travis/ci.sh build
+      script:
+        - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=py37 python/ray/tune/...
+        # There are no python 3.7 tests for RaySGD/Docs at the moment
+        # - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=py37 python/ray/util/sgd/...
+        # - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=py37 doc/...
+
     # Cpp worker test
     - os: linux
       env:
@@ -281,7 +357,6 @@ script:
 
   # bazel python tests. This should be run last to keep its logs at the end of travis logs.
   - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci --test_tag_filters=-jenkins_only python/ray/tests/...; fi
-  - if [ $RAY_CI_TUNE_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci --test_tag_filters=-jenkins_only python/ray/tune/...; fi
   # NO MORE TESTS BELOW, keep them above.
 
 deploy:

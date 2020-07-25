@@ -25,7 +25,7 @@ extern "C" {
  * Class:     io_ray_runtime_RayNativeRuntime
  * Method:    nativeInitialize
  * Signature:
- * (ILjava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;[BLio/ray/runtime/gcs/GcsClientOptions;Ljava/lang/String;ILjava/lang/String;Ljava/util/Map;[B)V
+ * (ILjava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;[BLio/ray/runtime/gcs/GcsClientOptions;ILjava/lang/String;Ljava/util/Map;)V
  */
 JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
     JNIEnv *, jclass, jint, jstring, jint, jstring, jstring, jstring, jbyteArray, jobject,
@@ -42,7 +42,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeRunTaskExecutor(JNIEnv *, jclass, job
 /*
  * Class:     io_ray_runtime_RayNativeRuntime
  * Method:    nativeShutdown
- * Signature: (Z)V
+ * Signature: ()V
  */
 JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeShutdown(JNIEnv *,
                                                                            jclass);
