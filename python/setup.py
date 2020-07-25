@@ -76,7 +76,8 @@ ray_autoscaler_files = [
 ]
 
 ray_project_files = [
-    "ray/projects/schema.json", "ray/projects/templates/cluster_template.yaml",
+    "ray/projects/schema.json",
+    "ray/projects/templates/cluster_template.yaml",
     "ray/projects/templates/project_template.yaml",
     "ray/projects/templates/requirements.txt"
 ]
