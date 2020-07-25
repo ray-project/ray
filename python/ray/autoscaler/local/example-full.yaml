@@ -57,6 +57,13 @@ file_mounts: {
 #    "/path2/on/remote/machine": "/path2/on/local/machine",
 }
 
+# Files or directories to copy from the head node to the worker nodes. The format is a
+# dictionary from WORKER_NODE_PATH: HEAD_NODE_PATH, e.g.
+worker_file_mounts: {
+#    "/path1/on/worker/machine": "/path1/on/head/machine",
+#    "/path2/on/worker/machine": "/path2/on/head/machine",
+}
+
 # Whether changes to mounted files in the head node should sync to the worker node continuously
 file_mounts_sync_continuously: False
 

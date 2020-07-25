@@ -30,4 +30,6 @@ TAG_RAY_LAUNCH_CONFIG = "ray-launch-config"
 # Hash of the node runtime config, used to determine if updates are needed
 TAG_RAY_RUNTIME_CONFIG = "ray-runtime-config"
 # Hash of the contents of the directories specified by the file_mounts config
+# if the node is a worker, this also hashes content of the directories
+# specified by the worker_file_mounts config
 TAG_RAY_FILE_MOUNTS_CONTENTS = "ray-file-mounts-contents"

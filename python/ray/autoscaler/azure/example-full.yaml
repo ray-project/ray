@@ -55,7 +55,7 @@ provider:
     location: westus2
     resource_group: ray-cluster
     # set subscription id otherwise the default from az cli will be used
-    # subscription_id: 00000000-0000-0000-0000-000000000000   
+    # subscription_id: 00000000-0000-0000-0000-000000000000
 
 # How Ray will authenticate with newly launched nodes.
 auth:
@@ -67,7 +67,7 @@ auth:
 
 # More specific customization to node configurations can be made using the ARM template azure-vm-template.json file
 # See documentation here: https://docs.microsoft.com/en-us/azure/templates/microsoft.compute/2019-03-01/virtualmachines
-# Changes to the local file will be used during deployment of the head node, however worker nodes deployment occurs 
+# Changes to the local file will be used during deployment of the head node, however worker nodes deployment occurs
 # on the head node, so changes to the template must be included in the wheel file used in setup_commands section below
 
 # Provider-specific config for the head node, e.g. instance type.
@@ -89,7 +89,7 @@ worker_nodes:
         imageOffer: ubuntu-1804
         imageSku: 1804-gen2
         imageVersion: 20.02.01
-        # optionally set priority to use Spot instances 
+        # optionally set priority to use Spot instances
         priority: Spot
         # set a maximum price for spot instances if desired
         # billingProfile:
@@ -100,6 +100,13 @@ worker_nodes:
 file_mounts: {
 #    "/path1/on/remote/machine": "/path1/on/local/machine",
 #    "/path2/on/remote/machine": "/path2/on/local/machine",
+}
+
+# Files or directories to copy from the head node to the worker nodes. The format is a
+# dictionary from WORKER_NODE_PATH: HEAD_NODE_PATH, e.g.
+worker_file_mounts: {
+#    "/path1/on/worker/machine": "/path1/on/head/machine",
+#    "/path2/on/worker/machine": "/path2/on/head/machine",
 }
 
 # Whether changes to mounted files in the head node should sync to the worker node continuously
