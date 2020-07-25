@@ -72,6 +72,8 @@ done
 
 # Rename the wheels so that they can be uploaded to PyPI. TODO(rkn): This is a
 # hack, we should use auditwheel instead.
-pushd .whl
-  find *.whl -exec bash -c 'mv $1 ${1//linux/manylinux1}' bash {} \;
-popd
+for path in .whl/*.whl; do
+  if [ -f "${path}" ]; then
+    mv "${path}" "${path//linux/manylinux1}"
+  fi
+done

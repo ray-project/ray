@@ -1,9 +1,13 @@
 from gym.spaces import Box, Space
-from typing import Optional
+import numpy as np
+from typing import Dict, List, Optional, TYPE_CHECKING
 
 from ray.rllib.utils.framework import try_import_torch
 
 torch, _ = try_import_torch()
+
+if TYPE_CHECKING:
+    from ray.rllib.models import ModelV2
 
 
 class ViewRequirement:

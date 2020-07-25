@@ -109,6 +109,10 @@ class GcsRpcClient {
         new GrpcClient<ErrorInfoGcsService>(address, port, client_call_manager));
     worker_info_grpc_client_ = std::unique_ptr<GrpcClient<WorkerInfoGcsService>>(
         new GrpcClient<WorkerInfoGcsService>(address, port, client_call_manager));
+    placement_group_info_grpc_client_ =
+        std::unique_ptr<GrpcClient<PlacementGroupInfoGcsService>>(
+            new GrpcClient<PlacementGroupInfoGcsService>(address, port,
+                                                         client_call_manager));
   }
 
   /// Add job info to gcs server.

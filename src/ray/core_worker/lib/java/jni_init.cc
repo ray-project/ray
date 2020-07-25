@@ -74,6 +74,8 @@ jfieldID java_actor_creation_options_name;
 jfieldID java_actor_creation_options_max_restarts;
 jfieldID java_actor_creation_options_jvm_options;
 jfieldID java_actor_creation_options_max_concurrency;
+jfieldID java_actor_creation_options_group;
+jfieldID java_actor_creation_options_bundle_index;
 
 jclass java_gcs_client_options_class;
 jfieldID java_gcs_client_options_ip;
@@ -88,6 +90,9 @@ jfieldID java_native_ray_object_metadata;
 jclass java_task_executor_class;
 jmethodID java_task_executor_parse_function_arguments;
 jmethodID java_task_executor_execute;
+
+jclass java_placement_group_class;
+jfieldID java_placement_group_id;
 
 JavaVM *jvm;
 
@@ -177,6 +182,12 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_base_task_options_resources =
       env->GetFieldID(java_base_task_options_class, "resources", "Ljava/util/Map;");
 
+  java_placement_group_class =
+      LoadClass(env, "io/ray/runtime/placementgroup/PlacementGroupImpl");
+  java_placement_group_id =
+      env->GetFieldID(java_placement_group_class, "id",
+                      "Lio/ray/runtime/placementgroup/PlacementGroupId;");
+
   java_actor_creation_options_class =
       LoadClass(env, "io/ray/api/options/ActorCreationOptions");
   java_actor_creation_options_global =
@@ -189,6 +200,11 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       java_actor_creation_options_class, "jvmOptions", "Ljava/lang/String;");
   java_actor_creation_options_max_concurrency =
       env->GetFieldID(java_actor_creation_options_class, "maxConcurrency", "I");
+  java_actor_creation_options_group =
+      env->GetFieldID(java_actor_creation_options_class, "group",
+                      "Lio/ray/api/placementgroup/PlacementGroup;");
+  java_actor_creation_options_bundle_index =
+      env->GetFieldID(java_actor_creation_options_class, "bundleIndex", "I");
   java_gcs_client_options_class = LoadClass(env, "io/ray/runtime/gcs/GcsClientOptions");
   java_gcs_client_options_ip =
       env->GetFieldID(java_gcs_client_options_class, "ip", "Ljava/lang/String;");

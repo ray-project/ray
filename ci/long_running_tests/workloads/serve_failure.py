@@ -38,9 +38,8 @@ class RandomKiller:
 
     def _get_all_serve_actors(self):
         master = serve.api._get_controller()
-        [router] = ray.get(master.get_router.remote())
-        [http_proxy] = ray.get(master.get_http_proxy.remote())
-        all_handles = [master, router, http_proxy]
+        routers = ray.get(master.get_router.remote())
+        all_handles = routers + [master]
         worker_handle_dict = ray.get(master.get_all_worker_handles.remote())
         for _, replica_dict in worker_handle_dict.items():
             all_handles.extend(list(replica_dict.values()))
