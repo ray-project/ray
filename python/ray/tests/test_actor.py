@@ -836,5 +836,32 @@ def test_actor_creation_latency(ray_start_regular):
         actor_create_time - start, end - start))
 
 
+def test_release_cpus_when_actor_creation_task_blocking(shutdown_only):
+    ray.init(num_cpus=1)
+
+    @ray.remote(num_cpus=1)
+    def get_100():
+        return 100
+
+    @ray.remote(num_cpus=1)
+    class A:
+        def __init__(self):
+            self.num = ray.get(get_100.remote())
+
+        def get_num(self):
+            return self.num
+
+    def assert_available_resources():
+        return 'CPU' not in ray.available_resources()
+
+    a = A.remote()
+
+    ray.test_utils.wait_for_condition(assert_available_resources, 1000)
+
+    assert 100 == ray.get(a.get_num.remote())
+
+    ray.test_utils.wait_for_condition(assert_available_resources, 1000)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

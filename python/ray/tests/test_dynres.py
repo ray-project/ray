@@ -404,7 +404,7 @@ def test_dynamic_res_concurrent_res_decrement(ray_start_cluster):
     res_name = "test_res"
     res_capacity = 5
     updated_capacity = 2
-    num_nodes = 5
+    num_nodes = 2
     TIMEOUT_DURATION = 1
 
     for i in range(num_nodes):
@@ -421,14 +421,14 @@ def test_dynamic_res_concurrent_res_decrement(ray_start_cluster):
             resource_name, resource_capacity, client_id=res_client_id)
 
     # Create the resource on node 1
-    ray.get(set_res.remote(res_name, res_capacity, target_node_id))
+    set_res.remote(res_name, res_capacity, target_node_id)
 
     def check_resources():
         return ray.cluster_resources().get(res_name, None) == res_capacity
 
     wait_for_condition(check_resources)
 
-    # Task to hold the resource till the driver signals to finish
+    # Task to hold the resource until the driver sends a signal to finish.
     @ray.remote
     def wait_func(running_signal, finish_signal):
         # Signal that the task is running.
@@ -548,25 +548,26 @@ def test_dynamic_res_concurrent_res_delete(ray_start_cluster):
     finish_signal = Signal.remote()
 
     # Launch the task with resource requirement of 4, thus the new available
-    # capacity becomes 1
-    task = wait_func._remote(
-        args=[running_signal, finish_signal], resources={res_name: 4})
-    # Wait until wait_func is launched before updating resource
+    # capacity becomes 1.
+    task = wait_func.options(resources={
+        res_name: 4
+    }).remote(running_signal, finish_signal)
+    # Wait until wait_func is launched before updating resource.
     ray.get(running_signal.wait.remote())
 
-    # Delete the resource
+    # Delete the resource.
     ray.get(delete_res.remote(res_name, target_node_id))
+    wait_for_condition(lambda: res_name not in ray.cluster_resources())
 
-    # Signal task to complete
+    # Signal task to complete.
     ray.get(finish_signal.send.remote())
     ray.get(task)
 
     # Check if scheduler state is consistent by launching a task requiring
-    # the deleted resource  This should not execute
-    task_2 = test_func._remote(
-        args=[], resources={res_name: 1})  # This should be infeasible
+    # the deleted resource. This should not execute because it is infeasible.
+    task_2 = test_func.options(resources={res_name: 1}).remote()
     successful, unsuccessful = ray.wait([task_2], timeout=TIMEOUT_DURATION)
-    assert unsuccessful  # The task did not complete because it's infeasible
+    assert unsuccessful  # The task did not complete because it's infeasible.
     assert res_name not in ray.available_resources()
 
 
@@ -615,42 +616,6 @@ def test_dynamic_res_creation_stress(ray_start_cluster):
             all_resources_created.append(str(i) in resources)
         success = all(all_resources_created)
     assert success
-
-
-def test_release_cpus_when_actor_creation_task_blocking(shutdown_only):
-    ray.init(num_cpus=2)
-
-    @ray.remote(num_cpus=1)
-    def get_100():
-        time.sleep(1)
-        return 100
-
-    @ray.remote(num_cpus=1)
-    class A:
-        def __init__(self):
-            self.num = ray.get(get_100.remote())
-
-        def get_num(self):
-            return self.num
-
-    a = A.remote()
-    assert 100 == ray.get(a.get_num.remote())
-
-    def wait_until(condition, timeout_ms):
-        SLEEP_DURATION_MS = 100
-        time_elapsed = 0
-        while time_elapsed <= timeout_ms:
-            if condition():
-                return True
-            time.sleep(SLEEP_DURATION_MS)
-            time_elapsed += SLEEP_DURATION_MS
-        return False
-
-    def assert_available_resources():
-        return 1 == ray.available_resources()["CPU"]
-
-    result = wait_until(assert_available_resources, 1000)
-    assert result is True
 
 
 if __name__ == "__main__":
