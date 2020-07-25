@@ -460,12 +460,12 @@ static std::atomic<NtQueryInformationProcess_t *> NtQueryInformationProcess_ =
     ATOMIC_VAR_INIT(NULL);
 
 pid_t GetParentPID() {
-  NtQueryInformationProcess_t *NtQueryInformationProcess = ::NtQueryInformationProcess_;
+  NtQueryInformationProcess_t *NtQueryInformationProcess = NtQueryInformationProcess_;
   if (!NtQueryInformationProcess) {
     NtQueryInformationProcess = reinterpret_cast<NtQueryInformationProcess_t *>(
         GetProcAddress(GetModuleHandle(TEXT("ntdll.dll")),
                        _CRT_STRINGIZE(NtQueryInformationProcess)));
-    ::NtQueryInformationProcess_ = NtQueryInformationProcess;
+    NtQueryInformationProcess_ = NtQueryInformationProcess;
   }
   DWORD ppid = 0;
   PROCESS_BASIC_INFORMATION info;
@@ -502,7 +502,7 @@ pid_t GetParentPID() {
 pid_t GetParentPID() { return getppid(); }
 #endif  // #ifdef _WIN32
 
-bool IsParentProcessAlive() { return getppid() != 1; }
+bool IsParentProcessAlive() { return GetParentPID() != 1; }
 
 }  // namespace ray
 
