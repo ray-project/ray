@@ -8,7 +8,7 @@ from ray.rllib.models.preprocessors import get_preprocessor, \
     RepeatedValuesPreprocessor
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.trajectory_view import ViewRequirement
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     TensorType
@@ -58,6 +58,20 @@ class ModelV2:
         self.name: str = name or "default_model"
         self.framework: str = framework
         self._last_output = None
+        self._trajectory_view = {
+            SampleBatch.OBS: ViewRequirement(),
+            SampleBatch.NEXT_OBS: ViewRequirement(
+                SampleBatch.OBS, shift=1, sampling=False, training=False),
+            SampleBatch.ACTIONS: ViewRequirement(
+                space=self.action_space, sampling=False),
+            SampleBatch.PREV_ACTIONS: ViewRequirement(
+                SampleBatch.ACTIONS, space=self.action_space, shift=-1),
+            SampleBatch.REWARDS: ViewRequirement(sampling=False),
+            SampleBatch.PREV_REWARDS: ViewRequirement(
+                SampleBatch.REWARDS, shift=-1),
+            SampleBatch.DONES: ViewRequirement(sampling=False),
+            SampleBatch.VF_PREDS: ViewRequirement(sampling=False),
+        }
 
     @PublicAPI
     def get_initial_state(self) -> List[np.ndarray]:
@@ -265,17 +279,10 @@ class ModelV2:
             Dict[str, ViewRequirement]: The view requirements as a dict mapping
                 column names e.g. "obs" to config dicts containing supported
                 fields.
-                TODO: (sven) Currently only `timesteps==0` can be setup.
         """
         # Default implementation for simple RL model:
         # Single requirement: Pass current obs as input.
-        return {
-            SampleBatch.CUR_OBS: ViewRequirement(timesteps=0),
-            SampleBatch.PREV_ACTIONS: ViewRequirement(
-                SampleBatch.ACTIONS, timesteps=-1),
-            SampleBatch.PREV_REWARDS: ViewRequirement(
-                SampleBatch.REWARDS, timesteps=-1),
-        }
+        return self._trajectory_view
 
     def import_from_h5(self, h5_file: str) -> None:
         """Imports weights from an h5 file.

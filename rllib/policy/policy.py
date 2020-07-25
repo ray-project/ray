@@ -211,26 +211,26 @@ class Policy(metaclass=ABCMeta):
         return single_action, [s[0] for s in state_out], \
             {k: v[0] for k, v in info.items()}
 
-    def compute_actions_from_trajectories(
+    def compute_actions_from_sample_collector(
             self,
-            trajectories: List["Trajectory"],
-            other_trajectories: Optional[Dict[AgentID, "Trajectory"]] = None,
+            sample_collector: "SampleCollector",
             explore: bool = None,
             timestep: Optional[int] = None,
             **kwargs) -> \
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
-        """Computes actions for the current policy based on .
+        """Computes actions from collected samples (across multiple-agents).
 
         Note: This is an experimental API method.
 
         Only used so far by the Sampler iff `_use_trajectory_view_api=True`
         (also only supported for torch).
+        Uses the currently "forward-pass-registered" samples from the collector
+        to construct the input_dict for the Model.
 
         Args:
-            trajectories (List[Trajectory]): A List of Trajectory data used
-                to create a view for the Model forward call.
-            other_trajectories (Optional[Dict[AgentID, Trajectory]]): Optional
-                dict mapping AgentIDs to Trajectory objects.
+            sample_collector (SampleCollector): A SampleCollector object,
+                responsible for collecting env and model outputs across all
+                policies (including this one)/agents/sub-envs.
             explore (bool): Whether to pick an exploitation or exploration
                 action (default: None -> use self.config["explore"]).
             timestep (Optional[int]): The current (sampling) time step.
