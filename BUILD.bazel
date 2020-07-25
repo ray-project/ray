@@ -1,9 +1,8 @@
 # Bazel build
 # C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
 
-load("@rules_proto//proto:defs.bzl", "proto_library")
-load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_proto_library", "cc_test")
-load("@rules_proto_grpc//cpp:defs.bzl", "cpp_grpc_library")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
+load("@rules_proto_grpc//cpp:defs.bzl", "cpp_grpc_library", "cpp_proto_library")
 load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("//bazel:cython_library.bzl", "pyx_library")
@@ -27,7 +26,7 @@ proto_library(
     visibility = ["//java:__subpackages__"],
 )
 
-cc_proto_library(
+cpp_proto_library(
     name = "common_cc_proto",
     deps = [":common_proto"],
 )
@@ -44,7 +43,7 @@ proto_library(
     deps = [":common_proto"],
 )
 
-cc_proto_library(
+cpp_proto_library(
     name = "gcs_cc_proto",
     deps = [":gcs_proto"],
 )
@@ -60,7 +59,7 @@ proto_library(
     deps = [":common_proto"],
 )
 
-cc_proto_library(
+cpp_proto_library(
     name = "node_manager_cc_proto",
     deps = [":node_manager_proto"],
 )
@@ -76,7 +75,7 @@ proto_library(
     deps = [":common_proto"],
 )
 
-cc_proto_library(
+cpp_proto_library(
     name = "reporter_cc_proto",
     deps = [":reporter_proto"],
 )
@@ -95,7 +94,7 @@ proto_library(
     ],
 )
 
-cc_proto_library(
+cpp_proto_library(
     name = "gcs_service_cc_proto",
     deps = [":gcs_service_proto"],
 )
@@ -105,7 +104,7 @@ proto_library(
     srcs = ["src/ray/protobuf/object_manager.proto"],
 )
 
-cc_proto_library(
+cpp_proto_library(
     name = "object_manager_cc_proto",
     deps = [":object_manager_proto"],
 )
@@ -121,7 +120,7 @@ python_grpc_compile(
     deps = [":core_worker_proto"],
 )
 
-cc_proto_library(
+cpp_proto_library(
     name = "worker_cc_proto",
     deps = ["core_worker_proto"],
 )
@@ -131,7 +130,7 @@ proto_library(
     srcs = ["src/ray/protobuf/serialization.proto"],
 )
 
-cc_proto_library(
+cpp_proto_library(
     name = "serialization_cc_proto",
     deps = ["serialization_proto"],
 )
@@ -154,17 +153,14 @@ cc_library(
     deps = [
         ":ray_common",
         "@boost//:asio",
-        "@com_github_grpc_grpc//:grpc++",
-        "@com_google_protobuf//:protobuf",
     ],
 )
 
 # Node manager gRPC lib.
 cpp_grpc_library(
     name = "node_manager_cc_grpc",
-    srcs = [":node_manager_proto"],
     grpc_only = True,
-    deps = [":node_manager_cc_proto"],
+    deps = [":node_manager_proto"],
 )
 
 # Node manager server and client.
@@ -180,16 +176,14 @@ cc_library(
         ":node_manager_cc_grpc",
         ":ray_common",
         "@boost//:asio",
-        "@com_github_grpc_grpc//:grpc++",
     ],
 )
 
 # gcs_service gRPC lib.
 cpp_grpc_library(
     name = "gcs_service_cc_grpc",
-    srcs = [":gcs_service_proto"],
     grpc_only = True,
-    deps = [":gcs_service_cc_proto"],
+    deps = [":gcs_service_proto"],
 )
 
 # gcs rpc server and client.
@@ -206,16 +200,14 @@ cc_library(
         ":grpc_common_lib",
         ":ray_common",
         "@boost//:asio",
-        "@com_github_grpc_grpc//:grpc++",
     ],
 )
 
 # Object manager gRPC lib.
 cpp_grpc_library(
     name = "object_manager_cc_grpc",
-    srcs = [":object_manager_proto"],
     grpc_only = True,
-    deps = [":object_manager_cc_proto"],
+    deps = [":object_manager_proto"],
 )
 
 # Object manager rpc server and client.
@@ -231,16 +223,14 @@ cc_library(
         ":object_manager_cc_grpc",
         ":ray_common",
         "@boost//:asio",
-        "@com_github_grpc_grpc//:grpc++",
     ],
 )
 
 # Worker gRPC lib.
 cpp_grpc_library(
     name = "worker_cc_grpc",
-    srcs = [":core_worker_proto"],
     grpc_only = True,
-    deps = [":worker_cc_proto"],
+    deps = [":core_worker_proto"],
 )
 
 # worker server and client.
@@ -257,16 +247,14 @@ cc_library(
         ":worker_cc_grpc",
         "@boost//:asio",
         "@boost//:thread",
-        "@com_github_grpc_grpc//:grpc++",
     ],
 )
 
 # Metrics Agent gRPC lib.
 cpp_grpc_library(
     name = "reporter_cc_grpc",
-    srcs = [":reporter_proto"],
     grpc_only = True,
-    deps = [":reporter_cc_proto"],
+    deps = [":reporter_proto"],
 )
 
 # Metrics Agent client.
@@ -283,7 +271,6 @@ cc_library(
         ":reporter_cc_grpc",
         "@boost//:asio",
         "@boost//:thread",
-        "@com_github_grpc_grpc//:grpc++",
     ],
 )
 
