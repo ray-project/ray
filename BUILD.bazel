@@ -2,7 +2,7 @@
 # C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
 
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
-load("@rules_proto_grpc//cpp:defs.bzl", "cpp_grpc_library", "cpp_proto_library")
+load("@rules_proto_grpc//cpp:defs.bzl", "cpp_grpc_library", "cpp_proto_library", "cpp_proto_compile")
 load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("//bazel:cython_library.bzl", "pyx_library")
@@ -26,7 +26,7 @@ proto_library(
     visibility = ["//java:__subpackages__"],
 )
 
-cpp_proto_library(
+cpp_proto_compile(
     name = "common_cc_proto",
     deps = [":common_proto"],
 )
@@ -59,7 +59,7 @@ proto_library(
     deps = [":common_proto"],
 )
 
-cpp_proto_library(
+cpp_proto_compile(
     name = "node_manager_cc_proto",
     deps = [":node_manager_proto"],
 )
@@ -75,7 +75,7 @@ proto_library(
     deps = [":common_proto"],
 )
 
-cpp_proto_library(
+cpp_proto_compile(
     name = "reporter_cc_proto",
     deps = [":reporter_proto"],
 )
@@ -94,7 +94,7 @@ proto_library(
     ],
 )
 
-cpp_proto_library(
+cpp_proto_compile(
     name = "gcs_service_cc_proto",
     deps = [":gcs_service_proto"],
 )
@@ -104,7 +104,7 @@ proto_library(
     srcs = ["src/ray/protobuf/object_manager.proto"],
 )
 
-cpp_proto_library(
+cpp_proto_compile(
     name = "object_manager_cc_proto",
     deps = [":object_manager_proto"],
 )
@@ -120,17 +120,12 @@ python_grpc_compile(
     deps = [":core_worker_proto"],
 )
 
-cpp_proto_library(
-    name = "worker_cc_proto",
-    deps = ["core_worker_proto"],
-)
-
 proto_library(
     name = "serialization_proto",
     srcs = ["src/ray/protobuf/serialization.proto"],
 )
 
-cpp_proto_library(
+cpp_proto_compile(
     name = "serialization_cc_proto",
     deps = ["serialization_proto"],
 )
@@ -426,7 +421,6 @@ cc_library(
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
-        ":common_cc_proto",
         ":gcs_cc_proto",
         ":node_manager_fbs",
         ":ray_util",
@@ -686,7 +680,6 @@ cc_library(
         ":ray_util",
         ":raylet_client_lib",
         ":service_based_gcs_client_lib",
-        ":worker_cc_proto",
         ":worker_rpc",
         "@boost//:fiber",
         "@com_google_absl//absl/container:flat_hash_map",
