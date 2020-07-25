@@ -1,5 +1,6 @@
 # Original Code here:
 # https://github.com/pytorch/examples/blob/master/mnist/main.py
+import argparse
 import logging
 import torch
 import torch.optim as optim
@@ -42,6 +43,17 @@ def train_mnist(config, checkpoint=False):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--num-replicas",
+        "-n",
+        type=int,
+        default=2,
+        help="Sets number of replicas for training.")
+
+    args = parser.parse_args()
+
     ray.init(num_cpus=2)
-    trainable_cls = DistributedTrainableCreator(train_mnist, num_workers=2)
+    trainable_cls = DistributedTrainableCreator(
+        train_mnist, num_workers=args.num_replicas)
     tune.run(trainable_cls, num_samples=4, stop={"training_iteration": 2})
