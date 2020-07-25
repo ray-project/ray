@@ -125,7 +125,7 @@ class OnPremCoordinatorState(ClusterState):
 
                 assert len(nodes) == len(list_of_node_ips)
                 with open(self.save_path, "w") as f:
-                    logger.debug(
+                    logger.info(
                         "OnPremCoordinatorState: "
                         "Writing on prem coordinator state: {}".format(nodes))
                     f.write(json.dumps(nodes))
@@ -135,6 +135,7 @@ class LocalNodeProvider(NodeProvider):
     """NodeProvider for private/local clusters.
 
     `node_id` is overloaded to also be `node_ip` in this class.
+    When `cluster_name` is None, it coordinates multiple clusters.
     """
 
     def __init__(self, provider_config, cluster_name):
@@ -212,6 +213,11 @@ class LocalNodeProvider(NodeProvider):
 
 
 class CoordinatorSenderNodeProvider(NodeProvider):
+    """NodeProvider for automatically managed private/local clusters.
+
+    The cluster management is handled by a coordinating server.
+    """
+
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
         self.coordinator_address = provider_config["coordinator_address"]
@@ -276,7 +282,8 @@ class CoordinatorSenderNodeProvider(NodeProvider):
         return response
 
     def create_node(self, node_config, tags, count):
-        # Tag the newly created node with with this cluster name.
+        # Tag the newly created node with with this cluster name. Helps
+        # to get the right nodes when calling non_terminated_nodes.
         tags[TAG_RAY_CLUSTER_NAME] = self.cluster_name
         request = {
             "type": "create_node",

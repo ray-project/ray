@@ -42,6 +42,7 @@ provider:
     # then you can launch multiple autoscaling clusters on the same set of machines, and the coordinator
     # will assign individual nodes to clusters as needed.
     #    coordinator_address: "<host>:<port>"
+
 # How Ray will authenticate with newly launched nodes.
 auth:
     ssh_user: YOUR_USERNAME

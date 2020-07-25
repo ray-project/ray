@@ -11,7 +11,7 @@ logging.basicConfig(level=logging.INFO)
 
 def runner_handler(node_provider):
     class Handler(SimpleHTTPRequestHandler):
-        """A custom handler for LocalNodeProviderServer.
+        """A custom handler for OnPremCoordinatorServer.
 
         Handles all requests and responses coming into and from the
         remote "local" node provider.
@@ -36,7 +36,7 @@ def runner_handler(node_provider):
             self._do_header()
 
         def do_GET(self):
-            """Processes requests from CoordinatorNodeProvider."""
+            """Processes requests from remote LocalNodeProvider."""
             if self.headers["content-length"]:
                 raw_data = (self.rfile.read(
                     int(self.headers["content-length"]))).decode("utf-8")
@@ -56,9 +56,9 @@ def runner_handler(node_provider):
 
 
 class OnPremCoordinatorServer(threading.Thread):
-    """Initializes the HTTPServer and serves the CoordinatorNodeProvider forever.
+    """Initializes the HTTPServer and serves the LocalNodeProvider forever.
 
-    It handles requests and responses from the remote CoordinatorNodeProvider.
+    It handles requests and responses from the remote LocalNodeProvider.
     """
 
     def __init__(self, list_of_node_ips, host, port):
