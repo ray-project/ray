@@ -4,9 +4,10 @@ load("@com_github_ray_project_ray//streaming/java:dependencies.bzl", "gen_stream
 load("@com_github_nelhage_rules_boost//:boost/boost.bzl", "boost_deps")
 load("@com_github_jupp0r_prometheus_cpp//bazel:repositories.bzl", "prometheus_cpp_repositories")
 load("@com_github_checkstyle_java//:repo.bzl", "checkstyle_deps")
-load("@com_github_grpc_grpc//third_party/py:python_configure.bzl", "python_configure")
-load("@com_github_grpc_grpc//bazel:grpc_deps.bzl", "grpc_deps")
-load("@rules_proto_grpc//:repositories.bzl", "rules_proto_grpc_toolchains")
+load("//bazel:python_configure.bzl", "python_configure")
+load("@rules_proto_grpc//:repositories.bzl", "rules_proto_grpc_toolchains", "rules_proto_grpc_repos")
+load("@rules_proto_grpc//python:repositories.bzl", rules_proto_grpc_python_repos="python_repos")
+load("@rules_proto_grpc//cpp:repositories.bzl", rules_proto_grpc_cpp_repos="cpp_repos")
 
 
 def ray_deps_build_all():
@@ -17,5 +18,7 @@ def ray_deps_build_all():
   boost_deps()
   prometheus_cpp_repositories()
   python_configure(name = "local_config_python")
-  grpc_deps()
   rules_proto_grpc_toolchains()
+  rules_proto_grpc_repos()
+  rules_proto_grpc_python_repos()
+  rules_proto_grpc_cpp_repos()

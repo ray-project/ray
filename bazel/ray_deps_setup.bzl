@@ -229,33 +229,6 @@ def ray_deps_setup():
     )
 
     auto_http_archive(
-        name = "com_github_grpc_grpc",
-        # NOTE: If you update this, also update @boringssl's hash.
-        url = "https://github.com/grpc/grpc/archive/4790ab6d97e634a1ede983be393f3bb3c132b2f7.tar.gz",
-        sha256 = "df83bd8a08975870b8b254c34afbecc94c51a55198e6e3a5aab61d62f40b7274",
-        patches = [
-            "//thirdparty/patches:grpc-cython-copts.patch",
-            "//thirdparty/patches:grpc-python.patch",
-        ],
-    )
-
-    auto_http_archive(
-        # This rule is used by @com_github_grpc_grpc, and using a GitHub mirror
-        # provides a deterministic archive hash for caching. Explanation here:
-        # https://github.com/grpc/grpc/blob/4790ab6d97e634a1ede983be393f3bb3c132b2f7/bazel/grpc_deps.bzl#L102
-        name = "boringssl",
-        # Ensure this matches the commit used by grpc's bazel/grpc_deps.bzl
-        url = "https://github.com/google/boringssl/archive/83da28a68f32023fd3b95a8ae94991a07b1f6c62.tar.gz",
-        sha256 = "781fa39693ec2984c71213cd633e9f6589eaaed75e3a9ac413237edec96fd3b9",
-    )
-
-    auto_http_archive(
-        name = "rules_proto_grpc",
-        url = "https://github.com/rules-proto-grpc/rules_proto_grpc/archive/a74fef39c5fe636580083545f76d1eab74f6450d.tar.gz",
-        sha256 = "2f6606151ec042e23396f07de9e7dcf6ca9a5db1d2b09f0cc93a7fc7f4008d1b",
-    )
-
-    auto_http_archive(
         name = "msgpack",
         build_file = True,
         url = "https://github.com/msgpack/msgpack-c/archive/8085ab8721090a447cf98bb802d1406ad7afe420.tar.gz",
@@ -263,4 +236,11 @@ def ray_deps_setup():
         patches = [
             "//thirdparty/patches:msgpack-windows-iovec.patch",
         ],
+    )
+
+    http_archive(
+        name = "rules_proto_grpc",
+        urls = ["https://github.com/rules-proto-grpc/rules_proto_grpc/archive/1.0.2.tar.gz"],
+        sha256 = "5f0f2fc0199810c65a2de148a52ba0aff14d631d4e8202f41aff6a9d590a471b",
+        strip_prefix = "rules_proto_grpc-1.0.2",
     )
