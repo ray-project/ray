@@ -100,6 +100,14 @@ py_test(
 
 
 py_test(
+    name = "test_scaling",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_util",
     size = "small",
     srcs = serve_tests_srcs,

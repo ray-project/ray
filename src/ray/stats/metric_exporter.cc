@@ -109,5 +109,6 @@ void MetricExporter::ExportViewData(
   RAY_LOG(DEBUG) << "Point size : " << points.size();
   metric_exporter_client_->ReportMetrics(points);
 }
+
 }  // namespace stats
 }  // namespace ray

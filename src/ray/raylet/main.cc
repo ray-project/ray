@@ -229,7 +229,7 @@ int main(int argc, char *argv[]) {
       {ray::stats::JobNameKey, "raylet"},
       {ray::stats::VersionKey, "0.9.0.dev0"},
       {ray::stats::NodeAddressKey, node_ip_address}};
-  ray::stats::Init(global_tags, metrics_agent_port, main_service);
+  ray::stats::Init(global_tags, metrics_agent_port);
 
   // Destroy the Raylet on a SIGTERM. The pointer to main_service is
   // guaranteed to be valid since this function will run the event loop
@@ -240,6 +240,7 @@ int main(int argc, char *argv[]) {
     RAY_LOG(INFO) << "Raylet received SIGTERM, shutting down...";
     server->Stop();
     gcs_client->Disconnect();
+    ray::stats::Shutdown();
     main_service.stop();
     remove(raylet_socket_name.c_str());
   };

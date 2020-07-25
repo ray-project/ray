@@ -127,6 +127,10 @@ extern jfieldID java_actor_creation_options_max_restarts;
 extern jfieldID java_actor_creation_options_jvm_options;
 /// maxConcurrency field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_max_concurrency;
+/// group field of ActorCreationOptions class
+extern jfieldID java_actor_creation_options_group;
+/// bundleIndex field of ActorCreationOptions class
+extern jfieldID java_actor_creation_options_bundle_index;
 
 /// GcsClientOptions class
 extern jclass java_gcs_client_options_class;
@@ -148,8 +152,15 @@ extern jfieldID java_native_ray_object_metadata;
 
 /// TaskExecutor class
 extern jclass java_task_executor_class;
+/// checkByteBufferArguments method of TaskExecutor class
+extern jmethodID java_task_executor_parse_function_arguments;
 /// execute method of TaskExecutor class
 extern jmethodID java_task_executor_execute;
+
+/// PlacementGroup class
+extern jclass java_placement_group_class;
+/// id field of PlacementGroup class
+extern jfieldID java_placement_group_id;
 
 #define CURRENT_JNI_VERSION JNI_VERSION_1_8
 
@@ -287,8 +298,9 @@ inline void JavaLongArrayToNativeLongVector(JNIEnv *env, jlongArray long_array,
                                             std::vector<long> *native_vector) {
   jlong *long_array_ptr = env->GetLongArrayElements(long_array, nullptr);
   jsize vec_size = env->GetArrayLength(long_array);
-  native_vector->insert(native_vector->begin(), long_array_ptr,
-                        long_array_ptr + vec_size);
+  for (int i = 0; i < vec_size; ++i) {
+    native_vector->push_back(static_cast<long>(long_array_ptr[i]));
+  }
   env->ReleaseLongArrayElements(long_array, long_array_ptr, 0);
 }
 
@@ -297,8 +309,9 @@ inline void JavaDoubleArrayToNativeDoubleVector(JNIEnv *env, jdoubleArray double
                                                 std::vector<double> *native_vector) {
   jdouble *double_array_ptr = env->GetDoubleArrayElements(double_array, nullptr);
   jsize vec_size = env->GetArrayLength(double_array);
-  native_vector->insert(native_vector->begin(), double_array_ptr,
-                        double_array_ptr + vec_size);
+  for (int i = 0; i < vec_size; ++i) {
+    native_vector->push_back(static_cast<double>(double_array_ptr[i]));
+  }
   env->ReleaseDoubleArrayElements(double_array, double_array_ptr, 0);
 }
 

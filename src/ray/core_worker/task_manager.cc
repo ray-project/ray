@@ -87,9 +87,6 @@ Status TaskManager::ResubmitTask(const TaskID &task_id,
     if (it == submissible_tasks_.end()) {
       return Status::Invalid("Task spec missing");
     }
-    if (it->second.spec.IsActorTask()) {
-      return Status::Invalid("Cannot reconstruct objects returned by actors");
-    }
 
     if (!it->second.pending) {
       resubmit = true;
@@ -116,6 +113,11 @@ Status TaskManager::ResubmitTask(const TaskID &task_id,
 
   if (!task_deps->empty()) {
     reference_counter_->UpdateResubmittedTaskReferences(*task_deps);
+  }
+
+  if (spec.IsActorTask()) {
+    const auto actor_creation_return_id = spec.ActorCreationDummyObjectId();
+    reference_counter_->UpdateResubmittedTaskReferences({actor_creation_return_id});
   }
 
   if (resubmit) {

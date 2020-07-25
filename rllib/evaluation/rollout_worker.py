@@ -412,7 +412,7 @@ class RolloutWorker(ParallelIteratorWorker):
                         worker_index) +
                     " on CPU (please ignore any CUDA init errors)")
             elif (policy_config["framework"] in ["tf2", "tf", "tfe"] and
-                  not tf.config.list_physical_devices("GPU")) or \
+                  not tf.config.experimental.list_physical_devices("GPU")) or \
                     (policy_config["framework"] == "torch" and
                      not torch.cuda.is_available()):
                 raise RuntimeError(

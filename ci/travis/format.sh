@@ -57,8 +57,8 @@ tool_version_check() {
     fi
 }
 
-tool_version_check "flake8" $FLAKE8_VERSION $FLAKE8_VERSION_REQUIRED
-tool_version_check "yapf" $YAPF_VERSION $YAPF_VERSION_REQUIRED
+tool_version_check "flake8" "$FLAKE8_VERSION" "$FLAKE8_VERSION_REQUIRED"
+tool_version_check "yapf" "$YAPF_VERSION" "$YAPF_VERSION_REQUIRED"
 
 if which clang-format >/dev/null; then
   CLANG_FORMAT_VERSION=$(clang-format --version | awk '{print $3}')

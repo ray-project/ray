@@ -71,10 +71,13 @@ const absl::Duration &StatsConfig::GetHarvestInterval() const {
   return harvest_interval_;
 }
 
+void StatsConfig::SetIsInitialized(bool initialized) { is_initialized_ = initialized; }
+
+bool StatsConfig::IsInitialized() const { return is_initialized_; }
+
 ///
 /// Metric
 ///
-
 void Metric::Record(double value, const TagsType &tags) {
   if (StatsConfig::instance().IsStatsDisabled()) {
     return;

@@ -20,7 +20,7 @@ function usage()
 RUN_TYPE="diff"
 
 # Parse options
-while [[ $# > 0 ]]; do
+while [ $# -gt 0 ]; do
   key="$1"
   case $key in
     -h|--help)
@@ -37,7 +37,7 @@ while [[ $# > 0 ]]; do
       echo "ERROR: unknown option \"$key\""
       echo
       usage
-      exit -1
+      exit 1
       ;;
   esac
   shift
