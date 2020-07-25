@@ -50,7 +50,7 @@ class GcsPlacementGroupManager;
 /// https://docs.google.com/document/d/1d-9qBlsh2UQHo-AWMWR0GptI_Ajwu4SKx0Q0LHKPpeI/edit#heading=h.csi0gaglj2pv
 class GcsServer {
  public:
-  explicit GcsServer(const GcsServerConfig &config,
+  explicit GcsServer(const GcsServerConfig &config, boost::asio::io_service &main_service,
                      std::vector<boost::asio::io_service *> io_services);
   virtual ~GcsServer();
 

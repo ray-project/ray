@@ -30,14 +30,15 @@ namespace ray {
 namespace gcs {
 
 GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
+                     boost::asio::io_service &main_service,
                      std::vector<boost::asio::io_service *> io_services)
     : config_(config),
-      main_service_(*io_services[0]),
-      node_manager_io_service_(*io_services[1]),
+      main_service_(main_service),
+      node_manager_io_service_(*io_services[0]),
       rpc_server_(config.grpc_server_name, config.grpc_server_port,
                   config.grpc_server_thread_num),
-      client_call_manager_(*io_services[0]) {
-  RAY_CHECK(io_services.size() == kGcsIoServiceNum);
+      client_call_manager_(main_service) {
+  RAY_CHECK(io_services.size() == kGcsNodeManagerIoServiceNum);
 }
 
 GcsServer::~GcsServer() { Stop(); }

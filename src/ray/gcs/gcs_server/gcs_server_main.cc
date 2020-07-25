@@ -57,14 +57,14 @@ int main(int argc, char *argv[]) {
   RayConfig::instance().initialize(config_map);
 
   std::shared_ptr<ray::IOServicePool> io_service_pool =
-      std::make_shared<ray::IOServicePool>(kGcsIoServiceNum);
+      std::make_shared<ray::IOServicePool>(kGcsNodeManagerIoServiceNum);
   io_service_pool->Run();
 
   // IO Service for signals handler.
-  boost::asio::io_service signal_service;
-  // Ensure that the IO service keeps running. Without this, the signal_service will exit
+  boost::asio::io_service main_service;
+  // Ensure that the IO service keeps running. Without this, the main_service will exit
   // as soon as there is no more work to be processed.
-  boost::asio::io_service::work signal_work(signal_service);
+  boost::asio::io_service::work signal_work(main_service);
 
   ray::gcs::GcsServerConfig gcs_server_config;
   gcs_server_config.grpc_server_name = "GcsServer";
@@ -74,19 +74,20 @@ int main(int argc, char *argv[]) {
   gcs_server_config.redis_port = redis_port;
   gcs_server_config.redis_password = redis_password;
   gcs_server_config.retry_redis = retry_redis;
-  ray::gcs::GcsServer gcs_server(gcs_server_config, io_service_pool->GetAll());
+  ray::gcs::GcsServer gcs_server(gcs_server_config, main_service,
+                                 io_service_pool->GetAll());
 
-  // Destroy the GCS server on a SIGTERM. The pointer to signal_service is
+  // Destroy the GCS server on a SIGTERM. The pointer to main_service is
   // guaranteed to be valid since this function will run the event loop
   // instead of returning immediately.
-  auto handler = [&io_service_pool, &gcs_server, &signal_service](
+  auto handler = [&io_service_pool, &gcs_server, &main_service](
                      const boost::system::error_code &error, int signal_number) {
     RAY_LOG(INFO) << "GCS server received SIGTERM, shutting down...";
     gcs_server.Stop();
     io_service_pool->Stop();
-    signal_service.stop();
+    main_service.stop();
   };
-  boost::asio::signal_set signals(signal_service);
+  boost::asio::signal_set signals(main_service);
 #ifdef _WIN32
   signals.add(SIGBREAK);
 #else
@@ -96,5 +97,5 @@ int main(int argc, char *argv[]) {
 
   gcs_server.Start();
 
-  signal_service.run();
+  main_service.run();
 }

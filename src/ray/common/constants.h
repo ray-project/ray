@@ -43,6 +43,6 @@ constexpr char kWorkerRayletConfigPlaceholder[] = "RAY_WORKER_RAYLET_CONFIG_PLAC
 constexpr char kPublicDNSServerIp[] = "8.8.8.8";
 constexpr int kPublicDNSServerPort = 53;
 
-/// Number of io services used by gcs. The extra one is used by node failure detector to
-/// avoid heartbeat delay.
-constexpr size_t kGcsIoServiceNum{2};
+/// IO service used by gcs node failure detector, which avoid heartbeat dealy caused by
+/// main thread.
+constexpr size_t kGcsNodeManagerIoServiceNum{1};

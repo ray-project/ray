@@ -37,11 +37,12 @@ class GlobalStateAccessorTest : public ::testing::Test {
     config.is_test = true;
     config.redis_port = TEST_REDIS_SERVER_PORTS.front();
 
-    io_service_pool_ = std::make_shared<IOServicePool>(kGcsIoServiceNum);
+    io_service_pool_ = std::make_shared<IOServicePool>(kGcsNodeManagerIoServiceNum);
     io_service_pool_->Run();
 
     io_service_.reset(new boost::asio::io_service());
-    gcs_server_.reset(new gcs::GcsServer(config, io_service_pool_->GetAll()));
+    gcs_server_.reset(
+        new gcs::GcsServer(config, *io_service_, io_service_pool_->GetAll()));
     gcs_server_->Start();
 
     thread_io_service_.reset(new std::thread([this] {
