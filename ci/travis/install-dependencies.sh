@@ -250,8 +250,7 @@ install_dependencies() {
     # after n seconds.
     local status="0";
     local errmsg="";
-    for i in {1..3};
-    do
+    for _ in {1..3}; do
       errmsg=$(CC=gcc pip install "${pip_packages[@]}" 2>&1) && break;
       status=$errmsg && echo "'pip install ...' failed, will retry after n seconds!" && sleep 30;
     done
@@ -278,6 +277,27 @@ install_dependencies() {
   if [ "${RLLIB_TESTING-}" = 1 ]; then
     pip install tensorflow-probability=="${TFP_VERSION-0.8}" gast==0.2.2 \
       torch=="${TORCH_VERSION-1.4}" torchvision atari_py "gym[atari]" lz4 smart_open
+  fi
+
+  # Additional Tune test dependencies.
+  if [ "${TUNE_TESTING-}" = 1 ]; then
+    pip install tensorflow-probability=="${TFP_VERSION-0.8}" \
+      torch=="${TORCH_VERSION-1.4}"
+    pip install -r "${WORKSPACE_DIR}"/docker/tune_test/requirements.txt
+  fi
+
+  # Additional RaySGD test dependencies.
+  if [ "${SGD_TESTING-}" = 1 ]; then
+    pip install tensorflow-probability=="${TFP_VERSION-0.8}" \
+      torch=="${TORCH_VERSION-1.4}"
+    pip install -r "${WORKSPACE_DIR}"/docker/tune_test/requirements.txt
+  fi
+
+  # Additional Doc test dependencies.
+  if [ "${DOC_TESTING-}" = 1 ]; then
+    pip install tensorflow-probability=="${TFP_VERSION-0.8}" \
+      torch=="${TORCH_VERSION-1.4}" torchvision atari_py gym[atari] lz4 smart_open
+    pip install -r "${WORKSPACE_DIR}"/docker/tune_test/requirements.txt
   fi
 
   # Additional streaming dependencies.
