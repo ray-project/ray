@@ -24,7 +24,7 @@ def _tpl(repository_ctx, tpl, substitutions = {}, out = None):
         out = tpl
     repository_ctx.template(
         out,
-        Label("//third_party/py:%s.tpl" % tpl),
+        Label("//bazel/grpc_python:%s.tpl" % tpl),
         substitutions,
     )
 
@@ -355,11 +355,11 @@ python_configure = repository_rule(
     ],
     attrs = {
         "_build_tpl": attr.label(
-            default = Label("//third_party/py:BUILD.tpl"),
+            default = Label("//bazel/grpc_python:BUILD.tpl"),
             allow_single_file = True,
         ),
         "_variety_tpl": attr.label(
-            default = Label("//third_party/py:variety.tpl"),
+            default = Label("//baze/grpc_python:variety.tpl"),
             allow_single_file = True,
         ),
     },
