@@ -4,7 +4,11 @@ import tree
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.utils.framework import try_import_torch
 
-torch, _ = try_import_torch()
+torch, nn = try_import_torch()
+
+
+def atanh(x):
+    return 0.5 * torch.log((1 + x) / (1 - x))
 
 
 def explained_variance(y, pred):
@@ -50,13 +54,6 @@ def l2_loss(x):
     return torch.sum(torch.pow(x, 2.0)) / 2.0
 
 
-def reduce_mean_ignore_inf(x, axis):
-    """Same as torch.mean() but ignores -inf values."""
-    mask = torch.ne(x, float("-inf"))
-    x_zeroed = torch.where(mask, x, torch.zeros_like(x))
-    return torch.sum(x_zeroed, axis) / torch.sum(mask.float(), axis)
-
-
 def minimize_and_clip(optimizer, clip_val=10):
     """Clips gradients found in `optimizer.param_groups` to given value.
 
@@ -67,6 +64,13 @@ def minimize_and_clip(optimizer, clip_val=10):
         for p in param_group["params"]:
             if p.grad is not None:
                 torch.nn.utils.clip_grad_norm_(p.grad, clip_val)
+
+
+def reduce_mean_ignore_inf(x, axis):
+    """Same as torch.mean() but ignores -inf values."""
+    mask = torch.ne(x, float("-inf"))
+    x_zeroed = torch.where(mask, x, torch.zeros_like(x))
+    return torch.sum(x_zeroed, axis) / torch.sum(mask.float(), axis)
 
 
 def sequence_mask(lengths, maxlen=None, dtype=None):
@@ -84,6 +88,18 @@ def sequence_mask(lengths, maxlen=None, dtype=None):
     mask.type(dtype or torch.bool)
 
     return mask
+
+
+def softmax_cross_entropy_with_logits(logits, labels):
+    """Same behavior as tf.nn.softmax_cross_entropy_with_logits.
+
+    Args:
+        x (TensorType):
+
+    Returns:
+
+    """
+    return torch.sum(-labels * nn.functional.log_softmax(logits, -1), -1)
 
 
 def convert_to_non_torch_type(stats):
@@ -138,7 +154,3 @@ def convert_to_torch_tensor(x, device=None):
         return tensor if device is None else tensor.to(device)
 
     return tree.map_structure(mapping, x)
-
-
-def atanh(x):
-    return 0.5 * torch.log((1 + x) / (1 - x))
