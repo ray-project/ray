@@ -76,6 +76,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     server_io_service_->stop();
     io_service_pool_->Stop();
     gcs_server_.reset();
+    server_io_service_thread_->join();
     TestSetupUtil::FlushAllRedisServers();
     client_io_service_thread_->join();
   }
