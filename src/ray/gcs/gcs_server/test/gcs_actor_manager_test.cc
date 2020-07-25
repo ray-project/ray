@@ -737,6 +737,7 @@ TEST_F(GcsActorManagerTest, TestRegisterActor) {
 
   actor->UpdateAddress(RandomAddress());
   gcs_actor_manager_->OnActorCreationSuccess(actor);
+  WaitActorCreated(actor->GetActorID());
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
 }
 
