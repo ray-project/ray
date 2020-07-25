@@ -307,15 +307,9 @@ class FunctionRunner(Trainable):
             checkpoint, parent_dir, state)
         return checkpoint_path
 
-    def save_to_object(self, remove=False):
+    def save_to_object(self):
         checkpoint_path = self.save()
         obj = TrainableUtil.checkpoint_to_object(checkpoint_path)
-
-        if remove:
-            checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
-            shutil.rmtree(checkpoint_dir)
-            logger.debug("Removing checkpoint_dir: %s", checkpoint_dir)
-
         return obj
 
     def load_checkpoint(self, checkpoint):

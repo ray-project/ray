@@ -142,7 +142,7 @@ py_test(
 )
 
 py_test(
-    name = "ddp_mnist_torch_trainable",
+    name = "ddp_mnist_torch",
     size = "small",
     srcs = ["torch/examples/ddp_mnist_torch.py"],
     tags = ["exclusive", "pytorch"],
