@@ -6,7 +6,7 @@ from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.offline.io_context import IOContext
 from ray.rllib.utils.types import TensorType, SampleBatchType
-from typing import Any, List
+from typing import List
 
 logger = logging.getLogger(__name__)
 
