@@ -14,8 +14,6 @@
 
 #include "ray/gcs/redis_context.h"
 
-#include <unistd.h>
-
 #include <sstream>
 
 #include "ray/stats/stats.h"
