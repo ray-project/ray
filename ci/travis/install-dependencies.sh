@@ -322,7 +322,7 @@ install_dependencies() {
   # Additional Doc test dependencies.
   if [ "${DOC_TESTING-}" = 1 ]; then
     pip install tensorflow-probability=="${TFP_VERSION-0.8}" \
-      torch=="${TORCH_VERSION-1.4}" torchvision atari_py gym[atari] lz4 smart_open
+      torch=="${TORCH_VERSION-1.4}" torchvision atari_py "gym[atari]" lz4 smart_open
     pip install -r "${WORKSPACE_DIR}"/docker/tune_test/requirements.txt
   fi
 
