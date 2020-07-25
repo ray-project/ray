@@ -797,6 +797,8 @@ Status ServiceBasedNodeInfoAccessor::AsyncSetInternalConfig(
       request, [](const Status &status, const rpc::SetInternalConfigReply &reply) {
         if (!status.ok()) {
           RAY_LOG(ERROR) << "Failed to set internal config: " << status.message();
+        } else {
+          RAY_LOG(DEBUG) << "No internal config was stored.";
         }
       });
   return Status::OK();
