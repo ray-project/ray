@@ -204,6 +204,8 @@ void GcsNodeManager::HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &re
   ClientID node_id = ClientID::FromBinary(request.heartbeat().client_id());
   auto heartbeat_data = std::make_shared<rpc::HeartbeatTableData>();
   heartbeat_data->CopyFrom(request.heartbeat());
+  // NOTE: TO AVOID HEARTBEAT BEING DEALYED BY MAIN THREAD, MAKE SURE HEARTBEAT IS ALWAYS
+  // HANDLED BY ITS OWN IO SERVICE
   node_failure_detector_service_.post([this, node_id, heartbeat_data] {
     node_failure_detector_->HandleHeartbeat(node_id, *heartbeat_data);
   });
@@ -341,6 +343,8 @@ void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
     // Add an empty resources for this node.
     RAY_CHECK(cluster_resources_.emplace(node_id, rpc::ResourceMap()).second);
     // Register this node to the `node_failure_detector_` which will start monitoring it.
+    // NOTE: TO AVOID HEARTBEAT BEING DEALYED BY MAIN THREAD, MAKE SURE NODE ADDING IS
+    // ALWAYS HANDLED BY ITS OWN IO SERVICE
     node_failure_detector_service_.post(
         [this, node_id] { node_failure_detector_->AddNode(node_id); });
 
@@ -415,7 +419,11 @@ void GcsNodeManager::LoadInitialData(const EmptyCallback &done) {
   RAY_CHECK_OK(gcs_table_storage_->NodeTable().GetAll(get_node_callback));
 }
 
-void GcsNodeManager::StartNodeFailureDetector() { node_failure_detector_->Start(); }
+void GcsNodeManager::StartNodeFailureDetector() {
+  // NOTE: TO AVOID HEARTBEAT BEING DEALYED BY MAIN THREAD, MAKE SURE NODE ADDING IS
+  // ALWAYS HANDLED BY ITS OWN IO SERVICE
+  node_failure_detector_service_.post([this] { node_failure_detector_->Start(); });
+}
 
 }  // namespace gcs
 }  // namespace ray

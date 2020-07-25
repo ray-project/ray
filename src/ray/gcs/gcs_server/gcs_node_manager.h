@@ -159,6 +159,9 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
         std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
         std::function<void(const ClientID &)> on_node_death_callback);
 
+    /// NOTE: TO AVOID HEARTBEAT BEING DEALYED BY MAIN THREAD, MAKE SURE EVERY PUBLIC
+    /// METHOD BELOW SHOULD BE POSTED TO ITS OWN IO SERVICE.
+
     /// Start failure detector.
     void Start();
 
