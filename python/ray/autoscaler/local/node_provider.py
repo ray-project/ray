@@ -147,11 +147,13 @@ class LocalNodeProvider(NodeProvider):
                 "/tmp/cluster-{}.state".format(cluster_name),
                 provider_config,
             )
+            self.use_coordinator = False
         else:
             # Local node provider with a coordinator server.
             self.state = OnPremCoordinatorState(
                 "/tmp/coordinator-state.lock", "/tmp/coordinator-state.state",
                 provider_config["list_of_node_ips"])
+            self.use_coordinator = True
 
     def non_terminated_nodes(self, tag_filters):
         workers = self.state.get()
@@ -195,7 +197,8 @@ class LocalNodeProvider(NodeProvider):
             workers = self.state.get()
             for node_id, info in workers.items():
                 if (info["state"] == "terminated"
-                        and info["tags"][TAG_RAY_NODE_TYPE] == node_type):
+                        and (self.use_coordinator
+                             or info["tags"][TAG_RAY_NODE_TYPE] == node_type)):
                     info["tags"] = tags
                     info["state"] = "running"
                     self.state.put(node_id, info)
