@@ -5,7 +5,9 @@ PROPAGATED_WINDOWS_DEFINES = ["ARROW_STATIC"]
 
 COPTS = [] + select({
     "@bazel_tools//src/conditions:windows": [
-        "-D" + define for define in PROPAGATED_WINDOWS_DEFINES],
+        "-D" + define
+        for define in PROPAGATED_WINDOWS_DEFINES
+    ],
     "//conditions:default": [
         "-DARROW_USE_GLOG",
     ],
