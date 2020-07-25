@@ -1,3 +1,0 @@
-# List of node ips that can be used by on prem users.
-list_of_node_ips: [NODE_1_HOSTNAME,  NODE_2_HOSTNAME, ... ]
-server_address: "SERVER_ADDRESS" # e.g., 127.0.0.1:4321

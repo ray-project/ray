@@ -17,8 +17,6 @@ from ray.autoscaler.commands import (
     attach_cluster, exec_cluster, create_or_update_cluster, monitor_cluster,
     rsync, teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips,
     debug_status, RUN_ENV_TYPES)
-from ray.autoscaler.local.onprem_server import LocalNodeProviderServer
-from ray.autoscaler.local.node_provider import LocalNodeProvider
 import ray.ray_constants as ray_constants
 import ray.utils
 from ray.projects.scripts import project_cli, session_cli
@@ -566,39 +564,6 @@ def start(node_ip_address, redis_address, address, redis_port, port,
                 # shutdown_at_exit will handle cleanup.
                 logger.error("Killing remaining processes and exiting...")
                 sys.exit(1)
-
-
-@cli.command(name="onprem-server", hidden=True)
-@click.argument(
-    "request",
-    required=True,
-    type=click.Choice(["start", "status"]),
-)
-@click.argument("on_prem_server_config_path", required=True, type=str)
-def onprem_server(request, on_prem_server_config_path):
-    """Starts the on prem server. Serves auto-managed local node providers.
-
-    Args:
-        on_prem_server_config_path(str): path to config file for node ips &
-        server address.
-        request(start/status): whether to start the server or get its status.
-    """
-    if request == "start":
-        LocalNodeProviderServer(on_prem_server_config_path)
-    else:
-        # get status
-        host, port, node_ips = LocalNodeProviderServer.get_and_validate_config(
-            on_prem_server_config_path)
-        server_address = host + ":" + str(port)
-        request = {"request_type": "get_status"}
-        (
-            available_node_ips,
-            total_node_ips,
-            running_clusters,
-        ) = LocalNodeProvider.get_http_response(request, server_address)
-        print("Available node ips:", available_node_ips)
-        print("Total node ips:", total_node_ips)
-        print("Running clusters:", running_clusters)
 
 
 @cli.command()
@@ -1211,7 +1176,6 @@ cli.add_command(dashboard)
 cli.add_command(start)
 cli.add_command(stop)
 cli.add_command(up)
-cli.add_command(onprem_server)
 add_command_alias(up, name="create_or_update", hidden=True)
 cli.add_command(attach)
 cli.add_command(exec)
