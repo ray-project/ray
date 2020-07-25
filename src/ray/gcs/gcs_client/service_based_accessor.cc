@@ -813,14 +813,11 @@ Status ServiceBasedNodeInfoAccessor::AsyncGetInternalConfig(
           callback(status,
                    std::unordered_map<std::string, std::string>(
                        reply.config().config().begin(), reply.config().config().end()));
-        } else {
-          if (!status.ok()) {
-            RAY_LOG(ERROR) << "Failed to get internal config: " << status.message();
-          } else {
-            RAY_LOG(DEBUG) << "No internal config was stored.";
-          }
-          callback(status, boost::none);
+        } else if (!status.ok()) {
+          RAY_LOG(ERROR) << "Failed to get internal config: " << status.message();
         }
+        RAY_LOG(DEBUG) << "No internal config was stored.";
+        callback(status, boost::none);
       });
   return Status::OK();
 }
