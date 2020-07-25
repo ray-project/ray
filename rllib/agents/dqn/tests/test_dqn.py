@@ -22,8 +22,9 @@ class TestDQN(unittest.TestCase):
         config["num_workers"] = 2
         num_iterations = 1
 
-        for fw in framework_iterator(config):
+        for _ in framework_iterator(config):
             # Double-dueling DQN.
+            print("Double-dueling")
             plain_config = config.copy()
             trainer = dqn.DQNTrainer(config=plain_config, env="CartPole-v0")
             for i in range(num_iterations):
@@ -34,9 +35,7 @@ class TestDQN(unittest.TestCase):
             trainer.stop()
 
             # Rainbow.
-            # TODO(sven): Add torch once DQN-torch supports distributional-Q.
-            if fw == "torch":
-                continue
+            print("Rainbow")
             rainbow_config = config.copy()
             rainbow_config["num_atoms"] = 10
             rainbow_config["noisy"] = True
