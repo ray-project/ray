@@ -37,7 +37,8 @@ class ClientConnectionTest : public ::testing::Test {
 #else
     // Choose a free port.
     auto endpoint = ParseUrlEndpoint("tcp://127.0.0.1:65437");
-    boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor(io_service_, endpoint);
+    boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor(io_service_,
+                                                                       endpoint);
     out_.connect(endpoint);
     acceptor.accept(in_);
 #endif
