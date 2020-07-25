@@ -16,7 +16,7 @@ watchdog() {
     kill -SIGKILL $PID
 }
 
-watchdog & 2>/dev/null
+watchdog 2>/dev/null &
 WATCHDOG_PID=$!
 
 time "$@" >"$TMPFILE" 2>&1
