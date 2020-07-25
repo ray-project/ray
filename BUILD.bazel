@@ -545,6 +545,7 @@ cc_binary(
     visibility = ["//java:__subpackages__"],
     deps = [
         ":gcs_server_lib",
+        ":stats_lib",
         "@com_github_gflags_gflags//:gflags",
     ],
 )

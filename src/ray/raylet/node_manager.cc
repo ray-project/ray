@@ -3583,9 +3583,6 @@ void NodeManager::FlushObjectsToFree() {
 void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_request,
                                      rpc::GetNodeStatsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
-  // NOTE(sang): Currently reporting only infeasible/ready ActorCreationTask
-  // because Ray dashboard only renders actorCreationTask as of Feb 3 2020.
-  // TODO(sang): Support dashboard for non-ActorCreationTask.
   for (const auto task : local_queues_.GetTasks(TaskState::INFEASIBLE)) {
     if (task.GetTaskSpecification().IsActorCreationTask()) {
       auto infeasible_task = reply->add_infeasible_tasks();
@@ -3594,8 +3591,6 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
   }
   // Report tasks that are not scheduled because
   // resources are occupied by other actors/tasks.
-  // NOTE(sang): This solution is a workaround. It can be replaced by creating a new state
-  // like PENDING_UNTIL_RESOURCE_AVAILABLE.
   for (const auto task : local_queues_.GetTasks(TaskState::READY)) {
     if (task.GetTaskSpecification().IsActorCreationTask()) {
       auto ready_task = reply->add_ready_tasks();
