@@ -2,11 +2,9 @@
 import glob
 import logging
 import os
-import shutil
 import json
 import sys
 import socket
-import tempfile
 import time
 
 import numpy as np
