@@ -78,6 +78,7 @@ class ServeEncoder(json.JSONEncoder):
         return super().default(o)
 
 
+@ray.remote(num_cpus=0)
 def block_until_http_ready(http_endpoint,
                            backoff_time_s=1,
                            timeout=HTTP_PROXY_TIMEOUT):

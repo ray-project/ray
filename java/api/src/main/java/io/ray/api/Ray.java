@@ -2,11 +2,14 @@ package io.ray.api;
 
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.UniqueId;
+import io.ray.api.placementgroup.PlacementGroup;
+import io.ray.api.placementgroup.PlacementStrategy;
 import io.ray.api.runtime.RayRuntime;
 import io.ray.api.runtime.RayRuntimeFactory;
 import io.ray.api.runtimecontext.RuntimeContext;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 
@@ -239,5 +242,23 @@ public final class Ray extends RayCall {
    */
   public static RuntimeContext getRuntimeContext() {
     return runtime.getRuntimeContext();
+  }
+
+  /**
+   * Create a placement group.
+   * A placement group is used to place actors according to a specific strategy
+   * and resource constraints.
+   * It will sends a request to GCS to preallocate the specified resources, which is asynchronous.
+   * If the specified resource cannot be allocated, it will wait for the resource
+   * to be updated and rescheduled.
+   * This function only works when gcs actor manager is turned on.
+   *
+   * @param bundles Preallocated resource list.
+   * @param strategy Actor placement strategy.
+   * @return A handle to the created placement group.
+   */
+  public static PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
+      PlacementStrategy strategy) {
+    return runtime.createPlacementGroup(bundles, strategy);
   }
 }

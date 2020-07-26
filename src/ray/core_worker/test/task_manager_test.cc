@@ -52,7 +52,7 @@ class TaskManagerTest : public ::testing::Test {
             /*distributed_ref_counting_enabled=*/true, lineage_pinning_enabled))),
         actor_reporter_(std::shared_ptr<ActorReporterInterface>(new MockActorManager())),
         manager_(store_, reference_counter_, actor_reporter_,
-                 [this](const TaskSpecification &spec, bool delay) {
+                 [this](TaskSpecification &spec, bool delay) {
                    num_retries_++;
                    return Status::OK();
                  },

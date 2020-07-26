@@ -21,6 +21,7 @@
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/core_worker/transport/raylet_transport.h"
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
+#include "ray/util/process.h"
 #include "ray/util/util.h"
 
 namespace {
@@ -380,7 +381,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   };
   task_manager_.reset(new TaskManager(
       memory_store_, reference_counter_, actor_reporter_,
-      [this](const TaskSpecification &spec, bool delay) {
+      [this](TaskSpecification &spec, bool delay) {
         if (delay) {
           // Retry after a delay to emulate the existing Raylet reconstruction
           // behaviour. TODO(ekl) backoff exponentially.
@@ -392,7 +393,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         } else {
           RAY_LOG(ERROR) << "Resubmitting task that produced lost plasma object: "
                          << spec.DebugString();
-          RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
+          if (spec.IsActorTask()) {
+            const auto &actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
+            actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
+            RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
+          } else {
+            RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
+          }
         }
       },
       check_node_alive_fn, reconstruct_object_callback));
@@ -654,13 +661,13 @@ void CoreWorker::RegisterToGcs() {
 
   RAY_CHECK_OK(gcs_client_->Workers().AsyncAdd(worker_data, nullptr));
 }
+
 void CoreWorker::CheckForRayletFailure(const boost::system::error_code &error) {
   if (error == boost::asio::error::operation_aborted) {
     return;
   }
 
-  // If the raylet fails, we will be reassigned to init (PID=1).
-  if (getppid() == 1) {
+  if (!IsParentProcessAlive()) {
     RAY_LOG(ERROR) << "Raylet failed. Shutting down.";
     Shutdown();
   }

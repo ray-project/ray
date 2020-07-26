@@ -205,9 +205,9 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
                                       std::ios_base::app | std::ios_base::binary);
   }
   for (int lvl = 0; lvl < NUM_SEVERITIES; ++lvl) {
-    google::SetStderrLogging(lvl);
     google::base::SetLogger(lvl, &stream_logger_singleton);
   }
+  google::SetStderrLogging(GetMappedSeverity(RayLogLevel::ERROR));
 #endif
 }
 

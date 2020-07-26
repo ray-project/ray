@@ -47,7 +47,7 @@ inline void MetricTransform(JNIEnv *env, jstring j_name, jstring j_description,
   // item when it already exists.
   std::transform(tag_key_str_list.begin(), tag_key_str_list.end(),
                  std::back_inserter(tag_keys),
-                 [](std::string tag_key) { return TagKeyType::Register(tag_key); });
+                 [](std::string &tag_key) { return TagKeyType::Register(tag_key); });
 }
 
 #ifdef __cplusplus
@@ -70,7 +70,7 @@ JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_NativeMetric_registerGaugeNat
   MetricTransform(env, j_name, j_description, j_unit, tag_key_list, &metric_name,
                   &description, &unit, tag_keys);
   auto *gauge = new ray::stats::Gauge(metric_name, description, unit, tag_keys);
-  return reinterpret_cast<long>(gauge);
+  return reinterpret_cast<jlong>(gauge);
 }
 
 JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_NativeMetric_registerCountNative(
@@ -83,7 +83,7 @@ JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_NativeMetric_registerCountNat
   MetricTransform(env, j_name, j_description, j_unit, tag_key_list, &metric_name,
                   &description, &unit, tag_keys);
   auto *count = new ray::stats::Count(metric_name, description, unit, tag_keys);
-  return reinterpret_cast<long>(count);
+  return reinterpret_cast<jlong>(count);
 }
 
 JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_NativeMetric_registerSumNative(
@@ -96,7 +96,7 @@ JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_NativeMetric_registerSumNativ
   MetricTransform(env, j_name, j_description, j_unit, tag_key_list, &metric_name,
                   &description, &unit, tag_keys);
   auto *sum = new ray::stats::Sum(metric_name, description, unit, tag_keys);
-  return reinterpret_cast<long>(sum);
+  return reinterpret_cast<jlong>(sum);
 }
 
 JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_NativeMetric_registerHistogramNative(
@@ -114,7 +114,7 @@ JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_NativeMetric_registerHistogra
 
   auto *histogram =
       new ray::stats::Histogram(metric_name, description, unit, boundaries, tag_keys);
-  return reinterpret_cast<long>(histogram);
+  return reinterpret_cast<jlong>(histogram);
 }
 
 JNIEXPORT void JNICALL Java_io_ray_runtime_metric_NativeMetric_unregisterMetricNative(
