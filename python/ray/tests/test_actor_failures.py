@@ -897,9 +897,8 @@ def test_ray_wait_dead_actor(ray_start_cluster):
         "num_cpus": 1,
         "num_nodes": 1,
     }], indirect=True)
-def test_location_resolution_worker_failure(ray_start_cluster):
-    """Test location resolution protocol when actor dependencies are not
-    resolved.
+def test_actor_owner_worker_dies_before_dependency_ready(ray_start_cluster):
+    """Test actor owner worker dies before local dependencies are resolved.
     This test verifies the scenario where owner worker
     has failed before actor dependencies are resolved.
     Reference: https://github.com/ray-project/ray/pull/8045
@@ -964,15 +963,12 @@ def test_location_resolution_worker_failure(ray_start_cluster):
         "num_cpus": 3,
         "num_nodes": 1,
     }], indirect=True)
-def test_location_resolution_node_failure(ray_start_cluster):
-    """Test location resolution protocol when actor dependencies
-    are not resolved.
+def test_actor_owner_node_dies_before_dependency_ready(ray_start_cluster):
+    """Test actor owner node dies before local dependencies are resolved.
     This test verifies the scenario where owner node
     has failed before actor dependencies are resolved.
     Reference: https://github.com/ray-project/ray/pull/8045
     """
-    cluster = ray_start_cluster
-    node_to_be_broken = cluster.add_node(num_cpus=1, resources={"node": 1})
 
     @ray.remote
     class Actor:
@@ -1015,6 +1011,9 @@ def test_location_resolution_node_failure(ray_start_cluster):
 
         def hang(self):
             return True
+
+    cluster = ray_start_cluster
+    node_to_be_broken = cluster.add_node(num_cpus=1, resources={"node": 1})
 
     owner = Owner.remote()
     owner_pid = ray.get(owner.get_pid.remote())
