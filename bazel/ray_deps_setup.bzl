@@ -231,33 +231,33 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_grpc_grpc",
         # NOTE: If you update this, also update @boringssl's hash.
-        url = "https://github.com/grpc/grpc/archive/4790ab6d97e634a1ede983be393f3bb3c132b2f7.tar.gz",
-        sha256 = "df83bd8a08975870b8b254c34afbecc94c51a55198e6e3a5aab61d62f40b7274",
+        url = "https://github.com/grpc/grpc/archive/de6defa6fff08de20e36f9168f5b277e292daf46.tar.gz",
+        sha256 = "2bc37c4e6bb10ba60731630847db9519c5df71055ec6caaa0d233c4a771c5477",
     )
 
-    auto_http_archive(
+    http_archive(
         # This rule is used by @com_github_grpc_grpc, and using a GitHub mirror
         # provides a deterministic archive hash for caching. Explanation here:
         # https://github.com/grpc/grpc/blob/4790ab6d97e634a1ede983be393f3bb3c132b2f7/bazel/grpc_deps.bzl#L102
         name = "boringssl",
         # Ensure this matches the commit used by grpc's bazel/grpc_deps.bzl
-        url = "https://github.com/google/boringssl/archive/83da28a68f32023fd3b95a8ae94991a07b1f6c62.tar.gz",
-        sha256 = "781fa39693ec2984c71213cd633e9f6589eaaed75e3a9ac413237edec96fd3b9",
+        #
+        # Use github mirror instead of https://boringssl.googlesource.com/boringssl
+        # to obtain a boringssl archive with consistent sha256
+        sha256 = "5bbb2bbddf5e4e5fefd02501f930436f3f45402152d7ea9f8f27916d5cf70157",
+        strip_prefix = "boringssl-e8a935e323510419e0b37638716f6df4dcbbe6f6",
+        urls = [
+            "https://storage.googleapis.com/grpc-bazel-mirror/github.com/google/boringssl/archive/e8a935e323510419e0b37638716f6df4dcbbe6f6.tar.gz",
+            "https://github.com/google/boringssl/archive/e8a935e323510419e0b37638716f6df4dcbbe6f6.tar.gz",
+        ],
     )
 
     auto_http_archive(
         name = "msgpack",
         build_file = True,
-        url = "https://github.com/msgpack/msgpack-c/archive/8085ab8721090a447cf98bb802d1406ad7afe420.tar.gz",
-        sha256 = "83c37c9ad926bbee68d564d9f53c6cbb057c1f755c264043ddd87d89e36d15bb",
+        url = "https://github.com/msgpack/msgpack-c/archive/6e7deb809120881634b3ca895e66b2a946084f34.tar.gz",
+        sha256 = "1be7c4c210b3df79a53303c2bf90b1bb250a5b1d42c5b17a237d2a868567a768",
         patches = [
             "//thirdparty/patches:msgpack-windows-iovec.patch",
         ],
-    )
-
-    http_archive(
-        name = "rules_proto_grpc",
-        urls = ["https://github.com/rules-proto-grpc/rules_proto_grpc/archive/1.0.2.tar.gz"],
-        sha256 = "5f0f2fc0199810c65a2de148a52ba0aff14d631d4e8202f41aff6a9d590a471b",
-        strip_prefix = "rules_proto_grpc-1.0.2",
     )

@@ -5,8 +5,7 @@ load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_proto_library", "cc_test")
 load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
-#load("@com_github_grpc_grpc//bazel:python_rules.bzl", "python_grpc_compile")
-load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
+load("@com_github_grpc_grpc//bazel:python_rules.bzl", "py_grpc_library", "py_proto_library")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("//bazel:cython_library.bzl", "pyx_library")
 load("//bazel:ray.bzl", "COPTS", "PYX_COPTS", "PYX_SRCS", "copy_to_workspace")
@@ -34,7 +33,7 @@ cc_proto_library(
     deps = [":common_proto"],
 )
 
-python_grpc_compile(
+py_proto_library(
     name = "common_py_proto",
     deps = [":common_proto"],
 )
@@ -51,7 +50,7 @@ cc_proto_library(
     deps = [":gcs_proto"],
 )
 
-python_grpc_compile(
+py_proto_library(
     name = "gcs_py_proto",
     deps = [":gcs_proto"],
 )
@@ -67,7 +66,7 @@ cc_proto_library(
     deps = [":node_manager_proto"],
 )
 
-python_grpc_compile(
+py_proto_library(
     name = "node_manager_py_proto",
     deps = [":node_manager_proto"],
 )
@@ -83,7 +82,7 @@ cc_proto_library(
     deps = [":reporter_proto"],
 )
 
-python_grpc_compile(
+py_proto_library(
     name = "reporter_py_proto",
     deps = [":reporter_proto"],
 )
@@ -118,7 +117,7 @@ proto_library(
     deps = [":common_proto"],
 )
 
-python_grpc_compile(
+py_proto_library(
     name = "core_worker_py_proto",
     deps = [":core_worker_proto"],
 )
