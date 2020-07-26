@@ -33,12 +33,20 @@ class _TorchTrainable(tune.Trainable):
     """
     _function = None
     _num_workers = None
+    _use_gpu = None
+    _num_cpus_per_worker = None
 
     __slots__ = ["workers", "_finished"]
 
     @classmethod
     def default_process_group_parameters(self):
         return dict(timeout=timedelta(NCCL_TIMEOUT_S), backend="gloo")
+
+    @classmethod
+    def get_remote_worker_options(self):
+        num_gpus = 1 if self._use_gpu else 0
+        num_cpus = int(self._num_cpus_per_worker or 1)
+        return dict(num_cpus=num_cpus, num_gpus=num_gpus)
 
     def setup(self, config):
         self._finished = False
@@ -47,7 +55,11 @@ class _TorchTrainable(tune.Trainable):
         assert self._function
 
         func_trainable = wrap_function(self.__class__._function)
+
         remote_trainable = ray.remote(func_trainable)
+        remote_trainable = remote_trainable.options(
+            **self.get_remote_worker_options())
+
         address = setup_address()
         self.workers = [
             remote_trainable.remote(
@@ -115,6 +127,8 @@ def DistributedTrainableCreator(func,
     class WrappedDistributedTorchTrainable(_TorchTrainable):
         _function = func
         _num_workers = num_workers
+        _use_gpu = use_gpu
+        _num_cpus_per_worker = num_cpus_per_worker
 
         @classmethod
         def default_process_group_parameters(self):

@@ -32,7 +32,7 @@ def train_mnist(config, checkpoint=False):
 
     model = DistributedDataParallel(model)
 
-    for epoch in range(10):
+    for epoch in range(40):
         train(model, optimizer, train_loader, device)
         acc = test(model, test_loader, device)
 
@@ -50,10 +50,15 @@ if __name__ == "__main__":
         type=int,
         default=2,
         help="Sets number of workers for training.")
+    parser.add_argument(
+        "--use-gpu",
+        action="store_true",
+        default=False,
+        help="enables CUDA training")
 
     args = parser.parse_args()
 
     ray.init(num_cpus=2)
     trainable_cls = DistributedTrainableCreator(
-        train_mnist, num_workers=args.num_workers)
-    tune.run(trainable_cls, num_samples=4, stop={"training_iteration": 2})
+        train_mnist, num_workers=args.num_workers, use_gpu=args.use_gpu)
+    tune.run(trainable_cls, num_samples=4)

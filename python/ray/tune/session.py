@@ -8,9 +8,10 @@ _session = None
 
 def get_session():
     global _session
-    logger.warning(
-        "Session not detected. You should not be calling this function "
-        "outside `tune.run` or while using the class API. ")
+    if not _session:
+        logger.warning(
+            "Session not detected. You should not be calling this function "
+            "outside `tune.run` or while using the class API. ")
     return _session
 
 
