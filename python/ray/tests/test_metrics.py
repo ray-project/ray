@@ -550,30 +550,27 @@ def test_memory_dashboard(shutdown_only):
     # These tests should be retried because it takes at least one second
     # to get the fresh new memory table. It is because memory table is updated
     # Whenever raylet and node info is renewed which takes 1 second.
-    (wait_for_condition(
-        test_local_reference, timeout=30000, retry_interval_ms=1000) is True)
+    wait_for_condition(
+        test_local_reference, timeout=30000, retry_interval_ms=1000)
 
-    (wait_for_condition(
-        test_object_pinned_in_memory, timeout=30000, retry_interval_ms=1000) is
-     True)
+    wait_for_condition(
+        test_object_pinned_in_memory, timeout=30000, retry_interval_ms=1000)
 
-    (wait_for_condition(
-        test_pending_task_references, timeout=30000, retry_interval_ms=1000) is
-     True)
+    wait_for_condition(
+        test_pending_task_references, timeout=30000, retry_interval_ms=1000)
 
-    (wait_for_condition(
+    wait_for_condition(
         test_serialized_object_ref_reference,
         timeout=30000,
-        retry_interval_ms=1000) is True)
+        retry_interval_ms=1000)
 
-    (wait_for_condition(
+    wait_for_condition(
         test_captured_object_ref_reference,
         timeout=30000,
-        retry_interval_ms=1000) is True)
+        retry_interval_ms=1000)
 
-    (wait_for_condition(
-        test_actor_handle_reference, timeout=30000, retry_interval_ms=1000) is
-     True)
+    wait_for_condition(
+        test_actor_handle_reference, timeout=30000, retry_interval_ms=1000)
 
 
 """Memory Table Unit Test"""
