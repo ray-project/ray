@@ -292,10 +292,9 @@ py_test(
     size = "small",
     srcs = ["examples/ddp_mnist_torch.py"],
     tags = ["exclusive", "example", "pytorch"],
-    deps = [":sgd_lib"],
+    deps = [":tune_lib"],
     args = ["--smoke-test", "--num-workers=2"]
 )
-
 
 py_test(
     name = "dragonfly_example",
