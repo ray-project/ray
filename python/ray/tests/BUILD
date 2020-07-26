@@ -190,6 +190,13 @@ py_test(
     deps = ["//:ray_lib"],
 )
 
+py_test(
+    name = "test_coordinator_server",
+    size = "small",
+    srcs = SRCS + ["test_coordinator_server.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
 
 py_test(
     name = "test_autoscaler_aws",

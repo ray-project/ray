@@ -14,7 +14,7 @@ def runner_handler(node_provider):
         """A custom handler for OnPremCoordinatorServer.
 
         Handles all requests and responses coming into and from the
-        remote "local" node provider.
+        remote CoordinatorSenderNodeProvider.
         """
 
         def _do_header(self, response_code=200, headers=None):
@@ -36,7 +36,7 @@ def runner_handler(node_provider):
             self._do_header()
 
         def do_GET(self):
-            """Processes requests from remote LocalNodeProvider."""
+            """Processes requests from remote CoordinatorSenderNodeProvider."""
             if self.headers["content-length"]:
                 raw_data = (self.rfile.read(
                     int(self.headers["content-length"]))).decode("utf-8")
@@ -56,9 +56,10 @@ def runner_handler(node_provider):
 
 
 class OnPremCoordinatorServer(threading.Thread):
-    """Initializes the HTTPServer and serves the LocalNodeProvider forever.
+    """Initializes HTTPServer and serves CoordinatorSenderNodeProvider forever.
 
-    It handles requests and responses from the remote LocalNodeProvider.
+    It handles requests from the remote CoordinatorSenderNodeProvider. The
+    requests are forwarded to LocalNodeProvider function calls.
     """
 
     def __init__(self, list_of_node_ips, host, port):

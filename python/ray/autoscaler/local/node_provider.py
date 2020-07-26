@@ -62,7 +62,7 @@ class ClusterState:
                 else:
                     assert (workers[provider_config["head_ip"]]["tags"][
                         TAG_RAY_NODE_TYPE] == NODE_TYPE_HEAD)
-                # Ameer: relevant when a user reduces the number of workers
+                # Relevant when a user reduces the number of workers
                 # without changing the headnode.
                 list_of_node_ips = list(provider_config["worker_ips"])
                 list_of_node_ips.append(provider_config["head_ip"])
@@ -112,7 +112,7 @@ class OnPremCoordinatorState(ClusterState):
                     "OnPremCoordinatorState: "
                     "Loaded on prem coordinator state: {}".format(nodes))
 
-                # Ameer: filter removed node ips
+                # Filter removed node ips.
                 for node_ip in list(nodes):
                     if node_ip not in list_of_node_ips:
                         del nodes[node_ip]
@@ -120,9 +120,9 @@ class OnPremCoordinatorState(ClusterState):
                 for node_ip in list_of_node_ips:
                     if node_ip not in nodes:
                         nodes[node_ip] = {
+                            "tags": {},
                             "state": "terminated",
                         }
-
                 assert len(nodes) == len(list_of_node_ips)
                 with open(self.save_path, "w") as f:
                     logger.info(
@@ -149,9 +149,9 @@ class LocalNodeProvider(NodeProvider):
             )
             self.use_coordinator = False
         else:
-            # Local node provider with a coordinator server.
+            # LocalNodeProvider with a coordinator server.
             self.state = OnPremCoordinatorState(
-                "/tmp/coordinator-state.lock", "/tmp/coordinator-state.state",
+                "/tmp/coordinator.lock", "/tmp/coordinator.state",
                 provider_config["list_of_node_ips"])
             self.use_coordinator = True
 
@@ -192,6 +192,7 @@ class LocalNodeProvider(NodeProvider):
             self.state.put(node_id, info)
 
     def create_node(self, node_config, tags, count):
+        """Creates min(count, currently available) nodes."""
         node_type = tags[TAG_RAY_NODE_TYPE]
         with self.state.file_lock:
             workers = self.state.get()
@@ -202,7 +203,9 @@ class LocalNodeProvider(NodeProvider):
                     info["tags"] = tags
                     info["state"] = "running"
                     self.state.put(node_id, info)
-                    return
+                    count = count - 1
+                    if count == 0:
+                        return
 
     def terminate_node(self, node_id):
         workers = self.state.get()
@@ -218,7 +221,7 @@ class LocalNodeProvider(NodeProvider):
 class CoordinatorSenderNodeProvider(NodeProvider):
     """NodeProvider for automatically managed private/local clusters.
 
-    The cluster management is handled by a coordinating server.
+    The cluster management is handled by a remote coordinating server.
     """
 
     def __init__(self, provider_config, cluster_name):
