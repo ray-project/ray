@@ -69,6 +69,7 @@ from ray._raylet import (
     TaskID,
     UniqueID,
     Language,
+    PlacementGroupID,
 )  # noqa: E402
 
 _config = _Config()
