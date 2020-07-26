@@ -160,9 +160,12 @@ test_python() {
       -python/ray/tests:test_webui
     )
   fi
-  if [ 0 -lt "${#args[@]}" ]; then
+  if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
     install_ray
-    bazel test -k --config=ci --test_timeout=600 --build_tests_only --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" -- "${args[@]}";
+    # We need to set PYTHONPATH here to let Python find our pickle5 under pip install -e.
+    bazel test -k --config=ci --test_timeout=600 --build_tests_only \
+      --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" -- \
+      "${args[@]}";
   fi
 }
 
@@ -258,14 +261,8 @@ install_ray() {
   (
     cd "${WORKSPACE_DIR}"/python
     build_dashboard_front_end
-    keep_alive pip install -v -v -e .
+    keep_alive pip install -v -e .
   )
-}
-
-uninstall_ray() {
-  pip uninstall -y ray
-
-  python -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" clean "${WORKSPACE_DIR}"/python/setup.py
 }
 
 build_wheels() {
