@@ -229,6 +229,23 @@ def ray_deps_setup():
     )
 
     auto_http_archive(
+        name = "com_github_grpc_grpc",
+        # NOTE: If you update this, also update @boringssl's hash.
+        url = "https://github.com/grpc/grpc/archive/4790ab6d97e634a1ede983be393f3bb3c132b2f7.tar.gz",
+        sha256 = "df83bd8a08975870b8b254c34afbecc94c51a55198e6e3a5aab61d62f40b7274",
+    )
+
+    auto_http_archive(
+        # This rule is used by @com_github_grpc_grpc, and using a GitHub mirror
+        # provides a deterministic archive hash for caching. Explanation here:
+        # https://github.com/grpc/grpc/blob/4790ab6d97e634a1ede983be393f3bb3c132b2f7/bazel/grpc_deps.bzl#L102
+        name = "boringssl",
+        # Ensure this matches the commit used by grpc's bazel/grpc_deps.bzl
+        url = "https://github.com/google/boringssl/archive/83da28a68f32023fd3b95a8ae94991a07b1f6c62.tar.gz",
+        sha256 = "781fa39693ec2984c71213cd633e9f6589eaaed75e3a9ac413237edec96fd3b9",
+    )
+
+    auto_http_archive(
         name = "msgpack",
         build_file = True,
         url = "https://github.com/msgpack/msgpack-c/archive/8085ab8721090a447cf98bb802d1406ad7afe420.tar.gz",
