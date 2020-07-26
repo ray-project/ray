@@ -142,15 +142,6 @@ py_test(
 )
 
 py_test(
-    name = "ddp_mnist_torch",
-    size = "small",
-    srcs = ["torch/examples/ddp_mnist_torch.py"],
-    tags = ["exclusive", "pytorch"],
-    deps = [":sgd_lib"],
-    args = ["--smoke-test", "--num-workers=2"]
-)
-
-py_test(
     name = "raysgd_torch_signatures",
     size = "small",
     srcs = ["torch/examples/raysgd_torch_signatures.py"],

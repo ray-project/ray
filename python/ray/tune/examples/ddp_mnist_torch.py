@@ -55,10 +55,19 @@ if __name__ == "__main__":
         action="store_true",
         default=False,
         help="enables CUDA training")
+    parser.add_argument(
+        "--cluster",
+        action="store_true",
+        default=False,
+        help="enables multi-node tuning")
 
     args = parser.parse_args()
 
-    ray.init(num_cpus=2)
+    if args.cluster:
+        options = dict(address="auto")
+    else:
+        options = dict(num_cpus=2)
+    ray.init(**options)
     trainable_cls = DistributedTrainableCreator(
         train_mnist, num_workers=args.num_workers, use_gpu=args.use_gpu)
-    tune.run(trainable_cls, num_samples=4)
+    tune.run(trainable_cls, num_samples=4, stop={"training_iteration": 10})
