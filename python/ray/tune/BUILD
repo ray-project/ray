@@ -293,7 +293,7 @@ py_test(
     srcs = ["examples/ddp_mnist_torch.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example", "pytorch"],
-    args = ["--smoke-test", "--num-workers=2"]
+    args = ["--num-workers=2"]
 )
 
 py_test(
