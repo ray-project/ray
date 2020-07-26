@@ -41,8 +41,8 @@ ScheduleMap GcsPackStrategy::Schedule(
     const GcsNodeManager &node_manager) {
   ScheduleMap schedule_map;
   auto &alive_nodes = node_manager.GetAllAliveNodes();
-  for (size_t pos = 0; pos < bundles.size(); pos++) {
-    schedule_map[bundles[pos]->BundleId()] =
+  for (auto &bundle : bundles) {
+    schedule_map[bundle->BundleId()] =
         ClientID::FromBinary(alive_nodes.begin()->second->node_id());
   }
   return schedule_map;
@@ -80,13 +80,13 @@ void GcsPlacementGroupScheduler::Schedule(
   auto strategy = placement_group->GetStrategy();
   auto alive_nodes = gcs_node_manager_.GetAllAliveNodes();
   /// If the placement group don't have bundle, the placement group creates success.
-  if (bundles.size() == 0) {
+  if (bundles.empty()) {
     schedule_success_handler(placement_group);
     return;
   }
 
   // If alive_node is empty, the the placement group creates fail.
-  if (alive_nodes.size() == 0) {
+  if (alive_nodes.empty()) {
     schedule_failure_handler(placement_group);
     return;
   }

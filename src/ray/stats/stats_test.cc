@@ -25,6 +25,8 @@
 
 namespace ray {
 
+const int MetricsAgentPort = 10054;
+
 class MockExporter : public opencensus::stats::StatsExporter::Handler {
  public:
   static void Register() {
@@ -62,7 +64,7 @@ uint32_t kReportFlushInterval = 500;
 
 class StatsTest : public ::testing::Test {
  public:
-  void SetUp() {
+  void SetUp() override {
     absl::Duration report_interval = absl::Milliseconds(kReportFlushInterval);
     absl::Duration harvest_interval = absl::Milliseconds(kReportFlushInterval / 2);
     ray::stats::StatsConfig::instance().SetReportInterval(report_interval);
@@ -71,14 +73,13 @@ class StatsTest : public ::testing::Test {
                                          {stats::WorkerPidKey, "1000"}};
     std::shared_ptr<stats::MetricExporterClient> exporter(
         new stats::StdoutExporterClient());
-    ray::stats::Init(global_tags, 10054, io_service_, exporter);
+    ray::stats::Init(global_tags, MetricsAgentPort, exporter);
     MockExporter::Register();
   }
 
-  void Shutdown() {}
+  virtual void TearDown() override { Shutdown(); }
 
- private:
-  boost::asio::io_service io_service_;
+  void Shutdown() { ray::stats::Shutdown(); }
 };
 
 TEST_F(StatsTest, F) {
@@ -86,6 +87,36 @@ TEST_F(StatsTest, F) {
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     stats::CurrentWorker().Record(2345);
   }
+}
+
+TEST_F(StatsTest, InitializationTest) {
+  // Do initialization multiple times and make sure only the first initialization
+  // was applied.
+  ASSERT_TRUE(ray::stats::StatsConfig::instance().IsInitialized());
+  auto test_tag_value_that_shouldnt_be_applied = "TEST";
+  for (size_t i = 0; i < 20; ++i) {
+    std::shared_ptr<stats::MetricExporterClient> exporter(
+        new stats::StdoutExporterClient());
+    ray::stats::Init({{stats::LanguageKey, test_tag_value_that_shouldnt_be_applied}},
+                     MetricsAgentPort, exporter);
+  }
+
+  auto &first_tag = ray::stats::StatsConfig::instance().GetGlobalTags()[0];
+  ASSERT_TRUE(first_tag.second != test_tag_value_that_shouldnt_be_applied);
+
+  ray::stats::Shutdown();
+  ASSERT_FALSE(ray::stats::StatsConfig::instance().IsInitialized());
+
+  // Reinitialize. It should be initialized now.
+  const stats::TagsType global_tags = {
+      {stats::LanguageKey, test_tag_value_that_shouldnt_be_applied}};
+  std::shared_ptr<stats::MetricExporterClient> exporter(
+      new stats::StdoutExporterClient());
+
+  ray::stats::Init(global_tags, MetricsAgentPort, exporter);
+  ASSERT_TRUE(ray::stats::StatsConfig::instance().IsInitialized());
+  auto &new_first_tag = ray::stats::StatsConfig::instance().GetGlobalTags()[0];
+  ASSERT_TRUE(new_first_tag.second == test_tag_value_that_shouldnt_be_applied);
 }
 
 }  // namespace ray

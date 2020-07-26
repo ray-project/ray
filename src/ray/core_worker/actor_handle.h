@@ -63,7 +63,21 @@ class ActorHandle {
 
   std::string ExtensionData() const { return inner_.extension_data(); }
 
+  /// Set the actor task spec fields.
+  ///
+  /// \param[in] builder Task spec builder.
+  /// \param[in] new_cursor Actor dummy object. This is legacy code needed for
+  /// raylet-based actor restart.
   void SetActorTaskSpec(TaskSpecBuilder &builder, const ObjectID new_cursor);
+
+  /// Reset the actor task spec fields of an existing task so that the task can
+  /// be re-executed.
+  ///
+  /// \param[in] spec An existing task spec that has executed on the actor
+  /// before.
+  /// \param[in] new_cursor Actor dummy object. This is legacy code needed for
+  /// raylet-based actor restart.
+  void SetResubmittedActorTaskSpec(TaskSpecification &spec, const ObjectID new_cursor);
 
   void Serialize(std::string *output);
 

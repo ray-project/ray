@@ -29,6 +29,7 @@ void MetricExporter::ExportToPoints(
   if (view_data.size() == 0) {
     return;
   }
+
   // NOTE(lingxuan.zlx): No sampling in histogram data, so all points all be filled in.
   std::unordered_map<std::string, std::string> tags;
   for (size_t i = 0; i < view_data.begin()->first.size(); ++i) {
@@ -104,5 +105,6 @@ void MetricExporter::ExportViewData(
   RAY_LOG(DEBUG) << "Point size : " << points.size();
   metric_exporter_client_->ReportMetrics(points);
 }
+
 }  // namespace stats
 }  // namespace ray

@@ -2,11 +2,9 @@
 import glob
 import logging
 import os
-import shutil
 import json
 import sys
 import socket
-import tempfile
 import time
 
 import numpy as np
@@ -414,24 +412,6 @@ def test_ray_stack(ray_start_2_cpus):
     if not success:
         raise Exception("Failed to find necessary information with "
                         "'ray stack'")
-
-
-def test_pandas_parquet_serialization():
-    # Only test this if pandas is installed
-    pytest.importorskip("pandas")
-
-    import pandas as pd
-    import pyarrow as pa
-    import pyarrow.parquet as pq
-
-    tempdir = tempfile.mkdtemp()
-    filename = os.path.join(tempdir, "parquet-test")
-    pd.DataFrame({"col1": [0, 1], "col2": [0, 1]}).to_parquet(filename)
-    with open(os.path.join(tempdir, "parquet-compression"), "wb") as f:
-        table = pa.Table.from_arrays([pa.array([1, 2, 3])], ["hello"])
-        pq.write_table(table, f, compression="lz4")
-    # Clean up
-    shutil.rmtree(tempdir)
 
 
 def test_socket_dir_not_existing(shutdown_only):
