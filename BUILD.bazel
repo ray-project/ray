@@ -22,6 +22,17 @@ config_setting(
 # === Begin of protobuf definitions ===
 
 proto_library(
+    name = "event_proto",
+    srcs = ["src/ray/protobuf/event.proto"],
+    visibility = ["//visibility:public"],
+)
+
+cc_proto_library(
+    name = "event_cc_proto",
+    deps = [":event_proto"],
+)
+
+proto_library(
     name = "common_proto",
     srcs = ["src/ray/protobuf/common.proto"],
     visibility = ["//java:__subpackages__"],
@@ -912,6 +923,16 @@ cc_test(
 )
 
 cc_test(
+    name = "event_test",
+    srcs = ["src/ray/util/event_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":ray_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "filesystem_test",
     srcs = ["src/ray/util/filesystem_test.cc"],
     copts = COPTS,
@@ -1386,6 +1407,7 @@ cc_library(
     deps = [
         ":sha256",
         "@boost//:asio",
+        ":event_cc_proto",
         "@com_github_google_glog//:glog",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
