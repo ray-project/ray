@@ -17,12 +17,14 @@
 #include "gflags/gflags.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
+#include "ray/stats/stats.h"
 #include "ray/util/io_service_pool.h"
 #include "ray/util/util.h"
 
 DEFINE_string(redis_address, "", "The ip address of redis.");
 DEFINE_int32(redis_port, -1, "The port of redis.");
 DEFINE_int32(gcs_server_port, -1, "The port of gcs server.");
+DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
 DEFINE_string(config_list, "", "The config list of raylet.");
 DEFINE_string(redis_password, "", "The password of redis.");
 DEFINE_bool(retry_redis, false, "Whether we retry to connect to the redis.");
@@ -37,6 +39,7 @@ int main(int argc, char *argv[]) {
   const std::string redis_address = FLAGS_redis_address;
   const int redis_port = static_cast<int>(FLAGS_redis_port);
   const int gcs_server_port = static_cast<int>(FLAGS_gcs_server_port);
+  const int metrics_agent_port = static_cast<int>(FLAGS_metrics_agent_port);
   const std::string config_list = FLAGS_config_list;
   const std::string redis_password = FLAGS_redis_password;
   const bool retry_redis = FLAGS_retry_redis;
@@ -55,6 +58,9 @@ int main(int argc, char *argv[]) {
   }
 
   RayConfig::instance().initialize(config_map);
+  const ray::stats::TagsType global_tags = {{ray::stats::JobNameKey, "gcs_server"},
+                                            {ray::stats::VersionKey, "0.9.0.dev0"}};
+  ray::stats::Init(global_tags, metrics_agent_port);
 
   std::shared_ptr<ray::IOServicePool> io_service_pool =
       std::make_shared<ray::IOServicePool>(kGcsNodeManagerIoServiceNum);
@@ -85,6 +91,7 @@ int main(int argc, char *argv[]) {
     RAY_LOG(INFO) << "GCS server received SIGTERM, shutting down...";
     gcs_server.Stop();
     io_service_pool->Stop();
+    ray::stats::Shutdown();
     main_service.stop();
   };
   boost::asio::signal_set signals(main_service);
