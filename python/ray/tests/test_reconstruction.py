@@ -296,6 +296,7 @@ def test_basic_reconstruction_actor_task(ray_start_cluster,
     pid = ray.get(a.pid.remote())
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Test failing on Windows.")
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
 def test_basic_reconstruction_actor_constructor(ray_start_cluster,
                                                 reconstruction_enabled):

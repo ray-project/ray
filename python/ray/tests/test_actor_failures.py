@@ -144,7 +144,6 @@ def test_actor_eviction(ray_start_regular):
     assert num_success > 0
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Test failing on Windows.")
 def test_actor_restart(ray_init_with_task_retry_delay):
     """Test actor restart when actor process is killed."""
 
