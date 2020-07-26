@@ -1,6 +1,4 @@
 import os
-import shutil
-import tempfile
 import unittest
 import yaml
 import socket
@@ -18,7 +16,6 @@ import pytest
 
 class OnPremCoordinatorServerTest(unittest.TestCase):
     def setUp(self):
-        self.tmpdir = tempfile.mkdtemp()
         self.list_of_node_ips = ["0.0.0.0:1", "0.0.0.0:2"]
         self.host, self.port = socket.gethostbyname(socket.gethostname()), 1234
         self.server = OnPremCoordinatorServer(
@@ -30,16 +27,9 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
 
     def tearDown(self):
         self.server.shutdown()
-        shutil.rmtree(self.tmpdir)
         state_save_path = "/tmp/coordinator.state"
         if os.path.exists(state_save_path):
             os.remove(state_save_path)
-
-    def write_config(self, config):
-        path = os.path.join(self.tmpdir, "simple.yaml")
-        with open(path, "w") as f:
-            f.write(yaml.dump(config))
-        return path
 
     def testImportingCorrectClass(self):
         """Check correct import when coordinator_address is in config yaml."""

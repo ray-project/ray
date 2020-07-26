@@ -288,8 +288,8 @@ class CoordinatorSenderNodeProvider(NodeProvider):
         return response
 
     def create_node(self, node_config, tags, count):
-        # Tag the newly created node with with this cluster name. Helps
-        # to get the right nodes when calling non_terminated_nodes.
+        # Tag the newly created node with this cluster name. Helps to get
+        # the right nodes when calling non_terminated_nodes.
         tags[TAG_RAY_CLUSTER_NAME] = self.cluster_name
         request = {
             "type": "create_node",
