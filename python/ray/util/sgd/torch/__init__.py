@@ -19,5 +19,6 @@ try:
         "TorchTrainer", "BaseTorchTrainable", "TrainingOperator",
         "distributed_checkpoint", "DistributedTrainableCreator"
     ]
-except ImportError:
+except ImportError as e:
+    logger.warning(e)
     logger.warning("PyTorch not found. TorchTrainer will not be available")

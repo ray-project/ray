@@ -291,8 +291,8 @@ py_test(
     name = "ddp_mnist_torch",
     size = "small",
     srcs = ["examples/ddp_mnist_torch.py"],
-    tags = ["exclusive", "example", "pytorch"],
     deps = [":tune_lib"],
+    tags = ["exclusive", "example", "pytorch"],
     args = ["--smoke-test", "--num-workers=2"]
 )
 
