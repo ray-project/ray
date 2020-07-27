@@ -598,7 +598,6 @@ ray::Status ObjectManager::LookupRemainingWaitObjects(const UniqueID &wait_id) {
     for (const auto &object_id : wait_state.remaining) {
       // Lookup remaining objects.
       wait_state.requested_objects.insert(object_id);
-      // TODO(zhuohan): fill the owner_addresses here.
       RAY_RETURN_NOT_OK(object_directory_->LookupLocations(
           object_id, wait_state.owner_addresses[object_id], [this, wait_id](const ObjectID &lookup_object_id,
                                      const std::unordered_set<ClientID> &client_ids) {

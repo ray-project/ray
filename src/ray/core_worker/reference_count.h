@@ -508,8 +508,6 @@ class ReferenceCounter : public ReferenceCounterInterface {
     /// is inlined (not stored in plasma), then its lineage ref count is 0
     /// because any dependent task will already have the value of the object.
     size_t lineage_ref_count = 0;
-    /// Locations that stores the object (used for object directory)
-    absl::flat_hash_set<ClientID> locations;
 
     /// Callback that will be called when this ObjectID no longer has
     /// references.
@@ -664,6 +662,14 @@ class ReferenceCounter : public ReferenceCounterInterface {
 
   /// Holds all reference counts and dependency information for tracked ObjectIDs.
   ReferenceTable object_id_refs_ GUARDED_BY(mutex_);
+
+  using LocationTable = absl::flat_hash_map<ObjectID, absl::flat_hash_set<ClientID>>;
+
+  /// Holds the client information for the owned objects. This table is seperate from
+  /// the reference table because we add object reference after putting object into the
+  /// plasma store and add the location to the object directory. Therefore we will receive
+  /// object location information before the reference is created.
+  LocationTable object_id_locations_ GUARDED_BY(mutex_);
 
   /// Objects whose values have been freed by the language frontend.
   /// The values in plasma will not be pinned. An object ID is

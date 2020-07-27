@@ -890,32 +890,26 @@ void ReferenceCounter::SetReleaseLineageCallback(
 
 void ReferenceCounter::AddObjectLocation(const ObjectID &object_id, const ClientID &node_id) {
   absl::MutexLock lock(&mutex_);
-  auto it = object_id_refs_.find(object_id);
-  // TODO (zhuohan): This will not hold in some cases. We can find out the cases
-  // this line fails in the future.
-  RAY_CHECK(it != object_id_refs_.end());
-  // TODO (zhuohan): This is generally true. But when a worker restarts, it
-  // might uses the same address and port as the previous worker.
-  // https://github.com/ray-project/ray/blob/master/src/ray/core_worker/core_worker.cc#L1615
-  RAY_CHECK(it->second.owned_by_us);
-  it->second.locations.insert(node_id);
+  auto it = object_id_locations_.find(object_id);
+  if (it == object_id_locations_.end()) {
+    it = object_id_locations_.emplace(object_id, absl::flat_hash_set<ClientID>()).first;
+  }
+  it->second.insert(node_id);
 }
 
 void ReferenceCounter::RemoveObjectLocation(const ObjectID &object_id, const ClientID &node_id) {
   absl::MutexLock lock(&mutex_);
-  auto it = object_id_refs_.find(object_id);
-  RAY_CHECK(it != object_id_refs_.end());
-  RAY_CHECK(it->second.owned_by_us);
-  it->second.locations.erase(node_id);
+  auto it = object_id_locations_.find(object_id);
+  RAY_CHECK(it != object_id_locations_.end());
+  it->second.erase(node_id);
 }
 
 std::unordered_set<ClientID> ReferenceCounter::GetObjectLocations(const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
-  auto it = object_id_refs_.find(object_id);
-  RAY_CHECK(it != object_id_refs_.end());
-  RAY_CHECK(it->second.owned_by_us);
+  auto it = object_id_locations_.find(object_id);
+  RAY_CHECK(it != object_id_locations_.end());
   std::unordered_set<ClientID> locations;
-  for (const auto &location : it->second.locations) {
+  for (const auto &location : it->second) {
     locations.insert(location);
   }
   return locations;
