@@ -1,0 +1,30 @@
+cluster_name: subnets
+
+max_workers: 1
+
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a
+
+auth:
+    ssh_user: ubuntu
+
+# If required, head and worker nodes can exist on subnets in different VPCs and
+# communicate via VPC peering.
+
+# VPC peering overview: https://docs.aws.amazon.com/vpc/latest/userguide/vpc-peering.html.
+# Setup VPC peering: https://docs.aws.amazon.com/vpc/latest/peering/create-vpc-peering-connection.html.
+# Configure VPC peering route tables: https://docs.aws.amazon.com/vpc/latest/peering/vpc-peering-routing.html.
+
+# To enable external SSH connectivity, you should also ensure that your VPC
+# is configured to assign public IPv4 addresses to every EC2 instance
+# assigned to it.
+head_node:
+    SubnetIds:
+        - subnet-0000000 # Replace with your actual Head Node Subnet ID.
+
+worker_nodes:
+    SubnetIds:
+        - subnet-fffffff # Replace with your actual Worker Node Subnet ID.
+

@@ -11,21 +11,23 @@ class CorrelatedActionsEnv(gym.Env):
     def __init__(self, _):
         self.observation_space = Discrete(2)
         self.action_space = Tuple([Discrete(2), Discrete(2)])
+        self.last_observation = None
 
     def reset(self):
         self.t = 0
-        self.last = random.choice([0, 1])
-        return self.last
+        self.last_observation = random.choice([0, 1])
+        return self.last_observation
 
     def step(self, action):
         self.t += 1
         a1, a2 = action
         reward = 0
-        if a1 == self.last:
+        # Encourage correlation between most recent observation and a1.
+        if a1 == self.last_observation:
             reward += 5
-        # encourage correlation between a1 and a2
+        # Encourage correlation between a1 and a2.
         if a1 == a2:
             reward += 5
         done = self.t > 20
-        self.last = random.choice([0, 1])
-        return self.last, reward, done, {}
+        self.last_observation = random.choice([0, 1])
+        return self.last_observation, reward, done, {}

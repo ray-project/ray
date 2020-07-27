@@ -106,6 +106,30 @@ def test_global_state_actor_table(ray_start_regular):
     assert get_state() == dead_state
 
 
+def test_global_state_actor_entry(ray_start_regular):
+    @ray.remote
+    class Actor:
+        def ready(self):
+            pass
+
+    # actor table should be empty at first
+    assert len(ray.actors()) == 0
+
+    a = Actor.remote()
+    b = Actor.remote()
+    ray.get(a.ready.remote())
+    ray.get(b.ready.remote())
+    assert len(ray.actors()) == 2
+    a_actor_id = a._actor_id.hex()
+    b_actor_id = b._actor_id.hex()
+    assert ray.actors(actor_id=a_actor_id)["ActorID"] == a_actor_id
+    assert ray.actors(
+        actor_id=a_actor_id)["State"] == ray.gcs_utils.ActorTableData.ALIVE
+    assert ray.actors(actor_id=b_actor_id)["ActorID"] == b_actor_id
+    assert ray.actors(
+        actor_id=b_actor_id)["State"] == ray.gcs_utils.ActorTableData.ALIVE
+
+
 if __name__ == "__main__":
     import pytest
     import sys

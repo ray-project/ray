@@ -45,8 +45,9 @@ TEST_F(RedisJobInfoAccessorTest, AddAndSubscribe) {
   auto on_subscribe = [this](const JobID &job_id, const JobTableData &data) {
     const auto it = id_to_data_.find(job_id);
     RAY_CHECK(it != id_to_data_.end());
-    ASSERT_TRUE(data.is_dead());
-    --subscribe_pending_count_;
+    if (data.is_dead()) {
+      --subscribe_pending_count_;
+    }
   };
 
   auto on_done = [this](Status status) {
@@ -55,7 +56,7 @@ TEST_F(RedisJobInfoAccessorTest, AddAndSubscribe) {
   };
 
   ++pending_count_;
-  RAY_CHECK_OK(job_accessor.AsyncSubscribeToFinishedJobs(on_subscribe, on_done));
+  RAY_CHECK_OK(job_accessor.AsyncSubscribeAll(on_subscribe, on_done));
 
   WaitPendingDone(wait_pending_timeout_);
   WaitPendingDone(subscribe_pending_count_, wait_pending_timeout_);
@@ -91,8 +92,8 @@ TEST_F(RedisJobInfoAccessorTest, AddAndSubscribe) {
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 4);
-  ray::REDIS_SERVER_EXEC_PATH = argv[1];
-  ray::REDIS_CLIENT_EXEC_PATH = argv[2];
-  ray::REDIS_MODULE_LIBRARY_PATH = argv[3];
+  ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
+  ray::TEST_REDIS_CLIENT_EXEC_PATH = argv[2];
+  ray::TEST_REDIS_MODULE_LIBRARY_PATH = argv[3];
   return RUN_ALL_TESTS();
 }

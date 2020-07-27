@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_SERVICE_BASED_GCS_CLIENT_H
-#define RAY_GCS_SERVICE_BASED_GCS_CLIENT_H
+#pragma once
 
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_gcs_client.h"
@@ -42,8 +41,23 @@ class RAY_EXPORT ServiceBasedGcsClient : public GcsClient {
   ///
   /// \param context The context of redis.
   /// \param address The address of gcs server.
-  void GetGcsServerAddressFromRedis(redisContext *context,
-                                    std::pair<std::string, int> *address);
+  /// \param max_attempts The maximum number of times to get gcs server rpc address.
+  /// \return Returns true if gcs server address is obtained, False otherwise.
+  bool GetGcsServerAddressFromRedis(redisContext *context,
+                                    std::pair<std::string, int> *address,
+                                    int max_attempts = 1);
+
+  /// Fire a periodic timer to check if GCS sever address has changed.
+  void PeriodicallyCheckGcsServerAddress();
+
+  /// This function is used to redo subscription and reconnect to GCS RPC server when gcs
+  /// service failure is detected.
+  ///
+  /// \param type The type of GCS service failure.
+  void GcsServiceFailureDetected(rpc::GcsServiceFailureType type);
+
+  /// Reconnect to GCS RPC server.
+  void ReconnectGcsServer();
 
   std::unique_ptr<RedisGcsClient> redis_gcs_client_;
 
@@ -52,9 +66,13 @@ class RAY_EXPORT ServiceBasedGcsClient : public GcsClient {
   // Gcs rpc client
   std::unique_ptr<rpc::GcsRpcClient> gcs_rpc_client_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
+
+  // A timer used to check if gcs server address changed.
+  std::unique_ptr<boost::asio::deadline_timer> detect_timer_;
+  std::function<bool(std::pair<std::string, int> *)> get_server_address_func_;
+  std::function<void(bool)> resubscribe_func_;
+  std::pair<std::string, int> current_gcs_server_address_;
 };
 
 }  // namespace gcs
 }  // namespace ray
-
-#endif  // RAY_GCS_SERVICE_BASED_GCS_CLIENT_H

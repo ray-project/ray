@@ -1,5 +1,4 @@
-#ifndef RAY_RING_BUFFER_H
-#define RAY_RING_BUFFER_H
+#pragma once
 
 #include <atomic>
 #include <boost/circular_buffer.hpp>
@@ -216,5 +215,3 @@ class StreamingRingBuffer {
 typedef std::shared_ptr<StreamingRingBuffer> StreamingRingBufferPtr;
 }  // namespace streaming
 }  // namespace ray
-
-#endif  // RAY_RING_BUFFER_H

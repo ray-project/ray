@@ -14,7 +14,7 @@ pygments
 pyyaml
 recommonmark
 redis
-sphinx>2
+sphinx==3.0.4
 sphinx-click
 sphinx-copybutton
 sphinx-gallery
@@ -24,3 +24,5 @@ sphinx_rtd_theme
 tabulate
 uvicorn
 werkzeug
+tune-sklearn==0.0.5
+scikit-optimize

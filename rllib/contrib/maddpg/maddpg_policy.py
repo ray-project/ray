@@ -7,7 +7,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.tf_policy import TFPolicy
-from ray.rllib.utils import try_import_tf, try_import_tfp
+from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 
 import logging
 from gym.spaces import Box, Discrete
@@ -15,7 +15,7 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
 
 
@@ -48,7 +48,8 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
     def __init__(self, obs_space, act_space, config):
         # _____ Initial Configuration
         config = dict(ray.rllib.contrib.maddpg.DEFAULT_CONFIG, **config)
-        self.global_step = tf.train.get_or_create_global_step()
+        self.config = config
+        self.global_step = tf1.train.get_or_create_global_step()
 
         # FIXME: Get done from info is required since agentwise done is not
         # supported now.
@@ -73,19 +74,21 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
                     "Space {} is not supported.".format(space))
 
         obs_space_n = [
-            _make_continuous_space(space) for _, (_, space, _, _) in
-            sorted(config["multiagent"]["policies"].items())
+            _make_continuous_space(space)
+            for _, (_, space, _,
+                    _) in config["multiagent"]["policies"].items()
         ]
         act_space_n = [
-            _make_continuous_space(space) for _, (_, _, space, _) in
-            sorted(config["multiagent"]["policies"].items())
+            _make_continuous_space(space)
+            for _, (_, _, space,
+                    _) in config["multiagent"]["policies"].items()
         ]
 
         # _____ Placeholders
         # Placeholders for policy evaluation and updates
         def _make_ph_n(space_n, name=""):
             return [
-                tf.placeholder(
+                tf1.placeholder(
                     tf.float32,
                     shape=(None, ) + space.shape,
                     name=name + "_%d" % i) for i, space in enumerate(space_n)
@@ -95,9 +98,9 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
         act_ph_n = _make_ph_n(act_space_n, "actions")
         new_obs_ph_n = _make_ph_n(obs_space_n, "new_obs")
         new_act_ph_n = _make_ph_n(act_space_n, "new_actions")
-        rew_ph = tf.placeholder(
+        rew_ph = tf1.placeholder(
             tf.float32, shape=None, name="rewards_{}".format(agent_id))
-        done_ph = tf.placeholder(
+        done_ph = tf1.placeholder(
             tf.float32, shape=None, name="dones_{}".format(agent_id))
 
         if config["use_local_critic"]:
@@ -187,12 +190,12 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
 
         # _____ Optimizers
         self.optimizers = {
-            "critic": tf.train.AdamOptimizer(config["critic_lr"]),
-            "actor": tf.train.AdamOptimizer(config["actor_lr"])
+            "critic": tf1.train.AdamOptimizer(config["critic_lr"]),
+            "actor": tf1.train.AdamOptimizer(config["actor_lr"])
         }
 
         # _____ Build variable update ops.
-        self.tau = tf.placeholder_with_default(
+        self.tau = tf1.placeholder_with_default(
             config["tau"], shape=(), name="tau")
 
         def _make_target_update_op(vs, target_vs, tau):
@@ -210,7 +213,7 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
             for v in variables.values():
                 vs += v
             phs = [
-                tf.placeholder(
+                tf1.placeholder(
                     tf.float32,
                     shape=v.get_shape(),
                     name=v.name.split(":")[0] + "_ph") for v in vs
@@ -227,7 +230,7 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
 
         # _____ TensorFlow Initialization
 
-        self.sess = tf.get_default_session()
+        self.sess = tf1.get_default_session()
 
         def _make_loss_inputs(placeholders):
             return [(ph.name.split("/")[-1].split(":")[0], ph)
@@ -248,7 +251,7 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
             loss_inputs=loss_inputs,
             dist_inputs=actor_feature)
 
-        self.sess.run(tf.global_variables_initializer())
+        self.sess.run(tf1.global_variables_initializer())
 
         # Hard initial update
         self.update_target(1.0)
@@ -277,8 +280,8 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
         critic_apply_op = self.optimizers["critic"].apply_gradients(
             self.gvs["critic"])
 
-        with tf.control_dependencies([tf.assign_add(self.global_step, 1)]):
-            with tf.control_dependencies([critic_apply_op]):
+        with tf1.control_dependencies([tf1.assign_add(self.global_step, 1)]):
+            with tf1.control_dependencies([critic_apply_op]):
                 actor_apply_op = self.optimizers["actor"].apply_gradients(
                     self.gvs["actor"])
 
@@ -321,7 +324,7 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
                               hiddens,
                               activation=None,
                               scope=None):
-        with tf.variable_scope(scope, reuse=tf.AUTO_REUSE) as scope:
+        with tf1.variable_scope(scope, reuse=tf1.AUTO_REUSE) as scope:
             if use_state_preprocessor:
                 model_n = [
                     ModelCatalog.get_model({
@@ -338,11 +341,12 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
                 out = tf.concat(obs_n + act_n, axis=1)
 
             for hidden in hiddens:
-                out = tf.layers.dense(out, units=hidden, activation=activation)
+                out = tf1.layers.dense(
+                    out, units=hidden, activation=activation)
             feature = out
-            out = tf.layers.dense(feature, units=1, activation=None)
+            out = tf1.layers.dense(feature, units=1, activation=None)
 
-        return out, feature, model_n, tf.global_variables(scope.name)
+        return out, feature, model_n, tf1.global_variables(scope.name)
 
     def _build_actor_network(self,
                              obs,
@@ -352,7 +356,7 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
                              hiddens,
                              activation=None,
                              scope=None):
-        with tf.variable_scope(scope, reuse=tf.AUTO_REUSE) as scope:
+        with tf1.variable_scope(scope, reuse=tf1.AUTO_REUSE) as scope:
             if use_state_preprocessor:
                 model = ModelCatalog.get_model({
                     "obs": obs,
@@ -364,13 +368,14 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
                 out = obs
 
             for hidden in hiddens:
-                out = tf.layers.dense(out, units=hidden, activation=activation)
-            feature = tf.layers.dense(
+                out = tf1.layers.dense(
+                    out, units=hidden, activation=activation)
+            feature = tf1.layers.dense(
                 out, units=act_space.shape[0], activation=None)
             sampler = tfp.distributions.RelaxedOneHotCategorical(
                 temperature=1.0, logits=feature).sample()
 
-        return sampler, feature, model, tf.global_variables(scope.name)
+        return sampler, feature, model, tf1.global_variables(scope.name)
 
     def update_target(self, tau=None):
         if tau is not None:

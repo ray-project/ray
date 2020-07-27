@@ -14,7 +14,7 @@ from ray.tune.tune import _make_scheduler, run_experiments
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
 # Try to import both backends for flag checking/warnings.
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 EXAMPLE_USAGE = """
@@ -49,6 +49,11 @@ def create_parser(parser_creator=None):
         "--no-ray-ui",
         action="store_true",
         help="Whether to disable the Ray web ui.")
+    parser.add_argument(
+        "--local-mode",
+        action="store_true",
+        help="Whether to run ray with `local_mode=True`. "
+        "Only if --ray-num-nodes is not used.")
     parser.add_argument(
         "--ray-num-cpus",
         default=None,
@@ -144,6 +149,7 @@ def run(args, parser):
             args.experiment_name: {  # i.e. log to ~/ray_results/default
                 "run": args.run,
                 "checkpoint_freq": args.checkpoint_freq,
+                "checkpoint_at_end": args.checkpoint_at_end,
                 "keep_checkpoints_num": args.keep_checkpoints_num,
                 "checkpoint_score_attr": args.checkpoint_score_attr,
                 "local_dir": args.local_dir,
@@ -174,20 +180,23 @@ def run(args, parser):
             parser.error("the following arguments are required: --run")
         if not exp.get("env") and not exp.get("config", {}).get("env"):
             parser.error("the following arguments are required: --env")
-        if args.eager:
-            exp["config"]["eager"] = True
+
         if args.torch:
-            exp["config"]["use_pytorch"] = True
+            exp["config"]["framework"] = "torch"
+        elif args.eager:
+            exp["config"]["framework"] = "tfe"
+
+        if args.trace:
+            if exp["config"]["framework"] not in ["tf2", "tfe"]:
+                raise ValueError("Must enable --eager to enable tracing.")
+            exp["config"]["eager_tracing"] = True
+
         if args.v:
             exp["config"]["log_level"] = "INFO"
             verbose = 2
         if args.vv:
             exp["config"]["log_level"] = "DEBUG"
             verbose = 3
-        if args.trace:
-            if not exp["config"].get("eager"):
-                raise ValueError("Must enable --eager to enable tracing.")
-            exp["config"]["eager_tracing"] = True
 
     if args.ray_num_nodes:
         cluster = Cluster()
@@ -201,13 +210,15 @@ def run(args, parser):
         ray.init(address=cluster.address)
     else:
         ray.init(
-            include_webui=not args.no_ray_ui,
+            include_dashboard=not args.no_ray_ui,
             address=args.ray_address,
             object_store_memory=args.ray_object_store_memory,
             memory=args.ray_memory,
             redis_max_memory=args.ray_redis_max_memory,
             num_cpus=args.ray_num_cpus,
-            num_gpus=args.ray_num_gpus)
+            num_gpus=args.ray_num_gpus,
+            local_mode=args.local_mode)
+
     run_experiments(
         experiments,
         scheduler=_make_scheduler(args),
@@ -215,6 +226,8 @@ def run(args, parser):
         resume=args.resume,
         verbose=verbose,
         concurrent=True)
+
+    ray.shutdown()
 
 
 if __name__ == "__main__":

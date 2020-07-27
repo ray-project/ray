@@ -1,0 +1,37 @@
+# Runs on a single g3.16xl AWS machine
+apex:
+    env:
+        grid_search:
+            - BreakoutNoFrameskip-v4
+            - BeamRiderNoFrameskip-v4
+            - QbertNoFrameskip-v4
+            - SpaceInvadersNoFrameskip-v4
+    run: APEX
+    config:
+        # Works for both torch and tf.
+        framework: tf
+        double_q: false
+        dueling: false
+        num_atoms: 1
+        noisy: false
+        n_step: 3
+        lr: .0001
+        adam_epsilon: .00015
+        hiddens: [512]
+        buffer_size: 1000000
+        exploration_config:
+          final_epsilon: 0.01
+          epsilon_timesteps: 200000
+        prioritized_replay_alpha: 0.5
+        final_prioritized_replay_beta: 1.0
+        prioritized_replay_beta_annealing_timesteps: 2000000
+
+        num_gpus: 1
+
+        # APEX
+        num_workers: 8
+        num_envs_per_worker: 8
+        rollout_fragment_length: 20
+        train_batch_size: 512
+        target_network_update_freq: 50000
+        timesteps_per_iteration: 25000

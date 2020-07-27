@@ -7,8 +7,7 @@
 PORTS="2000 2001 2002 2003 2004 2005 2006 2007 2008 2009"
 RAYLET_PORT=0
 for port in $PORTS; do
-    nc -z localhost $port
-    if [[ $? != 0 ]]; then
+    if ! nc -z localhost "$port"; then
         RAYLET_PORT=$port
         break
     fi
@@ -24,18 +23,18 @@ set -e
 set -x
 
 # Get the directory in which this script is executing.
-SCRIPT_DIR="`dirname \"$0\"`"
+SCRIPT_DIR="$(dirname "$0")"
 
 # Get the directory in which this script is executing.
-SCRIPT_DIR="`dirname \"$0\"`"
+SCRIPT_DIR="$(dirname "$0")"
 RAY_ROOT="$SCRIPT_DIR/../../.."
 # Makes $RAY_ROOT an absolute path.
-RAY_ROOT="`( cd \"$RAY_ROOT\" && pwd )`"
+RAY_ROOT="$(cd "$RAY_ROOT" && pwd)"
 if [ -z "$RAY_ROOT" ] ; then
   exit 1
 fi
 
-bazel build "//:core_worker_test" "//:mock_worker"  "//:raylet" "//:gcs_server" "//:libray_redis_module.so" "@plasma//:plasma_store_server"
+bazel build "//:core_worker_test" "//:mock_worker"  "//:raylet" "//:gcs_server" "//:libray_redis_module.so" "//:plasma_store_server" "//:redis-server" "//:redis-cli"
 bazel build //streaming:streaming_test_worker
 bazel build //streaming:streaming_queue_tests
 
@@ -46,24 +45,14 @@ if [ ! -d "$RAY_ROOT/python" ]; then
 fi
 
 REDIS_MODULE="./bazel-bin/libray_redis_module.so"
-LOAD_MODULE_ARGS="--loadmodule ${REDIS_MODULE}"
-STORE_EXEC="./bazel-bin/external/plasma/plasma_store_server"
+REDIS_SERVER_EXEC="./bazel-bin/external/com_github_antirez_redis/redis-server"
+STORE_EXEC="./bazel-bin/plasma_store_server"
+REDIS_CLIENT_EXEC="./bazel-bin/redis-cli"
 RAYLET_EXEC="./bazel-bin/raylet"
 STREAMING_TEST_WORKER_EXEC="./bazel-bin/streaming/streaming_test_worker"
 GCS_SERVER_EXEC="./bazel-bin/gcs_server"
 
 # Allow cleanup commands to fail.
-bazel run //:redis-cli -- -p 6379 shutdown || true
-sleep 1s
-bazel run //:redis-cli -- -p 6380 shutdown || true
-sleep 1s
-bazel run //:redis-server -- --loglevel warning ${LOAD_MODULE_ARGS} --port 6379 &
-sleep 2s
-bazel run //:redis-server -- --loglevel warning ${LOAD_MODULE_ARGS} --port 6380 &
-sleep 2s
 # Run tests.
-./bazel-bin/streaming/streaming_queue_tests $STORE_EXEC $RAYLET_EXEC $RAYLET_PORT $STREAMING_TEST_WORKER_EXEC $GCS_SERVER_EXEC
-sleep 1s
-bazel run //:redis-cli -- -p 6379 shutdown
-bazel run //:redis-cli -- -p 6380 shutdown
+./bazel-bin/streaming/streaming_queue_tests $STORE_EXEC $RAYLET_EXEC "$RAYLET_PORT" $STREAMING_TEST_WORKER_EXEC $GCS_SERVER_EXEC $REDIS_SERVER_EXEC $REDIS_MODULE $REDIS_CLIENT_EXEC
 sleep 1s

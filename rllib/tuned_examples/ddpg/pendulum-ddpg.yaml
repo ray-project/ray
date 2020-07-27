@@ -1,0 +1,59 @@
+# This configuration can expect to reach -160 reward in 10k-20k timesteps.
+pendulum-ddpg:
+    env: Pendulum-v0
+    run: DDPG
+    stop:
+        episode_reward_mean: -700
+        timesteps_total: 100000
+    config:
+        # Works for both torch and tf.
+        framework: tf
+        # === Model ===
+        actor_hiddens: [64, 64]
+        critic_hiddens: [64, 64]
+        n_step: 1
+        model: {}
+        gamma: 0.99
+        env_config: {}
+
+        # === Exploration ===
+        exploration_config:
+            type: "OrnsteinUhlenbeckNoise"
+            scale_timesteps: 10000
+            initial_scale: 1.0
+            final_scale: 0.02
+            ou_base_scale: 0.1
+            ou_theta: 0.15
+            ou_sigma: 0.2
+
+        timesteps_per_iteration: 600
+        target_network_update_freq: 0
+        tau: 0.001
+
+        # === Replay buffer ===
+        buffer_size: 10000
+        prioritized_replay: True
+        prioritized_replay_alpha: 0.6
+        prioritized_replay_beta: 0.4
+        prioritized_replay_eps: 0.000001
+        clip_rewards: False
+
+        # === Optimization ===
+        actor_lr: 0.001
+        critic_lr: 0.001
+        use_huber: True
+        huber_threshold: 1.0
+        l2_reg: 0.000001
+        learning_starts: 500
+        rollout_fragment_length: 1
+        train_batch_size: 64
+
+        # === Parallelism ===
+        num_workers: 0
+        num_gpus_per_worker: 0
+        #per_worker_exploration: False
+        worker_side_prioritization: False
+
+        # === Evaluation ===
+        evaluation_interval: 5
+        evaluation_num_episodes: 10

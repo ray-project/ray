@@ -12,15 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/transport/direct_task_transport.h"
+#include "ray/core_worker/object_recovery_manager.h"
 
 #include "gtest/gtest.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
-#include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/raylet/raylet_client.h"
+#include "ray/core_worker/transport/direct_task_transport.h"
+#include "ray/raylet_client/raylet_client.h"
 
 namespace ray {
 
@@ -151,7 +151,7 @@ class ObjectRecoveryManagerTest : public ::testing::Test {
 
 TEST_F(ObjectRecoveryManagerTest, TestNoReconstruction) {
   ObjectID object_id = ObjectID::FromRandom();
-  ref_counter_->AddOwnedObject(object_id, {}, TaskID::Nil(), rpc::Address(), "", 0, true);
+  ref_counter_->AddOwnedObject(object_id, {}, rpc::Address(), "", 0, true);
   ASSERT_TRUE(manager_.RecoverObject(object_id).ok());
   ASSERT_TRUE(failed_reconstructions_.empty());
   ASSERT_TRUE(object_directory_->Flush() == 1);
@@ -161,7 +161,7 @@ TEST_F(ObjectRecoveryManagerTest, TestNoReconstruction) {
 
 TEST_F(ObjectRecoveryManagerTest, TestPinNewCopy) {
   ObjectID object_id = ObjectID::FromRandom();
-  ref_counter_->AddOwnedObject(object_id, {}, TaskID::Nil(), rpc::Address(), "", 0, true);
+  ref_counter_->AddOwnedObject(object_id, {}, rpc::Address(), "", 0, true);
   std::vector<rpc::Address> addresses({rpc::Address()});
   object_directory_->SetLocations(object_id, addresses);
 
@@ -174,7 +174,7 @@ TEST_F(ObjectRecoveryManagerTest, TestPinNewCopy) {
 
 TEST_F(ObjectRecoveryManagerTest, TestReconstruction) {
   ObjectID object_id = ObjectID::FromRandom();
-  ref_counter_->AddOwnedObject(object_id, {}, TaskID::Nil(), rpc::Address(), "", 0, true);
+  ref_counter_->AddOwnedObject(object_id, {}, rpc::Address(), "", 0, true);
   task_resubmitter_->AddTask(object_id.TaskId(), {});
 
   ASSERT_TRUE(manager_.RecoverObject(object_id).ok());
@@ -186,7 +186,7 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstruction) {
 
 TEST_F(ObjectRecoveryManagerTest, TestReconstructionSuppression) {
   ObjectID object_id = ObjectID::FromRandom();
-  ref_counter_->AddOwnedObject(object_id, {}, TaskID::Nil(), rpc::Address(), "", 0, true);
+  ref_counter_->AddOwnedObject(object_id, {}, rpc::Address(), "", 0, true);
   ref_counter_->AddLocalReference(object_id, "");
 
   ASSERT_TRUE(manager_.RecoverObject(object_id).ok());
@@ -215,8 +215,7 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstructionChain) {
   std::vector<ObjectID> dependencies;
   for (int i = 0; i < 3; i++) {
     ObjectID object_id = ObjectID::FromRandom();
-    ref_counter_->AddOwnedObject(object_id, {}, TaskID::Nil(), rpc::Address(), "", 0,
-                                 true);
+    ref_counter_->AddOwnedObject(object_id, {}, rpc::Address(), "", 0, true);
     task_resubmitter_->AddTask(object_id.TaskId(), dependencies);
     dependencies = {object_id};
     object_ids.push_back(object_id);

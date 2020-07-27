@@ -1,9 +1,24 @@
 import numpy as np
+import tree
 
-from ray.rllib.utils import try_import_torch, try_import_tree
+from ray.rllib.models.repeated_values import RepeatedValues
+from ray.rllib.utils.framework import try_import_torch
 
-torch, _ = try_import_torch()
-tree = try_import_tree()
+torch, nn = try_import_torch()
+
+
+def atanh(x):
+    return 0.5 * torch.log((1 + x) / (1 - x))
+
+
+def explained_variance(y, pred):
+    y_var = torch.var(y, dim=[0])
+    diff_var = torch.var(y - pred, dim=[0])
+    min_ = torch.Tensor([-1.0])
+    return torch.max(
+        min_.to(device=torch.device("cuda"))
+        if torch.cuda.is_available() else min_,
+        1 - (diff_var / y_var))
 
 
 def global_norm(tensors):
@@ -39,13 +54,6 @@ def l2_loss(x):
     return torch.sum(torch.pow(x, 2.0)) / 2.0
 
 
-def reduce_mean_ignore_inf(x, axis):
-    """Same as torch.mean() but ignores -inf values."""
-    mask = torch.ne(x, float("-inf"))
-    x_zeroed = torch.where(mask, x, torch.zeros_like(x))
-    return torch.sum(x_zeroed, axis) / torch.sum(mask.float(), axis)
-
-
 def minimize_and_clip(optimizer, clip_val=10):
     """Clips gradients found in `optimizer.param_groups` to given value.
 
@@ -58,21 +66,40 @@ def minimize_and_clip(optimizer, clip_val=10):
                 torch.nn.utils.clip_grad_norm_(p.grad, clip_val)
 
 
-def sequence_mask(lengths, maxlen, dtype=None):
-    """
-    Exact same behavior as tf.sequence_mask.
+def reduce_mean_ignore_inf(x, axis):
+    """Same as torch.mean() but ignores -inf values."""
+    mask = torch.ne(x, float("-inf"))
+    x_zeroed = torch.where(mask, x, torch.zeros_like(x))
+    return torch.sum(x_zeroed, axis) / torch.sum(mask.float(), axis)
+
+
+def sequence_mask(lengths, maxlen=None, dtype=None):
+    """Offers same behavior as tf.sequence_mask for torch.
+
     Thanks to Dimitris Papatheodorou
     (https://discuss.pytorch.org/t/pytorch-equivalent-for-tf-sequence-mask/
     39036).
     """
     if maxlen is None:
-        maxlen = lengths.max()
+        maxlen = int(lengths.max())
 
     mask = ~(torch.ones((len(lengths), maxlen)).to(
         lengths.device).cumsum(dim=1).t() > lengths).t()
     mask.type(dtype or torch.bool)
 
     return mask
+
+
+def softmax_cross_entropy_with_logits(logits, labels):
+    """Same behavior as tf.nn.softmax_cross_entropy_with_logits.
+
+    Args:
+        x (TensorType):
+
+    Returns:
+
+    """
+    return torch.sum(-labels * nn.functional.log_softmax(logits, -1), -1)
 
 
 def convert_to_non_torch_type(stats):
@@ -99,10 +126,10 @@ def convert_to_non_torch_type(stats):
     return tree.map_structure(mapping, stats)
 
 
-def convert_to_torch_tensor(stats, device=None):
+def convert_to_torch_tensor(x, device=None):
     """Converts any struct to torch.Tensors.
 
-    stats (any): Any (possibly nested) struct, the values in which will be
+    x (any): Any (possibly nested) struct, the values in which will be
         converted and returned as a new struct with all leaves converted
         to torch tensors.
 
@@ -112,16 +139,18 @@ def convert_to_torch_tensor(stats, device=None):
     """
 
     def mapping(item):
+        # Already torch tensor -> make sure it's on right device.
         if torch.is_tensor(item):
             return item if device is None else item.to(device)
+        # Special handling of "Repeated" values.
+        elif isinstance(item, RepeatedValues):
+            return RepeatedValues(
+                tree.map_structure(mapping, item.values),
+                item.lengths, item.max_len)
         tensor = torch.from_numpy(np.asarray(item))
         # Floatify all float64 tensors.
         if tensor.dtype == torch.double:
             tensor = tensor.float()
         return tensor if device is None else tensor.to(device)
 
-    return tree.map_structure(mapping, stats)
-
-
-def atanh(x):
-    return 0.5 * torch.log((1 + x) / (1 - x))
+    return tree.map_structure(mapping, x)

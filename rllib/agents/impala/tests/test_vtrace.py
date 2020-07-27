@@ -30,7 +30,7 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import softmax
 from ray.rllib.utils.test_utils import check, framework_iterator
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
 
 
@@ -87,7 +87,7 @@ class LogProbsFromLogitsAndActionsTest(unittest.TestCase):
 
         for fw, sess in framework_iterator(
                 frameworks=("torch", "tf"), session=True):
-            vtrace = vtrace_tf if fw == "tf" else vtrace_torch
+            vtrace = vtrace_tf if fw != "torch" else vtrace_torch
             policy_logits = Box(-1.0, 1.0, (seq_len, batch_size, num_actions),
                                 np.float32).sample()
             actions = np.random.randint(
@@ -149,7 +149,7 @@ class VtraceTest(unittest.TestCase):
 
         for fw, sess in framework_iterator(
                 frameworks=("torch", "tf"), session=True):
-            vtrace = vtrace_tf if fw == "tf" else vtrace_torch
+            vtrace = vtrace_tf if fw != "torch" else vtrace_torch
             output = vtrace.from_importance_weights(**values)
             if sess:
                 output = sess.run(output)
@@ -178,27 +178,27 @@ class VtraceTest(unittest.TestCase):
 
         for fw, sess in framework_iterator(
                 frameworks=("torch", "tf"), session=True):
-            vtrace = vtrace_tf if fw == "tf" else vtrace_torch
+            vtrace = vtrace_tf if fw != "torch" else vtrace_torch
 
             if fw == "tf":
                 # Intentionally leaving shapes unspecified to test if V-trace
                 # can deal with that.
                 inputs_ = {
                     # T, B, NUM_ACTIONS
-                    "behaviour_policy_logits": tf.placeholder(
+                    "behaviour_policy_logits": tf1.placeholder(
                         dtype=tf.float32, shape=[None, None, None]),
                     # T, B, NUM_ACTIONS
-                    "target_policy_logits": tf.placeholder(
+                    "target_policy_logits": tf1.placeholder(
                         dtype=tf.float32, shape=[None, None, None]),
-                    "actions": tf.placeholder(
+                    "actions": tf1.placeholder(
                         dtype=tf.int32, shape=[None, None]),
-                    "discounts": tf.placeholder(
+                    "discounts": tf1.placeholder(
                         dtype=tf.float32, shape=[None, None]),
-                    "rewards": tf.placeholder(
+                    "rewards": tf1.placeholder(
                         dtype=tf.float32, shape=[None, None]),
-                    "values": tf.placeholder(
+                    "values": tf1.placeholder(
                         dtype=tf.float32, shape=[None, None]),
-                    "bootstrap_value": tf.placeholder(
+                    "bootstrap_value": tf1.placeholder(
                         dtype=tf.float32, shape=[None]),
                 }
             else:
@@ -218,7 +218,7 @@ class VtraceTest(unittest.TestCase):
                 clip_pg_rho_threshold=clip_pg_rho_threshold,
                 **inputs_)
 
-            if fw == "tf":
+            if fw != "torch":
                 target_log_probs = vtrace.log_probs_from_logits_and_actions(
                     inputs_["target_policy_logits"], inputs_["actions"])
                 behaviour_log_probs = vtrace.log_probs_from_logits_and_actions(
@@ -279,18 +279,18 @@ class VtraceTest(unittest.TestCase):
     def test_higher_rank_inputs_for_importance_weights(self):
         """Checks support for additional dimensions in inputs."""
         for fw in framework_iterator(frameworks=("torch", "tf"), session=True):
-            vtrace = vtrace_tf if fw == "tf" else vtrace_torch
+            vtrace = vtrace_tf if fw != "torch" else vtrace_torch
             if fw == "tf":
                 inputs_ = {
-                    "log_rhos": tf.placeholder(
+                    "log_rhos": tf1.placeholder(
                         dtype=tf.float32, shape=[None, None, 1]),
-                    "discounts": tf.placeholder(
+                    "discounts": tf1.placeholder(
                         dtype=tf.float32, shape=[None, None, 1]),
-                    "rewards": tf.placeholder(
+                    "rewards": tf1.placeholder(
                         dtype=tf.float32, shape=[None, None, 42]),
-                    "values": tf.placeholder(
+                    "values": tf1.placeholder(
                         dtype=tf.float32, shape=[None, None, 42]),
-                    "bootstrap_value": tf.placeholder(
+                    "bootstrap_value": tf1.placeholder(
                         dtype=tf.float32, shape=[None, 42])
                 }
             else:
@@ -307,19 +307,19 @@ class VtraceTest(unittest.TestCase):
     def test_inconsistent_rank_inputs_for_importance_weights(self):
         """Test one of many possible errors in shape of inputs."""
         for fw in framework_iterator(frameworks=("torch", "tf"), session=True):
-            vtrace = vtrace_tf if fw == "tf" else vtrace_torch
+            vtrace = vtrace_tf if fw != "torch" else vtrace_torch
             if fw == "tf":
                 inputs_ = {
-                    "log_rhos": tf.placeholder(
+                    "log_rhos": tf1.placeholder(
                         dtype=tf.float32, shape=[None, None, 1]),
-                    "discounts": tf.placeholder(
+                    "discounts": tf1.placeholder(
                         dtype=tf.float32, shape=[None, None, 1]),
-                    "rewards": tf.placeholder(
+                    "rewards": tf1.placeholder(
                         dtype=tf.float32, shape=[None, None, 42]),
-                    "values": tf.placeholder(
+                    "values": tf1.placeholder(
                         dtype=tf.float32, shape=[None, None, 42]),
                     # Should be [None, 42].
-                    "bootstrap_value": tf.placeholder(
+                    "bootstrap_value": tf1.placeholder(
                         dtype=tf.float32, shape=[None])
                 }
             else:

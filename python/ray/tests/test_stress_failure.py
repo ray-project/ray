@@ -29,11 +29,7 @@ def ray_start_reconstruction(request):
         })
     for i in range(num_nodes - 1):
         cluster.add_node(
-            num_cpus=1,
-            object_store_memory=plasma_store_memory // num_nodes,
-            _internal_config=json.dumps({
-                "initial_reconstruction_timeout_milliseconds": 200
-            }))
+            num_cpus=1, object_store_memory=plasma_store_memory // num_nodes)
     ray.init(address=cluster.address)
 
     yield plasma_store_memory, num_nodes, cluster
@@ -274,7 +270,7 @@ def test_nondeterministic_task(ray_start_reconstruction):
     def error_check(errors):
         if num_nodes == 1:
             # In a single-node setting, each object is evicted and
-            # reconstructed exactly once, so exactly half the objects will
+            # restarted exactly once, so exactly half the objects will
             # produce an error during reconstruction.
             min_errors = num_objects // 2
         else:
@@ -359,8 +355,8 @@ def test_driver_put_errors(ray_start_object_store_memory):
 #     def g(i):
 #       # Each instance of g submits and blocks on the result of another remote
 #       # task.
-#       object_ids = [f.remote(i, j) for j in range(10)]
-#       return ray.get(object_ids)
+#       object_refs = [f.remote(i, j) for j in range(10)]
+#       return ray.get(object_refs)
 #
 #     ray.init(num_workers=1)
 #     ray.get([g.remote(i) for i in range(1000)])

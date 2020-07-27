@@ -48,7 +48,7 @@ TEST(UtilTest, ParseCommandLineTest) {
     ASSERT_EQ(ParseCommandLine(R"(\" )", syn), ArgList({R"(")"}));
     ASSERT_EQ(ParseCommandLine(R"(" a")", syn), ArgList({R"( a)"}));
     ASSERT_EQ(ParseCommandLine(R"("\\")", syn), ArgList({R"(\)"}));
-    ASSERT_EQ(ParseCommandLine(R"("\"")", syn), ArgList({R"(")"}));
+    ASSERT_EQ(ParseCommandLine(/*R"("\"")"*/ "\"\\\"\"", syn), ArgList({R"(")"}));
     ASSERT_EQ(ParseCommandLine(R"(a" b c"d )", syn), ArgList({R"(a b cd)"}));
     ASSERT_EQ(ParseCommandLine(R"(\"a b)", syn), ArgList({R"("a)", R"(b)"}));
     ASSERT_EQ(ParseCommandLine(R"(| ! ^ # [)", syn), ArgList({"|", "!", "^", "#", "["}));

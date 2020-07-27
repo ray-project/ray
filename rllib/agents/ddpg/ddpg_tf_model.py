@@ -1,7 +1,9 @@
-from ray.rllib.models.tf.tf_modelv2 import TFModelV2
-from ray.rllib.utils import try_import_tf
+import numpy as np
 
-tf = try_import_tf()
+from ray.rllib.models.tf.tf_modelv2 import TFModelV2
+from ray.rllib.utils.framework import try_import_tf
+
+tf1, tf, tfv = try_import_tf()
 
 
 class DDPGTFModel(TFModelV2):
@@ -53,6 +55,8 @@ class DDPGTFModel(TFModelV2):
 
         self.model_out = tf.keras.layers.Input(
             shape=(num_outputs, ), name="model_out")
+        self.bounded = np.logical_and(action_space.bounded_above,
+                                      action_space.bounded_below).any()
         self.action_dim = action_space.shape[0]
 
         if actor_hiddens:
@@ -72,17 +76,17 @@ class DDPGTFModel(TFModelV2):
 
         # Use sigmoid to scale to [0,1], but also double magnitude of input to
         # emulate behaviour of tanh activation used in DDPG and TD3 papers.
+        # After sigmoid squashing, re-scale to env action space bounds.
         def lambda_(x):
-            sigmoid_out = tf.nn.sigmoid(2 * x)
-            # Rescale to actual env policy scale
-            # (shape of sigmoid_out is [batch_size, dim_actions], so we reshape
-            # to get same dims)
             action_range = (action_space.high - action_space.low)[None]
             low_action = action_space.low[None]
-            actions = action_range * sigmoid_out + low_action
-            return actions
+            sigmoid_out = tf.nn.sigmoid(2 * x)
+            squashed = action_range * sigmoid_out + low_action
+            return squashed
 
-        actor_out = tf.keras.layers.Lambda(lambda_)(actor_out)
+        # Only squash if we have bounded actions.
+        if self.bounded:
+            actor_out = tf.keras.layers.Lambda(lambda_)(actor_out)
 
         self.policy_model = tf.keras.Model(self.model_out, actor_out)
         self.register_variables(self.policy_model.variables)

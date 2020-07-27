@@ -57,6 +57,7 @@ class Searcher:
 
 
     """
+    FINISHED = "FINISHED"
 
     def __init__(self,
                  metric="episode_reward_mean",
@@ -120,7 +121,11 @@ class Searcher:
             trial_id (str): Trial ID used for subsequent notifications.
 
         Returns:
-            dict|None: Configuration for a trial, if possible.
+            dict | FINISHED | None: Configuration for a trial, if possible.
+                If FINISHED is returned, Tune will be notified that
+                no more suggestions/configurations will be provided.
+                If None is returned, Tune will skip the querying of the
+                searcher for this step.
 
         """
         raise NotImplementedError
@@ -172,8 +177,10 @@ class ConcurrencyLimiter(Searcher):
     def suggest(self, trial_id):
         if len(self.live_trials) >= self.max_concurrent:
             return
-        self.live_trials.add(trial_id)
-        return self.searcher.suggest(trial_id)
+        suggestion = self.searcher.suggest(trial_id)
+        if suggestion not in (None, Searcher.FINISHED):
+            self.live_trials.add(trial_id)
+        return suggestion
 
     def on_trial_complete(self, trial_id, result=None, error=False):
         if trial_id not in self.live_trials:
@@ -251,6 +258,11 @@ class SearchGenerator(SearchAlgorithm):
         logger.debug("creating trial")
         trial_id = Trial.generate_id()
         suggested_config = self.searcher.suggest(trial_id)
+        if suggested_config == Searcher.FINISHED:
+            self._finished = True
+            logger.debug("Searcher has finished.")
+            return
+
         if suggested_config is None:
             return
         spec = copy.deepcopy(experiment_spec)

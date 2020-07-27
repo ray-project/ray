@@ -4,11 +4,10 @@ from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.dqn.simple_q_tf_policy import SimpleQTFPolicy
-from ray.rllib.optimizers import SyncReplayOptimizer
-from ray.rllib.optimizers.async_replay_optimizer import LocalReplayBuffer
 from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.exploration import PerWorkerEpsilonGreedy
+from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.replay_ops import StoreToReplayBuffer, Replay
@@ -41,7 +40,7 @@ DEFAULT_CONFIG = with_common_config({
     # N-step Q learning
     "n_step": 1,
 
-    # === Exploration Settings (Experimental) ===
+    # === Exploration Settings ===
     "exploration_config": {
         # The Exploration class to use.
         "type": "EpsilonGreedy",
@@ -84,6 +83,13 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_eps": 1e-6,
     # Whether to LZ4 compress observations
     "compress_observations": False,
+    # Callback to run before learning on a multi-agent batch of experiences.
+    "before_learn_on_batch": None,
+    # If set, this will fix the ratio of replayed from a buffer and learned on
+    # timesteps to sampled from an environment and stored in the replay buffer
+    # timesteps. Otherwise, the replay will proceed at the native ratio
+    # determined by (train_batch_size / rollout_fragment_length).
+    "training_intensity": None,
 
     # === Optimization ===
     # Learning rate for adam optimizer
@@ -126,41 +132,9 @@ DEFAULT_CONFIG = with_common_config({
     "soft_q": DEPRECATED_VALUE,
     "parameter_noise": DEPRECATED_VALUE,
     "grad_norm_clipping": DEPRECATED_VALUE,
-
-    # Use the execution plan API instead of policy optimizers.
-    "use_exec_api": True,
 })
 # __sphinx_doc_end__
 # yapf: enable
-
-
-def make_policy_optimizer(workers, config):
-    """Create the single process DQN policy optimizer.
-
-    Returns:
-        SyncReplayOptimizer: Used for generic off-policy Trainers.
-    """
-    # SimpleQ does not use a PR buffer.
-    kwargs = {"prioritized_replay": config.get("prioritized_replay", False)}
-    kwargs.update(**config["optimizer"])
-    if "prioritized_replay" in config:
-        kwargs.update({
-            "prioritized_replay_alpha": config["prioritized_replay_alpha"],
-            "prioritized_replay_beta": config["prioritized_replay_beta"],
-            "prioritized_replay_beta_annealing_timesteps": config[
-                "prioritized_replay_beta_annealing_timesteps"],
-            "final_prioritized_replay_beta": config[
-                "final_prioritized_replay_beta"],
-            "prioritized_replay_eps": config["prioritized_replay_eps"],
-        })
-
-    return SyncReplayOptimizer(
-        workers,
-        # TODO(sven): Move all PR-beta decays into Schedule components.
-        learning_starts=config["learning_starts"],
-        buffer_size=config["buffer_size"],
-        train_batch_size=config["train_batch_size"],
-        **kwargs)
 
 
 def validate_config(config):
@@ -251,64 +225,33 @@ def validate_config(config):
                               config.get("n_step", 1))
     config["rollout_fragment_length"] = adjusted_batch_size
 
-
-def get_initial_state(config):
-    return {
-        "last_target_update_ts": 0,
-        "num_target_updates": 0,
-    }
-
-
-# TODO(sven): Move this to generic Trainer. Every Algo should do this.
-def update_worker_exploration(trainer):
-    """Sets epsilon exploration values in all policies to updated values.
-
-    According to current time-step.
-
-    Args:
-        trainer (Trainer): The Trainer object for the DQN.
-    """
-    # Store some data for metrics after learning.
-    global_timestep = trainer.optimizer.num_steps_sampled
-    trainer.train_start_timestep = global_timestep
-
-    # Get all current exploration-infos (from Policies, which cache this info).
-    trainer.exploration_infos = trainer.workers.foreach_trainable_policy(
-        lambda p, _: p.get_exploration_info())
+    if config.get("prioritized_replay"):
+        if config["multiagent"]["replay_mode"] == "lockstep":
+            raise ValueError("Prioritized replay is not supported when "
+                             "replay_mode=lockstep.")
+        elif config["replay_sequence_length"] > 1:
+            raise ValueError("Prioritized replay is not supported when "
+                             "replay_sequence_length > 1.")
 
 
-def after_train_result(trainer, result):
-    """Add some DQN specific metrics to results."""
-    global_timestep = trainer.optimizer.num_steps_sampled
-    result.update(
-        timesteps_this_iter=global_timestep - trainer.train_start_timestep,
-        info=dict({
-            "exploration_infos": trainer.exploration_infos,
-            "num_target_updates": trainer.state["num_target_updates"],
-        }, **trainer.optimizer.stats()))
-
-
-def update_target_if_needed(trainer, fetches):
-    """Update the target network in configured intervals."""
-    global_timestep = trainer.optimizer.num_steps_sampled
-    if global_timestep - trainer.state["last_target_update_ts"] > \
-            trainer.config["target_network_update_freq"]:
-        trainer.workers.local_worker().foreach_trainable_policy(
-            lambda p, _: p.update_target())
-        trainer.state["last_target_update_ts"] = global_timestep
-        trainer.state["num_target_updates"] += 1
-
-
-# Experimental distributed execution impl; enable with "use_exec_api": True.
 def execution_plan(workers, config):
+    if config.get("prioritized_replay"):
+        prio_args = {
+            "prioritized_replay_alpha": config["prioritized_replay_alpha"],
+            "prioritized_replay_beta": config["prioritized_replay_beta"],
+            "prioritized_replay_eps": config["prioritized_replay_eps"],
+        }
+    else:
+        prio_args = {}
+
     local_replay_buffer = LocalReplayBuffer(
         num_shards=1,
         learning_starts=config["learning_starts"],
         buffer_size=config["buffer_size"],
         replay_batch_size=config["train_batch_size"],
-        prioritized_replay_alpha=config["prioritized_replay_alpha"],
-        prioritized_replay_beta=config["prioritized_replay_beta"],
-        prioritized_replay_eps=config["prioritized_replay_eps"])
+        replay_mode=config["multiagent"]["replay_mode"],
+        replay_sequence_length=config["replay_sequence_length"],
+        **prio_args)
 
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
@@ -320,7 +263,7 @@ def execution_plan(workers, config):
 
     def update_prio(item):
         samples, info_dict = item
-        if config["prioritized_replay"]:
+        if config.get("prioritized_replay"):
             prio_dict = {}
             for policy_id, info in info_dict.items():
                 # TODO(sven): This is currently structured differently for
@@ -337,7 +280,9 @@ def execution_plan(workers, config):
     # (2) Read and train on experiences from the replay buffer. Every batch
     # returned from the LocalReplay() iterator is passed to TrainOneStep to
     # take a SGD step, and then we decide whether to update the target network.
+    post_fn = config.get("before_learn_on_batch") or (lambda b, *a: b)
     replay_op = Replay(local_buffer=local_replay_buffer) \
+        .for_each(lambda x: post_fn(x, workers, config)) \
         .for_each(TrainOneStep(workers)) \
         .for_each(update_prio) \
         .for_each(UpdateTargetNetwork(
@@ -346,13 +291,28 @@ def execution_plan(workers, config):
     # Alternate deterministically between (1) and (2). Only return the output
     # of (2) since training metrics are not available until (2) runs.
     train_op = Concurrently(
-        [store_op, replay_op], mode="round_robin", output_indexes=[1])
+        [store_op, replay_op],
+        mode="round_robin",
+        output_indexes=[1],
+        round_robin_weights=calculate_rr_weights(config))
 
     return StandardMetricsReporting(train_op, workers, config)
 
 
+def calculate_rr_weights(config):
+    if not config["training_intensity"]:
+        return [1, 1]
+    # e.g., 32 / 4 -> native ratio of 8.0
+    native_ratio = (
+        config["train_batch_size"] / config["rollout_fragment_length"])
+    # Training intensity is specified in terms of
+    # (steps_replayed / steps_sampled), so adjust for the native ratio.
+    weights = [1, config["training_intensity"] / native_ratio]
+    return weights
+
+
 def get_policy_class(config):
-    if config["use_pytorch"]:
+    if config["framework"] == "torch":
         from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
         return DQNTorchPolicy
     else:
@@ -360,7 +320,7 @@ def get_policy_class(config):
 
 
 def get_simple_policy_class(config):
-    if config["use_pytorch"]:
+    if config["framework"] == "torch":
         from ray.rllib.agents.dqn.simple_q_torch_policy import \
             SimpleQTorchPolicy
         return SimpleQTorchPolicy
@@ -374,11 +334,6 @@ GenericOffPolicyTrainer = build_trainer(
     get_policy_class=get_policy_class,
     default_config=DEFAULT_CONFIG,
     validate_config=validate_config,
-    get_initial_state=get_initial_state,
-    make_policy_optimizer=make_policy_optimizer,
-    before_train_step=update_worker_exploration,
-    after_optimizer_step=update_target_if_needed,
-    after_train_result=after_train_result,
     execution_plan=execution_plan)
 
 DQNTrainer = GenericOffPolicyTrainer.with_updates(

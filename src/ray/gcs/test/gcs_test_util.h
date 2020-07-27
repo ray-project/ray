@@ -12,49 +12,103 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_TEST_UTIL_H
-#define RAY_GCS_TEST_UTIL_H
+#pragma once
 
 #include <memory>
 #include <utility>
 
-#include "src/ray/common/task/task.h"
-#include "src/ray/common/task/task_util.h"
-#include "src/ray/common/test_util.h"
-#include "src/ray/util/asio_util.h"
-
+#include "gmock/gmock.h"
+#include "ray/common/placement_group.h"
+#include "ray/common/task/task.h"
+#include "ray/common/task/task_util.h"
+#include "ray/common/test_util.h"
+#include "ray/util/asio_util.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
 namespace ray {
 
 struct Mocker {
-  static TaskSpecification GenActorCreationTask(const JobID &job_id,
-                                                int max_reconstructions = 100) {
+  static TaskSpecification GenActorCreationTask(const JobID &job_id, int max_restarts,
+                                                bool detached, const std::string &name,
+                                                const rpc::Address &owner_address) {
     TaskSpecBuilder builder;
     rpc::Address empty_address;
     ray::FunctionDescriptor empty_descriptor =
         ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
     auto actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
     auto task_id = TaskID::ForActorCreationTask(actor_id);
+    auto resource = std::unordered_map<std::string, double>();
     builder.SetCommonTaskSpec(task_id, Language::PYTHON, empty_descriptor, job_id,
-                              TaskID::Nil(), 0, TaskID::Nil(), empty_address, 1, {}, {});
-    builder.SetActorCreationTaskSpec(actor_id, max_reconstructions);
+                              TaskID::Nil(), 0, TaskID::Nil(), owner_address, 1, resource,
+                              resource);
+    builder.SetActorCreationTaskSpec(actor_id, max_restarts, {}, 1, detached, name);
     return builder.Build();
   }
 
   static rpc::CreateActorRequest GenCreateActorRequest(const JobID &job_id,
-                                                       int max_reconstructions = 100) {
+                                                       int max_restarts = 0,
+                                                       bool detached = false,
+                                                       const std::string name = "") {
+    rpc::Address owner_address;
+    owner_address.set_raylet_id(ClientID::FromRandom().Binary());
+    owner_address.set_ip_address("1234");
+    owner_address.set_port(5678);
+    owner_address.set_worker_id(WorkerID::FromRandom().Binary());
+    auto actor_creation_task_spec =
+        GenActorCreationTask(job_id, max_restarts, detached, name, owner_address);
     rpc::CreateActorRequest request;
-    auto actor_creation_task_spec = GenActorCreationTask(job_id, max_reconstructions);
     request.mutable_task_spec()->CopyFrom(actor_creation_task_spec.GetMessage());
     return request;
   }
 
-  static std::shared_ptr<rpc::GcsNodeInfo> GenNodeInfo(uint16_t port = 0) {
+  static rpc::RegisterActorRequest GenRegisterActorRequest(const JobID &job_id,
+                                                           int max_restarts = 0,
+                                                           bool detached = false,
+                                                           const std::string name = "") {
+    rpc::Address owner_address;
+    owner_address.set_raylet_id(ClientID::FromRandom().Binary());
+    owner_address.set_ip_address("1234");
+    owner_address.set_port(5678);
+    owner_address.set_worker_id(WorkerID::FromRandom().Binary());
+    auto actor_creation_task_spec =
+        GenActorCreationTask(job_id, max_restarts, detached, name, owner_address);
+    rpc::RegisterActorRequest request;
+    request.mutable_task_spec()->CopyFrom(actor_creation_task_spec.GetMessage());
+    return request;
+  }
+
+  static PlacementGroupSpecification GenPlacementGroupCreation(
+      const std::string &name,
+      std::vector<std::unordered_map<std::string, double>> &bundles,
+      rpc::PlacementStrategy strategy) {
+    PlacementGroupSpecBuilder builder;
+
+    auto placement_group_id = PlacementGroupID::FromRandom();
+    builder.SetPlacementGroupSpec(placement_group_id, name, bundles, strategy);
+    return builder.Build();
+  }
+
+  static rpc::CreatePlacementGroupRequest GenCreatePlacementGroupRequest(
+      const std::string name = "") {
+    rpc::CreatePlacementGroupRequest request;
+    std::vector<std::unordered_map<std::string, double>> bundles;
+    rpc::PlacementStrategy strategy = rpc::PlacementStrategy::SPREAD;
+    std::unordered_map<std::string, double> bundle;
+    bundle["CPU"] = 1.0;
+    bundles.push_back(bundle);
+    bundles.push_back(bundle);
+    auto placement_group_creation_spec =
+        GenPlacementGroupCreation(name, bundles, strategy);
+    request.mutable_placement_group_spec()->CopyFrom(
+        placement_group_creation_spec.GetMessage());
+    return request;
+  }
+  static std::shared_ptr<rpc::GcsNodeInfo> GenNodeInfo(
+      uint16_t port = 0, const std::string address = "127.0.0.1") {
     auto node = std::make_shared<rpc::GcsNodeInfo>();
     node->set_node_id(ClientID::FromRandom().Binary());
     node->set_node_manager_port(port);
-    node->set_node_manager_address("127.0.0.1");
+    node->set_node_manager_address(address);
     return node;
   }
 
@@ -73,10 +127,9 @@ struct Mocker {
     ActorID actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
     actor_table_data->set_actor_id(actor_id.Binary());
     actor_table_data->set_job_id(job_id.Binary());
-    actor_table_data->set_state(
-        rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
-    actor_table_data->set_max_reconstructions(1);
-    actor_table_data->set_remaining_reconstructions(1);
+    actor_table_data->set_state(rpc::ActorTableData::ALIVE);
+    actor_table_data->set_max_restarts(1);
+    actor_table_data->set_num_restarts(0);
     return actor_table_data;
   }
 
@@ -97,6 +150,7 @@ struct Mocker {
     auto task_lease_data = std::make_shared<rpc::TaskLeaseData>();
     task_lease_data->set_task_id(task_id);
     task_lease_data->set_node_manager_id(node_id);
+    task_lease_data->set_timeout(9999);
     return task_lease_data;
   }
 
@@ -113,13 +167,11 @@ struct Mocker {
     return error_table_data;
   }
 
-  static std::shared_ptr<rpc::WorkerFailureData> GenWorkerFailureData() {
-    auto worker_failure_data = std::make_shared<rpc::WorkerFailureData>();
-    worker_failure_data->set_timestamp(std::time(nullptr));
-    return worker_failure_data;
+  static std::shared_ptr<rpc::WorkerTableData> GenWorkerTableData() {
+    auto worker_table_data = std::make_shared<rpc::WorkerTableData>();
+    worker_table_data->set_timestamp(std::time(nullptr));
+    return worker_table_data;
   }
 };
 
 }  // namespace ray
-
-#endif  // RAY_GCS_TEST_UTIL_H

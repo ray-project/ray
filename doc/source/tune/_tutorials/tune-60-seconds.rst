@@ -31,29 +31,29 @@ Here's an example of specifying the objective function using :ref:`the function-
         for x in range(20):
             score = objective(x, config["a"], config["b"])
 
-            tune.track.log(score=score)  # This sends the score to Tune.
+            tune.report(score=score)  # This sends the score to Tune.
 
 Now, there's two Trainable APIs - one being the :ref:`function-based API <tune-function-api>` that we demonstrated above.
 
-The other is a :ref:`class-based API <tune-class-api>` that enables :ref:`checkpointing and pausing <tune-trainable-save-restore>`. Here's an example of specifying the objective function using the :ref:`class-based API <tune-class-api>`:
+The other is a :ref:`class-based API <tune-class-api>`. Here's an example of specifying the objective function using the :ref:`class-based API <tune-class-api>`:
 
 .. code-block:: python
 
     from ray import tune
 
     class Trainable(tune.Trainable):
-        def _setup(self, config):
+        def setup(self, config):
             # config (dict): A dict of hyperparameters
             self.x = 0
             self.a = config["a"]
             self.b = config["b"]
 
-        def _train(self):  # This is called iteratively.
+        def step(self):  # This is called iteratively.
             score = objective(self.x, self.a, self.b)
             self.x += 1
             return {"score": score}
 
-.. tip:: Do not use ``tune.track.log`` within a ``Trainable`` class.
+.. tip:: Do not use ``tune.report`` within a ``Trainable`` class.
 
 See the documentation: :ref:`trainable-docs` and :ref:`examples <tune-general-examples>`.
 
@@ -132,9 +132,9 @@ To optimize the hyperparameters of your training process, you will want to use a
         stop={"training_iteration": 20}
     )
 
-Tune has SearchAlgorithms that integrate with many popular **optimization** libraries, such as :ref:`Nevergrad <tune-nevergrad>` and :ref:`Hyperopt <tune-hyperopt>`.
+Tune has SearchAlgorithms that integrate with many popular **optimization** libraries, such as :ref:`Nevergrad <nevergrad>` and :ref:`Hyperopt <tune-hyperopt>`.
 
-See the documentation: :ref:`searchalg-ref`.
+See the documentation: :ref:`tune-search-alg`.
 
 Trial Schedulers
 ----------------

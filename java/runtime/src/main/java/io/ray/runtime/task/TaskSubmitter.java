@@ -1,11 +1,15 @@
 package io.ray.runtime.task;
 
-import io.ray.api.BaseActor;
+import io.ray.api.BaseActorHandle;
+import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
+import io.ray.api.placementgroup.PlacementGroup;
+import io.ray.api.placementgroup.PlacementStrategy;
 import io.ray.runtime.functionmanager.FunctionDescriptor;
 import java.util.List;
+import java.util.Map;
 
 /**
  * A set of methods to submit tasks and create actors.
@@ -29,9 +33,10 @@ public interface TaskSubmitter {
    * @param args Arguments of this task.
    * @param options Options for this actor creation task.
    * @return Handle to the actor.
+   * @throws IllegalArgumentException if actor of specified name exists
    */
-  BaseActor createActor(FunctionDescriptor functionDescriptor, List<FunctionArg> args,
-      ActorCreationOptions options);
+  BaseActorHandle createActor(FunctionDescriptor functionDescriptor, List<FunctionArg> args,
+                              ActorCreationOptions options) throws IllegalArgumentException;
 
   /**
    * Submit an actor task.
@@ -42,6 +47,18 @@ public interface TaskSubmitter {
    * @param options Options for this task.
    * @return Ids of the return objects.
    */
-  List<ObjectId> submitActorTask(BaseActor actor, FunctionDescriptor functionDescriptor,
-      List<FunctionArg> args, int numReturns, CallOptions options);
+  List<ObjectId> submitActorTask(BaseActorHandle actor, FunctionDescriptor functionDescriptor,
+                                 List<FunctionArg> args, int numReturns, CallOptions options);
+
+  /**
+   * Create a placement group.
+   * @param bundles Preallocated resource list.
+   * @param strategy Actor placement strategy.
+   * @return A handle to the created placement group.
+   */
+  PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
+      PlacementStrategy strategy);
+
+  BaseActorHandle getActor(ActorId actorId);
+
 }

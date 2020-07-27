@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 UCB_CONFIG = with_common_config({
     # No remote workers by default.
     "num_workers": 0,
-    "use_pytorch": True,
+    "framework": "torch",  # Only PyTorch supported so far.
 
     # Do online learning one step at a time.
     "rollout_fragment_length": 1,
@@ -29,17 +29,5 @@ UCB_CONFIG = with_common_config({
 # __sphinx_doc_end__
 # yapf: enable
 
-
-def get_stats(trainer):
-    env_metrics = trainer.collect_metrics()
-    stats = trainer.optimizer.stats()
-    # Uncomment if regret at each time step is needed
-    # stats.update({"all_regrets": trainer.get_policy().regrets})
-    return dict(env_metrics, **stats)
-
-
 LinUCBTrainer = build_trainer(
-    name="LinUCB",
-    default_config=UCB_CONFIG,
-    default_policy=BanditPolicy,
-    collect_metrics_fn=get_stats)
+    name="LinUCB", default_config=UCB_CONFIG, default_policy=BanditPolicy)

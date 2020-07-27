@@ -1,4 +1,5 @@
 import logging
+import os
 
 import numpy as np
 
@@ -32,12 +33,17 @@ class RayParams:
             sharded redis tables (task and object tables).
         object_manager_port int: The port to use for the object manager.
         node_manager_port: The port to use for the node manager.
+        gcs_server_port: The port to use for the GCS server.
         node_ip_address (str): The IP address of the node that we are on.
         raylet_ip_address (str): The IP address of the raylet that this node
             connects to.
-        object_id_seed (int): Used to seed the deterministic generation of
-            object IDs. The same value can be used across multiple runs of the
-            same job in order to generate the object IDs in a consistent
+        min_worker_port (int): The lowest port number that workers will bind
+            on. If not set or set to 0, random ports will be chosen.
+        max_worker_port (int): The highest port number that workers will bind
+            on. If set, min_worker_port must also be set.
+        object_ref_seed (int): Used to seed the deterministic generation of
+            object refs. The same value can be used across multiple runs of the
+            same job in order to generate the object refs in a consistent
             manner. However, the same ID should not be used for different jobs.
         redirect_worker_output: True if the stdout and stderr of worker
             processes should be redirected to files.
@@ -55,14 +61,16 @@ class RayParams:
             worker.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
-        include_webui: Boolean flag indicating whether to start the web
+        include_dashboard: Boolean flag indicating whether to start the web
             UI, which displays the status of the Ray cluster. If this value is
             None, then the UI will be started if the relevant dependencies are
             present.
-        webui_host: The host to bind the web UI server to. Can either be
+        dashboard_host: The host to bind the web UI server to. Can either be
             localhost (127.0.0.1) or 0.0.0.0 (available from all interfaces).
             By default, this is set to localhost to prevent access from
             external machines.
+        dashboard_port: The port to bind the dashboard server to.
+            Defaults to 8265.
         logging_level: Logging level, default will be logging.INFO.
         logging_format: Logging format, default contains a timestamp,
             filename, line number, and message. See ray_constants.py.
@@ -80,8 +88,12 @@ class RayParams:
             Java worker.
         java_worker_options (list): The command options for Java worker.
         load_code_from_local: Whether load code from local file or from GCS.
+        metrics_agent_port(int): The port to bind metrics agent.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
+        lru_evict (bool): Enable LRU eviction if space is needed.
+        enable_object_reconstruction (bool): Enable plasma reconstruction on
+            failure.
     """
 
     def __init__(self,
@@ -96,9 +108,12 @@ class RayParams:
                  redis_shard_ports=None,
                  object_manager_port=None,
                  node_manager_port=None,
+                 gcs_server_port=None,
                  node_ip_address=None,
                  raylet_ip_address=None,
-                 object_id_seed=None,
+                 min_worker_port=None,
+                 max_worker_port=None,
+                 object_ref_seed=None,
                  driver_mode=None,
                  redirect_worker_output=None,
                  redirect_output=None,
@@ -108,8 +123,9 @@ class RayParams:
                  plasma_directory=None,
                  worker_path=None,
                  huge_pages=False,
-                 include_webui=None,
-                 webui_host="localhost",
+                 include_dashboard=None,
+                 dashboard_host="localhost",
+                 dashboard_port=ray_constants.DEFAULT_DASHBOARD_PORT,
                  logging_level=logging.INFO,
                  logging_format=ray_constants.LOGGER_FORMAT,
                  plasma_store_socket_name=None,
@@ -120,8 +136,11 @@ class RayParams:
                  include_java=False,
                  java_worker_options=None,
                  load_code_from_local=False,
-                 _internal_config=None):
-        self.object_id_seed = object_id_seed
+                 _internal_config=None,
+                 enable_object_reconstruction=False,
+                 metrics_agent_port=None,
+                 lru_evict=False):
+        self.object_ref_seed = object_ref_seed
         self.redis_address = redis_address
         self.num_cpus = num_cpus
         self.num_gpus = num_gpus
@@ -133,8 +152,11 @@ class RayParams:
         self.redis_shard_ports = redis_shard_ports
         self.object_manager_port = object_manager_port
         self.node_manager_port = node_manager_port
+        self.gcs_server_port = gcs_server_port
         self.node_ip_address = node_ip_address
         self.raylet_ip_address = raylet_ip_address
+        self.min_worker_port = min_worker_port
+        self.max_worker_port = max_worker_port
         self.driver_mode = driver_mode
         self.redirect_worker_output = redirect_worker_output
         self.redirect_output = redirect_output
@@ -144,8 +166,9 @@ class RayParams:
         self.plasma_directory = plasma_directory
         self.worker_path = worker_path
         self.huge_pages = huge_pages
-        self.include_webui = include_webui
-        self.webui_host = webui_host
+        self.include_dashboard = include_dashboard
+        self.dashboard_host = dashboard_host
+        self.dashboard_port = dashboard_port
         self.plasma_store_socket_name = plasma_store_socket_name
         self.raylet_socket_name = raylet_socket_name
         self.temp_dir = temp_dir
@@ -154,8 +177,35 @@ class RayParams:
         self.include_java = include_java
         self.java_worker_options = java_worker_options
         self.load_code_from_local = load_code_from_local
+        self.metrics_agent_port = metrics_agent_port
         self._internal_config = _internal_config
+        self._lru_evict = lru_evict
+        self._enable_object_reconstruction = enable_object_reconstruction
         self._check_usage()
+
+        # Set the internal config options for LRU eviction.
+        if lru_evict:
+            # Turn off object pinning.
+            if self._internal_config is None:
+                self._internal_config = dict()
+            if self._internal_config.get("object_pinning_enabled", False):
+                raise Exception(
+                    "Object pinning cannot be enabled if using LRU eviction.")
+            self._internal_config["object_pinning_enabled"] = False
+            self._internal_config["object_store_full_max_retries"] = -1
+            self._internal_config["free_objects_period_milliseconds"] = 1000
+
+        # Set the internal config options for object reconstruction.
+        if enable_object_reconstruction:
+            # Turn off object pinning.
+            if self._internal_config is None:
+                self._internal_config = dict()
+            if lru_evict:
+                raise Exception(
+                    "Object reconstruction cannot be enabled if using LRU "
+                    "eviction.")
+            self._internal_config["lineage_pinning_enabled"] = True
+            self._internal_config["free_objects_period_milliseconds"] = -1
 
     def update(self, **kwargs):
         """Update the settings according to the keyword arguments.
@@ -189,6 +239,31 @@ class RayParams:
         self._check_usage()
 
     def _check_usage(self):
+        # Used primarily for testing.
+        if os.environ.get("RAY_USE_RANDOM_PORTS", False):
+            if self.min_worker_port is None and self.min_worker_port is None:
+                self.min_worker_port = 0
+                self.max_worker_port = 0
+
+        if self.min_worker_port is not None:
+            if self.min_worker_port != 0 and (self.min_worker_port < 1024
+                                              or self.min_worker_port > 65535):
+                raise ValueError("min_worker_port must be 0 or an integer "
+                                 "between 1024 and 65535.")
+
+        if self.max_worker_port is not None:
+            if self.min_worker_port is None:
+                raise ValueError("If max_worker_port is set, min_worker_port "
+                                 "must also be set.")
+            elif self.max_worker_port != 0:
+                if self.max_worker_port < 1024 or self.max_worker_port > 65535:
+                    raise ValueError(
+                        "max_worker_port must be 0 or an integer between "
+                        "1024 and 65535.")
+                elif self.max_worker_port <= self.min_worker_port:
+                    raise ValueError("max_worker_port must be higher than "
+                                     "min_worker_port.")
+
         if self.resources is not None:
             assert "CPU" not in self.resources, (
                 "'CPU' should not be included in the resource dictionary. Use "

@@ -17,10 +17,10 @@ function usage()
   echo
 }
 
-RUN_TYPE=diff
+RUN_TYPE="diff"
 
 # Parse options
-while [[ $# > 0 ]]; do
+while [ $# -gt 0 ]; do
   key="$1"
   case $key in
     -h|--help)
@@ -28,7 +28,7 @@ while [[ $# > 0 ]]; do
       exit 0
       ;;
     -c|--check)
-      RUN_TYPE=diff
+      RUN_TYPE="diff"
       ;;
     -f|--fix)
       RUN_TYPE=fix
@@ -37,14 +37,14 @@ while [[ $# > 0 ]]; do
       echo "ERROR: unknown option \"$key\""
       echo
       usage
-      exit -1
+      exit 1
       ;;
   esac
   shift
 done
 
-pushd $ROOT_DIR/../..
-BAZEL_FILES="bazel/BUILD bazel/BUILD.plasma bazel/ray.bzl BUILD.bazel java/BUILD.bazel
- cpp/BUILD.bazel streaming/BUILD.bazel streaming/java/BUILD.bazel WORKSPACE"
-buildifier -mode=$RUN_TYPE -diff_command="diff -u" $BAZEL_FILES
+pushd "$ROOT_DIR"/../..
+BAZEL_FILES=(bazel/BUILD bazel/BUILD.arrow bazel/ray.bzl BUILD.bazel java/BUILD.bazel \
+ cpp/BUILD.bazel streaming/BUILD.bazel streaming/java/BUILD.bazel WORKSPACE)
+buildifier -mode=$RUN_TYPE -diff_command="diff -u" "${BAZEL_FILES[@]}"
 popd

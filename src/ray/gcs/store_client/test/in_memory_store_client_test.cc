@@ -30,12 +30,12 @@ class InMemoryStoreClientTest : public StoreClientTestBase {
 
 TEST_F(InMemoryStoreClientTest, AsyncPutAndAsyncGetTest) { TestAsyncPutAndAsyncGet(); }
 
-TEST_F(InMemoryStoreClientTest, AsyncDeleteTest) { TestAsyncDelete(); }
-
-TEST_F(InMemoryStoreClientTest, AsyncGetAllTest) { TestAsyncGetAll(); }
-
 TEST_F(InMemoryStoreClientTest, AsyncPutAndDeleteWithIndexTest) {
   TestAsyncPutAndDeleteWithIndex();
+}
+
+TEST_F(InMemoryStoreClientTest, AsyncGetAllAndBatchDeleteTest) {
+  TestAsyncGetAllAndBatchDelete();
 }
 
 }  // namespace gcs

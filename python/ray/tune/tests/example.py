@@ -11,25 +11,31 @@
 # ray.init(address=args.address)
 
 # __quick_start_begin__
-import torch.optim as optim
 from ray import tune
-from ray.tune.examples.mnist_pytorch import get_data_loaders, ConvNet, train, test
 
 
-def train_mnist(config):
-    train_loader, test_loader = get_data_loaders()
-    model = ConvNet()
-    optimizer = optim.SGD(model.parameters(), lr=config["lr"])
-    for i in range(10):
-        train(model, optimizer, train_loader)
-        acc = test(model, test_loader)
-        tune.track.log(mean_accuracy=acc)
+def objective(step, alpha, beta):
+    return (0.1 + alpha * step / 100)**(-1) + beta * 0.1
+
+
+def training_function(config):
+    # Hyperparameters
+    alpha, beta = config["alpha"], config["beta"]
+    for step in range(10):
+        # Iterative training function - can be any arbitrary training procedure.
+        intermediate_score = objective(step, alpha, beta)
+        # Feed the score back back to Tune.
+        tune.report(mean_loss=intermediate_score)
 
 
 analysis = tune.run(
-    train_mnist, config={"lr": tune.grid_search([0.001, 0.01, 0.1])})
+    training_function,
+    config={
+        "alpha": tune.grid_search([0.001, 0.01, 0.1]),
+        "beta": tune.choice([1, 2, 3])
+    })
 
-print("Best config: ", analysis.get_best_config(metric="mean_accuracy"))
+print("Best config: ", analysis.get_best_config(metric="mean_loss"))
 
 # Get a dataframe for analyzing trial results.
 df = analysis.dataframe()

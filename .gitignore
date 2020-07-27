@@ -168,9 +168,14 @@ venv
 # Vim
 .*.swp
 *.swp
+tags
+
+# Emacs
+.#*
 
 # tools
 tools/prometheus*
 
 # ray project files
 project-id
+.mypy_cache/

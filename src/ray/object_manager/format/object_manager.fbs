@@ -16,9 +16,6 @@
 namespace ray.object_manager.protocol;
 
 // Object information data structure.
-// NOTE(pcm): This structure is replicated in
-// https://github.com/apache/arrow/blob/master/cpp/src/plasma/common.fbs,
-// so if you modify it, you should also modify that one.
 table ObjectInfo {
   // Object ID of this object.
   object_id: string;
@@ -32,16 +29,10 @@ table ObjectInfo {
   create_time: long;
   // How long creation of this object took.
   construct_duration: long;
-  // Hash of the object content. If the object is not sealed yet this is
-  // an empty string.
-  digest: string;
   // Specifies if this object was deleted or added.
   is_deletion: bool;
 }
 
-// NOTE(pcm): This structure is replicated in
-// https://github.com/apache/arrow/blob/master/cpp/src/plasma/plasma.fbs
-// so if you modify it, you should also modify that one.
 table PlasmaNotification {
   object_info: [ObjectInfo];
 }

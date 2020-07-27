@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_PROFILING_H
-#define RAY_CORE_WORKER_PROFILING_H
+#pragma once
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
@@ -81,5 +80,3 @@ class ProfileEvent {
 }  // namespace worker
 
 }  // namespace ray
-
-#endif  // RAY_CORE_WORKER_PROFILING_H

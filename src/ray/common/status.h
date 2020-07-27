@@ -26,8 +26,7 @@
 
 // Adapted from Apache Arrow, Apache Kudu, TensorFlow
 
-#ifndef RAY_STATUS_H_
-#define RAY_STATUS_H_
+#pragma once
 
 #include <cstring>
 #include <iosfwd>
@@ -56,6 +55,15 @@ class error_code;
     }                                  \
   } while (0)
 
+#define RAY_RETURN_NOT_OK_ELSE(s, else_) \
+  do {                                   \
+    ::ray::Status _s = (s);              \
+    if (!_s.ok()) {                      \
+      else_;                             \
+      return _s;                         \
+    }                                    \
+  } while (0)
+
 // If 'to_call' returns a bad status, CHECK immediately with a logged message
 // of 'msg' followed by the status.
 #define RAY_CHECK_OK_PREPEND(to_call, msg)                \
@@ -68,27 +76,6 @@ class error_code;
 // logged message.
 #define RAY_CHECK_OK(s) RAY_CHECK_OK_PREPEND(s, "Bad status")
 
-// This macro is used to replace the "ARROW_CHECK_OK_PREPEND" macro.
-#define RAY_ARROW_CHECK_OK_PREPEND(to_call, msg)          \
-  do {                                                    \
-    ::arrow::Status _s = (to_call);                       \
-    RAY_CHECK(_s.ok()) << (msg) << ": " << _s.ToString(); \
-  } while (0)
-
-// This macro is used to replace the "ARROW_CHECK_OK" macro.
-#define RAY_ARROW_CHECK_OK(s) RAY_ARROW_CHECK_OK_PREPEND(s, "Bad status")
-
-// If arrow status is not ok, return a ray IOError status
-// with the error message.
-#define RAY_ARROW_RETURN_NOT_OK(s)               \
-  do {                                           \
-    ::arrow::Status _s = (s);                    \
-    if (RAY_PREDICT_FALSE(!_s.ok())) {           \
-      return ray::Status::IOError(_s.message()); \
-      ;                                          \
-    }                                            \
-  } while (0)
-
 namespace ray {
 
 enum class StatusCode : char {
@@ -98,8 +85,6 @@ enum class StatusCode : char {
   TypeError = 3,
   Invalid = 4,
   IOError = 5,
-  ObjectExists = 6,
-  ObjectStoreFull = 7,
   UnknownError = 9,
   NotImplemented = 10,
   RedisError = 11,
@@ -107,6 +92,13 @@ enum class StatusCode : char {
   Interrupted = 13,
   IntentionalSystemExit = 14,
   UnexpectedSystemExit = 15,
+  NotFound = 16,
+  Disconnected = 17,
+  // object store status
+  ObjectExists = 21,
+  ObjectNotFound = 22,
+  ObjectAlreadySealed = 23,
+  ObjectStoreFull = 24,
 };
 
 #if defined(__clang__)
@@ -158,14 +150,6 @@ class RAY_EXPORT Status {
     return Status(StatusCode::IOError, msg);
   }
 
-  static Status ObjectExists(const std::string &msg) {
-    return Status(StatusCode::ObjectExists, msg);
-  }
-
-  static Status ObjectStoreFull(const std::string &msg) {
-    return Status(StatusCode::ObjectStoreFull, msg);
-  }
-
   static Status RedisError(const std::string &msg) {
     return Status(StatusCode::RedisError, msg);
   }
@@ -186,6 +170,30 @@ class RAY_EXPORT Status {
     return Status(StatusCode::UnexpectedSystemExit, "user code caused exit");
   }
 
+  static Status NotFound(const std::string &msg) {
+    return Status(StatusCode::NotFound, msg);
+  }
+
+  static Status Disconnected(const std::string &msg) {
+    return Status(StatusCode::Disconnected, msg);
+  }
+
+  static Status ObjectExists(const std::string &msg) {
+    return Status(StatusCode::ObjectExists, msg);
+  }
+
+  static Status ObjectNotFound(const std::string &msg) {
+    return Status(StatusCode::ObjectNotFound, msg);
+  }
+
+  static Status ObjectAlreadySealed(const std::string &msg) {
+    return Status(StatusCode::ObjectAlreadySealed, msg);
+  }
+
+  static Status ObjectStoreFull(const std::string &msg) {
+    return Status(StatusCode::ObjectStoreFull, msg);
+  }
+
   // Returns true iff the status indicates success.
   bool ok() const { return (state_ == NULL); }
 
@@ -193,8 +201,6 @@ class RAY_EXPORT Status {
   bool IsKeyError() const { return code() == StatusCode::KeyError; }
   bool IsInvalid() const { return code() == StatusCode::Invalid; }
   bool IsIOError() const { return code() == StatusCode::IOError; }
-  bool IsObjectExists() const { return code() == StatusCode::ObjectExists; }
-  bool IsObjectStoreFull() const { return code() == StatusCode::ObjectStoreFull; }
   bool IsTypeError() const { return code() == StatusCode::TypeError; }
   bool IsUnknownError() const { return code() == StatusCode::UnknownError; }
   bool IsNotImplemented() const { return code() == StatusCode::NotImplemented; }
@@ -208,6 +214,12 @@ class RAY_EXPORT Status {
   bool IsIntentionalSystemExit() const {
     return code() == StatusCode::IntentionalSystemExit;
   }
+  bool IsNotFound() const { return code() == StatusCode::NotFound; }
+  bool IsDisconnected() const { return code() == StatusCode::Disconnected; }
+  bool IsObjectExists() const { return code() == StatusCode::ObjectExists; }
+  bool IsObjectNotFound() const { return code() == StatusCode::ObjectNotFound; }
+  bool IsObjectAlreadySealed() const { return code() == StatusCode::ObjectAlreadySealed; }
+  bool IsObjectStoreFull() const { return code() == StatusCode::ObjectStoreFull; }
 
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.
@@ -252,5 +264,3 @@ inline void Status::operator=(const Status &s) {
 Status boost_to_ray_status(const boost::system::error_code &error);
 
 }  // namespace ray
-
-#endif  // RAY_STATUS_H_

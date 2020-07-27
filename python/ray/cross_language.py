@@ -76,7 +76,8 @@ def java_actor_class(class_name):
     return ActorClass._ray_from_function_descriptor(
         Language.JAVA,
         JavaFunctionDescriptor(class_name, "<init>", ""),
-        0,  # max_reconstructions,
+        0,  # max_restarts,
+        0,  # max_task_retries,
         None,  # num_cpus,
         None,  # num_gpus,
         None,  # memory,

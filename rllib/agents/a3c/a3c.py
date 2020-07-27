@@ -6,7 +6,6 @@ from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.execution.rollout_ops import AsyncGradients
 from ray.rllib.execution.train_ops import ApplyGradients
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.optimizers import AsyncGradientsOptimizer
 
 logger = logging.getLogger(__name__)
 
@@ -38,15 +37,13 @@ DEFAULT_CONFIG = with_common_config({
     # Workers sample async. Note that this increases the effective
     # rollout_fragment_length by up to 5x due to async buffering of batches.
     "sample_async": True,
-    # Use the execution plan API instead of policy optimizers.
-    "use_exec_api": True,
 })
 # __sphinx_doc_end__
 # yapf: enable
 
 
 def get_policy_class(config):
-    if config["use_pytorch"]:
+    if config["framework"] == "torch":
         from ray.rllib.agents.a3c.a3c_torch_policy import \
             A3CTorchPolicy
         return A3CTorchPolicy
@@ -57,18 +54,12 @@ def get_policy_class(config):
 def validate_config(config):
     if config["entropy_coeff"] < 0:
         raise DeprecationWarning("entropy_coeff must be >= 0")
-    if config["sample_async"] and config["use_pytorch"]:
+    if config["sample_async"] and config["framework"] == "torch":
         config["sample_async"] = False
-        logger.warning(
-            "The sample_async option is not supported with use_pytorch: "
-            "Multithreading can be lead to crashes if used with pytorch.")
+        logger.warning("`sample_async=True` is not supported for PyTorch! "
+                       "Multithreading can lead to crashes.")
 
 
-def make_async_optimizer(workers, config):
-    return AsyncGradientsOptimizer(workers, **config["optimizer"])
-
-
-# Experimental distributed execution impl; enable with "use_exec_api": True.
 def execution_plan(workers, config):
     # For A3C, compute policy gradients remotely on the rollout workers.
     grads = AsyncGradients(workers)
@@ -86,5 +77,4 @@ A3CTrainer = build_trainer(
     default_policy=A3CTFPolicy,
     get_policy_class=get_policy_class,
     validate_config=validate_config,
-    make_policy_optimizer=make_async_optimizer,
     execution_plan=execution_plan)

@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_RAYLET_SCHEDULING_POLICY_H
-#define RAY_RAYLET_SCHEDULING_POLICY_H
+#pragma once
 
 #include <random>
 #include <unordered_map>
 
+#include "ray/common/bundle_spec.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/raylet/scheduling_queue.h"
 
@@ -50,6 +50,17 @@ class SchedulingPolicy {
       std::unordered_map<ClientID, SchedulingResources> &cluster_resources,
       const ClientID &local_client_id);
 
+  /// \param cluster_resources: a set of cluster resources containing resource and load
+  /// information for some subset of the cluster.
+  /// \param local_client_id The ID of the node manager that owns this
+  /// SchedulingPolicy object.
+  /// \param bundle_spec the description of a bundle which include the resource the bundle
+  /// need. \return If this bundle can be scheduled in this node, return true; else return
+  /// false.
+  bool ScheduleBundle(
+      std::unordered_map<ClientID, SchedulingResources> &cluster_resources,
+      const ClientID &local_client_id, const ray::BundleSpecification &bundle_spec);
+
   /// \brief Given a set of cluster resources perform a spill-over scheduling operation.
   ///
   /// \param cluster_resources: a set of cluster resources containing resource and load
@@ -72,5 +83,3 @@ class SchedulingPolicy {
 }  // namespace raylet
 
 }  // namespace ray
-
-#endif  // RAY_RAYLET_SCHEDULING_POLICY_H

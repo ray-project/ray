@@ -234,7 +234,7 @@ genrule(
         mkdir -p "$$GENERATED_DIR"
         # Copy protobuf-generated files.
         for f in $(locations //streaming/java:all_java_proto); do
-            unzip -o "$$f" -x META-INF/MANIFEST.MF -d "$$WORK_DIR/streaming/java/streaming-runtime/src/main/java"
+            unzip -q -o "$$f" -x META-INF/MANIFEST.MF -d "$$WORK_DIR/streaming/java/streaming-runtime/src/main/java"
         done
         date > $@
     """,

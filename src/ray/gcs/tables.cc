@@ -15,11 +15,14 @@
 #include "ray/gcs/tables.h"
 
 #include "absl/time/clock.h"
-
 #include "ray/common/common_protocol.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs/redis_gcs_client.h"
+
+extern "C" {
+#include "hiredis/hiredis.h"
+}
 
 namespace {
 
@@ -870,9 +873,12 @@ template class Log<JobID, ErrorTableData>;
 template class Log<ClientID, GcsNodeInfo>;
 template class Log<JobID, JobTableData>;
 template class Log<UniqueID, ProfileTableData>;
+template class Log<ClientID, HeartbeatTableData>;
+template class Log<ClientID, HeartbeatBatchTableData>;
+template class Log<WorkerID, WorkerTableData>;
 template class Table<ActorCheckpointID, ActorCheckpointData>;
 template class Table<ActorID, ActorCheckpointIdData>;
-template class Table<WorkerID, WorkerFailureData>;
+template class Table<WorkerID, WorkerTableData>;
 template class Table<ActorID, ActorTableData>;
 
 template class Log<ClientID, ResourceTableData>;

@@ -3,9 +3,10 @@ package io.ray.streaming.api.context;
 import com.google.common.base.Preconditions;
 import io.ray.api.Ray;
 import io.ray.streaming.api.stream.StreamSink;
+import io.ray.streaming.client.JobClient;
 import io.ray.streaming.jobgraph.JobGraph;
 import io.ray.streaming.jobgraph.JobGraphBuilder;
-import io.ray.streaming.schedule.JobScheduler;
+import io.ray.streaming.jobgraph.JobGraphOptimizer;
 import io.ray.streaming.util.Config;
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -56,8 +57,10 @@ public class StreamingContext implements Serializable {
    */
   public void execute(String jobName) {
     JobGraphBuilder jobGraphBuilder = new JobGraphBuilder(this.streamSinks, jobName);
-    this.jobGraph = jobGraphBuilder.build();
+    JobGraph originalJobGraph = jobGraphBuilder.build();
+    this.jobGraph = new JobGraphOptimizer(originalJobGraph).optimize();
     jobGraph.printJobGraph();
+    LOG.info("JobGraph digraph\n{}", jobGraph.generateDigraph());
 
     if (Ray.internal() == null) {
       if (Config.MEMORY_CHANNEL.equalsIgnoreCase(jobConfig.get(Config.CHANNEL_TYPE))) {
@@ -73,12 +76,12 @@ public class StreamingContext implements Serializable {
       LOG.info("Reuse existing cluster.");
     }
 
-    ServiceLoader<JobScheduler> serviceLoader = ServiceLoader.load(JobScheduler.class);
-    Iterator<JobScheduler> iterator = serviceLoader.iterator();
+    ServiceLoader<JobClient> serviceLoader = ServiceLoader.load(JobClient.class);
+    Iterator<JobClient> iterator = serviceLoader.iterator();
     Preconditions.checkArgument(iterator.hasNext(),
-        "No JobScheduler implementation has been provided.");
-    JobScheduler jobSchedule = iterator.next();
-    jobSchedule.schedule(jobGraph, jobConfig);
+        "No JobClient implementation has been provided.");
+    JobClient jobClient = iterator.next();
+    jobClient.submit(jobGraph, jobConfig);
   }
 
   public int generateId() {

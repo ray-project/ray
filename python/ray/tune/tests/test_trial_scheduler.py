@@ -1141,11 +1141,11 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
         pbt = self.basicSetup(perturbation_interval=2)
 
         class train(tune.Trainable):
-            def _train(self):
+            def step(self):
                 return {"mean_accuracy": self.training_iteration}
 
-            def _save(self, path):
-                checkpoint = path + "/checkpoint"
+            def save_checkpoint(self, path):
+                checkpoint = os.path.join(path, "checkpoint")
                 with open(checkpoint, "w") as f:
                     f.write("OK")
                 return checkpoint
@@ -1173,16 +1173,16 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
         pbt = self.basicSetup(perturbation_interval=2)
 
         class train_dict(tune.Trainable):
-            def _setup(self, config):
+            def setup(self, config):
                 self.state = {"hi": 1}
 
-            def _train(self):
+            def step(self):
                 return {"mean_accuracy": self.training_iteration}
 
-            def _save(self, path):
+            def save_checkpoint(self, path):
                 return self.state
 
-            def _restore(self, state):
+            def load_checkpoint(self, state):
                 self.state = state
 
         trial_hyperparams = {

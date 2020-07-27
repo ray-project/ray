@@ -28,13 +28,16 @@ import logging
 
 import ray
 from ray import tune
+from ray.tune import function
 from ray.rllib.examples.env.windy_maze_env import WindyMazeEnv, \
     HierarchicalWindyMazeEnv
-from ray.tune import function
+from ray.rllib.utils.test_utils import check_learning_achieved
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--flat", action="store_true")
+parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--torch", action="store_true")
+parser.add_argument("--stop-iters", type=int, default=200)
 parser.add_argument("--stop-reward", type=float, default=0.0)
 parser.add_argument("--stop-timesteps", type=int, default=100000)
 
@@ -45,8 +48,9 @@ if __name__ == "__main__":
     ray.init()
 
     stop = {
-        "episode_reward_mean": args.stop_reward,
+        "training_iteration": args.stop_iters,
         "timesteps_total": args.stop_timesteps,
+        "episode_reward_mean": args.stop_reward,
     }
 
     if args.flat:
@@ -56,7 +60,7 @@ if __name__ == "__main__":
             config={
                 "env": WindyMazeEnv,
                 "num_workers": 0,
-                "use_pytorch": args.torch,
+                "framework": "torch" if args.torch else "tf",
             },
         )
     else:
@@ -89,18 +93,12 @@ if __name__ == "__main__":
                 },
                 "policy_mapping_fn": function(policy_mapping_fn),
             },
-            "use_pytorch": args.torch,
+            "framework": "torch" if args.torch else "tf",
         }
 
-        results = tune.run(
-            "PPO",
-            stop=stop,
-            config=config,
-        )
+        results = tune.run("PPO", stop=stop, config=config)
 
-    # Error if stop-reward not reached.
-    if results.trials[0].last_result["episode_reward_mean"] < \
-            args.stop_reward:
-        raise ValueError("`stop-reward` of {} not reached!".format(
-            args.stop_reward))
-    print("ok")
+    if args.as_test:
+        check_learning_achieved(results, args.stop_reward)
+
+    ray.shutdown()

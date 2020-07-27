@@ -1,7 +1,7 @@
 # The base-deps Docker image installs main libraries needed to run Ray
 
-FROM ubuntu:xenial
-RUN apt-get update \
+FROM ubuntu:focal
+RUN apt-get update -y && apt-get upgrade -y \
     && apt-get install -y \
         git \
         wget \
@@ -12,6 +12,9 @@ RUN apt-get update \
         libgtk2.0-dev \
         zlib1g-dev \
         libgl1-mesa-dev \
+        tmux \
+        screen \
+        rsync \
     && apt-get clean \
     && echo 'export PATH=/opt/conda/bin:$PATH' > /etc/profile.d/conda.sh \
     && wget \
@@ -22,14 +25,12 @@ RUN apt-get update \
     && /opt/conda/bin/conda install -y \
         libgcc python=3.6.9 \
     && /opt/conda/bin/conda clean -y --all \
-    && /opt/conda/bin/pip install \
+    && /opt/conda/bin/pip install --no-cache-dir \
         flatbuffers \
         cython==0.29.0 \
-        numpy==1.15.4
-        
-
-# To avoid the following error on Jenkins:
-# AttributeError: 'numpy.ufunc' object has no attribute '__module__'
-RUN /opt/conda/bin/pip uninstall -y dask
+        numpy==1.15.4 \
+    # To avoid the following error on Jenkins:
+    # AttributeError: 'numpy.ufunc' object has no attribute '__module__'
+    && /opt/conda/bin/pip uninstall -y dask
 
 ENV PATH "/opt/conda/bin:$PATH"

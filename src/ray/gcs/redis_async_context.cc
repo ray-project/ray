@@ -50,7 +50,11 @@ void RedisAsyncContext::RedisAsyncHandleRead() {
   // This function will execute the callbacks which are registered by
   // `redisvAsyncCommand`, `redisAsyncCommandArgv` and so on.
   std::lock_guard<std::mutex> lock(mutex_);
-
+  // TODO(mehrdadn): Remove this when the bug is resolved.
+  // Somewhat consistently reproducible via
+  // python/ray/tests/test_basic.py::test_background_tasks_with_max_calls
+  // with -c opt on Windows.
+  RAY_CHECK(redis_async_context_) << "redis_async_context_ must not be NULL here";
   redisAsyncHandleRead(redis_async_context_);
 }
 

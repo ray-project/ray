@@ -2,7 +2,7 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils import try_import_torch
+from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
 
@@ -23,7 +23,7 @@ class RNNModel(TorchModelV2, nn.Module):
 
     @override(ModelV2)
     def get_initial_state(self):
-        # make hidden states on same device as model
+        # Place hidden states on same device as model.
         return [self.fc1.weight.new(1, self.rnn_hidden_dim).zero_().squeeze(0)]
 
     @override(ModelV2)

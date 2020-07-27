@@ -1,7 +1,12 @@
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.agents.marwil.marwil_tf_policy import MARWILTFPolicy
-from ray.rllib.optimizers import SyncBatchReplayOptimizer
+from ray.rllib.execution.replay_ops import SimpleReplayBuffer, Replay, \
+    StoreToReplayBuffer
+from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
+from ray.rllib.execution.concurrency_ops import Concurrently
+from ray.rllib.execution.train_ops import TrainOneStep
+from ray.rllib.execution.metric_ops import StandardMetricsReporting
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -30,24 +35,13 @@ DEFAULT_CONFIG = with_common_config({
     "learning_starts": 0,
     # === Parallelism ===
     "num_workers": 0,
-    # Use PyTorch as framework?
-    "use_pytorch": False
 })
 # __sphinx_doc_end__
 # yapf: enable
 
 
-def make_optimizer(workers, config):
-    return SyncBatchReplayOptimizer(
-        workers,
-        learning_starts=config["learning_starts"],
-        buffer_size=config["replay_buffer_size"],
-        train_batch_size=config["train_batch_size"],
-    )
-
-
 def get_policy_class(config):
-    if config.get("use_pytorch") is True:
+    if config["framework"] == "torch":
         from ray.rllib.agents.marwil.marwil_torch_policy import \
             MARWILTorchPolicy
         return MARWILTorchPolicy
@@ -55,9 +49,27 @@ def get_policy_class(config):
         return MARWILTFPolicy
 
 
+def execution_plan(workers, config):
+    rollouts = ParallelRollouts(workers, mode="bulk_sync")
+    replay_buffer = SimpleReplayBuffer(config["replay_buffer_size"])
+
+    store_op = rollouts \
+        .for_each(StoreToReplayBuffer(local_buffer=replay_buffer))
+
+    replay_op = Replay(local_buffer=replay_buffer) \
+        .combine(
+            ConcatBatches(min_batch_size=config["train_batch_size"])) \
+        .for_each(TrainOneStep(workers))
+
+    train_op = Concurrently(
+        [store_op, replay_op], mode="round_robin", output_indexes=[1])
+
+    return StandardMetricsReporting(train_op, workers, config)
+
+
 MARWILTrainer = build_trainer(
     name="MARWIL",
     default_config=DEFAULT_CONFIG,
     default_policy=MARWILTFPolicy,
     get_policy_class=get_policy_class,
-    make_policy_optimizer=make_optimizer)
+    execution_plan=execution_plan)

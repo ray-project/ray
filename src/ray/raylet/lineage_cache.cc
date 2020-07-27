@@ -12,8 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "lineage_cache.h"
+#include "ray/raylet/lineage_cache.h"
+
 #include <sstream>
+
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/stats/stats.h"
 
@@ -62,7 +64,7 @@ void LineageEntry::ComputeParentTaskIds() {
   parent_task_ids_.clear();
   // A task's parents are the tasks that created its arguments.
   for (const auto &dependency : task_.GetDependencies()) {
-    parent_task_ids_.insert(dependency.TaskId());
+    parent_task_ids_.insert(ObjectID::FromBinary(dependency.object_id()).TaskId());
   }
 }
 

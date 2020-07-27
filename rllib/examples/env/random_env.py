@@ -1,6 +1,8 @@
 import gym
-from gym.spaces import Tuple
+from gym.spaces import Discrete, Tuple
 import numpy as np
+
+from ray.rllib.examples.env.multi_agent import make_multiagent
 
 
 class RandomEnv(gym.Env):
@@ -14,9 +16,9 @@ class RandomEnv(gym.Env):
 
     def __init__(self, config):
         # Action space.
-        self.action_space = config["action_space"]
+        self.action_space = config.get("action_space", Discrete(2))
         # Observation space from which to sample.
-        self.observation_space = config["observation_space"]
+        self.observation_space = config.get("observation_space", Discrete(2))
         # Reward space from which to sample.
         self.reward_space = config.get(
             "reward_space",
@@ -43,3 +45,7 @@ class RandomEnv(gym.Env):
             bool(np.random.choice(
                 [True, False], p=[self.p_done, 1.0 - self.p_done]
             )), {}
+
+
+# Multi-agent version of the RandomEnv.
+RandomMultiAgentEnv = make_multiagent(lambda c: RandomEnv(c))

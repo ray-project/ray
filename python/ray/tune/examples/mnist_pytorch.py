@@ -12,7 +12,6 @@ from torchvision import datasets, transforms
 
 import ray
 from ray import tune
-from ray.tune import track
 from ray.tune.schedulers import AsyncHyperBandScheduler
 
 # Change these values if you want the training to run quicker or slower.
@@ -33,7 +32,8 @@ class ConvNet(nn.Module):
         return F.log_softmax(x, dim=1)
 
 
-def train(model, optimizer, train_loader, device=torch.device("cpu")):
+def train(model, optimizer, train_loader, device=None):
+    device = device or torch.device("cpu")
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
         if batch_idx * len(data) > EPOCH_SIZE:
@@ -46,7 +46,8 @@ def train(model, optimizer, train_loader, device=torch.device("cpu")):
         optimizer.step()
 
 
-def test(model, data_loader, device=torch.device("cpu")):
+def test(model, data_loader, device=None):
+    device = device or torch.device("cpu")
     model.eval()
     correct = 0
     total = 0
@@ -99,7 +100,7 @@ def train_mnist(config):
     while True:
         train(model, optimizer, train_loader, device)
         acc = test(model, test_loader, device)
-        track.log(mean_accuracy=acc)
+        tune.report(mean_accuracy=acc)
 
 
 if __name__ == "__main__":

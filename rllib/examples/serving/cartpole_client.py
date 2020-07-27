@@ -23,7 +23,7 @@ parser.add_argument(
     action="store_true",
     help="Whether to take random instead of on-policy actions.")
 parser.add_argument(
-    "--stop-at-reward",
+    "--stop-reward",
     type=int,
     default=9999,
     help="Stop once the specified reward is reached.")
@@ -49,7 +49,7 @@ if __name__ == "__main__":
         client.log_returns(eid, reward, info=info)
         if done:
             print("Total reward:", rewards)
-            if rewards >= args.stop_at_reward:
+            if rewards >= args.stop_reward:
                 print("Target reward achieved, exiting")
                 exit(0)
             rewards = 0

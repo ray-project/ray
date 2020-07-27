@@ -8,7 +8,7 @@ from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 logger = logging.getLogger(__name__)
@@ -38,13 +38,13 @@ class Model:
         self.action_space = action_space
         self.num_outputs = num_outputs
         self.options = options
-        self.scope = tf.get_variable_scope()
-        self.session = tf.get_default_session()
+        self.scope = tf1.get_variable_scope()
+        self.session = tf1.get_default_session()
         self.input_dict = input_dict
         if seq_lens is not None:
             self.seq_lens = seq_lens
         else:
-            self.seq_lens = tf.placeholder(
+            self.seq_lens = tf1.placeholder(
                 dtype=tf.int32, shape=[None], name="seq_lens")
 
         self._num_outputs = num_outputs
@@ -68,10 +68,10 @@ class Model:
                 input_dict["obs"], num_outputs, options)
 
         if options.get("free_log_std", False):
-            log_std = tf.get_variable(
+            log_std = tf1.get_variable(
                 name="log_std",
                 shape=[num_outputs],
-                initializer=tf.zeros_initializer)
+                initializer=tf1.zeros_initializer)
             self.outputs = tf.concat(
                 [self.outputs, 0.0 * self.outputs + log_std], 1)
 
@@ -196,7 +196,7 @@ class Model:
 def flatten(obs, framework):
     """Flatten the given tensor."""
     if framework == "tf":
-        return tf.layers.flatten(obs)
+        return tf1.layers.flatten(obs)
     elif framework == "torch":
         assert torch is not None
         return torch.flatten(obs, start_dim=1)

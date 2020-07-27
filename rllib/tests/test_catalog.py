@@ -9,12 +9,12 @@ from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.models.preprocessors import (NoPreprocessor, OneHotPreprocessor,
                                             Preprocessor)
-from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork
-from ray.rllib.models.tf.visionnet_v2 import VisionNetwork
+from ray.rllib.models.tf.fcnet import FullyConnectedNetwork
+from ray.rllib.models.tf.visionnet import VisionNetwork
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
 class CustomPreprocessor(Preprocessor):
@@ -35,24 +35,26 @@ class CustomModel(TFModelV2):
 class CustomActionDistribution(TFActionDistribution):
     def __init__(self, inputs, model):
         # Store our output shape.
-        custom_options = model.model_config["custom_options"]
-        if "output_dim" in custom_options:
+        custom_model_config = model.model_config["custom_model_config"]
+        if "output_dim" in custom_model_config:
             self.output_shape = tf.concat(
-                [tf.shape(inputs)[:1], custom_options["output_dim"]], axis=0)
+                [tf.shape(inputs)[:1], custom_model_config["output_dim"]],
+                axis=0)
         else:
             self.output_shape = tf.shape(inputs)
         super().__init__(inputs, model)
 
     @staticmethod
     def required_model_output_shape(action_space, model_config=None):
-        custom_options = model_config["custom_options"] or {}
-        if custom_options is not None and custom_options.get("output_dim"):
-            return custom_options.get("output_dim")
+        custom_model_config = model_config["custom_model_config"] or {}
+        if custom_model_config is not None and \
+                custom_model_config.get("output_dim"):
+            return custom_model_config.get("output_dim")
         return action_space.shape
 
     @override(TFActionDistribution)
     def _build_sample_op(self):
-        return tf.random_uniform(self.output_shape)
+        return tf.random.uniform(self.output_shape)
 
     @override(ActionDistribution)
     def logp(self, x):
@@ -100,21 +102,19 @@ class ModelCatalogTest(unittest.TestCase):
     def test_default_models(self):
         ray.init(object_store_memory=1000 * 1024 * 1024)
 
-        with tf.variable_scope("test1"):
-            p1 = ModelCatalog.get_model_v2(
-                obs_space=Box(0, 1, shape=(3, ), dtype=np.float32),
-                action_space=Discrete(5),
-                num_outputs=5,
-                model_config={})
-            self.assertEqual(type(p1), FullyConnectedNetwork)
+        p1 = ModelCatalog.get_model_v2(
+            obs_space=Box(0, 1, shape=(3, ), dtype=np.float32),
+            action_space=Discrete(5),
+            num_outputs=5,
+            model_config={})
+        self.assertEqual(type(p1), FullyConnectedNetwork)
 
-        with tf.variable_scope("test2"):
-            p2 = ModelCatalog.get_model_v2(
-                obs_space=Box(0, 1, shape=(84, 84, 3), dtype=np.float32),
-                action_space=Discrete(5),
-                num_outputs=5,
-                model_config={})
-            self.assertEqual(type(p2), VisionNetwork)
+        p2 = ModelCatalog.get_model_v2(
+            obs_space=Box(0, 1, shape=(84, 84, 3), dtype=np.float32),
+            action_space=Discrete(5),
+            num_outputs=5,
+            model_config={})
+        self.assertEqual(type(p2), VisionNetwork)
 
     def test_custom_model(self):
         ray.init(object_store_memory=1000 * 1024 * 1024)
@@ -147,7 +147,7 @@ class ModelCatalogTest(unittest.TestCase):
         self.assertEqual(param_shape, action_space.shape)
 
         # test the class works as a distribution
-        dist_input = tf.placeholder(tf.float32, (None, ) + param_shape)
+        dist_input = tf1.placeholder(tf.float32, (None,) + param_shape)
         model = Model()
         model.model_config = model_config
         dist = dist_cls(dist_input, model=model)
@@ -157,11 +157,11 @@ class ModelCatalogTest(unittest.TestCase):
             dist.entropy()
 
         # test passing the options to it
-        model_config["custom_options"].update({"output_dim": (3, )})
+        model_config["custom_model_config"].update({"output_dim": (3, )})
         dist_cls, param_shape = ModelCatalog.get_action_dist(
             action_space, model_config)
         self.assertEqual(param_shape, (3, ))
-        dist_input = tf.placeholder(tf.float32, (None, ) + param_shape)
+        dist_input = tf1.placeholder(tf.float32, (None,) + param_shape)
         model.model_config = model_config
         dist = dist_cls(dist_input, model=model)
         self.assertEqual(dist.sample().shape[1:], dist_input.shape[1:])

@@ -3,19 +3,22 @@ package io.ray.runtime;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
-import io.ray.api.BaseActor;
-import io.ray.api.RayActor;
-import io.ray.api.RayObject;
-import io.ray.api.RayPyActor;
+import io.ray.api.ActorHandle;
+import io.ray.api.BaseActorHandle;
+import io.ray.api.ObjectRef;
+import io.ray.api.PyActorHandle;
 import io.ray.api.WaitResult;
 import io.ray.api.exception.RayException;
 import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
-import io.ray.api.function.PyRemoteFunction;
+import io.ray.api.function.PyFunction;
 import io.ray.api.function.RayFunc;
+import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
+import io.ray.api.placementgroup.PlacementGroup;
+import io.ray.api.placementgroup.PlacementStrategy;
 import io.ray.api.runtimecontext.RuntimeContext;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.context.RuntimeContextImpl;
@@ -27,13 +30,14 @@ import io.ray.runtime.functionmanager.RayFunction;
 import io.ray.runtime.gcs.GcsClient;
 import io.ray.runtime.generated.Common;
 import io.ray.runtime.generated.Common.Language;
+import io.ray.runtime.object.ObjectRefImpl;
 import io.ray.runtime.object.ObjectStore;
-import io.ray.runtime.object.RayObjectImpl;
 import io.ray.runtime.task.ArgumentsBuilder;
 import io.ray.runtime.task.FunctionArg;
 import io.ray.runtime.task.TaskExecutor;
 import io.ray.runtime.task.TaskSubmitter;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 import org.slf4j.Logger;
@@ -72,9 +76,9 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   public abstract void shutdown();
 
   @Override
-  public <T> RayObject<T> put(T obj) {
+  public <T> ObjectRef<T> put(T obj) {
     ObjectId objectId = objectStore.put(obj);
-    return new RayObjectImpl<T>(objectId, (Class<T>)(obj == null ? Object.class : obj.getClass()));
+    return new ObjectRefImpl<T>(objectId, (Class<T>)(obj == null ? Object.class : obj.getClass()));
   }
 
   @Override
@@ -94,12 +98,12 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   }
 
   @Override
-  public <T> WaitResult<T> wait(List<RayObject<T>> waitList, int numReturns, int timeoutMs) {
+  public <T> WaitResult<T> wait(List<ObjectRef<T>> waitList, int numReturns, int timeoutMs) {
     return objectStore.wait(waitList, numReturns, timeoutMs);
   }
 
   @Override
-  public RayObject call(RayFunc func, Object[] args, CallOptions options) {
+  public ObjectRef call(RayFunc func, Object[] args, CallOptions options) {
     RayFunction rayFunction = functionManager.getFunction(workerContext.getCurrentJobId(), func);
     FunctionDescriptor functionDescriptor = rayFunction.functionDescriptor;
     Optional<Class<?>> returnType = rayFunction.getReturnType();
@@ -107,19 +111,18 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   }
 
   @Override
-  public RayObject call(PyRemoteFunction pyRemoteFunction, Object[] args,
-      CallOptions options) {
+  public ObjectRef call(PyFunction pyFunction, Object[] args, CallOptions options) {
     PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(
-        pyRemoteFunction.moduleName,
+        pyFunction.moduleName,
         "",
-        pyRemoteFunction.functionName);
+        pyFunction.functionName);
     // Python functions always have a return value, even if it's `None`.
     return callNormalFunction(functionDescriptor, args,
-        /*returnType=*/Optional.of(pyRemoteFunction.returnType), options);
+        /*returnType=*/Optional.of(pyFunction.returnType), options);
   }
 
   @Override
-  public RayObject callActor(RayActor<?> actor, RayFunc func, Object[] args) {
+  public ObjectRef callActor(ActorHandle<?> actor, RayFunc func, Object[] args) {
     RayFunction rayFunction = functionManager.getFunction(workerContext.getCurrentJobId(), func);
     FunctionDescriptor functionDescriptor = rayFunction.functionDescriptor;
     Optional<Class<?>> returnType = rayFunction.getReturnType();
@@ -127,7 +130,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   }
 
   @Override
-  public RayObject callActor(RayPyActor pyActor, PyActorMethod pyActorMethod, Object... args) {
+  public ObjectRef callActor(PyActorHandle pyActor, PyActorMethod pyActorMethod, Object... args) {
     PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(pyActor.getModuleName(),
         pyActor.getClassName(), pyActorMethod.methodName);
     // Python functions always have a return value, even if it's `None`.
@@ -137,24 +140,35 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   @Override
   @SuppressWarnings("unchecked")
-  public <T> RayActor<T> createActor(RayFunc actorFactoryFunc,
-      Object[] args, ActorCreationOptions options) {
+  public <T> ActorHandle<T> createActor(RayFunc actorFactoryFunc,
+                                        Object[] args, ActorCreationOptions options) {
     FunctionDescriptor functionDescriptor =
         functionManager.getFunction(workerContext.getCurrentJobId(), actorFactoryFunc)
             .functionDescriptor;
-    return (RayActor<T>) createActorImpl(functionDescriptor, args, options);
+    return (ActorHandle<T>) createActorImpl(functionDescriptor, args, options);
   }
 
   @Override
-  public RayPyActor createActor(PyActorClass pyActorClass, Object[] args,
-      ActorCreationOptions options) {
+  public PyActorHandle createActor(PyActorClass pyActorClass, Object[] args,
+                                   ActorCreationOptions options) {
     PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(
         pyActorClass.moduleName,
         pyActorClass.className,
         PYTHON_INIT_METHOD_NAME);
-    return (RayPyActor) createActorImpl(functionDescriptor, args, options);
+    return (PyActorHandle) createActorImpl(functionDescriptor, args, options);
   }
 
+  @Override
+  public PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
+      PlacementStrategy strategy) {
+    return taskSubmitter.createPlacementGroup(bundles, strategy);
+  }
+
+  @SuppressWarnings("unchecked")
+  @Override
+  public <T extends BaseActorHandle> T getActorHandle(ActorId actorId) {
+    return (T) taskSubmitter.getActor(actorId);
+  }
 
   @Override
   public void setAsyncContext(Object asyncContext) {
@@ -207,7 +221,8 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     };
   }
 
-  private RayObject callNormalFunction(FunctionDescriptor functionDescriptor,
+  private ObjectRef callNormalFunction(
+      FunctionDescriptor functionDescriptor,
       Object[] args, Optional<Class<?>> returnType, CallOptions options) {
     int numReturns = returnType.isPresent() ? 1 : 0;
     List<FunctionArg> functionArgs = ArgumentsBuilder
@@ -218,12 +233,15 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     if (returnIds.isEmpty()) {
       return null;
     } else {
-      return new RayObjectImpl(returnIds.get(0), returnType.get());
+      return new ObjectRefImpl(returnIds.get(0), returnType.get());
     }
   }
 
-  private RayObject callActorFunction(BaseActor rayActor,
-      FunctionDescriptor functionDescriptor, Object[] args, Optional<Class<?>> returnType) {
+  private ObjectRef callActorFunction(
+      BaseActorHandle rayActor,
+      FunctionDescriptor functionDescriptor,
+      Object[] args,
+      Optional<Class<?>> returnType) {
     int numReturns = returnType.isPresent() ? 1 : 0;
     List<FunctionArg> functionArgs = ArgumentsBuilder
         .wrap(args, functionDescriptor.getLanguage());
@@ -233,18 +251,18 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     if (returnIds.isEmpty()) {
       return null;
     } else {
-      return new RayObjectImpl(returnIds.get(0), returnType.get());
+      return new ObjectRefImpl(returnIds.get(0), returnType.get());
     }
   }
 
-  private BaseActor createActorImpl(FunctionDescriptor functionDescriptor,
-      Object[] args, ActorCreationOptions options) {
+  private BaseActorHandle createActorImpl(FunctionDescriptor functionDescriptor,
+                                          Object[] args, ActorCreationOptions options) {
     List<FunctionArg> functionArgs = ArgumentsBuilder
         .wrap(args, functionDescriptor.getLanguage());
     if (functionDescriptor.getLanguage() != Language.JAVA && options != null) {
       Preconditions.checkState(Strings.isNullOrEmpty(options.jvmOptions));
     }
-    BaseActor actor = taskSubmitter.createActor(functionDescriptor, functionArgs, options);
+    BaseActorHandle actor = taskSubmitter.createActor(functionDescriptor, functionArgs, options);
     return actor;
   }
 

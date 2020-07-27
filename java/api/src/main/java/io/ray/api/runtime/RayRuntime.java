@@ -1,20 +1,25 @@
 package io.ray.api.runtime;
 
-import io.ray.api.BaseActor;
-import io.ray.api.RayActor;
-import io.ray.api.RayObject;
-import io.ray.api.RayPyActor;
+import io.ray.api.ActorHandle;
+import io.ray.api.BaseActorHandle;
+import io.ray.api.ObjectRef;
+import io.ray.api.PyActorHandle;
 import io.ray.api.WaitResult;
 import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
-import io.ray.api.function.PyRemoteFunction;
+import io.ray.api.function.PyFunction;
 import io.ray.api.function.RayFunc;
+import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.UniqueId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
+import io.ray.api.placementgroup.PlacementGroup;
+import io.ray.api.placementgroup.PlacementStrategy;
 import io.ray.api.runtimecontext.RuntimeContext;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.Callable;
 
 /**
@@ -31,9 +36,9 @@ public interface RayRuntime {
    * Store an object in the object store.
    *
    * @param obj The Java object to be stored.
-   * @return A RayObject instance that represents the in-store object.
+   * @return A ObjectRef instance that represents the in-store object.
    */
-  <T> RayObject<T> put(T obj);
+  <T> ObjectRef<T> put(T obj);
 
   /**
    * Get an object from the object store.
@@ -57,12 +62,12 @@ public interface RayRuntime {
    * Wait for a list of RayObjects to be locally available, until specified number of objects are
    * ready, or specified timeout has passed.
    *
-   * @param waitList A list of RayObject to wait for.
+   * @param waitList A list of ObjectRef to wait for.
    * @param numReturns The number of objects that should be returned.
    * @param timeoutMs The maximum time in milliseconds to wait before returning.
    * @return Two lists, one containing locally available objects, one containing the rest.
    */
-  <T> WaitResult<T> wait(List<RayObject<T>> waitList, int numReturns, int timeoutMs);
+  <T> WaitResult<T> wait(List<ObjectRef<T>> waitList, int numReturns, int timeoutMs);
 
   /**
    * Free a list of objects from Plasma Store.
@@ -82,13 +87,27 @@ public interface RayRuntime {
    */
   void setResource(String resourceName, double capacity, UniqueId nodeId);
 
+  <T extends BaseActorHandle> T getActorHandle(ActorId actorId);
+
+  /**
+   * Get a handle to a named actor.
+   * <p>
+   * Gets a handle to a named actor with the given name. The actor must
+   * have been created with name specified.
+   *
+   * @param name The name of the named actor.
+   * @param global Whether the named actor is global.
+   * @return ActorHandle to the actor.
+   */
+  <T extends BaseActorHandle> Optional<T> getActor(String name, boolean global);
+
   /**
    * Kill the actor immediately.
    *
    * @param actor The actor to be killed.
-   * @param noReconstruction If set to true, the killed actor will not be reconstructed anymore.
+   * @param noRestart If set to true, the killed actor will not be restarted anymore.
    */
-  void killActor(BaseActor actor, boolean noReconstruction);
+  void killActor(BaseActorHandle actor, boolean noRestart);
 
   /**
    * Invoke a remote function.
@@ -98,17 +117,17 @@ public interface RayRuntime {
    * @param options The options for this call.
    * @return The result object.
    */
-  RayObject call(RayFunc func, Object[] args, CallOptions options);
+  ObjectRef call(RayFunc func, Object[] args, CallOptions options);
 
   /**
    * Invoke a remote Python function.
    *
-   * @param pyRemoteFunction The Python function.
+   * @param pyFunction The Python function.
    * @param args Arguments of the function.
    * @param options The options for this call.
    * @return The result object.
    */
-  RayObject call(PyRemoteFunction pyRemoteFunction, Object[] args, CallOptions options);
+  ObjectRef call(PyFunction pyFunction, Object[] args, CallOptions options);
 
   /**
    * Invoke a remote function on an actor.
@@ -118,7 +137,7 @@ public interface RayRuntime {
    * @param args The arguments of the remote function.
    * @return The result object.
    */
-  RayObject callActor(RayActor<?> actor, RayFunc func, Object[] args);
+  ObjectRef callActor(ActorHandle<?> actor, RayFunc func, Object[] args);
 
   /**
    * Invoke a remote Python function on an actor.
@@ -128,7 +147,7 @@ public interface RayRuntime {
    * @param args Arguments of the function.
    * @return The result object.
    */
-  RayObject callActor(RayPyActor pyActor, PyActorMethod pyActorMethod, Object[] args);
+  ObjectRef callActor(PyActorHandle pyActor, PyActorMethod pyActorMethod, Object[] args);
 
   /**
    * Create an actor on a remote node.
@@ -139,8 +158,8 @@ public interface RayRuntime {
    * @param options The options for creating actor.
    * @return A handle to the actor.
    */
-  <T> RayActor<T> createActor(RayFunc actorFactoryFunc, Object[] args,
-      ActorCreationOptions options);
+  <T> ActorHandle<T> createActor(RayFunc actorFactoryFunc, Object[] args,
+                                 ActorCreationOptions options);
 
   /**
    * Create a Python actor on a remote node.
@@ -150,8 +169,11 @@ public interface RayRuntime {
    * @param options The options for creating actor.
    * @return A handle to the actor.
    */
-  RayPyActor createActor(PyActorClass pyActorClass, Object[] args,
-                         ActorCreationOptions options);
+  PyActorHandle createActor(PyActorClass pyActorClass, Object[] args,
+                            ActorCreationOptions options);
+
+  PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
+      PlacementStrategy strategy);
 
   RuntimeContext getRuntimeContext();
 

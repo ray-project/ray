@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_ACCESSOR_TEST_BASE_H
-#define RAY_GCS_ACCESSOR_TEST_BASE_H
+#pragma once
 
 #include <atomic>
 #include <chrono>
@@ -31,16 +30,17 @@ namespace ray {
 namespace gcs {
 
 template <typename ID, typename Data>
-class AccessorTestBase : public RedisServiceManagerForTest {
+class AccessorTestBase : public ::testing::Test {
  public:
-  AccessorTestBase() {}
+  AccessorTestBase() { TestSetupUtil::StartUpRedisServers(std::vector<int>()); }
 
-  virtual ~AccessorTestBase() {}
+  virtual ~AccessorTestBase() { TestSetupUtil::ShutDownRedisServers(); }
 
   virtual void SetUp() {
     GenTestData();
 
-    GcsClientOptions options = GcsClientOptions("127.0.0.1", REDIS_SERVER_PORT, "", true);
+    GcsClientOptions options =
+        GcsClientOptions("127.0.0.1", TEST_REDIS_SERVER_PORTS.front(), "", true);
     gcs_client_.reset(new RedisGcsClient(options));
     RAY_CHECK_OK(gcs_client_->Connect(io_service_));
 
@@ -93,5 +93,3 @@ class AccessorTestBase : public RedisServiceManagerForTest {
 }  // namespace gcs
 
 }  // namespace ray
-
-#endif  // RAY_GCS_ACCESSOR_TEST_BASE_H

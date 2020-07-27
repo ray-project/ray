@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_STATS_METRIC_DEFS_H
-#define RAY_STATS_METRIC_DEFS_H
+#pragma once
 
 /// The definitions of metrics that you can use everywhere.
 ///
@@ -25,6 +24,16 @@
 ///
 /// You can follow these examples to define your metrics.
 
+///
+/// Common
+///
+static Histogram RedisLatency("redis_latency", "The latency of a Redis operation.", "us",
+                              {100, 200, 300, 400, 500, 600, 700, 800, 900, 1000},
+                              {CustomKey});
+
+///
+/// Raylet Metrics
+///
 static Gauge CurrentWorker("current_worker",
                            "This metric is used for reporting states of workers."
                            "Through this, we can see the worker's state on dashboard.",
@@ -36,10 +45,6 @@ static Gauge CurrentDriver("current_driver",
 
 static Count TaskCountReceived("task_count_received",
                                "Number of tasks received by raylet.", "pcs", {});
-
-static Histogram RedisLatency("redis_latency", "The latency of a Redis operation.", "us",
-                              {100, 200, 300, 400, 500, 600, 700, 800, 900, 1000},
-                              {CustomKey});
 
 static Gauge LocalAvailableResource("local_available_resource",
                                     "The available resources on this node.", "pcs",
@@ -75,5 +80,3 @@ static Gauge ReconstructionPolicyStats(
 static Gauge ConnectionPoolStats("connection_pool_stats",
                                  "Stats the connection pool metrics.", "pcs",
                                  {ValueTypeKey});
-
-#endif  // RAY_STATS_METRIC_DEFS_H

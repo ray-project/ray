@@ -13,19 +13,22 @@ from ray.rllib.policy.torch_policy import LearningRateSchedule
 from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.exploration.parameter_noise import ParameterNoise
-from ray.rllib.utils.torch_ops import huber_loss, reduce_mean_ignore_inf
-from ray.rllib.utils import try_import_torch
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.torch_ops import huber_loss, reduce_mean_ignore_inf, \
+    softmax_cross_entropy_with_logits
 
 torch, nn = try_import_torch()
 F = None
 if nn:
-    F = torch.nn.functional
+    F = nn.functional
 
 
 class QLoss:
     def __init__(self,
                  q_t_selected,
+                 q_logits_t_selected,
                  q_tp1_best,
+                 q_probs_tp1_best,
                  importance_weights,
                  rewards,
                  done_mask,
@@ -36,25 +39,61 @@ class QLoss:
                  v_max=10.0):
 
         if num_atoms > 1:
-            raise ValueError("Torch version of DQN does not support "
-                             "distributional Q yet!")
+            # Distributional Q-learning which corresponds to an entropy loss
+            z = torch.range(0.0, num_atoms - 1, dtype=torch.float32)
+            z = v_min + z * (v_max - v_min) / float(num_atoms - 1)
 
-        q_tp1_best_masked = (1.0 - done_mask) * q_tp1_best
+            # (batch_size, 1) * (1, num_atoms) = (batch_size, num_atoms)
+            r_tau = torch.unsqueeze(
+                rewards, -1) + gamma**n_step * torch.unsqueeze(
+                    1.0 - done_mask, -1) * torch.unsqueeze(z, 0)
+            r_tau = torch.clamp(r_tau, v_min, v_max)
+            b = (r_tau - v_min) / ((v_max - v_min) / float(num_atoms - 1))
+            lb = torch.floor(b)
+            ub = torch.ceil(b)
 
-        # compute RHS of bellman equation
-        q_t_selected_target = rewards + gamma**n_step * q_tp1_best_masked
+            # Indispensable judgement which is missed in most implementations
+            # when b happens to be an integer, lb == ub, so pr_j(s', a*) will
+            # be discarded because (ub-b) == (b-lb) == 0.
+            floor_equal_ceil = (ub - lb < 0.5).float()
 
-        # compute the error (potentially clipped)
-        self.td_error = q_t_selected - q_t_selected_target.detach()
-        self.loss = torch.mean(
-            importance_weights.float() * huber_loss(self.td_error))
-        self.stats = {
-            "mean_q": torch.mean(q_t_selected),
-            "min_q": torch.min(q_t_selected),
-            "max_q": torch.max(q_t_selected),
-            "td_error": self.td_error,
-            "mean_td_error": torch.mean(self.td_error),
-        }
+            # (batch_size, num_atoms, num_atoms)
+            l_project = F.one_hot(lb.long(), num_atoms)
+            # (batch_size, num_atoms, num_atoms)
+            u_project = F.one_hot(ub.long(), num_atoms)
+            ml_delta = q_probs_tp1_best * (ub - b + floor_equal_ceil)
+            mu_delta = q_probs_tp1_best * (b - lb)
+            ml_delta = torch.sum(
+                l_project * torch.unsqueeze(ml_delta, -1), dim=1)
+            mu_delta = torch.sum(
+                u_project * torch.unsqueeze(mu_delta, -1), dim=1)
+            m = ml_delta + mu_delta
+
+            # Rainbow paper claims that using this cross entropy loss for
+            # priority is robust and insensitive to `prioritized_replay_alpha`
+            self.td_error = softmax_cross_entropy_with_logits(
+                logits=q_logits_t_selected, labels=m)
+            self.loss = torch.mean(self.td_error * importance_weights)
+            self.stats = {
+                # TODO: better Q stats for dist dqn
+                "mean_td_error": torch.mean(self.td_error),
+            }
+        else:
+            q_tp1_best_masked = (1.0 - done_mask) * q_tp1_best
+
+            # compute RHS of bellman equation
+            q_t_selected_target = rewards + gamma**n_step * q_tp1_best_masked
+
+            # compute the error (potentially clipped)
+            self.td_error = q_t_selected - q_t_selected_target.detach()
+            self.loss = torch.mean(
+                importance_weights.float() * huber_loss(self.td_error))
+            self.stats = {
+                "mean_q": torch.mean(q_t_selected),
+                "min_q": torch.min(q_t_selected),
+                "max_q": torch.max(q_t_selected),
+                "mean_td_error": torch.mean(self.td_error),
+            }
 
 
 class ComputeTDErrorMixin:
@@ -103,9 +142,12 @@ def build_q_model_and_distribution(policy, obs_space, action_space, config):
         framework="torch",
         model_interface=DQNTorchModel,
         name=Q_SCOPE,
-        dueling=config["dueling"],
         q_hiddens=config["hiddens"],
+        dueling=config["dueling"],
+        num_atoms=config["num_atoms"],
         use_noisy=config["noisy"],
+        v_min=config["v_min"],
+        v_max=config["v_max"],
         sigma0=config["sigma0"],
         # TODO(sven): Move option to add LayerNorm after each Dense
         #  generically into ModelCatalog.
@@ -121,9 +163,12 @@ def build_q_model_and_distribution(policy, obs_space, action_space, config):
         framework="torch",
         model_interface=DQNTorchModel,
         name=Q_TARGET_SCOPE,
-        dueling=config["dueling"],
         q_hiddens=config["hiddens"],
+        dueling=config["dueling"],
+        num_atoms=config["num_atoms"],
         use_noisy=config["noisy"],
+        v_min=config["v_min"],
+        v_max=config["v_max"],
         sigma0=config["sigma0"],
         # TODO(sven): Move option to add LayerNorm after each Dense
         #  generically into ModelCatalog.
@@ -150,50 +195,63 @@ def get_distribution_inputs_and_class(policy,
 
 def build_q_losses(policy, model, _, train_batch):
     config = policy.config
-    # q network evaluation
-    q_t = compute_q_values(
+    # Q-network evaluation.
+    q_t, q_logits_t, q_probs_t = compute_q_values(
         policy,
         policy.q_model,
         train_batch[SampleBatch.CUR_OBS],
         explore=False,
         is_training=True)
 
-    # target q network evalution
-    q_tp1 = compute_q_values(
+    # Target Q-network evaluation.
+    q_tp1, q_logits_tp1, q_probs_tp1 = compute_q_values(
         policy,
         policy.target_q_model,
         train_batch[SampleBatch.NEXT_OBS],
         explore=False,
         is_training=True)
 
-    # q scores for actions which we know were selected in the given state.
-    one_hot_selection = F.one_hot(train_batch[SampleBatch.ACTIONS],
-                                  policy.action_space.n)
-    q_t_selected = torch.sum(q_t * one_hot_selection, 1)
+    # Q scores for actions which we know were selected in the given state.
+    one_hot_selection = F.one_hot(
+        train_batch[SampleBatch.ACTIONS], policy.action_space.n)
+    q_t_selected = torch.sum(
+        torch.where(q_t > -float("inf"), q_t, torch.tensor(0.0)) *
+        one_hot_selection, 1)
+    q_logits_t_selected = torch.sum(
+        q_logits_t * torch.unsqueeze(one_hot_selection, -1), 1)
 
     # compute estimate of best possible value starting from state at t + 1
     if config["double_q"]:
-        q_tp1_using_online_net = compute_q_values(
-            policy,
-            policy.q_model,
-            train_batch[SampleBatch.NEXT_OBS],
-            explore=False,
-            is_training=True)
+        q_tp1_using_online_net, q_logits_tp1_using_online_net, \
+            q_dist_tp1_using_online_net = compute_q_values(
+                policy,
+                policy.q_model,
+                train_batch[SampleBatch.NEXT_OBS],
+                explore=False,
+                is_training=True)
         q_tp1_best_using_online_net = torch.argmax(q_tp1_using_online_net, 1)
-        q_tp1_best_one_hot_selection = F.one_hot(q_tp1_best_using_online_net,
-                                                 policy.action_space.n)
-        q_tp1_best = torch.sum(q_tp1 * q_tp1_best_one_hot_selection, 1)
+        q_tp1_best_one_hot_selection = F.one_hot(
+            q_tp1_best_using_online_net, policy.action_space.n)
+        q_tp1_best = torch.sum(
+            torch.where(q_tp1 > -float("inf"), q_tp1, torch.tensor(0.0)) *
+            q_tp1_best_one_hot_selection, 1)
+        q_probs_tp1_best = torch.sum(
+            q_probs_tp1 * torch.unsqueeze(q_tp1_best_one_hot_selection, -1), 1)
     else:
         q_tp1_best_one_hot_selection = F.one_hot(
             torch.argmax(q_tp1, 1), policy.action_space.n)
-        q_tp1_best = torch.sum(q_tp1 * q_tp1_best_one_hot_selection, 1)
+        q_tp1_best = torch.sum(
+            torch.where(q_tp1 > -float("inf"), q_tp1, torch.tensor(0.0)) *
+            q_tp1_best_one_hot_selection, 1)
+        q_probs_tp1_best = torch.sum(
+            q_probs_tp1 * torch.unsqueeze(q_tp1_best_one_hot_selection, -1), 1)
 
-    policy.q_loss = QLoss(q_t_selected, q_tp1_best, train_batch[PRIO_WEIGHTS],
-                          train_batch[SampleBatch.REWARDS],
-                          train_batch[SampleBatch.DONES].float(),
-                          config["gamma"], config["n_step"],
-                          config["num_atoms"], config["v_min"],
-                          config["v_max"])
+    policy.q_loss = QLoss(
+        q_t_selected, q_logits_t_selected, q_tp1_best, q_probs_tp1_best,
+        train_batch[PRIO_WEIGHTS], train_batch[SampleBatch.REWARDS],
+        train_batch[SampleBatch.DONES].float(), config["gamma"],
+        config["n_step"], config["num_atoms"],
+        config["v_min"], config["v_max"])
 
     return policy.q_loss.loss
 
@@ -222,34 +280,49 @@ def after_init(policy, obs_space, action_space, config):
 
 
 def compute_q_values(policy, model, obs, explore, is_training=False):
-    if policy.config["num_atoms"] > 1:
-        raise ValueError("torch DQN does not support distributional DQN yet!")
+    config = policy.config
 
     model_out, state = model({
         SampleBatch.CUR_OBS: obs,
         "is_training": is_training,
     }, [], None)
 
-    advantages_or_q_values = model.get_advantages_or_q_values(model_out)
-
-    if policy.config["dueling"]:
-        state_value = model.get_state_value(model_out)
-        advantages_mean = reduce_mean_ignore_inf(advantages_or_q_values, 1)
-        advantages_centered = advantages_or_q_values - torch.unsqueeze(
-            advantages_mean, 1)
-        q_values = state_value + advantages_centered
+    if config["num_atoms"] > 1:
+        (action_scores, z, support_logits_per_action, logits,
+         probs_or_logits) = model.get_q_value_distributions(model_out)
     else:
-        q_values = advantages_or_q_values
+        (action_scores, logits,
+         probs_or_logits) = model.get_q_value_distributions(model_out)
 
-    return q_values
+    if config["dueling"]:
+        state_score = model.get_state_value(model_out)
+        if policy.config["num_atoms"] > 1:
+            support_logits_per_action_mean = torch.mean(
+                support_logits_per_action, dim=1)
+            support_logits_per_action_centered = (
+                support_logits_per_action - torch.unsqueeze(
+                    support_logits_per_action_mean, dim=1))
+            support_logits_per_action = torch.unsqueeze(
+                state_score, dim=1) + support_logits_per_action_centered
+            support_prob_per_action = nn.functional.softmax(
+                support_logits_per_action)
+            value = torch.sum(z * support_prob_per_action, dim=-1)
+            logits = support_logits_per_action
+            probs_or_logits = support_prob_per_action
+        else:
+            advantages_mean = reduce_mean_ignore_inf(action_scores, 1)
+            advantages_centered = action_scores - torch.unsqueeze(
+                advantages_mean, 1)
+            value = state_score + advantages_centered
+    else:
+        value = action_scores
+
+    return value, logits, probs_or_logits
 
 
 def grad_process_and_td_error_fn(policy, optimizer, loss):
     # Clip grads if configured.
-    info = apply_grad_clipping(policy, optimizer, loss)
-    # Add td-error to info dict.
-    info["td_error"] = policy.q_loss.td_error
-    return info
+    return apply_grad_clipping(policy, optimizer, loss)
 
 
 def extra_action_out_fn(policy, input_dict, state_batches, model, action_dist):
@@ -266,6 +339,7 @@ DQNTorchPolicy = build_torch_policy(
     postprocess_fn=postprocess_nstep_and_prio,
     optimizer_fn=adam_optimizer,
     extra_grad_process_fn=grad_process_and_td_error_fn,
+    extra_learn_fetches_fn=lambda policy: {"td_error": policy.q_loss.td_error},
     extra_action_out_fn=extra_action_out_fn,
     before_init=setup_early_mixins,
     after_init=after_init,

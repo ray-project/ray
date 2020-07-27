@@ -12,18 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_PLASMA_STORE_PROVIDER_H
-#define RAY_CORE_WORKER_PLASMA_STORE_PROVIDER_H
+#pragma once
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "plasma/client.h"
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
-#include "ray/raylet/raylet_client.h"
+#include "ray/core_worker/reference_count.h"
+#include "ray/object_manager/plasma/client.h"
+#include "ray/raylet_client/raylet_client.h"
 
 namespace ray {
 
@@ -36,6 +36,7 @@ class CoreWorkerPlasmaStoreProvider {
   CoreWorkerPlasmaStoreProvider(
       const std::string &store_socket,
       const std::shared_ptr<raylet::RayletClient> raylet_client,
+      const std::shared_ptr<ReferenceCounter> reference_counter,
       std::function<Status()> check_signals, bool evict_if_full,
       std::function<void()> on_store_full = nullptr,
       std::function<std::string()> get_current_call_site = nullptr);
@@ -137,8 +138,16 @@ class CoreWorkerPlasmaStoreProvider {
   static void WarnIfAttemptedTooManyTimes(int num_attempts,
                                           const absl::flat_hash_set<ObjectID> &remaining);
 
+  /// Put something in the plasma store so that subsequent plasma store accesses
+  /// will be faster. Currently the first access is always slow, and we don't
+  /// want the user to experience this.
+  /// \return status
+  Status WarmupStore();
+
   const std::shared_ptr<raylet::RayletClient> raylet_client_;
   plasma::PlasmaClient store_client_;
+  /// Used to look up a plasma object's owner.
+  const std::shared_ptr<ReferenceCounter> reference_counter_;
   std::mutex store_client_mutex_;
   std::function<Status()> check_signals_;
   const bool evict_if_full_;
@@ -164,5 +173,3 @@ class CoreWorkerPlasmaStoreProvider {
 };
 
 }  // namespace ray
-
-#endif  // RAY_CORE_WORKER_PLASMA_STORE_PROVIDER_H

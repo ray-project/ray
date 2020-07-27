@@ -1,16 +1,17 @@
 import React from "react";
 import {
-  ClusterFeatureComponent,
-  NodeFeatureComponent,
-  WorkerFeatureComponent,
+  ClusterFeatureRenderFn,
+  NodeFeatureRenderFn,
+  NodeInfoFeature,
+  WorkerFeatureRenderFn,
 } from "./types";
 
-export const ClusterWorkers: ClusterFeatureComponent = ({ nodes }) => {
-  let totalWorkers = 0;
+export const ClusterWorkers: ClusterFeatureRenderFn = ({ nodes }) => {
   let totalCpus = 0;
+  let totalWorkers = 0;
   for (const node of nodes) {
-    totalWorkers += node.workers.length;
     totalCpus += node.cpus[0];
+    totalWorkers += node.workers.length;
   }
   return (
     <React.Fragment>
@@ -21,13 +22,14 @@ export const ClusterWorkers: ClusterFeatureComponent = ({ nodes }) => {
   );
 };
 
-export const NodeWorkers: NodeFeatureComponent = ({ node }) => {
-  const workers = node.workers.length;
+export const NodeWorkers: NodeFeatureRenderFn = ({ node }) => {
   const cpus = node.cpus[0];
+  const totalWorkers = node.workers.length;
   return (
     <React.Fragment>
-      {workers.toLocaleString()} {workers === 1 ? "worker" : "workers"} /{" "}
-      {cpus.toLocaleString()} {cpus === 1 ? "core" : "cores"}
+      {totalWorkers.toLocaleString()}{" "}
+      {totalWorkers === 1 ? "worker" : "workers"} / {cpus.toLocaleString()}{" "}
+      {cpus === 1 ? "core" : "cores"}
     </React.Fragment>
   );
 };
@@ -35,6 +37,15 @@ export const NodeWorkers: NodeFeatureComponent = ({ node }) => {
 // Ray worker process titles have one of the following forms: `ray::IDLE`,
 // `ray::function()`, `ray::Class`, or `ray::Class.method()`. We extract the
 // second portion here for display in the "Workers" column.
-export const WorkerWorkers: WorkerFeatureComponent = ({ worker }) => (
+export const WorkerWorkers: WorkerFeatureRenderFn = ({ worker }) => (
   <React.Fragment>{worker.cmdline[0].split("::", 2)[1]}</React.Fragment>
 );
+
+const workersFeature: NodeInfoFeature = {
+  id: "workers",
+  ClusterFeatureRenderFn: ClusterWorkers,
+  NodeFeatureRenderFn: NodeWorkers,
+  WorkerFeatureRenderFn: WorkerWorkers,
+};
+
+export default workersFeature;

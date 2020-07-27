@@ -45,7 +45,7 @@ class JsonReader(InputReader):
                 logger.warning(
                     "Treating input directory as glob pattern: {}".format(
                         inputs))
-            if urlparse(inputs).scheme:
+            if urlparse(inputs).scheme not in ["", "c"]:
                 raise ValueError(
                     "Don't know how to glob over `{}`, ".format(inputs) +
                     "please specify a list of files to read instead.")
@@ -123,7 +123,7 @@ class JsonReader(InputReader):
 
     def _next_file(self):
         path = random.choice(self.files)
-        if urlparse(path).scheme:
+        if urlparse(path).scheme not in ["", "c"]:
             if smart_open is None:
                 raise ValueError(
                     "You must install the `smart_open` module to read "

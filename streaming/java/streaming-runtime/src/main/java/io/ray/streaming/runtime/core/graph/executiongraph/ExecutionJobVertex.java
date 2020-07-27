@@ -2,13 +2,12 @@ package io.ray.streaming.runtime.core.graph.executiongraph;
 
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;
-import io.ray.api.RayActor;
+import io.ray.api.BaseActorHandle;
 import io.ray.streaming.api.Language;
 import io.ray.streaming.jobgraph.JobVertex;
 import io.ray.streaming.jobgraph.VertexType;
 import io.ray.streaming.operator.StreamOperator;
 import io.ray.streaming.runtime.config.master.ResourceConfig;
-import io.ray.streaming.runtime.worker.JobWorker;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -25,18 +24,20 @@ import org.aeonbits.owner.ConfigFactory;
 public class ExecutionJobVertex {
 
   /**
-   * Unique id of operator(use {@link JobVertex}'s id). Used as jobVertex's id.
+   * Unique id. Use {@link JobVertex}'s id directly.
    */
-  private final int jobVertexId;
+  private final int executionJobVertexId;
 
   /**
-   * Unique name of operator(use {@link StreamOperator}'s name). Used as jobVertex's name.
+   * Use jobVertex id and operator(use {@link StreamOperator}'s name) as name.
+   * e.g. 1-SourceOperator
    */
-  private final String jobVertexName;
+  private final String executionJobVertexName;
   private final StreamOperator streamOperator;
   private final VertexType vertexType;
   private final Language language;
   private final Map<String, String> jobConfig;
+  private final long buildTime;
 
   /**
    * Parallelism of current execution job vertex(operator).
@@ -55,18 +56,23 @@ public class ExecutionJobVertex {
   private List<ExecutionJobEdge> outputEdges = new ArrayList<>();
 
   public ExecutionJobVertex(
-      JobVertex jobVertex, Map<String, String> jobConfig, AtomicInteger idGenerator) {
-    this.jobVertexId = jobVertex.getVertexId();
-    this.jobVertexName = jobVertex.getStreamOperator().getName();
+      JobVertex jobVertex,
+      Map<String, String> jobConfig,
+      AtomicInteger idGenerator,
+      long buildTime) {
+    this.executionJobVertexId = jobVertex.getVertexId();
+    this.executionJobVertexName = generateExecutionJobVertexName(
+        executionJobVertexId, jobVertex.getStreamOperator().getName());
     this.streamOperator = jobVertex.getStreamOperator();
     this.vertexType = jobVertex.getVertexType();
     this.language = jobVertex.getLanguage();
     this.jobConfig = jobConfig;
+    this.buildTime = buildTime;
     this.parallelism = jobVertex.getParallelism();
-    this.executionVertices = createExecutionVertics(idGenerator);
+    this.executionVertices = createExecutionVertices(idGenerator);
   }
 
-  private List<ExecutionVertex> createExecutionVertics(AtomicInteger idGenerator) {
+  private List<ExecutionVertex> createExecutionVertices(AtomicInteger idGenerator) {
     List<ExecutionVertex> executionVertices = new ArrayList<>();
     ResourceConfig resourceConfig = ConfigFactory.create(ResourceConfig.class, jobConfig);
 
@@ -77,8 +83,12 @@ public class ExecutionJobVertex {
     return executionVertices;
   }
 
-  public Map<Integer, RayActor<JobWorker>> getExecutionVertexWorkers() {
-    Map<Integer, RayActor<JobWorker>> executionVertexWorkersMap = new HashMap<>();
+  private String generateExecutionJobVertexName(int jobVertexId, String streamOperatorName) {
+    return jobVertexId + "-" + streamOperatorName;
+  }
+
+  public Map<Integer, BaseActorHandle> getExecutionVertexWorkers() {
+    Map<Integer, BaseActorHandle> executionVertexWorkersMap = new HashMap<>();
 
     Preconditions.checkArgument(
         executionVertices != null && !executionVertices.isEmpty(),
@@ -87,18 +97,18 @@ public class ExecutionJobVertex {
       Preconditions.checkArgument(
           vertex.getWorkerActor() != null,
           "Empty execution vertex worker actor.");
-      executionVertexWorkersMap.put(vertex.getId(), vertex.getWorkerActor());
+      executionVertexWorkersMap.put(vertex.getExecutionVertexId(), vertex.getWorkerActor());
     });
 
     return executionVertexWorkersMap;
   }
 
-  public int getJobVertexId() {
-    return jobVertexId;
+  public int getExecutionJobVertexId() {
+    return executionJobVertexId;
   }
 
-  public String getJobVertexName() {
-    return jobVertexName;
+  public String getExecutionJobVertexName() {
+    return executionJobVertexName;
   }
 
   /**
@@ -106,8 +116,8 @@ public class ExecutionJobVertex {
    *
    * @return operator name with index
    */
-  public String getVertexNameWithIndex() {
-    return jobVertexId + "-" + jobVertexName;
+  public String getExecutionJobVertexNameWithIndex() {
+    return executionJobVertexId + "-" + executionJobVertexName;
   }
 
   public int getParallelism() {
@@ -153,6 +163,14 @@ public class ExecutionJobVertex {
     return language;
   }
 
+  public Map<String, String> getJobConfig() {
+    return jobConfig;
+  }
+
+  public long getBuildTime() {
+    return buildTime;
+  }
+
   public boolean isSourceVertex() {
     return getVertexType() == VertexType.SOURCE;
   }
@@ -168,8 +186,8 @@ public class ExecutionJobVertex {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-        .add("jobVertexId", jobVertexId)
-        .add("jobVertexName", jobVertexName)
+        .add("executionJobVertexId", executionJobVertexId)
+        .add("executionJobVertexName", executionJobVertexName)
         .add("vertexType", vertexType)
         .add("parallelism", parallelism)
         .toString();

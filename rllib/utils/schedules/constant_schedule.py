@@ -1,3 +1,4 @@
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.schedules.schedule import Schedule
 
 
@@ -14,5 +15,6 @@ class ConstantSchedule(Schedule):
         super().__init__(framework=framework)
         self._v = value
 
+    @override(Schedule)
     def _value(self, t):
         return self._v

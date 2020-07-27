@@ -7,6 +7,7 @@ import pytest
 
 import ray
 import ray.ray_constants as ray_constants
+from ray.test_utils import get_other_nodes
 
 
 @pytest.mark.parametrize(
@@ -70,8 +71,8 @@ def test_actor_creation_node_failure(ray_start_cluster):
             assert len(ready) == len(children_out)
 
         # Remove a node. Any actor creation tasks that were forwarded to this
-        # node must be reconstructed.
-        cluster.remove_node(cluster.list_all_nodes()[-1])
+        # node must be restarted.
+        cluster.remove_node(get_other_nodes(cluster, True)[-1])
 
 
 @pytest.mark.skipif(
@@ -82,10 +83,7 @@ def test_driver_lives_sequential(ray_start_regular):
     ray.worker._global_node.kill_plasma_store()
     ray.worker._global_node.kill_log_monitor()
     ray.worker._global_node.kill_monitor()
-    if ray_constants.GCS_SERVICE_ENABLED:
-        ray.worker._global_node.kill_gcs_server()
-    else:
-        ray.worker._global_node.kill_raylet_monitor()
+    ray.worker._global_node.kill_gcs_server()
 
     # If the driver can reach the tearDown method, then it is still alive.
 
@@ -96,19 +94,11 @@ def test_driver_lives_sequential(ray_start_regular):
 def test_driver_lives_parallel(ray_start_regular):
     all_processes = ray.worker._global_node.all_processes
 
-    if ray_constants.GCS_SERVICE_ENABLED:
-        process_infos = (all_processes[ray_constants.PROCESS_TYPE_PLASMA_STORE]
-                         + all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER]
-                         + all_processes[ray_constants.PROCESS_TYPE_RAYLET] +
-                         all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR]
-                         + all_processes[ray_constants.PROCESS_TYPE_MONITOR])
-    else:
-        process_infos = (
-            all_processes[ray_constants.PROCESS_TYPE_PLASMA_STORE] +
-            all_processes[ray_constants.PROCESS_TYPE_RAYLET] +
-            all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] +
-            all_processes[ray_constants.PROCESS_TYPE_MONITOR] +
-            all_processes[ray_constants.PROCESS_TYPE_RAYLET_MONITOR])
+    process_infos = (all_processes[ray_constants.PROCESS_TYPE_PLASMA_STORE] +
+                     all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] +
+                     all_processes[ray_constants.PROCESS_TYPE_RAYLET] +
+                     all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] +
+                     all_processes[ray_constants.PROCESS_TYPE_MONITOR])
     assert len(process_infos) == 5
 
     # Kill all the components in parallel.

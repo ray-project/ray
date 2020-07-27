@@ -8,6 +8,10 @@ TAG_RAY_NODE_TYPE = "ray-node-type"
 NODE_TYPE_HEAD = "head"
 NODE_TYPE_WORKER = "worker"
 
+# Tag for the provider-specific instance type (e.g., m4.4xlarge). This is used
+# for automatic worker instance type selection.
+TAG_RAY_INSTANCE_TYPE = "ray-instance-type"
+
 # Tag that reports the current state of the node (e.g. Updating, Up-to-date)
 TAG_RAY_NODE_STATUS = "ray-node-status"
 STATUS_UNINITIALIZED = "uninitialized"

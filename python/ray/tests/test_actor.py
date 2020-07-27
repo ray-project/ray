@@ -8,6 +8,7 @@ try:
 except ImportError:
     pytest_timeout = None
 import sys
+import datetime
 
 import ray
 import ray.test_utils
@@ -117,12 +118,6 @@ def test_actor_method_metadata_cache(ray_start_regular):
         a = pickle.loads(pickle.dumps(a))
     assert len(ray.actor.ActorClassMethodMetadata._cache) == 1
     assert [id(x) for x in list(cache.items())[0]] == cached_data_id
-
-    # Check cache hit when @ray.remote
-    A2 = ray.remote(Actor)
-    assert id(A1.__ray_metadata__) != id(A2.__ray_metadata__)
-    assert id(A1.__ray_metadata__.method_meta) == id(
-        A2.__ray_metadata__.method_meta)
 
 
 def test_actor_name_conflict(ray_start_regular):
@@ -358,7 +353,7 @@ def test_decorator_args(ray_start_regular):
     with pytest.raises(Exception):
 
         @ray.remote(invalid_kwarg=0)  # noqa: F811
-        class Actor:
+        class Actor:  # noqa: F811
             def __init__(self):
                 pass
 
@@ -366,25 +361,25 @@ def test_decorator_args(ray_start_regular):
     with pytest.raises(Exception):
 
         @ray.remote(num_cpus=0, invalid_kwarg=0)  # noqa: F811
-        class Actor:
+        class Actor:  # noqa: F811
             def __init__(self):
                 pass
 
     # This is a valid way of using the decorator.
     @ray.remote(num_cpus=1)  # noqa: F811
-    class Actor:
+    class Actor:  # noqa: F811
         def __init__(self):
             pass
 
     # This is a valid way of using the decorator.
     @ray.remote(num_gpus=1)  # noqa: F811
-    class Actor:
+    class Actor:  # noqa: F811
         def __init__(self):
             pass
 
     # This is a valid way of using the decorator.
     @ray.remote(num_cpus=1, num_gpus=1)  # noqa: F811
-    class Actor:
+    class Actor:  # noqa: F811
         def __init__(self):
             pass
 
@@ -620,11 +615,11 @@ def test_remote_function_within_actor(ray_start_10_cpus):
         def __init__(self, x):
             self.x = x
             self.y = val2
-            self.object_ids = [f.remote(i) for i in range(5)]
+            self.object_refs = [f.remote(i) for i in range(5)]
             self.values2 = ray.get([f.remote(i) for i in range(5)])
 
         def get_values(self):
-            return self.x, self.y, self.object_ids, self.values2
+            return self.x, self.y, self.object_refs, self.values2
 
         def f(self):
             return [f.remote(i) for i in range(5)]
@@ -632,8 +627,8 @@ def test_remote_function_within_actor(ray_start_10_cpus):
         def g(self):
             return ray.get([g.remote(i) for i in range(5)])
 
-        def h(self, object_ids):
-            return ray.get(object_ids)
+        def h(self, object_refs):
+            return ray.get(object_refs)
 
     actor = Actor.remote(1)
     values = ray.get(actor.get_values.remote())
@@ -697,6 +692,32 @@ def test_use_actor_within_actor(ray_start_10_cpus):
 
     actor2 = Actor2.remote(3, 4)
     assert ray.get(actor2.get_values.remote(5)) == (3, 4)
+
+
+def test_use_actor_twice(ray_start_10_cpus):
+    # Make sure we can call the same actor using different refs.
+
+    @ray.remote
+    class Actor1:
+        def __init__(self):
+            self.count = 0
+
+        def inc(self):
+            self.count += 1
+            return self.count
+
+    @ray.remote
+    class Actor2:
+        def __init__(self):
+            pass
+
+        def inc(self, handle):
+            return ray.get(handle.inc.remote())
+
+    a = Actor1.remote()
+    a2 = Actor2.remote()
+    assert ray.get(a2.inc.remote(a)) == 1
+    assert ray.get(a2.inc.remote(a)) == 2
 
 
 def test_define_actor_within_remote_function(ray_start_10_cpus):
@@ -794,6 +815,25 @@ def test_inherit_actor_from_class(ray_start_regular):
     actor = Actor.remote(1)
     assert ray.get(actor.get_value.remote()) == 1
     assert ray.get(actor.g.remote(5)) == 6
+
+
+@pytest.mark.skip(
+    "This test is just used to print the latency of creating 100 actors.")
+def test_actor_creation_latency(ray_start_regular):
+    # This test is just used to test the latency of actor creation.
+    @ray.remote
+    class Actor:
+        def get_value(self):
+            return 1
+
+    start = datetime.datetime.now()
+    actor_handles = [Actor.remote() for _ in range(100)]
+    actor_create_time = datetime.datetime.now()
+    for actor_handle in actor_handles:
+        ray.get(actor_handle.get_value.remote())
+    end = datetime.datetime.now()
+    print("actor_create_time_consume = {}, total_time_consume = {}".format(
+        actor_create_time - start, end - start))
 
 
 if __name__ == "__main__":

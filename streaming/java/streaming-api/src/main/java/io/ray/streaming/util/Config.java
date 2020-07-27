@@ -2,17 +2,6 @@ package io.ray.streaming.util;
 
 public class Config {
 
-  /**
-   * Maximum number of batches to run in a streaming job.
-   */
-  public static final String STREAMING_BATCH_MAX_COUNT = "streaming.batch.max.count";
-
-  /**
-   * batch frequency in milliseconds
-   */
-  public static final String STREAMING_BATCH_FREQUENCY = "streaming.batch.frequency";
-  public static final long STREAMING_BATCH_FREQUENCY_DEFAULT = 1000;
-
   public static final String STREAMING_JOB_NAME = "streaming.job.name";
   public static final String STREAMING_OP_NAME = "streaming.op_name";
   public static final String STREAMING_WORKER_NAME = "streaming.worker_name";

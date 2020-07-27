@@ -5,7 +5,7 @@ This walkthrough will overview the core concepts of Ray:
 
 1. Starting Ray
 2. Using remote functions (tasks) [``ray.remote``]
-3. Fetching results (object IDs) [``ray.put``, ``ray.get``, ``ray.wait``]
+3. Fetching results (object refs) [``ray.put``, ``ray.get``, ``ray.wait``]
 4. Using remote classes (actors) [``ray.remote``]
 
 With Ray, your code will work on a single machine and can be easily scaled to large cluster.
@@ -32,7 +32,9 @@ You can start Ray on a single machine by adding this to your python script.
 
 Ray will then be able to utilize all cores of your machine. Find out how to configure the number of cores Ray will use at :ref:`configuring-ray`.
 
-To start a multi-node Ray cluster, see the `cluster setup page <using-ray-on-a-cluster.html>`__.
+To start a multi-node Ray cluster, see the :ref:`cluster setup page <cluster-index>`.
+
+.. _ray-remote-functions:
 
 Remote functions (Tasks)
 ------------------------
@@ -53,16 +55,16 @@ Ray enables arbitrary Python functions to be executed asynchronously. These asyn
 This causes a few changes in behavior:
 
     1. **Invocation:** The regular version is called with ``regular_function()``, whereas the remote version is called with ``remote_function.remote()``.
-    2. **Return values:** ``regular_function`` immediately executes and returns ``1``, whereas ``remote_function`` immediately returns an object ID (a future) and then creates a task that will be executed on a worker process. The result can be retrieved with ``ray.get``.
+    2. **Return values:** ``regular_function`` immediately executes and returns ``1``, whereas ``remote_function`` immediately returns an object ref (a future) and then creates a task that will be executed on a worker process. The result can be retrieved with ``ray.get``.
 
     .. code:: python
 
         assert regular_function() == 1
 
-        object_id = remote_function.remote()
+        object_ref = remote_function.remote()
 
         # The value of the original `regular_function`
-        assert ray.get(object_id) == 1
+        assert ray.get(object_ref) == 1
 
 3. **Parallelism:** Invocations of ``regular_function`` happen
    **serially**, for example
@@ -87,7 +89,9 @@ All computation is performed in the background, driven by Ray's internal event l
 
 See the `ray.remote package reference <package-ref.html>`__ page for specific documentation on how to use ``ray.remote``.
 
-**Object IDs** can also be passed into remote functions. When the function actually gets executed, **the argument will be a retrieved as a regular Python object**. For example, take this function:
+.. _ray-object-ids:
+
+**Object refs** can also be passed into remote functions. When the function actually gets executed, **the argument will be a retrieved as a regular Python object**. For example, take this function:
 
 .. code:: python
 
@@ -158,7 +162,7 @@ Below are more examples of resource specifications:
   def f():
       return 1
 
-Further, remote functions can return multiple object IDs.
+Further, remote functions can return multiple object refs.
 
 .. code-block:: python
 
@@ -168,30 +172,38 @@ Further, remote functions can return multiple object IDs.
 
   a_id, b_id, c_id = return_multiple.remote()
 
+Remote functions can be canceled by calling ``ray.cancel`` (:ref:`docstring <ray-cancel-ref>`) on the returned Object ref. Remote actor functions can be stopped by killing the actor using the ``ray.kill`` interface.
+
+.. code-block:: python
+
+  @ray.remote
+  def blocking_operation():
+      time.sleep(10e6)
+      return 100
+
+  obj_ref = blocking_operation.remote()
+  ray.cancel(obj_ref)
 
 Objects in Ray
 --------------
 
-In Ray, we can create and compute on objects. We refer to these objects as **remote objects**, and we use **object IDs** to refer to them. Remote objects are stored in `shared-memory <https://en.wikipedia.org/wiki/Shared_memory>`__ **object stores**, and there is one object store per node in the cluster. In the cluster setting, we may not actually know which machine each object lives on.
+In Ray, we can create and compute on objects. We refer to these objects as **remote objects**, and we use **object refs** to refer to them. Remote objects are stored in `shared-memory <https://en.wikipedia.org/wiki/Shared_memory>`__ **object stores**, and there is one object store per node in the cluster. In the cluster setting, we may not actually know which machine each object lives on.
 
-An **object ID** is essentially a unique ID that can be used to refer to a
-remote object. If you're familiar with futures, our object IDs are conceptually
+An **object ref** is essentially a unique ID that can be used to refer to a
+remote object. If you're familiar with futures, our object refs are conceptually
 similar.
 
-Object IDs can be created in multiple ways.
+Object refs can be created in multiple ways.
 
   1. They are returned by remote function calls.
-  2. They are returned by ``ray.put``.
+  2. They are returned by ``ray.put`` (:ref:`docstring <ray-put-ref>`).
 
 .. code-block:: python
 
     y = 1
-    object_id = ray.put(y)
+    object_ref = ray.put(y)
 
-.. autofunction:: ray.put
-    :noindex:
-
-.. important::
+.. note::
 
     Remote objects are immutable. That is, their values cannot be changed after
     creation. This allows remote objects to be replicated in multiple object
@@ -201,7 +213,7 @@ Object IDs can be created in multiple ways.
 Fetching Results
 ----------------
 
-The command ``ray.get(x_id, timeout=None)`` takes an object ID and creates a Python object
+The command ``ray.get(x_id, timeout=None)`` (:ref:`docstring <ray-get-ref>`) takes an object ref and creates a Python object
 from the corresponding remote object. First, if the current node's object store
 does not contain the object, the object is downloaded. Then, if the object is a `numpy array <https://docs.scipy.org/doc/numpy/reference/generated/numpy.array.html>`__
 or a collection of numpy arrays, the ``get`` call is zero-copy and returns arrays backed by shared object store memory.
@@ -210,8 +222,8 @@ Otherwise, we deserialize the object data into a Python object.
 .. code-block:: python
 
     y = 1
-    obj_id = ray.put(y)
-    assert ray.get(obj_id) == 1
+    obj_ref = ray.put(y)
+    assert ray.get(obj_ref) == 1
 
 You can also set a timeout to return early from a ``get`` that's blocking for too long.
 
@@ -223,26 +235,20 @@ You can also set a timeout to return early from a ``get`` that's blocking for to
     def long_running_function()
         time.sleep(8)
 
-    obj_id = long_running_function.remote()
+    obj_ref = long_running_function.remote()
     try:
-        ray.get(obj_id, timeout=4)
+        ray.get(obj_ref, timeout=4)
     except RayTimeoutError:
         print("`get` timed out.")
 
-.. autofunction:: ray.get
-    :noindex:
-
 
 After launching a number of tasks, you may want to know which ones have
-finished executing. This can be done with ``ray.wait``. The function
+finished executing. This can be done with ``ray.wait`` (:ref:`ray-wait-ref`). The function
 works as follows.
 
 .. code:: python
 
-    ready_ids, remaining_ids = ray.wait(object_ids, num_returns=1, timeout=None)
-
-.. autofunction:: ray.wait
-    :noindex:
+    ready_ids, remaining_ids = ray.wait(object_refs, num_returns=1, timeout=None)
 
 Object Eviction
 ---------------
@@ -257,7 +263,7 @@ actors.
 .. note::
 
     Objects created with ``ray.put`` are pinned in memory while a Python reference
-    to the object ID returned by the put exists. This only applies to the specific
+    to the object ref returned by the put exists. This only applies to the specific
     ID returned by put, not IDs in general or copies of that IDs.
 
 Remote Classes (Actors)
@@ -301,13 +307,13 @@ You can specify resource requirements in Actors too (see the `Actors section
       pass
 
 We can interact with the actor by calling its methods with the ``.remote``
-operator. We can then call ``ray.get`` on the object ID to retrieve the actual
+operator. We can then call ``ray.get`` on the object ref to retrieve the actual
 value.
 
 .. code-block:: python
 
-  obj_id = a1.increment.remote()
-  ray.get(obj_id) == 1
+  obj_ref = a1.increment.remote()
+  ray.get(obj_ref) == 1
 
 
 Methods called on different actors can execute in parallel, and methods called on the same actor are executed serially in the order that they are called. Methods on the same actor will share state with one another, as shown below.

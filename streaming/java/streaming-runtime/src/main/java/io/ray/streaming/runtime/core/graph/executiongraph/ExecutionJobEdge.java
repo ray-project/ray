@@ -12,12 +12,12 @@ public class ExecutionJobEdge {
   /**
    * The source(upstream) execution job vertex.
    */
-  private final ExecutionJobVertex sourceVertex;
+  private final ExecutionJobVertex sourceExecutionJobVertex;
 
   /**
    * The target(downstream) execution job vertex.
    */
-  private final ExecutionJobVertex targetVertex;
+  private final ExecutionJobVertex targetExecutionJobVertex;
 
   /**
    * The partition of the execution job edge.
@@ -29,24 +29,27 @@ public class ExecutionJobEdge {
    */
   private final String executionJobEdgeIndex;
 
-  public ExecutionJobEdge(ExecutionJobVertex sourceVertex, ExecutionJobVertex targetVertex,
+  public ExecutionJobEdge(
+      ExecutionJobVertex sourceExecutionJobVertex,
+      ExecutionJobVertex targetExecutionJobVertex,
       JobEdge jobEdge) {
-    this.sourceVertex = sourceVertex;
-    this.targetVertex = targetVertex;
+    this.sourceExecutionJobVertex = sourceExecutionJobVertex;
+    this.targetExecutionJobVertex = targetExecutionJobVertex;
     this.partition = jobEdge.getPartition();
     this.executionJobEdgeIndex = generateExecutionJobEdgeIndex();
   }
 
   private String generateExecutionJobEdgeIndex() {
-    return sourceVertex.getJobVertexId() + "—" + targetVertex.getJobVertexId();
+    return sourceExecutionJobVertex.getExecutionJobVertexId() + "—"
+        + targetExecutionJobVertex.getExecutionJobVertexId();
   }
 
-  public ExecutionJobVertex getSourceVertex() {
-    return sourceVertex;
+  public ExecutionJobVertex getSourceExecutionJobVertex() {
+    return sourceExecutionJobVertex;
   }
 
-  public ExecutionJobVertex getTargetVertex() {
-    return targetVertex;
+  public ExecutionJobVertex getTargetExecutionJobVertex() {
+    return targetExecutionJobVertex;
   }
 
   public Partition getPartition() {
@@ -56,10 +59,10 @@ public class ExecutionJobEdge {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-        .add("srcVertex", sourceVertex)
-        .add("targetVertex", targetVertex)
+        .add("source", sourceExecutionJobVertex)
+        .add("target", targetExecutionJobVertex)
         .add("partition", partition)
-        .add("executionJobEdgeIndex", executionJobEdgeIndex)
+        .add("index", executionJobEdgeIndex)
         .toString();
   }
 }

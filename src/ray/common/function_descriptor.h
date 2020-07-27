@@ -12,13 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_FUNCTION_DESCRIPTOR_H
-#define RAY_CORE_WORKER_FUNCTION_DESCRIPTOR_H
+#pragma once
 
 #include <string>
 
 #include "ray/common/grpc_util.h"
-#include "ray/protobuf/common.pb.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 /// See `common.proto` for definition of `FunctionDescriptor` oneof type.
@@ -26,6 +25,8 @@ using FunctionDescriptorType = rpc::FunctionDescriptor::FunctionDescriptorCase;
 /// Wrap a protobuf message.
 class FunctionDescriptorInterface : public MessageWrapper<rpc::FunctionDescriptor> {
  public:
+  virtual ~FunctionDescriptorInterface() {}
+
   /// Construct an empty FunctionDescriptor.
   FunctionDescriptorInterface() : MessageWrapper() {}
 
@@ -41,6 +42,11 @@ class FunctionDescriptorInterface : public MessageWrapper<rpc::FunctionDescripto
   }
 
   virtual size_t Hash() const = 0;
+
+  // DO NOT define operator==() or operator!=() in the base class.
+  // Let the derived classes define and implement.
+  // This is to avoid unexpected behaviors when comparing function descriptors of
+  // different declard types, as in this case, the base class version is invoked.
 
   virtual std::string ToString() const = 0;
 
@@ -68,6 +74,10 @@ class EmptyFunctionDescriptor : public FunctionDescriptorInterface {
     return std::hash<int>()(ray::FunctionDescriptorType::FUNCTION_DESCRIPTOR_NOT_SET);
   }
 
+  inline bool operator==(const EmptyFunctionDescriptor &other) const { return true; }
+
+  inline bool operator!=(const EmptyFunctionDescriptor &other) const { return false; }
+
   virtual std::string ToString() const { return "{type=EmptyFunctionDescriptor}"; }
 };
 
@@ -91,17 +101,30 @@ class JavaFunctionDescriptor : public FunctionDescriptorInterface {
            std::hash<std::string>()(typed_message_->signature());
   }
 
+  inline bool operator==(const JavaFunctionDescriptor &other) const {
+    if (this == &other) {
+      return true;
+    }
+    return this->ClassName() == other.ClassName() &&
+           this->FunctionName() == other.FunctionName() &&
+           this->Signature() == other.Signature();
+  }
+
+  inline bool operator!=(const JavaFunctionDescriptor &other) const {
+    return !(*this == other);
+  }
+
   virtual std::string ToString() const {
     return "{type=JavaFunctionDescriptor, class_name=" + typed_message_->class_name() +
            ", function_name=" + typed_message_->function_name() +
            ", signature=" + typed_message_->signature() + "}";
   }
 
-  std::string ClassName() const { return typed_message_->class_name(); }
+  const std::string &ClassName() const { return typed_message_->class_name(); }
 
-  std::string FunctionName() const { return typed_message_->function_name(); }
+  const std::string &FunctionName() const { return typed_message_->function_name(); }
 
-  std::string Signature() const { return typed_message_->signature(); }
+  const std::string &Signature() const { return typed_message_->signature(); }
 
  private:
   const rpc::JavaFunctionDescriptor *typed_message_;
@@ -128,6 +151,20 @@ class PythonFunctionDescriptor : public FunctionDescriptorInterface {
            std::hash<std::string>()(typed_message_->function_hash());
   }
 
+  inline bool operator==(const PythonFunctionDescriptor &other) const {
+    if (this == &other) {
+      return true;
+    }
+    return this->ModuleName() == other.ModuleName() &&
+           this->ClassName() == other.ClassName() &&
+           this->FunctionName() == other.FunctionName() &&
+           this->FunctionHash() == other.FunctionHash();
+  }
+
+  inline bool operator!=(const PythonFunctionDescriptor &other) const {
+    return !(*this == other);
+  }
+
   virtual std::string ToString() const {
     return "{type=PythonFunctionDescriptor, module_name=" +
            typed_message_->module_name() +
@@ -141,13 +178,13 @@ class PythonFunctionDescriptor : public FunctionDescriptorInterface {
            typed_message_->function_name();
   }
 
-  std::string ModuleName() const { return typed_message_->module_name(); }
+  const std::string &ModuleName() const { return typed_message_->module_name(); }
 
-  std::string ClassName() const { return typed_message_->class_name(); }
+  const std::string &ClassName() const { return typed_message_->class_name(); }
 
-  std::string FunctionName() const { return typed_message_->function_name(); }
+  const std::string &FunctionName() const { return typed_message_->function_name(); }
 
-  std::string FunctionHash() const { return typed_message_->function_hash(); }
+  const std::string &FunctionHash() const { return typed_message_->function_hash(); }
 
  private:
   const rpc::PythonFunctionDescriptor *typed_message_;
@@ -173,17 +210,30 @@ class CppFunctionDescriptor : public FunctionDescriptorInterface {
            std::hash<std::string>()(typed_message_->exec_function_offset());
   }
 
+  inline bool operator==(const CppFunctionDescriptor &other) const {
+    if (this == &other) {
+      return true;
+    }
+    return this->LibName() == other.LibName() &&
+           this->FunctionOffset() == other.FunctionOffset() &&
+           this->ExecFunctionOffset() == other.ExecFunctionOffset();
+  }
+
+  inline bool operator!=(const CppFunctionDescriptor &other) const {
+    return !(*this == other);
+  }
+
   virtual std::string ToString() const {
     return "{type=CppFunctionDescriptor, lib_name=" + typed_message_->lib_name() +
            ", function_offset=" + typed_message_->function_offset() +
            ", exec_function_offset=" + typed_message_->exec_function_offset() + "}";
   }
 
-  std::string LibName() const { return typed_message_->lib_name(); }
+  const std::string &LibName() const { return typed_message_->lib_name(); }
 
-  std::string FunctionOffset() const { return typed_message_->function_offset(); }
+  const std::string &FunctionOffset() const { return typed_message_->function_offset(); }
 
-  std::string ExecFunctionOffset() const {
+  const std::string &ExecFunctionOffset() const {
     return typed_message_->exec_function_offset();
   }
 
@@ -194,11 +244,32 @@ class CppFunctionDescriptor : public FunctionDescriptorInterface {
 typedef std::shared_ptr<FunctionDescriptorInterface> FunctionDescriptor;
 
 inline bool operator==(const FunctionDescriptor &left, const FunctionDescriptor &right) {
-  if (left.get() != nullptr && right.get() != nullptr && left->Type() == right->Type() &&
-      left->ToString() == right->ToString()) {
+  if (left.get() == right.get()) {
     return true;
   }
-  return left.get() == right.get();
+  if (left.get() == nullptr || right.get() == nullptr) {
+    return false;
+  }
+  if (left->Type() != right->Type()) {
+    return false;
+  }
+  switch (left->Type()) {
+  case ray::FunctionDescriptorType::FUNCTION_DESCRIPTOR_NOT_SET:
+    return static_cast<const EmptyFunctionDescriptor &>(*left) ==
+           static_cast<const EmptyFunctionDescriptor &>(*right);
+  case ray::FunctionDescriptorType::kJavaFunctionDescriptor:
+    return static_cast<const JavaFunctionDescriptor &>(*left) ==
+           static_cast<const JavaFunctionDescriptor &>(*right);
+  case ray::FunctionDescriptorType::kPythonFunctionDescriptor:
+    return static_cast<const PythonFunctionDescriptor &>(*left) ==
+           static_cast<const PythonFunctionDescriptor &>(*right);
+  case ray::FunctionDescriptorType::kCppFunctionDescriptor:
+    return static_cast<const CppFunctionDescriptor &>(*left) ==
+           static_cast<const CppFunctionDescriptor &>(*right);
+  default:
+    RAY_LOG(FATAL) << "Unknown function descriptor type: " << left->Type();
+    return false;
+  }
 }
 
 inline bool operator!=(const FunctionDescriptor &left, const FunctionDescriptor &right) {
@@ -252,5 +323,3 @@ class FunctionDescriptorBuilder {
   static FunctionDescriptor Deserialize(const std::string &serialized_binary);
 };
 }  // namespace ray
-
-#endif

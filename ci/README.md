@@ -8,7 +8,7 @@ _Please double-check file/function/etc. names for changes, as this document may 
 All dependencies (e.g. `apt`, `pip`) should be installed in `install_dependencies()`, following the same pattern as
 those that already exist.
 
-Once a dependency is added/removed, please ensure that if `reload_env` (or similar) is updated if it exists, as CI
+Once a dependency is added/removed, please ensure that shell environment variables are persisted appropriately, as CI
 systems differ on when `~/.bashrc` et al. are reloaded, if at all. (And they are not necessarily idempotent.)
 
 ### Bazel, environment variables, and caching
@@ -39,10 +39,11 @@ Adding new scripts has a number of pitfalls that easily take hours (even days) t
 
 The following practices can avoid such pitfalls while maintaining intuitive control flow:
 
-- Put all environment-modifying functions in the _same_ shell script, so that their invocation behaves intuitively.
+- Put all environment-modifying functions in the _top-level_ shell script, so that their invocation behaves intuitively.
   (The sheer length of the script is a secondary concern and can be mitigated by keeping functions modular.)
 
 - Avoid adding new scripts if possible. If it's necessary that you do so, call them instead of sourcing them.
+  Note that thies implies new scripts should not modify the environment, or the caller will not see such changes!
 
 - Always add code inside a function, not at global scope. Use `local` for variables where it makes sense.
   However, be careful and know the shell rules: for example, e.g. `local x=$(false)` succeeds even under `set -e`.

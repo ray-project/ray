@@ -14,16 +14,15 @@
 
 #include "gtest/gtest.h"
 
-// TODO(pcm): get rid of this and replace with the type safe plasma event loop
-extern "C" {
-#include "hiredis/hiredis.h"
-}
-
 #include "ray/common/ray_config.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/gcs/tables.h"
+
+extern "C" {
+#include "hiredis/hiredis.h"
+}
 
 namespace ray {
 
@@ -31,7 +30,7 @@ namespace gcs {
 
 /* Flush redis. */
 static inline void flushall_redis(void) {
-  redisContext *context = redisConnect("127.0.0.1", REDIS_SERVER_PORT);
+  redisContext *context = redisConnect("127.0.0.1", TEST_REDIS_SERVER_PORTS.front());
   freeReplyObject(redisCommand(context, "FLUSHALL"));
   redisFree(context);
 }
@@ -42,15 +41,17 @@ inline JobID NextJobID() {
   return JobID::FromInt(++counter);
 }
 
-class TestGcs : public RedisServiceManagerForTest {
+class TestGcs : public ::testing::Test {
  public:
   TestGcs(CommandType command_type) : num_callbacks_(0), command_type_(command_type) {
+    TestSetupUtil::StartUpRedisServers(std::vector<int>());
     job_id_ = NextJobID();
   }
 
   virtual ~TestGcs() {
     // Clear all keys in the GCS.
     flushall_redis();
+    TestSetupUtil::ShutDownRedisServers();
   };
 
   virtual void Start() = 0;
@@ -85,7 +86,7 @@ class TestGcsWithAsio : public TestGcs {
   }
 
   void SetUp() override {
-    GcsClientOptions options("127.0.0.1", REDIS_SERVER_PORT, "", true);
+    GcsClientOptions options("127.0.0.1", TEST_REDIS_SERVER_PORTS.front(), "", true);
     client_ = std::make_shared<gcs::RedisGcsClient>(options, command_type_);
     RAY_CHECK_OK(client_->Connect(io_service_));
   }
@@ -304,7 +305,7 @@ class TaskTableTestHelper {
                                        std::shared_ptr<gcs::RedisGcsClient> client) {
     // Add a table entry.
     const auto task_id = RandomTaskId();
-    const int num_modifications = 3;
+    uint64_t num_modifications = 3;
     const auto data = CreateTaskTableData(task_id, 0);
     RAY_CHECK_OK(client->raylet_task_table().Add(job_id, task_id, data, nullptr));
 
@@ -316,8 +317,9 @@ class TaskTableTestHelper {
 
     // The callback for a notification from the table. This should only be
     // received for keys that we requested notifications for.
-    auto notification_callback = [task_id](gcs::RedisGcsClient *client, const TaskID &id,
-                                           const TaskTableData &data) {
+    auto notification_callback = [task_id, num_modifications](gcs::RedisGcsClient *client,
+                                                              const TaskID &id,
+                                                              const TaskTableData &data) {
       ASSERT_EQ(id, task_id);
       // Check that we only get notifications for the first and last writes,
       // since notifications are canceled in between.
@@ -335,7 +337,8 @@ class TaskTableTestHelper {
 
     // The callback for a notification from the table. This should only be
     // received for keys that we requested notifications for.
-    auto subscribe_callback = [job_id, task_id](gcs::RedisGcsClient *client) {
+    auto subscribe_callback = [job_id, task_id,
+                               num_modifications](gcs::RedisGcsClient *client) {
       // Request notifications, then cancel immediately. We should receive a
       // notification for the current value at the key.
       RAY_CHECK_OK(client->raylet_task_table().RequestNotifications(
@@ -1328,7 +1331,7 @@ class HashTableTestHelper {
  public:
   static void TestHashTable(const JobID &job_id,
                             std::shared_ptr<gcs::RedisGcsClient> client) {
-    const int expected_count = 14;
+    uint64_t expected_count = 14;
     ClientID client_id = ClientID::FromRandom();
     // Prepare the first resource map: data_map1.
     DynamicResourceTable::DataMap data_map1;
@@ -1366,7 +1369,7 @@ class HashTableTestHelper {
       test->IncrementNumCallbacks();
     };
     auto notification_callback =
-        [data_map1, data_map2, compare_test](
+        [data_map1, data_map2, compare_test, expected_count](
             RedisGcsClient *client, const ClientID &id,
             const std::vector<ResourceChangeNotification> &result) {
           RAY_CHECK(result.size() == 1);
@@ -1462,8 +1465,9 @@ class HashTableTestHelper {
     // Step 4: Removing all elements will remove the home Hash table from GCS.
     RAY_CHECK_OK(client->resource_table().RemoveEntries(
         job_id, client_id, {"GPU", "CPU", "CUSTOM", "None-Existent"}, nullptr));
-    auto lookup_callback5 = [](RedisGcsClient *client, const ClientID &id,
-                               const DynamicResourceTable::DataMap &callback_data) {
+    auto lookup_callback5 = [expected_count](
+                                RedisGcsClient *client, const ClientID &id,
+                                const DynamicResourceTable::DataMap &callback_data) {
       ASSERT_EQ(callback_data.size(), 0);
       test->IncrementNumCallbacks();
       // It is not sure which of notification or lookup callback will come first.
@@ -1490,8 +1494,8 @@ TEST_F(TestGcsWithAsio, TestHashTable) {
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 4);
-  ray::REDIS_SERVER_EXEC_PATH = argv[1];
-  ray::REDIS_CLIENT_EXEC_PATH = argv[2];
-  ray::REDIS_MODULE_LIBRARY_PATH = argv[3];
+  ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
+  ray::TEST_REDIS_CLIENT_EXEC_PATH = argv[2];
+  ray::TEST_REDIS_MODULE_LIBRARY_PATH = argv[3];
   return RUN_ALL_TESTS();
 }

@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_REDIS_CONTEXT_H
-#define RAY_GCS_REDIS_CONTEXT_H
+#pragma once
 
 #include <boost/asio.hpp>
 #include <boost/bind.hpp>
@@ -24,15 +23,9 @@
 
 #include "ray/common/id.h"
 #include "ray/common/status.h"
-#include "ray/util/logging.h"
-
 #include "ray/gcs/redis_async_context.h"
-#include "ray/protobuf/gcs.pb.h"
-
-extern "C" {
-#include "hiredis/async.h"
-#include "hiredis/hiredis.h"
-}
+#include "ray/util/logging.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 struct redisContext;
 struct redisAsyncContext;
@@ -146,20 +139,25 @@ class RedisCallbackManager {
     boost::asio::io_service *io_service_;
   };
 
-  int64_t add(const RedisCallback &function, bool is_subscription,
-              boost::asio::io_service &io_service);
+  /// Allocate an index at which we can add a callback later on.
+  int64_t AllocateCallbackIndex();
 
-  std::shared_ptr<CallbackItem> get(int64_t callback_index);
+  /// Add a callback at an optionally specified index.
+  int64_t AddCallback(const RedisCallback &function, bool is_subscription,
+                      boost::asio::io_service &io_service, int64_t callback_index = -1);
 
   /// Remove a callback.
-  void remove(int64_t callback_index);
+  void RemoveCallback(int64_t callback_index);
+
+  /// Get a callback.
+  std::shared_ptr<CallbackItem> GetCallback(int64_t callback_index) const;
 
  private:
   RedisCallbackManager() : num_callbacks_(0){};
 
   ~RedisCallbackManager() {}
 
-  std::mutex mutex_;
+  mutable std::mutex mutex_;
 
   int64_t num_callbacks_ = 0;
   std::unordered_map<int64_t, std::shared_ptr<CallbackItem>> callback_items_;
@@ -245,10 +243,12 @@ class RedisContext {
   ///
   /// \param pattern The pattern of subscription channel.
   /// \param redisCallback The callback function that the notification calls.
-  /// \param out_callback_index The output pointer to callback index.
+  /// \param callback_index The index at which to add the callback. This index
+  /// must already be allocated in the callback manager via
+  /// RedisCallbackManager::AllocateCallbackIndex.
   /// \return Status.
   Status PSubscribeAsync(const std::string &pattern, const RedisCallback &redisCallback,
-                         int64_t *out_callback_index);
+                         int64_t callback_index);
 
   /// Unsubscribes the client from the given pattern.
   ///
@@ -283,6 +283,10 @@ class RedisContext {
   boost::asio::io_service &io_service() { return io_service_; }
 
  private:
+  // These functions avoid problems with dependence on hiredis headers with clang-cl.
+  static int GetRedisError(redisContext *context);
+  static void FreeRedisReply(void *reply);
+
   boost::asio::io_service &io_service_;
   redisContext *context_;
   std::unique_ptr<RedisAsyncContext> redis_async_context_;
@@ -296,7 +300,7 @@ Status RedisContext::RunAsync(const std::string &command, const ID &id, const vo
                               RedisCallback redisCallback, int log_length) {
   RAY_CHECK(redis_async_context_);
   int64_t callback_index =
-      RedisCallbackManager::instance().add(redisCallback, false, io_service_);
+      RedisCallbackManager::instance().AddCallback(redisCallback, false, io_service_);
   Status status = Status::OK();
   if (length > 0) {
     if (log_length >= 0) {
@@ -346,12 +350,12 @@ std::shared_ptr<CallbackReply> RedisContext::RunSync(
                                id.Data(), id.Size());
   }
   if (redis_reply == nullptr) {
-    RAY_LOG(INFO) << "Run redis command failed , err is " << context_->err;
+    RAY_LOG(INFO) << "Run redis command failed , err is " << GetRedisError(context_);
     return nullptr;
   } else {
     std::shared_ptr<CallbackReply> callback_reply =
         std::make_shared<CallbackReply>(reinterpret_cast<redisReply *>(redis_reply));
-    freeReplyObject(redis_reply);
+    FreeRedisReply(redis_reply);
     return callback_reply;
   }
 }
@@ -359,5 +363,3 @@ std::shared_ptr<CallbackReply> RedisContext::RunSync(
 }  // namespace gcs
 
 }  // namespace ray
-
-#endif  // RAY_GCS_REDIS_CONTEXT_H

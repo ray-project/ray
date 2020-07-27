@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_RAYLET_LINEAGE_CACHE_H
-#define RAY_RAYLET_LINEAGE_CACHE_H
+#pragma once
 
 #include <gtest/gtest_prod.h>
 #include <boost/optional.hpp>
@@ -326,5 +325,3 @@ class LineageCache {
 }  // namespace raylet
 
 }  // namespace ray
-
-#endif  // RAY_RAYLET_LINEAGE_CACHE_H

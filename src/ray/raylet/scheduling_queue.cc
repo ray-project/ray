@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "scheduling_queue.h"
+#include "ray/raylet/scheduling_queue.h"
 
 #include <sstream>
 
@@ -461,8 +461,7 @@ std::string SchedulingQueue::DebugString() const {
   for (const auto &pair : num_running_tasks_) {
     result << "\n- ";
     auto desc = TaskSpecification::GetSchedulingClassDescriptor(pair.first);
-    result << desc.second->ToString();
-    result << desc.first.ToString();
+    result << desc.ToString();
     result << ": " << pair.second;
     total += pair.second;
   }

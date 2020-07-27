@@ -6,12 +6,14 @@ import traceback
 import json
 
 import ray
-from ray.autoscaler.autoscaler import LoadMetrics, StandardAutoscaler
+from ray.autoscaler.autoscaler import StandardAutoscaler
+from ray.autoscaler.load_metrics import LoadMetrics
 import ray.gcs_utils
 import ray.utils
 import ray.ray_constants as ray_constants
 from ray.utils import binary_to_hex, setup_logger
 from ray.autoscaler.commands import teardown_cluster
+import redis
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +37,10 @@ class Monitor:
             redis_address, redis_password=redis_password)
         self.redis = ray.services.create_redis_client(
             redis_address, password=redis_password)
+        # Set the redis client and mode so _internal_kv works for autoscaler.
+        worker = ray.worker.global_worker
+        worker.redis_client = self.redis
+        worker.mode = 0
         # Setup subscriptions to the primary Redis server and the Redis shards.
         self.primary_subscribe_client = self.redis.pubsub(
             ignore_subscribe_messages=True)
@@ -53,7 +59,12 @@ class Monitor:
     def __del__(self):
         """Destruct the monitor object."""
         # We close the pubsub client to avoid leaking file descriptors.
-        self.primary_subscribe_client.close()
+        try:
+            primary_subscribe_client = self.primary_subscribe_client
+        except AttributeError:
+            primary_subscribe_client = None
+        if primary_subscribe_client is not None:
+            primary_subscribe_client.close()
 
     def subscribe(self, channel):
         """Subscribe to the given channel on the primary Redis shard.
@@ -66,24 +77,29 @@ class Monitor:
         """
         self.primary_subscribe_client.subscribe(channel)
 
+    def psubscribe(self, pattern):
+        """Subscribe to the given pattern on the primary Redis shard.
+
+        Args:
+            pattern (str): The pattern to subscribe to.
+
+        Raises:
+            Exception: An exception is raised if the subscription fails.
+        """
+        self.primary_subscribe_client.psubscribe(pattern)
+
     def xray_heartbeat_batch_handler(self, unused_channel, data):
         """Handle an xray heartbeat batch message from Redis."""
 
-        gcs_entries = ray.gcs_utils.GcsEntry.FromString(data)
-        heartbeat_data = gcs_entries.entries[0]
+        pub_message = ray.gcs_utils.PubSubMessage.FromString(data)
+        heartbeat_data = pub_message.data
 
         message = ray.gcs_utils.HeartbeatBatchTableData.FromString(
             heartbeat_data)
         for heartbeat_message in message.batch:
-            resource_load = dict(
-                zip(heartbeat_message.resource_load_label,
-                    heartbeat_message.resource_load_capacity))
-            total_resources = dict(
-                zip(heartbeat_message.resources_total_label,
-                    heartbeat_message.resources_total_capacity))
-            available_resources = dict(
-                zip(heartbeat_message.resources_available_label,
-                    heartbeat_message.resources_available_capacity))
+            resource_load = dict(heartbeat_message.resource_load)
+            total_resources = dict(heartbeat_message.resources_total)
+            available_resources = dict(heartbeat_message.resources_available)
             for resource in total_resources:
                 available_resources.setdefault(resource, 0.0)
 
@@ -105,8 +121,8 @@ class Monitor:
             unused_channel: The message channel.
             data: The message data.
         """
-        gcs_entries = ray.gcs_utils.GcsEntry.FromString(data)
-        job_data = gcs_entries.entries[0]
+        pub_message = ray.gcs_utils.PubSubMessage.FromString(data)
+        job_data = pub_message.data
         message = ray.gcs_utils.JobTableData.FromString(job_data)
         job_id = message.job_id
         if message.is_dead:
@@ -144,20 +160,25 @@ class Monitor:
         subscribe_clients = [self.primary_subscribe_client]
         for subscribe_client in subscribe_clients:
             for _ in range(max_messages):
-                message = subscribe_client.get_message()
+                message = None
+                try:
+                    message = subscribe_client.get_message()
+                except redis.exceptions.ConnectionError:
+                    pass
                 if message is None:
                     # Continue on to the next subscribe client.
                     break
 
                 # Parse the message.
+                pattern = message["pattern"]
                 channel = message["channel"]
                 data = message["data"]
 
                 # Determine the appropriate message handler.
-                if channel == ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL:
+                if pattern == ray.gcs_utils.XRAY_HEARTBEAT_BATCH_PATTERN:
                     # Similar functionality as raylet info channel
                     message_handler = self.xray_heartbeat_batch_handler
-                elif channel == ray.gcs_utils.XRAY_JOB_CHANNEL:
+                elif pattern == ray.gcs_utils.XRAY_JOB_PATTERN:
                     # Handles driver death.
                     message_handler = self.xray_job_notification_handler
                 elif (channel ==
@@ -193,9 +214,12 @@ class Monitor:
         This function loops forever, checking for messages about dead database
         clients and cleaning up state accordingly.
         """
+        # Initialize the mapping from raylet client ID to IP address.
+        self.update_raylet_map()
+
         # Initialize the subscription channel.
-        self.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL)
-        self.subscribe(ray.gcs_utils.XRAY_JOB_CHANNEL)
+        self.psubscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_PATTERN)
+        self.psubscribe(ray.gcs_utils.XRAY_JOB_PATTERN)
 
         if self.autoscaler:
             self.subscribe(
@@ -206,12 +230,10 @@ class Monitor:
 
         # Handle messages from the subscription channels.
         while True:
-            # Update the mapping from raylet client ID to IP address.
-            # This is only used to update the load metrics for the autoscaler.
-            self.update_raylet_map()
-
             # Process autoscaling actions
             if self.autoscaler:
+                # Only used to update the load metrics for the autoscaler.
+                self.update_raylet_map()
                 self.autoscaler.update()
 
             # Process a round of messages.

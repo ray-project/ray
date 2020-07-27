@@ -1,4 +1,5 @@
 load("//bazel:ray.bzl", "define_java_module")
+load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@rules_proto_grpc//java:defs.bzl", "java_proto_compile")
 
 exports_files([
@@ -65,6 +66,7 @@ define_java_module(
         "@maven//:com_beust_jcommander",
         "@maven//:org_testng_testng",
         "@maven//:commons_io_commons_io",
+        "@maven//:javax_xml_bind_jaxb_api",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -74,6 +76,7 @@ define_java_module(
         "@maven//:com_typesafe_config",
         "@maven//:commons_io_commons_io",
         "@maven//:de_ruedigermoeller_fst",
+        "@maven//:log4j_log4j",
         "@maven//:net_java_dev_jna_jna",
         "@maven//:org_apache_commons_commons_lang3",
         "@maven//:org_msgpack_msgpack_core",
@@ -142,26 +145,29 @@ filegroup(
 
 # plasma_store_server binary should be located in jar root path
 # and keep in sync with mvn resource
-genrule(
+copy_file(
     name = "cp_plasma_store_server",
-    srcs = [
-        "@plasma//:plasma_store_server",
-    ],
-    outs = ["plasma_store_server"],
-    cmd = """
-        cp -f $(location @plasma//:plasma_store_server) $@
-    """,
+    src = "//:plasma_store_server",
+    out = "plasma_store_server",
+)
+
+# `//:redis-server`'s full path is `external/com_github_antirez_redis/redis-server`,
+# This rule removes the prefix, and only keeps `redis-server`.
+copy_file(
+    name = "redis-server-without-prefix",
+    src = "//:redis-server",
+    out = "redis-server",
 )
 
 filegroup(
     name = "java_native_deps",
     srcs = [
         ":cp_plasma_store_server",
+        ":redis-server-without-prefix",
         "//:core_worker_library_java",
         "//:gcs_server",
         "//:libray_redis_module.so",
         "//:raylet",
-        "//:redis-server",
     ],
 )
 

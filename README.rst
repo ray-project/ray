@@ -16,13 +16,12 @@ Ray is packaged with the following libraries for accelerating machine learning w
 - `Tune`_: Scalable Hyperparameter Tuning
 - `RLlib`_: Scalable Reinforcement Learning
 - `RaySGD <https://docs.ray.io/en/latest/raysgd/raysgd.html>`__: Distributed Training Wrappers
+- `Ray Serve`_: Scalable and Programmable Serving
 
 Install Ray with: ``pip install ray``. For nightly wheels, see the
 `Installation page <https://docs.ray.io/en/latest/installation.html>`__.
 
-**NOTE:** `We are deprecating Python 2 support soon.`_
-
-.. _`We are deprecating Python 2 support soon.`: https://github.com/ray-project/ray/issues/6580
+**NOTE:** As of Ray 0.8.1, Python 2 is no longer supported.
 
 Quick Start
 -----------
@@ -80,7 +79,7 @@ Tune Quick Start
 `Tune`_ is a library for hyperparameter tuning at any scale.
 
 - Launch a multi-node distributed hyperparameter sweep in less than 10 lines of code.
-- Supports any deep learning framework, including PyTorch, TensorFlow, and Keras.
+- Supports any deep learning framework, including PyTorch, `PyTorch Lightning <https://github.com/williamFalcon/pytorch-lightning>`_, TensorFlow, and Keras.
 - Visualize results with `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__.
 - Choose among scalable SOTA algorithms such as `Population Based Training (PBT)`_, `Vizier's Median Stopping Rule`_, `HyperBand/ASHA`_.
 - Tune integrates with many optimization libraries such as `Facebook Ax <http://ax.dev>`_, `HyperOpt <https://github.com/hyperopt/hyperopt>`_, and `Bayesian Optimization <https://github.com/fmfn/BayesianOptimization>`_ and enables you to scale them transparently.
@@ -89,34 +88,39 @@ To run this example, you will need to install the following:
 
 .. code-block:: bash
 
-    $ pip install ray[tune] torch torchvision filelock
+    $ pip install ray[tune]
 
 
-This example runs a parallel grid search to train a Convolutional Neural Network using PyTorch.
+This example runs a parallel grid search to optimize an example objective function.
 
 .. code-block:: python
 
 
-    import torch.optim as optim
     from ray import tune
-    from ray.tune.examples.mnist_pytorch import (
-        get_data_loaders, ConvNet, train, test)
 
 
-    def train_mnist(config):
-        train_loader, test_loader = get_data_loaders()
-        model = ConvNet()
-        optimizer = optim.SGD(model.parameters(), lr=config["lr"])
-        for i in range(10):
-            train(model, optimizer, train_loader)
-            acc = test(model, test_loader)
-            tune.track.log(mean_accuracy=acc)
+    def objective(step, alpha, beta):
+        return (0.1 + alpha * step / 100)**(-1) + beta * 0.1
+
+
+    def training_function(config):
+        # Hyperparameters
+        alpha, beta = config["alpha"], config["beta"]
+        for step in range(10):
+            # Iterative training function - can be any arbitrary training procedure.
+            intermediate_score = objective(step, alpha, beta)
+            # Feed the score back back to Tune.
+            tune.report(mean_loss=intermediate_score)
 
 
     analysis = tune.run(
-        train_mnist, config={"lr": tune.grid_search([0.001, 0.01, 0.1])})
+        training_function,
+        config={
+            "alpha": tune.grid_search([0.001, 0.01, 0.1]),
+            "beta": tune.choice([1, 2, 3])
+        })
 
-    print("Best config: ", analysis.get_best_config(metric="mean_accuracy"))
+    print("Best config: ", analysis.get_best_config(metric="mean_loss"))
 
     # Get a dataframe for analyzing trial results.
     df = analysis.dataframe()
@@ -177,6 +181,81 @@ RLlib Quick Start
             "env_config": {"corridor_length": 5}})
 
 .. _`RLlib`: https://docs.ray.io/en/latest/rllib.html
+
+
+Ray Serve Quick Start
+---------------------
+
+.. image:: https://raw.githubusercontent.com/ray-project/ray/master/doc/source/serve/logo.svg
+  :width: 400
+
+`Ray Serve`_ is a scalable model-serving library built on Ray. It is:
+
+- Framework Agnostic: Use the same toolkit to serve everything from deep 
+  learning models built with frameworks like PyTorch or Tensorflow & Keras 
+  to Scikit-Learn models or arbitrary business logic.
+- Python First: Configure your model serving with pure Python code - no more 
+  YAMLs or JSON configs.
+- Performance Oriented: Turn on batching, pipelining, and GPU acceleration to
+  increase the throughput of your model.
+- Composition Native: Allow you to create "model pipelines" by composing multiple
+  models together to drive a single prediction.
+- Horizontally Scalable: Serve can linearly scale as you add more machines. Enable
+  your ML-powered service to handle growing traffic.
+
+To run this example, you will need to install the following:
+
+.. code-block:: bash
+
+    $ pip install scikit-learn
+    $ pip install "ray[serve]"
+
+This example runs serves a scikit-learn gradient boosting classifier.
+
+.. code-block:: python
+
+    from ray import serve
+    import pickle
+    import requests
+    from sklearn.datasets import load_iris
+    from sklearn.ensemble import GradientBoostingClassifier
+
+    # Train model
+    iris_dataset = load_iris()
+    model = GradientBoostingClassifier()
+    model.fit(iris_dataset["data"], iris_dataset["target"])
+
+    # Define Ray Serve model,
+    class BoostingModel:
+        def __init__(self):
+            self.model = model
+            self.label_list = iris_dataset["target_names"].tolist()
+
+        def __call__(self, flask_request):
+            payload = flask_request.json["vector"]
+            print("Worker: received flask request with data", payload)
+
+            prediction = self.model.predict([payload])[0]
+            human_name = self.label_list[prediction]
+            return {"result": human_name}
+
+
+    # Deploy model
+    serve.init()
+    serve.create_backend("iris:v1", BoostingModel)
+    serve.create_endpoint("iris_classifier", backend="iris:v1", route="/iris")
+
+    # Query it!
+    sample_request_input = {"vector": [1.2, 1.0, 1.1, 0.9]}
+    response = requests.get("http://localhost:8000/iris", json=sample_request_input)
+    print(response.text)
+    # Result:
+    # {
+    #  "result": "versicolor"
+    # }
+
+
+.. _`Ray Serve`: https://docs.ray.io/en/latest/serve/index.html
 
 
 More Information

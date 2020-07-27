@@ -1,7 +1,13 @@
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.agents.qmix.qmix_policy import QMixTorchPolicy
-from ray.rllib.optimizers import SyncBatchReplayOptimizer
+from ray.rllib.execution.replay_ops import SimpleReplayBuffer, Replay, \
+    StoreToReplayBuffer
+from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
+from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
+from ray.rllib.execution.metric_ops import StandardMetricsReporting
+from ray.rllib.execution.concurrency_ops import Concurrently
+from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -16,6 +22,22 @@ DEFAULT_CONFIG = with_common_config({
     # Optimize over complete episodes by default.
     "batch_mode": "complete_episodes",
 
+    # === Exploration Settings ===
+    "exploration_config": {
+        # The Exploration class to use.
+        "type": "EpsilonGreedy",
+        # Config for the Exploration class' constructor:
+        "initial_epsilon": 1.0,
+        "final_epsilon": 0.02,
+        "epsilon_timesteps": 10000,  # Timesteps over which to anneal epsilon.
+
+        # For soft_q, use:
+        # "exploration_config" = {
+        #   "type": "SoftQ"
+        #   "temperature": [float, e.g. 1.0]
+        # }
+    },
+
     # === Evaluation ===
     # Evaluate with epsilon=0 every `evaluation_interval` training iterations.
     # The evaluation stats will be reported under the "evaluation" metric key.
@@ -24,21 +46,13 @@ DEFAULT_CONFIG = with_common_config({
     "evaluation_interval": None,
     # Number of episodes to run per evaluation period.
     "evaluation_num_episodes": 10,
+    # Switch to greedy actions in evaluation workers.
+    "evaluation_config": {
+        "explore": False,
+    },
 
-    # === Exploration ===
-    # Max num timesteps for annealing schedules. Exploration is annealed from
-    # 1.0 to exploration_fraction over this number of timesteps scaled by
-    # exploration_fraction
-    "schedule_max_timesteps": 100000,
     # Number of env steps to optimize for before returning
     "timesteps_per_iteration": 1000,
-    # Fraction of entire training period over which the exploration rate is
-    # annealed
-    "exploration_fraction": 0.1,
-    # Initial value of random action probability.
-    "exploration_initial_eps": 1.0,
-    # Final value of random action probability.
-    "exploration_final_eps": 0.02,
     # Update the target network every `target_network_update_freq` steps.
     "target_network_update_freq": 500,
 
@@ -82,17 +96,64 @@ DEFAULT_CONFIG = with_common_config({
         "lstm_cell_size": 64,
         "max_seq_len": 999999,
     },
+
+    # DEPRECATED VALUES (set to -1 to indicate they have not been overwritten
+    # by user's config). If we don't set them here, we will get an error
+    # from the config-key checker.
+    "schedule_max_timesteps": DEPRECATED_VALUE,
+    "exploration_fraction": DEPRECATED_VALUE,
+    "exploration_initial_eps": DEPRECATED_VALUE,
+    "exploration_final_eps": DEPRECATED_VALUE,
+
 })
 # __sphinx_doc_end__
 # yapf: enable
 
 
-def make_sync_batch_optimizer(workers, config):
-    return SyncBatchReplayOptimizer(
-        workers,
-        learning_starts=config["learning_starts"],
-        buffer_size=config["buffer_size"],
-        train_batch_size=config["train_batch_size"])
+def validate_config(config):
+    schedule_max_timesteps = None
+    if config.get("schedule_max_timesteps", DEPRECATED_VALUE) != \
+            DEPRECATED_VALUE:
+        deprecation_warning(
+            "schedule_max_timesteps",
+            "exploration_config.epsilon_timesteps AND "
+            "prioritized_replay_beta_annealing_timesteps")
+        schedule_max_timesteps = config["schedule_max_timesteps"]
+    if config.get("exploration_final_eps", DEPRECATED_VALUE) != \
+            DEPRECATED_VALUE:
+        deprecation_warning("exploration_final_eps",
+                            "exploration_config.final_epsilon")
+        if isinstance(config["exploration_config"], dict):
+            config["exploration_config"]["final_epsilon"] = \
+                config.pop("exploration_final_eps")
+    if config.get("exploration_fraction", DEPRECATED_VALUE) != \
+            DEPRECATED_VALUE:
+        assert schedule_max_timesteps is not None
+        deprecation_warning("exploration_fraction",
+                            "exploration_config.epsilon_timesteps")
+        if isinstance(config["exploration_config"], dict):
+            config["exploration_config"]["epsilon_timesteps"] = config.pop(
+                "exploration_fraction") * schedule_max_timesteps
+
+
+def execution_plan(workers, config):
+    rollouts = ParallelRollouts(workers, mode="bulk_sync")
+    replay_buffer = SimpleReplayBuffer(config["buffer_size"])
+
+    store_op = rollouts \
+        .for_each(StoreToReplayBuffer(local_buffer=replay_buffer))
+
+    train_op = Replay(local_buffer=replay_buffer) \
+        .combine(
+            ConcatBatches(min_batch_size=config["train_batch_size"])) \
+        .for_each(TrainOneStep(workers)) \
+        .for_each(UpdateTargetNetwork(
+            workers, config["target_network_update_freq"]))
+
+    merged_op = Concurrently(
+        [store_op, train_op], mode="round_robin", output_indexes=[1])
+
+    return StandardMetricsReporting(merged_op, workers, config)
 
 
 QMixTrainer = GenericOffPolicyTrainer.with_updates(
@@ -100,4 +161,5 @@ QMixTrainer = GenericOffPolicyTrainer.with_updates(
     default_config=DEFAULT_CONFIG,
     default_policy=QMixTorchPolicy,
     get_policy_class=None,
-    make_policy_optimizer=make_sync_batch_optimizer)
+    validate_config=validate_config,
+    execution_plan=execution_plan)

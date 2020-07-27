@@ -102,7 +102,7 @@ class RayTrialExecutor(TrialExecutor):
         self._trial_queued = False
         self._running = {}
         # Since trial resume after paused should not run
-        # trial.train.remote(), thus no more new remote object id generated.
+        # trial.train.remote(), thus no more new remote object ref generated.
         # We use self._paused to store paused trials here.
         self._paused = {}
 
@@ -256,9 +256,6 @@ class RayTrialExecutor(TrialExecutor):
             error_msg (str): Optional error message.
             stop_logger (bool): Whether to shut down the trial logger.
         """
-        if stop_logger:
-            trial.close_logger()
-
         self.set_status(trial, Trial.ERROR if error else Trial.TERMINATED)
         trial.set_location(Location())
 
@@ -278,6 +275,8 @@ class RayTrialExecutor(TrialExecutor):
             self.set_status(trial, Trial.ERROR)
         finally:
             trial.set_runner(None)
+            if stop_logger:
+                trial.close_logger()
 
     def start_trial(self, trial, checkpoint=None, train=True):
         """Starts the trial.
@@ -670,11 +669,10 @@ class RayTrialExecutor(TrialExecutor):
             elif trial.sync_on_checkpoint:
                 # This provides FT backwards compatibility in the
                 # case where a DurableTrainable is not provided.
-                logger.warning("Trial %s: Reading checkpoint into memory.",
-                               trial)
-                data_dict = TrainableUtil.pickle_checkpoint(value)
+                logger.debug("Trial %s: Reading checkpoint into memory", trial)
+                obj = TrainableUtil.checkpoint_to_object(value)
                 with self._change_working_directory(trial):
-                    remote = trial.runner.restore_from_object.remote(data_dict)
+                    remote = trial.runner.restore_from_object.remote(obj)
             else:
                 raise AbortTrialExecution(
                     "Pass in `sync_on_checkpoint=True` for driver-based trial"

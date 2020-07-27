@@ -2,12 +2,11 @@ package io.ray.streaming.runtime.core.processor;
 
 import io.ray.streaming.operator.OneInputOperator;
 import io.ray.streaming.operator.OperatorType;
+import io.ray.streaming.operator.SourceOperator;
 import io.ray.streaming.operator.StreamOperator;
 import io.ray.streaming.operator.TwoInputOperator;
-import io.ray.streaming.operator.impl.SourceOperator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 
 public class ProcessBuilder {
 

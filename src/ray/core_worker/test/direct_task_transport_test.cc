@@ -19,7 +19,7 @@
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/raylet/raylet_client.h"
+#include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
@@ -72,9 +72,10 @@ class MockTaskFinisher : public TaskFinisherInterface {
     num_tasks_complete++;
   }
 
-  void PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
+  bool PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
                          Status *status) override {
     num_tasks_failed++;
+    return true;
   }
 
   void OnTaskDependenciesInlined(const std::vector<ObjectID> &inlined_dependency_ids,
@@ -109,6 +110,12 @@ class MockRayletClient : public WorkerLeaseInterface {
     num_workers_requested += 1;
     callbacks.push_back(callback);
     return Status::OK();
+  }
+
+  ray::Status ReleaseUnusedWorkers(
+      const std::vector<WorkerID> &workers_in_use,
+      const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) override {
+    return Status::NotImplemented("ReleaseUnusedWorkers is not supported.");
   }
 
   ray::Status CancelWorkerLease(
@@ -168,11 +175,11 @@ class MockRayletClient : public WorkerLeaseInterface {
 };
 
 TEST(TestMemoryStore, TestPromoteToPlasma) {
-  bool num_plasma_puts = 0;
+  size_t num_plasma_puts = 0;
   auto mem = std::make_shared<CoreWorkerMemoryStore>(
       [&](const RayObject &obj, const ObjectID &obj_id) { num_plasma_puts += 1; });
-  ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
-  ObjectID obj2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
+  ObjectID obj1 = ObjectID::FromRandom();
+  ObjectID obj2 = ObjectID::FromRandom();
   auto data = GenerateRandomObject();
   ASSERT_TRUE(mem->Put(*data, obj1));
 
@@ -202,40 +209,23 @@ TEST(LocalDependencyResolverTest, TestNoDependencies) {
   ASSERT_EQ(task_finisher->num_inlined_dependencies, 0);
 }
 
-TEST(LocalDependencyResolverTest, TestIgnorePlasmaDependencies) {
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
-  LocalDependencyResolver resolver(store, task_finisher);
-  ObjectID obj1 = ObjectID::FromRandom();
-  TaskSpecification task;
-  task.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
-  bool ok = false;
-  resolver.ResolveDependencies(task, [&ok]() { ok = true; });
-  // We ignore and don't block on plasma dependencies.
-  ASSERT_TRUE(ok);
-  ASSERT_EQ(resolver.NumPendingTasks(), 0);
-  ASSERT_EQ(task_finisher->num_inlined_dependencies, 0);
-}
-
 TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   LocalDependencyResolver resolver(store, task_finisher);
-  ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
+  ObjectID obj1 = ObjectID::FromRandom();
   std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
   auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
   auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
   auto data = RayObject(nullptr, meta_buffer, std::vector<ObjectID>());
   ASSERT_TRUE(store->Put(data, obj1));
   TaskSpecification task;
-  task.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
-  ASSERT_TRUE(task.ArgId(0, 0).IsDirectCallType());
+  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
   bool ok = false;
   resolver.ResolveDependencies(task, [&ok]() { ok = true; });
   ASSERT_TRUE(ok);
   ASSERT_TRUE(task.ArgByRef(0));
   // Checks that the object id is still a direct call id.
-  ASSERT_TRUE(task.ArgId(0, 0).IsDirectCallType());
   ASSERT_EQ(resolver.NumPendingTasks(), 0);
   ASSERT_EQ(task_finisher->num_inlined_dependencies, 0);
 }
@@ -244,15 +234,15 @@ TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   LocalDependencyResolver resolver(store, task_finisher);
-  ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
-  ObjectID obj2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
+  ObjectID obj1 = ObjectID::FromRandom();
+  ObjectID obj2 = ObjectID::FromRandom();
   auto data = GenerateRandomObject();
   // Ensure the data is already present in the local store.
   ASSERT_TRUE(store->Put(*data, obj1));
   ASSERT_TRUE(store->Put(*data, obj2));
   TaskSpecification task;
-  task.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
-  task.GetMutableMessage().add_args()->add_object_ids(obj2.Binary());
+  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
+  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj2.Binary());
   bool ok = false;
   resolver.ResolveDependencies(task, [&ok]() { ok = true; });
   // Tests that the task proto was rewritten to have inline argument values.
@@ -269,12 +259,12 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   LocalDependencyResolver resolver(store, task_finisher);
-  ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
-  ObjectID obj2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
+  ObjectID obj1 = ObjectID::FromRandom();
+  ObjectID obj2 = ObjectID::FromRandom();
   auto data = GenerateRandomObject();
   TaskSpecification task;
-  task.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
-  task.GetMutableMessage().add_args()->add_object_ids(obj2.Binary());
+  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
+  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj2.Binary());
   bool ok = false;
   resolver.ResolveDependencies(task, [&ok]() { ok = true; });
   ASSERT_EQ(resolver.NumPendingTasks(), 1);
@@ -297,13 +287,13 @@ TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   LocalDependencyResolver resolver(store, task_finisher);
-  ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
-  ObjectID obj2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
-  ObjectID obj3 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
+  ObjectID obj1 = ObjectID::FromRandom();
+  ObjectID obj2 = ObjectID::FromRandom();
+  ObjectID obj3 = ObjectID::FromRandom();
   auto data = GenerateRandomObject({obj3});
   TaskSpecification task;
-  task.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
-  task.GetMutableMessage().add_args()->add_object_ids(obj2.Binary());
+  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
+  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj2.Binary());
   bool ok = false;
   resolver.ResolveDependencies(task, [&ok]() { ok = true; });
   ASSERT_EQ(resolver.NumPendingTasks(), 1);
@@ -852,16 +842,16 @@ TEST(DirectTaskTransportTest, TestSchedulingKeys) {
                     BuildTaskSpec(resources1, descriptor1),
                     BuildTaskSpec(resources2, descriptor1));
 
-  // Tasks with different function descriptors should request different worker leases.
+  // Tasks with different function descriptors do not request different worker leases.
   RAY_LOG(INFO) << "Test different descriptors";
   TestSchedulingKey(store, BuildTaskSpec(resources1, descriptor1),
-                    BuildTaskSpec(resources1, descriptor1),
-                    BuildTaskSpec(resources1, descriptor2));
+                    BuildTaskSpec(resources1, descriptor2),
+                    BuildTaskSpec(resources2, descriptor1));
 
-  ObjectID direct1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
-  ObjectID direct2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
-  ObjectID plasma1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
-  ObjectID plasma2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
+  ObjectID direct1 = ObjectID::FromRandom();
+  ObjectID direct2 = ObjectID::FromRandom();
+  ObjectID plasma1 = ObjectID::FromRandom();
+  ObjectID plasma2 = ObjectID::FromRandom();
   // Ensure the data is already present in the local store for direct call objects.
   auto data = GenerateRandomObject();
   ASSERT_TRUE(store->Put(*data, direct1));
@@ -876,17 +866,25 @@ TEST(DirectTaskTransportTest, TestSchedulingKeys) {
   ASSERT_TRUE(store->Put(plasma_data, plasma2));
 
   TaskSpecification same_deps_1 = BuildTaskSpec(resources1, descriptor1);
-  same_deps_1.GetMutableMessage().add_args()->add_object_ids(direct1.Binary());
-  same_deps_1.GetMutableMessage().add_args()->add_object_ids(plasma1.Binary());
+  same_deps_1.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+      direct1.Binary());
+  same_deps_1.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+      plasma1.Binary());
   TaskSpecification same_deps_2 = BuildTaskSpec(resources1, descriptor1);
-  same_deps_2.GetMutableMessage().add_args()->add_object_ids(direct1.Binary());
-  same_deps_2.GetMutableMessage().add_args()->add_object_ids(direct2.Binary());
-  same_deps_2.GetMutableMessage().add_args()->add_object_ids(plasma1.Binary());
+  same_deps_2.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+      direct1.Binary());
+  same_deps_2.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+      direct2.Binary());
+  same_deps_2.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+      plasma1.Binary());
 
   TaskSpecification different_deps = BuildTaskSpec(resources1, descriptor1);
-  different_deps.GetMutableMessage().add_args()->add_object_ids(direct1.Binary());
-  different_deps.GetMutableMessage().add_args()->add_object_ids(direct2.Binary());
-  different_deps.GetMutableMessage().add_args()->add_object_ids(plasma2.Binary());
+  different_deps.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+      direct1.Binary());
+  different_deps.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+      direct2.Binary());
+  different_deps.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+      plasma2.Binary());
 
   // Tasks with different plasma dependencies should request different worker leases,
   // but direct call dependencies shouldn't be considered.
@@ -929,7 +927,8 @@ TEST(DirectTaskTransportTest, TestWorkerLeaseTimeout) {
   // Task 2 runs successfully on the second worker; the worker is returned due to the
   // timeout.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, ClientID::Nil()));
-  usleep(10 * 1000);  // Sleep for 10ms, causing the lease to time out.
+  std::this_thread::sleep_for(
+      std::chrono::milliseconds(10));  // Sleep for 10ms, causing the lease to time out.
   ASSERT_TRUE(worker_client->ReplyPushTask());
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
@@ -1029,8 +1028,8 @@ TEST(DirectTaskTransportTest, TestKillResolvingTask) {
   ray::FunctionDescriptor empty_descriptor =
       ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
   TaskSpecification task = BuildTaskSpec(empty_resources, empty_descriptor);
-  ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
-  task.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
+  ObjectID obj1 = ObjectID::FromRandom();
+  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
   ASSERT_EQ(task_finisher->num_inlined_dependencies, 0);
   ASSERT_TRUE(submitter.CancelTask(task, true).ok());
@@ -1042,6 +1041,147 @@ TEST(DirectTaskTransportTest, TestKillResolvingTask) {
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 0);
   ASSERT_EQ(task_finisher->num_tasks_failed, 1);
+}
+
+TEST(DirectTaskTransportTest, TestPipeliningConcurrentWorkerLeases) {
+  rpc::Address address;
+  auto raylet_client = std::make_shared<MockRayletClient>();
+  auto worker_client = std::make_shared<MockWorkerClient>();
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto factory = [&](const rpc::Address &addr) { return worker_client; };
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+
+  // Set max_tasks_in_flight_per_worker to a value larger than 1 to enable the pipelining
+  // of task submissions. This is done by passing a max_tasks_in_flight_per_worker
+  // parameter to the CoreWorkerDirectTaskSubmitter.
+  uint32_t max_tasks_in_flight_per_worker = 10;
+  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
+                                          task_finisher, ClientID::Nil(), kLongTimeout,
+                                          max_tasks_in_flight_per_worker);
+
+  // Prepare 20 tasks and save them in a vector.
+  std::unordered_map<std::string, double> empty_resources;
+  ray::FunctionDescriptor empty_descriptor =
+      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
+  std::vector<TaskSpecification> tasks;
+  for (int i = 1; i <= 20; i++) {
+    tasks.push_back(BuildTaskSpec(empty_resources, empty_descriptor));
+  }
+  ASSERT_EQ(tasks.size(), 20);
+
+  // Submit the 20 tasks and check that one worker is requested.
+  for (auto task : tasks) {
+    ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  }
+  ASSERT_EQ(raylet_client->num_workers_requested, 1);
+
+  // First 10 tasks are pushed; worker 2 is requested.
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, ClientID::Nil()));
+  ASSERT_EQ(worker_client->callbacks.size(), 10);
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+
+  // Last 10 tasks are pushed; no more workers are requested.
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, ClientID::Nil()));
+  ASSERT_EQ(worker_client->callbacks.size(), 20);
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+
+  for (int i = 1; i <= 20; i++) {
+    ASSERT_FALSE(worker_client->callbacks.empty());
+    ASSERT_TRUE(worker_client->ReplyPushTask());
+    // No worker should be returned until all the tasks that were submitted to it have
+    // been completed. In our case, the first worker should only be returned after the
+    // 10th task has been executed. The second worker should only be returned at the end,
+    // or after the 20th task has been executed.
+    if (i < 10) {
+      ASSERT_EQ(raylet_client->num_workers_returned, 0);
+    } else if (i >= 10 && i < 20) {
+      ASSERT_EQ(raylet_client->num_workers_returned, 1);
+    } else if (i == 20) {
+      ASSERT_EQ(raylet_client->num_workers_returned, 2);
+    }
+  }
+
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  ASSERT_EQ(raylet_client->num_workers_returned, 2);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 20);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+
+  ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
+}
+
+TEST(DirectTaskTransportTest, TestPipeliningReuseWorkerLease) {
+  rpc::Address address;
+  auto raylet_client = std::make_shared<MockRayletClient>();
+  auto worker_client = std::make_shared<MockWorkerClient>();
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto factory = [&](const rpc::Address &addr) { return worker_client; };
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+
+  // Set max_tasks_in_flight_per_worker to a value larger than 1 to enable the pipelining
+  // of task submissions. This is done by passing a max_tasks_in_flight_per_worker
+  // parameter to the CoreWorkerDirectTaskSubmitter.
+  uint32_t max_tasks_in_flight_per_worker = 10;
+  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
+                                          task_finisher, ClientID::Nil(), kLongTimeout,
+                                          max_tasks_in_flight_per_worker);
+
+  // prepare 30 tasks and save them in a vector
+  std::unordered_map<std::string, double> empty_resources;
+  ray::FunctionDescriptor empty_descriptor =
+      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
+  std::vector<TaskSpecification> tasks;
+  for (int i = 0; i < 30; i++) {
+    tasks.push_back(BuildTaskSpec(empty_resources, empty_descriptor));
+  }
+  ASSERT_EQ(tasks.size(), 30);
+
+  // Submit the 30 tasks and check that one worker is requested
+  for (auto task : tasks) {
+    ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  }
+  ASSERT_EQ(raylet_client->num_workers_requested, 1);
+
+  // Task 1-10 are pushed, and a new worker is requested.
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, ClientID::Nil()));
+  ASSERT_EQ(worker_client->callbacks.size(), 10);
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  // The lease is not cancelled, as there is more work to do
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+
+  // Task 1-10 finish, Tasks 11-20 are scheduled on the same worker.
+  for (int i = 1; i <= 10; i++) {
+    ASSERT_TRUE(worker_client->ReplyPushTask());
+  }
+  ASSERT_EQ(worker_client->callbacks.size(), 10);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+
+  // Task 11-20 finish, Tasks 21-30 are scheduled on the same worker.
+  for (int i = 11; i <= 20; i++) {
+    ASSERT_TRUE(worker_client->ReplyPushTask());
+  }
+  ASSERT_EQ(worker_client->callbacks.size(), 10);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 1);
+  ASSERT_TRUE(raylet_client->ReplyCancelWorkerLease());
+
+  // Tasks 21-30 finish, and the worker is finally returned.
+  for (int i = 21; i <= 30; i++) {
+    ASSERT_TRUE(worker_client->ReplyPushTask());
+  }
+  ASSERT_EQ(raylet_client->num_workers_returned, 1);
+
+  // The second lease request is returned immediately.
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, ClientID::Nil()));
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
+  ASSERT_EQ(raylet_client->num_workers_returned, 2);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 30);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 1);
+  ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
 }
 
 }  // namespace ray

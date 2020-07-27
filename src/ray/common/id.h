@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_ID_H_
-#define RAY_ID_H_
+#pragma once
 
 #include <inttypes.h>
 #include <limits.h>
@@ -25,15 +24,12 @@
 #include <random>
 #include <string>
 
-#include "plasma/common.h"
 #include "ray/common/constants.h"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
 #include "ray/util/visibility.h"
 
 namespace ray {
-
-enum class TaskTransportType { RAYLET, DIRECT };
 
 class TaskID;
 class WorkerID;
@@ -57,7 +53,6 @@ enum class ObjectType : uint8_t {
 
 using ObjectIDFlagsType = uint16_t;
 using ObjectIDIndexType = uint32_t;
-
 // Declaration.
 uint64_t MurmurHash64A(const void *key, int len, unsigned int seed);
 
@@ -276,16 +271,6 @@ class ObjectID : public BaseID<ObjectID> {
 
   static size_t Size() { return kLength; }
 
-  /// Generate ObjectID by the given binary string of a plasma id.
-  ///
-  /// \param from The binary string of the given plasma id.
-  /// \return The ObjectID converted from a binary string of the plasma id.
-  static ObjectID FromPlasmaIdBinary(const std::string &from);
-
-  plasma::ObjectID ToPlasmaId() const;
-
-  ObjectID(const plasma::UniqueID &from);
-
   /// Get the index of this object in the task that created it.
   ///
   /// \return The index of object creation according to the task that created
@@ -312,62 +297,26 @@ class ObjectID : public BaseID<ObjectID> {
   /// \return True if this object is a return value of a task.
   bool IsReturnObject() const;
 
-  /// Return if this is a direct actor call object.
-  ///
-  /// \return True if this is a direct actor object return.
-  bool IsDirectCallType() const {
-    return GetTransportType() == static_cast<uint8_t>(TaskTransportType::DIRECT);
-  }
-
-  /// Return this object id with a changed transport type.
-  ///
-  /// \return Copy of this object id with the specified transport type.
-  ObjectID WithTransportType(TaskTransportType transport_type) const;
-
-  /// Return this object id with the plasma transport type.
-  ///
-  /// \return Copy of this object id with the plasma transport type.
-  ObjectID WithPlasmaTransportType() const;
-
-  /// Return this object id with the direct call transport type.
-  ///
-  /// \return Copy of this object id with the direct call transport type.
-  ObjectID WithDirectTransportType() const;
-
-  /// Get the transport type of this object.
-  ///
-  /// \return The type of the transport which is used to transfer this object.
-  uint8_t GetTransportType() const;
-
   /// Compute the object ID of an object put by the task.
   ///
   /// \param task_id The task ID of the task that created the object.
   /// \param index What index of the object put in the task.
-  /// \param transport_type Which type of the transport that is used to
-  ///        transfer this object.
   ///
   /// \return The computed object ID.
-  static ObjectID ForPut(const TaskID &task_id, ObjectIDIndexType put_index,
-                         uint8_t transport_type);
+  static ObjectID ForPut(const TaskID &task_id, ObjectIDIndexType put_index);
 
   /// Compute the object ID of an object returned by the task.
   ///
   /// \param task_id The task ID of the task that created the object.
   /// \param return_index What index of the object returned by in the task.
-  /// \param transport_type Which type of the transport that is used to
-  ///        transfer this object.
   ///
   /// \return The computed object ID.
-  static ObjectID ForTaskReturn(const TaskID &task_id, ObjectIDIndexType return_index,
-                                uint8_t transport_type);
+  static ObjectID ForTaskReturn(const TaskID &task_id, ObjectIDIndexType return_index);
 
   /// Create an object id randomly.
   ///
   /// Warning: this can duplicate IDs after a fork() call. We assume this
   /// never happens.
-  ///
-  /// \param transport_type Which type of the transport that is used to
-  ///        transfer this object.
   ///
   /// \return A random object id.
   static ObjectID FromRandom();
@@ -395,6 +344,24 @@ class ObjectID : public BaseID<ObjectID> {
   uint8_t id_[kLength];
 };
 
+class PlacementGroupID : public BaseID<PlacementGroupID> {
+ public:
+  static constexpr size_t kLength = 16;
+
+  /// Size of `PlacementGroupID` in bytes.
+  ///
+  /// \return Size of `PlacementGroupID` in bytes.
+  static size_t Size() { return kLength; }
+
+  /// Constructor of `PlacementGroupID`.
+  PlacementGroupID() : BaseID() {}
+
+  MSGPACK_DEFINE(id_);
+
+ private:
+  uint8_t id_[kLength];
+};
+
 static_assert(sizeof(JobID) == JobID::kLength + sizeof(size_t),
               "JobID size is not as expected");
 static_assert(sizeof(ActorID) == ActorID::kLength + sizeof(size_t),
@@ -403,12 +370,15 @@ static_assert(sizeof(TaskID) == TaskID::kLength + sizeof(size_t),
               "TaskID size is not as expected");
 static_assert(sizeof(ObjectID) == ObjectID::kLength + sizeof(size_t),
               "ObjectID size is not as expected");
+static_assert(sizeof(PlacementGroupID) == PlacementGroupID::kLength + sizeof(size_t),
+              "PlacementGroupID size is not as expected");
 
 std::ostream &operator<<(std::ostream &os, const UniqueID &id);
 std::ostream &operator<<(std::ostream &os, const JobID &id);
 std::ostream &operator<<(std::ostream &os, const ActorID &id);
 std::ostream &operator<<(std::ostream &os, const TaskID &id);
 std::ostream &operator<<(std::ostream &os, const ObjectID &id);
+std::ostream &operator<<(std::ostream &os, const PlacementGroupID &id);
 
 #define DEFINE_UNIQUE_ID(type)                                                 \
   class RAY_EXPORT type : public UniqueID {                                    \
@@ -430,7 +400,7 @@ std::ostream &operator<<(std::ostream &os, const ObjectID &id);
     }                                                                          \
   };
 
-#include "id_def.h"
+#include "ray/common/id_def.h"
 
 #undef DEFINE_UNIQUE_ID
 
@@ -512,7 +482,7 @@ std::string BaseID<T>::Hex() const {
   constexpr char hex[] = "0123456789abcdef";
   const uint8_t *id = Data();
   std::string result;
-  for (int i = 0; i < T::Size(); i++) {
+  for (size_t i = 0; i < T::Size(); i++) {
     unsigned int val = id[i];
     result.push_back(hex[val >> 4]);
     result.push_back(hex[val & 0xf]);
@@ -539,8 +509,8 @@ DEFINE_UNIQUE_ID(JobID);
 DEFINE_UNIQUE_ID(ActorID);
 DEFINE_UNIQUE_ID(TaskID);
 DEFINE_UNIQUE_ID(ObjectID);
-#include "id_def.h"
+DEFINE_UNIQUE_ID(PlacementGroupID);
+#include "ray/common/id_def.h"
 
 #undef DEFINE_UNIQUE_ID
 }  // namespace std
-#endif  // RAY_ID_H_

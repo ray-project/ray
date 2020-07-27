@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/lib/java/io_ray_runtime_task_NativeTaskExecutor.h"
+#include "io_ray_runtime_task_NativeTaskExecutor.h"
 #include <jni.h>
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker.h"
-#include "ray/core_worker/lib/java/jni_utils.h"
-#include "ray/raylet/raylet_client.h"
+#include "jni_utils.h"
+#include "ray/raylet_client/raylet_client.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -27,8 +27,7 @@ extern "C" {
 using ray::ClientID;
 
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_task_NativeTaskExecutor_nativePrepareCheckpoint(JNIEnv *env,
-                                                                     jclass) {
+Java_io_ray_runtime_task_NativeTaskExecutor_nativePrepareCheckpoint(JNIEnv *env, jclass) {
   auto &core_worker = ray::CoreWorkerProcess::GetCoreWorker();
   const auto &actor_id = core_worker.GetWorkerContext().GetCurrentActorID();
   const auto &task_spec = core_worker.GetWorkerContext().GetCurrentTask();

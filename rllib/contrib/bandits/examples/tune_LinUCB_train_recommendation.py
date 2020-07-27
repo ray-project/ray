@@ -8,7 +8,6 @@ from matplotlib import pyplot as plt
 import pandas as pd
 
 from ray import tune
-from ray.rllib.contrib.bandits.agents import LinUCBTrainer
 from ray.rllib.contrib.bandits.agents.lin_ucb import UCB_CONFIG
 from ray.rllib.contrib.bandits.envs import ParametricItemRecoEnv
 
@@ -27,7 +26,7 @@ if __name__ == "__main__":
 
     start_time = time.time()
     analysis = tune.run(
-        LinUCBTrainer,
+        "contrib/LinUCB",
         config=UCB_CONFIG,
         stop={"training_iteration": training_iterations},
         num_samples=5,

@@ -3,9 +3,10 @@ import unittest
 
 import ray.rllib.agents.ddpg.td3 as td3
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.test_utils import check, framework_iterator
+from ray.rllib.utils.test_utils import check, check_compute_single_action, \
+    framework_iterator
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
 class TestTD3(unittest.TestCase):
@@ -15,12 +16,14 @@ class TestTD3(unittest.TestCase):
         config["num_workers"] = 0  # Run locally.
 
         # Test against all frameworks.
-        for _ in framework_iterator(config, frameworks=["tf"]):
+        for _ in framework_iterator(config):
             trainer = td3.TD3Trainer(config=config, env="Pendulum-v0")
-            num_iterations = 2
+            num_iterations = 1
             for i in range(num_iterations):
                 results = trainer.train()
                 print(results)
+            check_compute_single_action(trainer)
+            trainer.stop()
 
     def test_td3_exploration_and_with_random_prerun(self):
         """Tests TD3's Exploration (w/ random actions for n timesteps)."""
@@ -29,9 +32,10 @@ class TestTD3(unittest.TestCase):
         obs = np.array([0.0, 0.1, -0.1])
 
         # Test against all frameworks.
-        for _ in framework_iterator(config, frameworks="tf"):
+        for _ in framework_iterator(config):
+            lcl_config = config.copy()
             # Default GaussianNoise setup.
-            trainer = td3.TD3Trainer(config=config, env="Pendulum-v0")
+            trainer = td3.TD3Trainer(config=lcl_config, env="Pendulum-v0")
             # Setting explore=False should always return the same action.
             a_ = trainer.compute_action(obs, explore=False)
             for _ in range(50):
@@ -42,9 +46,10 @@ class TestTD3(unittest.TestCase):
             for _ in range(50):
                 actions.append(trainer.compute_action(obs))
             check(np.std(actions), 0.0, false=True)
+            trainer.stop()
 
             # Check randomness at beginning.
-            config["exploration_config"] = {
+            lcl_config["exploration_config"] = {
                 # Act randomly at beginning ...
                 "random_timesteps": 30,
                 # Then act very closely to deterministic actions thereafter.
@@ -52,7 +57,7 @@ class TestTD3(unittest.TestCase):
                 "initial_scale": 0.001,
                 "final_scale": 0.001,
             }
-            trainer = td3.TD3Trainer(config=config, env="Pendulum-v0")
+            trainer = td3.TD3Trainer(config=lcl_config, env="Pendulum-v0")
             # ts=1 (get a deterministic action as per explore=False).
             deterministic_action = trainer.compute_action(obs, explore=False)
             # ts=2-5 (in random window).
@@ -71,6 +76,7 @@ class TestTD3(unittest.TestCase):
             for _ in range(50):
                 a = trainer.compute_action(obs, explore=False)
                 check(a, deterministic_action)
+            trainer.stop()
 
 
 if __name__ == "__main__":

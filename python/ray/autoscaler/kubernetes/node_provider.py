@@ -2,7 +2,9 @@ import logging
 
 from ray.autoscaler.kubernetes import core_api, log_prefix
 from ray.autoscaler.node_provider import NodeProvider
+from ray.autoscaler.kubernetes.config import bootstrap_kubernetes
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME
+from ray.autoscaler.updater import KubernetesCommandRunner
 
 logger = logging.getLogger(__name__)
 
@@ -62,14 +64,18 @@ class KubernetesNodeProvider(NodeProvider):
         return pod.status.pod_ip
 
     def set_node_tags(self, node_id, tags):
-        body = {"metadata": {"labels": tags}}
-        core_api().patch_namespaced_pod(node_id, self.namespace, body)
+        pod = core_api().read_namespaced_pod_status(node_id, self.namespace)
+        pod.metadata.labels.update(tags)
+        core_api().patch_namespaced_pod(node_id, self.namespace, pod)
 
     def create_node(self, node_config, tags, count):
         pod_spec = node_config.copy()
         tags[TAG_RAY_CLUSTER_NAME] = self.cluster_name
         pod_spec["metadata"]["namespace"] = self.namespace
-        pod_spec["metadata"]["labels"] = tags
+        if "labels" in pod_spec["metadata"]:
+            pod_spec["metadata"]["labels"].update(tags)
+        else:
+            pod_spec["metadata"]["labels"] = tags
         logger.info(log_prefix + "calling create_namespaced_pod "
                     "(count={}).".format(count))
         for _ in range(count):
@@ -81,3 +87,18 @@ class KubernetesNodeProvider(NodeProvider):
     def terminate_nodes(self, node_ids):
         for node_id in node_ids:
             self.terminate_node(node_id)
+
+    def get_command_runner(self,
+                           log_prefix,
+                           node_id,
+                           auth_config,
+                           cluster_name,
+                           process_runner,
+                           use_internal_ip,
+                           docker_config=None):
+        return KubernetesCommandRunner(log_prefix, self.namespace, node_id,
+                                       auth_config, process_runner)
+
+    @staticmethod
+    def bootstrap_config(cluster_config):
+        return bootstrap_kubernetes(cluster_config)

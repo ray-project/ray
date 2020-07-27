@@ -11,13 +11,12 @@ import ray
 from ray.rllib.agents import Trainer, with_common_config
 
 from ray.rllib.agents.ars.ars_tf_policy import ARSTFPolicy
-from ray.rllib.agents.es import optimizers
-from ray.rllib.agents.es import utils
+from ray.rllib.agents.es import optimizers, utils
+from ray.rllib.agents.es.es import validate_config
 from ray.rllib.agents.es.es_tf_policy import rollout
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.memory import ray_get_and_free
 from ray.rllib.utils import FilterManager
 
 logger = logging.getLogger(__name__)
@@ -164,7 +163,7 @@ class Worker:
 
 
 def get_policy_class(config):
-    if config["use_pytorch"]:
+    if config["framework"] == "torch":
         from ray.rllib.agents.ars.ars_torch_policy import ARSTorchPolicy
         policy_cls = ARSTorchPolicy
     else:
@@ -180,6 +179,7 @@ class ARSTrainer(Trainer):
 
     @override(Trainer)
     def _init(self, config, env_creator):
+        validate_config(config)
         env_context = EnvContext(config["env_config"] or {}, worker_index=0)
         env = env_creator(env_context)
 
@@ -209,7 +209,14 @@ class ARSTrainer(Trainer):
         self.tstart = time.time()
 
     @override(Trainer)
-    def _train(self):
+    def get_policy(self, policy=DEFAULT_POLICY_ID):
+        if policy != DEFAULT_POLICY_ID:
+            raise ValueError("ARS has no policy '{}'! Use {} "
+                             "instead.".format(policy, DEFAULT_POLICY_ID))
+        return self.policy
+
+    @override(Trainer)
+    def step(self):
         config = self.config
 
         theta = self.policy.get_flat_weights()
@@ -306,14 +313,17 @@ class ARSTrainer(Trainer):
         return result
 
     @override(Trainer)
-    def _stop(self):
+    def cleanup(self):
         # workaround for https://github.com/ray-project/ray/issues/1516
         for w in self.workers:
             w.__ray_terminate__.remote()
 
     @override(Trainer)
     def compute_action(self, observation, *args, **kwargs):
-        return self.policy.compute_actions(observation, update=True)[0]
+        action = self.policy.compute_actions(observation, update=True)[0]
+        if kwargs.get("full_fetch"):
+            return action, [], {}
+        return action
 
     def _collect_results(self, theta_id, min_episodes):
         num_episodes, num_timesteps = 0, 0
@@ -326,7 +336,7 @@ class ARSTrainer(Trainer):
                 worker.do_rollouts.remote(theta_id) for worker in self.workers
             ]
             # Get the results of the rollouts.
-            for result in ray_get_and_free(rollout_ids):
+            for result in ray.get(rollout_ids):
                 results.append(result)
                 # Update the number of episodes and the number of timesteps
                 # keeping in mind that result.noisy_lengths is a list of lists,

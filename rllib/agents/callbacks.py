@@ -6,6 +6,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation import MultiAgentEpisode, RolloutWorker
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.types import AgentID, PolicyID
 
 
 @PublicAPI
@@ -27,7 +28,7 @@ class DefaultCallbacks:
         self.legacy_callbacks = legacy_callbacks_dict or {}
 
     def on_episode_start(self, worker: RolloutWorker, base_env: BaseEnv,
-                         policies: Dict[str, Policy],
+                         policies: Dict[PolicyID, Policy],
                          episode: MultiAgentEpisode, **kwargs):
         """Callback run on the rollout worker before each episode starts.
 
@@ -73,8 +74,8 @@ class DefaultCallbacks:
             })
 
     def on_episode_end(self, worker: RolloutWorker, base_env: BaseEnv,
-                       policies: Dict[str, Policy], episode: MultiAgentEpisode,
-                       **kwargs):
+                       policies: Dict[PolicyID, Policy],
+                       episode: MultiAgentEpisode, **kwargs):
         """Runs when an episode is done.
 
         Args:
@@ -99,9 +100,9 @@ class DefaultCallbacks:
 
     def on_postprocess_trajectory(
             self, worker: RolloutWorker, episode: MultiAgentEpisode,
-            agent_id: str, policy_id: str, policies: Dict[str, Policy],
-            postprocessed_batch: SampleBatch,
-            original_batches: Dict[str, SampleBatch], **kwargs):
+            agent_id: AgentID, policy_id: PolicyID,
+            policies: Dict[PolicyID, Policy], postprocessed_batch: SampleBatch,
+            original_batches: Dict[AgentID, SampleBatch], **kwargs):
         """Called immediately after a policy's postprocess_fn is called.
 
         You can use this callback to do additional postprocessing for a policy,

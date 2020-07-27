@@ -12,8 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "gcs_redis_failure_detector.h"
+#include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
+
 #include "ray/common/ray_config.h"
+
+extern "C" {
+#include "hiredis/hiredis.h"
+}
 
 namespace ray {
 namespace gcs {
@@ -52,7 +57,7 @@ void GcsRedisFailureDetector::ScheduleTick() {
       RayConfig::instance().gcs_redis_heartbeat_interval_milliseconds());
   detect_timer_.expires_from_now(detect_period);
   detect_timer_.async_wait([this](const boost::system::error_code &error) {
-    if (error == boost::system::errc::operation_canceled) {
+    if (error == boost::asio::error::operation_aborted) {
       return;
     }
     RAY_CHECK(!error) << "Detecting redis failed with error: " << error.message();

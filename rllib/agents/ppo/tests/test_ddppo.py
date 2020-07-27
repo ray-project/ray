@@ -2,10 +2,8 @@ import unittest
 
 import ray
 import ray.rllib.agents.ppo as ppo
-from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.test_utils import framework_iterator
-
-tf = try_import_tf()
+from ray.rllib.utils.test_utils import check_compute_single_action, \
+    framework_iterator
 
 
 class TestDDPPO(unittest.TestCase):
@@ -27,6 +25,8 @@ class TestDDPPO(unittest.TestCase):
             trainer = ppo.ddppo.DDPPOTrainer(config=config, env="CartPole-v0")
             for i in range(num_iterations):
                 trainer.train()
+            check_compute_single_action(trainer)
+            trainer.stop()
 
 
 if __name__ == "__main__":

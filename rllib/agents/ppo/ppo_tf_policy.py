@@ -7,11 +7,10 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import LearningRateSchedule, \
     EntropyCoeffSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.utils.explained_variance import explained_variance
-from ray.rllib.utils.tf_ops import make_tf_callable
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.framework import try_import_tf, get_variable
+from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
@@ -90,10 +89,10 @@ class PPOLoss:
         self.mean_policy_loss = reduce_mean_valid(-surrogate_loss)
 
         if use_gae:
-            vf_loss1 = tf.square(value_fn - value_targets)
+            vf_loss1 = tf.math.square(value_fn - value_targets)
             vf_clipped = vf_preds + tf.clip_by_value(
                 value_fn - vf_preds, -vf_clip_param, vf_clip_param)
-            vf_loss2 = tf.square(vf_clipped - value_targets)
+            vf_loss2 = tf.math.square(vf_clipped - value_targets)
             vf_loss = tf.maximum(vf_loss1, vf_loss2)
             self.mean_vf_loss = reduce_mean_valid(vf_loss)
             loss = reduce_mean_valid(
@@ -175,7 +174,7 @@ def postprocess_ppo_gae(policy,
     else:
         next_state = []
         for i in range(policy.num_state_tensors()):
-            next_state.append([sample_batch["state_out_{}".format(i)][-1]])
+            next_state.append(sample_batch["state_out_{}".format(i)][-1])
         last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1],
                                sample_batch[SampleBatch.ACTIONS][-1],
                                sample_batch[SampleBatch.REWARDS][-1],
@@ -207,12 +206,10 @@ class KLCoeffMixin:
         # KL Coefficient
         self.kl_coeff_val = config["kl_coeff"]
         self.kl_target = config["kl_target"]
-        self.kl_coeff = tf.get_variable(
-            initializer=tf.constant_initializer(self.kl_coeff_val),
-            name="kl_coeff",
-            shape=(),
-            trainable=False,
-            dtype=tf.float32)
+        self.kl_coeff = get_variable(
+            float(self.kl_coeff_val),
+            tf_name="kl_coeff",
+            trainable=False)
 
     def update_kl(self, sampled_kl):
         if sampled_kl > 2.0 * self.kl_target:

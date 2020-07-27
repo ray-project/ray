@@ -25,7 +25,7 @@ extern "C" {
  * Class:     io_ray_runtime_RayNativeRuntime
  * Method:    nativeInitialize
  * Signature:
- * (ILjava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;[BLorg/ray/runtime/gcs/GcsClientOptions;ILjava/lang/String;Ljava/util/Map;)V
+ * (ILjava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;[BLio/ray/runtime/gcs/GcsClientOptions;ILjava/lang/String;Ljava/util/Map;)V
  */
 JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
     JNIEnv *, jclass, jint, jstring, jint, jstring, jstring, jstring, jbyteArray, jobject,
@@ -34,7 +34,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
 /*
  * Class:     io_ray_runtime_RayNativeRuntime
  * Method:    nativeRunTaskExecutor
- * Signature: (Lorg/ray/runtime/task/TaskExecutor;)V
+ * Signature: (Lio/ray/runtime/task/TaskExecutor;)V
  */
 JNIEXPORT void JNICALL
 Java_io_ray_runtime_RayNativeRuntime_nativeRunTaskExecutor(JNIEnv *, jclass, jobject);
@@ -45,7 +45,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeRunTaskExecutor(JNIEnv *, jclass, job
  * Signature: ()V
  */
 JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeShutdown(JNIEnv *,
-                                                                            jclass);
+                                                                           jclass);
 
 /*
  * Class:     io_ray_runtime_RayNativeRuntime
@@ -61,9 +61,18 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeSetResource(
  * Signature: ([BZ)V
  */
 JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeKillActor(JNIEnv *,
-                                                                             jclass,
-                                                                             jbyteArray,
-                                                                             jboolean);
+                                                                            jclass,
+                                                                            jbyteArray,
+                                                                            jboolean);
+
+/*
+ * Class:     io_ray_runtime_RayNativeRuntime
+ * Method:    nativeGetActorIdOfNamedActor
+ * Signature: (Ljava/lang/String;Z)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(JNIEnv *, jclass,
+                                                                  jstring, jboolean);
 
 /*
  * Class:     io_ray_runtime_RayNativeRuntime

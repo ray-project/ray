@@ -9,6 +9,8 @@ import java.util.List;
 
 public interface Operator extends Serializable {
 
+  String getName();
+
   void open(List<Collector> collectors, RuntimeContext runtimeContext);
 
   void finish();
@@ -20,4 +22,7 @@ public interface Operator extends Serializable {
   Language getLanguage();
 
   OperatorType getOpType();
+
+  ChainStrategy getChainStrategy();
+
 }

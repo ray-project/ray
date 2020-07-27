@@ -51,12 +51,13 @@ cdef class Config:
         return RayConfig.instance().actor_max_dummy_objects()
 
     @staticmethod
-    def num_connect_attempts():
-        return RayConfig.instance().num_connect_attempts()
+    def raylet_client_num_connect_attempts():
+        return RayConfig.instance().raylet_client_num_connect_attempts()
 
     @staticmethod
-    def connect_timeout_milliseconds():
-        return RayConfig.instance().connect_timeout_milliseconds()
+    def raylet_client_connect_timeout_milliseconds():
+        return (RayConfig.instance()
+                .raylet_client_connect_timeout_milliseconds())
 
     @staticmethod
     def raylet_fetch_timeout_milliseconds():
@@ -79,6 +80,10 @@ cdef class Config:
     @staticmethod
     def kill_worker_timeout_milliseconds():
         return RayConfig.instance().kill_worker_timeout_milliseconds()
+
+    @staticmethod
+    def worker_register_timeout_seconds():
+        return RayConfig.instance().worker_register_timeout_seconds()
 
     @staticmethod
     def max_time_for_handler_milliseconds():
@@ -152,3 +157,11 @@ cdef class Config:
     @staticmethod
     def maximum_gcs_deletion_batch_size():
         return RayConfig.instance().maximum_gcs_deletion_batch_size()
+
+    @staticmethod
+    def put_small_object_in_memory_store():
+        return RayConfig.instance().put_small_object_in_memory_store()
+
+    @staticmethod
+    def max_tasks_in_flight_per_worker():
+        return RayConfig.instance().max_tasks_in_flight_per_worker()

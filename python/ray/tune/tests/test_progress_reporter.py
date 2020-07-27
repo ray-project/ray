@@ -1,36 +1,47 @@
 import pytest
 import collections
-import subprocess
-import tempfile
+import os
 import unittest
 from unittest.mock import MagicMock, Mock
 
+from ray.test_utils import run_string_as_driver
 from ray.tune.trial import Trial
 from ray.tune.progress_reporter import (CLIReporter, _fair_filter_trials,
                                         trial_progress_str)
 
 EXPECTED_RESULT_1 = """Result logdir: /foo
 Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
-+--------------+------------+-------+-----+-----+
-|   Trial name | status     | loc   |   a |   b |
-|--------------+------------+-------+-----+-----|
-|        00001 | PENDING    | here  |   1 |   2 |
-|        00002 | RUNNING    | here  |   2 |   4 |
-|        00000 | TERMINATED | here  |   0 |   0 |
-+--------------+------------+-------+-----+-----+
++--------------+------------+-------+-----+-----+------------+
+|   Trial name | status     | loc   |   a |   b |   metric_1 |
+|--------------+------------+-------+-----+-----+------------|
+|        00001 | PENDING    | here  |   1 |   2 |        0.5 |
+|        00002 | RUNNING    | here  |   2 |   4 |        1   |
+|        00000 | TERMINATED | here  |   0 |   0 |        0   |
++--------------+------------+-------+-----+-----+------------+
 ... 2 more trials not shown (2 RUNNING)"""
 
 EXPECTED_RESULT_2 = """Result logdir: /foo
 Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
-+--------------+------------+-------+-----+-----+
-|   Trial name | status     | loc   |   a |   b |
-|--------------+------------+-------+-----+-----|
-|        00000 | TERMINATED | here  |   0 |   0 |
-|        00001 | PENDING    | here  |   1 |   2 |
-|        00002 | RUNNING    | here  |   2 |   4 |
-|        00003 | RUNNING    | here  |   3 |   6 |
-|        00004 | RUNNING    | here  |   4 |   8 |
-+--------------+------------+-------+-----+-----+"""
++--------------+------------+-------+-----+-----+---------+---------+
+|   Trial name | status     | loc   |   a |   b |   n/k/0 |   n/k/1 |
+|--------------+------------+-------+-----+-----+---------+---------|
+|        00000 | TERMINATED | here  |   0 |   0 |       0 |       0 |
+|        00001 | PENDING    | here  |   1 |   2 |       1 |       2 |
+|        00002 | RUNNING    | here  |   2 |   4 |       2 |       4 |
+|        00003 | RUNNING    | here  |   3 |   6 |       3 |       6 |
+|        00004 | RUNNING    | here  |   4 |   8 |       4 |       8 |
++--------------+------------+-------+-----+-----+---------+---------+"""
+
+EXPECTED_RESULT_3 = """Result logdir: /foo
+Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
++--------------+------------+-------+-----+------------+------------+
+|   Trial name | status     | loc   |   A |   Metric 1 |   Metric 2 |
+|--------------+------------+-------+-----+------------+------------|
+|        00001 | PENDING    | here  |   1 |        0.5 |       0.25 |
+|        00002 | RUNNING    | here  |   2 |        1   |       0.5  |
+|        00000 | TERMINATED | here  |   0 |        0   |       0    |
++--------------+------------+-------+-----+------------+------------+
+... 2 more trials not shown (2 RUNNING)"""
 
 END_TO_END_COMMAND = """
 import ray
@@ -62,67 +73,103 @@ tune.run_experiments({
 }, reuse_actors=True, verbose=1)"""
 
 EXPECTED_END_TO_END_START = """Number of trials: 30 (29 PENDING, 1 RUNNING)
-+--------------+----------+-------+-----+-----+
-| Trial name   | status   | loc   |   a |   b |
-|--------------+----------+-------+-----+-----|
-| f_00001      | PENDING  |       |   1 |     |
-| f_00002      | PENDING  |       |   2 |     |
-| f_00003      | PENDING  |       |   3 |     |
-| f_00004      | PENDING  |       |   4 |     |
-| f_00005      | PENDING  |       |   5 |     |
-| f_00006      | PENDING  |       |   6 |     |
-| f_00007      | PENDING  |       |   7 |     |
-| f_00008      | PENDING  |       |   8 |     |
-| f_00009      | PENDING  |       |   9 |     |
-| f_00010      | PENDING  |       |     |   0 |
-| f_00011      | PENDING  |       |     |   1 |
-| f_00012      | PENDING  |       |     |   2 |
-| f_00013      | PENDING  |       |     |   3 |
-| f_00014      | PENDING  |       |     |   4 |
-| f_00015      | PENDING  |       |     |   5 |
-| f_00016      | PENDING  |       |     |   6 |
-| f_00017      | PENDING  |       |     |   7 |
-| f_00018      | PENDING  |       |     |   8 |
-| f_00019      | PENDING  |       |     |   9 |
-| f_00000      | RUNNING  |       |   0 |     |
-+--------------+----------+-------+-----+-----+
++---------------+----------+-------+-----+-----+
+| Trial name    | status   | loc   |   a |   b |
+|---------------+----------+-------+-----+-----|
+| f_xxxxx_00001 | PENDING  |       |   1 |     |
+| f_xxxxx_00002 | PENDING  |       |   2 |     |
+| f_xxxxx_00003 | PENDING  |       |   3 |     |
+| f_xxxxx_00004 | PENDING  |       |   4 |     |
+| f_xxxxx_00005 | PENDING  |       |   5 |     |
+| f_xxxxx_00006 | PENDING  |       |   6 |     |
+| f_xxxxx_00007 | PENDING  |       |   7 |     |
+| f_xxxxx_00008 | PENDING  |       |   8 |     |
+| f_xxxxx_00009 | PENDING  |       |   9 |     |
+| f_xxxxx_00010 | PENDING  |       |     |   0 |
+| f_xxxxx_00011 | PENDING  |       |     |   1 |
+| f_xxxxx_00012 | PENDING  |       |     |   2 |
+| f_xxxxx_00013 | PENDING  |       |     |   3 |
+| f_xxxxx_00014 | PENDING  |       |     |   4 |
+| f_xxxxx_00015 | PENDING  |       |     |   5 |
+| f_xxxxx_00016 | PENDING  |       |     |   6 |
+| f_xxxxx_00017 | PENDING  |       |     |   7 |
+| f_xxxxx_00018 | PENDING  |       |     |   8 |
+| f_xxxxx_00019 | PENDING  |       |     |   9 |
+| f_xxxxx_00000 | RUNNING  |       |   0 |     |
++---------------+----------+-------+-----+-----+
 ... 10 more trials not shown (10 PENDING)"""
 
 EXPECTED_END_TO_END_END = """Number of trials: 30 (30 TERMINATED)
-+--------------+------------+-------+-----+-----+-----+
-| Trial name   | status     | loc   |   a |   b |   c |
-|--------------+------------+-------+-----+-----+-----|
-| f_00000      | TERMINATED |       |   0 |     |     |
-| f_00001      | TERMINATED |       |   1 |     |     |
-| f_00002      | TERMINATED |       |   2 |     |     |
-| f_00003      | TERMINATED |       |   3 |     |     |
-| f_00004      | TERMINATED |       |   4 |     |     |
-| f_00005      | TERMINATED |       |   5 |     |     |
-| f_00006      | TERMINATED |       |   6 |     |     |
-| f_00007      | TERMINATED |       |   7 |     |     |
-| f_00008      | TERMINATED |       |   8 |     |     |
-| f_00009      | TERMINATED |       |   9 |     |     |
-| f_00010      | TERMINATED |       |     |   0 |     |
-| f_00011      | TERMINATED |       |     |   1 |     |
-| f_00012      | TERMINATED |       |     |   2 |     |
-| f_00013      | TERMINATED |       |     |   3 |     |
-| f_00014      | TERMINATED |       |     |   4 |     |
-| f_00015      | TERMINATED |       |     |   5 |     |
-| f_00016      | TERMINATED |       |     |   6 |     |
-| f_00017      | TERMINATED |       |     |   7 |     |
-| f_00018      | TERMINATED |       |     |   8 |     |
-| f_00019      | TERMINATED |       |     |   9 |     |
-| f_00020      | TERMINATED |       |     |     |   0 |
-| f_00021      | TERMINATED |       |     |     |   1 |
-| f_00022      | TERMINATED |       |     |     |   2 |
-| f_00023      | TERMINATED |       |     |     |   3 |
-| f_00024      | TERMINATED |       |     |     |   4 |
-| f_00025      | TERMINATED |       |     |     |   5 |
-| f_00026      | TERMINATED |       |     |     |   6 |
-| f_00027      | TERMINATED |       |     |     |   7 |
-| f_00028      | TERMINATED |       |     |     |   8 |
-| f_00029      | TERMINATED |       |     |     |   9 |
-+--------------+------------+-------+-----+-----+-----+"""
++---------------+------------+-------+-----+-----+-----+
+| Trial name    | status     | loc   |   a |   b |   c |
+|---------------+------------+-------+-----+-----+-----|
+| f_xxxxx_00000 | TERMINATED |       |   0 |     |     |
+| f_xxxxx_00001 | TERMINATED |       |   1 |     |     |
+| f_xxxxx_00002 | TERMINATED |       |   2 |     |     |
+| f_xxxxx_00003 | TERMINATED |       |   3 |     |     |
+| f_xxxxx_00004 | TERMINATED |       |   4 |     |     |
+| f_xxxxx_00005 | TERMINATED |       |   5 |     |     |
+| f_xxxxx_00006 | TERMINATED |       |   6 |     |     |
+| f_xxxxx_00007 | TERMINATED |       |   7 |     |     |
+| f_xxxxx_00008 | TERMINATED |       |   8 |     |     |
+| f_xxxxx_00009 | TERMINATED |       |   9 |     |     |
+| f_xxxxx_00010 | TERMINATED |       |     |   0 |     |
+| f_xxxxx_00011 | TERMINATED |       |     |   1 |     |
+| f_xxxxx_00012 | TERMINATED |       |     |   2 |     |
+| f_xxxxx_00013 | TERMINATED |       |     |   3 |     |
+| f_xxxxx_00014 | TERMINATED |       |     |   4 |     |
+| f_xxxxx_00015 | TERMINATED |       |     |   5 |     |
+| f_xxxxx_00016 | TERMINATED |       |     |   6 |     |
+| f_xxxxx_00017 | TERMINATED |       |     |   7 |     |
+| f_xxxxx_00018 | TERMINATED |       |     |   8 |     |
+| f_xxxxx_00019 | TERMINATED |       |     |   9 |     |
+| f_xxxxx_00020 | TERMINATED |       |     |     |   0 |
+| f_xxxxx_00021 | TERMINATED |       |     |     |   1 |
+| f_xxxxx_00022 | TERMINATED |       |     |     |   2 |
+| f_xxxxx_00023 | TERMINATED |       |     |     |   3 |
+| f_xxxxx_00024 | TERMINATED |       |     |     |   4 |
+| f_xxxxx_00025 | TERMINATED |       |     |     |   5 |
+| f_xxxxx_00026 | TERMINATED |       |     |     |   6 |
+| f_xxxxx_00027 | TERMINATED |       |     |     |   7 |
+| f_xxxxx_00028 | TERMINATED |       |     |     |   8 |
+| f_xxxxx_00029 | TERMINATED |       |     |     |   9 |
++---------------+------------+-------+-----+-----+-----+"""
+
+EXPECTED_END_TO_END_AC = """Number of trials: 30 (30 TERMINATED)
++---------------+------------+-------+-----+-----+-----+
+| Trial name    | status     | loc   |   a |   b |   c |
+|---------------+------------+-------+-----+-----+-----|
+| f_xxxxx_00000 | TERMINATED |       |   0 |     |     |
+| f_xxxxx_00001 | TERMINATED |       |   1 |     |     |
+| f_xxxxx_00002 | TERMINATED |       |   2 |     |     |
+| f_xxxxx_00003 | TERMINATED |       |   3 |     |     |
+| f_xxxxx_00004 | TERMINATED |       |   4 |     |     |
+| f_xxxxx_00005 | TERMINATED |       |   5 |     |     |
+| f_xxxxx_00006 | TERMINATED |       |   6 |     |     |
+| f_xxxxx_00007 | TERMINATED |       |   7 |     |     |
+| f_xxxxx_00008 | TERMINATED |       |   8 |     |     |
+| f_xxxxx_00009 | TERMINATED |       |   9 |     |     |
+| f_xxxxx_00010 | TERMINATED |       |     |   0 |     |
+| f_xxxxx_00011 | TERMINATED |       |     |   1 |     |
+| f_xxxxx_00012 | TERMINATED |       |     |   2 |     |
+| f_xxxxx_00013 | TERMINATED |       |     |   3 |     |
+| f_xxxxx_00014 | TERMINATED |       |     |   4 |     |
+| f_xxxxx_00015 | TERMINATED |       |     |   5 |     |
+| f_xxxxx_00016 | TERMINATED |       |     |   6 |     |
+| f_xxxxx_00017 | TERMINATED |       |     |   7 |     |
+| f_xxxxx_00018 | TERMINATED |       |     |   8 |     |
+| f_xxxxx_00019 | TERMINATED |       |     |   9 |     |
+| f_xxxxx_00020 | TERMINATED |       |     |     |   0 |
+| f_xxxxx_00021 | TERMINATED |       |     |     |   1 |
+| f_xxxxx_00022 | TERMINATED |       |     |     |   2 |
+| f_xxxxx_00023 | TERMINATED |       |     |     |   3 |
+| f_xxxxx_00024 | TERMINATED |       |     |     |   4 |
+| f_xxxxx_00025 | TERMINATED |       |     |     |   5 |
+| f_xxxxx_00026 | TERMINATED |       |     |     |   6 |
+| f_xxxxx_00027 | TERMINATED |       |     |     |   7 |
+| f_xxxxx_00028 | TERMINATED |       |     |     |   8 |
+| f_xxxxx_00029 | TERMINATED |       |     |     |   9 |
++---------------+------------+-------+-----+-----+-----+"""
 
 
 class ProgressReporterTest(unittest.TestCase):
@@ -199,25 +246,52 @@ class ProgressReporterTest(unittest.TestCase):
             t.trial_id = "%05d" % i
             t.local_dir = "/foo"
             t.location = "here"
-            t.config = {"a": i, "b": i * 2}
-            t.evaluated_params = t.config
-            t.last_result = {"config": {"a": i, "b": i * 2}}
+            t.config = {"a": i, "b": i * 2, "n": {"k": [i, 2 * i]}}
+            t.evaluated_params = {
+                "a": i,
+                "b": i * 2,
+                "n/k/0": i,
+                "n/k/1": 2 * i
+            }
+            t.last_result = {
+                "config": {
+                    "a": i,
+                    "b": i * 2,
+                    "n": {
+                        "k": [i, 2 * i]
+                    }
+                },
+                "metric_1": i / 2,
+                "metric_2": i / 4
+            }
             t.__str__ = lambda self: self.trial_id
             trials.append(t)
-        prog1 = trial_progress_str(trials, ["a", "b"], fmt="psql", max_rows=3)
+        # One metric, two parameters
+        prog1 = trial_progress_str(
+            trials, ["metric_1"], ["a", "b"], fmt="psql", max_rows=3)
         print(prog1)
         assert prog1 == EXPECTED_RESULT_1
-        prog2 = trial_progress_str(
-            trials, ["a", "b"], fmt="psql", max_rows=None)
+
+        # No metric, all parameters
+        prog2 = trial_progress_str(trials, [], None, fmt="psql", max_rows=None)
         print(prog2)
         assert prog2 == EXPECTED_RESULT_2
 
+        # Both metrics, one parameter, all with custom representation
+        prog3 = trial_progress_str(
+            trials, {
+                "metric_1": "Metric 1",
+                "metric_2": "Metric 2"
+            }, {"a": "A"},
+            fmt="psql",
+            max_rows=3)
+        print(prog3)
+        assert prog3 == EXPECTED_RESULT_3
+
     def testEndToEndReporting(self):
-        with tempfile.NamedTemporaryFile(suffix=".py") as f:
-            f.write(END_TO_END_COMMAND.encode("utf-8"))
-            f.flush()
-            output = subprocess.check_output(["python3", f.name])
-            output = output.decode("utf-8")
+        try:
+            os.environ["_TEST_TUNE_TRIAL_UUID"] = "xxxxx"
+            output = run_string_as_driver(END_TO_END_COMMAND)
             try:
                 assert EXPECTED_END_TO_END_START in output
                 assert EXPECTED_END_TO_END_END in output
@@ -226,6 +300,8 @@ class ProgressReporterTest(unittest.TestCase):
                 print(output)
                 print("*** END OUTPUT ***")
                 raise
+        finally:
+            del os.environ["_TEST_TUNE_TRIAL_UUID"]
 
 
 if __name__ == "__main__":

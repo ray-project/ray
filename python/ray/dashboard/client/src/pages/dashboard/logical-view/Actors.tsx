@@ -1,21 +1,28 @@
-import { createStyles, Theme, withStyles, WithStyles } from "@material-ui/core";
-import React from "react";
-import { RayletInfoResponse } from "../../../api";
+import React, { Fragment } from "react";
+import { ActorState, RayletInfoResponse } from "../../../api";
 import Actor from "./Actor";
 
-const styles = (theme: Theme) => createStyles({});
-
-type Props = {
+type ActorProps = {
   actors: RayletInfoResponse["actors"];
 };
 
-class Actors extends React.Component<Props & WithStyles<typeof styles>> {
-  render() {
-    const { actors } = this.props;
-    return Object.entries(actors).map(([actorId, actor]) => (
-      <Actor actor={actor} key={actorId} />
-    ));
-  }
-}
+const Actors = (props: ActorProps) => {
+  const { actors } = props;
+  const actorChildren = Object.values(actors)
+    .sort((actor1, actor2) => {
+      if (
+        actor1.state === ActorState.Dead &&
+        actor2.state === ActorState.Dead
+      ) {
+        return 0;
+      } else if (actor2.state === ActorState.Dead) {
+        return -1;
+      } else {
+        return 1;
+      }
+    })
+    .map((actor) => <Actor actor={actor} key={actor.actorId} />);
+  return <Fragment>{actorChildren}</Fragment>;
+};
 
-export default withStyles(styles)(Actors);
+export default Actors;

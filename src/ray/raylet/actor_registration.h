@@ -12,14 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_RAYLET_ACTOR_REGISTRATION_H
-#define RAY_RAYLET_ACTOR_REGISTRATION_H
+#pragma once
 
 #include <unordered_map>
 
 #include "ray/common/id.h"
 #include "ray/common/task/task.h"
-#include "ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 
@@ -82,7 +81,7 @@ class ActorRegistration {
 
   /// Get the object that represents the actor's initial state. This is the
   /// execution dependency returned by this actor's creation task. If
-  /// reconstructed, this will recreate the actor.
+  /// restarted, this will recreate the actor.
   ///
   /// \return The execution dependency returned by the actor's creation task.
   const ObjectID GetActorCreationDependency() const;
@@ -90,11 +89,14 @@ class ActorRegistration {
   /// Get actor's job ID.
   const JobID GetJobId() const;
 
-  /// Get the max number of times this actor should be reconstructed.
-  const int64_t GetMaxReconstructions() const;
+  /// Get the max number of times this actor should be restarted.
+  const int64_t GetMaxRestarts() const;
 
-  /// Get the remaining number of times this actor should be reconstructed.
-  const int64_t GetRemainingReconstructions() const;
+  /// Get the remaining number of times this actor should be restarted.
+  const int64_t GetRemainingRestarts() const;
+
+  /// Get the number of times this actor has already been restarted
+  const uint64_t GetNumRestarts() const;
 
   /// Get the object that represents the actor's current state. This is the
   /// execution dependency returned by the task most recently executed on the
@@ -177,5 +179,3 @@ class ActorRegistration {
 }  // namespace raylet
 
 }  // namespace ray
-
-#endif  // RAY_RAYLET_ACTOR_REGISTRATION_H

@@ -1,7 +1,8 @@
 package io.ray.runtime;
 
 import com.google.common.base.Preconditions;
-import io.ray.api.BaseActor;
+import io.ray.api.BaseActorHandle;
+import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.config.RayConfig;
@@ -19,6 +20,7 @@ import io.ray.runtime.util.JniUtils;
 import java.io.File;
 import java.io.IOException;
 import java.util.Map;
+import java.util.Optional;
 import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -55,6 +57,15 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       FileUtils.forceMkdir(new File(rayConfig.logDir));
     } catch (IOException e) {
       throw new RuntimeException("Failed to create the log directory.", e);
+    }
+
+    if (rayConfig.getRedisAddress() != null) {
+      GcsClient tempGcsClient =
+          new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
+      for (Map.Entry<String, String> entry :
+          tempGcsClient.getInternalConfig().entrySet()) {
+        rayConfig.rayletConfigParameters.put(entry.getKey(), entry.getValue());
+      }
     }
   }
 
@@ -96,19 +107,25 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     objectStore = new NativeObjectStore(workerContext);
     taskSubmitter = new NativeTaskSubmitter();
 
-    LOGGER.info("RayNativeRuntime started with store {}, raylet {}",
+    LOGGER.debug("RayNativeRuntime started with store {}, raylet {}",
         rayConfig.objectStoreSocketName, rayConfig.rayletSocketName);
   }
 
   @Override
   public void shutdown() {
-    nativeShutdown();
-    if (null != manager) {
-      manager.cleanup();
-      manager = null;
+    if (rayConfig.workerMode == WorkerType.DRIVER) {
+      nativeShutdown();
+      if (null != manager) {
+        manager.cleanup();
+        manager = null;
+      }
+    }
+    if (null != gcsClient) {
+      gcsClient.destroy();
+      gcsClient = null;
     }
     RayConfig.reset();
-    LOGGER.info("RayNativeRuntime shutdown");
+    LOGGER.debug("RayNativeRuntime shutdown");
   }
 
   // For test purpose only
@@ -125,9 +142,21 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     nativeSetResource(resourceName, capacity, nodeId.getBytes());
   }
 
+  @SuppressWarnings("unchecked")
   @Override
-  public void killActor(BaseActor actor, boolean noReconstruction) {
-    nativeKillActor(actor.getId().getBytes(), noReconstruction);
+  public <T extends BaseActorHandle> Optional<T> getActor(String name, boolean global) {
+    byte[] actorIdBytes = nativeGetActorIdOfNamedActor(name, global);
+    ActorId actorId = ActorId.fromBytes(actorIdBytes);
+    if (actorId.isNil()) {
+      return Optional.empty();
+    } else {
+      return Optional.of((T) getActorHandle(actorId));
+    }
+  }
+
+  @Override
+  public void killActor(BaseActorHandle actor, boolean noRestart) {
+    nativeKillActor(actor.getId().getBytes(), noRestart);
   }
 
   @Override
@@ -149,7 +178,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     nativeRunTaskExecutor(taskExecutor);
   }
 
-  private static native void nativeInitialize(int workerMode, String ndoeIpAddress,
+  private static native void nativeInitialize(
+      int workerMode, String ndoeIpAddress,
       int nodeManagerPort, String driverName, String storeSocket, String rayletSocket,
       byte[] jobId, GcsClientOptions gcsClientOptions, int numWorkersPerProcess,
       String logDir, Map<String, String> rayletConfigParameters);
@@ -160,7 +190,9 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   private static native void nativeSetResource(String resourceName, double capacity, byte[] nodeId);
 
-  private static native void nativeKillActor(byte[] actorId, boolean noReconstruction);
+  private static native void nativeKillActor(byte[] actorId, boolean noRestart);
+
+  private static native byte[] nativeGetActorIdOfNamedActor(String actorName, boolean global);
 
   private static native void nativeSetCoreWorker(byte[] workerId);
 

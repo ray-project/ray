@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_RAYLET_RECONSTRUCTION_POLICY_H
-#define RAY_RAYLET_RECONSTRUCTION_POLICY_H
+#pragma once
 
 #include <functional>
 #include <unordered_map>
@@ -166,5 +165,3 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
 }  // namespace raylet
 
 }  // namespace ray
-
-#endif  // RAY_RAYLET_RECONSTRUCTION_POLICY_H

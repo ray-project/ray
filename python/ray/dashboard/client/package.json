@@ -31,7 +31,11 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "lint": "npm run eslint && npm run prettier",
+    "lint-fix": "npm run prettier -- --write && npm run eslint -- --fix",
+    "prettier": "./node_modules/.bin/prettier -c src/",
+    "eslint": "./node_modules/.bin/eslint \"src/**\""
   },
   "eslintConfig": {
     "extends": [

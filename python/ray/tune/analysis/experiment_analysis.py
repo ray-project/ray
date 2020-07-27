@@ -65,6 +65,13 @@ class Analysis:
             mode (str): One of [min, max].
         """
         rows = self._retrieve_rows(metric=metric, mode=mode)
+        if not rows:
+            # only nans encountered when retrieving rows
+            logger.warning("Not able to retrieve the best config for {} "
+                           "according to the specified metric "
+                           "(only nans encountered).".format(
+                               self._experiment_dir))
+            return None
         all_configs = self.get_all_configs()
         compare_op = max if mode == "max" else min
         best_path = compare_op(rows, key=lambda k: rows[k][metric])
@@ -77,11 +84,20 @@ class Analysis:
             metric (str): Key for trial info to order on.
             mode (str): One of [min, max].
         """
+        assert mode in ["max", "min"]
         df = self.dataframe(metric=metric, mode=mode)
-        if mode == "max":
-            return df.iloc[df[metric].idxmax()].logdir
-        elif mode == "min":
-            return df.iloc[df[metric].idxmin()].logdir
+        mode_idx = pd.Series.idxmax if mode == "max" else pd.Series.idxmin
+        try:
+            return df.iloc[mode_idx(df[metric])].logdir
+        except KeyError:
+            # all dirs contains only nan values
+            # for the specified metric
+            # -> df is an empty dataframe
+            logger.warning("Not able to retrieve the best logdir for {} "
+                           "according to the specified metric "
+                           "(only nans encountered).".format(
+                               self._experiment_dir))
+            return None
 
     def fetch_trial_dataframes(self):
         fail_count = 0
@@ -161,7 +177,13 @@ class Analysis:
                 idx = df[metric].idxmin()
             else:
                 idx = -1
-            rows[path] = df.iloc[idx].to_dict()
+            try:
+                rows[path] = df.iloc[idx].to_dict()
+            except TypeError:
+                # idx is nan
+                logger.warning(
+                    "Warning: Non-numerical value(s) encountered for {}".
+                    format(path))
 
         return rows
 
@@ -201,6 +223,11 @@ class ExperimentAnalysis(Analysis):
     """
 
     def __init__(self, experiment_checkpoint_path, trials=None):
+        experiment_checkpoint_path = os.path.expanduser(
+            experiment_checkpoint_path)
+        if not os.path.isfile(experiment_checkpoint_path):
+            raise ValueError(
+                "{} is not a valid file.".format(experiment_checkpoint_path))
         with open(experiment_checkpoint_path) as f:
             _experiment_state = json.load(f)
             self._experiment_state = _experiment_state
@@ -220,30 +247,35 @@ class ExperimentAnalysis(Analysis):
         Args:
             metric (str): Key for trial info to order on.
             mode (str): One of [min, max].
-            scope (str): One of [all, last]. If `scope=last`, only look at
-                each trial's final step for `metric`, and compare across
-                trials based on `mode=[min,max]`. If `scope=all`, find each
-                trial's min/max score for `metric` based on `mode`, and
-                compare trials based on `mode=[min,max]`.
+            scope (str): One of [all, last, avg, last-5-avg, last-10-avg].
+                If `scope=last`, only look at each trial's final step for
+                `metric`, and compare across trials based on `mode=[min,max]`.
+                If `scope=avg`, consider the simple average over all steps
+                for `metric` and compare across trials based on
+                `mode=[min,max]`. If `scope=last-5-avg` or `scope=last-10-avg`,
+                consider the simple average over the last 5 or 10 steps for
+                `metric` and compare across trials based on `mode=[min,max]`.
+                If `scope=all`, find each trial's min/max score for `metric`
+                based on `mode`, and compare trials based on `mode=[min,max]`.
         """
         if mode not in ["max", "min"]:
             raise ValueError(
                 "ExperimentAnalysis: attempting to get best trial for "
                 "metric {} for mode {} not in [\"max\", \"min\"]".format(
                     metric, mode))
-        if scope not in ["all", "last"]:
+        if scope not in ["all", "last", "avg", "last-5-avg", "last-10-avg"]:
             raise ValueError(
                 "ExperimentAnalysis: attempting to get best trial for "
-                "metric {} for scope {} not in [\"all\", \"last\"]".format(
-                    metric, scope))
+                "metric {} for scope {} not in [\"all\", \"last\", \"avg\", "
+                "\"last-5-avg\", \"last-10-avg\"]".format(metric, scope))
         best_trial = None
         best_metric_score = None
         for trial in self.trials:
             if metric not in trial.metric_analysis:
                 continue
 
-            if scope == "last":
-                metric_score = trial.metric_analysis[metric]["last"]
+            if scope in ["last", "avg", "last-5-avg", "last-10-avg"]:
+                metric_score = trial.metric_analysis[metric][scope]
             else:
                 metric_score = trial.metric_analysis[metric][mode]
 
@@ -269,11 +301,16 @@ class ExperimentAnalysis(Analysis):
         Args:
             metric (str): Key for trial info to order on.
             mode (str): One of [min, max].
-            scope (str): One of [all, last]. If `scope=last`, only look at
-                each trial's final step for `metric`, and compare across
-                trials based on `mode=[min,max]`. If `scope=all`, find each
-                trial's min/max score for `metric` based on `mode`, and
-                compare trials based on `mode=[min,max]`.
+            scope (str): One of [all, last, avg, last-5-avg, last-10-avg].
+                If `scope=last`, only look at each trial's final step for
+                `metric`, and compare across trials based on `mode=[min,max]`.
+                If `scope=avg`, consider the simple average over all steps
+                for `metric` and compare across trials based on
+                `mode=[min,max]`. If `scope=last-5-avg` or `scope=last-10-avg`,
+                consider the simple average over the last 5 or 10 steps for
+                `metric` and compare across trials based on `mode=[min,max]`.
+                If `scope=all`, find each trial's min/max score for `metric`
+                based on `mode`, and compare trials based on `mode=[min,max]`.
         """
         best_trial = self.get_best_trial(metric, mode, scope)
         return best_trial.config if best_trial else None
@@ -286,11 +323,16 @@ class ExperimentAnalysis(Analysis):
         Args:
             metric (str): Key for trial info to order on.
             mode (str): One of [min, max].
-            scope (str): One of [all, last]. If `scope=last`, only look at
-                each trial's final step for `metric`, and compare across
-                trials based on `mode=[min,max]`. If `scope=all`, find each
-                trial's min/max score for `metric` based on `mode`, and
-                compare trials based on `mode=[min,max]`.
+            scope (str): One of [all, last, avg, last-5-avg, last-10-avg].
+                If `scope=last`, only look at each trial's final step for
+                `metric`, and compare across trials based on `mode=[min,max]`.
+                If `scope=avg`, consider the simple average over all steps
+                for `metric` and compare across trials based on
+                `mode=[min,max]`. If `scope=last-5-avg` or `scope=last-10-avg`,
+                consider the simple average over the last 5 or 10 steps for
+                `metric` and compare across trials based on `mode=[min,max]`.
+                If `scope=all`, find each trial's min/max score for `metric`
+                based on `mode`, and compare trials based on `mode=[min,max]`.
         """
         best_trial = self.get_best_trial(metric, mode, scope)
         return best_trial.logdir if best_trial else None

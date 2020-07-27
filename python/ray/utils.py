@@ -233,8 +233,8 @@ def ensure_str(s, encoding="utf-8", errors="strict"):
         return s.decode(encoding, errors)
 
 
-def binary_to_object_id(binary_object_id):
-    return ray.ObjectID(binary_object_id)
+def binary_to_object_ref(binary_object_ref):
+    return ray.ObjectRef(binary_object_ref)
 
 
 def binary_to_task_id(binary_task_id):
@@ -388,6 +388,41 @@ def setup_logger(logging_level, logging_format):
         logger.addHandler(_default_handler)
     _default_handler.setFormatter(logging.Formatter(logging_format))
     logger.propagate = False
+
+
+def open_log(path, **kwargs):
+    """
+    Opens the log file at `path`, with the provided kwargs being given to
+    `open`.
+    """
+    kwargs.setdefault("buffering", 1)
+    kwargs.setdefault("mode", "a")
+    kwargs.setdefault("encoding", "utf-8")
+    return open(path, **kwargs)
+
+
+def create_and_init_new_worker_log(path, worker_pid):
+    """
+    Opens a path (or creates if necessary) for a log.
+
+    Args:
+        path (str): The name/path of the file to be opened.
+        worker_pid (int): The pid of the worker process.
+
+    Returns:
+        A file-like object which can be written to.
+    """
+    # TODO (Alex): We should eventually be able to replace this with
+    # named-pipes.
+    f = open_log(path)
+    # Check to see if we're creating this file. No one else should ever write
+    # to this file, so we don't have to worry about TOCTOU.
+    if f.tell() == 0:
+        # This should always be the first message to appear in the worker's
+        # stdout and stderr log files. The string "Ray worker pid:" is
+        # parsed in the log monitor process.
+        print("Ray worker pid: {}".format(worker_pid), file=f)
+    return f
 
 
 def get_system_memory():

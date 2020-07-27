@@ -12,14 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_RAYLET_TRANSPORT_H
-#define RAY_CORE_WORKER_RAYLET_TRANSPORT_H
+#pragma once
 
 #include <list>
 
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/reference_count.h"
-#include "ray/raylet/raylet_client.h"
+#include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/worker/core_worker_server.h"
 
 namespace ray {
@@ -60,5 +59,3 @@ class CoreWorkerRayletTaskReceiver {
 };
 
 }  // namespace ray
-
-#endif  // RAY_CORE_WORKER_RAYLET_TRANSPORT_H

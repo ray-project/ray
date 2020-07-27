@@ -6,44 +6,45 @@ forever until they fail. To set up the project you need to run
 
 .. code-block:: bash
 
-    pip install anyscale
-    anyscale project create
+    $ pip install anyscale
+    $ anyscale init
 
+Note that all the long running test is running inside virtual environment, tensorflow_p36
 
 Running the Workloads
 ---------------------
+Easiest approach is to use the `Anyscale UI <https://www.anyscale.dev/>`. First run ``anyscale snapshot create`` from the command line to create a project snapshot. Then from the UI, you can launch an individual session and execute the run command for each test. 
 
-You can start all the workloads with:
+You can also start the workloads using the CLI with:
 
 .. code-block:: bash
 
-    anyscale session start -y run --workload="*" --wheel=https://s3-us-west-2.amazonaws.com/ray-wheels/releases/0.7.5/6da7eff4b20340f92d3fe1160df35caa68922a97/ray-0.7.5-cp36-cp36m-manylinux1_x86_64.whl
-
-This will start one EC2 instance per workload and will start the workloads
-running (one per instance). You can start a specific workload by specifying
-its name as an argument ``--workload=`` instead of ``"*"``. A list of
-available options is available via `any session start run --help`.
+    $ anyscale start
+    $ anyscale run test_workload --workload=<WORKLOAD_NAME> --wheel=<RAY_WHEEL_LINK>
 
 
-Check Workload Statuses
------------------------
+Doing this for each workload will start one EC2 instance per workload and will start the workloads
+running (one per instance). A list of
+available workload options is available in the `ray_projects/project.yaml` file.
 
-To check up on the workloads, run either
-``anyscale session --name="*" execute check-load``, which
-will print the load on each machine, or
-``anyscale session --name="*" execute show-output``, which
-will print the tail of the output for each workload.
 
-To debug workloads that have failed, you may find it useful to ssh to the
-relevant machine, attach to the tmux session (usually ``tmux a -t 0``), inspect
-the logs under ``/tmp/ray/session*/logs/``, and also inspect
+Debugging
+---------
+The primary method to debug the test while it is running is to view the logs and the dashboard from the UI. After the test has failed, you can still view the stdout logs in the UI and also inspect
+the logs under ``/tmp/ray/session*/logs/`` and
 ``/tmp/ray/session*/debug_state.txt``.
+
+.. To check up on the workloads, run either
+.. ``anyscale session --name="*" execute check-load``, which
+.. will print the load on each machine, or
+.. ``anyscale session --name="*" execute show-output``, which
+.. will print the tail of the output for each workload.
 
 Shut Down the Workloads
 -----------------------
 
 The instances running the workloads can all be killed by running
-``anyscale session stop --name "*"``.
+``anyscale stop <SESSION_NAME>``.
 
 Adding a Workload
 -----------------

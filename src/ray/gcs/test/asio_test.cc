@@ -46,10 +46,15 @@ void GetCallback(redisAsyncContext *c, void *r, void *privdata) {
   io_service.stop();
 }
 
-class RedisAsioTest : public RedisServiceManagerForTest {};
+class RedisAsioTest : public ::testing::Test {
+ public:
+  RedisAsioTest() { TestSetupUtil::StartUpRedisServers(std::vector<int>()); }
+
+  virtual ~RedisAsioTest() { TestSetupUtil::ShutDownRedisServers(); }
+};
 
 TEST_F(RedisAsioTest, TestRedisCommands) {
-  redisAsyncContext *ac = redisAsyncConnect("127.0.0.1", REDIS_SERVER_PORT);
+  redisAsyncContext *ac = redisAsyncConnect("127.0.0.1", TEST_REDIS_SERVER_PORTS.front());
   ASSERT_TRUE(ac->err == 0);
   ray::gcs::RedisAsyncContext redis_async_context(ac);
 
@@ -71,8 +76,8 @@ TEST_F(RedisAsioTest, TestRedisCommands) {
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 4);
-  ray::REDIS_SERVER_EXEC_PATH = argv[1];
-  ray::REDIS_CLIENT_EXEC_PATH = argv[2];
-  ray::REDIS_MODULE_LIBRARY_PATH = argv[3];
+  ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
+  ray::TEST_REDIS_CLIENT_EXEC_PATH = argv[2];
+  ray::TEST_REDIS_MODULE_LIBRARY_PATH = argv[3];
   return RUN_ALL_TESTS();
 }

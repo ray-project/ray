@@ -10,7 +10,7 @@ parser.add_argument(
 args, _ = parser.parse_known_args()
 
 
-def train_mnist(config, reporter):
+def train_mnist(config):
     # https://github.com/tensorflow/tensorflow/issues/32159
     import tensorflow as tf
     batch_size = 128
@@ -39,7 +39,7 @@ def train_mnist(config, reporter):
         epochs=epochs,
         verbose=0,
         validation_data=(x_test, y_test),
-        callbacks=[TuneReporterCallback(reporter)])
+        callbacks=[TuneReporterCallback()])
 
 
 if __name__ == "__main__":
@@ -48,7 +48,7 @@ if __name__ == "__main__":
     from ray.tune.schedulers import AsyncHyperBandScheduler
     mnist.load_data()  # we do this on the driver because it's not threadsafe
 
-    ray.init(num_cpus=2 if args.smoke_test else None)
+    ray.init(num_cpus=4 if args.smoke_test else None)
     sched = AsyncHyperBandScheduler(
         time_attr="training_iteration",
         metric="mean_accuracy",

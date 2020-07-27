@@ -73,7 +73,7 @@ public interface Checkpointable {
   /**
    * Load actor's previous checkpoint, and restore actor's state.
    *
-   * This method will be called when an actor is reconstructed, after actor's constructor. If the
+   * This method will be called when an actor is restarted, after the actor's constructor. If the
    * actor needs to restore from previous checkpoint, this function should restore actor's state and
    * return the checkpoint ID. Otherwise, it should do nothing and return null.
    *

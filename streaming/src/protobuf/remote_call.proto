@@ -2,58 +2,57 @@ syntax = "proto3";
 
 package ray.streaming.proto;
 
-import "streaming/src/protobuf/streaming.proto";
+import "protobuf/streaming.proto";
 
 option java_package = "io.ray.streaming.runtime.generated";
 
-// Streaming execution graph
-message ExecutionGraph {
-  // A parallel operation consisting of multiple execution tasks
-  message ExecutionNode {
-    int32 node_id = 1;
-    int32 parallelism = 2;
-    NodeType node_type = 3;
-    Language language = 4;
-    // serialized user function
-    bytes function = 5;
-    repeated ExecutionTask execution_tasks = 6;
-    repeated ExecutionEdge input_edges = 7;
-    repeated ExecutionEdge output_edges = 8;
-  }
-
-  // execution edge
+// Execution vertex info, including it's upstream and downstream
+message ExecutionVertexContext {
+  // An edge between 2 execution vertices
   message ExecutionEdge {
-    // upstream execution node id
-    int32 src_node_id = 1;
-    // downstream execution node id
-    int32 target_node_id = 2;
-    // serialized partition between src/target node
+    // upstream execution vertex id
+    int32 source_execution_vertex_id = 1;
+    // downstream execution vertex id
+    int32 target_execution_vertex_id = 2;
+    // serialized partition between source/target vertex
     bytes partition = 3;
   }
 
-  // a parallel subtask of the execution
-  message ExecutionTask {
-    // unique execution task id
-    int32 task_id = 1;
-    // an ordered task index range from 0 to parallelism - 1
-    int32 task_index = 2;
-    // serialized actor handle
-    bytes worker_actor = 3;
+  message ExecutionVertex {
+    // unique id of execution vertex
+    int32 execution_vertex_id = 1;
+    // unique id of execution job vertex
+    int32 execution_job_vertex_Id = 2;
+    // name of execution job vertex, e.g. 1-SourceOperator
+    string execution_job_vertex_name = 3;
+    // index of execution vertex
+    int32 execution_vertex_index = 4;
+    int32 parallelism = 5;
+    // serialized operator
+    bytes operator = 6;
+    bool chained = 7;
+    bytes worker_actor = 8;
+    string container_id = 9;
+    uint64 build_time = 10;
+    Language language = 11;
+    map<string, string> config = 12;
+    map<string, double> resource = 13;
   }
 
-  // graph build time
-  uint64 build_time = 1;
-  repeated ExecutionNode execution_nodes = 2;
+  // vertices
+  ExecutionVertex current_execution_vertex = 1;
+  repeated ExecutionVertex upstream_execution_vertices = 2;
+  repeated ExecutionVertex downstream_execution_vertices = 3;
+
+  // edges
+  repeated ExecutionEdge input_execution_edges = 4;
+  repeated ExecutionEdge output_execution_edges = 5;
 }
 
-// Streaming worker context
-message WorkerContext {
-  // job name
-  string job_name = 1;
-  // unique execution task id
-  int32 task_id = 2;
-  // job config
-  map<string, string> conf = 3;
-  // execution graph
-  ExecutionGraph graph = 4;
+// Streaming python worker context
+message PythonJobWorkerContext {
+  // serialized master actor handle
+  bytes master_actor = 1;
+  // vertex including it's upstream and downstream
+  ExecutionVertexContext execution_vertex_context = 2;
 }

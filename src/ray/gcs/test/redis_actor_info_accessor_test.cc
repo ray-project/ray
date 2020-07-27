@@ -32,8 +32,8 @@ class ActorInfoAccessorTest : public AccessorTestBase<ActorID, ActorTableData> {
   virtual void GenTestData() {
     for (size_t i = 0; i < 100; ++i) {
       std::shared_ptr<ActorTableData> actor = std::make_shared<ActorTableData>();
-      actor->set_max_reconstructions(1);
-      actor->set_remaining_reconstructions(1);
+      actor->set_max_restarts(1);
+      actor->set_num_restarts(0);
       JobID job_id = JobID::FromInt(i);
       actor->set_job_id(job_id.Binary());
       actor->set_state(ActorTableData::ALIVE);
@@ -212,8 +212,8 @@ TEST_F(ActorInfoAccessorTest, GetActorCheckpointTest) {
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 4);
-  ray::REDIS_SERVER_EXEC_PATH = argv[1];
-  ray::REDIS_CLIENT_EXEC_PATH = argv[2];
-  ray::REDIS_MODULE_LIBRARY_PATH = argv[3];
+  ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
+  ray::TEST_REDIS_CLIENT_EXEC_PATH = argv[2];
+  ray::TEST_REDIS_MODULE_LIBRARY_PATH = argv[3];
   return RUN_ALL_TESTS();
 }

@@ -12,7 +12,7 @@ their results to be ready.
 .. image:: ../images/hyperparameter.png
     :align: center
 
-.. important:: For a production-grade implementation of distributed
+.. tip:: For a production-grade implementation of distributed
     hyperparameter tuning, use `Tune`_, a scalable hyperparameter
     tuning library built using Ray's Actor API.
 
@@ -169,16 +169,16 @@ def evaluate_hyperparameters(config):
 # Keep track of the best hyperparameters and the best accuracy.
 best_hyperparameters = None
 best_accuracy = 0
-# A list holding the object IDs for all of the experiments that we have
+# A list holding the object refs for all of the experiments that we have
 # launched but have not yet been processed.
 remaining_ids = []
-# A dictionary mapping an experiment's object ID to its hyperparameters.
+# A dictionary mapping an experiment's object ref to its hyperparameters.
 # hyerparameters used for that experiment.
 hyperparameters_mapping = {}
 
 ###########################################################################
 # Launch asynchronous parallel tasks for evaluating different
-# hyperparameters. ``accuracy_id`` is an ObjectID that acts as a handle to
+# hyperparameters. ``accuracy_id`` is an ObjectRef that acts as a handle to
 # the remote task. It is used later to fetch the result of the task
 # when the task finishes.
 
@@ -195,7 +195,7 @@ for i in range(num_evaluations):
 
 # Fetch and print the results of the tasks in the order that they complete.
 while remaining_ids:
-    # Use ray.wait to get the object ID of the first task that completes.
+    # Use ray.wait to get the object ref of the first task that completes.
     done_ids, remaining_ids = ray.wait(remaining_ids)
     # There is only one return result by default.
     result_id = done_ids[0]
