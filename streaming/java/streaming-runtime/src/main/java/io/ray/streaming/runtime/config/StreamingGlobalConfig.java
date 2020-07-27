@@ -20,12 +20,10 @@ import org.slf4j.LoggerFactory;
 public class StreamingGlobalConfig implements Serializable {
 
   private static final Logger LOG = LoggerFactory.getLogger(StreamingGlobalConfig.class);
-
-  public CheckpointConfig checkpointConfig;
   public final CommonConfig commonConfig;
   public final TransferConfig transferConfig;
-
   public final Map<String, String> configMap;
+  public CheckpointConfig checkpointConfig;
 
   public StreamingGlobalConfig(final Map<String, String> conf) {
     configMap = new HashMap<>(conf);

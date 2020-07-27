@@ -1,9 +1,8 @@
 package io.ray.streaming.runtime.barrier;
 
+import com.google.common.base.MoreObjects;
 import java.io.Serializable;
 import java.util.Objects;
-
-import com.google.common.base.MoreObjects;
 
 public final class Barrier implements Serializable {
 

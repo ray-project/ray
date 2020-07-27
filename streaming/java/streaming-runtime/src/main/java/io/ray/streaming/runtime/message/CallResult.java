@@ -1,8 +1,7 @@
 package io.ray.streaming.runtime.message;
 
-import java.io.Serializable;
-
 import com.google.common.base.MoreObjects;
+import java.io.Serializable;
 
 public class CallResult<T> implements Serializable {
   protected T resultObj;
@@ -70,12 +69,12 @@ public class CallResult<T> implements Serializable {
     return this.resultCode;
   }
 
-  public CallResultEnum getResultEnum() {
-    return CallResultEnum.getEnum(this.resultCode);
-  }
-
   public void setResultCode(int resultCode) {
     this.resultCode = resultCode;
+  }
+
+  public CallResultEnum getResultEnum() {
+    return CallResultEnum.getEnum(this.resultCode);
   }
 
   public String getResultMsg() {
@@ -105,7 +104,7 @@ public class CallResult<T> implements Serializable {
     public final int code;
     public final String msg;
 
-    private CallResultEnum(int code, String msg) {
+    CallResultEnum(int code, String msg) {
       this.code = code;
       this.msg = msg;
     }

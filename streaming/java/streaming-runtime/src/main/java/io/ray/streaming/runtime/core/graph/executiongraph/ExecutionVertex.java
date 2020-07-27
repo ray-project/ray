@@ -1,7 +1,6 @@
 package io.ray.streaming.runtime.core.graph.executiongraph;
 
 import com.google.common.base.MoreObjects;
-import com.google.common.collect.Maps;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.id.ActorId;
 import io.ray.streaming.api.Language;
@@ -10,15 +9,13 @@ import io.ray.streaming.operator.StreamOperator;
 import io.ray.streaming.runtime.config.master.ResourceConfig;
 import io.ray.streaming.runtime.core.resource.ContainerId;
 import io.ray.streaming.runtime.core.resource.ResourceType;
-import io.ray.streaming.runtime.transfer.ChannelId;
-
+import io.ray.streaming.runtime.transfer.channel.ChannelId;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -174,12 +171,12 @@ public class ExecutionVertex implements Serializable {
     return workerActor;
   }
 
-  public ActorId getWorkerActorId() {
-    return workerActor.getId();
-  }
-
   public void setWorkerActor(BaseActorHandle workerActor) {
     this.workerActor = workerActor;
+  }
+
+  public ActorId getWorkerActorId() {
+    return workerActor.getId();
   }
 
   public List<ExecutionEdge> getInputEdges() {
@@ -320,7 +317,7 @@ public class ExecutionVertex implements Serializable {
   @Override
   public boolean equals(Object obj) {
     if (obj instanceof ExecutionVertex) {
-      return this.executionVertexId == ((ExecutionVertex)obj).getExecutionVertexId();
+      return this.executionVertexId == ((ExecutionVertex) obj).getExecutionVertexId();
     }
     return false;
   }

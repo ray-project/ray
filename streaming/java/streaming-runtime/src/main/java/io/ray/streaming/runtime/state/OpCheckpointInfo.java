@@ -1,9 +1,8 @@
 package io.ray.streaming.runtime.state;
 
+import io.ray.streaming.runtime.transfer.channel.OffsetInfo;
 import java.io.Serializable;
 import java.util.Map;
-
-import io.ray.streaming.runtime.transfer.OffsetInfo;
 
 public class OpCheckpointInfo implements Serializable {
   public Map<String, OffsetInfo> inputPoints;

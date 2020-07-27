@@ -14,10 +14,10 @@ import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
 import io.ray.streaming.runtime.core.resource.Container;
 import io.ray.streaming.runtime.generated.RemoteCall;
 import io.ray.streaming.runtime.master.context.JobMasterRuntimeContext;
-import io.ray.streaming.runtime.master.coordinator.checkpoint.CheckpointCoordinator;
+import io.ray.streaming.runtime.master.coordinator.CheckpointCoordinator;
+import io.ray.streaming.runtime.master.coordinator.FailoverCoordinator;
 import io.ray.streaming.runtime.master.coordinator.command.WorkerCommitReport;
 import io.ray.streaming.runtime.master.coordinator.command.WorkerRollbackRequest;
-import io.ray.streaming.runtime.master.coordinator.failover.FailoverCoordinator;
 import io.ray.streaming.runtime.master.graphmanager.GraphManager;
 import io.ray.streaming.runtime.master.graphmanager.GraphManagerImpl;
 import io.ray.streaming.runtime.master.resourcemanager.ResourceManager;
@@ -30,7 +30,6 @@ import io.ray.streaming.runtime.util.Serializer;
 import io.ray.streaming.runtime.worker.JobWorker;
 import java.util.Map;
 import java.util.Optional;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -69,6 +68,10 @@ public class JobMaster {
     loadMasterCheckpoint();
 
     LOG.info("Finished creating job master.");
+  }
+
+  public static String getJobMasterRuntimeContextKey(StreamingMasterConfig conf) {
+    return conf.checkpointConfig.jobMasterContextCpPrefixKey() + conf.commonConfig.jobName();
   }
 
   private void loadMasterCheckpoint() {
@@ -126,7 +129,7 @@ public class JobMaster {
    * </ol>
    *
    * @param jobMasterActor JobMaster actor
-   * @param jobGraph logical plan
+   * @param jobGraph       logical plan
    * @return submit result
    */
   public boolean submitJob(ActorHandle<JobMaster> jobMasterActor, JobGraph jobGraph) {
@@ -228,10 +231,6 @@ public class JobMaster {
 
   private ExecutionVertex getExecutionVertex(ActorId id) {
     return graphManager.getExecutionGraph().getExecutionVertexByActorId(id);
-  }
-
-  public static String getJobMasterRuntimeContextKey(StreamingMasterConfig conf) {
-    return conf.checkpointConfig.jobMasterContextCpPrefixKey() + conf.commonConfig.jobName();
   }
 
   public ActorHandle<JobMaster> getJobMasterActor() {

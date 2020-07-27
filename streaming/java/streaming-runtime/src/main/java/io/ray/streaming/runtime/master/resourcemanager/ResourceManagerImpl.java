@@ -30,37 +30,31 @@ public class ResourceManagerImpl implements ResourceManager {
 
   //Container used tag
   private static final String CONTAINER_ENGAGED_KEY = "CONTAINER_ENGAGED_KEY";
-
-  /**
-   * Job runtime context.
-   */
-  private JobMasterRuntimeContext runtimeContext;
-
-  /**
-   * Resource related configuration.
-   */
-  private ResourceConfig resourceConfig;
-
-  /**
-   * Slot assign strategy.
-   */
-  private ResourceAssignStrategy resourceAssignStrategy;
-
   /**
    * Resource description information.
    */
   private final Resources resources;
-
-  /**
-   * Customized actor number for each container
-   */
-  private int actorNumPerContainer;
-
   /**
    * Timing resource updating thread
    */
   private final ScheduledExecutorService resourceUpdater = new ScheduledThreadPoolExecutor(1,
       new ThreadFactoryBuilder().setNameFormat("resource-update-thread").build());
+  /**
+   * Job runtime context.
+   */
+  private JobMasterRuntimeContext runtimeContext;
+  /**
+   * Resource related configuration.
+   */
+  private ResourceConfig resourceConfig;
+  /**
+   * Slot assign strategy.
+   */
+  private ResourceAssignStrategy resourceAssignStrategy;
+  /**
+   * Customized actor number for each container
+   */
+  private int actorNumPerContainer;
 
   public ResourceManagerImpl(JobMasterRuntimeContext runtimeContext) {
     this.runtimeContext = runtimeContext;
@@ -77,7 +71,7 @@ public class ResourceManagerImpl implements ResourceManager {
     ResourceAssignStrategyType resourceAssignStrategyType =
         ResourceAssignStrategyType.PIPELINE_FIRST_STRATEGY;
     this.resourceAssignStrategy = ResourceAssignStrategyFactory.getStrategy(
-      resourceAssignStrategyType);
+        resourceAssignStrategyType);
     LOG.info("Slot assign strategy: {}.", resourceAssignStrategy.getName());
 
     //Init resource
@@ -90,7 +84,7 @@ public class ResourceManagerImpl implements ResourceManager {
 
   @Override
   public ResourceAssignmentView assignResource(List<Container> containers,
-      ExecutionGraph executionGraph) {
+                                               ExecutionGraph executionGraph) {
     return resourceAssignStrategy.assignResource(containers, executionGraph);
   }
 
@@ -164,7 +158,7 @@ public class ResourceManagerImpl implements ResourceManager {
 
     // update container's available dynamic resources
     container.getAvailableResources()
-      .put(container.getName(), availableCapacity);
+        .put(container.getName(), availableCapacity);
 
     // update register container list
     resources.registerContainer(container);

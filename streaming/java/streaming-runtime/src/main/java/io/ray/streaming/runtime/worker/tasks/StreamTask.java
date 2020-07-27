@@ -1,14 +1,5 @@
 package io.ray.streaming.runtime.worker.tasks;
 
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
 import io.ray.api.BaseActorHandle;
 import io.ray.api.Ray;
 import io.ray.streaming.api.collector.Collector;
@@ -29,13 +20,21 @@ import io.ray.streaming.runtime.state.OpCheckpointInfo;
 import io.ray.streaming.runtime.state.StateBackend;
 import io.ray.streaming.runtime.transfer.DataReader;
 import io.ray.streaming.runtime.transfer.DataWriter;
-import io.ray.streaming.runtime.transfer.OffsetInfo;
-import io.ray.streaming.runtime.transfer.QueueRecoverInfo;
+import io.ray.streaming.runtime.transfer.channel.ChannelRecoverInfo;
+import io.ray.streaming.runtime.transfer.channel.OffsetInfo;
 import io.ray.streaming.runtime.util.CheckpointStateUtil;
 import io.ray.streaming.runtime.util.Serializer;
 import io.ray.streaming.runtime.worker.JobWorker;
 import io.ray.streaming.runtime.worker.context.JobWorkerContext;
 import io.ray.streaming.runtime.worker.context.StreamingRuntimeContext;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,22 +44,17 @@ import org.slf4j.LoggerFactory;
  */
 public abstract class StreamTask implements Runnable {
   private static final Logger LOG = LoggerFactory.getLogger(StreamTask.class);
-
+  private final StateBackend<String, byte[], StateBackendConfig> checkpointState;
+  public volatile boolean isInitialState = true;
+  public long lastCheckpointId;
   protected Processor processor;
   protected JobWorker jobWorker;
   protected DataReader reader;
   protected DataWriter writer;
-  List<Collector> collectors = new ArrayList<>();
-
-  private final StateBackend<String, byte[], StateBackendConfig> checkpointState;
-  private Set<Long> outdatedCheckpoints = new HashSet<>();
-
   protected volatile boolean running = true;
   protected volatile boolean stopped = false;
-  public volatile boolean isInitialState = true;
-
-  public long lastCheckpointId;
-
+  List<Collector> collectors = new ArrayList<>();
+  private Set<Long> outdatedCheckpoints = new HashSet<>();
   private Thread thread;
 
   protected StreamTask(Processor processor, JobWorker jobWorker) {
@@ -73,7 +67,7 @@ public abstract class StreamTask implements Runnable {
     this.thread.setDaemon(true);
   }
 
-  public QueueRecoverInfo recover(boolean isRecover) {
+  public ChannelRecoverInfo recover(boolean isRecover) {
 
     if (isRecover) {
       LOG.info("Stream task begin recover.");
@@ -83,12 +77,13 @@ public abstract class StreamTask implements Runnable {
     prepareTask(isRecover);
 
     // start runner
-    QueueRecoverInfo recoverInfo = new QueueRecoverInfo(new HashMap<>());
+    ChannelRecoverInfo recoverInfo = new ChannelRecoverInfo(new HashMap<>());
     if (reader != null) {
       recoverInfo = reader.getQueueRecoverInfo();
     }
 
-    thread.setUncaughtExceptionHandler((t, e) -> LOG.error("Uncaught exception in runner thread.", e));
+    thread.setUncaughtExceptionHandler(
+        (t, e) -> LOG.error("Uncaught exception in runner thread.", e));
     thread.start();
 
     if (isRecover) {
@@ -142,7 +137,6 @@ public abstract class StreamTask implements Runnable {
           executionVertex.getOutputChannelIdList(),
           executionVertex.getOutputActorList(),
           inputCheckpoints,
-          lastCheckpointId,
           jobWorker.getWorkerConfig()
       );
     }
@@ -154,7 +148,6 @@ public abstract class StreamTask implements Runnable {
           executionVertex.getInputChannelIdList(),
           executionVertex.getInputActorList(),
           outputCheckpoints,
-          lastCheckpointId,
           jobWorker.getWorkerConfig()
       );
     }
@@ -257,8 +250,9 @@ public abstract class StreamTask implements Runnable {
     Object processorCheckpoint = processor.doCheckpoint(checkpointId);
 
     try {
-      OpCheckpointInfo opCpInfo = new OpCheckpointInfo(inputPoints, outputPoints, processorCheckpoint,
-          checkpointId);
+      OpCheckpointInfo opCpInfo =
+          new OpCheckpointInfo(inputPoints, outputPoints, processorCheckpoint,
+              checkpointId);
       saveCpStateAndReport(opCpInfo, checkpointId);
     } catch (Exception e) {
       // there will be exceptions when flush state to backend.

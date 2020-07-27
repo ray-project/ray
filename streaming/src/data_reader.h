@@ -91,7 +91,9 @@ class DataReader {
   ///  \param timer_interval
   void Init(const std::vector<ObjectID> &input_ids,
             const std::vector<ChannelCreationParameter> &init_params,
-            const std::vector<uint64_t> &msg_ids, int64_t timer_interval);
+            const std::vector<uint64_t> &msg_ids,
+            std::vector<TransferCreationStatus> &creation_status,
+            int64_t timer_interval);
 
   void Init(const std::vector<ObjectID> &input_ids,
             const std::vector<ChannelCreationParameter> &init_params,
@@ -119,7 +121,7 @@ class DataReader {
 
  private:
   /// Create channels and connect to all upstream.
-  StreamingStatus InitChannel();
+  StreamingStatus InitChannel(std::vector<TransferCreationStatus> &creation_status);
 
   /// One item from every channel will be popped out, then collecting
   /// them to a merged queue. High prioprity items will be fetched one by one.

@@ -44,6 +44,58 @@ public class PythonGateway {
     LOG.info("PythonGateway created");
   }
 
+  private static Method findMethod(Class<?> cls, String methodName, Class[] paramsTypes) {
+    List<Method> methods = ReflectionUtils.findMethods(cls, methodName);
+    if (methods.size() == 1) {
+      return methods.get(0);
+    }
+    // Convert all params types to primitive types if it's boxed type
+    Class[] unwrappedTypes = Arrays.stream(paramsTypes)
+        .map((Function<Class, Class>) Primitives::unwrap)
+        .toArray(Class[]::new);
+    Optional<Method> any = methods.stream()
+        .filter(m -> {
+          boolean exactMatch = Arrays.equals(m.getParameterTypes(), paramsTypes) ||
+              Arrays.equals(m.getParameterTypes(), unwrappedTypes);
+          if (exactMatch) {
+            return true;
+          } else if (paramsTypes.length == m.getParameterTypes().length) {
+            for (int i = 0; i < m.getParameterTypes().length; i++) {
+              Class<?> parameterType = m.getParameterTypes()[i];
+              if (!parameterType.isAssignableFrom(paramsTypes[i])) {
+                return false;
+              }
+            }
+            return true;
+          } else {
+            return false;
+          }
+        })
+        .findAny();
+    Preconditions.checkArgument(any.isPresent(),
+        String.format("Method %s with type %s doesn't exist on class %s",
+            methodName, Arrays.toString(paramsTypes), cls));
+    return any.get();
+  }
+
+  private static boolean returnReference(Object value) {
+    if (isBasic(value)) {
+      return false;
+    } else {
+      try {
+        serializer.serialize(value);
+        return false;
+      } catch (Exception e) {
+        return true;
+      }
+    }
+  }
+
+  private static boolean isBasic(Object value) {
+    return value == null || (value instanceof Boolean) || (value instanceof Number) ||
+        (value instanceof String) || (value instanceof byte[]);
+  }
+
   public byte[] createStreamingContext() {
     streamingContext = StreamingContext.buildContext();
     LOG.info("StreamingContext created");
@@ -158,40 +210,6 @@ public class PythonGateway {
     }
   }
 
-  private static Method findMethod(Class<?> cls, String methodName, Class[] paramsTypes) {
-    List<Method> methods = ReflectionUtils.findMethods(cls, methodName);
-    if (methods.size() == 1) {
-      return methods.get(0);
-    }
-    // Convert all params types to primitive types if it's boxed type
-    Class[] unwrappedTypes = Arrays.stream(paramsTypes)
-        .map((Function<Class, Class>) Primitives::unwrap)
-        .toArray(Class[]::new);
-    Optional<Method> any = methods.stream()
-        .filter(m -> {
-          boolean exactMatch = Arrays.equals(m.getParameterTypes(), paramsTypes) ||
-              Arrays.equals(m.getParameterTypes(), unwrappedTypes);
-          if (exactMatch) {
-            return true;
-          } else if (paramsTypes.length == m.getParameterTypes().length) {
-            for (int i = 0; i < m.getParameterTypes().length; i++) {
-              Class<?> parameterType = m.getParameterTypes()[i];
-              if (!parameterType.isAssignableFrom(paramsTypes[i])) {
-                return false;
-              }
-            }
-            return true;
-          } else {
-            return false;
-          }
-        })
-        .findAny();
-    Preconditions.checkArgument(any.isPresent(),
-        String.format("Method %s with type %s doesn't exist on class %s",
-            methodName, Arrays.toString(paramsTypes), cls));
-    return any.get();
-  }
-
   private byte[] serialize(Object value) {
     if (returnReference(value)) {
       referenceMap.put(getReferenceId(value), value);
@@ -199,24 +217,6 @@ public class PythonGateway {
     } else {
       return serializer.serialize(value);
     }
-  }
-
-  private static boolean returnReference(Object value) {
-    if (isBasic(value)) {
-      return false;
-    } else {
-      try {
-        serializer.serialize(value);
-        return false;
-      } catch (Exception e) {
-        return true;
-      }
-    }
-  }
-
-  private static boolean isBasic(Object value) {
-    return value == null || (value instanceof Boolean) || (value instanceof Number) ||
-        (value instanceof String) || (value instanceof byte[]);
   }
 
   public byte[] newInstance(byte[] classNameBytes) {

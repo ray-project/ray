@@ -1,10 +1,5 @@
 package io.ray.streaming.runtime.worker;
 
-import java.io.Serializable;
-import java.util.concurrent.FutureTask;
-import java.util.concurrent.atomic.AtomicBoolean;
-
-import io.ray.api.Ray;
 import io.ray.streaming.runtime.barrier.Barrier;
 import io.ray.streaming.runtime.config.StreamingWorkerConfig;
 import io.ray.streaming.runtime.config.global.StateBackendConfig;
@@ -19,14 +14,16 @@ import io.ray.streaming.runtime.master.coordinator.command.WorkerRollbackRequest
 import io.ray.streaming.runtime.message.CallResult;
 import io.ray.streaming.runtime.rpc.RemoteCallMaster;
 import io.ray.streaming.runtime.state.StateBackend;
-import io.ray.streaming.runtime.transfer.QueueRecoverInfo;
-import io.ray.streaming.runtime.transfer.QueueRecoverInfo.QueueCreationStatus;
 import io.ray.streaming.runtime.transfer.TransferHandler;
+import io.ray.streaming.runtime.transfer.channel.ChannelRecoverInfo;
+import io.ray.streaming.runtime.transfer.channel.ChannelRecoverInfo.QueueCreationStatus;
 import io.ray.streaming.runtime.util.EnvUtil;
 import io.ray.streaming.runtime.worker.context.JobWorkerContext;
 import io.ray.streaming.runtime.worker.tasks.OneInputStreamTask;
 import io.ray.streaming.runtime.worker.tasks.SourceStreamTask;
 import io.ray.streaming.runtime.worker.tasks.StreamTask;
+import java.io.Serializable;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,37 +47,29 @@ public class JobWorker implements Serializable {
     EnvUtil.loadNativeLibraries();
   }
 
+  public final Object initialStateChangeLock = new Object();
+  /**
+   * isRecreate=true means this worker is initialized more than once after actor created.
+   */
+  public AtomicBoolean isRecreate = new AtomicBoolean(false);
+  public StateBackend<String, byte[], StateBackendConfig> stateBackend;
   private JobWorkerContext workerContext;
   private ExecutionVertex executionVertex;
   private StreamingWorkerConfig workerConfig;
-
   /**
    * The while-loop thread to read message, process message, and write results
    */
   private StreamTask task;
-
   /**
    * transferHandler handles messages by ray direct call
    */
   private TransferHandler transferHandler;
-
   /**
    * A flag to avoid duplicated rollback. Becomes true after requesting
    * rollback, set to false when finish rollback.
    */
   private boolean isNeedRollback = false;
-
   private int rollbackCnt = 0;
-
-  /**
-   * isRecreate=true means this worker is initialized more than once after actor created.
-   */
-  public AtomicBoolean isRecreate = new AtomicBoolean(false);
-
-  public final Object initialStateChangeLock = new Object();
-
-
-  public StateBackend<String, byte[], StateBackendConfig> stateBackend;
 
   public JobWorker() {
     LOG.info("Creating job worker succeeded.");
@@ -104,12 +93,13 @@ public class JobWorker implements Serializable {
   /**
    * Start worker's stream tasks with specific checkpoint ID.
    *
-   * @return a {@link CallResult} with {@link QueueRecoverInfo},
-   * contains {@link QueueCreationStatus} of each input queue.
+   * @return a {@link CallResult} with {@link ChannelRecoverInfo},
+   *     contains {@link QueueCreationStatus} of each input queue.
    */
-  public CallResult<QueueRecoverInfo> rollback(Long checkpointId, Long startRollbackTs) {
+  public CallResult<ChannelRecoverInfo> rollback(Long checkpointId, Long startRollbackTs) {
     synchronized (initialStateChangeLock) {
-      if (task != null && task.isAlive() && checkpointId == task.lastCheckpointId && task.isInitialState) {
+      if (task != null && task.isAlive() && checkpointId == task.lastCheckpointId &&
+          task.isInitialState) {
         return CallResult.skipped("Task is already in initial state, skip this rollback.");
       }
     }
@@ -138,7 +128,7 @@ public class JobWorker implements Serializable {
 
       // create stream task
       task = createStreamTask(checkpointId);
-      QueueRecoverInfo qRecoverInfo = task.recover(isRecreate.get());
+      ChannelRecoverInfo qRecoverInfo = task.recover(isRecreate.get());
       isNeedRollback = false;
 
       LOG.info("Rollback job worker success, checkpoint is {}, qRecoverInfo is {}.",
@@ -231,7 +221,8 @@ public class JobWorker implements Serializable {
   public Boolean checkIfNeedRollback(Long startCallTs) {
     // No save checkpoint in this query.
     long remoteCallCost = System.currentTimeMillis() - startCallTs;
-    LOG.info("Finished checking if need to rollback with result: {}, rpc delay={}ms.", isNeedRollback, remoteCallCost);
+    LOG.info("Finished checking if need to rollback with result: {}, rpc delay={}ms.",
+        isNeedRollback, remoteCallCost);
     return isNeedRollback;
   }
 

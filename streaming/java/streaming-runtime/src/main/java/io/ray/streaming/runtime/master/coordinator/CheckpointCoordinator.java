@@ -1,10 +1,4 @@
-package io.ray.streaming.runtime.master.coordinator.checkpoint;
-
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.TimeUnit;
+package io.ray.streaming.runtime.master.coordinator;
 
 import com.google.common.base.Preconditions;
 import io.ray.api.BaseActorHandle;
@@ -13,49 +7,50 @@ import io.ray.api.exception.RayException;
 import io.ray.api.id.ActorId;
 import io.ray.streaming.runtime.barrier.Barrier;
 import io.ray.streaming.runtime.master.JobMaster;
-import io.ray.streaming.runtime.master.context.CheckpointContext;
-import io.ray.streaming.runtime.master.coordinator.BaseCoordinator;
 import io.ray.streaming.runtime.master.coordinator.command.BaseWorkerCmd;
 import io.ray.streaming.runtime.master.coordinator.command.WorkerCommitReport;
 import io.ray.streaming.runtime.rpc.RemoteCallWorker;
 import io.ray.streaming.runtime.worker.JobWorker;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * CheckpointCoordinator is the controller of checkpoint, responsible for triggering checkpoint, collecting
- * {@link JobWorker}'s reports and calling {@link JobWorker} to clear expired checkpoints when new checkpoint finished.
+ * CheckpointCoordinator is the controller of checkpoint, responsible for triggering checkpoint,
+ * collecting {@link JobWorker}'s reports and calling {@link JobWorker} to clear expired
+ * checkpoints when new checkpoint finished.
  */
 public class CheckpointCoordinator extends BaseCoordinator {
 
- private static final Logger LOG = LoggerFactory.getLogger(CheckpointCoordinator.class);
-
-  private int cpIntervalSecs;
-  private int cpTimeoutSecs;
+  private static final Logger LOG = LoggerFactory.getLogger(CheckpointCoordinator.class);
   private final Set<ActorId> pendingCheckpointActors = new HashSet<>();
   private final Set<Long> interruptedCheckpointSet = new HashSet<>();
-  private CheckpointContext checkpointContext;
+  private final int cpIntervalSecs;
+  private final int cpTimeoutSecs;
 
   public CheckpointCoordinator(JobMaster jobMaster) {
     super(jobMaster);
 
-    this.checkpointContext = runtimeContext.getCheckpointContext();
     // get checkpoint interval from conf
     this.cpIntervalSecs = runtimeContext.getConf().masterConfig.checkpointConfig.cpIntervalSecs();
     this.cpTimeoutSecs = runtimeContext.getConf().masterConfig.checkpointConfig.cpTimeoutSecs();
 
     // Trigger next checkpoint in interval by reset last checkpoint timestamp.
-    checkpointContext.lastCpTimestamp = System.currentTimeMillis();
+    runtimeContext.lastCpTimestamp = System.currentTimeMillis();
   }
 
   @Override
   public void run() {
     while (!closed) {
       try {
-        final BaseWorkerCmd command = checkpointContext.cpCmds.poll(1, TimeUnit.SECONDS);
+        final BaseWorkerCmd command = runtimeContext.cpCmds.poll(1, TimeUnit.SECONDS);
         if (command != null) {
           if (command instanceof WorkerCommitReport) {
-            dealWithCommitReport((WorkerCommitReport) command);
+            processCommitReport((WorkerCommitReport) command);
           } else {
             interruptCheckpoint();
           }
@@ -65,7 +60,7 @@ public class CheckpointCoordinator extends BaseCoordinator {
           // if wait commit report timeout, this cp fail, and restart next cp
           if (isTimeoutOfWaitCp()) {
             LOG.warn("Waiting for checkpoint {} timeout, pending cp actors is {}.",
-              checkpointContext.lastCheckpointId,
+                runtimeContext.lastCheckpointId,
                 graphManager.getExecutionGraph().getActorName(pendingCheckpointActors));
 
             interruptCheckpoint();
@@ -88,22 +83,22 @@ public class CheckpointCoordinator extends BaseCoordinator {
   public Boolean reportJobWorkerCommit(WorkerCommitReport report) {
     LOG.info("Report job worker commit {}.", report);
 
-    Boolean ret = checkpointContext.cpCmds.offer(report);
+    Boolean ret = runtimeContext.cpCmds.offer(report);
     if (!ret) {
       LOG.warn("Report job worker commit failed, because command queue is full.");
     }
     return ret;
   }
 
-  private void dealWithCommitReport(WorkerCommitReport commitReport) {
-    LOG.info("Start deal with commit report {}, from actor name={}.", commitReport,
+  private void processCommitReport(WorkerCommitReport commitReport) {
+    LOG.info("Start process commit report {}, from actor name={}.", commitReport,
         graphManager.getExecutionGraph().getActorName(commitReport.fromActorId));
 
     try {
       Preconditions.checkArgument(
-          commitReport.commitCheckpointId == checkpointContext.lastCheckpointId,
+          commitReport.commitCheckpointId == runtimeContext.lastCheckpointId,
           "expect checkpointId %s, but got %s",
-        checkpointContext.lastCheckpointId, commitReport);
+          runtimeContext.lastCheckpointId, commitReport);
 
       if (!pendingCheckpointActors.contains(commitReport.fromActorId)) {
         LOG.warn("Invalid commit report, skipped.");
@@ -117,28 +112,28 @@ public class CheckpointCoordinator extends BaseCoordinator {
       // checkpoint finish
       if (pendingCheckpointActors.isEmpty()) {
         // actor finish
-        checkpointContext.checkpointIds.add(checkpointContext.lastCheckpointId);
+        runtimeContext.checkpointIds.add(runtimeContext.lastCheckpointId);
 
         if (clearExpiredCpStateAndQueueMsg()) {
           // save master context
           jobMaster.saveContext();
 
-          LOG.info("Finish checkpoint: {}.", checkpointContext.lastCheckpointId);
+          LOG.info("Finish checkpoint: {}.", runtimeContext.lastCheckpointId);
         } else {
-          LOG.warn("Fail to do checkpoint: {}.", checkpointContext.lastCheckpointId);
+          LOG.warn("Fail to do checkpoint: {}.", runtimeContext.lastCheckpointId);
         }
       }
 
-      LOG.info("Deal with commit report {} success.", commitReport);
+      LOG.info("Process commit report {} success.", commitReport);
     } catch (Throwable e) {
-      LOG.warn("Deal with commit report has exception.", e);
+      LOG.warn("Process commit report has exception.", e);
     }
   }
 
   private void triggerCheckpoint() {
     interruptedCheckpointSet.clear();
     if (LOG.isInfoEnabled()) {
-      LOG.info("Start trigger checkpoint {}.", checkpointContext.lastCheckpointId + 1);
+      LOG.info("Start trigger checkpoint {}.", runtimeContext.lastCheckpointId + 1);
     }
 
     List<ActorId> allIds = graphManager.getExecutionGraph().getAllActorsId();
@@ -146,38 +141,39 @@ public class CheckpointCoordinator extends BaseCoordinator {
     pendingCheckpointActors.addAll(allIds);
 
     // inc last checkpoint id
-    ++checkpointContext.lastCheckpointId;
+    ++runtimeContext.lastCheckpointId;
 
     final List<ObjectRef> sourcesRet = new ArrayList<>();
 
     graphManager.getExecutionGraph().getSourceActors().forEach(actor -> {
-        sourcesRet.add(RemoteCallWorker.triggerCheckpoint(
-            actor, new Barrier(checkpointContext.lastCheckpointId)));
+      sourcesRet.add(RemoteCallWorker.triggerCheckpoint(
+          actor, new Barrier(runtimeContext.lastCheckpointId)));
     });
 
     for (ObjectRef rayObject : sourcesRet) {
       if (rayObject.get() instanceof RayException) {
-        LOG.warn("Trigger checkpoint has exception.", rayObject.get());
+        LOG.warn("Trigger checkpoint has exception.", (RayException)rayObject.get());
         throw (RayException) rayObject.get();
       }
     }
-    checkpointContext.lastCpTimestamp = System.currentTimeMillis();
+    runtimeContext.lastCpTimestamp = System.currentTimeMillis();
     LOG.info("Trigger checkpoint success.");
   }
 
   private void interruptCheckpoint() {
     // notify checkpoint timeout is time-consuming while many workers crash or
     // container failover.
-    if (interruptedCheckpointSet.contains(checkpointContext.lastCheckpointId)) {
-      LOG.warn("Skip interrupt duplicated checkpoint id : {}.", checkpointContext.lastCheckpointId);
+    if (interruptedCheckpointSet.contains(runtimeContext.lastCheckpointId)) {
+      LOG.warn("Skip interrupt duplicated checkpoint id : {}.", runtimeContext.lastCheckpointId);
       return;
     }
-    interruptedCheckpointSet.add(checkpointContext.lastCheckpointId);
-    LOG.warn("Interrupt checkpoint, checkpoint id : {}.", checkpointContext.lastCheckpointId);
+    interruptedCheckpointSet.add(runtimeContext.lastCheckpointId);
+    LOG.warn("Interrupt checkpoint, checkpoint id : {}.", runtimeContext.lastCheckpointId);
 
     List<BaseActorHandle> allActor = graphManager.getExecutionGraph().getAllActors();
-    if (checkpointContext.lastCheckpointId > checkpointContext.getLastValidCheckpointId()) {
-      RemoteCallWorker.notifyCheckpointTimeoutParallel(allActor, checkpointContext.lastCheckpointId);
+    if (runtimeContext.lastCheckpointId > runtimeContext.getLastValidCheckpointId()) {
+      RemoteCallWorker
+          .notifyCheckpointTimeoutParallel(allActor, runtimeContext.lastCheckpointId);
     }
 
     if (!pendingCheckpointActors.isEmpty()) {
@@ -195,24 +191,25 @@ public class CheckpointCoordinator extends BaseCoordinator {
   private boolean clearExpiredCpStateAndQueueMsg() {
     // queue msg must clear when first checkpoint finish
     List<BaseActorHandle> allActor = graphManager.getExecutionGraph().getAllActors();
-    if (1 == checkpointContext.checkpointIds.size()) {
-      Long qMsgExpiredCheckpointId = checkpointContext.checkpointIds.get(0);
+    if (1 == runtimeContext.checkpointIds.size()) {
+      Long qMsgExpiredCheckpointId = runtimeContext.checkpointIds.get(0);
       RemoteCallWorker.clearExpiredCpParallel(allActor, 0L, qMsgExpiredCheckpointId);
     }
 
-    if (checkpointContext.checkpointIds.size() > 1) {
-      Long stateExpiredCpId = checkpointContext.checkpointIds.remove(0);
-      Long qMsgExpiredCheckpointId = checkpointContext.checkpointIds.get(0);
+    if (runtimeContext.checkpointIds.size() > 1) {
+      Long stateExpiredCpId = runtimeContext.checkpointIds.remove(0);
+      Long qMsgExpiredCheckpointId = runtimeContext.checkpointIds.get(0);
       RemoteCallWorker.clearExpiredCpParallel(allActor, stateExpiredCpId, qMsgExpiredCheckpointId);
     }
     return true;
   }
 
   private boolean isReadyToTrigger() {
-    return (System.currentTimeMillis() - checkpointContext.lastCpTimestamp) >= cpIntervalSecs * 1000;
+    return (System.currentTimeMillis() - runtimeContext.lastCpTimestamp) >=
+        cpIntervalSecs * 1000;
   }
 
   private boolean isTimeoutOfWaitCp() {
-    return (System.currentTimeMillis() - checkpointContext.lastCpTimestamp) >= cpTimeoutSecs * 1000;
+    return (System.currentTimeMillis() - runtimeContext.lastCpTimestamp) >= cpTimeoutSecs * 1000;
   }
 }

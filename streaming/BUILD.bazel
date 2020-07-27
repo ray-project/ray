@@ -7,6 +7,9 @@ load("//bazel:ray.bzl", "COPTS")
 proto_library(
     name = "streaming_proto",
     srcs = ["src/protobuf/streaming.proto"],
+    deps = [
+        "@com_google_protobuf//:any_proto",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -19,7 +22,10 @@ proto_library(
     name = "remote_call_proto",
     srcs = ["src/protobuf/remote_call.proto"],
     visibility = ["//visibility:public"],
-    deps = ["streaming_proto"],
+    deps = [
+        "streaming_proto",
+        "@com_google_protobuf//:any_proto",
+    ],
 )
 
 cc_proto_library(

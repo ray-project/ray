@@ -10,14 +10,13 @@ import io.ray.streaming.runtime.worker.JobWorker;
 public class TwoInputStreamTask extends InputStreamTask {
 
   public TwoInputStreamTask(
-      int taskId,
       Processor processor,
       JobWorker jobWorker,
       String leftStream,
       String rightStream) {
-    super(taskId, processor, jobWorker);
-    ((TwoInputProcessor)(super.processor)).setLeftStream(leftStream);
-    ((TwoInputProcessor)(super.processor)).setRightStream(rightStream);
+    super(processor, jobWorker);
+    ((TwoInputProcessor) (super.processor)).setLeftStream(leftStream);
+    ((TwoInputProcessor) (super.processor)).setRightStream(rightStream);
   }
 
 }

@@ -70,10 +70,10 @@ public class JobWorkerContext implements Serializable {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-      .add("workerId", getWorkerId())
-      .add("workerName", getWorkerName())
-      .add("config", getConfig())
-      .toString();
+        .add("workerId", getWorkerId())
+        .add("workerName", getWorkerName())
+        .add("config", getConfig())
+        .toString();
   }
 
   public byte[] getPythonWorkerContextBytes() {
@@ -82,10 +82,10 @@ public class JobWorkerContext implements Serializable {
         new GraphPbBuilder().buildExecutionVertexContext(executionVertex);
 
     byte[] contextBytes = RemoteCall.PythonJobWorkerContext.newBuilder()
-      .setMasterActor(ByteString.copyFrom((((NativeActorHandle) (master)).toBytes())))
-      .setExecutionVertexContext(executionVertexContext)
-      .build()
-      .toByteArray();
+        .setMasterActor(ByteString.copyFrom((((NativeActorHandle) (master)).toBytes())))
+        .setExecutionVertexContext(executionVertexContext)
+        .build()
+        .toByteArray();
 
     return contextBytes;
   }

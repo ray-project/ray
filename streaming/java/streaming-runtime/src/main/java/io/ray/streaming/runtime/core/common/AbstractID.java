@@ -18,7 +18,7 @@ public class AbstractId implements Serializable {
 
   @Override
   public boolean equals(Object obj) {
-    return id.equals(((AbstractId)obj).getId());
+    return id.equals(((AbstractId) obj).getId());
   }
 
   public UUID getId() {

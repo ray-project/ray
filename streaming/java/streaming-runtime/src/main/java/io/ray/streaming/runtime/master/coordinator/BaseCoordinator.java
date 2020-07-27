@@ -8,15 +8,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public abstract class BaseCoordinator implements Runnable {
-   private static final Logger LOG = LoggerFactory.getLogger(BaseCoordinator.class);
+  private static final Logger LOG = LoggerFactory.getLogger(BaseCoordinator.class);
 
   protected final JobMaster jobMaster;
 
   protected final JobMasterRuntimeContext runtimeContext;
   protected final GraphManager graphManager;
-
-  private Thread t;
   protected volatile boolean closed;
+  private Thread t;
 
   public BaseCoordinator(JobMaster jobMaster) {
     this.jobMaster = jobMaster;

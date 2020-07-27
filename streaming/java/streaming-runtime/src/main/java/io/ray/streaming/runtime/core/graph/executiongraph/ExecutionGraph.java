@@ -1,10 +1,8 @@
 package io.ray.streaming.runtime.core.graph.executiongraph;
 
-import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.id.ActorId;
-
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -94,7 +92,8 @@ public class ExecutionGraph implements Serializable {
     this.executionJobVertexMap = executionJobVertexMap;
   }
 
-  public void setActorIdExecutionVertexMap(Map<ActorId, ExecutionVertex> actorIdExecutionVertexMap) {
+  public void setActorIdExecutionVertexMap(
+      Map<ActorId, ExecutionVertex> actorIdExecutionVertexMap) {
     this.actorIdExecutionVertexMap = actorIdExecutionVertexMap;
   }
 
@@ -199,7 +198,8 @@ public class ExecutionGraph implements Serializable {
 
   /**
    * Get the peer actor in the other side of channelName of a given actor
-   * @param actor actor in this side
+   *
+   * @param actor       actor in this side
    * @param channelName the channel name
    * @return the peer actor in the other side
    */
@@ -216,6 +216,7 @@ public class ExecutionGraph implements Serializable {
 
   /**
    * Get actors in both sides of a channelId
+   *
    * @param channelId the channelId
    * @return actors in both sides
    */
@@ -289,9 +290,9 @@ public class ExecutionGraph implements Serializable {
 
   public Set<String> getActorName(Set<ActorId> actorIds) {
     return getAllExecutionVertices().stream()
-      .filter(executionVertex -> actorIds.contains(executionVertex.getActorId()))
-      .map(ExecutionVertex::getActorName)
-      .collect(Collectors.toSet());
+        .filter(executionVertex -> actorIds.contains(executionVertex.getActorId()))
+        .map(ExecutionVertex::getActorName)
+        .collect(Collectors.toSet());
   }
 
   public String getActorName(ActorId actorId) {
@@ -306,8 +307,8 @@ public class ExecutionGraph implements Serializable {
 
   public List<ActorId> getAllActorsId() {
     return getAllActors().stream()
-      .map(BaseActorHandle::getId)
-      .collect(Collectors.toList());
+        .map(BaseActorHandle::getId)
+        .collect(Collectors.toList());
   }
 
 }

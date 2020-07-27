@@ -34,8 +34,8 @@ public class GraphPbBuilder {
     List<ExecutionVertex> upstreamVertices = executionVertex.getInputVertices();
     List<RemoteCall.ExecutionVertexContext.ExecutionVertex> upstreamVertexPbs =
         upstreamVertices.stream()
-        .map(this::buildVertex)
-        .collect(Collectors.toList());
+            .map(this::buildVertex)
+            .collect(Collectors.toList());
     builder.addAllUpstreamExecutionVertices(upstreamVertexPbs);
 
     // build downstream vertices

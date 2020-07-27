@@ -1,4 +1,4 @@
-package io.ray.streaming.runtime.transfer;
+package io.ray.streaming.runtime.transfer.channel;
 
 import java.io.Serializable;
 

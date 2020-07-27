@@ -1,5 +1,9 @@
 package io.ray.streaming.runtime.util;
 
+import com.sun.management.OperatingSystemMXBean;
+import io.ray.api.id.UniqueId;
+import io.ray.streaming.runtime.core.resource.Container;
+import io.ray.streaming.runtime.core.resource.ContainerId;
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -10,11 +14,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
-
-import com.sun.management.OperatingSystemMXBean;
-import io.ray.api.id.UniqueId;
-import io.ray.streaming.runtime.core.resource.Container;
-import io.ray.streaming.runtime.core.resource.ContainerId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,7 +54,7 @@ public class ResourceUtil {
 
   /**
    * @return jvm heap usage ratio. note that one of the survivor space is not include in total
-   * memory while calculating this ratio.
+   *     memory while calculating this ratio.
    */
   public static double getJvmHeapUsageRatio() {
     Runtime runtime = Runtime.getRuntime();
@@ -63,8 +62,8 @@ public class ResourceUtil {
   }
 
   /**
-   * @return jvm heap usage(in bytes). note that this value doesn't include one of the survivor
-   * space.
+   * @return jvm heap usage(in bytes).
+   *     note that this value doesn't include one of the survivor space.
    */
   public static long getJvmHeapUsageInBytes() {
     Runtime runtime = Runtime.getRuntime();
@@ -105,8 +104,10 @@ public class ResourceUtil {
   }
 
   /**
-   * @return the system cpu usage. This value is a double in the [0.0,1.0]
-   * We will try to use `vsar` to get cpu usage by default, and use MXBean if any exception raised.
+   * @return the system cpu usage.
+   *     This value is a double in the [0.0,1.0]
+   *     We will try to use `vsar` to get cpu usage by default,
+   *     and use MXBean if any exception raised.
    */
   public static double getSystemCpuUsage() {
     double cpuUsage = 0.0;
@@ -173,7 +174,7 @@ public class ResourceUtil {
   /**
    * Get containers by hostname of address
    *
-   * @param containers container list
+   * @param containers     container list
    * @param containerHosts container hostname or address set
    * @return matched containers
    */
@@ -194,7 +195,8 @@ public class ResourceUtil {
    * @param hostName container hostname
    * @return container
    */
-  public static Optional<Container> getContainerByHostname(List<Container> containers, String hostName) {
+  public static Optional<Container> getContainerByHostname(List<Container> containers,
+                                                           String hostName) {
     return containers.stream()
         .filter(container -> container.getHostname().equals(hostName) ||
             container.getAddress().equals(hostName))
@@ -207,7 +209,8 @@ public class ResourceUtil {
    * @param containerID container id
    * @return container
    */
-  public static Optional<Container> getContainerById(List<Container> containers, ContainerId containerID) {
+  public static Optional<Container> getContainerById(List<Container> containers,
+                                                     ContainerId containerID) {
     return containers.stream()
         .filter(container -> container.getId().equals(containerID))
         .findFirst();
@@ -219,7 +222,8 @@ public class ResourceUtil {
    * @param nodeId node unique id
    * @return container
    */
-  public static Optional<Container> getContainerByNodeId(List<Container> containers, UniqueId nodeId) {
+  public static Optional<Container> getContainerByNodeId(List<Container> containers,
+                                                         UniqueId nodeId) {
     return containers.stream()
         .filter(container -> container.getNodeId().equals(nodeId))
         .findFirst();
@@ -232,7 +236,7 @@ public class ResourceUtil {
    * @return hostname/ip e.g. localhost1/1.2.3.4
    */
   public static String getContainerHostnameAndIp(Container container) {
-   return container.getHostname() + "/" + container.getAddress();
+    return container.getHostname() + "/" + container.getAddress();
   }
 
 }

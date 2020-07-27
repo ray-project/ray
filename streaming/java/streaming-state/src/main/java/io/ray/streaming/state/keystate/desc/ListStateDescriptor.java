@@ -18,9 +18,7 @@
 
 package io.ray.streaming.state.keystate.desc;
 
-
-import static io.ray.streaming.state.config.ConfigKey.DELIMITER;
-
+import io.ray.streaming.state.config.ConfigKey;
 import io.ray.streaming.state.keystate.state.ListState;
 
 /**
@@ -75,7 +73,8 @@ public class ListStateDescriptor<T> extends AbstractStateDescriptor<ListState<T>
   public String getIdentify() {
     if (isOperatorList) {
       return String
-          .format("%s%s%d%s%d", super.getIdentify(), DELIMITER, partitionNum, DELIMITER, index);
+          .format("%s%s%d%s%d", super.getIdentify(), ConfigKey.DELIMITER, partitionNum,
+              ConfigKey.DELIMITER, index);
     } else {
       return super.getIdentify();
     }

@@ -23,13 +23,11 @@ import org.slf4j.LoggerFactory;
 public class JobSchedulerImpl implements JobScheduler {
 
   private static final Logger LOG = LoggerFactory.getLogger(JobSchedulerImpl.class);
-
-  private StreamingConfig jobConf;
-
   private final JobMaster jobMaster;
   private final ResourceManager resourceManager;
   private final GraphManager graphManager;
   private final WorkerLifecycleController workerLifecycleController;
+  private StreamingConfig jobConf;
 
   public JobSchedulerImpl(JobMaster jobMaster) {
     this.jobMaster = jobMaster;
@@ -87,7 +85,7 @@ public class JobSchedulerImpl implements JobScheduler {
     initMaster();
 
     // start workers
-    startWorkers(executionGraph);
+    startWorkers(executionGraph, jobMaster.getRuntimeContext().lastCheckpointId);
   }
 
   /**
@@ -133,11 +131,12 @@ public class JobSchedulerImpl implements JobScheduler {
   /**
    * Start JobWorkers according to the physical plan.
    */
-  public boolean startWorkers(ExecutionGraph executionGraph) {
+  public boolean startWorkers(ExecutionGraph executionGraph, long checkpointId) {
     boolean result;
     try {
       result = workerLifecycleController.startWorkers(
-          executionGraph, jobConf.masterConfig.schedulerConfig.workerStartingWaitTimeoutMs());
+          executionGraph, checkpointId,
+          jobConf.masterConfig.schedulerConfig.workerStartingWaitTimeoutMs());
     } catch (Exception e) {
       LOG.error("Failed to start workers.", e);
       return false;
@@ -194,7 +193,7 @@ public class JobSchedulerImpl implements JobScheduler {
   }
 
   private void initMaster() {
-    jobMaster.init();
+    jobMaster.init(false);
   }
 
 }

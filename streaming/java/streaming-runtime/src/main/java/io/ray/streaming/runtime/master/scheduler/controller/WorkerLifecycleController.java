@@ -75,7 +75,7 @@ public class WorkerLifecycleController {
    * Using context to init JobWorker.
    *
    * @param vertexToContextMap target JobWorker actor
-   * @param timeout timeout for waiting, unit: ms
+   * @param timeout            timeout for waiting, unit: ms
    * @return initiation result
    */
   public boolean initWorkers(
@@ -108,23 +108,23 @@ public class WorkerLifecycleController {
    * Start JobWorkers to run task.
    *
    * @param executionGraph physical plan
-   * @param timeout timeout for waiting, unit: ms
+   * @param timeout        timeout for waiting, unit: ms
    * @return starting result
    */
-  public boolean startWorkers(ExecutionGraph executionGraph, int timeout) {
+  public boolean startWorkers(ExecutionGraph executionGraph, long lastCheckpointId, int timeout) {
     LOG.info("Begin starting workers.");
     long startTime = System.currentTimeMillis();
-    List<ObjectRef<Boolean>> objectRefs = new ArrayList<>();
+    List<ObjectRef<Object>> objectRefs = new ArrayList<>();
 
     // start source actors 1st
     executionGraph.getSourceActors()
-        .forEach(actor -> objectRefs.add(RemoteCallWorker.startWorker(actor)));
+        .forEach(actor -> objectRefs.add(RemoteCallWorker.rollback(actor, lastCheckpointId)));
 
     // then start non-source actors
     executionGraph.getNonSourceActors()
-        .forEach(actor -> objectRefs.add(RemoteCallWorker.startWorker(actor)));
+        .forEach(actor -> objectRefs.add(RemoteCallWorker.rollback(actor, lastCheckpointId)));
 
-    WaitResult<Boolean> result = Ray.wait(objectRefs, objectRefs.size(), timeout);
+    WaitResult<Object> result = Ray.wait(objectRefs, objectRefs.size(), timeout);
     if (result.getReady().size() != objectRefs.size()) {
       LOG.error("Starting workers timeout[{} ms].", timeout);
       return false;

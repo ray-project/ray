@@ -1,8 +1,7 @@
 package io.ray.streaming.runtime.master.coordinator.command;
 
-import java.io.Serializable;
-
 import io.ray.api.id.ActorId;
+import java.io.Serializable;
 
 public abstract class BaseWorkerCmd implements Serializable {
 

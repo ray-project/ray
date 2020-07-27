@@ -152,6 +152,8 @@
                         <violationSeverity>warning</violationSeverity>
                         <outputFile>${project.build.directory}/checkstyle-errors.xml</outputFile>
                         <linkXRef>false</linkXRef>
+                        <excludes>**/generated/**/*</excludes>
+                        <excludes>**/com/google/protobuf/**/*</excludes>
                     </configuration>
                 </plugin>
             </plugins>

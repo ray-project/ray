@@ -19,6 +19,7 @@ const uint32_t DataReader::kReadItemTimeout = 1000;
 void DataReader::Init(const std::vector<ObjectID> &input_ids,
                       const std::vector<ChannelCreationParameter> &init_params,
                       const std::vector<uint64_t> &streaming_msg_ids,
+                      std::vector<TransferCreationStatus> &creation_status,
                       int64_t timer_interval) {
   Init(input_ids, init_params, timer_interval);
   for (size_t i = 0; i < input_ids.size(); ++i) {
@@ -26,6 +27,7 @@ void DataReader::Init(const std::vector<ObjectID> &input_ids,
     last_message_id_[q_id] = streaming_msg_ids[i];
     channel_info_map_[q_id].current_message_id = streaming_msg_ids[i];
   }
+  InitChannel(creation_status);
 }
 
 void DataReader::Init(const std::vector<ObjectID> &input_ids,
@@ -62,10 +64,9 @@ void DataReader::Init(const std::vector<ObjectID> &input_ids,
   sort(input_queue_ids_.begin(), input_queue_ids_.end(),
        [](const ObjectID &a, const ObjectID &b) { return a.Hash() < b.Hash(); });
   std::copy(input_ids.begin(), input_ids.end(), std::back_inserter(unready_queue_ids_));
-  InitChannel();
 }
 
-StreamingStatus DataReader::InitChannel() {
+StreamingStatus DataReader::InitChannel(std::vector<TransferCreationStatus> &creation_status) {
   STREAMING_LOG(INFO) << "[Reader] Getting queues. total queue num "
                       << input_queue_ids_.size() << ", unready queue num => "
                       << unready_queue_ids_.size();
@@ -81,6 +82,7 @@ StreamingStatus DataReader::InitChannel() {
 
     channel_map_.emplace(input_channel, channel);
     TransferCreationStatus status = channel->CreateTransferChannel();
+    creation_status.push_back(status);
     if (TransferCreationStatus::PullOk != status) {
       STREAMING_LOG(ERROR) << "Initialize queue failed, id => " << input_channel;
     }
@@ -315,7 +317,8 @@ StreamingStatus DataReader::GetBundle(const uint32_t timeout_ms,
       return StreamingStatus::GetBundleTimeOut;
     }
     if (!unready_queue_ids_.empty()) {
-      StreamingStatus status = InitChannel();
+      std::vector<TransferCreationStatus> creation_status;
+      StreamingStatus status = InitChannel(creation_status);
       switch (status) {
       case StreamingStatus::InitQueueFailed:
         break;

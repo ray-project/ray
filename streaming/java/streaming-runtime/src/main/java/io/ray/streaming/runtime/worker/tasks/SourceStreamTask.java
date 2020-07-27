@@ -1,13 +1,12 @@
 package io.ray.streaming.runtime.worker.tasks;
 
-import java.util.concurrent.atomic.AtomicReference;
-
 import io.ray.streaming.operator.SourceOperator;
 import io.ray.streaming.runtime.barrier.Barrier;
 import io.ray.streaming.runtime.core.processor.Processor;
 import io.ray.streaming.runtime.core.processor.SourceProcessor;
-import io.ray.streaming.runtime.transfer.ChannelInterruptException;
+import io.ray.streaming.runtime.transfer.exception.ChannelInterruptException;
 import io.ray.streaming.runtime.worker.JobWorker;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

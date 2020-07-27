@@ -1,9 +1,8 @@
 package io.ray.streaming.runtime.state;
 
+import io.ray.streaming.runtime.config.global.StateBackendConfig;
 import java.util.List;
 import java.util.Map;
-
-import io.ray.streaming.runtime.config.global.StateBackendConfig;
 
 public interface StateBackend<K, V, C extends StateBackendConfig> {
 
@@ -40,15 +39,13 @@ public interface StateBackend<K, V, C extends StateBackendConfig> {
   /**
    * put content by key
    *
-   * @param key key
+   * @param key   key
    * @param value content
    */
   void put(final K key, final V value) throws Exception;
 
   /**
-   * put data in batch
-   *
-   * @throws Exception
+   * put data in batct
    */
   void batchPut(final Map<K, V> batchData) throws Exception;
 

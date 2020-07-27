@@ -10,13 +10,11 @@ import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionJobEdge;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionJobVertex;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
 import io.ray.streaming.runtime.master.context.JobMasterRuntimeContext;
-
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -84,15 +82,19 @@ public class GraphManagerImpl implements GraphManager {
       source.getExecutionVertices().forEach(sourceExeVertex -> {
         target.getExecutionVertices().forEach(targetExeVertex -> {
           // generate channel ID and pre-process some mappings
-          String channelId = sourceExeVertex.getChannelIdByPeerActor(targetExeVertex.getWorkerActor());
-          addActorToChannelGroupedActors(channelGroupedActors, channelId, sourceExeVertex.getWorkerActor());
-          addActorToChannelGroupedActors(channelGroupedActors, channelId, targetExeVertex.getWorkerActor());
+          String channelId =
+              sourceExeVertex.getChannelIdByPeerActor(targetExeVertex.getWorkerActor());
+          addActorToChannelGroupedActors(channelGroupedActors, channelId,
+              sourceExeVertex.getWorkerActor());
+          addActorToChannelGroupedActors(channelGroupedActors, channelId,
+              targetExeVertex.getWorkerActor());
           actorIdExecutionVertexMap.put(targetExeVertex.getActorId(), targetExeVertex);
           executionVertexMap.put(targetExeVertex.getExecutionVertexId(), targetExeVertex);
           actorIdExecutionVertexMap.put(sourceExeVertex.getActorId(), sourceExeVertex);
           executionVertexMap.put(sourceExeVertex.getExecutionVertexId(), sourceExeVertex);
           // build execution edge
-          ExecutionEdge executionEdge = new ExecutionEdge(sourceExeVertex, targetExeVertex, executionJobEdge);
+          ExecutionEdge executionEdge =
+              new ExecutionEdge(sourceExeVertex, targetExeVertex, executionJobEdge);
           sourceExeVertex.getOutputEdges().add(executionEdge);
           targetExeVertex.getInputEdges().add(executionEdge);
         });
@@ -113,7 +115,8 @@ public class GraphManagerImpl implements GraphManager {
       String channelId,
       BaseActorHandle actor) {
 
-    Set<BaseActorHandle> actorSet = channelGroupedActors.computeIfAbsent(channelId, k -> new HashSet<>());
+    Set<BaseActorHandle> actorSet =
+        channelGroupedActors.computeIfAbsent(channelId, k -> new HashSet<>());
     actorSet.add(actor);
   }
 

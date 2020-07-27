@@ -7,12 +7,11 @@ import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
 public final class WorkerRollbackRequest extends BaseWorkerCmd {
 
   public static String DEFAULT_PID = "UNKNOWN_PID";
+  public Long cascadingGroupId = null;
+  public boolean isForcedRollback = false;
   private String exceptionMsg = "No detail message.";
   private String hostname = "UNKNOWN_HOST";
   private String pid = DEFAULT_PID;
-
-  public Long cascadingGroupId = null;
-  public boolean isForcedRollback = false;
 
   public WorkerRollbackRequest(ActorId actorId) {
     super(actorId);

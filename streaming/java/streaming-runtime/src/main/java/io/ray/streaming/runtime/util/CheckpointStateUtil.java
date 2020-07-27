@@ -12,28 +12,14 @@ public class CheckpointStateUtil {
 
   private static final Logger LOG = LoggerFactory.getLogger(CheckpointStateUtil.class);
 
-  public static class CheckpointStateRuntimeException extends RuntimeException {
-
-    public CheckpointStateRuntimeException() {
-    }
-
-    public CheckpointStateRuntimeException(String message) {
-      super(message);
-    }
-
-    public CheckpointStateRuntimeException(String message, Throwable cause) {
-      super(message, cause);
-    }
-  }
-
   /**
    * DO NOT ALLOW GET EXCEPTION WHEN LOADING CHECKPOINT
    *
-   * @param checkpointState: statebackend
-   * @param cpKey: checkpoint key
+   * @param checkpointState state backend
+   * @param cpKey           checkpoint key
    */
   public static <K, V, C extends StateBackendConfig> V get(
-    StateBackend<K, V, C> checkpointState, K cpKey) {
+      StateBackend<K, V, C> checkpointState, K cpKey) {
     V val;
     try {
       val = checkpointState.get(cpKey);
@@ -47,11 +33,11 @@ public class CheckpointStateUtil {
   /**
    * ALLOW PUT EXCEPTION WHEN SAVING CHECKPOINT
    *
-   * @param checkpointState: statebackend
-   * @param key: checkpoint key
-   * @param val: checkpoint value
-   * @param <K>: key generic type
-   * @param <V>: value generic type
+   * @param checkpointState statebackend
+   * @param key             checkpoint key
+   * @param val             checkpoint value
+   * @param <K>             key generic type
+   * @param <V>             value generic type
    */
   public static <K, V, C extends StateBackendConfig> void put(
       StateBackend<K, V, C> checkpointState, K key, V val) {
@@ -60,6 +46,20 @@ public class CheckpointStateUtil {
     } catch (Exception e) {
       // TODO: @dongxu.wdx we can return boolean to judge whether putting is succeed or not.
       LOG.error("Failed to put key {} to state backend.", key, e);
+    }
+  }
+
+  public static class CheckpointStateRuntimeException extends RuntimeException {
+
+    public CheckpointStateRuntimeException() {
+    }
+
+    public CheckpointStateRuntimeException(String message) {
+      super(message);
+    }
+
+    public CheckpointStateRuntimeException(String message, Throwable cause) {
+      super(message, cause);
     }
   }
 }

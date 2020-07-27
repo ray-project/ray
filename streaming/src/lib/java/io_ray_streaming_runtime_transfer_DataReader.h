@@ -14,7 +14,7 @@ extern "C" {
  */
 JNIEXPORT jlong JNICALL
 Java_io_ray_streaming_runtime_transfer_DataReader_createDataReaderNative(
-    JNIEnv *, jclass, jobject, jobjectArray, jlongArray, jlongArray, jlong, jboolean,
+    JNIEnv *, jclass, jobject, jobjectArray, jlongArray, jlong, jobject,
     jbyteArray, jboolean);
 
 /*

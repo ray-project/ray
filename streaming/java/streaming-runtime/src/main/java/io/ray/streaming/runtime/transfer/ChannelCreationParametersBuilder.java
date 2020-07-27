@@ -18,51 +18,6 @@ import java.util.List;
  */
 public class ChannelCreationParametersBuilder {
 
-  public static class Parameter {
-
-    private ActorId actorId;
-    private FunctionDescriptor asyncFunctionDescriptor;
-    private FunctionDescriptor syncFunctionDescriptor;
-
-    public void setActorId(ActorId actorId) {
-      this.actorId = actorId;
-    }
-
-    public void setAsyncFunctionDescriptor(
-        FunctionDescriptor asyncFunctionDescriptor) {
-      this.asyncFunctionDescriptor = asyncFunctionDescriptor;
-    }
-
-    public void setSyncFunctionDescriptor(
-        FunctionDescriptor syncFunctionDescriptor) {
-      this.syncFunctionDescriptor = syncFunctionDescriptor;
-    }
-
-    public String toString() {
-      String language =
-          asyncFunctionDescriptor instanceof JavaFunctionDescriptor ? "Java" : "Python";
-      return "Language: " + language + " Desc: " + asyncFunctionDescriptor.toList() + " "
-        + syncFunctionDescriptor.toList();
-    }
-
-    // Get actor id in bytes, called from jni.
-    public byte[] getActorIdBytes() {
-      return actorId.getBytes();
-    }
-
-    // Get async function descriptor, called from jni.
-    public FunctionDescriptor getAsyncFunctionDescriptor() {
-      return asyncFunctionDescriptor;
-    }
-
-    // Get sync function descriptor, called from jni.
-    public FunctionDescriptor getSyncFunctionDescriptor() {
-      return syncFunctionDescriptor;
-    }
-  }
-
-  private List<Parameter> parameters;
-
   // function descriptors of direct call entry point for Java workers
   private static JavaFunctionDescriptor javaReaderAsyncFuncDesc = new JavaFunctionDescriptor(
       JobWorker.class.getName(),
@@ -89,6 +44,7 @@ public class ChannelCreationParametersBuilder {
   private static PyFunctionDescriptor pyWriterSyncFunctionDesc = new PyFunctionDescriptor(
       "ray.streaming.runtime.worker",
       "JobWorker", "on_writer_message_sync");
+  private List<Parameter> parameters;
 
   public ChannelCreationParametersBuilder() {
   }
@@ -109,19 +65,22 @@ public class ChannelCreationParametersBuilder {
       List<String> queues,
       List<BaseActorHandle> actors) {
     return buildParameters(queues, actors, javaWriterAsyncFuncDesc, javaWriterSyncFuncDesc,
-      pyWriterAsyncFunctionDesc, pyWriterSyncFunctionDesc);
+        pyWriterAsyncFunctionDesc, pyWriterSyncFunctionDesc);
   }
 
   public ChannelCreationParametersBuilder buildOutputQueueParameters(List<String> queues,
                                                                      List<BaseActorHandle> actors) {
     return buildParameters(queues, actors, javaReaderAsyncFuncDesc, javaReaderSyncFuncDesc,
-      pyReaderAsyncFunctionDesc, pyReaderSyncFunctionDesc);
+        pyReaderAsyncFunctionDesc, pyReaderSyncFunctionDesc);
   }
 
-  private ChannelCreationParametersBuilder buildParameters(List<String> queues,
+  private ChannelCreationParametersBuilder buildParameters(
+      List<String> queues,
       List<BaseActorHandle> actors,
-      JavaFunctionDescriptor javaAsyncFunctionDesc, JavaFunctionDescriptor javaSyncFunctionDesc,
-      PyFunctionDescriptor pyAsyncFunctionDesc, PyFunctionDescriptor pySyncFunctionDesc
+      JavaFunctionDescriptor javaAsyncFunctionDesc,
+      JavaFunctionDescriptor javaSyncFunctionDesc,
+      PyFunctionDescriptor pyAsyncFunctionDesc,
+      PyFunctionDescriptor pySyncFunctionDesc
   ) {
     parameters = new ArrayList<>(queues.size());
 
@@ -158,5 +117,48 @@ public class ChannelCreationParametersBuilder {
       str.append(param.toString());
     }
     return str.toString();
+  }
+
+  public static class Parameter {
+
+    private ActorId actorId;
+    private FunctionDescriptor asyncFunctionDescriptor;
+    private FunctionDescriptor syncFunctionDescriptor;
+
+    public void setActorId(ActorId actorId) {
+      this.actorId = actorId;
+    }
+
+    public String toString() {
+      String language =
+          asyncFunctionDescriptor instanceof JavaFunctionDescriptor ? "Java" : "Python";
+      return "Language: " + language + " Desc: " + asyncFunctionDescriptor.toList() + " "
+          + syncFunctionDescriptor.toList();
+    }
+
+    // Get actor id in bytes, called from jni.
+    public byte[] getActorIdBytes() {
+      return actorId.getBytes();
+    }
+
+    // Get async function descriptor, called from jni.
+    public FunctionDescriptor getAsyncFunctionDescriptor() {
+      return asyncFunctionDescriptor;
+    }
+
+    public void setAsyncFunctionDescriptor(
+        FunctionDescriptor asyncFunctionDescriptor) {
+      this.asyncFunctionDescriptor = asyncFunctionDescriptor;
+    }
+
+    // Get sync function descriptor, called from jni.
+    public FunctionDescriptor getSyncFunctionDescriptor() {
+      return syncFunctionDescriptor;
+    }
+
+    public void setSyncFunctionDescriptor(
+        FunctionDescriptor syncFunctionDescriptor) {
+      this.syncFunctionDescriptor = syncFunctionDescriptor;
+    }
   }
 }

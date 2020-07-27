@@ -10,15 +10,14 @@ using namespace ray::streaming;
 JNIEXPORT jlong JNICALL
 Java_io_ray_streaming_runtime_transfer_DataReader_createDataReaderNative(
     JNIEnv *env, jclass, jobject streaming_queue_initial_parameters,
-    jobjectArray input_channels, jlongArray seq_id_array, jlongArray msg_id_array,
-    jlong timer_interval, jboolean isRecreate, jbyteArray config_bytes,
+    jobjectArray input_channels, jlongArray msg_id_array,
+    jlong timer_interval, jobject creation_status, jbyteArray config_bytes,
     jboolean is_mock) {
   STREAMING_LOG(INFO) << "[JNI]: create DataReader.";
   std::vector<ray::streaming::ChannelCreationParameter> parameter_vec;
   ParseChannelInitParameters(env, streaming_queue_initial_parameters, parameter_vec);
   std::vector<ray::ObjectID> input_channels_ids =
       jarray_to_object_id_vec(env, input_channels);
-  std::vector<uint64_t> seq_ids = LongVectorFromJLongArray(env, seq_id_array).data;
   std::vector<uint64_t> msg_ids = LongVectorFromJLongArray(env, msg_id_array).data;
 
   auto ctx = std::make_shared<RuntimeContext>();
@@ -30,8 +29,23 @@ Java_io_ray_streaming_runtime_transfer_DataReader_createDataReaderNative(
   if (is_mock) {
     ctx->MarkMockTest();
   }
+
+  // init reader
   auto reader = new DataReader(ctx);
-  reader->Init(input_channels_ids, parameter_vec, seq_ids, msg_ids, timer_interval);
+  std::vector<TransferCreationStatus> creation_status_vec;
+  reader->Init(input_channels_ids, parameter_vec, msg_ids, creation_status_vec, timer_interval);
+
+  // add creation status to Java's List
+  jclass array_list_cls = env->GetObjectClass(creation_status);
+  jclass integer_cls = env->FindClass("java/lang/Integer");
+  jmethodID array_list_add =
+      env->GetMethodID(array_list_cls, "add", "(Ljava/lang/Object;)Z");
+  for (auto &status : creation_status_vec) {
+    jmethodID integer_init = env->GetMethodID(integer_cls, "<init>", "(I)V");
+    jobject integer_obj =
+        env->NewObject(integer_cls, integer_init, static_cast<int>(status));
+    env->CallBooleanMethod(creation_status, array_list_add, integer_obj);
+  }
   STREAMING_LOG(INFO) << "create native DataReader succeed";
   return reinterpret_cast<jlong>(reader);
 }

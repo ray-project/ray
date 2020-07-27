@@ -2,12 +2,11 @@ package io.ray.streaming.runtime.util;
 
 import io.ray.runtime.RayNativeRuntime;
 import io.ray.runtime.util.JniUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.lang.management.ManagementFactory;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class EnvUtil {
   private static final Logger LOG = LoggerFactory.getLogger(EnvUtil.class);

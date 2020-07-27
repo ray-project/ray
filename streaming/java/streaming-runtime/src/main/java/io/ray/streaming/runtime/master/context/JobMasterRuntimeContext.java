@@ -6,7 +6,6 @@ import io.ray.streaming.jobgraph.JobGraph;
 import io.ray.streaming.runtime.config.StreamingConfig;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
 import io.ray.streaming.runtime.master.coordinator.command.BaseWorkerCmd;
-
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
@@ -22,19 +21,17 @@ import java.util.concurrent.LinkedBlockingQueue;
  */
 public class JobMasterRuntimeContext implements Serializable {
 
-  private StreamingConfig conf;
-  private JobGraph jobGraph;
-  private volatile ExecutionGraph executionGraph;
-
   /*--------------Checkpoint----------------*/
   public volatile List<Long> checkpointIds = new ArrayList<>();
   public volatile long lastCheckpointId = 0;
   public volatile long lastCpTimestamp = 0;
   public volatile BlockingQueue<BaseWorkerCmd> cpCmds = new LinkedBlockingQueue<>();
-
   /*--------------Failover----------------*/
   public volatile BlockingQueue<BaseWorkerCmd> foCmds = new ArrayBlockingQueue<>(8192);
   public volatile Set<BaseWorkerCmd> unfinishedFoCmds = Sets.newConcurrentHashSet();
+  private StreamingConfig conf;
+  private JobGraph jobGraph;
+  private volatile ExecutionGraph executionGraph;
 
   public JobMasterRuntimeContext(StreamingConfig conf) {
     this.conf = conf;

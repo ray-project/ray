@@ -4,6 +4,9 @@ import com.google.common.base.Preconditions;
 import io.ray.api.BaseActorHandle;
 import io.ray.streaming.runtime.config.StreamingWorkerConfig;
 import io.ray.streaming.runtime.config.types.TransferChannelType;
+import io.ray.streaming.runtime.transfer.channel.ChannelId;
+import io.ray.streaming.runtime.transfer.channel.ChannelUtils;
+import io.ray.streaming.runtime.transfer.channel.OffsetInfo;
 import io.ray.streaming.runtime.util.Platform;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -35,14 +38,11 @@ public class DataWriter {
    * @param toActors       downstream output actors
    * @param workerConfig   configuration
    * @param checkpoints    offset of each channels
-   * @param checkpointId   the checkpoint ID to rollback
    */
   public DataWriter(List<String> outputChannels,
                     List<BaseActorHandle> toActors,
                     Map<String, OffsetInfo> checkpoints,
-                    long checkpointId,
                     StreamingWorkerConfig workerConfig) {
-    this.checkpoints = checkpoints;
     Preconditions.checkArgument(!outputChannels.isEmpty());
     Preconditions.checkArgument(outputChannels.size() == toActors.size());
     this.outputChannels = outputChannels;
@@ -55,7 +55,7 @@ public class DataWriter {
     long channelSize = workerConfig.transferConfig.channelSize();
     long[] msgIds = new long[outputChannels.size()];
     for (int i = 0; i < outputChannels.size(); i++) {
-      msgIds[i] = 0;
+      msgIds[i] = checkpoints.get(outputChannels.get(i)).getStreamingMsgId();
     }
     TransferChannelType channelType = workerConfig.transferConfig.channelType();
     boolean isMock = false;
@@ -73,6 +73,14 @@ public class DataWriter {
     LOG.info("Create DataWriter succeed for worker: {}.",
         workerConfig.workerInternalConfig.workerName());
   }
+
+  private static native long createWriterNative(
+      ChannelCreationParametersBuilder initialParameters,
+      byte[][] outputQueueIds,
+      long[] msgIds,
+      long channelSize,
+      byte[] confBytes,
+      boolean isMock);
 
   /**
    * Write msg into the specified channel
@@ -153,14 +161,6 @@ public class DataWriter {
     nativeWriterPtr = 0;
     LOG.info("Finish closing data writer.");
   }
-
-  private static native long createWriterNative(
-      ChannelCreationParametersBuilder initialParameters,
-      byte[][] outputQueueIds,
-      long[] msgIds,
-      long channelSize,
-      byte[] confBytes,
-      boolean isMock);
 
   private native long writeMessageNative(
       long nativeQueueProducerPtr, long nativeIdPtr, long address, int size);

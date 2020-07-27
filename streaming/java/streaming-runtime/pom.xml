@@ -36,6 +36,37 @@
             <artifactId>flatbuffers-java</artifactId>
             <version>1.9.0.1</version>
         </dependency>
+        <!-- kryo relations -->
+        <dependency>
+            <groupId>com.esotericsoftware</groupId>
+            <artifactId>kryo</artifactId>
+            <version>4.0.0</version>
+        </dependency>
+        <dependency>
+            <groupId>de.javakaffee</groupId>
+            <artifactId>kryo-serializers</artifactId>
+            <version>0.42</version>
+        </dependency>
+        <dependency>
+            <groupId>com.esotericsoftware.minlog</groupId>
+            <artifactId>minlog</artifactId>
+            <version>1.2</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- https://mvnrepository.com/artifact/com.esotericsoftware.reflectasm/reflectasm -->
+        <dependency>
+            <groupId>com.esotericsoftware.reflectasm</groupId>
+            <artifactId>reflectasm</artifactId>
+            <version>1.07</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- kryo relations end -->
+        <!-- https://mvnrepository.com/artifact/commons-collections/commons-collections -->
+        <dependency>
+            <groupId>commons-collections</groupId>
+            <artifactId>commons-collections</artifactId>
+            <version>3.2.1</version>
+        </dependency>
         <dependency>
             <groupId>com.google.code.findbugs</groupId>
             <artifactId>jsr305</artifactId>
@@ -101,39 +132,6 @@
             <artifactId>testng</artifactId>
             <version>6.9.10</version>
         </dependency>
-
-        <!-- https://mvnrepository.com/artifact/commons-collections/commons-collections -->
-        <dependency>
-            <groupId>commons-collections</groupId>
-            <artifactId>commons-collections</artifactId>
-            <version>3.2.1</version>
-        </dependency>
-
-        <!-- kryo relations -->
-        <dependency>
-            <groupId>com.esotericsoftware</groupId>
-            <artifactId>kryo</artifactId>
-            <version>4.0.0</version>
-        </dependency>
-        <dependency>
-            <groupId>de.javakaffee</groupId>
-            <artifactId>kryo-serializers</artifactId>
-            <version>0.42</version>
-        </dependency>
-        <dependency>
-            <groupId>com.esotericsoftware.minlog</groupId>
-            <artifactId>minlog</artifactId>
-            <version>1.2</version>
-            <scope>test</scope>
-        </dependency>
-        <!-- https://mvnrepository.com/artifact/com.esotericsoftware.reflectasm/reflectasm -->
-        <dependency>
-            <groupId>com.esotericsoftware.reflectasm</groupId>
-            <artifactId>reflectasm</artifactId>
-            <version>1.07</version>
-            <scope>test</scope>
-        </dependency>
-        <!-- kryo relations end -->
     </dependencies>
 
     <build>

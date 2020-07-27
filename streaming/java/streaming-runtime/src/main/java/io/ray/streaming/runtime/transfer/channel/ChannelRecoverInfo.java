@@ -1,17 +1,40 @@
-package io.ray.streaming.runtime.transfer;
+package io.ray.streaming.runtime.transfer.channel;
 
+import com.google.common.base.MoreObjects;
 import java.io.Serializable;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-
-import com.google.common.base.MoreObjects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 
-public class QueueRecoverInfo implements Serializable {
-  private static final Logger LOG = LoggerFactory.getLogger(QueueRecoverInfo.class);
+public class ChannelRecoverInfo implements Serializable {
+  private static final Logger LOG = LoggerFactory.getLogger(ChannelRecoverInfo.class);
+  public Map<String, QueueCreationStatus> queueCreationStatusMap;
+
+
+  public ChannelRecoverInfo(Map<String, QueueCreationStatus> queueCreationStatusMap) {
+    LOG.info("Creating QueueRecoverInfo, queueCreationStatusMap={}", queueCreationStatusMap);
+    this.queueCreationStatusMap = queueCreationStatusMap;
+  }
+
+  public Set<String> getDataLostQueues() {
+    Set<String> dataLostQueues = new HashSet<>();
+    queueCreationStatusMap.forEach((q, status) -> {
+      if (status.equals(QueueCreationStatus.DataLost)) {
+        dataLostQueues.add(q);
+      }
+    });
+    return dataLostQueues;
+  }
+
+  @Override
+  public String toString() {
+    return MoreObjects.toStringHelper(this)
+        .add("dataLostQueues", getDataLostQueues())
+        .toString();
+  }
 
   public enum QueueCreationStatus {
     FreshStarted(0),
@@ -33,30 +56,5 @@ public class QueueRecoverInfo implements Serializable {
       }
       return null;
     }
-  }
-
-
-  public Map<String, QueueCreationStatus> queueCreationStatusMap;
-
-  public QueueRecoverInfo(Map<String, QueueCreationStatus> queueCreationStatusMap) {
-    LOG.info("Creating QueueRecoverInfo, queueCreationStatusMap={}", queueCreationStatusMap);
-    this.queueCreationStatusMap = queueCreationStatusMap;
-  }
-
-  public Set<String> getDataLostQueues() {
-    Set<String> dataLostQueues = new HashSet<>();
-    queueCreationStatusMap.forEach((q, status) -> {
-      if (status.equals(QueueCreationStatus.DataLost)) {
-        dataLostQueues.add(q);
-      }
-    });
-    return dataLostQueues;
-  }
-
-  @Override
-  public String toString() {
-    return MoreObjects.toStringHelper(this)
-        .add("dataLostQueues", getDataLostQueues())
-        .toString();
   }
 }
