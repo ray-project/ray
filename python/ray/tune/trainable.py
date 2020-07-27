@@ -1,3 +1,4 @@
+from contextlib import redirect_stdout, redirect_stderr
 from datetime import datetime
 
 import copy
@@ -17,10 +18,10 @@ import uuid
 import ray
 from ray.util.debug import log_once
 from ray.tune.logger import UnifiedLogger
-from ray.tune.result import (DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S,
-                             TIMESTEPS_THIS_ITER, DONE, TIMESTEPS_TOTAL,
-                             EPISODES_THIS_ITER, EPISODES_TOTAL,
-                             TRAINING_ITERATION, RESULT_DUPLICATE, TRIAL_INFO)
+from ray.tune.result import (
+    DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S, TIMESTEPS_THIS_ITER, DONE,
+    TIMESTEPS_TOTAL, EPISODES_THIS_ITER, EPISODES_TOTAL, TRAINING_ITERATION,
+    RESULT_DUPLICATE, TRIAL_INFO, STDOUT_FILE, STDERR_FILE)
 from ray.tune.utils import UtilMonitor
 
 logger = logging.getLogger(__name__)
@@ -217,6 +218,24 @@ class Trainable:
                 prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
             self._result_logger = UnifiedLogger(
                 self.config, self._logdir, loggers=None)
+
+        self._stdout_context = self._stdout_fp = None
+        self._stderr_context = self._stderr_fp = None
+
+        stdout_file = self.config.pop(STDOUT_FILE, None)
+        stderr_file = self.config.pop(STDERR_FILE, None)
+
+        if stdout_file:
+            stdout_path = os.path.join(self._logdir, stdout_file)
+            self._stdout_fp = open(stdout_path, "a+")
+            self._stdout_context = redirect_stdout(self._stdout_fp)
+            self._stdout_context.__enter__()
+
+        if stderr_file:
+            stderr_path = os.path.join(self._logdir, stderr_file)
+            self._stderr_fp = open(stderr_path, "a+")
+            self._stderr_context = redirect_stderr(self._stderr_fp)
+            self._stderr_context.__enter__()
 
         self._iteration = 0
         self._time_total = 0.0
@@ -542,6 +561,12 @@ class Trainable:
         self._result_logger.flush()
         self._result_logger.close()
         self.cleanup()
+        if self._stdout_context:
+            self._stdout_context.__exit__(None, None, None)
+            self._stdout_fp.close()
+        if self._stderr_context:
+            self._stderr_context.__exit__(None, None, None)
+            self._stderr_fp.close()
 
     @property
     def logdir(self):
