@@ -182,15 +182,15 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
     def policy_variables(self, as_dict=False):
         """Return the list of variables for the policy net."""
         if as_dict:
-            return self.policy_model.parameters()
+            return dict(self.policy_model.named_parameters())
         return list(self.policy_model.parameters())
 
     def q_variables(self, as_dict=False):
         """Return the list of variables for Q / twin Q nets."""
         if as_dict:
-            return {
-                **self.q_model.parameters(),
-                **(self.twin_q_model.parameters() if self.twin_q_model else {})
-            }
+            return dict((
+                *self.q_model.named_parameters(),
+                *(self.twin_q_model.named_parameters() if self.twin_q_model else {})
+            ))
         return list(self.q_model.parameters()) + \
             (list(self.twin_q_model.parameters()) if self.twin_q_model else [])
