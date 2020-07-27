@@ -51,9 +51,11 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
 
         self.bounded = np.logical_and(action_space.bounded_above,
                                       action_space.bounded_below).any()
-        self.action_range = torch.from_numpy(
-            (action_space.high - action_space.low)[None])
-        self.low_action = torch.from_numpy(action_space.low[None])
+        action_range = torch.tensor(action_space.high - action_space.low,
+                                    dtype=torch.float32)
+        low_action = torch.tensor(action_space.low, dtype=torch.float32)
+        self.register_buffer('action_range', action_range)
+        self.register_buffer('low_action', low_action)
         self.action_dim = np.product(action_space.shape)
 
         # Build the policy network.
@@ -88,16 +90,9 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
         # emulate behaviour of tanh activation used in DDPG and TD3 papers.
         # After sigmoid squashing, re-scale to env action space bounds.
         class _Lambda(nn.Module):
-            def __init__(self_):
-                super(_Lambda, self_).__init__()
-                self_.action_range = nn.Parameter(
-                    self.action_range, requires_grad=False)
-                self_.low_action = nn.Parameter(
-                    self.low_action, requires_grad=False)
-
             def forward(self_, x):
                 sigmoid_out = nn.Sigmoid()(2.0 * x)
-                squashed = self_.action_range * sigmoid_out + self_.low_action
+                squashed = self.action_range * sigmoid_out + self.low_action
                 return squashed
 
         # Only squash if we have bounded actions.
