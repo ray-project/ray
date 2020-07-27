@@ -276,11 +276,11 @@ class ClusterTaskManagerTest : public ::testing::Test {
         node_info_(boost::optional<rpc::GcsNodeInfo>{}),
         task_manager_(id_, single_node_resource_scheduler_,
                       [this](const Task &_task) {
-                        (*_fulfills_dependencies_ptr_)++;
+                        fulfills_dependencies_calls_++;
                         return dependencies_fulfilled_;
                       },
                       [this](const ClientID &node_id) {
-                        (*_node_info_calls_ptr_)++;
+                        node_info_calls_++;
                         return node_info_;
                       }) {}
 
