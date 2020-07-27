@@ -21,7 +21,7 @@ config_setting(
 
 config_setting(
     name = "opt",
-    values = { "compilation_mode": "opt" },
+    values = {"compilation_mode": "opt"},
 )
 
 # === Begin of protobuf definitions ===
