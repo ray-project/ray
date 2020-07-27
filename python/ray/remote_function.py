@@ -60,7 +60,8 @@ class RemoteFunction:
 
     def __init__(self, language, function, function_descriptor, num_cpus,
                  num_gpus, memory, object_store_memory, resources,
-                 num_return_vals, max_calls, max_retries):
+                 num_return_vals, max_calls, max_retries, placement_group_id,
+                 placement_group_bundle_index):
         self._language = language
         self._function = function
         self._function_name = (
@@ -148,7 +149,9 @@ class RemoteFunction:
                 memory=None,
                 object_store_memory=None,
                 resources=None,
-                max_retries=None):
+                max_retries=None,
+                placement_group_id=None,
+                placement_group_bundle_index=None):
         """Submit the remote function for execution."""
         worker = ray.worker.global_worker
         worker.check_connected()
@@ -205,7 +208,8 @@ class RemoteFunction:
                     "cannot be executed locally."
             object_refs = worker.core_worker.submit_task(
                 self._language, self._function_descriptor, list_args,
-                num_return_vals, resources, max_retries)
+                num_return_vals, resources, max_retries, placement_group_id,
+                placement_group_bundle_index)
 
             if len(object_refs) == 1:
                 return object_refs[0]

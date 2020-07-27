@@ -87,14 +87,15 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,
             const CTaskOptions &options, c_vector[CObjectID] *return_ids,
-            int max_retries)
+            int max_retries,
+            c_pair[CPlacementGroupID, int64_t] placement_options)
         CRayStatus CreateActor(
             const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,
             const CActorCreationOptions &options,
             const c_string &extension_data, CActorID *actor_id)
         CRayStatus CreatePlacementGroup(
-            const CPlacementGroupCreationOptions &options, 
+            const CPlacementGroupCreationOptions &options,
             CPlacementGroupID *placement_group_id)
         void SubmitActorTask(
             const CActorID &actor_id, const CRayFunction &function,
