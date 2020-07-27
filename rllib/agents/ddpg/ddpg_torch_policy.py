@@ -65,8 +65,7 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
             torch.normal(
                 mean=torch.zeros(policy_tp1.size()),
                 std=policy.config["target_noise"]).to(policy_tp1.device),
-            -target_noise_clip,
-            target_noise_clip)
+            -target_noise_clip, target_noise_clip)
 
         policy_tp1_smoothed = torch.min(
             torch.max(

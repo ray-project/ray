@@ -51,8 +51,8 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
 
         self.bounded = np.logical_and(action_space.bounded_above,
                                       action_space.bounded_below).any()
-        action_range = torch.tensor(action_space.high - action_space.low,
-                                    dtype=torch.float32)
+        action_range = torch.tensor(
+            action_space.high - action_space.low, dtype=torch.float32)
         low_action = torch.tensor(action_space.low, dtype=torch.float32)
         self.register_buffer("action_range", action_range)
         self.register_buffer("low_action", low_action)
@@ -188,9 +188,8 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
     def q_variables(self, as_dict=False):
         """Return the list of variables for Q / twin Q nets."""
         if as_dict:
-            return dict((
-                *self.q_model.named_parameters(),
-                *(self.twin_q_model.named_parameters() if self.twin_q_model else {})
-            ))
+            return dict((*self.q_model.named_parameters(),
+                         *(self.twin_q_model.named_parameters()
+                           if self.twin_q_model else {})))
         return list(self.q_model.parameters()) + \
             (list(self.twin_q_model.parameters()) if self.twin_q_model else [])
