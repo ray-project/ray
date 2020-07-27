@@ -250,7 +250,8 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
   return scheduler;
 }
 
-  Task CreateTask(const std::unordered_map<std::string, double> &required_resources, int num_args=0) {
+Task CreateTask(const std::unordered_map<std::string, double> &required_resources,
+                int num_args = 0) {
   TaskSpecBuilder spec_builder;
   TaskID id = RandomTaskId();
   JobID job_id = RandomJobId();
@@ -260,7 +261,7 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
       job_id, TaskID::Nil(), 0, TaskID::Nil(), address, 0, required_resources, {});
 
   for (int i = 0; i < num_args; i++) {
-    ObjectID put_id = ObjectID::ForPut(TaskID::Nil(), /*index=*/i+1);
+    ObjectID put_id = ObjectID::ForPut(TaskID::Nil(), /*index=*/i + 1);
     spec_builder.AddArg(TaskArgByReference(put_id, rpc::Address()));
   }
 
@@ -321,12 +322,11 @@ TEST_F(ClusterTaskManagerTest, BasicTest) {
   ASSERT_TRUE(pool_.workers.size() == 0);
 }
 
-
 TEST_F(ClusterTaskManagerTest, NoFeasibleNode) {
   auto task_manager =
       ClusterTaskManager(id_, single_node_resource_scheduler_, nullptr, nullptr);
   std::shared_ptr<MockWorker> worker =
-    std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
   pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
 
   Task task = CreateTask({{ray::kCPU_ResourceLabel, 999}});
@@ -345,7 +345,6 @@ TEST_F(ClusterTaskManagerTest, NoFeasibleNode) {
   ASSERT_TRUE(pool_.workers.size() == 1);
 }
 
-
 TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   /*
     Test the race condition in which a task is assigned to a node, but cannot
@@ -356,22 +355,24 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   bool *deps_resolved_ptr = &deps_resolved;
 
   auto fulfills_deps_func = [deps_resolved_ptr](const Task &task) {
-                              return *deps_resolved_ptr;
-                            };
+    return *deps_resolved_ptr;
+  };
 
-  auto task_manager =
-    ClusterTaskManager(id_, single_node_resource_scheduler_,  fulfills_deps_func, nullptr);
+  auto task_manager = ClusterTaskManager(id_, single_node_resource_scheduler_,
+                                         fulfills_deps_func, nullptr);
   std::shared_ptr<MockWorker> worker =
-    std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
   std::shared_ptr<MockWorker> worker2 =
-    std::make_shared<MockWorker>(WorkerID::FromRandom(), 12345);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 12345);
   pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
   pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker2));
 
   rpc::RequestWorkerLeaseReply reply;
   int num_callbacks = 0;
   int *num_callbacks_ptr = &num_callbacks;
-  auto callback = [num_callbacks_ptr]() { (*num_callbacks_ptr) = *num_callbacks_ptr + 1; };
+  auto callback = [num_callbacks_ptr]() {
+    (*num_callbacks_ptr) = *num_callbacks_ptr + 1;
+  };
 
   RAY_LOG(ERROR) << "first task";
   auto task = CreateTask({{ray::kCPU_ResourceLabel, 5}}, 1);
@@ -415,7 +416,7 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   RAY_LOG(ERROR) << worker->GetAllocatedInstances()->DebugString();
   RAY_LOG(ERROR) << "--------------";
   single_node_resource_scheduler_->FreeLocalTaskResources(
-        worker->GetAllocatedInstances());
+      worker->GetAllocatedInstances());
   // single_node_resource_scheduler_->SubtractCPUResourceInstances(
   //       worker->GetBorrowedCPUInstances());
   single_node_resource_scheduler_->UpdateLocalAvailableResourcesFromResourceInstances();
@@ -430,17 +431,11 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
 
   RAY_LOG(ERROR) << "~~~~~~~~~" << num_callbacks;
 
-
   // Task2 is now done so task can run.
   ASSERT_TRUE(num_callbacks == 2);
   ASSERT_TRUE(leased_workers_.size() == 1);
   ASSERT_TRUE(pool_.workers.size() == 0);
-
-
 }
-
-
-
 
 }  // namespace raylet
 

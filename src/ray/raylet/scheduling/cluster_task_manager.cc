@@ -134,7 +134,8 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       // The actor belongs to this worker now.
       worker->SetLifetimeAllocatedInstances(allocated_instances);
     } else {
-      RAY_LOG(ERROR) << "Setting allocated instances: " << allocated_instances->DebugString();
+      RAY_LOG(ERROR) << "Setting allocated instances: "
+                     << allocated_instances->DebugString();
       worker->SetAllocatedInstances(allocated_instances);
     }
     worker->AssignTaskId(spec.TaskId());
