@@ -1014,9 +1014,6 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     for (auto const &task : removed_tasks) {
       SubmitTask(task, Lineage());
     }
-  } else {
-    RAY_CHECK(actor_registration.GetState() == ActorTableData::PENDING);
-    // Do nothing.
   }
 }
 

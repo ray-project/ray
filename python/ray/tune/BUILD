@@ -288,6 +288,15 @@ py_test(
 )
 
 py_test(
+    name = "ddp_mnist_torch",
+    size = "small",
+    srcs = ["examples/ddp_mnist_torch.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example", "pytorch"],
+    args = ["--num-workers=2"]
+)
+
+py_test(
     name = "dragonfly_example",
     size = "medium",
     srcs = ["examples/dragonfly_example.py"],

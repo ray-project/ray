@@ -1,4 +1,6 @@
 load("//bazel:ray.bzl", "define_java_module")
+load("//bazel:ray.bzl", "native_java_binary")
+load("//bazel:ray.bzl", "native_java_library")
 load("@rules_proto_grpc//java:defs.bzl", "java_proto_compile")
 
 exports_files([
@@ -82,38 +84,11 @@ define_java_module(
     ],
 )
 
-# `//streaming:streaming_java` will be located in jar `streaming` directory,
-# but we need it located in jar root path.
-# resource_strip_prefix = "streaming" will make other resources file located in wrong path.
-# So we copy libs explicitly to remove `streaming` path.
+native_java_library("streaming-runtime", "streaming_java", "//streaming:libstreaming_java.so")
+
 filegroup(
     name = "java_native_deps",
     srcs = [":streaming_java"],
-)
-
-filegroup(
-    name = "streaming_java",
-    srcs = select({
-        "@bazel_tools//src/conditions:darwin": [":streaming_java_darwin"],
-        "//conditions:default": [":streaming_java_linux"],
-    }),
-    visibility = ["//visibility:public"],
-)
-
-genrule(
-    name = "streaming_java_darwin",
-    srcs = ["//streaming:libstreaming_java.so"],
-    outs = ["libstreaming_java.dylib"],
-    cmd = "cp $< $@",
-    output_to_bindir = 1,
-)
-
-genrule(
-    name = "streaming_java_linux",
-    srcs = ["//streaming:libstreaming_java.so"],
-    outs = ["libstreaming_java.so"],
-    cmd = "cp $< $@",
-    output_to_bindir = 1,
 )
 
 define_java_module(
@@ -251,9 +226,15 @@ genrule(
     ],
     outs = ["gen_maven_deps.out"],
     cmd = """
-        WORK_DIR="$$(pwd)"
+        WORK_DIR="$${PWD}"
         # Copy native dependencies.
-        NATIVE_DEPS_DIR="$$WORK_DIR/streaming/java/streaming-runtime/native_dependencies/"
+        OS_NAME=""
+        case "$${OSTYPE}" in
+          linux*) OS_NAME="linux";;
+          darwin*) OS_NAME="darwin";;
+          *) echo "$${OSTYPE} is not supported currently"; exit 1;;
+        esac
+        NATIVE_DEPS_DIR="$$WORK_DIR/streaming/java/streaming-runtime/native_dependencies/native/$$OS_NAME"
         rm -rf "$$NATIVE_DEPS_DIR"
         mkdir -p "$$NATIVE_DEPS_DIR"
         for f in $(locations //streaming/java:java_native_deps); do

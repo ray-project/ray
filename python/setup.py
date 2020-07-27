@@ -301,13 +301,14 @@ def find_version(*filepath):
 
 install_requires = [
     "aiohttp",
+    "aioredis",
     "click >= 7.0",
     "colorama",
     "colorful",
     "filelock",
     "google",
     "gpustat",
-    "grpcio",
+    "grpcio >= 1.28.1",
     "jsonschema",
     "msgpack >= 0.6.0, < 2.0.0",
     "numpy >= 1.16",
