@@ -23,6 +23,7 @@ VERSION_1.0 {
         *ray*TaskID*;
         *ray*ActorID*;
         *ray*ObjectID*;
+        *ray*ObjectReference*;
         # Others
         *ray*CoreWorker*;
         *PyInit*;
