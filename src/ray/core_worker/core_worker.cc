@@ -22,6 +22,7 @@
 #include "ray/core_worker/transport/raylet_transport.h"
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "ray/stats/stats.h"
+#include "ray/util/process.h"
 #include "ray/util/util.h"
 
 namespace {
@@ -62,11 +63,7 @@ std::unique_ptr<CoreWorkerProcess> CoreWorkerProcess::instance_;
 
 thread_local std::weak_ptr<CoreWorker> CoreWorkerProcess::current_core_worker_;
 
-boost::asio::io_service CoreWorkerProcess::stats_io_service_;
-
-std::shared_ptr<std::thread> CoreWorkerProcess::stats_thread_;
-
-std::atomic<int> CoreWorkerProcess::enable_stats_count_(0);
+int CoreWorkerProcess::enable_stats_count_(0);
 
 absl::Mutex CoreWorkerProcess::stats_initialization_mutex_;
 
@@ -253,12 +250,12 @@ void CoreWorkerProcess::RunStatsService() {
   absl::MutexLock lock(&CoreWorkerProcess::stats_initialization_mutex_);
   enable_stats_count_++;
   // Assume stats module will be initialized exactly once in once process.
-  if (stats_thread_) {
+  if (enable_stats_count_) {
     RAY_LOG(DEBUG) << "Stats module has been initialized and it does not need to "
                    << "setup twice.";
     return;
   }
-  RAY_LOG(DEBUG) << "Stats setup.";
+  RAY_LOG(DEBUG) << "Stats setup in core worker.";
   // Initialize stats in core worker global tags.
   const ray::stats::TagsType global_tags = {{ray::stats::ComponentKey, "core_worker"},
                                             {ray::stats::VersionKey, "0.9.0.dev0"}};
@@ -266,33 +263,16 @@ void CoreWorkerProcess::RunStatsService() {
   // NOTE(lingxuan.zlx): We assume RayConfig is initialized before it's used.
   // RayConfig is generated in Java_io_ray_runtime_RayNativeRuntime_nativeInitialize
   // for java worker or in constructor of CoreWorker for python worker.
-  ray::stats::Init(global_tags, RayConfig::instance().metrics_agent_port(),
-                   CoreWorkerProcess::stats_io_service_);
-  CoreWorkerProcess::stats_thread_.reset(
-      new std::thread([]() { CoreWorkerProcess::stats_io_service_.run(); }));
-  // NOTE(lingxuan.zlx): Should shutdown if opencensus has stats shutdown
-  // api. But currently no such shutdown api has been provided in opencensus.
-  // For sake of running without crashed we need detach the stats thread if
-  // it stands for a driver. Besides, detached exporter thread might be halted
-  // when process has been terminated without side effects.
-  // CoreWorkerProcess::stats_thread_->detach();
+  ray::stats::Init(global_tags, RayConfig::instance().metrics_agent_port());
 }
 
 void CoreWorkerProcess::StopStatsService() {
   absl::MutexLock lock(&CoreWorkerProcess::stats_initialization_mutex_);
-  RAY_LOG(DEBUG) << "Stats stop.";
-  if (!stats_thread_) {
-    return;
-  }
+  RAY_LOG(DEBUG) << "Stats stop in core worker.";
   enable_stats_count_--;
   if (enable_stats_count_ > 0) {
     return;
   }
-  CoreWorkerProcess::stats_io_service_.stop();
-  if (stats_thread_->joinable()) {
-    stats_thread_->join();
-  }
-  stats_thread_.reset();
   ray::stats::Shutdown();
 }
 
@@ -438,7 +418,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   };
   task_manager_.reset(new TaskManager(
       memory_store_, reference_counter_, actor_reporter_,
-      [this](const TaskSpecification &spec, bool delay) {
+      [this](TaskSpecification &spec, bool delay) {
         if (delay) {
           // Retry after a delay to emulate the existing Raylet reconstruction
           // behaviour. TODO(ekl) backoff exponentially.
@@ -450,7 +430,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         } else {
           RAY_LOG(ERROR) << "Resubmitting task that produced lost plasma object: "
                          << spec.DebugString();
-          RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
+          if (spec.IsActorTask()) {
+            const auto &actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
+            actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
+            RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
+          } else {
+            RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
+          }
         }
       },
       check_node_alive_fn, reconstruct_object_callback));
@@ -487,13 +473,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         new raylet::RayletClient(std::move(grpc_client)));
   };
 
-  std::function<Status(const TaskSpecification &, const gcs::StatusCallback &)>
-      actor_create_callback = nullptr;
+  std::shared_ptr<ActorCreatorInterface> actor_creator = nullptr;
   if (RayConfig::instance().gcs_actor_service_enabled()) {
-    actor_create_callback = [this](const TaskSpecification &task_spec,
-                                   const gcs::StatusCallback &callback) {
-      return gcs_client_->Actors().AsyncCreateActor(task_spec, callback);
-    };
+    actor_creator = std::make_shared<DefaultActorCreator>(gcs_client_);
   }
 
   direct_actor_submitter_ = std::shared_ptr<CoreWorkerDirectActorTaskSubmitter>(
@@ -506,7 +488,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           memory_store_, task_manager_, local_raylet_id,
           RayConfig::instance().worker_lease_timeout_milliseconds(),
           RayConfig::instance().max_tasks_in_flight_per_worker(),
-          std::move(actor_create_callback), boost::asio::steady_timer(io_service_)));
+          std::move(actor_creator), boost::asio::steady_timer(io_service_)));
   future_resolver_.reset(new FutureResolver(memory_store_, client_factory, rpc_address_));
   // Unfortunately the raylet client has to be constructed after the receivers.
   if (direct_task_receiver_ != nullptr) {
@@ -716,13 +698,13 @@ void CoreWorker::RegisterToGcs() {
 
   RAY_CHECK_OK(gcs_client_->Workers().AsyncAdd(worker_data, nullptr));
 }
+
 void CoreWorker::CheckForRayletFailure(const boost::system::error_code &error) {
   if (error == boost::asio::error::operation_aborted) {
     return;
   }
 
-  // If the raylet fails, we will be reassigned to init (PID=1).
-  if (getppid() == 1) {
+  if (!IsParentProcessAlive()) {
     RAY_LOG(ERROR) << "Raylet failed. Shutting down.";
     Shutdown();
   }
@@ -1724,8 +1706,12 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
         metadata = std::make_shared<LocalMemoryBuffer>(
             const_cast<uint8_t *>(task.ArgMetadata(i)), task.ArgMetadataSize(i));
       }
-      args->at(i) = std::make_shared<RayObject>(data, metadata, task.ArgInlinedIds(i),
-                                                /*copy_data*/ true);
+      // NOTE: this is a workaround to avoid an extra copy for Java workers.
+      // Python workers need this copy to pass test case
+      // test_inline_arg_memory_corruption.
+      bool copy_data = options_.language == Language::PYTHON;
+      args->at(i) =
+          std::make_shared<RayObject>(data, metadata, task.ArgInlinedIds(i), copy_data);
       arg_reference_ids->at(i) = ObjectID::Nil();
       // The task borrows all ObjectIDs that were serialized in the inlined
       // arguments. The task will receive references to these IDs, so it is

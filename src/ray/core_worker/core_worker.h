@@ -263,17 +263,11 @@ class CoreWorkerProcess {
   /// To protect accessing the `workers_` map.
   mutable absl::Mutex worker_map_mutex_;
 
-  /// Event loop where the metric exporting are handled, e.g., async gRPC operations.
-  static boost::asio::io_service stats_io_service_;
-
-  /// Stats service worker thread and it will be detached.
-  static std::shared_ptr<std::thread> stats_thread_;
-
   /// Make thread-safe for core worker stats initialization.
   static absl::Mutex stats_initialization_mutex_;
 
-  /// Atomic count for stats.
-  static std::atomic<int> enable_stats_count_;
+  /// Count for stats.
+  static int enable_stats_count_;
 };
 
 /// The root class that contains all the core and language-independent functionalities

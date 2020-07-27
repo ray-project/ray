@@ -18,6 +18,7 @@ from ray.test_utils import (
     wait_for_pid_to_exit,
     generate_internal_config_map,
     get_other_nodes,
+    SignalActor,
 )
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
@@ -889,6 +890,142 @@ def test_ray_wait_dead_actor(ray_start_cluster):
     # the dead actor is received.
     parent_actor = ParentActor.remote()
     assert wait_for_condition(lambda: ray.get(parent_actor.wait.remote()))
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "num_cpus": 1,
+        "num_nodes": 1,
+    }], indirect=True)
+def test_actor_owner_worker_dies_before_dependency_ready(ray_start_cluster):
+    """Test actor owner worker dies before local dependencies are resolved.
+    This test verifies the scenario where owner worker
+    has failed before actor dependencies are resolved.
+    Reference: https://github.com/ray-project/ray/pull/8045
+    """
+
+    @ray.remote
+    class Actor:
+        def __init__(self, dependency):
+            print("actor: {}".format(os.getpid()))
+            self.dependency = dependency
+
+        def f(self):
+            return self.dependency
+
+    @ray.remote
+    class Owner:
+        def get_pid(self):
+            return os.getpid()
+
+        def create_actor(self, caller_handle):
+            s = SignalActor.remote()
+            # Create an actor which depends on an object that can never be
+            # resolved.
+            actor_handle = Actor.remote(s.wait.remote())
+
+            pid = os.getpid()
+            signal_handle = SignalActor.remote()
+            caller_handle.call.remote(pid, signal_handle, actor_handle)
+            # Wait until the `Caller` start executing the remote `call` method.
+            ray.get(signal_handle.wait.remote())
+            # exit
+            os._exit(0)
+
+    @ray.remote
+    class Caller:
+        def call(self, owner_pid, signal_handle, actor_handle):
+            # Notify the `Owner` that the `Caller` is executing the remote
+            # `call` method.
+            ray.get(signal_handle.send.remote())
+            # Wait for the `Owner` to exit.
+            wait_for_pid_to_exit(owner_pid)
+            oid = actor_handle.f.remote()
+            # It will hang without location resolution protocol.
+            ray.get(oid)
+
+        def hang(self):
+            return True
+
+    owner = Owner.remote()
+    owner_pid = ray.get(owner.get_pid.remote())
+
+    caller = Caller.remote()
+    owner.create_actor.remote(caller)
+    # Wait for the `Owner` to exit.
+    wait_for_pid_to_exit(owner_pid)
+    # It will hang here if location is not properly resolved.
+    assert (wait_for_condition(lambda: ray.get(caller.hang.remote())))
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "num_cpus": 3,
+        "num_nodes": 1,
+    }], indirect=True)
+def test_actor_owner_node_dies_before_dependency_ready(ray_start_cluster):
+    """Test actor owner node dies before local dependencies are resolved.
+    This test verifies the scenario where owner node
+    has failed before actor dependencies are resolved.
+    Reference: https://github.com/ray-project/ray/pull/8045
+    """
+
+    @ray.remote
+    class Actor:
+        def __init__(self, dependency):
+            print("actor: {}".format(os.getpid()))
+            self.dependency = dependency
+
+        def f(self):
+            return self.dependency
+
+    # Make sure it is scheduled in the second node.
+    @ray.remote(resources={"node": 1}, num_cpus=1)
+    class Owner:
+        def get_pid(self):
+            return os.getpid()
+
+        def create_actor(self, caller_handle):
+            s = SignalActor.remote()
+            # Create an actor which depends on an object that can never be
+            # resolved.
+            actor_handle = Actor.remote(s.wait.remote())
+
+            pid = os.getpid()
+            signal_handle = SignalActor.remote()
+            caller_handle.call.remote(pid, signal_handle, actor_handle)
+            # Wait until the `Caller` start executing the remote `call` method.
+            ray.get(signal_handle.wait.remote())
+
+    @ray.remote
+    class Caller:
+        def call(self, owner_pid, signal_handle, actor_handle):
+            # Notify the `Owner` that the `Caller` is executing the remote
+            # `call` method.
+            ray.get(signal_handle.send.remote())
+            # Wait for the `Owner` to exit.
+            wait_for_pid_to_exit(owner_pid)
+            oid = actor_handle.f.remote()
+            # It will hang without location resolution protocol.
+            ray.get(oid)
+
+        def hang(self):
+            return True
+
+    cluster = ray_start_cluster
+    node_to_be_broken = cluster.add_node(num_cpus=1, resources={"node": 1})
+
+    owner = Owner.remote()
+    owner_pid = ray.get(owner.get_pid.remote())
+
+    caller = Caller.remote()
+    owner.create_actor.remote(caller)
+    cluster.remove_node(node_to_be_broken)
+    # Wait for the `Owner` to exit.
+    wait_for_pid_to_exit(owner_pid)
+
+    # It will hang here if location is not properly resolved.
+    assert (wait_for_condition(lambda: ray.get(caller.hang.remote())))
 
 
 if __name__ == "__main__":

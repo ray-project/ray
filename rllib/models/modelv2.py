@@ -1,6 +1,8 @@
 from collections import OrderedDict
+import contextlib
 import gym
-from typing import Dict
+import numpy as np
+from typing import Dict, List, Any, Union
 
 from ray.rllib.models.preprocessors import get_preprocessor, \
     RepeatedValuesPreprocessor
@@ -11,7 +13,7 @@ from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     TensorType
 from ray.rllib.utils.spaces.repeated import Repeated
-from ray.rllib.utils.types import ModelConfigDict
+from ray.rllib.utils.types import ModelConfigDict, TensorStructType
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -29,13 +31,9 @@ class ModelV2:
                value_function() -> V(s)
     """
 
-    def __init__(self,
-                 obs_space: gym.spaces.Space,
-                 action_space: gym.spaces.Space,
-                 num_outputs: int,
-                 model_config: ModelConfigDict,
-                 name: str,
-                 framework: str):
+    def __init__(self, obs_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space, num_outputs: int,
+                 model_config: ModelConfigDict, name: str, framework: str):
         """Initializes a ModelV2 object.
 
         This method should create any variables used by the model.
@@ -62,7 +60,7 @@ class ModelV2:
         self._last_output = None
 
     @PublicAPI
-    def get_initial_state(self):
+    def get_initial_state(self) -> List[np.ndarray]:
         """Get the initial recurrent state values for the model.
 
         Returns:
@@ -79,7 +77,9 @@ class ModelV2:
         return []
 
     @PublicAPI
-    def forward(self, input_dict, state, seq_lens):
+    def forward(self, input_dict: Dict[str, TensorType],
+                state: List[TensorType],
+                seq_lens: TensorType) -> (TensorType, List[TensorType]):
         """Call the model with the given input tensors and state.
 
         Any complex observations (dicts, tuples, etc.) will be unpacked by
@@ -103,7 +103,7 @@ class ModelV2:
 
         Returns:
             (outputs, state): The model output tensor of size
-                [BATCH, num_outputs]
+                [BATCH, num_outputs], and the new RNN state.
 
         Examples:
             >>> def forward(self, input_dict, state, seq_lens):
@@ -114,7 +114,7 @@ class ModelV2:
         raise NotImplementedError
 
     @PublicAPI
-    def value_function(self):
+    def value_function(self) -> TensorType:
         """Returns the value function output for the most recent forward pass.
 
         Note that a `forward` call has to be performed first, before this
@@ -127,7 +127,8 @@ class ModelV2:
         raise NotImplementedError
 
     @PublicAPI
-    def custom_loss(self, policy_loss, loss_inputs):
+    def custom_loss(self, policy_loss: TensorType,
+                    loss_inputs: Dict[str, TensorType]) -> TensorType:
         """Override to customize the loss function used to optimize this model.
 
         This can be used to incorporate self-supervised losses (by defining
@@ -149,7 +150,7 @@ class ModelV2:
         return policy_loss
 
     @PublicAPI
-    def metrics(self):
+    def metrics(self) -> Dict[str, TensorType]:
         """Override to return custom metrics from your model.
 
         The stats will be reported as part of the learner stats, i.e.,
@@ -164,7 +165,11 @@ class ModelV2:
         """
         return {}
 
-    def __call__(self, input_dict, state=None, seq_lens=None):
+    def __call__(
+            self,
+            input_dict: Dict[str, TensorType],
+            state: List[Any] = None,
+            seq_lens: TensorType = None) -> (TensorType, List[TensorType]):
         """Call the model with the given input tensors and state.
 
         This is the method used by RLlib to execute the forward pass. It calls
@@ -218,7 +223,8 @@ class ModelV2:
         return outputs, state
 
     @PublicAPI
-    def from_batch(self, train_batch, is_training=True):
+    def from_batch(self, train_batch: SampleBatch,
+                   is_training: bool = True) -> (TensorType, List[TensorType]):
         """Convenience function that calls this model with a tensor batch.
 
         All this does is unpack the tensor batch to call this model with the
@@ -241,8 +247,7 @@ class ModelV2:
         return self.__call__(input_dict, states, train_batch.get("seq_lens"))
 
     def get_view_requirements(
-            self,
-            is_training: bool = False) -> Dict[str, ViewRequirement]:
+            self, is_training: bool = False) -> Dict[str, ViewRequirement]:
         """Returns a list of ViewRequirements for this Model (or None).
 
         Note: This is an experimental API method.
@@ -266,13 +271,13 @@ class ModelV2:
         # Single requirement: Pass current obs as input.
         return {
             SampleBatch.CUR_OBS: ViewRequirement(timesteps=0),
-            SampleBatch.PREV_ACTIONS:
-                ViewRequirement(SampleBatch.ACTIONS, timesteps=-1),
-            SampleBatch.PREV_REWARDS:
-                ViewRequirement(SampleBatch.REWARDS, timesteps=-1),
+            SampleBatch.PREV_ACTIONS: ViewRequirement(
+                SampleBatch.ACTIONS, timesteps=-1),
+            SampleBatch.PREV_REWARDS: ViewRequirement(
+                SampleBatch.REWARDS, timesteps=-1),
         }
 
-    def import_from_h5(self, h5_file):
+    def import_from_h5(self, h5_file: str) -> None:
         """Imports weights from an h5 file.
 
         Args:
@@ -287,17 +292,18 @@ class ModelV2:
         raise NotImplementedError
 
     @PublicAPI
-    def last_output(self):
+    def last_output(self) -> TensorType:
         """Returns the last output returned from calling the model."""
         return self._last_output
 
     @PublicAPI
-    def context(self):
+    def context(self) -> contextlib.AbstractContextManager:
         """Returns a contextmanager for the current forward pass."""
         return NullContextManager()
 
     @PublicAPI
-    def variables(self, as_dict=False):
+    def variables(self, as_dict: bool = False
+                  ) -> Union[List[TensorType], Dict[str, TensorType]]:
         """Returns the list (or a dict) of variables for this model.
 
         Args:
@@ -311,7 +317,9 @@ class ModelV2:
         raise NotImplementedError
 
     @PublicAPI
-    def trainable_variables(self, as_dict=False):
+    def trainable_variables(
+            self, as_dict: bool = False
+    ) -> Union[List[TensorType], Dict[str, TensorType]]:
         """Returns the list of trainable variables for this model.
 
         Args:
@@ -340,7 +348,7 @@ class NullContextManager:
 
 
 @DeveloperAPI
-def flatten(obs, framework):
+def flatten(obs: TensorType, framework: str) -> TensorType:
     """Flatten the given tensor."""
     if framework in ["tf2", "tf", "tfe"]:
         return tf1.keras.layers.Flatten()(obs)
@@ -354,7 +362,7 @@ def flatten(obs, framework):
 @DeveloperAPI
 def restore_original_dimensions(obs: TensorType,
                                 obs_space: gym.spaces.Space,
-                                tensorlib=tf):
+                                tensorlib: Any = tf) -> TensorStructType:
     """Unpacks Dict and Tuple space observations into their original form.
 
     This is needed since we flatten Dict and Tuple observations in transit
@@ -388,7 +396,8 @@ def restore_original_dimensions(obs: TensorType,
 _cache = {}
 
 
-def _unpack_obs(obs, space, tensorlib=tf):
+def _unpack_obs(obs: TensorType, space: gym.Space,
+                tensorlib: Any = tf) -> TensorStructType:
     """Unpack a flattened Dict or Tuple observation array/tensor.
 
     Args:

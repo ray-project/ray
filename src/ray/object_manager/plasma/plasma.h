@@ -17,27 +17,14 @@
 
 #pragma once
 
-#include <errno.h>
-#include <inttypes.h>
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
-#include "ray/common/status.h"
-#include "ray/object_manager/plasma/compat.h"
-
-#include "ray/common/status.h"
-#include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/plasma/common.h"
-#include "ray/util/logging.h"
+#include "ray/object_manager/plasma/compat.h"
 
 #ifdef PLASMA_CUDA
 using arrow::cuda::CudaIpcMemHandle;
@@ -45,64 +32,8 @@ using arrow::cuda::CudaIpcMemHandle;
 
 namespace plasma {
 
-using ray::Status;
-using ray::object_manager::protocol::ObjectInfoT;
-
-#define HANDLE_SIGPIPE(s, fd_)                                              \
-  do {                                                                      \
-    Status _s = (s);                                                        \
-    if (!_s.ok()) {                                                         \
-      if (errno == EPIPE || errno == EBADF || errno == ECONNRESET) {        \
-        RAY_LOG(WARNING)                                                  \
-            << "Received SIGPIPE, BAD FILE DESCRIPTOR, or ECONNRESET when " \
-               "sending a message to client on fd "                         \
-            << fd_                                                          \
-            << ". "                                                         \
-               "The client on the other end may have hung up.";             \
-      } else {                                                              \
-        return _s;                                                          \
-      }                                                                     \
-    }                                                                       \
-  } while (0);
-
 /// Allocation granularity used in plasma for object allocation.
 constexpr int64_t kBlockSize = 64;
-
-/// Contains all information that is associated with a Plasma store client.
-struct Client {
-  explicit Client(int fd) : fd(fd) {}
-
-  ~Client();
-
-  /// The file descriptor used to communicate with the client.
-  int fd;
-
-  /// Object ids that are used by this client.
-  std::unordered_set<ObjectID> object_ids;
-
-  /// File descriptors that are used by this client.
-  std::unordered_set<int> used_fds;
-
-  std::string name = "anonymous_client";
-
-  /// The object notifications for clients. We notify the client about the
-  /// objects in the order that the objects were sealed or deleted.
-  std::deque<std::unique_ptr<uint8_t[]>> object_notifications;
-};
-
-std::ostream &operator<<(std::ostream &os, const std::shared_ptr<Client> &client);
-
-/// Connection to Plasma Store.
-struct StoreConn {
-  explicit StoreConn(int fd) : fd(fd) {}
-
-  ~StoreConn();
-
-  /// The file descriptor used to communicate with the store.
-  int fd;
-};
-
-std::ostream &operator<<(std::ostream &os, const std::shared_ptr<StoreConn> &store_conn);
 
 // TODO(pcm): Replace this by the flatbuffers message PlasmaObjectSpec.
 struct PlasmaObject {
@@ -113,7 +44,7 @@ struct PlasmaObject {
   /// The file descriptor of the memory mapped file in the store. It is used as
   /// a unique identifier of the file in the client to look up the corresponding
   /// file descriptor on the client's side.
-  int store_fd;
+  MEMFD_TYPE store_fd;
   /// The offset in bytes in the memory mapped file of the data.
   ptrdiff_t data_offset;
   /// The offset in bytes in the memory mapped file of the metadata.
@@ -165,22 +96,6 @@ struct PlasmaStoreInfo {
 ///         is not present.
 ObjectTableEntry* GetObjectTableEntry(PlasmaStoreInfo* store_info,
                                       const ObjectID& object_id);
-
-/// Print a warning if the status is less than zero. This should be used to check
-/// the success of messages sent to plasma clients. We print a warning instead of
-/// failing because the plasma clients are allowed to die. This is used to handle
-/// situations where the store writes to a client file descriptor, and the client
-/// may already have disconnected. If we have processed the disconnection and
-/// closed the file descriptor, we should get a BAD FILE DESCRIPTOR error. If we
-/// have not, then we should get a SIGPIPE. If we write to a TCP socket that
-/// isn't connected yet, then we should get an ECONNRESET.
-///
-/// \param status The status to check. If it is less less than zero, we will
-///        print a warning.
-/// \param client_sock The client socket. This is just used to print some extra
-///        information.
-/// \return The errno set.
-int WarnIfSigpipe(int status, int client_sock);
 
 /// Globally accessible reference to plasma store configuration.
 extern const PlasmaStoreInfo* plasma_config;
