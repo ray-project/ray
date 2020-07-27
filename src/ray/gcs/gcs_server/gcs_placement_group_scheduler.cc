@@ -13,8 +13,9 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_server/gcs_placement_group_scheduler.h"
-#include <ray/protobuf/gcs.pb.h>
+
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace gcs {
@@ -40,8 +41,8 @@ ScheduleMap GcsPackStrategy::Schedule(
     const GcsNodeManager &node_manager) {
   ScheduleMap schedule_map;
   auto &alive_nodes = node_manager.GetAllAliveNodes();
-  for (size_t pos = 0; pos < bundles.size(); pos++) {
-    schedule_map[bundles[pos]->BundleId()] =
+  for (auto &bundle : bundles) {
+    schedule_map[bundle->BundleId()] =
         ClientID::FromBinary(alive_nodes.begin()->second->node_id());
   }
   return schedule_map;
@@ -79,13 +80,13 @@ void GcsPlacementGroupScheduler::Schedule(
   auto strategy = placement_group->GetStrategy();
   auto alive_nodes = gcs_node_manager_.GetAllAliveNodes();
   /// If the placement group don't have bundle, the placement group creates success.
-  if (bundles.size() == 0) {
+  if (bundles.empty()) {
     schedule_success_handler(placement_group);
     return;
   }
 
   // If alive_node is empty, the the placement group creates fail.
-  if (alive_nodes.size() == 0) {
+  if (alive_nodes.empty()) {
     schedule_failure_handler(placement_group);
     return;
   }
@@ -188,8 +189,8 @@ void GcsPlacementGroupScheduler::ReserveResourceFromNode(
             if (iter->second.empty()) {
               node_to_bundles_when_leasing_.erase(iter);
             }
+            callback(status, reply);
           }
-          callback(status, reply);
         }
       });
   if (!status.ok()) {
@@ -229,7 +230,7 @@ void GcsPlacementGroupScheduler::CancelResourceReserve(
               });
         }
       });
-}  // namespace gcs
+}
 
 std::shared_ptr<ResourceReserveInterface>
 GcsPlacementGroupScheduler::GetOrConnectLeaseClient(const rpc::Address &raylet_address) {

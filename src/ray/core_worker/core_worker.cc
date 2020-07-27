@@ -21,6 +21,7 @@
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/core_worker/transport/raylet_transport.h"
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
+#include "ray/util/process.h"
 #include "ray/util/util.h"
 
 namespace {
@@ -380,7 +381,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   };
   task_manager_.reset(new TaskManager(
       memory_store_, reference_counter_, actor_reporter_,
-      [this](const TaskSpecification &spec, bool delay) {
+      [this](TaskSpecification &spec, bool delay) {
         if (delay) {
           // Retry after a delay to emulate the existing Raylet reconstruction
           // behaviour. TODO(ekl) backoff exponentially.
@@ -390,7 +391,15 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           absl::MutexLock lock(&mutex_);
           to_resubmit_.push_back(std::make_pair(current_time_ms() + delay, spec));
         } else {
-          RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
+          RAY_LOG(ERROR) << "Resubmitting task that produced lost plasma object: "
+                         << spec.DebugString();
+          if (spec.IsActorTask()) {
+            const auto &actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
+            actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
+            RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
+          } else {
+            RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
+          }
         }
       },
       check_node_alive_fn, reconstruct_object_callback));
@@ -427,13 +436,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         new raylet::RayletClient(std::move(grpc_client)));
   };
 
-  std::function<Status(const TaskSpecification &, const gcs::StatusCallback &)>
-      actor_create_callback = nullptr;
+  std::shared_ptr<ActorCreatorInterface> actor_creator = nullptr;
   if (RayConfig::instance().gcs_actor_service_enabled()) {
-    actor_create_callback = [this](const TaskSpecification &task_spec,
-                                   const gcs::StatusCallback &callback) {
-      return gcs_client_->Actors().AsyncCreateActor(task_spec, callback);
-    };
+    actor_creator = std::make_shared<DefaultActorCreator>(gcs_client_);
   }
 
   direct_actor_submitter_ = std::shared_ptr<CoreWorkerDirectActorTaskSubmitter>(
@@ -445,7 +450,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           rpc_address_, local_raylet_client_, client_factory, raylet_client_factory,
           memory_store_, task_manager_, local_raylet_id,
           RayConfig::instance().worker_lease_timeout_milliseconds(),
-          std::move(actor_create_callback), boost::asio::steady_timer(io_service_)));
+          RayConfig::instance().max_tasks_in_flight_per_worker(),
+          std::move(actor_creator), boost::asio::steady_timer(io_service_)));
   future_resolver_.reset(new FutureResolver(memory_store_, client_factory, rpc_address_));
   // Unfortunately the raylet client has to be constructed after the receivers.
   if (direct_task_receiver_ != nullptr) {
@@ -655,13 +661,13 @@ void CoreWorker::RegisterToGcs() {
 
   RAY_CHECK_OK(gcs_client_->Workers().AsyncAdd(worker_data, nullptr));
 }
+
 void CoreWorker::CheckForRayletFailure(const boost::system::error_code &error) {
   if (error == boost::asio::error::operation_aborted) {
     return;
   }
 
-  // If the raylet fails, we will be reassigned to init (PID=1).
-  if (getppid() == 1) {
+  if (!IsParentProcessAlive()) {
     RAY_LOG(ERROR) << "Raylet failed. Shutting down.";
     Shutdown();
   }
@@ -1168,6 +1174,21 @@ void CoreWorker::SubmitTask(const RayFunction &function,
   }
 }
 
+std::unordered_map<std::string, double> AddPlacementGroupConstraint(
+    const std::unordered_map<std::string, double> &resources,
+    PlacementGroupID placement_group_id, int64_t bundle_index) {
+  std::unordered_map<std::string, double> new_resources;
+  if (placement_group_id != PlacementGroupID::Nil()) {
+    for (auto iter = resources.begin(); iter != resources.end(); iter++) {
+      auto new_name =
+          placement_group_id.Hex() + std::to_string(bundle_index) + "_" + iter->first;
+      new_resources[new_name] = iter->second;
+    }
+    return new_resources;
+  }
+  return resources;
+}
+
 Status CoreWorker::CreateActor(const RayFunction &function,
                                const std::vector<std::unique_ptr<TaskArg>> &args,
                                const ActorCreationOptions &actor_creation_options,
@@ -1185,10 +1206,17 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   const JobID job_id = worker_context_.GetCurrentJobID();
   std::vector<ObjectID> return_ids;
   TaskSpecBuilder builder;
+  auto new_placement_resources =
+      AddPlacementGroupConstraint(actor_creation_options.placement_resources,
+                                  actor_creation_options.placement_options.first,
+                                  actor_creation_options.placement_options.second);
+  auto new_resource = AddPlacementGroupConstraint(
+      actor_creation_options.resources, actor_creation_options.placement_options.first,
+      actor_creation_options.placement_options.second);
   BuildCommonTaskSpec(builder, job_id, actor_creation_task_id,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
-                      rpc_address_, function, args, 1, actor_creation_options.resources,
-                      actor_creation_options.placement_resources, &return_ids);
+                      rpc_address_, function, args, 1, new_resource,
+                      new_placement_resources, &return_ids);
   builder.SetActorCreationTaskSpec(
       actor_id, actor_creation_options.max_restarts,
       actor_creation_options.dynamic_worker_options,
@@ -1225,6 +1253,22 @@ Status CoreWorker::CreateActor(const RayFunction &function,
     status = direct_task_submitter_->SubmitTask(task_spec);
   }
   return status;
+}
+
+Status CoreWorker::CreatePlacementGroup(
+    const PlacementGroupCreationOptions &placement_group_creation_options,
+    PlacementGroupID *return_placement_group_id) {
+  const PlacementGroupID placement_group_id = PlacementGroupID ::FromRandom();
+  PlacementGroupSpecBuilder builder;
+  builder.SetPlacementGroupSpec(placement_group_id, placement_group_creation_options.name,
+                                placement_group_creation_options.bundles,
+                                placement_group_creation_options.strategy);
+  PlacementGroupSpecification placement_group_spec = builder.Build();
+  *return_placement_group_id = placement_group_id;
+  RAY_LOG(INFO) << "Submitting Placement Group creation to GCS: " << placement_group_id;
+  RAY_CHECK_OK(
+      gcs_client_->PlacementGroups().AsyncCreatePlacementGroup(placement_group_spec));
+  return Status::OK();
 }
 
 void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
@@ -1625,8 +1669,12 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
         metadata = std::make_shared<LocalMemoryBuffer>(
             const_cast<uint8_t *>(task.ArgMetadata(i)), task.ArgMetadataSize(i));
       }
-      args->at(i) = std::make_shared<RayObject>(data, metadata, task.ArgInlinedIds(i),
-                                                /*copy_data*/ true);
+      // NOTE: this is a workaround to avoid an extra copy for Java workers.
+      // Python workers need this copy to pass test case
+      // test_inline_arg_memory_corruption.
+      bool copy_data = options_.language == Language::PYTHON;
+      args->at(i) =
+          std::make_shared<RayObject>(data, metadata, task.ArgInlinedIds(i), copy_data);
       arg_reference_ids->at(i) = ObjectID::Nil();
       // The task borrows all ObjectIDs that were serialized in the inlined
       // arguments. The task will receive references to these IDs, so it is

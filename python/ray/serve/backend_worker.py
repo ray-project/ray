@@ -5,6 +5,7 @@ from collections.abc import Iterable
 from collections import defaultdict
 from itertools import groupby
 from operator import attrgetter
+from typing import Union
 import time
 
 import ray
@@ -109,8 +110,9 @@ def create_backend_worker(func_or_class):
             else:
                 _callable = func_or_class(*init_args)
 
-            master = serve.api._get_master_actor()
-            [metric_exporter] = ray.get(master.get_metric_exporter.remote())
+            controller = serve.api._get_controller()
+            [metric_exporter] = ray.get(
+                controller.get_metric_exporter.remote())
             metric_client = MetricClient(
                 metric_exporter, default_labels={"backend": backend_tag})
             self.backend = RayServeWorker(backend_tag, replica_tag, _callable,
@@ -343,8 +345,9 @@ class RayServeWorker:
         self.batch_queue.set_config(self.config.max_batch_size or 1,
                                     self.config.batch_wait_timeout)
 
-    async def handle_request(self, request: Query):
-        assert not isinstance(request, list)
+    async def handle_request(self, request: Union[Query, bytes]):
+        if isinstance(request, bytes):
+            request = Query.ray_deserialize(request)
         logger.debug("Worker {} got request {}".format(self.name, request))
         request.async_future = asyncio.get_event_loop().create_future()
         self.batch_queue.put(request)

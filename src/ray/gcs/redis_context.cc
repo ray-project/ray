@@ -14,8 +14,6 @@
 
 #include "ray/gcs/redis_context.h"
 
-#include <unistd.h>
-
 #include <sstream>
 
 #include "ray/stats/stats.h"
@@ -306,7 +304,8 @@ Status ConnectWithRetries(const std::string &address, int port,
     }
     RAY_LOG(WARNING) << "Failed to connect to Redis, retrying.";
     // Sleep for a little.
-    usleep(RayConfig::instance().redis_db_connect_wait_milliseconds() * 1000);
+    std::this_thread::sleep_for(std::chrono::milliseconds(
+        RayConfig::instance().redis_db_connect_wait_milliseconds()));
     *context = connect_function(address.c_str(), port);
     connection_attempts += 1;
   }

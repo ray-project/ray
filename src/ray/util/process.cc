@@ -15,6 +15,11 @@
 #include "ray/util/process.h"
 
 #ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN 1
+#endif
+#include <Windows.h>
+#include <Winternl.h>
 #include <process.h>
 #else
 #include <poll.h>
@@ -22,10 +27,11 @@
 #include <stddef.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#endif
 #include <unistd.h>
+#endif
 
 #include <algorithm>
+#include <atomic>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -439,12 +445,72 @@ void Process::Kill() {
   }
 }
 
+#ifdef _WIN32
+#ifndef STATUS_BUFFER_OVERFLOW
+#define STATUS_BUFFER_OVERFLOW ((NTSTATUS)0x80000005L)
+#endif
+typedef LONG NTSTATUS;
+typedef NTSTATUS WINAPI NtQueryInformationProcess_t(HANDLE ProcessHandle,
+                                                    ULONG ProcessInformationClass,
+                                                    PVOID ProcessInformation,
+                                                    ULONG ProcessInformationLength,
+                                                    ULONG *ReturnLength);
+
+static std::atomic<NtQueryInformationProcess_t *> NtQueryInformationProcess_ =
+    ATOMIC_VAR_INIT(NULL);
+
+pid_t GetParentPID() {
+  NtQueryInformationProcess_t *NtQueryInformationProcess = NtQueryInformationProcess_;
+  if (!NtQueryInformationProcess) {
+    NtQueryInformationProcess = reinterpret_cast<NtQueryInformationProcess_t *>(
+        GetProcAddress(GetModuleHandle(TEXT("ntdll.dll")),
+                       _CRT_STRINGIZE(NtQueryInformationProcess)));
+    NtQueryInformationProcess_ = NtQueryInformationProcess;
+  }
+  DWORD ppid = 0;
+  PROCESS_BASIC_INFORMATION info;
+  ULONG cb = sizeof(info);
+  NTSTATUS status = NtQueryInformationProcess(GetCurrentProcess(), 0, &info, cb, &cb);
+  if ((status >= 0 || status == STATUS_BUFFER_OVERFLOW) && cb >= sizeof(info)) {
+    ppid = static_cast<DWORD>(reinterpret_cast<uintptr_t>(info.Reserved3));
+  }
+  pid_t result = 0;
+  if (ppid > 0) {
+    // For now, assume PPID = 1 (simulating the reassignment to "init" on Linux)
+    result = 1;
+    if (HANDLE parent = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, ppid)) {
+      long long me_created, parent_created;
+      FILETIME unused;
+      if (GetProcessTimes(GetCurrentProcess(), reinterpret_cast<FILETIME *>(&me_created),
+                          &unused, &unused, &unused) &&
+          GetProcessTimes(parent, reinterpret_cast<FILETIME *>(&parent_created), &unused,
+                          &unused, &unused)) {
+        if (me_created >= parent_created) {
+          // We verified the child is younger than the parent, so we know the parent
+          // is still alive.
+          // (Note that the parent can still die by the time this function returns,
+          // but that race condition exists on POSIX too, which we're emulating here.)
+          result = static_cast<pid_t>(ppid);
+        }
+      }
+      CloseHandle(parent);
+    }
+  }
+  return result;
+}
+#else
+pid_t GetParentPID() { return getppid(); }
+#endif  // #ifdef _WIN32
+
+bool IsParentProcessAlive() { return GetParentPID() != 1; }
+
 }  // namespace ray
 
 namespace std {
 
 bool equal_to<ray::Process>::operator()(const ray::Process &x,
                                         const ray::Process &y) const {
+  using namespace ray;
   return !x.IsNull()
              ? !y.IsNull()
                    ? x.IsValid()
@@ -456,6 +522,7 @@ bool equal_to<ray::Process>::operator()(const ray::Process &x,
 }
 
 size_t hash<ray::Process>::operator()(const ray::Process &value) const {
+  using namespace ray;
   return !value.IsNull() ? value.IsValid() ? hash<pid_t>()(value.GetId())
                                            : hash<void const *>()(value.Get())
                          : size_t();

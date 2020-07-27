@@ -37,7 +37,7 @@ class RayConfig {
  public:                                      \
   inline type name() { return name##_; }
 
-#include "ray_config_def.h"
+#include "ray/common/ray_config_def.h"
 /// -------------------------------------------------------------------------
 #undef RAY_CONFIG
 
@@ -71,7 +71,7 @@ class RayConfig {
     for (auto const &pair : config_map) {
       // We use a big chain of if else statements because C++ doesn't allow
       // switch statements on strings.
-#include "ray_config_def.h"
+#include "ray/common/ray_config_def.h"
       RAY_LOG(FATAL) << "Received unexpected config parameter " << pair.first;
     }
   }

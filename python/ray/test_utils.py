@@ -239,22 +239,22 @@ def wait_for_errors(error_type, num_errors, timeout=20):
 
 
 def wait_for_condition(condition_predictor, timeout=30, retry_interval_ms=100):
-    """A helper function that waits until a condition is met.
+    """Wait until a condition is met or time out with an exception.
 
     Args:
         condition_predictor: A function that predicts the condition.
         timeout: Maximum timeout in seconds.
         retry_interval_ms: Retry interval in milliseconds.
 
-    Return:
-        Whether the condition is met within the timeout.
+    Raises:
+        RuntimeError: If the condition is not met before the timeout expires.
     """
     start = time.time()
     while time.time() - start <= timeout:
         if condition_predictor():
-            return True
+            return
         time.sleep(retry_interval_ms / 1000.0)
-    return False
+    raise RuntimeError("The condition wasn't met before the timeout expired.")
 
 
 def wait_until_succeeded_without_exception(func,
