@@ -134,8 +134,6 @@ public class JobWorker implements Serializable {
       LOG.info("Rollback job worker success, checkpoint is {}, qRecoverInfo is {}.",
           checkpointId, qRecoverInfo);
 
-      task.start();
-
       return CallResult.success(qRecoverInfo);
     } catch (Exception e) {
       LOG.error("Rollback job worker has exception.", e);

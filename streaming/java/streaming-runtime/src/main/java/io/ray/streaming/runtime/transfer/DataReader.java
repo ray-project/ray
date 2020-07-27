@@ -66,6 +66,11 @@ public class DataReader {
     // get sequence ID and message ID from OffsetInfo
     long[] msgIds = new long[inputChannels.size()];
     for (int i = 0; i < inputChannels.size(); i++) {
+      String channelId = inputChannels.get(i);
+      if (!checkpoints.containsKey(channelId)) {
+        msgIds[i] = 0;
+        continue;
+      }
       msgIds[i] = checkpoints.get(inputChannels.get(i)).getStreamingMsgId();
     }
     long timerInterval = workerConfig.transferConfig.readerTimerIntervalMs();

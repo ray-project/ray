@@ -81,13 +81,7 @@ public class GraphManagerImpl implements GraphManager {
 
       source.getExecutionVertices().forEach(sourceExeVertex -> {
         target.getExecutionVertices().forEach(targetExeVertex -> {
-          // generate channel ID and pre-process some mappings
-          String channelId =
-              sourceExeVertex.getChannelIdByPeerActor(targetExeVertex.getWorkerActor());
-          addActorToChannelGroupedActors(channelGroupedActors, channelId,
-              sourceExeVertex.getWorkerActor());
-          addActorToChannelGroupedActors(channelGroupedActors, channelId,
-              targetExeVertex.getWorkerActor());
+          // pre-process some mappings
           actorIdExecutionVertexMap.put(targetExeVertex.getActorId(), targetExeVertex);
           executionVertexMap.put(targetExeVertex.getExecutionVertexId(), targetExeVertex);
           actorIdExecutionVertexMap.put(sourceExeVertex.getActorId(), sourceExeVertex);
@@ -97,6 +91,22 @@ public class GraphManagerImpl implements GraphManager {
               new ExecutionEdge(sourceExeVertex, targetExeVertex, executionJobEdge);
           sourceExeVertex.getOutputEdges().add(executionEdge);
           targetExeVertex.getInputEdges().add(executionEdge);
+        });
+      });
+    });
+
+    jobGraph.getJobEdges().forEach(jobEdge -> {
+      ExecutionJobVertex source = exeJobVertexMap.get(jobEdge.getSrcVertexId());
+      ExecutionJobVertex target = exeJobVertexMap.get(jobEdge.getTargetVertexId());
+      source.getExecutionVertices().forEach(sourceExeVertex -> {
+        target.getExecutionVertices().forEach(targetExeVertex -> {
+          // generate channel ID
+          String channelId =
+              sourceExeVertex.getChannelIdByPeerVertex(targetExeVertex);
+          addActorToChannelGroupedActors(channelGroupedActors, channelId,
+              sourceExeVertex.getWorkerActor());
+          addActorToChannelGroupedActors(channelGroupedActors, channelId,
+              targetExeVertex.getWorkerActor());
         });
       });
     });

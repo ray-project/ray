@@ -84,6 +84,7 @@ public abstract class StreamTask implements Runnable {
 
     thread.setUncaughtExceptionHandler(
         (t, e) -> LOG.error("Uncaught exception in runner thread.", e));
+    LOG.info("Start stream task: {}.", this.getClass().getSimpleName());
     thread.start();
 
     if (isRecover) {
@@ -131,7 +132,7 @@ public abstract class StreamTask implements Runnable {
     }
 
     // writer
-    if (!executionVertex.getInputEdges().isEmpty()) {
+    if (!executionVertex.getOutputEdges().isEmpty()) {
       LOG.info("Register queue writer, channels {}.", executionVertex.getOutputChannelIdList());
       writer = new DataWriter(
           executionVertex.getOutputChannelIdList(),
@@ -142,7 +143,7 @@ public abstract class StreamTask implements Runnable {
     }
 
     // reader
-    if (!executionVertex.getOutputEdges().isEmpty()) {
+    if (!executionVertex.getInputEdges().isEmpty()) {
       LOG.info("Register queue reader, channels {}.", executionVertex.getInputChannelIdList());
       reader = new DataReader(
           executionVertex.getInputChannelIdList(),
@@ -175,7 +176,7 @@ public abstract class StreamTask implements Runnable {
         opGroupedActor.put(opName, new ArrayList<>());
       }
       opGroupedChannelId.get(opName).add(executionVertex.getOutputChannelIdList().get(i));
-      opGroupedActor.get(opName).add(executionVertex.getInputActorList().get(i));
+      opGroupedActor.get(opName).add(executionVertex.getOutputActorList().get(i));
       opPartitionMap.put(opName, edge.getPartition());
     }
     opPartitionMap.keySet().forEach(opName -> {
@@ -204,11 +205,6 @@ public abstract class StreamTask implements Runnable {
     while (!stopped) {
       Thread.sleep(100);
     }
-  }
-
-  public void start() {
-    LOG.info("Start stream task: {}", this.getClass().getSimpleName());
-    this.thread.start();
   }
 
   /**

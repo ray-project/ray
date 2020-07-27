@@ -24,6 +24,7 @@ import io.ray.streaming.runtime.master.resourcemanager.ResourceManager;
 import io.ray.streaming.runtime.master.resourcemanager.ResourceManagerImpl;
 import io.ray.streaming.runtime.master.scheduler.JobSchedulerImpl;
 import io.ray.streaming.runtime.state.StateBackend;
+import io.ray.streaming.runtime.state.StateBackendFactory;
 import io.ray.streaming.runtime.util.CheckpointStateUtil;
 import io.ray.streaming.runtime.util.ResourceUtil;
 import io.ray.streaming.runtime.util.Serializer;
@@ -60,6 +61,7 @@ public class JobMaster {
 
     StreamingConfig streamingConfig = new StreamingConfig(confMap);
     this.conf = streamingConfig.masterConfig;
+    this.stateBackend = StateBackendFactory.getStateBackend(this.conf);
 
     // init runtime context
     runtimeContext = new JobMasterRuntimeContext(streamingConfig);

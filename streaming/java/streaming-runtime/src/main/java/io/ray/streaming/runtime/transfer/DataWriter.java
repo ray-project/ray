@@ -53,9 +53,16 @@ public class DataWriter {
     byte[][] outputChannelsBytes = outputChannels.stream()
         .map(ChannelId::idStrToBytes).toArray(byte[][]::new);
     long channelSize = workerConfig.transferConfig.channelSize();
+
+    // load message id from checkpoints
     long[] msgIds = new long[outputChannels.size()];
     for (int i = 0; i < outputChannels.size(); i++) {
-      msgIds[i] = checkpoints.get(outputChannels.get(i)).getStreamingMsgId();
+      String channelId = outputChannels.get(i);
+      if (!checkpoints.containsKey(channelId)) {
+        msgIds[i] = 0;
+        continue;
+      }
+      msgIds[i] = checkpoints.get(channelId).getStreamingMsgId();
     }
     TransferChannelType channelType = workerConfig.transferConfig.channelType();
     boolean isMock = false;

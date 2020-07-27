@@ -81,7 +81,7 @@ public class ExecutionVertex implements Serializable {
 
   private transient List<BaseActorHandle> outputActorList;
   private transient List<BaseActorHandle> inputActorList;
-  private Map<BaseActorHandle, String> actorChannelMap;
+  private Map<Integer, String> exeVertexChannelMap;
 
 
   public ExecutionVertex(
@@ -100,7 +100,6 @@ public class ExecutionVertex implements Serializable {
     this.executionVertexIndex = index;
     this.resource = generateResources(resourceConfig);
     this.workerConfig = genWorkerConfig(executionJobVertex.getJobConfig());
-    generateActorChannelInfo();
   }
 
   private Map<String, String> genWorkerConfig(Map<String, String> jobConfig) {
@@ -253,31 +252,48 @@ public class ExecutionVertex implements Serializable {
 
   /*---------channel-actor relations---------*/
   public List<String> getOutputChannelIdList() {
+    if (outputChannelIdList == null) {
+      generateActorChannelInfo();
+    }
     return outputChannelIdList;
   }
 
   public List<BaseActorHandle> getOutputActorList() {
+    if (outputActorList == null) {
+      generateActorChannelInfo();
+    }
     return outputActorList;
   }
 
   public List<String> getInputChannelIdList() {
+    if (inputChannelIdList == null) {
+      generateActorChannelInfo();
+    }
     return inputChannelIdList;
   }
 
   public List<BaseActorHandle> getInputActorList() {
+    if (inputActorList == null) {
+      generateActorChannelInfo();
+    }
     return inputActorList;
   }
 
-  public String getChannelIdByPeerActor(BaseActorHandle peerActor) {
-    return actorChannelMap.get(peerActor);
+
+  public String getChannelIdByPeerVertex(ExecutionVertex peerVertex) {
+    if (exeVertexChannelMap == null) {
+      generateActorChannelInfo();
+    }
+    return exeVertexChannelMap.get(peerVertex.getExecutionVertexId());
   }
+
 
   private void generateActorChannelInfo() {
     inputChannelIdList = new ArrayList<>();
     inputActorList = new ArrayList<>();
     outputChannelIdList = new ArrayList<>();
     outputActorList = new ArrayList<>();
-    actorChannelMap = new HashMap<>();
+    exeVertexChannelMap = new HashMap<>();
 
     List<ExecutionEdge> inputEdges = getInputEdges();
     for (ExecutionEdge edge : inputEdges) {
@@ -287,7 +303,7 @@ public class ExecutionVertex implements Serializable {
           getBuildTime());
       inputChannelIdList.add(channelId);
       inputActorList.add(edge.getSourceExecutionVertex().getWorkerActor());
-      actorChannelMap.put(edge.getSourceExecutionVertex().getWorkerActor(), channelId);
+      exeVertexChannelMap.put(edge.getSourceExecutionVertex().getExecutionVertexId(), channelId);
     }
 
     List<ExecutionEdge> outputEdges = getOutputEdges();
@@ -298,7 +314,7 @@ public class ExecutionVertex implements Serializable {
           getBuildTime());
       outputChannelIdList.add(channelId);
       outputActorList.add(edge.getTargetExecutionVertex().getWorkerActor());
-      actorChannelMap.put(edge.getTargetExecutionVertex().getWorkerActor(), channelId);
+      exeVertexChannelMap.put(edge.getTargetExecutionVertex().getExecutionVertexId(), channelId);
     }
   }
 
