@@ -184,9 +184,23 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
       };
 
   auto gc_collect = []() {
-    JNIEnv *env = GetJNIEnv();
-    RAY_LOG(INFO) << "Calling System.gc() ...";
-    env->CallStaticObjectMethod(java_system_class, java_system_gc);
+    // A Java worker process usually contains more than one worker.
+    // A LocalGC request is likely to be received by multiple workers in a short time.
+    // Here we ensure that the 1 second interval of `System.gc()` execution is
+    // guaranteed no matter how frequent the requests are received and how many workers
+    // the process has.
+    static absl::Mutex mutex;
+    static int64_t last_gc_time_ms = 0;
+    absl::MutexLock lock(&mutex);
+    int64_t start = current_time_ms();
+    if (last_gc_time_ms + 1000 < start) {
+      JNIEnv *env = GetJNIEnv();
+      RAY_LOG(INFO) << "Calling System.gc() ...";
+      env->CallStaticObjectMethod(java_system_class, java_system_gc);
+      last_gc_time_ms = current_time_ms();
+      RAY_LOG(INFO) << "GC finished in " << (double) (last_gc_time_ms - start) / 1000
+                    << " seconds.";
+    }
   };
 
   ray::CoreWorkerOptions options = {
