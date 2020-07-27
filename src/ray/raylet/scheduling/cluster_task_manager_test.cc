@@ -269,10 +269,8 @@ class ClusterTaskManagerTest : public ::testing::Test {
       : id_(ClientID::FromRandom()),
         single_node_resource_scheduler_(CreateSingleNodeScheduler(id_.Binary())),
         fulfills_dependencies_calls_(0),
-        _fulfills_dependencies_ptr_(&fulfills_dependencies_calls_),
         dependencies_fulfilled_(true),
         node_info_calls_(0),
-        _node_info_calls_ptr_(&node_info_calls_),
         node_info_(boost::optional<rpc::GcsNodeInfo>{}),
         task_manager_(id_, single_node_resource_scheduler_,
                       [this](const Task &_task) {
@@ -294,11 +292,9 @@ class ClusterTaskManagerTest : public ::testing::Test {
   std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
 
   int fulfills_dependencies_calls_;
-  int *_fulfills_dependencies_ptr_;
   bool dependencies_fulfilled_;
 
   int node_info_calls_;
-  int *_node_info_calls_ptr_;
   boost::optional<rpc::GcsNodeInfo> node_info_;
 
   ClusterTaskManager task_manager_;
