@@ -23,12 +23,9 @@ Algorithm           Frameworks Discrete Actions        Continuous Actions Multi-
 `MARWIL`_           tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_
 `PG`_               tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+autoreg`_
 `PPO`_, `APPO`_     tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+autoreg`_
-`QMIX`_             torch      **Yes** `+parametric`_  No                 **Yes**     `+RNN`_
 `SAC`_              tf + torch **Yes**                 **Yes**            **Yes**
 ------------------- ---------- ----------------------- ------------------ ----------- ---------------------
-`AlphaZero`_        torch      **Yes** `+parametric`_  No                 No
 `LinUCB`_, `LinTS`_ torch      **Yes** `+parametric`_  No                 **Yes**
-`MADDPG`_           tf         **Yes**                 Partial            **Yes**
 =================== ========== ======================= ================== =========== =====================
 
 .. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
@@ -471,38 +468,6 @@ Tuned examples: `Humanoid-v1 <https://github.com/ray-project/ray/blob/master/rll
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
-.. _qmix:
-
-QMIX Monotonic Value Factorisation (QMIX, VDN, IQN)
----------------------------------------------------
-|pytorch|
-`[paper] <https://arxiv.org/abs/1803.11485>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/qmix/qmix.py>`__ Q-Mix is a specialized multi-agent algorithm. Code here is adapted from https://github.com/oxwhirl/pymarl_alpha  to integrate with RLlib multi-agent APIs. To use Q-Mix, you must specify an agent `grouping <rllib-env.html#grouping-agents>`__ in the environment (see the `two-step game example <https://github.com/ray-project/ray/blob/master/rllib/examples/two_step_game.py>`__). Currently, all agents in the group must be homogeneous. The algorithm can be scaled by increasing the number of workers or using Ape-X.
-
-Tuned examples: `Two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/two_step_game.py>`__
-
-**QMIX-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
-
-.. literalinclude:: ../../rllib/agents/qmix/qmix.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
-
-.. _maddpg:
-
-Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG)
----------------------------------------------------------------
-|tensorflow|
-`[paper] <https://arxiv.org/abs/1706.02275>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/contrib/maddpg/maddpg.py>`__ MADDPG is a DDPG centralized critic algorithm. Code here is adapted from https://github.com/openai/maddpg to integrate with RLlib multi-agent APIs. Please check `justinkterry/maddpg-rllib <https://github.com/justinkterry/maddpg-rllib>`__ for examples and more information. Note that the implementation here is based on OpenAI's, and is intended for use with the discrete MPE environments. Please also note that people typically find this method difficult to get to work, even with all applicable optimizations for their environment applied. This method should be viewed as for research purposes, and for reproducing the results of the paper introducing it.
-
-**MADDPG-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
-
-Tuned examples: `Multi-Agent Particle Environment <https://github.com/wsjeon/maddpg-rllib/tree/master/plots>`__, `Two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/two_step_game.py>`__
-
-.. literalinclude:: ../../rllib/contrib/maddpg/maddpg.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
-
 .. _marwil:
 
 Advantage Re-Weighted Imitation Learning (MARWIL)
@@ -519,20 +484,7 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
-.. _alphazero:
 
-Single-Player Alpha Zero (contrib/AlphaZero)
---------------------------------------------
-|pytorch|
-`[paper] <https://arxiv.org/abs/1712.01815>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/contrib/alpha_zero>`__ AlphaZero is an RL agent originally designed for two-player games. This version adapts it to handle single player games. The code can be sscaled to any number of workers. It also implements the ranked rewards `(R2) <https://arxiv.org/abs/1807.01672>`__ strategy to enable self-play even in the one-player setting. The code is mainly purposed to be used for combinatorial optimization.
-
-Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/contrib/alpha_zero/examples/train_cartpole.py>`__
-
-**AlphaZero-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
-
-.. literalinclude:: ../../rllib/contrib/alpha_zero/core/alpha_zero_trainer.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
 
@@ -608,3 +560,74 @@ Tuned examples: `SimpleContextualBandit <https://github.com/ray-project/ray/blob
 
 .. |pytorch| image:: pytorch.png
     :width: 24
+
+
+Multi-Agent Methods
+-------------------
+=================== ========== ======================= ================== =========== =====================
+Algorithm           Frameworks Discrete Actions        Continuous Actions Multi-Agent Model Support
+=================== ========== ======================= ================== =========== =====================
+`AlphaZero`_        torch      **Yes** `+parametric`_  No                 No
+`QMIX`_             torch      **Yes** `+parametric`_  No                 **Yes**     `+RNN`_
+`MADDPG`_           tf         **Yes**                 Partial            **Yes**
+`Parameter Sharing`_ Depends on bootstrapped algorithm
+`Fully Independent Learning`_ Depends on bootstrapped algorithm
+`Centralized Critic Methods`_ Depends on bootstrapped algorithm
+
+.. _qmix:
+QMIX Monotonic Value Factorisation (QMIX, VDN, IQN)
+---------------------------------------------------
+|pytorch|
+`[paper] <https://arxiv.org/abs/1803.11485>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/qmix/qmix.py>`__ Q-Mix is a specialized multi-agent algorithm. Code here is adapted from https://github.com/oxwhirl/pymarl_alpha  to integrate with RLlib multi-agent APIs. To use Q-Mix, you must specify an agent `grouping <rllib-env.html#grouping-agents>`__ in the environment (see the `two-step game example <https://github.com/ray-project/ray/blob/master/rllib/examples/two_step_game.py>`__). Currently, all agents in the group must be homogeneous. The algorithm can be scaled by increasing the number of workers or using Ape-X.
+
+Tuned examples: `Two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/two_step_game.py>`__
+
+**QMIX-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+
+.. literalinclude:: ../../rllib/agents/qmix/qmix.py
+   :language: python
+   :start-after: __sphinx_doc_begin__
+   :end-before: __sphinx_doc_end__
+
+.. _maddpg:
+
+Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG)
+---------------------------------------------------------------
+|tensorflow|
+`[paper] <https://arxiv.org/abs/1706.02275>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/contrib/maddpg/maddpg.py>`__ MADDPG is a DDPG centralized critic algorithm. Code here is adapted from https://github.com/openai/maddpg to integrate with RLlib multi-agent APIs. Please check `justinkterry/maddpg-rllib <https://github.com/justinkterry/maddpg-rllib>`__ for examples and more information. Note that the implementation here is based on OpenAI's, and is intended for use with the discrete MPE environments. Please also note that people typically find this method difficult to get to work, even with all applicable optimizations for their environment applied. This method should be viewed as for research purposes, and for reproducing the results of the paper introducing it.
+
+**MADDPG-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+
+Tuned examples: `Multi-Agent Particle Environment <https://github.com/wsjeon/maddpg-rllib/tree/master/plots>`__, `Two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/two_step_game.py>`__
+
+.. literalinclude:: ../../rllib/contrib/maddpg/maddpg.py
+   :language: python
+   :start-after: __sphinx_doc_begin__
+   :end-before: __sphinx_doc_end__
+
+.. _alphazero:
+
+Single-Player Alpha Zero (contrib/AlphaZero)
+--------------------------------------------
+|pytorch|
+`[paper] <https://arxiv.org/abs/1712.01815>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/contrib/alpha_zero>`__ AlphaZero is an RL agent originally designed for two-player games. This version adapts it to handle single player games. The code can be sscaled to any number of workers. It also implements the ranked rewards `(R2) <https://arxiv.org/abs/1807.01672>`__ strategy to enable self-play even in the one-player setting. The code is mainly purposed to be used for combinatorial optimization.
+
+Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/contrib/alpha_zero/examples/train_cartpole.py>`__
+
+**AlphaZero-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+
+.. literalinclude:: ../../rllib/contrib/alpha_zero/core/alpha_zero_trainer.py
+   :language: python
+   :start-after: __sphinx_doc_begin__
+
+Parameter Sharing
+-----------------
+
+Parameter Sharing `[paper] <http://ala2017.it.nuigalway.ie/papers/ALA2017_Gupta.pdf>` and `[paper] <https://arxiv.org/abs/2005.13625>` `[implementation] <github.com/parametersharingmadrl/parametersharingmadrl>` in multi-agent RL is a class of methods that take a base single agent method, and use it to learn a single policy for all agents. As naive as this seems, this is shown to achieve state of the art performance in cooperative games, and parameter sharing good DRL methods is usually how you should start trying to learn a multi-agent problem. An example implementation of this in RLlib is included in the second paper. Additionally, while this seems like can only work for environments with homogeneous agents, this is not the case. The second paper introduces how to do this for every case of heterogeneity, and simple wrappers that apply the methods to [PettingZoo](https://github.com/PettingZoo-Team/PettingZoo) API environments are available in the [SuperSuit](https://github.com/PettingZoo-Team/SuperSuit) package.
+
+Fully Independent Learning
+--------------------------
+
+
+Centralized Critic Methods
+--------------------------
