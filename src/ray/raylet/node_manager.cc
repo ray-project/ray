@@ -1763,11 +1763,13 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
         }
 
         auto reply_failure_handler = [this, worker_id]() {
-          RAY_LOG(WARNING)
-              << "Failed to reply to GCS server, because it might have restarted. GCS "
-                 "cannot obtain the information of the leased worker, so we need to "
-                 "release the leased worker to avoid leakage.";
-          leased_workers_.erase(worker_id);
+          if (RayConfig::instance().gcs_actor_service_enabled()) {
+            RAY_LOG(WARNING)
+                << "Failed to reply to GCS server, because it might have restarted. GCS "
+                   "cannot obtain the information of the leased worker, so we need to "
+                   "release the leased worker to avoid leakage.";
+            leased_workers_.erase(worker_id);
+          }
         };
         send_reply_callback(Status::OK(), nullptr, reply_failure_handler);
         RAY_CHECK(leased_workers_.find(worker_id) == leased_workers_.end())
