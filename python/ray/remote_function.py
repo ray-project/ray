@@ -151,7 +151,7 @@ class RemoteFunction:
                 resources=None,
                 max_retries=None,
                 placement_group_id=None,
-                placement_group_bundle_index=None):
+                placement_group_bundle_index=0):
         """Submit the remote function for execution."""
         worker = ray.worker.global_worker
         worker.check_connected()

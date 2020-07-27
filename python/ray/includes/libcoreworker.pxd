@@ -5,6 +5,7 @@
 from libc.stdint cimport int64_t
 from libcpp cimport bool as c_bool
 from libcpp.memory cimport shared_ptr, unique_ptr
+from libcpp.pair cimport pair as c_pair
 from libcpp.string cimport string as c_string
 from libcpp.unordered_map cimport unordered_map
 from libcpp.utility cimport pair

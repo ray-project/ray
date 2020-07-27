@@ -1764,7 +1764,7 @@ def make_decorator(num_return_vals=None,
                    max_task_retries=None,
                    worker=None,
                    placement_group_id=None,
-                   placement_group_bundle_index=None):
+                   placement_group_bundle_index=0):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
