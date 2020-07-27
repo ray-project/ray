@@ -19,12 +19,12 @@ RUN apt-get update \
     && wget \
         --quiet "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh" \
         -O /tmp/miniconda.sh \
-    && /bin/bash miniconda.sh -b -u -p $HOME/anaconda3 \
+    && /bin/bash /tmp/miniconda.sh -b -u -p $HOME/anaconda3 \
     && $HOME/anaconda3/bin/conda init \ 
     && echo 'export PATH=$HOME/anaconda3/bin:$PATH' > /etc/profile.d/conda.sh \
     && rm /tmp/miniconda.sh \
     && $HOME/anaconda3/bin/conda install -y \
-        libgcc python=3.6.9 \
+        libgcc python=3.7.7 \ 
     && $HOME/anaconda3/bin/conda clean -y --all \
     && $HOME/anaconda3/bin/pip install --no-cache-dir \
         flatbuffers \
