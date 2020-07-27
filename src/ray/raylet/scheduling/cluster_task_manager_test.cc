@@ -267,7 +267,24 @@ class ClusterTaskManagerTest : public ::testing::Test {
  public:
   ClusterTaskManagerTest()
       : id_(ClientID::FromRandom()),
-        single_node_resource_scheduler_(CreateSingleNodeScheduler(id_.Binary())) {}
+        single_node_resource_scheduler_(CreateSingleNodeScheduler(id_.Binary())),
+        fulfills_dependencies_calls_(0),
+        _fulfills_dependencies_ptr_(&fulfills_dependencies_calls_),
+        dependencies_fulfilled_(true),
+        node_info_calls_(0),
+        _node_info_calls_ptr_(&node_info_calls_),
+        node_info_(boost::optional<rpc::GcsNodeInfo>{}),
+        task_manager_(id_, single_node_resource_scheduler_,
+                      [this](const Task &_task) {
+                        (*_fulfills_dependencies_ptr_)++;
+                        return dependencies_fulfilled_;
+                      },
+                      [this](const ClientID &node_id) {
+                        (*_node_info_calls_ptr_)++;
+                        return node_info_;
+                      }
+        )
+  {}
 
   void SetUp() {}
 
@@ -277,6 +294,16 @@ class ClusterTaskManagerTest : public ::testing::Test {
   std::shared_ptr<ClusterResourceScheduler> single_node_resource_scheduler_;
   MockWorkerPool pool_;
   std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
+
+  int fulfills_dependencies_calls_;
+  int *_fulfills_dependencies_ptr_;
+  bool dependencies_fulfilled_;
+
+  int node_info_calls_;
+  int *_node_info_calls_ptr_;
+  boost::optional<rpc::GcsNodeInfo> node_info_;
+
+  ClusterTaskManager task_manager_;
 };
 
 TEST_F(ClusterTaskManagerTest, BasicTest) {
@@ -285,20 +312,15 @@ TEST_F(ClusterTaskManagerTest, BasicTest) {
     1. Queue and attempt to schedule/dispatch atest with no workers available
     2. A worker becomes available, dispatch again.
    */
-  // Task has no dependencies and shouldn't spill so these functions should never be
-  // called.
-  auto task_manager =
-      ClusterTaskManager(id_, single_node_resource_scheduler_, nullptr, nullptr);
-
   Task task = CreateTask({{ray::kCPU_ResourceLabel, 4}});
   rpc::RequestWorkerLeaseReply reply;
   bool callback_occurred = false;
   bool *callback_occurred_ptr = &callback_occurred;
   auto callback = [callback_occurred_ptr]() { *callback_occurred_ptr = true; };
 
-  task_manager.QueueTask(task, &reply, callback);
-  task_manager.SchedulePendingTasks();
-  task_manager.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  task_manager_.QueueTask(task, &reply, callback);
+  task_manager_.SchedulePendingTasks();
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
 
   ASSERT_FALSE(callback_occurred);
   ASSERT_TRUE(leased_workers_.size() == 0);
@@ -308,11 +330,13 @@ TEST_F(ClusterTaskManagerTest, BasicTest) {
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
   pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
 
-  task_manager.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
 
   ASSERT_TRUE(callback_occurred == true);
   ASSERT_TRUE(leased_workers_.size() == 1);
   ASSERT_TRUE(pool_.workers.size() == 0);
+  ASSERT_TRUE(fulfills_dependencies_calls_ == 0);
+  ASSERT_TRUE(node_info_calls_ == 0);
 }
 
 }  // namespace raylet
