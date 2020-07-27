@@ -206,7 +206,7 @@ def build_torch_policy(name,
                 optimizers = TorchPolicy.optimizer(self)
             optimizers = force_list(optimizers)
             if hasattr(self, "exploration"):
-                optimizers.append(self.exploration.get_exploration_optimizer(self, self.config))
+                optimizers.append(self.exploration.get_exploration_optimizer(self.config))
             return optimizers
 
         @override(TorchPolicy)

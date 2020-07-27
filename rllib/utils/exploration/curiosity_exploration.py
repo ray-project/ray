@@ -22,7 +22,7 @@ reward.
 from gym.spaces import Space
 from typing import Union, Optional
 
-from ray.rllib.policy.policy import Policy
+#from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 
 # TODO alphabetize imports, lint
@@ -164,7 +164,6 @@ class Curiosity(Exploration):
             explore (bool): If true, uses the submodule strategy to select the
                 next action
         """
-        return 0
         #return self.exploration_submodule.get_exploration_action(
             #action_distribution=action_distribution, timestep=timestep)
 
