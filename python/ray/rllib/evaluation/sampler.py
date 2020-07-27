@@ -371,7 +371,7 @@ def _process_observations(base_env, policies, batch_builder_pool,
                 "More than {} observations for {} env steps ".format(
                     episode.batch_builder.total(),
                     episode.batch_builder.count) + "are buffered in "
-                "the sampler. If this is more than you expected, check that "
+                "the sampler. If this is more than you expected, check "
                 "that you set a horizon on your environment correctly. Note "
                 "that in multi-agent environments, `sample_batch_size` sets "
                 "the batch size based on environment steps, not the steps of "
