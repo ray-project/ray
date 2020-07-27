@@ -102,7 +102,6 @@ int main(int argc, char *argv[]) {
   ray::gcs::GcsClientOptions client_options(redis_address, redis_port, redis_password);
   std::shared_ptr<ray::gcs::GcsClient> gcs_client;
 
-  RayConfig::instance().initialize(raylet_config);
   gcs_client = std::make_shared<ray::gcs::ServiceBasedGcsClient>(client_options);
 
   RAY_CHECK_OK(gcs_client->Connect(main_service));
@@ -216,6 +215,12 @@ int main(int argc, char *argv[]) {
                        << object_manager_config.rpc_service_threads_number
                        << ", object_chunk_size = "
                        << object_manager_config.object_chunk_size;
+        // Initialize stats.
+        const ray::stats::TagsType global_tags = {
+            {ray::stats::ComponentKey, "raylet"},
+            {ray::stats::VersionKey, "0.9.0.dev0"},
+            {ray::stats::NodeAddressKey, node_ip_address}};
+        ray::stats::Init(global_tags, metrics_agent_port);
 
         // Initialize the node manager.
         server.reset(new ray::raylet::Raylet(
@@ -224,13 +229,6 @@ int main(int argc, char *argv[]) {
 
         server->Start();
       }));
-
-  // Initialize stats.
-  const ray::stats::TagsType global_tags = {
-      {ray::stats::JobNameKey, "raylet"},
-      {ray::stats::VersionKey, "0.9.0.dev0"},
-      {ray::stats::NodeAddressKey, node_ip_address}};
-  ray::stats::Init(global_tags, metrics_agent_port);
 
   // Destroy the Raylet on a SIGTERM. The pointer to main_service is
   // guaranteed to be valid since this function will run the event loop

@@ -269,6 +269,7 @@ void CoreWorkerProcess::RunStatsService() {
 void CoreWorkerProcess::StopStatsService() {
   absl::MutexLock lock(&CoreWorkerProcess::stats_initialization_mutex_);
   RAY_LOG(DEBUG) << "Stats stop in core worker.";
+  // Shutdown stats module if last core worker exits.
   enable_stats_count_--;
   if (enable_stats_count_ > 0) {
     return;
