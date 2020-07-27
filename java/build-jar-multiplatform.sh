@@ -72,14 +72,14 @@ build_jars_multiplatform() {
   build_jars multiplatform false
 }
 
-# Download darwin/windows ray-runtime-$version.jar from s3
-# This function assumes linux jars exist already.
+# Download linux/windows ray-related jar from s3
+# This function assumes darwin jars exist already.
 download_jars() {
   local wait_time=0
   local sleep_time_units=60
 
   for f in "$@"; do
-    for os in 'darwin' 'windows'; do
+    for os in 'linux' 'windows'; do
       if [[ "$os" == "windows" ]]; then
         break
       fi
