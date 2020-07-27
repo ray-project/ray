@@ -17,11 +17,13 @@ from ray.includes.unique_ids cimport (
     CJobID,
     CTaskID,
     CObjectID,
+    CPlacementGroupID,
 )
 from ray.includes.common cimport (
     CAddress,
     CActorCreationOptions,
     CBuffer,
+    CPlacementGroupCreationOptions,
     CRayFunction,
     CRayObject,
     CRayStatus,
@@ -91,6 +93,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_vector[unique_ptr[CTaskArg]] &args,
             const CActorCreationOptions &options,
             const c_string &extension_data, CActorID *actor_id)
+        CRayStatus CreatePlacementGroup(
+            const CPlacementGroupCreationOptions &options, 
+            CPlacementGroupID *placement_group_id)
         void SubmitActorTask(
             const CActorID &actor_id, const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,
@@ -124,7 +129,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                         *bytes,
                                         CObjectID *c_actor_handle_id)
         const CActorHandle* GetActorHandle(const CActorID &actor_id) const
-        const CActorHandle* GetNamedActorHandle(const c_string &name)
+        pair[const CActorHandle*, CRayStatus] GetNamedActorHandle(
+            const c_string &name)
         void AddLocalReference(const CObjectID &object_id)
         void RemoveLocalReference(const CObjectID &object_id)
         void PutObjectIntoPlasma(const CRayObject &object,
@@ -224,9 +230,12 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         void Initialize(const CCoreWorkerOptions &options)
         # Only call this in CoreWorker.__cinit__,
         # use CoreWorker.core_worker to access C++ CoreWorker.
+
         @staticmethod
         CCoreWorker &GetCoreWorker()
+
         @staticmethod
         void Shutdown()
+
         @staticmethod
         void RunTaskExecutionLoop()

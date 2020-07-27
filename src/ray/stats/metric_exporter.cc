@@ -29,6 +29,7 @@ void MetricExporter::ExportToPoints(
   if (view_data.size() == 0) {
     return;
   }
+
   // NOTE(lingxuan.zlx): No sampling in histogram data, so all points all be filled in.
   std::unordered_map<std::string, std::string> tags;
   for (size_t i = 0; i < view_data.begin()->first.size(); ++i) {
@@ -52,18 +53,10 @@ void MetricExporter::ExportToPoints(
     }
   }
   hist_mean /= view_data.size();
-  MetricPoint mean_point = {metric_name + ".mean",
-                            current_sys_time_ms(),
-                            hist_mean,
+  MetricPoint mean_point = {metric_name + ".mean", current_sys_time_ms(), hist_mean,
                             tags};
-  MetricPoint max_point = {metric_name + ".max",
-                           current_sys_time_ms(),
-                           hist_max,
-                           tags};
-  MetricPoint min_point = {metric_name + ".min",
-                           current_sys_time_ms(),
-                           hist_min,
-                           tags};
+  MetricPoint max_point = {metric_name + ".max", current_sys_time_ms(), hist_max, tags};
+  MetricPoint min_point = {metric_name + ".min", current_sys_time_ms(), hist_min, tags};
   points.push_back(std::move(mean_point));
   points.push_back(std::move(max_point));
   points.push_back(std::move(min_point));
@@ -112,5 +105,6 @@ void MetricExporter::ExportViewData(
   RAY_LOG(DEBUG) << "Point size : " << points.size();
   metric_exporter_client_->ReportMetrics(points);
 }
+
 }  // namespace stats
 }  // namespace ray

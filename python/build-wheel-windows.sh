@@ -32,12 +32,14 @@ install_ray() {
     pip install wheel
 
     cd "${WORKSPACE_DIR}"/python
-    pip install -v -e .
+    "${WORKSPACE_DIR}"/ci/keep_alive pip install -v -e .
   )
 }
 
 uninstall_ray() {
   pip uninstall -y ray
+
+  rm -r -f "${WORKSPACE_DIR}"/python/ray/thirdparty_files
 }
 
 build_wheel_windows() {

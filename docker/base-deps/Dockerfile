@@ -1,7 +1,7 @@
 # The base-deps Docker image installs main libraries needed to run Ray
 
-FROM ubuntu:bionic
-RUN apt-get update \
+FROM ubuntu:focal
+RUN apt-get update -y && apt-get upgrade -y \
     && apt-get install -y \
         git \
         wget \
@@ -15,6 +15,7 @@ RUN apt-get update \
         tmux \
         screen \
         rsync \
+        openssh-client \
     && apt-get clean \
     && wget \
         --quiet "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh" \
@@ -35,7 +36,3 @@ RUN apt-get update \
     && $HOME/anaconda3/bin/pip uninstall -y dask
 
 ENV PATH "$HOME/anaconda3/bin:$PATH"
-
-# OLD IS 
-# ray-project/base-deps                latest              50a2d9de82fa        30 seconds ago      961MB
-# ray-project/base-deps                latest              5c46dd1acbdf        50 seconds ago      1.03GB

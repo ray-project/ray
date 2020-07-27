@@ -121,7 +121,7 @@ class CoreWorkerDirectActorTaskSubmitter
     /// The current state of the actor. If this is ALIVE, then we should have
     /// an RPC client to the actor. If this is DEAD, then all tasks in the
     /// queue will be marked failed and all other ClientQueue state is ignored.
-    rpc::ActorTableData::ActorState state = rpc::ActorTableData::PENDING;
+    rpc::ActorTableData::ActorState state = rpc::ActorTableData::DEPENDENCIES_UNREADY;
     /// How many times this actor has been restarted before. Starts at -1 to
     /// indicate that the actor is not yet created. This is used to drop stale
     /// messages from the GCS.
@@ -220,7 +220,7 @@ class CoreWorkerDirectActorTaskSubmitter
   /// Factory for producing new core worker clients.
   rpc::ClientFactoryFn client_factory_;
 
-  /// Mutex to proect the various maps below.
+  /// Mutex to protect the various maps below.
   mutable absl::Mutex mu_;
 
   absl::flat_hash_map<ActorID, ClientQueue> client_queues_ GUARDED_BY(mu_);
@@ -274,7 +274,7 @@ class DependencyWaiterImpl : public DependencyWaiter {
             std::function<void()> on_dependencies_available) override {
     auto tag = next_request_id_++;
     requests_[tag] = on_dependencies_available;
-    dependency_client_.WaitForDirectActorCallArgs(dependencies, tag);
+    RAY_CHECK_OK(dependency_client_.WaitForDirectActorCallArgs(dependencies, tag));
   }
 
   /// Fulfills the callback stored by Wait().
@@ -332,11 +332,11 @@ class SchedulingQueue {
   SchedulingQueue(boost::asio::io_service &main_io_service, DependencyWaiter &waiter,
                   WorkerContext &worker_context,
                   int64_t reorder_wait_seconds = kMaxReorderWaitSeconds)
-      : wait_timer_(main_io_service),
-        waiter_(waiter),
+      : worker_context_(worker_context),
         reorder_wait_seconds_(reorder_wait_seconds),
+        wait_timer_(main_io_service),
         main_thread_id_(boost::this_thread::get_id()),
-        worker_context_(worker_context) {}
+        waiter_(waiter) {}
 
   void Add(int64_t seq_no, int64_t client_processed_up_to,
            std::function<void()> accept_request, std::function<void()> reject_request,

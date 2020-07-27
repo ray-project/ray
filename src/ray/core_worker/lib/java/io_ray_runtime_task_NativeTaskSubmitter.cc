@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/lib/java/io_ray_runtime_task_NativeTaskSubmitter.h"
+#include "io_ray_runtime_task_NativeTaskSubmitter.h"
 
 #include <jni.h>
 
+#include "jni_utils.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker.h"
-#include "ray/core_worker/lib/java/jni_utils.h"
 
 /// Store C++ instances of ray function in the cache to avoid unnessesary JNI operations.
 thread_local std::unordered_map<jint, std::vector<std::pair<jobject, ray::RayFunction>>>
@@ -103,11 +103,21 @@ inline ray::TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject call
 
 inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
                                                         jobject actorCreationOptions) {
+  bool global = false;
+  std::string name = "";
   int64_t max_restarts = 0;
   std::unordered_map<std::string, double> resources;
   std::vector<std::string> dynamic_worker_options;
   uint64_t max_concurrency = 1;
+  auto placement_options = std::make_pair(ray::PlacementGroupID::Nil(), -1);
   if (actorCreationOptions) {
+    global =
+        env->GetBooleanField(actorCreationOptions, java_actor_creation_options_global);
+    auto java_name = (jstring)env->GetObjectField(actorCreationOptions,
+                                                  java_actor_creation_options_name);
+    if (java_name) {
+      name = JavaStringToNativeString(env, java_name);
+    }
     max_restarts =
         env->GetIntField(actorCreationOptions, java_actor_creation_options_max_restarts);
     jobject java_resources =
@@ -121,9 +131,22 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
     }
     max_concurrency = static_cast<uint64_t>(env->GetIntField(
         actorCreationOptions, java_actor_creation_options_max_concurrency));
+
+    auto group =
+        env->GetObjectField(actorCreationOptions, java_actor_creation_options_group);
+    if (group) {
+      auto placement_group_id = env->GetObjectField(group, java_placement_group_id);
+      auto java_id_bytes = static_cast<jbyteArray>(
+          env->CallObjectMethod(placement_group_id, java_base_id_get_bytes));
+      RAY_CHECK_JAVA_EXCEPTION(env);
+      auto id = JavaByteArrayToId<ray::PlacementGroupID>(env, java_id_bytes);
+      auto index = env->GetIntField(actorCreationOptions,
+                                    java_actor_creation_options_bundle_index);
+      placement_options = std::make_pair(id, index);
+    }
   }
 
-  std::string name = "";
+  auto full_name = GetActorFullName(global, name);
   ray::ActorCreationOptions actor_creation_options{
       max_restarts,
       0,  // TODO: Allow setting max_task_retries from Java.
@@ -132,9 +155,33 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
       resources,
       dynamic_worker_options,
       /*is_detached=*/false,
-      name,
-      /*is_asyncio=*/false};
+      full_name,
+      /*is_asyncio=*/false,
+      placement_options};
   return actor_creation_options;
+}
+
+inline ray::PlacementStrategy ConvertStrategy(jint java_strategy) {
+  return 0 == java_strategy ? ray::rpc::PACK : ray::rpc::SPREAD;
+}
+
+inline ray::PlacementGroupCreationOptions ToPlacementGroupCreationOptions(
+    JNIEnv *env, jobject java_bundles, jint java_strategy) {
+  std::vector<std::unordered_map<std::string, double>> bundles;
+  JavaListToNativeVector<std::unordered_map<std::string, double>>(
+      env, java_bundles, &bundles, [](JNIEnv *env, jobject java_bundle) {
+        return JavaMapToNativeMap<std::string, double>(
+            env, java_bundle,
+            [](JNIEnv *env, jobject java_key) {
+              return JavaStringToNativeString(env, (jstring)java_key);
+            },
+            [](JNIEnv *env, jobject java_value) {
+              double value = env->CallDoubleMethod(java_value, java_double_double_value);
+              RAY_CHECK_JAVA_EXCEPTION(env);
+              return value;
+            });
+      });
+  return ray::PlacementGroupCreationOptions("", ConvertStrategy(java_strategy), bundles);
 }
 
 #ifdef __cplusplus
@@ -195,13 +242,25 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
   ray::CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
       actor_id, ray_function, task_args, task_options, &return_ids);
 
-
   // This is to avoid creating an empty java list and boost performance.
   if (return_ids.empty()) {
     return nullptr;
   }
 
   return NativeIdVectorToJavaByteArrayList(env, return_ids);
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_task_NativeTaskSubmitter_nativeCreatePlacementGroup(JNIEnv *env,
+                                                                        jclass,
+                                                                        jobject bundles,
+                                                                        jint strategy) {
+  auto options = ToPlacementGroupCreationOptions(env, bundles, strategy);
+  ray::PlacementGroupID placement_group_id;
+  auto status = ray::CoreWorkerProcess::GetCoreWorker().CreatePlacementGroup(
+      options, &placement_group_id);
+  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
+  return IdToJavaByteArray<ray::PlacementGroupID>(env, placement_group_id);
 }
 
 #ifdef __cplusplus

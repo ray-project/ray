@@ -46,7 +46,7 @@ _ = Actor.remote()
         else:
             return False
 
-    assert wait_for_condition(actor_finish)
+    wait_for_condition(actor_finish)
 
 
 def test_job_gc_with_detached_actor(call_ray_start):

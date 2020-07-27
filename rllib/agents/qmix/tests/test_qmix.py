@@ -53,7 +53,7 @@ class AvailActionsTestEnv(MultiAgentEnv):
         return obs, rewards, dones, {}
 
 
-class TestAvailActionsQMix(unittest.TestCase):
+class TestQMix(unittest.TestCase):
     def test_avail_actions_qmix(self):
         grouping = {
             "group_1": ["agent_1"],  # trivial grouping for testing

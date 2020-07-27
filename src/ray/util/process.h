@@ -83,6 +83,12 @@ class Process {
   int Wait() const;
 };
 
+// Get the Process ID of the parent process. If the parent process exits, the PID
+// will be 1 (this simulates POSIX getppid()).
+pid_t GetParentPID();
+
+bool IsParentProcessAlive();
+
 }  // namespace ray
 
 // We only define operators required by the standard library (==, hash):

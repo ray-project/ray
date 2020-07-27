@@ -1,11 +1,10 @@
-#include "gtest/gtest.h"
-#include "ray/util/logging.h"
-
-#include <unistd.h>
 #include <iostream>
 #include <set>
 #include <thread>
+
+#include "gtest/gtest.h"
 #include "message/message.h"
+#include "ray/util/logging.h"
 #include "ring_buffer.h"
 
 using namespace ray;
@@ -41,7 +40,7 @@ TEST(StreamingRingBufferTest, spsc_test) {
   std::thread thread([&ring_buffer]() {
     for (size_t j = 0; j < data_n; ++j) {
       StreamingMessagePtr message = std::make_shared<StreamingMessage>(
-          reinterpret_cast<uint8_t *>(&j), sizeof(size_t), j,
+          reinterpret_cast<uint8_t *>(&j), static_cast<uint32_t>(sizeof(size_t)), j,
           StreamingMessageType::Message);
       while (ring_buffer.IsFull()) {
       }
@@ -67,7 +66,7 @@ TEST(StreamingRingBufferTest, mutex_test) {
   std::thread thread([&ring_buffer]() {
     for (size_t j = 0; j < data_n; ++j) {
       StreamingMessagePtr message = std::make_shared<StreamingMessage>(
-          reinterpret_cast<uint8_t *>(&j), sizeof(size_t), j,
+          reinterpret_cast<uint8_t *>(&j), static_cast<uint32_t>(sizeof(size_t)), j,
           StreamingMessageType::Message);
       while (ring_buffer.IsFull()) {
       }
