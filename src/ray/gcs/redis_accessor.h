@@ -52,6 +52,9 @@ class RedisLogBasedActorInfoAccessor : public ActorInfoAccessor {
         "RedisLogBasedActorInfoAccessor does not support named detached actors.");
   }
 
+  Status AsyncRegisterActor(const TaskSpecification &task_spec,
+                            const StatusCallback &callback) override;
+
   Status AsyncCreateActor(const TaskSpecification &task_spec,
                           const StatusCallback &callback) override;
 

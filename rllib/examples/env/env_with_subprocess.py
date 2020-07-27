@@ -3,14 +3,13 @@ import gym
 from gym.spaces import Discrete
 import os
 import subprocess
-import time
 
 
 class EnvWithSubprocess(gym.Env):
-    """Our env that spawns a subprocess."""
+    """An env that spawns a subprocess."""
 
     # Dummy command to run as a subprocess with a unique name
-    UNIQUE_CMD = "sleep {}".format(str(time.time()))
+    UNIQUE_CMD = "sleep 20"
 
     def __init__(self, config):
         self.UNIQUE_FILE_0 = config["tmp_file1"]
@@ -20,11 +19,11 @@ class EnvWithSubprocess(gym.Env):
 
         self.action_space = Discrete(2)
         self.observation_space = Discrete(2)
-        # Subprocess that should be cleaned up
+        # Subprocess that should be cleaned up.
         self.subproc = subprocess.Popen(
             self.UNIQUE_CMD.split(" "), shell=False)
         self.config = config
-        # Exit handler should be called
+        # Exit handler should be called.
         atexit.register(lambda: self.subproc.kill())
         if config.worker_index == 0:
             atexit.register(lambda: os.unlink(self.UNIQUE_FILE_0))

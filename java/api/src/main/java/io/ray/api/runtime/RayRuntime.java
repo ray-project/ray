@@ -14,8 +14,11 @@ import io.ray.api.id.ObjectId;
 import io.ray.api.id.UniqueId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
+import io.ray.api.placementgroup.PlacementGroup;
+import io.ray.api.placementgroup.PlacementStrategy;
 import io.ray.api.runtimecontext.RuntimeContext;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 
@@ -168,6 +171,9 @@ public interface RayRuntime {
    */
   PyActorHandle createActor(PyActorClass pyActorClass, Object[] args,
                             ActorCreationOptions options);
+
+  PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
+      PlacementStrategy strategy);
 
   RuntimeContext getRuntimeContext();
 

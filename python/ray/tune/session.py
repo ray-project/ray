@@ -1,3 +1,4 @@
+import os
 import logging
 
 logger = logging.getLogger(__name__)
@@ -7,8 +8,8 @@ _session = None
 
 def get_session():
     global _session
-    if _session is None:
-        raise ValueError(
+    if not _session:
+        logger.warning(
             "Session not detected. You should not be calling this function "
             "outside `tune.run` or while using the class API. ")
     return _session
@@ -67,7 +68,8 @@ def report(**kwargs):
             metrics can be used for early stopping or optimization.
     """
     _session = get_session()
-    return _session(**kwargs)
+    if _session:
+        return _session(**kwargs)
 
 
 def make_checkpoint_dir(step=None):
@@ -106,7 +108,10 @@ def make_checkpoint_dir(step=None):
 
     """
     _session = get_session()
-    return _session.make_checkpoint_dir(step=step)
+    if _session:
+        return _session.make_checkpoint_dir(step=step)
+    else:
+        return os.path.abspath("./")
 
 
 def save_checkpoint(checkpoint):
@@ -149,7 +154,8 @@ def save_checkpoint(checkpoint):
     .. versionadded:: 0.8.6
     """
     _session = get_session()
-    return _session.save_checkpoint(checkpoint)
+    if _session:
+        return _session.save_checkpoint(checkpoint)
 
 
 def get_trial_dir():
@@ -158,7 +164,8 @@ def get_trial_dir():
     For function API use only.
     """
     _session = get_session()
-    return _session.logdir
+    if _session:
+        return _session.logdir
 
 
 def get_trial_name():
@@ -167,7 +174,8 @@ def get_trial_name():
     For function API use only.
     """
     _session = get_session()
-    return _session.trial_name
+    if _session:
+        return _session.trial_name
 
 
 def get_trial_id():
@@ -176,7 +184,8 @@ def get_trial_id():
     For function API use only.
     """
     _session = get_session()
-    return _session.trial_id
+    if _session:
+        return _session.trial_id
 
 
 __all__ = ["report", "get_trial_dir", "get_trial_name", "get_trial_id"]
