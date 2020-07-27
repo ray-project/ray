@@ -16,6 +16,7 @@ import io.ray.runtime.runner.RunManager;
 import io.ray.runtime.task.NativeTaskExecutor;
 import io.ray.runtime.task.NativeTaskSubmitter;
 import io.ray.runtime.task.TaskExecutor;
+import io.ray.runtime.util.BinaryFileUtil;
 import io.ray.runtime.util.JniUtils;
 import java.io.File;
 import java.io.IOException;
@@ -49,7 +50,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       rayConfig.setSessionDir(sessionDir);
     }
 
-    JniUtils.loadLibrary("core_worker_library_java", true);
+    JniUtils.loadLibrary(BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
     LOGGER.debug("Native libraries loaded.");
     // Reset library path at runtime.
     resetLibraryPath(rayConfig);
