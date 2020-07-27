@@ -21,6 +21,7 @@
 *ray*TaskID*
 *ray*ActorID*
 *ray*ObjectID*
+*ray*ObjectReference*
 # Others
 *ray*CoreWorker*
 *PyInit*
