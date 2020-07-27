@@ -52,8 +52,7 @@ class DashboardAgent(object):
         self.aioredis_client = None
         self.aiogrpc_raylet_channel = aiogrpc.insecure_channel("{}:{}".format(
             self.ip, self.node_manager_port))
-        self.http_session = aiohttp.ClientSession(
-            loop=asyncio.get_event_loop())
+        self.http_session = None
 
     def _load_modules(self):
         """Load dashboard agent modules."""
@@ -70,6 +69,10 @@ class DashboardAgent(object):
         # Create an aioredis client for all modules.
         self.aioredis_client = await aioredis.create_redis_pool(
             address=self.redis_address, password=self.redis_password)
+
+        # Create a http session for all modules.
+        self.http_session = aiohttp.ClientSession(
+            loop=asyncio.get_event_loop())
 
         # Start a grpc asyncio server.
         await self.server.start()

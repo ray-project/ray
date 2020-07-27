@@ -25,6 +25,7 @@
 #include "ray/gcs/pb_util.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/stats/stats.h"
+#include "ray/util/asio_util.h"
 #include "ray/util/sample.h"
 
 namespace {
@@ -228,6 +229,15 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
   // Run the node manger rpc server.
   node_manager_server_.RegisterService(node_manager_service_);
   node_manager_server_.Run();
+
+  AgentManager::Options options;
+  options.agent_commands = ParseCommandLine(config.agent_command);
+  agent_manager_.reset(
+      new AgentManager(std::move(options),
+                       /*delay_executor=*/
+                       [this](std::function<void()> task, uint32_t delay_ms) {
+                         execute_after(io_service_, task, delay_ms);
+                       }));
 
   RAY_CHECK_OK(SetupPlasmaSubscription());
 }

@@ -158,9 +158,10 @@ if __name__ == "__main__":
         "--logging-filename",
         required=False,
         type=str,
-        default="",
+        default=dashboard_consts.DASHBOARD_LOG_FILENAME,
         help="Specify the name of log file, "
-        "log to stdout if set empty, default is \"\"")
+        "log to stdout if set empty, default is \"{}\"".format(
+            dashboard_consts.DASHBOARD_LOG_FILENAME))
     parser.add_argument(
         "--logging-rotate-bytes",
         required=False,

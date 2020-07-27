@@ -100,6 +100,11 @@ cc_proto_library(
     deps = [":gcs_service_proto"],
 )
 
+python_grpc_compile(
+    name = "gcs_service_py_proto",
+    deps = [":gcs_service_proto"],
+)
+
 proto_library(
     name = "object_manager_proto",
     srcs = ["src/ray/protobuf/object_manager.proto"],
@@ -1919,6 +1924,7 @@ filegroup(
     srcs = [
         "common_py_proto",
         "core_worker_py_proto",
+        "gcs_service_py_proto",
         "gcs_py_proto",
         "node_manager_py_proto",
         "reporter_py_proto",
@@ -2017,6 +2023,8 @@ genrule(
             python/ray/core/generated/reporter_pb2_grpc.py
             python/ray/core/generated/core_worker_pb2.py
             python/ray/core/generated/core_worker_pb2_grpc.py
+            python/ray/core/generated/gcs_service_pb2.py
+            python/ray/core/generated/gcs_service_pb2_grpc.py
         )
         sed -i -E 's/from src.ray.protobuf/from ./' "$${files[@]}"
         echo "$${PWD}" > $@

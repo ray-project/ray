@@ -329,3 +329,6 @@ RAY_CONFIG(bool, put_small_object_in_memory_store, false)
 /// the owner has been granted a lease. A value >1 is used when we want to enable
 /// pipelining task submission.
 RAY_CONFIG(uint32_t, max_tasks_in_flight_per_worker, 1)
+
+/// Interval to restart agent after agent process exit.
+RAY_CONFIG(uint32_t, agent_restart_interval_ms, 1000);
