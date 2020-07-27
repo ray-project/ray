@@ -171,4 +171,5 @@ __all__ += [
     "ObjectRef",
     "TaskID",
     "UniqueID",
+    "PlacementGroupID",
 ]
