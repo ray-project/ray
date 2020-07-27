@@ -89,11 +89,8 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
     auto actor_notification_callback =
         std::bind(&ActorManager::HandleActorStateNotification, this,
                   std::placeholders::_1, std::placeholders::_2);
-    {
-      absl::MutexLock lock(&gcs_client_mutex_);
-      RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
-          actor_id, actor_notification_callback, nullptr));
-    }
+    RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
+        actor_id, actor_notification_callback, nullptr));
 
     if (!RayConfig::instance().gcs_actor_service_enabled()) {
       RAY_CHECK(reference_counter_->SetDeleteCallback(

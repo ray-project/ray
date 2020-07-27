@@ -1149,15 +1149,20 @@ TEST_F(ServiceBasedGcsClientTest, TestMultiThreadSubAndUnsub) {
   std::vector<std::unique_ptr<std::thread>> threads;
   threads.resize(size);
 
+  // The number of times each thread executes subscribe & resubscribe & unsubscribe.
+  const int sub_and_unsub_loop_count = 20;
+
   // Multithreading subscribe/resubscribe/unsubscribe actors.
   auto job_id = JobID::FromInt(1);
   for (int index = 0; index < size; ++index) {
     threads[index].reset(new std::thread([this, job_id] {
-      auto actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
-      ASSERT_TRUE(SubscribeActor(
-          actor_id, [](const ActorID &id, const rpc::ActorTableData &result) {}));
-      gcs_client_->Actors().AsyncResubscribe(false);
-      UnsubscribeActor(actor_id);
+      for (int index = 0; index < sub_and_unsub_loop_count; ++index) {
+        auto actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
+        ASSERT_TRUE(SubscribeActor(
+            actor_id, [](const ActorID &id, const rpc::ActorTableData &result) {}));
+        gcs_client_->Actors().AsyncResubscribe(false);
+        UnsubscribeActor(actor_id);
+      }
     }));
   }
   for (auto &thread : threads) {
@@ -1168,12 +1173,14 @@ TEST_F(ServiceBasedGcsClientTest, TestMultiThreadSubAndUnsub) {
   // Multithreading subscribe/resubscribe/unsubscribe objects.
   for (int index = 0; index < size; ++index) {
     threads[index].reset(new std::thread([this] {
-      auto object_id = ObjectID::FromRandom();
-      ASSERT_TRUE(SubscribeToLocations(
-          object_id,
-          [](const ObjectID &id, const gcs::ObjectChangeNotification &result) {}));
-      gcs_client_->Objects().AsyncResubscribe(false);
-      UnsubscribeToLocations(object_id);
+      for (int index = 0; index < sub_and_unsub_loop_count; ++index) {
+        auto object_id = ObjectID::FromRandom();
+        ASSERT_TRUE(SubscribeToLocations(
+            object_id,
+            [](const ObjectID &id, const gcs::ObjectChangeNotification &result) {}));
+        gcs_client_->Objects().AsyncResubscribe(false);
+        UnsubscribeToLocations(object_id);
+      }
     }));
   }
   for (auto &thread : threads) {

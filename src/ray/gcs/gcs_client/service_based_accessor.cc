@@ -417,6 +417,9 @@ void ServiceBasedActorInfoAccessor::AsyncResubscribe(bool is_pubsub_server_resta
       RAY_CHECK_OK(item.second([this, actor_id](const Status &status) {
         absl::MutexLock lock(&mutex_);
         auto fetch_data_operation = fetch_data_operations_[actor_id];
+        // `fetch_data_operation` is called in the callback function of subscribe.
+        // Before that, if the user calls `AsyncUnsubscribe` function, the corresponding
+        // fetch function will be deleted, so we need to check if it's null.
         if (fetch_data_operation != nullptr) {
           fetch_data_operation(nullptr);
         }
@@ -1231,6 +1234,9 @@ void ServiceBasedObjectInfoAccessor::AsyncResubscribe(bool is_pubsub_server_rest
       RAY_CHECK_OK(item.second([this, item](const Status &status) {
         absl::MutexLock lock(&mutex_);
         auto fetch_object_data_operation = fetch_object_data_operations_[item.first];
+        // `fetch_object_data_operation` is called in the callback function of subscribe.
+        // Before that, if the user calls `AsyncUnsubscribeToLocations` function, the
+        // corresponding fetch function will be deleted, so we need to check if it's null.
         if (fetch_object_data_operation != nullptr) {
           fetch_object_data_operation(nullptr);
         }
