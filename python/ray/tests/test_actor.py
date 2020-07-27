@@ -855,7 +855,7 @@ def test_release_cpus_when_actor_creation_task_blocking(shutdown_only):
             return self.num
 
     def assert_available_resources():
-        return 'CPU' not in ray.available_resources()
+        return "CPU" not in ray.available_resources()
 
     a = A.remote()
 

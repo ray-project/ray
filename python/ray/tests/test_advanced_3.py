@@ -643,7 +643,7 @@ def test_lease_request_leak(shutdown_only):
         del obj_ref
     ray.get(tasks)
 
-    assert wait_for_condition(
+    wait_for_condition(
         lambda: len(ray.objects()) == 0, timeout=5), ray.objects()
 
 
