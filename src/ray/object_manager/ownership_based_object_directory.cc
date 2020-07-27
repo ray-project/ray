@@ -276,7 +276,7 @@ ray::Status OwnershipBasedObjectDirectory::UnsubscribeObjectLocations(const Uniq
                                                         const ObjectID &object_id) {
   auto entry = listeners_.find(object_id);
   if (entry == listeners_.end()) {
-    return status;
+    return Status::OK();
   }
   entry->second.callbacks.erase(callback_id);
   if (entry->second.callbacks.empty()) {

@@ -1526,7 +1526,7 @@ void NodeManager::ProcessFetchOrReconstructMessage(
       // dependencies to the task dependency manager.
       if (!task_dependency_manager_.CheckObjectLocal(object_id)) {
         // Fetch the object if it's not already local.
-        RAY_CHECK_OK(object_manager_.Pull(object_id));
+        RAY_CHECK_OK(object_manager_.Pull(object_id, ref.owner_address()));
       }
     }
   } else {
@@ -1548,6 +1548,12 @@ void NodeManager::ProcessWaitRequestMessage(
   int64_t wait_ms = message->timeout();
   uint64_t num_required_objects = static_cast<uint64_t>(message->num_ready_objects());
   bool wait_local = message->wait_local();
+  const auto refs =
+      FlatbufferToObjectReference(*message->object_ids(), *message->owner_addresses());
+  std::unordered_map<ObjectID, rpc::Address> owner_addresses;
+  for (const auto &ref : refs) {
+    owner_addresses.emplace(ObjectID::FromBinary(ref.object_id()), ref.owner_address());
+  }
 
   bool resolve_objects = false;
   for (auto const &object_id : object_ids) {
@@ -1564,14 +1570,12 @@ void NodeManager::ProcessWaitRequestMessage(
     // already local. Missing objects will be pulled from remote node managers.
     // If an object's owner dies, an error will be stored as the object's
     // value.
-    const auto refs =
-        FlatbufferToObjectReference(*message->object_ids(), *message->owner_addresses());
     AsyncResolveObjects(client, refs, current_task_id, /*ray_get=*/false,
                         /*mark_worker_blocked*/ was_blocked);
   }
 
   ray::Status status = object_manager_.Wait(
-      object_ids, wait_ms, num_required_objects, wait_local,
+      object_ids, owner_addresses, wait_ms, num_required_objects, wait_local,
       [this, resolve_objects, was_blocked, client, current_task_id](
           std::vector<ObjectID> found, std::vector<ObjectID> remaining) {
         // Write the data.
@@ -1607,6 +1611,10 @@ void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
   // managers or store an error if the objects have failed.
   const auto refs =
       FlatbufferToObjectReference(*message->object_ids(), *message->owner_addresses());
+  std::unordered_map<ObjectID, rpc::Address> owner_addresses;
+  for (const auto &ref : refs) {
+    owner_addresses.emplace(ObjectID::FromBinary(ref.object_id()), ref.owner_address());
+  }
   AsyncResolveObjects(client, refs, TaskID::Nil(), /*ray_get=*/false,
                       /*mark_worker_blocked*/ false);
   // Reply to the client once a location has been found for all arguments.
@@ -1614,7 +1622,7 @@ void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
   // has been found, so the object may still be on a remote node when the
   // client receives the reply.
   ray::Status status = object_manager_.Wait(
-      object_ids, -1, object_ids.size(), false,
+      object_ids, owner_addresses, -1, object_ids.size(), false,
       [this, client, tag](std::vector<ObjectID> found, std::vector<ObjectID> remaining) {
         RAY_CHECK(remaining.empty());
         std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);

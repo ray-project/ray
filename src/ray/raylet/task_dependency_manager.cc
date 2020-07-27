@@ -61,7 +61,7 @@ bool TaskDependencyManager::CheckObjectRequired(const ObjectID &object_id) const
   return true;
 }
 
-void TaskDependencyManager::HandleRemoteDependencyRequired(const ObjectID &object_id) {
+void TaskDependencyManager::HandleRemoteDependencyRequired(const ObjectID &object_id, const rpc::Address &owner_address) {
   bool required = CheckObjectRequired(object_id);
   // If the object is required, then try to make the object available locally.
   if (required) {
@@ -69,7 +69,7 @@ void TaskDependencyManager::HandleRemoteDependencyRequired(const ObjectID &objec
     if (inserted.second) {
       // If we haven't already, request the object manager to pull it from a
       // remote node.
-      RAY_CHECK_OK(object_manager_.Pull(object_id));
+      RAY_CHECK_OK(object_manager_.Pull(object_id, owner_address));
       reconstruction_policy_.ListenAndMaybeReconstruct(object_id);
     }
   }
@@ -166,7 +166,8 @@ std::vector<TaskID> TaskDependencyManager::HandleObjectMissing(
     }
   }
   // The object is no longer local. Try to make the object local if necessary.
-  HandleRemoteDependencyRequired(object_id);
+  // TODO(zhuohan): fill the address here.
+  HandleRemoteDependencyRequired(object_id, rpc::Address());
   // Process callbacks for all of the tasks dependent on the object that are
   // now ready to run.
   return waiting_task_ids;
@@ -206,7 +207,7 @@ bool TaskDependencyManager::SubscribeGetDependencies(
   // if necessary.
   for (const auto &object : required_objects) {
     const auto &object_id = ObjectID::FromBinary(object.object_id());
-    HandleRemoteDependencyRequired(object_id);
+    HandleRemoteDependencyRequired(object_id, object.owner_address());
   }
 
   // Return whether all dependencies are local.
@@ -247,7 +248,7 @@ void TaskDependencyManager::SubscribeWaitDependencies(
   // local if necessary.
   for (const auto &object : required_objects) {
     const auto &object_id = ObjectID::FromBinary(object.object_id());
-    HandleRemoteDependencyRequired(object_id);
+    HandleRemoteDependencyRequired(object_id, object.owner_address());
   }
 }
 
@@ -450,7 +451,8 @@ void TaskDependencyManager::TaskCanceled(const TaskID &task_id) {
     for (const auto &object_entry : remote_task_entry->second) {
       // This object created by the task will no longer appear locally since
       // the task is canceled.  Try to make the object local if necessary.
-      HandleRemoteDependencyRequired(object_entry.first);
+      // TODO(zhuohan): fill the address here.
+      HandleRemoteDependencyRequired(object_entry.first, rpc::Address());
     }
   }
 }

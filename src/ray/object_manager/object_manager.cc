@@ -162,7 +162,7 @@ ray::Status ObjectManager::SubscribeObjDeleted(
   return ray::Status::OK();
 }
 
-ray::Status ObjectManager::Pull(const ObjectID &object_id) {
+ray::Status ObjectManager::Pull(const ObjectID &object_id, const rpc::Address &owner_address) {
   RAY_LOG(DEBUG) << "Pull on " << self_node_id_ << " of object " << object_id;
   // Check if object is already local.
   if (local_objects_.count(object_id) != 0) {
@@ -179,7 +179,7 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
   // be received if the list of locations is empty. The set of client IDs has
   // no ordering guarantee between notifications.
   return object_directory_->SubscribeObjectLocations(
-      object_directory_pull_callback_id_, object_id,
+      object_directory_pull_callback_id_, object_id, owner_address,
       [this](const ObjectID &object_id, const std::unordered_set<ClientID> &client_ids) {
         // Exit if the Pull request has already been fulfilled or canceled.
         auto it = pull_requests_.find(object_id);
@@ -538,11 +538,12 @@ void ObjectManager::CancelPull(const ObjectID &object_id) {
 }
 
 ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids,
+                                const std::unordered_map<ObjectID, rpc::Address> &owner_addresses,
                                 int64_t timeout_ms, uint64_t num_required_objects,
                                 bool wait_local, const WaitCallback &callback) {
   UniqueID wait_id = UniqueID::FromRandom();
   RAY_LOG(DEBUG) << "Wait request " << wait_id << " on " << self_node_id_;
-  RAY_RETURN_NOT_OK(AddWaitRequest(wait_id, object_ids, timeout_ms, num_required_objects,
+  RAY_RETURN_NOT_OK(AddWaitRequest(wait_id, object_ids, owner_addresses, timeout_ms, num_required_objects,
                                    wait_local, callback));
   RAY_RETURN_NOT_OK(LookupRemainingWaitObjects(wait_id));
   // LookupRemainingWaitObjects invokes SubscribeRemainingWaitObjects once lookup has
@@ -552,7 +553,7 @@ ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids,
 
 ray::Status ObjectManager::AddWaitRequest(const UniqueID &wait_id,
                                           const std::vector<ObjectID> &object_ids,
-                                          // const std::vector<rpc::Address> &owner_addresses,
+                                          const std::unordered_map<ObjectID, rpc::Address> &owner_addresses,
                                           int64_t timeout_ms,
                                           uint64_t num_required_objects, bool wait_local,
                                           const WaitCallback &callback) {
@@ -568,6 +569,7 @@ ray::Status ObjectManager::AddWaitRequest(const UniqueID &wait_id,
   active_wait_requests_.emplace(wait_id, WaitState(*main_service_, timeout_ms, callback));
   auto &wait_state = active_wait_requests_.find(wait_id)->second;
   wait_state.object_id_order = object_ids;
+  wait_state.owner_addresses = owner_addresses;
   wait_state.timeout_ms = timeout_ms;
   wait_state.num_required_objects = num_required_objects;
   wait_state.wait_local = wait_local;
@@ -638,7 +640,7 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
       wait_state.requested_objects.insert(object_id);
       // Subscribe to object notifications.
       RAY_CHECK_OK(object_directory_->SubscribeObjectLocations(
-          wait_id, object_id,
+          wait_id, object_id, wait_state.owner_addresses[object_id],
           [this, wait_id](const ObjectID &subscribe_object_id,
                           const std::unordered_set<ClientID> &client_ids) {
             auto object_id_wait_state = active_wait_requests_.find(wait_id);

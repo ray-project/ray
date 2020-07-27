@@ -91,7 +91,7 @@ class ObjectStoreRunner {
 
 class ObjectManagerInterface {
  public:
-  virtual ray::Status Pull(const ObjectID &object_id) = 0;
+  virtual ray::Status Pull(const ObjectID &object_id, const rpc::Address &owner_address) = 0;
   virtual void CancelPull(const ObjectID &object_id) = 0;
   virtual ~ObjectManagerInterface(){};
 };
@@ -223,7 +223,7 @@ class ObjectManager : public ObjectManagerInterface,
   ///
   /// \param object_id The object's object id.
   /// \return Status of whether the pull request successfully initiated.
-  ray::Status Pull(const ObjectID &object_id) override;
+  ray::Status Pull(const ObjectID &object_id, const rpc::Address &owner_address) override;
 
   /// Try to Pull an object from one of its expected client locations. If there
   /// are more client locations to try after this attempt, then this method
@@ -257,7 +257,9 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param callback Invoked when either timeout_ms is satisfied OR num_ready_objects
   /// is satisfied.
   /// \return Status of whether the wait successfully initiated.
-  ray::Status Wait(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
+  ray::Status Wait(const std::vector<ObjectID> &object_ids,
+                   const std::unordered_map<ObjectID, rpc::Address> &owner_addresses,
+                   int64_t timeout_ms,
                    uint64_t num_required_objects, bool wait_local,
                    const WaitCallback &callback);
 
@@ -311,7 +313,7 @@ class ObjectManager : public ObjectManagerInterface,
     /// Ordered input object_ids.
     std::vector<ObjectID> object_id_order;
     /// Objects' owners.
-    absl::flat_hash_map<ObjectID, rpc::Address> owner_addresses;
+    std::unordered_map<ObjectID, rpc::Address> owner_addresses;
     /// The objects that have not yet been found.
     std::unordered_set<ObjectID> remaining;
     /// The objects that have been found. Note that if wait_local is true, then
@@ -325,7 +327,9 @@ class ObjectManager : public ObjectManagerInterface,
 
   /// Creates a wait request and adds it to active_wait_requests_.
   ray::Status AddWaitRequest(const UniqueID &wait_id,
-                             const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
+                             const std::vector<ObjectID> &object_ids,
+                             const std::unordered_map<ObjectID, rpc::Address> &owner_addresses,
+                             int64_t timeout_ms,
                              uint64_t num_required_objects, bool wait_local,
                              const WaitCallback &callback);
 
