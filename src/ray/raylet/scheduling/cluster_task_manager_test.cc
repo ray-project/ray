@@ -250,7 +250,7 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
   return scheduler;
 }
 
-Task CreateTask(const std::unordered_map<std::string, double> &required_resources) {
+  Task CreateTask(const std::unordered_map<std::string, double> &required_resources, int num_args=0) {
   TaskSpecBuilder spec_builder;
   TaskID id = RandomTaskId();
   JobID job_id = RandomJobId();
@@ -258,6 +258,12 @@ Task CreateTask(const std::unordered_map<std::string, double> &required_resource
   spec_builder.SetCommonTaskSpec(
       id, Language::PYTHON, FunctionDescriptorBuilder::BuildPython("", "", "", ""),
       job_id, TaskID::Nil(), 0, TaskID::Nil(), address, 0, required_resources, {});
+
+  for (int i = 0; i < num_args; i++) {
+    ObjectID put_id = ObjectID::ForPut(TaskID::Nil(), /*index=*/i+1);
+    spec_builder.AddArg(TaskArgByReference(put_id, rpc::Address()));
+  }
+
   rpc::TaskExecutionSpec execution_spec_message;
   execution_spec_message.set_num_forwards(1);
   return Task(spec_builder.Build(), TaskExecutionSpecification(execution_spec_message));
@@ -314,6 +320,127 @@ TEST_F(ClusterTaskManagerTest, BasicTest) {
   ASSERT_TRUE(leased_workers_.size() == 1);
   ASSERT_TRUE(pool_.workers.size() == 0);
 }
+
+
+TEST_F(ClusterTaskManagerTest, NoFeasibleNode) {
+  auto task_manager =
+      ClusterTaskManager(id_, single_node_resource_scheduler_, nullptr, nullptr);
+  std::shared_ptr<MockWorker> worker =
+    std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+
+  Task task = CreateTask({{ray::kCPU_ResourceLabel, 999}});
+  rpc::RequestWorkerLeaseReply reply;
+  bool callback_occurred = false;
+  bool *callback_occurred_ptr = &callback_occurred;
+  auto callback = [callback_occurred_ptr]() { *callback_occurred_ptr = true; };
+
+  task_manager.QueueTask(task, &reply, callback);
+  task_manager.SchedulePendingTasks();
+  task_manager.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+
+  ASSERT_FALSE(callback_occurred);
+  ASSERT_TRUE(leased_workers_.size() == 0);
+  // Worker is unused.
+  ASSERT_TRUE(pool_.workers.size() == 1);
+}
+
+
+TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
+  /*
+    Test the race condition in which a task is assigned to a node, but cannot
+    run because its dependencies are unresolved. Once its dependencies are
+    resolved, the node no longer has available resources.
+  */
+  bool deps_resolved = false;
+  bool *deps_resolved_ptr = &deps_resolved;
+
+  auto fulfills_deps_func = [deps_resolved_ptr](const Task &task) {
+                              return *deps_resolved_ptr;
+                            };
+
+  auto task_manager =
+    ClusterTaskManager(id_, single_node_resource_scheduler_,  fulfills_deps_func, nullptr);
+  std::shared_ptr<MockWorker> worker =
+    std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  std::shared_ptr<MockWorker> worker2 =
+    std::make_shared<MockWorker>(WorkerID::FromRandom(), 12345);
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker2));
+
+  rpc::RequestWorkerLeaseReply reply;
+  int num_callbacks = 0;
+  int *num_callbacks_ptr = &num_callbacks;
+  auto callback = [num_callbacks_ptr]() { (*num_callbacks_ptr) = *num_callbacks_ptr + 1; };
+
+  RAY_LOG(ERROR) << "first task";
+  auto task = CreateTask({{ray::kCPU_ResourceLabel, 5}}, 1);
+  task_manager.QueueTask(task, &reply, callback);
+  task_manager.SchedulePendingTasks();
+  task_manager.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+
+  ASSERT_TRUE(num_callbacks == 0);
+  ASSERT_TRUE(leased_workers_.size() == 0);
+  ASSERT_TRUE(pool_.workers.size() == 2);
+
+  RAY_LOG(ERROR) << "second task";
+  RAY_LOG(ERROR) << "==============";
+  auto task2 = CreateTask({{ray::kCPU_ResourceLabel, 5}});
+  task_manager.QueueTask(task2, &reply, callback);
+  task_manager.SchedulePendingTasks();
+  task_manager.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  RAY_LOG(ERROR) << worker->GetAllocatedInstances()->DebugString();
+  RAY_LOG(ERROR) << "==============";
+
+  ASSERT_TRUE(num_callbacks == 1);
+  ASSERT_TRUE(leased_workers_.size() == 1);
+  ASSERT_TRUE(pool_.workers.size() == 1);
+
+  auto id = task.GetTaskSpecification().TaskId();
+  std::vector<TaskID> unblocked = {id};
+
+  RAY_LOG(ERROR) << "first task unblocked";
+  task_manager.TasksUnblocked(unblocked);
+  task_manager.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+
+  // Task can no longer run because task2 is using resources.
+  ASSERT_TRUE(num_callbacks == 1);
+  ASSERT_TRUE(leased_workers_.size() == 1);
+  ASSERT_TRUE(pool_.workers.size() == 1);
+
+  RAY_LOG(ERROR) << "second task finished";
+  RAY_LOG(ERROR) << "--------------";
+  RAY_LOG(ERROR) << single_node_resource_scheduler_->DebugString();
+  RAY_LOG(ERROR) << "~~~~~~~~~~~~";
+  RAY_LOG(ERROR) << worker->GetAllocatedInstances()->DebugString();
+  RAY_LOG(ERROR) << "--------------";
+  single_node_resource_scheduler_->FreeLocalTaskResources(
+        worker->GetAllocatedInstances());
+  // single_node_resource_scheduler_->SubtractCPUResourceInstances(
+  //       worker->GetBorrowedCPUInstances());
+  single_node_resource_scheduler_->UpdateLocalAvailableResourcesFromResourceInstances();
+
+  RAY_LOG(ERROR) << "--------------";
+  RAY_LOG(ERROR) << single_node_resource_scheduler_->DebugString();
+  RAY_LOG(ERROR) << "--------------";
+  RAY_LOG(ERROR) << worker->GetAllocatedInstances()->DebugString();
+  RAY_LOG(ERROR) << single_node_resource_scheduler_->DebugString();
+  task_manager.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  leased_workers_.clear();
+
+  RAY_LOG(ERROR) << "~~~~~~~~~" << num_callbacks;
+
+
+  // Task2 is now done so task can run.
+  ASSERT_TRUE(num_callbacks == 2);
+  ASSERT_TRUE(leased_workers_.size() == 1);
+  ASSERT_TRUE(pool_.workers.size() == 0);
+
+
+}
+
+
+
 
 }  // namespace raylet
 

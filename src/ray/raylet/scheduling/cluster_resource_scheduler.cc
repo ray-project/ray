@@ -382,7 +382,6 @@ std::string TaskResourceInstances::DebugString() const {
     buffer << VectorToString(this->predefined_resources[i]);
   }
   buffer << "}";
-
   buffer << "  [";
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
