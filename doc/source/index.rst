@@ -144,7 +144,6 @@ Academic Papers
    cluster/launcher.rst
    cluster/cloud.rst
    cluster/deploy.rst
-   cluster/config.rst
 
 .. toctree::
    :maxdepth: -1
