@@ -64,10 +64,7 @@ jobs:
         set -x
         printf "\n%s\n" 'echo "Skipping step as this is a merge build." && exit 0' >> ~/.bashrc
     - name: Checkout repository
-      uses: actions/checkout@v2
-      with:
-        # we need full history to diff against the original for linting etc.
-        fetch-depth: 0
+      uses: actions/checkout@v1
     - name: Merge master
       if: matrix.merge
       run: git pull --rebase=false --no-edit origin master

@@ -253,6 +253,9 @@ def main(program, *args):
 
 
 if __name__ == "__main__":
+    # Temporarily disable remote-watcher.
+    sys.exit(0)
+
     logging.basicConfig(
         format="%(levelname)s: %(message)s",
         stream=sys.stderr,
