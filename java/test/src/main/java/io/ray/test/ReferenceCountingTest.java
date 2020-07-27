@@ -125,7 +125,7 @@ public class ReferenceCountingTest extends BaseTest {
    * Based on Python test case `test_local_refcounts`.
    */
   public void testLocalRefCounts() {
-    ObjectRef<Object> obj1 = Ray.put(null);
+    ObjectRefImpl<Object> obj1 = (ObjectRefImpl<Object>) Ray.put(null);
     checkRefCounts(obj1.getId(), 1, 0);
     ObjectRef<Object> obj1Copy = new ObjectRefImpl<>(obj1.getId(), obj1.getType());
     checkRefCounts(obj1.getId(), 2, 0);
@@ -177,9 +177,11 @@ public class ReferenceCountingTest extends BaseTest {
       // Test that regular plasma dependency refcounts are decremented once the
       // task finishes.
       ActorHandle<SignalActor> signal = SignalActor.create();
-      ObjectRef<TestUtils.LargeObject> largeDep = Ray.put(new TestUtils.LargeObject());
-      ObjectRef<Object> result = Ray.<TestUtils.LargeObject, ActorHandle<SignalActor>, Object>task(
-          ReferenceCountingTest::oneDep, largeDep, signal).remote();
+      ObjectRefImpl<TestUtils.LargeObject> largeDep = (ObjectRefImpl<TestUtils.LargeObject>) Ray
+          .put(new TestUtils.LargeObject());
+      ObjectRefImpl<Object> result = (ObjectRefImpl<Object>)
+          Ray.<TestUtils.LargeObject, ActorHandle<SignalActor>, Object>task(
+              ReferenceCountingTest::oneDep, largeDep, signal).remote();
       checkRefCounts(largeDep.getId(), 1, 1, result.getId(), 1, 0);
       sendSignal(signal);
       // Reference count should be removed once the task finishes.
@@ -193,11 +195,11 @@ public class ReferenceCountingTest extends BaseTest {
       // Test that inlined dependency refcounts are decremented once they are
       // inlined.
       ActorHandle<SignalActor> signal = SignalActor.create();
-      ObjectRef<Integer> dep =
+      ObjectRefImpl<Integer> dep = (ObjectRefImpl<Integer>)
           Ray.<Integer, ActorHandle<SignalActor>, Integer>task(ReferenceCountingTest::oneDep,
               Integer.valueOf(1), signal).remote();
       checkRefCounts(dep.getId(), 1, 0);
-      ObjectRef<Object> result =
+      ObjectRefImpl<Object> result = (ObjectRefImpl<Object>)
           Ray.<Integer, Object>task(ReferenceCountingTest::oneDep, dep).remote();
       checkRefCounts(dep.getId(), 1, 1, result.getId(), 1, 0);
       sendSignal(signal);
@@ -213,11 +215,11 @@ public class ReferenceCountingTest extends BaseTest {
       // the task finishes.
       ActorHandle<SignalActor> signal1 = SignalActor.create();
       ActorHandle<SignalActor> signal2 = SignalActor.create();
-      ObjectRef<TestUtils.LargeObject> dep =
+      ObjectRefImpl<TestUtils.LargeObject> dep = (ObjectRefImpl<TestUtils.LargeObject>)
           Ray.<TestUtils.LargeObject, ActorHandle<SignalActor>, TestUtils.LargeObject>task(
               ReferenceCountingTest::oneDepLarge, (TestUtils.LargeObject) null, signal1).remote();
       checkRefCounts(dep.getId(), 1, 0);
-      ObjectRef<Integer> result =
+      ObjectRefImpl<Integer> result = (ObjectRefImpl<Integer>)
           Ray.<TestUtils.LargeObject, ActorHandle<SignalActor>, Integer>task(
               ReferenceCountingTest::oneDep, dep, signal2).remote();
       checkRefCounts(dep.getId(), 1, 1, result.getId(), 1, 0);
@@ -237,9 +239,9 @@ public class ReferenceCountingTest extends BaseTest {
       // Test that regular plasma dependency refcounts are decremented if a task
       // fails.
       ActorHandle<SignalActor> signal = SignalActor.create();
-      ObjectRef<TestUtils.LargeObject> largeDep =
+      ObjectRefImpl<TestUtils.LargeObject> largeDep = (ObjectRefImpl<TestUtils.LargeObject>)
           Ray.put(new TestUtils.LargeObject(10 * 1024 * 1024));
-      ObjectRef<Integer> result =
+      ObjectRefImpl<Integer> result = (ObjectRefImpl<Integer>)
           Ray.<TestUtils.LargeObject, ActorHandle<SignalActor>, Boolean, Integer>task(
               ReferenceCountingTest::oneDep, largeDep, signal, /* fail= */true).remote();
       checkRefCounts(largeDep.getId(), 1, 1, result.getId(), 1, 0);
@@ -256,11 +258,11 @@ public class ReferenceCountingTest extends BaseTest {
       // fails.
       ActorHandle<SignalActor> signal1 = SignalActor.create();
       ActorHandle<SignalActor> signal2 = SignalActor.create();
-      ObjectRef<TestUtils.LargeObject> dep =
+      ObjectRefImpl<TestUtils.LargeObject> dep = (ObjectRefImpl<TestUtils.LargeObject>)
           Ray.<Integer, ActorHandle<SignalActor>, TestUtils.LargeObject>task(
               ReferenceCountingTest::oneDepLarge, (Integer) null, signal1).remote();
       checkRefCounts(dep.getId(), 1, 0);
-      ObjectRef<Integer> result =
+      ObjectRefImpl<Integer> result = (ObjectRefImpl<Integer>)
           Ray.<TestUtils.LargeObject, ActorHandle<SignalActor>, Boolean, Integer>task(
               ReferenceCountingTest::oneDep, dep, signal2, /* fail= */true).remote();
       checkRefCounts(dep.getId(), 1, 1, result.getId(), 1, 0);
@@ -347,7 +349,7 @@ public class ReferenceCountingTest extends BaseTest {
    * case `test_basic_nested_ids`.
    */
   public void testBasicNestedIds() {
-    ObjectRef<byte[]> inner = Ray.put(new byte[40 * 1024 * 1024]);
+    ObjectRefImpl<byte[]> inner = (ObjectRefImpl<byte[]>) Ray.put(new byte[40 * 1024 * 1024]);
     ObjectRef<List<ObjectRef<byte[]>>> outer = Ray.put(Collections.singletonList(inner));
 
     // Remove the local reference to the inner object.

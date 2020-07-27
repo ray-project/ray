@@ -7,6 +7,7 @@ import io.ray.api.id.ObjectId;
 import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.generated.Common.Language;
 import io.ray.runtime.object.NativeRayObject;
+import io.ray.runtime.object.ObjectRefImpl;
 import io.ray.runtime.object.ObjectSerializer;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -40,7 +41,8 @@ public class ArgumentsBuilder {
       ObjectId id = null;
       NativeRayObject value = null;
       if (arg instanceof ObjectRef) {
-        id = ((ObjectRef) arg).getId();
+        Preconditions.checkState(arg instanceof ObjectRefImpl);
+        id = ((ObjectRefImpl<?>) arg).getId();
       } else {
         value = ObjectSerializer.serialize(arg);
         if (language != Language.JAVA) {

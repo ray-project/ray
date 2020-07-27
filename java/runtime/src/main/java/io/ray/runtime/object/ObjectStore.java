@@ -138,7 +138,8 @@ public abstract class ObjectStore {
       return new WaitResult<>(Collections.emptyList(), Collections.emptyList());
     }
 
-    List<ObjectId> ids = waitList.stream().map(ObjectRef::getId).collect(Collectors.toList());
+    List<ObjectId> ids = waitList.stream().map(ref -> ((ObjectRefImpl<?>) ref).getId())
+        .collect(Collectors.toList());
 
     List<Boolean> ready = wait(ids, numReturns, timeoutMs);
     List<ObjectRef<T>> readyList = new ArrayList<>();
