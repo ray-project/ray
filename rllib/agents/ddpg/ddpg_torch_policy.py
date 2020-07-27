@@ -64,11 +64,21 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
         clipped_normal_sample = torch.clamp(
             torch.normal(
                 mean=torch.zeros(policy_tp1.size()),
-                std=policy.config["target_noise"]), -target_noise_clip,
+                std=policy.config["target_noise"]).to(policy_tp1.device),
+            -target_noise_clip,
             target_noise_clip)
-        policy_tp1_smoothed = torch.clamp(policy_tp1 + clipped_normal_sample,
-                                          policy.action_space.low.item(0),
-                                          policy.action_space.high.item(0))
+
+        policy_tp1_smoothed = torch.min(
+            torch.max(
+                policy_tp1 + clipped_normal_sample,
+                torch.tensor(
+                    policy.action_space.low,
+                    dtype=torch.float32,
+                    device=policy_tp1.device)),
+            torch.tensor(
+                policy.action_space.high,
+                dtype=torch.float32,
+                device=policy_tp1.device))
     else:
         # No smoothing, just use deterministic actions.
         policy_tp1_smoothed = policy_tp1
