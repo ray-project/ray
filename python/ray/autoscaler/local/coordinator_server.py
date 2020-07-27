@@ -1,7 +1,9 @@
+import argparse
 import logging
 import threading
 from http.server import SimpleHTTPRequestHandler, HTTPServer
 import json
+import socket
 
 from ray.autoscaler.local.node_provider import LocalNodeProvider
 
@@ -19,6 +21,7 @@ def runner_handler(node_provider):
 
         def _do_header(self, response_code=200, headers=None):
             """Sends the header portion of the HTTP response.
+
             Args:
                 response_code (int): Standard HTTP response code
                 headers (list[tuples]): Standard HTTP response headers
@@ -85,3 +88,26 @@ class OnPremCoordinatorServer(threading.Thread):
         """Shutdown the underlying server."""
         self._server.shutdown()
         self._server.server_close()
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Please provide a list of node ips and port.")
+    parser.add_argument(
+        "--ips", required=True, help="Comma separated list of node ips.")
+    parser.add_argument(
+        "--port",
+        type=int,
+        required=True,
+        help="The port on which the coordinator listens.")
+    args = parser.parse_args()
+    list_of_node_ips = args.ips.split(",")
+    OnPremCoordinatorServer(
+        list_of_node_ips=list_of_node_ips,
+        host=socket.gethostbyname(socket.gethostname()),
+        port=args.port,
+    )
+
+
+if __name__ == "__main__":
+    main()

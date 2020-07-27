@@ -1,3 +1,10 @@
+"""This files includes two node providers:
+1) LocalNodeProvider is a NodeProvider for private/local
+clusters and can manage a single cluster when provided with cluster_name or
+multiple clusters when cluster_name is None.
+2) CoordinatorSenderNodeProvider wraps all the node provider functions into
+HTTP requests that are sent to a coordinator_address where a coordinator
+server can listen and handle these requests."""
 from filelock import FileLock
 from threading import RLock
 import json
@@ -97,6 +104,14 @@ class ClusterState:
 
 
 class OnPremCoordinatorState(ClusterState):
+    """Generates & updates the state file of CoordinatorSenderNodeProvider.
+
+    Unlike ClusterState, which generates a cluster specific file with
+    predefined head and worker ips, OnPremCoordinatorState overwrites
+    ClusterState's __init__ function to generate and manage a unified
+    file of the status of all the nodes for multiple clusters.
+    """
+
     def __init__(self, lock_path, save_path, list_of_node_ips):
         self.lock = RLock()
         self.file_lock = FileLock(lock_path)
@@ -135,7 +150,17 @@ class LocalNodeProvider(NodeProvider):
     """NodeProvider for private/local clusters.
 
     `node_id` is overloaded to also be `node_ip` in this class.
-    When `cluster_name` is None, it coordinates multiple clusters.
+
+    When `cluster_name` is provided, it manages a single cluster in a cluster
+    specific state file. But when `cluster_name` is None, it manages multiple
+    clusters in a unified state file that requires each node to be tagged with
+    TAG_RAY_CLUSTER_NAME in create and non_terminated_nodes function calls to
+    associate each node with the right cluster.
+
+    The current use case of managing multiple clusters is by
+    OnPremCoordinatorServer which receives node provider HTTP requests
+    from CoordinatorSenderNodeProvider and uses LocalNodeProvider to get
+    the responses.
     """
 
     def __init__(self, provider_config, cluster_name):
@@ -222,6 +247,10 @@ class CoordinatorSenderNodeProvider(NodeProvider):
     """NodeProvider for automatically managed private/local clusters.
 
     The cluster management is handled by a remote coordinating server.
+    The server listens on <coordinator_address>, therefore, the address
+    should be provided in the provider section in the cluster config.
+    The server receieves HTTP requests from this class and uses
+    LocalNodeProvider to get their responses.
     """
 
     def __init__(self, provider_config, cluster_name):
