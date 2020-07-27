@@ -127,8 +127,8 @@ matrix:
       script:
         - . ./ci/travis/ci.sh test_wheels
         - bash ./java/build-jar-multiplatform.sh darwin
-        - if [ $TRAVIS_BRANCH == "master" ]; then bash ./java/build-jar-multiplatform.sh multiplatform; fi
-        # - if [ $TRAVIS_BRANCH == "master" ]; then bash ./java/build-jar-multiplatform.sh deploy; fi
+        - bash ./java/build-jar-multiplatform.sh multiplatform
+        #- bash ./java/build-jar-multiplatform.sh deploy
 
     # RLlib: Learning tests (from rllib/tuned_examples/*.yaml).
     - os: linux

@@ -67,6 +67,11 @@ build_jars_darwin() {
 }
 
 build_jars_multiplatform() {
+  if [[ "${TRAVIS_REPO_SLUG-}" != "ray-project/ray" || "${TRAVIS_PULL_REQUEST-}" != "false" ]]; then
+    echo "Skip build multiplatform jars when this build is from a pull request or
+      not a build for commit in ray-project/ray."
+    return
+  fi
   download_jars "ray-runtime-$version.jar" "streaming-runtime-$version.jar"
   prepare_native
   build_jars multiplatform false
@@ -124,6 +129,14 @@ prepare_native() {
 
 # This function assume all multiplatform binaries are prepared already.
 deploy_jars() {
+  if [ "${TRAVIS-}" = true ]; then
+    if [[ "$TRAVIS_REPO_SLUG" != "ray-project/ray" ||
+     "$TRAVIS_PULL_REQUEST" != "false" || "$TRAVIS_BRANCH" != "master" ]]; then
+      echo "Skip deploying jars when this build is from a pull request or
+      not a build for commit of master branch in ray-project/ray"
+      return
+    fi
+  fi
   echo "Start deploying jars"
   cd "$WORKSPACE_DIR"/java
   mvn -T16 deploy -Dmaven.test.skip=true -Dcheckstyle.skip
