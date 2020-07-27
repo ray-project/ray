@@ -3,7 +3,6 @@ package io.ray.test;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.test.TestUtils.LargeObject;
 import java.lang.ref.WeakReference;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -13,7 +12,7 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-public class GlobalGCTest extends BaseTest {
+public class GlobalGcTest extends BaseTest {
 
   @BeforeClass
   public void setUp() {
@@ -26,8 +25,11 @@ public class GlobalGCTest extends BaseTest {
   }
 
   public static class LargeObjectWithCyclicRef {
+
     private final LargeObjectWithCyclicRef loop;
+
     private final ObjectRef<TestUtils.LargeObject> largeObject;
+
     public LargeObjectWithCyclicRef() {
       this.loop = this;
       this.largeObject = Ray.put(new TestUtils.LargeObject(40 * 1024 * 1024));
@@ -35,6 +37,7 @@ public class GlobalGCTest extends BaseTest {
   }
 
   public static class GarbageHolder {
+
     private WeakReference<LargeObjectWithCyclicRef> garbage;
 
     public GarbageHolder() {
@@ -51,7 +54,7 @@ public class GlobalGCTest extends BaseTest {
     }
   }
 
-  private void testGlobalGCWhenFull(boolean withPut) {
+  private void testGlobalGcWhenFull(boolean withPut) {
     TestUtils.skipTestUnderSingleProcess();
 
     // Local driver.
@@ -85,12 +88,12 @@ public class GlobalGCTest extends BaseTest {
   }
 
   @Test
-  public void testGlobalGCWhenFullWithPut() {
-    testGlobalGCWhenFull(true);
+  public void testGlobalGcWhenFullWithPut() {
+    testGlobalGcWhenFull(true);
   }
 
   @Test
-  public void testGlobalGCWhenFullWithReturn() {
-    testGlobalGCWhenFull(false);
+  public void testGlobalGcWhenFullWithReturn() {
+    testGlobalGcWhenFull(false);
   }
 }
