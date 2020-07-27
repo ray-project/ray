@@ -236,7 +236,8 @@ def test_raylet_info_endpoint(shutdown_only):
         if child_actor_info["state"] == -1:
             assert child_actor_info["requiredResources"]["CustomResource"] == 1
         else:
-            assert child_actor_info["state"] == 1
+            assert child_actor_info[
+                "state"] == ray.gcs_utils.ActorTableData.ALIVE
             assert len(child_actor_info["children"]) == 0
             assert cpu_resources(child_actor_info) == 1
 

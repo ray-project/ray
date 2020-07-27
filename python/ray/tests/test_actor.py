@@ -8,6 +8,7 @@ try:
 except ImportError:
     pytest_timeout = None
 import sys
+import datetime
 
 import ray
 import ray.test_utils
@@ -814,6 +815,25 @@ def test_inherit_actor_from_class(ray_start_regular):
     actor = Actor.remote(1)
     assert ray.get(actor.get_value.remote()) == 1
     assert ray.get(actor.g.remote(5)) == 6
+
+
+@pytest.mark.skip(
+    "This test is just used to print the latency of creating 100 actors.")
+def test_actor_creation_latency(ray_start_regular):
+    # This test is just used to test the latency of actor creation.
+    @ray.remote
+    class Actor:
+        def get_value(self):
+            return 1
+
+    start = datetime.datetime.now()
+    actor_handles = [Actor.remote() for _ in range(100)]
+    actor_create_time = datetime.datetime.now()
+    for actor_handle in actor_handles:
+        ray.get(actor_handle.get_value.remote())
+    end = datetime.datetime.now()
+    print("actor_create_time_consume = {}, total_time_consume = {}".format(
+        actor_create_time - start, end - start))
 
 
 if __name__ == "__main__":

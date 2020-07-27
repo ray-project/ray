@@ -20,25 +20,40 @@ namespace ray {
 
 Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
+
+  if (actor_creator_ && task_spec.IsActorCreationTask()) {
+    // Synchronously register the actor to GCS server.
+    // Previously, we asynchronously registered the actor after all its dependencies were
+    // resolved. This caused a problem: if the owner of the actor dies before dependencies
+    // are resolved, the actor will never be created. But the actor handle may already be
+    // passed to other workers. In this case, the actor tasks will hang forever.
+    // So we fixed this issue by synchronously registering the actor. If the owner dies
+    // before dependencies are resolved, GCS will notice this and mark the actor as dead.
+    auto status = actor_creator_->RegisterActor(task_spec);
+    if (!status.ok()) {
+      return status;
+    }
+  }
+
   resolver_.ResolveDependencies(task_spec, [this, task_spec]() {
     RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
-    if (actor_create_callback_ && task_spec.IsActorCreationTask()) {
+    if (actor_creator_ && task_spec.IsActorCreationTask()) {
       // If gcs actor management is enabled, the actor creation task will be sent to
       // gcs server directly after the in-memory dependent objects are resolved. For
       // more details please see the protocol of actor management based on gcs.
       // https://docs.google.com/document/d/1EAWide-jy05akJp6OMtDn58XOK7bUyruWMia4E-fV28/edit?usp=sharing
       auto actor_id = task_spec.ActorCreationId();
       auto task_id = task_spec.TaskId();
-      RAY_LOG(INFO) << "Submitting actor creation task to GCS: " << actor_id;
-      RAY_CHECK_OK(
-          actor_create_callback_(task_spec, [this, actor_id, task_id](Status status) {
+      RAY_LOG(INFO) << "Creating actor via GCS actor id = : " << actor_id;
+      RAY_CHECK_OK(actor_creator_->AsyncCreateActor(
+          task_spec, [this, actor_id, task_id](Status status) {
             if (status.ok()) {
-              RAY_LOG(INFO) << "Actor creation task submitted to GCS: " << actor_id;
+              RAY_LOG(INFO) << "Created actor, actor id = " << actor_id;
               task_finisher_->CompletePendingTask(task_id, rpc::PushTaskReply(),
                                                   rpc::Address());
             } else {
               RAY_LOG(ERROR) << "Failed to create actor " << actor_id
-                             << " with: " << status.ToString();
+                             << " with status: " << status.ToString();
               RAY_UNUSED(task_finisher_->PendingTaskFailed(
                   task_id, rpc::ErrorType::ACTOR_CREATION_FAILED, &status));
             }

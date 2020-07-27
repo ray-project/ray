@@ -543,18 +543,15 @@ TEST_F(ServiceBasedGcsClientTest, TestActorInfo) {
 
   // Register an actor to GCS.
   ASSERT_TRUE(RegisterActor(actor_table_data));
-  ASSERT_TRUE(GetActor(actor_id).state() ==
-              rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
+  ASSERT_TRUE(GetActor(actor_id).state() == rpc::ActorTableData::ALIVE);
 
   // Cancel subscription to an actor.
   UnsubscribeActor(actor_id);
 
   // Update dynamic states of actor in GCS.
-  actor_table_data->set_state(
-      rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
+  actor_table_data->set_state(rpc::ActorTableData::DEAD);
   ASSERT_TRUE(UpdateActor(actor_id, actor_table_data));
-  ASSERT_TRUE(GetActor(actor_id).state() ==
-              rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
+  ASSERT_TRUE(GetActor(actor_id).state() == rpc::ActorTableData::DEAD);
   WaitPendingDone(actor_update_count, 1);
 }
 
@@ -915,10 +912,8 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   // We should receive a new ALIVE notification from the subscribe channel.
   WaitPendingDone(num_subscribe_all_notifications, 1);
   WaitPendingDone(num_subscribe_one_notifications, 1);
-  CheckActorData(subscribe_all_notifications[0],
-                 rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
-  CheckActorData(subscribe_one_notifications[0],
-                 rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
+  CheckActorData(subscribe_all_notifications[0], rpc::ActorTableData::ALIVE);
+  CheckActorData(subscribe_one_notifications[0], rpc::ActorTableData::ALIVE);
 
   // Restart GCS server.
   RestartGcsServer();
@@ -928,23 +923,18 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   // another notification of ALIVE state.
   WaitPendingDone(num_subscribe_all_notifications, 2);
   WaitPendingDone(num_subscribe_one_notifications, 2);
-  CheckActorData(subscribe_all_notifications[1],
-                 rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
-  CheckActorData(subscribe_one_notifications[1],
-                 rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
+  CheckActorData(subscribe_all_notifications[1], rpc::ActorTableData::ALIVE);
+  CheckActorData(subscribe_one_notifications[1], rpc::ActorTableData::ALIVE);
 
   // Update the actor state to DEAD.
-  actor_table_data->set_state(
-      rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
+  actor_table_data->set_state(rpc::ActorTableData::DEAD);
   ASSERT_TRUE(UpdateActor(actor_id, actor_table_data));
 
   // We should receive a new DEAD notification from the subscribe channel.
   WaitPendingDone(num_subscribe_all_notifications, 3);
   WaitPendingDone(num_subscribe_one_notifications, 3);
-  CheckActorData(subscribe_all_notifications[2],
-                 rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
-  CheckActorData(subscribe_one_notifications[2],
-                 rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
+  CheckActorData(subscribe_all_notifications[2], rpc::ActorTableData::DEAD);
+  CheckActorData(subscribe_one_notifications[2], rpc::ActorTableData::DEAD);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestObjectTableResubscribe) {

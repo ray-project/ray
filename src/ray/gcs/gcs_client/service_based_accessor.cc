@@ -178,6 +178,22 @@ Status ServiceBasedActorInfoAccessor::AsyncGetByName(
   return Status::OK();
 }
 
+Status ServiceBasedActorInfoAccessor::AsyncRegisterActor(
+    const ray::TaskSpecification &task_spec, const ray::gcs::StatusCallback &callback) {
+  RAY_CHECK(task_spec.IsActorCreationTask() && callback);
+  rpc::RegisterActorRequest request;
+  request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
+  client_impl_->GetGcsRpcClient().RegisterActor(
+      request, [callback](const Status &, const rpc::RegisterActorReply &reply) {
+        auto status =
+            reply.status().code() == (int)StatusCode::OK
+                ? Status()
+                : Status(StatusCode(reply.status().code()), reply.status().message());
+        callback(status);
+      });
+  return Status::OK();
+}
+
 Status ServiceBasedActorInfoAccessor::AsyncCreateActor(
     const ray::TaskSpecification &task_spec, const ray::gcs::StatusCallback &callback) {
   RAY_CHECK(task_spec.IsActorCreationTask() && callback);
