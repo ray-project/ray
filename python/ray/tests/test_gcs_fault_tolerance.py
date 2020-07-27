@@ -119,7 +119,7 @@ def test_node_failure_detector_when_gcs_server_restart(ray_start_cluster_head):
         return False
 
     # Wait for the removed node dead.
-    assert wait_for_condition(condition, timeout=10)
+    wait_for_condition(condition, timeout=10)
 
 
 if __name__ == "__main__":

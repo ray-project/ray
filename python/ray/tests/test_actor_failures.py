@@ -362,14 +362,14 @@ def test_actor_restart_without_task(ray_start_regular):
 
     ray.experimental.set_resource("actor", 1)
     actor = RestartableActor.remote()
-    assert wait_for_condition(lambda: not actor_resource_available())
+    wait_for_condition(lambda: not actor_resource_available())
     # Kill the actor.
     pid = ray.get(actor.get_pid.remote())
 
     p = probe.remote()
     os.kill(pid, SIGKILL)
     ray.get(p)
-    assert wait_for_condition(lambda: not actor_resource_available())
+    wait_for_condition(lambda: not actor_resource_available())
 
 
 def test_caller_actor_restart(ray_start_regular):
@@ -869,7 +869,7 @@ def test_ray_wait_dead_actor(ray_start_cluster):
     cluster.remove_node(get_other_nodes(cluster, exclude_head=True)[-1])
     # Repeatedly submit tasks and call ray.wait until the exception for the
     # dead actor is received.
-    assert wait_for_condition(actor_dead)
+    wait_for_condition(actor_dead)
 
     # Create an actor on the local node that will call ray.wait in a loop.
     head_node_resource = "HEAD_NODE"
@@ -889,7 +889,7 @@ def test_ray_wait_dead_actor(ray_start_cluster):
     # Repeatedly call ray.wait through the local actor until the exception for
     # the dead actor is received.
     parent_actor = ParentActor.remote()
-    assert wait_for_condition(lambda: ray.get(parent_actor.wait.remote()))
+    wait_for_condition(lambda: ray.get(parent_actor.wait.remote()))
 
 
 @pytest.mark.parametrize(
