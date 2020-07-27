@@ -173,9 +173,18 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
                     torch.isinf(high_m_low),
                     torch.ones_like(high_m_low).to(self.device), high_m_low)
                 noise = scale * self.ou_base_scale * self.ou_state * high_m_low
-                action = torch.clamp(det_actions + noise,
-                                     self.action_space.low[0],
-                                     self.action_space.high[0])
+
+                action = torch.min(
+                    torch.max(
+                        det_actions + noise,
+                        torch.tensor(
+                            self.action_space.low,
+                            dtype=torch.float32,
+                            device=self.device)),
+                    torch.tensor(
+                        self.action_space.high,
+                        dtype=torch.float32,
+                        device=self.device))
 
         # No exploration -> Return deterministic actions.
         else:
