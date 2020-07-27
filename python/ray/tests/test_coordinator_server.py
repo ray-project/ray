@@ -1,6 +1,5 @@
 import os
 import unittest
-import yaml
 import socket
 import json
 
