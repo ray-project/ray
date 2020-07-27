@@ -126,7 +126,7 @@ def copy_to_workspace(name, srcs, dstdir = ""):
             dstdir = "." + ("/" + dstdir.replace("\\", "/")).rstrip("/") + "/",
         ),
         # Keep this batch script equivalent to the Bash script above (or take out the batch script)
-        cmd_bat = r"""
+        cmd_bat = """
             (
                 if not exist {dstdir} mkdir {dstdir}
             ) && (
@@ -163,14 +163,14 @@ def native_java_binary(module_name, name, native_binary_name):
     )
 
     native.filegroup(
-            name = name,
-            srcs = select({
-                "@bazel_tools//src/conditions:darwin": [name + "_darwin"],
-                "@bazel_tools//src/conditions:windows": [name + "_windows"],
-                "//conditions:default": [name + "_linux"],
-            }),
-            visibility = ["//visibility:public"],
-        )
+        name = name,
+        srcs = select({
+            "@bazel_tools//src/conditions:darwin": [name + "_darwin"],
+            "@bazel_tools//src/conditions:windows": [name + "_windows"],
+            "//conditions:default": [name + "_linux"],
+        }),
+        visibility = ["//visibility:public"],
+    )
 
 def native_java_library(module_name, name, native_library_name):
     """Copy native library file to different path based on operating systems"""
@@ -187,11 +187,11 @@ def native_java_library(module_name, name, native_library_name):
     )
 
     native.filegroup(
-            name = name,
-            srcs = select({
-                "@bazel_tools//src/conditions:darwin": [name + "_darwin"],
-                "@bazel_tools//src/conditions:windows": [],
-                "//conditions:default": [name + "_linux"],
-            }),
-            visibility = ["//visibility:public"],
-        )
+        name = name,
+        srcs = select({
+            "@bazel_tools//src/conditions:darwin": [name + "_darwin"],
+            "@bazel_tools//src/conditions:windows": [],
+            "//conditions:default": [name + "_linux"],
+        }),
+        visibility = ["//visibility:public"],
+    )

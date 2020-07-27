@@ -145,21 +145,26 @@ filegroup(
 )
 
 native_java_binary("runtime", "raylet", "//:raylet")
+
 native_java_binary("runtime", "plasma_store_server", "//:plasma_store_server")
+
 native_java_binary("runtime", "redis-server", "//:redis-server")
+
 native_java_binary("runtime", "gcs_server", "//:gcs_server")
+
 native_java_binary("runtime", "libray_redis_module.so", "//:libray_redis_module.so")
+
 native_java_library("runtime", "core_worker_library_java", "//:libcore_worker_library_java.so")
 
 filegroup(
     name = "java_native_deps",
     srcs = [
-        ":raylet",
-        ":plasma_store_server",
-        ":redis-server",
+        ":core_worker_library_java",
         ":gcs_server",
         ":libray_redis_module.so",
-        ":core_worker_library_java",
+        ":plasma_store_server",
+        ":raylet",
+        ":redis-server",
     ],
 )
 
