@@ -1986,8 +1986,8 @@ ResourceIdSet NodeManager::ScheduleBundle(
       std::string resource_name = bundle_id_str + "_" + resource.first;
       local_available_resources_.AddBundleResource(resource_name, resource.second);
     }
-    cluster_resource_map_[self_node_id_].UpdateBundleResource(
-        bundle_id_str, bundle_spec.GetRequiredResources());
+    resource_map[self_node_id_].UpdateBundleResource(bundle_id_str,
+                                                     bundle_spec.GetRequiredResources());
   }
   return acquired_resources;
 }
@@ -2566,7 +2566,6 @@ void NodeManager::AssignTask(const std::shared_ptr<WorkerInterface> &worker,
   auto acquired_resources =
       local_available_resources_.Acquire(spec.GetRequiredResources());
   cluster_resource_map_[self_node_id_].Acquire(spec.GetRequiredResources());
-
   if (spec.IsActorCreationTask()) {
     // Check that the actor's placement resource requirements are satisfied.
     RAY_CHECK(spec.GetRequiredPlacementResources().IsSubset(
