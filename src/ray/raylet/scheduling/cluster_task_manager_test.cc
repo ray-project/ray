@@ -282,9 +282,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
                       [this](const ClientID &node_id) {
                         (*_node_info_calls_ptr_)++;
                         return node_info_;
-                      }
-        )
-  {}
+                      }) {}
 
   void SetUp() {}
 
