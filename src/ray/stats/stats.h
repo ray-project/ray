@@ -107,6 +107,7 @@ static inline void Shutdown() {
     // Return if stats had never been initialized.
     return;
   }
+  metrics_io_service_pool->Stop();
   opencensus::stats::StatsExporter::Shutdown();
   metrics_io_service_pool = nullptr;
   exporter = nullptr;
