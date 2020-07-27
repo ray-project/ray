@@ -36,13 +36,11 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   ///
   /// \param main_io_service The main event loop.
   /// \param node_failure_detector_io_service The event loop of node failure detector.
-  /// \param error_info_accessor The error info accessor, which is used to report error.
   /// \param gcs_pub_sub GCS message publisher.
   /// \param gcs_table_storage GCS table external storage accessor.
   /// when detecting the death of nodes.
   explicit GcsNodeManager(boost::asio::io_service &main_io_service,
                           boost::asio::io_service &node_failure_detector_io_service,
-                          gcs::ErrorInfoAccessor &error_info_accessor,
                           std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
                           std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage);
 
@@ -219,8 +217,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   };
 
  private:
-  /// Error info accessor.
-  gcs::ErrorInfoAccessor &error_info_accessor_;
   /// The main event loop for node failure detector.
   boost::asio::io_service &main_io_service_;
   /// Detector to detect the failure of node.
