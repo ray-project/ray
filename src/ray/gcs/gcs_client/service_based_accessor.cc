@@ -326,8 +326,11 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribe(
                                                   on_subscribe, subscribe_done);
   };
 
-  subscribe_operations_[actor_id] = subscribe_operation;
-  fetch_data_operations_[actor_id] = fetch_data_operation;
+  {
+    absl::MutexLock lock(&mutex_);
+    subscribe_operations_[actor_id] = subscribe_operation;
+    fetch_data_operations_[actor_id] = fetch_data_operation;
+  }
   return subscribe_operation(
       [fetch_data_operation, done](const Status &status) { fetch_data_operation(done); });
 }
@@ -335,6 +338,7 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribe(
 Status ServiceBasedActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id) {
   RAY_LOG(DEBUG) << "Cancelling subscription to an actor, actor id = " << actor_id;
   auto status = client_impl_->GetGcsPubSub().Unsubscribe(ACTOR_CHANNEL, actor_id.Hex());
+  absl::MutexLock lock(&mutex_);
   subscribe_operations_.erase(actor_id);
   fetch_data_operations_.erase(actor_id);
   RAY_LOG(DEBUG) << "Finished cancelling subscription to an actor, actor id = "
@@ -418,6 +422,7 @@ void ServiceBasedActorInfoAccessor::AsyncResubscribe(bool is_pubsub_server_resta
   // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
   // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
   // server first, then fetch data from the GCS server.
+  absl::MutexLock lock(&mutex_);
   if (is_pubsub_server_restarted) {
     if (subscribe_all_operation_ != nullptr) {
       RAY_CHECK_OK(subscribe_all_operation_(
@@ -426,7 +431,14 @@ void ServiceBasedActorInfoAccessor::AsyncResubscribe(bool is_pubsub_server_resta
     for (auto &item : subscribe_operations_) {
       auto &actor_id = item.first;
       RAY_CHECK_OK(item.second([this, actor_id](const Status &status) {
-        fetch_data_operations_[actor_id](nullptr);
+        absl::MutexLock lock(&mutex_);
+        auto fetch_data_operation = fetch_data_operations_[actor_id];
+        // `fetch_data_operation` is called in the callback function of subscribe.
+        // Before that, if the user calls `AsyncUnsubscribe` function, the corresponding
+        // fetch function will be deleted, so we need to check if it's null.
+        if (fetch_data_operation != nullptr) {
+          fetch_data_operation(nullptr);
+        }
       }));
     }
   } else {
@@ -1218,8 +1230,11 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
                                                   on_subscribe, subscribe_done);
   };
 
-  subscribe_object_operations_[object_id] = subscribe_operation;
-  fetch_object_data_operations_[object_id] = fetch_data_operation;
+  {
+    absl::MutexLock lock(&mutex_);
+    subscribe_object_operations_[object_id] = subscribe_operation;
+    fetch_object_data_operations_[object_id] = fetch_data_operation;
+  }
   return subscribe_operation(
       [fetch_data_operation, done](const Status &status) { fetch_data_operation(done); });
 }
@@ -1229,10 +1244,18 @@ void ServiceBasedObjectInfoAccessor::AsyncResubscribe(bool is_pubsub_server_rest
   // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
   // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
   // server first, then fetch data from the GCS server.
+  absl::MutexLock lock(&mutex_);
   if (is_pubsub_server_restarted) {
     for (auto &item : subscribe_object_operations_) {
       RAY_CHECK_OK(item.second([this, item](const Status &status) {
-        fetch_object_data_operations_[item.first](nullptr);
+        absl::MutexLock lock(&mutex_);
+        auto fetch_object_data_operation = fetch_object_data_operations_[item.first];
+        // `fetch_object_data_operation` is called in the callback function of subscribe.
+        // Before that, if the user calls `AsyncUnsubscribeToLocations` function, the
+        // corresponding fetch function will be deleted, so we need to check if it's null.
+        if (fetch_object_data_operation != nullptr) {
+          fetch_object_data_operation(nullptr);
+        }
       }));
     }
   } else {
@@ -1246,6 +1269,7 @@ Status ServiceBasedObjectInfoAccessor::AsyncUnsubscribeToLocations(
     const ObjectID &object_id) {
   RAY_LOG(DEBUG) << "Unsubscribing object location, object id = " << object_id;
   auto status = client_impl_->GetGcsPubSub().Unsubscribe(OBJECT_CHANNEL, object_id.Hex());
+  absl::MutexLock lock(&mutex_);
   subscribe_object_operations_.erase(object_id);
   fetch_object_data_operations_.erase(object_id);
   RAY_LOG(DEBUG) << "Finished unsubscribing object location, object id = " << object_id;
