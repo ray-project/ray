@@ -9,8 +9,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from ray.tune.integration.wandb import WandbLogger
-from ray.tune.logger import DEFAULT_LOGGERS
 from torch.utils.data import random_split
 import torchvision
 import torchvision.transforms as transforms
@@ -180,12 +178,7 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
         "l1": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
         "l2": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
         "lr": tune.loguniform(1e-4, 1e-1),
-        "batch_size": tune.choice([2, 4, 8, 16]),
-        "wandb": {
-            "project": "CIFAR10",
-            "api_key": "1f06d7f72cff2b61773efd8d1d151e71b3c39885",
-            "group_by": ["batch_size"]
-        }
+        "batch_size": tune.choice([2, 4, 8, 16])
     }
     scheduler = ASHAScheduler(
         metric="loss",
@@ -203,8 +196,7 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
         num_samples=num_samples,
         scheduler=scheduler,
         progress_reporter=reporter,
-        checkpoint_at_end=True,
-        loggers=DEFAULT_LOGGERS + (WandbLogger,))
+        checkpoint_at_end=True)
 
     best_trial = result.get_best_trial("loss", "min", "last")
     print("Best trial config: {}".format(best_trial.config))
