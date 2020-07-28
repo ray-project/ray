@@ -11,11 +11,6 @@ import ray.test_utils
 import ray.cluster_utils
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_GCS_ACTOR_SERVICE_ENABLED") != "true",
-    reason=("This edge case is not handled when GCS actor management is off. "
-            "We won't fix this because GCS actor management "
-            "will be on by default anyway."))
 def test_placement_group_pack(ray_start_cluster):
     @ray.remote(num_cpus=2)
     class Actor(object):
@@ -61,29 +56,6 @@ def test_placement_group_pack(ray_start_cluster):
     assert node_of_actor_1 == node_of_actor_2
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_GCS_ACTOR_SERVICE_ENABLED") != "true",
-    reason=("This edge case is not handled when GCS actor management is off. "
-            "We won't fix this because GCS actor management "
-            "will be on by default anyway."))
-def test_placement_group_pack_best_effort(ray_start_cluster):
-    @ray.remote(num_cpus=2)
-    class Actor(object):
-        def __init__(self):
-            self.n = 0
-
-        def value(self):
-            return self.n
-
-    # TODO(Shanly):
-    pass
-
-
-@pytest.mark.skipif(
-    os.environ.get("RAY_GCS_ACTOR_SERVICE_ENABLED") != "true",
-    reason=("This edge case is not handled when GCS actor management is off. "
-            "We won't fix this because GCS actor management "
-            "will be on by default anyway."))
 def test_placement_group_spread(ray_start_cluster):
     @ray.remote(num_cpus=2)
     class Actor(object):
@@ -106,9 +78,11 @@ def test_placement_group_spread(ray_start_cluster):
             "CPU": 2
         }])
     actor_1 = Actor.options(
-        placement_group_id=placement_group_id, bundle_index=0).remote()
+        placement_group_id=placement_group_id,
+        placement_group_bundle_index=0).remote()
     actor_2 = Actor.options(
-        placement_group_id=placement_group_id, bundle_index=1).remote()
+        placement_group_id=placement_group_id,
+        placement_group_bundle_index=1).remote()
 
     print(ray.get(actor_1.value.remote()))
     print(ray.get(actor_2.value.remote()))
@@ -127,22 +101,63 @@ def test_placement_group_spread(ray_start_cluster):
     assert node_of_actor_1 != node_of_actor_2
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_GCS_ACTOR_SERVICE_ENABLED") != "true",
-    reason=("This edge case is not handled when GCS actor management is off. "
-            "We won't fix this because GCS actor management "
-            "will be on by default anyway."))
-def test_placement_group_spread_best_effort(ray_start_cluster):
-    @ray.remote(num_cpus=2)
-    class Actor(object):
-        def __init__(self):
-            self.n = 0
+def test_placement_group_actor_resource_ids(ray_start_cluster):
+    @ray.remote(num_cpus=1)
+    class F:
+        def f(self):
+            return ray.get_resource_ids()
 
-        def value(self):
-            return self.n
+    cluster = ray_start_cluster
+    num_nodes = 1
+    for _ in range(num_nodes):
+        cluster.add_node(num_cpus=4)
+    ray.init(address=cluster.address)
 
-    # TODO(Shanly):
-    pass
+    g1 = ray.experimental.placement_group([{"CPU": 2}])
+    a1 = F.options(placement_group_id=g1).remote()
+    resources = ray.get(a1.f.remote())
+    assert len(resources) == 1, resources
+    assert "_CPU" in list(resources.keys())[0], resources
+
+
+def test_placement_group_task_resource_ids(ray_start_cluster):
+    @ray.remote(num_cpus=1)
+    def f():
+        return ray.get_resource_ids()
+
+    cluster = ray_start_cluster
+    num_nodes = 1
+    for _ in range(num_nodes):
+        cluster.add_node(num_cpus=4)
+    ray.init(address=cluster.address)
+
+    g1 = ray.experimental.placement_group([{"CPU": 2}])
+    o1 = f.options(placement_group_id=g1).remote()
+    resources = ray.get(o1)
+    assert len(resources) == 1, resources
+    assert "_CPU" in list(resources.keys())[0], resources
+
+
+def test_placement_group_hang(ray_start_cluster):
+    @ray.remote(num_cpus=1)
+    def f():
+        return ray.get_resource_ids()
+
+    cluster = ray_start_cluster
+    num_nodes = 1
+    for _ in range(num_nodes):
+        cluster.add_node(num_cpus=4)
+    ray.init(address=cluster.address)
+
+    ray.get(f.remote())  # <--- TODO(ekl) this line causes the later hang
+
+    g1 = ray.experimental.placement_group([{"CPU": 2}])
+    o1 = f.options(placement_group_id=g1).remote()
+
+    # TODO(ekl) This hangs forever.
+    resources = ray.get(o1)
+    assert len(resources) == 1, resources
+    assert "_CPU" in list(resources.keys())[0], resources
 
 
 if __name__ == "__main__":

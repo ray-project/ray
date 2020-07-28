@@ -47,7 +47,7 @@ Status ConnectSocketRetry(local_stream_socket &socket, const std::string &endpoi
     if (!ec) {
       break;
     }
-    if (num_attempts > 0) {
+    if (num_attempts > 1) {
       RAY_LOG(ERROR) << "Retrying to connect to socket for endpoint " << endpoint
                      << " (num_attempts = " << num_attempts
                      << ", num_retries = " << num_retries << ")";

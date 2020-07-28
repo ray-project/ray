@@ -187,6 +187,8 @@ class RemoteFunction:
             raise ValueError("Non-direct call tasks are no longer supported.")
         if max_retries is None:
             max_retries = self._max_retries
+        if placement_group_id is None:
+            placement_group_id = ray.PlacementGroupID.nil()
 
         resources = ray.utils.resources_from_resource_arguments(
             self._num_cpus, self._num_gpus, self._memory,
