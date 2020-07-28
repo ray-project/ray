@@ -8,6 +8,7 @@ from ray.rllib.env.base_env import BaseEnv
 
 logger = logging.getLogger(__name__)
 
+
 def custom_model_vector_env(env):
     """Returns a VectorizedEnv wrapper around the current envioronment
     To obtain worker configs, one can call get_global_worker().
@@ -15,24 +16,24 @@ def custom_model_vector_env(env):
     worker = get_global_worker()
     worker_index = worker.worker_index
     if worker_index:
-        env =  _VectorizedModelGymEnv(
+        env = _VectorizedModelGymEnv(
             make_env=worker.make_env_fn,
             existing_envs=[env],
             num_envs=worker.num_envs,
             observation_space=env.observation_space,
             action_space=env.action_space,
-            )
+        )
     return BaseEnv.to_base_env(
-            env,
-            make_env=worker.make_env_fn,
-            num_envs=worker.num_envs,
-            remote_envs=False,
-            remote_env_batch_wait_ms=0)
+        env,
+        make_env=worker.make_env_fn,
+        num_envs=worker.num_envs,
+        remote_envs=False,
+        remote_env_batch_wait_ms=0)
 
 
 class _VectorizedModelGymEnv(VectorEnv):
-    """Vectorized Environment Wrapper for MB-MPO. Primary change is 
-    in the vector_step method, which calls the dynamics models for 
+    """Vectorized Environment Wrapper for MB-MPO. Primary change is
+    in the vector_step method, which calls the dynamics models for
     """
 
     def __init__(self,
@@ -56,11 +57,11 @@ class _VectorizedModelGymEnv(VectorEnv):
             num_envs=num_envs)
         worker = get_global_worker()
         self.model, self.device = worker.foreach_policy(
-            lambda x,y: (x.dynamics_model, x.device))[0]
+            lambda x, y: (x.dynamics_model, x.device))[0]
 
     @override(VectorEnv)
     def vector_reset(self):
-        self.cur_obs =  [e.reset() for e in self.envs]
+        self.cur_obs = [e.reset() for e in self.envs]
         return self.cur_obs
 
     @override(VectorEnv)
@@ -73,16 +74,17 @@ class _VectorizedModelGymEnv(VectorEnv):
     def vector_step(self, actions):
         if self.cur_obs is None:
             raise ValueError("Need to reset env first")
-        
+
         obs_batch = np.stack(self.cur_obs, axis=0)
         action_batch = np.stack(actions, axis=0)
 
-        next_obs_batch = self.model.predict_model_batches(obs_batch, 
-            action_batch, device = self.device)
+        next_obs_batch = self.model.predict_model_batches(
+            obs_batch, action_batch, device=self.device)
 
         next_obs_batch = np.clip(next_obs_batch, -50, 50)
 
-        rew_batch = self.envs[0].reward(obs_batch, action_batch, next_obs_batch)
+        rew_batch = self.envs[0].reward(obs_batch, action_batch,
+                                        next_obs_batch)
 
         if hasattr(self.envs[0], "done"):
             dones_batch = self.envs[0].done(next_obs_batch)

@@ -24,6 +24,7 @@ class HalfCheetahWrapper(HalfCheetahEnv):
 
     This is currently used for MBMPO.
     """
+
     def __init__(self, *args, **kwargs):
         HalfCheetahEnv.__init__(self, *args, **kwargs)
 

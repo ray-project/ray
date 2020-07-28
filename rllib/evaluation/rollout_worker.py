@@ -364,6 +364,7 @@ class RolloutWorker(ParallelIteratorWorker):
                         worker_index=worker_index,
                         vector_index=vector_index,
                         remote=remote_worker_envs)))
+
         self.make_env_fn = make_env
 
         self.tf_sess = None
@@ -407,14 +408,13 @@ class RolloutWorker(ParallelIteratorWorker):
             self.policy_map, self.preprocessors = self._build_policy_map(
                 policy_dict, policy_config)
 
-        if (ray.is_initialized() and
-                ray.worker._mode() != ray.worker.LOCAL_MODE):
+        if (ray.is_initialized()
+                and ray.worker._mode() != ray.worker.LOCAL_MODE):
             # Check available number of GPUs
             if not ray.get_gpu_ids():
-                logger.debug(
-                    "Creating policy evaluation worker {}".format(
-                        worker_index) +
-                    " on CPU (please ignore any CUDA init errors)")
+                logger.debug("Creating policy evaluation worker {}".format(
+                    worker_index) +
+                             " on CPU (please ignore any CUDA init errors)")
             elif (policy_config["framework"] in ["tf2", "tf", "tfe"] and
                   not tf.config.list_physical_devices("GPU")) or \
                     (policy_config["framework"] == "torch" and
@@ -423,9 +423,8 @@ class RolloutWorker(ParallelIteratorWorker):
                     "GPUs were assigned to this worker by Ray, but "
                     "your DL framework ({}) reports GPU acceleration is "
                     "disabled. This could be due to a bad CUDA- or {} "
-                    "installation.".format(
-                        policy_config["framework"],
-                        policy_config["framework"]))
+                    "installation.".format(policy_config["framework"],
+                                           policy_config["framework"]))
 
         self.multiagent: bool = set(
             self.policy_map.keys()) != {DEFAULT_POLICY_ID}
