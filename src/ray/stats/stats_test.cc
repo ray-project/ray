@@ -125,16 +125,21 @@ TEST_F(StatsTest, MultiThreadedInitializationTest) {
   ray::stats::Shutdown();
   // Spawn 10 threads that init and shutdown again and again.
   // The test will have memory corruption if it doesn't work as expected.
+  const stats::TagsType global_tags = {{stats::LanguageKey, "CPP"},
+                                       {stats::WorkerPidKey, "1000"}};
   std::vector<std::thread> threads;
-  for (int i = 0; i < 10; i++) {
-    worker_threads.emplace_back([]() {
-      for (int i = 0; i < 100; i++) {
-        const stats::TagsType global_tags = {{stats::LanguageKey, "CPP"},
-                                             {stats::WorkerPidKey, "1000"}};
+  for (int i = 0; i < 5; i++) {
+    threads.emplace_back([global_tags]() {
+      for (int i = 0; i < 5; i++) {
         std::shared_ptr<stats::MetricExporterClient> exporter(
             new stats::StdoutExporterClient());
-        ray::stats::Init(global_tags, MetricsAgentPort, exporter);
-        ray::stats::Shutdown();
+        int upper_bound = 100;
+        unsigned int init_or_shutdown = (rand() % upper_bound);
+        if (init_or_shutdown >= (upper_bound / 2)) {
+          ray::stats::Init(global_tags, MetricsAgentPort, exporter);
+        } else {
+          ray::stats::Shutdown();
+        }
       }
     });
   }
@@ -142,6 +147,11 @@ TEST_F(StatsTest, MultiThreadedInitializationTest) {
     thread.join();
   }
   ray::stats::Shutdown();
+  ASSERT_FALSE(ray::stats::StatsConfig::instance().IsInitialized());
+  std::shared_ptr<stats::MetricExporterClient> exporter(
+      new stats::StdoutExporterClient());
+  ray::stats::Init(global_tags, MetricsAgentPort, exporter);
+  ASSERT_TRUE(ray::stats::StatsConfig::instance().IsInitialized());
 }
 
 }  // namespace ray
