@@ -931,8 +931,10 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
           named_actors_.emplace(actor->GetName(), actor->GetActorID());
         }
 
-        created_actors_[actor->GetNodeID()].emplace(actor->GetWorkerID(),
-                                                    actor->GetActorID());
+        if (actor->GetState() == ray::rpc::ActorTableData::ALIVE) {
+          created_actors_[actor->GetNodeID()].emplace(actor->GetWorkerID(),
+                                                      actor->GetActorID());
+        }
 
         auto &workers = owners_[actor->GetNodeID()];
         auto it = workers.find(actor->GetWorkerID());
