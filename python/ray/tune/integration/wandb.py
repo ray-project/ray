@@ -2,11 +2,9 @@ import os
 
 from multiprocessing import Process, Queue
 from numbers import Number
-from typing import List
 
 from ray import logger
 from ray.tune.logger import Logger
-from ray.tune.utils import unflattened_lookup
 
 try:
     import wandb
@@ -81,9 +79,6 @@ class WandbLogger(Logger):
         api_key (str): Wandb API Key. Alternative to setting `api_key_file`.
         excludes (List[str]): List of metrics that should be excluded from
             the log.
-        group_by (Union[str, List[str]]): Decides how the trials should be
-            grouped. If `group_by="trainable_name"`, the group is retrieved
-            from the trainable name.
         log_config (Boolean): Boolean indicating if the `config` parameter of
             the `results` dict should be logged. This makes sense if parameters
             will change during training, e.g. with PopulationBasedTraining.
@@ -109,8 +104,7 @@ class WandbLogger(Logger):
                 "wandb": {
                     "project": "Optimization_Project",
                     "api_key_file": "/path/to/file",
-                    "log_config": True,
-                    "group_by": ["parameter_1", "parameter_2"]
+                    "log_config": True
                 }
             },
             loggers=DEFAULT_LOGGERS + (WandbLogger, ))
@@ -180,31 +174,7 @@ class WandbLogger(Logger):
                 "You need to specify a `project` in your wandb `config` dict.")
 
         # Grouping
-        group_by = wandb_config.pop("group_by", "trainable_name")
-        if isinstance(group_by, List):
-
-            def fmt(v):
-                return round(v, 6) if isinstance(v, Number) else v
-
-            try:
-                group_name = ",".join([
-                    "{}={}".format(k, fmt(unflattened_lookup(k, config, ".")))
-                    for k in group_by
-                ])
-            except KeyError:
-                raise ValueError(
-                    "The `wandb.group_by` list contains keys that are not "
-                    "defined in Tune's search space (`config`).")
-        else:
-            if group_by == "trainable_name":
-                group_name = self.trial.trainable_name
-            else:
-                raise ValueError(
-                    "Invalid value for `group_by` Wandb config parameter: {} ."
-                    "Please pass either 'trainable_name' or a list of config "
-                    "parameters to group trials by.".format(group_by))
-
-        wandb_group = wandb_config.pop("group", group_name)
+        wandb_group = wandb_config.pop("group", self.trial.trainable_name)
 
         wandb_init_kwargs = dict(
             id=trial_id,

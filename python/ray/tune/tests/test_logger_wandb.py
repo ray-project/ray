@@ -47,6 +47,9 @@ class WandbLoggerTest(unittest.TestCase):
         trial_config = {"par1": 4, "par2": 9.12345678}
         trial = Trial(trial_config, 0, "trial_0", "trainable")
 
+        if WANDB_ENV_VAR in os.environ:
+            del os.environ[WANDB_ENV_VAR]
+
         # Needs at least a project
         with self.assertRaises(ValueError):
             logger = WandbTestLogger(trial_config, "/tmp", trial)
@@ -100,49 +103,26 @@ class WandbLoggerTest(unittest.TestCase):
 
         logger.close()
 
-        # Group by one parameter, log config.
-        trial_config["wandb"] = {
-            "project": "test_project",
-            "group_by": ["par1"],
-            "log_config": True
-        }
+        # log config.
+        trial_config["wandb"] = {"project": "test_project", "log_config": True}
 
         logger = WandbTestLogger(trial_config, "/tmp", trial)
-        self.assertEqual(logger._wandb.kwargs["group"], "par1=4")
         self.assertNotIn("config", logger._wandb._exclude)
         self.assertNotIn("metric", logger._wandb._exclude)
 
         logger.close()
 
-        # Group by two parameters, exclude metrics.
+        # Exclude metric.
         trial_config["wandb"] = {
             "project": "test_project",
-            "group_by": ["par1", "par2"],
             "excludes": ["metric"]
         }
 
         logger = WandbTestLogger(trial_config, "/tmp", trial)
-        self.assertEqual(logger._wandb.kwargs["group"], "par1=4,par2=9.123457")
         self.assertIn("config", logger._wandb._exclude)
         self.assertIn("metric", logger._wandb._exclude)
 
         logger.close()
-
-        # Invalid group by
-        trial_config["wandb"] = {
-            "project": "test_project",
-            "group_by": ["par1", "invalid"]
-        }
-        with self.assertRaises(ValueError):
-            logger = WandbTestLogger(trial_config, "/tmp", trial)
-
-        # Invalid group by
-        trial_config["wandb"] = {
-            "project": "test_project",
-            "group_by": "invalid"
-        }
-        with self.assertRaises(ValueError):
-            logger = WandbTestLogger(trial_config, "/tmp", trial)
 
     def testReporting(self):
         trial_config = {"par1": 4, "par2": 9.12345678}
