@@ -104,9 +104,11 @@ static inline void Init(const TagsType &global_tags, const int metrics_agent_por
 static inline void Shutdown() {
   // TODO(sang): Harvest thread is not currently cleaned up.
   absl::MutexLock lock(&stats_mutex);
-  if (metrics_io_service_pool) {
-    metrics_io_service_pool->Stop();
+  if (!StatsConfig::instance().IsInitialized()) {
+    // Return if stats had never been initialized.
+    return;
   }
+  metrics_io_service_pool->Stop();
   opencensus::stats::StatsExporter::Shutdown();
   metrics_io_service_pool = nullptr;
   exporter = nullptr;

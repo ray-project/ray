@@ -835,6 +835,11 @@ Status RedisWorkerInfoAccessor::AsyncAdd(
   return Status::Invalid("Not implemented");
 }
 
+Status RedisPlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
+    const PlacementGroupSpecification &placement_group_spec) {
+  return Status::Invalid("Not implemented");
+}
+
 }  // namespace gcs
 
 }  // namespace ray

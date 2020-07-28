@@ -444,7 +444,7 @@ def test_memory_dashboard(shutdown_only):
         stop_memory_table()
         return True
 
-    def test_object_pineed_in_memory():
+    def test_object_pinned_in_memory():
 
         a = ray.put(np.zeros(200 * 1024, dtype=np.uint8))
         b = ray.get(a)  # Noqa F841
@@ -470,8 +470,8 @@ def test_memory_dashboard(shutdown_only):
         def f(arg):
             time.sleep(1)
 
-        a = ray.put(np.zeros(200 * 1024, dtype=np.uint8))  # Noqa F841
-        b = f.remote(a)  # Noqa F841
+        a = ray.put(np.zeros(200 * 1024, dtype=np.uint8))
+        b = f.remote(a)
 
         wait_for_condition(memory_table_ready)
         memory_table = get_memory_table()
@@ -492,7 +492,7 @@ def test_memory_dashboard(shutdown_only):
         def f(arg):
             time.sleep(1)
 
-        a = ray.put(None)  # Noqa F841
+        a = ray.put(None)
         b = f.remote([a])  # Noqa F841
 
         wait_for_condition(memory_table_ready)
@@ -551,30 +551,27 @@ def test_memory_dashboard(shutdown_only):
     # These tests should be retried because it takes at least one second
     # to get the fresh new memory table. It is because memory table is updated
     # Whenever raylet and node info is renewed which takes 1 second.
-    assert (wait_for_condition(
-        test_local_reference, timeout=30000, retry_interval_ms=1000) is True)
+    wait_for_condition(
+        test_local_reference, timeout=30000, retry_interval_ms=1000)
 
-    assert (wait_for_condition(
-        test_object_pineed_in_memory, timeout=30000, retry_interval_ms=1000) is
-            True)
+    wait_for_condition(
+        test_object_pinned_in_memory, timeout=30000, retry_interval_ms=1000)
 
-    assert (wait_for_condition(
-        test_pending_task_references, timeout=30000, retry_interval_ms=1000) is
-            True)
+    wait_for_condition(
+        test_pending_task_references, timeout=30000, retry_interval_ms=1000)
 
-    assert (wait_for_condition(
+    wait_for_condition(
         test_serialized_object_ref_reference,
         timeout=30000,
-        retry_interval_ms=1000) is True)
+        retry_interval_ms=1000)
 
-    assert (wait_for_condition(
+    wait_for_condition(
         test_captured_object_ref_reference,
         timeout=30000,
-        retry_interval_ms=1000) is True)
+        retry_interval_ms=1000)
 
-    assert (wait_for_condition(
-        test_actor_handle_reference, timeout=30000, retry_interval_ms=1000) is
-            True)
+    wait_for_condition(
+        test_actor_handle_reference, timeout=30000, retry_interval_ms=1000)
 
 
 """Memory Table Unit Test"""
