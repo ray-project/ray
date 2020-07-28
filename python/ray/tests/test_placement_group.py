@@ -4,7 +4,6 @@ try:
 except ImportError:
     pytest_timeout = None
 import sys
-import os
 
 import ray
 import ray.test_utils
