@@ -13,6 +13,7 @@ from ray.experimental.internal_kv import _internal_kv_put, \
     _internal_kv_initialized
 from ray.autoscaler.node_provider import get_node_provider
 from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
+                                 TAG_RAY_FILE_MOUNTS_CONTENTS,
                                  TAG_RAY_NODE_STATUS, TAG_RAY_NODE_TYPE,
                                  STATUS_UP_TO_DATE, NODE_TYPE_WORKER)
 from ray.autoscaler.updater import NodeUpdaterThread
@@ -142,6 +143,10 @@ class StandardAutoscaler:
 
         self.last_update_time = now
         nodes = self.workers()
+        # Check pending nodes immediately after fetching the number of running
+        # nodes to minimize chance number of pending nodes changing after
+        # additional nodes are launched.
+        num_pending = self.pending_launches.value
         self.load_metrics.prune_active_ips(
             [self.provider.internal_ip(node_id) for node_id in nodes])
         target_workers = self.target_num_workers()
@@ -199,7 +204,6 @@ class StandardAutoscaler:
                 self.launch_new_node(count, instance_type=instance_type)
 
         # Launch additional nodes of the default type, if still needed.
-        num_pending = self.pending_launches.value
         num_workers = len(nodes) + num_pending
         if num_workers < target_workers:
             max_allowed = min(self.max_launch_batch,
@@ -253,19 +257,29 @@ class StandardAutoscaler:
             self.recover_if_needed(node_id, now)
 
     def reload_config(self, errors_fatal=False):
+        sync_continuously = False
+        if hasattr(self, "config"):
+            sync_continuously = self.config.get(
+                "file_mounts_sync_continuously", False)
         try:
             with open(self.config_path) as f:
                 new_config = yaml.safe_load(f.read())
             validate_config(new_config)
             new_launch_hash = hash_launch_conf(new_config["worker_nodes"],
                                                new_config["auth"])
-            new_runtime_hash = hash_runtime_conf(new_config["file_mounts"], [
-                new_config["worker_setup_commands"],
-                new_config["worker_start_ray_commands"]
-            ])
+            (new_runtime_hash,
+             new_file_mounts_contents_hash) = hash_runtime_conf(
+                 new_config["file_mounts"],
+                 [
+                     new_config["worker_setup_commands"],
+                     new_config["worker_start_ray_commands"],
+                 ],
+                 generate_file_mounts_contents_hash=sync_continuously,
+             )
             self.config = new_config
             self.launch_hash = new_launch_hash
             self.runtime_hash = new_runtime_hash
+            self.file_mounts_contents_hash = new_file_mounts_contents_hash
         except Exception as e:
             if errors_fatal:
                 raise e
@@ -312,11 +326,19 @@ class StandardAutoscaler:
         return True
 
     def files_up_to_date(self, node_id):
-        applied = self.provider.node_tags(node_id).get(TAG_RAY_RUNTIME_CONFIG)
-        if applied != self.runtime_hash:
+        node_tags = self.provider.node_tags(node_id)
+        applied_config_hash = node_tags.get(TAG_RAY_RUNTIME_CONFIG)
+        applied_file_mounts_contents_hash = node_tags.get(
+            TAG_RAY_FILE_MOUNTS_CONTENTS)
+        if (applied_config_hash != self.runtime_hash
+                or (self.file_mounts_contents_hash is not None
+                    and self.file_mounts_contents_hash !=
+                    applied_file_mounts_contents_hash)):
             logger.info("StandardAutoscaler: "
-                        "{}: Runtime state is {}, want {}".format(
-                            node_id, applied, self.runtime_hash))
+                        "{}: Runtime state is ({},{}), want ({},{})".format(
+                            node_id, applied_config_hash,
+                            applied_file_mounts_contents_hash,
+                            self.runtime_hash, self.file_mounts_contents_hash))
             return False
         return True
 
@@ -345,6 +367,7 @@ class StandardAutoscaler:
             ray_start_commands=with_head_node_ip(
                 self.config["worker_start_ray_commands"]),
             runtime_hash=self.runtime_hash,
+            file_mounts_contents_hash=self.file_mounts_contents_hash,
             process_runner=self.process_runner,
             use_internal_ip=True,
             docker_config=self.config.get("docker"))
@@ -385,6 +408,7 @@ class StandardAutoscaler:
             setup_commands=with_head_node_ip(init_commands),
             ray_start_commands=with_head_node_ip(ray_start_commands),
             runtime_hash=self.runtime_hash,
+            file_mounts_contents_hash=self.file_mounts_contents_hash,
             process_runner=self.process_runner,
             use_internal_ip=True,
             docker_config=self.config.get("docker"))
