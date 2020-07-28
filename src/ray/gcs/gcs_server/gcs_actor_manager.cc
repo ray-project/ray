@@ -972,8 +972,8 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
                    << ", and the number of created actors is " << created_actors_.size();
     for (auto &item : registered_actors_) {
       auto &actor = item.second;
-      if (actor->GetState() != ray::rpc::ActorTableData::ALIVE &&
-          actor->GetState() != ray::rpc::ActorTableData::DEPENDENCIES_UNREADY) {
+      if (actor->GetState() == ray::rpc::ActorTableData::PENDING_CREATION ||
+          actor->GetState() == ray::rpc::ActorTableData::RESTARTING) {
         // We should not reschedule actors in state of `ALIVE`.
         // We could not reschedule actors in state of `DEPENDENCIES_UNREADY` because the
         // dependencies of them may not have been resolved yet.
