@@ -81,8 +81,8 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(Work work) {
 }
 
 void ClusterTaskManager::DispatchScheduledTasksToWorkers(
-    WorkerPool &worker_pool,
-    std::unordered_map<WorkerID, std::shared_ptr<Worker>> &leased_workers) {
+    WorkerPoolInterface &worker_pool,
+    std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers) {
   // Check every task in task_to_dispatch queue to see
   // whether it can be dispatched and ran. This avoids head-of-line
   // blocking where a task which cannot be dispatched because
@@ -94,7 +94,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
     auto spec = task.GetTaskSpecification();
     tasks_to_dispatch_.pop_front();
 
-    std::shared_ptr<Worker> worker = worker_pool.PopWorker(spec);
+    std::shared_ptr<WorkerInterface> worker = worker_pool.PopWorker(spec);
     if (!worker) {
       // No worker available to schedule this task.
       // Put the task back in the dispatch queue.
@@ -148,8 +148,8 @@ void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> ready_ids) {
 }
 
 void ClusterTaskManager::Dispatch(
-    std::shared_ptr<Worker> worker,
-    std::unordered_map<WorkerID, std::shared_ptr<Worker>> &leased_workers_,
+    std::shared_ptr<WorkerInterface> worker,
+    std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers_,
     const TaskSpecification &task_spec, rpc::RequestWorkerLeaseReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   reply->mutable_worker_address()->set_ip_address(worker->IpAddress());

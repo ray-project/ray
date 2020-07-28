@@ -267,7 +267,7 @@ class TestRolloutWorker(unittest.TestCase):
             pg.stop()
 
     def test_reward_clipping(self):
-        # clipping on
+        # Clipping: on.
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv2(episode_length=10),
             policy=MockPolicy,
@@ -278,7 +278,7 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertEqual(result["episode_reward_mean"], 1000)
         ev.stop()
 
-        # clipping off
+        # Clipping: off.
         ev2 = RolloutWorker(
             env_creator=lambda _: MockEnv2(episode_length=10),
             policy=MockPolicy,

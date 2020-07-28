@@ -152,7 +152,6 @@ class GcsServer {
   /// Worker info service
   std::unique_ptr<rpc::WorkerInfoGrpcService> worker_info_service_;
   /// Placement Group info handler and service
-  std::unique_ptr<rpc::PlacementGroupInfoHandler> placement_group_info_handler_;
   std::unique_ptr<rpc::PlacementGroupInfoGrpcService> placement_group_info_service_;
   /// Backend client
   std::shared_ptr<RedisGcsClient> redis_gcs_client_;

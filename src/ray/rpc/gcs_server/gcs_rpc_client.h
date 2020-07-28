@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include <unistd.h>
-
 #include "ray/common/network_util.h"
 #include "ray/rpc/grpc_client.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
@@ -109,6 +107,10 @@ class GcsRpcClient {
         new GrpcClient<ErrorInfoGcsService>(address, port, client_call_manager));
     worker_info_grpc_client_ = std::unique_ptr<GrpcClient<WorkerInfoGcsService>>(
         new GrpcClient<WorkerInfoGcsService>(address, port, client_call_manager));
+    placement_group_info_grpc_client_ =
+        std::unique_ptr<GrpcClient<PlacementGroupInfoGcsService>>(
+            new GrpcClient<PlacementGroupInfoGcsService>(address, port,
+                                                         client_call_manager));
   }
 
   /// Add job info to gcs server.
@@ -119,6 +121,10 @@ class GcsRpcClient {
 
   /// Get information of all jobs from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService, GetAllJobInfo, job_info_grpc_client_, )
+
+  /// Register actor via GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, RegisterActor,
+                             actor_info_grpc_client_, )
 
   /// Create actor via GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, CreateActor, actor_info_grpc_client_, )
