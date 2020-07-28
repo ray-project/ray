@@ -68,10 +68,12 @@ build_jars_darwin() {
 }
 
 build_jars_multiplatform() {
-  if [[ "${TRAVIS_REPO_SLUG-}" != "ray-project/ray" || "${TRAVIS_PULL_REQUEST-}" != "false" ]]; then
-    echo "Skip build multiplatform jars when this build is from a pull request or
-      not a build for commit in ray-project/ray."
-    return
+  if [ "${TRAVIS-}" = true ]; then
+    if [[ "${TRAVIS_REPO_SLUG-}" != "ray-project/ray" || "${TRAVIS_PULL_REQUEST-}" != "false" ]]; then
+      echo "Skip build multiplatform jars when this build is from a pull request or
+        not a build for commit in ray-project/ray."
+      return
+    fi
   fi
   download_jars "ray-runtime-$version.jar" "streaming-runtime-$version.jar"
   prepare_native
@@ -115,7 +117,7 @@ download_jars() {
 # prepare native binaries and libraries.
 prepare_native() {
   for os in 'darwin' 'linux'; do
-    cd "$JAR_BASE_DIR/$os"
+    cd "$JAR_BASE_DIR/multiplatform"
     jar xf "ray-runtime-$version.jar" "native/$os"
     local native_dir="$WORKSPACE_DIR/java/runtime/native_dependencies/native/$os"
     mkdir -p "$native_dir"
@@ -140,10 +142,14 @@ deploy_jars() {
     fi
   fi
   echo "Start deploying jars"
-  cd "$WORKSPACE_DIR"/java
-  mvn -T16 deploy -Dmaven.test.skip=true -Dcheckstyle.skip
-  cd "$WORKSPACE_DIR"/streaming/java
-  mvn -T16 deploy -Dmaven.test.skip=true -Dcheckstyle.skip
+  for module in "${RAY_JAVA_MODULES[@]}"; do
+    cd "$WORKSPACE_DIR/java/$module"
+    mvn -T16 deploy -Dmaven.test.skip=true -Dcheckstyle.skip
+  done
+  for module in "${RAY_STREAMING_JAVA_MODULES[@]}"; do
+    cd "$WORKSPACE_DIR/streaming/java/$module"
+    mvn -T16 deploy -Dmaven.test.skip=true -Dcheckstyle.skip
+  done
   echo "Finished deploying jars"
 }
 
