@@ -32,22 +32,13 @@ std::vector<Language> LANGUAGES = {Language::PYTHON, Language::JAVA};
 
 class WorkerPoolMock : public WorkerPool {
  public:
-  WorkerPoolMock(boost::asio::io_service &io_service)
-      : WorkerPoolMock(
-            io_service,
-            {{Language::PYTHON, {"dummy_py_worker_command"}},
-             {Language::JAVA,
-              {"dummy_java_worker_command", "RAY_WORKER_RAYLET_CONFIG_PLACEHOLDER"}}}) {}
-
   explicit WorkerPoolMock(boost::asio::io_service &io_service,
                           const WorkerCommandMap &worker_commands)
-      : WorkerPool(io_service, 0, MAXIMUM_STARTUP_CONCURRENCY, 0, 0, nullptr,
-                   worker_commands, {}, []() {},
-                   [this](const JobID &job_id) { return mock_job_config; }),
+      : WorkerPool(io_service, 0, 0, MAXIMUM_STARTUP_CONCURRENCY, 0, 0, nullptr,
+                   worker_commands, {}, []() {}),
         last_worker_process_() {
     states_by_lang_[ray::Language::JAVA].num_workers_per_process =
         NUM_WORKERS_PER_PROCESS_JAVA;
-    mock_job_config.set_num_java_workers_per_process(NUM_WORKERS_PER_PROCESS_JAVA);
   }
 
   ~WorkerPoolMock() {
@@ -95,13 +86,15 @@ class WorkerPoolMock : public WorkerPool {
   Process last_worker_process_;
   // The worker commands by process.
   std::unordered_map<Process, std::vector<std::string>> worker_commands_by_proc_;
-  rpc::JobConfig mock_job_config;
 };
 
 class WorkerPoolTest : public ::testing::Test {
  public:
   WorkerPoolTest() : error_message_type_(1), client_call_manager_(io_service_) {
-    worker_pool_ = std::unique_ptr<WorkerPoolMock>(new WorkerPoolMock(io_service_));
+    SetWorkerCommands(
+        {{Language::PYTHON, {"dummy_py_worker_command"}},
+         {Language::JAVA,
+          {"dummy_java_worker_command", "RAY_WORKER_RAYLET_CONFIG_PLACEHOLDER"}}});
   }
 
   std::shared_ptr<WorkerInterface> CreateWorker(
@@ -121,26 +114,23 @@ class WorkerPoolTest : public ::testing::Test {
                                  "worker", {}, error_message_type_);
     std::shared_ptr<Worker> worker_ = std::make_shared<Worker>(
         WorkerID::FromRandom(), language, "127.0.0.1", client, client_call_manager_);
-    worker_->AssignJobId(JOB_ID);
     std::shared_ptr<WorkerInterface> worker =
         std::dynamic_pointer_cast<WorkerInterface>(worker_);
+    worker->AssignJobId(JOB_ID);
     if (!proc.IsNull()) {
       worker->SetProcess(proc);
     }
     return worker;
   }
 
-  std::shared_ptr<Worker> CreateDriver(const Language &language = Language::PYTHON) {
-    auto driver = CreateWorker(Process::CreateNewDummy(), language);
-    driver->AssignTaskId(TaskID::ForDriverTask(JOB_ID));
-    int assigned_port;
-    RAY_CHECK_OK(worker_pool_->RegisterDriver(driver, JOB_ID, &assigned_port));
-    return driver;
-  }
-
   void SetWorkerCommands(const WorkerCommandMap &worker_commands) {
     worker_pool_ =
         std::unique_ptr<WorkerPoolMock>(new WorkerPoolMock(io_service_, worker_commands));
+    rpc::JobConfig job_config;
+    job_config.set_num_java_workers_per_process(NUM_WORKERS_PER_PROCESS_JAVA);
+    auto driver = CreateWorker(Process::CreateNewDummy(), Language::PYTHON);
+    driver->AssignTaskId(TaskID::ForDriverTask(JOB_ID));
+    RAY_CHECK_OK(worker_pool_->RegisterDriver(driver, JOB_ID, job_config, nullptr));
   }
 
   void TestStartupWorkerProcessCount(Language language, int num_workers_per_process,
@@ -231,8 +221,7 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
     ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 1);
     // Check that we cannot lookup the worker before it's registered.
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), nullptr);
-    int port;
-    RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), &port));
+    RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), nullptr));
     // Check that we can lookup the worker after it's registered.
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
   }

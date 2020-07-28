@@ -73,6 +73,8 @@ class WorkerPool : public WorkerPoolInterface {
   /// the pool.
   ///
   /// \param num_workers The number of workers to start, per language.
+  /// \param num_initial_python_workers_for_first_job The number of initial Python
+  /// workers for the first job.
   /// \param maximum_startup_concurrency The maximum number of worker processes
   /// that can be started in parallel (typically this should be set to the number of CPU
   /// resources on the machine).
@@ -85,44 +87,53 @@ class WorkerPool : public WorkerPoolInterface {
   /// \param raylet_config The raylet config list of this node.
   /// \param starting_worker_timeout_callback The callback that will be triggered once
   /// it times out to start a worker.
-  /// \param job_config_reader The callback to get the job config.
-  WorkerPool(
-      boost::asio::io_service &io_service, int num_workers,
-      int maximum_startup_concurrency, int min_worker_port, int max_worker_port,
-      std::shared_ptr<gcs::GcsClient> gcs_client, const WorkerCommandMap &worker_commands,
-      const std::unordered_map<std::string, std::string> &raylet_config,
-      std::function<void()> starting_worker_timeout_callback,
-      std::function<boost::optional<rpc::JobConfig>(const JobID &)> job_config_getter);
+  WorkerPool(boost::asio::io_service &io_service, int num_workers,
+             int num_initial_python_workers_for_first_job,
+             int maximum_startup_concurrency, int min_worker_port, int max_worker_port,
+             std::shared_ptr<gcs::GcsClient> gcs_client,
+             const WorkerCommandMap &worker_commands,
+             const std::unordered_map<std::string, std::string> &raylet_config,
+             std::function<void()> starting_worker_timeout_callback);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   virtual ~WorkerPool();
+
+  /// Handles the event that a job is started.
+  ///
+  /// \param job_id ID of the started job.
+  /// \param job_config The config of the started job.
+  /// \return Void
+  void HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job_config);
+
+  /// Handles the event that a job is finished.
+  ///
+  /// \param job_id ID of the finished job.
+  /// \return Void.
+  void HandleJobFinished(const JobID &job_id);
 
   /// Register a new worker. The Worker should be added by the caller to the
   /// pool after it becomes idle (e.g., requests a work assignment).
   ///
   /// \param[in] worker The worker to be registered.
   /// \param[in] pid The PID of the worker.
-  /// \param[out] port The port that this worker's gRPC server should listen on.
+  /// \param[in] send_reply_callback The callback to invoke after registration is
+  /// finished/failed.
   /// Returns 0 if the worker should bind on a random port.
   /// \return If the registration is successful.
   Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker, pid_t pid,
-                        int *port);
+                        std::function<void(int)> send_reply_callback);
 
   /// Register a new driver.
   ///
   /// \param[in] worker The driver to be registered.
   /// \param[in] job_id The job ID of the driver.
-  /// \param[out] port The port that this driver's gRPC server should listen on.
-  /// Returns 0 if the driver should bind on a random port.
+  /// \param[in] job_config The config of the job.
+  /// \param[in] send_reply_callback The callback to invoke after registration is
+  /// finished/failed.
   /// \return If the registration is successful.
-  Status RegisterDriver(const std::shared_ptr<WorkerInterface> &worker, const JobID &job_id,
-                        int *port);
-
-  /// Start initial Python workers for a new job.
-  /// \param job_id The job ID.
-  /// \param num_workers The number of initial Python workers.
-  /// \return Void.
-  void StartInitialPythonWorkersForJob(const JobID &job_id, int num_workers);
+  Status RegisterDriver(const std::shared_ptr<WorkerInterface> &worker,
+                        const JobID &job_id, const rpc::JobConfig &job_config,
+                        std::function<void(int)> send_reply_callback);
 
   /// Get the client connection's registered worker.
   ///
@@ -321,7 +332,24 @@ class WorkerPool : public WorkerPoolInterface {
   std::function<void()> starting_worker_timeout_callback_;
   FRIEND_TEST(WorkerPoolTest, InitialWorkerProcessCount);
 
-  std::function<boost::optional<rpc::JobConfig>(const JobID &)> job_config_getter_;
+  /// The Job ID of the firstly received job.
+  JobID first_job_;
+
+  /// The callback to send RegisterClientReply to the driver of the first job.
+  std::function<void()> first_job_send_register_client_reply_to_driver_;
+
+  /// The number of registered workers of the first job.
+  int first_job_registered_python_worker_count_;
+
+  /// The umber of initial Python workers to wait for the first job before the driver
+  /// receives RegisterClientReply.
+  int first_job_driver_wait_num_python_workers_;
+
+  /// The number of initial Python workers for the first job.
+  int num_initial_python_workers_for_first_job_;
+
+  /// This map tracks the latest infos of unfinished jobs.
+  absl::flat_hash_map<JobID, rpc::JobConfig> unfinished_jobs_;
 };
 
 }  // namespace raylet
