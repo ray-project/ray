@@ -1,6 +1,5 @@
 # coding: utf-8
 import json
-import os
 import subprocess
 import sys
 import tempfile
@@ -105,11 +104,10 @@ ray.shutdown()
                 assert len(worker_pids) > 0
                 for worker_pid in worker_pids:
                     assert worker_pid not in all_worker_pids, (
-                        "Worker process with PID {} is shared by multiple drivers.".
-                        format(worker_pid))
+                        ("Worker process with PID {} is shared" +
+                         " by multiple drivers.").format(worker_pid))
                     all_worker_pids.add(worker_pid)
 
 
 if __name__ == "__main__":
-    import pytest
     sys.exit(pytest.main(["-v", __file__]))
