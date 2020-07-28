@@ -1,5 +1,6 @@
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.types import SampleBatchType
 
 
 @PublicAPI
@@ -7,7 +8,7 @@ class OutputWriter:
     """Writer object for saving experiences from policy evaluation."""
 
     @PublicAPI
-    def write(self, sample_batch):
+    def write(self, sample_batch: SampleBatchType):
         """Save a batch of experiences.
 
         Arguments:
@@ -20,5 +21,5 @@ class NoopOutput(OutputWriter):
     """Output writer that discards its outputs."""
 
     @override(OutputWriter)
-    def write(self, sample_batch):
+    def write(self, sample_batch: SampleBatchType):
         pass

@@ -232,6 +232,10 @@
             "type": "object",
             "description": "Map of remote paths to local paths, e.g. {\"/tmp/data\": \"/my/local/data\"}"
         },
+        "file_mounts_sync_continuously": {
+            "type": "boolean",
+            "description": "If enabled, file mounts will sync continously between the head node and the worker nodes. The nodes will not re-run setup commands if only the contents of the file mounts folders change."
+        },
         "initialization_commands": {
             "$ref": "#/definitions/commands",
             "description": "List of commands that will be run before `setup_commands`. If docker is enabled, these commands will run outside the container and before docker is setup."
