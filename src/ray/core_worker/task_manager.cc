@@ -34,8 +34,10 @@ void TaskManager::AddPendingTask(const rpc::Address &caller_address,
   std::vector<ObjectID> task_deps;
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     if (spec.ArgByRef(i)) {
-      task_deps.push_back(spec.ArgId(i));
-      RAY_LOG(DEBUG) << "Adding arg ID " << spec.ArgId(i);
+      for (size_t j = 0; j < spec.ArgIdCount(i); j++) {
+        task_deps.push_back(spec.ArgId(i, j));
+        RAY_LOG(DEBUG) << "Adding arg ID " << spec.ArgId(i, j);
+      }
     } else {
       const auto &inlined_ids = spec.ArgInlinedIds(i);
       for (const auto &inlined_id : inlined_ids) {
@@ -105,7 +107,9 @@ Status TaskManager::ResubmitTask(const TaskID &task_id,
 
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     if (spec.ArgByRef(i)) {
-      task_deps->push_back(spec.ArgId(i));
+      for (size_t j = 0; j < spec.ArgIdCount(i); j++) {
+        task_deps->push_back(spec.ArgId(i, j));
+      }
     } else {
       const auto &inlined_ids = spec.ArgInlinedIds(i);
       for (const auto &inlined_id : inlined_ids) {
@@ -368,7 +372,9 @@ void TaskManager::RemoveFinishedTaskReferences(
   std::vector<ObjectID> plasma_dependencies;
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     if (spec.ArgByRef(i)) {
-      plasma_dependencies.push_back(spec.ArgId(i));
+      for (size_t j = 0; j < spec.ArgIdCount(i); j++) {
+        plasma_dependencies.push_back(spec.ArgId(i, j));
+      }
     } else {
       const auto &inlined_ids = spec.ArgInlinedIds(i);
       plasma_dependencies.insert(plasma_dependencies.end(), inlined_ids.begin(),
@@ -410,7 +416,9 @@ void TaskManager::RemoveLineageReference(const ObjectID &object_id,
     // for each of the task's args.
     for (size_t i = 0; i < it->second.spec.NumArgs(); i++) {
       if (it->second.spec.ArgByRef(i)) {
-        released_objects->push_back(it->second.spec.ArgId(i));
+        for (size_t j = 0; j < it->second.spec.ArgIdCount(i); j++) {
+          released_objects->push_back(it->second.spec.ArgId(i, j));
+        }
       } else {
         const auto &inlined_ids = it->second.spec.ArgInlinedIds(i);
         released_objects->insert(released_objects->end(), inlined_ids.begin(),

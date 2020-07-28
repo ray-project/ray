@@ -69,7 +69,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   bool ArgByRef(size_t arg_index) const;
 
-  ObjectID ArgId(size_t arg_index) const;
+  size_t ArgIdCount(size_t arg_index) const;
+
+  ObjectID ArgId(size_t arg_index, size_t id_index) const;
 
   ObjectID ReturnId(size_t return_index) const;
 

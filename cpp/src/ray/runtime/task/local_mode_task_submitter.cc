@@ -50,9 +50,7 @@ ObjectID LocalModeTaskSubmitter::Submit(const InvocationSpec &invocation, TaskTy
       reinterpret_cast<uint8_t *>(invocation.args->data()), invocation.args->size(),
       true);
   /// TODO(Guyang Song): Use both 'AddByRefArg' and 'AddByValueArg' to distinguish
-  auto arg = TaskArgByValue(
-      std::make_shared<::ray::RayObject>(buffer, nullptr, std::vector<ObjectID>()));
-  builder.AddArg(arg);
+  builder.AddByValueArg(::ray::RayObject(buffer, nullptr, std::vector<ObjectID>()));
   auto task_specification = builder.Build();
   ObjectID return_object_id = task_specification.ReturnId(0);
 
