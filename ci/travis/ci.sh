@@ -312,7 +312,7 @@ lint_bazel() {
   # Run buildifier without affecting external environment variables
   (
     mkdir -p -- "${GOPATH}"
-    export PATH="${GOPATH}/bin":"${GOROOT}/bin":"${PATH}"
+    export PATH="${GOPATH}/bin:${GOROOT}/bin:${PATH}"
 
     # Build buildifier
     go get github.com/bazelbuild/buildtools/buildifier
@@ -329,8 +329,11 @@ lint_web() {
     . "${HOME}/.nvm/nvm.sh"
     install_npm_project
     nvm use --silent node
-    node_modules/.bin/eslint --max-warnings 0 $(find src -name "*.ts" -or -name "*.tsx")
-    node_modules/.bin/prettier --check $(find src -name "*.ts" -or -name "*.tsx")
+    local filenames
+    # shellcheck disable=SC2207
+    filenames=($(find src -name "*.ts" -or -name "*.tsx"))
+    node_modules/.bin/eslint --max-warnings 0 "${filenames[@]}"
+    node_modules/.bin/prettier --check "${filenames[@]}"
     node_modules/.bin/prettier --check public/index.html
   )
 }
@@ -367,6 +370,7 @@ lint() {
   # Checkout a clean copy of the repo to avoid seeing changes that have been made to the current one
   (
     WORKSPACE_DIR="$(TMPDIR="${WORKSPACE_DIR}/.." mktemp -d)"
+    # shellcheck disable=SC2030
     ROOT_DIR="${WORKSPACE_DIR}"/ci/travis
     git worktree add -q "${WORKSPACE_DIR}"
     pushd "${WORKSPACE_DIR}"
@@ -381,6 +385,7 @@ _check_job_triggers() {
   job_names="$1"
 
   local variable_definitions
+  # shellcheck disable=SC2031
   variable_definitions=($(python "${ROOT_DIR}"/determine_tests_to_run.py))
   if [ 0 -lt "${#variable_definitions[@]}" ]; then
     local expression restore_shell_state=""
@@ -392,6 +397,7 @@ _check_job_triggers() {
     eval "${restore_shell_state}" "${expression}"  # Restore set -x, then evaluate expression
   fi
 
+  # shellcheck disable=SC2086
   if ! (set +x && should_run_job ${job_names//,/ }); then
     if [ "${GITHUB_ACTIONS-}" = true ]; then
       # If this job is to be skipped, emit 'exit' into .bashrc to quickly exit all following steps.
@@ -433,11 +439,14 @@ init() {
 
   configure_system
 
+  # shellcheck disable=SC2031
   . "${ROOT_DIR}"/install-dependencies.sh  # Script is sourced to propagate up environment changes
 }
 
 build() {
-  _bazel_build_before_install
+  if [ "${LINT-}" != 1 ]; then
+    _bazel_build_before_install
+  fi
 
   if ! need_wheels; then
     install_ray

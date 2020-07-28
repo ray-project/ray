@@ -3,12 +3,13 @@ import gym
 import logging
 import numpy as np
 import tree
+from typing import List
 
 from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
     RLLIB_ACTION_DIST, _global_registry
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.preprocessors import get_preprocessor
+from ray.rllib.models.preprocessors import get_preprocessor, Preprocessor
 from ray.rllib.models.tf.fcnet_v1 import FullyConnectedNetwork
 from ray.rllib.models.tf.lstm_v1 import LSTM
 from ray.rllib.models.tf.modelv1_compat import make_v1_wrapper
@@ -26,6 +27,7 @@ from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.spaces.space_utils import flatten_space
+from ray.rllib.utils.types import ModelConfigDict, TensorType
 
 tf1, tf, tfv = try_import_tf()
 
@@ -33,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 # yapf: disable
 # __sphinx_doc_begin__
-MODEL_DEFAULTS = {
+MODEL_DEFAULTS: ModelConfigDict = {
     # === Built-in options ===
     # Filter config. List of [out_channels, kernel, stride] for each filter
     "conv_filters": None,
@@ -114,11 +116,11 @@ class ModelCatalog:
 
     @staticmethod
     @DeveloperAPI
-    def get_action_dist(action_space,
-                        config,
-                        dist_type=None,
-                        framework="tf",
-                        **kwargs):
+    def get_action_dist(action_space: gym.Space,
+                        config: ModelConfigDict,
+                        dist_type: str = None,
+                        framework: str = "tf",
+                        **kwargs) -> (type, int):
         """Returns a distribution class and size for the given action space.
 
         Args:
@@ -209,7 +211,7 @@ class ModelCatalog:
 
     @staticmethod
     @DeveloperAPI
-    def get_action_shape(action_space):
+    def get_action_shape(action_space: gym.Space) -> (np.dtype, List[int]):
         """Returns action tensor dtype and shape for the action space.
 
         Args:
@@ -243,7 +245,8 @@ class ModelCatalog:
 
     @staticmethod
     @DeveloperAPI
-    def get_action_placeholder(action_space, name="action"):
+    def get_action_placeholder(action_space: gym.Space,
+                               name: str = "action") -> TensorType:
         """Returns an action placeholder consistent with the action space
 
         Args:
@@ -260,15 +263,15 @@ class ModelCatalog:
 
     @staticmethod
     @DeveloperAPI
-    def get_model_v2(obs_space,
-                     action_space,
-                     num_outputs,
-                     model_config,
-                     framework="tf",
-                     name="default_model",
-                     model_interface=None,
-                     default_model=None,
-                     **model_kwargs):
+    def get_model_v2(obs_space: gym.Space,
+                     action_space: gym.Space,
+                     num_outputs: int,
+                     model_config: ModelConfigDict,
+                     framework: str = "tf",
+                     name: str = "default_model",
+                     model_interface: type = None,
+                     default_model: type = None,
+                     **model_kwargs) -> ModelV2:
         """Returns a suitable model compatible with given spaces and output.
 
         Args:
@@ -420,7 +423,7 @@ class ModelCatalog:
 
     @staticmethod
     @DeveloperAPI
-    def get_preprocessor(env, options=None):
+    def get_preprocessor(env: gym.Env, options: dict = None) -> Preprocessor:
         """Returns a suitable preprocessor for the given env.
 
         This is a wrapper for get_preprocessor_for_space().
@@ -431,7 +434,8 @@ class ModelCatalog:
 
     @staticmethod
     @DeveloperAPI
-    def get_preprocessor_for_space(observation_space, options=None):
+    def get_preprocessor_for_space(observation_space: gym.Space,
+                                   options: dict = None) -> Preprocessor:
         """Returns a suitable preprocessor for the given observation space.
 
         Args:
@@ -469,7 +473,8 @@ class ModelCatalog:
 
     @staticmethod
     @PublicAPI
-    def register_custom_preprocessor(preprocessor_name, preprocessor_class):
+    def register_custom_preprocessor(preprocessor_name: str,
+                                     preprocessor_class: type) -> None:
         """Register a custom preprocessor class by name.
 
         The preprocessor can be later used by specifying
@@ -484,7 +489,7 @@ class ModelCatalog:
 
     @staticmethod
     @PublicAPI
-    def register_custom_model(model_name, model_class):
+    def register_custom_model(model_name: str, model_class: type) -> None:
         """Register a custom model class by name.
 
         The model can be later used by specifying {"custom_model": model_name}
@@ -498,7 +503,8 @@ class ModelCatalog:
 
     @staticmethod
     @PublicAPI
-    def register_custom_action_dist(action_dist_name, action_dist_class):
+    def register_custom_action_dist(action_dist_name: str,
+                                    action_dist_class: type) -> None:
         """Register a custom action distribution class by name.
 
         The model can be later used by specifying
@@ -512,7 +518,7 @@ class ModelCatalog:
                                   action_dist_class)
 
     @staticmethod
-    def _wrap_if_needed(model_cls, model_interface):
+    def _wrap_if_needed(model_cls: type, model_interface: type) -> type:
         assert issubclass(model_cls, ModelV2), model_cls
 
         if not model_interface or issubclass(model_cls, model_interface):
@@ -608,10 +614,3 @@ class ModelCatalog:
 
         return FullyConnectedNetwork(input_dict, obs_space, action_space,
                                      num_outputs, options)
-
-    @staticmethod
-    def get_torch_model(obs_space,
-                        num_outputs,
-                        options=None,
-                        default_model_cls=None):
-        raise DeprecationWarning("Please use get_model_v2() instead.")

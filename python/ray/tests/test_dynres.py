@@ -286,13 +286,14 @@ def test_dynamic_res_deletion_scheduler_consistency(ray_start_cluster):
     target_node_id = node_ids[1]
     ray.get(set_res.remote(res_name, res_capacity, target_node_id))
 
-    def check_resources():
-        return ray.cluster_resources().get(res_name, None) == res_capacity
-
-    wait_for_condition(check_resources)
+    wait_for_condition(
+        lambda: ray.cluster_resources().get(res_name, None) == res_capacity)
 
     # Delete the resource
     ray.get(delete_res.remote(res_name, target_node_id))
+
+    wait_for_condition(
+        lambda: ray.cluster_resources().get(res_name, None) is None)
 
     # Define a task which requires this resource. This should not run
     @ray.remote(resources={res_name: res_capacity})

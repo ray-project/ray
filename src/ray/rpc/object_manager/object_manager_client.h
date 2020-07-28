@@ -21,10 +21,10 @@
 #include <thread>
 
 #include "ray/common/status.h"
-#include "ray/protobuf/object_manager.grpc.pb.h"
-#include "ray/protobuf/object_manager.pb.h"
 #include "ray/rpc/grpc_client.h"
 #include "ray/util/logging.h"
+#include "src/ray/protobuf/object_manager.grpc.pb.h"
+#include "src/ray/protobuf/object_manager.pb.h"
 
 namespace ray {
 namespace rpc {
@@ -39,7 +39,7 @@ class ObjectManagerClient {
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   ObjectManagerClient(const std::string &address, const int port,
                       ClientCallManager &client_call_manager, int num_connections = 4)
-      : client_call_manager_(client_call_manager), num_connections_(num_connections) {
+      : num_connections_(num_connections) {
     push_rr_index_ = rand() % num_connections_;
     pull_rr_index_ = rand() % num_connections_;
     freeobjects_rr_index_ = rand() % num_connections_;
@@ -85,9 +85,6 @@ class ObjectManagerClient {
 
   /// The RPC clients.
   std::vector<std::unique_ptr<GrpcClient<ObjectManagerService>>> grpc_clients_;
-
-  /// The `ClientCallManager` used for managing requests.
-  ClientCallManager &client_call_manager_;
 };
 
 }  // namespace rpc

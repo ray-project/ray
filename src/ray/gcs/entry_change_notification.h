@@ -14,8 +14,9 @@
 
 #pragma once
 
-#include <ray/protobuf/gcs.pb.h>
 #include <vector>
+
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 
