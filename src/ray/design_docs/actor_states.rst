@@ -16,18 +16,18 @@ An actor can be in one of the following states:
 
 ::
 
-                                                                           3
-   0                            1                             2               +------------>
-+----->DEPENDENCIES_UNREADY+------------->PENDING_CREATION+------------>ALIVE                RESTARTING
-               +                                  +                       +   <------------+      +
-               |                                  |                       |         4             |
-               |                                  |                       |                       |
-             8 |                               7  |                     6 |                       | 5
-               |                                  |                       |                       |
-               |                                  |                       |                       |
-               |                                  |                       |                       |
-               |                                  v                       |                       |
-               +-------------------------------->DEAD<--------------------+-----------------------+
+                                                                         3
+   0                            1                       2          ------------->
+ ---->DEPENDENCIES_UNREADY-------->PENDING_CREATION-------->ALIVE                RESTARTING
+               |                            |                  |   <-------------      |
+               |                            |                  |         4             |
+               |                            |                  |                       |
+             8 |                         7  |                6 |                       | 5
+               |                            |                  |                       |
+               |                            |                  |                       |
+               |                            |                  |                       |
+               |                            v                  |                       |
+                -------------------------->DEAD<---------------------------------------
 
 0: GCS will create an actor whose state is `DEPENDENCIES_UNREADY`
    when a `RegisterActor` request is received from CoreWorker.
