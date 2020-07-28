@@ -46,7 +46,7 @@ std::pair<PlacementGroupID, int64_t> BundleSpecification::BundleId() const {
 std::string BundleSpecification::BundleIdAsString() const {
   int64_t index = message_->bundle_id().bundle_index();
   return PlacementGroupID::FromBinary(message_->bundle_id().placement_group_id()).Hex() +
-         std::to_string(index);
+         "_" + std::to_string(index);
 }
 
 PlacementGroupID BundleSpecification::PlacementGroupId() const {
