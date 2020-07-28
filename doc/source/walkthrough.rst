@@ -74,7 +74,7 @@ Ray enables arbitrary functions to be executed asynchronously. These asynchronou
           return 1
 
       # To invoke this remote function, use the `remote` method.
-      # This will immediately returns an object ref (a future) and then creates
+      # This will immediately return an object ref (a future) and then create
       # a task that will be executed on a worker process.
       obj_ref = my_function.remote()
 
@@ -86,7 +86,7 @@ Ray enables arbitrary functions to be executed asynchronously. These asynchronou
         time.sleep(10)
         return 1
 
-      # Invocation of Ray remote functions happen in parallel.
+      # Invocations of Ray remote functions happen in parallel.
       # All computation is performed in the background, driven by Ray's internal event loop.
       for _ in range(4):
           # This doesn't block.
@@ -106,11 +106,11 @@ Ray enables arbitrary functions to be executed asynchronously. These asynchronou
       }
 
       // Invoke the above method as a Ray remote function.
-      // This will immediately returns an object ref (a future) and then creates
+      // This will immediately return an object ref (a future) and then create
       // a task that will be executed on a worker process.
       ObjectRef<Integer> res = Ray.task(MyRayApp::myFunction).remote();
 
-      // The result can be retrieved with ``ray.get``.
+      // The result can be retrieved with ``ObjectRef::get``.
       Assert.assertTrue(res.get() == 1);
 
       public static int slowFunction() throws InterruptedException {
@@ -118,7 +118,7 @@ Ray enables arbitrary functions to be executed asynchronously. These asynchronou
         return 1;
       }
 
-      // Invocation of Ray remote functions happen in parallel.
+      // Invocations of Ray remote functions happen in parallel.
       // All computation is performed in the background, driven by Ray's internal event loop.
       for(int i = 0; i < 4; i++) {
         // This doesn't block.
@@ -143,7 +143,7 @@ Passing object refs to remote functions
     obj_ref1 = my_function.remote()
     assert ray.get(obj_ref1) == 1
 
-    # You can pass an `ObjectRef` as an argument to another Ray remote function.
+    # You can pass an object ref as an argument to another Ray remote function.
     obj_ref2 = function_with_an_argument.remote(obj_ref1)
     assert ray.get(obj_ref2) == 2
 
@@ -156,7 +156,7 @@ Passing object refs to remote functions
     ObjectRef<Integer> objRef1 = Ray.task(MyRayApp::myFunction).remote();
     Assert.assertTrue(objRef1.get() == 1);
 
-    // You can pass an `ObjectRef` as an argument to another Ray remote function.
+    // You can pass an object ref as an argument to another Ray remote function.
     ObjectRef<Integer> objRef2 = Ray.task(MyRayApp::functionWithAnArgument, objRef1).remote();
     Assert.assertTrue(objRef2.get() == 2);
 
@@ -353,8 +353,6 @@ If the current node's object store does not contain the object, the object is do
 
     .. code-block:: java
 
-      // Get the value of one object ref.
-      ObjectRef<Integer> objRef = Ray.put(1);
       // Get the value of one object ref.
       ObjectRef<Integer> objRef = Ray.put(1);
       Assert.assertTrue(object.get() == 1);

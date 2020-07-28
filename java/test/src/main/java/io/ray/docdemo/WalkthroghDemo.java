@@ -36,14 +36,14 @@ public class WalkthroghDemo {
 
   public static void demoTasks() {
     // Invoke the above method as a Ray remote function.
-    // This will immediately returns an object ref (a future) and then creates
+    // This will immediately return an object ref (a future) and then create
     // a task that will be executed on a worker process.
     ObjectRef<Integer> res = Ray.task(MyRayApp::myFunction).remote();
 
-    // The result can be retrieved with ``ray.get``.
+    // The result can be retrieved with ``ObjectRef::get``.
     Assert.assertTrue(res.get() == 1);
 
-    // Invocation of Ray remote functions happen in parallel.
+    // Invocations of Ray remote functions happen in parallel.
     // All computation is performed in the background, driven by Ray's internal event loop.
     for (int i = 0; i < 4; i++) {
       // This doesn't block.
