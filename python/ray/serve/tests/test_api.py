@@ -579,7 +579,7 @@ def test_shutdown(serve_instance):
                 pass
         return True
 
-    assert wait_for_condition(check_dead)
+    wait_for_condition(check_dead)
 
 
 def test_shadow_traffic(serve_instance):
@@ -622,7 +622,7 @@ def test_shadow_traffic(serve_instance):
             requests_to_backend("backend4") > 0,
         ])
 
-    assert wait_for_condition(check_requests)
+    wait_for_condition(check_requests)
 
 
 if __name__ == "__main__":

@@ -28,7 +28,7 @@ Algorithm           Frameworks Discrete Actions        Continuous Actions Multi-
 ------------------- ---------- ----------------------- ------------------ ----------- ---------------------
 `AlphaZero`_        torch      **Yes** `+parametric`_  No                 No
 `LinUCB`_, `LinTS`_ torch      **Yes** `+parametric`_  No                 **Yes**
-`MADDPG`_           tf         No                      **Yes**            **Yes**
+`MADDPG`_           tf         **Yes**                 Partial            **Yes**
 =================== ========== ======================= ================== =========== =====================
 
 .. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
@@ -492,7 +492,7 @@ Tuned examples: `Two-step game <https://github.com/ray-project/ray/blob/master/r
 Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG)
 ---------------------------------------------------------------
 |tensorflow|
-`[paper] <https://arxiv.org/abs/1706.02275>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/contrib/maddpg/maddpg.py>`__ MADDPG is a specialized multi-agent algorithm. Code here is adapted from https://github.com/openai/maddpg to integrate with RLlib multi-agent APIs. Please check `justinkterry/maddpg-rllib <https://github.com/justinkterry/maddpg-rllib>`__ for examples and more information.
+`[paper] <https://arxiv.org/abs/1706.02275>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/contrib/maddpg/maddpg.py>`__ MADDPG is a DDPG centralized critic algorithm. Code here is adapted from https://github.com/openai/maddpg to integrate with RLlib multi-agent APIs. Please check `justinkterry/maddpg-rllib <https://github.com/justinkterry/maddpg-rllib>`__ for examples and more information. Note that the implementation here is based on OpenAI's, and is intended for use with the discrete MPE environments. Please also note that people typically find this method difficult to get to work, even with all applicable optimizations for their environment applied. This method should be viewed as for research purposes, and for reproducing the results of the paper introducing it.
 
 **MADDPG-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 

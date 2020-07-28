@@ -32,11 +32,13 @@ do
     env_name="${RAY_VERSION}-${PYTHON_VERSION}-env"
     conda create -y -n "${env_name}" python=${PYTHON_VERSION}
     conda activate "${env_name}"
-    echo "\n\n\n========================================================="
+    printf "\n\n\n"
+    echo "========================================================="
     echo "Python version."
     python --version
     echo "This should be equal to ${PYTHON_VERSION}"
-    echo "=========================================================\n\n\n"
+    echo "========================================================="
+    printf "\n\n\n"
 
     pip install redis==3.3.2
     pip install msgpack==0.6.2
@@ -45,13 +47,15 @@ do
     pip install --index-url https://test.pypi.org/simple/ ray
 
     failed=false
-    echo "\n\n\n========================================================="
+    printf "\n\n\n"
+    echo "========================================================="
     if python sanity_check.py; then
         echo "PYTHON ${PYTHON_VERSION} succeed sanity check."
     else
         failed=true
     fi
-    echo "=========================================================\n\n\n"
+    echo "========================================================="
+    printf "\n\n\n"
 
     conda deactivate
     conda remove -y --name "${env_name}" --all

@@ -103,15 +103,17 @@ message TaskTableData {
 message ActorTableData {
   // State of an actor.
   enum ActorState {
-    // Actor is pending.
-    PENDING = 0;
+    // Actor info ins registered in GCS. But its dependencies are not ready.
+    DEPENDENCIES_UNREADY = 0;
+    // Actor local dependencies are ready. This actor is being created.
+    PENDING_CREATION = 1;
     // Actor is alive.
-    ALIVE = 1;
+    ALIVE = 2;
     // Actor is dead, now being restarted.
     // After reconstruction finishes, the state will become alive again.
-    RESTARTING = 2;
+    RESTARTING = 3;
     // Actor is already dead and won't be restarted.
-    DEAD = 3;
+    DEAD = 4;
   }
   // The ID of the actor that was created.
   bytes actor_id = 1;

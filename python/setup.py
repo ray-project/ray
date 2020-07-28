@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 # before these files have been created, so we have to move the files
 # manually.
 
-SUPPORTED_PYTHONS = [(3, 5), (3, 6), (3, 7), (3, 8)]
+SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8)]
 SUPPORTED_BAZEL = (3, 2, 0)
 
 ROOT_DIR = os.path.dirname(__file__)
@@ -301,13 +301,14 @@ def find_version(*filepath):
 
 install_requires = [
     "aiohttp",
+    "aioredis",
     "click >= 7.0",
     "colorama",
     "colorful",
     "filelock",
     "google",
     "gpustat",
-    "grpcio",
+    "grpcio >= 1.28.1",
     "jsonschema",
     "msgpack >= 0.6.0, < 2.0.0",
     "numpy >= 1.16",
