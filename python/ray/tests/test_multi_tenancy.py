@@ -35,6 +35,13 @@ def test_initial_workers(shutdown_only):
                               timeout=10)
 
 
+# This test case starts some driver processes. Each driver process submits
+# some tasks and collect the PIDs of the workers used by the driver. The
+# drivers output the PID list which will be read by the test case itself. The
+# test case will compare the PIDs used by different drivers and make sure that
+# all the PIDs don't overlap. If overlapped, it means that tasks owned by
+# different drivers were scheduled to the same worker process, that is, tasks
+# of different jobs were not correctly isolated during execution.
 def test_multi_drivers(shutdown_only):
     info = ray.init(
         _internal_config=json.dumps({
@@ -60,11 +67,14 @@ def get_pid():
     return os.getpid()
 
 pid_objs = []
+# Submit some normal tasks and get the PIDs of workers which execute the tasks.
 pid_objs = pid_objs + [get_pid.remote() for _ in range(5)]
+# Create some actors and get the PIDs of actors.
 actors = [Actor.remote() for _ in range(5)]
 pid_objs = pid_objs + [actor.get_pid.remote() for actor in actors]
 
 pids = set([ray.get(obj) for obj in pid_objs])
+# Write pids to stdout
 print("PID:" + str.join(",", [str(_) for _ in pids]))
 
 ray.shutdown()
