@@ -1,0 +1,5 @@
+tensorflow-probability==0.8
+gast==0.2.2
+torch==1.4
+torchvision
+smart_open

@@ -121,7 +121,7 @@ extras["rllib"] = extras["tune"] + [
     "scipy",
 ]
 
-extras["streaming"] = ["msgpack >= 0.6.2"]
+extras["streaming"] = ["msgpack >= 1.0.0"]
 
 extras["all"] = list(set(chain.from_iterable(extras.values())))
 
@@ -319,7 +319,7 @@ install_requires = [
     "gpustat",
     "grpcio >= 1.28.1",
     "jsonschema",
-    "msgpack >= 0.6.0, < 2.0.0",
+    "msgpack >= 1.0.0, < 2.0.0",
     "numpy >= 1.16",
     "protobuf >= 3.8.0",
     "py-spy >= 0.2.0",
