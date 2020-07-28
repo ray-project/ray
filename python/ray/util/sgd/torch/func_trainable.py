@@ -133,7 +133,11 @@ def DistributedTrainableCreator(func,
 
     Args:
         func (callable): This function is a Tune trainable function.
-            It must have the signature (`func(config, checkpoint)`).
+            This function must have 2 args in the signature, and the
+            latter arg must contain `checkpoint`. For example:
+            `func(config, checkpoint_dir=None)` or
+            `func(config, checkpoint=None)`, where `checkpoint`
+            is expected to be a string.
         use_gpu (bool): Sets resource allocation for workers to 1 GPU
             if true. Also automatically sets CUDA_VISIBLE_DEVICES
             for each training worker.
@@ -143,8 +147,13 @@ def DistributedTrainableCreator(func,
             per training worker.
         backend (str): One of "gloo", "nccl".
         timeout_s (float): Seconds before the torch process group
-            times out. Useful when machines are unreliable.
+            times out. Useful when machines are unreliable. Defaults
+            to 60 seconds.
 
+    Returns:
+        A trainable class object that can be passed to Tune. Resources
+            are automatically set within the object, so users do
+            not need to set `resources_per_trainable`.
 
     Example:
 
@@ -193,14 +202,22 @@ def distributed_checkpoint_dir(step, disable=False):
         step (int): Used to label the checkpoint
         disable (bool): Disable for prototyping.
 
+    Yields:
+        path (str): A path to a directory. This path will be used
+            again when invoking the training_function.
     Example:
 
     .. code-block::
 
-        if epoch % 3 == 0:
-            with distributed_checkpoint_dir(step=epoch) as checkpoint_dir:
+        def train_func(config, checkpoint_dir):
+            if checkpoint_dir:
                 path = os.path.join(checkpoint_dir, "checkpoint")
-                torch.save(model.state_dict(), path)
+                model_state_dict = torch.load(path)
+
+            if epoch % 3 == 0:
+                with distributed_checkpoint_dir(step=epoch) as checkpoint_dir:
+                    path = os.path.join(checkpoint_dir, "checkpoint")
+                    torch.save(model.state_dict(), path)
     """
 
     if torch.distributed.get_rank() == 0 and not disable:

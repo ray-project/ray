@@ -362,6 +362,7 @@ def detect_checkpoint_function(train_func, abort=False):
             "contain `checkpoint`. For example: "
             "`func(config, checkpoint_dir=None)` or "
             "`func(config, checkpoint=None)`. Got {}".format(func_args))
+    return validated
 
 
 def wrap_function(train_func):
@@ -377,7 +378,7 @@ def wrap_function(train_func):
                         "of ['reporter', 'checkpoint']. Found: {}".format(
                             func_args))
             use_reporter = "reporter" in func_args
-            use_checkpoint = detect_checkpoint_function(func_args)
+            use_checkpoint = detect_checkpoint_function(train_func)
             if not use_checkpoint and not use_reporter:
                 logger.warning(
                     "Function checkpointing is disabled. This may result in "
