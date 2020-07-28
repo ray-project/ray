@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 import os
 import logging
 
@@ -156,6 +157,13 @@ def save_checkpoint(checkpoint):
     _session = get_session()
     if _session:
         return _session.save_checkpoint(checkpoint)
+
+
+@contextmanager
+def checkpoint_dir(step=None):
+    _checkpoint_dir = make_checkpoint_dir(step=step)
+    yield _checkpoint_dir
+    save_checkpoint(_checkpoint_dir)
 
 
 def get_trial_dir():

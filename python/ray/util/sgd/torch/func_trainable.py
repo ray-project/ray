@@ -1,7 +1,10 @@
 # Original Code here:
 # https://github.com/pytorch/examples/blob/master/mnist/main.py
+from contextlib import contextmanager
 import os
 import logging
+import shutil
+import tempfile
 import torch
 from datetime import timedelta
 
@@ -150,14 +153,15 @@ def DistributedTrainableCreator(func,
     return WrappedDistributedTorchTrainable
 
 
-class distributed_checkpoint:
+@contextmanager
+def distributed_checkpoint_dir(step, disable=False):
     """ContextManager for creating a distributed checkpoint.
 
     Only checkpoints a file on the "main" training actor, avoiding
     redundant work.
 
     Args:
-        label (int | str): Used to label the checkpoint
+        step (int): Used to label the checkpoint
         disable (bool): Disable for prototyping.
 
     Example:
@@ -165,30 +169,25 @@ class distributed_checkpoint:
     .. code-block::
 
         if epoch % 3 == 0:
-            with distributed_checkpoint(label=epoch) as path:
+            with distributed_checkpoint_dir(step=epoch) as checkpoint_dir:
+                path = os.path.join(checkpoint_dir, "checkpoint")
                 torch.save(model.state_dict(), path)
     """
 
-    def __init__(self, label, disable=False):
-        self.label = label
-        self.file = None
-        self.disable = disable
+    if torch.distributed.get_rank() == 0 and not disable:
+        path = tune.make_checkpoint_dir(step=step)
+    else:
+        path = tempfile.mkdtemp()
 
-    def __enter__(self):
-        if torch.distributed.get_rank() == 0 and not self.disable:
-            checkpoint_dir = tune.make_checkpoint_dir(step=self.label)
-            path = os.path.join(checkpoint_dir, "checkpoint")
-        else:
-            path = os.devnull
-        self.file = path
-        return path
+    yield path
 
-    def __exit__(self, type, value, traceback):
-        if torch.distributed.get_rank() == 0 and not self.disable:
-            tune.save_checkpoint(self.file)
+    if torch.distributed.get_rank() == 0 and not disable:
+        tune.save_checkpoint(path)
+    else:
+        shutil.rmtree(path)
 
 
-def _train_simple(config, checkpoint=False):
+def _train_simple(config, checkpoint_dir=None):
     """For testing only. Putting this here because Ray has problems
     serializing within the test file."""
     import torch.nn as nn
@@ -211,8 +210,8 @@ def _train_simple(config, checkpoint=False):
     )
     optimizer = optim.SGD(model.parameters(), lr=0.1)
 
-    if checkpoint:
-        with open(checkpoint) as f:
+    if checkpoint_dir:
+        with open(os.path.join(checkpoint_dir, "checkpoint")) as f:
             model_state, optimizer_state = torch.load(f)
 
         model.load_state_dict(model_state)
@@ -229,7 +228,8 @@ def _train_simple(config, checkpoint=False):
 
         if epoch % 3 == 0:
             if config.get("enable_checkpoint", True):
-                with distributed_checkpoint(label=epoch) as path:
+                with distributed_checkpoint_dir(label=epoch) as checkpoint_dir:
+                    path = os.path.join(checkpoint_dir, "checkpoint")
                     torch.save((model.state_dict(), optimizer.state_dict()),
                                path)
         tune.report(mean_loss=loss.item())

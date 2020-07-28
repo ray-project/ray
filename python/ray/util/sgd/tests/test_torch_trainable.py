@@ -7,7 +7,7 @@ import torch.distributed as dist
 import ray
 from ray import tune
 from ray.util.sgd.torch.func_trainable import (
-    DistributedTrainableCreator, distributed_checkpoint, _train_simple)
+    DistributedTrainableCreator, distributed_checkpoint_dir, _train_simple)
 
 
 @pytest.fixture
@@ -72,11 +72,11 @@ def test_simple_tune(ray_start_4_cpus, enabled_checkpoint):
 def test_checkpoint(ray_start_2_cpus, rank):  # noqa: F811
     with patch("torch.distributed.get_rank") as rank_method:
         rank_method.return_value = rank
-        with distributed_checkpoint(label="test") as path:
+        with distributed_checkpoint_dir(step="test") as path:
             if rank == 0:
                 assert path
-            else:
-                assert path == os.devnull
+        if rank != 0:
+            assert not os.path.exists(path)
 
 
 if __name__ == "__main__":
