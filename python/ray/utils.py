@@ -391,6 +391,10 @@ def setup_logger(logging_level, logging_format):
 
 
 def open_log(path, **kwargs):
+    """
+    Opens the log file at `path`, with the provided kwargs being given to
+    `open`.
+    """
     kwargs.setdefault("buffering", 1)
     kwargs.setdefault("mode", "a")
     kwargs.setdefault("encoding", "utf-8")

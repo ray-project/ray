@@ -28,18 +28,6 @@ jobs:
           - name: macos
             os: macos-10.15
             python-version: 3.6
-          - name: ubuntu-jenkins-tune
-            os: ubuntu-latest
-            python-version: 3.6
-            jenkins-test: RUN_TUNE_TESTS
-          - name: ubuntu-jenkins-doc
-            os: ubuntu-latest
-            python-version: 3.6
-            jenkins-test: RUN_DOC_TESTS
-          - name: ubuntu-jenkins-sgd
-            os: ubuntu-latest
-            python-version: 3.6
-            jenkins-test: RUN_SGD_TESTS
     env:
       BAZEL_CONFIG: ${{ matrix.config }}
       PYTHON: ${{ matrix.python-version }}
@@ -57,10 +45,7 @@ jobs:
         git config --global core.symlinks true && git config --global core.autocrlf false
         if command -v dpkg > /dev/null; then sudo dpkg-reconfigure debconf -f noninteractive -p high; fi
     - name: Checkout repository
-      uses: actions/checkout@v2
-      with:
-        # we need full history to diff against the original for linting etc.
-        fetch-depth: 0
+      uses: actions/checkout@v1
     - name: Configure AWS Credentials
       continue-on-error: true
       if: github.repository == 'ray-project/ray' && github.event_name != 'pull_request'
@@ -93,16 +78,8 @@ jobs:
         restore-keys: |
           pip-${{ runner.os }}-
           pip-
-    - name: Run Jenkins tests
-      shell: bash -e -o pipefail -l {0}
-      if: matrix.jenkins-test != ''
-      env:
-        SIGOPT_KEY: ${{ secrets.TUNE_SIGOPT_KEY }}
-        TEST_CASE: ${{ matrix.jenkins-test }}
-      run: env "${TEST_CASE}=1" HOME="${PWD}" ci/jenkins_tests/entry_point.sh
     - name: Run CI script
       shell: bash -e -o pipefail -l {0}
-      if: matrix.jenkins-test == ''
       env:
         BAZEL_CACHE_CREDENTIAL_B64: ${{ secrets.BAZEL_CACHE_CREDENTIAL_B64 }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -111,6 +88,7 @@ jobs:
         RAY_DEFAULT_BUILD: 1
         WINDOWS_WHEELS: 1
       run: |
+        python -u ci/remote-watch.py --skip_repo=ray-project/ray &
         . ./ci/travis/ci.sh init
         . ./ci/travis/ci.sh build
         . ./ci/travis/ci.sh upload_wheels || true

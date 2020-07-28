@@ -58,7 +58,8 @@ class GcsPubSubTest : public ::testing::Test {
                  std::vector<std::string> &result) {
     std::promise<bool> promise;
     auto done = [&promise](const Status &status) { promise.set_value(status.ok()); };
-    auto subscribe = [&result](const std::string &id, const std::string &data) {
+    auto subscribe = [this, &result](const std::string &id, const std::string &data) {
+      absl::MutexLock lock(&vector_mutex_);
       result.push_back(data);
     };
     RAY_CHECK_OK((pub_sub_->Subscribe(channel, id, subscribe, done)));
@@ -69,7 +70,8 @@ class GcsPubSubTest : public ::testing::Test {
                     std::vector<std::pair<std::string, std::string>> &result) {
     std::promise<bool> promise;
     auto done = [&promise](const Status &status) { promise.set_value(status.ok()); };
-    auto subscribe = [&result](const std::string &id, const std::string &data) {
+    auto subscribe = [this, &result](const std::string &id, const std::string &data) {
+      absl::MutexLock lock(&vector_mutex_);
       result.push_back(std::make_pair(id, data));
     };
     RAY_CHECK_OK((pub_sub_->SubscribeAll(channel, subscribe, done)));
@@ -95,7 +97,8 @@ class GcsPubSubTest : public ::testing::Test {
 
   template <typename Data>
   void WaitPendingDone(const std::vector<Data> &data, int expected_count) {
-    auto condition = [&data, expected_count]() {
+    auto condition = [this, &data, expected_count]() {
+      absl::MutexLock lock(&vector_mutex_);
       RAY_CHECK((int)data.size() <= expected_count)
           << "Expected " << expected_count << " data " << data.size();
       return (int)data.size() == expected_count;
@@ -106,6 +109,7 @@ class GcsPubSubTest : public ::testing::Test {
   std::shared_ptr<gcs::RedisClient> client_;
   const std::chrono::milliseconds timeout_ms_{60000};
   std::shared_ptr<gcs::GcsPubSub> pub_sub_;
+  absl::Mutex vector_mutex_;
 
  private:
   boost::asio::io_service io_service_;
@@ -226,6 +230,7 @@ TEST_F(GcsPubSubTest, TestPubSubWithTableData) {
     auto subscribe = [this, channel, &result](const std::string &id,
                                               const std::string &data) {
       RAY_CHECK_OK(pub_sub_->Unsubscribe(channel, id));
+      absl::MutexLock lock(&vector_mutex_);
       result.push_back(data);
     };
     RAY_CHECK_OK((pub_sub_->Subscribe(channel, object_id.Hex(), subscribe, done)));

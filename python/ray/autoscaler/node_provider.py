@@ -1,6 +1,8 @@
 import importlib
 import logging
 import os
+from typing import Any, Dict
+
 import yaml
 
 from ray.autoscaler.command_runner import SSHCommandRunner, DockerCommandRunner
@@ -75,6 +77,15 @@ NODE_PROVIDERS = {
     "docker": None,
     "external": import_external  # Import an external module
 }
+PROVIDER_PRETTY_NAMES = {
+    "local": "Local",
+    "aws": "AWS",
+    "gcp": "GCP",
+    "azure": "Azure",
+    "kubernetes": "Kubernetes",
+    # "docker": "Docker", # not supported
+    "external": "External"
+}
 
 DEFAULT_CONFIGS = {
     "local": load_local_example_config,
@@ -84,6 +95,26 @@ DEFAULT_CONFIGS = {
     "kubernetes": load_kubernetes_example_config,
     "docker": None,
 }
+
+
+def try_logging_config(config):
+    if config["provider"]["type"] == "aws":
+        from ray.autoscaler.aws.config import log_to_cli
+        log_to_cli(config)
+
+
+def try_get_log_state(provider_config):
+    if provider_config["type"] == "aws":
+        from ray.autoscaler.aws.config import get_log_state
+        return get_log_state()
+
+
+def try_reload_log_state(provider_config, log_state):
+    if not log_state:
+        return
+    if provider_config["type"] == "aws":
+        from ray.autoscaler.aws.config import reload_log_state
+        return reload_log_state(log_state)
 
 
 def load_class(path):
@@ -102,7 +133,8 @@ def load_class(path):
     return getattr(module, class_str)
 
 
-def get_node_provider(provider_config, cluster_name):
+def get_node_provider(provider_config: Dict[str, Any],
+                      cluster_name: str) -> Any:
     importer = NODE_PROVIDERS.get(provider_config["type"])
     if importer is None:
         raise NotImplementedError("Unsupported node provider: {}".format(
@@ -225,7 +257,7 @@ class NodeProvider:
                            cluster_name,
                            process_runner,
                            use_internal_ip,
-                           docker_config=None):
+                           docker_config=None) -> Any:
         """ Returns the CommandRunner class used to perform SSH commands.
 
         Args:

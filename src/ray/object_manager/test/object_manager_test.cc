@@ -14,8 +14,6 @@
 
 #include "ray/object_manager/object_manager.h"
 
-#include <unistd.h>
-
 #include <iostream>
 #include <thread>
 
