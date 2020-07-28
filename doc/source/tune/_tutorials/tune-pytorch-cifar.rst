@@ -74,15 +74,16 @@ The train function
 Now it gets interesting, because we introduce some changes to the example `from the PyTorch
 documentation <https://pytorch.org/tutorials/beginner/blitz/cifar10_tutorial.html>`_.
 
-We wrap the training script in a function ``train_cifar(config, checkpoint=None)``. As you
+We wrap the training script in a function ``train_cifar(config, checkpoint_dir=None)``. As you
 can guess, the ``config`` parameter will receive the hyperparameters we would like to
-train with. The ``checkpoint`` parameter is used to restore checkpoints.
+train with. The ``checkpoint_dir`` parameter is used to restore checkpoints.
 
 .. code-block:: python
 
     net = Net(config["l1"], config["l2"])
 
-    if checkpoint:
+    if checkpoint_dir:
+        checkpoint = os.path.join(checkpoint_dir, "checkpoint")
         net.load_state_dict(torch.load(checkpoint))
 
 The learning rate of the optimizer is made configurable, too:

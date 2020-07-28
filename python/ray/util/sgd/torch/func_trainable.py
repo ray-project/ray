@@ -141,10 +141,8 @@ def DistributedTrainableCreator(func,
     Args:
         func (callable): This function is a Tune trainable function.
             This function must have 2 args in the signature, and the
-            latter arg must contain `checkpoint`. For example:
-            `func(config, checkpoint_dir=None)` or
-            `func(config, checkpoint=None)`, where `checkpoint`
-            is expected to be a string.
+            latter arg must contain `checkpoint_dir`. For example:
+            `func(config, checkpoint_dir=None)`.
         use_gpu (bool): Sets resource allocation for workers to 1 GPU
             if true. Also automatically sets CUDA_VISIBLE_DEVICES
             for each training worker.
@@ -236,7 +234,7 @@ def distributed_checkpoint_dir(step, disable=False):
         shutil.rmtree(path)
 
 
-def _train_check_global(config, checkpoint=None):
+def _train_check_global(config, checkpoint_dir=None):
     """For testing only. Putting this here because Ray has problems
     serializing within the test file."""
     assert is_distributed_trainable()
@@ -245,7 +243,7 @@ def _train_check_global(config, checkpoint=None):
     tune.report(is_distributed=True)
 
 
-def _train_simple(config, checkpoint=None):
+def _train_simple(config, checkpoint_dir=None):
     """For testing only. Putting this here because Ray has problems
     serializing within the test file."""
     import torch.nn as nn
@@ -268,8 +266,8 @@ def _train_simple(config, checkpoint=None):
     )
     optimizer = optim.SGD(model.parameters(), lr=0.1)
 
-    if checkpoint:
-        with open(os.path.join(checkpoint, "checkpoint")) as f:
+    if checkpoint_dir:
+        with open(os.path.join(checkpoint_dir, "checkpoint")) as f:
             model_state, optimizer_state = torch.load(f)
 
         model.load_state_dict(model_state)

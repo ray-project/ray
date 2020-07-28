@@ -11,10 +11,10 @@ from ray import tune
 from ray.tune.schedulers import HyperBandScheduler
 
 
-def train(config, checkpoint=None):
+def train(config, checkpoint_dir=None):
     step = 0
-    if checkpoint:
-        with open(checkpoint) as f:
+    if checkpoint_dir:
+        with open(os.path.join(checkpoint_dir, "checkpoint")) as f:
             step = json.loads(f.read())["timestep"]
 
     for timestep in range(step, 100):

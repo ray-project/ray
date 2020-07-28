@@ -111,10 +111,10 @@ def checkpoint_dir(step=None):
         import time
         from ray import tune
 
-        def func(config, checkpoint=None):
+        def func(config, checkpoint_dir=None):
             start = 0
-            if checkpoint:
-                with open(checkpoint) as f:
+            if checkpoint_dir:
+                with open(os.path.join(checkpoint_dir, "checkpoint")) as f:
                     state = json.loads(f.read())
                     accuracy = state["acc"]
                     start = state["step"] + 1

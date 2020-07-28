@@ -40,21 +40,22 @@ Here is a simple example of using the function API. You can report intermediate 
 
 Tune will run this function on a separate thread in a Ray actor process.
 
+.. _tune-function-checkpointing:
 
 Function API Checkpointing
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Many Tune features rely on checkpointing, including the usage of certain Trial Schedulers and fault tolerance. To use Tune's checkpointing features, you must expose a ``checkpoint`` argument in the function signature, and call ``tune.checkpoint_dir`` :
+Many Tune features rely on checkpointing, including the usage of certain Trial Schedulers and fault tolerance. To use Tune's checkpointing features, you must expose a ``checkpoint_dir`` argument in the function signature, and call ``tune.checkpoint_dir`` :
 
 .. code-block:: python
 
         import time
         from ray import tune
 
-        def train_func(config, checkpoint=None):
+        def train_func(config, checkpoint_dir=None):
             start = 0
-            if checkpoint:
-                with open(checkpoint) as f:
+            if checkpoint_dir:
+                with open(os.path.join(checkpoint_dir, "checkpoint")) as f:
                     state = json.loads(f.read())
                     start = state["step"] + 1
 

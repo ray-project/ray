@@ -19,7 +19,7 @@ class FunctionApiTest(unittest.TestCase):
         _register_all()  # re-register the evicted objects
 
     def testFunctionNoCheckpointing(self):
-        def train(config, checkpoint=None):
+        def train(config, checkpoint_dir=None):
             for i in range(10):
                 tune.report(test=i)
 
@@ -40,7 +40,7 @@ class FunctionApiTest(unittest.TestCase):
     def testFunctionRecurringSave(self):
         """This tests that save and restore are commutative."""
 
-        def train(config, checkpoint=None):
+        def train(config, checkpoint_dir=None):
             for step in range(10):
                 if step % 3 == 0:
                     with tune.checkpoint_dir(step=step) as checkpoint_dir:
@@ -64,7 +64,7 @@ class FunctionApiTest(unittest.TestCase):
         new_trainable2.stop()
 
     def testCheckpointFunctionAtEnd(self):
-        def train(config, checkpoint=False):
+        def train(config, checkpoint_dir=False):
             for i in range(10):
                 tune.report(test=i)
             with tune.checkpoint_dir(step=10) as checkpoint_dir:
@@ -76,7 +76,7 @@ class FunctionApiTest(unittest.TestCase):
         assert os.path.exists(os.path.join(trial.checkpoint.value, "ckpt.log"))
 
     def testCheckpointFunctionAtEndContext(self):
-        def train(config, checkpoint=False):
+        def train(config, checkpoint_dir=False):
             for i in range(10):
                 tune.report(test=i)
             with tune.checkpoint_dir(step=10) as checkpoint_dir:
@@ -88,7 +88,7 @@ class FunctionApiTest(unittest.TestCase):
         assert os.path.exists(os.path.join(trial.checkpoint.value, "ckpt.log"))
 
     def testVariousCheckpointFunctionAtEnd(self):
-        def train(config, checkpoint=False):
+        def train(config, checkpoint_dir=False):
             for i in range(10):
                 with tune.checkpoint_dir() as checkpoint_dir:
                     checkpoint_path = os.path.join(checkpoint_dir, "ckpt.log")
