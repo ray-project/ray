@@ -6,7 +6,7 @@
   <parent>
     <artifactId>ray-streaming</artifactId>
     <groupId>io.ray</groupId>
-    <version>0.1-SNAPSHOT</version>
+    <version>0.9.0</version>
   </parent>
   <modelVersion>4.0.0</modelVersion>
 
@@ -14,6 +14,24 @@
   <name>ray streaming runtime</name>
   <description>ray streaming runtime</description>
   <packaging>jar</packaging>
+  <properties>
+    <output.directory>${basedir}/../../build/java</output.directory>
+  </properties>
+  <profiles>
+    <profile>
+      <id>release</id>
+      <activation>
+        <property>
+          <name>release</name>
+          <value>true</value>
+        </property>
+        <activeByDefault>false</activeByDefault>
+      </activation>
+      <properties>
+        <output.directory>${basedir}</output.directory>
+      </properties>
+    </profile>
+  </profiles>
 
   <dependencies>
     <dependency>
@@ -69,7 +87,7 @@
         <artifactId>maven-jar-plugin</artifactId>
         <version>2.3.1</version>
         <configuration>
-          <outputDirectory>${basedir}/../../build/java</outputDirectory>
+          <outputDirectory>${output.directory}</outputDirectory>
         </configuration>
       </plugin>
     </plugins>

@@ -7,7 +7,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>io.ray</groupId>
   <artifactId>ray-streaming</artifactId>
-  <version>0.1-SNAPSHOT</version>
+  <version>0.9.0</version>
   <packaging>pom</packaging>
   <name>Ray Project Streaming Parent POM</name>
   <description>A streaming framework built on ray</description>
@@ -46,7 +46,7 @@
   <properties>
     <java.version>1.8</java.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <projetct.version>0.1-SNAPSHOT</projetct.version>
+    <projetct.version>0.9.0</projetct.version>
     <slf4j.version>1.7.25</slf4j.version>
     <log4j.version>1.2.17</log4j.version>
     <testng.version>6.9.10</testng.version>
@@ -54,6 +54,44 @@
     <guava.version>27.0.1-jre</guava.version>
     <fst.version>2.57</fst.version>
   </properties>
+
+  <profiles>
+    <profile>
+      <id>release</id>
+      <activation>
+        <property>
+          <name>release</name>
+          <value>true</value>
+        </property>
+      </activation>
+      <properties>
+        <output.directory>${basedir}</output.directory>
+      </properties>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-gpg-plugin</artifactId>
+          </plugin>
+          <plugin>
+            <groupId>org.sonatype.plugins</groupId>
+            <artifactId>nexus-staging-maven-plugin</artifactId>
+            <version>1.6.7</version>
+            <extensions>true</extensions>
+            <configuration>
+              <serverId>ossrh</serverId>
+              <nexusUrl>https://oss.sonatype.org/</nexusUrl>
+              <autoReleaseAfterClose>true</autoReleaseAfterClose>
+            </configuration>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-javadoc-plugin</artifactId>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 
   <dependencies>
     <dependency>
@@ -139,6 +177,9 @@
               </goals>
             </execution>
           </executions>
+          <configuration>
+            <additionalparam>-Xdoclint:none</additionalparam>
+          </configuration>
         </plugin>
         <plugin>
           <artifactId>maven-deploy-plugin</artifactId>
@@ -181,12 +222,20 @@
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-gpg-plugin</artifactId>
+          <version>1.6</version>
           <executions>
             <execution>
-              <id>sign-release-artifacts</id>
+              <id>sign-artifacts</id>
               <goals>
                 <goal>sign</goal>
               </goals>
+              <configuration>
+                <!-- Prevent `gpg` from using pinentry programs -->
+                <gpgArguments>
+                  <arg>--pinentry-mode</arg>
+                  <arg>loopback</arg>
+                </gpgArguments>
+              </configuration>
             </execution>
           </executions>
         </plugin>
@@ -196,6 +245,10 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-checkstyle-plugin</artifactId>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-source-plugin</artifactId>
       </plugin>
     </plugins>
   </build>

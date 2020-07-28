@@ -144,11 +144,11 @@ deploy_jars() {
   echo "Start deploying jars"
   for module in "${RAY_JAVA_MODULES[@]}"; do
     cd "$WORKSPACE_DIR/java/$module"
-    mvn -T16 deploy -Dmaven.test.skip=true -Dcheckstyle.skip
+    mvn -T16 deploy -Dmaven.test.skip=true -Dcheckstyle.skip -Prelease
   done
   for module in "${RAY_STREAMING_JAVA_MODULES[@]}"; do
     cd "$WORKSPACE_DIR/streaming/java/$module"
-    mvn -T16 deploy -Dmaven.test.skip=true -Dcheckstyle.skip
+    mvn -T16 deploy -Dmaven.test.skip=true -Dcheckstyle.skip -Prelease
   done
   echo "Finished deploying jars"
 }
