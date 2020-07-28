@@ -3,15 +3,19 @@ package io.ray.runtime.metric;
 import com.google.common.base.Preconditions;
 
 import java.util.Map;
+import java.util.concurrent.atomic.DoubleAdder;
 import java.util.stream.Collectors;
 
+/**
+ * Count measurement is mapped to count object in stats and counts the number.
+ */
 public class Count extends Metric {
 
-  private double count;
+  private DoubleAdder count;
 
   public Count(String name, String description, String unit, Map<TagKey, String> tags) {
     super(name, tags);
-    count = 0.0d;
+    count = new DoubleAdder();
     metricNativePointer = NativeMetric.registerCountNative(name, description, unit,
       tags.keySet().stream().map(TagKey::getTagKey).collect(Collectors.toList()));
     Preconditions.checkState(metricNativePointer != 0, "Count native pointer must not be 0.");
@@ -19,28 +23,19 @@ public class Count extends Metric {
 
   @Override
   public void update(double value) {
-    super.update(value);
-    count += value;
+    count.add(value);
+    this.value.addAndGet(value);
   }
 
   @Override
-  public void update(double value, Map<TagKey, String> tags) {
-    super.update(value, tags);
-    count += value;
-  }
-
-  @Override
-  public void reset() {
-
+  protected double getAndReset() {
+    return count.sumThenReset();
   }
 
   public double getCount() {
-    return count;
+    return this.value.get();
   }
 
-  /**
-   * @param delta add delta for counter
-   */
   public void inc(double delta) {
     update(delta);
   }

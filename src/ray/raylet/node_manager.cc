@@ -1730,7 +1730,9 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
 
   if (new_scheduler_enabled_) {
     auto task_spec = task.GetTaskSpecification();
-    cluster_task_manager_->QueueTask(task, reply, send_reply_callback);
+    cluster_task_manager_->QueueTask(task, reply, [send_reply_callback]() {
+      send_reply_callback(Status::OK(), nullptr, nullptr);
+    });
     ScheduleAndDispatch();
     return;
   }
