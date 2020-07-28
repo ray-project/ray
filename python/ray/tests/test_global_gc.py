@@ -53,7 +53,7 @@ def test_global_gc(shutdown_only):
             return (local_ref() is None and
                     not any(ray.get([a.has_garbage.remote() for a in actors])))
 
-        assert wait_for_condition(check_refs_gced)
+        wait_for_condition(check_refs_gced)
     finally:
         gc.enable()
 
@@ -105,7 +105,7 @@ def test_global_gc_when_full(shutdown_only):
             return (local_ref() is None and
                     not any(ray.get([a.has_garbage.remote() for a in actors])))
 
-        assert wait_for_condition(check_refs_gced)
+        wait_for_condition(check_refs_gced)
 
         # Local driver.
         local_ref = weakref.ref(LargeObjectWithCyclicRef())
@@ -124,7 +124,7 @@ def test_global_gc_when_full(shutdown_only):
             return (local_ref() is None and
                     not any(ray.get([a.has_garbage.remote() for a in actors])))
 
-        assert wait_for_condition(check_refs_gced)
+        wait_for_condition(check_refs_gced)
     finally:
         gc.enable()
 

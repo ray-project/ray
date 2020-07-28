@@ -1,6 +1,7 @@
 from ray.rllib.offline.off_policy_estimator import OffPolicyEstimator, \
     OffPolicyEstimate
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.types import SampleBatchType
 
 
 class ImportanceSamplingEstimator(OffPolicyEstimator):
@@ -9,7 +10,7 @@ class ImportanceSamplingEstimator(OffPolicyEstimator):
     Step-wise IS estimator described in https://arxiv.org/pdf/1511.03722.pdf"""
 
     @override(OffPolicyEstimator)
-    def estimate(self, batch):
+    def estimate(self, batch: SampleBatchType) -> OffPolicyEstimate:
         self.check_can_estimate_for(batch)
 
         rewards, old_prob = batch["rewards"], batch["action_prob"]

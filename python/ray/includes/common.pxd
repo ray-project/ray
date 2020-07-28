@@ -5,6 +5,7 @@ from libcpp.string cimport string as c_string
 from libc.stdint cimport uint8_t, int32_t, uint64_t, int64_t
 from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
+from libcpp.pair cimport pair as c_pair
 
 from ray.includes.unique_ids cimport (
     CActorID,
@@ -12,6 +13,7 @@ from ray.includes.unique_ids cimport (
     CWorkerID,
     CObjectID,
     CTaskID,
+    CPlacementGroupID,
 )
 from ray.includes.function_descriptor cimport (
     CFunctionDescriptor,
@@ -142,6 +144,8 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         pass
     cdef cppclass CTaskType "ray::TaskType":
         pass
+    cdef cppclass CPlacementStrategy "ray::PlacementStrategy":
+        pass
     cdef cppclass CAddress "ray::rpc::Address":
         CAddress()
         const c_string &SerializeAsString()
@@ -164,6 +168,11 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CTaskType TASK_TYPE_ACTOR_CREATION_TASK "ray::TaskType::ACTOR_CREATION_TASK"  # noqa: E501
     cdef CTaskType TASK_TYPE_ACTOR_TASK "ray::TaskType::ACTOR_TASK"
 
+cdef extern from "src/ray/protobuf/common.pb.h" nogil:
+    cdef CPlacementStrategy PLACEMENT_STRATEGY_PACK \
+        "ray::PlacementStrategy::PACK"
+    cdef CPlacementStrategy PLACEMENT_STRATEGY_SPREAD \
+        "ray::PlacementStrategy::SPREAD"
 
 cdef extern from "ray/common/task/scheduling_resources.h" nogil:
     cdef cppclass ResourceSet "ray::ResourceSet":
@@ -239,7 +248,17 @@ cdef extern from "ray/core_worker/common.h" nogil:
             const unordered_map[c_string, double] &resources,
             const unordered_map[c_string, double] &placement_resources,
             const c_vector[c_string] &dynamic_worker_options,
-            c_bool is_detached, c_string &name, c_bool is_asyncio)
+            c_bool is_detached, c_string &name, c_bool is_asyncio,
+            c_pair[CPlacementGroupID, int64_t] placement_options)
+
+    cdef cppclass CPlacementGroupCreationOptions \
+            "ray::PlacementGroupCreationOptions":
+        CPlacementGroupCreationOptions()
+        CPlacementGroupCreationOptions(
+            const c_string &name,
+            CPlacementStrategy strategy,
+            const c_vector[unordered_map[c_string, double]] &bundles
+        )
 
 cdef extern from "ray/gcs/gcs_client.h" nogil:
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":

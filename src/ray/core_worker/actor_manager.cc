@@ -89,7 +89,6 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
     auto actor_notification_callback =
         std::bind(&ActorManager::HandleActorStateNotification, this,
                   std::placeholders::_1, std::placeholders::_2);
-
     RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
         actor_id, actor_notification_callback, nullptr));
 
@@ -162,19 +161,18 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
                 << ", raylet_id: "
                 << ClientID::FromBinary(actor_data.address().raylet_id())
                 << ", num_restarts: " << actor_data.num_restarts();
-
-  if (actor_data.state() == gcs::ActorTableData::PENDING) {
-    // The actor is being created and not yet ready, just ignore!
-  } else if (actor_data.state() == gcs::ActorTableData::RESTARTING) {
+  if (actor_data.state() == gcs::ActorTableData::RESTARTING) {
     direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(), false);
   } else if (actor_data.state() == gcs::ActorTableData::DEAD) {
     direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(), true);
     // We cannot erase the actor handle here because clients can still
     // submit tasks to dead actors. This also means we defer unsubscription,
     // otherwise we crash when bulk unsubscribing all actor handles.
-  } else {
+  } else if (actor_data.state() == gcs::ActorTableData::ALIVE) {
     direct_actor_submitter_->ConnectActor(actor_id, actor_data.address(),
                                           actor_data.num_restarts());
+  } else {
+    // The actor is being created and not yet ready, just ignore!
   }
 }
 
