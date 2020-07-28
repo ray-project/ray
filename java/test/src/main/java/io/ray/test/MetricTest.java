@@ -6,7 +6,7 @@ import io.ray.runtime.metric.Count;
 import io.ray.runtime.metric.Gauge;
 import io.ray.runtime.metric.Histogram;
 import io.ray.runtime.metric.MetricConfig;
-import io.ray.runtime.metric.RayMetrics;
+import io.ray.runtime.metric.Metrics;
 import io.ray.runtime.metric.Sum;
 import io.ray.runtime.metric.TagKey;
 import java.util.ArrayList;
@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.testng.Assert;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
 
 public class MetricTest extends BaseTest {
@@ -30,12 +31,12 @@ public class MetricTest extends BaseTest {
       .threadPoolSize(threadPoolSize)
       .shutdownWaitTimeMs(shutdownWaitTimeMs)
       .create();
-    RayMetrics.init(config);
+    Metrics.init(config);
     return config;
   }
 
   private Gauge registerGauge() {
-    return RayMetrics.gauge()
+    return Metrics.gauge()
       .name("metric_gauge")
       .description("gauge")
       .unit("")
@@ -44,7 +45,7 @@ public class MetricTest extends BaseTest {
   }
 
   private Count registerCount() {
-    return RayMetrics.count()
+    return Metrics.count()
       .name("metric_count")
       .description("counter")
       .unit("1pc")
@@ -53,7 +54,7 @@ public class MetricTest extends BaseTest {
   }
 
   private Sum registerSum() {
-    return RayMetrics.sum()
+    return Metrics.sum()
       .name("metric_sum")
       .description("sum")
       .unit("1pc")
@@ -62,13 +63,18 @@ public class MetricTest extends BaseTest {
   }
 
   private Histogram registerHistogram() {
-    return RayMetrics.histogram()
+    return Metrics.histogram()
       .name("metric_histogram")
       .description("histogram")
       .unit("1pc")
       .boundaries(ImmutableList.of(10.0, 15.0, 20.0))
       .tags(ImmutableMap.of("tag1", "value1", "histogram_tag", "default"))
       .register();
+  }
+
+  @AfterMethod
+  public void maybeShutdownMetrics() {
+    Metrics.shutdown();
   }
 
   @Test
@@ -146,7 +152,6 @@ public class MetricTest extends BaseTest {
     Assert.assertTrue(doubleEqual(gauge.getValue(), 2.0));
     gauge.update(5.0);
     Assert.assertTrue(doubleEqual(gauge.getValue(), 5.0));
-    RayMetrics.shutdown();
   }
 
   @Test
@@ -160,7 +165,6 @@ public class MetricTest extends BaseTest {
     count.inc(1.0);
     count.inc(2.0);
     Assert.assertTrue(doubleEqual(count.getCount(), 33.0));
-    RayMetrics.shutdown();
   }
 
   @Test
@@ -174,7 +178,6 @@ public class MetricTest extends BaseTest {
     sum.update(1.0);
     sum.update(2.0);
     Assert.assertTrue(doubleEqual(sum.getSum(), 33.0));
-    RayMetrics.shutdown();
   }
 
   @Test
@@ -191,7 +194,6 @@ public class MetricTest extends BaseTest {
       Assert.assertTrue(doubleEqual(i + 101.0d, window.get(i)));
     }
     Assert.assertTrue(doubleEqual(histogram.getValue(), 200.0d));
-    RayMetrics.shutdown();
   }
 
   @Test
@@ -204,7 +206,6 @@ public class MetricTest extends BaseTest {
     Assert.assertTrue(doubleEqual(gauge.getValue(), 2.0));
     gauge.update(5.0);
     Assert.assertTrue(doubleEqual(gauge.getValue(), 5.0));
-    RayMetrics.shutdown();
   }
 
   @Test
@@ -219,7 +220,6 @@ public class MetricTest extends BaseTest {
     count.inc(1.0);
     count.inc(2.0);
     Assert.assertTrue(doubleEqual(count.getCount(), 33.0));
-    RayMetrics.shutdown();
   }
 
   @Test
@@ -234,7 +234,6 @@ public class MetricTest extends BaseTest {
     sum.update(1.0);
     sum.update(2.0);
     Assert.assertTrue(doubleEqual(sum.getSum(), 33.0));
-    RayMetrics.shutdown();
   }
 
   @Test
@@ -252,7 +251,6 @@ public class MetricTest extends BaseTest {
       Assert.assertTrue(doubleEqual(i + 101.0d, window.get(i)));
     }
     Assert.assertTrue(doubleEqual(histogram.getValue(), 200.0d));
-    RayMetrics.shutdown();
   }
 
 }

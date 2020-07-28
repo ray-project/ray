@@ -8,12 +8,12 @@ import java.util.Map;
 /**
  * The entry of metrics for easy use.
  */
-public final class RayMetrics {
+public final class Metrics {
 
   private static MetricRegistry metricRegistry;
 
   public static MetricRegistry init(MetricConfig metricConfig) {
-    synchronized (RayMetrics.class) {
+    synchronized (Metrics.class) {
       metricRegistry = new MetricRegistry();
       metricRegistry.startup(metricConfig);
       return metricRegistry;
@@ -21,7 +21,7 @@ public final class RayMetrics {
   }
 
   public static void shutdown() {
-    synchronized (RayMetrics.class) {
+    synchronized (Metrics.class) {
       if (metricRegistry != null) {
         metricRegistry.shutdown();
         metricRegistry = null;
@@ -134,7 +134,7 @@ public final class RayMetrics {
   }
 
   private static MetricRegistry maybeInitRegistry() {
-    synchronized (RayMetrics.class) {
+    synchronized (Metrics.class) {
       if (metricRegistry != null) {
         return metricRegistry;
       } else {
