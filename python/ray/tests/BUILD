@@ -487,3 +487,11 @@ py_test(
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
+
+py_test(
+    name = "test_placement_group",
+    size = "medium",
+    srcs = SRCS + ["test_placement_group.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)

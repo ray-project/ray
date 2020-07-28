@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_client/service_based_accessor.h"
+
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
 
 namespace ray {
@@ -835,15 +836,19 @@ Status ServiceBasedNodeInfoAccessor::AsyncGetInternalConfig(
   client_impl_->GetGcsRpcClient().GetInternalConfig(
       request,
       [callback](const Status &status, const rpc::GetInternalConfigReply &reply) {
-        if (status.ok() && reply.has_config()) {
-          RAY_LOG(DEBUG) << "Fetched internal config: " << reply.config().DebugString();
-          callback(status,
-                   std::unordered_map<std::string, std::string>(
-                       reply.config().config().begin(), reply.config().config().end()));
+        boost::optional<std::unordered_map<std::string, std::string>> config;
+        if (status.ok()) {
+          if (reply.has_config()) {
+            RAY_LOG(DEBUG) << "Fetched internal config: " << reply.config().DebugString();
+            config = std::unordered_map<std::string, std::string>(
+                reply.config().config().begin(), reply.config().config().end());
+          } else {
+            RAY_LOG(DEBUG) << "No internal config was stored.";
+          }
         } else {
           RAY_LOG(ERROR) << "Failed to get internal config: " << status.message();
-          callback(status, boost::none);
         }
+        callback(status, config);
       });
   return Status::OK();
 }
