@@ -173,6 +173,7 @@ Process WorkerPool::StartWorkerProcess(const Language &language, const JobID &jo
     auto it = unfinished_jobs_.find(job_id);
     if (it == unfinished_jobs_.end()) {
       RAY_LOG(INFO) << "Job config of job " << job_id << " are not local yet.";
+      // Will reschedule ready tasks in `NodeManager::HandleJobStarted`.
       return Process();
     }
     job_config = &it->second;
