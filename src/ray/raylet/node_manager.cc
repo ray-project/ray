@@ -2110,9 +2110,12 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_typ
     num_returns -= 1;
   }
   // Determine which IDs should be marked as failed.
-  std::vector<ObjectID> objects_to_fail;
+  std::vector<rpc::ObjectReference> objects_to_fail;
   for (int64_t i = 0; i < num_returns; i++) {
-    objects_to_fail.push_back(spec.ReturnId(i));
+    rpc::ObjectReference ref;
+    ref.set_object_id(spec.ReturnId(i).Binary());
+    ref.mutable_owner_address()->CopyFrom(spec.CallerAddress());
+    objects_to_fail.push_back(ref);
   }
   const JobID job_id = task.GetTaskSpecification().JobId();
   MarkObjectsAsFailed(error_type, objects_to_fail, job_id);
@@ -2126,20 +2129,14 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_typ
 }
 
 void NodeManager::MarkObjectsAsFailed(const ErrorType &error_type,
-                                      const std::vector<ObjectID> objects_to_fail,
+                                      const std::vector<rpc::ObjectReference> objects_to_fail,
                                       const JobID &job_id) {
   const std::string meta = std::to_string(static_cast<int>(error_type));
-  for (const auto &object_id : objects_to_fail) {
+  for (const auto &ref : objects_to_fail) {
+    ObjectID object_id = ObjectID::FromBinary(ref.object_id());
     std::shared_ptr<arrow::Buffer> data;
     Status status;
-    rpc::Address owner_address;
-    bool have_owner = task_dependency_manager_.GetOwnerAddress(object_id, &owner_address);
-    // TODO(zhuohan): This should only happen for failures in actor creation
-    // task. Try to put an empty address and check whether tests still break.
-    if (!have_owner) {
-      RAY_LOG(WARNING) << "Object " << object_id << " does not have owner.";
-    }
-    status = store_client_.Create(object_id, owner_address, 0,
+    status = store_client_.Create(object_id, ref.owner_address(), 0,
                                   reinterpret_cast<const uint8_t *>(meta.c_str()),
                                   meta.length(), &data);
     if (status.ok()) {
@@ -2923,7 +2920,10 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
       // LRU eviction is enabled. The object may still be in scope, but we
       // weren't able to fetch the value within the timeout, so the value has
       // most likely been evicted. Mark the object as unreachable.
-      MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {required_object_id},
+      rpc::ObjectReference ref;
+      ref.set_object_id(required_object_id.Binary());
+      ref.mutable_owner_address()->CopyFrom(owner_addr);
+      MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {ref},
                           JobID::Nil());
     } else {
       RAY_LOG(DEBUG) << "Required object " << required_object_id
@@ -2941,8 +2941,8 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
       request.set_object_id(required_object_id.Binary());
       request.set_owner_worker_id(owner_addr.worker_id());
       RAY_CHECK_OK(client->GetObjectStatus(
-          request, [this, required_object_id](Status status,
-                                              const rpc::GetObjectStatusReply &reply) {
+          request, [this, required_object_id, owner_addr](
+              Status status, const rpc::GetObjectStatusReply &reply) {
             if (!status.ok() ||
                 reply.status() == rpc::GetObjectStatusReply::OUT_OF_SCOPE ||
                 reply.status() == rpc::GetObjectStatusReply::FREED) {
@@ -2953,8 +2953,11 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
               // freed. Store an error in the local plasma store so that an
               // exception will be thrown when the worker tries to get the
               // value.
+              rpc::ObjectReference ref;
+              ref.set_object_id(required_object_id.Binary());
+              ref.mutable_owner_address()->CopyFrom(owner_addr);
               MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE,
-                                  {required_object_id}, JobID::Nil());
+                                  {ref}, JobID::Nil());
             }
             // Do nothing if the owner replied that the object is available. The
             // object manager will continue trying to fetch the object, and this
@@ -3002,8 +3005,11 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
                        "If this was not how your object ID was generated, please file an "
                        "issue "
                        "at https://github.com/ray-project/ray/issues/";
+                rpc::ObjectReference ref;
+                ref.set_object_id(required_object_id.Binary());
+                // We don't know the owner of this address here, pass in empty address.
                 MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE,
-                                    {required_object_id}, JobID::Nil());
+                                    {ref}, JobID::Nil());
               }
             }));
   }
