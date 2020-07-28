@@ -8,7 +8,78 @@ import ray
 from ray.test_utils import (
     RayTestTimeoutException, check_call_ray, run_string_as_driver,
     run_string_as_driver_nonblocking, wait_for_children_of_pid,
-    wait_for_children_of_pid_to_exit, kill_process_by_name, Semaphore)
+    wait_for_children_of_pid_to_exit, kill_process_by_name, Semaphore,
+    init_error_pubsub, get_error_message)
+
+
+def test_error_isolation(call_ray_start):
+    address = call_ray_start
+    # Connect a driver to the Ray cluster.
+    ray.init(address=address)
+    p = init_error_pubsub()
+
+    # There shouldn't be any errors yet.
+    errors = get_error_message(p, 1, 2)
+    assert len(errors) == 0
+
+    error_string1 = "error_string1"
+    error_string2 = "error_string2"
+
+    @ray.remote
+    def f():
+        raise Exception(error_string1)
+
+    # Run a remote function that throws an error.
+    with pytest.raises(Exception):
+        ray.get(f.remote())
+
+    # Wait for the error to appear in Redis.
+    errors = get_error_message(p, 1)
+
+    # Make sure we got the error.
+    assert len(errors) == 1
+    assert error_string1 in errors[0].error_message
+
+    # Start another driver and make sure that it does not receive this
+    # error. Make the other driver throw an error, and make sure it
+    # receives that error.
+    driver_script = """
+import ray
+import time
+from ray.test_utils import (init_error_pubsub, get_error_message)
+
+ray.init(address="{}")
+p = init_error_pubsub()
+time.sleep(1)
+errors = get_error_message(p, 1, 2)
+assert len(errors) == 0
+
+@ray.remote
+def f():
+    raise Exception("{}")
+
+try:
+    ray.get(f.remote())
+except Exception as e:
+    pass
+
+errors = get_error_message(p, 1)
+assert len(errors) == 1
+
+assert "{}" in errors[0].error_message
+
+print("success")
+""".format(address, error_string2, error_string2)
+
+    out = run_string_as_driver(driver_script)
+    # Make sure the other driver succeeded.
+    assert "success" in out
+
+    # Make sure that the other error message doesn't show up for this
+    # driver.
+    errors = get_error_message(p, 1)
+    assert len(errors) == 1
+    p.close()
 
 
 def test_remote_function_isolation(call_ray_start):
