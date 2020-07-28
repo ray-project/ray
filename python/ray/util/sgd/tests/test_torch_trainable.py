@@ -7,7 +7,8 @@ import torch.distributed as dist
 import ray
 from ray import tune
 from ray.util.sgd.torch.func_trainable import (
-    DistributedTrainableCreator, distributed_checkpoint_dir, _train_simple)
+    DistributedTrainableCreator, distributed_checkpoint_dir, _train_simple,
+    _train_check_global)
 
 
 @pytest.fixture
@@ -45,6 +46,21 @@ def test_step_after_completion(ray_start_2_cpus):  # noqa: F811
     with pytest.raises(RuntimeError):
         for i in range(10):
             trainer.train()
+
+
+def test_validation(ray_start_2_cpus):  # noqa: F811
+    def bad_func(a, b, c):
+        return 1
+
+    with pytest.raises(ValueError):
+        DistributedTrainableCreator(bad_func, num_workers=2)
+
+
+def test_set_global(ray_start_2_cpus):  # noqa: F811
+    trainable_cls = DistributedTrainableCreator(
+        _train_check_global, num_workers=2)
+    result = trainable_cls.train()
+    assert result["is_distributed"]
 
 
 def test_save_checkpoint(ray_start_2_cpus):  # noqa: F811

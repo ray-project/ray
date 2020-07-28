@@ -22,10 +22,10 @@ def train(config, checkpoint=None):
         v *= config.get("height", 1)
 
         if timestep % 3 == 0:
-            checkpoint_dir = tune.make_checkpoint_dir(step=timestep)
-            path = os.path.join(checkpoint_dir, "checkpoint")
-            with open(path, "w") as f:
-                f.write(json.dumps({"timestep": timestep}))
+            with tune.checkpoint_dir(step=timestep) as checkpoint_dir:
+                path = os.path.join(checkpoint_dir, "checkpoint")
+                with open(path, "w") as f:
+                    f.write(json.dumps({"timestep": timestep}))
             tune.save_checkpoint(path)
 
         # Here we use `episode_reward_mean`, but you can also report other

@@ -65,11 +65,10 @@ def pbt_function(config, checkpoint=None):
         accuracy = max(0, accuracy)
 
         if step % 3 == 0:
-            checkpoint_dir = tune.make_checkpoint_dir(step=step)
-            path = os.path.join(checkpoint_dir, "checkpoint")
-            with open(path, "w") as f:
-                f.write(json.dumps({"acc": accuracy, "step": start}))
-            tune.save_checkpoint(path)
+            with tune.checkpoint_dir(step=step) as checkpoint_dir:
+                path = os.path.join(checkpoint_dir, "checkpoint")
+                with open(path, "w") as f:
+                    f.write(json.dumps({"acc": accuracy, "step": start}))
 
         tune.report(
             mean_accuracy=accuracy,

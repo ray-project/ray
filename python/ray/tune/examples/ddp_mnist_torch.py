@@ -17,15 +17,15 @@ from ray.util.sgd.torch import (DistributedTrainableCreator,
 logger = logging.getLogger(__name__)
 
 
-def train_mnist(config, checkpoint_dir=False):
+def train_mnist(config, checkpoint=False):
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
     train_loader, test_loader = get_data_loaders()
     model = ConvNet().to(device)
     optimizer = optim.SGD(model.parameters(), lr=0.1)
 
-    if checkpoint_dir:
-        with open(os.path.join(checkpoint_dir, "checkpoint")) as f:
+    if checkpoint:
+        with open(os.path.join(checkpoint, "checkpoint")) as f:
             model_state, optimizer_state = torch.load(f)
 
         model.load_state_dict(model_state)

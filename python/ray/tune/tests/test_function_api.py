@@ -77,6 +77,18 @@ class FunctionApiTest(unittest.TestCase):
         [trial] = tune.run(train).trials
         assert "hello" in trial.checkpoint.value
 
+    def testCheckpointFunctionAtEndContext(self):
+        def train(config, checkpoint=False):
+            for i in range(10):
+                tune.report(test=i)
+            with tune.checkpoint_dir(step=10) as checkpoint_dir:
+                checkpoint_path = os.path.join(checkpoint_dir, "hello")
+                with open(checkpoint_path, "w") as f:
+                    f.write("hello")
+
+        [trial] = tune.run(train).trials
+        assert "hello" in trial.checkpoint.value
+
     def testVariousCheckpointFunctionAtEnd(self):
         def train(config, checkpoint=False):
             for i in range(10):

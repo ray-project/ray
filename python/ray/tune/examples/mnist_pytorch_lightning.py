@@ -158,9 +158,8 @@ def train_mnist_tune(config, data_dir=None, num_epochs=10, num_gpus=0):
 # __tune_checkpoint_callback_begin__
 class CheckpointCallback(Callback):
     def on_validation_end(self, trainer, pl_module):
-        path = tune.make_checkpoint_dir(trainer.global_step)
-        trainer.save_checkpoint(os.path.join(path, "checkpoint"))
-        tune.save_checkpoint(path)
+        with tune.checkpoint_dir(step=trainer.global_step) as checkpoint_dir:
+            trainer.save_checkpoint(os.path.join(path, "checkpoint"))
 # __tune_checkpoint_callback_end__
 
 

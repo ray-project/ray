@@ -161,6 +161,14 @@ def save_checkpoint(checkpoint):
 
 @contextmanager
 def checkpoint_dir(step=None):
+    """Returns a checkpoint dir inside a context.
+
+    Store any files related to restoring state within the
+    provided checkpoint dir.
+
+    Yields:
+        checkpoint_dir (str): Directory for checkpointing.
+    """
     _checkpoint_dir = make_checkpoint_dir(step=step)
     yield _checkpoint_dir
     save_checkpoint(_checkpoint_dir)

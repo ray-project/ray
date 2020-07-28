@@ -44,7 +44,7 @@ Tune will run this function on a separate thread in a Ray actor process.
 Function API Checkpointing
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Many Tune features rely on checkpointing, including the usage of certain Trial Schedulers and fault tolerance. To use Tune's checkpointing features, you must expose a ``checkpoint`` argument in the function signature, and call ``tune.make_checkpoint_dir`` and ``tune.save_checkpoint``:
+Many Tune features rely on checkpointing, including the usage of certain Trial Schedulers and fault tolerance. To use Tune's checkpointing features, you must expose a ``checkpoint`` argument in the function signature, and call ``tune.checkpoint_dir`` :
 
 .. code-block:: python
 
@@ -61,12 +61,10 @@ Many Tune features rely on checkpointing, including the usage of certain Trial S
             for iter in range(start, 100):
                 time.sleep(1)
 
-                #
-                checkpoint_dir = tune.make_checkpoint_dir(step=step)
-                path = os.path.join(checkpoint_dir, "checkpoint")
-                with open(path, "w") as f:
-                    f.write(json.dumps({"step": start}))
-                tune.save_checkpoint(path)
+                with tune.checkpoint_dir(step=step):
+                    path = os.path.join(checkpoint_dir, "checkpoint")
+                    with open(path, "w") as f:
+                        f.write(json.dumps({"step": start}))
 
                 tune.report(hello="world", ray="tune")
 
@@ -262,6 +260,8 @@ tune.report / tune.checkpoint (Function API)
 --------------------------------------------
 
 .. autofunction:: ray.tune.report
+
+.. autofunction:: ray.tune.checkpoint_dir
 
 .. autofunction:: ray.tune.make_checkpoint_dir
 

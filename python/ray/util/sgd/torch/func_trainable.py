@@ -220,7 +220,16 @@ def distributed_checkpoint_dir(step, disable=False):
         shutil.rmtree(path)
 
 
-def _train_simple(config, checkpoint_dir=None):
+def _train_check_global(config, checkpoint=None):
+    """For testing only. Putting this here because Ray has problems
+    serializing within the test file."""
+    assert is_distributed_trainable()
+    import time
+    time.sleep(0.1)
+    tune.report(is_distributed=True)
+
+
+def _train_simple(config, checkpoint=None):
     """For testing only. Putting this here because Ray has problems
     serializing within the test file."""
     import torch.nn as nn
@@ -243,8 +252,8 @@ def _train_simple(config, checkpoint_dir=None):
     )
     optimizer = optim.SGD(model.parameters(), lr=0.1)
 
-    if checkpoint_dir:
-        with open(os.path.join(checkpoint_dir, "checkpoint")) as f:
+    if checkpoint:
+        with open(os.path.join(checkpoint, "checkpoint")) as f:
             model_state, optimizer_state = torch.load(f)
 
         model.load_state_dict(model_state)
