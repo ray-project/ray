@@ -207,7 +207,9 @@ class KLCoeffMixin:
         self.kl_coeff_val = config["kl_coeff"]
         self.kl_target = config["kl_target"]
         self.kl_coeff = get_variable(
-            float(self.kl_coeff_val), tf_name="kl_coeff", trainable=False)
+            float(self.kl_coeff_val),
+            tf_name="kl_coeff",
+            trainable=False)
 
     def update_kl(self, sampled_kl):
         if sampled_kl > 2.0 * self.kl_target:

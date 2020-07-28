@@ -145,8 +145,8 @@ def convert_to_torch_tensor(x, device=None):
         # Special handling of "Repeated" values.
         elif isinstance(item, RepeatedValues):
             return RepeatedValues(
-                tree.map_structure(mapping, item.values), item.lengths,
-                item.max_len)
+                tree.map_structure(mapping, item.values),
+                item.lengths, item.max_len)
         tensor = torch.from_numpy(np.asarray(item))
         # Floatify all float64 tensors.
         if tensor.dtype == torch.double:

@@ -81,8 +81,11 @@ class Trajectory:
         """The timestep in the (currently ongoing) trajectory/episode."""
         return self.cursor - self.trajectory_offset
 
-    def add_init_obs(self, env_id: EnvID, agent_id: AgentID,
-                     policy_id: PolicyID, init_obs: TensorType) -> None:
+    def add_init_obs(self,
+                     env_id: EnvID,
+                     agent_id: AgentID,
+                     policy_id: PolicyID,
+                     init_obs: TensorType) -> None:
         """Adds a single initial observation (after env.reset()) to the buffer.
 
         Stores it in self.initial_obs.
@@ -100,7 +103,9 @@ class Trajectory:
         self.policy_id = policy_id
         self.initial_obs = init_obs
 
-    def add_action_reward_next_obs(self, env_id: EnvID, agent_id: AgentID,
+    def add_action_reward_next_obs(self,
+                                   env_id: EnvID,
+                                   agent_id: AgentID,
                                    policy_id: PolicyID,
                                    values: Dict[str, TensorType]) -> None:
         """Add the given dictionary (row) of values to this batch.
@@ -157,7 +162,8 @@ class Trajectory:
         # all other columns due to the additional obs returned by Env.reset()).
         data = {}
         for k, v in self.buffers.items():
-            data[k] = to_float_array(v[self.sample_batch_offset:self.cursor])
+            data[k] = to_float_array(
+                v[self.sample_batch_offset:self.cursor])
 
         # Add unroll ID column to batch if non-existent.
         uid = Trajectory._next_unroll_id
