@@ -59,7 +59,8 @@ def test_validation(ray_start_2_cpus):  # noqa: F811
 def test_set_global(ray_start_2_cpus):  # noqa: F811
     trainable_cls = DistributedTrainableCreator(
         _train_check_global, num_workers=2)
-    result = trainable_cls.train()
+    trainable = trainable_cls()
+    result = trainable.train()
     assert result["is_distributed"]
 
 
@@ -67,8 +68,9 @@ def test_save_checkpoint(ray_start_2_cpus):  # noqa: F811
     trainable_cls = DistributedTrainableCreator(_train_simple, num_workers=2)
     trainer = trainable_cls(config={"epochs": 1})
     trainer.train()
-    path = trainer.save()
-    model_state_dict, opt_state_dict = torch.load(path)
+    checkpoint_dir = trainer.save()
+    model_state_dict, opt_state_dict = torch.load(
+        os.path.join(checkpoint_dir, "checkpoint"))
     trainer.stop()
 
 

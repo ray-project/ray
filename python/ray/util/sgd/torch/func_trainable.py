@@ -30,6 +30,11 @@ def is_distributed_trainable():
     return _distributed_enabled
 
 
+def enable_distributed_trainable():
+    global _distributed_enabled
+    _distributed_enabled = True
+
+
 def logger_creator(log_config, logdir, rank):
     worker_dir = os.path.join(logdir, "worker_{}".format(rank))
     os.makedirs(worker_dir, exist_ok=True)
@@ -91,8 +96,10 @@ class _TorchTrainable(tune.Trainable):
             for rank, w in enumerate(self.workers)
         ])
 
-        global _distributed_enabled
-        _distributed_enabled = True
+        ray.get([
+            w.execute.remote(lambda _: enable_distributed_trainable())
+            for rank, w in enumerate(self.workers)
+        ])
 
     def step(self):
         if self._finished:
@@ -283,7 +290,7 @@ def _train_simple(config, checkpoint=None):
 
         if epoch % 3 == 0:
             if config.get("enable_checkpoint", True):
-                with distributed_checkpoint_dir(label=epoch) as checkpoint_dir:
+                with distributed_checkpoint_dir(step=epoch) as checkpoint_dir:
                     path = os.path.join(checkpoint_dir, "checkpoint")
                     torch.save((model.state_dict(), optimizer.state_dict()),
                                path)
