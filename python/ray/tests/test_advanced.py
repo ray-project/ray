@@ -202,7 +202,8 @@ def test_profiling_api(ray_start_2_cpus):
             "ray.wait",
             "submit_task",
             "fetch_and_run_function",
-            "register_remote_function",
+            # TODO (Alex) :https://github.com/ray-project/ray/pull/9346
+            # "register_remote_function",
             "custom_event",  # This is the custom one from ray.profile.
         ]
 
