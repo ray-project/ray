@@ -627,7 +627,10 @@ Parameter Sharing `[paper] <http://ala2017.it.nuigalway.ie/papers/ALA2017_Gupta.
 
 Fully Independent Learning
 --------------------------
+Fully Independent Learning `[implementation] <github.com/parametersharingmadrl/parametersharingmadrl>` is when you have a collection of agents learning independently of each other via single agent methods. This typically works, but is inferior to dedicated multi-agent RL methods. 
 
 
 Centralized Critic Methods
 --------------------------
+
+[Implementation] <https://docs.ray.io/en/master/rllib-env.html#implementing-a-centralized-critic> is when you apply parameter share the parameters solely of the critic networks in actor critic methods, allowing for a far greater deal of flexibility than naive parameter sharing by giving each agent a sperate policy network for acting, though with theoretically reduced performance. Note that a centralized critic method based on DDPG is essentially MADDPG, and doing this will be more general and performant than the specialty MADDPG implementation that was uniquely tailored to work on the MPE environments.
