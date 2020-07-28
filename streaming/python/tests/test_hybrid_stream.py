@@ -57,13 +57,23 @@ def test_hybrid_stream():
         .sink(sink_func)
     ctx.submit("HybridStreamTest")
     import time
-    time.sleep(3)
+    slept_time = 0
+    while True:
+        if os.path.exists(sink_file):
+            time.sleep(3)
+            with open(sink_file, "r") as f:
+                result = f.read()
+                assert "a" in result
+                assert "b" not in result
+                assert "c" in result
+            print("Execution succeed")
+            break
+        if slept_time >= 60:
+            raise Exception("Execution not finished")
+        slept_time = slept_time + 1
+        print("Wait finish...")
+        time.sleep(1)
     ray.shutdown()
-    with open(sink_file, "r") as f:
-        result = f.read()
-        assert "a" in result
-        assert "b" not in result
-        assert "c" in result
 
 
 if __name__ == "__main__":
