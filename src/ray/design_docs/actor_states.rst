@@ -29,8 +29,7 @@ An actor can be in one of the following states:
                |                            v                  |                       |
                 -------------------------->DEAD<---------------------------------------
 
-- **0**: GCS will create an actor whose state is `DEPENDENCIES_UNREADY`
-   when a `RegisterActor` request is received from CoreWorker.
+- **0**: GCS will create an actor whose state is `DEPENDENCIES_UNREADY` when a `RegisterActor` request is received from CoreWorker.
 
 - **1**: GCS will change actor state to `PENDING_CREATION` when a `CreateActor` request is received from CoreWorker.
 
