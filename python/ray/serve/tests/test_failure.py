@@ -75,9 +75,10 @@ def test_controller_failure(serve_instance):
         assert response.text == "hello3"
 
 
-def _kill_http_proxy():
-    [http_proxy] = ray.get(serve.api._get_controller().get_http_proxy.remote())
-    ray.kill(http_proxy, no_restart=False)
+def _kill_routers():
+    routers = ray.get(serve.api._get_controller().get_router.remote())
+    for router in routers:
+        ray.kill(router, no_restart=False)
 
 
 def test_http_proxy_failure(serve_instance):
@@ -96,7 +97,7 @@ def test_http_proxy_failure(serve_instance):
         response = request_with_retries("/proxy_failure", timeout=30)
         assert response.text == "hello1"
 
-    _kill_http_proxy()
+    _kill_routers()
 
     def function():
         return "hello2"

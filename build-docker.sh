@@ -52,5 +52,5 @@ if [ ! $SKIP_EXAMPLES ]; then
 fi
 
 if [ $OUTPUT_SHA ]; then
-    echo "$IMAGE_SHA" | sed 's/sha256://'
+    echo "${IMAGE_SHA/sha256:/}"
 fi

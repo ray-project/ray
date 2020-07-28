@@ -44,7 +44,7 @@ MAX_WORKER_FAILURE_RETRIES = 3
 
 # yapf: disable
 # __sphinx_doc_begin__
-COMMON_CONFIG = {
+COMMON_CONFIG: TrainerConfigDict = {
     # === Settings for Rollout Worker processes ===
     # Number of rollout worker actors to create for parallel sampling. Setting
     # this to 0 will force rollouts to be done in the trainer actor.

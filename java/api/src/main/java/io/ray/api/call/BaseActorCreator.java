@@ -2,6 +2,7 @@ package io.ray.api.call;
 
 import io.ray.api.Ray;
 import io.ray.api.options.ActorCreationOptions;
+import io.ray.api.placementgroup.PlacementGroup;
 import java.util.Map;
 
 /**
@@ -85,7 +86,6 @@ public class BaseActorCreator<T extends BaseActorCreator> {
   }
 
   /**
-   * /**
    * Set the max number of concurrent calls to allow for this actor.
    * <p>
    * The max concurrency defaults to 1 for threaded execution.
@@ -97,6 +97,19 @@ public class BaseActorCreator<T extends BaseActorCreator> {
    */
   public T setMaxConcurrency(int maxConcurrency) {
     builder.setMaxConcurrency(maxConcurrency);
+    return self();
+  }
+
+  /**
+   * Set the placement group to place this actor in.
+   *
+   * @param group The placement group of the actor.
+   * @param bundleIndex The index of the bundle to place this actor in.
+   * @return self
+   * @see ActorCreationOptions.Builder#setPlacementGroup(PlacementGroup, int)
+   */
+  public T setPlacementGroup(PlacementGroup group, int bundleIndex) {
+    builder.setPlacementGroup(group, bundleIndex);
     return self();
   }
 

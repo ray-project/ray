@@ -1,8 +1,10 @@
+ax-platform
 ConfigSpace==0.4.10
 bayesian-optimization
 boto3
 dm_tree
 dragonfly-opt
+gluoncv
 gym[atari]
 h5py
 hpbandster
@@ -13,6 +15,7 @@ lightgbm
 lz4
 matplotlib
 mlflow
+mxnet
 nevergrad
 opencv-python-headless
 pandas
@@ -26,8 +29,8 @@ smart_open
 tabulate
 tensorboardX
 tensorflow_probability
-torch
-torchvision
+torch>=1.5.0
+torchvision>=0.6.0
 xgboost
 zoopt>=0.4.0
 timm
