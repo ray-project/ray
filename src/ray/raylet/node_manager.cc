@@ -2189,9 +2189,10 @@ void NodeManager::TreatTaskAsFailedIfLost(const Task &task) {
     // Lookup the return value's locations.
     // TODO(zhuohan): fill the address here.
     RAY_CHECK_OK(object_directory_->LookupLocations(
-        object_id, rpc::Address(), [this, task_marked_as_failed, task](
-                       const ray::ObjectID &object_id,
-                       const std::unordered_set<ray::ClientID> &clients) {
+        object_id, rpc::Address(),
+        [this, task_marked_as_failed, task](
+            const ray::ObjectID &object_id,
+            const std::unordered_set<ray::ClientID> &clients) {
           if (!*task_marked_as_failed) {
             // Only process the object locations if we haven't already marked the
             // task as failed.

@@ -230,7 +230,8 @@ class TaskDependencyManager {
   bool CheckObjectRequired(const ObjectID &object_id) const;
   /// If the given object is required, then request that the object be made
   /// available through object transfer or reconstruction.
-  void HandleRemoteDependencyRequired(const ObjectID &object_id, const rpc::Address &owner_address);
+  void HandleRemoteDependencyRequired(const ObjectID &object_id,
+                                      const rpc::Address &owner_address);
   /// If the given object is no longer required, then cancel any in-progress
   /// operations to make the object available through object transfer or
   /// reconstruction.

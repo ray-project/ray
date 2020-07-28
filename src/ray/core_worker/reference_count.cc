@@ -888,7 +888,8 @@ void ReferenceCounter::SetReleaseLineageCallback(
   on_lineage_released_ = callback;
 }
 
-void ReferenceCounter::AddObjectLocation(const ObjectID &object_id, const ClientID &node_id) {
+void ReferenceCounter::AddObjectLocation(const ObjectID &object_id,
+                                         const ClientID &node_id) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_locations_.find(object_id);
   if (it == object_id_locations_.end()) {
@@ -897,14 +898,16 @@ void ReferenceCounter::AddObjectLocation(const ObjectID &object_id, const Client
   it->second.insert(node_id);
 }
 
-void ReferenceCounter::RemoveObjectLocation(const ObjectID &object_id, const ClientID &node_id) {
+void ReferenceCounter::RemoveObjectLocation(const ObjectID &object_id,
+                                            const ClientID &node_id) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_locations_.find(object_id);
   RAY_CHECK(it != object_id_locations_.end());
   it->second.erase(node_id);
 }
 
-std::unordered_set<ClientID> ReferenceCounter::GetObjectLocations(const ObjectID &object_id) {
+std::unordered_set<ClientID> ReferenceCounter::GetObjectLocations(
+    const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_locations_.find(object_id);
   RAY_CHECK(it != object_id_locations_.end());

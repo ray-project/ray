@@ -761,18 +761,19 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Implements gRPC server handler.
   void HandleAddObjectLocationOwner(const rpc::AddObjectLocationOwnerRequest &request,
-                               rpc::AddObjectLocationOwnerReply *reply,
-                               rpc::SendReplyCallback send_reply_callback) override;
+                                    rpc::AddObjectLocationOwnerReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
-  void HandleRemoveObjectLocationOwner(const rpc::RemoveObjectLocationOwnerRequest &request,
-                               rpc::RemoveObjectLocationOwnerReply *reply,
-                               rpc::SendReplyCallback send_reply_callback) override;
+  void HandleRemoveObjectLocationOwner(
+      const rpc::RemoveObjectLocationOwnerRequest &request,
+      rpc::RemoveObjectLocationOwnerReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
   void HandleGetObjectLocationsOwner(const rpc::GetObjectLocationsOwnerRequest &request,
-                               rpc::GetObjectLocationsOwnerReply *reply,
-                               rpc::SendReplyCallback send_reply_callback) override;
+                                     rpc::GetObjectLocationsOwnerReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
   void HandleKillActor(const rpc::KillActorRequest &request, rpc::KillActorReply *reply,

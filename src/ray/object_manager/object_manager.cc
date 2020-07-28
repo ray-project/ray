@@ -162,7 +162,8 @@ ray::Status ObjectManager::SubscribeObjDeleted(
   return ray::Status::OK();
 }
 
-ray::Status ObjectManager::Pull(const ObjectID &object_id, const rpc::Address &owner_address) {
+ray::Status ObjectManager::Pull(const ObjectID &object_id,
+                                const rpc::Address &owner_address) {
   RAY_LOG(DEBUG) << "Pull on " << self_node_id_ << " of object " << object_id;
   // Check if object is already local.
   if (local_objects_.count(object_id) != 0) {
@@ -537,26 +538,24 @@ void ObjectManager::CancelPull(const ObjectID &object_id) {
   pull_requests_.erase(it);
 }
 
-ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids,
-                                const std::unordered_map<ObjectID, rpc::Address> &owner_addresses,
-                                int64_t timeout_ms, uint64_t num_required_objects,
-                                bool wait_local, const WaitCallback &callback) {
+ray::Status ObjectManager::Wait(
+    const std::vector<ObjectID> &object_ids,
+    const std::unordered_map<ObjectID, rpc::Address> &owner_addresses, int64_t timeout_ms,
+    uint64_t num_required_objects, bool wait_local, const WaitCallback &callback) {
   UniqueID wait_id = UniqueID::FromRandom();
   RAY_LOG(DEBUG) << "Wait request " << wait_id << " on " << self_node_id_;
-  RAY_RETURN_NOT_OK(AddWaitRequest(wait_id, object_ids, owner_addresses, timeout_ms, num_required_objects,
-                                   wait_local, callback));
+  RAY_RETURN_NOT_OK(AddWaitRequest(wait_id, object_ids, owner_addresses, timeout_ms,
+                                   num_required_objects, wait_local, callback));
   RAY_RETURN_NOT_OK(LookupRemainingWaitObjects(wait_id));
   // LookupRemainingWaitObjects invokes SubscribeRemainingWaitObjects once lookup has
   // been performed on all remaining objects.
   return ray::Status::OK();
 }
 
-ray::Status ObjectManager::AddWaitRequest(const UniqueID &wait_id,
-                                          const std::vector<ObjectID> &object_ids,
-                                          const std::unordered_map<ObjectID, rpc::Address> &owner_addresses,
-                                          int64_t timeout_ms,
-                                          uint64_t num_required_objects, bool wait_local,
-                                          const WaitCallback &callback) {
+ray::Status ObjectManager::AddWaitRequest(
+    const UniqueID &wait_id, const std::vector<ObjectID> &object_ids,
+    const std::unordered_map<ObjectID, rpc::Address> &owner_addresses, int64_t timeout_ms,
+    uint64_t num_required_objects, bool wait_local, const WaitCallback &callback) {
   RAY_CHECK(timeout_ms >= 0 || timeout_ms == -1);
   RAY_CHECK(num_required_objects != 0);
   RAY_CHECK(num_required_objects <= object_ids.size())
@@ -599,8 +598,9 @@ ray::Status ObjectManager::LookupRemainingWaitObjects(const UniqueID &wait_id) {
       // Lookup remaining objects.
       wait_state.requested_objects.insert(object_id);
       RAY_RETURN_NOT_OK(object_directory_->LookupLocations(
-          object_id, wait_state.owner_addresses[object_id], [this, wait_id](const ObjectID &lookup_object_id,
-                                     const std::unordered_set<ClientID> &client_ids) {
+          object_id, wait_state.owner_addresses[object_id],
+          [this, wait_id](const ObjectID &lookup_object_id,
+                          const std::unordered_set<ClientID> &client_ids) {
             auto &wait_state = active_wait_requests_.find(wait_id)->second;
             // Note that the object is guaranteed to be added to local_objects_ before
             // the notification is triggered.

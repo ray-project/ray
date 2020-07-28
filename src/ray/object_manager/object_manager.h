@@ -27,9 +27,9 @@
 #include <boost/asio/error.hpp>
 #include <boost/bind.hpp>
 
-#include "absl/time/clock.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/time/clock.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
@@ -91,7 +91,8 @@ class ObjectStoreRunner {
 
 class ObjectManagerInterface {
  public:
-  virtual ray::Status Pull(const ObjectID &object_id, const rpc::Address &owner_address) = 0;
+  virtual ray::Status Pull(const ObjectID &object_id,
+                           const rpc::Address &owner_address) = 0;
   virtual void CancelPull(const ObjectID &object_id) = 0;
   virtual ~ObjectManagerInterface(){};
 };
@@ -259,8 +260,7 @@ class ObjectManager : public ObjectManagerInterface,
   /// \return Status of whether the wait successfully initiated.
   ray::Status Wait(const std::vector<ObjectID> &object_ids,
                    const std::unordered_map<ObjectID, rpc::Address> &owner_addresses,
-                   int64_t timeout_ms,
-                   uint64_t num_required_objects, bool wait_local,
+                   int64_t timeout_ms, uint64_t num_required_objects, bool wait_local,
                    const WaitCallback &callback);
 
   /// Free a list of objects from object store.
@@ -326,12 +326,11 @@ class ObjectManager : public ObjectManagerInterface,
   };
 
   /// Creates a wait request and adds it to active_wait_requests_.
-  ray::Status AddWaitRequest(const UniqueID &wait_id,
-                             const std::vector<ObjectID> &object_ids,
-                             const std::unordered_map<ObjectID, rpc::Address> &owner_addresses,
-                             int64_t timeout_ms,
-                             uint64_t num_required_objects, bool wait_local,
-                             const WaitCallback &callback);
+  ray::Status AddWaitRequest(
+      const UniqueID &wait_id, const std::vector<ObjectID> &object_ids,
+      const std::unordered_map<ObjectID, rpc::Address> &owner_addresses,
+      int64_t timeout_ms, uint64_t num_required_objects, bool wait_local,
+      const WaitCallback &callback);
 
   /// Lookup any remaining objects that are not local. This is invoked after
   /// the wait request is created and local objects are identified.

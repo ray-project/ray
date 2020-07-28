@@ -1854,15 +1854,13 @@ void CoreWorker::HandleWaitForObjectEviction(
 
 void CoreWorker::HandleAddObjectLocationOwner(
     const rpc::AddObjectLocationOwnerRequest &request,
-    rpc::AddObjectLocationOwnerReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+    rpc::AddObjectLocationOwnerReply *reply, rpc::SendReplyCallback send_reply_callback) {
   if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
                            send_reply_callback)) {
     return;
   }
-  reference_counter_->AddObjectLocation(
-      ObjectID::FromBinary(request.object_id()),
-      ClientID::FromBinary(request.client_id()));
+  reference_counter_->AddObjectLocation(ObjectID::FromBinary(request.object_id()),
+                                        ClientID::FromBinary(request.client_id()));
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -1874,9 +1872,8 @@ void CoreWorker::HandleRemoveObjectLocationOwner(
                            send_reply_callback)) {
     return;
   }
-  reference_counter_->RemoveObjectLocation(
-      ObjectID::FromBinary(request.object_id()),
-      ClientID::FromBinary(request.client_id()));
+  reference_counter_->RemoveObjectLocation(ObjectID::FromBinary(request.object_id()),
+                                           ClientID::FromBinary(request.client_id()));
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -1888,9 +1885,9 @@ void CoreWorker::HandleGetObjectLocationsOwner(
                            send_reply_callback)) {
     return;
   }
-  std::unordered_set<ClientID> client_ids = reference_counter_->GetObjectLocations(
-      ObjectID::FromBinary(request.object_id()));
-  for (const auto& client_id : client_ids) {
+  std::unordered_set<ClientID> client_ids =
+      reference_counter_->GetObjectLocations(ObjectID::FromBinary(request.object_id()));
+  for (const auto &client_id : client_ids) {
     reply->add_client_ids(client_id.Binary());
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
