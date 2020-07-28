@@ -25,10 +25,10 @@ class NoisyLayer(nn.Module):
         """Initializes a NoisyLayer object.
 
         Args:
-            in_size:
-            out_size:
-            sigma0:
-            non_linear:
+            in_size: Input size to Noisy Layer
+            out_size: Output size to Noisey Layer
+            sigma0: Initialization value for Sigmab, which is bias noise
+            activation: Non-linear activation for the Noisy Layer
         """
         super().__init__()
 

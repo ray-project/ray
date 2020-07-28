@@ -70,6 +70,22 @@ class SlimConv2d(nn.Module):
             initializer: Any = "default",
             activation_fn: Any = "default",
             bias_init: float = 0):
+        """Creates a standard Conv2d layer, similar to torch.nn.Conv2d
+
+            Args:
+                in_channels(int): Number of input channels
+                out_channels (int): Number of output channels
+                kernel (Union[int, Tuple[int, int]]): If int, the kernel is
+                    a tuple(x,x). Elsewise, the tuple can be specified
+                stride (Union[int, Tuple[int, int]]): Controls the stride
+                    for the cross-correlation. If int, the stride is a
+                    tuple(x,x). Elsewise, the tuple can be specified
+                padding (Union[int, Tuple[int, int]]): Controls the amount
+                    of implicit zero-paddings during the conv operation
+                initializer (Any): Initializer function for kernel weights
+                activation_fn (Any): Activation function at the end of layer
+                bias_init (float): Initalize bias weights to bias_init const
+        """
         super(SlimConv2d, self).__init__()
         layers = []
         if padding:
@@ -102,6 +118,16 @@ class SlimFC(nn.Module):
                  activation_fn: Any = None,
                  use_bias: bool = True,
                  bias_init: float = 0.0):
+        """Creates a standard FC layer, similar to torch.nn.Linear
+
+        Args:
+            in_size(int): Input size for FC Layer
+            out_size (int): Output size for FC Layer
+            initializer (Any): Initializer function for FC layer weights
+            activation_fn (Any): Activation function at the end of layer
+            use_bias (bool): Whether to add bias weights or not
+            bias_init (float): Initalize bias weights to bias_init const
+        """
         super(SlimFC, self).__init__()
         layers = []
         linear = nn.Linear(in_size, out_size, bias=use_bias)
