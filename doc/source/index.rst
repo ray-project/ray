@@ -162,8 +162,9 @@ Academic Papers
 
    tune/index.rst
    tune/key-concepts.rst
+   tune/user-guide.rst
    tune/tutorials/overview.rst
-   tune/advanced.rst
+   tune/examples/index.rst
    tune/api_docs/overview.rst
    tune/contrib.rst
 

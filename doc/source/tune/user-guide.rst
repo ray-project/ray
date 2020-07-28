@@ -1,5 +1,6 @@
-Advanced Topics, Configurations, & FAQ
-======================================
+==========
+User Guide
+==========
 
 These pages will demonstrate the various features and configurations of Tune.
 
