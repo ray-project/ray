@@ -13,6 +13,7 @@ import tempfile
 import zipfile
 
 from itertools import chain
+from itertools import takewhile
 
 import urllib.error
 import urllib.parse
@@ -255,7 +256,9 @@ def build(build_python, build_java):
 
     version_info = bazel_invoke(subprocess.check_output, ["--version"])
     bazel_version_str = version_info.rstrip().decode("utf-8").split(" ", 1)[1]
-    bazel_version = tuple(map(int, bazel_version_str.split(".")))
+    bazel_version_split = bazel_version_str.split(".")
+    bazel_version_digits = [''.join(takewhile(str.isdigit, s)) for s in bazel_version_split]
+    bazel_version = tuple(map(int, bazel_version_digits))
     if bazel_version < SUPPORTED_BAZEL:
         logger.warning("Expected Bazel version {} but found {}".format(
             ".".join(map(str, SUPPORTED_BAZEL)), bazel_version_str))
