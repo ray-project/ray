@@ -352,9 +352,13 @@ class FunctionRunner(Trainable):
 
 def detect_checkpoint_function(train_func, abort=False):
     """Use checkpointing if any arg has "checkpoint" and args = 2"""
-    func_args = inspect.getfullargspec(train_func).args
+    argspec = inspect.getfullargspec(train_func)
+    func_args = argspec.args
+    func_kwargs = argspec.kwonlyargs
     validated = len(func_args) == 2 and any("checkpoint" in arg
                                             for arg in func_args)
+    validated = validated or (len(func_args) == 1) and any(
+        "checkpoint" in arg for arg in func_kwargs)
     if abort and not validated:
         raise ValueError(
             "Provided training function must have 2 args "
