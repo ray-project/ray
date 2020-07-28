@@ -5,8 +5,9 @@ import json
 
 from ray.autoscaler.local.coordinator_server import OnPremCoordinatorServer
 from ray.autoscaler.node_provider import NODE_PROVIDERS, get_node_provider
-from ray.autoscaler.local.node_provider import (LocalNodeProvider,
-                                                CoordinatorSenderNodeProvider)
+from ray.autoscaler.local.node_provider import LocalNodeProvider
+from ray.autoscaler.local.coordinator_node_provider import (
+    CoordinatorSenderNodeProvider)
 from ray.autoscaler.tags import (TAG_RAY_NODE_TYPE, TAG_RAY_CLUSTER_NAME,
                                  TAG_RAY_NODE_NAME, NODE_TYPE_WORKER,
                                  NODE_TYPE_HEAD)

@@ -25,7 +25,7 @@ def import_azure(provider_config):
 
 def import_local(provider_config):
     if "coordinator_address" in provider_config:
-        from ray.autoscaler.local.node_provider import (
+        from ray.autoscaler.local.coordinator_node_provider import (
             CoordinatorSenderNodeProvider)
         return CoordinatorSenderNodeProvider
     else:

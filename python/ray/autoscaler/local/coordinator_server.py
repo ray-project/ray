@@ -1,3 +1,8 @@
+"""Web server that runs on local/private clusters to coordinate and manage
+different clusters for multiple users. It receives node provider function calls
+through HTTP requests from remote CoordinatorSenderNodeProvider and runs them
+locally in LocalNodeProvider. To start the webserver the user runs:
+`python coordinator_server.py --ips <comma separated ips> --port <PORT>`."""
 import argparse
 import logging
 import threading
