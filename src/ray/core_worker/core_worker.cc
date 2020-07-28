@@ -151,8 +151,7 @@ CoreWorker &CoreWorkerProcess::GetCoreWorker() {
     RAY_CHECK(instance_->global_worker_) << "global_worker_ must not be NULL";
     return *instance_->global_worker_;
   }
-
-    RAY_CHECK(instance_->global_worker_) << "global_worker_ must not be NULL";auto ptr = current_core_worker_.lock();
+  auto ptr = current_core_worker_.lock();
   RAY_CHECK(ptr != nullptr)
       << "The current thread is not bound with a core worker instance.";
   return *ptr;
