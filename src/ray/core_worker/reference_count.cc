@@ -493,7 +493,7 @@ bool ReferenceCounter::SetDeleteCallback(
     return false;
   }
 
-  RAY_CHECK(!it->second.on_delete) << object_id;
+  // RAY_CHECK(!it->second.on_delete) << object_id;
   it->second.on_delete = callback;
   return true;
 }

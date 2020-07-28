@@ -803,6 +803,72 @@ TEST_F(GcsActorManagerTest, TestOwnerNodeDieBeforeDetachedActorDependenciesResol
   ASSERT_FALSE(callbacks.count(registered_actor->GetActorID()));
 }
 
+TEST_F(GcsActorManagerTest, TestDuplicateRegisterActor) {
+  auto job_id = JobID::FromInt(1);
+  auto registered_actor = RegisterActor(job_id);
+  // Make sure the actor state is `DEPENDENCIES_UNREADY`.
+  ASSERT_EQ(registered_actor->GetState(), rpc::ActorTableData::DEPENDENCIES_UNREADY);
+  // Make sure the actor has not been scheduled yet.
+  ASSERT_TRUE(mock_actor_scheduler_->actors.empty());
+
+  // Register again to simulate the duplicated message.
+  auto register_actor_2 = RegisterActor(job_id);
+  // Make sure the actor state is `DEPENDENCIES_UNREADY`.
+  ASSERT_EQ(register_actor_2->GetState(), rpc::ActorTableData::DEPENDENCIES_UNREADY);
+  // Make sure the actor has not been scheduled yet.
+  ASSERT_TRUE(mock_actor_scheduler_->actors.empty());
+
+  auto promise = std::make_shared<std::promise<std::shared_ptr<gcs::GcsActor>>>();
+  rpc::RegisterActorRequest register_actor_request;
+  register_actor_request.mutable_task_spec()->CopyFrom(
+      registered_actor->GetActorTableData().task_spec());
+  auto status = gcs_actor_manager_->RegisterActor(
+      register_actor_request, [promise](std::shared_ptr<gcs::GcsActor> actor) {
+        promise->set_value(std::move(actor));
+      });
+  if (!status.ok()) {
+    promise->set_value(nullptr);
+  }
+  auto registered_actor_2 = promise->get_future().get();
+  ASSERT_EQ(registered_actor, registered_actor_2);
+}
+
+TEST_F(GcsActorManagerTest, TestDuplicateCreateActor) {
+  auto job_id = JobID::FromInt(1);
+  auto registered_actor = RegisterActor(job_id);
+  // Make sure the actor state is `DEPENDENCIES_UNREADY`.
+  ASSERT_EQ(registered_actor->GetState(), rpc::ActorTableData::DEPENDENCIES_UNREADY);
+  // Make sure the actor has not been scheduled yet.
+  ASSERT_TRUE(mock_actor_scheduler_->actors.empty());
+
+  std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
+  rpc::CreateActorRequest request;
+  request.mutable_task_spec()->CopyFrom(
+      registered_actor->GetActorTableData().task_spec());
+  RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
+      request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
+        finished_actors.emplace_back(std::move(actor));
+      }));
+  // Make sure the actor is scheduling.
+  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
+
+  // Create again to simulate the duplicated message.
+  RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
+      request, [](std::shared_ptr<gcs::GcsActor> actor) {}));
+  // Make sure the scheduling actor size is 1.
+  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
+
+  auto actor = mock_actor_scheduler_->actors.back();
+  mock_actor_scheduler_->actors.pop_back();
+  // Make sure the actor state is `PENDING`.
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::PENDING_CREATION);
+
+  actor->UpdateAddress(RandomAddress());
+  gcs_actor_manager_->OnActorCreationSuccess(actor);
+  WaitActorCreated(actor->GetActorID());
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
