@@ -308,7 +308,7 @@ If using checkpointing, be sure to use a :ref:`special checkpoint context manage
         torch.save((net.state_dict(), optimizer.state_dict()), path)
 
 
-Finally, we need to tell Ray Tune to start multiple distributed processes at once by using ``ray.util.sgd.torch.DistributedTrainableCreator`` (:ref:`docs <tune-sgd-ddp-doc>`). This is essentially to running ``torch.distributed.launch`` for each hyperparameter trial:
+Finally, we need to tell Ray Tune to start multiple distributed processes at once by using ``ray.util.sgd.torch.DistributedTrainableCreator`` (:ref:`docs <tune-sgd-ddp-doc>`). This is essentially equivalent to running ``torch.distributed.launch`` for each hyperparameter trial:
 
 .. code-block:: python
 
