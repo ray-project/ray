@@ -105,6 +105,7 @@ static inline void Shutdown() {
   absl::MutexLock lock(&stats_mutex);
   metrics_io_service_pool->Stop();
   opencensus::stats::StatsExporter::Shutdown();
+  opencensus::stats::DeltaProducer::Get()->Shutdown();
   metrics_io_service_pool = nullptr;
   exporter = nullptr;
   StatsConfig::instance().SetIsInitialized(false);

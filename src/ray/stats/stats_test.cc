@@ -119,6 +119,10 @@ TEST_F(StatsTest, InitializationTest) {
   ASSERT_TRUE(new_first_tag.second == test_tag_value_that_shouldnt_be_applied);
 }
 
+TEST_F(StatsTest, MultiThreadedInitializationTest) {
+  // TODO
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
