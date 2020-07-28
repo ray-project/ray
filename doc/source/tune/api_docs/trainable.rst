@@ -263,10 +263,6 @@ tune.report / tune.checkpoint (Function API)
 
 .. autofunction:: ray.tune.checkpoint_dir
 
-.. autofunction:: ray.tune.make_checkpoint_dir
-
-.. autofunction:: ray.tune.save_checkpoint
-
 .. autofunction:: ray.tune.get_trial_dir
 
 .. autofunction:: ray.tune.get_trial_name

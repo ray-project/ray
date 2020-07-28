@@ -228,15 +228,11 @@ def distributed_checkpoint_dir(step, disable=False):
     """
 
     if torch.distributed.get_rank() == 0 and not disable:
-        path = tune.make_checkpoint_dir(step=step)
+        with tune.checkpoint_dir(step=step) as checkpoint_dir:
+            yield checkpoint_dir
     else:
         path = tempfile.mkdtemp()
-
-    yield path
-
-    if torch.distributed.get_rank() == 0 and not disable:
-        tune.save_checkpoint(path)
-    else:
+        yield path
         shutil.rmtree(path)
 
 

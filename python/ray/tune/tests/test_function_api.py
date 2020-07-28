@@ -43,11 +43,10 @@ class FunctionApiTest(unittest.TestCase):
         def train(config, checkpoint=None):
             for step in range(10):
                 if step % 3 == 0:
-                    checkpoint_dir = tune.make_checkpoint_dir(step=step)
-                    path = os.path.join(checkpoint_dir, "checkpoint")
-                    with open(path, "w") as f:
-                        f.write(json.dumps({"step": step}))
-                    tune.save_checkpoint(path)
+                    with tune.checkpoint_dir(step=step) as checkpoint_dir:
+                        path = os.path.join(checkpoint_dir, "checkpoint")
+                        with open(path, "w") as f:
+                            f.write(json.dumps({"step": step}))
                 tune.report(test=step)
 
         wrapped = wrap_function(train)
@@ -68,58 +67,55 @@ class FunctionApiTest(unittest.TestCase):
         def train(config, checkpoint=False):
             for i in range(10):
                 tune.report(test=i)
-            checkpoint_dir = tune.make_checkpoint_dir(step=10)
-            checkpoint_path = os.path.join(checkpoint_dir, "hello")
-            with open(checkpoint_path, "w") as f:
-                f.write("hello")
-            tune.save_checkpoint(checkpoint_path)
+            with tune.checkpoint_dir(step=10) as checkpoint_dir:
+                checkpoint_path = os.path.join(checkpoint_dir, "ckpt.log")
+                with open(checkpoint_path, "w") as f:
+                    f.write("hello")
 
         [trial] = tune.run(train).trials
-        assert "hello" in trial.checkpoint.value
+        assert os.path.exists(os.path.join(trial.checkpoint.value, "ckpt.log"))
 
     def testCheckpointFunctionAtEndContext(self):
         def train(config, checkpoint=False):
             for i in range(10):
                 tune.report(test=i)
             with tune.checkpoint_dir(step=10) as checkpoint_dir:
-                checkpoint_path = os.path.join(checkpoint_dir, "hello")
+                checkpoint_path = os.path.join(checkpoint_dir, "ckpt.log")
                 with open(checkpoint_path, "w") as f:
                     f.write("hello")
 
         [trial] = tune.run(train).trials
-        assert "hello" in trial.checkpoint.value
+        assert os.path.exists(os.path.join(trial.checkpoint.value, "ckpt.log"))
 
     def testVariousCheckpointFunctionAtEnd(self):
         def train(config, checkpoint=False):
             for i in range(10):
-                checkpoint_dir = tune.make_checkpoint_dir()
-                checkpoint_path = os.path.join(checkpoint_dir, "hello")
-                with open(checkpoint_path, "w") as f:
-                    f.write("hello")
-                tune.save_checkpoint(checkpoint_path)
+                with tune.checkpoint_dir() as checkpoint_dir:
+                    checkpoint_path = os.path.join(checkpoint_dir, "ckpt.log")
+                    with open(checkpoint_path, "w") as f:
+                        f.write("hello")
                 tune.report(test=i)
-            checkpoint_dir = tune.make_checkpoint_dir()
-            checkpoint_path = os.path.join(checkpoint_dir, "goodbye")
-            with open(checkpoint_path, "w") as f:
-                f.write("goodbye")
-            tune.save_checkpoint(checkpoint_path)
+            with tune.checkpoint_dir() as checkpoint_dir:
+                checkpoint_path = os.path.join(checkpoint_dir, "ckpt.log2")
+                with open(checkpoint_path, "w") as f:
+                    f.write("goodbye")
 
         [trial] = tune.run(train, keep_checkpoints_num=3).trials
-        assert "goodbye" in trial.checkpoint.value
+        assert os.path.exists(
+            os.path.join(trial.checkpoint.value, "ckpt.log2"))
 
     def testReuseCheckpoint(self):
-        def train(config, checkpoint=False):
+        def train(config, checkpoint_dir=None):
             itr = 0
-            if checkpoint:
-                with open(checkpoint, "r") as f:
+            if checkpoint_dir:
+                with open(os.path.join(checkpoint_dir, "ckpt.log"), "r") as f:
                     itr = int(f.read()) + 1
 
             for i in range(itr, config["max_iter"]):
-                checkpoint_dir = tune.make_checkpoint_dir(step=i)
-                checkpoint_path = os.path.join(checkpoint_dir, "goodbye")
-                with open(checkpoint_path, "w") as f:
-                    f.write(str(i))
-                tune.save_checkpoint(checkpoint_path)
+                with tune.checkpoint_dir(step=i) as checkpoint_dir:
+                    checkpoint_path = os.path.join(checkpoint_dir, "ckpt.log")
+                    with open(checkpoint_path, "w") as f:
+                        f.write(str(i))
                 tune.report(test=i, training_iteration=i)
 
         [trial] = tune.run(
@@ -129,51 +125,49 @@ class FunctionApiTest(unittest.TestCase):
             },
         ).trials
         last_ckpt = trial.checkpoint.value
-        assert "goodbye" in last_ckpt
+        assert os.path.exists(os.path.join(trial.checkpoint.value, "ckpt.log"))
         analysis = tune.run(train, config={"max_iter": 10}, restore=last_ckpt)
         trial_dfs = list(analysis.trial_dataframes.values())
         assert len(trial_dfs[0]["training_iteration"]) == 5
 
     def testRetry(self):
-        def train(config, checkpoint=None):
-            restored = bool(checkpoint)
+        def train(config, checkpoint_dir=None):
+            restored = bool(checkpoint_dir)
             itr = 0
-            if checkpoint:
-                with open(checkpoint, "r") as f:
+            if checkpoint_dir:
+                with open(os.path.join(checkpoint_dir, "ckpt.log"), "r") as f:
                     itr = int(f.read()) + 1
 
             for i in range(itr, 10):
                 if i == 5 and not restored:
                     raise Exception("try to fail me")
-                checkpoint_dir = tune.make_checkpoint_dir(step=i)
-                checkpoint_path = os.path.join(checkpoint_dir, "goodbye")
-                with open(checkpoint_path, "w") as f:
-                    f.write(str(i))
-                tune.save_checkpoint(checkpoint_path)
+                with tune.checkpoint_dir(step=i) as checkpoint_dir:
+                    checkpoint_path = os.path.join(checkpoint_dir, "ckpt.log")
+                    with open(checkpoint_path, "w") as f:
+                        f.write(str(i))
                 tune.report(test=i, training_iteration=i)
 
         analysis = tune.run(train, max_failures=3)
         last_ckpt = analysis.trials[0].checkpoint.value
-        assert "goodbye" in last_ckpt
+        assert os.path.exists(os.path.join(last_ckpt, "ckpt.log"))
         trial_dfs = list(analysis.trial_dataframes.values())
         assert len(trial_dfs[0]["training_iteration"]) == 10
 
     def testBlankCheckpoint(self):
-        def train(config, checkpoint=None):
-            restored = bool(checkpoint)
+        def train(config, checkpoint_dir=None):
+            restored = bool(checkpoint_dir)
             itr = 0
-            if checkpoint:
-                with open(checkpoint, "r") as f:
+            if checkpoint_dir:
+                with open(os.path.join(checkpoint_dir, "ckpt.log"), "r") as f:
                     itr = int(f.read()) + 1
 
             for i in range(itr, 10):
                 if i == 5 and not restored:
                     raise Exception("try to fail me")
-                checkpoint_dir = tune.make_checkpoint_dir()
-                checkpoint_path = os.path.join(checkpoint_dir, "goodbye")
-                with open(checkpoint_path, "w") as f:
-                    f.write(str(i))
-                tune.save_checkpoint(checkpoint_path)
+                with tune.checkpoint_dir() as checkpoint_dir:
+                    checkpoint_path = os.path.join(checkpoint_dir, "ckpt.log")
+                    with open(checkpoint_path, "w") as f:
+                        f.write(str(i))
                 tune.report(test=i, training_iteration=i)
 
         analysis = tune.run(train, max_failures=3)
