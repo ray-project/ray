@@ -65,6 +65,16 @@ public final class Ray extends RayCall {
   }
 
   /**
+   * Get an object by `ObjectRef` from the object store.
+   *
+   * @param objectRef The reference of the object to get.
+   * @return The Java object.
+   */
+  public static <T> T get(ObjectRef<T> objectRef) {
+    return runtime.get(objectRef);
+  }
+
+  /**
    * Get a list of objects by `ObjectRef`s from the object store.
    *
    * @param objectList A list of object references.

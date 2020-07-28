@@ -44,7 +44,7 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
 
   @Override
   public synchronized T get() {
-    return Ray.internal().get(this);
+    return Ray.get(this);
   }
 
   public ObjectId getId() {
