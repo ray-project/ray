@@ -297,7 +297,7 @@ You can wrap your model in ``torch.nn.parallel.DistributedDataParallel`` to supp
 
     net.to(device)
 
-If using checkpointing, be sure to use a :ref:`special checkpoint context manager <tune-sgd-ddp-doc>`, ``distributed_checkpoint_dir`` that avoids redundant checkpointing across multiple processes:
+If using checkpointing, be sure to use a :ref:`special checkpoint context manager <tune-ddp-doc>`, ``distributed_checkpoint_dir`` that avoids redundant checkpointing across multiple processes:
 
 .. code-block:: python
 
@@ -308,14 +308,14 @@ If using checkpointing, be sure to use a :ref:`special checkpoint context manage
         torch.save((net.state_dict(), optimizer.state_dict()), path)
 
 
-Finally, we need to tell Ray Tune to start multiple distributed processes at once by using ``ray.util.sgd.torch.DistributedTrainableCreator`` (:ref:`docs <tune-sgd-ddp-doc>`). This is essentially to running ``torch.distributed.launch`` for each hyperparameter trial:
+Finally, we need to tell Ray Tune to start multiple distributed processes at once by using ``ray.tune.integration.torch.DistributedTrainableCreator`` (:ref:`docs <tune-ddp-doc>`). This is essentially to running ``torch.distributed.launch`` for each hyperparameter trial:
 
 .. code-block:: python
 
     # You'll probably want to be running on a distributed Ray cluster.
     # ray.init(address="auto")
 
-    from ray.util.sgd.torch import DistributedTrainableCreator
+    from ray.util.sgd.integration.torch import DistributedTrainableCreator
 
     distributed_train_cifar = DistributedTrainableCreator(
       partial(train_cifar, data_dir=data_dir),

@@ -17,6 +17,7 @@ For the sake of example, let's maximize this objective function:
 Function API
 ------------
 
+
 Here is a simple example of using the function API. You can report intermediate metrics by simply calling ``tune.report`` within the provided function.
 
 .. code-block:: python
@@ -39,6 +40,8 @@ Here is a simple example of using the function API. You can report intermediate 
 .. tip:: Do not use ``tune.report`` within a ``Trainable`` class.
 
 Tune will run this function on a separate thread in a Ray actor process.
+
+.. tip:: If you want to leverage multi-node data parallel training with PyTorch while using parallel hyperparameter tuning, check out our :ref:PyTorch user guide and Tune's :ref:distributed pytorch integrations.
 
 .. _tune-function-checkpointing:
 
@@ -70,6 +73,8 @@ Many Tune features rely on checkpointing, including the usage of certain Trial S
                 tune.report(hello="world", ray="tune")
 
         tune.run(train_func)
+
+.. note:: ``checkpoint_freq`` and ``checkpoint_at_end`` will not work with Function API checkpointing.
 
 In this example, checkpoints will be saved by training iteration to ``local_dir/exp_name/trial_name/checkpoint_<step>``. You can restore a single trial checkpoint by using ``tune.run(restore=<checkpoint_dir>)``:
 
@@ -278,6 +283,21 @@ tune.Trainable (Class API)
     :member-order: groupwise
     :private-members:
     :members:
+
+
+.. _tune-ddp-doc:
+
+Distributed Torch
+-----------------
+
+Ray also offers lightweight integrations to distribute your model training on Ray Tune.
+
+
+.. autofunction:: ray.tune.integration.torch.DistributedTrainableCreator
+
+.. autofunction:: ray.tune.integration.torch.distributed_checkpoint_dir
+
+.. autofunction:: ray.tune.integration.torch.is_distributed_trainable
 
 tune.DurableTrainable
 ---------------------

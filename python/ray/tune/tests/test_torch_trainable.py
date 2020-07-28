@@ -6,7 +6,7 @@ import torch.distributed as dist
 
 import ray
 from ray import tune
-from ray.util.sgd.torch.func_trainable import (
+from from ray.tune.integration.torch import (
     DistributedTrainableCreator, distributed_checkpoint_dir, _train_simple,
     _train_check_global)
 

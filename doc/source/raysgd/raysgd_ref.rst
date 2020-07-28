@@ -26,21 +26,6 @@ BaseTorchTrainable
     :members:
     :private-members:
 
-
-.. _tune-sgd-ddp-doc:
-
-Ray Tune + RaySGD
------------------
-
-If not using the TorchTrainer API, Ray also offers lightweight integrations to distribute your model training on Ray Tune.
-
-
-.. autofunction:: ray.util.sgd.torch.DistributedTrainableCreator
-
-.. autofunction:: ray.util.sgd.torch.distributed_checkpoint_dir
-
-.. autofunction:: ray.util.sgd.torch.is_distributed_trainable
-
 TFTrainer
 ---------
 
