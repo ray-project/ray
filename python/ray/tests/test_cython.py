@@ -6,7 +6,7 @@ import numpy as np
 import unittest
 
 import ray
-import cython_examples as cyth
+import ray.examples.cython_examples as cyth
 
 
 def get_ray_result(cython_func, *args):
