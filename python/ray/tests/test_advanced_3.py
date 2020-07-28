@@ -422,12 +422,13 @@ def test_socket_dir_not_existing(shutdown_only):
         temp_raylet_socket_name = os.path.join(temp_raylet_socket_dir,
                                                "raylet_socket")
         ray.init(num_cpus=2, raylet_socket_name=temp_raylet_socket_name)
+
         @ray.remote
         def foo(x):
-            sleep(1)
-            return 2*x
-        ray.get([foo.remote(i) for i in range(2)])
+            time.sleep(1)
+            return 2 * x
 
+        ray.get([foo.remote(i) for i in range(2)])
 
 
 def test_raylet_is_robust_to_random_messages(ray_start_regular):
