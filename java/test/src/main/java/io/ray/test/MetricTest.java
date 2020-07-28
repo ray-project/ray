@@ -13,7 +13,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -145,10 +144,9 @@ public class MetricTest extends BaseTest {
 
     gauge.update(2.0);
     Assert.assertTrue(doubleEqual(gauge.getValue(), 2.0));
-    TimeUnit.MILLISECONDS.sleep(MetricConfig.DEFAULT_CONFIG.timeIntervalMs() + 1000L);
-    Assert.assertTrue(doubleEqual(gauge.getValue(), 2.0));
     gauge.update(5.0);
     Assert.assertTrue(doubleEqual(gauge.getValue(), 5.0));
+    RayMetrics.shutdown();
   }
 
   @Test
@@ -159,11 +157,10 @@ public class MetricTest extends BaseTest {
     count.inc(10.0);
     count.inc(20.0);
     Assert.assertTrue(doubleEqual(count.getCount(), 30.0));
-    TimeUnit.MILLISECONDS.sleep(MetricConfig.DEFAULT_CONFIG.timeIntervalMs() + 1000L);
-    Assert.assertTrue(doubleEqual(count.getCount(), 30.0));
     count.inc(1.0);
     count.inc(2.0);
     Assert.assertTrue(doubleEqual(count.getCount(), 33.0));
+    RayMetrics.shutdown();
   }
 
   @Test
@@ -174,11 +171,10 @@ public class MetricTest extends BaseTest {
     sum.update(10.0);
     sum.update(20.0);
     Assert.assertTrue(doubleEqual(sum.getSum(), 30.0));
-    TimeUnit.MILLISECONDS.sleep(MetricConfig.DEFAULT_CONFIG.timeIntervalMs() + 1000L);
-    Assert.assertTrue(doubleEqual(sum.getSum(), 30.0));
     sum.update(1.0);
     sum.update(2.0);
     Assert.assertTrue(doubleEqual(sum.getSum(), 33.0));
+    RayMetrics.shutdown();
   }
 
   @Test
@@ -194,60 +190,57 @@ public class MetricTest extends BaseTest {
     for (int i = 0; i < Histogram.HISTOGRAM_WINDOW_SIZE; ++i) {
       Assert.assertTrue(doubleEqual(i + 101.0d, window.get(i)));
     }
-    TimeUnit.MILLISECONDS.sleep(MetricConfig.DEFAULT_CONFIG.timeIntervalMs() + 1000L);
     Assert.assertTrue(doubleEqual(histogram.getValue(), 200.0d));
+    RayMetrics.shutdown();
   }
 
   @Test
   public void testRegisterGaugeWithConfig() throws InterruptedException {
     TestUtils.skipTestUnderSingleProcess();
-    MetricConfig config = initRayMetrics(3000L, 1, 1000L);
+    initRayMetrics(2000L, 1, 1000L);
     Gauge gauge = registerGauge();
 
     gauge.update(2.0);
     Assert.assertTrue(doubleEqual(gauge.getValue(), 2.0));
-    TimeUnit.MILLISECONDS.sleep(config.timeIntervalMs() + 1000L);
-    Assert.assertTrue(doubleEqual(gauge.getValue(), 2.0));
     gauge.update(5.0);
     Assert.assertTrue(doubleEqual(gauge.getValue(), 5.0));
+    RayMetrics.shutdown();
   }
 
   @Test
   public void testRegisterCountWithConfig() throws InterruptedException {
     TestUtils.skipTestUnderSingleProcess();
-    MetricConfig config = initRayMetrics(3000L, 1, 1000L);
+    initRayMetrics(2000L, 1, 1000L);
     Count count = registerCount();
 
     count.inc(10.0);
     count.inc(20.0);
     Assert.assertTrue(doubleEqual(count.getCount(), 30.0));
-    TimeUnit.MILLISECONDS.sleep(config.timeIntervalMs() + 1000L);
-    Assert.assertTrue(doubleEqual(count.getCount(), 30.0));
     count.inc(1.0);
     count.inc(2.0);
     Assert.assertTrue(doubleEqual(count.getCount(), 33.0));
+    RayMetrics.shutdown();
   }
 
   @Test
   public void testRegisterSumWithConfig() throws InterruptedException {
     TestUtils.skipTestUnderSingleProcess();
-    MetricConfig config = initRayMetrics(3000L, 1, 1000L);
+    initRayMetrics(2000L, 1, 1000L);
     Sum sum = registerSum();
 
     sum.update(10.0);
     sum.update(20.0);
     Assert.assertTrue(doubleEqual(sum.getSum(), 30.0));
-    TimeUnit.MILLISECONDS.sleep(config.timeIntervalMs() + 1000L);
-    Assert.assertTrue(doubleEqual(sum.getSum(), 30.0));
     sum.update(1.0);
     sum.update(2.0);
     Assert.assertTrue(doubleEqual(sum.getSum(), 33.0));
+    RayMetrics.shutdown();
   }
 
   @Test
   public void testRegisterHistogramWithConfig() throws InterruptedException {
     TestUtils.skipTestUnderSingleProcess();
-    MetricConfig config = initRayMetrics(3000L, 1, 1000L);
+    initRayMetrics(2000L, 1, 1000L);
     Histogram histogram = registerHistogram();
 
     for (int i = 1; i <= 200; ++i) {
@@ -258,8 +251,8 @@ public class MetricTest extends BaseTest {
     for (int i = 0; i < Histogram.HISTOGRAM_WINDOW_SIZE; ++i) {
       Assert.assertTrue(doubleEqual(i + 101.0d, window.get(i)));
     }
-    TimeUnit.MILLISECONDS.sleep(config.timeIntervalMs() + 1000L);
     Assert.assertTrue(doubleEqual(histogram.getValue(), 200.0d));
+    RayMetrics.shutdown();
   }
 
 }

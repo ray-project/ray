@@ -24,6 +24,7 @@ public final class RayMetrics {
     synchronized (RayMetrics.class) {
       if (metricRegistry != null) {
         metricRegistry.shutdown();
+        metricRegistry = null;
       }
     }
   }
