@@ -97,6 +97,7 @@ with which we iterate through the training and test sets are configurable as wel
 
 Adding (multi) GPU support with DataParallel
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 Image classification benefits largely from GPUs. Luckily, we can continue to use
 PyTorch's abstractions in Ray Tune. Thus, we can wrap our model in ``nn.DataParallel``
 to support data parallel training on multiple GPUs:
@@ -132,10 +133,9 @@ The most interesting part is the communication with Tune:
 
 .. code-block:: python
 
-    checkpoint_dir = tune.make_checkpoint_dir(epoch)
-    path = os.path.join(checkpoint_dir, "checkpoint")
-    torch.save((net.state_dict(), optimizer.state_dict()), path)
-    tune.save_checkpoint(path)
+    with tune.checkpoint_dir(epoch) as checkpoint_dir:
+        path = os.path.join(checkpoint_dir, "checkpoint")
+        torch.save((net.state_dict(), optimizer.state_dict()), path)
 
     tune.report(loss=(val_loss / val_steps), accuracy=correct / total)
 
@@ -272,6 +272,64 @@ The best performing trial achieved a validation accuracy of about 58%, which cou
 be confirmed on the test set.
 
 So that's it! You can now tune the parameters of your PyTorch models.
+
+.. _tune-torch-ddp:
+
+Advanced: Distributed training with DistributedDataParallel
+-----------------------------------------------------------
+
+Some models require multiple nodes to train in a short amount of time. Ray Tune allows you to easily do distributed data parallel training in addition to distributed hyperparameter tuning.
+
+You can wrap your model in ``torch.nn.parallel.DistributedDataParallel`` to support distributed data parallel training:
+
+.. code-block:: python
+
+    from ray.util.sgd.torch import is_distributed_trainable
+    from torch.nn.parallel import DistributedDataParallel
+
+    device = "cpu"
+    if is_distributed_trainable():
+        net = DistributedDataParallel(net)
+
+    if torch.cuda.is_available():
+        device = "cuda"
+
+    net.to(device)
+
+If using checkpointing, be sure to use a :ref:`special checkpoint context manager <tune-sgd-ddp-doc>`, ``distributed_checkpoint_dir`` that avoids redundant checkpointing across multiple processes:
+
+.. code-block:: python
+
+    from ray.util.sgd.torch import distributed_checkpoint_dir
+
+    with distributed_checkpoint_dir(step=epoch) as checkpoint_dir:
+        path = os.path.join(checkpoint_dir, "checkpoint")
+        torch.save((net.state_dict(), optimizer.state_dict()), path)
+
+
+Finally, we need to tell Ray Tune to start multiple distributed processes at once by using ``ray.util.sgd.torch.DistributedTrainableCreator`` (:ref:`docs <tune-sgd-ddp-doc>`). This is essentially to running ``torch.distributed.launch`` for each hyperparameter trial:
+
+.. code-block:: python
+
+    # You'll probably want to be running on a distributed Ray cluster.
+    # ray.init(address="auto")
+
+    from ray.util.sgd.torch import DistributedTrainableCreator
+
+    distributed_train_cifar = DistributedTrainableCreator(
+      partial(train_cifar, data_dir=data_dir),
+      use_gpu=True,
+      num_workers=2,  # number of parallel workers to use
+      num_cpus_per_worker=8
+    )
+    tune.run(
+      distributed_train_cifar,
+      resources_per_trial=None,
+      config=config,
+      num_samples=num_samples,
+      ...
+    )
+
 
 If you consider switching to PyTorch Lightning to get rid of some of your boilerplate
 training code, please know that we also have a walkthrough on :doc:`how to use Tune with

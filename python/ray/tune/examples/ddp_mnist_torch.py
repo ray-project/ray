@@ -11,8 +11,8 @@ import ray
 from ray import tune
 from ray.tune.examples.mnist_pytorch import (train, test, get_data_loaders,
                                              ConvNet)
-from ray.util.sgd.torch.func_trainable import (DistributedTrainableCreator,
-                                               distributed_checkpoint_dir)
+from ray.util.sgd.torch import (DistributedTrainableCreator,
+                                distributed_checkpoint_dir)
 
 logger = logging.getLogger(__name__)
 

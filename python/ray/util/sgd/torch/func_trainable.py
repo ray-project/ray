@@ -2,6 +2,7 @@
 # https://github.com/pytorch/examples/blob/master/mnist/main.py
 from contextlib import contextmanager
 import os
+import inspect
 import logging
 import shutil
 import tempfile
@@ -20,6 +21,13 @@ from ray.util.sgd.torch.constants import NCCL_TIMEOUT_S
 from ray.util.sgd.torch.utils import setup_address
 
 logger = logging.getLogger(__name__)
+
+_distributed_enabled = False
+
+
+def is_distributed_trainable():
+    """Returns True if executing within a DistributedTrainable."""
+    return _distributed_enabled
 
 
 def logger_creator(log_config, logdir, rank):
@@ -83,6 +91,9 @@ class _TorchTrainable(tune.Trainable):
             for rank, w in enumerate(self.workers)
         ])
 
+        global _distributed_enabled
+        _distributed_enabled = True
+
     def step(self):
         if self._finished:
             raise RuntimeError("Training has already finished.")
@@ -115,8 +126,25 @@ def DistributedTrainableCreator(func,
                                 timeout_s=NCCL_TIMEOUT_S):
     """Creates a class that executes distributed training.
 
+    Similar to running `torch.distributed.launch`.
+
     Note that you typically should not instantiate the object
     created.
+
+    Args:
+        func (callable): This function is a Tune trainable function.
+            It must have the signature (`func(config, checkpoint)`).
+        use_gpu (bool): Sets resource allocation for workers to 1 GPU
+            if true. Also automatically sets CUDA_VISIBLE_DEVICES
+            for each training worker.
+        num_workers (int): Number of training workers to include in
+            world.
+        num_cpus_per_worker (int): Number of CPU resources to reserve
+            per training worker.
+        backend (str): One of "gloo", "nccl".
+        timeout_s (float): Seconds before the torch process group
+            times out. Useful when machines are unreliable.
+
 
     Example:
 
@@ -126,6 +154,11 @@ def DistributedTrainableCreator(func,
             train_func, num_workers=2)
         analysis = tune.run(trainable_cls)
     """
+
+    func_args = inspect.getfullargspec(func).args
+    if len(func_args) > 1 and "checkpoint" not in func_args:
+        raise ValueError("Provided training function must have "
+                         "signature=`func(config, checkpoint=None)`")
 
     class WrappedDistributedTorchTrainable(_TorchTrainable):
         _function = func

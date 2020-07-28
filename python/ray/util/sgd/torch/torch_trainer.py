@@ -140,6 +140,8 @@ class TorchTrainer:
             Defaults to True.
         wrap_ddp (bool): Whether to automatically wrap DistributedDataParallel
             over each model. If False, you are expected to call it yourself.
+        timeout_s (float): Seconds before the torch process group
+            times out. Useful when machines are unreliable.
         add_dist_sampler (bool): Whether to automatically add a
             DistributedSampler to all created dataloaders. Only applicable
             if num_workers > 1.

@@ -13,11 +13,13 @@ try:
 
     from ray.util.sgd.torch.training_operator import TrainingOperator
     from ray.util.sgd.torch.func_trainable import (DistributedTrainableCreator,
-                                                   distributed_checkpoint)
+                                                   distributed_checkpoint_dir,
+                                                   is_distributed_trainable)
 
     __all__ = [
         "TorchTrainer", "BaseTorchTrainable", "TrainingOperator",
-        "distributed_checkpoint", "DistributedTrainableCreator"
+        "distributed_checkpoint_dir", "DistributedTrainableCreator",
+        "is_distributed_trainable"
     ]
 except ImportError as e:
     logger.warning(e)
