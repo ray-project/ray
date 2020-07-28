@@ -1,4 +1,6 @@
 import numpy as np
+import gym
+from typing import Dict, List, Union
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.misc import SlimFC
@@ -7,6 +9,7 @@ from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.types import ModelConfigDict, TensorType
 
 torch, nn = try_import_torch()
 
@@ -57,7 +60,9 @@ class RecurrentNetwork(TorchModelV2):
     """
 
     @override(ModelV2)
-    def forward(self, input_dict, state, seq_lens):
+    def forward(self, input_dict: Dict[str, TensorType],
+                state: List[TensorType],
+                seq_lens: TensorType) -> (TensorType, List[TensorType]):
         """Adds time dimension to batch before sending inputs to forward_rnn().
 
         You should implement forward_rnn() in your subclass."""
@@ -69,7 +74,8 @@ class RecurrentNetwork(TorchModelV2):
             state, seq_lens)
         return torch.reshape(output, [-1, self.num_outputs]), new_state
 
-    def forward_rnn(self, inputs, state, seq_lens):
+    def forward_rnn(self, inputs: TensorType, state: List[TensorType],
+                    seq_lens: TensorType) -> (TensorType, List[TensorType]):
         """Call the model with the given input tensors and state.
 
         Args:
@@ -95,8 +101,9 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
     """An LSTM wrapper serving as an interface for ModelV2s that set use_lstm.
     """
 
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name):
+    def __init__(self, obs_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space, num_outputs: int,
+                 model_config: ModelConfigDict, name: str):
 
         nn.Module.__init__(self)
         super().__init__(obs_space, action_space, None, model_config, name)
@@ -125,7 +132,9 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
             initializer=torch.nn.init.xavier_uniform_)
 
     @override(RecurrentNetwork)
-    def forward(self, input_dict, state, seq_lens):
+    def forward(self, input_dict: Dict[str, TensorType],
+                state: List[TensorType],
+                seq_lens: TensorType) -> (TensorType, List[TensorType]):
         assert seq_lens is not None
         # Push obs through "unwrapped" net's `forward()` first.
         wrapped_out, _ = self._wrapped_forward(input_dict, [], None)
@@ -147,7 +156,8 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
         return super().forward(input_dict, state, seq_lens)
 
     @override(RecurrentNetwork)
-    def forward_rnn(self, inputs, state, seq_lens):
+    def forward_rnn(self, inputs: TensorType, state: List[TensorType],
+                    seq_lens: TensorType) -> (TensorType, List[TensorType]):
         self._features, [h, c] = self.lstm(
             inputs,
             [torch.unsqueeze(state[0], 0),
@@ -156,7 +166,7 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
         return model_out, [torch.squeeze(h, 0), torch.squeeze(c, 0)]
 
     @override(ModelV2)
-    def get_initial_state(self):
+    def get_initial_state(self) -> Union[List[np.ndarray], List[TensorType]]:
         # Place hidden states on same device as model.
         linear = next(self._logits_branch._model.children())
         h = [
@@ -166,6 +176,6 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
         return h
 
     @override(ModelV2)
-    def value_function(self):
+    def value_function(self) -> TensorType:
         assert self._features is not None, "must call forward() first"
         return torch.reshape(self._value_branch(self._features), [-1])

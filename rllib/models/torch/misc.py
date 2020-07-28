@@ -1,12 +1,14 @@
 """ Code adapted from https://github.com/ikostrikov/pytorch-a3c"""
 import numpy as np
+from typing import Union, Tuple, Any
 
 from ray.rllib.utils.framework import get_activation_fn, try_import_torch
+from ray.rllib.utils.types import TensorType
 
 torch, nn = try_import_torch()
 
 
-def normc_initializer(std=1.0):
+def normc_initializer(std: float = 1.0) -> Any:
     def initializer(tensor):
         tensor.data.normal_(0, 1)
         tensor.data *= std / torch.sqrt(
@@ -15,7 +17,9 @@ def normc_initializer(std=1.0):
     return initializer
 
 
-def same_padding(in_size, filter_size, stride_size):
+def same_padding(in_size: Tuple[int, int], filter_size: Tuple[int, int],
+                 stride_size: Union[int, Tuple[int, int]]
+                 ) -> (Union[int, Tuple[int, int]], Tuple[int, int]):
     """Note: Padding is added to match TF conv2d `same` padding. See
     www.tensorflow.org/versions/r0.12/api_docs/python/nn/convolution
 
@@ -57,15 +61,15 @@ class SlimConv2d(nn.Module):
 
     def __init__(
             self,
-            in_channels,
-            out_channels,
-            kernel,
-            stride,
-            padding,
+            in_channels: int,
+            out_channels: int,
+            kernel: Union[int, Tuple[int, int]],
+            stride: Union[int, Tuple[int, int]],
+            padding: Union[int, Tuple[int, int]],
             # Defaulting these to nn.[..] will break soft torch import.
-            initializer="default",
-            activation_fn="default",
-            bias_init=0):
+            initializer: Any = "default",
+            activation_fn: Any = "default",
+            bias_init: float = 0):
         super(SlimConv2d, self).__init__()
         layers = []
         if padding:
@@ -84,7 +88,7 @@ class SlimConv2d(nn.Module):
             layers.append(activation_fn())
         self._model = nn.Sequential(*layers)
 
-    def forward(self, x):
+    def forward(self, x: TensorType) -> TensorType:
         return self._model(x)
 
 
@@ -92,12 +96,12 @@ class SlimFC(nn.Module):
     """Simple PyTorch version of `linear` function"""
 
     def __init__(self,
-                 in_size,
-                 out_size,
-                 initializer=None,
-                 activation_fn=None,
-                 use_bias=True,
-                 bias_init=0.0):
+                 in_size: int,
+                 out_size: int,
+                 initializer: Any = None,
+                 activation_fn: Any = None,
+                 use_bias: bool = True,
+                 bias_init: float = 0.0):
         super(SlimFC, self).__init__()
         layers = []
         linear = nn.Linear(in_size, out_size, bias=use_bias)
@@ -112,20 +116,20 @@ class SlimFC(nn.Module):
             layers.append(activation_fn())
         self._model = nn.Sequential(*layers)
 
-    def forward(self, x):
+    def forward(self, x: TensorType) -> TensorType:
         return self._model(x)
 
 
 class AppendBiasLayer(nn.Module):
     """Simple bias appending layer for free_log_std."""
 
-    def __init__(self, num_bias_vars):
+    def __init__(self, num_bias_vars: int):
         super().__init__()
         self.log_std = torch.nn.Parameter(
             torch.as_tensor([0.0] * num_bias_vars))
         self.register_parameter("log_std", self.log_std)
 
-    def forward(self, x):
+    def forward(self, x: TensorType) -> TensorType:
         out = torch.cat(
             [x, self.log_std.unsqueeze(0).repeat([len(x), 1])], axis=1)
         return out

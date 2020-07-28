@@ -1,4 +1,6 @@
 import numpy as np
+from typing import Dict, List
+import gym
 
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.misc import normc_initializer, same_padding, \
@@ -6,6 +8,7 @@ from ray.rllib.models.torch.misc import normc_initializer, same_padding, \
 from ray.rllib.models.tf.visionnet_v1 import _get_filter_config
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import get_activation_fn, try_import_torch
+from ray.rllib.utils.types import ModelConfigDict, TensorType
 
 _, nn = try_import_torch()
 
@@ -13,8 +16,9 @@ _, nn = try_import_torch()
 class VisionNetwork(TorchModelV2, nn.Module):
     """Generic vision network."""
 
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name):
+    def __init__(self, obs_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space, num_outputs: int,
+                 model_config: ModelConfigDict, name: str):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
                               model_config, name)
         nn.Module.__init__(self)
@@ -142,7 +146,9 @@ class VisionNetwork(TorchModelV2, nn.Module):
         self._features = None
 
     @override(TorchModelV2)
-    def forward(self, input_dict, state, seq_lens):
+    def forward(self, input_dict: Dict[str, TensorType],
+                state: List[TensorType],
+                seq_lens: TensorType) -> (TensorType, List[TensorType]):
         self._features = input_dict["obs"].float().permute(0, 3, 1, 2)
         conv_out = self._convs(self._features)
         # Store features to save forward pass when getting value_function out.
@@ -159,7 +165,7 @@ class VisionNetwork(TorchModelV2, nn.Module):
             return conv_out, state
 
     @override(TorchModelV2)
-    def value_function(self):
+    def value_function(self) -> TensorType:
         assert self._features is not None, "must call forward() first"
         if self._value_branch_separate:
             value = self._value_branch_separate(self._features)
@@ -174,7 +180,7 @@ class VisionNetwork(TorchModelV2, nn.Module):
                 features = self._features
             return self._value_branch(features).squeeze(1)
 
-    def _hidden_layers(self, obs):
+    def _hidden_layers(self, obs: TensorType) -> TensorType:
         res = self._convs(obs.permute(0, 3, 1, 2))  # switch to channel-major
         res = res.squeeze(3)
         res = res.squeeze(2)

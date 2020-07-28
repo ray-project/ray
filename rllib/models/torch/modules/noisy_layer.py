@@ -2,6 +2,7 @@ import numpy as np
 
 from ray.rllib.utils.framework import get_activation_fn, try_import_torch
 from ray.rllib.utils.framework import get_variable
+from ray.rllib.utils.framework import TensorType
 
 torch, nn = try_import_torch()
 
@@ -16,7 +17,11 @@ class NoisyLayer(nn.Module):
     vanish along the training procedure
     """
 
-    def __init__(self, in_size, out_size, sigma0, activation="relu"):
+    def __init__(self,
+                 in_size: int,
+                 out_size: int,
+                 sigma0: float,
+                 activation: str = "relu"):
         """Initializes a NoisyLayer object.
 
         Args:
@@ -66,25 +71,27 @@ class NoisyLayer(nn.Module):
             torch_tensor=True,
             trainable=True)
 
-    def forward(self, inputs):
-        epsilon_in = self._f_epsilon(torch.normal(
-            mean=torch.zeros([self.in_size]),
-            std=torch.ones([self.in_size])))
-        epsilon_out = self._f_epsilon(torch.normal(
-            mean=torch.zeros([self.out_size]),
-            std=torch.ones([self.out_size])))
+    def forward(self, inputs: TensorType) -> TensorType:
+        epsilon_in = self._f_epsilon(
+            torch.normal(
+                mean=torch.zeros([self.in_size]),
+                std=torch.ones([self.in_size])))
+        epsilon_out = self._f_epsilon(
+            torch.normal(
+                mean=torch.zeros([self.out_size]),
+                std=torch.ones([self.out_size])))
         epsilon_w = torch.matmul(
             torch.unsqueeze(epsilon_in, -1),
             other=torch.unsqueeze(epsilon_out, 0))
         epsilon_b = epsilon_out
 
         action_activation = torch.matmul(
-            inputs, self.w + self.sigma_w * epsilon_w
-        ) + self.b + self.sigma_b * epsilon_b
+            inputs, self.w +
+            self.sigma_w * epsilon_w) + self.b + self.sigma_b * epsilon_b
 
         if self.activation is not None:
             action_activation = self.activation(action_activation)
         return action_activation
 
-    def _f_epsilon(self, x):
+    def _f_epsilon(self, x: TensorType) -> TensorType:
         return torch.sign(x) * torch.pow(torch.abs(x), 0.5)
