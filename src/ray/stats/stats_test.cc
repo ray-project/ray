@@ -120,7 +120,28 @@ TEST_F(StatsTest, InitializationTest) {
 }
 
 TEST_F(StatsTest, MultiThreadedInitializationTest) {
-  // TODO
+  // Make sure stats module is thread-safe.
+  // Shutdown the stats module first.
+  ray::stats::Shutdown();
+  // Spawn 10 threads that init and shutdown again and again.
+  // The test will have memory corruption if it doesn't work as expected.
+  std::vector<std::thread> threads;
+  for (int i = 0; i < 10; i++) {
+    worker_threads.emplace_back([]() {
+      for (int i = 0; i < 100; i++) {
+        const stats::TagsType global_tags = {{stats::LanguageKey, "CPP"},
+                                             {stats::WorkerPidKey, "1000"}};
+        std::shared_ptr<stats::MetricExporterClient> exporter(
+            new stats::StdoutExporterClient());
+        ray::stats::Init(global_tags, MetricsAgentPort, exporter);
+        ray::stats::Shutdown();
+      }
+    });
+  }
+  for (auto &thread : threads) {
+    thread.join();
+  }
+  ray::stats::Shutdown();
 }
 
 }  // namespace ray
