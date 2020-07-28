@@ -110,8 +110,11 @@ class _SampleCollector(metaclass=ABCMeta):
         Args:
             model (ModelV2): The ModelV2 object for which to generate the view
                 (input_dict) from `data`.
-            is_training (bool): Whether the view should be generated for
-                training purposes or inference (default).
+            is_training (bool): Whether the input_dict should be generated for
+                training purposes (default: False).
+            is_postprocessing (bool): Experimental: Whether the input_dict
+                should be generated for postprocessing purposes
+                (default: False).
 
         Returns:
             Dict[str, TensorType]: The input_dict to be passed into the ModelV2
