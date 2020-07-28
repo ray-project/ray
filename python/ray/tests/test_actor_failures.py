@@ -955,7 +955,7 @@ def test_actor_owner_worker_dies_before_dependency_ready(ray_start_cluster):
     # Wait for the `Owner` to exit.
     wait_for_pid_to_exit(owner_pid)
     # It will hang here if location is not properly resolved.
-    assert (wait_for_condition(lambda: ray.get(caller.hang.remote())))
+    wait_for_condition(lambda: ray.get(caller.hang.remote()))
 
 
 @pytest.mark.parametrize(
@@ -1025,7 +1025,7 @@ def test_actor_owner_node_dies_before_dependency_ready(ray_start_cluster):
     wait_for_pid_to_exit(owner_pid)
 
     # It will hang here if location is not properly resolved.
-    assert (wait_for_condition(lambda: ray.get(caller.hang.remote())))
+    wait_for_condition(lambda: ray.get(caller.hang.remote()))
 
 
 if __name__ == "__main__":
