@@ -31,8 +31,13 @@ GcsNodeManager::NodeFailureDetector::NodeFailureDetector(
       num_heartbeats_timeout_(RayConfig::instance().num_heartbeats_timeout()),
       light_heartbeat_enabled_(RayConfig::instance().light_heartbeat_enabled()),
       detect_timer_(io_service),
-      gcs_pub_sub_(std::move(gcs_pub_sub)) {
-  Tick();
+      gcs_pub_sub_(std::move(gcs_pub_sub)) {}
+
+void GcsNodeManager::NodeFailureDetector::Start() {
+  if (!is_started_) {
+    Tick();
+    is_started_ = true;
+  }
 }
 
 void GcsNodeManager::NodeFailureDetector::AddNode(const ray::ClientID &node_id) {
@@ -129,7 +134,7 @@ GcsNodeManager::GcsNodeManager(boost::asio::io_service &io_service,
                 RAY_CHECK_OK(
                     gcs_table_storage_->NodeResourceTable().Delete(node_id, on_done));
               };
-              RAY_CHECK_OK(gcs_table_storage_->NodeTable().Delete(node_id, on_done));
+              RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_done));
             }
           })),
       gcs_pub_sub_(gcs_pub_sub),
@@ -381,7 +386,9 @@ void GcsNodeManager::LoadInitialData(const EmptyCallback &done) {
                                const std::unordered_map<ClientID, GcsNodeInfo> &result) {
     for (auto &item : result) {
       if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
-        alive_nodes_.emplace(item.first, std::make_shared<rpc::GcsNodeInfo>(item.second));
+        // Call `AddNode` for this node to make sure it is tracked by the failure
+        // detector.
+        AddNode(std::make_shared<rpc::GcsNodeInfo>(item.second));
       } else if (item.second.state() == rpc::GcsNodeInfo::DEAD) {
         dead_nodes_.emplace(item.first, std::make_shared<rpc::GcsNodeInfo>(item.second));
       }
@@ -390,7 +397,9 @@ void GcsNodeManager::LoadInitialData(const EmptyCallback &done) {
     auto get_node_resource_callback =
         [this, done](const std::unordered_map<ClientID, ResourceMap> &result) {
           for (auto &item : result) {
-            cluster_resources_.emplace(item.first, item.second);
+            if (alive_nodes_.count(item.first)) {
+              cluster_resources_[item.first] = item.second;
+            }
           }
           RAY_LOG(INFO) << "Finished loading initial data.";
           done();
@@ -400,6 +409,8 @@ void GcsNodeManager::LoadInitialData(const EmptyCallback &done) {
   };
   RAY_CHECK_OK(gcs_table_storage_->NodeTable().GetAll(get_node_callback));
 }
+
+void GcsNodeManager::StartNodeFailureDetector() { node_failure_detector_->Start(); }
 
 }  // namespace gcs
 }  // namespace ray

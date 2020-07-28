@@ -313,7 +313,7 @@ RAY_CONFIG(bool, plasma_store_as_thread, false)
 RAY_CONFIG(int64_t, gcs_service_address_check_interval_milliseconds, 1000)
 
 RAY_CONFIG(bool, gcs_actor_service_enabled,
-           getenv("RAY_GCS_ACTOR_SERVICE_ENABLED") != nullptr &&
+           getenv("RAY_GCS_ACTOR_SERVICE_ENABLED") == nullptr ||
                getenv("RAY_GCS_ACTOR_SERVICE_ENABLED") == std::string("true"))
 
 /// The batch size for metrics export.

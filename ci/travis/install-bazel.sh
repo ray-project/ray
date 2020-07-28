@@ -6,7 +6,6 @@ ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
 arg1="${1-}"
 
-version="3.2.0"
 achitecture="${HOSTTYPE}"
 platform="unknown"
 case "${OSTYPE}" in
@@ -30,20 +29,23 @@ esac
 
 # Sanity check: Verify we have symlinks where we expect them, or Bazel can produce weird "missing input file" errors.
 # This is most likely to occur on Windows, where symlinks are sometimes disabled by default.
-{ git ls-files -s || true; } | {
+{ git ls-files -s 2>/dev/null || true; } | (
+  set +x
   missing_symlinks=()
-  while read -r mode digest sn path; do
+  while read -r mode _ _ path; do
     if [ "${mode}" = 120000 ]; then
       test -L "${path}" || missing_symlinks+=("${paths}")
     fi
   done
   if [ ! 0 -eq "${#missing_symlinks[@]}" ]; then
-    echo "error: expected symlink: ${missing_symlinks[@]}" 1>&2
+    echo "error: expected symlink: ${missing_symlinks[*]}" 1>&2
     echo "For a correct build, please run 'git config --local core.symlinks true' and re-run git checkout." 1>&2
     false
   fi
-}
+)
 
+python="$(command -v python3 || command -v python || echo python)"
+version="$("${python}" -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" bazel_version "${ROOT_DIR}/../../python/setup.py")"
 if [ "${OSTYPE}" = "msys" ]; then
   target="${MINGW_DIR-/usr}/bin/bazel.exe"
   mkdir -p "${target%/*}"
@@ -84,6 +86,7 @@ if [ "${CI-}" = true ]; then
   # If we are in master build, we can write to the cache as well.
   upload=0
   if [ "${TRAVIS_PULL_REQUEST-false}" = false ]; then
+    # shellcheck disable=SC2154
     if [ -n "${BAZEL_CACHE_CREDENTIAL_B64:+x}" ]; then
       {
         printf "%s" "${BAZEL_CACHE_CREDENTIAL_B64}" | base64 -d - >> "${HOME}/bazel_cache_credential.json"
@@ -91,11 +94,13 @@ if [ "${CI-}" = true ]; then
       upload=1
     elif [ -n "${encrypted_1c30b31fe1ee_key:+x}" ]; then
       {
+        # shellcheck disable=SC2154
         openssl aes-256-cbc -K "${encrypted_1c30b31fe1ee_key}" \
             -iv "${encrypted_1c30b31fe1ee_iv}" \
             -in "${ROOT_DIR}/bazel_cache_credential.json.enc" \
             -out "${HOME}/bazel_cache_credential.json" -d
       } 2>&-  # avoid printing secrets
+      # shellcheck disable=SC2181
       if [ 0 -eq $? ]; then
         upload=1
       fi
