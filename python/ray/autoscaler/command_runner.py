@@ -403,9 +403,9 @@ class SSHCommandRunner(CommandRunnerInterface):
 
         if cli_logger.verbosity > 0:
             with cli_logger.indented():
-                start_process()
+                return start_process()
         else:
-            start_process()
+            return start_process()
 
     def run_rsync_up(self, source, target):
         self._set_ssh_ip_if_required()
@@ -460,6 +460,7 @@ class DockerCommandRunner(SSHCommandRunner):
 
         if run_env == "docker":
             cmd = self._docker_expand_user(cmd, any_char=True)
+            cmd = " ".join(_with_interactive(cmd))
             cmd = with_docker_exec(
                 [cmd], container_name=self.docker_name,
                 with_interactive=True)[0]
