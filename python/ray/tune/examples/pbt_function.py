@@ -36,7 +36,7 @@ def pbt_function(config, checkpoint=None):
     accuracy = 0.0  # end = 1000
     start = 0
     if checkpoint:
-        with open(checkpoint) as f:
+        with open(os.path.join(checkpoint, "checkpoint")) as f:
             state = json.loads(f.read())
             accuracy = state["acc"]
             start = state["step"]

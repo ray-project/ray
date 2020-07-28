@@ -2,7 +2,6 @@
 # https://github.com/pytorch/examples/blob/master/mnist/main.py
 from contextlib import contextmanager
 import os
-import inspect
 import logging
 import shutil
 import tempfile
@@ -13,7 +12,8 @@ import ray
 from ray import tune
 from ray.tune.result import RESULT_DUPLICATE
 from ray.tune.logger import NoopLogger
-from ray.tune.function_runner import wrap_function
+from ray.tune.function_runner import (wrap_function,
+                                      detect_checkpoint_function)
 from ray.tune.resources import Resources
 from ray.tune.trainable import TrainableUtil
 from ray.util.sgd.torch.utils import setup_process_group
@@ -154,11 +154,7 @@ def DistributedTrainableCreator(func,
             train_func, num_workers=2)
         analysis = tune.run(trainable_cls)
     """
-
-    func_args = inspect.getfullargspec(func).args
-    if len(func_args) > 1 and "checkpoint" not in func_args:
-        raise ValueError("Provided training function must have "
-                         "signature=`func(config, checkpoint=None)`")
+    detect_checkpoint_function(func, abort=True)
 
     class WrappedDistributedTorchTrainable(_TorchTrainable):
         _function = func

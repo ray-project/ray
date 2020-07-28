@@ -72,9 +72,9 @@ def train_cifar(config, checkpoint_dir=None, data_dir=None):
     optimizer = optim.SGD(net.parameters(), lr=config["lr"], momentum=0.9)
 
     if checkpoint_dir:
-        checkpoint = os.path.join(checkpoint_dir, "checkpoint")
-        print("loading checkpoint {}".format(checkpoint))
-        model_state, optimizer_state = torch.load(checkpoint)
+        path = os.path.join(checkpoint_dir, "checkpoint")
+        print("loading checkpoint {}".format(path))
+        model_state, optimizer_state = torch.load(path)
         net.load_state_dict(model_state)
         optimizer.load_state_dict(optimizer_state)
 

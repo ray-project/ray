@@ -350,10 +350,18 @@ class FunctionRunner(Trainable):
             pass
 
 
-def detect_checkpoint_function(train_func):
+def detect_checkpoint_function(train_func, abort=False):
+    """Use checkpointing if any arg has "checkpoint" and args = 2"""
     func_args = inspect.getfullargspec(train_func).args
-    use_checkpoint = "checkpoint" in func_args
-    return use_checkpoint
+    validated = len(func_args) == 2 and any("checkpoint" in arg
+                                            for arg in func_args)
+    if abort and not validated:
+        raise ValueError(
+            "Provided training function must have 2 args "
+            "in the signature, and the latter arg must "
+            "contain `checkpoint`. For example: "
+            "`func(config, checkpoint_dir=None)` or "
+            "`func(config, checkpoint=None)`. Got {}".format(func_args))
 
 
 def wrap_function(train_func):
@@ -362,14 +370,14 @@ def wrap_function(train_func):
             func_args = inspect.getfullargspec(train_func).args
             if len(func_args) > 1:  # more arguments than just the config
                 if "reporter" not in func_args and (
-                        "checkpoint" not in func_args):
+                        not detect_checkpoint_function(train_func)):
                     raise ValueError(
                         "Unknown argument found in the Trainable function. "
                         "Arguments other than the 'config' arg must be one "
                         "of ['reporter', 'checkpoint']. Found: {}".format(
                             func_args))
             use_reporter = "reporter" in func_args
-            use_checkpoint = "checkpoint" in func_args
+            use_checkpoint = detect_checkpoint_function(func_args)
             if not use_checkpoint and not use_reporter:
                 logger.warning(
                     "Function checkpointing is disabled. This may result in "
@@ -378,7 +386,7 @@ def wrap_function(train_func):
                     "arguments to be `func(config, checkpoint)`.")
                 output = train_func(config)
             elif use_checkpoint:
-                output = train_func(config, checkpoint=checkpoint)
+                output = train_func(config, checkpoint)
             else:
                 output = train_func(config, reporter)
 
