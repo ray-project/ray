@@ -26,6 +26,9 @@
 
 #include "ray/common/status.h"
 #include "ray/object_manager/plasma/common.h"
+#include "ray/object_manager/plasma/connection.h"
+#include "ray/object_manager/plasma/plasma.h"
+#include "ray/object_manager/plasma/shared_memory.h"
 #include "ray/util/visibility.h"
 
 using arrow::Buffer;
@@ -44,11 +47,23 @@ struct ObjectBuffer {
   int device_num;
 };
 
-// TODO(suquark): Maybe we should not export plasma later?
-class RAY_EXPORT PlasmaClient {
+struct ObjectInUseEntry {
+  /// A count of the number of times this client has called PlasmaClient::Create
+  /// or
+  /// PlasmaClient::Get on this object ID minus the number of calls to
+  /// PlasmaClient::Release.
+  /// When this count reaches zero, we remove the entry from the ObjectsInUse
+  /// and decrement a count in the relevant ClientMmapTableEntry.
+  int count;
+  /// Cached information to read the object.
+  PlasmaObject object;
+  /// A flag representing whether the object has been sealed.
+  bool is_sealed;
+};
+
+class PlasmaClient : public std::enable_shared_from_this<PlasmaClient> {
  public:
   PlasmaClient();
-  ~PlasmaClient();
 
   /// Connect to the local plasma store. Return the resulting connection.
   ///
@@ -170,17 +185,6 @@ class RAY_EXPORT PlasmaClient {
   /// \return The return status.
   Status Seal(const ObjectID& object_id);
 
-  /// Delete an object from the object store. This currently assumes that the
-  /// object is present, has been sealed and not used by another client. Otherwise,
-  /// it is a no operation.
-  ///
-  /// \todo We may want to allow the deletion of objects that are not present or
-  ///       haven't been sealed.
-  ///
-  /// \param object_id The ID of the object to delete.
-  /// \return The return status.
-  Status Delete(const ObjectID& object_id);
-
   /// Delete a list of objects from the object store. This currently assumes that the
   /// object is present, has been sealed and not used by another client. Otherwise,
   /// it is a no operation.
@@ -219,19 +223,59 @@ class RAY_EXPORT PlasmaClient {
   /// Get the memory capacity of the store.
   ///
   /// \return Memory capacity of the store in bytes.
-  int64_t store_capacity();
+  int64_t store_capacity() { return store_capacity_; }
 
  private:
-  friend class PlasmaBuffer;
-  friend class PlasmaMutableBuffer;
-  FRIEND_TEST(TestPlasmaStore, GetTest);
-  FRIEND_TEST(TestPlasmaStore, LegacyGetTest);
-  FRIEND_TEST(TestPlasmaStore, AbortTest);
-
   bool IsInUse(const ObjectID& object_id);
+  /// Check if store_fd has already been received from the store. If yes,
+  /// return it. Otherwise, receive it from the store (see analogous logic
+  /// in store.cc).
+  ///
+  /// \param store_fd File descriptor to fetch from the store.
+  /// \return The pointer corresponding to store_fd.
+  uint8_t* GetStoreFdAndMmap(MEMFD_TYPE store_fd, int64_t map_size);
 
-  class RAY_NO_EXPORT Impl;
-  std::shared_ptr<Impl> impl_;
+  /// This is a helper method for marking an object as unused by this client.
+  ///
+  /// \param object_id The object ID we mark unused.
+  /// \return The return status.
+  Status MarkObjectUnused(const ObjectID& object_id);
+
+  /// Common helper for Get() variants
+  Status GetBuffers(const ObjectID* object_ids, int64_t num_objects, int64_t timeout_ms,
+                    const std::function<std::shared_ptr<Buffer>(
+                        const ObjectID&, const std::shared_ptr<Buffer>&)>& wrap_buffer,
+                    ObjectBuffer* object_buffers);
+
+  uint8_t* LookupMmappedFile(MEMFD_TYPE store_fd_val);
+
+  void IncrementObjectCount(const ObjectID& object_id, PlasmaObject* object,
+                            bool is_sealed);
+
+  /// The boost::asio IO context for the client.
+  boost::asio::io_service main_service_;
+  /// The connection to the store service.
+  std::shared_ptr<StoreConn> store_conn_;
+  /// Table of dlmalloc buffer files that have been memory mapped so far. This
+  /// is a hash table mapping a file descriptor to a struct containing the
+  /// address of the corresponding memory-mapped file.
+  std::unordered_map<MEMFD_TYPE, std::unique_ptr<ClientMmapTableEntry>> mmap_table_;
+  /// A hash table of the object IDs that are currently being used by this
+  /// client.
+  std::unordered_map<ObjectID, std::unique_ptr<ObjectInUseEntry>> objects_in_use_;
+  /// The amount of memory available to the Plasma store. The client needs this
+  /// information to make sure that it does not delay in releasing so much
+  /// memory that the store is unable to evict enough objects to free up space.
+  int64_t store_capacity_;
+  /// A hash set to record the ids that users want to delete but still in use.
+  std::unordered_set<ObjectID> deletion_cache_;
+  /// A mutex which protects this class.
+  std::recursive_mutex client_mutex_;
+
+#ifdef PLASMA_CUDA
+  /// Cuda Device Manager.
+  arrow::cuda::CudaDeviceManager* manager_;
+#endif
 };
 
 }  // namespace plasma
