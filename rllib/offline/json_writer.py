@@ -16,6 +16,8 @@ from ray.rllib.offline.io_context import IOContext
 from ray.rllib.offline.output_writer import OutputWriter
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.compression import pack, compression_supported
+from ray.rllib.utils.types import FileType, SampleBatchType
+from typing import Any, List
 
 logger = logging.getLogger(__name__)
 
@@ -26,10 +28,10 @@ class JsonWriter(OutputWriter):
 
     @PublicAPI
     def __init__(self,
-                 path,
-                 ioctx=None,
-                 max_file_size=64 * 1024 * 1024,
-                 compress_columns=frozenset(["obs", "new_obs"])):
+                 path: str,
+                 ioctx: IOContext = None,
+                 max_file_size: int = 64 * 1024 * 1024,
+                 compress_columns: List[str] = frozenset(["obs", "new_obs"])):
         """Initialize a JsonWriter.
 
         Arguments:
@@ -59,7 +61,7 @@ class JsonWriter(OutputWriter):
         self.cur_file = None
 
     @override(OutputWriter)
-    def write(self, sample_batch):
+    def write(self, sample_batch: SampleBatchType):
         start = time.time()
         data = _to_json(sample_batch, self.compress_columns)
         f = self._get_file()
@@ -72,7 +74,7 @@ class JsonWriter(OutputWriter):
             len(data), f,
             time.time() - start))
 
-    def _get_file(self):
+    def _get_file(self) -> FileType:
         if not self.cur_file or self.bytes_written >= self.max_file_size:
             if self.cur_file:
                 self.cur_file.close()
@@ -94,7 +96,7 @@ class JsonWriter(OutputWriter):
         return self.cur_file
 
 
-def _to_jsonable(v, compress):
+def _to_jsonable(v, compress: bool) -> Any:
     if compress and compression_supported():
         return str(pack(v))
     elif isinstance(v, np.ndarray):
@@ -102,7 +104,7 @@ def _to_jsonable(v, compress):
     return v
 
 
-def _to_json(batch, compress_columns):
+def _to_json(batch: SampleBatchType, compress_columns: List[str]) -> str:
     out = {}
     if isinstance(batch, MultiAgentBatch):
         out["type"] = "MultiAgentBatch"

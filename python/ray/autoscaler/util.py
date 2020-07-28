@@ -102,14 +102,27 @@ def hash_launch_conf(node_conf, auth):
 _hash_cache = {}
 
 
-def hash_runtime_conf(file_mounts, extra_objs):
-    hasher = hashlib.sha1()
+def hash_runtime_conf(file_mounts,
+                      extra_objs,
+                      generate_file_mounts_contents_hash=False):
+    """Returns two hashes, a runtime hash and file_mounts_content hash.
+
+    The runtime hash is used to determine if the configuration or file_mounts
+    contents have changed. It is used at launch time (ray up) to determine if
+    a restart is needed.
+
+    The file_mounts_content hash is used to determine if the file_mounts
+    contents have changed. It is used at monitor time to determine if
+    additional file syncing is needed.
+    """
+    runtime_hasher = hashlib.sha1()
+    contents_hasher = hashlib.sha1()
 
     def add_content_hashes(path):
         def add_hash_of_file(fpath):
             with open(fpath, "rb") as f:
                 for chunk in iter(lambda: f.read(2**20), b""):
-                    hasher.update(chunk)
+                    contents_hasher.update(chunk)
 
         path = os.path.expanduser(path)
         if os.path.isdir(path):
@@ -117,9 +130,9 @@ def hash_runtime_conf(file_mounts, extra_objs):
             for dirpath, _, filenames in os.walk(path):
                 dirs.append((dirpath, sorted(filenames)))
             for dirpath, filenames in sorted(dirs):
-                hasher.update(dirpath.encode("utf-8"))
+                contents_hasher.update(dirpath.encode("utf-8"))
                 for name in filenames:
-                    hasher.update(name.encode("utf-8"))
+                    contents_hasher.update(name.encode("utf-8"))
                     fpath = os.path.join(dirpath, name)
                     add_hash_of_file(fpath)
         else:
@@ -128,12 +141,20 @@ def hash_runtime_conf(file_mounts, extra_objs):
     conf_str = (json.dumps(file_mounts, sort_keys=True).encode("utf-8") +
                 json.dumps(extra_objs, sort_keys=True).encode("utf-8"))
 
-    # Important: only hash the files once. Otherwise, we can end up restarting
-    # workers if the files were changed and we re-hashed them.
-    if conf_str not in _hash_cache:
-        hasher.update(conf_str)
+    # Only generate a contents hash if generate_contents_hash is true or
+    # if we need to generate the runtime_hash
+    if conf_str not in _hash_cache or generate_file_mounts_contents_hash:
         for local_path in sorted(file_mounts.values()):
             add_content_hashes(local_path)
-        _hash_cache[conf_str] = hasher.hexdigest()
+        contents_hash = contents_hasher.hexdigest()
 
-    return _hash_cache[conf_str]
+        # Generate a new runtime_hash if its not cached
+        if conf_str not in _hash_cache:
+            runtime_hasher.update(conf_str)
+            runtime_hasher.update(contents_hash.encode("utf-8"))
+            _hash_cache[conf_str] = runtime_hasher.hexdigest()
+
+    else:
+        contents_hash = None
+
+    return (_hash_cache[conf_str], contents_hash)
