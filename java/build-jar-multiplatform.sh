@@ -11,6 +11,7 @@ JAVA_DIRS_PATH=('java' 'streaming/java')
 RAY_JAVA_MODULES=('api' 'runtime')
 RAY_STREAMING_JAVA_MODULES=('streaming-api' 'streaming-runtime' 'streaming-state')
 JAR_BASE_DIR="$WORKSPACE_DIR"/.jar
+mkdir -p "$JAR_BASE_DIR"
 cd "$WORKSPACE_DIR/java"
 # ray jar version, ex: 0.1-SNAPSHORT
 version=$(python -c "import xml.etree.ElementTree as ET;  r = ET.parse('pom.xml').getroot(); print(r.find(r.tag.replace('project', 'version')).text);" | tail -n 1)
@@ -89,6 +90,7 @@ download_jars() {
         break
       fi
       local url="https://ray-wheels.s3-us-west-2.amazonaws.com/jars/$TRAVIS_BRANCH/$TRAVIS_COMMIT/$os/$f"
+      mkdir -p "$JAR_BASE_DIR/$os"
       local dest_file="$JAR_BASE_DIR/$os/$f"
       echo "Jar url: $url"
       echo "Jar dest_file: $dest_file"
