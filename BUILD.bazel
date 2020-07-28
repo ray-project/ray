@@ -832,8 +832,8 @@ cc_test(
 cc_test(
     name = "cluster_resource_scheduler_test",
     srcs = [
-      "src/ray/raylet/scheduling/cluster_resource_scheduler_test.cc",
-      ],
+        "src/ray/raylet/scheduling/cluster_resource_scheduler_test.cc",
+    ],
     copts = COPTS,
     deps = [
         ":raylet_lib",
@@ -844,8 +844,8 @@ cc_test(
 cc_test(
     name = "cluster_task_manager_test",
     srcs = [
-      "src/ray/raylet/scheduling/cluster_task_manager_test.cc",
-      ],
+        "src/ray/raylet/scheduling/cluster_task_manager_test.cc",
+    ],
     copts = COPTS,
     deps = [
         ":raylet_lib",
