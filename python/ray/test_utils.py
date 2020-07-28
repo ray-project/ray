@@ -383,3 +383,27 @@ def get_other_nodes(cluster, exclude_head=False):
 def get_non_head_nodes(cluster):
     """Get all non-head nodes."""
     return list(filter(lambda x: x.head is False, cluster.list_all_nodes()))
+
+
+def init_error_pubsub():
+    """Initialize redis error info pub/sub"""
+    p = ray.worker.global_worker.redis_client.pubsub(
+        ignore_subscribe_messages=True)
+    error_pubsub_channel = ray.gcs_utils.RAY_ERROR_PUBSUB_PATTERN
+    p.psubscribe(error_pubsub_channel)
+    return p
+
+
+def get_error_message(pub_sub, num, timeout=10):
+    """Get errors through pub/sub."""
+    start_time = time.time()
+    msgs = []
+    while time.time() - start_time < timeout and len(msgs) < num:
+        msg = pub_sub.get_message()
+        if msg is None:
+            time.sleep(0.01)
+            continue
+        pubsub_msg = ray.gcs_utils.PubSubMessage.FromString(msg["data"])
+        error_data = ray.gcs_utils.ErrorTableData.FromString(pubsub_msg.data)
+        msgs.append(error_data)
+    return msgs

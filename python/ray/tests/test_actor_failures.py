@@ -17,34 +17,11 @@ from ray.test_utils import (
     generate_internal_config_map,
     get_other_nodes,
     SignalActor,
+    init_error_pubsub,
+    get_error_message,
 )
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
-
-
-def init_pubsub():
-    p = ray.worker.global_worker.redis_client.pubsub(
-        ignore_subscribe_messages=True)
-    error_pubsub_channel = ray.gcs_utils.RAY_ERROR_PUBSUB_PATTERN
-    p.psubscribe(error_pubsub_channel)
-    return p
-
-
-def wait_for_message(p, num, timeout=10):
-    start_time = time.time()
-    msgs = []
-    while time.time() - start_time < timeout and len(msgs) < num:
-        msg = p.get_message()
-        if msg is None:
-            time.sleep(0.01)
-            continue
-        pubsub_msg = ray.gcs_utils.PubSubMessage.FromString(msg["data"])
-        # skip the dashboard error message
-        # if b"dashboard_died" in pubsub_msg.data:
-        #     continue
-        error_data = ray.gcs_utils.ErrorTableData.FromString(pubsub_msg.data)
-        msgs.append(error_data)
-    return msgs
 
 
 @pytest.fixture
@@ -654,7 +631,7 @@ def test_checkpointing_save_exception(ray_start_regular,
                                       ray_checkpointable_actor_cls):
     """Test actor can still be recovered if checkpoints fail to complete."""
 
-    p = init_pubsub()
+    p = init_error_pubsub()
 
     @ray.remote(max_restarts=2)
     class RemoteCheckpointableActor(ray_checkpointable_actor_cls):
@@ -688,7 +665,7 @@ def test_checkpointing_save_exception(ray_start_regular,
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
 
     # Check that the checkpoint error was pushed to the driver.
-    errors = wait_for_message(p, 2)
+    errors = get_error_message(p, 1)
     assert len(errors) == 1
     assert errors[0].type == ray_constants.CHECKPOINT_PUSH_ERROR
     p.close()
@@ -699,7 +676,7 @@ def test_checkpointing_load_exception(ray_start_regular,
                                       ray_checkpointable_actor_cls):
     """Test actor can still be recovered if checkpoints fail to load."""
 
-    p = init_pubsub()
+    p = init_error_pubsub()
 
     @ray.remote(max_restarts=2)
     class RemoteCheckpointableActor(ray_checkpointable_actor_cls):
@@ -734,7 +711,7 @@ def test_checkpointing_load_exception(ray_start_regular,
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
 
     # Check that the checkpoint error was pushed to the driver.
-    errors = wait_for_message(p, 2)
+    errors = get_error_message(p, 1)
     assert len(errors) == 1
     assert errors[0].type == ray_constants.CHECKPOINT_PUSH_ERROR
     p.close()
@@ -800,7 +777,7 @@ def test_init_exception_in_checkpointable_actor(ray_start_regular,
     error_message1 = "actor constructor failed"
     error_message2 = "actor method failed"
 
-    p = init_pubsub()
+    p = init_error_pubsub()
 
     @ray.remote
     class CheckpointableFailedActor(ray_checkpointable_actor_cls):
@@ -816,13 +793,13 @@ def test_init_exception_in_checkpointable_actor(ray_start_regular,
     a = CheckpointableFailedActor.remote()
 
     # Make sure that we get errors from a failed constructor.
-    errors = wait_for_message(p, 1)
+    errors = get_error_message(p, 1)
     assert len(errors) == 1
     assert error_message1 in errors[0].error_message
 
     # Make sure that we get errors from a failed method.
     a.fail_method.remote()
-    errors = wait_for_message(p, 1)
+    errors = get_error_message(p, 1)
     assert len(errors) == 1
     assert error_message1 in errors[0].error_message
     p.close()
