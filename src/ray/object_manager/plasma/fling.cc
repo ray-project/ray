@@ -14,6 +14,10 @@
 
 #include "ray/object_manager/plasma/fling.h"
 
+#ifdef _WIN32
+#error "This file does not supposed to be compiled under windows."
+#endif
+
 #include <errno.h>
 #include <string.h>
 
