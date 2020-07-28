@@ -317,8 +317,8 @@ TEST_F(ClusterTaskManagerTest, BasicTest) {
   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
 
   ASSERT_FALSE(callback_occurred);
-  ASSERT_TRUE(leased_workers_.size() == 0);
-  ASSERT_TRUE(pool_.workers.size() == 0);
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.workers.size(), 0);
 
   std::shared_ptr<MockWorker> worker =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
@@ -326,11 +326,11 @@ TEST_F(ClusterTaskManagerTest, BasicTest) {
 
   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
 
-  ASSERT_TRUE(callback_occurred == true);
-  ASSERT_TRUE(leased_workers_.size() == 1);
-  ASSERT_TRUE(pool_.workers.size() == 0);
-  ASSERT_TRUE(fulfills_dependencies_calls_ == 0);
-  ASSERT_TRUE(node_info_calls_ == 0);
+  ASSERT_EQ(callback_occurred, true);
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(pool_.workers.size(), 0);
+  ASSERT_EQ(fulfills_dependencies_calls_, 0);
+  ASSERT_EQ(node_info_calls_, 0);
 }
 
 }  // namespace raylet

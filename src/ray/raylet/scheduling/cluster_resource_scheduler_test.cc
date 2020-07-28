@@ -242,7 +242,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingIdTest) {
   ids.Remove(hasher(to_string(2)));
   ASSERT_EQ(ids.Count(), num - 2);
 
-  ASSERT_TRUE(ids.Get(to_string(3)) == static_cast<int64_t>(hasher(to_string(3))));
+  ASSERT_EQ(ids.Get(to_string(3)), static_cast<int64_t>(hasher(to_string(3))));
 
   ASSERT_TRUE(ids.Get(to_string(100)) == -1);
 
