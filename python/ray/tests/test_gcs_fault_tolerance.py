@@ -22,7 +22,7 @@ def increase(x):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_GCS_ACTOR_SERVICE_ENABLED") != "true",
+    os.environ.get("RAY_GCS_ACTOR_SERVICE_ENABLED", "true") != "true",
     reason=("This testcase can only be run when GCS actor management is on."))
 @pytest.mark.parametrize(
     "ray_start_regular",
@@ -48,7 +48,7 @@ def test_gcs_server_restart(ray_start_regular):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_GCS_ACTOR_SERVICE_ENABLED") != "true",
+    os.environ.get("RAY_GCS_ACTOR_SERVICE_ENABLED", "true") != "true",
     reason=("This testcase can only be run when GCS actor management is on."))
 @pytest.mark.parametrize(
     "ray_start_regular",
