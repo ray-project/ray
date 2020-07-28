@@ -29,13 +29,21 @@ An actor can be in one of the following states:
                |                            v                  |                       |
                 -------------------------->DEAD<---------------------------------------
 
-0: GCS will create an actor whose state is `DEPENDENCIES_UNREADY`
+- **0**: GCS will create an actor whose state is `DEPENDENCIES_UNREADY`
    when a `RegisterActor` request is received from CoreWorker.
-1: GCS will change actor state to `PENDING_CREATION` when a `CreateActor` request is received from CoreWorker.
-2: GCS will change actor state to `ALIVE` when a successful `PushNormalTask` reply is received from CoreWorker.
-3: GCS will change actor state to `RESTARTING` when the owner worker/node of actor is dead.
-4: GCS will change actor state to `ALIVE` when the actor reconstruction is successful.
-5: GCS will change actor state to `DEAD` when the actor remaining restarts number is 0.
-6: GCS will change actor state to `DEAD` when the owner worker/node/actor is dead.
-7: GCS will change actor state to `DEAD` when the owner worker/node/actor is dead.
-8: GCS will change actor state to `DEAD` when the owner worker/node/actor is dead.
+
+- **1**: GCS will change actor state to `PENDING_CREATION` when a `CreateActor` request is received from CoreWorker.
+
+- **2**: GCS will change actor state to `ALIVE` when a successful `PushNormalTask` reply is received from CoreWorker.
+
+- **3**: GCS will change actor state to `RESTARTING` when the owner worker/node of actor is dead.
+
+- **4**: GCS will change actor state to `ALIVE` when the actor reconstruction is successful.
+
+- **5**: GCS will change actor state to `DEAD` when the actor remaining restarts number is 0.
+
+- **6**: GCS will change actor state to `DEAD` when the owner worker/node/actor is dead.
+
+- **7**: GCS will change actor state to `DEAD` when the owner worker/node/actor is dead.
+
+- **8**: GCS will change actor state to `DEAD` when the owner worker/node/actor is dead.
