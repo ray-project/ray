@@ -413,6 +413,7 @@ class ActorClass:
                 name=None,
                 detached=False,
                 placement_group_id=None,
+                # TODO(ekl) set default to -1 once we support -1 as "any index"
                 placement_group_bundle_index=0):
         """Create an actor.
 
