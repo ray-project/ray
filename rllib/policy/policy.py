@@ -43,8 +43,11 @@ class Policy(metaclass=ABCMeta):
     """
 
     @DeveloperAPI
-    def __init__(self, observation_space: gym.spaces.Space,
-                 action_space: gym.spaces.Space, config: TrainerConfigDict):
+    def __init__(
+            self,
+            observation_space: gym.spaces.Space,
+            action_space: gym.spaces.Space,
+            config: TrainerConfigDict):
         """Initialize the graph.
 
         This is the standard constructor for policies. The policy
@@ -175,9 +178,9 @@ class Policy(metaclass=ABCMeta):
             episodes = [episode]
         if state is not None:
             state_batch = [
-                s.unsqueeze(0)
-                if torch and isinstance(s, torch.Tensor) else np.expand_dims(
-                    s, 0) for s in state
+                s.unsqueeze(0) if torch and isinstance(s, torch.Tensor) else
+                np.expand_dims(s, 0)
+                for s in state
             ]
 
         out = self.compute_actions(
@@ -254,10 +257,10 @@ class Policy(metaclass=ABCMeta):
             actions: Union[List[TensorType], TensorType],
             obs_batch: Union[List[TensorType], TensorType],
             state_batches: Optional[List[TensorType]] = None,
-            prev_action_batch: Optional[Union[List[TensorType],
-                                              TensorType]] = None,
-            prev_reward_batch: Optional[Union[List[
-                TensorType], TensorType]] = None) -> TensorType:
+            prev_action_batch: Optional[
+                Union[List[TensorType], TensorType]] = None,
+            prev_reward_batch: Optional[
+                Union[List[TensorType], TensorType]] = None) -> TensorType:
         """Computes the log-prob/likelihood for a given action and observation.
 
         Args:
@@ -283,8 +286,8 @@ class Policy(metaclass=ABCMeta):
     def postprocess_trajectory(
             self,
             sample_batch: SampleBatch,
-            other_agent_batches: Optional[Dict[AgentID, Tuple[
-                "Policy", SampleBatch]]] = None,
+            other_agent_batches: Optional[
+                Dict[AgentID, Tuple["Policy", SampleBatch]]] = None,
             episode: Optional["MultiAgentEpisode"] = None) -> SampleBatch:
         """Implements algorithm-specific trajectory postprocessing.
 
@@ -305,16 +308,6 @@ class Policy(metaclass=ABCMeta):
         Returns:
             SampleBatch: Postprocessed sample batch.
         """
-        # Default behavior: Check for reward clipping settings.
-        clip_rewards = self.config.get("clip_rewards")
-        if clip_rewards is True:
-            sample_batch["rewards"] = np.sign(sample_batch["rewards"])
-        elif isinstance(clip_rewards, (list, tuple)):
-            sample_batch["rewards"] = np.clip(
-                sample_batch["rewards"], clip_rewards[0], clip_rewards[1])
-        elif clip_rewards:
-            sample_batch["rewards"] = np.clip(
-                sample_batch["rewards"], -clip_rewards, clip_rewards)
         return sample_batch
 
     @DeveloperAPI

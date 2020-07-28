@@ -144,6 +144,7 @@ class RolloutWorker(ParallelIteratorWorker):
                  num_envs: int = 1,
                  observation_fn: "ObservationFunction" = None,
                  observation_filter: str = "NoFilter",
+                 clip_rewards: bool = None,
                  clip_actions: bool = True,
                  env_config: EnvConfigDict = None,
                  model_config: ModelConfigDict = None,
@@ -215,6 +216,9 @@ class RolloutWorker(ParallelIteratorWorker):
             observation_fn (ObservationFunction): Optional multi-agent
                 observation function.
             observation_filter (str): Name of observation filter to use.
+            clip_rewards (bool): Whether to clip rewards to [-1, 1] prior to
+                experience postprocessing. Setting to None means clip for Atari
+                only.
             clip_actions (bool): Whether to clip action values to the range
                 specified by the policy action space.
             env_config (dict): Config to pass to the env creator.
@@ -332,8 +336,8 @@ class RolloutWorker(ParallelIteratorWorker):
 
             # If clip_rewards not explicitly set to False, switch it
             # on here (clip between -1.0 and 1.0).
-            if self.policy_config["clip_rewards"] is None:
-                self.policy_config["clip_rewards"] = True
+            if clip_rewards is None:
+                clip_rewards = True
 
             def wrap(env):
                 env = wrap_deepmind(
@@ -401,13 +405,14 @@ class RolloutWorker(ParallelIteratorWorker):
             self.policy_map, self.preprocessors = self._build_policy_map(
                 policy_dict, policy_config)
 
-        if (ray.is_initialized()
-                and ray.worker._mode() != ray.worker.LOCAL_MODE):
+        if (ray.is_initialized() and
+                ray.worker._mode() != ray.worker.LOCAL_MODE):
             # Check available number of GPUs
             if not ray.get_gpu_ids():
-                logger.debug("Creating policy evaluation worker {}".format(
-                    worker_index) +
-                             " on CPU (please ignore any CUDA init errors)")
+                logger.debug(
+                    "Creating policy evaluation worker {}".format(
+                        worker_index) +
+                    " on CPU (please ignore any CUDA init errors)")
             elif (policy_config["framework"] in ["tf2", "tf", "tfe"] and
                   not tf.config.experimental.list_physical_devices("GPU")) or \
                     (policy_config["framework"] == "torch" and
@@ -416,8 +421,9 @@ class RolloutWorker(ParallelIteratorWorker):
                     "GPUs were assigned to this worker by Ray, but "
                     "your DL framework ({}) reports GPU acceleration is "
                     "disabled. This could be due to a bad CUDA- or {} "
-                    "installation.".format(policy_config["framework"],
-                                           policy_config["framework"]))
+                    "installation.".format(
+                        policy_config["framework"],
+                        policy_config["framework"]))
 
         self.multiagent: bool = set(
             self.policy_map.keys()) != {DEFAULT_POLICY_ID}
@@ -490,6 +496,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 policy_mapping_fn=policy_mapping_fn,
                 preprocessors=self.preprocessors,
                 obs_filters=self.filters,
+                clip_rewards=clip_rewards,
                 rollout_fragment_length=rollout_fragment_length,
                 callbacks=self.callbacks,
                 horizon=episode_horizon,
@@ -512,6 +519,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 policy_mapping_fn=policy_mapping_fn,
                 preprocessors=self.preprocessors,
                 obs_filters=self.filters,
+                clip_rewards=clip_rewards,
                 rollout_fragment_length=rollout_fragment_length,
                 callbacks=self.callbacks,
                 horizon=episode_horizon,
