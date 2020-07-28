@@ -11,9 +11,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#ifndef RAY_EVENT_H_
-#define RAY_EVENT_H_
 
+#pragma once
 #include <boost/asio/ip/host_name.hpp>
 #include <cmath>
 #include <cstring>
@@ -114,7 +113,7 @@ class RayEventContext final {
   int32_t source_pid_;
   std::unordered_map<std::string, std::string> custom_field_;
 
-  static thread_local std::unique_ptr<RayEventContext> instance_;
+  static thread_local std::unique_ptr<RayEventContext> context_;
 };
 
 class RayEvent {
@@ -148,5 +147,3 @@ class RayEvent {
 };
 
 }  // namespace ray
-
-#endif

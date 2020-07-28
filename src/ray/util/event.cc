@@ -17,8 +17,8 @@
 namespace ray {
 
 EventManager &EventManager::Instance() {
-  static EventManager INSTANCE;
-  return INSTANCE;
+  static EventManager instance_;
+  return instance_;
 }
 
 bool EventManager::IsEmpty() { return reporter_map_.empty(); }
@@ -35,13 +35,13 @@ void EventManager::AddReporter(std::shared_ptr<LogBasedEventReporter> reporter) 
 
 void EventManager::ClearReporters() { reporter_map_.clear(); }
 
-thread_local std::unique_ptr<RayEventContext> RayEventContext::instance_ = nullptr;
+thread_local std::unique_ptr<RayEventContext> RayEventContext::context_ = nullptr;
 
 RayEventContext &RayEventContext::Instance() {
-  if (instance_ == nullptr) {
-    instance_ = std::unique_ptr<RayEventContext>(new RayEventContext());
+  if (context_ == nullptr) {
+    context_ = std::unique_ptr<RayEventContext>(new RayEventContext());
   }
-  return *instance_;
+  return *context_;
 }
 
 void RayEventContext::SetEventContext(
