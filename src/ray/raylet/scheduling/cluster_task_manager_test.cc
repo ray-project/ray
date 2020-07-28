@@ -361,6 +361,8 @@ TEST_F(ClusterTaskManagerTest, NoFeasibleNode) {
   ASSERT_TRUE(leased_workers_.size() == 0);
   // Worker is unused.
   ASSERT_TRUE(pool_.workers.size() == 1);
+  ASSERT_TRUE(fulfills_dependencies_calls_ == 0);
+  ASSERT_TRUE(node_info_calls_ == 0);
 }
 
 TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
@@ -429,6 +431,10 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
 
   RAY_LOG(ERROR) << "second task finished";
   RAY_LOG(ERROR) << "--------------";
+  // TODO (Alex): There's clearly some memory corruption going on here. We can't print the
+  // debug string (but could withinDispatchScheduledTasksToWorkers). This also likely why
+  // FreeLocalTaskResources isn't working properly if the worker->GetAllocatedInstances
+  // print statement is removed.
   RAY_LOG(ERROR) << single_node_resource_scheduler_->DebugString();
   RAY_LOG(ERROR) << "~~~~~~~~~~~~";
   RAY_LOG(ERROR) << worker->GetAllocatedInstances()->DebugString();
