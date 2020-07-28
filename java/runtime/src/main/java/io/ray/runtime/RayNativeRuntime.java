@@ -38,6 +38,13 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   private RunManager manager = null;
 
+  /**
+   * In Java, GC runs in a standalone thread, and we can't control the exact
+   * timing of garbage collection. By using this lock, when
+   * {@link NativeObjectStore#nativeRemoveLocalReference} is executing, the core
+   * worker will not be shut down, therefore it guarantees some kind of
+   * thread-safety. Note that this guarantee only works for driver.
+   */
   private final ReadWriteLock shutdownLock = new ReentrantReadWriteLock();
 
 
