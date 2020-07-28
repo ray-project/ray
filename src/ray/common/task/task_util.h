@@ -41,7 +41,7 @@ class TaskArgByValue : public TaskArg {
   ///
   /// \param[in] value Value of the argument.
   /// \return The task argument.
-  TaskArgByValue(const std::shared_ptr<RayObject> &value) : value_(value) {
+  explicit TaskArgByValue(const std::shared_ptr<RayObject> &value) : value_(value) {
     RAY_CHECK(value) << "Value can't be null.";
   }
 
