@@ -15,7 +15,7 @@ import org.testng.Assert;
  *
  * Please keep them in sync.
  */
-public class WalkthroghDemo {
+public class WalkthroughDemo {
 
   public static class MyRayApp {
 
