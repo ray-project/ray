@@ -1738,7 +1738,9 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
 
   if (new_scheduler_enabled_) {
     auto task_spec = task.GetTaskSpecification();
-    cluster_task_manager_->QueueTask(task, reply, send_reply_callback);
+    cluster_task_manager_->QueueTask(task, reply, [send_reply_callback]() {
+      send_reply_callback(Status::OK(), nullptr, nullptr);
+    });
     ScheduleAndDispatch();
     return;
   }
@@ -1769,7 +1771,17 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
             rid->set_quantity(id.second.ToDouble());
           }
         }
-        send_reply_callback(Status::OK(), nullptr, nullptr);
+
+        auto reply_failure_handler = [this, worker_id]() {
+          if (RayConfig::instance().gcs_actor_service_enabled()) {
+            RAY_LOG(WARNING)
+                << "Failed to reply to GCS server, because it might have restarted. GCS "
+                   "cannot obtain the information of the leased worker, so we need to "
+                   "release the leased worker to avoid leakage.";
+            leased_workers_.erase(worker_id);
+          }
+        };
+        send_reply_callback(Status::OK(), nullptr, reply_failure_handler);
         RAY_CHECK(leased_workers_.find(worker_id) == leased_workers_.end())
             << "Worker is already leased out " << worker_id;
 
@@ -1861,8 +1873,6 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
 void NodeManager::HandleReleaseUnusedWorkers(
     const rpc::ReleaseUnusedWorkersRequest &request,
     rpc::ReleaseUnusedWorkersReply *reply, rpc::SendReplyCallback send_reply_callback) {
-  // TODO(ffbin): At present, we have not cleaned up the lease worker requests that are
-  // still waiting to be scheduled, which will be implemented in the next pr.
   std::unordered_set<WorkerID> in_use_worker_ids;
   for (int index = 0; index < request.worker_ids_in_use_size(); ++index) {
     auto worker_id = WorkerID::FromBinary(request.worker_ids_in_use(index));
@@ -1994,8 +2004,8 @@ ResourceIdSet NodeManager::ScheduleBundle(
       std::string resource_name = bundle_id_str + "_" + resource.first;
       local_available_resources_.AddBundleResource(resource_name, resource.second);
     }
-    cluster_resource_map_[self_node_id_].UpdateBundleResource(
-        bundle_id_str, bundle_spec.GetRequiredResources());
+    resource_map[self_node_id_].UpdateBundleResource(bundle_id_str,
+                                                     bundle_spec.GetRequiredResources());
   }
   return acquired_resources;
 }
@@ -2574,7 +2584,6 @@ void NodeManager::AssignTask(const std::shared_ptr<WorkerInterface> &worker,
   auto acquired_resources =
       local_available_resources_.Acquire(spec.GetRequiredResources());
   cluster_resource_map_[self_node_id_].Acquire(spec.GetRequiredResources());
-
   if (spec.IsActorCreationTask()) {
     // Check that the actor's placement resource requirements are satisfied.
     RAY_CHECK(spec.GetRequiredPlacementResources().IsSubset(
