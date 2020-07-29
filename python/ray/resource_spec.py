@@ -268,25 +268,29 @@ gpu model type.
     Returns:
         (str) The full model name.
     """
-    if info_str is None:
-        return {}
-    lines = info_str.split("\n")
-    full_model_name = None
-    for line in lines:
-        split = line.split(":")
-        if len(split) != 2:
-            continue
-        k, v = split
-        if k.strip() == "Model":
-            full_model_name = v.strip()
-            break
-    pretty_name = _pretty_gpu_name(full_model_name)
-    if pretty_name:
-        constraint_name = "{}{}".format(
-            ray_constants.RESOURCE_CONSTRAINT_PREFIX, pretty_name)
-        return {constraint_name: 1}
-    else:
-        return {}
+    try:
+        if info_str is None:
+            return {}
+        lines = info_str.split("\n")
+        full_model_name = None
+        for line in lines:
+            split = line.split(":")
+            if len(split) != 2:
+                continue
+            k, v = split
+            if k.strip() == "Model":
+                full_model_name = v.strip()
+                break
+        pretty_name = _pretty_gpu_name(full_model_name)
+        if pretty_name:
+            constraint_name = "{}{}".format(
+                ray_constants.RESOURCE_CONSTRAINT_PREFIX, pretty_name)
+            return {constraint_name: 1}
+    except _:
+        logger.warning("Could not parse gpu information.")
+        pass
+
+    return {}
 
 
 def _get_gpu_info_string():
