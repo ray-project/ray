@@ -149,11 +149,11 @@ CoreWorkerProcess::~CoreWorkerProcess() {
     // Check that all `CoreWorker` instances have been removed.
     absl::ReaderMutexLock lock(&worker_map_mutex_);
     RAY_CHECK(workers_.empty());
-    // Shutdown stats when CoreWorkerProcess deconstructed.
-    RAY_LOG(DEBUG) << "Stats stop in core worker.";
-    // Shutdown stats module if worker process exits.
-    ray::stats::Shutdown();
   }
+  // Shutdown stats when CoreWorkerProcess deconstructed.
+  RAY_LOG(DEBUG) << "Stats stop in core worker.";
+  // Shutdown stats module if worker process exits.
+  ray::stats::Shutdown();
   if (options_.enable_logging) {
     RayLog::ShutDownRayLog();
   }
