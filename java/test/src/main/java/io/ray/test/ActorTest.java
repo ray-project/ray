@@ -72,8 +72,7 @@ public class ActorTest extends BaseTest {
     ObjectRef<Integer> result = actor.task(Counter::getValue).remote();
     Assert.assertEquals(result.get(), Integer.valueOf(1));
     Assert.assertEquals(result.get(), Integer.valueOf(1));
-    // TODO(hchen): The following code will still fail, and can be fixed by using ref counting.
-    // Assert.assertEquals(Ray.get(result.getId()), Integer.valueOf(1));
+    Assert.assertEquals(Ray.get(result), Integer.valueOf(1));
   }
 
   public void testCallActorWithLargeObject() {
