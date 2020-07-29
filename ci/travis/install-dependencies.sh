@@ -280,9 +280,14 @@ install_dependencies() {
   # If CI has deemed that a different version of Tensorflow or Torch 
   # should be installed, then upgrade/downgrade to that specific version.
   if [ -n "${TORCH_VERSION-}" ] || [ -n "${TFP_VERSION-}" ] || [ -n "${TF_VERSION-}" ]; then
+    case "${TORCH_VERSION-1.4}" in
+      1.5) TORCHVISION_VERSION=0.6.0
+      *) TORCHVISION_VERSION=0.5.0
+    esac
+
     pip install --upgrade tensorflow-probability=="${TFP_VERSION-0.8}" \
-      torch=="${TORCH_VERSION-1.4}" torchvision \
-      tensorflow=="${TF_VERSION-2.2.0}"
+      torch=="${TORCH_VERSION-1.4}" torchvision=="${TORCHVISION_VERSION}" \
+      tensorflow=="${TF_VERSION-2.2.0}" gym
   fi
 
   if [ -n "${PYTHON-}" ] || [ -n "${LINT-}" ] || [ "${MAC_WHEELS-}" = 1 ]; then
