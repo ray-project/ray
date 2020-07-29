@@ -473,6 +473,14 @@ class RedisWorkerInfoAccessor : public WorkerInfoAccessor {
   WorkerFailureSubscriptionExecutor worker_failure_sub_executor_;
 };
 
+class RedisPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor {
+ public:
+  virtual ~RedisPlacementGroupInfoAccessor() = default;
+
+  Status AsyncCreatePlacementGroup(
+      const PlacementGroupSpecification &placement_group_spec) override;
+};
+
 }  // namespace gcs
 
 }  // namespace ray

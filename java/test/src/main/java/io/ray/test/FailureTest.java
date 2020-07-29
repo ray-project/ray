@@ -17,6 +17,7 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+@Test(groups = {"cluster"})
 public class FailureTest extends BaseTest {
 
   private static final String EXCEPTION_MESSAGE = "Oops";
@@ -84,29 +85,21 @@ public class FailureTest extends BaseTest {
     }
   }
 
-  @Test
   public void testNormalTaskFailure() {
-    TestUtils.skipTestUnderSingleProcess();
     assertTaskFailedWithRayTaskException(Ray.task(FailureTest::badFunc).remote());
   }
 
-  @Test
   public void testActorCreationFailure() {
-    TestUtils.skipTestUnderSingleProcess();
     ActorHandle<BadActor> actor = Ray.actor(BadActor::new, true).remote();
     assertTaskFailedWithRayTaskException(actor.task(BadActor::badMethod).remote());
   }
 
-  @Test
   public void testActorTaskFailure() {
-    TestUtils.skipTestUnderSingleProcess();
     ActorHandle<BadActor> actor = Ray.actor(BadActor::new, false).remote();
     assertTaskFailedWithRayTaskException(actor.task(BadActor::badMethod).remote());
   }
 
-  @Test
   public void testWorkerProcessDying() {
-    TestUtils.skipTestUnderSingleProcess();
     try {
       Ray.task(FailureTest::badFunc2).remote().get();
       Assert.fail("This line shouldn't be reached.");
@@ -116,9 +109,7 @@ public class FailureTest extends BaseTest {
     }
   }
 
-  @Test
   public void testActorProcessDying() {
-    TestUtils.skipTestUnderSingleProcess();
     ActorHandle<BadActor> actor = Ray.actor(BadActor::new, false).remote();
     try {
       actor.task(BadActor::badMethod2).remote().get();
@@ -136,9 +127,7 @@ public class FailureTest extends BaseTest {
     }
   }
 
-  @Test
   public void testGetThrowsQuicklyWhenFoundException() {
-    TestUtils.skipTestUnderSingleProcess();
     List<RayFunc0<Integer>> badFunctions = Arrays.asList(FailureTest::badFunc,
         FailureTest::badFunc2);
     TestUtils.warmUpCluster();
