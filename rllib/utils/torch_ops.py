@@ -14,11 +14,8 @@ def atanh(x):
 def explained_variance(y, pred):
     y_var = torch.var(y, dim=[0])
     diff_var = torch.var(y - pred, dim=[0])
-    min_ = torch.Tensor([-1.0])
-    return torch.max(
-        min_.to(device=torch.device("cuda"))
-        if torch.cuda.is_available() else min_,
-        1 - (diff_var / y_var))
+    min_ = torch.tensor([-1.0]).to(pred.device)
+    return torch.max(min_, 1 - (diff_var / y_var))
 
 
 def global_norm(tensors):
@@ -73,7 +70,7 @@ def reduce_mean_ignore_inf(x, axis):
     return torch.sum(x_zeroed, axis) / torch.sum(mask.float(), axis)
 
 
-def sequence_mask(lengths, maxlen=None, dtype=None):
+def sequence_mask(lengths, maxlen=None, dtype=None, time_major=False):
     """Offers same behavior as tf.sequence_mask for torch.
 
     Thanks to Dimitris Papatheodorou
@@ -83,8 +80,10 @@ def sequence_mask(lengths, maxlen=None, dtype=None):
     if maxlen is None:
         maxlen = int(lengths.max())
 
-    mask = ~(torch.ones((len(lengths), maxlen)).to(
-        lengths.device).cumsum(dim=1).t() > lengths).t()
+    mask = ~(torch.ones(
+        (len(lengths), maxlen)).to(lengths.device).cumsum(dim=1).t() > lengths)
+    if not time_major:
+        mask = mask.t()
     mask.type(dtype or torch.bool)
 
     return mask
@@ -145,8 +144,8 @@ def convert_to_torch_tensor(x, device=None):
         # Special handling of "Repeated" values.
         elif isinstance(item, RepeatedValues):
             return RepeatedValues(
-                tree.map_structure(mapping, item.values),
-                item.lengths, item.max_len)
+                tree.map_structure(mapping, item.values), item.lengths,
+                item.max_len)
         tensor = torch.from_numpy(np.asarray(item))
         # Floatify all float64 tensors.
         if tensor.dtype == torch.double:
