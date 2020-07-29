@@ -1,7 +1,9 @@
-.. _tune-user-guide:
+=============================
+User Guide & Configuring Tune
+=============================
 
-Tune User Guide
-===============
+These pages will demonstrate the various features and configurations of Tune.
+
 
 .. warning:: Before you continue, be sure to have read :ref:`tune-60-seconds`.
 
@@ -131,7 +133,7 @@ You can log arbitrary values and metrics in both training APIs:
 
 During training, Tune will automatically log the below metrics in addition to the user-provided values. All of these can be used as stopping conditions or passed as a parameter to Trial Schedulers/Search Algorithms.
 
-.. literalinclude:: ../../../../python/ray/tune/result.py
+.. literalinclude:: ../../../python/ray/tune/result.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -344,7 +346,7 @@ If you are running Ray on a remote multi-user cluster where you do not have sudo
 
     $ export TMPDIR=/tmp/$USER; mkdir -p $TMPDIR; tensorboard --logdir=~/ray_results
 
-.. image:: ../../ray-tune-tensorboard.png
+.. image:: ../ray-tune-tensorboard.png
 
 If using TF2, Tune also automatically generates TensorBoard HParams output, as shown below:
 
@@ -358,7 +360,7 @@ If using TF2, Tune also automatically generates TensorBoard HParams output, as s
         }
     )
 
-.. image:: ../../images/tune-hparams.png
+.. image:: ../images/tune-hparams.png
 
 Console Output
 --------------
