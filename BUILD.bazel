@@ -1,6 +1,7 @@
 # Bazel build
 # C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
 
+load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("//bazel:ray.bzl", "COPTS", "PYX_COPTS", "PYX_SRCS", "copy_to_workspace")
@@ -44,9 +45,9 @@ cc_library(
 # Node manager gRPC lib.
 cc_grpc_library(
     name = "node_manager_cc_grpc",
-    srcs = [":node_manager_proto"],
+    srcs = ["//src/ray/protobuf:node_manager_proto"],
     grpc_only = True,
-    deps = [":node_manager_cc_proto"],
+    deps = ["//src/ray/protobuf:node_manager_cc_proto"],
 )
 
 # Node manager server and client.
@@ -69,9 +70,9 @@ cc_library(
 # gcs_service gRPC lib.
 cc_grpc_library(
     name = "gcs_service_cc_grpc",
-    srcs = [":gcs_service_proto"],
+    srcs = ["//src/ray/protobuf:gcs_service_proto"],
     grpc_only = True,
-    deps = [":gcs_service_cc_proto"],
+    deps = ["//src/ray/protobuf:gcs_service_cc_proto"],
 )
 
 # gcs rpc server and client.
@@ -95,9 +96,9 @@ cc_library(
 # Object manager gRPC lib.
 cc_grpc_library(
     name = "object_manager_cc_grpc",
-    srcs = [":object_manager_proto"],
+    srcs = ["//src/ray/protobuf:object_manager_proto"],
     grpc_only = True,
-    deps = [":object_manager_cc_proto"],
+    deps = ["//src/ray/protobuf:object_manager_cc_proto"],
 )
 
 # Object manager rpc server and client.
@@ -120,9 +121,9 @@ cc_library(
 # Worker gRPC lib.
 cc_grpc_library(
     name = "worker_cc_grpc",
-    srcs = [":core_worker_proto"],
+    srcs = ["//src/ray/protobuf:core_worker_proto"],
     grpc_only = True,
-    deps = [":worker_cc_proto"],
+    deps = ["//src/ray/protobuf:worker_cc_proto"],
 )
 
 # worker server and client.
@@ -146,9 +147,9 @@ cc_library(
 # Metrics Agent gRPC lib.
 cc_grpc_library(
     name = "reporter_cc_grpc",
-    srcs = [":reporter_proto"],
+    srcs = ["//src/ray/protobuf:reporter_proto"],
     grpc_only = True,
-    deps = [":reporter_cc_proto"],
+    deps = ["//src/ray/protobuf:reporter_cc_proto"],
 )
 
 # Metrics Agent client.
@@ -321,8 +322,8 @@ cc_library(
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
-        ":common_cc_proto",
-        ":gcs_cc_proto",
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/protobuf:gcs_cc_proto",
         ":node_manager_fbs",
         ":ray_util",
         "@arrow",
@@ -499,7 +500,7 @@ cc_library(
     strip_include_prefix = "src",
     visibility = ["//streaming:__subpackages__"],
     deps = [
-        ":common_cc_proto",
+        "//src/ray/protobuf:common_cc_proto",
         ":gcs",
         ":node_manager_fbs",
         ":node_manager_rpc",
@@ -542,7 +543,7 @@ cc_library(
     strip_include_prefix = "src",
     visibility = ["//streaming:__subpackages__"],
     deps = [
-        ":gcs_cc_proto",
+        "//src/ray/protobuf:gcs_cc_proto",
         ":node_manager_fbs",
         ":node_manager_rpc",
         ":ray_common",
@@ -583,7 +584,7 @@ cc_library(
         ":raylet_client_lib",
         ":service_based_gcs_client_lib",
         ":stats_lib",
-        ":worker_cc_proto",
+        "//src/ray/protobuf:worker_cc_proto",
         ":worker_rpc",
         "@boost//:fiber",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -1459,7 +1460,7 @@ cc_library(
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
-        ":gcs_cc_proto",
+        "//src/ray/protobuf:gcs_cc_proto",
         ":hiredis",
         ":node_manager_fbs",
         ":node_manager_rpc",
@@ -1664,7 +1665,7 @@ pyx_library(
         "//:global_state_accessor_lib",
         "//:ray_util",
         "//:raylet_lib",
-        "//:serialization_cc_proto",
+        "//src/ray/protobuf:serialization_cc_proto",
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",
         "//:stats_lib",
@@ -1789,7 +1790,7 @@ cc_binary(
     linkstatic = 1,
     visibility = ["//java:__subpackages__"],
     deps = [
-        ":gcs_cc_proto",
+        "//src/ray/protobuf:gcs_cc_proto",
         ":ray_common",
         ":ray_redis_module",
     ],
@@ -1798,11 +1799,11 @@ cc_binary(
 filegroup(
     name = "all_py_proto",
     srcs = [
-        "common_py_proto",
-        "core_worker_py_proto",
-        "gcs_py_proto",
-        "node_manager_py_proto",
-        "reporter_py_proto",
+        "//src/ray/protobuf:common_py_proto",
+        "//src/ray/protobuf:core_worker_py_proto",
+        "//src/ray/protobuf:gcs_py_proto",
+        "//src/ray/protobuf:node_manager_py_proto",
+        "//src/ray/protobuf:reporter_py_proto",
     ],
 )
 
