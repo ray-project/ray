@@ -20,13 +20,16 @@ class TDModel(nn.Module):
                  input_size,
                  output_size,
                  hidden_layers=[512, 512],
-                 hidden_nonlinearity=nn.ReLU,
+                 hidden_nonlinearity=None,
                  output_nonlinearity=None,
                  weight_normalization=False,
                  use_bias=True):
 
         super().__init__()
         assert len(hidden_layers) >= 1
+
+        if not hidden_nonlinearity:
+            hidden_nonlinearity = nn.ReLU
 
         if weight_normalization:
             weight_norm = nn.utils.weight_norm

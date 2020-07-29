@@ -126,7 +126,7 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
             false_fn=lambda: deterministic_actions)
         # Logp=always zero.
         batch_size = tf.shape(deterministic_actions)[0]
-        logp = tf.zeros(shape=(batch_size,), dtype=tf.float32)
+        logp = tf.zeros(shape=(batch_size, ), dtype=tf.float32)
 
         # Increment `last_timestep` by 1 (or set to `timestep`).
         if self.framework in ["tf2", "tfe"]:
@@ -136,9 +136,9 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
                 self.last_timestep = timestep
             return action, logp
         else:
-            assign_op = (
-                tf1.assign_add(self.last_timestep, 1) if timestep is None else
-                tf1.assign(self.last_timestep, timestep))
+            assign_op = (tf1.assign_add(self.last_timestep, 1)
+                         if timestep is None else tf1.assign(
+                             self.last_timestep, timestep))
             with tf1.control_dependencies([assign_op, ou_state_new]):
                 return action, logp
 
