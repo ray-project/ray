@@ -19,6 +19,11 @@ config_setting(
     flag_values = {"@bazel_tools//tools/cpp:compiler": "clang-cl"},
 )
 
+config_setting(
+    name = "opt",
+    values = {"compilation_mode": "opt"},
+)
+
 # === Begin of protobuf definitions ===
 
 proto_library(
