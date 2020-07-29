@@ -150,7 +150,6 @@ CoreWorkerProcess::~CoreWorkerProcess() {
     absl::ReaderMutexLock lock(&worker_map_mutex_);
     RAY_CHECK(workers_.empty());
   }
-  // Shutdown stats when CoreWorkerProcess deconstructed.
   RAY_LOG(DEBUG) << "Stats stop in core worker.";
   // Shutdown stats module if worker process exits.
   ray::stats::Shutdown();
