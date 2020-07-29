@@ -45,10 +45,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     }));
 
     server_io_service_.reset(new boost::asio::io_service());
-    io_service_pool_ = std::make_shared<IOServicePool>(kGcsNodeManagerIoServiceNum);
-    io_service_pool_->Run();
-    gcs_server_.reset(
-        new gcs::GcsServer(config_, *server_io_service_, io_service_pool_->GetAll()));
+    gcs_server_.reset(new gcs::GcsServer(config_, *server_io_service_));
     gcs_server_->Start();
     server_io_service_thread_.reset(new std::thread([this] {
       std::unique_ptr<boost::asio::io_service::work> work(
@@ -74,7 +71,6 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
 
     gcs_server_->Stop();
     server_io_service_->stop();
-    io_service_pool_->Stop();
     gcs_server_.reset();
     server_io_service_thread_->join();
     TestSetupUtil::FlushAllRedisServers();
@@ -85,16 +81,12 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     RAY_LOG(INFO) << "Stopping GCS service, port = " << gcs_server_->GetPort();
     gcs_server_->Stop();
     server_io_service_->stop();
-    io_service_pool_->Stop();
     gcs_server_.reset();
     server_io_service_thread_->join();
     RAY_LOG(INFO) << "Finished stopping GCS service.";
 
     server_io_service_.reset(new boost::asio::io_service());
-    io_service_pool_ = std::make_shared<IOServicePool>(kGcsNodeManagerIoServiceNum);
-    io_service_pool_->Run();
-    gcs_server_.reset(
-        new gcs::GcsServer(config_, *server_io_service_, io_service_pool_->GetAll()));
+    gcs_server_.reset(new gcs::GcsServer(config_, *server_io_service_));
     gcs_server_->Start();
     server_io_service_thread_.reset(new std::thread([this] {
       std::unique_ptr<boost::asio::io_service::work> work(
@@ -508,7 +500,6 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   std::unique_ptr<gcs::GcsServer> gcs_server_;
   std::unique_ptr<std::thread> server_io_service_thread_;
   std::unique_ptr<boost::asio::io_service> server_io_service_;
-  std::shared_ptr<IOServicePool> io_service_pool_;
 
   // GCS client.
   std::unique_ptr<gcs::GcsClient> gcs_client_;

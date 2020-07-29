@@ -34,10 +34,7 @@ class GcsServerTest : public ::testing::Test {
     config.redis_address = "127.0.0.1";
     config.is_test = true;
     config.redis_port = TEST_REDIS_SERVER_PORTS.front();
-    io_service_pool_ = std::make_shared<IOServicePool>(kGcsNodeManagerIoServiceNum);
-    io_service_pool_->Run();
-    gcs_server_.reset(
-        new gcs::GcsServer(config, io_service_, io_service_pool_->GetAll()));
+    gcs_server_.reset(new gcs::GcsServer(config, io_service_));
     gcs_server_->Start();
     thread_io_service_.reset(new std::thread([this] {
       std::unique_ptr<boost::asio::io_service::work> work(
@@ -59,7 +56,6 @@ class GcsServerTest : public ::testing::Test {
   void TearDown() override {
     gcs_server_->Stop();
     io_service_.stop();
-    io_service_pool_->Stop();
     gcs_server_.reset();
     thread_io_service_->join();
   }
@@ -456,7 +452,6 @@ class GcsServerTest : public ::testing::Test {
   std::unique_ptr<gcs::GcsServer> gcs_server_;
   std::unique_ptr<std::thread> thread_io_service_;
   boost::asio::io_service io_service_;
-  std::shared_ptr<IOServicePool> io_service_pool_;
 
   // Gcs client
   std::unique_ptr<rpc::GcsRpcClient> client_;

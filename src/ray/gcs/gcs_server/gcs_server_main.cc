@@ -18,7 +18,6 @@
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/stats/stats.h"
-#include "ray/util/io_service_pool.h"
 #include "ray/util/util.h"
 
 DEFINE_string(redis_address, "", "The ip address of redis.");
@@ -62,15 +61,11 @@ int main(int argc, char *argv[]) {
                                             {ray::stats::VersionKey, "0.9.0.dev0"}};
   ray::stats::Init(global_tags, metrics_agent_port);
 
-  std::shared_ptr<ray::IOServicePool> io_service_pool =
-      std::make_shared<ray::IOServicePool>(kGcsNodeManagerIoServiceNum);
-  io_service_pool->Run();
-
   // IO Service for signals handler.
   boost::asio::io_service main_service;
   // Ensure that the IO service keeps running. Without this, the main_service will exit
   // as soon as there is no more work to be processed.
-  boost::asio::io_service::work signal_work(main_service);
+  boost::asio::io_service::work work(main_service);
 
   ray::gcs::GcsServerConfig gcs_server_config;
   gcs_server_config.grpc_server_name = "GcsServer";
@@ -80,17 +75,15 @@ int main(int argc, char *argv[]) {
   gcs_server_config.redis_port = redis_port;
   gcs_server_config.redis_password = redis_password;
   gcs_server_config.retry_redis = retry_redis;
-  ray::gcs::GcsServer gcs_server(gcs_server_config, main_service,
-                                 io_service_pool->GetAll());
+  ray::gcs::GcsServer gcs_server(gcs_server_config, main_service);
 
   // Destroy the GCS server on a SIGTERM. The pointer to main_service is
   // guaranteed to be valid since this function will run the event loop
   // instead of returning immediately.
-  auto handler = [&main_service, &io_service_pool, &gcs_server](
-                     const boost::system::error_code &error, int signal_number) {
+  auto handler = [&main_service, &gcs_server](const boost::system::error_code &error,
+                                              int signal_number) {
     RAY_LOG(INFO) << "GCS server received SIGTERM, shutting down...";
     gcs_server.Stop();
-    io_service_pool->Stop();
     ray::stats::Shutdown();
     main_service.stop();
   };
