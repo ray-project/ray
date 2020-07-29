@@ -140,16 +140,13 @@ deploy_jars() {
       not a build for commit of master branch in ray-project/ray"
       return
     fi
+
   fi
   echo "Start deploying jars"
-  for module in "${RAY_JAVA_MODULES[@]}"; do
-    cd "$WORKSPACE_DIR/java/$module"
-    mvn -T16 deploy -Dmaven.test.skip=true -Dcheckstyle.skip -Prelease
-  done
-  for module in "${RAY_STREAMING_JAVA_MODULES[@]}"; do
-    cd "$WORKSPACE_DIR/streaming/java/$module"
-    mvn -T16 deploy -Dmaven.test.skip=true -Dcheckstyle.skip -Prelease
-  done
+  cd "$WORKSPACE_DIR/java"
+  mvn -T16 deploy -Dmaven.test.skip=true -Dcheckstyle.skip -Prelease
+  cd "$WORKSPACE_DIR/streaming/java"
+  mvn -T16 deploy -Dmaven.test.skip=true -Dcheckstyle.skip -Prelease
   echo "Finished deploying jars"
 }
 
