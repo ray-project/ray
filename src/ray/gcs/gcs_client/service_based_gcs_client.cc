@@ -91,9 +91,7 @@ void ServiceBasedGcsClient::Disconnect() {
   RAY_CHECK(is_connected_);
   is_connected_ = false;
   detect_timer_->cancel();
-  gcs_pub_sub_.reset();
   redis_gcs_client_->Disconnect();
-  redis_gcs_client_.reset();
   RAY_LOG(DEBUG) << "ServiceBasedGcsClient Disconnected.";
 }
 
