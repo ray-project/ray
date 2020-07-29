@@ -122,9 +122,8 @@ public class ActorTest extends BaseTest {
   }
 
   // This test case follows `test_internal_free` in `python/ray/tests/test_advanced.py`.
+  @Test(groups = {"cluster"})
   public void testUnreconstructableActorObject() throws InterruptedException {
-    TestUtils.skipTestUnderSingleProcess();
-
     ActorHandle<Counter> counter = Ray.actor(Counter::new, 100).remote();
     // Call an actor method.
     ObjectRef value = counter.task(Counter::getValue).remote();

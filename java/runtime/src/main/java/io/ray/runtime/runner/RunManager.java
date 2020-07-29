@@ -237,7 +237,7 @@ public class RunManager {
     }
 
     // See `src/ray/gcs/gcs_server/gcs_server_main.cc` for the meaning of each parameter.
-    final File gcsServerFile = BinaryFileUtil.getNativeFile(
+    final File gcsServerFile = BinaryFileUtil.getFile(
         rayConfig.sessionDir, BinaryFileUtil.GCS_SERVER_BINARY_NAME);
     Preconditions.checkState(gcsServerFile.setExecutable(true));
     List<String> command = ImmutableList.of(
@@ -254,7 +254,7 @@ public class RunManager {
   }
 
   private String startRedisInstance(String ip, int port, String password, Integer shard) {
-    final File redisServerFile = BinaryFileUtil.getNativeFile(
+    final File redisServerFile = BinaryFileUtil.getFile(
         rayConfig.sessionDir, BinaryFileUtil.REDIS_SERVER_BINARY_NAME);
     Preconditions.checkState(redisServerFile.setExecutable(true));
     List<String> command = Lists.newArrayList(
@@ -268,7 +268,7 @@ public class RunManager {
         "warning",
         "--loadmodule",
         // The redis module file.
-        BinaryFileUtil.getNativeFile(
+        BinaryFileUtil.getFile(
             rayConfig.sessionDir, BinaryFileUtil.REDIS_MODULE_LIBRARY_NAME).getAbsolutePath()
     );
 
@@ -305,7 +305,7 @@ public class RunManager {
     }
 
     // See `src/ray/raylet/main.cc` for the meaning of each parameter.
-    final File rayletFile = BinaryFileUtil.getNativeFile(
+    final File rayletFile = BinaryFileUtil.getFile(
         rayConfig.sessionDir, BinaryFileUtil.RAYLET_BINARY_NAME);
     Preconditions.checkState(rayletFile.setExecutable(true));
     List<String> command = ImmutableList.of(
@@ -373,7 +373,7 @@ public class RunManager {
   }
 
   private void startObjectStore() {
-    final File objectStoreFile = BinaryFileUtil.getNativeFile(
+    final File objectStoreFile = BinaryFileUtil.getFile(
         rayConfig.sessionDir, BinaryFileUtil.PLASMA_STORE_SERVER_BINARY_NAME);
     Preconditions.checkState(objectStoreFile.setExecutable(true));
     List<String> command = ImmutableList.of(

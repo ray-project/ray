@@ -10,7 +10,6 @@ import io.ray.runtime.task.ArgumentsBuilder;
 import java.io.Serializable;
 import java.util.function.Supplier;
 import org.testng.Assert;
-import org.testng.SkipException;
 
 public class TestUtils {
 
@@ -32,18 +31,6 @@ public class TestUtils {
 
   public static boolean isSingleProcessMode() {
     return getRuntime().getRayConfig().runMode == RunMode.SINGLE_PROCESS;
-  }
-
-  public static void skipTestUnderSingleProcess() {
-    if (isSingleProcessMode()) {
-      throw new SkipException("This test doesn't work under single-process mode.");
-    }
-  }
-
-  public static void skipTestUnderClusterMode() {
-    if (getRuntime().getRayConfig().runMode == RunMode.CLUSTER) {
-      throw new SkipException("This test doesn't work under cluster mode.");
-    }
   }
 
   /**

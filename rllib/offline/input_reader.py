@@ -5,6 +5,8 @@ import threading
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.framework import try_import_tf
+from typing import Dict, List
+from ray.rllib.utils.types import TensorType, SampleBatchType
 
 tf1, tf, tfv = try_import_tf()
 
@@ -25,7 +27,7 @@ class InputReader:
         raise NotImplementedError
 
     @PublicAPI
-    def tf_input_ops(self, queue_size=1):
+    def tf_input_ops(self, queue_size: int = 1) -> Dict[str, TensorType]:
         """Returns TensorFlow queue ops for reading inputs from this reader.
 
         The main use of these ops is for integration into custom model losses.
@@ -90,7 +92,8 @@ class InputReader:
 class _QueueRunner(threading.Thread):
     """Thread that feeds a TF queue from a InputReader."""
 
-    def __init__(self, input_reader, queue, keys, dtypes):
+    def __init__(self, input_reader: InputReader, queue: tf1.FIFOQueue,
+                 keys: List[str], dtypes: "tf.dtypes.DType"):
         threading.Thread.__init__(self)
         self.sess = tf1.get_default_session()
         self.daemon = True
@@ -100,7 +103,7 @@ class _QueueRunner(threading.Thread):
         self.placeholders = [tf1.placeholder(dtype) for dtype in dtypes]
         self.enqueue_op = queue.enqueue(dict(zip(keys, self.placeholders)))
 
-    def enqueue(self, batch):
+    def enqueue(self, batch: SampleBatchType):
         data = {
             self.placeholders[i]: batch[key]
             for i, key in enumerate(self.keys)

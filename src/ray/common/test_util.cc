@@ -204,6 +204,12 @@ TaskID RandomTaskId() {
   return TaskID::FromBinary(data);
 }
 
+JobID RandomJobId() {
+  std::string data(JobID::Size(), 0);
+  FillRandom(&data);
+  return JobID::FromBinary(data);
+}
+
 std::shared_ptr<Buffer> GenerateRandomBuffer() {
   auto seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
   std::mt19937 gen(seed);

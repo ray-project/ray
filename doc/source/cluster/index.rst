@@ -1,9 +1,9 @@
 .. _cluster-index:
 
-Multi-node Ray Overview
-=======================
+Distributed Ray Overview
+========================
 
-One of Ray's strengths is the ability to leverage multiple machines in the same program. You can do this by creating and connecting to a Ray cluster.
+One of Ray's strengths is the ability to leverage multiple machines in the same program Ray can, of course, be run on a single machine (and is done so often) but the real power is using Ray on a cluster of machines.
 
 Key Concepts
 ------------
