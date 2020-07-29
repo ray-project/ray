@@ -111,6 +111,8 @@ matrix:
         - . ./ci/travis/ci.sh build
       script:
         - . ./ci/travis/ci.sh test_wheels
+        # Perform sanity check for docker build
+        - if [[ "$TRAVIS_PULL_REQUEST" != "false" ]]; then ./ci/keep_alive bash $TRAVIS_BUILD_DIR/ci/travis/build-autoscaler-images.sh; fi
       cache: false
 
     # Build MacOS wheels.
@@ -397,5 +399,6 @@ deploy:
     script: ./ci/keep_alive bash $TRAVIS_BUILD_DIR/ci/travis/build-autoscaler-images.sh
     skip_cleanup: true
     on:
+      repo: ray-project/ray
       all_branches: true
       condition: $LINUX_WHEELS = 1

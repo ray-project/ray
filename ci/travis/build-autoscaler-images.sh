@@ -10,7 +10,7 @@ ROOT_DIR=$(cd "$SCRIPT_DIR"/../../; pwd)
 DOCKER_USERNAME="raytravisbot"
 
 docker_push() {
-    if ["$TRAVIS_PULL_REQUEST" == "false"]; then
+    if [[ "$TRAVIS_PULL_REQUEST" == "false" ]]; then
         docker push $@
     else
         echo "Skipping docker push because it's in PR environment."
@@ -20,10 +20,10 @@ docker_push() {
 # We will only build and push when we are building branch build.
 if [[ "$TRAVIS" == "true" ]]; then
 
-    if ["$TRAVIS_PULL_REQUEST" == "false"]; then
+    if [[ "$TRAVIS_PULL_REQUEST" == "false" ]]; then
         echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
     else
-        if ["$RAY_CI_DOCKER_AFFECTED" == "0"]; then
+        if [[ "$RAY_CI_DOCKER_AFFECTED" == "0" ]]; then
             echo "Skipping docker build in PR build because dockerfile didn't change."
             exit 0
         fi
