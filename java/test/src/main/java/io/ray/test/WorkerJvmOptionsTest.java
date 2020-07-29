@@ -14,9 +14,8 @@ public class WorkerJvmOptionsTest extends BaseTest {
     }
   }
 
-  @Test
+  @Test(groups = {"cluster"})
   public void testJvmOptions() {
-    TestUtils.skipTestUnderSingleProcess();
     // The whitespaces in following argument are intentionally added to test
     // that raylet can correctly handle dynamic options with whitespaces.
     ActorHandle<Echo> actor = Ray.actor(Echo::new)

@@ -5,7 +5,7 @@ set -euxo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)"
 WORKSPACE_DIR="${ROOT_DIR}/.."
 
-PY_VERSIONS=(3.6 3.7 3.8)
+PY_VERSIONS=($(python -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" python_versions "${ROOT_DIR}"/setup.py | tr -d "\r"))
 PY_SCRIPT_SUBDIR=Scripts  # 'bin' for UNIX, 'Scripts' for Windows
 
 get_python_version() {
@@ -39,7 +39,7 @@ install_ray() {
 uninstall_ray() {
   pip uninstall -y ray
 
-  rm -r -f "${WORKSPACE_DIR}"/python/ray/thirdparty_files
+  python -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" clean "${ROOT_DIR}"/setup.py
 }
 
 build_wheel_windows() {
