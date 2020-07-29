@@ -246,11 +246,14 @@ class GlobalState:
             "JobID": binary_to_hex(actor_table_data.job_id),
             "Address": {
                 "IPAddress": actor_table_data.address.ip_address,
-                "Port": actor_table_data.address.port
+                "Port": actor_table_data.address.port,
+                "NodeID": binary_to_hex(actor_table_data.address.raylet_id),
             },
             "OwnerAddress": {
                 "IPAddress": actor_table_data.owner_address.ip_address,
-                "Port": actor_table_data.owner_address.port
+                "Port": actor_table_data.owner_address.port,
+                "NodeID": binary_to_hex(
+                    actor_table_data.owner_address.raylet_id),
             },
             "State": actor_table_data.state,
             "Timestamp": actor_table_data.timestamp,

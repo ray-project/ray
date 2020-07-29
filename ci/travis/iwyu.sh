@@ -58,6 +58,7 @@ invoke_cc() {
   case "${cc##*/}" in
     clang*)
       # Call iwyu with the modified arguments and environment variables (env -i starts with a blank slate)
+      # shellcheck disable=SC2016
       { PATH="${PATH}:/usr/bin" env -i "${env_vars[@]}" "${SHELL-/bin/bash}" -c 'iwyu -isystem "$("$1" -print-resource-dir "${@:2}")/include" "${@:2}"' exec "${args[@]}" 2>&1 || true; } | awk '
         # Awk script to remove noise in the iwyu output
         { header = 0; }
@@ -85,6 +86,7 @@ main() {
     data="$(exec sed -e "s/\(0x[0-9a-fA-F]*\)]\(,\a\)/\"\1\"]\2/g" -e "s/,\(\a\s*\(]\|\$\)\)/\1/g" -e "s/\a/\n/g" <<< "${data}")"
     # Parse the resulting JSON and select the actual fields we're interested in.
     # We put the environment variables first, separating them from the command-line arguments via '--'.
+    # shellcheck disable=SC1003
     data="$(PATH="${PATH}:${MINGW_DIR-/usr}/bin" && exec jq -r '(
         []
         + [.[1:][] | select (.[0] == 6) | "\(.[1][1])=\(.[2][1])" | gsub("'\''"; "'\''\\'\'''\''") | "'\''\(.)'\''"]

@@ -81,6 +81,9 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
       const std::string &name,
       const OptionalItemCallback<rpc::ActorTableData> &callback) override;
 
+  Status AsyncRegisterActor(const TaskSpecification &task_spec,
+                            const StatusCallback &callback) override;
+
   Status AsyncCreateActor(const TaskSpecification &task_spec,
                           const StatusCallback &callback) override;
 
@@ -123,11 +126,16 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
   /// server restarts from a failure.
   FetchDataOperation fetch_all_data_operation_;
 
+  // Mutex to protect the subscribe_operations_ field and fetch_data_operations_ field.
+  absl::Mutex mutex_;
+
   /// Save the subscribe operation of actors.
-  std::unordered_map<ActorID, SubscribeOperation> subscribe_operations_;
+  std::unordered_map<ActorID, SubscribeOperation> subscribe_operations_
+      GUARDED_BY(mutex_);
 
   /// Save the fetch data operation of actors.
-  std::unordered_map<ActorID, FetchDataOperation> fetch_data_operations_;
+  std::unordered_map<ActorID, FetchDataOperation> fetch_data_operations_
+      GUARDED_BY(mutex_);
 
   ServiceBasedGcsClient *client_impl_;
 
@@ -327,13 +335,19 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
   void AsyncResubscribe(bool is_pubsub_server_restarted) override;
 
  private:
+  // Mutex to protect the subscribe_object_operations_ field and
+  // fetch_object_data_operations_ field.
+  absl::Mutex mutex_;
+
   /// Save the subscribe operations, so we can call them again when PubSub
   /// server restarts from a failure.
-  std::unordered_map<ObjectID, SubscribeOperation> subscribe_object_operations_;
+  std::unordered_map<ObjectID, SubscribeOperation> subscribe_object_operations_
+      GUARDED_BY(mutex_);
 
   /// Save the fetch data operation in this function, so we can call it again when GCS
   /// server restarts from a failure.
-  std::unordered_map<ObjectID, FetchDataOperation> fetch_object_data_operations_;
+  std::unordered_map<ObjectID, FetchDataOperation> fetch_object_data_operations_
+      GUARDED_BY(mutex_);
 
   ServiceBasedGcsClient *client_impl_;
 
