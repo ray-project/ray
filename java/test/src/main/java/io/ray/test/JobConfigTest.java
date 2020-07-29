@@ -8,6 +8,7 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+@Test(groups = {"cluster"})
 public class JobConfigTest extends BaseTest {
 
   @BeforeClass
@@ -43,24 +44,18 @@ public class JobConfigTest extends BaseTest {
     }
   }
 
-  @Test
   public void testJvmOptions() {
-    TestUtils.skipTestUnderSingleProcess();
     ObjectRef<String> obj = Ray.task(JobConfigTest::getJvmOptions).remote();
     Assert.assertEquals("999", obj.get());
   }
 
-  @Test
   public void testNumJavaWorkerPerProcess() {
-    TestUtils.skipTestUnderSingleProcess();
     ObjectRef<Integer> obj = Ray.task(JobConfigTest::getWorkersNum).remote();
     Assert.assertEquals(3, (int) obj.get());
   }
 
 
-  @Test
   public void testInActor() {
-    TestUtils.skipTestUnderSingleProcess();
     ActorHandle<MyActor> actor = Ray.actor(MyActor::new).remote();
 
     // test jvm options.

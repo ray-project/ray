@@ -19,6 +19,7 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+@Test(groups = {"cluster"})
 public class MultiDriverTest extends BaseTest {
 
   private static final int DRIVER_COUNT = 10;
@@ -69,10 +70,7 @@ public class MultiDriverTest extends BaseTest {
         PID_LIST_PREFIX + pids.stream().map(String::valueOf).collect(Collectors.joining(",")));
   }
 
-  @Test(groups = {"directCall"})
   public void testMultiDrivers() throws InterruptedException, IOException {
-    TestUtils.skipTestUnderSingleProcess();
-
     // This test case starts some driver processes. Each driver process submits some tasks and
     // collect the PIDs of the workers used by the driver. The drivers output the PID list
     // which will be read by the test case itself. The test case will compare the PIDs used by
