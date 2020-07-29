@@ -1,3 +1,4 @@
+from datetime import timedelta
 import numpy as np
 import logging
 import os
@@ -16,7 +17,8 @@ from ray.util.sgd.torch.distributed_torch_runner import (
     DistributedTorchRunner, LocalDistributedRunner, DeactivatedRunner)
 from ray.util.sgd.utils import check_for_failure, NUM_SAMPLES, BATCH_SIZE
 from ray.util.sgd.torch.torch_runner import TorchRunner
-from ray.util.sgd.torch.constants import VALID_SCHEDULER_STEP
+from ray.util.sgd.torch.constants import VALID_SCHEDULER_STEP, NCCL_TIMEOUT_S
+from ray.util.sgd.torch.utils import setup_address
 from ray.util.sgd.data import Dataset
 
 logger = logging.getLogger(__name__)
@@ -180,6 +182,7 @@ class TorchTrainer:
             use_gpu="auto",
             backend="auto",
             wrap_ddp=True,
+            timeout_s=NCCL_TIMEOUT_S,
             serialize_data_creation=True,
             use_fp16=False,
             use_tqdm=False,
@@ -248,6 +251,7 @@ class TorchTrainer:
 
         self.serialize_data_creation = serialize_data_creation
         self.wrap_ddp = wrap_ddp
+        self.timeout_s = timeout_s
         self.use_fp16 = use_fp16
         self.use_tqdm = use_tqdm
         self.add_dist_sampler = add_dist_sampler
@@ -347,10 +351,7 @@ class TorchTrainer:
                 self.apply_all_workers(self.initialization_hook)
 
             # Compute URL for initializing distributed PyTorch
-            ip = ray.services.get_node_ip_address()
-            port = self.local_worker.find_free_port()
-
-            address = "tcp://{ip}:{port}".format(ip=ip, port=port)
+            address = setup_address()
 
             # Runs the creator functions.
             remote_component_setup = [
@@ -363,10 +364,12 @@ class TorchTrainer:
 
             # Setup the process group among all workers.
             remote_pgroup_setups = [
-                worker.setup_process_group.remote(address, i + 1, num_workers)
+                worker.setup_process_group.remote(address, i + 1, num_workers,
+                                                  timedelta(self.timeout_s))
                 for i, worker in enumerate(self.remote_workers)
             ]
-            self.local_worker.setup_process_group(address, 0, num_workers)
+            self.local_worker.setup_process_group(address, 0, num_workers,
+                                                  timedelta(self.timeout_s))
             # Get setup tasks in order to throw errors on failure
             ray.get(remote_pgroup_setups)
 

@@ -394,9 +394,9 @@ deploy:
 
   - provider: script
     edge: true # This supposedly opts in to deploy v2.
-    script: bash $TRAVIS_BUILD_DIR/ci/travis/build-autoscaler-images.sh || true
+    script: ./ci/keep_alive bash $TRAVIS_BUILD_DIR/ci/travis/build-autoscaler-images.sh || true
     skip_cleanup: true
     on:
       repo: ray-project/ray
       all_branches: true
-      condition: $LINUX_WHEELS = 1 || $MAC_WHEELS = 1
+      condition: $LINUX_WHEELS = 1

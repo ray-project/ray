@@ -182,7 +182,7 @@ def test_pass_returned_object_ref(one_worker_100MiB, use_ray_put, failure):
         inner_oid = ray.ObjectRef(inner_oid_binary)
         return not worker.core_worker.object_exists(inner_oid)
 
-    assert wait_for_condition(ref_not_exists)
+    wait_for_condition(ref_not_exists)
 
 
 # Call a recursive chain of tasks that pass a serialized reference that was

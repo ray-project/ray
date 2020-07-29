@@ -443,28 +443,23 @@ def test_multiple_raylets(ray_start_cluster):
 
 def test_custom_resources(ray_start_cluster):
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=3, resources={"CustomResource": 0})
+    cluster.add_node(num_cpus=1, resources={"CustomResource": 0})
     custom_resource_node = cluster.add_node(
-        num_cpus=3, resources={"CustomResource": 1})
+        num_cpus=1, resources={"CustomResource": 1})
     ray.init(address=cluster.address)
 
     @ray.remote
     def f():
-        time.sleep(0.001)
         return ray.worker.global_worker.node.unique_id
 
     @ray.remote(resources={"CustomResource": 1})
     def g():
-        time.sleep(0.001)
         return ray.worker.global_worker.node.unique_id
 
     @ray.remote(resources={"CustomResource": 1})
     def h():
         ray.get([f.remote() for _ in range(5)])
         return ray.worker.global_worker.node.unique_id
-
-    # The f tasks should be scheduled on both raylets.
-    assert len(set(ray.get([f.remote() for _ in range(500)]))) == 2
 
     # The g tasks should be scheduled only on the second raylet.
     raylet_ids = set(ray.get([g.remote() for _ in range(50)]))
