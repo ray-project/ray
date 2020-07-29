@@ -18,8 +18,8 @@ from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 from ray.rllib.utils.torch_ops import convert_to_non_torch_type, \
     convert_to_torch_tensor
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
-from ray.rllib.utils.types import AgentID, ModelGradients, ModelWeights, \
-    TensorType, TrainerConfigDict
+from ray.rllib.utils.types import ModelGradients, ModelWeights, \
+    TensorType, TensorStructType, TrainerConfigDict
 
 torch, _ = try_import_torch()
 
@@ -167,9 +167,9 @@ class TorchPolicy(Policy):
                                               extra_fetches))
 
     @override(Policy)
-    def compute_actions_from_sample_collector(
+    def compute_actions_from_input_dict(
             self,
-            sample_collector: "SampleCollector",
+            input_dict: TensorStructType,
             explore: bool = None,
             timestep: Optional[int] = None,
             **kwargs) -> \
@@ -180,8 +180,8 @@ class TorchPolicy(Policy):
 
         with torch.no_grad():
             # Create a view and pass that to Model as `input_dict`.
-            input_dict = self.get_input_dict(
-                self.model, sample_collector, is_training=False)
+            # input_dict = self.get_input_dict(
+            #    self.model, sample_collector, is_training=False)
             input_dict = self._lazy_tensor_dict(input_dict)
             # TODO: (sven) support RNNs w/ fast sampling.
             state_batches = []
