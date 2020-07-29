@@ -620,41 +620,6 @@ def test_calling_put_on_actor_handle(ray_start_regular):
     ray.get(g.remote())
 
 
-def test_pickling_actor_handle(ray_start_regular):
-    @ray.remote
-    class Foo:
-        def method(self):
-            pass
-
-    f = Foo.remote()
-    new_f = ray.worker.pickle.loads(ray.worker.pickle.dumps(f))
-    # Verify that we can call a method on the unpickled handle. TODO(rkn):
-    # we should also test this from a different driver.
-    ray.get(new_f.method.remote())
-
-
-def test_pickled_actor_handle_call_in_method_twice(ray_start_regular):
-    @ray.remote
-    class Actor1:
-        def f(self):
-            return 1
-
-    @ray.remote
-    class Actor2:
-        def __init__(self, constructor):
-            self.actor = constructor()
-
-        def step(self):
-            ray.get(self.actor.f.remote())
-
-    a = Actor1.remote()
-
-    b = Actor2.remote(lambda: a)
-
-    ray.get(b.step.remote())
-    ray.get(b.step.remote())
-
-
 def test_detached_actor(ray_start_regular):
     @ray.remote
     class DetachedActor:
@@ -836,26 +801,6 @@ def test_detached_actor_cleanup_due_to_failure(ray_start_cluster):
     assert ray.get(deatched_actor.ping.remote()) == "pong"
 
 
-def test_kill(ray_start_regular):
-    @ray.remote
-    class Actor:
-        def hang(self):
-            while True:
-                time.sleep(1)
-
-    actor = Actor.remote()
-    result = actor.hang.remote()
-    ready, _ = ray.wait([result], timeout=0.5)
-    assert len(ready) == 0
-    ray.kill(actor, no_restart=False)
-
-    with pytest.raises(ray.exceptions.RayActorError):
-        ray.get(result)
-
-    with pytest.raises(ValueError):
-        ray.kill("not_an_actor_handle")
-
-
 # This test verifies actor creation task failure will not
 # hang the caller.
 def test_actor_creation_task_crash(ray_start_regular):
@@ -950,6 +895,61 @@ def test_pending_actor_removed_by_owner(ray_start_regular):
     assert ray.get(a.ping.remote())
     ray.kill(a)
     assert ray.get(f.remote())
+
+
+def test_pickling_actor_handle(ray_start_regular_shared):
+    @ray.remote
+    class Foo:
+        def method(self):
+            pass
+
+    f = Foo.remote()
+    new_f = ray.worker.pickle.loads(ray.worker.pickle.dumps(f))
+    # Verify that we can call a method on the unpickled handle. TODO(rkn):
+    # we should also test this from a different driver.
+    ray.get(new_f.method.remote())
+
+
+def test_pickled_actor_handle_call_in_method_twice(ray_start_regular_shared):
+    @ray.remote
+    class Actor1:
+        def f(self):
+            return 1
+
+    @ray.remote
+    class Actor2:
+        def __init__(self, constructor):
+            self.actor = constructor()
+
+        def step(self):
+            ray.get(self.actor.f.remote())
+
+    a = Actor1.remote()
+
+    b = Actor2.remote(lambda: a)
+
+    ray.get(b.step.remote())
+    ray.get(b.step.remote())
+
+
+def test_kill(ray_start_regular_shared):
+    @ray.remote
+    class Actor:
+        def hang(self):
+            while True:
+                time.sleep(1)
+
+    actor = Actor.remote()
+    result = actor.hang.remote()
+    ready, _ = ray.wait([result], timeout=0.5)
+    assert len(ready) == 0
+    ray.kill(actor, no_restart=False)
+
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(result)
+
+    with pytest.raises(ValueError):
+        ray.kill("not_an_actor_handle")
 
 
 if __name__ == "__main__":

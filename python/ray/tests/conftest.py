@@ -74,7 +74,7 @@ def ray_start_regular(request):
         yield res
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def ray_start_regular_shared(request):
     param = getattr(request, "param", {})
     with _ray_start(**param) as res:
