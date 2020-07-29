@@ -201,12 +201,6 @@ class CoreWorkerProcess {
   /// Start receiving and executing tasks.
   static void RunTaskExecutionLoop();
 
-  /// Start stats/metric service for core worker process.
-  static void RunStatsService();
-
-  /// Start stats/metric service for core worker process.
-  static void StopStatsService();
-
   // The destructor is not to be used as a public API, but it's required by smart
   // pointers.
   ~CoreWorkerProcess();
@@ -240,6 +234,12 @@ class CoreWorkerProcess {
   /// \return Void.
   void RemoveWorker(std::shared_ptr<CoreWorker> worker) LOCKS_EXCLUDED(worker_map_mutex_);
 
+  /// Start stats/metric service for core worker process.
+  static void RunStatsService();
+
+  /// Start stats/metric service for core worker process.
+  static void StopStatsService();
+
   /// The global instance of `CoreWorkerProcess`.
   static std::unique_ptr<CoreWorkerProcess> instance_;
 
@@ -262,12 +262,6 @@ class CoreWorkerProcess {
 
   /// To protect accessing the `workers_` map.
   mutable absl::Mutex worker_map_mutex_;
-
-  /// Make thread-safe for core worker stats initialization.
-  static absl::Mutex stats_initialization_mutex_;
-
-  /// Count for stats.
-  static int enable_stats_count_;
 };
 
 /// The root class that contains all the core and language-independent functionalities

@@ -63,10 +63,6 @@ std::unique_ptr<CoreWorkerProcess> CoreWorkerProcess::instance_;
 
 thread_local std::weak_ptr<CoreWorker> CoreWorkerProcess::current_core_worker_;
 
-int CoreWorkerProcess::enable_stats_count_(0);
-
-absl::Mutex CoreWorkerProcess::stats_initialization_mutex_;
-
 void CoreWorkerProcess::Initialize(const CoreWorkerOptions &options) {
   RAY_CHECK(!instance_) << "The process is already initialized for core worker.";
   instance_ = std::unique_ptr<CoreWorkerProcess>(new CoreWorkerProcess(options));
@@ -80,7 +76,6 @@ void CoreWorkerProcess::Shutdown() {
   RAY_CHECK(instance_->options_.worker_type == WorkerType::DRIVER)
       << "The `Shutdown` interface is for driver only.";
   RAY_CHECK(instance_->global_worker_);
-  StopStatsService();
   instance_->global_worker_->Disconnect();
   instance_->global_worker_->Shutdown();
   instance_->RemoveWorker(instance_->global_worker_);
@@ -142,6 +137,8 @@ CoreWorkerProcess::~CoreWorkerProcess() {
     // Check that all `CoreWorker` instances have been removed.
     absl::ReaderMutexLock lock(&worker_map_mutex_);
     RAY_CHECK(workers_.empty());
+    // Shutdown stats when CoreWorkerProcess deconstructed.
+    StopStatsService();
   }
   if (options_.enable_logging) {
     RayLog::ShutDownRayLog();
@@ -247,14 +244,8 @@ void CoreWorkerProcess::RunTaskExecutionLoop() {
 }
 
 void CoreWorkerProcess::RunStatsService() {
-  absl::MutexLock lock(&CoreWorkerProcess::stats_initialization_mutex_);
-  enable_stats_count_++;
   // Assume stats module will be initialized exactly once in once process.
-  if (enable_stats_count_) {
-    RAY_LOG(DEBUG) << "Stats module has been initialized and it does not need to "
-                   << "setup twice.";
-    return;
-  }
+  // So it must be called in CoreWorkerProcess::Initialize.
   RAY_LOG(DEBUG) << "Stats setup in core worker.";
   // Initialize stats in core worker global tags.
   const ray::stats::TagsType global_tags = {{ray::stats::ComponentKey, "core_worker"},
@@ -267,13 +258,8 @@ void CoreWorkerProcess::RunStatsService() {
 }
 
 void CoreWorkerProcess::StopStatsService() {
-  absl::MutexLock lock(&CoreWorkerProcess::stats_initialization_mutex_);
   RAY_LOG(DEBUG) << "Stats stop in core worker.";
-  // Shutdown stats module if last core worker exits.
-  enable_stats_count_--;
-  if (enable_stats_count_ > 0) {
-    return;
-  }
+  // Shutdown stats module if worker process exits.
   ray::stats::Shutdown();
 }
 
