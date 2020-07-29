@@ -140,7 +140,6 @@ deploy_jars() {
       not a build for commit of master branch in ray-project/ray"
       return
     fi
-
   fi
   echo "Start deploying jars"
   cd "$WORKSPACE_DIR/java"
