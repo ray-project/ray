@@ -705,6 +705,7 @@ cc_library(
         ":ray_util",
         ":raylet_client_lib",
         ":service_based_gcs_client_lib",
+        ":stats_lib",
         ":worker_cc_proto",
         ":worker_rpc",
         "@boost//:fiber",
