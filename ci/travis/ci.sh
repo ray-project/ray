@@ -173,7 +173,7 @@ test_python() {
 }
 
 test_cpp() {
-  bazel test --config=ci //cpp:all --build_tests_only --test_output=streamed
+  bazel test --config=ci //cpp:all --build_tests_only
 }
 
 test_wheels() {
