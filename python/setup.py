@@ -154,8 +154,6 @@ install_requires = [
 ]
 
 
-
-
 def is_native_windows_or_msys():
     """Check to see if we are running on native Windows,
     but NOT WSL (which is seen as Linux)."""

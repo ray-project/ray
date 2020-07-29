@@ -58,7 +58,6 @@ install_miniconda() {
   fi
 
   local conda="${CONDA_EXE-}"  # Try to get the activated conda executable
-
   if [ -z "${conda}" ]; then  # If no conda is found, try to find it in PATH
     conda="$(command -v conda || true)"
   fi
@@ -276,6 +275,14 @@ install_dependencies() {
   # Additional Doc test dependencies.
   if [ "${DOC_TESTING-}" = 1 ]; then
     pip install -r "${WORKSPACE_DIR}"/python/requirements_tune.txt
+  fi
+
+  # If CI has deemed that a different version of Tensorflow or Torch 
+  # should be installed, then upgrade/downgrade to that specific version.
+  if [ -n "${TORCH_VERSION-}" ] || [ -n "${TFP_VERSION-}" ] || [ -n "${TF_VERSION-}" ]; then
+    pip install --upgrade tensorflow-probability=="${TFP_VERSION-0.8}" \
+      torch=="${TORCH_VERSION-1.4}" torchvision \
+      tensorflow=="${TF_VERSION-2.2.0}"
   fi
 
   if [ -n "${PYTHON-}" ] || [ -n "${LINT-}" ] || [ "${MAC_WHEELS-}" = 1 ]; then

@@ -33,7 +33,7 @@ gym[atari]
 lz4
 opencv-python-headless
 pandas==1.0.5
-scipy
+scipy==1.4.1
 tabulate
 tensorboardX
 uvicorn
@@ -60,6 +60,6 @@ pytest-rerunfailures
 pytest-sugar
 pytest-timeout
 scikit-learn==0.22.2
-tensorflow==2.2.0
+tensorflow
 werkzeug
 xlrd
