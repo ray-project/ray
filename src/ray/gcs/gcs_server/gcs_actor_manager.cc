@@ -931,8 +931,22 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
           named_actors_.emplace(actor->GetName(), actor->GetActorID());
         }
 
-        created_actors_[actor->GetNodeID()].emplace(actor->GetWorkerID(),
-                                                    actor->GetActorID());
+        if (item.second.state() == ray::rpc::ActorTableData::DEPENDENCIES_UNREADY) {
+          const auto &owner = actor->GetOwnerAddress();
+          const auto &owner_node = ClientID::FromBinary(owner.raylet_id());
+          const auto &owner_worker = WorkerID::FromBinary(owner.worker_id());
+          RAY_CHECK(unresolved_actors_[owner_node][owner_worker]
+                        .emplace(actor->GetActorID())
+                        .second);
+          if (!actor->IsDetached() && worker_client_factory_) {
+            // This actor is owned. Send a long polling request to the actor's
+            // owner to determine when the actor should be removed.
+            PollOwnerForActorOutOfScope(actor);
+          }
+        } else if (item.second.state() == ray::rpc::ActorTableData::ALIVE) {
+          created_actors_[actor->GetNodeID()].emplace(actor->GetWorkerID(),
+                                                      actor->GetActorID());
+        }
 
         auto &workers = owners_[actor->GetNodeID()];
         auto it = workers.find(actor->GetWorkerID());
@@ -958,7 +972,11 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
                    << ", and the number of created actors is " << created_actors_.size();
     for (auto &item : registered_actors_) {
       auto &actor = item.second;
-      if (actor->GetState() != ray::rpc::ActorTableData::ALIVE) {
+      if (actor->GetState() == ray::rpc::ActorTableData::PENDING_CREATION ||
+          actor->GetState() == ray::rpc::ActorTableData::RESTARTING) {
+        // We should not reschedule actors in state of `ALIVE`.
+        // We could not reschedule actors in state of `DEPENDENCIES_UNREADY` because the
+        // dependencies of them may not have been resolved yet.
         RAY_LOG(DEBUG) << "Rescheduling a non-alive actor, actor id = "
                        << actor->GetActorID() << ", state = " << actor->GetState();
         gcs_actor_scheduler_->Reschedule(actor);

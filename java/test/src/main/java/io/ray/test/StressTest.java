@@ -10,15 +10,14 @@ import java.util.List;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+@Test(groups = {"cluster"})
 public class StressTest extends BaseTest {
 
   public static int echo(int x) {
     return x;
   }
 
-  @Test
   public void testSubmittingTasks() {
-    TestUtils.skipTestUnderSingleProcess();
     for (int numIterations : ImmutableList.of(1, 10, 100, 1000)) {
       int numTasks = 1000 / numIterations;
       for (int i = 0; i < numIterations; i++) {
@@ -34,9 +33,7 @@ public class StressTest extends BaseTest {
     }
   }
 
-  @Test
   public void testDependency() {
-    TestUtils.skipTestUnderSingleProcess();
     ObjectRef<Integer> x = Ray.task(StressTest::echo, 1).remote();
     for (int i = 0; i < 1000; i++) {
       x = Ray.task(StressTest::echo, x).remote();
@@ -73,9 +70,7 @@ public class StressTest extends BaseTest {
     }
   }
 
-  @Test
   public void testSubmittingManyTasksToOneActor() throws Exception {
-    TestUtils.skipTestUnderSingleProcess();
     ActorHandle<Actor> actor = Ray.actor(Actor::new).remote();
     List<ObjectId> objectIds = new ArrayList<>();
     for (int i = 0; i < 10; i++) {
@@ -88,9 +83,7 @@ public class StressTest extends BaseTest {
     }
   }
 
-  @Test
   public void testPuttingAndGettingManyObjects() {
-    TestUtils.skipTestUnderSingleProcess();
     Integer objectToPut = 1;
     List<ObjectRef<Integer>> objects = new ArrayList<>();
     for (int i = 0; i < 100_000; i++) {

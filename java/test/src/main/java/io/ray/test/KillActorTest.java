@@ -11,7 +11,7 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-@Test
+@Test(groups = {"cluster"})
 public class KillActorTest extends BaseTest {
 
   @BeforeClass
@@ -54,8 +54,6 @@ public class KillActorTest extends BaseTest {
   }
 
   private void testKillActor(BiConsumer<ActorHandle<?>, Boolean> kill, boolean noRestart) {
-    TestUtils.skipTestUnderSingleProcess();
-
     ActorHandle<HangActor> actor = Ray.actor(HangActor::new)
         .setMaxRestarts(1)
         .remote();
