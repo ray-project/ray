@@ -114,6 +114,24 @@ Status RedisStoreClient::AsyncDelete(const std::string &table_name,
   return shard_context->RunArgvAsync(args, delete_callback);
 }
 
+Status RedisStoreClient::AsyncDeleteWithIndex(const std::string &table_name,
+                                              const std::string &key,
+                                              const std::string &index_key,
+                                              const StatusCallback &callback) {
+  RedisCallback delete_callback = nullptr;
+  if (callback) {
+    delete_callback = [callback](const std::shared_ptr<CallbackReply> &reply) {
+      callback(Status::OK());
+    };
+  }
+  std::string redis_key = GenRedisKey(table_name, key);
+  std::string redis_index_key = GenRedisKey(table_name, key, index_key);
+  std::vector<std::string> args = {"DEL", redis_key, redis_index_key};
+
+  auto shard_context = redis_client_->GetShardContext(redis_key);
+  return shard_context->RunArgvAsync(args, delete_callback);
+}
+
 Status RedisStoreClient::AsyncBatchDelete(const std::string &table_name,
                                           const std::vector<std::string> &keys,
                                           const StatusCallback &callback) {
@@ -123,6 +141,23 @@ Status RedisStoreClient::AsyncBatchDelete(const std::string &table_name,
     redis_keys.push_back(GenRedisKey(table_name, key));
   }
   return DeleteByKeys(redis_keys, callback);
+}
+
+Status RedisStoreClient::AsyncBatchDeleteWithIndex(
+    const std::string &table_name, const std::vector<std::string> &keys,
+    const std::vector<std::string> &index_keys, const StatusCallback &callback) {
+  RAY_CHECK(keys.size() == index_keys.size());
+
+  std::vector<std::string> redis_keys;
+  std::vector<std::string> redis_index_keys;
+  redis_keys.reserve(keys.size());
+  redis_index_keys.reserve(index_keys.size());
+
+  for (int i = 0; i < keys.size(); ++i) {
+    redis_keys.push_back(GenRedisKey(table_name, keys[i]));
+    redis_index_keys.push_back(GenRedisKey(table_name, keys[i], index_keys[i]));
+  }
+  return DeleteByKeys(redis_keys, redis_index_keys, callback);
 }
 
 Status RedisStoreClient::AsyncGetByIndex(
@@ -215,6 +250,30 @@ Status RedisStoreClient::DeleteByKeys(const std::vector<std::string> &keys,
   return Status::OK();
 }
 
+Status RedisStoreClient::DeleteByKeys(const std::vector<std::string> &keys,
+                                      const std::vector<std::string> &index_keys,
+                                      const StatusCallback &callback) {
+  // The `DEL` command for each shard.
+  auto del_commands_by_shards =
+      GenCommandsByShards(redis_client_, "DEL", keys, index_keys);
+
+  auto finished_count = std::make_shared<int>(0);
+  int size = del_commands_by_shards.size();
+  for (auto &item : del_commands_by_shards) {
+    auto delete_callback = [finished_count, size,
+                            callback](const std::shared_ptr<CallbackReply> &reply) {
+      ++(*finished_count);
+      if (*finished_count == size) {
+        if (callback) {
+          callback(Status::OK());
+        }
+      }
+    };
+    RAY_CHECK_OK(item.first->RunArgvAsync(item.second, delete_callback));
+  }
+  return Status::OK();
+}
+
 std::unordered_map<RedisContext *, std::vector<std::string>>
 RedisStoreClient::GenCommandsByShards(const std::shared_ptr<RedisClient> &redis_client,
                                       const std::string &command,
@@ -228,6 +287,27 @@ RedisStoreClient::GenCommandsByShards(const std::shared_ptr<RedisClient> &redis_
       commands_by_shards[shard_context].push_back(key);
     } else {
       it->second.push_back(key);
+    }
+  }
+  return commands_by_shards;
+}
+
+std::unordered_map<RedisContext *, std::vector<std::string>>
+RedisStoreClient::GenCommandsByShards(const std::shared_ptr<RedisClient> &redis_client,
+                                      const std::string &command,
+                                      const std::vector<std::string> &keys,
+                                      const std::vector<std::string> &index_keys) {
+  std::unordered_map<RedisContext *, std::vector<std::string>> commands_by_shards;
+  for (int i = 0; i < keys.size(); ++i) {
+    auto shard_context = redis_client->GetShardContext(keys[i]).get();
+    auto it = commands_by_shards.find(shard_context);
+    if (it == commands_by_shards.end()) {
+      commands_by_shards[shard_context].push_back(command);
+      commands_by_shards[shard_context].push_back(keys[i]);
+      commands_by_shards[shard_context].push_back(index_keys[i]);
+    } else {
+      it->second.push_back(keys[i]);
+      it->second.push_back(index_keys[i]);
     }
   }
   return commands_by_shards;

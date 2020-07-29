@@ -55,6 +55,12 @@ TEST_F(RedisStoreClientTest, AsyncGetAllAndBatchDeleteTest) {
   TestAsyncGetAllAndBatchDelete();
 }
 
+TEST_F(RedisStoreClientTest, TestAsyncDeleteWithIndex) { TestAsyncDeleteWithIndex(); }
+
+TEST_F(RedisStoreClientTest, TestAsyncBatchDeleteWithIndex) {
+  TestAsyncBatchDeleteWithIndex();
+}
+
 }  // namespace gcs
 
 }  // namespace ray
