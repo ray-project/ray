@@ -39,13 +39,13 @@ An actor can be in one of the following states:
 
 - **4**: When the actor is successfully reconstructed, GCS will persist the actor in database with state `ALIVE`.
 
-- **5**: 1. If the actor is restarting, GCS detects that its worker or node is dead and the actor remaining restarts number is 0, it will persist the actor in database with state `DEAD`.
-         2. If the actor is not detached, when GCS detected that the owner worker/node/actor is dead, it will persist the actor in database with state `DEAD`.
+- **5**: If the actor is restarting, GCS detects that its worker or node is dead and the actor remaining restarts number is 0, it will persist the actor in database with state `DEAD`.
+  If the actor is not detached, when GCS detected that the owner worker/node/actor is dead, it will persist the actor in database with state `DEAD`.
 
-- **6**: 1. When GCS detected that the actor is dead and the actor remaining restarts number is 0, it will persist the actor in database with state `DEAD`.
-         2. If the actor is not detached, when GCS detected that the owner worker/node/actor is dead, it will persist the actor in database with state `DEAD`.
+- **6**: When GCS detected that the actor is dead and the actor remaining restarts number is 0, it will persist the actor in database with state `DEAD`.
+  If the actor is not detached, when GCS detected that the owner worker/node/actor is dead, it will persist the actor in database with state `DEAD`.
 
 - **7**: If the actor is not detached, when GCS detected that the owner worker/node/actor is dead, it will persist the actor in database with state `DEAD`.
 
-- **8**: 1. When GCS detected that the actor creator is dead, it will persist the actor in database with state `DEAD`.
-         2. If the actor is not detached, when GCS detected that the owner worker/node/actor is dead, it will persist the actor in database with state `DEAD`.
+- **8**: When GCS detected that the actor creator is dead, it will persist the actor in database with state `DEAD`.
+  If the actor is not detached, when GCS detected that the owner worker/node/actor is dead, it will persist the actor in database with state `DEAD`.
