@@ -80,37 +80,50 @@ def learn_test_plus_rollout(algo, env="CartPole-v0"):
         print("RLlib dir = {}\nexists={}".format(rllib_dir,
                                                  os.path.exists(rllib_dir)))
         os.system("python {}/train.py --local-dir={} --run={} "
-                  "--checkpoint-freq=1 ".format(rllib_dir, tmp_dir, algo) +
-                  "--config=\"{\\\"num_gpus\\\": 0" + fw_ + "}\" " +
-                  "--stop=\"{\\\"episode_reward_mean\\\": 190}\"" +
+                  "--checkpoint-freq=1 --checkpoint-at-end ".format(
+                      rllib_dir, tmp_dir, algo) +
+                  "--config=\"{\\\"num_gpus\\\": 0, "
+                  "\\\"evaluation_config\\\": {\\\"explore\\\": false}" + fw_ +
+                  "}\" " + "--stop=\"{\\\"episode_reward_mean\\\": 190.0}\"" +
                   " --env={}".format(env))
 
         # Find last checkpoint and use that for the rollout.
         checkpoint_path = os.popen("ls {}/default/*/checkpoint_*/"
                                    "checkpoint-*".format(tmp_dir)).read()[:-1]
-        checkpoints = checkpoint_path.split("\n")
-        # -1 is tune_metadata
-        last_checkpoint = checkpoints[-2]
+        checkpoints = [
+            cp for cp in checkpoint_path.split("\n")
+            if re.match(r"^.+checkpoint-\d+$", cp)
+        ]
+        # Sort by number and pick last (which should be the best checkpoint).
+        last_checkpoint = sorted(
+            checkpoints,
+            key=lambda x: int(re.match(r".+checkpoint-(\d+)", x).group(1)))[-1]
         assert re.match(r"^.+checkpoint_\d+/checkpoint-\d+$", last_checkpoint)
         if not os.path.exists(last_checkpoint):
             sys.exit(1)
-        print("Checkpoint path {} (exists)".format(checkpoint_path))
+        print("Best checkpoint={} (exists)".format(last_checkpoint))
 
         # Test rolling out n steps.
         result = os.popen(
-            "python {}/rollout.py --run={} \"{}\" "
+            "python {}/rollout.py --run={} "
             "--steps=400 "
-            "--out=\"{}/rollouts_n_steps.pkl\" --no-render {}".format(
-                rllib_dir, algo, checkpoint_path, tmp_dir, last_checkpoint)
-        ).read()[:-1]
+            "--out=\"{}/rollouts_n_steps.pkl\" --no-render \"{}\"".format(
+                rllib_dir, algo, tmp_dir, last_checkpoint)).read()[:-1]
         if not os.path.exists(tmp_dir + "/rollouts_n_steps.pkl"):
             sys.exit(1)
-        print("rollout output exists!".format(checkpoint_path))
+        print("Rollout output exists -> Checking reward ...".format(
+            checkpoint_path))
         episodes = result.split("\n")
+        mean_reward = 0.0
+        num_episodes = 0
         for ep in episodes:
-            mo = re.match(r"Episode: ", result)
+            mo = re.match(r"Episode .+reward: ([\d\.\-]+)", ep)
             if mo:
-                assert float(mo.group(1)) > 150.0
+                mean_reward += float(mo.group(1))
+                num_episodes += 1
+        mean_reward /= num_episodes
+        print("Rollout's mean episode reward={}".format(mean_reward))
+        assert mean_reward >= 190.0
 
         # Cleanup.
         os.popen("rm -rf \"{}\"".format(tmp_dir)).read()
@@ -151,5 +164,6 @@ if __name__ == "__main__":
     # One can specify the specific TestCase class to run.
     # None for all unittest.TestCase classes in this file.
     class_ = sys.argv[1] if len(sys.argv) > 1 else None
-    sys.exit(pytest.main(
-        ["-v", __file__ + ("" if class_ is None else "::" + class_)]))
+    sys.exit(
+        pytest.main(
+            ["-v", __file__ + ("" if class_ is None else "::" + class_)]))
