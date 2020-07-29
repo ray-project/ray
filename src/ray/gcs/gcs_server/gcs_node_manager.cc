@@ -89,8 +89,31 @@ void GcsNodeManager::NodeFailureDetector::DetectDeadNodes() {
 void GcsNodeManager::NodeFailureDetector::SendBatchedHeartbeat() {
   if (!heartbeat_buffer_.empty()) {
     auto batch = std::make_shared<rpc::HeartbeatBatchTableData>();
-    for (const auto &heartbeat : heartbeat_buffer_) {
-      batch->add_batch()->CopyFrom(heartbeat.second);
+    std::unordered_map<SchedulingClass, std::pair<uint64_t, uint64_t>> aggregate_load;
+    for (auto &heartbeat : heartbeat_buffer_) {
+      // Aggregate the load reported by each raylet.
+      auto load = heartbeat.second.resource_load_by_shape();
+      for (const auto &demand : load.resource_demands()) {
+        auto scheduling_class =
+            TaskSpecification::GetSchedulingClass(MapFromProtobuf(demand.shape()));
+        aggregate_load[scheduling_class].first += demand.num_ready_requests_queued();
+        aggregate_load[scheduling_class].second +=
+            demand.num_infeasible_requests_queued();
+      }
+      heartbeat.second.clear_resource_load_by_shape();
+
+      batch->add_batch()->Swap(&heartbeat.second);
+    }
+
+    for (const auto &demand : aggregate_load) {
+      auto demand_proto = batch->mutable_resource_load_by_shape()->add_resource_demands();
+      const auto &resource_map =
+          TaskSpecification::GetSchedulingClassDescriptor(demand.first).GetResourceMap();
+      for (const auto &resource_pair : resource_map) {
+        (*demand_proto->mutable_shape())[resource_pair.first] = resource_pair.second;
+      }
+      demand_proto->set_num_ready_requests_queued(demand.second.first);
+      demand_proto->set_num_infeasible_requests_queued(demand.second.second);
     }
 
     RAY_CHECK_OK(gcs_pub_sub_->Publish(HEARTBEAT_BATCH_CHANNEL, "",

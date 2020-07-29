@@ -333,3 +333,13 @@ RAY_CONFIG(int, metrics_agent_port, -1)
 /// the owner has been granted a lease. A value >1 is used when we want to enable
 /// pipelining task submission.
 RAY_CONFIG(uint32_t, max_tasks_in_flight_per_worker, 1)
+
+/// The maximum number of resource shapes included in the resource
+/// load reported by each raylet.
+RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 0)
+
+/// The number of heartbeats that each raylet waits before sending
+/// another resource load report. 0 means send a resource load report with
+/// every heartbeat. Resource load reports can be disabled completely by
+/// setting max_resource_shapes_per_load to 0.
+RAY_CONFIG(uint8_t, num_heartbeats_between_load_reports, 9)

@@ -185,6 +185,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   static SchedulingClassDescriptor &GetSchedulingClassDescriptor(SchedulingClass id);
 
+  static SchedulingClass GetSchedulingClass(const ResourceSet &sched_cls);
+
  private:
   void ComputeResources();
 

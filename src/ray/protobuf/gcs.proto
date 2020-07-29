@@ -253,6 +253,16 @@ message GcsNodeInfo {
   string node_manager_hostname = 8;
 }
 
+message ResourceDemand {
+  map<string, double> shape = 1;
+  uint64 num_ready_requests_queued = 2;
+  uint64 num_infeasible_requests_queued = 3;
+}
+
+message ResourceLoad {
+  repeated ResourceDemand resource_demands = 1;
+}
+
 message HeartbeatTableData {
   // Node manager client id
   bytes client_id = 1;
@@ -262,14 +272,16 @@ message HeartbeatTableData {
   map<string, double> resources_total = 3;
   // Aggregate outstanding resource load on this node manager.
   map<string, double> resource_load = 4;
+  ResourceLoad resource_load_by_shape = 5;
   // Object IDs that are in use by workers on this node manager's node.
-  repeated bytes active_object_id = 5;
+  repeated bytes active_object_id = 6;
   // Whether this node manager is requesting global GC.
-  bool should_global_gc = 6;
+  bool should_global_gc = 7;
 }
 
 message HeartbeatBatchTableData {
   repeated HeartbeatTableData batch = 1;
+  ResourceLoad resource_load_by_shape = 2;
 }
 
 // Data for a lease on task execution.
