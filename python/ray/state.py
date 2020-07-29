@@ -11,7 +11,6 @@ from ray import (
     services,
 )
 from ray.utils import (decode, binary_to_hex, hex_to_binary)
-from ray.ray_constants import RESOURCE_CONSTRAINT_PREFIX
 
 from ray._raylet import GlobalStateAccessor
 
@@ -247,11 +246,14 @@ class GlobalState:
             "JobID": binary_to_hex(actor_table_data.job_id),
             "Address": {
                 "IPAddress": actor_table_data.address.ip_address,
-                "Port": actor_table_data.address.port
+                "Port": actor_table_data.address.port,
+                "NodeID": binary_to_hex(actor_table_data.address.raylet_id),
             },
             "OwnerAddress": {
                 "IPAddress": actor_table_data.owner_address.ip_address,
-                "Port": actor_table_data.owner_address.port
+                "Port": actor_table_data.owner_address.port,
+                "NodeID": binary_to_hex(
+                    actor_table_data.owner_address.raylet_id),
             },
             "State": actor_table_data.state,
             "Timestamp": actor_table_data.timestamp,
@@ -670,7 +672,7 @@ class GlobalState:
             return 0, 0, 0
         return overall_smallest, overall_largest, num_tasks
 
-    def cluster_resources(self, verbose=False):
+    def cluster_resources(self):
         """Get the current total cluster resources.
 
         Note that this information can grow stale as nodes are added to or
@@ -688,9 +690,6 @@ class GlobalState:
             # Only count resources from latest entries of live clients.
             if client["Alive"]:
                 for key, value in client["Resources"].items():
-                    if verbose is False and \
-                       key.startswith(RESOURCE_CONSTRAINT_PREFIX):
-                        continue
                     resources[key] += value
         return dict(resources)
 
@@ -701,7 +700,7 @@ class GlobalState:
             for client in self.node_table() if (client["Alive"])
         }
 
-    def available_resources(self, verbose=False):
+    def available_resources(self):
         """Get the current available cluster resources.
 
         This is different from `cluster_resources` in that this will return
@@ -754,9 +753,6 @@ class GlobalState:
         total_available_resources = defaultdict(int)
         for available_resources in available_resources_by_id.values():
             for resource_id, num_available in available_resources.items():
-                if verbose is False and \
-                        resource_id.startswith(RESOURCE_CONSTRAINT_PREFIX):
-                    continue
                 total_available_resources[resource_id] += num_available
 
         # Close the pubsub clients to avoid leaking file descriptors.
@@ -979,7 +975,7 @@ def object_transfer_timeline(filename=None):
     return state.chrome_tracing_object_transfer_dump(filename=filename)
 
 
-def cluster_resources(verbose=False):
+def cluster_resources():
     """Get the current total cluster resources.
 
     Note that this information can grow stale as nodes are added to or removed
@@ -989,10 +985,10 @@ def cluster_resources(verbose=False):
         A dictionary mapping resource name to the total quantity of that
             resource in the cluster.
     """
-    return state.cluster_resources(verbose=verbose)
+    return state.cluster_resources()
 
 
-def available_resources(verbose=False):
+def available_resources():
     """Get the current available cluster resources.
 
     This is different from `cluster_resources` in that this will return idle
@@ -1004,7 +1000,7 @@ def available_resources(verbose=False):
         A dictionary mapping resource name to the total quantity of that
             resource in the cluster.
     """
-    return state.available_resources(verbose=verbose)
+    return state.available_resources()
 
 
 def errors(all_jobs=False):

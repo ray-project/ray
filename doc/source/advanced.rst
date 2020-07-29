@@ -56,7 +56,7 @@ Dynamic Custom Resources
 ------------------------
 
 Ray enables explicit developer control with respect to the task and actor placement by using custom resources. Further, users are able to dynamically adjust custom resources programmatically with ``ray.experimental.set_resource``. This allows the Ray application to implement virtually any scheduling policy, including task affinity, data locality, anti-affinity,
-load balancing, gang scheduling, and priority-based scheduling. A custom resource cannot begin with `ResourceConstraint:`.
+load balancing, gang scheduling, and priority-based scheduling.
 
 
 .. code-block:: python

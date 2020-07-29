@@ -710,7 +710,7 @@ Device Minor:    0
 Blacklisted:     No
     """
     constraints_dict = resource_spec._constraints_from_gpu_info(info_string)
-    expected_dict = {"ResourceConstraint:V100": 1}
+    expected_dict = {"{}:V100".format(ray_constants.RESOURCE_CONSTRAINT_PREFIX): 1}
     assert constraints_dict == expected_dict
 
     info_string = """Model:           Tesla T4
@@ -725,7 +725,7 @@ Device Minor:    0
 Blacklisted:     No
     """
     constraints_dict = resource_spec._constraints_from_gpu_info(info_string)
-    expected_dict = {"ResourceConstraint:T4": 1}
+    expected_dict = {"{}:T4".format(ray_constants.RESOURCE_CONSTRAINT_PREFIX): 1}
     assert constraints_dict == expected_dict
 
     assert resource_spec._constraints_from_gpu_info(None) == {}

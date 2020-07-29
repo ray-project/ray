@@ -127,7 +127,7 @@ DASHBOARD_DIED_ERROR = "dashboard_died"
 RAYLET_CONNECTION_ERROR = "raylet_connection_error"
 
 # Used in gpu detection
-RESOURCE_CONSTRAINT_PREFIX = "ResourceConstraint:"
+RESOURCE_CONSTRAINT_PREFIX = "GPUTYPE:"
 
 # Abort autoscaling if more than this number of errors are encountered. This
 # is a safety feature to prevent e.g. runaway node launches.
