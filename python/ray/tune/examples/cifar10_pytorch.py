@@ -214,7 +214,9 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
             best_trained_model = nn.DataParallel(best_trained_model)
     best_trained_model.to(device)
 
-    model_state, optimizer_state = torch.load(best_trial.checkpoint.value)
+    checkpoint_path = os.path.join(best_trial.checkpoint.value, "checkpoint")
+
+    model_state, optimizer_state = torch.load(checkpoint_path)
     best_trained_model.load_state_dict(model_state)
 
     test_acc = test_accuracy(best_trained_model, device)
