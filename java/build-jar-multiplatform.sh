@@ -117,7 +117,7 @@ download_jars() {
 # prepare native binaries and libraries.
 prepare_native() {
   for os in 'darwin' 'linux'; do
-    cd "$JAR_BASE_DIR/multiplatform"
+    cd "$JAR_BASE_DIR/$os"
     jar xf "ray-runtime-$version.jar" "native/$os"
     local native_dir="$WORKSPACE_DIR/java/runtime/native_dependencies/native/$os"
     mkdir -p "$native_dir"
