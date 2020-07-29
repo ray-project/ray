@@ -40,7 +40,7 @@ index c61b4d9..b3e4ef2 100644
    while (true) {
      const absl::Time now = absl::Now();
 -    absl::SleepFor(next_harvest_time - now);
-+    absl::SleepFor(absl::Seconds(0.5));
++    absl::SleepFor(absl::Seconds(0.1));
      // Account for the possibility that the last harvest took longer than
      // harvest_interval_ and we are already past next_harvest_time.
 -    next_harvest_time = std::max(next_harvest_time, now) + harvest_interval_;
@@ -113,7 +113,7 @@ index 43ddbc7..37b4ae1 100644
    while (true) {
      // SleepFor() returns immediately when given a negative duration.
 -    absl::SleepFor(next_export_time - absl::Now());
-+    absl::SleepFor(absl::Seconds(0.5));
++    absl::SleepFor(absl::Seconds(0.1));
      // In case the last export took longer than the export interval, we
      // calculate the next time from now.
 -    next_export_time = GetNextExportTime();
