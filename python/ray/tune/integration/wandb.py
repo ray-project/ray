@@ -85,27 +85,27 @@ class WandbLogger(Logger):
 
     Weights and biases (https://www.wandb.com/) is a tool for experiment
     tracking, model optimization, and dataset versioning. This Ray Tune
-    `Logger` sends metrics to Wandb for automatic tracking and
+    ``Logger`` sends metrics to Wandb for automatic tracking and
     visualization.
 
-    Wandb configuration is done by passing a `wandb` key to
-    the `config` parameter of `tune.run()` (see example below).
+    Wandb configuration is done by passing a ``wandb`` key to
+    the ``config`` parameter of ``tune.run()`` (see example below).
 
-    The content of the `wandb` config entry is passed to `wandb.init()`
+    The content of the ``wandb`` config entry is passed to ``wandb.init()``
     as keyword arguments. The exception are the following settings, which
     are used to configure the WandbLogger itself:
 
-    Settings:
+    Args:
         api_key_file (str): Path to file containing the Wandb API KEY.
-        api_key (str): Wandb API Key. Alternative to setting `api_key_file`.
-        excludes (List[str]): List of metrics that should be excluded from
+        api_key (str): Wandb API Key. Alternative to setting ``api_key_file``.
+        excludes (list): List of metrics that should be excluded from
             the log.
-        log_config (Boolean): Boolean indicating if the `config` parameter of
-            the `results` dict should be logged. This makes sense if parameters
+        log_config (bool): Boolean indicating if the ``config`` parameter of
+            the ``results`` dict should be logged. This makes sense if parameters
             will change during training, e.g. with PopulationBasedTraining.
             Defaults to False.
 
-    Wandb's `group`, `run_id` and `run_name` are automatically selected by
+    Wandb's ``group``, ``run_id`` and ``run_name`` are automatically selected by
     Tune, but can be overwritten by filling out the respective configuration
     values.
 
@@ -113,6 +113,7 @@ class WandbLogger(Logger):
     https://docs.wandb.com/library/init
 
     Example:
+
     .. code-block:: python
 
         from ray.tune.logger import DEFAULT_LOGGERS
@@ -131,7 +132,7 @@ class WandbLogger(Logger):
                 }
             },
             loggers=DEFAULT_LOGGERS + (WandbLogger, ))
-        ```
+
     """
 
     # Do not log these result keys
@@ -216,10 +217,10 @@ class WandbTrainableMixin:
     Weights and biases (https://www.wandb.com/) is a tool for experiment
     tracking, model optimization, and dataset versioning. This Ray Tune
     Trainable mixin helps initializing the Wandb API for use with the
-    `Trainable` class.
+    ``Trainable`` class.
 
-    For basic usage, just extend the `WandbTrainableMixin` in addition
-    to `Trainable`:
+    For basic usage, just extend the ``WandbTrainableMixin`` in addition
+    to ``Trainable``:
 
     .. code-block:: python
 
@@ -227,20 +228,20 @@ class WandbTrainableMixin:
             pass
 
     See below for a full example. Please note that you must inherit
-    from `WandbTrainableMixin` _before_ inheriting from `Trainable`.
+    from ``WandbTrainableMixin`` *before* inheriting from ``Trainable``.
 
-    Wandb configuration is done by passing a `wandb` key to
-    the `config` parameter of `tune.run()` (see example below).
+    Wandb configuration is done by passing a ``wandb`` key to
+    the ``config`` parameter of ``tune.run()`` (see example below).
 
-    The content of the `wandb` config entry is passed to `wandb.init()`
+    The content of the ``wandb`` config entry is passed to ``wandb.init()``
     as keyword arguments. The exception are the following settings, which
-    are used to configure the `WandbTrainableMixin` itself:
+    are used to configure the ``WandbTrainableMixin`` itself:
 
-    Settings:
+    Args:
         api_key_file (str): Path to file containing the Wandb API KEY.
         api_key (str): Wandb API Key. Alternative to setting `api_key_file`.
 
-    Wandb's `group`, `run_id` and `run_name` are automatically selected by
+    Wandb's ``group``, ``run_id`` and ``run_name`` are automatically selected by
     Tune, but can be overwritten by filling out the respective configuration
     values.
 
@@ -248,6 +249,7 @@ class WandbTrainableMixin:
     https://docs.wandb.com/library/init
 
     Example:
+
     .. code-block:: python
 
         from ray.tune.integration.wandb import WandbTrainableMixin
@@ -271,7 +273,7 @@ class WandbTrainableMixin:
                     "api_key_file": "/path/to/file"
                 }
             })
-        ```
+
     """
     _wandb = wandb
 

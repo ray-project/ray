@@ -82,6 +82,11 @@ These pages will demonstrate the various features and configurations of Tune.
    :figure: /images/xgboost_logo.png
    :description: :doc:`A guide to tuning XGBoost parameters with Tune <tune-xgboost>`
 
+.. customgalleryitem::
+   :tooltip: Use Weights & Biases within Tune.
+   :figure: /images/wandb_logo.png
+   :description: :doc:`Track your experiment process with the Weights & Biases tools <tune-wandb>`
+
 
 .. raw:: html
 
@@ -97,6 +102,7 @@ These pages will demonstrate the various features and configurations of Tune.
    tune-pytorch-cifar.rst
    tune-pytorch-lightning.rst
    tune-xgboost.rst
+   tune-wandb.rst
 
 Colab Exercises
 ---------------
