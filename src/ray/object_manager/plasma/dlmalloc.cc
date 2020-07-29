@@ -22,9 +22,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifdef _WIN32
-#include <Windows.h>
-#else
+
+#ifndef _WIN32
 #include <sys/mman.h>
 #include <unistd.h>
 #endif
@@ -32,7 +31,6 @@
 #include <string>
 #include <vector>
 
-#include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/plasma.h"
 
 namespace plasma {
@@ -70,46 +68,55 @@ static void* pointer_advance(void* p, ptrdiff_t n) { return (unsigned char*)p + 
 
 static void* pointer_retreat(void* p, ptrdiff_t n) { return (unsigned char*)p - n; }
 
-// Create a buffer. This is creating a temporary file and then
-// immediately unlinking it so we do not leave traces in the system.
-int create_buffer(int64_t size) {
-  int fd;
-  std::string file_template = plasma_config->directory;
 #ifdef _WIN32
-  HANDLE h = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE,
+void create_and_mmap_buffer(int64_t size, void **pointer, HANDLE* handle) {
+  *handle = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE,
                                (DWORD)((uint64_t)size >> (CHAR_BIT * sizeof(DWORD))),
                                (DWORD)(uint64_t)size, NULL);
-  if (h) {
-    fd = fh_open(reinterpret_cast<intptr_t>(h), -1);
-  } else {
-    fd = -1;
+  RAY_CHECK(*handle != NULL) << "Failed to create buffer during mmap";
+  *pointer = MapViewOfFile(*handle, FILE_MAP_ALL_ACCESS, 0, 0, (size_t)size);
+  if (*pointer == NULL) {
+    RAY_LOG(ERROR) << "MapViewOfFile failed with error: " << GetLastError();
   }
+}
 #else
+void create_and_mmap_buffer(int64_t size, void **pointer, int* fd) {
+  // Create a buffer. This is creating a temporary file and then
+  // immediately unlinking it so we do not leave traces in the system.
+  std::string file_template = plasma_config->directory;
   file_template += "/plasmaXXXXXX";
   std::vector<char> file_name(file_template.begin(), file_template.end());
   file_name.push_back('\0');
-  fd = mkstemp(&file_name[0]);
-  if (fd < 0) {
+  *fd = mkstemp(&file_name[0]);
+  if (*fd < 0) {
     RAY_LOG(FATAL) << "create_buffer failed to open file " << &file_name[0];
-    return -1;
   }
   // Immediately unlink the file so we do not leave traces in the system.
   if (unlink(&file_name[0]) != 0) {
     RAY_LOG(FATAL) << "failed to unlink file " << &file_name[0];
-    return -1;
   }
   if (!plasma_config->hugepages_enabled) {
     // Increase the size of the file to the desired size. This seems not to be
     // needed for files that are backed by the huge page fs, see also
     // http://www.mail-archive.com/kvm-devel@lists.sourceforge.net/msg14737.html
-    if (ftruncate(fd, (off_t)size) != 0) {
+    if (ftruncate(*fd, (off_t)size) != 0) {
       RAY_LOG(FATAL) << "failed to ftruncate file " << &file_name[0];
-      return -1;
     }
   }
-#endif
-  return fd;
+
+  // MAP_POPULATE can be used to pre-populate the page tables for this memory region
+  // which avoids work when accessing the pages later. However it causes long pauses
+  // when mmapping the files. Only supported on Linux.
+  *pointer = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, *fd, 0);
+  if (*pointer == MAP_FAILED) {
+    RAY_LOG(ERROR) << "mmap failed with error: " << std::strerror(errno);
+    if (errno == ENOMEM && plasma_config->hugepages_enabled) {
+      RAY_LOG(ERROR)
+          << "  (this probably means you have to increase /proc/sys/vm/nr_hugepages)";
+    }
+  }
 }
+#endif
 
 void* fake_mmap(size_t size) {
   // Add kMmapRegionsGap so that the returned pointer is deliberately not
@@ -117,29 +124,9 @@ void* fake_mmap(size_t size) {
   // fake_mmap are never contiguous.
   size += kMmapRegionsGap;
 
-  int fd = create_buffer(size);
-  RAY_CHECK(fd >= 0) << "Failed to create buffer during mmap";
-  // MAP_POPULATE can be used to pre-populate the page tables for this memory region
-  // which avoids work when accessing the pages later. However it causes long pauses
-  // when mmapping the files. Only supported on Linux.
   void* pointer;
-#ifdef _WIN32
-  pointer = MapViewOfFile(reinterpret_cast<HANDLE>(fh_get(fd)), FILE_MAP_ALL_ACCESS, 0, 0, size);
-  if (pointer == NULL) {
-    RAY_LOG(ERROR) << "MapViewOfFile failed with error: " << GetLastError();
-    return reinterpret_cast<void*>(-1);
-  }
-#else
-  pointer = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-  if (pointer == MAP_FAILED) {
-    RAY_LOG(ERROR) << "mmap failed with error: " << std::strerror(errno);
-    if (errno == ENOMEM && plasma_config->hugepages_enabled) {
-      RAY_LOG(ERROR)
-          << "  (this probably means you have to increase /proc/sys/vm/nr_hugepages)";
-    }
-    return pointer;
-  }
-#endif
+  MEMFD_TYPE fd;
+  create_and_mmap_buffer(size, &pointer, &fd);
 
   // Increase dlmalloc's allocation granularity directly.
   mparams.granularity *= GRANULARITY_MULTIPLIER;
@@ -170,12 +157,15 @@ int fake_munmap(void* addr, int64_t size) {
   int r;
 #ifdef _WIN32
   r = UnmapViewOfFile(addr) ? 0 : -1;
+  if (r == 0) {
+    CloseHandle(entry->second.fd);
+  }
 #else
   r = munmap(addr, size);
-#endif
   if (r == 0) {
     close(entry->second.fd);
   }
+#endif
 
   mmap_records.erase(entry);
   return r;

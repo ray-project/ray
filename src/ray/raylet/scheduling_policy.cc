@@ -155,9 +155,11 @@ bool SchedulingPolicy::ScheduleBundle(
   ResourceSet available_node_resources =
       ResourceSet(node_resources.GetAvailableResources());
   available_node_resources.SubtractResources(node_resources.GetLoadResources());
-  RAY_LOG(DEBUG) << "client_id " << node_client_id
-                 << " avail: " << node_resources.GetAvailableResources().ToString()
-                 << " load: " << node_resources.GetLoadResources().ToString();
+  RAY_LOG(DEBUG) << "Scheduling bundle, client id = " << node_client_id
+                 << ", available resources = "
+                 << node_resources.GetAvailableResources().ToString()
+                 << ", resources load = " << node_resources.GetLoadResources().ToString()
+                 << ", the resource needed = " << resource_demand.ToString();
   /// If the resource_demand is subset of the whole available_node_resources, this bundle
   /// can be set in this node, return true.
   return resource_demand.IsSubset(available_node_resources);

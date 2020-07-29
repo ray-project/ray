@@ -18,7 +18,7 @@ cdef class TagKey:
     def __init__(self, name):
         self.name = name.encode("ascii")
         CTagKey.Register(self.name)
-    
+
     def name(self):
         return self.name
 
@@ -34,8 +34,9 @@ cdef class Metric:
 
     def __init__(self, tag_keys):
         for tag_key in tag_keys:
-            self.c_tag_keys.push_back(CTagKey.Register(tag_key.encode("ascii")))
-    
+            self.c_tag_keys.push_back(
+                CTagKey.Register(tag_key.encode("ascii")))
+
     def record(self, value, tags=None):
         """Record a measurement of metric.
 
@@ -49,7 +50,7 @@ cdef class Metric:
         # Default tags will be exported if it's empty map.
         if tags:
             for tag_k, tag_v in tags.items():
-                c_tags[tag_v.encode("ascii")] = tag_v.encode("ascii")
+                c_tags[tag_k.encode("ascii")] = tag_v.encode("ascii")
         c_value = value
         with nogil:
             self.metric.get().Record(c_value, c_tags)

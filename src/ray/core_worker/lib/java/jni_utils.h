@@ -15,12 +15,12 @@
 #pragma once
 
 #include <jni.h>
+#include <algorithm>
 
 #include "ray/common/buffer.h"
 #include "ray/common/function_descriptor.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
-#include "ray/common/status.h"
 #include "ray/core_worker/core_worker.h"
 
 /// Boolean class
@@ -127,6 +127,10 @@ extern jfieldID java_actor_creation_options_max_restarts;
 extern jfieldID java_actor_creation_options_jvm_options;
 /// maxConcurrency field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_max_concurrency;
+/// group field of ActorCreationOptions class
+extern jfieldID java_actor_creation_options_group;
+/// bundleIndex field of ActorCreationOptions class
+extern jfieldID java_actor_creation_options_bundle_index;
 
 /// GcsClientOptions class
 extern jclass java_gcs_client_options_class;
@@ -148,8 +152,15 @@ extern jfieldID java_native_ray_object_metadata;
 
 /// TaskExecutor class
 extern jclass java_task_executor_class;
+/// checkByteBufferArguments method of TaskExecutor class
+extern jmethodID java_task_executor_parse_function_arguments;
 /// execute method of TaskExecutor class
 extern jmethodID java_task_executor_execute;
+
+/// PlacementGroup class
+extern jclass java_placement_group_class;
+/// id field of PlacementGroup class
+extern jfieldID java_placement_group_id;
 
 #define CURRENT_JNI_VERSION JNI_VERSION_1_8
 
@@ -280,6 +291,28 @@ inline void JavaStringListToNativeStringVector(JNIEnv *env, jobject java_list,
       env, java_list, native_vector, [](JNIEnv *env, jobject jstr) {
         return JavaStringToNativeString(env, static_cast<jstring>(jstr));
       });
+}
+
+/// Convert a Java long array to C++ std::vector<long>.
+inline void JavaLongArrayToNativeLongVector(JNIEnv *env, jlongArray long_array,
+                                            std::vector<long> *native_vector) {
+  jlong *long_array_ptr = env->GetLongArrayElements(long_array, nullptr);
+  jsize vec_size = env->GetArrayLength(long_array);
+  for (int i = 0; i < vec_size; ++i) {
+    native_vector->push_back(static_cast<long>(long_array_ptr[i]));
+  }
+  env->ReleaseLongArrayElements(long_array, long_array_ptr, 0);
+}
+
+/// Convert a Java double array to C++ std::vector<double>.
+inline void JavaDoubleArrayToNativeDoubleVector(JNIEnv *env, jdoubleArray double_array,
+                                                std::vector<double> *native_vector) {
+  jdouble *double_array_ptr = env->GetDoubleArrayElements(double_array, nullptr);
+  jsize vec_size = env->GetArrayLength(double_array);
+  for (int i = 0; i < vec_size; ++i) {
+    native_vector->push_back(static_cast<double>(double_array_ptr[i]));
+  }
+  env->ReleaseDoubleArrayElements(double_array, double_array_ptr, 0);
 }
 
 /// Convert a C++ std::vector to a Java List.
@@ -434,7 +467,10 @@ inline jobject NativeRayFunctionDescriptorToJavaStringList(
 
 // Return an actor fullname with job id prepended if this tis a global actor.
 inline std::string GetActorFullName(bool global, std::string name) {
+  if (name.empty()) {
+    return "";
+  }
   return global ? name
-                : ::ray::CoreWorkerProcess::GetCoreWorker().GetCurrentJobId().Hex() + "-" +
-                      name;
+                : ::ray::CoreWorkerProcess::GetCoreWorker().GetCurrentJobId().Hex() +
+                      "-" + name;
 }

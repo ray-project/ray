@@ -5,9 +5,14 @@ name: long-running-distributed-tests
 cluster:
   config: ray-project/cluster.yaml
   params:
-    - name: ray-wheel
-      help: "URL to the ray wheel to test (defaults to latest)"
-      default: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
+    - name: ray_version # Ray version string.
+      default: "0.8.2"
+
+    - name: commit # Ray commit SHA string.
+      default: "f5a1307a608fe5fdbdb04616b22c91f029af329a"
+
+    - name: ray_branch
+      default: "releases/0.8.2"
 
 commands:
   - name: test_workload
@@ -21,7 +26,7 @@ commands:
           [
             "pytorch_pbt_failure"
           ]
-  
+
 # Pathnames for files and directories that should be saved
 # in a snapshot but that should not be synced with a# session. Pathnames can be relative to the project
 # directory or absolute. Generally, this should be files

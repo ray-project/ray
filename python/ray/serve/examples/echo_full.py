@@ -1,30 +1,13 @@
-"""
-Full example of ray.serve module
-"""
-
-import json
 import time
-
-from pygments import formatters, highlight, lexers
 
 import requests
 
 import ray
 import ray.serve as serve
-
-
-def pformat_color_json(d):
-    """Use pygments to pretty format and colorize dictionary"""
-    formatted_json = json.dumps(d, sort_keys=True, indent=4)
-
-    colorful_json = highlight(formatted_json, lexers.JsonLexer(),
-                              formatters.TerminalFormatter())
-
-    return colorful_json
-
+from ray.serve.metric import PrometheusExporter
 
 # initialize ray serve system.
-serve.init()
+serve.init(metric_exporter=PrometheusExporter)
 
 
 # a backend can be a function or class.
@@ -70,4 +53,4 @@ serve.update_backend_config("echo:v1", {"num_replicas": 2})
 serve.update_backend_config("echo:v2", {"num_replicas": 2})
 
 # As well as retrieving relevant system metrics
-print(pformat_color_json(serve.stat()))
+print(serve.stat().decode())
