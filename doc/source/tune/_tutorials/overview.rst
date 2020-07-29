@@ -3,8 +3,6 @@ Tutorials
 
 .. tip:: We'd love to hear your feedback on using Tune - fill out a `short survey <https://forms.gle/PTRvGLbKRdUfuzQo9>`_!
 
-.. tip:: We'd love to hear your feedback on using Tune - fill out a `short survey <https://forms.gle/PTRvGLbKRdUfuzQo9>`_!
-
 In this section, you can find material on how to use Tune and its various features. If any of the materials is out of date or broken, or if you'd like to add an example to this page, feel free to raise an issue on our Github repository.
 
 Take a look at any of the below tutorials to get started with Tune.
@@ -14,23 +12,54 @@ Take a look at any of the below tutorials to get started with Tune.
     <div class="sphx-glr-bigcontainer">
 
 .. customgalleryitem::
-   :tooltip: Tune concepts in 60 seconds.
+   :tooltip: Key concepts in 60 seconds.
    :figure: /images/tune-workflow.png
-   :description: :doc:`Tune concepts in 60 seconds <tune-60-seconds>`
+   :description: :doc:`Key concepts in 60 seconds </tune/key-concepts>`
 
 .. customgalleryitem::
    :tooltip: A simple Tune walkthrough.
    :figure: /images/tune.png
    :description: :doc:`A walkthrough to setup your first Tune experiment <tune-tutorial>`
 
+.. customgalleryitem::
+   :tooltip: A simple guide to Population-based Training
+   :figure: /images/tune-pbt-small.png
+   :description: :doc:`A simple guide to Population-based Training <tune-advanced-tutorial>`
+
+.. customgalleryitem::
+   :tooltip: A guide to distributed hyperparameter tuning
+   :figure: /images/tune.png
+   :description: :doc:`A guide to distributed hyperparameter tuning <tune-distributed>`
+
+.. customgalleryitem::
+   :tooltip: Tune's Scikit-Learn Adapters
+   :figure: /images/tune-sklearn.png
+   :description: :doc:`Tune's Scikit-Learn Adapters <tune-sklearn>`
+
+.. customgalleryitem::
+   :tooltip: How to use Tune with PyTorch
+   :figure: /images/pytorch_logo.png
+   :description: :doc:`How to use Tune with PyTorch <tune-pytorch-cifar>`
+
+.. customgalleryitem::
+   :tooltip: Tuning PyTorch Lightning modules
+   :figure: /images/pytorch_lightning_small.png
+   :description: :doc:`Tuning PyTorch Lightning modules <tune-pytorch-lightning>`
+
+.. customgalleryitem::
+   :tooltip: Tuning XGBoost parameters.
+   :figure: /images/xgboost_logo.png
+   :description: :doc:`A guide to tuning XGBoost parameters with Tune <tune-xgboost>`
+
+
 .. raw:: html
 
     </div>
 
+
 .. toctree::
    :hidden:
 
-   tune-60-seconds.rst
    tune-tutorial.rst
    tune-advanced-tutorial.rst
    tune-distributed.rst

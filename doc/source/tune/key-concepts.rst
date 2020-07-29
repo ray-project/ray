@@ -1,3 +1,5 @@
+.. _tune-60-seconds:
+
 ============
 Key Concepts
 ============
@@ -192,7 +194,7 @@ Now that you have a working understanding of Tune, check out:
  * :doc:`/tune/user-guide`: A comprehensive overview of Tune's features.
  * :doc:`/tune/examples/index`: Examples and templates for using Tune with your preferred machine learning library.
  * :ref:`tune-tutorial`: A simple tutorial that walks you through the process of setting up a Tune experiment.
- 
+
 
 Further Questions or Issues?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
