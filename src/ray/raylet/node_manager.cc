@@ -1819,6 +1819,7 @@ void NodeManager::HandleCancelResourceReserve(
   auto bundle_spec = BundleSpecification(request.bundle_spec());
   RAY_LOG(DEBUG) << "bundle return resource request " << bundle_spec.BundleId().first
                  << bundle_spec.BundleId().second;
+  auto bundle_id_str = bundle_spec.BundleIdAsString();
   auto resource_set = bundle_spec.GetRequiredResources();
   for (auto resource : resource_set.GetResourceMap()) {
     std::string resource_name = FormatPlacementGroupResource(resource.first, bundle_spec);
