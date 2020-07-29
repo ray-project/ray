@@ -12,6 +12,7 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+@Test(groups = {"cluster"})
 public class GlobalGcTest extends BaseTest {
 
   @BeforeClass
@@ -55,8 +56,6 @@ public class GlobalGcTest extends BaseTest {
   }
 
   private void testGlobalGcWhenFull(boolean withPut) {
-    TestUtils.skipTestUnderSingleProcess();
-
     // Local driver.
     WeakReference<LargeObjectWithCyclicRef> localRef = new WeakReference<>(
         new LargeObjectWithCyclicRef());
@@ -87,12 +86,10 @@ public class GlobalGcTest extends BaseTest {
         a -> a.task(GarbageHolder::hasGarbage).remote().get()), 10 * 1000);
   }
 
-  @Test
   public void testGlobalGcWhenFullWithPut() {
     testGlobalGcWhenFull(true);
   }
 
-  @Test
   public void testGlobalGcWhenFullWithReturn() {
     testGlobalGcWhenFull(false);
   }

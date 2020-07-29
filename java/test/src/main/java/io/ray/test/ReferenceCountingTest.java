@@ -24,7 +24,7 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-@Test
+@Test(groups = {"cluster"})
 public class ReferenceCountingTest extends BaseTest {
   @BeforeClass
   public void setUp() {
@@ -34,11 +34,6 @@ public class ReferenceCountingTest extends BaseTest {
   @AfterClass
   public void tearDown() {
     System.clearProperty("ray.object-store.size");
-  }
-
-  @BeforeMethod
-  public void setUpCase() {
-    TestUtils.skipTestUnderSingleProcess();
   }
 
   /**
