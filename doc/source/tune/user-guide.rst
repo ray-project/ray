@@ -1,6 +1,6 @@
-==========
-User Guide
-==========
+=============================
+User Guide & Configuring Tune
+=============================
 
 These pages will demonstrate the various features and configurations of Tune.
 
@@ -346,7 +346,7 @@ If you are running Ray on a remote multi-user cluster where you do not have sudo
 
     $ export TMPDIR=/tmp/$USER; mkdir -p $TMPDIR; tensorboard --logdir=~/ray_results
 
-.. image:: ../../ray-tune-tensorboard.png
+.. image:: ../ray-tune-tensorboard.png
 
 If using TF2, Tune also automatically generates TensorBoard HParams output, as shown below:
 
@@ -360,7 +360,7 @@ If using TF2, Tune also automatically generates TensorBoard HParams output, as s
         }
     )
 
-.. image:: ../../images/tune-hparams.png
+.. image:: ../images/tune-hparams.png
 
 Console Output
 --------------

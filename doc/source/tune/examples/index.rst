@@ -1,6 +1,3 @@
-
-.. _tune-general-examples:
-
 ========
 Examples
 ========
