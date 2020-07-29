@@ -27,7 +27,7 @@ def test_initial_workers(shutdown_only):
                                     raylet["NodeManagerPort"])
     channel = grpc.insecure_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-    assert wait_for_condition(lambda: len([
+    wait_for_condition(lambda: len([
         worker for worker in stub.GetNodeStats(
             node_manager_pb2.GetNodeStatsRequest()).workers_stats
         if not worker.is_driver
