@@ -92,7 +92,8 @@ class WandbLogger(Logger):
     https://docs.wandb.com/library/init
 
     Example:
-        ```
+    .. code-block:: python
+
         from ray.tune.logger import WandbLogger, DEFAULT_LOGGERS
         tune.run(
             train_fn,
