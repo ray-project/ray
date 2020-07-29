@@ -109,7 +109,10 @@ def pad_batch_to_sequences_of_same_size(batch,
 
 
 @DeveloperAPI
-def add_time_dimension(padded_inputs, seq_lens, framework="tf"):
+def add_time_dimension(padded_inputs,
+                       seq_lens,
+                       framework="tf",
+                       time_major=False):
     """Adds a time dimension to padded inputs.
 
     Arguments:
@@ -127,6 +130,7 @@ def add_time_dimension(padded_inputs, seq_lens, framework="tf"):
     # input batch must be padded to the max seq length given here. That is,
     # batch_size == len(seq_lens) * max(seq_lens)
     if framework == "tf":
+        assert time_major is False, "time-major not supported yet for tf!"
         padded_batch_size = tf.shape(padded_inputs)[0]
         max_seq_len = padded_batch_size // tf.shape(seq_lens)[0]
 
@@ -142,7 +146,10 @@ def add_time_dimension(padded_inputs, seq_lens, framework="tf"):
 
         # Dynamically reshape the padded batch to introduce a time dimension.
         new_batch_size = padded_batch_size // max_seq_len
-        new_shape = (new_batch_size, max_seq_len) + padded_inputs.shape[1:]
+        if time_major:
+            new_shape = (max_seq_len, new_batch_size) + padded_inputs.shape[1:]
+        else:
+            new_shape = (new_batch_size, max_seq_len) + padded_inputs.shape[1:]
         return torch.reshape(padded_inputs, new_shape)
 
 
