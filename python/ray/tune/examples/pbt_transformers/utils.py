@@ -1,30 +1,27 @@
 """Utilities to load and cache data."""
 
 import os
-from typing import Callable, Dict, Optional
-from sklearn.model_selection import train_test_split
-from filelock import FileLock
+from typing import Callable, Dict
 import numpy as np
-import torch
-from torch.utils.data import TensorDataset
-from transformers import AutoModelForSequenceClassification, AutoTokenizer, Trainer, EvalPrediction
-from transformers import glue_convert_examples_to_features as convert_examples_to_features
-from transformers.data.processors import glue_processors
-from transformers import glue_compute_metrics, glue_output_modes, glue_tasks_num_labels
-
+from transformers import EvalPrediction
+from transformers import glue_compute_metrics, glue_output_modes
 
 """From transformers/examples/text-classification/run_glue.py"""
-def build_compute_metrics_fn(task_name: str) -> Callable[[EvalPrediction], Dict]:
-        output_mode = glue_output_modes[task_name]
-        def compute_metrics_fn(p: EvalPrediction):
-            if output_mode == "classification":
-                preds = np.argmax(p.predictions, axis=1)
-            elif output_mode == "regression":
-                preds = np.squeeze(p.predictions)
-            metrics = glue_compute_metrics(task_name, preds, p.label_ids)
-            return metrics
 
-        return compute_metrics_fn
+
+def build_compute_metrics_fn(task_name: str) -> Callable[[EvalPrediction], Dict]:
+    output_mode = glue_output_modes[task_name]
+
+    def compute_metrics_fn(p: EvalPrediction):
+        if output_mode == "classification":
+            preds = np.argmax(p.predictions, axis=1)
+        elif output_mode == "regression":
+            preds = np.squeeze(p.predictions)
+        metrics = glue_compute_metrics(task_name, preds, p.label_ids)
+        return metrics
+
+    return compute_metrics_fn
+
 
 def download_data(model_name, task_name, data_dir="./data"):
     # Download RTE training data
@@ -41,4 +38,3 @@ def download_data(model_name, task_name, data_dir="./data"):
         with zipfile.ZipFile(data_file) as zip_ref:
             zip_ref.extractall(data_dir)
         print("Downloaded data for task {} to {}".format(task_name, data_dir))
-    

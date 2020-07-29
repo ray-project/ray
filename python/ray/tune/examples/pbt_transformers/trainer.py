@@ -2,18 +2,14 @@ from typing import Optional
 
 import logging
 import os
-from packaging import version
 import torch
 from torch.utils.data import Dataset
-from torch.utils.data.dataloader import DataLoader
-from torch.utils.data.distributed import DistributedSampler
 import transformers
 from ray import tune
-from tqdm.auto import tqdm, trange
 from typing import Dict, Optional, Tuple
 
-from transformers.file_utils import is_apex_available, is_torch_tpu_available
-from transformers.trainer_utils import TrainOutput, PREFIX_CHECKPOINT_DIR
+from transformers.file_utils import is_torch_tpu_available
+from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR
 import wandb
 
 logger = logging.getLogger(__name__)
@@ -59,11 +55,11 @@ class TuneTransformerTrainer(transformers.Trainer):
     def _setup_wandb(self):
         if self.is_world_master() and self.wandb_args is not None:
             wandb.init(project=self.wandb_args["project_name"], name=self.wandb_args["run_name"],
-                       id=self.wandb_args["run_name"], config=vars(self.args))
-            # wandb.init(project=os.getenv("WANDB_PROJECT", "huggingface"), config=vars(self.args))
-#             # keep track of model topology and gradients, unsupported on TPU
-#             if not is_torch_tpu_available() and self.wandb_args["watch"] != "false":
-#                 wandb.watch(
-#                     self.model, log=self.wandb_args["watch"], log_freq=max(100, self.args.logging_steps)
-#                 )
+                       id=self.wandb_args["run_name"], config=vars(self.args), reinit=True, allow_val_change=True,
+                       resume=self.wandb_args["run_name"])
+            # keep track of model topology and gradients, unsupported on TPU
+            if not is_torch_tpu_available() and self.wandb_args["watch"] != "false":
+                wandb.watch(
+                    self.model, log=self.wandb_args["watch"], log_freq=max(100, self.args.logging_steps)
+                )
 

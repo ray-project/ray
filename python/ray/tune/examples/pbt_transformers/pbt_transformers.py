@@ -7,18 +7,13 @@ Please note that this example requires Python >= 3.7 to run.
 
 # __import_begin__
 import os
-from dataclasses import dataclass, field
-from functools import partial
-from typing import Callable, Dict, Optional
-
-import numpy as np
 import ray
 from ray.tune import CLIReporter
 from ray.tune.schedulers import PopulationBasedTraining
 
 from ray import tune
 import trainer
-from utils import build_compute_metrics_fn, download_data
+from ray.tune.examples.pbt_transformers.utils import build_compute_metrics_fn, download_data
 
 from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer, EvalPrediction, GlueDataset
 from transformers import GlueDataTrainingArguments as DataTrainingArguments
@@ -88,12 +83,12 @@ def train_transformer(config, checkpoint=None):
     )
 
     # Arguments for W&B.
-    name = f"{tune.get_trial_name()}-{os.path.basename(tune.get_trial_dir()[:-1])}"
+    # name = f"{tune.get_trial_name()}-{os.path.basename(tune.get_trial_dir()[:-1])}"
+    name = tune.get_trial_name()
     wandb_args = {
         "project_name": "transformers_pbt",
         "watch": "false",  # Either set to gradient, false, or all
         "run_name": name,
-        "run_id": name
     }
 
     tune_trainer = get_trainer(config["model_name"], train_dataset, eval_dataset, config["task_name"], training_args,
@@ -149,6 +144,7 @@ def tune_transformer(num_samples=8, gpus_per_trial=0, smoke_test=False):
         hyperparam_mutations={
             "weight_decay": lambda: tune.uniform(0.0, 0.3).func(None),
             "learning_rate": lambda: tune.uniform(1e-5, 5e-5).func(None),
+            "per_gpu_train_batch_size": [16, 32, 64],
         })
 
     reporter = CLIReporter(
@@ -165,7 +161,8 @@ def tune_transformer(num_samples=8, gpus_per_trial=0, smoke_test=False):
         config=config,
         num_samples=num_samples,
         scheduler=scheduler,
-        # keep_checkpoints_num=3,
+        keep_checkpoints_num=3,
+        checkpoint_score_attr="training_iteration",
         progress_reporter=reporter,
         local_dir="~/ray_results/5",
         name="tune_transformer_pbt")
@@ -210,7 +207,7 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
-        tune_transformer(num_samples=1, gpus_per_trial=1, smoke_test=True)
+        tune_transformer(num_samples=1, gpus_per_trial=0, smoke_test=True)
     else:
         # You can change the number of GPUs here:
         tune_transformer(num_samples=8, gpus_per_trial=1)
