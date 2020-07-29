@@ -4,16 +4,37 @@ from multiprocessing import Process, Queue
 from numbers import Number
 
 from ray import logger
+from ray.tune import Trainable
 from ray.tune.logger import Logger
 
 try:
     import wandb
 except ImportError:
-    logger.error("pip install 'wandb' to use WandBLogger.")
+    logger.error("pip install 'wandb' to use WandbLogger/WandbTrainableMixin.")
     raise
 
 WANDB_ENV_VAR = "WANDB_API_KEY"
 _WANDB_QUEUE_END = (None, )
+
+
+def _set_api_key(wandb_config):
+    """Set WandB API key from `wandb_config`. Will pop the
+    `api_key_file` and `api_key` keys from `wandb_config` parameter"""
+    api_key_file = os.path.expanduser(wandb_config.pop("api_key_file", ""))
+    api_key = wandb_config.pop("api_key", None)
+
+    if api_key_file:
+        if api_key:
+            raise ValueError("Both WandB `api_key_file` and `api_key` set.")
+        with open(api_key_file, "rt") as fp:
+            api_key = fp.readline().strip()
+    if api_key:
+        os.environ[WANDB_ENV_VAR] = api_key
+    elif not os.environ.get(WANDB_ENV_VAR):
+        raise ValueError(
+            "No WandB API key found. Either set the {} environment "
+            "variable or pass `api_key` or `api_key_file` in the config".
+            format(WANDB_ENV_VAR))
 
 
 class _WandbLoggingProcess(Process):
@@ -94,7 +115,8 @@ class WandbLogger(Logger):
     Example:
     .. code-block:: python
 
-        from ray.tune.logger import WandbLogger, DEFAULT_LOGGERS
+        from ray.tune.logger import DEFAULT_LOGGERS
+        from ray.tune.integration.wandb import WandbLogger
         tune.run(
             train_fn,
             config={
@@ -127,30 +149,14 @@ class WandbLogger(Logger):
         config = self.config.copy()
 
         try:
-            wandb_config = self.config.pop("wandb").copy()
+            wandb_config = config.pop("wandb").copy()
         except KeyError:
             raise ValueError(
                 "Wandb logger specified but no configuration has been passed. "
                 "Make sure to include a `wandb` key in your `config` dict "
                 "containing at least a `project` specification.")
 
-        # Login using API key.
-        api_key_file = wandb_config.pop("api_key_file", None)
-        api_key = wandb_config.pop("api_key", None)
-
-        if api_key_file:
-            if api_key:
-                raise ValueError(
-                    "Both WandB `api_key_file` and `api_key` set.")
-            with open(api_key_file, "rt") as fp:
-                api_key = fp.readline()
-        if api_key:
-            os.environ[WANDB_ENV_VAR] = api_key
-        elif not os.environ.get(WANDB_ENV_VAR):
-            raise ValueError(
-                "No WandB API key found. Either set the {} environment "
-                "variable or pass `api_key` or `api_key_file` in the config".
-                format(WANDB_ENV_VAR))
+        _set_api_key(wandb_config)
 
         exclude_results = self._exclude_results.copy()
 
@@ -202,3 +208,123 @@ class WandbLogger(Logger):
     def close(self):
         self._queue.put(_WANDB_QUEUE_END)
         self._wandb.join(timeout=10)
+
+
+class WandbTrainableMixin:
+    """WandbTrainableMixin
+
+    Weights and biases (https://www.wandb.com/) is a tool for experiment
+    tracking, model optimization, and dataset versioning. This Ray Tune
+    Trainable mixin helps initializing the Wandb API for use with the
+    `Trainable` class.
+
+    For basic usage, just extend the `WandbTrainableMixin` in addition
+    to `Trainable`:
+
+    .. code-block:: python
+
+        class WandbTrainable(WandbTrainableMixin, Trainable):
+            pass
+
+    See below for a full example. Please note that you must inherit
+    from `WandbTrainableMixin` _before_ inheriting from `Trainable`.
+
+    Wandb configuration is done by passing a `wandb` key to
+    the `config` parameter of `tune.run()` (see example below).
+
+    The content of the `wandb` config entry is passed to `wandb.init()`
+    as keyword arguments. The exception are the following settings, which
+    are used to configure the `WandbTrainableMixin` itself:
+
+    Settings:
+        api_key_file (str): Path to file containing the Wandb API KEY.
+        api_key (str): Wandb API Key. Alternative to setting `api_key_file`.
+
+    Wandb's `group`, `run_id` and `run_name` are automatically selected by
+    Tune, but can be overwritten by filling out the respective configuration
+    values.
+
+    Please see here for all other valid configuration settings:
+    https://docs.wandb.com/library/init
+
+    Example:
+    .. code-block:: python
+
+        from ray.tune.integration.wandb import WandbTrainableMixin
+
+        class WandbTrainable(WandbTrainableMixin, Trainable):
+            def step(self):
+                for i in range(30):
+                    loss = self.config["a"] + self.config["b"]
+                    wandb.log({"loss": loss})
+                return {"loss": loss, "done": True}
+
+        tune.run(
+            WandbTrainable,
+            config={
+                # define search space here
+                "a": tune.choice([1, 2, 3]),
+                "b": tune.choice([4, 5, 6]),
+                # wandb configuration
+                "wandb": {
+                    "project": "Optimization_Project",
+                    "api_key_file": "/path/to/file"
+                }
+            })
+        ```
+    """
+    _wandb = wandb
+
+    def __init__(self, config, *args, **kwargs):
+        if not isinstance(self, Trainable):
+            raise ValueError(
+                "The `WandbTrainalbeMixin` can only be used as a mixin "
+                "for `tune.Trainable` classes. Please make sure your "
+                "class inherits from both. For example: "
+                "`class YourTrainable(WandbTrainableMixin)`.")
+
+        super().__init__(config, *args, **kwargs)
+
+        config = config.copy()
+
+        try:
+            wandb_config = config.pop("wandb").copy()
+        except KeyError:
+            raise ValueError(
+                "Wandb mixin specified but no configuration has been passed. "
+                "Make sure to include a `wandb` key in your `config` dict "
+                "containing at least a `project` specification.")
+
+        _set_api_key(wandb_config)
+
+        # Fill trial ID and name
+        trial_id = self.trial_id
+        trial_name = self.trial_name
+
+        # Project name for Wandb
+        try:
+            wandb_project = wandb_config.pop("project")
+        except KeyError:
+            raise ValueError(
+                "You need to specify a `project` in your wandb `config` dict.")
+
+        # Grouping
+        wandb_group = wandb_config.pop("group", type(self).__name__)
+
+        wandb_init_kwargs = dict(
+            id=trial_id,
+            name=trial_name,
+            resume=True,
+            reinit=True,
+            allow_val_change=True,
+            group=wandb_group,
+            project=wandb_project,
+            config=config)
+        wandb_init_kwargs.update(wandb_config)
+
+        self.wandb = self._wandb.init(**wandb_init_kwargs)
+
+    def stop(self):
+        self._wandb.join()
+        if hasattr(super(), "stop"):
+            super().stop()

@@ -4,8 +4,11 @@ from collections import namedtuple
 from multiprocessing import Queue
 import unittest
 
+from ray.tune import Trainable
 from ray.tune.integration.wandb import _WandbLoggingProcess, \
-    _WANDB_QUEUE_END, WandbLogger, WANDB_ENV_VAR
+    _WANDB_QUEUE_END, WandbLogger, WANDB_ENV_VAR, WandbTrainableMixin
+from ray.tune.result import TRIAL_INFO
+from ray.tune.trial import TrialInfo
 
 Trial = namedtuple("MockTrial",
                    ["config", "trial_id", "trial_name", "trainable_name"])
@@ -32,6 +35,17 @@ class _MockWandbLoggingProcess(_WandbLoggingProcess):
 
 class WandbTestLogger(WandbLogger):
     _logger_process_cls = _MockWandbLoggingProcess
+
+
+class _MockWandbAPI(object):
+    def init(self, *args, **kwargs):
+        self.args = args
+        self.kwargs = kwargs
+        return self
+
+
+class WandbTestTrainable(WandbTrainableMixin, Trainable):
+    _wandb = _MockWandbAPI()
 
 
 class WandbIntegrationTest(unittest.TestCase):
@@ -149,6 +163,64 @@ class WandbIntegrationTest(unittest.TestCase):
         self.assertNotIn("config", logged)
 
         logger.close()
+
+    def testWandbMixinConfig(self):
+        config = {"par1": 4, "par2": 9.12345678}
+        trial = Trial(config, 0, "trial_0", "trainable")
+        trial_info = TrialInfo(trial)
+
+        config[TRIAL_INFO] = trial_info
+
+        if WANDB_ENV_VAR in os.environ:
+            del os.environ[WANDB_ENV_VAR]
+
+        # Needs at least a project
+        with self.assertRaises(ValueError):
+            trainable = WandbTestTrainable(config)
+
+        # No API key
+        config["wandb"] = {"project": "test_project"}
+        with self.assertRaises(ValueError):
+            trainable = WandbTestTrainable(config)
+
+        # API Key in config
+        config["wandb"] = {"project": "test_project", "api_key": "1234"}
+        trainable = WandbTestTrainable(config)
+        self.assertEqual(os.environ[WANDB_ENV_VAR], "1234")
+
+        del os.environ[WANDB_ENV_VAR]
+
+        # API Key file
+        with tempfile.NamedTemporaryFile("wt") as fp:
+            fp.write("5678")
+            fp.flush()
+
+            config["wandb"] = {
+                "project": "test_project",
+                "api_key_file": fp.name
+            }
+
+            trainable = WandbTestTrainable(config)
+            self.assertEqual(os.environ[WANDB_ENV_VAR], "5678")
+
+        del os.environ[WANDB_ENV_VAR]
+
+        # API Key in env
+        os.environ[WANDB_ENV_VAR] = "9012"
+        config["wandb"] = {"project": "test_project"}
+        trainable = WandbTestTrainable(config)
+
+        # From now on, the API key is in the env variable.
+
+        # Default configuration
+        config["wandb"] = {"project": "test_project"}
+        config[TRIAL_INFO] = trial_info
+
+        trainable = WandbTestTrainable(config)
+        self.assertEqual(trainable.wandb.kwargs["project"], "test_project")
+        self.assertEqual(trainable.wandb.kwargs["id"], trial.trial_id)
+        self.assertEqual(trainable.wandb.kwargs["name"], trial.trial_name)
+        self.assertEqual(trainable.wandb.kwargs["group"], "WandbTestTrainable")
 
 
 if __name__ == "__main__":
