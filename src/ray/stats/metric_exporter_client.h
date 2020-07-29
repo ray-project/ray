@@ -69,6 +69,8 @@ class MetricsAgentExporter : public MetricExporterDecorator {
   std::unique_ptr<rpc::MetricsAgentClient> client_;
   /// Call Manager for gRPC client.
   rpc::ClientCallManager client_call_manager_;
+  /// Whether or not description and units information for metrics should be updated.
+  bool should_update_description_ = true;
 };
 
 }  // namespace stats

@@ -23,12 +23,15 @@ template <>
 void MetricExporter::ExportToPoints(
     const opencensus::stats::ViewData::DataMap<opencensus::stats::Distribution>
         &view_data,
-    const std::string &metric_name, std::vector<std::string> &keys,
-    std::vector<MetricPoint> &points) {
+    const opencensus::stats::MeasureDescriptor &measure_descriptor,
+    std::vector<std::string> &keys, std::vector<MetricPoint> &points) {
   // Return if no raw data found in view map.
   if (view_data.size() == 0) {
     return;
   }
+
+  const auto &metric_name = measure_descriptor.name();
+
   // NOTE(lingxuan.zlx): No sampling in histogram data, so all points all be filled in.
   std::unordered_map<std::string, std::string> tags;
   for (size_t i = 0; i < view_data.begin()->first.size(); ++i) {
@@ -52,10 +55,12 @@ void MetricExporter::ExportToPoints(
     }
   }
   hist_mean /= view_data.size();
-  MetricPoint mean_point = {metric_name + ".mean", current_sys_time_ms(), hist_mean,
-                            tags};
-  MetricPoint max_point = {metric_name + ".max", current_sys_time_ms(), hist_max, tags};
-  MetricPoint min_point = {metric_name + ".min", current_sys_time_ms(), hist_min, tags};
+  MetricPoint mean_point = {metric_name + ".mean", current_sys_time_ms(), hist_mean, tags,
+                            measure_descriptor};
+  MetricPoint max_point = {metric_name + ".max", current_sys_time_ms(), hist_max, tags,
+                           measure_descriptor};
+  MetricPoint min_point = {metric_name + ".min", current_sys_time_ms(), hist_min, tags,
+                           measure_descriptor};
   points.push_back(std::move(mean_point));
   points.push_back(std::move(max_point));
   points.push_back(std::move(min_point));
@@ -84,17 +89,17 @@ void MetricExporter::ExportViewData(
     for (size_t i = 0; i < descriptor.columns().size(); ++i) {
       keys.push_back(descriptor.columns()[i].name());
     }
-    auto &metric_name = descriptor.name();
+    const auto &measure_descriptor = descriptor.measure_descriptor();
     switch (view_data.type()) {
     case opencensus::stats::ViewData::Type::kDouble:
-      ExportToPoints<double>(view_data.double_data(), metric_name, keys, points);
+      ExportToPoints<double>(view_data.double_data(), measure_descriptor, keys, points);
       break;
     case opencensus::stats::ViewData::Type::kInt64:
-      ExportToPoints<int64_t>(view_data.int_data(), metric_name, keys, points);
+      ExportToPoints<int64_t>(view_data.int_data(), measure_descriptor, keys, points);
       break;
     case opencensus::stats::ViewData::Type::kDistribution:
       ExportToPoints<opencensus::stats::Distribution>(view_data.distribution_data(),
-                                                      metric_name, keys, points);
+                                                      measure_descriptor, keys, points);
       break;
     default:
       RAY_LOG(FATAL) << "Unknown view data type.";
@@ -104,5 +109,6 @@ void MetricExporter::ExportViewData(
   RAY_LOG(DEBUG) << "Point size : " << points.size();
   metric_exporter_client_->ReportMetrics(points);
 }
+
 }  // namespace stats
 }  // namespace ray

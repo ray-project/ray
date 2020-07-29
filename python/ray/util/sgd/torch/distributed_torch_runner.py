@@ -1,4 +1,3 @@
-from datetime import timedelta
 import logging
 import io
 import os
@@ -8,7 +7,7 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, IterableDataset
 from torch.utils.data.distributed import DistributedSampler
-from ray.util.sgd.torch.constants import NCCL_TIMEOUT_S
+from ray.util.sgd.torch.utils import setup_process_group
 
 import ray
 from ray.util.sgd.torch.torch_runner import TorchRunner
@@ -47,31 +46,19 @@ class DistributedTorchRunner(TorchRunner):
     def setup(self):
         raise RuntimeError("Need to call setup commands separately.")
 
-    def setup_process_group(self, url, world_rank, world_size):
+    def setup_process_group(self, url, world_rank, world_size, timeout):
         """Connects the distributed PyTorch backend.
 
         Args:
             url (str): the URL used to connect to distributed PyTorch.
             world_rank (int): the index of the runner.
             world_size (int): the total number of runners.
+            timeout (timedelta): Seconds for process group
+                operations to timeout.
         """
         self.world_rank = world_rank
-        logger.debug("Connecting to {} world_rank: {} world_size: {}".format(
-            url, world_rank, world_size))
-        logger.debug("using {}".format(self.backend))
-        if self.backend == "nccl" and "NCCL_BLOCKING_WAIT" not in os.environ:
-            logger.debug(
-                "Setting NCCL_BLOCKING_WAIT for detecting node failure. "
-                "To override this behavior, you can set NCCL_BLOCKING_WAIT=0.")
-            os.environ["NCCL_BLOCKING_WAIT"] = "1"
-
-        timeout = timedelta(seconds=NCCL_TIMEOUT_S)
-        dist.init_process_group(
-            backend=self.backend,
-            init_method=url,
-            rank=world_rank,
-            world_size=world_size,
-            timeout=timeout)
+        setup_process_group(
+            url, world_rank, world_size, timeout, backend=self.backend)
 
     def setup_ddp_and_operator(self):
         """Runs distributed coordination components.

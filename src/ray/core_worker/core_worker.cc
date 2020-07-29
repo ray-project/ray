@@ -21,6 +21,8 @@
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/core_worker/transport/raylet_transport.h"
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
+#include "ray/stats/stats.h"
+#include "ray/util/process.h"
 #include "ray/util/util.h"
 
 namespace {
@@ -126,6 +128,19 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
       CreateWorker();
     }
   }
+
+  // Assume stats module will be initialized exactly once in once process.
+  // So it must be called in CoreWorkerProcess constructor and will be reused
+  // by all of core worker.
+  RAY_LOG(DEBUG) << "Stats setup in core worker.";
+  // Initialize stats in core worker global tags.
+  const ray::stats::TagsType global_tags = {{ray::stats::ComponentKey, "core_worker"},
+                                            {ray::stats::VersionKey, "0.9.0.dev0"}};
+
+  // NOTE(lingxuan.zlx): We assume RayConfig is initialized before it's used.
+  // RayConfig is generated in Java_io_ray_runtime_RayNativeRuntime_nativeInitialize
+  // for java worker or in constructor of CoreWorker for python worker.
+  ray::stats::Init(global_tags, RayConfig::instance().metrics_agent_port());
 }
 
 CoreWorkerProcess::~CoreWorkerProcess() {
@@ -135,6 +150,9 @@ CoreWorkerProcess::~CoreWorkerProcess() {
     absl::ReaderMutexLock lock(&worker_map_mutex_);
     RAY_CHECK(workers_.empty());
   }
+  RAY_LOG(DEBUG) << "Stats stop in core worker.";
+  // Shutdown stats module if worker process exits.
+  ray::stats::Shutdown();
   if (options_.enable_logging) {
     RayLog::ShutDownRayLog();
   }
@@ -148,10 +166,6 @@ void CoreWorkerProcess::EnsureInitialized() {
 CoreWorker &CoreWorkerProcess::GetCoreWorker() {
   EnsureInitialized();
   if (instance_->options_.num_workers == 1) {
-    // TODO(mehrdadn): Remove this when the bug is resolved.
-    // Somewhat consistently reproducible via
-    // python/ray/tests/test_basic.py::test_background_tasks_with_max_calls
-    // with -c opt on Windows.
     RAY_CHECK(instance_->global_worker_) << "global_worker_ must not be NULL";
     return *instance_->global_worker_;
   }
@@ -380,7 +394,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   };
   task_manager_.reset(new TaskManager(
       memory_store_, reference_counter_, actor_reporter_,
-      [this](const TaskSpecification &spec, bool delay) {
+      [this](TaskSpecification &spec, bool delay) {
         if (delay) {
           // Retry after a delay to emulate the existing Raylet reconstruction
           // behaviour. TODO(ekl) backoff exponentially.
@@ -392,7 +406,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         } else {
           RAY_LOG(ERROR) << "Resubmitting task that produced lost plasma object: "
                          << spec.DebugString();
-          RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
+          if (spec.IsActorTask()) {
+            const auto &actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
+            actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
+            RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
+          } else {
+            RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
+          }
         }
       },
       check_node_alive_fn, reconstruct_object_callback));
@@ -429,13 +449,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         new raylet::RayletClient(std::move(grpc_client)));
   };
 
-  std::function<Status(const TaskSpecification &, const gcs::StatusCallback &)>
-      actor_create_callback = nullptr;
+  std::shared_ptr<ActorCreatorInterface> actor_creator = nullptr;
   if (RayConfig::instance().gcs_actor_service_enabled()) {
-    actor_create_callback = [this](const TaskSpecification &task_spec,
-                                   const gcs::StatusCallback &callback) {
-      return gcs_client_->Actors().AsyncCreateActor(task_spec, callback);
-    };
+    actor_creator = std::make_shared<DefaultActorCreator>(gcs_client_);
   }
 
   direct_actor_submitter_ = std::shared_ptr<CoreWorkerDirectActorTaskSubmitter>(
@@ -448,7 +464,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           memory_store_, task_manager_, local_raylet_id,
           RayConfig::instance().worker_lease_timeout_milliseconds(),
           RayConfig::instance().max_tasks_in_flight_per_worker(),
-          std::move(actor_create_callback), boost::asio::steady_timer(io_service_)));
+          std::move(actor_creator), boost::asio::steady_timer(io_service_)));
   future_resolver_.reset(new FutureResolver(memory_store_, client_factory, rpc_address_));
   // Unfortunately the raylet client has to be constructed after the receivers.
   if (direct_task_receiver_ != nullptr) {
@@ -658,13 +674,13 @@ void CoreWorker::RegisterToGcs() {
 
   RAY_CHECK_OK(gcs_client_->Workers().AsyncAdd(worker_data, nullptr));
 }
+
 void CoreWorker::CheckForRayletFailure(const boost::system::error_code &error) {
   if (error == boost::asio::error::operation_aborted) {
     return;
   }
 
-  // If the raylet fails, we will be reassigned to init (PID=1).
-  if (getppid() == 1) {
+  if (!IsParentProcessAlive()) {
     RAY_LOG(ERROR) << "Raylet failed. Shutting down.";
     Shutdown();
   }
