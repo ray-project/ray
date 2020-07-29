@@ -713,6 +713,21 @@ Blacklisted:     No
     expected_dict = {"ResourceConstraint:V100": 1}
     assert constraints_dict == expected_dict
 
+    info_string = """Model:           Tesla T4
+IRQ:             10
+GPU UUID:        GPU-415fe7a8-f784-6e3d-a958-92ecffacafe2
+Video BIOS:      90.04.84.00.06
+Bus Type:        PCIe
+DMA Size:        47 bits
+DMA Mask:        0x7fffffffffff
+Bus Location:    0000:00:1b.0
+Device Minor:    0
+Blacklisted:     No
+    """
+    constraints_dict = resource_spec._constraints_from_gpu_info(info_string)
+    expected_dict = {"ResourceConstraint:T4": 1}
+    assert constraints_dict == expected_dict
+
     assert resource_spec._constraints_from_gpu_info(None) == {}
 
 
