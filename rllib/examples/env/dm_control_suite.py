@@ -41,7 +41,7 @@ def cheetah_run():
         "run",
         from_pixels=True,
         height=64,
-        width=864,
+        width=64,
         task_kwargs={"random": np.random.randint(low=0, high=1e9)})
 
 
@@ -51,7 +51,7 @@ def walker_run():
         "run",
         from_pixels=True,
         height=64,
-        width=864,
+        width=64,
         task_kwargs={"random": np.random.randint(low=0, high=1e9)})
 
 
@@ -61,7 +61,7 @@ def pendulum_swingup():
         "swingup",
         from_pixels=True,
         height=64,
-        width=864,
+        width=64,
         task_kwargs={"random": np.random.randint(low=0, high=1e9)})
 
 
@@ -71,7 +71,7 @@ def cartpole_swingup():
         "swingup",
         from_pixels=True,
         height=64,
-        width=864,
+        width=64,
         task_kwargs={"random": np.random.randint(low=0, high=1e9)})
 
 
@@ -81,5 +81,5 @@ def humanoid_walk():
         "walk",
         from_pixels=True,
         height=64,
-        width=864,
+        width=64,
         task_kwargs={"random": np.random.randint(low=0, high=1e9)})
