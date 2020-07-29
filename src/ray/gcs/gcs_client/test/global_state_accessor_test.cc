@@ -68,8 +68,8 @@ class GlobalStateAccessorTest : public ::testing::Test {
   void TearDown() override {
     gcs_server_->Stop();
     io_service_->stop();
-    gcs_server_.reset();
     thread_io_service_->join();
+    gcs_server_.reset();
 
     gcs_client_->Disconnect();
     global_state_->Disconnect();
@@ -272,6 +272,10 @@ TEST_F(GlobalStateAccessorTest, TestWorkerTable) {
 }  // namespace ray
 
 int main(int argc, char **argv) {
+  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
+                                         ray::RayLog::ShutDownRayLog, argv[0],
+                                         ray::RayLogLevel::INFO,
+                                         /*log_dir=*/"");
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 4);
   ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
