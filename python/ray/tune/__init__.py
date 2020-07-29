@@ -2,6 +2,7 @@ from ray.tune.error import TuneError
 from ray.tune.tune import run_experiments, run
 from ray.tune.experiment import Experiment
 from ray.tune.analysis import ExperimentAnalysis, Analysis
+from ray.tune.mixin import mixin
 from ray.tune.stopper import Stopper, EarlyStopping
 from ray.tune.registry import register_env, register_trainable
 from ray.tune.trainable import Trainable
@@ -22,5 +23,5 @@ __all__ = [
     "uniform", "choice", "randint", "randn", "loguniform",
     "ExperimentAnalysis", "Analysis", "CLIReporter", "JupyterNotebookReporter",
     "ProgressReporter", "report", "get_trial_dir", "get_trial_name",
-    "get_trial_id", "make_checkpoint_dir", "save_checkpoint"
+    "get_trial_id", "make_checkpoint_dir", "save_checkpoint", "mixin"
 ]

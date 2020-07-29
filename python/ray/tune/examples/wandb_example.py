@@ -22,10 +22,32 @@ def tune_function():
             "sd": tune.uniform(0.2, 0.8),
             "wandb": {
                 "api_key_file": "~/.wandb_api_key",
-                "project": "Example_function"
+                "project": "Wandb_example"
             }
         },
         loggers=DEFAULT_LOGGERS + (WandbLogger, ))
+
+
+@tune.mixin(WandbTrainableMixin)
+def decorated_train_function(config, checkpoint=None):
+    for i in range(30):
+        loss = config["mean"] + config["sd"] * np.random.randn()
+        tune.report(loss=loss)
+        wandb.log(dict(loss=loss))
+
+
+def tune_decorated():
+    """Example for using a WandTrainableMixin with the function API"""
+    tune.run(
+        decorated_train_function,
+        config={
+            "mean": tune.grid_search([1, 2, 3, 4, 5]),
+            "sd": tune.uniform(0.2, 0.8),
+            "wandb": {
+                "api_key_file": "~/.wandb_api_key",
+                "project": "Wandb_example"
+            }
+        })
 
 
 class WandbTrainable(WandbTrainableMixin, Trainable):
@@ -37,7 +59,7 @@ class WandbTrainable(WandbTrainableMixin, Trainable):
 
 
 def tune_trainable():
-    """Example for using a WandTrainableMixin"""
+    """Example for using a WandTrainableMixin with the class API"""
     tune.run(
         WandbTrainable,
         config={
@@ -45,11 +67,12 @@ def tune_trainable():
             "sd": tune.uniform(0.2, 0.8),
             "wandb": {
                 "api_key_file": "~/.wandb_api_key",
-                "project": "Example_trainable"
+                "project": "Wandb_example"
             }
         })
 
 
 if __name__ == "__main__":
     tune_function()
+    tune_decorated()
     tune_trainable()

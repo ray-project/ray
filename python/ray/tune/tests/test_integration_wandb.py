@@ -4,7 +4,9 @@ from collections import namedtuple
 from multiprocessing import Queue
 import unittest
 
+from ray import tune
 from ray.tune import Trainable
+from ray.tune.function_runner import wrap_function
 from ray.tune.integration.wandb import _WandbLoggingProcess, \
     _WANDB_QUEUE_END, WandbLogger, WANDB_ENV_VAR, WandbTrainableMixin
 from ray.tune.result import TRIAL_INFO
@@ -44,8 +46,12 @@ class _MockWandbAPI(object):
         return self
 
 
-class WandbTestTrainable(WandbTrainableMixin, Trainable):
+class _MockWandbTrainableMixin(WandbTrainableMixin):
     _wandb = _MockWandbAPI()
+
+
+class WandbTestTrainable(_MockWandbTrainableMixin, Trainable):
+    pass
 
 
 class WandbIntegrationTest(unittest.TestCase):
@@ -221,6 +227,67 @@ class WandbIntegrationTest(unittest.TestCase):
         self.assertEqual(trainable.wandb.kwargs["id"], trial.trial_id)
         self.assertEqual(trainable.wandb.kwargs["name"], trial.trial_name)
         self.assertEqual(trainable.wandb.kwargs["group"], "WandbTestTrainable")
+
+    def testWandbDecoratorConfig(self):
+        config = {"par1": 4, "par2": 9.12345678}
+        trial = Trial(config, 0, "trial_0", "trainable")
+        trial_info = TrialInfo(trial)
+
+        @tune.mixin(_MockWandbTrainableMixin)
+        def train_fn(config):
+            return 1
+
+        config[TRIAL_INFO] = trial_info
+
+        if WANDB_ENV_VAR in os.environ:
+            del os.environ[WANDB_ENV_VAR]
+
+        # Needs at least a project
+        with self.assertRaises(ValueError):
+            wrapped = wrap_function(train_fn)(config)
+
+        # No API key
+        config["wandb"] = {"project": "test_project"}
+        with self.assertRaises(ValueError):
+            wrapped = wrap_function(train_fn)(config)
+
+        # API Key in config
+        config["wandb"] = {"project": "test_project", "api_key": "1234"}
+        wrapped = wrap_function(train_fn)(config)
+        self.assertEqual(os.environ[WANDB_ENV_VAR], "1234")
+
+        del os.environ[WANDB_ENV_VAR]
+
+        # API Key file
+        with tempfile.NamedTemporaryFile("wt") as fp:
+            fp.write("5678")
+            fp.flush()
+
+            config["wandb"] = {
+                "project": "test_project",
+                "api_key_file": fp.name
+            }
+
+            wrapped = wrap_function(train_fn)(config)
+            self.assertEqual(os.environ[WANDB_ENV_VAR], "5678")
+
+        del os.environ[WANDB_ENV_VAR]
+
+        # API Key in env
+        os.environ[WANDB_ENV_VAR] = "9012"
+        config["wandb"] = {"project": "test_project"}
+        wrapped = wrap_function(train_fn)(config)
+
+        # From now on, the API key is in the env variable.
+
+        # Default configuration
+        config["wandb"] = {"project": "test_project"}
+        config[TRIAL_INFO] = trial_info
+
+        wrapped = wrap_function(train_fn)(config)
+        self.assertEqual(wrapped.wandb.kwargs["project"], "test_project")
+        self.assertEqual(wrapped.wandb.kwargs["id"], trial.trial_id)
+        self.assertEqual(wrapped.wandb.kwargs["name"], trial.trial_name)
 
 
 if __name__ == "__main__":

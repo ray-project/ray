@@ -6,6 +6,7 @@ from numbers import Number
 from ray import logger
 from ray.tune import Trainable
 from ray.tune.logger import Logger
+from ray.tune.mixin import TrainableMixin
 
 try:
     import wandb
@@ -101,12 +102,12 @@ class WandbLogger(Logger):
         excludes (list): List of metrics that should be excluded from
             the log.
         log_config (bool): Boolean indicating if the ``config`` parameter of
-            the ``results`` dict should be logged. This makes sense if parameters
-            will change during training, e.g. with PopulationBasedTraining.
-            Defaults to False.
+            the ``results`` dict should be logged. This makes sense if
+            parameters will change during training, e.g. with
+            PopulationBasedTraining. Defaults to False.
 
-    Wandb's ``group``, ``run_id`` and ``run_name`` are automatically selected by
-    Tune, but can be overwritten by filling out the respective configuration
+    Wandb's ``group``, ``run_id`` and ``run_name`` are automatically selected
+    by Tune, but can be overwritten by filling out the respective configuration
     values.
 
     Please see here for all other valid configuration settings:
@@ -211,24 +212,26 @@ class WandbLogger(Logger):
         self._wandb.join(timeout=10)
 
 
-class WandbTrainableMixin:
+class WandbTrainableMixin(TrainableMixin):
     """WandbTrainableMixin
 
     Weights and biases (https://www.wandb.com/) is a tool for experiment
     tracking, model optimization, and dataset versioning. This Ray Tune
     Trainable mixin helps initializing the Wandb API for use with the
-    ``Trainable`` class.
+    ``Trainable`` class or as a `tune.mixin` for the function API.
 
-    For basic usage, just extend the ``WandbTrainableMixin`` in addition
-    to ``Trainable``:
+    For basic usage, just add the ``WandbTrainableMixin`` using the
+    ``tune.mixin()`` decorator:
 
     .. code-block:: python
 
-        class WandbTrainable(WandbTrainableMixin, Trainable):
-            pass
+        from ray import tune
+        from ray.tune.integration.wandb import WandbTrainableMixin
 
-    See below for a full example. Please note that you must inherit
-    from ``WandbTrainableMixin`` *before* inheriting from ``Trainable``.
+        @tune.mixin(WandbTrainableMixin)
+        def train_fn(config):
+            wandb.log()
+
 
     Wandb configuration is done by passing a ``wandb`` key to
     the ``config`` parameter of ``tune.run()`` (see example below).
@@ -241,8 +244,8 @@ class WandbTrainableMixin:
         api_key_file (str): Path to file containing the Wandb API KEY.
         api_key (str): Wandb API Key. Alternative to setting `api_key_file`.
 
-    Wandb's ``group``, ``run_id`` and ``run_name`` are automatically selected by
-    Tune, but can be overwritten by filling out the respective configuration
+    Wandb's ``group``, ``run_id`` and ``run_name`` are automatically selected
+    by Tune, but can be overwritten by filling out the respective configuration
     values.
 
     Please see here for all other valid configuration settings:
@@ -252,17 +255,18 @@ class WandbTrainableMixin:
 
     .. code-block:: python
 
+        from ray import tune
         from ray.tune.integration.wandb import WandbTrainableMixin
 
-        class WandbTrainable(WandbTrainableMixin, Trainable):
-            def step(self):
-                for i in range(30):
-                    loss = self.config["a"] + self.config["b"]
-                    wandb.log({"loss": loss})
-                return {"loss": loss, "done": True}
+        @tune.mixin(WandbTrainableMixin)
+        def train_fn(config):
+            for i in range(10):
+                loss = self.config["a"] + self.config["b"]
+                wandb.log({"loss": loss})
+            tune.report(loss=loss, done=True)
 
         tune.run(
-            WandbTrainable,
+            train_fn,
             config={
                 # define search space here
                 "a": tune.choice([1, 2, 3]),
@@ -280,7 +284,7 @@ class WandbTrainableMixin:
     def __init__(self, config, *args, **kwargs):
         if not isinstance(self, Trainable):
             raise ValueError(
-                "The `WandbTrainalbeMixin` can only be used as a mixin "
+                "The `WandbTrainableMixin` can only be used as a mixin "
                 "for `tune.Trainable` classes. Please make sure your "
                 "class inherits from both. For example: "
                 "`class YourTrainable(WandbTrainableMixin)`.")

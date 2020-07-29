@@ -357,7 +357,12 @@ def detect_checkpoint_function(train_func):
 
 
 def wrap_function(train_func):
-    class ImplicitFunc(FunctionRunner):
+    if hasattr(train_func, "__mixins__"):
+        inherit_from = train_func.__mixins__ + (FunctionRunner, )
+    else:
+        inherit_from = (FunctionRunner, )
+
+    class ImplicitFunc(*inherit_from):
         def _trainable_func(self, config, reporter, checkpoint):
             func_args = inspect.getfullargspec(train_func).args
             if len(func_args) > 1:  # more arguments than just the config
