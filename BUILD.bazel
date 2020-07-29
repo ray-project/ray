@@ -1,11 +1,7 @@
 # Bazel build
 # C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
 
-load("@rules_proto//proto:defs.bzl", "proto_library")
-load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_proto_library", "cc_test")
-load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
-load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("//bazel:ray.bzl", "COPTS", "PYX_COPTS", "PYX_SRCS", "copy_to_workspace")
 
@@ -23,125 +19,6 @@ config_setting(
     name = "opt",
     values = {"compilation_mode": "opt"},
 )
-
-# === Begin of protobuf definitions ===
-
-proto_library(
-    name = "common_proto",
-    srcs = ["src/ray/protobuf/common.proto"],
-    visibility = ["//java:__subpackages__"],
-)
-
-cc_proto_library(
-    name = "common_cc_proto",
-    deps = [":common_proto"],
-)
-
-python_grpc_compile(
-    name = "common_py_proto",
-    deps = [":common_proto"],
-)
-
-proto_library(
-    name = "gcs_proto",
-    srcs = ["src/ray/protobuf/gcs.proto"],
-    visibility = ["//java:__subpackages__"],
-    deps = [":common_proto"],
-)
-
-cc_proto_library(
-    name = "gcs_cc_proto",
-    deps = [":gcs_proto"],
-)
-
-python_grpc_compile(
-    name = "gcs_py_proto",
-    deps = [":gcs_proto"],
-)
-
-proto_library(
-    name = "node_manager_proto",
-    srcs = ["src/ray/protobuf/node_manager.proto"],
-    deps = [":common_proto"],
-)
-
-cc_proto_library(
-    name = "node_manager_cc_proto",
-    deps = [":node_manager_proto"],
-)
-
-python_grpc_compile(
-    name = "node_manager_py_proto",
-    deps = [":node_manager_proto"],
-)
-
-proto_library(
-    name = "reporter_proto",
-    srcs = ["src/ray/protobuf/reporter.proto"],
-    deps = [":common_proto"],
-)
-
-cc_proto_library(
-    name = "reporter_cc_proto",
-    deps = [":reporter_proto"],
-)
-
-python_grpc_compile(
-    name = "reporter_py_proto",
-    deps = [":reporter_proto"],
-)
-
-proto_library(
-    name = "gcs_service_proto",
-    srcs = ["src/ray/protobuf/gcs_service.proto"],
-    deps = [
-        ":common_proto",
-        ":gcs_proto",
-    ],
-)
-
-cc_proto_library(
-    name = "gcs_service_cc_proto",
-    deps = [":gcs_service_proto"],
-)
-
-proto_library(
-    name = "object_manager_proto",
-    srcs = ["src/ray/protobuf/object_manager.proto"],
-)
-
-cc_proto_library(
-    name = "object_manager_cc_proto",
-    deps = [":object_manager_proto"],
-)
-
-proto_library(
-    name = "core_worker_proto",
-    srcs = ["src/ray/protobuf/core_worker.proto"],
-    deps = [":common_proto"],
-)
-
-python_grpc_compile(
-    name = "core_worker_py_proto",
-    deps = [":core_worker_proto"],
-)
-
-cc_proto_library(
-    name = "worker_cc_proto",
-    deps = ["core_worker_proto"],
-)
-
-proto_library(
-    name = "serialization_proto",
-    srcs = ["src/ray/protobuf/serialization.proto"],
-)
-
-cc_proto_library(
-    name = "serialization_cc_proto",
-    deps = ["serialization_proto"],
-)
-
-# === End of protobuf definitions ===
 
 # === Begin of rpc definitions ===
 
