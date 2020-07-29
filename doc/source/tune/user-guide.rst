@@ -133,7 +133,7 @@ You can log arbitrary values and metrics in both training APIs:
 
 During training, Tune will automatically log the below metrics in addition to the user-provided values. All of these can be used as stopping conditions or passed as a parameter to Trial Schedulers/Search Algorithms.
 
-.. literalinclude:: ../../../../python/ray/tune/result.py
+.. literalinclude:: ../../../python/ray/tune/result.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__

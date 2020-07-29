@@ -32,7 +32,6 @@ Take a look at any of the below tutorials to get started with Tune.
 
    tune-60-seconds.rst
    tune-tutorial.rst
-   tune-usage.rst
    tune-advanced-tutorial.rst
    tune-distributed.rst
    tune-sklearn.rst

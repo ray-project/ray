@@ -1,7 +1,7 @@
 Tune: Scalable Hyperparameter Tuning
 ====================================
 
-.. image:: images/tune.png
+.. image:: /images/tune.png
     :scale: 30%
     :align: center
 
@@ -29,7 +29,7 @@ To run this example, install the following: ``pip install 'ray[tune]' torch torc
 
 This example runs a small grid search to train a convolutional neural network using PyTorch and Tune.
 
-.. literalinclude:: ../../python/ray/tune/tests/example.py
+.. literalinclude:: ../../../python/ray/tune/tests/example.py
    :language: python
    :start-after: __quick_start_begin__
    :end-before: __quick_start_end__
@@ -41,13 +41,13 @@ If TensorBoard is installed, automatically visualize all trial results:
     tensorboard --logdir ~/ray_results
 
 
-.. image:: images/tune-start-tb.png
+.. image:: /images/tune-start-tb.png
     :scale: 30%
     :align: center
 
 If using TF2 and TensorBoard, Tune will also automatically generate TensorBoard HParams output:
 
-.. image:: images/tune-hparams-coord.png
+.. image:: /images/tune-hparams-coord.png
     :scale: 20%
     :align: center
 
