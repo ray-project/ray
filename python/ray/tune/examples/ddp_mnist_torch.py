@@ -12,7 +12,7 @@ from ray import tune
 from ray.tune.examples.mnist_pytorch import (train, test, get_data_loaders,
                                              ConvNet)
 from ray.tune.integration.torch import (DistributedTrainableCreator,
-                                distributed_checkpoint_dir)
+                                        distributed_checkpoint_dir)
 
 logger = logging.getLogger(__name__)
 

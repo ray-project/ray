@@ -6,9 +6,9 @@ import torch.distributed as dist
 
 import ray
 from ray import tune
-from from ray.tune.integration.torch import (
-    DistributedTrainableCreator, distributed_checkpoint_dir, _train_simple,
-    _train_check_global)
+from ray.tune.integration.torch import (DistributedTrainableCreator,
+                                        distributed_checkpoint_dir,
+                                        _train_simple, _train_check_global)
 
 
 @pytest.fixture

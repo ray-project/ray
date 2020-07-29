@@ -26,7 +26,6 @@ def train(config, checkpoint_dir=None):
                 path = os.path.join(checkpoint_dir, "checkpoint")
                 with open(path, "w") as f:
                     f.write(json.dumps({"timestep": timestep}))
-            tune.save_checkpoint(path)
 
         # Here we use `episode_reward_mean`, but you can also report other
         # objectives such as loss or accuracy.
