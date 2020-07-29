@@ -286,7 +286,7 @@ gpu model type.
             constraint_name = "{}{}".format(
                 ray_constants.RESOURCE_CONSTRAINT_PREFIX, pretty_name)
             return {constraint_name: 1}
-    except _:
+    except BaseException:
         logger.warning("Could not parse gpu information.")
         pass
 
