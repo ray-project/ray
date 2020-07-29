@@ -66,7 +66,6 @@ thread_local std::weak_ptr<CoreWorker> CoreWorkerProcess::current_core_worker_;
 void CoreWorkerProcess::Initialize(const CoreWorkerOptions &options) {
   RAY_CHECK(!instance_) << "The process is already initialized for core worker.";
   instance_ = std::unique_ptr<CoreWorkerProcess>(new CoreWorkerProcess(options));
-  RunStatsService();
 }
 
 void CoreWorkerProcess::Shutdown() {
@@ -129,6 +128,18 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
       CreateWorker();
     }
   }
+
+  // Assume stats module will be initialized exactly once in once process.
+  // So it must be called in CoreWorkerProcess::Initialize.
+  RAY_LOG(DEBUG) << "Stats setup in core worker.";
+  // Initialize stats in core worker global tags.
+  const ray::stats::TagsType global_tags = {{ray::stats::ComponentKey, "core_worker"},
+                                            {ray::stats::VersionKey, "0.9.0.dev0"}};
+
+  // NOTE(lingxuan.zlx): We assume RayConfig is initialized before it's used.
+  // RayConfig is generated in Java_io_ray_runtime_RayNativeRuntime_nativeInitialize
+  // for java worker or in constructor of CoreWorker for python worker.
+  ray::stats::Init(global_tags, RayConfig::instance().metrics_agent_port());
 }
 
 CoreWorkerProcess::~CoreWorkerProcess() {
@@ -138,7 +149,9 @@ CoreWorkerProcess::~CoreWorkerProcess() {
     absl::ReaderMutexLock lock(&worker_map_mutex_);
     RAY_CHECK(workers_.empty());
     // Shutdown stats when CoreWorkerProcess deconstructed.
-    StopStatsService();
+    RAY_LOG(DEBUG) << "Stats stop in core worker.";
+    // Shutdown stats module if worker process exits.
+    ray::stats::Shutdown();
   }
   if (options_.enable_logging) {
     RayLog::ShutDownRayLog();
@@ -241,26 +254,6 @@ void CoreWorkerProcess::RunTaskExecutionLoop() {
   }
 
   instance_.reset();
-}
-
-void CoreWorkerProcess::RunStatsService() {
-  // Assume stats module will be initialized exactly once in once process.
-  // So it must be called in CoreWorkerProcess::Initialize.
-  RAY_LOG(DEBUG) << "Stats setup in core worker.";
-  // Initialize stats in core worker global tags.
-  const ray::stats::TagsType global_tags = {{ray::stats::ComponentKey, "core_worker"},
-                                            {ray::stats::VersionKey, "0.9.0.dev0"}};
-
-  // NOTE(lingxuan.zlx): We assume RayConfig is initialized before it's used.
-  // RayConfig is generated in Java_io_ray_runtime_RayNativeRuntime_nativeInitialize
-  // for java worker or in constructor of CoreWorker for python worker.
-  ray::stats::Init(global_tags, RayConfig::instance().metrics_agent_port());
-}
-
-void CoreWorkerProcess::StopStatsService() {
-  RAY_LOG(DEBUG) << "Stats stop in core worker.";
-  // Shutdown stats module if worker process exits.
-  ray::stats::Shutdown();
 }
 
 CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_id)

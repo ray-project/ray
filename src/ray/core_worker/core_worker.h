@@ -234,12 +234,6 @@ class CoreWorkerProcess {
   /// \return Void.
   void RemoveWorker(std::shared_ptr<CoreWorker> worker) LOCKS_EXCLUDED(worker_map_mutex_);
 
-  /// Start stats/metric service for core worker process.
-  static void RunStatsService();
-
-  /// Start stats/metric service for core worker process.
-  static void StopStatsService();
-
   /// The global instance of `CoreWorkerProcess`.
   static std::unique_ptr<CoreWorkerProcess> instance_;
 
