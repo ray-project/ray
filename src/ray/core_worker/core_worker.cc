@@ -130,7 +130,8 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
   }
 
   // Assume stats module will be initialized exactly once in once process.
-  // So it must be called in CoreWorkerProcess::Initialize.
+  // So it must be called in CoreWorkerProcess constructor and will be reused
+  // by all of core worker.
   RAY_LOG(DEBUG) << "Stats setup in core worker.";
   // Initialize stats in core worker global tags.
   const ray::stats::TagsType global_tags = {{ray::stats::ComponentKey, "core_worker"},
