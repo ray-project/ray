@@ -103,7 +103,7 @@ _hash_cache = {}
 
 
 def hash_runtime_conf(file_mounts,
-                      worker_file_mounts,
+                      cluster_synced_files,
                       extra_objs,
                       generate_file_mounts_contents_hash=False):
     """Returns two hashes, a runtime hash and file_mounts_content hash.
@@ -113,7 +113,7 @@ def hash_runtime_conf(file_mounts,
     a restart is needed.
 
     The file_mounts_content hash is used to determine if the file_mounts or
-    worker_file_mounts contents have changed. It is used at monitor time to
+    cluster_synced_files contents have changed. It is used at monitor time to
     determine if additional file syncing is needed.
     """
     runtime_hasher = hashlib.sha1()
@@ -152,18 +152,18 @@ def hash_runtime_conf(file_mounts,
         head_node_contents_hash = contents_hasher.hexdigest()
 
         # Generate a new runtime_hash if its not cached
-        # The runtime hash does not depend on the worker_file_mounts hash
-        # because we do not want to restart nodes only if worker_file_mounts
+        # The runtime hash does not depend on the cluster_synced_files hash
+        # because we do not want to restart nodes only if cluster_synced_files
         # contents have changed.
         if conf_str not in _hash_cache:
             runtime_hasher.update(conf_str)
             runtime_hasher.update(head_node_contents_hash.encode("utf-8"))
             _hash_cache[conf_str] = runtime_hasher.hexdigest()
 
-        # Add worker_file_mounts to the file_mounts_content hash
-        if worker_file_mounts is not None:
-            for local_path in sorted(worker_file_mounts.values()):
-                # For worker_file_mounts, we let the path be non-existant
+        # Add cluster_synced_files to the file_mounts_content hash
+        if cluster_synced_files is not None:
+            for local_path in sorted(cluster_synced_files):
+                # For cluster_synced_files, we let the path be non-existant
                 # because its possible that the source directory gets set up
                 # anytime over the life of the head node.
                 add_content_hashes(local_path, allow_non_existing_paths=True)

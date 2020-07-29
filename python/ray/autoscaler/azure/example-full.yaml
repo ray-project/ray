@@ -103,13 +103,11 @@ file_mounts: {
 }
 
 # Files or directories to copy from the head node to the worker nodes. The format is a
-# dictionary from WORKER_NODE_PATH: HEAD_NODE_PATH, e.g.
-worker_file_mounts: {
-#    "/path1/on/worker/machine": "/path1/on/head/machine",
-#    "/path2/on/worker/machine": "/path2/on/head/machine",
-}
+# list of paths. The same path will on the head node will be copied to the worker node.
+cluster_synced_files: []
 
-# Whether changes to mounted files in the head node should sync to the worker node continuously
+# Whether changes to directories in file_mounts or cluster_synced_files in the head node
+# should sync to the worker node continuously
 file_mounts_sync_continuously: False
 
 # List of commands that will be run before `setup_commands`. If docker is

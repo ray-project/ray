@@ -36,7 +36,7 @@ class NodeUpdater:
                  ray_start_commands,
                  runtime_hash,
                  file_mounts_contents_hash,
-                 worker_file_mounts=None,
+                 cluster_synced_files=None,
                  process_runner=subprocess,
                  use_internal_ip=False,
                  docker_config=None):
@@ -61,7 +61,7 @@ class NodeUpdater:
         self.ray_start_commands = ray_start_commands
         self.runtime_hash = runtime_hash
         self.file_mounts_contents_hash = file_mounts_contents_hash
-        self.worker_file_mounts = worker_file_mounts
+        self.cluster_synced_files = cluster_synced_files
         self.auth_config = auth_config
 
     def run(self):
@@ -154,12 +154,11 @@ class NodeUpdater:
             for remote_path, local_path in self.file_mounts.items():
                 do_sync(remote_path, local_path)
 
-        if self.worker_file_mounts:
+        if self.cluster_synced_files:
             with cli_logger.group(
                     "Processing worker file mounts", _numbered=("[]", 3, 6)):
-                for remote_path, local_path in self.worker_file_mounts.items():
-                    do_sync(
-                        remote_path, local_path, allow_non_existing_paths=True)
+                for path in self.cluster_synced_files:
+                    do_sync(path, path, allow_non_existing_paths=True)
         else:
             cli_logger.print(
                 "No worker file mounts to sync", _numbered=("[]", 3, 6))
