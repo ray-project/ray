@@ -18,11 +18,13 @@ Ray Tune currently offers two lightweight integrations for Weights & Biases.
 One is the :ref:`WandbLogger <tune-wandb-logger>`, which automatically logs
 metrics reported to Tune to the Wandb API.
 
-The other one is the :ref:`WandbTrainableMixin <tune-wandb-mixin>`, which can be
-used with both the function API and a `Trainable` class. It automatically
+The other one is the :ref:`@wandb_mixin <tune-wandb-mixin>` decorator, which can be
+used with the function API. It automatically
 initializes the Wandb API with Tune's training information. You can just use the
-Wandb API like you would normally do, e.g. using `wandb.log()` to log your training
+Wandb API like you would normally do, e.g. using ``wandb.log()`` to log your training
 process.
+
+Please :doc:`see here for a full example </tune/examples/wandb_example>`.
 
 .. _tune-wandb-logger:
 
@@ -30,4 +32,4 @@ process.
 
 .. _tune-wandb-mixin:
 
-.. autoclass:: ray.tune.integration.wandb.WandbTrainableMixin
+.. autofunction:: ray.tune.integration.wandb.wandb_mixin

@@ -1,3 +1,6 @@
+import argparse
+from unittest.mock import MagicMock
+
 import numpy as np
 import wandb
 
@@ -38,7 +41,7 @@ def decorated_train_function(config, checkpoint=None):
 
 
 def tune_decorated():
-    """Example for using a WandTrainableMixin with the function API"""
+    """Example for using the @wandb_mixin decorator with the function API"""
     tune.run(
         decorated_train_function,
         config={
@@ -74,6 +77,17 @@ def tune_trainable():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--mock-api", action="store_true", help="Mock Wandb API access")
+    args, _ = parser.parse_known_args()
+
+    if args.mock_api:
+        WandbLogger._logger_process_cls = MagicMock
+        decorated_train_function.__mixins__ = tuple()
+        WandbTrainable._wandb = MagicMock()
+        wandb = MagicMock()  # noqa: F811
+
     tune_function()
     tune_decorated()
     tune_trainable()
