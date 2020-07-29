@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-@Test
+@Test(groups = {"cluster"})
 public class ActorRestartTest extends BaseTest {
 
   public static class Counter {
@@ -41,7 +41,6 @@ public class ActorRestartTest extends BaseTest {
   }
 
   public void testActorRestart() throws InterruptedException, IOException {
-    TestUtils.skipTestUnderSingleProcess();
     ActorHandle<Counter> actor = Ray.actor(Counter::new).setMaxRestarts(1).remote();
     // Call increase 3 times.
     for (int i = 0; i < 3; i++) {
@@ -118,7 +117,6 @@ public class ActorRestartTest extends BaseTest {
   }
 
   public void testActorCheckpointing() throws IOException, InterruptedException {
-    TestUtils.skipTestUnderSingleProcess();
     ActorHandle<CheckpointableCounter> actor = Ray.actor(CheckpointableCounter::new)
         .setMaxRestarts(1).remote();
     // Call increase 3 times.

@@ -92,7 +92,7 @@ class InputReader:
 class _QueueRunner(threading.Thread):
     """Thread that feeds a TF queue from a InputReader."""
 
-    def __init__(self, input_reader: InputReader, queue: tf1.FIFOQueue,
+    def __init__(self, input_reader: InputReader, queue: "tf1.FIFOQueue",
                  keys: List[str], dtypes: "tf.dtypes.DType"):
         threading.Thread.__init__(self)
         self.sess = tf1.get_default_session()

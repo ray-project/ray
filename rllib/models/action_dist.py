@@ -17,9 +17,9 @@ class ActionDistribution:
 
     @DeveloperAPI
     def __init__(self, inputs: List[TensorType], model: ModelV2):
-        """Initialize the action dist.
+        """Initializes an ActionDist object.
 
-        Arguments:
+        Args:
             inputs (Tensors): input vector to compute samples from.
             model (ModelV2): reference to model producing the inputs. This
                 is mainly useful if you want to use model variables to compute
