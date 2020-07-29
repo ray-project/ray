@@ -60,14 +60,20 @@ int64_t BundleSpecification::Index() const {
 std::string FormatPlacementGroupResource(const std::string &original_resource_name,
                                          PlacementGroupID group_id,
                                          int64_t bundle_index) {
-  return original_resource_name + "_group_" + group_id.Hex() + "_" +
-         std::to_string(bundle_index);
+  auto str = original_resource_name + "_group_" + group_id.Hex() + "_" +
+             std::to_string(bundle_index);
+  RAY_CHECK(GetOriginalResourceName(str) == original_resource_name) << str;
+  return str;
 }
 
 std::string FormatPlacementGroupResource(const std::string &original_resource_name,
                                          const BundleSpecification &bundle_spec) {
   return FormatPlacementGroupResource(
       original_resource_name, bundle_spec.PlacementGroupId(), bundle_spec.Index());
+}
+
+std::string GetOriginalResourceName(const std::string &resource) {
+  return resource.substr(0, bundle_resource_label.find_last_of("_group_"));
 }
 
 }  // namespace ray

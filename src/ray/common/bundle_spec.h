@@ -102,4 +102,7 @@ std::string FormatPlacementGroupResource(const std::string &original_resource_na
 std::string FormatPlacementGroupResource(const std::string &original_resource_name,
                                          const BundleSpecification &bundle_spec);
 
+/// Return the original resource name of the placement group resource.
+std::string GetOriginalResourceName(const std::string &resource);
+
 }  // namespace ray

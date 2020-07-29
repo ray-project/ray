@@ -148,21 +148,22 @@ class ResourceSet {
   void AddResources(const ResourceSet &other);
 
   /// \brief Aggregate resources from the other set into this set, adding any missing
-  /// resource labels to this set. The resource id will change to bundle_id + "_" +
-  /// reource_id
+  /// resource labels to this set.
   ///
+  /// \param bundle_id: The placement group id.
+  /// \param bundle_index: The index of the bundle.
   /// \param other: The other resource set to add.
-  /// \param bundle_id: The bundle_id of the bundle.
   /// \return Void.
-  void AddBundleResources(const std::string &bundle_id, const ResourceSet &other);
+  void AddBundleResources(const PlacementGroupID &bundle_id, const int bundle_index,
+                          const ResourceSet &other);
 
   /// \brief Return back all the bundle resource. Changing the resource name and adding
-  /// any missing resource labels to this set. The resource id will remove bundle_id + "_"
-  /// part.
+  /// any missing resource labels to this set.
   ///
-  /// \param bundle_id: The bundle_id of the bundle.
+  /// \param bundle_id: The placement group id.
+  /// \param bundle_index: The index of the bundle.
   /// \return Void.
-  void ReturnBundleResources(const std::string &bundle_id);
+  void ReturnBundleResources(const PlacementGroupID &bundle_id, const int bundle_index);
 
   /// \brief Subtract a set of resources from the current set of resources and
   /// check that the post-subtraction result nonnegative. Assumes other
