@@ -4,11 +4,11 @@ from collections import namedtuple
 from multiprocessing import Queue
 import unittest
 
-from ray import tune
 from ray.tune import Trainable
 from ray.tune.function_runner import wrap_function
 from ray.tune.integration.wandb import _WandbLoggingProcess, \
-    _WANDB_QUEUE_END, WandbLogger, WANDB_ENV_VAR, WandbTrainableMixin
+    _WANDB_QUEUE_END, WandbLogger, WANDB_ENV_VAR, WandbTrainableMixin, \
+    wandb_mixin
 from ray.tune.result import TRIAL_INFO
 from ray.tune.trial import TrialInfo
 
@@ -233,9 +233,11 @@ class WandbIntegrationTest(unittest.TestCase):
         trial = Trial(config, 0, "trial_0", "trainable")
         trial_info = TrialInfo(trial)
 
-        @tune.mixin(_MockWandbTrainableMixin)
+        @wandb_mixin
         def train_fn(config):
             return 1
+
+        train_fn.__mixins__ = (_MockWandbTrainableMixin, )
 
         config[TRIAL_INFO] = trial_info
 

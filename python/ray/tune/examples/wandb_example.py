@@ -3,7 +3,8 @@ import wandb
 
 from ray import tune
 from ray.tune import Trainable
-from ray.tune.integration.wandb import WandbLogger, WandbTrainableMixin
+from ray.tune.integration.wandb import WandbLogger, WandbTrainableMixin, \
+    wandb_mixin
 from ray.tune.logger import DEFAULT_LOGGERS
 
 
@@ -28,7 +29,7 @@ def tune_function():
         loggers=DEFAULT_LOGGERS + (WandbLogger, ))
 
 
-@tune.mixin(WandbTrainableMixin)
+@wandb_mixin
 def decorated_train_function(config, checkpoint=None):
     for i in range(30):
         loss = config["mean"] + config["sd"] * np.random.randn()

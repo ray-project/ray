@@ -5,8 +5,8 @@ from numbers import Number
 
 from ray import logger
 from ray.tune import Trainable
+from ray.tune.function_runner import FunctionRunner
 from ray.tune.logger import Logger
-from ray.tune.mixin import TrainableMixin
 
 try:
     import wandb
@@ -16,6 +16,12 @@ except ImportError:
 
 WANDB_ENV_VAR = "WANDB_API_KEY"
 _WANDB_QUEUE_END = (None, )
+
+
+def wandb_mixin(func):
+    func.__mixins__ = (WandbTrainableMixin, )
+    func.__wandb_group__ = func.__name__
+    return func
 
 
 def _set_api_key(wandb_config):
@@ -212,7 +218,7 @@ class WandbLogger(Logger):
         self._wandb.join(timeout=10)
 
 
-class WandbTrainableMixin(TrainableMixin):
+class WandbTrainableMixin:
     """WandbTrainableMixin
 
     Weights and biases (https://www.wandb.com/) is a tool for experiment
@@ -256,9 +262,9 @@ class WandbTrainableMixin(TrainableMixin):
     .. code-block:: python
 
         from ray import tune
-        from ray.tune.integration.wandb import WandbTrainableMixin
+        from ray.tune.integration.wandb import wandb_mixin
 
-        @tune.mixin(WandbTrainableMixin)
+        @wandb_mixin
         def train_fn(config):
             for i in range(10):
                 loss = self.config["a"] + self.config["b"]
@@ -315,7 +321,11 @@ class WandbTrainableMixin(TrainableMixin):
                 "You need to specify a `project` in your wandb `config` dict.")
 
         # Grouping
-        wandb_group = wandb_config.pop("group", type(self).__name__)
+        if isinstance(self, FunctionRunner):
+            default_group = self._name
+        else:
+            default_group = type(self).__name__
+        wandb_group = wandb_config.pop("group", default_group)
 
         wandb_init_kwargs = dict(
             id=trial_id,

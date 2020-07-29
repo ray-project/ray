@@ -19,9 +19,10 @@ One is the :ref:`WandbLogger <tune-wandb-logger>`, which automatically logs
 metrics reported to Tune to the Wandb API.
 
 The other one is the :ref:`WandbTrainableMixin <tune-wandb-mixin>`, which can be
-used with your `Trainable` class. It automatically initializes the Wandb API with
-Tune's training information. You can just use the Wandb API like you would
-normally do, e.g. using `wandb.log()` to log your training process.
+used with both the function API and a `Trainable` class. It automatically
+initializes the Wandb API with Tune's training information. You can just use the
+Wandb API like you would normally do, e.g. using `wandb.log()` to log your training
+process.
 
 .. _tune-wandb-logger:
 

@@ -363,6 +363,8 @@ def wrap_function(train_func):
         inherit_from = (FunctionRunner, )
 
     class ImplicitFunc(*inherit_from):
+        _name = train_func.__name__
+
         def _trainable_func(self, config, reporter, checkpoint):
             func_args = inspect.getfullargspec(train_func).args
             if len(func_args) > 1:  # more arguments than just the config
