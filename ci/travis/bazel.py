@@ -103,6 +103,9 @@ class Bazel(object):
 
 
 def parse_aquery_shell_calls(aquery_results):
+    """Extracts and yields the command lines representing the genrule() rules
+    from Bazel aquery results.
+    """
     for (key, val) in aquery_results:
         if key == "actions":
             [mnemonic] = [pair[1] for pair in val if pair[0] == "mnemonic"]
@@ -111,6 +114,9 @@ def parse_aquery_shell_calls(aquery_results):
 
 
 def parse_aquery_output_artifacts(aquery_results):
+    """Extracts and yields the file paths representing the output artifact
+    from the provided Bazel aquery results.
+    """
     artifacts = {}
     for (key, val) in aquery_results:
         if key == "artifacts":
@@ -124,6 +130,13 @@ def parse_aquery_output_artifacts(aquery_results):
 
 
 def textproto2json(infile, outfile):
+    """Translates the output of bazel aquery --output=textproto into JSON.
+    Useful for later command-line manipulation.
+
+    Args:
+        infile: The binary input stream.
+        outfile: The binary output stream.
+    """
     json_encoder = json.JSONEncoder(indent=2)
     encoding = "utf-8"
     for obj in textproto_parse(infile, encoding, json_encoder):
@@ -156,9 +169,21 @@ def preclean(bazel_aquery):
     return result
 
 
-def shellcheck(bazel_aquery, *shellcheck_args):
+def shellcheck(bazel_aquery, *shellcheck_argv):
+    """Runs shellcheck with the provided argument(s) on all targets that match
+    the given Bazel aquery.
+
+    Args:
+        bazel_aquery: A Bazel aquery expression (e.g. "//:*")
+        shellcheck_argv: The command-line arguments to call for shellcheck.
+            Note that the first entry should be the shellcheck program itself.
+            If omitted, will simply call "shellcheck".
+
+    Returns:
+        The exit code of shellcheck.
+    """
     bazel = Bazel()
-    shellcheck_args = list(shellcheck_args) or ["shellcheck"]
+    shellcheck_argv = list(shellcheck_argv) or ["shellcheck"]
     all_script_infos = defaultdict(lambda: [])
     aquery_results = bazel.aquery("--include_artifacts=false", bazel_aquery)
     shell_calls = list(parse_aquery_shell_calls(aquery_results))
@@ -199,7 +224,7 @@ def shellcheck(bazel_aquery, *shellcheck_args):
                 bazel_execution_root = bazel.info()["execution_root"]
             cwd = bazel_execution_root
             cmdargs = ["--shell=" + shell, "--external-sources"] + filenames
-            cmdargs = shellcheck_args + cmdargs
+            cmdargs = shellcheck_argv + cmdargs
             proc = subprocess.Popen(cmdargs, stdin=subprocess.PIPE, cwd=cwd)
             try:
                 proc.communicate("\n".join(scripts_combined).encode("utf-8"))
