@@ -138,7 +138,6 @@ public class MetricTest extends BaseTest {
 
   @Test
   public void testRegisterGauge() throws InterruptedException {
-    TestUtils.skipTestUnderSingleProcess();
     Gauge gauge = registerGauge();
 
     gauge.update(2.0);
@@ -149,7 +148,6 @@ public class MetricTest extends BaseTest {
 
   @Test
   public void testRegisterCount() throws InterruptedException {
-    TestUtils.skipTestUnderSingleProcess();
     Count count = registerCount();
 
     count.inc(10.0);
@@ -162,7 +160,6 @@ public class MetricTest extends BaseTest {
 
   @Test
   public void testRegisterSum() throws InterruptedException {
-    TestUtils.skipTestUnderSingleProcess();
     Sum sum = registerSum();
 
     sum.update(10.0);
@@ -175,7 +172,6 @@ public class MetricTest extends BaseTest {
 
   @Test
   public void testRegisterHistogram() throws InterruptedException {
-    TestUtils.skipTestUnderSingleProcess();
     Histogram histogram = registerHistogram();
 
     for (int i = 1; i <= 200; ++i) {
@@ -191,7 +187,6 @@ public class MetricTest extends BaseTest {
 
   @Test
   public void testRegisterGaugeWithConfig() throws InterruptedException {
-    TestUtils.skipTestUnderSingleProcess();
     initRayMetrics(2000L, 1, 1000L);
     Gauge gauge = registerGauge();
 
@@ -203,7 +198,6 @@ public class MetricTest extends BaseTest {
 
   @Test
   public void testRegisterCountWithConfig() throws InterruptedException {
-    TestUtils.skipTestUnderSingleProcess();
     initRayMetrics(2000L, 1, 1000L);
     Count count = registerCount();
 
@@ -217,7 +211,6 @@ public class MetricTest extends BaseTest {
 
   @Test
   public void testRegisterSumWithConfig() throws InterruptedException {
-    TestUtils.skipTestUnderSingleProcess();
     initRayMetrics(2000L, 1, 1000L);
     Sum sum = registerSum();
 
@@ -231,7 +224,6 @@ public class MetricTest extends BaseTest {
 
   @Test
   public void testRegisterHistogramWithConfig() throws InterruptedException {
-    TestUtils.skipTestUnderSingleProcess();
     initRayMetrics(2000L, 1, 1000L);
     Histogram histogram = registerHistogram();
 
