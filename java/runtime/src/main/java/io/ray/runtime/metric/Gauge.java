@@ -6,7 +6,7 @@ import java.util.stream.Collectors;
 
 
 /**
- * Gauge metric for recording last value and mapping object from stats.
+ * Gauge measurement is mapped to gauge object in stats and is recording the last value.
  */
 public class Gauge extends Metric {
 
@@ -17,9 +17,18 @@ public class Gauge extends Metric {
     Preconditions.checkState(metricNativePointer != 0, "Gauge native pointer must not be 0.");
   }
 
-  @Override
-  public void reset() {
+  public double getValue() {
+    return value.doubleValue();
+  }
 
+  @Override
+  protected double getAndReset() {
+    return value.doubleValue();
+  }
+
+  @Override
+  public void update(double value) {
+    this.value.set(value);
   }
 }
 

@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
+
 #include <string>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 
 #ifdef UNORDERED_VS_ABSL_MAPS_EVALUATION
@@ -173,14 +174,14 @@ bool nodeResourcesEqual(const NodeResources &nr1, const NodeResources &nr2) {
 
 namespace ray {
 
-class SchedulingTest : public ::testing::Test {
+class ClusterResourceSchedulerTest : public ::testing::Test {
  public:
   void SetUp() {}
 
   void Shutdown() {}
 };
 
-TEST_F(SchedulingTest, SchedulingFixedPointTest) {
+TEST_F(ClusterResourceSchedulerTest, SchedulingFixedPointTest) {
   {
     FixedPoint fp(1.);
     FixedPoint fp1(1.);
@@ -225,7 +226,7 @@ TEST_F(SchedulingTest, SchedulingFixedPointTest) {
   }
 }
 
-TEST_F(SchedulingTest, SchedulingIdTest) {
+TEST_F(ClusterResourceSchedulerTest, SchedulingIdTest) {
   StringIdMap ids;
   hash<string> hasher;
   size_t num = 10;  // should be greater than 10.
@@ -241,7 +242,7 @@ TEST_F(SchedulingTest, SchedulingIdTest) {
   ids.Remove(hasher(to_string(2)));
   ASSERT_EQ(ids.Count(), num - 2);
 
-  ASSERT_TRUE(ids.Get(to_string(3)) == static_cast<int64_t>(hasher(to_string(3))));
+  ASSERT_EQ(ids.Get(to_string(3)), static_cast<int64_t>(hasher(to_string(3))));
 
   ASSERT_TRUE(ids.Get(to_string(100)) == -1);
 
@@ -255,7 +256,7 @@ TEST_F(SchedulingTest, SchedulingIdTest) {
   ASSERT_EQ(short_ids.Count(), max_id);
 }
 
-TEST_F(SchedulingTest, SchedulingInitClusterTest) {
+TEST_F(ClusterResourceSchedulerTest, SchedulingInitClusterTest) {
   int num_nodes = 10;
   ClusterResourceScheduler cluster_resources;
 
@@ -264,7 +265,7 @@ TEST_F(SchedulingTest, SchedulingInitClusterTest) {
   ASSERT_EQ(cluster_resources.NumNodes(), num_nodes);
 }
 
-TEST_F(SchedulingTest, SchedulingDeleteClusterNodeTest) {
+TEST_F(ClusterResourceSchedulerTest, SchedulingDeleteClusterNodeTest) {
   int num_nodes = 4;
   int64_t remove_id = 2;
 
@@ -276,7 +277,7 @@ TEST_F(SchedulingTest, SchedulingDeleteClusterNodeTest) {
   ASSERT_TRUE(num_nodes - 1 == cluster_resources.NumNodes());
 }
 
-TEST_F(SchedulingTest, SchedulingModifyClusterNodeTest) {
+TEST_F(ClusterResourceSchedulerTest, SchedulingModifyClusterNodeTest) {
   int num_nodes = 4;
   int64_t update_id = 2;
   ClusterResourceScheduler cluster_resources;
@@ -310,7 +311,7 @@ TEST_F(SchedulingTest, SchedulingModifyClusterNodeTest) {
   ASSERT_TRUE(num_nodes == cluster_resources.NumNodes());
 }
 
-TEST_F(SchedulingTest, SchedulingUpdateAvailableResourcesTest) {
+TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest) {
   // Create cluster resources.
   NodeResources node_resources;
   vector<FixedPoint> pred_capacities{10, 5, 3};
@@ -360,7 +361,7 @@ TEST_F(SchedulingTest, SchedulingUpdateAvailableResourcesTest) {
   }
 }
 
-TEST_F(SchedulingTest, SchedulingAddOrUpdateNodeTest) {
+TEST_F(ClusterResourceSchedulerTest, SchedulingAddOrUpdateNodeTest) {
   ClusterResourceScheduler cluster_resources;
   NodeResources nr, nr_out;
   int64_t node_id = 1;
@@ -400,7 +401,7 @@ TEST_F(SchedulingTest, SchedulingAddOrUpdateNodeTest) {
   }
 }
 
-TEST_F(SchedulingTest, SchedulingTaskRequestTest) {
+TEST_F(ClusterResourceSchedulerTest, SchedulingTaskRequestTest) {
   // Create cluster resources containing local node.
   NodeResources node_resources;
   vector<FixedPoint> pred_capacities{5, 5};
@@ -562,7 +563,7 @@ TEST_F(SchedulingTest, SchedulingTaskRequestTest) {
   }
 }
 
-TEST_F(SchedulingTest, GetLocalAvailableResourcesTest) {
+TEST_F(ClusterResourceSchedulerTest, GetLocalAvailableResourcesTest) {
   // Create cluster resources containing local node.
   NodeResources node_resources;
   vector<FixedPoint> pred_capacities{3 /* CPU */, 4 /* MEM */, 5 /* GPU */};
@@ -586,7 +587,7 @@ TEST_F(SchedulingTest, GetLocalAvailableResourcesTest) {
   ASSERT_EQ(expected_cluster_resources == available_cluster_resources, true);
 }
 
-TEST_F(SchedulingTest, GetCPUInstancesDoubleTest) {
+TEST_F(ClusterResourceSchedulerTest, GetCPUInstancesDoubleTest) {
   TaskResourceInstances task_resources;
   addTaskResourceInstances(true, {1., 1., 1.}, CPU, &task_resources);
   addTaskResourceInstances(true, {4.}, MEM, &task_resources);
@@ -598,7 +599,7 @@ TEST_F(SchedulingTest, GetCPUInstancesDoubleTest) {
   ASSERT_EQ(EqualVectors(cpu_instances, expected_cpu_instances), true);
 }
 
-TEST_F(SchedulingTest, AvailableResourceInstancesOpsTest) {
+TEST_F(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest) {
   NodeResources node_resources;
   vector<FixedPoint> pred_capacities{3 /* CPU */};
   initNodeResources(node_resources, pred_capacities, EmptyIntVector,
@@ -629,7 +630,7 @@ TEST_F(SchedulingTest, AvailableResourceInstancesOpsTest) {
   ASSERT_EQ(EqualVectors(instances.available, expected_available), true);
 }
 
-TEST_F(SchedulingTest, TaskResourceInstancesTest) {
+TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest) {
   // Allocate resources for a task request specifying only predefined resources.
   {
     NodeResources node_resources;
@@ -810,7 +811,7 @@ TEST_F(SchedulingTest, TaskResourceInstancesTest) {
   }
 }
 
-TEST_F(SchedulingTest, TaskResourceInstancesTest2) {
+TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest2) {
   {
     NodeResources node_resources;
     vector<FixedPoint> pred_capacities{4. /* CPU */, 4. /* MEM */, 5. /* GPU */};
@@ -842,7 +843,7 @@ TEST_F(SchedulingTest, TaskResourceInstancesTest2) {
   }
 }
 
-TEST_F(SchedulingTest, TaskGPUResourceInstancesTest) {
+TEST_F(ClusterResourceSchedulerTest, TaskGPUResourceInstancesTest) {
   {
     NodeResources node_resources;
     vector<FixedPoint> pred_capacities{1 /* CPU */, 1 /* MEM */, 4 /* GPU */};
@@ -895,7 +896,8 @@ TEST_F(SchedulingTest, TaskGPUResourceInstancesTest) {
   }
 }
 
-TEST_F(SchedulingTest, UpdateLocalAvailableResourcesFromResourceInstancesTest) {
+TEST_F(ClusterResourceSchedulerTest,
+       UpdateLocalAvailableResourcesFromResourceInstancesTest) {
   {
     NodeResources node_resources;
     vector<FixedPoint> pred_capacities{1 /* CPU */, 1 /* MEM */, 4 /* GPU */};
@@ -942,7 +944,7 @@ TEST_F(SchedulingTest, UpdateLocalAvailableResourcesFromResourceInstancesTest) {
   }
 }
 
-TEST_F(SchedulingTest, TaskResourceInstanceWithHardRequestTest) {
+TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithHardRequestTest) {
   NodeResources node_resources;
   vector<FixedPoint> pred_capacities{4. /* CPU */, 2. /* MEM */, 4. /* GPU */};
   initNodeResources(node_resources, pred_capacities, EmptyIntVector,
