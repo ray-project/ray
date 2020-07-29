@@ -29,6 +29,7 @@ class TestSchedules(unittest.TestCase):
             ts_as_tensors = self._get_framework_tensors(ts, fw)
             for t in ts_as_tensors:
                 out = constant(t)
+                assert fw != "tf" or isinstance(out, tf.Tensor)
                 check(out, value, decimals=4)
 
     def test_linear_schedule(self):
@@ -46,6 +47,7 @@ class TestSchedules(unittest.TestCase):
             ts_as_tensors = self._get_framework_tensors(ts, fw)
             for t, e in zip(ts_as_tensors, expected):
                 out = linear(t)
+                assert fw != "tf" or isinstance(out, tf.Tensor)
                 check(out, e, decimals=4)
 
     def test_polynomial_schedule(self):
@@ -70,6 +72,7 @@ class TestSchedules(unittest.TestCase):
             ts_as_tensors = self._get_framework_tensors(ts, fw)
             for t, e in zip(ts_as_tensors, expected):
                 out = polynomial(t)
+                assert fw != "tf" or isinstance(out, tf.Tensor)
                 check(out, e, decimals=4)
 
     def test_exponential_schedule(self):
@@ -90,6 +93,7 @@ class TestSchedules(unittest.TestCase):
             ts_as_tensors = self._get_framework_tensors(ts, fw)
             for t, e in zip(ts_as_tensors, expected):
                 out = exponential(t)
+                assert fw != "tf" or isinstance(out, tf.Tensor)
                 check(out, e, decimals=4)
 
     def test_piecewise_schedule(self):
@@ -109,6 +113,7 @@ class TestSchedules(unittest.TestCase):
             ts_as_tensors = self._get_framework_tensors(ts, fw)
             for t, e in zip(ts_as_tensors, expected):
                 out = piecewise(t)
+                assert fw != "tf" or isinstance(out, tf.Tensor)
                 check(out, e, decimals=4)
 
     @staticmethod
