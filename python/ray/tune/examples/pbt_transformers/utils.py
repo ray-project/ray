@@ -23,7 +23,7 @@ def build_compute_metrics_fn(
     return compute_metrics_fn
 
 
-def download_data(model_name, task_name, data_dir="./data"):
+def download_data(task_name, data_dir="./data"):
     # Download RTE training data
     print("Downloading dataset.")
     import urllib

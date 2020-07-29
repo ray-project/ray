@@ -1,11 +1,6 @@
 # flake8: noqa
 # yapf: disable
 
-"""
-Please note that this example requires Python >= 3.7 to run.
-"""
-
-# __import_begin__
 import os
 import ray
 from ray.tune import CLIReporter
@@ -20,17 +15,14 @@ from transformers import GlueDataTrainingArguments as DataTrainingArguments
 from transformers import (
     Trainer,
     TrainingArguments,
-    glue_compute_metrics,
     glue_output_modes,
     glue_tasks_num_labels,
 )
-from transformers.trainer_utils import is_wandb_available
 
 
 def get_trainer(model_name_or_path, train_dataset, eval_dataset, task_name, training_args, wandb_args=None):
     try:
         num_labels = glue_tasks_num_labels[task_name]
-        output_mode = glue_output_modes[task_name]
     except KeyError:
         raise ValueError("Task not found: %s" % (task_name))
 
@@ -83,7 +75,6 @@ def train_transformer(config, checkpoint=None):
     )
 
     # Arguments for W&B.
-    # name = f"{tune.get_trial_name()}-{os.path.basename(tune.get_trial_dir()[:-1])}"
     name = tune.get_trial_name()
     wandb_args = {
         "project_name": "transformers_pbt",
@@ -101,7 +92,7 @@ def train_transformer(config, checkpoint=None):
 
 # __tune_begin__
 def tune_transformer(num_samples=8, gpus_per_trial=0, smoke_test=False):
-    ray.init("auto", log_to_driver=False)
+    ray.init(address="auto" if not smoke_test else None, log_to_driver=False)
     data_dir = os.path.abspath(os.path.join(os.getcwd(), "./data"))
     if not os.path.exists(data_dir):
         os.mkdir(data_dir, 0o755)
@@ -123,7 +114,7 @@ def tune_transformer(num_samples=8, gpus_per_trial=0, smoke_test=False):
     )
 
     # Download data.
-    download_data(model_name, task_name, task_data_dir)
+    download_data(task_name, data_dir)
 
     config = {
         "model_name": model_name,
@@ -164,7 +155,6 @@ def tune_transformer(num_samples=8, gpus_per_trial=0, smoke_test=False):
         keep_checkpoints_num=3,
         checkpoint_score_attr="training_iteration",
         progress_reporter=reporter,
-        local_dir="~/ray_results/5",
         name="tune_transformer_pbt")
 
     test_best_model(analysis, config["model_name"], config["task_name"], config["data_dir"])
