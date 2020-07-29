@@ -34,16 +34,14 @@ class WandbTestLogger(WandbLogger):
     _logger_process_cls = _MockWandbLoggingProcess
 
 
-class WandbLoggerTest(unittest.TestCase):
-    """Test built-in loggers."""
-
+class WandbIntegrationTest(unittest.TestCase):
     def setUp(self):
         pass
 
     def tearDown(self):
         pass
 
-    def testWandbConfig(self):
+    def testWandbLoggerConfig(self):
         trial_config = {"par1": 4, "par2": 9.12345678}
         trial = Trial(trial_config, 0, "trial_0", "trainable")
 
@@ -124,7 +122,7 @@ class WandbLoggerTest(unittest.TestCase):
 
         logger.close()
 
-    def testReporting(self):
+    def testWandbLoggerReporting(self):
         trial_config = {"par1": 4, "par2": 9.12345678}
         trial = Trial(trial_config, 0, "trial_0", "trainable")
 
