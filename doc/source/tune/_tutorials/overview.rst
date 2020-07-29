@@ -1,3 +1,5 @@
+.. _tune-guides:
+
 Tutorials
 =========
 
@@ -113,3 +115,11 @@ Learn how to use Tune in your browser with the following Colab-based exercises.
     </table>
 
 Tutorial source files `can be found here <https://github.com/ray-project/tutorial>`_.
+
+What's Next?
+-------------
+
+Check out:
+
+ * :doc:`/tune/user-guide`: A comprehensive overview of Tune's features.
+ * :doc:`/tune/examples/index`: End-to-end examples and templates for using Tune with your preferred machine learning library.

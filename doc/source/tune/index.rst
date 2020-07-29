@@ -8,7 +8,7 @@ Tune: Scalable Hyperparameter Tuning
 Tune is a Python library for experiment execution and hyperparameter tuning at any scale. Core features:
 
   * Launch a multi-node :ref:`distributed hyperparameter sweep <tune-distributed>` in less than 10 lines of code.
-  * Supports any machine learning framework, :doc:`including PyTorch, XGBoost, MXNet, and Keras</tune/examples/index>`.
+  * Supports any machine learning framework, :ref:`including PyTorch, XGBoost, MXNet, and Keras <tune-guides>`.
   * Automatically manages :ref:`checkpoints <tune-checkpoint>` and logging to :ref:`TensorBoard <tune-logging>`.
   * Choose among state of the art algorithms such as :ref:`Population Based Training (PBT) <tune-scheduler-pbt>`, :ref:`BayesOptSearch <bayesopt>`, :ref:`HyperBand/ASHA <tune-scheduler-hyperband>`.
   * Move your models from training to serving on the same infrastructure with `Ray Serve`_.

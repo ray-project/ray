@@ -6,6 +6,8 @@ Examples
 
 If any example is broken, or if you'd like to add an example to this page, feel free to raise an issue on our Github repository.
 
+.. tip:: Check out :ref:`the Tune tutorials page <tune-guides>` for guides on how to use Tune with your preferred machine learning library.
+
 .. _tune-general-examples:
 
 General Examples
