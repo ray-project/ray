@@ -22,6 +22,11 @@ if [[ "$TRAVIS" == "true" ]]; then
 
     if ["$TRAVIS_PULL_REQUEST" == "false"]; then
         echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+    else
+        if ["$RAY_CI_DOCKER_AFFECTED" == "0"]; then
+            echo "Skipping docker build in PR build because dockerfile didn't change."
+            exit 0
+        fi
     fi
 
     wheel="$(basename "$ROOT_DIR"/.whl/*cp36m-manylinux*)"
