@@ -149,10 +149,6 @@ void CoreWorkerProcess::EnsureInitialized() {
 CoreWorker &CoreWorkerProcess::GetCoreWorker() {
   EnsureInitialized();
   if (instance_->options_.num_workers == 1) {
-    // TODO(mehrdadn): Remove this when the bug is resolved.
-    // Somewhat consistently reproducible via
-    // python/ray/tests/test_basic.py::test_background_tasks_with_max_calls
-    // with -c opt on Windows.
     RAY_CHECK(instance_->global_worker_) << "global_worker_ must not be NULL";
     return *instance_->global_worker_;
   }

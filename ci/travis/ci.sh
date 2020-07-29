@@ -133,9 +133,11 @@ test_core() {
 }
 
 test_python() {
+  local pathsep=":" args=()
   if [ "${OSTYPE}" = msys ]; then
-    local args=(python/ray/tests/...)
+    pathsep=";"
     args+=(
+      python/ray/tests/...
       -python/ray/tests:test_advanced_2
       -python/ray/tests:test_advanced_3  # test_invalid_unicode_in_worker_log() fails on Windows
       -python/ray/tests:test_autoscaler_aws
@@ -157,7 +159,16 @@ test_python() {
       -python/ray/tests:test_stress_sharded  # timeout
       -python/ray/tests:test_webui
     )
-    bazel test -k --config=ci --test_timeout=600 --build_tests_only -- "${args[@]}";
+  fi
+  if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
+    install_ray
+    # TODO(mehrdadn): We set PYTHONPATH here to let Python find our pickle5 under pip install -e.
+    # It's unclear to me if this should be necessary, but this is to make tests run for now.
+    # Check why this issue doesn't arise on Linux/Mac.
+    # Ideally importing ray.cloudpickle should import pickle5 automatically.
+    bazel test -k --config=ci --test_timeout=600 --build_tests_only \
+      --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" -- \
+      "${args[@]}";
   fi
 }
 
@@ -283,7 +294,7 @@ build_wheels() {
       suppress_output "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
       ;;
     msys*)
-      suppress_output "${WORKSPACE_DIR}"/python/build-wheel-windows.sh
+      keep_alive "${WORKSPACE_DIR}"/python/build-wheel-windows.sh
       ;;
   esac
 }
