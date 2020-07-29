@@ -17,6 +17,7 @@ redis
 sphinx==3.0.4
 sphinx-click
 sphinx-copybutton
+sphinxemoji
 sphinx-gallery
 sphinx-jsonschema
 sphinx-version-warning

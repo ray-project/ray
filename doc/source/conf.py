@@ -66,6 +66,7 @@ extensions = [
     'sphinx_click.ext',
     'sphinx-jsonschema',
     'sphinx_gallery.gen_gallery',
+    'sphinxemoji.sphinxemoji',
     'sphinx_copybutton',
     'versionwarning.extension',
 ]

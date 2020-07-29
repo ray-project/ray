@@ -196,6 +196,11 @@ LightGBM Example
 
 - :doc:`/tune/examples/lightgbm_example`: Trains a basic LightGBM model with Tune with the function-based API and a LightGBM callback.
 
+|:hugging_face:| Transformers Example
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- :doc: `/tune/examples/pbt_transformers.py`: Fine-tunes a |:hugging_face:| transformer with Tune Population Based Training.
+
 
 Contributed Examples
 ~~~~~~~~~~~~~~~~~~~~
