@@ -133,7 +133,7 @@ TEST_F(StatsTest, MultiThreadedInitializationTest) {
       for (int i = 0; i < 5; i++) {
         std::shared_ptr<stats::MetricExporterClient> exporter(
             new stats::StdoutExporterClient());
-        int upper_bound = 100;
+        unsigned int upper_bound = 100;
         unsigned int init_or_shutdown = (rand() % upper_bound);
         if (init_or_shutdown >= (upper_bound / 2)) {
           ray::stats::Init(global_tags, MetricsAgentPort, exporter);

@@ -1,5 +1,5 @@
 diff --git opencensus/stats/internal/delta_producer.cc opencensus/stats/internal/delta_producer.cc
-index c61b4d9..6e9f4da 100644
+index c61b4d9..b3e4ef2 100644
 --- opencensus/stats/internal/delta_producer.cc
 +++ opencensus/stats/internal/delta_producer.cc
 @@ -75,6 +75,20 @@ DeltaProducer* DeltaProducer::Get() {
@@ -35,19 +35,29 @@ index c61b4d9..6e9f4da 100644
  
  void DeltaProducer::SwapDeltas() {
    ABSL_ASSERT(last_delta_.delta().empty() && "Last delta was not consumed.");
-@@ -130,6 +147,12 @@ void DeltaProducer::ConsumeLastDelta() {
- void DeltaProducer::RunHarvesterLoop() {
+@@ -131,11 +148,19 @@ void DeltaProducer::RunHarvesterLoop() {
    absl::Time next_harvest_time = absl::Now() + harvest_interval_;
    while (true) {
+     const absl::Time now = absl::Now();
+-    absl::SleepFor(next_harvest_time - now);
++    absl::SleepFor(absl::Seconds(0.5));
+     // Account for the possibility that the last harvest took longer than
+     // harvest_interval_ and we are already past next_harvest_time.
+-    next_harvest_time = std::max(next_harvest_time, now) + harvest_interval_;
+-    Flush();
++    if (absl::Now() > next_harvest_time) {
++      next_harvest_time = std::max(next_harvest_time, now) + harvest_interval_;
++      Flush();
++    }
 +    {
 +      absl::MutexLock l(&mu_);
 +      if (!thread_started_) {
 +        break;
 +      }
 +    }
-     const absl::Time now = absl::Now();
-     absl::SleepFor(next_harvest_time - now);
-     // Account for the possibility that the last harvest took longer than
+   }
+ }
+ 
 diff --git opencensus/stats/internal/delta_producer.h opencensus/stats/internal/delta_producer.h
 index 2cff522..c8e2e95 100644
 --- opencensus/stats/internal/delta_producer.h
@@ -72,10 +82,10 @@ index 2cff522..c8e2e95 100644
  
  }  // namespace stats
 diff --git opencensus/stats/internal/stats_exporter.cc opencensus/stats/internal/stats_exporter.cc
-index 43ddbc7..e757118 100644
+index 43ddbc7..37b4ae1 100644
 --- opencensus/stats/internal/stats_exporter.cc
 +++ opencensus/stats/internal/stats_exporter.cc
-@@ -95,13 +95,33 @@ void StatsExporterImpl::ClearHandlersForTesting() {
+@@ -95,25 +95,52 @@ void StatsExporterImpl::ClearHandlersForTesting() {
  }
  
  void StatsExporterImpl::StartExportThread() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -101,22 +111,31 @@ index 43ddbc7..e757118 100644
  void StatsExporterImpl::RunWorkerLoop() {
    absl::Time next_export_time = GetNextExportTime();
    while (true) {
+     // SleepFor() returns immediately when given a negative duration.
+-    absl::SleepFor(next_export_time - absl::Now());
++    absl::SleepFor(absl::Seconds(0.5));
+     // In case the last export took longer than the export interval, we
+     // calculate the next time from now.
+-    next_export_time = GetNextExportTime();
+-    Export();
++    if (absl::Now() > next_export_time) {
++      next_export_time = GetNextExportTime();
++      Export();
++    }
 +    {
 +      absl::MutexLock l(&mu_);
 +      if (!thread_started_) {
 +        break;
 +      }
 +    }
-     // SleepFor() returns immediately when given a negative duration.
-     absl::SleepFor(next_export_time - absl::Now());
-     // In case the last export took longer than the export interval, we
-@@ -114,6 +134,12 @@ void StatsExporterImpl::RunWorkerLoop() {
+   }
+ }
+ 
  // StatsExporter
  // -------------
  
 +void StatsExporter::Shutdown() {
 +  StatsExporterImpl::Get()->Shutdown();
-+  StatsExporter::ExportForTesting();
 +  StatsExporterImpl::Get()->ClearHandlersForTesting();
 +}
 +
