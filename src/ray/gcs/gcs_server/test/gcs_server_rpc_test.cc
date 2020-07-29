@@ -36,6 +36,7 @@ class GcsServerTest : public ::testing::Test {
     config.redis_port = TEST_REDIS_SERVER_PORTS.front();
     gcs_server_.reset(new gcs::GcsServer(config, io_service_));
     gcs_server_->Start();
+
     thread_io_service_.reset(new std::thread([this] {
       std::unique_ptr<boost::asio::io_service::work> work(
           new boost::asio::io_service::work(io_service_));
