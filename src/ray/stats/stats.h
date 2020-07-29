@@ -74,6 +74,7 @@ static inline void Init(const TagsType &global_tags, const int metrics_agent_por
     RAY_LOG(INFO) << "Disabled stats.";
     return;
   }
+  RAY_LOG(DEBUG) << "Initialized stats";
 
   metrics_io_service_pool = std::make_shared<IOServicePool>(1);
   metrics_io_service_pool->Run();
@@ -113,7 +114,6 @@ static inline void Shutdown() {
   exporter = nullptr;
   StatsConfig::instance().SetIsInitialized(false);
 }
-
 }  // namespace stats
 
 }  // namespace ray

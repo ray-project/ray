@@ -185,7 +185,9 @@ struct MetricPoint {
   int64_t timestamp;
   double value;
   std::unordered_map<std::string, std::string> tags;
+  const opencensus::stats::MeasureDescriptor &measure_descriptor;
 };
+
 }  // namespace stats
 
 }  // namespace ray
