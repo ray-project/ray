@@ -102,7 +102,8 @@ class WorkerPoolTest : public ::testing::TestWithParam<bool> {
   }
 
   std::shared_ptr<WorkerInterface> CreateWorker(
-      Process proc, const Language &language = Language::PYTHON) {
+      Process proc, const Language &language = Language::PYTHON,
+      const JobID &job_id = JOB_ID) {
     std::function<void(ClientConnection &)> client_handler =
         [this](ClientConnection &client) { HandleNewClient(client); };
     std::function<void(std::shared_ptr<ClientConnection>, int64_t,
@@ -120,11 +121,20 @@ class WorkerPoolTest : public ::testing::TestWithParam<bool> {
         WorkerID::FromRandom(), language, "127.0.0.1", client, client_call_manager_);
     std::shared_ptr<WorkerInterface> worker =
         std::dynamic_pointer_cast<WorkerInterface>(worker_);
-    worker->AssignJobId(JOB_ID);
+    worker->AssignJobId(job_id);
     if (!proc.IsNull()) {
       worker->SetProcess(proc);
     }
     return worker;
+  }
+
+  std::shared_ptr<WorkerInterface> RegisterDriver(
+      const Language &language = Language::PYTHON, const JobID &job_id = JOB_ID,
+      const rpc::JobConfig &job_config = rpc::JobConfig()) {
+    auto driver = CreateWorker(Process::CreateNewDummy(), Language::PYTHON, job_id);
+    driver->AssignTaskId(TaskID::ForDriverTask(job_id));
+    RAY_CHECK_OK(worker_pool_->RegisterDriver(driver, job_id, job_config, nullptr));
+    return driver;
   }
 
   void SetWorkerCommands(const WorkerCommandMap &worker_commands) {
@@ -132,9 +142,7 @@ class WorkerPoolTest : public ::testing::TestWithParam<bool> {
         std::unique_ptr<WorkerPoolMock>(new WorkerPoolMock(io_service_, worker_commands));
     rpc::JobConfig job_config;
     job_config.set_num_java_workers_per_process(NUM_WORKERS_PER_PROCESS_JAVA);
-    auto driver = CreateWorker(Process::CreateNewDummy(), Language::PYTHON);
-    driver->AssignTaskId(TaskID::ForDriverTask(JOB_ID));
-    RAY_CHECK_OK(worker_pool_->RegisterDriver(driver, JOB_ID, job_config, nullptr));
+    RegisterDriver(Language::PYTHON, JOB_ID, job_config);
   }
 
   void TestStartupWorkerProcessCount(Language language, int num_workers_per_process,
@@ -179,10 +187,10 @@ class WorkerPoolTest : public ::testing::TestWithParam<bool> {
 
 static inline TaskSpecification ExampleTaskSpec(
     const ActorID actor_id = ActorID::Nil(), const Language &language = Language::PYTHON,
-    const ActorID actor_creation_id = ActorID::Nil(),
+    const JobID &job_id = JOB_ID, const ActorID actor_creation_id = ActorID::Nil(),
     const std::vector<std::string> &dynamic_worker_options = {}) {
   rpc::TaskSpec message;
-  message.set_job_id(JOB_ID.Binary());
+  message.set_job_id(job_id.Binary());
   message.set_language(language);
   if (!actor_id.IsNil()) {
     message.set_type(TaskType::ACTOR_TASK);
@@ -350,7 +358,7 @@ TEST_P(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
                      {Language::JAVA, java_worker_command}});
 
   TaskSpecification task_spec = ExampleTaskSpec(
-      ActorID::Nil(), Language::JAVA,
+      ActorID::Nil(), Language::JAVA, JOB_ID,
       ActorID::Of(JOB_ID, TaskID::ForDriverTask(JOB_ID), 1), {"test_op_0", "test_op_1"});
   worker_pool_->StartWorkerProcess(Language::JAVA, JOB_ID,
                                    task_spec.DynamicWorkerOptions());
@@ -360,6 +368,71 @@ TEST_P(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
             std::vector<std::string>({"test_op_0", "dummy_java_worker_command",
                                       GetNumJavaWorkersPerProcessSystemProperty(1),
                                       "test_op_1"}));
+}
+
+TEST_P(WorkerPoolTest, PopWorkerMultiTenancy) {
+  if (!RayConfig::instance().enable_multi_tenancy()) {
+    return;
+  }
+
+  auto job_id1 = JOB_ID;
+  auto job_id2 = JobID::FromInt(2);
+  ASSERT_NE(job_id1, job_id2);
+  JobID job_ids[] = {job_id1, job_id2};
+
+  // The driver of job 1 is already registered. Here we register the driver for job 2.
+  RegisterDriver(Language::PYTHON, job_id2);
+
+  // Register 2 workers for each job.
+  for (auto job_id : job_ids) {
+    for (int i = 0; i < 2; i++) {
+      auto worker = CreateWorker(Process::CreateNewDummy(), Language::PYTHON, job_id);
+      worker_pool_->PushWorker(worker);
+    }
+  }
+
+  std::unordered_set<WorkerID> worker_ids;
+  for (int round = 0; round < 2; round++) {
+    std::vector<std::shared_ptr<WorkerInterface>> workers;
+
+    // Pop workers for actor (creation) tasks.
+    for (auto job_id : job_ids) {
+      auto actor_id = ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1);
+      // For the first round, we pop for actor creation tasks.
+      // For the second round, we pop for actor tasks.
+      auto task_spec =
+          ExampleTaskSpec(round == 0 ? ActorID::Nil() : actor_id, Language::PYTHON,
+                          job_id, round == 0 ? actor_id : ActorID::Nil());
+      auto worker = worker_pool_->PopWorker(task_spec);
+      ASSERT_TRUE(worker);
+      ASSERT_EQ(worker->GetAssignedJobId(), job_id);
+      if (round == 0) {
+        worker->AssignActorId(actor_id);
+      }
+      workers.push_back(worker);
+    }
+
+    // Pop workers for normal tasks.
+    for (auto job_id : job_ids) {
+      auto task_spec = ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_id);
+      auto worker = worker_pool_->PopWorker(task_spec);
+      ASSERT_TRUE(worker);
+      ASSERT_EQ(worker->GetAssignedJobId(), job_id);
+      workers.push_back(worker);
+    }
+
+    // Return all workers.
+    for (auto worker : workers) {
+      worker_pool_->PushWorker(worker);
+      if (round == 0) {
+        // For the first round, all workers are new.
+        ASSERT_TRUE(worker_ids.insert(worker->WorkerId()).second);
+      } else {
+        // For the second round, all workers are existing ones.
+        ASSERT_TRUE(worker_ids.count(worker->WorkerId()) > 0);
+      }
+    }
+  }
 }
 
 INSTANTIATE_TEST_CASE_P(WorkerPoolMultiTenancyTest, WorkerPoolTest,
