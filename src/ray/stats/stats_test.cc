@@ -154,6 +154,27 @@ TEST_F(StatsTest, MultiThreadedInitializationTest) {
   ASSERT_TRUE(ray::stats::StatsConfig::instance().IsInitialized());
 }
 
+TEST_F(StatsTest, TestShutdownTakesLongTime) {
+  // Make sure it doesn't take long time to shutdown when harvestor / export interval is
+  // large.
+  ray::stats::Shutdown();
+  // Spawn 10 threads that init and shutdown again and again.
+  // The test will have memory corruption if it doesn't work as expected.
+  const stats::TagsType global_tags = {{stats::LanguageKey, "CPP"},
+                                       {stats::WorkerPidKey, "1000"}};
+  std::shared_ptr<stats::MetricExporterClient> exporter(
+      new stats::StdoutExporterClient());
+
+  // Flush interval is 30 seconds. Shutdown should not take 30 seconds in this case.
+  uint32_t kReportFlushInterval = 30000;
+  absl::Duration report_interval = absl::Milliseconds(kReportFlushInterval);
+  absl::Duration harvest_interval = absl::Milliseconds(kReportFlushInterval);
+  ray::stats::StatsConfig::instance().SetReportInterval(report_interval);
+  ray::stats::StatsConfig::instance().SetHarvestInterval(harvest_interval);
+  ray::stats::Init(global_tags, MetricsAgentPort, exporter);
+  ray::stats::Shutdown();
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
