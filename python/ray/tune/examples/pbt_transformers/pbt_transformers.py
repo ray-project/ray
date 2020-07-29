@@ -12,38 +12,27 @@ from functools import partial
 from typing import Callable, Dict, Optional
 
 import numpy as np
+import ray
 from ray.tune import CLIReporter
 from ray.tune.schedulers import PopulationBasedTraining
 
 from ray import tune
-from ray.tune.examples.pbt_transformers import trainer
-from ray.tune.examples.pbt_transformers import load_and_cache, get_datasets, disable_tqdm
+import trainer
+from utils import build_compute_metrics_fn, download_data
 
-from transformers import AutoConfig, AutoModelForSequenceClassification, EvalPrediction
+from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer, EvalPrediction, GlueDataset
+from transformers import GlueDataTrainingArguments as DataTrainingArguments
 from transformers import (
+    Trainer,
     TrainingArguments,
     glue_compute_metrics,
     glue_output_modes,
     glue_tasks_num_labels,
 )
+from transformers.trainer_utils import is_wandb_available
 
 
-def build_compute_metrics_fn(task_name: str) -> Callable[[EvalPrediction], Dict]:
-    output_mode = glue_output_modes[task_name]
-
-    def compute_metrics_fn(p: EvalPrediction):
-        if output_mode == "classification":
-            preds = np.argmax(p.predictions, axis=1)
-        elif output_mode == "regression":
-            preds = np.squeeze(p.predictions)
-        metrics = glue_compute_metrics(task_name, preds, p.label_ids)
-        tune.report(mean_accuracy=metrics["acc"])
-        return metrics
-
-    return compute_metrics_fn
-
-
-def get_trainer(model_name_or_path, data_dir, task_name, training_args):
+def get_trainer(model_name_or_path, train_dataset, eval_dataset, task_name, training_args, wandb_args=None):
     try:
         num_labels = glue_tasks_num_labels[task_name]
         output_mode = glue_output_modes[task_name]
@@ -60,16 +49,13 @@ def get_trainer(model_name_or_path, data_dir, task_name, training_args):
         model_name_or_path,
         config=config,
     )
-
-    train_dataset = get_datasets(data_dir, task_name, "train")
-    eval_dataset = get_datasets(data_dir, task_name, "val")
-
     tune_trainer = trainer.TuneTransformerTrainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
-        compute_metrics=build_compute_metrics_fn(task_name)
+        compute_metrics=build_compute_metrics_fn(task_name),
+        wandb_args=wandb_args
     )
 
     return tune_trainer
@@ -77,14 +63,22 @@ def get_trainer(model_name_or_path, data_dir, task_name, training_args):
 
 # __train_begin__
 def train_transformer(config, checkpoint=None):
+    data_args = DataTrainingArguments(
+        task_name=config["task_name"],
+        data_dir=config["data_dir"]
+    )
+    tokenizer = AutoTokenizer.from_pretrained(config["model_name"])
+    train_dataset = GlueDataset(data_args, tokenizer=tokenizer, mode="train", cache_dir=config["data_dir"])
+    eval_dataset = GlueDataset(data_args, tokenizer=tokenizer, mode="dev", cache_dir=config["data_dir"])
+    eval_dataset = eval_dataset[:len(eval_dataset) // 2]
     training_args = TrainingArguments(
         output_dir=tune.get_trial_dir(),
         learning_rate=config["learning_rate"],
         do_train=True,
         do_eval=True,
         evaluate_during_training=True,
-        eval_steps=50,
-        save_steps=0,
+        eval_steps=(len(train_dataset) // config["per_gpu_train_batch_size"]) + 1,
+        save_steps=0,  # We explicitly set save here to 0, and do saving in evaluate instead
         num_train_epochs=config["num_epochs"],
         per_device_train_batch_size=config["per_gpu_train_batch_size"],
         per_device_eval_batch_size=config["per_gpu_val_batch_size"],
@@ -93,7 +87,17 @@ def train_transformer(config, checkpoint=None):
         logging_dir="./logs",
     )
 
-    tune_trainer = get_trainer(config["model_name"], config["data_dir"], config["task_name"], training_args)
+    # Arguments for W&B.
+    name = f"{tune.get_trial_name()}-{os.path.basename(tune.get_trial_dir()[:-1])}"
+    wandb_args = {
+        "project_name": "transformers_pbt",
+        "watch": "false",  # Either set to gradient, false, or all
+        "run_name": name,
+        "run_id": name
+    }
+
+    tune_trainer = get_trainer(config["model_name"], train_dataset, eval_dataset, config["task_name"], training_args,
+                               wandb_args=wandb_args)
     tune_trainer.train(checkpoint if checkpoint is not None and len(checkpoint) > 0 else config["model_name"])
 
 
@@ -101,54 +105,100 @@ def train_transformer(config, checkpoint=None):
 
 
 # __tune_begin__
-def tune_transformer(num_samples=8, num_epochs=3, gpus_per_trial=0):
+def tune_transformer(num_samples=8, gpus_per_trial=0, smoke_test=False):
+    ray.init("auto", log_to_driver=False)
     data_dir = os.path.abspath(os.path.join(os.getcwd(), "./data"))
     if not os.path.exists(data_dir):
         os.mkdir(data_dir, 0o755)
     model_name = "bert-base-uncased"
     task_name = "rte"
 
+    task_data_dir = os.path.join(data_dir, task_name.upper())
+
     # Download and cache tokenizer, model, and features
-    load_and_cache(task_name, model_name, data_dir=data_dir)
+    print("Downloading and caching Tokenizer")
+
+    # Triggers tokenizer download to cache
+    AutoTokenizer.from_pretrained(model_name)
+    print("Downloading and caching pre-trained model")
+
+    # Triggers model download to cache
+    AutoModelForSequenceClassification.from_pretrained(
+        model_name,
+    )
+
+    # Download data.
+    download_data(model_name, task_name, task_data_dir)
 
     config = {
         "model_name": model_name,
         "task_name": task_name,
-        "data_dir": data_dir,
+        "data_dir": task_data_dir,
         "per_gpu_val_batch_size": 32,
         "per_gpu_train_batch_size": tune.choice([16, 32, 64]),
         "learning_rate": tune.uniform(1e-5, 5e-5),
         "weight_decay": tune.uniform(0.0, 0.3),
-        "num_epochs": tune.choice([2, 3, 4, 5]),
+        "num_epochs": tune.choice([2, 3, 4, 5]) if not smoke_test else 1,
     }
 
     scheduler = PopulationBasedTraining(
         time_attr="training_iteration",
-        metric="mean_accuracy",
+        metric="eval_acc",
         mode="max",
         perturbation_interval=1,
         hyperparam_mutations={
             "weight_decay": lambda: tune.uniform(0.0, 0.3).func(None),
             "learning_rate": lambda: tune.uniform(1e-5, 5e-5).func(None),
-            "per_gpu_train_batch_size": [16, 32, 64],
-
         })
 
     reporter = CLIReporter(
-        parameter_columns=["weight_decay", "learning_rate", "per_gpu_train_batch_size", "num_epochs"],
-        metric_columns=["mean_accuracy", "training_iteration"])
+        parameter_columns={
+            "weight_decay": "w_decay",
+            "learning_rate": "lr",
+            "per_gpu_train_batch_size": "train_bs/gpu",
+            "num_epochs": "num_epochs"},
+        metric_columns=["eval_acc", "eval_loss", "epoch", "training_iteration"])
 
-    tune.run(
+    analysis = tune.run(
         train_transformer,
         resources_per_trial={"cpu": 1, "gpu": gpus_per_trial},
         config=config,
         num_samples=num_samples,
         scheduler=scheduler,
+        # keep_checkpoints_num=3,
         progress_reporter=reporter,
+        local_dir="~/ray_results/5",
         name="tune_transformer_pbt")
+
+    test_best_model(analysis, config["model_name"], config["task_name"], config["data_dir"])
 
 
 # __tune_end__
+
+def test_best_model(analysis, model_name, task_name, data_dir):
+    data_args = DataTrainingArguments(
+        task_name=task_name,
+        data_dir=data_dir
+    )
+
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+    best_config = analysis.get_best_config(metric="eval_acc", mode="max")
+    print(best_config)
+    best_checkpoint = analysis.get_best_trial(metric="eval_acc", mode="max").checkpoint.value
+    print(best_checkpoint)
+    best_model = AutoModelForSequenceClassification.from_pretrained(best_checkpoint).to("cuda")
+
+    test_args = TrainingArguments(
+        output_dir="./best_model_results",
+    )
+    test_dataset = GlueDataset(data_args, tokenizer=tokenizer, mode="dev", cache_dir=data_dir)
+    test_dataset = test_dataset[len(test_dataset) // 2:]
+
+    test_trainer = Trainer(best_model, test_args, compute_metrics=build_compute_metrics_fn(task_name))
+
+    metrics = test_trainer.evaluate(test_dataset)
+    print(metrics)
 
 
 if __name__ == "__main__":
@@ -160,7 +210,7 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
-        tune_transformer(num_samples=1, num_epochs=1, gpus_per_trial=0)
+        tune_transformer(num_samples=1, gpus_per_trial=1, smoke_test=True)
     else:
         # You can change the number of GPUs here:
-        tune_transformer(num_samples=8, num_epochs=3, gpus_per_trial=2)
+        tune_transformer(num_samples=8, gpus_per_trial=1)
