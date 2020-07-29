@@ -43,6 +43,35 @@ inline ray::gcs::GcsClientOptions ToGcsClientOptions(JNIEnv *env,
   return ray::gcs::GcsClientOptions(ip, port, password, /*is_test_client=*/false);
 }
 
+jobject ToJavaArgs(JNIEnv *env, jbooleanArray java_check_results,
+                   const std::vector<std::shared_ptr<ray::RayObject>> &args) {
+  if (java_check_results == nullptr) {
+    // If `java_check_results` is null, it means that `checkByteBufferArguments`
+    // failed. In this case, just return null here. The args won't be used anyway.
+    return nullptr;
+  } else {
+    jboolean *check_results = env->GetBooleanArrayElements(java_check_results, nullptr);
+    size_t i = 0;
+    jobject args_array_list = NativeVectorToJavaList<std::shared_ptr<ray::RayObject>>(
+        env, args,
+        [check_results, &i](JNIEnv *env,
+                            const std::shared_ptr<ray::RayObject> &native_object) {
+          if (*(check_results + (i++))) {
+            // If the type of this argument is ByteBuffer, we create a
+            // DirectByteBuffer here To avoid data copy.
+            // TODO: Check native_object->GetMetadata() == "RAW"
+            jobject obj = env->NewDirectByteBuffer(native_object->GetData()->Data(),
+                                                   native_object->GetData()->Size());
+            RAY_CHECK(obj);
+            return obj;
+          }
+          return NativeRayObjectToJavaNativeRayObject(env, native_object);
+        });
+    env->ReleaseBooleanArrayElements(java_check_results, check_results, JNI_ABORT);
+    return args_array_list;
+  }
+}
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -100,8 +129,12 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
 
         // convert args
         // TODO (kfstorm): Avoid copying binary data from Java to C++
-        jobject args_array_list = NativeVectorToJavaList<std::shared_ptr<ray::RayObject>>(
-            env, args, NativeRayObjectToJavaNativeRayObject);
+        jbooleanArray java_check_results =
+            static_cast<jbooleanArray>(env->CallObjectMethod(
+                java_task_executor, java_task_executor_parse_function_arguments,
+                ray_function_array_list));
+        RAY_CHECK_JAVA_EXCEPTION(env);
+        jobject args_array_list = ToJavaArgs(env, java_check_results, args);
 
         // invoke Java method
         jobject java_return_objects =
@@ -120,6 +153,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
           }
         }
 
+        env->DeleteLocalRef(java_check_results);
         env->DeleteLocalRef(java_return_objects);
         env->DeleteLocalRef(args_array_list);
         return ray::Status::OK();

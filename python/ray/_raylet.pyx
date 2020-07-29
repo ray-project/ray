@@ -38,6 +38,7 @@ from libcpp.string cimport string as c_string
 from libcpp.utility cimport pair
 from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
+from libcpp.pair cimport pair as c_pair
 
 from cython.operator import dereference, postincrement
 
@@ -52,6 +53,7 @@ from ray.includes.common cimport (
     CTaskArgByReference,
     CTaskArgByValue,
     CTaskType,
+    CPlacementStrategy,
     CRayFunction,
     LocalMemoryBuffer,
     move,
@@ -64,15 +66,19 @@ from ray.includes.common cimport (
     TASK_TYPE_ACTOR_TASK,
     WORKER_TYPE_WORKER,
     WORKER_TYPE_DRIVER,
+    PLACEMENT_STRATEGY_PACK,
+    PLACEMENT_STRATEGY_SPREAD,
 )
 from ray.includes.unique_ids cimport (
     CActorID,
     CActorCheckpointID,
     CObjectID,
     CClientID,
+    CPlacementGroupID,
 )
 from ray.includes.libcoreworker cimport (
     CActorCreationOptions,
+    CPlacementGroupCreationOptions,
     CCoreWorkerOptions,
     CCoreWorkerProcess,
     CTaskOptions,
@@ -907,7 +913,10 @@ cdef class CoreWorker:
                      c_bool is_detached,
                      c_string name,
                      c_bool is_asyncio,
-                     c_string extension_data):
+                     PlacementGroupID placement_group_id,
+                     int64_t placement_group_bundle_index,
+                     c_string extension_data
+                     ):
         cdef:
             CRayFunction ray_function
             c_vector[unique_ptr[CTaskArg]] args_vector
@@ -915,6 +924,8 @@ cdef class CoreWorker:
             unordered_map[c_string, double] c_resources
             unordered_map[c_string, double] c_placement_resources
             CActorID c_actor_id
+            CPlacementGroupID c_placement_group_id = \
+                placement_group_id.native()
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
@@ -929,11 +940,42 @@ cdef class CoreWorker:
                     CActorCreationOptions(
                         max_restarts, max_task_retries, max_concurrency,
                         c_resources, c_placement_resources,
-                        dynamic_worker_options, is_detached, name, is_asyncio),
+                        dynamic_worker_options, is_detached, name, is_asyncio,
+                        c_pair[CPlacementGroupID, int64_t](c_placement_group_id, placement_group_bundle_index)),
                     extension_data,
                     &c_actor_id))
 
             return ActorID(c_actor_id.Binary())
+
+    def create_placement_group(
+                            self,
+                            c_string name,
+                            c_vector[unordered_map[c_string, double]] bundles,
+                            c_string strategy):
+        cdef:
+            CPlacementGroupID c_placement_group_id
+            CPlacementStrategy c_strategy
+        
+        if strategy == b"PACK":
+            c_strategy = PLACEMENT_STRATEGY_PACK
+        else:
+            if strategy == b"SPREAD":
+                c_strategy = PLACEMENT_STRATEGY_SPREAD
+            else:
+                raise TypeError(strategy)
+
+        with nogil:
+            check_status(
+                        CCoreWorkerProcess.GetCoreWorker().
+                        CreatePlacementGroup(
+                            CPlacementGroupCreationOptions(
+                                name,
+                                c_strategy,
+                                bundles
+                            ),
+                            &c_placement_group_id))
+
+        return PlacementGroupID(c_placement_group_id.Binary())
 
     def submit_actor_task(self,
                           Language language,

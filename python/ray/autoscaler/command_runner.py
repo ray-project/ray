@@ -12,6 +12,9 @@ import time
 from ray.autoscaler.docker import check_docker_running_cmd, with_docker_exec
 from ray.autoscaler.log_timer import LogTimer
 
+from ray.autoscaler.cli_logger import cli_logger
+import colorful as cf
+
 logger = logging.getLogger(__name__)
 
 # How long to wait for a node to start, in seconds
@@ -19,6 +22,24 @@ NODE_START_WAIT_S = 300
 HASH_MAX_LENGTH = 10
 KUBECTL_RSYNC = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "kubernetes/kubectl-rsync.sh")
+
+
+class ProcessRunnerError(Exception):
+    def __init__(self,
+                 msg,
+                 msg_type,
+                 code=None,
+                 command=None,
+                 message_discovered=None):
+        super(ProcessRunnerError, self).__init__(
+            "{} (discovered={}): type={}, code={}, command={}".format(
+                msg, message_discovered, msg_type, code, command))
+
+        self.msg_type = msg_type
+        self.code = code
+        self.command = command
+
+        self.message_discovered = message_discovered
 
 
 def _with_interactive(cmd):
@@ -256,14 +277,27 @@ class SSHCommandRunner(CommandRunnerInterface):
         else:
             return self.provider.external_ip(self.node_id)
 
-    def _wait_for_ip(self, deadline):
-        while time.time() < deadline and \
-                not self.provider.is_terminated(self.node_id):
-            logger.info(self.log_prefix + "Waiting for IP...")
-            ip = self._get_node_ip()
-            if ip is not None:
-                return ip
-            time.sleep(10)
+    def wait_for_ip(self, deadline):
+        # if we have IP do not print waiting info
+        ip = self._get_node_ip()
+        if ip is not None:
+            cli_logger.labeled_value("Fetched IP", ip)
+            return ip
+
+        interval = 10
+        with cli_logger.timed("Waiting for IP"):
+            while time.time() < deadline and \
+                    not self.provider.is_terminated(self.node_id):
+                cli_logger.old_info(logger, "{}Waiting for IP...",
+                                    self.log_prefix)
+
+                ip = self._get_node_ip()
+                if ip is not None:
+                    cli_logger.labeled_value("Received", ip)
+                    return ip
+                cli_logger.print("Not yet available, retrying in {} seconds",
+                                 cf.bold(str(interval)))
+                time.sleep(interval)
 
         return None
 
@@ -275,7 +309,10 @@ class SSHCommandRunner(CommandRunnerInterface):
         #   I think that's reasonable.
         deadline = time.time() + NODE_START_WAIT_S
         with LogTimer(self.log_prefix + "Got IP"):
-            ip = self._wait_for_ip(deadline)
+            ip = self.wait_for_ip(deadline)
+
+            cli_logger.doassert(ip is not None,
+                                "Could not get node IP.")  # todo: msg
             assert ip is not None, "Unable to find IP of node"
 
         self.ssh_ip = ip
@@ -286,7 +323,8 @@ class SSHCommandRunner(CommandRunnerInterface):
         try:
             os.makedirs(self.ssh_control_path, mode=0o700, exist_ok=True)
         except OSError as e:
-            logger.warning(e)
+            cli_logger.warning(e)  # todo: msg
+            cli_logger.old_warning(logger, e)
 
     def run(self,
             cmd,
@@ -308,59 +346,91 @@ class SSHCommandRunner(CommandRunnerInterface):
         ssh = ["ssh", "-tt"]
 
         if port_forward:
-            if not isinstance(port_forward, list):
-                port_forward = [port_forward]
-            for local, remote in port_forward:
-                logger.info(self.log_prefix + "Forwarding " +
-                            "{} -> localhost:{}".format(local, remote))
-                ssh += ["-L", "{}:localhost:{}".format(remote, local)]
+            with cli_logger.group("Forwarding ports"):
+                if not isinstance(port_forward, list):
+                    port_forward = [port_forward]
+                for local, remote in port_forward:
+                    cli_logger.verbose(
+                        "Forwarding port {} to port {} on localhost.",
+                        cf.bold(local), cf.bold(remote))  # todo: msg
+                    cli_logger.old_info(logger,
+                                        "{}Forwarding {} -> localhost:{}",
+                                        self.log_prefix, local, remote)
+                    ssh += ["-L", "{}:localhost:{}".format(remote, local)]
 
         final_cmd = ssh + ssh_options.to_ssh_options_list(timeout=timeout) + [
             "{}@{}".format(self.ssh_user, self.ssh_ip)
         ]
         if cmd:
             final_cmd += _with_interactive(cmd)
-            logger.info(self.log_prefix +
-                        "Running {}".format(" ".join(final_cmd)))
+            cli_logger.old_info(logger, "{}Running {}", self.log_prefix,
+                                " ".join(final_cmd))
         else:
             # We do this because `-o ControlMaster` causes the `-N` flag to
             # still create an interactive shell in some ssh versions.
             final_cmd.append(quote("while true; do sleep 86400; done"))
 
-        try:
-            if with_output:
-                return self.process_runner.check_output(final_cmd)
-            else:
-                self.process_runner.check_call(final_cmd)
-        except subprocess.CalledProcessError:
-            if exit_on_fail:
+        # todo: add a flag for this, we might
+        # wanna log commands with print sometimes
+        cli_logger.verbose("Running `{}`", cf.bold(cmd))
+        with cli_logger.indented():
+            cli_logger.very_verbose("Full command is `{}`",
+                                    cf.bold(" ".join(final_cmd)))
+
+        def start_process():
+            try:
+                if with_output:
+                    return self.process_runner.check_output(final_cmd)
+                else:
+                    self.process_runner.check_call(final_cmd)
+            except subprocess.CalledProcessError as e:
                 quoted_cmd = " ".join(final_cmd[:-1] + [quote(final_cmd[-1])])
-                raise click.ClickException(
-                    "Command failed: \n\n  {}\n".format(quoted_cmd)) from None
-            else:
-                raise click.ClickException(
-                    "SSH command Failed. See above for the output from the"
-                    " failure.") from None
+                if not cli_logger.old_style:
+                    raise ProcessRunnerError(
+                        "Command failed",
+                        "ssh_command_failed",
+                        code=e.returncode,
+                        command=quoted_cmd)
+
+                if exit_on_fail:
+                    raise click.ClickException(
+                        "Command failed: \n\n  {}\n".format(quoted_cmd)) \
+                        from None
+                else:
+                    raise click.ClickException(
+                        "SSH command Failed. See above for the output from the"
+                        " failure.") from None
+
+        if cli_logger.verbosity > 0:
+            with cli_logger.indented():
+                return start_process()
+        else:
+            return start_process()
 
     def run_rsync_up(self, source, target):
         self._set_ssh_ip_if_required()
-        self.process_runner.check_call([
+        command = [
             "rsync", "--rsh",
             subprocess.list2cmdline(
                 ["ssh"] + self.ssh_options.to_ssh_options_list(timeout=120)),
             "-avz", source, "{}@{}:{}".format(self.ssh_user, self.ssh_ip,
                                               target)
-        ])
+        ]
+        cli_logger.verbose("Running `{}`", cf.bold(" ".join(command)))
+        self.process_runner.check_call(command)
 
     def run_rsync_down(self, source, target):
         self._set_ssh_ip_if_required()
-        self.process_runner.check_call([
+
+        command = [
             "rsync", "--rsh",
             subprocess.list2cmdline(
                 ["ssh"] + self.ssh_options.to_ssh_options_list(timeout=120)),
             "-avz", "{}@{}:{}".format(self.ssh_user, self.ssh_ip,
                                       source), target
-        ])
+        ]
+        cli_logger.verbose("Running `{}`", cf.bold(" ".join(command)))
+        self.process_runner.check_call(command)
 
     def remote_shell_command_str(self):
         return "ssh -o IdentitiesOnly=yes -i {} {}@{}\n".format(
@@ -390,6 +460,7 @@ class DockerCommandRunner(SSHCommandRunner):
 
         if run_env == "docker":
             cmd = self._docker_expand_user(cmd, any_char=True)
+            cmd = " ".join(_with_interactive(cmd))
             cmd = with_docker_exec(
                 [cmd], container_name=self.docker_name,
                 with_interactive=True)[0]

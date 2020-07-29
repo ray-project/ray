@@ -3,6 +3,8 @@ Tutorials
 
 .. tip:: We'd love to hear your feedback on using Tune - fill out a `short survey <https://forms.gle/PTRvGLbKRdUfuzQo9>`_!
 
+.. tip:: We'd love to hear your feedback on using Tune - fill out a `short survey <https://forms.gle/PTRvGLbKRdUfuzQo9>`_!
+
 In this section, you can find material on how to use Tune and its various features. If any of the materials is out of date or broken, or if you'd like to add an example to this page, feel free to raise an issue on our Github repository.
 
 Take a look at any of the below tutorials to get started with Tune.

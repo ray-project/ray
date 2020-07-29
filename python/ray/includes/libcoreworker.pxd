@@ -17,11 +17,13 @@ from ray.includes.unique_ids cimport (
     CJobID,
     CTaskID,
     CObjectID,
+    CPlacementGroupID,
 )
 from ray.includes.common cimport (
     CAddress,
     CActorCreationOptions,
     CBuffer,
+    CPlacementGroupCreationOptions,
     CRayFunction,
     CRayObject,
     CRayStatus,
@@ -91,6 +93,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_vector[unique_ptr[CTaskArg]] &args,
             const CActorCreationOptions &options,
             const c_string &extension_data, CActorID *actor_id)
+        CRayStatus CreatePlacementGroup(
+            const CPlacementGroupCreationOptions &options, 
+            CPlacementGroupID *placement_group_id)
         void SubmitActorTask(
             const CActorID &actor_id, const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,
@@ -225,9 +230,12 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         void Initialize(const CCoreWorkerOptions &options)
         # Only call this in CoreWorker.__cinit__,
         # use CoreWorker.core_worker to access C++ CoreWorker.
+
         @staticmethod
         CCoreWorker &GetCoreWorker()
+
         @staticmethod
         void Shutdown()
+
         @staticmethod
         void RunTaskExecutionLoop()

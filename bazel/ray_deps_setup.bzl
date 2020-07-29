@@ -187,7 +187,6 @@ def ray_deps_setup():
         sha256 = "2f0aaa50053792aa274b402f2530e63c1542085021cfef83beee9281412c12f6",
         patches = [
             "//thirdparty/patches:arrow-windows-export.patch",
-            "//thirdparty/patches:arrow-windows-nonstdc.patch",
         ],
     )
 
@@ -204,6 +203,7 @@ def ray_deps_setup():
         sha256 = "6592e07672e7f7980687f6c1abda81974d8d379e273fea3b54b6c4d855489b9d",
         patches = [
             "//thirdparty/patches:opencensus-cpp-harvest-interval.patch",
+            "//thirdparty/patches:opencensus-cpp-shutdown-api.patch",
         ]
     )
 
