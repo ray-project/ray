@@ -227,11 +227,10 @@ class TaskDependencyManager {
   /// transfer or reconstruction. These are objects for which: (1) there is a
   /// subscribed task dependent on it, (2) the object is not local, and (3) the
   /// task that creates the object is not pending execution locally.
-  bool CheckObjectRequired(const ObjectID &object_id) const;
+  bool CheckObjectRequired(const ObjectID &object_id, rpc::Address *owner_address) const;
   /// If the given object is required, then request that the object be made
   /// available through object transfer or reconstruction.
-  void HandleRemoteDependencyRequired(const ObjectID &object_id,
-                                      const rpc::Address &owner_address);
+  void HandleRemoteDependencyRequired(const ObjectID &object_id);
   /// If the given object is no longer required, then cancel any in-progress
   /// operations to make the object available through object transfer or
   /// reconstruction.

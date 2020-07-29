@@ -27,6 +27,17 @@ namespace {
 using ray::rpc::GcsChangeMode;
 using ray::rpc::GcsNodeInfo;
 using ray::rpc::ObjectTableData;
+/// Filter out the removed clients from the object locations.
+void FilterRemovedClients(std::shared_ptr<gcs::GcsClient> gcs_client,
+                          std::unordered_set<ClientID> *node_ids) {
+  for (auto it = node_ids->begin(); it != node_ids->end();) {
+    if (gcs_client->Nodes().IsRemoved(*it)) {
+      it = node_ids->erase(it);
+    } else {
+      it++;
+    }
+  }
+}
 
 /// Process a notification of the object table entries and store the result in
 /// node_ids. This assumes that node_ids already contains the result of the
@@ -49,15 +60,7 @@ bool UpdateObjectLocations(bool is_added,
       isUpdated = true;
     }
   }
-  // Filter out the removed clients from the object locations.
-  for (auto it = node_ids->begin(); it != node_ids->end();) {
-    if (gcs_client->Nodes().IsRemoved(*it)) {
-      it = node_ids->erase(it);
-    } else {
-      it++;
-    }
-  }
-
+  FilterRemovedClients(gcs_client, node_ids);
   return isUpdated;
 }
 
@@ -207,7 +210,7 @@ void OwnershipBasedObjectDirectory::SubscriptionCallback(
   for (auto const &client_id : reply.client_ids()) {
     client_ids.emplace(ClientID::FromBinary(client_id));
   }
-
+  FilterRemovedClients(gcs_client_, &client_ids);
   if (client_ids != it->second.current_object_locations) {
     it->second.current_object_locations = std::move(client_ids);
     auto callbacks = it->second.callbacks;
@@ -314,7 +317,7 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
         for (auto const &client_id : reply.client_ids()) {
           client_ids.emplace(ClientID::FromBinary(client_id));
         }
-        // TODO(zhuohan): Do we need to filter out the clients that are not in the GCS?
+        FilterRemovedClients(gcs_client_, &client_ids);
         callback(object_id, client_ids);
         // Remove the cached worker client if there are no more pending requests.
         if (--worker_rpc_clients_[worker_id].second == 0) {

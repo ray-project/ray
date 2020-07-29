@@ -1001,9 +1001,9 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     RAY_LOG(DEBUG) << "Actor is being restarted: " << actor_id;
     if (!RayConfig::instance().gcs_actor_service_enabled()) {
       // The actor is dead and needs reconstruction. Attempting to reconstruct its
-      // creation task.
+      // creation task. This dummy object does not have owner.
       reconstruction_policy_.ListenAndMaybeReconstruct(
-          actor_registration.GetActorCreationDependency());
+          actor_registration.GetActorCreationDependency(), rpc::Address());
     }
 
     // When an actor fails but can be restarted, resubmit all of the queued
@@ -2188,9 +2188,8 @@ void NodeManager::TreatTaskAsFailedIfLost(const Task &task) {
   for (int64_t i = 0; i < num_returns; i++) {
     const ObjectID object_id = spec.ReturnId(i);
     // Lookup the return value's locations.
-    // TODO(zhuohan): fill the address here.
     RAY_CHECK_OK(object_directory_->LookupLocations(
-        object_id, rpc::Address(),
+        object_id, spec.CallerAddress(),
         [this, task_marked_as_failed, task](
             const ray::ObjectID &object_id,
             const std::unordered_set<ray::ClientID> &clients) {
