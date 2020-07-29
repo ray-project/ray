@@ -833,7 +833,7 @@ void GcsActorManager::OnActorCreationFailed(std::shared_ptr<GcsActor> actor) {
 
 void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor) {
   auto actor_id = actor->GetActorID();
-  RAY_LOG(DEBUG) << "Actor created successfully, actor id = " << actor_id;
+  RAY_LOG(INFO) << "Actor created successfully, actor id = " << actor_id;
   // NOTE: If an actor is deleted immediately after the user creates the actor, reference
   // counter may return a reply to the request of WaitForActorOutOfScope to GCS server,
   // and GCS server will destroy the actor. The actor creation is asynchronous, it may be
@@ -944,8 +944,8 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
         // We should not reschedule actors in state of `ALIVE`.
         // We could not reschedule actors in state of `DEPENDENCIES_UNREADY` because the
         // dependencies of them may not have been resolved yet.
-        RAY_LOG(DEBUG) << "Rescheduling a non-alive actor, actor id = "
-                       << actor->GetActorID() << ", state = " << actor->GetState();
+        RAY_LOG(INFO) << "Rescheduling a non-alive actor, actor id = "
+                      << actor->GetActorID() << ", state = " << actor->GetState();
         gcs_actor_scheduler_->Reschedule(actor);
       }
     }
