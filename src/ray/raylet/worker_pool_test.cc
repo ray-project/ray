@@ -88,9 +88,13 @@ class WorkerPoolMock : public WorkerPool {
   std::unordered_map<Process, std::vector<std::string>> worker_commands_by_proc_;
 };
 
-class WorkerPoolTest : public ::testing::Test {
+class WorkerPoolTest : public ::testing::TestWithParam<bool> {
  public:
   WorkerPoolTest() : error_message_type_(1), client_call_manager_(io_service_) {
+    bool enable_multi_tenancy = GetParam();
+    RayConfig::instance().initialize(
+        {{"enable_multi_tenancy", std::to_string(enable_multi_tenancy)},
+         {"num_workers_per_process_java", std::to_string(NUM_WORKERS_PER_PROCESS_JAVA)}});
     SetWorkerCommands(
         {{Language::PYTHON, {"dummy_py_worker_command"}},
          {Language::JAVA,
@@ -195,7 +199,17 @@ static inline TaskSpecification ExampleTaskSpec(
   return TaskSpecification(std::move(message));
 }
 
-TEST_F(WorkerPoolTest, CompareWorkerProcessObjects) {
+static inline std::string GetNumJavaWorkersPerProcessSystemProperty(int num) {
+  std::string key;
+  if (RayConfig::instance().enable_multi_tenancy()) {
+    key = "ray.job.num-java-workers-per-process";
+  } else {
+    key = "ray.raylet.config.num_workers_per_process_java";
+  }
+  return std::string("-D") + key + "=" + std::to_string(num);
+}
+
+TEST_P(WorkerPoolTest, CompareWorkerProcessObjects) {
   typedef Process T;
   T a(T::CreateNewDummy()), b(T::CreateNewDummy()), empty = T();
   ASSERT_TRUE(empty.IsNull());
@@ -209,7 +223,7 @@ TEST_F(WorkerPoolTest, CompareWorkerProcessObjects) {
   ASSERT_TRUE(!std::equal_to<T>()(a, empty));
 }
 
-TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
+TEST_P(WorkerPoolTest, HandleWorkerRegistration) {
   Process proc = worker_pool_->StartWorkerProcess(Language::JAVA, JOB_ID);
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   for (int i = 0; i < NUM_WORKERS_PER_PROCESS_JAVA; i++) {
@@ -234,18 +248,34 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
   }
 }
 
-TEST_F(WorkerPoolTest, StartupPythonWorkerProcessCount) {
+TEST_P(WorkerPoolTest, StartupPythonWorkerProcessCount) {
   TestStartupWorkerProcessCount(Language::PYTHON, 1, {"dummy_py_worker_command"});
 }
 
-TEST_F(WorkerPoolTest, StartupJavaWorkerProcessCount) {
-  TestStartupWorkerProcessCount(Language::JAVA, NUM_WORKERS_PER_PROCESS_JAVA,
-                                {"dummy_java_worker_command",
-                                 std::string("-Dray.job.num-java-workers-per-process=") +
-                                     std::to_string(NUM_WORKERS_PER_PROCESS_JAVA)});
+TEST_P(WorkerPoolTest, StartupJavaWorkerProcessCount) {
+  TestStartupWorkerProcessCount(
+      Language::JAVA, NUM_WORKERS_PER_PROCESS_JAVA,
+      {"dummy_java_worker_command",
+       GetNumJavaWorkersPerProcessSystemProperty(NUM_WORKERS_PER_PROCESS_JAVA)});
 }
 
-TEST_F(WorkerPoolTest, HandleWorkerPushPop) {
+TEST_P(WorkerPoolTest, InitialWorkerProcessCount) {
+  if (!RayConfig::instance().enable_multi_tenancy()) {
+    worker_pool_->Start(1);
+    // Here we try to start only 1 worker for each worker language. But since each Java
+    // worker process contains exactly NUM_WORKERS_PER_PROCESS_JAVA (3) workers here,
+    // it's expected to see 3 workers for Java and 1 worker for Python, instead of 1 for
+    // each worker language.
+    ASSERT_NE(worker_pool_->NumWorkersStarting(), 1 * LANGUAGES.size());
+    ASSERT_EQ(worker_pool_->NumWorkersStarting(), 1 + NUM_WORKERS_PER_PROCESS_JAVA);
+    ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), LANGUAGES.size());
+  } else {
+    ASSERT_EQ(worker_pool_->NumWorkersStarting(), 0);
+    ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 0);
+  }
+}
+
+TEST_P(WorkerPoolTest, HandleWorkerPushPop) {
   // Try to pop a worker from the empty pool and make sure we don't get one.
   std::shared_ptr<WorkerInterface> popped_worker;
   const auto task_spec = ExampleTaskSpec();
@@ -272,7 +302,7 @@ TEST_F(WorkerPoolTest, HandleWorkerPushPop) {
   ASSERT_EQ(popped_worker, nullptr);
 }
 
-TEST_F(WorkerPoolTest, PopActorWorker) {
+TEST_P(WorkerPoolTest, PopActorWorker) {
   // Create a worker.
   auto worker = CreateWorker(Process::CreateNewDummy());
   // Add the worker to the pool.
@@ -294,7 +324,7 @@ TEST_F(WorkerPoolTest, PopActorWorker) {
   ASSERT_EQ(actor->GetActorId(), actor_id);
 }
 
-TEST_F(WorkerPoolTest, PopWorkersOfMultipleLanguages) {
+TEST_P(WorkerPoolTest, PopWorkersOfMultipleLanguages) {
   // Create a Python Worker, and add it to the pool
   auto py_worker = CreateWorker(Process::CreateNewDummy(), Language::PYTHON);
   worker_pool_->PushWorker(py_worker);
@@ -312,7 +342,7 @@ TEST_F(WorkerPoolTest, PopWorkersOfMultipleLanguages) {
   ASSERT_NE(worker_pool_->PopWorker(java_task_spec), nullptr);
 }
 
-TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
+TEST_P(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
   const std::vector<std::string> java_worker_command = {
       "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_0", "dummy_java_worker_command",
       "RAY_WORKER_RAYLET_CONFIG_PLACEHOLDER", "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_1"};
@@ -326,10 +356,14 @@ TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
                                    task_spec.DynamicWorkerOptions());
   const auto real_command =
       worker_pool_->GetWorkerCommand(worker_pool_->LastStartedWorkerProcess());
-  ASSERT_EQ(real_command, std::vector<std::string>(
-                              {"test_op_0", "dummy_java_worker_command",
-                               "-Dray.job.num-java-workers-per-process=1", "test_op_1"}));
+  ASSERT_EQ(real_command,
+            std::vector<std::string>({"test_op_0", "dummy_java_worker_command",
+                                      GetNumJavaWorkersPerProcessSystemProperty(1),
+                                      "test_op_1"}));
 }
+
+INSTANTIATE_TEST_CASE_P(WorkerPoolMultiTenancyTest, WorkerPoolTest,
+                        ::testing::Values(true, false));
 
 }  // namespace raylet
 
@@ -337,6 +371,5 @@ TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  RayConfig::instance().initialize({{"enable_multi_tenancy", "true"}});
   return RUN_ALL_TESTS();
 }
