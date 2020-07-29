@@ -762,8 +762,6 @@ cdef class CoreWorker:
         else:
             c_object_id[0] = object_ref.native()
             with nogil:
-                # TODO(zhuohan): Here we assume that the owner will always be
-                # the calling process, which might not be the case.
                 check_status(CCoreWorkerProcess.GetCoreWorker().Create(
                             metadata, data_size, c_object_id[0],
                             CCoreWorkerProcess.GetCoreWorker().GetRpcAddress(),
@@ -958,7 +956,7 @@ cdef class CoreWorker:
         cdef:
             CPlacementGroupID c_placement_group_id
             CPlacementStrategy c_strategy
-        
+
         if strategy == b"PACK":
             c_strategy = PLACEMENT_STRATEGY_PACK
         else:

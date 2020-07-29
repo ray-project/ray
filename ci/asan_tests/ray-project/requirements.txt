@@ -19,7 +19,7 @@ Pillow
 prometheus_client
 py-spy
 pygments
-pytest
+pytest==5.4.3
 pytest-asyncio
 pytest-rerunfailures
 pytest-sugar
