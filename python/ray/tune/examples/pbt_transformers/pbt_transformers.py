@@ -67,6 +67,7 @@ def train_transformer(config, checkpoint=None):
         eval_steps=(len(train_dataset) // config["per_gpu_train_batch_size"]) + 1,
         save_steps=0,  # We explicitly set save here to 0, and do saving in evaluate instead
         num_train_epochs=config["num_epochs"],
+        max_steps=config["max_steps"],
         per_device_train_batch_size=config["per_gpu_train_batch_size"],
         per_device_eval_batch_size=config["per_gpu_val_batch_size"],
         warmup_steps=0,
@@ -124,7 +125,8 @@ def tune_transformer(num_samples=8, gpus_per_trial=0, smoke_test=False):
         "per_gpu_train_batch_size": tune.choice([16, 32, 64]),
         "learning_rate": tune.uniform(1e-5, 5e-5),
         "weight_decay": tune.uniform(0.0, 0.3),
-        "num_epochs": tune.choice([2, 3, 4, 5]) if not smoke_test else 1,
+        "num_epochs": tune.choice([2, 3, 4, 5]),
+        "max_steps": -1 if not smoke_test else 3,
     }
 
     scheduler = PopulationBasedTraining(
@@ -157,7 +159,8 @@ def tune_transformer(num_samples=8, gpus_per_trial=0, smoke_test=False):
         progress_reporter=reporter,
         name="tune_transformer_pbt")
 
-    test_best_model(analysis, config["model_name"], config["task_name"], config["data_dir"])
+    if not smoke_test:
+        test_best_model(analysis, config["model_name"], config["task_name"], config["data_dir"])
 
 
 # __tune_end__
