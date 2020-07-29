@@ -237,7 +237,7 @@ install_dependencies() {
     esac
     pip_packages+=(scipy tensorflow=="${tf_version}" cython==0.29.0 gym \
       opencv-python-headless pyyaml pandas==1.0.5 requests feather-format lxml openpyxl xlrd \
-      py-spy pytest pytest-timeout networkx tabulate aiohttp uvicorn dataclasses pygments werkzeug \
+      py-spy pytest==5.4.3 pytest-timeout networkx tabulate aiohttp uvicorn dataclasses pygments werkzeug \
       kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio scikit-learn==0.22.2 numba \
       Pillow prometheus_client boto3 pettingzoo mypy)
     if [ "${OSTYPE}" != msys ]; then

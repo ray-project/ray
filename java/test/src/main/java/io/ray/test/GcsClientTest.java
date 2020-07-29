@@ -11,6 +11,7 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+@Test(groups = {"cluster"})
 public class GcsClientTest extends BaseTest {
 
   @BeforeClass
@@ -23,9 +24,7 @@ public class GcsClientTest extends BaseTest {
     System.clearProperty("ray.resources");
   }
 
-  @Test
   public void testGetAllNodeInfo() {
-    TestUtils.skipTestUnderSingleProcess();
     RayConfig config = TestUtils.getRuntime().getRayConfig();
 
     Preconditions.checkNotNull(config);
@@ -39,7 +38,6 @@ public class GcsClientTest extends BaseTest {
 
   @Test
   public void testNextJob() {
-    TestUtils.skipTestUnderSingleProcess();
     RayConfig config = TestUtils.getRuntime().getRayConfig();
     // The value of job id of this driver in cluster should be 1.
     Assert.assertEquals(config.getJobId(), JobId.fromInt(1));
