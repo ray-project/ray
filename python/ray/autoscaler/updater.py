@@ -7,6 +7,7 @@ import time
 from threading import Thread
 
 from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG, \
+    TAG_RAY_FILE_MOUNTS_CONTENTS, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, STATUS_WAITING_FOR_SSH, \
     STATUS_SETTING_UP, STATUS_SYNCING_FILES
 from ray.autoscaler.command_runner import NODE_START_WAIT_S, SSHOptions
@@ -34,6 +35,7 @@ class NodeUpdater:
                  setup_commands,
                  ray_start_commands,
                  runtime_hash,
+                 file_mounts_contents_hash,
                  process_runner=subprocess,
                  use_internal_ip=False,
                  docker_config=None):
@@ -57,6 +59,7 @@ class NodeUpdater:
         self.setup_commands = setup_commands
         self.ray_start_commands = ray_start_commands
         self.runtime_hash = runtime_hash
+        self.file_mounts_contents_hash = file_mounts_contents_hash
         self.auth_config = auth_config
 
     def run(self):
@@ -97,11 +100,15 @@ class NodeUpdater:
                 return
             raise
 
-        self.provider.set_node_tags(
-            self.node_id, {
-                TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
-                TAG_RAY_RUNTIME_CONFIG: self.runtime_hash
-            })
+        tags_to_set = {
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
+            TAG_RAY_RUNTIME_CONFIG: self.runtime_hash,
+        }
+        if self.file_mounts_contents_hash is not None:
+            tags_to_set[
+                TAG_RAY_FILE_MOUNTS_CONTENTS] = self.file_mounts_contents_hash
+
+        self.provider.set_node_tags(self.node_id, tags_to_set)
         cli_logger.labeled_value("New status", STATUS_UP_TO_DATE)
 
         self.exitcode = 0
@@ -182,7 +189,13 @@ class NodeUpdater:
 
         node_tags = self.provider.node_tags(self.node_id)
         logger.debug("Node tags: {}".format(str(node_tags)))
-        if node_tags.get(TAG_RAY_RUNTIME_CONFIG) == self.runtime_hash:
+
+        # runtime_hash will only change whenever the user restarts
+        # or updates their cluster with `get_or_create_head_node`
+        if node_tags.get(TAG_RAY_RUNTIME_CONFIG) == self.runtime_hash and (
+                self.file_mounts_contents_hash is None
+                or node_tags.get(TAG_RAY_FILE_MOUNTS_CONTENTS) ==
+                self.file_mounts_contents_hash):
             # todo: we lie in the confirmation message since
             # full setup might be cancelled here
             cli_logger.print(
@@ -191,6 +204,7 @@ class NodeUpdater:
             cli_logger.old_info(logger,
                                 "{}{} already up-to-date, skip to ray start",
                                 self.log_prefix, self.node_id)
+
         else:
             cli_logger.print(
                 "Updating cluster configuration.",
@@ -201,51 +215,58 @@ class NodeUpdater:
             cli_logger.labeled_value("New status", STATUS_SYNCING_FILES)
             self.sync_file_mounts(self.rsync_up)
 
-            # Run init commands
-            self.provider.set_node_tags(
-                self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SETTING_UP})
-            cli_logger.labeled_value("New status", STATUS_SETTING_UP)
+            # Only run setup commands if runtime_hash has changed because
+            # we don't want to run setup_commands every time the head node
+            # file_mounts folders have changed.
+            if node_tags.get(TAG_RAY_RUNTIME_CONFIG) != self.runtime_hash:
+                # Run init commands
+                self.provider.set_node_tags(
+                    self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SETTING_UP})
+                cli_logger.labeled_value("New status", STATUS_SETTING_UP)
 
-            if self.initialization_commands:
-                with cli_logger.group(
-                        "Running initialization commands",
-                        _numbered=("[]", 3, 5)):  # todo: fix command numbering
-                    with LogTimer(
-                            self.log_prefix + "Initialization commands",
-                            show_status=True):
+                if self.initialization_commands:
+                    with cli_logger.group(
+                            "Running initialization commands",
+                            _numbered=("[]", 3,
+                                       5)):  # todo: fix command numbering
+                        with LogTimer(
+                                self.log_prefix + "Initialization commands",
+                                show_status=True):
 
-                        for cmd in self.initialization_commands:
-                            self.cmd_runner.run(
-                                cmd,
-                                ssh_options_override=SSHOptions(
-                                    self.auth_config.get("ssh_private_key")))
-            else:
-                cli_logger.print(
-                    "No initialization commands to run.",
-                    _numbered=("[]", 3, 5))
+                            for cmd in self.initialization_commands:
+                                self.cmd_runner.run(
+                                    cmd,
+                                    ssh_options_override=SSHOptions(
+                                        self.auth_config.get(
+                                            "ssh_private_key")))
+                else:
+                    cli_logger.print(
+                        "No initialization commands to run.",
+                        _numbered=("[]", 3, 5))
 
-            if self.setup_commands:
-                with cli_logger.group(
-                        "Running setup commands",
-                        _numbered=("[]", 4, 5)):  # todo: fix command numbering
-                    with LogTimer(
-                            self.log_prefix + "Setup commands",
-                            show_status=True):
+                if self.setup_commands:
+                    with cli_logger.group(
+                            "Running setup commands",
+                            _numbered=("[]", 4,
+                                       5)):  # todo: fix command numbering
+                        with LogTimer(
+                                self.log_prefix + "Setup commands",
+                                show_status=True):
 
-                        total = len(self.setup_commands)
-                        for i, cmd in enumerate(self.setup_commands):
-                            if cli_logger.verbosity == 0:
-                                cmd_to_print = cf.bold(cmd[:30]) + "..."
-                            else:
-                                cmd_to_print = cf.bold(cmd)
+                            total = len(self.setup_commands)
+                            for i, cmd in enumerate(self.setup_commands):
+                                if cli_logger.verbosity == 0:
+                                    cmd_to_print = cf.bold(cmd[:30]) + "..."
+                                else:
+                                    cmd_to_print = cf.bold(cmd)
 
-                            cli_logger.print(
-                                cmd_to_print, _numbered=("()", i, total))
+                                cli_logger.print(
+                                    cmd_to_print, _numbered=("()", i, total))
 
-                            self.cmd_runner.run(cmd)
-            else:
-                cli_logger.print(
-                    "No setup commands to run.", _numbered=("[]", 4, 5))
+                                self.cmd_runner.run(cmd)
+                else:
+                    cli_logger.print(
+                        "No setup commands to run.", _numbered=("[]", 4, 5))
 
         with cli_logger.group(
                 "Starting the Ray runtime", _numbered=("[]", 5, 5)):

@@ -19,6 +19,11 @@ config_setting(
     flag_values = {"@bazel_tools//tools/cpp:compiler": "clang-cl"},
 )
 
+config_setting(
+    name = "opt",
+    values = {"compilation_mode": "opt"},
+)
+
 # === Begin of protobuf definitions ===
 
 proto_library(
@@ -596,7 +601,7 @@ cc_library(
             "src/ray/raylet/**/*.cc",
         ],
         exclude = [
-            "src/ray/raylet/*_test.cc",
+            "src/ray/raylet/**/*_test.cc",
             "src/ray/raylet/main.cc",
         ],
     ),
@@ -680,7 +685,7 @@ cc_library(
             "src/ray/rpc/worker/*.cc",
         ],
         exclude = [
-            "src/ray/core_worker/*_test.cc",
+            "src/ray/core_worker/**/*_test.cc",
             "src/ray/core_worker/mock_worker.cc",
         ],
     ),
@@ -832,8 +837,22 @@ cc_test(
 )
 
 cc_test(
-    name = "scheduling_test",
-    srcs = ["src/ray/raylet/scheduling/scheduling_test.cc"],
+    name = "cluster_resource_scheduler_test",
+    srcs = [
+        "src/ray/raylet/scheduling/cluster_resource_scheduler_test.cc",
+    ],
+    copts = COPTS,
+    deps = [
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "cluster_task_manager_test",
+    srcs = [
+        "src/ray/raylet/scheduling/cluster_task_manager_test.cc",
+    ],
     copts = COPTS,
     deps = [
         ":raylet_lib",
