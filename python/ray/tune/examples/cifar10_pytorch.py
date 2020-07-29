@@ -73,7 +73,6 @@ def train_cifar(config, checkpoint_dir=None, data_dir=None):
 
     if checkpoint_dir:
         checkpoint = os.path.join(checkpoint_dir, "checkpoint")
-        print("loading checkpoint {}".format(checkpoint))
         model_state, optimizer_state = torch.load(checkpoint)
         net.load_state_dict(model_state)
         optimizer.load_state_dict(optimizer_state)

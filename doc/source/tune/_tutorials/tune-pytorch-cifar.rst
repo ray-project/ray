@@ -25,6 +25,8 @@ need to
 3. add checkpointing (optional),
 4. and define the search space for the model tuning
 
+Optionally, you can seamlessly leverage :ref:`DistributedDataParallel training <tune-torch-ddp>` for each individual Pytorch model within Tune.
+
 .. note::
 
     To run this example, you will need to install the following:
@@ -288,14 +290,25 @@ You can wrap your model in ``torch.nn.parallel.DistributedDataParallel`` to supp
     from ray.util.sgd.torch import is_distributed_trainable
     from torch.nn.parallel import DistributedDataParallel
 
-    device = "cpu"
-    if is_distributed_trainable():
-        net = DistributedDataParallel(net)
+    def train_cifar(config, checkpoint_dir=None, data_dir=None):
+        net = Net(config["l1"], config["l2"])
 
-    if torch.cuda.is_available():
-        device = "cuda"
+        device = "cpu"
 
-    net.to(device)
+        # if torch.cuda.is_available():
+        #     device = "cuda:0"
+        #     if torch.cuda.device_count() > 1:
+        #         net = nn.DataParallel(net)
+
+        #### Using distributed data parallel training
+        if is_distributed_trainable():
+            net = DistributedDataParallel(net)
+
+        if torch.cuda.is_available():
+            device = "cuda"
+
+        net.to(device)
+
 
 If using checkpointing, be sure to use a :ref:`special checkpoint context manager <tune-ddp-doc>`, ``distributed_checkpoint_dir`` that avoids redundant checkpointing across multiple processes:
 
@@ -303,6 +316,13 @@ If using checkpointing, be sure to use a :ref:`special checkpoint context manage
 
     from ray.util.sgd.torch import distributed_checkpoint_dir
 
+    # with tune.checkpoint_dir(step=epoch) as checkpoint_dir:
+    #     path = os.path.join(checkpoint_dir, "checkpoint")
+    #     torch.save(
+    #         (net.state_dict(), optimizer.state_dict()), path)
+
+    #### Using distributed data parallel training
+    # Avoids redundant checkpointing on different processes.
     with distributed_checkpoint_dir(step=epoch) as checkpoint_dir:
         path = os.path.join(checkpoint_dir, "checkpoint")
         torch.save((net.state_dict(), optimizer.state_dict()), path)
@@ -331,6 +351,7 @@ Finally, we need to tell Ray Tune to start multiple distributed processes at onc
       ...
     )
 
+See an :doc:`end-to-end example here </tune/examples/ddp_mnist_torch>`.
 
 If you consider switching to PyTorch Lightning to get rid of some of your boilerplate
 training code, please know that we also have a walkthrough on :doc:`how to use Tune with
