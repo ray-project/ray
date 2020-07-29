@@ -136,7 +136,6 @@ public class MetricTest extends BaseTest {
     Assert.assertEquals(window.size(), 0);
   }
 
-  @Test
   public void testRegisterGauge() throws InterruptedException {
     Gauge gauge = registerGauge();
 
@@ -146,7 +145,6 @@ public class MetricTest extends BaseTest {
     Assert.assertTrue(doubleEqual(gauge.getValue(), 5.0));
   }
 
-  @Test
   public void testRegisterCount() throws InterruptedException {
     Count count = registerCount();
 
@@ -158,7 +156,6 @@ public class MetricTest extends BaseTest {
     Assert.assertTrue(doubleEqual(count.getCount(), 33.0));
   }
 
-  @Test
   public void testRegisterSum() throws InterruptedException {
     Sum sum = registerSum();
 
@@ -170,7 +167,6 @@ public class MetricTest extends BaseTest {
     Assert.assertTrue(doubleEqual(sum.getSum(), 33.0));
   }
 
-  @Test
   public void testRegisterHistogram() throws InterruptedException {
     Histogram histogram = registerHistogram();
 
@@ -185,7 +181,6 @@ public class MetricTest extends BaseTest {
     Assert.assertTrue(doubleEqual(histogram.getValue(), 200.0d));
   }
 
-  @Test
   public void testRegisterGaugeWithConfig() throws InterruptedException {
     initRayMetrics(2000L, 1, 1000L);
     Gauge gauge = registerGauge();
@@ -196,7 +191,6 @@ public class MetricTest extends BaseTest {
     Assert.assertTrue(doubleEqual(gauge.getValue(), 5.0));
   }
 
-  @Test
   public void testRegisterCountWithConfig() throws InterruptedException {
     initRayMetrics(2000L, 1, 1000L);
     Count count = registerCount();
@@ -209,7 +203,6 @@ public class MetricTest extends BaseTest {
     Assert.assertTrue(doubleEqual(count.getCount(), 33.0));
   }
 
-  @Test
   public void testRegisterSumWithConfig() throws InterruptedException {
     initRayMetrics(2000L, 1, 1000L);
     Sum sum = registerSum();
@@ -222,7 +215,6 @@ public class MetricTest extends BaseTest {
     Assert.assertTrue(doubleEqual(sum.getSum(), 33.0));
   }
 
-  @Test
   public void testRegisterHistogramWithConfig() throws InterruptedException {
     initRayMetrics(2000L, 1, 1000L);
     Histogram histogram = registerHistogram();
