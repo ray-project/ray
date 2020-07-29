@@ -224,17 +224,16 @@ class WandbTrainableMixin:
     Weights and biases (https://www.wandb.com/) is a tool for experiment
     tracking, model optimization, and dataset versioning. This Ray Tune
     Trainable mixin helps initializing the Wandb API for use with the
-    ``Trainable`` class or as a `tune.mixin` for the function API.
+    ``Trainable`` class or with `@wandb_mixin` for the function API.
 
-    For basic usage, just add the ``WandbTrainableMixin`` using the
-    ``tune.mixin()`` decorator:
+    For basic usage, just prepend your training function with the
+    ``@wandb_mixin`` decorator:
 
     .. code-block:: python
 
-        from ray import tune
-        from ray.tune.integration.wandb import WandbTrainableMixin
+        from ray.tune.integration.wandb import wandb_mixin
 
-        @tune.mixin(WandbTrainableMixin)
+        @wandb_mixin
         def train_fn(config):
             wandb.log()
 
