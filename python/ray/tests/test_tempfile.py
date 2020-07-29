@@ -191,9 +191,7 @@ def test_session_dir_uniqueness():
     for i in range(2):
         ray.init(num_cpus=1)
         session_dirs.add(ray.worker._global_node.get_session_dir_path)
-        print("shutdown call, {}".format(i))
         ray.shutdown()
-        print("hehe {}".format(i))
     assert len(session_dirs) == 2
 
 
