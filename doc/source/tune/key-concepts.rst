@@ -1,7 +1,8 @@
 .. _tune-60-seconds:
 
-Tune in 60 Seconds
-==================
+============
+Key Concepts
+============
 
 Let's quickly walk through the key concepts you need to know to use Tune. In this guide, we'll be covering the following:
 
@@ -186,13 +187,14 @@ This object can also retrieve all training runs as dataframes, allowing you to d
     df = analysis.dataframe(metric="score", mode="max")
 
 What's Next?
-~~~~~~~~~~~~
+-------------
 
 Now that you have a working understanding of Tune, check out:
 
- * :ref:`Tune Guides and Examples <tune-guides-overview>`: Examples and templates for using Tune with your preferred machine learning library.
+ * :doc:`/tune/user-guide`: A comprehensive overview of Tune's features.
+ * :ref:`tune-guides`: Tutorials for using Tune with your preferred machine learning library.
+ * :doc:`/tune/examples/index`: End-to-end examples and templates for using Tune with your preferred machine learning library.
  * :ref:`tune-tutorial`: A simple tutorial that walks you through the process of setting up a Tune experiment.
- * :ref:`tune-user-guide`: A comprehensive overview of Tune's features.
 
 
 Further Questions or Issues?

@@ -61,7 +61,11 @@ int main(int argc, char *argv[]) {
                                             {ray::stats::VersionKey, "0.9.0.dev0"}};
   ray::stats::Init(global_tags, metrics_agent_port);
 
+  // IO Service for main loop.
   boost::asio::io_service main_service;
+  // Ensure that the IO service keeps running. Without this, the main_service will exit
+  // as soon as there is no more work to be processed.
+  boost::asio::io_service::work work(main_service);
 
   ray::gcs::GcsServerConfig gcs_server_config;
   gcs_server_config.grpc_server_name = "GcsServer";
