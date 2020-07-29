@@ -795,8 +795,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
   // If the owner and this actor is dead at the same time, the actor
   // could've been destroyed and dereigstered before reconstruction.
   if (actor == nullptr) {
-    RAY_LOG(WARNING) << "Actor is destroyed before reconstruction, actor id = "
-                     << actor_id;
+    RAY_LOG(INFO) << "Actor is destroyed before reconstruction, actor id = " << actor_id;
     return;
   }
   auto node_id = actor->GetNodeID();

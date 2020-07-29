@@ -803,6 +803,41 @@ TEST_F(GcsActorManagerTest, TestOwnerNodeDieBeforeDetachedActorDependenciesResol
   ASSERT_FALSE(callbacks.count(registered_actor->GetActorID()));
 }
 
+TEST_F(GcsActorManagerTest, TestOwnerAndChildDiedAtTheSameTimeRaceCondition) {
+  // When owner and child die at the same time,
+  auto job_id = JobID::FromInt(1);
+  auto registered_actor = RegisterActor(job_id, /*max_restarts=*/1,
+                                        /*detached=*/false);
+  rpc::CreateActorRequest create_actor_request;
+  create_actor_request.mutable_task_spec()->CopyFrom(
+      registered_actor->GetActorTableData().task_spec());
+
+  std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
+  RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
+      create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
+        finished_actors.emplace_back(actor);
+      }));
+  auto actor = mock_actor_scheduler_->actors.back();
+  mock_actor_scheduler_->actors.pop_back();
+
+  auto address = RandomAddress();
+  actor->UpdateAddress(address);
+  gcs_actor_manager_->OnActorCreationSuccess(actor);
+  WaitActorCreated(actor->GetActorID());
+  ASSERT_EQ(finished_actors.size(), 1);
+
+  const auto owner_node_id = actor->GetOwnerNodeID();
+  const auto owner_worker_id = actor->GetOwnerID();
+  const auto child_node_id = actor->GetNodeID();
+  const auto child_worker_id = actor->GetWorkerID();
+  const auto actor_id = actor->GetActorID();
+  // Make worker & owner fail at the same time, but owner's failure comes first.
+  gcs_actor_manager_->OnWorkerDead(owner_node_id, owner_worker_id, false);
+  EXPECT_CALL(*mock_actor_scheduler_, CancelOnWorker(child_node_id, child_worker_id))
+      .WillOnce(Return(actor_id));
+  gcs_actor_manager_->OnWorkerDead(child_node_id, child_worker_id, false);
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
