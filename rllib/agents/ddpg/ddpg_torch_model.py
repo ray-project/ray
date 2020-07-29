@@ -188,8 +188,9 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
     def q_variables(self, as_dict=False):
         """Return the list of variables for Q / twin Q nets."""
         if as_dict:
-            return dict((*self.q_model.named_parameters(),
-                         *(self.twin_q_model.named_parameters()
-                           if self.twin_q_model else {})))
+            variables = dict(self.q_model.named_parameters())
+            if self.twin_q_model:
+                variables.update(self.twin_q_model.named_parameters())
+            return variables
         return list(self.q_model.parameters()) + \
             (list(self.twin_q_model.parameters()) if self.twin_q_model else [])
