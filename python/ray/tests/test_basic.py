@@ -395,7 +395,8 @@ def test_deserialized_from_buffer_immutable(ray_start_shared_local_modes):
         y[0, 0] = 9.
 
 
-def test_passing_arguments_by_value_out_of_the_box(ray_start_shared_local_modes):
+def test_passing_arguments_by_value_out_of_the_box(
+        ray_start_shared_local_modes):
     @ray.remote
     def f(x):
         return x
@@ -427,7 +428,8 @@ def test_passing_arguments_by_value_out_of_the_box(ray_start_shared_local_modes)
     ray.get(ray.put(Foo))
 
 
-def test_putting_object_that_closes_over_object_ref(ray_start_shared_local_modes):
+def test_putting_object_that_closes_over_object_ref(
+        ray_start_shared_local_modes):
     # This test is here to prevent a regression of
     # https://github.com/ray-project/ray/issues/1317.
 
@@ -675,5 +677,4 @@ def test_nonascii_in_function_body(ray_start_shared_local_modes):
 
 
 if __name__ == "__main__":
-    import pytest
     sys.exit(pytest.main(["-v", __file__]))
