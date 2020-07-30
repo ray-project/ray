@@ -82,7 +82,7 @@ def learn_test_plus_rollout(algo, env="CartPole-v0"):
         os.system("python {}/train.py --local-dir={} --run={} "
                   "--checkpoint-freq=1 --checkpoint-at-end ".format(
                       rllib_dir, tmp_dir, algo) +
-                  "--config=\"{\\\"num_gpus\\\": 0, "
+                  "--config=\"{\\\"num_gpus\\\": 0, \\\"num_workers\\\": 1, "
                   "\\\"evaluation_config\\\": {\\\"explore\\\": false}" + fw_ +
                   "}\" " + "--stop=\"{\\\"episode_reward_mean\\\": 190.0}\"" +
                   " --env={}".format(env))
