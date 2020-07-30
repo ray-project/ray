@@ -190,20 +190,25 @@ class ServeController:
             self.routers[node_id] = router
 
     def _stop_routers_if_needed(self):
-        """TODO"""
+        """Removes router actors from any nodes that no longer exist.
+
+        Returns whether or not any actors were removed (a checkpoint should
+        be taken).
+        """
         checkpoint_required = False
         all_node_ids = {node_id for node_id, _ in get_all_node_ids()}
         to_stop = []
         for node_id in self.routers:
             if node_id not in all_node_ids:
-                logger.info("Removing router on removed node '{}'.".format(node_id))
+                logger.info(
+                    "Removing router on removed node '{}'.".format(node_id))
                 to_stop.append(node_id)
 
         for node_id in to_stop:
             router_handle = self.routers.pop(node_id)
             ray.kill(router_handle, no_restart=True)
             checkpoint_required = True
-        
+
         return checkpoint_required
 
     def get_routers(self):

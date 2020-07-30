@@ -218,7 +218,16 @@ def try_schedule_resources_on_nodes(
 
     return successfully_scheduled
 
+
 def get_all_node_ids():
+    """Get IDs for all nodes in the cluster.
+
+    Handles multiple nodes on the same IP by appending an index to the
+    node_id, e.g., 'node_id-index'.
+
+    Returns a list of ('node_id-index', 'node_id') tuples (the latter can be
+    used as a resource requirement for actor placements).
+    """
     node_ids = []
     # We need to use the node_id and index here because we could
     # have multiple virtual nodes on the same host. In that case
