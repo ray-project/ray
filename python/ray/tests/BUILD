@@ -58,7 +58,6 @@ py_test_module_list(
     "test_actor_pool.py",
     "test_args.py",
     "test_asyncio.py",
-    "test_autoscaler_aws.py",
     "test_autoscaler.py",
     "test_autoscaler_yaml.py",
     "test_component_failures.py",
@@ -95,7 +94,18 @@ py_test_module_list(
   ],
   size = "large",
   extra_srcs = SRCS,
+  # TODO(ekl) enable again once we support direct call reconstruction
   tags = ["exclusive", "manual"],
   deps = ["//:ray_lib"],
 >>>>>>> c07556228... Add build macro for python test files
 )
+
+# TODO(barakmich): aws/ might want its own buildfile, or 
+#    py_test_module_list should support subdirectories.
+py_test(
+    name = "test_autoscaler_aws",
+    size = "small",
+    srcs = SRCS + ["aws/test_autoscaler_aws.py"],
+    deps = ["//:ray_lib"],
+)
+
