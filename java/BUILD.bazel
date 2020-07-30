@@ -1,5 +1,6 @@
 load("//bazel:ray.bzl", "define_java_module")
-load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
+load("//bazel:ray.bzl", "native_java_binary")
+load("//bazel:ray.bzl", "native_java_library")
 load("@rules_proto_grpc//java:defs.bzl", "java_proto_compile")
 
 exports_files([
@@ -143,43 +144,38 @@ filegroup(
     ],
 )
 
-# plasma_store_server binary should be located in jar root path
-# and keep in sync with mvn resource
-copy_file(
-    name = "cp_plasma_store_server",
-    src = "//:plasma_store_server",
-    out = "plasma_store_server",
-)
+native_java_binary("runtime", "raylet", "//:raylet")
 
-# `//:redis-server`'s full path is `external/com_github_antirez_redis/redis-server`,
-# This rule removes the prefix, and only keeps `redis-server`.
-copy_file(
-    name = "redis-server-without-prefix",
-    src = "//:redis-server",
-    out = "redis-server",
-)
+native_java_binary("runtime", "plasma_store_server", "//:plasma_store_server")
+
+native_java_binary("runtime", "redis-server", "//:redis-server")
+
+native_java_binary("runtime", "gcs_server", "//:gcs_server")
+
+native_java_binary("runtime", "libray_redis_module.so", "//:libray_redis_module.so")
+
+native_java_library("runtime", "core_worker_library_java", "//:libcore_worker_library_java.so")
 
 filegroup(
     name = "java_native_deps",
     srcs = [
-        ":cp_plasma_store_server",
-        ":redis-server-without-prefix",
-        "//:core_worker_library_java",
-        "//:gcs_server",
-        "//:libray_redis_module.so",
-        "//:raylet",
+        ":core_worker_library_java",
+        ":gcs_server",
+        ":libray_redis_module.so",
+        ":plasma_store_server",
+        ":raylet",
+        ":redis-server",
     ],
 )
 
 # Generates the dependencies needed by maven.
 genrule(
-    name = "gen_maven_deps",
+    name = "cp_java_generated",
     srcs = [
         ":all_java_proto",
-        ":java_native_deps",
         ":copy_pom_file",
     ],
-    outs = ["gen_maven_deps.out"],
+    outs = ["cp_java_generated.out"],
     cmd = """
         WORK_DIR="$$(pwd)"
         # Copy protobuf-generated files.
@@ -187,8 +183,30 @@ genrule(
         for f in $(locations //java:all_java_proto); do
             unzip "$$f" -x META-INF/MANIFEST.MF -d "$$WORK_DIR/java/runtime/src/main/java"
         done
-        # Copy native dependecies.
-        NATIVE_DEPS_DIR="$$WORK_DIR/java/runtime/native_dependencies/"
+        date > $@
+    """,
+    local = 1,
+    tags = ["no-cache"],
+)
+
+# Generates the dependencies needed by maven.
+genrule(
+    name = "gen_maven_deps",
+    srcs = [
+        ":cp_java_generated",
+        ":java_native_deps",
+    ],
+    outs = ["gen_maven_deps.out"],
+    cmd = """
+        WORK_DIR="$${PWD}"
+        # Copy native dependencies.
+        OS_NAME=""
+        case "$${OSTYPE}" in
+          linux*) OS_NAME="linux";;
+          darwin*) OS_NAME="darwin";;
+          *) echo "$${OSTYPE} is not supported currently"; exit 1;;
+        esac
+        NATIVE_DEPS_DIR="$$WORK_DIR/java/runtime/native_dependencies/native/$$OS_NAME"
         rm -rf "$$NATIVE_DEPS_DIR"
         mkdir -p "$$NATIVE_DEPS_DIR"
         for f in $(locations //java:java_native_deps); do

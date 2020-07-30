@@ -168,7 +168,7 @@ def postprocess_ppo_gae(policy,
                         episode=None):
     """Adds the policy logits, VF preds, and advantages to the trajectory."""
 
-    completed = sample_batch["dones"][-1]
+    completed = sample_batch[SampleBatch.DONES][-1]
     if completed:
         last_r = 0.0
     else:
@@ -207,9 +207,7 @@ class KLCoeffMixin:
         self.kl_coeff_val = config["kl_coeff"]
         self.kl_target = config["kl_target"]
         self.kl_coeff = get_variable(
-            float(self.kl_coeff_val),
-            tf_name="kl_coeff",
-            trainable=False)
+            float(self.kl_coeff_val), tf_name="kl_coeff", trainable=False)
 
     def update_kl(self, sampled_kl):
         if sampled_kl > 2.0 * self.kl_target:

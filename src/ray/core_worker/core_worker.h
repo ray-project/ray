@@ -270,6 +270,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_id);
 
   CoreWorker(CoreWorker const &) = delete;
+
   void operator=(CoreWorker const &other) = delete;
 
   ///
