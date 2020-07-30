@@ -683,6 +683,16 @@ def test_ray_address_environment_variable(ray_start_cluster):
     ray.shutdown()
 
 
+def test_ray_resources_environment_variable(ray_start_cluster):
+    address = ray_start_cluster.address
+
+    os.environ["RAY_RESOURCES"] = r"{\"custom1\":1}"
+    ray.init(address=address, resources={"custom2":1})
+
+    assert ("custom1" in ray.cluster_resources()
+            and "custom2" in ray.cluster_resources())
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))

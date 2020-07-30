@@ -2,8 +2,9 @@ import atexit
 import collections
 import datetime
 import errno
-import os
+import json
 import logging
+import os
 import random
 import signal
 import socket
@@ -249,11 +250,24 @@ class Node:
 
     def get_resource_spec(self):
         """Resolve and return the current resource spec for the node."""
+        resources = {}
+        try:
+            env_string = os.getenv("RAY_RESOURCES")
+            if env_string:
+                resources = json.loads(env_string)
+        except Exception:
+            logger.exception("Unable to parse the RAY_RESOURCES environment variable using "
+                            "json.loads, defaulting to empty dict. Try using a"
+                            "format like\n\n"
+                            "    RAY_RESOURCES='{\"CustomResource1\": 3, "
+                            "\"CustomReseource2\": 2}'")
+
         if not self._resource_spec:
+            resources.update(self._ray_params.resources)
             self._resource_spec = ResourceSpec(
                 self._ray_params.num_cpus, self._ray_params.num_gpus,
                 self._ray_params.memory, self._ray_params.object_store_memory,
-                self._ray_params.resources,
+                resources,
                 self._ray_params.redis_max_memory).resolve(
                     is_head=self.head, node_ip_address=self.node_ip_address)
         return self._resource_spec
