@@ -159,8 +159,6 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       temp_dir_(config.temp_dir),
       object_manager_profile_timer_(io_service),
       light_heartbeat_enabled_(RayConfig::instance().light_heartbeat_enabled()),
-      num_heartbeats_before_load_report_(
-          RayConfig::instance().num_heartbeats_between_load_reports()),
       initial_config_(config),
       local_available_resources_(config.resource_config),
       worker_pool_(
@@ -460,15 +458,9 @@ void NodeManager::Heartbeat() {
   }
 
   // Add resource load by shape. This will be used by the new autoscaler.
-  if (num_heartbeats_before_load_report_ == 0) {
-    auto resource_load = local_queues_.GetResourceLoadByShape(
-        RayConfig::instance().max_resource_shapes_per_load_report());
-    heartbeat_data->mutable_resource_load_by_shape()->Swap(&resource_load);
-    num_heartbeats_before_load_report_ =
-        RayConfig::instance().num_heartbeats_between_load_reports();
-  } else {
-    num_heartbeats_before_load_report_--;
-  }
+  auto resource_load = local_queues_.GetResourceLoadByShape(
+      RayConfig::instance().max_resource_shapes_per_load_report());
+  heartbeat_data->mutable_resource_load_by_shape()->Swap(&resource_load);
 
   // Set the global gc bit on the outgoing heartbeat message.
   if (should_global_gc_) {
