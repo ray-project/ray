@@ -288,6 +288,14 @@ py_test(
 )
 
 py_test(
+    name = "test_torch_trainable",
+    size = "medium",
+    srcs = ["tests/test_torch_trainable.py"],
+    tags = ["exclusive", "example", "pytorch"],
+    deps = [":tune_lib"],
+)
+
+py_test(
     name = "ddp_mnist_torch",
     size = "small",
     srcs = ["examples/ddp_mnist_torch.py"],

@@ -38,9 +38,8 @@ public class ClassLoaderTest extends BaseTest {
     System.clearProperty("ray.job.resource-path");
   }
 
-  @Test
+  @Test(groups = {"cluster"})
   public void testClassLoaderInMultiThreading() throws Exception {
-    TestUtils.skipTestUnderSingleProcess();
     Assert.assertTrue(TestUtils.getRuntime().getRayConfig().numWorkersPerProcess > 1);
 
     final String jobResourcePath = resourcePath + "/" + Ray.getRuntimeContext().getCurrentJobId();

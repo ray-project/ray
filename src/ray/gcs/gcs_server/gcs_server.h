@@ -116,6 +116,10 @@ class GcsServer {
   GcsServerConfig config_;
   /// The main io service to drive event posted from grpc threads.
   boost::asio::io_context &main_service_;
+  /// The io service used by node manager in case of node failure detector being blocked
+  /// by main thread.
+  boost::asio::io_service node_manager_io_service_;
+  std::unique_ptr<std::thread> node_manager_io_service_thread_;
   /// The grpc server
   rpc::GrpcServer rpc_server_;
   /// The `ClientCallManager` object that is shared by all `NodeManagerWorkerClient`s.

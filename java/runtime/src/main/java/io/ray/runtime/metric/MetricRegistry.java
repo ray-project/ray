@@ -33,9 +33,9 @@ public class MetricRegistry {
       if (!isRunning) {
         this.metricConfig = metricConfig;
         scheduledExecutorService = new ScheduledThreadPoolExecutor(metricConfig.threadPoolSize(),
-          new ThreadFactoryBuilder().setNameFormat("metric-registry-%d").build());
+            new ThreadFactoryBuilder().setNameFormat("metric-registry-%d").build());
         scheduledExecutorService.scheduleAtFixedRate(this::update, metricConfig.timeIntervalMs(),
-          metricConfig.timeIntervalMs(), TimeUnit.MILLISECONDS);
+            metricConfig.timeIntervalMs(), TimeUnit.MILLISECONDS);
         isRunning = true;
         LOG.info("Finished startup metric registry, metricConfig is {}.", metricConfig);
       }
@@ -47,15 +47,15 @@ public class MetricRegistry {
       if (isRunning && scheduledExecutorService != null) {
         try {
           scheduledExecutorService.shutdownNow();
-          if (!scheduledExecutorService
-            .awaitTermination(metricConfig.shutdownWaitTimeMs(), TimeUnit.MILLISECONDS)) {
+          if (!scheduledExecutorService.awaitTermination(metricConfig.shutdownWaitTimeMs(),
+              TimeUnit.MILLISECONDS)) {
             LOG.warn("Metric registry did not shut down in {}ms time, so try to shut down again.",
-              metricConfig.shutdownWaitTimeMs());
+                metricConfig.shutdownWaitTimeMs());
             scheduledExecutorService.shutdownNow();
           }
         } catch (InterruptedException e) {
           LOG.warn("Interrupted when shutting down metric registry, so try to shut down again.",
-            e.getMessage(), e);
+              e.getMessage(), e);
           scheduledExecutorService.shutdownNow();
         }
         if (scheduledExecutorService.isShutdown()) {

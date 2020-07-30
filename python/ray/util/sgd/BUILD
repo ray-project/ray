@@ -26,14 +26,6 @@ py_test(
     deps = [":sgd_lib"],
 )
 
-py_test(
-    name = "test_torch_trainable",
-    size = "small",
-    srcs = ["tests/test_torch_trainable.py"],
-    tags = ["exclusive", "pytorch"],
-    deps = [":sgd_lib"],
-)
-
 # --------------------------------------------------------------------
 # Tests from the python/ray/util/sgd/tf/examples directory.
 # Please keep these sorted alphabetically.

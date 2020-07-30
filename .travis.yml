@@ -411,7 +411,7 @@ deploy:
     on:
       repo: ray-project/ray
       all_branches: true
-      condition: $MULTIPLATFORM_JARS = 1 || $MAC_JARS=1
+      condition: $MULTIPLATFORM_JARS = 1 || $MAC_JARS = 1
 
   - provider: s3
     edge: true # This supposedly opts in to deploy v2.
@@ -427,7 +427,7 @@ deploy:
     on:
       repo: ray-project/ray
       branch: master
-      condition: $MULTIPLATFORM_JARS = 1 || $MAC_JARS=1
+      condition: $MULTIPLATFORM_JARS = 1 || $MAC_JARS = 1
 
   - provider: script
     edge: true # This supposedly opts in to deploy v2.
