@@ -44,7 +44,7 @@ MAX_WORKER_FAILURE_RETRIES = 3
 
 # yapf: disable
 # __sphinx_doc_begin__
-COMMON_CONFIG = {
+COMMON_CONFIG: TrainerConfigDict = {
     # === Settings for Rollout Worker processes ===
     # Number of rollout worker actors to create for parallel sampling. Setting
     # this to 0 will force rollouts to be done in the trainer actor.
@@ -112,12 +112,16 @@ COMMON_CONFIG = {
     "env": None,
     # Unsquash actions to the upper and lower bounds of env's action space
     "normalize_actions": False,
-    # Whether to clip rewards prior to experience postprocessing. Setting to
-    # None means clip for Atari only.
+    # Whether to clip rewards during Policy's postprocessing.
+    # None (default): Clip for Atari only (r=sign(r)).
+    # True: r=sign(r): Fixed rewards -1.0, 1.0, or 0.0.
+    # False: Never clip.
+    # [float value]: Clip at -value and + value.
+    # Tuple[value1, value2]: Clip at value1 and value2.
     "clip_rewards": None,
-    # Whether to np.clip() actions to the action space low/high range spec.
+    # Whether to clip actions to the action space's low/high range spec.
     "clip_actions": True,
-    # Whether to use rllib or deepmind preprocessors by default
+    # Whether to use "rllib" or "deepmind" preprocessors by default
     "preprocessor_pref": "deepmind",
     # The default learning rate.
     "lr": 0.0001,

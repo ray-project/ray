@@ -51,7 +51,7 @@ class TaskResubmissionInterface {
   virtual ~TaskResubmissionInterface() {}
 };
 
-using RetryTaskCallback = std::function<void(const TaskSpecification &spec, bool delay)>;
+using RetryTaskCallback = std::function<void(TaskSpecification &spec, bool delay)>;
 using ReconstructObjectCallback = std::function<void(const ObjectID &object_id)>;
 
 class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {

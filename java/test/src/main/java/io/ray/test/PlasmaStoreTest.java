@@ -8,9 +8,8 @@ import org.testng.annotations.Test;
 
 public class PlasmaStoreTest extends BaseTest {
 
-  @Test
+  @Test(groups = {"cluster"})
   public void testPutWithDuplicateId() {
-    TestUtils.skipTestUnderSingleProcess();
     ObjectId objectId = ObjectId.fromRandom();
     ObjectStore objectStore = TestUtils.getRuntime().getObjectStore();
     objectStore.put("1", objectId);

@@ -1,5 +1,9 @@
-from base64 import b64decode
 import datetime
+import random
+import socket
+
+from base64 import b64decode
+
 import ray
 
 
@@ -72,3 +76,27 @@ def to_google_style(d):
         else:
             new_dict[to_camel_case(k)] = v
     return new_dict
+
+
+def get_unused_port():
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(("", 0))
+    port = s.getsockname()[1]
+
+    # Try to generate a port that is far above the 'next available' one.
+    # This solves issue #8254 where GRPC fails because the port assigned
+    # from this method has been used by a different process.
+    for _ in range(30):
+        new_port = random.randint(port, 65535)
+        new_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            new_s.bind(("", new_port))
+        except OSError:
+            new_s.close()
+            continue
+        s.close()
+        new_s.close()
+        return new_port
+    print("Unable to succeed in selecting a random port.")
+    s.close()
+    return port

@@ -1,8 +1,5 @@
 #include "data_writer.h"
 
-#include <signal.h>
-#include <unistd.h>
-
 #include <chrono>
 #include <functional>
 #include <list>

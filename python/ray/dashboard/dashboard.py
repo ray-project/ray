@@ -77,8 +77,6 @@ class DashboardController(BaseDashboardController):
         if Analysis is not None:
             self.tune_stats = TuneCollector(2.0)
         self.memory_table = MemoryTable([])
-        self.v2_api_handler = Dashboardv2APIHandler(self.node_stats,
-                                                    self.raylet_stats)
 
     def _construct_raylet_info(self):
         D = self.raylet_stats.get_raylet_stats()
@@ -284,13 +282,6 @@ class DashboardController(BaseDashboardController):
         # Insert information about log and error counts, both at
         #  the node and at the worker level.
         return node_obj
-
-
-class Dashboardv2APIHandler:
-    def __init__(self, node_stats, raylet_stats):
-        self.raylet_stats = raylet_stats
-        self.node_stats = node_stats
-        self.is_dev = os.environ.get("RAY_DASHBOARD_DEV") == "1"
 
 
 class DashboardRouteHandler(BaseDashboardRouteHandler):
