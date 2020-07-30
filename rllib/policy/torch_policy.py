@@ -179,9 +179,7 @@ class TorchPolicy(Policy):
         timestep = timestep if timestep is not None else self.global_timestep
 
         with torch.no_grad():
-            # Create a view and pass that to Model as `input_dict`.
-            # input_dict = self.get_input_dict(
-            #    self.model, sample_collector, is_training=False)
+            # Pass lazy (torch) tensor dict to Model as `input_dict`.
             input_dict = self._lazy_tensor_dict(input_dict)
             # TODO: (sven) support RNNs w/ fast sampling.
             state_batches = []
