@@ -105,11 +105,16 @@ def get_random_letters(length=6):
     return "".join(random.choices(string.ascii_letters, k=length))
 
 
-def format_actor_name(actor_name, instance_name=None):
+def format_actor_name(actor_name, instance_name=None, *modifiers):
     if instance_name is None:
-        return actor_name
+        name = actor_name
     else:
-        return "{}:{}".format(instance_name, actor_name)
+        name = "{}:{}".format(instance_name, actor_name)
+
+    for modifier in modifiers:
+        name += "-{}".format(modifier)
+
+    return name
 
 
 @singledispatch

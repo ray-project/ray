@@ -124,7 +124,7 @@ class ServeController:
         self.write_lock = asyncio.Lock()
 
         # Cached handles to actors in the system.
-        # node_id-index -> actor_handle
+        # node_id -> actor_handle
         self.routers = dict()
         self.metric_exporter = None
 
@@ -165,8 +165,8 @@ class ServeController:
                 continue
 
             router_name = format_actor_name(SERVE_PROXY_NAME,
-                                            self.instance_name)
-            router_name += "-{}".format(node_id)
+                                            self.instance_name,
+                                            node_id)
             try:
                 router = ray.get_actor(router_name)
             except ValueError:
@@ -244,9 +244,10 @@ class ServeController:
         logger.debug("Writing checkpoint")
         start = time.time()
         checkpoint = pickle.dumps(
-            (self.routes, self.backends, self.traffic_policies, self.replicas,
-             self.replicas_to_start, self.replicas_to_stop,
-             self.backends_to_remove, self.endpoints_to_remove))
+            (self.routes, list(self.routers.keys()), self.backends,
+             self.traffic_policies, self.replicas, self.replicas_to_start,
+             self.replicas_to_stop, self.backends_to_remove,
+             self.endpoints_to_remove))
 
         self.kv_store.put(CHECKPOINT_KEY, checkpoint)
         logger.debug("Wrote checkpoint in {:.2f}".format(time.time() - start))
@@ -276,6 +277,7 @@ class ServeController:
         # Load internal state from the checkpoint data.
         (
             self.routes,
+            router_node_ids,
             self.backends,
             self.traffic_policies,
             self.replicas,
@@ -284,6 +286,12 @@ class ServeController:
             self.backends_to_remove,
             self.endpoints_to_remove,
         ) = pickle.loads(checkpoint_bytes)
+
+        for node_id in router_node_ids:
+            router_name = format_actor_name(SERVE_PROXY_NAME,
+                                            self.instance_name,
+                                            node_id)
+            self.routers[node_id] = ray.get_actor(router_name)
 
         # Fetch actor handles for all of the backend replicas in the system.
         # All of these workers are guaranteed to already exist because they
