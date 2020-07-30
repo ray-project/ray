@@ -329,7 +329,7 @@ TaskResourceInstances NodeResourceInstances::GetAvailableResourceInstances() {
     task_resources.predefined_resources[i] = this->predefined_resources[i].available;
   }
 
-  for (const auto it : this->custom_resources) {
+  for (const auto &it : this->custom_resources) {
     task_resources.custom_resources.emplace(it.first, it.second.available);
   }
 
@@ -365,8 +365,8 @@ bool TaskResourceInstances::IsEmpty() const {
     }
   }
 
-  for (const auto custom_resource : custom_resources) {
-    for (const auto custom_resource_instances : custom_resource.second) {
+  for (const auto &custom_resource : custom_resources) {
+    for (const auto &custom_resource_instances : custom_resource.second) {
       if (custom_resource_instances != 0) {
         return false;
       }
@@ -494,6 +494,15 @@ bool ClusterResourceScheduler::RemoveNode(int64_t node_id) {
   }
 }
 
+bool ClusterResourceScheduler::RemoveNode(const std::string &node_id_string) {
+  auto node_id = string_to_int_map_.Get(node_id_string);
+  if (node_id == -1) {
+    return false;
+  }
+
+  return RemoveNode(node_id);
+}
+
 int64_t ClusterResourceScheduler::IsSchedulable(const TaskRequest &task_req,
                                                 int64_t node_id,
                                                 const NodeResources &resources) {
@@ -517,7 +526,7 @@ int64_t ClusterResourceScheduler::IsSchedulable(const TaskRequest &task_req,
   }
 
   // Now check custom resources.
-  for (const auto task_req_custom_resource : task_req.custom_resources) {
+  for (const auto &task_req_custom_resource : task_req.custom_resources) {
     auto it = resources.custom_resources.find(task_req_custom_resource.id);
 
     if (it == resources.custom_resources.end()) {
@@ -929,7 +938,7 @@ bool ClusterResourceScheduler::AllocateResourceInstances(
         (*allocation)[i] = remaining_demand;
         return true;
       } else {
-        (*allocation)[i] = available[i];
+        (*allocation)[i] += available[i];
         remaining_demand -= available[i];
         available[i] = 0;
       }
@@ -1029,7 +1038,7 @@ void ClusterResourceScheduler::UpdateLocalAvailableResourcesFromResourceInstance
     auto it = local_resources_.custom_resources.find(custom_resource.first);
     if (it != local_resources_.custom_resources.end()) {
       custom_resource.second.available = 0;
-      for (const auto available : it->second.available) {
+      for (const auto &available : it->second.available) {
         custom_resource.second.available += available;
       }
     }
@@ -1044,7 +1053,7 @@ void ClusterResourceScheduler::FreeTaskResourceInstances(
                                   &local_resources_.predefined_resources[i]);
   }
 
-  for (const auto task_allocation_custom_resource : task_allocation->custom_resources) {
+  for (const auto &task_allocation_custom_resource : task_allocation->custom_resources) {
     auto it =
         local_resources_.custom_resources.find(task_allocation_custom_resource.first);
     if (it != local_resources_.custom_resources.end()) {

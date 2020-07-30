@@ -54,7 +54,7 @@ void MetricsAgentExporter::ReportMetrics(const std::vector<MetricPoint> &points)
   MetricExporterDecorator::ReportMetrics(points);
   rpc::ReportMetricsRequest request;
   for (auto point : points) {
-    auto metric_point = request.add_metrics_point();
+    auto metric_point = request.add_metrics_points();
     metric_point->set_metric_name(point.metric_name);
     metric_point->set_timestamp(point.timestamp);
     metric_point->set_value(point.value);
@@ -62,10 +62,22 @@ void MetricsAgentExporter::ReportMetrics(const std::vector<MetricPoint> &points)
     for (auto &tag : point.tags) {
       (*mutable_tags)[tag.first] = tag.second;
     }
+    // If description and units information is requested from
+    // the metrics agent, append the information.
+    // TODO(sang): It can be inefficient if there are lots of new registered metrics.
+    // We should make it more efficient if there's compelling use cases.
+    if (should_update_description_) {
+      metric_point->set_description(point.measure_descriptor.description());
+      metric_point->set_units(point.measure_descriptor.units());
+    }
   }
+  should_update_description_ = false;
 
   // TODO(sang): Should retry metrics report if it fails.
-  client_->ReportMetrics(request, nullptr);
+  client_->ReportMetrics(
+      request, [this](const Status &status, const rpc::ReportMetricsReply &reply) {
+        should_update_description_ = reply.metrcs_description_required();
+      });
 }
 
 }  // namespace stats

@@ -2,11 +2,9 @@
 import glob
 import logging
 import os
-import shutil
 import json
 import sys
 import socket
-import tempfile
 import time
 
 import numpy as np
@@ -416,24 +414,6 @@ def test_ray_stack(ray_start_2_cpus):
                         "'ray stack'")
 
 
-def test_pandas_parquet_serialization():
-    # Only test this if pandas is installed
-    pytest.importorskip("pandas")
-
-    import pandas as pd
-    import pyarrow as pa
-    import pyarrow.parquet as pq
-
-    tempdir = tempfile.mkdtemp()
-    filename = os.path.join(tempdir, "parquet-test")
-    pd.DataFrame({"col1": [0, 1], "col2": [0, 1]}).to_parquet(filename)
-    with open(os.path.join(tempdir, "parquet-compression"), "wb") as f:
-        table = pa.Table.from_arrays([pa.array([1, 2, 3])], ["hello"])
-        pq.write_table(table, f, compression="lz4")
-    # Clean up
-    shutil.rmtree(tempdir)
-
-
 def test_socket_dir_not_existing(shutdown_only):
     if sys.platform != "win32":
         random_name = ray.ObjectRef.from_random().hex()
@@ -441,7 +421,14 @@ def test_socket_dir_not_existing(shutdown_only):
                                               "tests", random_name)
         temp_raylet_socket_name = os.path.join(temp_raylet_socket_dir,
                                                "raylet_socket")
-        ray.init(num_cpus=1, raylet_socket_name=temp_raylet_socket_name)
+        ray.init(num_cpus=2, raylet_socket_name=temp_raylet_socket_name)
+
+        @ray.remote
+        def foo(x):
+            time.sleep(1)
+            return 2 * x
+
+        ray.get([foo.remote(i) for i in range(2)])
 
 
 def test_raylet_is_robust_to_random_messages(ray_start_regular):

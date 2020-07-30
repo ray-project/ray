@@ -1171,7 +1171,7 @@ py_test(
     name = "test_env_with_subprocess",
     main = "tests/test_env_with_subprocess.py",
     tags = ["tests_dir", "tests_dir_E"],
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_env_with_subprocess.py"]
 )
 
@@ -1296,13 +1296,27 @@ py_test(
     srcs = ["tests/test_reproducibility.py"]
 )
 
+# Test train/rollout scripts (w/o confirming rollout performance).
 py_test(
-    name = "test_rollout",
+    name = "test_rollout_no_learning",
     main = "tests/test_rollout.py",
     tags = ["tests_dir", "tests_dir_R"],
     size = "large",
     data = ["train.py", "rollout.py"],
-    srcs = ["tests/test_rollout.py"]
+    srcs = ["tests/test_rollout.py"],
+    args = ["TestRolloutSimple"]
+)
+
+# Test train/rollout scripts (and confirm `rllib rollout` performance is same
+# as the final one from the `rllib train` run).
+py_test(
+    name = "test_rollout_w_learning",
+    main = "tests/test_rollout.py",
+    tags = ["tests_dir", "tests_dir_R"],
+    size = "medium",
+    data = ["train.py", "rollout.py"],
+    srcs = ["tests/test_rollout.py"],
+    args = ["TestRolloutLearntPolicy"]
 )
 
 py_test(

@@ -133,27 +133,27 @@ class Router:
 
         # -- State Restoration -- #
         # Fetch the worker handles, traffic policies, and backend configs from
-        # the master actor. We use a "pull-based" approach instead of pushing
-        # them from the master so that the router can transparently recover
+        # the controller. We use a "pull-based" approach instead of pushing
+        # them from the controller so that the router can transparently recover
         # from failure.
         serve.init(name=instance_name)
-        master_actor = serve.api._get_master_actor()
+        controller = serve.api._get_controller()
 
-        traffic_policies = ray.get(master_actor.get_traffic_policies.remote())
+        traffic_policies = ray.get(controller.get_traffic_policies.remote())
         for endpoint, traffic_policy in traffic_policies.items():
             await self.set_traffic(endpoint, traffic_policy)
 
-        backend_dict = ray.get(master_actor.get_all_worker_handles.remote())
+        backend_dict = ray.get(controller.get_all_worker_handles.remote())
         for backend_tag, replica_dict in backend_dict.items():
             for replica_tag, worker in replica_dict.items():
                 await self.add_new_worker(backend_tag, replica_tag, worker)
 
-        backend_configs = ray.get(master_actor.get_backend_configs.remote())
+        backend_configs = ray.get(controller.get_backend_configs.remote())
         for backend, backend_config in backend_configs.items():
             await self.set_backend_config(backend, backend_config)
 
         # -- Metric Registration -- #
-        [metric_exporter] = ray.get(master_actor.get_metric_exporter.remote())
+        [metric_exporter] = ray.get(controller.get_metric_exporter.remote())
         self.metric_client = MetricClient(metric_exporter)
         self.num_router_requests = self.metric_client.new_counter(
             "num_router_requests",
@@ -169,9 +169,6 @@ class Router:
             description=("Number of requests errored when getting result "
                          "from backend."),
             label_names=("backend", ))
-
-    def is_ready(self):
-        return True
 
     async def enqueue_request(self, request_meta, *request_args,
                               **request_kwargs):

@@ -34,12 +34,14 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
  public:
   /// Create a GcsNodeManager.
   ///
-  /// \param io_service The event loop to run the monitor on.
+  /// \param main_io_service The main event loop.
+  /// \param node_failure_detector_io_service The event loop of node failure detector.
   /// \param error_info_accessor The error info accessor, which is used to report error.
   /// \param gcs_pub_sub GCS message publisher.
   /// \param gcs_table_storage GCS table external storage accessor.
   /// when detecting the death of nodes.
-  explicit GcsNodeManager(boost::asio::io_service &io_service,
+  explicit GcsNodeManager(boost::asio::io_service &main_io_service,
+                          boost::asio::io_service &node_failure_detector_io_service,
                           gcs::ErrorInfoAccessor &error_info_accessor,
                           std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
                           std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage);
@@ -140,6 +142,9 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \param done Callback that will be called when load is complete.
   void LoadInitialData(const EmptyCallback &done);
 
+  /// Start node failure detector.
+  void StartNodeFailureDetector();
+
  protected:
   class NodeFailureDetector {
    public:
@@ -155,6 +160,12 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
         std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
         std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
         std::function<void(const ClientID &)> on_node_death_callback);
+
+    // Note: To avoid heartbeats being delayed by main thread, all public methods below
+    // should be posted to its own IO service.
+
+    /// Start failure detector.
+    void Start();
 
     /// Register node to this detector.
     /// Only if the node has registered, its heartbeat data will be accepted.
@@ -203,13 +214,19 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     absl::flat_hash_map<ClientID, rpc::HeartbeatTableData> heartbeat_buffer_;
     /// A publisher for publishing gcs messages.
     std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
+    /// Is the detect started.
+    bool is_started_ = false;
   };
 
  private:
   /// Error info accessor.
   gcs::ErrorInfoAccessor &error_info_accessor_;
+  /// The main event loop for node failure detector.
+  boost::asio::io_service &main_io_service_;
   /// Detector to detect the failure of node.
   std::unique_ptr<NodeFailureDetector> node_failure_detector_;
+  /// The event loop for node failure detector.
+  boost::asio::io_service &node_failure_detector_service_;
   /// Alive nodes.
   absl::flat_hash_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes_;
   /// Dead nodes.

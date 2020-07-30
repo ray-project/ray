@@ -15,6 +15,7 @@ import org.testng.annotations.Test;
 /**
  * Resources Management Test.
  */
+@Test(groups = {"cluster"})
 public class ResourcesManagementTest extends BaseTest {
 
   @BeforeClass
@@ -38,10 +39,7 @@ public class ResourcesManagementTest extends BaseTest {
     }
   }
 
-  @Test
   public void testMethods() {
-    TestUtils.skipTestUnderSingleProcess();
-
     // This is a case that can satisfy required resources.
     // The static resources for test are "CPU:4,RES-A:4".
     ObjectRef<Integer> result1 = Ray.task(ResourcesManagementTest::echo, 100)
@@ -69,10 +67,7 @@ public class ResourcesManagementTest extends BaseTest {
     }
   }
 
-  @Test
   public void testActors() {
-    TestUtils.skipTestUnderSingleProcess();
-
     // This is a case that can satisfy required resources.
     // The static resources for test are "CPU:4,RES-A:4".
     ActorHandle<Echo> echo1 = Ray.actor(Echo::new)
