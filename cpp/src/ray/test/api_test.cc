@@ -44,10 +44,15 @@ TEST(RayApiTest, PutTest) {
 
 TEST(RayApiTest, StaticGetTest) {
   Ray::Init();
+  /// `Get` member function
+  auto obj_ref1 = Ray::Put(100);
+  auto res1 = obj_ref1.Get();
+  EXPECT_EQ(100, *res1);
 
-  auto obj_ref = Ray::Put(100);
-  auto res = Ray::Get(obj_ref);
-  EXPECT_EQ(100, *res);
+  /// `Get` static function
+  auto obj_ref2 = Ray::Put(200);
+  auto res2 = Ray::Get(obj_ref2);
+  EXPECT_EQ(200, *res2);
 }
 
 TEST(RayApiTest, WaitTest) {
