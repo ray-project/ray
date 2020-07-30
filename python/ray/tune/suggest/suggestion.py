@@ -1,5 +1,6 @@
 import copy
 import logging
+import os
 
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list
@@ -58,6 +59,7 @@ class Searcher:
 
     """
     FINISHED = "FINISHED"
+    CKPT_FILE = "searcher-state.pkl"
 
     def __init__(self,
                  metric="episode_reward_mean",
@@ -130,13 +132,39 @@ class Searcher:
         """
         raise NotImplementedError
 
-    def save(self, checkpoint_dir):
+    def save(self, checkpoint_path):
         """Save function for this object."""
         raise NotImplementedError
 
-    def restore(self, checkpoint_dir):
+    def restore(self, checkpoint_path):
         """Restore function for this object."""
         raise NotImplementedError
+
+    @staticmethod
+    def save_to_dir(searcher, checkpoint_dir):
+        tmp_search_ckpt_path = os.path.join(checkpoint_dir,
+                                            ".tmp_searcher_ckpt")
+        success = True
+        try:
+            searcher.save(tmp_search_ckpt_path)
+        except NotImplementedError as e:
+            logger.warning(e)
+            success = False
+
+        if success:
+            os.rename(tmp_search_ckpt_path,
+                      os.path.join(checkpoint_dir, Searcher.CKPT_FILE))
+
+    @staticmethod
+    def restore_from_dir(searcher, checkpoint_dir):
+        checkpoint_path = os.path.join(checkpoint_dir, Searcher.CKPT_FILE)
+        if os.path.exists(checkpoint_path):
+            searcher.restore(checkpoint_path)
+        else:
+            raise FileNotFoundError(
+                "{filename} not found in {directory}. Unable to restore "
+                "searcher state from directory.".format(
+                    filename=checkpoint_path, directory=checkpoint_dir))
 
     @property
     def metric(self):
@@ -293,6 +321,12 @@ class SearchGenerator(SearchAlgorithm):
 
     def is_finished(self):
         return self._counter >= self._total_samples or self._finished
+
+    def save(self, checkpoint_path):
+        self.searcher.save(checkpoint_path)
+
+    def restore(self, checkpoint_path):
+        self.searcher.restore(cehckpoint_path)
 
 
 class _MockSearcher(Searcher):
