@@ -62,7 +62,6 @@ py_test_module_list(
     "test_autoscaler_yaml.py",
     "test_component_failures.py",
     "test_coordinator_server.py",
-    "test_cython.py",
     "test_dask_scheduler.py",
     "test_debug_tools.py",
     "test_global_state.py",
@@ -97,7 +96,6 @@ py_test_module_list(
   # TODO(ekl) enable again once we support direct call reconstruction
   tags = ["exclusive", "manual"],
   deps = ["//:ray_lib"],
->>>>>>> c07556228... Add build macro for python test files
 )
 
 # TODO(barakmich): aws/ might want its own buildfile, or 
