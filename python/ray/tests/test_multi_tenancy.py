@@ -1,8 +1,6 @@
 # coding: utf-8
 import json
-import subprocess
 import sys
-import tempfile
 
 import grpc
 import pytest
