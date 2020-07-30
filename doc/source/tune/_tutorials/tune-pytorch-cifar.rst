@@ -311,11 +311,6 @@ If using checkpointing, be sure to use a :ref:`special checkpoint context manage
 
     from ray.util.sgd.torch import distributed_checkpoint_dir
 
-    # with tune.checkpoint_dir(step=epoch) as checkpoint_dir:
-    #     path = os.path.join(checkpoint_dir, "checkpoint")
-    #     torch.save(
-    #         (net.state_dict(), optimizer.state_dict()), path)
-
     #### Using distributed data parallel training
     # Inside `def train_cifar(...)`,
     # replace tune.checkpoint_dir() with the following
