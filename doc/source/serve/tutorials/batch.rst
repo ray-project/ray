@@ -111,7 +111,7 @@ Let's deploy the new version to the same endpoint. Don't forget to set
 To query the backend via Python API, we can use ``serve.get_handle`` to receive
 a handle to the corresponding "endpoint". To enqueue a query, you can call
 ``handle.remote(argument_name=argument_value)``. This call returns immediately
-with a :ref:`Ray ObjectRef<ray-object-ids>`. You can call `ray.get` to retrieve
+with a :ref:`Ray ObjectRef<ray-object-refs>`. You can call `ray.get` to retrieve
 the result.
 
 .. literalinclude:: ../../../../python/ray/serve/examples/doc/tutorial_batch.py

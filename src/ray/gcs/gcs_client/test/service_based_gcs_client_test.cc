@@ -71,8 +71,8 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
 
     gcs_server_->Stop();
     server_io_service_->stop();
-    gcs_server_.reset();
     server_io_service_thread_->join();
+    gcs_server_.reset();
     TestSetupUtil::FlushAllRedisServers();
     client_io_service_thread_->join();
   }
@@ -81,8 +81,8 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     RAY_LOG(INFO) << "Stopping GCS service, port = " << gcs_server_->GetPort();
     gcs_server_->Stop();
     server_io_service_->stop();
-    gcs_server_.reset();
     server_io_service_thread_->join();
+    gcs_server_.reset();
     RAY_LOG(INFO) << "Finished stopping GCS service.";
 
     server_io_service_.reset(new boost::asio::io_service());
@@ -1140,12 +1140,12 @@ TEST_F(ServiceBasedGcsClientTest, TestMultiThreadSubAndUnsub) {
   threads.resize(size);
 
   // The number of times each thread executes subscribe & resubscribe & unsubscribe.
-  const int sub_and_unsub_loop_count = 20;
+  int sub_and_unsub_loop_count = 20;
 
   // Multithreading subscribe/resubscribe/unsubscribe actors.
   auto job_id = JobID::FromInt(1);
   for (int index = 0; index < size; ++index) {
-    threads[index].reset(new std::thread([this, job_id] {
+    threads[index].reset(new std::thread([this, sub_and_unsub_loop_count, job_id] {
       for (int index = 0; index < sub_and_unsub_loop_count; ++index) {
         auto actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
         ASSERT_TRUE(SubscribeActor(
@@ -1162,7 +1162,7 @@ TEST_F(ServiceBasedGcsClientTest, TestMultiThreadSubAndUnsub) {
 
   // Multithreading subscribe/resubscribe/unsubscribe objects.
   for (int index = 0; index < size; ++index) {
-    threads[index].reset(new std::thread([this] {
+    threads[index].reset(new std::thread([this, sub_and_unsub_loop_count] {
       for (int index = 0; index < sub_and_unsub_loop_count; ++index) {
         auto object_id = ObjectID::FromRandom();
         ASSERT_TRUE(SubscribeToLocations(
@@ -1182,6 +1182,10 @@ TEST_F(ServiceBasedGcsClientTest, TestMultiThreadSubAndUnsub) {
 }  // namespace ray
 
 int main(int argc, char **argv) {
+  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
+                                         ray::RayLog::ShutDownRayLog, argv[0],
+                                         ray::RayLogLevel::INFO,
+                                         /*log_dir=*/"");
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 4);
   ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];

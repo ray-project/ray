@@ -265,6 +265,9 @@ file_mounts: {
 #    "/path2/on/remote/machine": "/path2/on/local/machine",
 }
 
+# Whether changes to mounted files in the head node should sync to the worker node continuously
+file_mounts_sync_continuously: False
+
 # List of commands that will be run before `setup_commands`. If docker is
 # enabled, these commands will run outside the container and before docker
 # is setup.
