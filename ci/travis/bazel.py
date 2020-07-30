@@ -202,6 +202,7 @@ def shellcheck(bazel_aquery, *shellcheck_argv):
                 all_script_infos[shname].append((None, shell_args[i + 1]))
                 break
             i += 1
+
     result = 0
     bazel_execution_root = None
     for shell, script_infos in all_script_infos.items():
