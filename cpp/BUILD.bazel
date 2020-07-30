@@ -74,11 +74,11 @@ genrule(
 
 cc_binary(
     name = "example",
+    testonly = 1,
     srcs = glob([
         "src/example/example.cc",
     ]),
     copts = COPTS,
-    testonly = 1,
     linkstatic = False,
     deps = [
         "ray_api",
@@ -87,11 +87,11 @@ cc_binary(
 
 cc_binary(
     name = "example_cluster_mode",
+    testonly = 1,
     srcs = glob([
         "src/example/example_cluster_mode.cc",
     ]),
     copts = COPTS,
-    testonly = 1,
     linkstatic = False,
     deps = [
         "ray_api",
