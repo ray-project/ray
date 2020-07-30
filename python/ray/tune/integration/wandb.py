@@ -12,7 +12,7 @@ try:
     import wandb
 except ImportError:
     logger.error("pip install 'wandb' to use WandbLogger/WandbTrainableMixin.")
-    raise
+    wandb = None
 
 WANDB_ENV_VAR = "WANDB_API_KEY"
 _WANDB_QUEUE_END = (None, )
