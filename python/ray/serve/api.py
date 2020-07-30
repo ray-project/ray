@@ -367,8 +367,10 @@ def get_handle(endpoint_name,
     if not missing_ok:
         assert endpoint_name in ray.get(controller.get_all_endpoints.remote())
 
+    # TODO(edoakes): we should choose the router on the same node.
+    routers = ray.get(controller.get_routers.remote())
     return RayServeHandle(
-        ray.get(controller.get_router.remote())[0],
+        list(routers.values())[0],
         endpoint_name,
         relative_slo_ms,
         absolute_slo_ms,
