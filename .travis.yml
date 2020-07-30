@@ -99,33 +99,37 @@ matrix:
       script:
         - true  # we still need this block to exist, otherwise it will fall back to the global one
 
-    # Build Linux wheels.
-    - os: linux
-      env:
-        - LINUX_WHEELS=1
-        - PYTHONWARNINGS=ignore
-        - RAY_INSTALL_JAVA=1
-      install:
-        - . ./ci/travis/ci.sh init RAY_CI_LINUX_WHEELS_AFFECTED
-      before_script:
-        - . ./ci/travis/ci.sh build
-      script:
-        - . ./ci/travis/ci.sh test_wheels
-      cache: false
-
-    # Build MacOS wheels.
+    # Build MacOS wheels and MacOS jars
     - os: osx
       osx_image: xcode7
       env:
-        - MAC_WHEELS=1
+        - MAC_WHEELS=1 MAC_JARS=1
         - PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
       install:
-        - . ./ci/travis/ci.sh init RAY_CI_MACOS_WHEELS_AFFECTED
+        - . ./ci/travis/ci.sh init RAY_CI_MACOS_WHEELS_AFFECTED,RAY_CI_JAVA_AFFECTED,RAY_CI_STREAMING_JAVA_AFFECTED
       before_script:
         - . ./ci/travis/ci.sh build
       script:
         - . ./ci/travis/ci.sh test_wheels
+        - bash ./java/build-jar-multiplatform.sh darwin
+
+    # Build Linux wheels and multi-platform jars.
+    - os: linux
+      env:
+        - LINUX_WHEELS=1 MULTIPLATFORM_JARS=1
+        - PYTHONWARNINGS=ignore
+        - RAY_INSTALL_JAVA=1
+      install:
+        - . ./ci/travis/ci.sh init RAY_CI_LINUX_WHEELS_AFFECTED,RAY_CI_JAVA_AFFECTED,RAY_CI_STREAMING_JAVA_AFFECTED
+      before_script:
+        - . ./ci/travis/ci.sh build
+      script:
+        - . ./ci/travis/ci.sh test_wheels
+        - bash ./java/build-jar-multiplatform.sh linux
+        - bash ./java/build-jar-multiplatform.sh multiplatform
+        #- bash ./java/build-jar-multiplatform.sh deploy
+      cache: false
 
     # RLlib: Learning tests (from rllib/tuned_examples/*.yaml).
     - os: linux
@@ -391,6 +395,39 @@ deploy:
       branch: master
       repo: ray-project/ray
       condition: $LINUX_WHEELS = 1 || $MAC_WHEELS = 1
+
+  # Upload jars so that we can debug locally for every commit
+  - provider: s3
+    edge: true # This supposedly opts in to deploy v2.
+    access_key_id: AKIAU6DMUCJUFL3EX3SM
+    secret_access_key:
+      secure: J1sX71fKFPQhgWzColllxfzcF877ScBZ1cIl71krZ6SO0LKnwsCScpQck5eZOyQo/Iverwye0iKtE87qNsiRi3+V2D9iulSr18T09j7+FjPKfxAmXmjfrNafoMXTDQroSJblCri5vl+DysISPqImJkWTNaYhGJ9QakoSd5djnAopLNWj6PCR3S50baS49+nB5nSIY3jMhtUzlaBdniFPFC81Cxyuafr4pv6McGRfR/dK+ZnPhdGtMnVeIJXB+ooZKQ26mDJKBPka4jm3u1Oa72b/Atu2RO3MwxTg79LTrMxXKh2OcCqhtD2Z3lz1OltvNSunCuwY8AejCJsfSLbM9mGDoz+xhNUWmYNy48YFf+61OY8PXi8S/9Q817yb3GpLbb2l/P+KMgq9eSEiELIOwuYsDxPX5TuAg6dx0wCNgDEBJoThSQjYl6MgJrLrs7p+JBxp3giedHiy0TLa5hCVKTj3euONAXDArYnnT+DvUIOkaeTk5DClRZbZ0sUXhLy//HuT5WJvjFBJJZ0u0f4RLVb5D7DI4uMZr7+yJPDR2AXCyW9YMaBEbmEYbPaKi283jlEyn7R33+AZlnXv0THHwZ4xvjKKG3/fBSXsOUmv5wmUveEqVGDj1mKPGj9NF8iA5qMm2AaZuJpEEBVBZtSlTZt6ZG7rzAJZGNL52t7xuMo=
+    bucket: ray-wheels
+    acl: public_read
+    region: us-west-2
+    local_dir: .jar
+    upload-dir: "jars/$TRAVIS_BRANCH/$TRAVIS_COMMIT"
+    skip_cleanup: true
+    on:
+      repo: ray-project/ray
+      all_branches: true
+      condition: $MULTIPLATFORM_JARS = 1 || $MAC_JARS = 1
+
+  - provider: s3
+    edge: true # This supposedly opts in to deploy v2.
+    access_key_id: AKIAU6DMUCJUFL3EX3SM
+    secret_access_key:
+      secure: J1sX71fKFPQhgWzColllxfzcF877ScBZ1cIl71krZ6SO0LKnwsCScpQck5eZOyQo/Iverwye0iKtE87qNsiRi3+V2D9iulSr18T09j7+FjPKfxAmXmjfrNafoMXTDQroSJblCri5vl+DysISPqImJkWTNaYhGJ9QakoSd5djnAopLNWj6PCR3S50baS49+nB5nSIY3jMhtUzlaBdniFPFC81Cxyuafr4pv6McGRfR/dK+ZnPhdGtMnVeIJXB+ooZKQ26mDJKBPka4jm3u1Oa72b/Atu2RO3MwxTg79LTrMxXKh2OcCqhtD2Z3lz1OltvNSunCuwY8AejCJsfSLbM9mGDoz+xhNUWmYNy48YFf+61OY8PXi8S/9Q817yb3GpLbb2l/P+KMgq9eSEiELIOwuYsDxPX5TuAg6dx0wCNgDEBJoThSQjYl6MgJrLrs7p+JBxp3giedHiy0TLa5hCVKTj3euONAXDArYnnT+DvUIOkaeTk5DClRZbZ0sUXhLy//HuT5WJvjFBJJZ0u0f4RLVb5D7DI4uMZr7+yJPDR2AXCyW9YMaBEbmEYbPaKi283jlEyn7R33+AZlnXv0THHwZ4xvjKKG3/fBSXsOUmv5wmUveEqVGDj1mKPGj9NF8iA5qMm2AaZuJpEEBVBZtSlTZt6ZG7rzAJZGNL52t7xuMo=
+    bucket: ray-wheels
+    acl: public_read
+    region: us-west-2
+    local_dir: .jar
+    upload-dir: "jars/latest"
+    skip_cleanup: true
+    on:
+      repo: ray-project/ray
+      branch: master
+      condition: $MULTIPLATFORM_JARS = 1 || $MAC_JARS = 1
 
   - provider: script
     edge: true # This supposedly opts in to deploy v2.
