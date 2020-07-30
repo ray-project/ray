@@ -46,6 +46,7 @@ def measures_to_dict(measures):
             measures_dict[tags] = measure["doubleValue"]
     return measures_dict
 
+
 def to_camel_case(snake_str):
     """Convert a snake str to camel case."""
     components = snake_str.split("_")

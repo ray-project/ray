@@ -22,7 +22,7 @@ import grpc
 from google.protobuf.json_format import MessageToDict
 import ray
 import ray.ray_constants as ray_constants
-from typing import Optional, List, Dict, Any
+from typing import Optional, Dict, Any
 
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
@@ -36,7 +36,8 @@ from ray.dashboard.memory import construct_memory_table, MemoryTable
 from ray.dashboard.metrics_exporter.client import Exporter
 from ray.dashboard.metrics_exporter.client import MetricsExportClient
 from ray.dashboard.node_stats import NodeStats
-from ray.dashboard.util import to_unix_time, measures_to_dict, format_resource, to_google_style
+from ray.dashboard.util import to_unix_time, measures_to_dict, \
+    format_resource, to_google_style
 
 try:
     from ray.tune import Analysis
@@ -263,16 +264,21 @@ class DashboardController(BaseDashboardController):
         # Insert information about workers, merged from the
         # Raylet information
         raylet_info = raylet_info["nodes"].get(node_obj["ip"])
-        raylet_workers = {worker["pid"]: worker["coreWorkerStats"] for worker in raylet_info["workersStats"]} if raylet_info else set()
+        raylet_workers = {
+            worker["pid"]: worker["coreWorkerStats"]
+            for worker in raylet_info["workersStats"]
+        } if raylet_info else set()
         if raylet_workers:
             logger.warning("RAYLET_TYPE: {}".format(list(raylet_workers)[0]))
         node_workers = node_obj["workers"]
         for worker in node_workers:
             raylet_worker = raylet_workers.get(worker["pid"])
             str_pid = str(worker["pid"])
-            worker["core_worker_stats"] = [raylet_worker] if raylet_worker else []
+            worker["core_worker_stats"] = [raylet_worker
+                                           ] if raylet_worker else []
             worker["log_count"] = node_obj.get("log_count", {}).get(str_pid, 0)
-            worker["error_count"] = node_obj.get("error_count", {}).get(str_pid, 0)
+            worker["error_count"] = node_obj.get("error_count", {}).get(
+                str_pid, 0)
         node_obj["log_count"] = sum(node_obj.get("log_count", {}).values())
         node_obj["error_count"] = sum(node_obj.get("error_count", {}).values())
         # Insert information about log and error counts, both at
@@ -286,7 +292,7 @@ class Dashboardv2APIHandler:
         self.node_stats = node_stats
         self.is_dev = os.environ.get("RAY_DASHBOARD_DEV") == "1"
 
-        
+
 class DashboardRouteHandler(BaseDashboardRouteHandler):
     def __init__(self, dashboard_controller: DashboardController,
                  is_dev=False):
@@ -299,11 +305,13 @@ class DashboardRouteHandler(BaseDashboardRouteHandler):
             headers = {"Access-Control-Allow-Origin": "*"}
         else:
             headers = {}
-        return aiohttp.web.json_response({
-            "result": True,
-            "msg": "Success",
-            "data": formatted_data,
-        }, headers=headers)
+        return aiohttp.web.json_response(
+            {
+                "result": True,
+                "msg": "Success",
+                "data": formatted_data,
+            },
+            headers=headers)
 
     def v2_api_error(self, status: int, msg: str) -> aiohttp.web.Response:
         if self.is_dev:
@@ -431,7 +439,7 @@ class DashboardRouteHandler(BaseDashboardRouteHandler):
             return self.api_error(
                 400, "Host not found for hostname {}".format(hostname))
         return self.v2_api_response({"details": node_details})
-    
+
     async def v2_node_summaries(self, req) -> aiohttp.web.Response:
         summaries = self.dashboard_controller.v2_node_summaries()
         return self.v2_api_response({"summaries": summaries})
@@ -627,8 +635,7 @@ class Dashboard:
             stop_memory_table="/api/stop_memory_table",
             v2_hostnames="/api/v2/hostnames",
             v2_node_details="/api/v2/nodes/{hostname}",
-            v2_node_summaries="/api/v2/nodes"
-        )
+            v2_node_summaries="/api/v2/nodes")
         self.app.router.add_get("/{_}", route_handler.get_forbidden)
         self.app.router.add_post("/api/set_tune_experiment",
                                  route_handler.set_tune_experiment)
