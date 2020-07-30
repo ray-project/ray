@@ -305,7 +305,7 @@ const std::string ResourceSet::ToString() const {
 
 const std::unordered_map<std::string, double> ResourceSet::GetResourceMap() const {
   std::unordered_map<std::string, double> result;
-  for (const auto resource_pair : resource_capacity_) {
+  for (const auto &resource_pair : resource_capacity_) {
     result[resource_pair.first] = resource_pair.second.ToDouble();
   }
   return result;
