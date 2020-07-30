@@ -13,10 +13,12 @@ RUN apt-get update \
     && apt-get clean 
 
 # We have to uninstall wrapt this way for Tensorflow compatibility
-COPY requirements.txt .
+COPY ../../python/requirements.txt ./
+COPY ../../python/requirements_autoscaler.txt ./
 COPY $WHEEL_PATH $WHEEL_NAME
 
-RUN pip --no-cache-dir install -r requirements.txt \
+RUN pip --no-cache-dir install -r requirements.txt \ 
+    && pip --no-cache-dir install -r requirements_autoscaler.txt \
     && pip --no-cache-dir install $WHEEL_NAME[all]
 
 # For Click
