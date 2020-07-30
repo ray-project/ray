@@ -58,26 +58,27 @@ class TDModel(nn.Module):
         return self.model(x)
 
 
-class TDDataset(torch.utils.data.Dataset):
-    def __init__(self, dataset: SampleBatchType, norms):
-        self.count = dataset.count
-        obs = dataset[SampleBatch.CUR_OBS]
-        actions = dataset[SampleBatch.ACTIONS]
-        delta = dataset[SampleBatch.NEXT_OBS] - obs
+if torch:
+    class TDDataset(torch.utils.data.Dataset):
+        def __init__(self, dataset: SampleBatchType, norms):
+            self.count = dataset.count
+            obs = dataset[SampleBatch.CUR_OBS]
+            actions = dataset[SampleBatch.ACTIONS]
+            delta = dataset[SampleBatch.NEXT_OBS] - obs
 
-        if norms:
-            obs = normalize(obs, norms[SampleBatch.CUR_OBS])
-            actions = normalize(actions, norms[SampleBatch.ACTIONS])
-            delta = normalize(delta, norms["delta"])
+            if norms:
+                obs = normalize(obs, norms[SampleBatch.CUR_OBS])
+                actions = normalize(actions, norms[SampleBatch.ACTIONS])
+                delta = normalize(delta, norms["delta"])
 
-        self.x = np.concatenate([obs, actions], axis=1)
-        self.y = delta
+            self.x = np.concatenate([obs, actions], axis=1)
+            self.y = delta
 
-    def __len__(self):
-        return self.count
+        def __len__(self):
+            return self.count
 
-    def __getitem__(self, index):
-        return self.x[index], self.y[index]
+        def __getitem__(self, index):
+            return self.x[index], self.y[index]
 
 
 def normalize(data_array, stats):
