@@ -8,8 +8,9 @@ import grpc
 import pytest
 
 import ray
+import ray.test_utils
 from ray.core.generated import node_manager_pb2, node_manager_pb2_grpc
-from ray.test_utils import wait_for_condition
+from ray.test_utils import wait_for_condition, run_string_as_driver_nonblocking
 
 
 # Test that when `redis_address` and `job_config` is not set in
@@ -54,8 +55,7 @@ import sys
 import ray
 
 
-assert len(sys.argv) == 2
-ray.init(address=sys.argv[1])
+ray.init(address="{}")
 
 @ray.remote
 class Actor:
@@ -78,32 +78,27 @@ pids = set([ray.get(obj) for obj in pid_objs])
 print("PID:" + str.join(",", [str(_) for _ in pids]))
 
 ray.shutdown()
-    """
-
-    f = tempfile.NamedTemporaryFile(suffix=".py")
-    f.write(driver_code.encode("ascii"))
-    f.flush()
+    """.format(info["redis_address"])
 
     driver_count = 10
-    cmd = [sys.executable, f.name, info["redis_address"]]
     processes = [
-        subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            universal_newlines=True) for _ in range(driver_count)
+        run_string_as_driver_nonblocking(driver_code)
+        for _ in range(driver_count)
     ]
     outputs = []
     for p in processes:
-        out, err = p.communicate()
+        out = p.stdout.read().decode("ascii")
+        err = p.stderr.read().decode("ascii")
+        p.wait()
+        # out, err = p.communicate()
+        # out = ray.utils.decode(out)
+        # err = ray.utils.decode(err)
         if p.returncode != 0:
             print("Driver with PID {} returned error code {}".format(
                 p.pid, p.returncode))
             print("STDOUT:\n{}".format(out))
             print("STDERR:\n{}".format(err))
         outputs.append((p, out))
-
-    f.close()
 
     all_worker_pids = set()
     for p, out in outputs:

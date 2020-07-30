@@ -448,9 +448,6 @@ def test_custom_resources(ray_start_cluster):
         num_cpus=1, resources={"CustomResource": 1})
     ray.init(address=cluster.address)
 
-    # Wait for workers to be ready to execute tasks
-    time.sleep(3)
-
     @ray.remote
     def f():
         return ray.worker.global_worker.node.unique_id

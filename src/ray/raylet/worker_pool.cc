@@ -172,7 +172,7 @@ Process WorkerPool::StartWorkerProcess(const Language &language, const JobID &jo
     RAY_CHECK(!job_id.IsNil());
     auto it = unfinished_jobs_.find(job_id);
     if (it == unfinished_jobs_.end()) {
-      RAY_LOG(INFO) << "Job config of job " << job_id << " are not local yet.";
+      RAY_LOG(DEBUG) << "Job config of job " << job_id << " are not local yet.";
       // Will reschedule ready tasks in `NodeManager::HandleJobStarted`.
       return Process();
     }
@@ -249,10 +249,10 @@ Process WorkerPool::StartWorkerProcess(const Language &language, const JobID &jo
           arg.append(entry.second);
           worker_command_args.push_back(arg);
         }
-        // The value of `num_workers_per_process_java` may change depends on whether
-        // dynamic options is empty, so we can't use the value in `RayConfig`. We always
-        // overwrite the value here.
         if (!RayConfig::instance().enable_multi_tenancy()) {
+          // The value of `num_workers_per_process_java` may change depends on whether
+          // dynamic options is empty, so we can't use the value in `RayConfig`. We always
+          // overwrite the value here.
           worker_command_args.push_back(
               "-Dray.raylet.config.num_workers_per_process_java=" +
               std::to_string(workers_to_start));
@@ -284,7 +284,7 @@ Process WorkerPool::StartWorkerProcess(const Language &language, const JobID &jo
   if (RayConfig::instance().enable_multi_tenancy()) {
     // If the pid is reused between processes, the old process must have exited.
     // So it's safe to bind the pid with another job ID.
-    RAY_LOG(INFO) << "Worker process " << proc.GetId() << " is bound to job " << job_id;
+    RAY_LOG(DEBUG) << "Worker process " << proc.GetId() << " is bound to job " << job_id;
     state.worker_pids_to_assigned_jobs[proc.GetId()] = job_id;
   }
   RAY_LOG(DEBUG) << "Started worker process of " << workers_to_start
@@ -292,7 +292,7 @@ Process WorkerPool::StartWorkerProcess(const Language &language, const JobID &jo
   MonitorStartingWorkerProcess(proc, language);
   state.starting_worker_processes.emplace(proc, workers_to_start);
   return proc;
-}  // namespace raylet
+}
 
 void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
                                               const Language &language) {
