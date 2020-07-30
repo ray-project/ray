@@ -159,7 +159,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       temp_dir_(config.temp_dir),
       object_manager_profile_timer_(io_service),
       light_heartbeat_enabled_(RayConfig::instance().light_heartbeat_enabled()),
-      num_heartbeats_before_load_report_(RayConfig::instance().num_heartbeats_between_load_reports()),
+      num_heartbeats_before_load_report_(
+          RayConfig::instance().num_heartbeats_between_load_reports()),
       initial_config_(config),
       local_available_resources_(config.resource_config),
       worker_pool_(

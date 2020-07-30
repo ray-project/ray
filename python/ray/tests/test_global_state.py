@@ -154,17 +154,10 @@ def test_load_report(shutdown_only, max_shapes):
         time.sleep(1000)
 
     sleep.remote()
-    tasks = [sleep.remote() for _ in range(10)]
-    tasks = [
-        sleep.options(resources={
-            resource1: 1
-        }).remote() for _ in range(10)
-    ]
-    tasks = [
-        sleep.options(resources={
-            resource2: 1
-        }).remote() for _ in range(10)
-    ]
+    for _ in range(3):
+        sleep.remote()
+        sleep.options(resources={resource1: 1}).remote()
+        sleep.options(resources={resource2: 1}).remote()
 
     class Checker:
         def __init__(self):
