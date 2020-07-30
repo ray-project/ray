@@ -1815,7 +1815,6 @@ void NodeManager::HandleRequestResourceReserve(
   // Call task dispatch to assign work to the new group.
   TryLocalInfeasibleTaskScheduling();
   DispatchTasks(local_queues_.GetReadyTasksByClass());
-  RAY_LOG(ERROR) << "Reserve request OK";
 }
 
 void NodeManager::HandleCancelResourceReserve(
