@@ -158,7 +158,6 @@ test_python() {
       -python/ray/tests:test_stress  # timeout
       -python/ray/tests:test_stress_sharded  # timeout
       -python/ray/tests:test_webui
-      -python/ray/tests:test_multi_tenancy
     )
   fi
   if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
