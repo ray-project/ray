@@ -32,27 +32,27 @@ class ProcessRunnerError(Exception):
                  msg_type,
                  code=None,
                  command=None,
-                 message_discovered=None):
+                 special_case=None):
         super(ProcessRunnerError, self).__init__(
             "{} (discovered={}): type={}, code={}, command={}".format(
-                msg, message_discovered, msg_type, code, command))
+                msg, special_case, msg_type, code, command))
 
         self.msg_type = msg_type
         self.code = code
         self.command = command
 
-        self.message_discovered = message_discovered
+        self.special_case = special_case
 
 
 def _with_interactive(cmd):
     force_interactive = ("true && source ~/.bashrc && "
                          "export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && ")
-    hide_ttys = " 2> >(tee 1>&2) | tee"
+    hide_ttys = "> >(tee) 2> >(tee 1>&2)"
     # todo: this might need to be disabled iff we are dumping output
 
     return [
         "bash", "--login", "-c", "-i",
-        quote(force_interactive + cmd + hide_ttys)]
+        quote(force_interactive + "{ " + cmd + "; }" + hide_ttys)]
 
 
 class CommandRunnerInterface:
@@ -345,162 +345,268 @@ class SSHCommandRunner(CommandRunnerInterface):
             cli_logger.warning(e)  # todo: msg
             cli_logger.old_warning(logger, e)
 
-    def _run_redirected(self, final_cmd):
-        def run_command(output_file, dump_stderr=False):
-            def read_stream(f, is_stdout=False):
-                # we rely on SSH to be well-behaved and
-                # die + close all streams when timing out
-                # and so do not manually set a timeout despite
-                # CommandRunners needing one
-                failure_message = None
-                while True:
-                    # ! readline here is crucial
-                    # ! normal read() will block until EOF
-                    data = f.readline()
+    def _read_subprocess_stream(self, f, output_file,
+                                is_stdout=False,
+                                stderr_to_file=False):
+        """Read and process a subprocess output stream in a loop.
 
-                    if data is None or data == "":
-                        # EOF
-                        break
+        Ran in a thread each for both `stdout` and `stderr` to
+        allow for cross-platform asynchronous IO.
 
-                    for l in data.split("\n"):
-                        if l == "":
-                            continue
+        Note: `select`-based IO would probably be better, but Windows has
+        absolutely no support for it, and Linux support varies somewhat.
+        Spefically, Older *nix systems might have quirks in how they
+        handle `select` on pipes.
 
-                        if is_stdout:
-                            output_file.write(l+"\n")
-                        else:
-                            if self.connection_closed_msg_re.\
-                                fullmatch(l) is not None:
-                                # don't log connection closed
-                                # messages which SSH puts in stderr
-                                # for no reason
-                                continue
+        Args:
+            f: File object for the stream.
+            is_stdout (bool):
+                When `is_stdout` is `False`, the stream is assumed to
+                be `stderr`. Different error message detectors are used,
+                and the output is displayed to the user unless it matches
+                a special case (e.g. SSH timeout), in which case this is
+                left up to the caller.
+        """
 
-                            if self.timeout_msg_re.\
-                                fullmatch(l) is not None:
-                                # timeout isn't really an error
-                                # but rather a special condition.
-                                #
-                                # it should be handled separately
-                                # and is often expected to occur
-                                if failure_message is not None:
-                                    raise ValueError("Two errors is weird")
+        detected_special_case = None
+        while True:
+            # ! Readline here is crucial.
+            # ! Normal `read()` will block until EOF instead of until
+            #   something is available.
+            l = f.readline()
 
-                                failure_message="ssh_timeout"
-                                continue
+            if l is None or l == "":
+                # EOF
+                break
 
-                            if self.conn_refused_msg_re.\
-                                fullmatch(l) is not None:
-                                # this might happen when the instance
-                                # is just starting up, so we want to handle
-                                # it on a case-by-case basis
-                                if failure_message is not None:
-                                    raise ValueError("Two errors is weird")
+            if is_stdout:
+                print('stdout', l)
+                output_file.write(l+"\n")
+            else:
+                print('stderr', l)
 
-                                failure_message="ssh_conn_refused"
-                                continue
+                if self.connection_closed_msg_re.\
+                    fullmatch(l) is not None:
+                    # Do not log "connection closed" messages which SSH
+                    # puts in stderr for no reason.
+                    #
+                    # They are never errors since the connection will
+                    # close no matter whether the command succeeds or not.
+                    continue
 
+                if self.timeout_msg_re.\
+                    fullmatch(l) is not None:
+                    # Timeout is not really an error but rather a special
+                    # condition. It should be handled by the caller, since
+                    # network conditions/nodes in the early stages of boot
+                    # are expected to sometimes cause connection timeouts.
+                    if detected_special_case is not None:
+                        raise ValueError(
+                            "Bug: ssh_timeout conflicts with another "
+                            "special codition: " + detected_special_case)
 
-                            if self.known_host_update_msg_re.\
-                                fullmatch(l) is not None:
-                                # this is not an error at all, in fact we
-                                # completely ignore hosts files on purpose
-                                continue
+                    detected_special_case="ssh_timeout"
+                    continue
 
-                            if dump_stderr:
-                                output_file.write(l+"\n")
+                if self.conn_refused_msg_re.\
+                    fullmatch(l) is not None:
+                    # Connection refused is not really an error but
+                    # rather a special condition. It should be handled by
+                    # the caller, since network conditions/nodes in the
+                    # early stages of boot are expected to sometimes cause
+                    # CONN_REFUSED.
+                    if detected_special_case is not None:
+                        raise ValueError(
+                            "Bug: ssh_conn_refused conflicts with another "
+                            "special codition: " + detected_special_case)
 
-                            cli_logger.error(l)
+                    detected_special_case="ssh_conn_refused"
+                    continue
 
-                return failure_message
+                if self.known_host_update_msg_re.\
+                    fullmatch(l) is not None:
+                    # Since we ignore SSH host control anyway
+                    # (-o UserKnownHostsFile=/dev/null),
+                    # we should silence the host control warnings.
+                    continue
 
-            with self.process_runner.Popen(
-                final_cmd,
-                # do not inherit stdin as it messes with signals
-                # (ctrl-C for SIGINT) and these commands aren't
-                # supposed to take input anyway
+                if stderr_to_file:
+                    output_file.write(l+"\n")
+
+                cli_logger.error(l)
+
+        return detected_special_case
+
+    def _run_and_process_output(self, cmd, output_file, stderr_to_file=False):
+        """Run a command and process its output for special cases.
+
+        Args:
+            cmd (List[str]): Command to run.
+            output_file:
+                File to redirect output to.
+                Only redirects stdout by default.
+            stderr_to_file (bool):
+                If `stderr_to_file` is `True`, stderr will also be written
+                to `output_file`.
+        """
+
+        with self.process_runner.Popen(
+            cmd,
+            # Do not inherit stdin as it messes with bash signals
+            # (ctrl-C for SIGINT) and these commands aren't supposed to
+            # take input anyway.
+            stdin=self.process_runner.PIPE,
+            stdout=self.process_runner.PIPE,
+            stderr=self.process_runner.PIPE,
+            bufsize=1, # line buffering
+            universal_newlines=True # text mode outputs
+        ) as p:
+            from concurrent.futures import ThreadPoolExecutor
+
+            # Closing stdin might be necessary to signal EOF to some
+            # apps (they might get stuck waiting for input forever otherwise).
+            p.stdin.close()
+
+            # We do NOT USE the pooling feature of `ThreadPoolExecutor`.
+            # We ONLY rely on it's ability to create futures from threads.
+            # This instance will be `shutdown()` ASAP so it's fine to
+            # create one in such a weird place.
+            #
+            # This approach allows us to HAVE NO CUSTOM SYNCHRONIZATION by
+            # off-loading the return value and exception passing to the
+            # standard library (`ThreadPoolExecutor` internals).
+            #
+            # The code is thus 100% thread-safe as long as the stream readers
+            # are read-only except for return values and possible exceptions.
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                stdout_future = \
+                    pool.submit(self._read_subprocess_stream,
+                        p.stdout, output_file,
+                        is_stdout=True,
+                        stderr_to_file=stderr_to_file)
+                stderr_future = \
+                    pool.submit(self._read_subprocess_stream,
+                        p.stderr, output_file,
+                        is_stdout=False,
+                        stderr_to_file=stderr_to_file)
+
+                # Regarding command timeout (parameter of `self.run()`):
+                # The timeout is passed to SSH by default, so here
+                # we just rely on SSH to be well-behaved and exit + close all
+                # streams when timed out.
                 #
-                # P.S. it also messes up the terminal formatting
-                # probably due to some weird stuff that SSH
-                # does to stdin internally if it's a TTY
-                stdin=self.process_runner.PIPE,
-                # fixme: for some reason this is a tty which we DON'T want
-                # commands spam A LOT if they think it's a real tty
-                # especially for progress bars and such
-                # pip is a HUGE issue since it redraws the progress bar
-                # even if no progress was made
-                stdout=self.process_runner.PIPE,
-                stderr=self.process_runner.PIPE,
-                bufsize=1, # line buffering
-                universal_newlines=True # text mode outputs
-            ) as p:
-                from concurrent.futures import wait, ThreadPoolExecutor
+                # We do not manually set a thread timeout here, but it is
+                # certainly an option if we ever want to be extra-safe.
+                pool.shutdown()  # Wait for completion.
 
-                # stdout + stderr
-                with ThreadPoolExecutor(max_workers=2) as pool:
-                    stdout_future = \
-                        pool.submit(read_stream,
-                            p.stdout, is_stdout=True)
-                    stderr_future = \
-                        pool.submit(read_stream,
-                            p.stderr, is_stdout=False)
-                    pool.shutdown() # wait for completion
+                # Update `p.returncode`
+                p.poll()
 
-                    # do we kill? in theory the streams should have closed
-                    # and both threads finished
-                    # p.kill()
+                detected_special_case = stdout_future.result()
+                if stderr_future.result() is not None:
+                    if detected_special_case is not None:
+                        # This might some day need to be changed.
+                        # We should probably make sure the two special cases
+                        # are compatible then and that we can handle both by
+                        # e.g. reporting both to the caller.
+                        raise ValueError(
+                            "Bug: found a special case in both stdout and "
+                            "stderr this is not valid behavior at the time "
+                            "of writing.")
+                    detected_special_case = stderr_future.result()
 
-                    p.poll()
+                if p.returncode > 0:
+                    # Process failed, but not due to a signal, since signals
+                    # set the exit code to a negative value.
+                    raise ProcessRunnerError(
+                        "Command failed",
+                        "ssh_command_failed",
+                        code=p.returncode,
+                        command=cmd,
+                        special_case=detected_special_case)
+                elif p.returncode < 0:
+                    # Process failed due to a signal, since signals
+                    # set the exit code to a negative value.
+                    raise ProcessRunnerError(
+                        "Command failed",
+                        "ssh_command_failed",
+                        code=p.returncode,
+                        command=cmd,
+                        special_case="died_to_signal")
 
-                    failure_message = stdout_future.result()
-                    if stderr_future.result() is not None:
-                        if failure_message is not None:
-                            raise ValueError("Two errors is weird")
-                        failure_message = stderr_future.result()
+    def _run_redirected(self, cmd):
+        """Run a command and optionally redirect output to a file.
 
-                    if p.returncode > 0 and p.returncode != 0:
-                        raise ProcessRunnerError(
-                            "Command failed",
-                            "ssh_command_failed",
-                            code=p.returncode,
-                            command=final_cmd,
-                            message_discovered=failure_message)
-                    elif p.returncode != 0:
-                        raise ProcessRunnerError(
-                            "Command failed",
-                            "ssh_command_failed",
-                            code=p.returncode,
-                            command=final_cmd,
-                            message_discovered="died_to_signal")
-
-                    if failure_message is not None:
-                        # we didn't fail but found a failure message
-                        cli_logger.error(
-                            "Found a failure message ({}) in the "
-                            "command output but the command exited "
-                            "normally",
-                            cf.bold(failure_message))
-
-                    # todo: we might wanna kill the process instead of waiting
-                    # p.kill()
+        Args:
+            cmd (List[str]): Command to run.
+        """
 
         if cli_logger.dump_command_output:
-            return run_command(output_file=sys.stdout, dump_stderr=True)
+            # todo: stderr should go to sys.stderr probably
+            return self._run_and_process_output(cmd,
+                                                output_file=sys.stdout,
+                                                stderr_to_file=True)
         else:
             tmpfile_path = os.path.join(
                 tempfile.gettempdir(),
-                "ray-up-{}-{}.txt".format(final_cmd[0], time.time()))
-            with open(
-                tmpfile_path,
-                mode="w",
-                buffering=1) as tmp: # line buffering
+                "ray-up-{}-{}.txt".format(cmd[0], time.time()))
+            with open(tmpfile_path,
+                      mode="w",
+                      # line buffering
+                      buffering=1) as tmp:
                 cli_logger.verbose(
                     "Command stdout is redirected to {}",
                     cf.bold(tmp.name))
                 cli_logger.verbose(
                     cf.gray("Use -vvv to dump to console instead"))
 
-                return run_command(output_file=tmp, dump_stderr=True)
+                return self._run_and_process_output(cmd,
+                                                    output_file=tmp,
+                                                    stderr_to_file=True)
+
+    def _run_raw(self, final_cmd,
+                 with_output=False, exit_on_fail=False):
+        """Run a command without pre-processing special options.
+
+        Args:
+            cmd (List[str]):
+                Full command to run. Should include SSH options and other
+                processing that we do.
+            with_output (bool):
+                If `with_output` is `True`, command stdout and stderr
+                will be captured and returned.
+            exit_on_fail (bool):
+                If `exit_on_fail` is `True`, the process will exit
+                if the command fails (exits with a code other than 0).
+        """
+
+        try:
+            # For now, if the output is needed we just skip the new logic.
+            # In the future we could update the new logic to support
+            # capturing output, but it is probably not needed.
+            if not cli_logger.old_style and not with_output:
+                return self._run_redirected(final_cmd)
+            if with_output:
+                return self.process_runner.check_output(final_cmd)
+            else:
+                self.process_runner.check_call(final_cmd)
+        except subprocess.CalledProcessError as e:
+            quoted_cmd = " ".join(final_cmd[:-1] + [quote(final_cmd[-1])])
+            if not cli_logger.old_style:
+                raise ProcessRunnerError(
+                    "Command failed",
+                    "ssh_command_failed",
+                    code=e.returncode,
+                    command=quoted_cmd)
+
+            if exit_on_fail:
+                raise click.ClickException(
+                    "Command failed: \n\n  {}\n".format(quoted_cmd)) \
+                    from None
+            else:
+                raise click.ClickException(
+                    "SSH command Failed. See above for the output from the"
+                    " failure.") from None
 
     def run(self,
             cmd,
@@ -546,49 +652,16 @@ class SSHCommandRunner(CommandRunnerInterface):
             # still create an interactive shell in some ssh versions.
             final_cmd.append(quote("while true; do sleep 86400; done"))
 
-        # todo: add a flag for this, we might
-        # wanna log commands with print sometimes
         cli_logger.verbose("Running `{}`", cf.bold(cmd))
         with cli_logger.indented():
             cli_logger.very_verbose("Full command is `{}`",
                                     cf.bold(" ".join(final_cmd)))
 
-        def start_process():
-            try:
-                # for now if output is needed we just don't use the new logic
-                # in the future we could technically capture the output in
-                # a string as well, but i'm not sure if that is necessary
-                # and it's just another integration surface with
-                # potential for bugs
-                if not cli_logger.old_style and not with_output:
-                    return self._run_redirected(final_cmd)
-                if with_output:
-                    return self.process_runner.check_output(final_cmd)
-                else:
-                    self.process_runner.check_call(final_cmd)
-            except subprocess.CalledProcessError as e:
-                quoted_cmd = " ".join(final_cmd[:-1] + [quote(final_cmd[-1])])
-                if not cli_logger.old_style:
-                    raise ProcessRunnerError(
-                        "Command failed",
-                        "ssh_command_failed",
-                        code=e.returncode,
-                        command=quoted_cmd)
-
-                if exit_on_fail:
-                    raise click.ClickException(
-                        "Command failed: \n\n  {}\n".format(quoted_cmd)) \
-                        from None
-                else:
-                    raise click.ClickException(
-                        "SSH command Failed. See above for the output from the"
-                        " failure.") from None
-
         if cli_logger.verbosity > 0:
             with cli_logger.indented():
-                start_process()
+                self._run_raw(final_cmd, with_output, exit_on_fail)
         else:
-            start_process()
+            self._run_raw(final_cmd, with_output, exit_on_fail)
 
     def run_rsync_up(self, source, target):
         self._set_ssh_ip_if_required()
@@ -600,7 +673,7 @@ class SSHCommandRunner(CommandRunnerInterface):
                                               target)
         ]
         cli_logger.verbose("Running `{}`", cf.bold(" ".join(command)))
-        self._run_redirected(command)
+        self._run_raw(command)
 
     def run_rsync_down(self, source, target):
         self._set_ssh_ip_if_required()
@@ -613,7 +686,7 @@ class SSHCommandRunner(CommandRunnerInterface):
                                       source), target
         ]
         cli_logger.verbose("Running `{}`", cf.bold(" ".join(command)))
-        self._run_redirected(command)
+        self._run_raw(command)
 
     def remote_shell_command_str(self):
         return "ssh -o IdentitiesOnly=yes -i {} {}@{}\n".format(

@@ -159,7 +159,7 @@ class NodeUpdater:
                         return True
                     except ProcessRunnerError as e:
                         if e.msg_type == "ssh_command_failed":
-                            if e.message_discovered == "ssh_conn_refused":
+                            if e.special_case == "ssh_conn_refused":
                                 if first_conn_refused_time is not None and \
                                     time.time() - first_conn_refused_time > \
                                     CONN_REFUSED_PATIENCE:
@@ -182,7 +182,7 @@ class NodeUpdater:
 
                                 first_conn_refused_time = time.time()
 
-                            if e.message_discovered in [
+                            if e.special_case in [
                                 "ssh_timeout",
                                 "ssh_conn_refused"]:
 
@@ -291,7 +291,17 @@ class NodeUpdater:
                             cli_logger.print(
                                 cmd_to_print, _numbered=("()", i, total))
 
-                            self.cmd_runner.run(cmd)
+                            try:
+                                self.cmd_runner.run(cmd)
+                            except ProcessRunnerError as e:
+                                if e.msg_type == "ssh_command_failed":
+                                    cli_logger.error(
+                                        "Failed.")
+                                    cli_logger.error(
+                                        "See above for stderr.")
+
+                                raise click.ClickException(
+                                    "Setup command failed.")
             else:
                 cli_logger.print(
                     "No setup commands to run.", _numbered=("[]", 4, 5))
