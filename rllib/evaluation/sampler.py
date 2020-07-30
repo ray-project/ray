@@ -658,9 +658,9 @@ def _process_observations(
                 "More than {} observations for {} env steps ".format(
                     episode.batch_builder.total(),
                     episode.batch_builder.count) + "are buffered in "
-                "the sampler. If this is more than you expected, check that "
-                "that you set a horizon on your environment correctly and that"
-                " it terminates at some point. "
+                "the sampler. If this is more than you expected, check "
+                "that you set a horizon on your environment correctly and "
+                "that it terminates at some point. "
                 "Note: In multi-agent environments, `rollout_fragment_length` "
                 "sets the batch size based on environment steps, not the "
                 "steps of "
