@@ -214,9 +214,9 @@ class Policy(metaclass=ABCMeta):
         return single_action, [s[0] for s in state_out], \
             {k: v[0] for k, v in info.items()}
 
-    def compute_actions_from_sample_collector(
+    def compute_actions_from_input_dict(
             self,
-            sample_collector: "SampleCollector",
+            input_dict: Dict[str, TensorType],
             explore: bool = None,
             timestep: Optional[int] = None,
             **kwargs) -> \
@@ -231,9 +231,10 @@ class Policy(metaclass=ABCMeta):
         to construct the input_dict for the Model.
 
         Args:
-            sample_collector (SampleCollector): A SampleCollector object,
-                responsible for collecting env and model outputs across all
-                policies (including this one)/agents/sub-envs.
+            input_dict (Dict[str, TensorType]): An input dict mapping str
+                keys to Tensors. `input_dict` already abides to the Policy's
+                as well as the Model's view requirements and can be passed
+                to the Model as-is.
             explore (bool): Whether to pick an exploitation or exploration
                 action (default: None -> use self.config["explore"]).
             timestep (Optional[int]): The current (sampling) time step.

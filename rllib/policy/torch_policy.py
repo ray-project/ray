@@ -19,7 +19,7 @@ from ray.rllib.utils.torch_ops import convert_to_non_torch_type, \
     convert_to_torch_tensor
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
 from ray.rllib.utils.types import ModelGradients, ModelWeights, \
-    TensorType, TensorStructType, TrainerConfigDict
+    TensorType, TrainerConfigDict
 
 torch, _ = try_import_torch()
 
@@ -169,7 +169,7 @@ class TorchPolicy(Policy):
     @override(Policy)
     def compute_actions_from_input_dict(
             self,
-            input_dict: TensorStructType,
+            input_dict: Dict[str, TensorType],
             explore: bool = None,
             timestep: Optional[int] = None,
             **kwargs) -> \

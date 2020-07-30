@@ -4,7 +4,6 @@ from typing import Dict, Optional
 
 from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.types import AgentID, EpisodeID, EnvID, PolicyID, \
     TensorType
 
