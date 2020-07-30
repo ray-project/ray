@@ -56,6 +56,11 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
   }
 
   @Override
+  public String toString() {
+    return "ObjectRef(" + id.toString() + ")";
+  }
+
+  @Override
   public void writeExternal(ObjectOutput out) throws IOException {
     out.writeObject(this.getId());
     out.writeObject(this.getType());

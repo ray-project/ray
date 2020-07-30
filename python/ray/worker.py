@@ -1009,6 +1009,8 @@ def print_logs(redis_client, threads_stopped, job_id):
                     job_id.binary()) != data["job"]:
                 continue
 
+            print_file = sys.stderr if data["is_err"] else sys.stdout
+
             def color_for(data):
                 if data["pid"] == "raylet":
                     return colorama.Fore.YELLOW
@@ -1017,14 +1019,18 @@ def print_logs(redis_client, threads_stopped, job_id):
 
             if data["ip"] == localhost:
                 for line in data["lines"]:
-                    print("{}{}(pid={}){} {}".format(
-                        colorama.Style.DIM, color_for(data), data["pid"],
-                        colorama.Style.RESET_ALL, line))
+                    print(
+                        "{}{}(pid={}){} {}".format(
+                            colorama.Style.DIM, color_for(data), data["pid"],
+                            colorama.Style.RESET_ALL, line),
+                        file=print_file)
             else:
                 for line in data["lines"]:
-                    print("{}{}(pid={}, ip={}){} {}".format(
-                        colorama.Style.DIM, color_for(data), data["pid"],
-                        data["ip"], colorama.Style.RESET_ALL, line))
+                    print(
+                        "{}{}(pid={}, ip={}){} {}".format(
+                            colorama.Style.DIM, color_for(data), data["pid"],
+                            data["ip"], colorama.Style.RESET_ALL, line),
+                        file=print_file)
 
     except (OSError, redis.exceptions.ConnectionError) as e:
         logger.error("print_logs: {}".format(e))
