@@ -1,7 +1,6 @@
 ax-platform
 bayesian-optimization
 ConfigSpace==0.4.10
-dataclasses
 dragonfly-opt
 gluoncv
 gym[atari]
