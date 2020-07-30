@@ -48,9 +48,11 @@ Status ConnectSocketRetry(local_stream_socket &socket, const std::string &endpoi
       break;
     }
     if (num_attempts > 0) {
-      RAY_LOG(ERROR) << "Retrying to connect to socket for endpoint " << endpoint
-                     << " (num_attempts = " << num_attempts
-                     << ", num_retries = " << num_retries << ")";
+      // Socket is created by the raylet. Due to a race condition it might not
+      // be created before we try connecting.
+      RAY_LOG(INFO) << "Retrying to connect to socket for endpoint " << endpoint
+                    << " (num_attempts = " << num_attempts
+                    << ", num_retries = " << num_retries << ")";
     }
     // Sleep for timeout milliseconds.
     std::this_thread::sleep_for(std::chrono::milliseconds(timeout_in_ms));
