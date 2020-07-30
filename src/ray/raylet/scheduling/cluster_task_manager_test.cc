@@ -353,9 +353,7 @@ TEST_F(ClusterTaskManagerTest, NoFeasibleNodeTest) {
 
   bool callback_called = false;
   bool *callback_called_ptr = &callback_called;
-  auto callback = [callback_called_ptr]() {
-                    *callback_called_ptr = true;
-                  };
+  auto callback = [callback_called_ptr]() { *callback_called_ptr = true; };
 
   task_manager_.QueueTask(task, &reply, callback);
   task_manager_.SchedulePendingTasks();
@@ -415,48 +413,51 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   ASSERT_EQ(leased_workers_.size(), 1);
   ASSERT_EQ(pool_.workers.size(), 1);
 
-//   auto id = task.GetTaskSpecification().TaskId();
-//   std::vector<TaskID> unblocked = {id};
+  //   auto id = task.GetTaskSpecification().TaskId();
+  //   std::vector<TaskID> unblocked = {id};
 
-//   RAY_LOG(ERROR) << "first task unblocked";
-//   task_manager_.TasksUnblocked(unblocked);
-//   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  //   RAY_LOG(ERROR) << "first task unblocked";
+  //   task_manager_.TasksUnblocked(unblocked);
+  //   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
 
-//   // Task can no longer run because task2 is using resources.
-//   ASSERT_EQ(num_callbacks, 1);
-//   ASSERT_EQ(leased_workers_.size(), 1);
-//   ASSERT_EQ(pool_.workers.size(), 1);
+  //   // Task can no longer run because task2 is using resources.
+  //   ASSERT_EQ(num_callbacks, 1);
+  //   ASSERT_EQ(leased_workers_.size(), 1);
+  //   ASSERT_EQ(pool_.workers.size(), 1);
 
-//   RAY_LOG(ERROR) << "second task finished";
-//   RAY_LOG(ERROR) << "--------------";
-//   // TODO (Alex): There's clearly some memory corruption going on here. We can't print the
-//   // debug string (but could withinDispatchScheduledTasksToWorkers). This also likely why
-//   // FreeLocalTaskResources isn't working properly if the worker->GetAllocatedInstances
-//   // print statement is removed.
-//   RAY_LOG(ERROR) << single_node_resource_scheduler_->DebugString();
-//   RAY_LOG(ERROR) << "~~~~~~~~~~~~";
-//   RAY_LOG(ERROR) << worker->GetAllocatedInstances()->DebugString();
-//   RAY_LOG(ERROR) << "--------------";
-//   single_node_resource_scheduler_->FreeLocalTaskResources(
-//       worker->GetAllocatedInstances());
-//   // single_node_resource_scheduler_->SubtractCPUResourceInstances(
-//   //       worker->GetBorrowedCPUInstances());
-//   single_node_resource_scheduler_->UpdateLocalAvailableResourcesFromResourceInstances();
+  //   RAY_LOG(ERROR) << "second task finished";
+  //   RAY_LOG(ERROR) << "--------------";
+  //   // TODO (Alex): There's clearly some memory corruption going on here. We can't
+  //   print the
+  //   // debug string (but could withinDispatchScheduledTasksToWorkers). This also likely
+  //   why
+  //   // FreeLocalTaskResources isn't working properly if the
+  //   worker->GetAllocatedInstances
+  //   // print statement is removed.
+  //   RAY_LOG(ERROR) << single_node_resource_scheduler_->DebugString();
+  //   RAY_LOG(ERROR) << "~~~~~~~~~~~~";
+  //   RAY_LOG(ERROR) << worker->GetAllocatedInstances()->DebugString();
+  //   RAY_LOG(ERROR) << "--------------";
+  //   single_node_resource_scheduler_->FreeLocalTaskResources(
+  //       worker->GetAllocatedInstances());
+  //   // single_node_resource_scheduler_->SubtractCPUResourceInstances(
+  //   //       worker->GetBorrowedCPUInstances());
+  //   single_node_resource_scheduler_->UpdateLocalAvailableResourcesFromResourceInstances();
 
-//   RAY_LOG(ERROR) << "--------------";
-//   RAY_LOG(ERROR) << single_node_resource_scheduler_->DebugString();
-//   RAY_LOG(ERROR) << "--------------";
-//   RAY_LOG(ERROR) << worker->GetAllocatedInstances()->DebugString();
-//   RAY_LOG(ERROR) << single_node_resource_scheduler_->DebugString();
-//   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
-//   leased_workers_.clear();
+  //   RAY_LOG(ERROR) << "--------------";
+  //   RAY_LOG(ERROR) << single_node_resource_scheduler_->DebugString();
+  //   RAY_LOG(ERROR) << "--------------";
+  //   RAY_LOG(ERROR) << worker->GetAllocatedInstances()->DebugString();
+  //   RAY_LOG(ERROR) << single_node_resource_scheduler_->DebugString();
+  //   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  //   leased_workers_.clear();
 
-//   RAY_LOG(ERROR) << "~~~~~~~~~" << num_callbacks;
+  //   RAY_LOG(ERROR) << "~~~~~~~~~" << num_callbacks;
 
-//   // Task2 is now done so task can run.
-//   ASSERT_EQ((num_callbacks ==, 2);
-//   ASSERT_EQ((leased_workers_.size() ==, 1);
-//   ASSERT_EQ((pool_.workers.size() ==, 0);
+  //   // Task2 is now done so task can run.
+  //   ASSERT_EQ((num_callbacks ==, 2);
+  //   ASSERT_EQ((leased_workers_.size() ==, 1);
+  //   ASSERT_EQ((pool_.workers.size() ==, 0);
 }
 
 }  // namespace raylet
