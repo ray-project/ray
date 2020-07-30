@@ -332,6 +332,7 @@ matrix:
       env:
         - TESTSUITE=cpp_worker
         - PYTHON=3.6
+        - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init
       before_script:

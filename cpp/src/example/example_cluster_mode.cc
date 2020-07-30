@@ -14,14 +14,14 @@ int main(int argc, char **argv) {
 
   /// initialization to cluster mode
   ray::api::RayConfig::GetInstance()->run_mode = RunMode::CLUSTER;
-  /// Set redis ip to connect a exist ray cluster
+  /// Set redis ip to connect an existing ray cluster.
   /// ray::api::RayConfig::GetInstance()->redis_ip = "127.0.0.1";
   Ray::Init();
 
   /// put and get object
   auto obj = Ray::Put(123);
-  auto getRsult = *(obj.Get());
+  auto get_result = *(obj.Get());
 
-  RAY_LOG(INFO) << "Get result: " << getRsult;
+  RAY_LOG(INFO) << "Get result: " << get_result;
   Ray::Shutdown();
 }
