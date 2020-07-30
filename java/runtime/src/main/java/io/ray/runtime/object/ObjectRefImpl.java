@@ -53,4 +53,8 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Serializable {
     return type;
   }
 
+  @Override
+  public String toString() {
+    return "ObjectRef(" + id.toString() + ")";
+  }
 }
