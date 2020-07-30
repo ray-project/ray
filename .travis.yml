@@ -133,7 +133,7 @@ matrix:
         - RLLIB_TESTING=1 RLLIB_REGRESSION_TESTS=1
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
-        - TORCH_VERSION=1.4
+        - TORCH_VERSION=1.6
         - PYTHON=3.6
         - PYTHONWARNINGS=ignore
       install:
@@ -150,7 +150,7 @@ matrix:
         - RLLIB_TESTING=1 RLLIB_REGRESSION_TESTS_TF1X=1
         - TF_VERSION=1.14.0
         - TFP_VERSION=0.7
-        - TORCH_VERSION=1.4
+        - TORCH_VERSION=1.6
         - PYTHON=3.6
         - PYTHONWARNINGS=ignore
       install:
@@ -166,7 +166,7 @@ matrix:
         - RLLIB_TESTING=1 RLLIB_REGRESSION_TESTS_TORCH=1
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
-        - TORCH_VERSION=1.4
+        - TORCH_VERSION=1.6
         - PYTHON=3.6
         - PYTHONWARNINGS=ignore
       install:
@@ -184,7 +184,7 @@ matrix:
         - PYTHON=3.6
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
-        - TORCH_VERSION=1.4
+        - TORCH_VERSION=1.6
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init RAY_CI_RLLIB_FULL_AFFECTED
@@ -203,7 +203,7 @@ matrix:
         - PYTHON=3.6
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
-        - TORCH_VERSION=1.4
+        - TORCH_VERSION=1.6
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init RAY_CI_RLLIB_FULL_AFFECTED
@@ -222,7 +222,7 @@ matrix:
         - PYTHON=3.6
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
-        - TORCH_VERSION=1.4
+        - TORCH_VERSION=1.6
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init RAY_CI_RLLIB_FULL_AFFECTED
@@ -238,7 +238,7 @@ matrix:
         - PYTHON=3.6
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
-        - TORCH_VERSION=1.4
+        - TORCH_VERSION=1.6
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init RAY_CI_RLLIB_FULL_AFFECTED
