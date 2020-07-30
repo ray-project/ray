@@ -166,9 +166,14 @@ class ResourceSpec(
             if gpu_ids is not None:
                 num_gpus = min(num_gpus, len(gpu_ids))
 
-        info_string = _get_gpu_info_string()
-        gpu_types = _constraints_from_gpu_info(info_string)
-        resources.update(gpu_types)
+        gpu_types = {}
+        try:
+            info_string = _get_gpu_info_string()
+            gpu_types = _constraints_from_gpu_info(info_string)
+        except BaseException:
+            logger.warning("Could not parse gpu information.")
+        finally:
+            resources.update(gpu_types)
 
         # Choose a default object store size.
         system_memory = ray.utils.get_system_memory()
@@ -268,28 +273,23 @@ gpu model type.
     Returns:
         (str) The full model name.
     """
-    try:
-        if info_str is None:
-            return {}
-        lines = info_str.split("\n")
-        full_model_name = None
-        for line in lines:
-            split = line.split(":")
-            if len(split) != 2:
-                continue
-            k, v = split
-            if k.strip() == "Model":
-                full_model_name = v.strip()
-                break
-        pretty_name = _pretty_gpu_name(full_model_name)
-        if pretty_name:
-            constraint_name = "{}{}".format(
-                ray_constants.RESOURCE_CONSTRAINT_PREFIX, pretty_name)
-            return {constraint_name: 1}
-    except BaseException:
-        logger.warning("Could not parse gpu information.")
-        pass
-
+    if info_str is None:
+        return {}
+    lines = info_str.split("\n")
+    full_model_name = None
+    for line in lines:
+        split = line.split(":")
+        if len(split) != 2:
+            continue
+        k, v = split
+        if k.strip() == "Model":
+            full_model_name = v.strip()
+            break
+    pretty_name = _pretty_gpu_name(full_model_name)
+    if pretty_name:
+        constraint_name = "{}{}".format(
+            ray_constants.RESOURCE_CONSTRAINT_PREFIX, pretty_name)
+        return {constraint_name: 1}
     return {}
 
 
