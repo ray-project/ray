@@ -4,6 +4,31 @@ import sys
 import pytest
 import ray
 
+from ray.test_utils import run_string_as_driver_nonblocking
+
+
+def test_worker_stdout():
+    script = """
+import ray
+import sys
+
+ray.init(num_cpus=2)
+
+@ray.remote
+def foo(out_str, err_str):
+    print(out_str)
+    print(err_str, file=sys.stderr)
+
+ray.get(foo.remote("abc", "def"))
+    """
+
+    proc = run_string_as_driver_nonblocking(script)
+    out_str = proc.stdout.read().decode("ascii")
+    err_str = proc.stderr.read().decode("ascii")
+
+    assert out_str.endswith("abc\n")
+    assert err_str.split("\n")[-2].endswith("def")
+
 
 def test_output():
     # Use subprocess to execute the __main__ below.
