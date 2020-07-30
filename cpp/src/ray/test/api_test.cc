@@ -42,6 +42,14 @@ TEST(RayApiTest, PutTest) {
   EXPECT_EQ(1, *i1);
 }
 
+TEST(RayApiTest, StaticGetTest) {
+  Ray::Init();
+
+  auto obj_ref = Ray::Put(100);
+  auto res = Ray::Get(obj_ref);
+  EXPECT_EQ(100, *res);
+}
+
 TEST(RayApiTest, WaitTest) {
   Ray::Init();
   auto r0 = Ray::Task(Return1).Remote();
