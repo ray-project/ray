@@ -48,7 +48,7 @@ def test_multiple_routers():
 
     # Add a new node to the cluster. This should trigger a new router to get
     # started.
-    cluster.add_node()
+    new_node = cluster.add_node()
 
     def get_third_actor():
         try:
@@ -59,8 +59,19 @@ def test_multiple_routers():
 
     wait_for_condition(get_third_actor)
 
-    # Kill another of the servers, the HTTP server should still function.
-    ray.kill(ray.get_actor(actor_name(1)), no_restart=True)
+    # Remove the newly-added node from the cluster. The corresponding actor
+    # should be removed as well.
+    cluster.remove_node(new_node)
+
+    def third_actor_removed():
+        try:
+            ray.get_actor(actor_name(2))
+            return False
+        except ValueError:
+            return True
+
+    # Check that the actor is gone and the HTTP server still functions.
+    wait_for_condition(third_actor_removed)
     ray.get(block_until_http_ready.remote("http://127.0.0.1:8005/-/routes"))
 
     # Clean up the nodes (otherwise Ray will segfault).

@@ -1,5 +1,6 @@
 import asyncio
 from functools import singledispatch
+from itertools import groupby
 import json
 import logging
 import random
@@ -216,3 +217,14 @@ def try_schedule_resources_on_nodes(
             successfully_scheduled.append(False)
 
     return successfully_scheduled
+
+def get_all_node_ids():
+    node_ids = []
+    # We need to use the node_id and index here because we could
+    # have multiple virtual nodes on the same host. In that case
+    # they will have the same IP and therefore node_id.
+    for _, node_id_group in groupby(sorted(ray.state.node_ids())):
+        for index, node_id in enumerate(node_id_group):
+            node_ids.append(("{}-{}".format(node_id, index), node_id))
+
+    return node_ids

@@ -1,6 +1,5 @@
 import asyncio
 from collections import defaultdict, namedtuple
-from itertools import groupby
 import os
 import random
 import time
@@ -15,7 +14,7 @@ from ray.serve.kv_store import RayInternalKVStore
 from ray.serve.metric.exporter import MetricExporterActor
 from ray.serve.exceptions import RayServeException
 from ray.serve.utils import (format_actor_name, get_random_letters, logger,
-                             try_schedule_resources_on_nodes)
+                             try_schedule_resources_on_nodes, get_all_node_ids)
 
 import numpy as np
 
@@ -161,38 +160,51 @@ class ServeController:
 
     def _start_routers_if_needed(self):
         """Start a router on every node if it doesn't already exist."""
-        for _, node_id_group in groupby(sorted(ray.state.node_ids())):
-            for index, node_id in enumerate(node_id_group):
-                # We need to use the node_id and index here because we could
-                # have multiple virtual nodes on the same host. In that case
-                # they will have the same IP and therefore node_id.
-                router_id = "{}-{}".format(node_id, index)
-                if router_id in self.routers:
-                    continue
+        for node_id, node_resource in get_all_node_ids():
+            if node_id in self.routers:
+                continue
 
-                router_name = format_actor_name(SERVE_PROXY_NAME,
-                                                self.instance_name)
-                router_name += "-{}".format(router_id)
-                try:
-                    router = ray.get_actor(router_name)
-                except ValueError:
-                    logger.info("Starting router with name '{}' on node '{}' "
-                                "listening on '{}:{}'".format(
-                                    router_name, node_id, self.http_host,
-                                    self.http_port))
-                    router = HTTPProxyActor.options(
-                        name=router_name,
-                        max_concurrency=ASYNC_CONCURRENCY,
-                        max_restarts=-1,
-                        max_task_retries=-1,
-                        resources={
-                            node_id: 0.01
-                        },
-                    ).remote(
-                        self.http_host,
-                        self.http_port,
-                        instance_name=self.instance_name)
-                self.routers[router_id] = router
+            router_name = format_actor_name(SERVE_PROXY_NAME,
+                                            self.instance_name)
+            router_name += "-{}".format(node_id)
+            try:
+                router = ray.get_actor(router_name)
+            except ValueError:
+                logger.info("Starting router with name '{}' on node '{}' "
+                            "listening on '{}:{}'".format(
+                                router_name, node_id, self.http_host,
+                                self.http_port))
+                router = HTTPProxyActor.options(
+                    name=router_name,
+                    max_concurrency=ASYNC_CONCURRENCY,
+                    max_restarts=-1,
+                    max_task_retries=-1,
+                    resources={
+                        node_resource: 0.01
+                    },
+                ).remote(
+                    self.http_host,
+                    self.http_port,
+                    instance_name=self.instance_name)
+
+            self.routers[node_id] = router
+
+    def _stop_routers_if_needed(self):
+        """TODO"""
+        checkpoint_required = False
+        all_node_ids = {node_id for node_id, _ in get_all_node_ids()}
+        to_stop = []
+        for node_id in self.routers:
+            if node_id not in all_node_ids:
+                logger.info("Removing router on removed node '{}'.".format(node_id))
+                to_stop.append(node_id)
+
+        for node_id in to_stop:
+            router_handle = self.routers.pop(node_id)
+            ray.kill(router_handle, no_restart=True)
+            checkpoint_required = True
+        
+        return checkpoint_required
 
     def get_routers(self):
         """Returns a dictionary of node ID to router actor handles."""
@@ -223,6 +235,7 @@ class ServeController:
 
     def _checkpoint(self):
         """Checkpoint internal state and write it to the KV store."""
+        assert self.write_lock.locked()
         logger.debug("Writing checkpoint")
         start = time.time()
         checkpoint = pickle.dumps(
@@ -324,6 +337,9 @@ class ServeController:
         while True:
             async with self.write_lock:
                 self._start_routers_if_needed()
+                checkpoint_required = self._stop_routers_if_needed()
+                if checkpoint_required:
+                    self._checkpoint()
 
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
 
