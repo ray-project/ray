@@ -50,6 +50,14 @@ If using the command line, connect to the Ray cluster as follow:
   # Connect to ray. Notice if connected to existing cluster, you don't specify resources.
   ray.init(address=<address>)
 
+A subset of Ray options are also available via environment variables.
+
+.. code-block:: python
+    os.environ["RAY_RESOURCES"] = "{\"custom1\":1}"
+    os.environ["RAY_ADDRESS"] = address
+    ray.init()
+
+
 .. _omp-num-thread-note:
 
 .. note::
