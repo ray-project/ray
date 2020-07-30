@@ -19,7 +19,8 @@ from ray.includes.unique_ids cimport (
     CObjectID,
     CTaskID,
     CUniqueID,
-    CWorkerID
+    CWorkerID,
+    CPlacementGroupID
 )
 
 import ray
@@ -331,6 +332,43 @@ cdef class ActorClassID(UniqueID):
 # This type alias is for backward compatibility.
 ObjectID = ObjectRef
 
+cdef class PlacementGroupID(BaseID):
+    cdef CPlacementGroupID data
+
+    def __init__(self, id):
+        check_id(id, CPlacementGroupID.Size())
+        self.data = CPlacementGroupID.FromBinary(<c_string>id)
+
+    cdef CPlacementGroupID native(self):
+        return <CPlacementGroupID>self.data
+
+    @classmethod
+    def from_random(cls):
+        return cls(CPlacementGroupID.FromRandom().Binary())
+
+    @classmethod
+    def nil(cls):
+        return cls(CPlacementGroupID.Nil().Binary())
+
+    @classmethod
+    def size(cls):
+        return CPlacementGroupID.Size()
+
+    def binary(self):
+        return self.data.Binary()
+
+    def hex(self):
+        return decode(self.data.Hex())
+
+    def size(self):
+        return CPlacementGroupID.Size()
+
+    def is_nil(self):
+        return self.data.IsNil()
+
+    cdef size_t hash(self):
+        return self.data.Hash()
+
 _ID_TYPES = [
     ActorCheckpointID,
     ActorClassID,
@@ -342,4 +380,5 @@ _ID_TYPES = [
     ObjectID,
     TaskID,
     UniqueID,
+    PlacementGroupID,
 ]

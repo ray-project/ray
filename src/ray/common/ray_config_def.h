@@ -313,7 +313,7 @@ RAY_CONFIG(bool, plasma_store_as_thread, false)
 RAY_CONFIG(int64_t, gcs_service_address_check_interval_milliseconds, 1000)
 
 RAY_CONFIG(bool, gcs_actor_service_enabled,
-           getenv("RAY_GCS_ACTOR_SERVICE_ENABLED") != nullptr &&
+           getenv("RAY_GCS_ACTOR_SERVICE_ENABLED") == nullptr ||
                getenv("RAY_GCS_ACTOR_SERVICE_ENABLED") == std::string("true"))
 
 /// The batch size for metrics export.
@@ -324,6 +324,10 @@ RAY_CONFIG(int64_t, enable_metrics_collection, true)
 
 /// Whether start the Plasma Store as a Raylet thread.
 RAY_CONFIG(bool, put_small_object_in_memory_store, false)
+
+/// Metric agent port for reporting, default -1 means no such agent will be
+/// listening.
+RAY_CONFIG(int, metrics_agent_port, -1)
 
 /// Maximum number of tasks that can be in flight between an owner and a worker for which
 /// the owner has been granted a lease. A value >1 is used when we want to enable

@@ -14,8 +14,6 @@
 
 #include "ray/gcs/redis_gcs_client.h"
 
-#include <unistd.h>
-
 #include "ray/common/ray_config.h"
 #include "ray/gcs/redis_accessor.h"
 #include "ray/gcs/redis_context.h"
@@ -84,6 +82,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   error_accessor_.reset(new RedisErrorInfoAccessor(this));
   stats_accessor_.reset(new RedisStatsInfoAccessor(this));
   worker_accessor_.reset(new RedisWorkerInfoAccessor(this));
+  placement_group_accessor_.reset(new RedisPlacementGroupInfoAccessor());
 
   is_connected_ = true;
 

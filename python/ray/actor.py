@@ -411,7 +411,9 @@ class ActorClass:
                 max_restarts=None,
                 max_task_retries=None,
                 name=None,
-                detached=False):
+                detached=False,
+                placement_group_id=None,
+                placement_group_bundle_index=None):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -436,6 +438,10 @@ class ActorClass:
                 guaranteed when max_concurrency > 1.
             name: The globally unique name for the actor.
             detached: DEPRECATED.
+            placement_group_id: the placement group this actor belongs to,
+                or None if it doesn't belong to any group.
+            placement_group_bundle_index: the index of the bundle
+                if the actor belongs to a placement group.
 
         Returns:
             A handle to the newly created actor.
@@ -446,7 +452,6 @@ class ActorClass:
             kwargs = {}
         if is_direct_call is not None and not is_direct_call:
             raise ValueError("Non-direct call actors are no longer supported.")
-
         meta = self.__ray_metadata__
         actor_has_async_methods = len(
             inspect.getmembers(
@@ -497,6 +502,11 @@ class ActorClass:
             detached = True
         else:
             detached = False
+
+        if placement_group_id is not None and placement_group_bundle_index is \
+           None:
+            raise ValueError("The placement_group_id is set."
+                             "But the bundle_index is not set.")
 
         # Set the actor's default resources if not already set. First three
         # conditions are to check that no resources were specified in the
@@ -568,6 +578,10 @@ class ActorClass:
             detached,
             name if name is not None else "",
             is_asyncio,
+            placement_group_id
+            if placement_group_id is not None else ray.PlacementGroupID.nil(),
+            placement_group_bundle_index
+            if placement_group_bundle_index is not None else -1,
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu))
 

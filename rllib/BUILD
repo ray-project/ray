@@ -1171,7 +1171,7 @@ py_test(
     name = "test_env_with_subprocess",
     main = "tests/test_env_with_subprocess.py",
     tags = ["tests_dir", "tests_dir_E"],
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_env_with_subprocess.py"]
 )
 
