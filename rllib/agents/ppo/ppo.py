@@ -117,9 +117,10 @@ def validate_config(config):
     if isinstance(config["entropy_coeff"], int):
         config["entropy_coeff"] = float(config["entropy_coeff"])
     if config["sgd_minibatch_size"] > config["train_batch_size"]:
-        raise ValueError(
-            "Minibatch size {} must be <= train batch size {}.".format(
-                config["sgd_minibatch_size"], config["train_batch_size"]))
+        raise ValueError("`sgd_minibatch_size` ({}) must be <= "
+                         "`train_batch_size` ({}).".format(
+                             config["sgd_minibatch_size"],
+                             config["train_batch_size"]))
     if config["batch_mode"] == "truncate_episodes" and not config["use_gae"]:
         raise ValueError(
             "Episode truncation is not supported without a value "

@@ -792,7 +792,12 @@ void GcsActorManager::OnNodeDead(const ClientID &node_id) {
 
 void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_reschedule) {
   auto &actor = registered_actors_[actor_id];
-  RAY_CHECK(actor != nullptr);
+  // If the owner and this actor is dead at the same time, the actor
+  // could've been destroyed and dereigstered before reconstruction.
+  if (actor == nullptr) {
+    RAY_LOG(INFO) << "Actor is destroyed before reconstruction, actor id = " << actor_id;
+    return;
+  }
   auto node_id = actor->GetNodeID();
   auto worker_id = actor->GetWorkerID();
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
