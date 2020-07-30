@@ -543,11 +543,11 @@ cc_library(
     strip_include_prefix = "src",
     visibility = ["//streaming:__subpackages__"],
     deps = [
-        "//src/ray/protobuf:gcs_cc_proto",
         ":node_manager_fbs",
         ":node_manager_rpc",
         ":ray_common",
         ":ray_util",
+        "//src/ray/protobuf:gcs_cc_proto",
         "@boost//:asio",
     ],
 )
@@ -584,8 +584,8 @@ cc_library(
         ":raylet_client_lib",
         ":service_based_gcs_client_lib",
         ":stats_lib",
-        "//src/ray/protobuf:worker_cc_proto",
         ":worker_rpc",
+        "//src/ray/protobuf:worker_cc_proto",
         "@boost//:fiber",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -1460,13 +1460,13 @@ cc_library(
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
-        "//src/ray/protobuf:gcs_cc_proto",
         ":hiredis",
         ":node_manager_fbs",
         ":node_manager_rpc",
         ":ray_common",
         ":ray_util",
         ":stats_lib",
+        "//src/ray/protobuf:gcs_cc_proto",
         "@boost//:asio",
     ],
 )
@@ -1665,10 +1665,10 @@ pyx_library(
         "//:global_state_accessor_lib",
         "//:ray_util",
         "//:raylet_lib",
-        "//src/ray/protobuf:serialization_cc_proto",
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",
         "//:stats_lib",
+        "//src/ray/protobuf:serialization_cc_proto",
     ],
 )
 
@@ -1790,9 +1790,9 @@ cc_binary(
     linkstatic = 1,
     visibility = ["//java:__subpackages__"],
     deps = [
-        "//src/ray/protobuf:gcs_cc_proto",
         ":ray_common",
         ":ray_redis_module",
+        "//src/ray/protobuf:gcs_cc_proto",
     ],
 )
 
