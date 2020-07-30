@@ -394,7 +394,7 @@ def init_error_pubsub():
     return p
 
 
-def get_error_message(pub_sub, num, timeout=10):
+def get_error_message(pub_sub, num, error_type=None, timeout=10):
     """Get errors through pub/sub."""
     start_time = time.time()
     msgs = []
@@ -405,5 +405,9 @@ def get_error_message(pub_sub, num, timeout=10):
             continue
         pubsub_msg = ray.gcs_utils.PubSubMessage.FromString(msg["data"])
         error_data = ray.gcs_utils.ErrorTableData.FromString(pubsub_msg.data)
-        msgs.append(error_data)
+        if error_type is None or error_type == error_data.type:
+            msgs.append(error_data)
+        else:
+            time.sleep(0.01)
+
     return msgs
