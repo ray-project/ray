@@ -334,6 +334,8 @@ class RolloutWorker(ParallelIteratorWorker):
             # Deepmind wrappers already handle all preprocessing
             self.preprocessing_enabled = False
 
+            # If clip_rewards not explicitly set to False, switch it
+            # on here (clip between -1.0 and 1.0).
             if clip_rewards is None:
                 clip_rewards = True
 
