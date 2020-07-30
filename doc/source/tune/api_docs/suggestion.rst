@@ -122,6 +122,7 @@ HyperOpt (tune.suggest.hyperopt.HyperOptSearch)
 -----------------------------------------------
 
 .. autoclass:: ray.tune.suggest.hyperopt.HyperOptSearch
+  :members: save, restore
 
 .. _nevergrad:
 
@@ -129,6 +130,7 @@ Nevergrad (tune.suggest.nevergrad.NevergradSearch)
 --------------------------------------------------
 
 .. autoclass:: ray.tune.suggest.nevergrad.NevergradSearch
+  :members: save, restore
 
 .. _`Nevergrad README's Optimization section`: https://github.com/facebookresearch/nevergrad/blob/master/docs/optimization.rst#choosing-an-optimizer
 
@@ -147,6 +149,7 @@ Scikit-Optimize (tune.suggest.skopt.SkOptSearch)
 ------------------------------------------------
 
 .. autoclass:: ray.tune.suggest.skopt.SkOptSearch
+  :members: save, restore
 
 .. _`skopt Optimizer object`: https://scikit-optimize.github.io/#skopt.Optimizer
 
@@ -156,6 +159,7 @@ ZOOpt (tune.suggest.zoopt.ZOOptSearch)
 --------------------------------------
 
 .. autoclass:: ray.tune.suggest.zoopt.ZOOptSearch
+  :members: save, restore
 
 .. _repeater:
 

@@ -133,15 +133,62 @@ class Searcher:
         raise NotImplementedError
 
     def save(self, checkpoint_path):
-        """Save function for this object."""
+        """Save state to path for this search algorithm.
+
+        Args:
+            checkpoint_path (str): File where the search algorithm
+                state is saved. This path should be used later when
+                restoring from file.
+
+        Example:
+
+        .. code-block:: python
+
+            search_alg = Searcher(...)
+
+            analysis = tune.run(
+                cost,
+                num_samples=5,
+                search_alg=search_alg,
+                name=self.experiment_name,
+                local_dir=self.tmpdir)
+
+            search_alg.save("./my_favorite_path.pkl")
+
+        .. versionchanged:: 0.8.7
+            Save is automatically called by `tune.run`. You can use
+            `restore_from_dir` to restore from an experiment directory
+            such as `~/ray_results/trainable`.
+
+        """
         raise NotImplementedError
 
     def restore(self, checkpoint_path):
-        """Restore function for this object."""
+        """Restore state for this search algorithm
+
+
+        Args:
+            checkpoint_path (str): File where the search algorithm
+                state is saved. This path should be the same
+                as the one provided to "save".
+
+        Example:
+
+        .. code-block:: python
+
+            search_alg2 = ConcurrencyLimiter(search_alg2, 1)
+            search_alg2.restore(checkpoint_path)
+            tune.run(cost, num_samples=5, search_alg=search_alg2)
+
+        """
         raise NotImplementedError
 
     @staticmethod
     def save_to_dir(searcher, checkpoint_dir):
+        """Automatically saves the given searcher to the checkpoint_dir.
+
+        This is automatically used by tune.run during a Tune job.
+        """
         tmp_search_ckpt_path = os.path.join(checkpoint_dir,
                                             ".tmp_searcher_ckpt")
         success = True
@@ -157,6 +204,26 @@ class Searcher:
 
     @staticmethod
     def restore_from_dir(searcher, checkpoint_dir):
+        """Restores the state of a searcher from a given checkpoint_dir.
+
+        Typically, you should use this function to restore from an
+        experiment directory such as `~/ray_results/trainable`.
+
+        .. code-block:: python
+
+            experiment_1 = tune.run(
+                cost,
+                num_samples=5,
+                search_alg=search_alg,
+                verbose=0,
+                name=self.experiment_name,
+                local_dir="~/my_results")
+
+            search_alg2 = Searcher()
+            Searcher.restore_from_dir(
+                search_alg2, os.path.join("~/my_results", self.experiment_name)
+        """
+
         checkpoint_path = os.path.join(checkpoint_dir, Searcher.CKPT_FILE)
         if os.path.exists(checkpoint_path):
             searcher.restore(checkpoint_path)

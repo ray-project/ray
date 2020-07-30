@@ -354,6 +354,29 @@ class ZOOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         pass
 
 
+class SearcherTest(unittest.TestCase):
+    class MockSearcher(Searcher):
+        def __init__(self, data):
+            self.data = data
+
+        def save(self, path):
+            with open(path, "w") as f:
+                f.write(self.data)
+
+        def restore(self, path):
+            with open(path, "r") as f:
+                self.data = f.read()
+
+    def testSaveRestoreDir(self):
+        tmpdir = tempfile.mkdtemp()
+        original_data = "hello-its-me"
+        searcher = self.MockSearcher(original_data)
+        Searcher.save_to_dir(searcher, tmpdir)
+        searcher_2 = self.MockSearcher("no-its-not-me")
+        Searcher.restore_from_dir(searcher_2, tmpdir)
+        assert searcher_2.data == original_data
+
+
 if __name__ == "__main__":
     import pytest
     import sys
