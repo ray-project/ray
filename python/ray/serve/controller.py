@@ -118,6 +118,8 @@ class ServeController:
         # Dictionary of backend tag to dictionaries of replica tag to worker.
         # TODO(edoakes): consider removing this and just using the names.
         self.workers = defaultdict(dict)
+        # Dictionary of backend_tag -> replica_tag -> most recent queue length.
+        self.backend_stats = defaultdict(dict)
 
         # Used to ensure that only a single state-changing operation happens
         # at any given time.
@@ -165,8 +167,7 @@ class ServeController:
                 continue
 
             router_name = format_actor_name(SERVE_PROXY_NAME,
-                                            self.instance_name,
-                                            node_id)
+                                            self.instance_name, node_id)
             try:
                 router = ray.get_actor(router_name)
             except ValueError:
@@ -244,10 +245,10 @@ class ServeController:
         logger.debug("Writing checkpoint")
         start = time.time()
         checkpoint = pickle.dumps(
-            (self.routes, list(self.routers.keys()), self.backends,
-             self.traffic_policies, self.replicas, self.replicas_to_start,
-             self.replicas_to_stop, self.backends_to_remove,
-             self.endpoints_to_remove))
+            (self.routes, list(
+                self.routers.keys()), self.backends, self.traffic_policies,
+             self.replicas, self.replicas_to_start, self.replicas_to_stop,
+             self.backends_to_remove, self.endpoints_to_remove))
 
         self.kv_store.put(CHECKPOINT_KEY, checkpoint)
         logger.debug("Wrote checkpoint in {:.2f}".format(time.time() - start))
@@ -289,8 +290,7 @@ class ServeController:
 
         for node_id in router_node_ids:
             router_name = format_actor_name(SERVE_PROXY_NAME,
-                                            self.instance_name,
-                                            node_id)
+                                            self.instance_name, node_id)
             self.routers[node_id] = ray.get_actor(router_name)
 
         # Fetch actor handles for all of the backend replicas in the system.
@@ -346,8 +346,29 @@ class ServeController:
 
         self.write_lock.release()
 
+    async def do_autoscale(self):
+        for backend, replica_dict in self.backend_stats.items():
+            replica_queue_lens = list(replica_dict.values())
+            curr_replicas = self.backends[backend].backend_config.num_replicas
+            new_replicas = 0
+            if sum(replica_queue_lens) / len(replica_queue_lens) > 2:
+                new_replicas = curr_replicas + 3
+                logger.info("Increasing number of replicas for backend '{}' "
+                            "from {} to {}".format(backend, curr_replicas,
+                                                   new_replicas))
+            elif curr_replicas > 1 and sum(replica_queue_lens) / len(
+                    replica_queue_lens) == 0:
+                new_replicas = max(1, curr_replicas - 5)
+                logger.info(
+                    "Decreasing number of replicas for backend '{}' from {} "
+                    "to {}".format(backend, curr_replicas, new_replicas))
+            if new_replicas != 0:
+                await self.update_backend_config(
+                    backend, {"num_replicas": new_replicas})
+
     async def run_control_loop(self):
         while True:
+            await self.do_autoscale()
             async with self.write_lock:
                 self._start_routers_if_needed()
                 checkpoint_required = self._stop_routers_if_needed()
@@ -842,3 +863,6 @@ class ServeController:
                 for replica in replica_dict.values():
                     ray.kill(replica, no_restart=True)
             self.kv_store.delete(CHECKPOINT_KEY)
+
+    async def report_queue_length(self, backend_tag, replica_tag, length):
+        self.backend_stats[backend_tag][replica_tag] = length
