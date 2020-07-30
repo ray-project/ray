@@ -64,6 +64,7 @@ extensions = [
     'sphinx.ext.viewcode',
     'sphinx.ext.napoleon',
     'sphinx_click.ext',
+    'sphinx_tabs.tabs',
     'sphinx-jsonschema',
     'sphinx_gallery.gen_gallery',
     'sphinx_copybutton',
