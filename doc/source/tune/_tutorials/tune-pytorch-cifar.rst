@@ -295,11 +295,6 @@ You can wrap your model in ``torch.nn.parallel.DistributedDataParallel`` to supp
 
         device = "cpu"
 
-        # if torch.cuda.is_available():
-        #     device = "cuda:0"
-        #     if torch.cuda.device_count() > 1:
-        #         net = nn.DataParallel(net)
-
         #### Using distributed data parallel training
         if is_distributed_trainable():
             net = DistributedDataParallel(net)
@@ -322,6 +317,8 @@ If using checkpointing, be sure to use a :ref:`special checkpoint context manage
     #         (net.state_dict(), optimizer.state_dict()), path)
 
     #### Using distributed data parallel training
+    # Inside `def train_cifar(...)`,
+    # replace tune.checkpoint_dir() with the following
     # Avoids redundant checkpointing on different processes.
     with distributed_checkpoint_dir(step=epoch) as checkpoint_dir:
         path = os.path.join(checkpoint_dir, "checkpoint")
