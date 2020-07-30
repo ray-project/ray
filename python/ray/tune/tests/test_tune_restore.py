@@ -15,6 +15,7 @@ from ray.test_utils import recursive_fnmatch
 from ray.rllib import _register_all
 from ray.tune.suggest import ConcurrencyLimiter, Searcher
 from ray.tune.suggest.hyperopt import HyperOptSearch
+from ray.tune.suggest.dragonfly import DragonflySearch
 from ray.tune.suggest.bayesopt import BayesOptSearch
 from ray.tune.suggest.skopt import SkOptSearch
 from ray.tune.suggest.nevergrad import NevergradSearch
@@ -290,6 +291,40 @@ class NevergradWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         )
         return search_alg, cost
 
+
+class DragonflyWarmSTartTest(AbstractWarmStartTest, unittest.TestCase):
+    def set_basic_conf(self):
+        from dragonfly.opt.gp_bandit import EuclideanGPBandit
+        from dragonfly.exd.experiment_caller import EuclideanFunctionCaller
+        from dragonfly import load_config
+
+        def cost(space, reporter):
+            reporter(loss=(space["height"] - 14)**2 - abs(space["width"] - 3))
+
+        domain_vars = [{
+            "name": "height",
+            "type": "float",
+            "min": -10,
+            "max": 10
+        }, {
+            "name": "width",
+            "type": "float",
+            "min": 0,
+            "max": 20
+        }]
+
+        domain_config = load_config({"domain": domain_vars})
+
+        func_caller = EuclideanFunctionCaller(
+            None, domain_config.domain.list_of_domains[0])
+        optimizer = EuclideanGPBandit(func_caller, ask_tell_mode=True)
+        search_alg = DragonflySearch(
+            optimizer,
+            metric="loss",
+            mode="min",
+            max_concurrent=1000,  # Here to avoid breaking back-compat.
+        )
+        return search_alg, cost
 
 class SigOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):

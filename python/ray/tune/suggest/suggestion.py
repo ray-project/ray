@@ -176,6 +176,9 @@ class Searcher:
 
         .. code-block:: python
 
+            search_alg.save("./my_favorite_path.pkl")
+
+            search_alg2 = Searcher(...)
             search_alg2 = ConcurrencyLimiter(search_alg2, 1)
             search_alg2.restore(checkpoint_path)
             tune.run(cost, num_samples=5, search_alg=search_alg2)
