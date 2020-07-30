@@ -33,7 +33,7 @@ if [[ "$TRAVIS" == "true" ]]; then
     commit_sha=$(echo "$TRAVIS_COMMIT" | head -c 6)
     cp -r "$ROOT_DIR"/.whl "$ROOT_DIR"/docker/autoscaler/.whl
 
-    docker build -q -t rayproject/base-deps docker/base-deps
+    docker build -t rayproject/base-deps docker/base-deps
 
     docker build \
         --build-arg WHEEL_PATH=".whl/$wheel" \
