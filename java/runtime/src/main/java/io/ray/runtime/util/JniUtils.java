@@ -39,7 +39,7 @@ public class JniUtils {
       // Load native library.
       String fileName = System.mapLibraryName(libraryName);
       final String sessionDir = RayConfig.getInstance().sessionDir;
-      final File file = BinaryFileUtil.getFile(sessionDir, fileName);
+      final File file = BinaryFileUtil.getNativeFile(sessionDir, fileName);
 
       if (exportSymbols) {
         // Expose library symbols using RTLD_GLOBAL which may be depended by other shared
