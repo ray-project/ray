@@ -43,12 +43,6 @@ std::pair<PlacementGroupID, int64_t> BundleSpecification::BundleId() const {
       PlacementGroupID::FromBinary(message_->bundle_id().placement_group_id()), index);
 }
 
-std::string BundleSpecification::BundleIdAsString() const {
-  int64_t index = message_->bundle_id().bundle_index();
-  return PlacementGroupID::FromBinary(message_->bundle_id().placement_group_id()).Hex() +
-         "_" + std::to_string(index);
-}
-
 PlacementGroupID BundleSpecification::PlacementGroupId() const {
   return PlacementGroupID::FromBinary(message_->bundle_id().placement_group_id());
 }
@@ -73,7 +67,9 @@ std::string FormatPlacementGroupResource(const std::string &original_resource_na
 }
 
 std::string GetOriginalResourceName(const std::string &resource) {
-  return resource.substr(0, bundle_resource_label.find_last_of("_group_"));
+  auto idx = resource.find("_group_");
+  RAY_CHECK(idx >= 0) << "This isn't a placement group resource " << resource;
+  return resource.substr(0, idx);
 }
 
 }  // namespace ray

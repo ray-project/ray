@@ -5,6 +5,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "ray/common/id.h"
 #include "ray/raylet/format/node_manager_generated.h"
 
 namespace ray {
@@ -557,13 +558,13 @@ class SchedulingResources {
   /// Create if not exists.
   /// \param resource_name: Name of the resource to be modified
   /// \param resource_set: New resource_set of the resource.
-  void UpdateBundleResource(const std::string &bundle_id,
+  void UpdateBundleResource(const PlacementGroupID &group, const int bundle_index,
                             const ResourceSet &resource_set);
 
   /// \brief delete total, available and load resources with the ResourceIds.
   /// Create if not exists.
   /// \param resource_name: Name of the resource to be deleted
-  void ReturnBundleResource(const std::string &bundle_id);
+  void ReturnBundleResource(const PlacementGroupID &group, const int bundle_index);
 
   /// \brief Delete resource from total, available and load resources.
   ///

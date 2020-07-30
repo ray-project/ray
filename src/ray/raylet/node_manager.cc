@@ -1824,7 +1824,8 @@ void NodeManager::HandleCancelResourceReserve(
     std::string resource_name = FormatPlacementGroupResource(resource.first, bundle_spec);
     local_available_resources_.CancelResourceReserve(resource_name);
   }
-  cluster_resource_map_[self_node_id_].ReturnBundleResource(bundle_spec);
+  cluster_resource_map_[self_node_id_].ReturnBundleResource(
+      bundle_spec.PlacementGroupId(), bundle_spec.Index());
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -1995,7 +1996,9 @@ ResourceIdSet NodeManager::ScheduleBundle(
           FormatPlacementGroupResource(resource.first, bundle_spec);
       local_available_resources_.AddBundleResource(resource_name, resource.second);
     }
-    resource_map[self_node_id_].UpdateBundleResource(bundle_spec);
+    resource_map[self_node_id_].UpdateBundleResource(bundle_spec.PlacementGroupId(),
+                                                     bundle_spec.Index(),
+                                                     bundle_spec.GetRequiredResources());
   }
   return acquired_resources;
 }

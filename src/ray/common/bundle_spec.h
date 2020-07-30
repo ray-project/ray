@@ -51,9 +51,6 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
   // Return the bundle_id
   std::pair<PlacementGroupID, int64_t> BundleId() const;
 
-  // Return the bundle_id of string. eg: placement_group_id + index.
-  std::string BundleIdAsString() const;
-
   // Return the Placement Group id which the Bundle belong to.
   PlacementGroupID PlacementGroupId() const;
 
