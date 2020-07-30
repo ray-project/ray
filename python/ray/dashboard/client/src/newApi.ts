@@ -46,8 +46,8 @@ export const getNodeDetails = (hostname: string) =>
   getv2<NodeDetailsResponseData>(`/api/v2/nodes/${hostname}`, {});
 
 export const getAllNodeDetails = (hostnames: string[]) => {
-  return Promise.all(hostnames.map(hostname => getNodeDetails(hostname)));
-}
+  return Promise.all(hostnames.map((hostname) => getNodeDetails(hostname)));
+};
 
 export type NodeSummaryResponseData = {
   summaries: NodeSummary[];

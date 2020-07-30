@@ -8,7 +8,11 @@ import {
   TuneJobResponse,
 } from "../../api";
 import { filterObj } from "../../common/util";
-import { NodeDetailsResponseData, NodeSummaryResponseData, NodeDetails} from "../../newApi";
+import {
+  NodeDetails,
+  NodeDetailsResponseData,
+  NodeSummaryResponseData,
+} from "../../newApi";
 
 const name = "dashboard";
 
@@ -86,7 +90,10 @@ const slice = createSlice({
     ) => {
       state.memoryTable = action.payload;
     },
-    setNodeSummaries: (state, action: PayloadAction<NodeSummaryResponseData>) => {
+    setNodeSummaries: (
+      state,
+      action: PayloadAction<NodeSummaryResponseData>,
+    ) => {
       state.nodeSummaries = action.payload;
     },
     setNodeDetails: (state, action: PayloadAction<NodeDetailsResponseData>) => {

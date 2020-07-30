@@ -39,8 +39,7 @@ const makeNodeLogs = (
     </SpanButton>
   );
 
-const nodeLogsAccessor: Accessor<NodeFeatureData> = ({ node }) =>
-  node.logCount;
+const nodeLogsAccessor: Accessor<NodeFeatureData> = ({ node }) => node.logCount;
 
 // TODO(mfitton) Make this work with new API
 const makeWorkerLogs = (

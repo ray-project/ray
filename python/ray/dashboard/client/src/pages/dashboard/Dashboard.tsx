@@ -16,10 +16,7 @@ import {
   getTuneAvailability,
   stopMemoryTableCollection,
 } from "../../api";
-import {
-  getAllNodeDetails,
-  getHostnames
-} from "../../newApi"
+import { getAllNodeDetails, getHostnames } from "../../newApi";
 import { StoreState } from "../../store";
 import LastUpdated from "./LastUpdated";
 import LogicalView from "./logical-view/LogicalView";
@@ -76,7 +73,7 @@ class Dashboard extends React.Component<
         rayletInfo,
         memoryTable,
         tuneAvailability,
-        allNodeDetails
+        allNodeDetails,
       ] = await Promise.all([
         getNodeInfo(),
         getRayletInfo(),
@@ -86,7 +83,7 @@ class Dashboard extends React.Component<
       ]);
       this.props.setNodeAndRayletInfo({ nodeInfo, rayletInfo });
       this.props.setTuneAvailability(tuneAvailability);
-      allNodeDetails.forEach(nodeDetails => {
+      allNodeDetails.forEach((nodeDetails) => {
         this.props.setNodeDetails(nodeDetails);
       });
       this.props.setError(null);

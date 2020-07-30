@@ -22,7 +22,10 @@ export const get = async <T>(path: string, params: { [key: string]: any }) => {
   return result as T;
 };
 
-export const getv2 = async <T>(path: string, params: { [key: string]: any }) => {
+export const getv2 = async <T>(
+  path: string,
+  params: { [key: string]: any },
+) => {
   const url = new URL(path, base);
   for (const [key, value] of Object.entries(params)) {
     url.searchParams.set(key, value);
