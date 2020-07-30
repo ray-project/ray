@@ -211,7 +211,7 @@ class SampleBatch:
 
     @PublicAPI
     def slice(self, start: int, end: int) -> "SampleBatch":
-        """Returns a slice of the row data of this batch.
+        """Returns a slice of the row data of this batch (w/o copying).
 
         Args:
             start (int): Starting index.
