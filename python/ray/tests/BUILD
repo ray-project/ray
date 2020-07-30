@@ -230,7 +230,7 @@ py_test(
 
 py_test(
     name = "test_failure",
-    size = "medium",
+    size = "large",
     srcs = SRCS + ["test_failure.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
