@@ -13,7 +13,7 @@ import {
 } from "./types";
 
 const ClusterLogs: ClusterFeature = ({ nodes }) => {
-  const totalLogCount = sum(nodes.map((node) => node.logCounts));
+  const totalLogCount = sum(nodes.map((node) => node.logCount));
   return totalLogCount === 0 ? (
     <Typography color="textSecondary" component="span" variant="inherit">
       No logs
@@ -28,19 +28,19 @@ const ClusterLogs: ClusterFeature = ({ nodes }) => {
 const makeNodeLogs = (
   setLogDialog: (hostname: string, pid: number | null) => void,
 ): NodeFeature => ({ node }) =>
-  node.logCounts === 0 ? (
+  node.logCount === 0 ? (
     <Typography color="textSecondary" component="span" variant="inherit">
       No logs
     </Typography>
   ) : (
     <SpanButton onClick={() => setLogDialog(node.hostname, null)}>
-      View all logs ({node.logCounts.toLocaleString()}{" "}
-      {node.logCounts === 1 ? "line" : "lines"})
+      View all logs ({node.logCount.toLocaleString()}{" "}
+      {node.logCount === 1 ? "line" : "lines"})
     </SpanButton>
   );
 
 const nodeLogsAccessor: Accessor<NodeFeatureData> = ({ node }) =>
-  node.logCounts;
+  node.logCount;
 
 // TODO(mfitton) Make this work with new API
 const makeWorkerLogs = (

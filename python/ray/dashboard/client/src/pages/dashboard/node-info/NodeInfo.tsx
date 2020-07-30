@@ -48,10 +48,10 @@ const sortWorkers = (
   const idleSortedClusterWorkers = workerFeatureData.sort((wfd1, wfd2) => {
     const w1 = wfd1.worker;
     const w2 = wfd2.worker;
-    if (w2.cmdLine[0] === "ray::IDLE") {
+    if (w2.cmdline[0] === "ray::IDLE") {
       return -1;
     }
-    if (w1.cmdLine[0] === "ray::IDLE") {
+    if (w1.cmdline[0] === "ray::IDLE") {
       return 1;
     }
     return w1.pid < w2.pid ? -1 : 1;

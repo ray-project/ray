@@ -30,7 +30,7 @@ export const nodeHostAccessor: Accessor<NodeFeatureData> = ({ node }) =>
 // always be `ray` under the current setup, but it may vary in the future.
 export const WorkerHost: WorkerFeature = ({ worker }) => (
   <React.Fragment>
-    {worker.cmdLine[0].split("::", 2)[0]} (PID: {worker.pid})
+    {worker.cmdline[0].split("::", 2)[0]} (PID: {worker.pid})
   </React.Fragment>
 );
 

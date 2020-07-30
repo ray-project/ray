@@ -57,16 +57,18 @@ class NodeStats(threading.Thread):
         super().__init__()
 
     def _insert_log_counts(self):
-        for ip, logs_by_pid in self._logs.items():
-            hostname = self._ip_to_hostname[ip]
-            logs_by_pid = {pid: len(logs) for pid, logs in logs_by_pid.items()}
-            self._node_stats[hostname]["log_count"] = logs_by_pid
+        logger.warning("LOGS: {}".format(self._logs))
+        for node in self._node_stats.values():
+            node_logs = self._logs.get(node["ip"], {})
+            logs_by_pid = {pid: len(logs) for pid, logs in node_logs.items()}
+            node["log_count"] = logs_by_pid
 
     def _insert_error_counts(self):
-        for ip, errs_by_pid in self._errors.items():
-            hostname = self._ip_to_hostname[ip]
-            errs_by_pid = {pid: len(errs) for pid, errs in errs_by_pid.items()}
-            self._node_stats[hostname]["error_count"] = errs_by_pid
+        logger.warning("ERRORS: {}".format(self._errors))
+        for node in self._node_stats.values():
+            node_errors = self._errors.get(node["ip"], {})
+            errs_by_pid = {pid: len(errs) for pid, errs in node_errors.items()}
+            node["error_count"] = errs_by_pid
 
     def _purge_outdated_stats(self):
         def current(then, now):
@@ -89,6 +91,8 @@ class NodeStats(threading.Thread):
             node_stats = sorted(
                 (v for v in self._node_stats.values()),
                 key=itemgetter("boot_time"))
+            if node_stats:
+                logger.warning("in get node stats: {}".format(node_stats[0]))
             return {"clients": node_stats}
 
     def get_actor_tree(self, workers_info_by_node, infeasible_tasks,

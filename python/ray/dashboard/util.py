@@ -45,3 +45,29 @@ def measures_to_dict(measures):
         elif "doubleValue" in measure:
             measures_dict[tags] = measure["doubleValue"]
     return measures_dict
+
+def to_camel_case(snake_str):
+    """Convert a snake str to camel case."""
+    components = snake_str.split("_")
+    # We capitalize the first letter of each component except the first one
+    # with the 'title' method and join them together.
+    return components[0] + "".join(x.title() for x in components[1:])
+
+
+def to_google_style(d):
+    """Recursive convert all keys in dict to google style."""
+    new_dict = {}
+    for k, v in d.items():
+        if isinstance(v, dict):
+            new_dict[to_camel_case(k)] = to_google_style(v)
+        elif isinstance(v, list):
+            new_list = []
+            for i in v:
+                if isinstance(i, dict):
+                    new_list.append(to_google_style(i))
+                else:
+                    new_list.append(i)
+            new_dict[to_camel_case(k)] = new_list
+        else:
+            new_dict[to_camel_case(k)] = v
+    return new_dict

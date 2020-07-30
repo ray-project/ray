@@ -38,7 +38,7 @@ export const NodeWorkers: NodeFeature = ({ node }) => {
 // `ray::function()`, `ray::Class`, or `ray::Class.method()`. We extract the
 // second portion here for display in the "Workers" column.
 export const WorkerWorkers: WorkerFeature = ({ worker }) => (
-  <React.Fragment>{worker.cmdLine[0].split("::", 2)[1]}</React.Fragment>
+  <React.Fragment>{worker.cmdline[0].split("::", 2)[1]}</React.Fragment>
 );
 
 const workersFeature: NodeInfoFeature = {

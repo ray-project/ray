@@ -22,6 +22,7 @@ import grpc
 from google.protobuf.json_format import MessageToDict
 import ray
 import ray.ray_constants as ray_constants
+from typing import Optional, List, Dict, Any
 
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
@@ -35,7 +36,7 @@ from ray.dashboard.memory import construct_memory_table, MemoryTable
 from ray.dashboard.metrics_exporter.client import Exporter
 from ray.dashboard.metrics_exporter.client import MetricsExportClient
 from ray.dashboard.node_stats import NodeStats
-from ray.dashboard.util import to_unix_time, measures_to_dict, format_resource
+from ray.dashboard.util import to_unix_time, measures_to_dict, format_resource, to_google_style
 
 try:
     from ray.tune import Analysis
@@ -241,58 +242,79 @@ class DashboardController(BaseDashboardController):
         if Analysis is not None:
             self.tune_stats.start()
 
+    def v2_hostnames(self):
+        node_stats = self.node_stats.get_node_stats()
+        return [client["hostname"] for client in node_stats["clients"]]
+
+    def v2_node_summaries(self):
+        node_stats = self.node_stats.get_node_stats()
+        return list(node_stats["clients"])
+
+    def v2_node_details(self, hostname) -> Optional[Dict[str, Any]]:
+        raylet_info = self._construct_raylet_info()
+        node_stats = self.node_stats.get_node_stats()
+        node_obj = None
+        for node in node_stats["clients"]:
+            if node["hostname"] == hostname:
+                node_obj = node.copy()
+                break
+        if not node_obj:
+            return None
+        # Insert information about workers, merged from the
+        # Raylet information
+        raylet_info = raylet_info["nodes"].get(node_obj["ip"])
+        raylet_workers = {worker["pid"]: worker["coreWorkerStats"] for worker in raylet_info["workersStats"]} if raylet_info else set()
+        if raylet_workers:
+            logger.warning("RAYLET_TYPE: {}".format(list(raylet_workers)[0]))
+        node_workers = node_obj["workers"]
+        for worker in node_workers:
+            raylet_worker = raylet_workers.get(worker["pid"])
+            str_pid = str(worker["pid"])
+            worker["core_worker_stats"] = [raylet_worker] if raylet_worker else []
+            worker["log_count"] = node_obj.get("log_count", {}).get(str_pid, 0)
+            worker["error_count"] = node_obj.get("error_count", {}).get(str_pid, 0)
+        node_obj["log_count"] = sum(node_obj.get("log_count", {}).values())
+        node_obj["error_count"] = sum(node_obj.get("error_count", {}).values())
+        # Insert information about log and error counts, both at
+        #  the node and at the worker level.
+        return node_obj
+
 
 class Dashboardv2APIHandler:
     def __init__(self, node_stats, raylet_stats):
         self.raylet_stats = raylet_stats
         self.node_stats = node_stats
+        self.is_dev = os.environ.get("RAY_DASHBOARD_DEV") == "1"
 
-    @staticmethod
-    def api_response(data):
-        return aiohttp.web.json_response({
-            "result": True,
-            "msg": "Success",
-            "data": data,
-        })
-
-    @staticmethod
-    def api_error(msg, status):
-        return aiohttp.web.json_response(
-            {
-                "result": False,
-                "msg": msg
-            }, status=status)
-
-    def hostnames(self, req):
-        node_stats = self.node_stats.get_node_stats()
-        return self.api_response({
-            "hostnames": [
-                client["hostname"] for client in node_stats["clients"]
-            ]
-        })
-
-    def node_summaries(self, req):
-        node_stats = self.node_stats.get_node_stats()
-        return self.api_response({"summaries": list(node_stats["clients"])})
-
-    def node_details(self, req):
-        hostname = req.match_info.get("hostname")
-        if hostname is None:
-            return self.api_error(400, "Missing hostname")
-        node_stats = self.node_stats.get_node_stats()
-        for node in node_stats["clients"]:
-            if node["hostname"] == hostname:
-                node_obj = {"details": node}
-                return self.api_response(node_obj)
-        return self.api_error(
-            400, "Host not found for hostname {}".format(hostname))
-
-
+        
 class DashboardRouteHandler(BaseDashboardRouteHandler):
     def __init__(self, dashboard_controller: DashboardController,
                  is_dev=False):
         self.dashboard_controller = dashboard_controller
         self.is_dev = is_dev
+
+    def v2_api_response(self, data) -> aiohttp.web.Response:
+        formatted_data = to_google_style(data)
+        if self.is_dev:
+            headers = {"Access-Control-Allow-Origin": "*"}
+        else:
+            headers = {}
+        return aiohttp.web.json_response({
+            "result": True,
+            "msg": "Success",
+            "data": formatted_data,
+        }, headers=headers)
+
+    def v2_api_error(self, status: int, msg: str) -> aiohttp.web.Response:
+        if self.is_dev:
+            headers = {"Access-Control-Allow-Origin": "*"}
+        else:
+            headers = {}
+        return aiohttp.web.json_response(
+            {
+                "result": False,
+                "msg": msg
+            }, status=status, headers=headers)
 
     def forbidden(self) -> aiohttp.web.Response:
         return aiohttp.web.Response(status=403, text="403 Forbidden")
@@ -395,6 +417,25 @@ class DashboardRouteHandler(BaseDashboardRouteHandler):
         result = self.dashboard_controller.get_errors(hostname, pid)
         return await json_response(self.is_dev, result=result)
 
+    async def v2_hostnames(self, req) -> aiohttp.web.Response:
+        hostnames = self.dashboard_controller.v2_hostnames()
+        return self.v2_api_response({"hostnames": hostnames})
+        pass
+
+    async def v2_node_details(self, req) -> aiohttp.web.Response:
+        hostname = req.match_info.get("hostname")
+        if hostname is None:
+            return self.api_error(400, "Missing hostname")
+        node_details = self.dashboard_controller.v2_node_details(hostname)
+        if not node_details:
+            return self.api_error(
+                400, "Host not found for hostname {}".format(hostname))
+        return self.v2_api_response({"details": node_details})
+    
+    async def v2_node_summaries(self, req) -> aiohttp.web.Response:
+        summaries = self.dashboard_controller.v2_node_summaries()
+        return self.v2_api_response({"summaries": summaries})
+
 
 class MetricsExportHandler:
     def __init__(self,
@@ -487,7 +528,10 @@ def setup_dashboard_route(app: aiohttp.web.Application,
                           logs=None,
                           errors=None,
                           memory_table=None,
-                          stop_memory_table=None):
+                          stop_memory_table=None,
+                          v2_hostnames=None,
+                          v2_node_summaries=None,
+                          v2_node_details=None):
     def add_get_route(route, handler_func):
         if route is not None:
             app.router.add_get(route, handler_func)
@@ -507,6 +551,9 @@ def setup_dashboard_route(app: aiohttp.web.Application,
     add_get_route(errors, handler.errors)
     add_get_route(memory_table, handler.memory_table_info)
     add_get_route(stop_memory_table, handler.stop_collecting_memory_table_info)
+    add_get_route(v2_hostnames, handler.v2_hostnames)
+    add_get_route(v2_node_summaries, handler.v2_node_summaries)
+    add_get_route(v2_node_details, handler.v2_node_details)
 
 
 class Dashboard:
@@ -578,18 +625,10 @@ class Dashboard:
             errors="/api/errors",
             memory_table="/api/memory_table",
             stop_memory_table="/api/stop_memory_table",
+            v2_hostnames="/api/v2/hostnames",
+            v2_node_details="/api/v2/nodes/{hostname}",
+            v2_node_summaries="/api/v2/nodes"
         )
-        # Add v2 routes
-        self.app.router.add_get(
-            "/api/v2/hostnames",
-            self.dashboard_controller.v2_api_handler.hostnames)
-        self.app.router.add_get(
-            "/api/v2/nodes/{hostname}",
-            self.dashboard_controller.v2_api_handler.node_details)
-        self.app.router.add_get(
-            "/api/v2/nodes",
-            self.dashboard_controller.v2_api_handler.node_summaries)
-
         self.app.router.add_get("/{_}", route_handler.get_forbidden)
         self.app.router.add_post("/api/set_tune_experiment",
                                  route_handler.set_tune_experiment)

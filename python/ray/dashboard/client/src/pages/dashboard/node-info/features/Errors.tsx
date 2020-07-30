@@ -13,7 +13,7 @@ import {
 } from "./types";
 
 const ClusterErrors: ClusterFeature = ({ nodes }) => {
-  const totalErrCount = sum(nodes.map((node) => node.errorCounts));
+  const totalErrCount = sum(nodes.map((node) => node.errorCount));
   return totalErrCount === 0 ? (
     <Typography color="textSecondary" component="span" variant="inherit">
       No errors
@@ -29,32 +29,36 @@ const ClusterErrors: ClusterFeature = ({ nodes }) => {
 const makeNodeErrors = (
   setErrorDialog: (hostname: string, pid: number | null) => void,
 ): NodeFeature => ({ node }) =>
-  node.errorCounts === 0 ? (
+  node.errorCount === 0 ? (
     <Typography color="textSecondary" component="span" variant="inherit">
       No errors
     </Typography>
   ) : (
     <SpanButton onClick={() => setErrorDialog(node.hostname, null)}>
-      View all errors ({node.errorCounts.toLocaleString()})
+      View all errors ({node.errorCount.toLocaleString()})
     </SpanButton>
   );
 
 const nodeErrorsAccessor: Accessor<NodeFeatureData> = ({ node }) =>
-  node.errorCounts;
+  node.errorCount;
 
 const makeWorkerErrors = (
   setErrorDialog: (hostname: string, pid: number | null) => void,
 ): WorkerFeature => ({ node, worker }) => {
   // Todo, support this calculation in the new API.
-  return (
+  return worker.errorCount !== 0 ? (
+    <SpanButton onClick={() => setErrorDialog(node.hostname, worker.pid)}>
+      View errors ({worker.errorCount.toLocaleString()})
+    </SpanButton>
+  ) : (
     <Typography color="textSecondary" component="span" variant="inherit">
       No errors
     </Typography>
   );
 };
 
-const workerErrorsAccessor: Accessor<WorkerFeatureData> = ({ node, worker }) =>
-  0;
+const workerErrorsAccessor: Accessor<WorkerFeatureData> = ({ worker }) =>
+  worker.errorCount;
 
 const makeErrorsFeature = (
   setErrorDialog: (hostname: string, pid: number | null) => void,

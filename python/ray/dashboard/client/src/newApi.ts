@@ -1,4 +1,4 @@
-import { get } from "./common/requestUtils";
+import { getv2 } from "./common/requestUtils";
 
 export type HostnamesResponse = APIResponse<HostnamesResponseData>;
 export type NodeSummaryResponse = APIResponse<NodeSummaryResponseData>;
@@ -37,19 +37,23 @@ export type GPUStats = {
 };
 
 export const getNodeSummaries = () =>
-  get<NodeSummaryResponse>("/api/v2/hosts", { view: "summary" });
+  getv2<NodeSummaryResponseData>("/api/v2/nodes", {});
 
 export const getHostnames = () =>
-  get<HostnamesResponse>("/api/v2/hosts", { view: "hostnamelist" });
+  getv2<HostnamesResponseData>("/api/v2/hostnames", {});
 
 export const getNodeDetails = (hostname: string) =>
-  get<NodeDetailsResponse>(`/api/v2/hosts/${hostname}`, {});
+  getv2<NodeDetailsResponseData>(`/api/v2/nodes/${hostname}`, {});
 
-type NodeSummaryResponseData = {
+export const getAllNodeDetails = (hostnames: string[]) => {
+  return Promise.all(hostnames.map(hostname => getNodeDetails(hostname)));
+}
+
+export type NodeSummaryResponseData = {
   summaries: NodeSummary[];
 };
 
-type NodeDetailsResponseData = {
+export type NodeDetailsResponseData = {
   details: NodeDetails;
 };
 
@@ -94,8 +98,8 @@ type BaseNodeInfo = {
     };
   };
   net: number[];
-  logCounts: number;
-  errorCounts: number;
+  logCount: number;
+  errorCount: number;
   actors: { [actorId: string]: Actor };
   raylet: {
     numWorkers: number;
@@ -133,7 +137,7 @@ export type Worker = {
     data: number;
     dirty: Number;
   };
-  cmdLine: string[];
+  cmdline: string[];
   cpuTimes: {
     user: number;
     system: number;
