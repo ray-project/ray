@@ -15,7 +15,6 @@ public class ChannelRecoverInfo implements Serializable {
 
 
   public ChannelRecoverInfo(Map<String, QueueCreationStatus> queueCreationStatusMap) {
-    LOG.info("Creating QueueRecoverInfo, queueCreationStatusMap={}", queueCreationStatusMap);
     this.queueCreationStatusMap = queueCreationStatusMap;
   }
 

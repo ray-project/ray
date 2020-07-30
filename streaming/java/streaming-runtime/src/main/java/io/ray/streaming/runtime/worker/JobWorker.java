@@ -14,6 +14,7 @@ import io.ray.streaming.runtime.master.coordinator.command.WorkerRollbackRequest
 import io.ray.streaming.runtime.message.CallResult;
 import io.ray.streaming.runtime.rpc.RemoteCallMaster;
 import io.ray.streaming.runtime.state.StateBackend;
+import io.ray.streaming.runtime.state.StateBackendFactory;
 import io.ray.streaming.runtime.transfer.TransferHandler;
 import io.ray.streaming.runtime.transfer.channel.ChannelRecoverInfo;
 import io.ray.streaming.runtime.transfer.channel.ChannelRecoverInfo.QueueCreationStatus;
@@ -85,6 +86,8 @@ public class JobWorker implements Serializable {
     this.workerContext = workerContext;
     this.executionVertex = workerContext.getExecutionVertex();
     this.workerConfig = new StreamingWorkerConfig(executionVertex.getWorkerConfig());
+    // init state backend
+    this.stateBackend = StateBackendFactory.getStateBackend(this.workerConfig);
 
     LOG.info("Initiating job worker succeeded: {}.", workerContext.getWorkerName());
     return true;
@@ -244,7 +247,9 @@ public class JobWorker implements Serializable {
    * Used by upstream streaming queue to send data to this actor
    */
   public void onReaderMessage(byte[] buffer) {
-    transferHandler.onReaderMessage(buffer);
+    if (transferHandler != null) {
+      transferHandler.onReaderMessage(buffer);
+    }
   }
 
   /**
@@ -262,7 +267,9 @@ public class JobWorker implements Serializable {
    * Used by downstream streaming queue to send data to this actor
    */
   public void onWriterMessage(byte[] buffer) {
-    transferHandler.onWriterMessage(buffer);
+    if (transferHandler != null) {
+      transferHandler.onWriterMessage(buffer);
+    }
   }
 
   /**

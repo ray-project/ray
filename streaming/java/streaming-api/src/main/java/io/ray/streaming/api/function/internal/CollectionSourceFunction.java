@@ -12,6 +12,7 @@ import java.util.Collection;
 public class CollectionSourceFunction<T> implements SourceFunction<T> {
 
   private Collection<T> values;
+  private boolean finished = false;
 
   public CollectionSourceFunction(Collection<T> values) {
     this.values = values;
@@ -23,11 +24,13 @@ public class CollectionSourceFunction<T> implements SourceFunction<T> {
 
   @Override
   public void fetch(SourceContext<T> ctx, long checkpointId) throws Exception {
+    if (finished) {
+      return;
+    }
     for (T value : values) {
       ctx.collect(value);
     }
-    // empty collection
-    values.clear();
+    finished = true;
   }
 
   @Override

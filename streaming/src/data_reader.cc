@@ -258,13 +258,19 @@ StreamingStatus DataReader::StashNextMessage(std::shared_ptr<DataBundle> &messag
 
 StreamingStatus DataReader::GetMergedMessageBundle(std::shared_ptr<DataBundle> &message,
                                                    bool &is_valid_break, uint32_t timeout_ms) {
+  STREAMING_LOG(DEBUG) << "######GetMergedMessageBundle 1";
   int64_t cur_time = current_time_ms();
   if (last_fetched_queue_item_) {
+    STREAMING_LOG(DEBUG) << "######GetMergedMessageBundle 2";
     RETURN_IF_NOT_OK(StashNextMessage(last_fetched_queue_item_, timeout_ms))
   }
+  STREAMING_LOG(DEBUG) << "######GetMergedMessageBundle 3";
   message = reader_merger_->top();
+  STREAMING_LOG(DEBUG) << "######GetMergedMessageBundle 4, last_fetched=" << last_fetched_queue_item_->meta->GetLastMessageId();
   last_fetched_queue_item_ = message;
+  STREAMING_LOG(DEBUG) << "######GetMergedMessageBundle 5";
   auto &offset_info = channel_info_map_[message->from];
+  STREAMING_LOG(DEBUG) << "######GetMergedMessageBundle 6";
 
   uint64_t cur_queue_previous_msg_id = offset_info.current_message_id;
   STREAMING_LOG(DEBUG) << "[Reader] [Bundle] from q_id =>" << message->from << "cur => "

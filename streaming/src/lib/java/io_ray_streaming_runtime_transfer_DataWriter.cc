@@ -79,3 +79,68 @@ Java_io_ray_streaming_runtime_transfer_DataWriter_closeWriterNative(JNIEnv *env,
   auto *data_writer = reinterpret_cast<DataWriter *>(ptr);
   delete data_writer;
 }
+
+
+JNIEXPORT jlongArray JNICALL Java_io_ray_streaming_runtime_transfer_DataWriter_getOutputMsgIdNative
+  (JNIEnv *env, jobject thisObj, jlong ptr) {
+  DataWriter *writer_client = reinterpret_cast<DataWriter *>(ptr);
+
+  std::vector<uint64_t> result;
+  writer_client->GetChannelOffset(result);
+
+  jlongArray jArray = env->NewLongArray(result.size());
+  jlong jdata[result.size()];
+  for (size_t i = 0; i < result.size(); ++i) {
+    *(jdata + i) = result[i];
+  }
+  env->SetLongArrayRegion(jArray, 0, result.size(), jdata);
+  return jArray;
+}
+
+JNIEXPORT void JNICALL Java_io_ray_streaming_runtime_transfer_DataWriter_broadcastBarrierNative
+  (JNIEnv *env, jobject thisObj, jlong ptr, jlong checkpointId, jlong barrierId, jbyteArray data) {
+  STREAMING_LOG(INFO) << "jni: broadcast barrier, cp_id=" << checkpointId
+                      << ", barrier_id=" << barrierId;
+  RawDataFromJByteArray raw_data(env, data);
+  DataWriter *writer_client = reinterpret_cast<DataWriter *>(ptr);
+  writer_client->BroadcastBarrier(checkpointId, barrierId, raw_data.data,
+                                  raw_data.data_size);
+}
+
+JNIEXPORT void JNICALL Java_io_ray_streaming_runtime_transfer_DataWriter_clearCheckpointNative
+  (JNIEnv *env, jobject thisObj, jlong ptr, jlong checkpointId) {
+  STREAMING_LOG(INFO) << "[Producer] jni: clearCheckpoints.";
+  auto *writer = reinterpret_cast<DataWriter *>(ptr);
+  writer->ClearCheckpoint(checkpointId);
+  STREAMING_LOG(INFO) << "[Producer] clear checkpoint done.";
+}
+
+JNIEXPORT jbyteArray JNICALL Java_io_ray_streaming_runtime_transfer_DataReader_getOffsetsInfoNative
+  (JNIEnv *env, jobject thisObj, jlong ptr) {
+  auto reader = reinterpret_cast<ray::streaming::DataReader *>(ptr);
+  std::unordered_map<ray::ObjectID, ConsumerChannelInfo> *offset_map = nullptr;
+  reader->GetOffsetInfo(offset_map);
+  STREAMING_CHECK(offset_map);
+  // queue nums + (plasma queue id + seq id + message id) * queue nums
+  int offset_data_size =
+      sizeof(uint32_t) +
+      (kUniqueIDSize + sizeof(uint64_t) * 2) * offset_map->size();
+  jbyteArray offsets_info = env->NewByteArray(offset_data_size);
+  int offset = 0;
+  // total queue nums
+  auto queue_nums = static_cast<uint32_t>(offset_map->size());
+  env->SetByteArrayRegion(offsets_info, offset, sizeof(uint32_t),
+                          reinterpret_cast<jbyte *>(&queue_nums));
+  offset += sizeof(uint32_t);
+  // queue name & offset
+  for (auto &p : *offset_map) {\
+    env->SetByteArrayRegion(offsets_info, offset, kUniqueIDSize,
+                            reinterpret_cast<const jbyte *>(p.first.Data()));
+    offset += kUniqueIDSize;
+    // msg_id
+    env->SetByteArrayRegion(offsets_info, offset, sizeof(uint64_t),
+                            reinterpret_cast<jbyte *>(&p.second.current_message_id));
+    offset += sizeof(uint64_t);
+  }
+  return offsets_info;
+}

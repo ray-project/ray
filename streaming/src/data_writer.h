@@ -79,6 +79,10 @@ class DataWriter {
   /// \param barrier_id: user-defined numerical checkpoint id
   void ClearCheckpoint(uint64_t barrier_id);
 
+  /// replay all queue from checkpoint, it's useful under FO
+  /// \param result offset vector
+  void GetChannelOffset(std::vector<uint64_t> &result);
+
   void Run();
 
   void Stop();

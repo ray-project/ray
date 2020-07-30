@@ -67,27 +67,13 @@ class StreamingQueueWriterTestSuite : public StreamingQueueTestSuite {
   }
 
  private:
-  void TestWriteMessageToBufferRing(std::shared_ptr<DataWriter> writer_client,
-                                    std::vector<ray::ObjectID> &q_list) {
-    // const uint8_t temp_data[] = {1, 2, 4, 5};
+  void StreamingWriterExactlyOnceTest() {
+    StreamingConfig config;
+    StreamingWriterStrategyTest(config);
 
-    uint32_t i = 1;
-    while (i <= MESSAGE_BOUND_SIZE) {
-      for (auto &q_id : q_list) {
-        uint64_t buffer_len = (i % DEFAULT_STREAMING_MESSAGE_BUFFER_SIZE);
-        uint8_t *data = new uint8_t[buffer_len];
-        for (uint32_t j = 0; j < buffer_len; ++j) {
-          data[j] = j % 128;
-        }
-
-        writer_client->WriteMessageToBufferRing(q_id, data, buffer_len,
-                                                StreamingMessageType::Message);
-      }
-      ++i;
-    }
-
-    // Wait a while
-    std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+    STREAMING_LOG(INFO)
+        << "StreamingQueueWriterTestSuite::StreamingWriterExactlyOnceTest";
+    status_ = true;
   }
 
   void StreamingWriterStrategyTest(StreamingConfig &config) {
@@ -111,6 +97,7 @@ class StreamingQueueWriterTestSuite : public StreamingQueueTestSuite {
     std::shared_ptr<RuntimeContext> runtime_context(new RuntimeContext());
     runtime_context->SetConfig(config);
 
+    // create writer
     std::shared_ptr<DataWriter> streaming_writer_client(new DataWriter(runtime_context));
     uint64_t queue_size = 10 * 1000 * 1000;
     std::vector<uint64_t> channel_seq_id_vec(queue_ids_.size(), 0);
@@ -119,6 +106,8 @@ class StreamingQueueWriterTestSuite : public StreamingQueueTestSuite {
     STREAMING_LOG(INFO) << "streaming_writer_client Init done";
 
     streaming_writer_client->Run();
+
+    // writer some data
     std::thread test_loop_thread(
         &StreamingQueueWriterTestSuite::TestWriteMessageToBufferRing, this,
         streaming_writer_client, std::ref(queue_ids_));
@@ -128,13 +117,27 @@ class StreamingQueueWriterTestSuite : public StreamingQueueTestSuite {
     }
   }
 
-  void StreamingWriterExactlyOnceTest() {
-    StreamingConfig config;
-    StreamingWriterStrategyTest(config);
+  void TestWriteMessageToBufferRing(std::shared_ptr<DataWriter> writer_client,
+                                    std::vector<ray::ObjectID> &q_list) {
+    // const uint8_t temp_data[] = {1, 2, 4, 5};
 
-    STREAMING_LOG(INFO)
-        << "StreamingQueueWriterTestSuite::StreamingWriterExactlyOnceTest";
-    status_ = true;
+    uint32_t i = 1;
+    while (i <= MESSAGE_BOUND_SIZE) {
+      for (auto &q_id : q_list) {
+        uint64_t buffer_len = (i % DEFAULT_STREAMING_MESSAGE_BUFFER_SIZE);
+        uint8_t *data = new uint8_t[buffer_len];
+        for (uint32_t j = 0; j < buffer_len; ++j) {
+          data[j] = j % 128;
+        }
+
+        writer_client->WriteMessageToBufferRing(q_id, data, buffer_len,
+                                                StreamingMessageType::Message);
+      }
+      ++i;
+    }
+    STREAMING_LOG(INFO) << "Write data done.";
+    // Wait a while
+    std::this_thread::sleep_for(std::chrono::milliseconds(5000));
   }
 };
 
@@ -314,7 +317,7 @@ class StreamingQueueUpStreamTestSuite : public StreamingQueueTestSuite {
       memset(data, msg_id, 100);
       STREAMING_LOG(INFO) << "Writer User Push item msg_id: " << msg_id;
       ASSERT_TRUE(
-          queue->Push(msg_id/*seqid*/, data, 100, current_sys_time_ms(), msg_id, msg_id, true).ok());
+          queue->Push(data, 100, current_sys_time_ms(), msg_id, msg_id, true).ok());
       queue->Send();
     }
 

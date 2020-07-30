@@ -25,6 +25,11 @@ def gen_streaming_java_deps():
 	        "org.mockito:mockito-all:1.10.19",
 	        "org.powermock:powermock-module-testng:1.6.6",
 	        "org.powermock:powermock-api-mockito:1.6.6",
+            "com.esotericsoftware:kryo:4.0.0",
+            "de.javakaffee:kryo-serializers:0.42",
+            "com.esotericsoftware.minlog:minlog:1.2",
+            "com.esotericsoftware.reflectasm:reflectasm:1.07",
+            "commons-collections:commons-collections:3.2.1",
         ],
         repositories = [
             "https://repo1.maven.org/maven2/",

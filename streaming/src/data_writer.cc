@@ -572,5 +572,11 @@ void DataWriter::ClearCheckpointId(ProducerChannelInfo &channel_info, uint64_t m
                        << channel_info.channel_id;
 }
 
+void DataWriter::GetChannelOffset(std::vector<uint64_t> &result) {
+  for (auto &q_id : output_queue_ids_) {
+    result.push_back(channel_info_map_[q_id].current_message_id);
+  }
+}
+
 }  // namespace streaming
 }  // namespace ray
