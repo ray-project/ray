@@ -207,13 +207,6 @@ py_test(
 )
 
 py_test(
-    name = "test_cython",
-    size = "small",
-    srcs = SRCS + ["test_cython.py"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
     name = "test_debug_tools",
     size = "small",
     srcs = SRCS + ["test_debug_tools.py"],
