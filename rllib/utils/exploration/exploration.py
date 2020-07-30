@@ -1,10 +1,11 @@
 from gym.spaces import Space
 from typing import Union
 
-from ray.rllib.utils.framework import try_import_torch, TensorType
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.framework import try_import_torch, TensorType
 
 torch, nn = try_import_torch()
 

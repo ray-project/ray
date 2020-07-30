@@ -22,12 +22,15 @@ reward.
 from gym.spaces import Space
 from typing import Union, Optional
 
+
+
 #from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 
 # TODO alphabetize imports, lint
 # TODO how to test if action space is discrete
 # TODO should i use the default docstring format. also check the types with sven
+from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.framework import try_import_torch, TensorType
 from ray.rllib.utils.types import TensorType, TensorStructType, SampleBatchType
 from ray.rllib.models.action_dist import ActionDistribution
@@ -72,81 +75,61 @@ class Curiosity(Exploration):
 
         # TODO: config fc_net_hiddens. ask sven what the convention is
         self.obs_space_dim = self.model.obs_space.shape[0]
-        self.embedding_dim = 6
+        self.embedding_dim = self.policy_config['exploration']['features_dim']
         self.action_space_dim = 1 # TODO can we always assume 1?
 
         # List of dimension of each layer
-        features_dims = [self.obs_space_dim, 3, self.embedding_dim]
-        inverse_dims = [2 * self.embedding_dim, 4, self.action_space_dim]
-        forwards_dims = [
-            self.embedding_dim + self.action_space_dim, 5, self.embedding_dim
-        ]
+        features_dims = [self.obs_space_dim] + self.policy_config['exploration']['feature_net_hiddens'] + [self.embedding_dim]
+        inverse_dims = [2 * self.embedding_dim] + self.policy_config['exploration']['inverse_net_hiddens'] + [self.action_space_dim]
+        forwards_dims = [self.embedding_dim + self.action_space_dim] + self.policy_config['exploration']['forward_net_hiddens'] + [self.embedding_dim]
+
+        print(forwards_dims)
+
+        # Given a list of layer dimensions, create a FC ReLU net.
+        # If layer_dims is [4,8,6] we'll have a two layer net: 4->8 and 8->6
+        def create_fc_net(layer_dims):
+            layers = []
+            for i in range(len(layer_dims) - 1):
+                layers.append(
+                    SlimFC(
+                        in_size=layer_dims[i],
+                        out_size=layer_dims[i + 1],
+                        use_bias=False,
+                        activation_fn=nn.ReLU)
+                )
+            return nn.Sequential(*layers)
 
         # Pass in activation_fn in model config. ask sven for convention
         # Two layer relu nets. look over hidden_dims instead
-        self.forwards_model = nn.Sequential(
-            SlimFC(
-                in_size=forwards_dims[0],
-                out_size=forwards_dims[1],
-                use_bias=False,
-                activation_fn=nn.ReLU),
-            SlimFC(
-                in_size=forwards_dims[1],
-                out_size=forwards_dims[2],
-                use_bias=False,
-                activation_fn=nn.ReLU))
-
-        self.inverse_model = nn.Sequential(
-            SlimFC(
-                in_size=inverse_dims[0],
-                out_size=inverse_dims[1],
-                use_bias=False,
-                activation_fn=nn.ReLU),
-            SlimFC(
-                in_size=inverse_dims[1],
-                out_size=inverse_dims[2],
-                use_bias=False,
-                activation_fn=nn.ReLU))
-
-        # TODO add Conv2D option later
-        self.features_model = nn.Sequential(
-            SlimFC(
-                in_size=features_dims[0],
-                out_size=features_dims[1],
-                use_bias=False,
-                activation_fn=nn.ReLU),
-            SlimFC(
-                in_size=features_dims[1],
-                out_size=features_dims[2],
-                use_bias=False,
-                activation_fn=nn.ReLU))
+        self.features_model = create_fc_net(features_dims)
+        self.inverse_model = create_fc_net(inverse_dims)
+        self.forwards_model = create_fc_net(forwards_dims)
 
 
         self.criterion = torch.nn.MSELoss(reduction="none")
         self.criterion_reduced = torch.nn.MSELoss(reduction="sum")
 
-        # TODO lr, submodule, framework should all be config parameters
-        submodule_type = "EpsilonGreedy"
+        # TODO finish this (probably have to delete something from the args/ policy config)
+        submodule_type = self.policy_config['exploration']['submodule']
+        if submodule_type == '':
+            submodule_type = 'StochasticSampling'
+        del self.policy_config['exploration']
         framework = "torch"
 
         #submodule = from_config( subconfig from main config )
-        """
-        if submodule_type == "EpsilonGreedy":
-            self.exploration_submodule = EpsilonGreedy(
-                action_space=action_space,
-                framework=framework,
-                policy_config=self.policy_config,
-                model=self.model,
-                num_workers=self.num_workers,
-                worker_index=self.worker_index
+        self.exploration_submodule = from_config({
+                'type': submodule_type,
+                'action_space': action_space,
+                'framework': framework,
+                'policy_config': self.policy_config,
+                'model': self.model,
+                'num_workers': self.num_workers,
+                'worker_index': self.worker_index
+                }
             )
-        elif submodule_type != "":
-            raise NotImplementedError("Called with a sub-exploration module "
-                                      "we don't support!")
-        else:  # what's the correct default?
-            self.exploration_submodule = EpsilonGreedy(
-                action_space=action_space, framework=framework)
-        """
+#        elif submodule_type != "":
+#            raise NotImplementedError("Called with a sub-exploration module "
+#                                      "we don't support!")
 
 
     def get_exploration_action(self,
