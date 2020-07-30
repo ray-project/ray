@@ -166,14 +166,12 @@ class ResourceSpec(
             if gpu_ids is not None:
                 num_gpus = min(num_gpus, len(gpu_ids))
 
-        gpu_types = {}
         try:
             info_string = _get_gpu_info_string()
             gpu_types = _constraints_from_gpu_info(info_string)
-        except BaseException:
-            logger.warning("Could not parse gpu information.")
-        finally:
             resources.update(gpu_types)
+        except Exception:
+            logger.exception("Could not parse gpu information.")
 
         # Choose a default object store size.
         system_memory = ray.utils.get_system_memory()
