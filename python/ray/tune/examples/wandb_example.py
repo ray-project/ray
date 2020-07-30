@@ -12,7 +12,7 @@ from ray.tune.integration.wandb import WandbLogger, WandbTrainableMixin, \
 from ray.tune.logger import DEFAULT_LOGGERS
 
 
-def train_function(config, checkpoint=None):
+def train_function(config, checkpoint_dir=None):
     for i in range(30):
         loss = config["mean"] + config["sd"] * np.random.randn()
         tune.report(loss=loss)
@@ -34,7 +34,7 @@ def tune_function(api_key_file):
 
 
 @wandb_mixin
-def decorated_train_function(config, checkpoint=None):
+def decorated_train_function(config, checkpoint_dir=None):
     for i in range(30):
         loss = config["mean"] + config["sd"] * np.random.randn()
         tune.report(loss=loss)
