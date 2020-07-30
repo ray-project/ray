@@ -253,6 +253,8 @@ def run(run_or_experiment,
         space = {"lr": tune.uniform(0, 1), "momentum": tune.uniform(0, 1)}
         tune.run(my_trainable, config=space, stop={"training_iteration": 10})
     """
+    config = config or {}
+
     trial_executor = trial_executor or RayTrialExecutor(
         queue_trials=queue_trials,
         reuse_actors=reuse_actors,
