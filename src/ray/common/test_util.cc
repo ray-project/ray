@@ -41,6 +41,10 @@ void TestSetupUtil::StartUpRedisServers(const std::vector<int> &redis_server_por
 int TestSetupUtil::StartUpRedisServer(const int &port) {
   int actual_port = port;
   if (port == 0) {
+    static std::atomic<bool> srand_called(false);
+    if (!srand_called.exchange(true)) {
+      srand(current_time_ms() % RAND_MAX);
+    }
     // Use random port (in range [2000, 7000) to avoid port conflicts between UTs.
     actual_port = rand() % 5000 + 2000;
   }
