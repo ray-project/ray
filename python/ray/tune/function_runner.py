@@ -363,7 +363,8 @@ def wrap_function(train_func):
         inherit_from = (FunctionRunner, )
 
     class ImplicitFunc(*inherit_from):
-        _name = train_func.__name__
+        _name = train_func.__name__ if hasattr(train_func, "__name__") \
+            else "func"
 
         def _trainable_func(self, config, reporter, checkpoint):
             func_args = inspect.getfullargspec(train_func).args
