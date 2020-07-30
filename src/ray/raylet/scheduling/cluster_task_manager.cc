@@ -137,6 +137,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       RAY_LOG(ERROR) << "Setting allocated instances: "
                      << allocated_instances->DebugString();
       worker->SetAllocatedInstances(allocated_instances);
+      RAY_LOG(ERROR) << "Prev line finishes -------------";
     }
     worker->AssignTaskId(spec.TaskId());
     worker->AssignJobId(spec.JobId());

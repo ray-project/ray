@@ -378,7 +378,9 @@ bool TaskResourceInstances::IsEmpty() const {
 std::string TaskResourceInstances::DebugString() const {
   std::stringstream buffer;
   buffer << std::endl << "  Allocation: {";
+  RAY_LOG(ERROR) << "$$$$$$$$$$";
   for (size_t i = 0; i < this->predefined_resources.size(); i++) {
+    RAY_LOG(ERROR) << "#";
     buffer << VectorToString(this->predefined_resources[i]);
   }
   buffer << "}";

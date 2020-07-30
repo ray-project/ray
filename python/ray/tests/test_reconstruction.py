@@ -46,7 +46,7 @@ def test_cached_object(ray_start_cluster):
     cluster.remove_node(node_to_kill, allow_graceful=False)
     cluster.add_node(
         num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
-    assert wait_for_condition(
+    wait_for_condition(
         lambda: not all(node["Alive"] for node in ray.nodes()), timeout=10)
 
     for _ in range(20):
@@ -101,7 +101,7 @@ def test_reconstruction_cached_dependency(ray_start_cluster,
     cluster.remove_node(node_to_kill, allow_graceful=False)
     cluster.add_node(
         num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
-    assert wait_for_condition(
+    wait_for_condition(
         lambda: not all(node["Alive"] for node in ray.nodes()), timeout=10)
 
     for _ in range(20):
@@ -296,6 +296,7 @@ def test_basic_reconstruction_actor_task(ray_start_cluster,
     pid = ray.get(a.pid.remote())
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Test failing on Windows.")
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
 def test_basic_reconstruction_actor_constructor(ray_start_cluster,
                                                 reconstruction_enabled):

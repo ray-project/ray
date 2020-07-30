@@ -301,9 +301,9 @@ py_test(
 )
 
 py_test(
-    name = "test_metrics_export",
+    name = "test_metrics_agent",
     size = "small",
-    srcs = SRCS + ["test_metrics_export.py"],
+    srcs = SRCS + ["test_metrics_agent.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
@@ -468,8 +468,7 @@ py_test(
     name = "test_gcs_fault_tolerance",
     size = "medium",
     srcs = SRCS + ["test_gcs_fault_tolerance.py"],
-    # TODO(swang): Enable again once pubsub client supports GCS server restart.
-    tags = ["exclusive", "manual"],
+    tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
 
@@ -485,6 +484,14 @@ py_test(
     name = "test_async",
     size = "medium",
     srcs = SRCS + ["test_async.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_placement_group",
+    size = "medium",
+    srcs = SRCS + ["test_placement_group.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )

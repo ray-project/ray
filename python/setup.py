@@ -301,13 +301,14 @@ def find_version(*filepath):
 
 install_requires = [
     "aiohttp",
+    "aioredis",
     "click >= 7.0",
     "colorama",
     "colorful",
     "filelock",
     "google",
     "gpustat",
-    "grpcio",
+    "grpcio >= 1.28.1",
     "jsonschema",
     "msgpack >= 0.6.0, < 2.0.0",
     "numpy >= 1.16",
@@ -316,6 +317,8 @@ install_requires = [
     "pyyaml",
     "requests",
     "redis >= 3.3.2, < 3.5.0",
+    "opencensus",
+    "prometheus_client >= 0.7.1",
 ]
 
 

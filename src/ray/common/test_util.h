@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include <unistd.h>
-
 #include <boost/optional.hpp>
 #include <functional>
 #include <string>

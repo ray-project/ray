@@ -20,8 +20,7 @@ commands:
   - name: Run
     command: ./run_asan_tests.sh run
   - name: Recompile
-    command: |
-      git_sha={{git_sha}} ./run_asan_tests.sh recompile
+    command: ./run_asan_tests.sh recompile {{git_sha}}
     params:
     - name: git_sha # Ray version string.
       default: "master"

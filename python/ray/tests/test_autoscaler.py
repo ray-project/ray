@@ -47,6 +47,10 @@ class MockProcessRunner:
                 raise Exception("Failing command on purpose")
         self.calls.append(cmd)
 
+    def check_output(self, cmd):
+        self.check_call(cmd)
+        return "command-output".encode()
+
     def assert_has_call(self, ip, pattern):
         out = ""
         for cmd in self.calls:
@@ -285,6 +289,7 @@ class AutoscalingTest(unittest.TestCase):
         self.tmpdir = tempfile.mkdtemp()
 
     def tearDown(self):
+        self.provider = None
         del NODE_PROVIDERS["mock"]
         shutil.rmtree(self.tmpdir)
         ray.shutdown()
@@ -1082,6 +1087,137 @@ class AutoscalingTest(unittest.TestCase):
         for i in [3, 4, 5, 6, 7, 8, 9]:
             runner.assert_has_call("172.0.0.{}".format(i), "setup_cmd")
             runner.assert_has_call("172.0.0.{}".format(i), "start_ray_worker")
+
+    def testContinuousFileMounts(self):
+        file_mount_dir = tempfile.mkdtemp()
+
+        self.provider = MockProvider()
+        config = SMALL_CLUSTER.copy()
+        config["file_mounts"] = {"/home/test-folder": file_mount_dir}
+        config["file_mounts_sync_continuously"] = True
+        config["min_workers"] = 2
+        config["max_workers"] = 2
+        config_path = self.write_config(config)
+        runner = MockProcessRunner()
+        lm = LoadMetrics()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            lm,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+
+        autoscaler.update()
+        self.waitForNodes(2)
+        self.provider.finish_starting_nodes()
+        autoscaler.update()
+        self.waitForNodes(
+            2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+        autoscaler.update()
+
+        for i in [0, 1]:
+            runner.assert_has_call("172.0.0.{}".format(i), "setup_cmd")
+            runner.assert_has_call(
+                "172.0.0.{}".format(i),
+                "{}/ ubuntu@172.0.0.{}:/home/test-folder/".format(
+                    file_mount_dir, i))
+
+        runner.clear_history()
+
+        with open(os.path.join(file_mount_dir, "test.txt"), "wb") as temp_file:
+            temp_file.write("hello".encode())
+
+        autoscaler.update()
+        self.waitForNodes(2)
+        self.provider.finish_starting_nodes()
+        autoscaler.update()
+        self.waitForNodes(
+            2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+        autoscaler.update()
+
+        for i in [0, 1]:
+            runner.assert_not_has_call("172.0.0.{}".format(i), "setup_cmd")
+            runner.assert_has_call(
+                "172.0.0.{}".format(i),
+                "{}/ ubuntu@172.0.0.{}:/home/test-folder/".format(
+                    file_mount_dir, i))
+
+    def testFileMountsNonContinuous(self):
+        file_mount_dir = tempfile.mkdtemp()
+
+        self.provider = MockProvider()
+        config = SMALL_CLUSTER.copy()
+        config["file_mounts"] = {"/home/test-folder": file_mount_dir}
+        config["min_workers"] = 2
+        config["max_workers"] = 2
+        config_path = self.write_config(config)
+        runner = MockProcessRunner()
+        lm = LoadMetrics()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            lm,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+
+        autoscaler.update()
+        self.waitForNodes(2)
+        self.provider.finish_starting_nodes()
+        autoscaler.update()
+        self.waitForNodes(
+            2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+        autoscaler.update()
+
+        for i in [0, 1]:
+            runner.assert_has_call("172.0.0.{}".format(i), "setup_cmd")
+            runner.assert_has_call(
+                "172.0.0.{}".format(i),
+                "{}/ ubuntu@172.0.0.{}:/home/test-folder/".format(
+                    file_mount_dir, i))
+
+        runner.clear_history()
+
+        with open(os.path.join(file_mount_dir, "test.txt"), "wb") as temp_file:
+            temp_file.write("hello".encode())
+
+        autoscaler.update()
+        self.waitForNodes(2)
+        self.provider.finish_starting_nodes()
+        self.waitForNodes(
+            2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+
+        for i in [0, 1]:
+            runner.assert_not_has_call("172.0.0.{}".format(i), "setup_cmd")
+            runner.assert_not_has_call(
+                "172.0.0.{}".format(i),
+                "{}/ ubuntu@172.0.0.{}:/home/test-folder/".format(
+                    file_mount_dir, i))
+
+        # Simulate a second `ray up` call
+        from ray.autoscaler import util
+        util._hash_cache = {}
+        runner = MockProcessRunner()
+        lm = LoadMetrics()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            lm,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+
+        autoscaler.update()
+        self.waitForNodes(2)
+        self.provider.finish_starting_nodes()
+        self.waitForNodes(
+            2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+        autoscaler.update()
+
+        for i in [0, 1]:
+            runner.assert_has_call("172.0.0.{}".format(i), "setup_cmd")
+            runner.assert_has_call(
+                "172.0.0.{}".format(i),
+                "{}/ ubuntu@172.0.0.{}:/home/test-folder/".format(
+                    file_mount_dir, i))
 
 
 if __name__ == "__main__":
