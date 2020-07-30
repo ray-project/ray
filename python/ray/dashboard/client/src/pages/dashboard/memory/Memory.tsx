@@ -95,7 +95,7 @@ const UngroupedMemoryRows: React.FC<UngroupedMemoryRowsProps> = ({
       {sortedEntries.slice(0, visibleEntries).map((memoryTableEntry, index) => (
         <MemoryTableRow
           memoryTableEntry={memoryTableEntry}
-          key={`mem-row-${index}`}
+          key={index.toString()}
         />
       ))}
       <ExpanderRow onExpand={onExpand} />
