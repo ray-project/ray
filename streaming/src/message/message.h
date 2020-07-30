@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <cstring>
 
 namespace ray {
 namespace streaming {

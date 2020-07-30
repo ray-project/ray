@@ -137,7 +137,7 @@ StreamingStatus DataReader::GetMessageFromChannel(
     /// In AT_LEAST_ONCE, wait_time_ms is set to 0, means `ConsumeItemFromChannel`
     /// will return immediately if no items in queue. At the same time, `timeout_ms` is
     /// ignored.
-    channel_map_[channel_info.channel_id]->ConsumeItemFromChannel(message, wait_time_ms);
+    channel_map_[channel_info.channel_id]->ConsumeItemFromChannel(message->data, message->data_size, wait_time_ms);
 
     channel_info.get_queue_item_times++;
     if (!message->data) {

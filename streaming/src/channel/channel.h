@@ -111,8 +111,8 @@ class ConsumerChannel {
   virtual StreamingStatus ClearTransferCheckpoint(uint64_t checkpoint_id,
                                                   uint64_t checkpoint_offset) = 0;
   virtual StreamingStatus RefreshChannelInfo() = 0;
-  virtual StreamingStatus ConsumeItemFromChannel(
-      std::shared_ptr<DataBundle> &message, uint32_t timeout) = 0;
+  virtual StreamingStatus ConsumeItemFromChannel(uint8_t *&data, uint32_t &data_size,
+                                         uint32_t timeout) = 0;
   virtual StreamingStatus NotifyChannelConsumed(uint64_t offset_id) = 0;
 
  protected:
@@ -152,7 +152,7 @@ class StreamingQueueConsumer : public ConsumerChannel {
   StreamingStatus ClearTransferCheckpoint(uint64_t checkpoint_id,
                                           uint64_t checkpoint_offset) override;
   StreamingStatus RefreshChannelInfo() override;
-  StreamingStatus ConsumeItemFromChannel(std::shared_ptr<DataBundle> &message,
+  StreamingStatus ConsumeItemFromChannel(uint8_t *&data, uint32_t &data_size,
                                          uint32_t timeout) override;
   StreamingStatus NotifyChannelConsumed(uint64_t offset_id) override;
 
@@ -201,7 +201,7 @@ class MockConsumer : public ConsumerChannel {
     return StreamingStatus::OK;
   }
   StreamingStatus RefreshChannelInfo() override;
-  StreamingStatus ConsumeItemFromChannel(std::shared_ptr<DataBundle> &message,
+  StreamingStatus ConsumeItemFromChannel(uint8_t *&data, uint32_t &data_size,
                                          uint32_t timeout) override;
   StreamingStatus NotifyChannelConsumed(uint64_t offset_id) override;
 };
