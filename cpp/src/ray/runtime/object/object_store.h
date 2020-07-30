@@ -18,13 +18,13 @@ class ObjectStore {
 
   /// Store an object in the object store.
   ///
-  /// \param[in] data The Serialized object buffer which should be stored.
+  /// \param[in] data The serialized object data buffer to store.
   /// \param[out] The id which is allocated to the object.
   void Put(std::shared_ptr<msgpack::sbuffer> data, ObjectID *object_id);
 
   /// Store an object in the object store.
   ///
-  /// \param[in] data The Serialized object buffer which should be stored.
+  /// \param[in] data The serialized object data buffer to store.
   /// \param[in] object_id The object which should be stored.
   void Put(std::shared_ptr<msgpack::sbuffer> data, const ObjectID &object_id);
 

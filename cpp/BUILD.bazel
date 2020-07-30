@@ -27,9 +27,9 @@ cc_library(
         "include/ray/**/*.h",
         "include/ray/**/**/*.h",
     ]),
-    strip_include_prefix = "include",
     copts = COPTS,
     linkopts = ["-ldl"],
+    strip_include_prefix = "include",
     # linkstatic = False,
     visibility = ["//visibility:public"],
     deps = [
@@ -45,11 +45,11 @@ cc_library(
 
 cc_binary(
     name = "default_worker",
-    linkstatic = True,
     srcs = [
         "src/ray/worker/default_worker.cc",
     ],
     copts = COPTS,
+    linkstatic = True,
     deps = [
         "//:core_worker_lib",
     ],
@@ -74,12 +74,12 @@ genrule(
 
 cc_binary(
     name = "example",
-    # testonly = 1,
-    linkstatic = False,
     srcs = glob([
         "src/example/example.cc",
     ]),
     copts = COPTS,
+    testonly = 1,
+    linkstatic = False,
     deps = [
         "ray_api",
     ],
@@ -87,12 +87,12 @@ cc_binary(
 
 cc_binary(
     name = "example_cluster_mode",
-    # testonly = 1,
-    linkstatic = False,
     srcs = glob([
         "src/example/example_cluster_mode.cc",
     ]),
     copts = COPTS,
+    testonly = 1,
+    linkstatic = False,
     deps = [
         "ray_api",
     ],
@@ -103,8 +103,8 @@ cc_test(
     srcs = glob([
         "src/ray/test/*.cc",
     ]),
-    linkstatic = False,
     copts = COPTS,
+    linkstatic = False,
     deps = [
         "ray_api",
         "@com_google_googletest//:gtest_main",
@@ -116,8 +116,8 @@ cc_test(
     srcs = glob([
         "src/ray/test/cluster/*.cc",
     ]),
-    linkstatic = False,
     copts = COPTS,
+    linkstatic = False,
     deps = [
         "ray_api",
         "@com_google_googletest//:gtest_main",
