@@ -17,7 +17,6 @@ from ray.test_utils import (
     generate_internal_config_map,
     get_other_nodes,
     SignalActor,
-    init_error_pubsub,
     get_error_message,
 )
 
@@ -627,11 +626,11 @@ def test_checkpointing_on_node_failure(ray_start_cluster_2_nodes,
 
 
 @pytest.mark.skip(reason="TODO: Actor checkpointing")
-def test_checkpointing_save_exception(ray_start_regular,
+def test_checkpointing_save_exception(ray_start_regular, error_pubsub,
                                       ray_checkpointable_actor_cls):
     """Test actor can still be recovered if checkpoints fail to complete."""
 
-    p = init_error_pubsub()
+    p = error_pubsub
 
     @ray.remote(max_restarts=2)
     class RemoteCheckpointableActor(ray_checkpointable_actor_cls):
@@ -665,18 +664,17 @@ def test_checkpointing_save_exception(ray_start_regular,
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
 
     # Check that the checkpoint error was pushed to the driver.
-    errors = get_error_message(p, 1)
+    errors = get_error_message(p, 1, ray_constants.CHECKPOINT_PUSH_ERROR)
     assert len(errors) == 1
     assert errors[0].type == ray_constants.CHECKPOINT_PUSH_ERROR
-    p.close()
 
 
 @pytest.mark.skip(reason="TODO: Actor checkpointing")
-def test_checkpointing_load_exception(ray_start_regular,
+def test_checkpointing_load_exception(ray_start_regular, error_pubsub,
                                       ray_checkpointable_actor_cls):
     """Test actor can still be recovered if checkpoints fail to load."""
 
-    p = init_error_pubsub()
+    p = error_pubsub
 
     @ray.remote(max_restarts=2)
     class RemoteCheckpointableActor(ray_checkpointable_actor_cls):
@@ -711,10 +709,9 @@ def test_checkpointing_load_exception(ray_start_regular,
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
 
     # Check that the checkpoint error was pushed to the driver.
-    errors = get_error_message(p, 1)
+    errors = get_error_message(p, 1, ray_constants.CHECKPOINT_PUSH_ERROR)
     assert len(errors) == 1
     assert errors[0].type == ray_constants.CHECKPOINT_PUSH_ERROR
-    p.close()
 
 
 @pytest.mark.parametrize(
@@ -769,15 +766,15 @@ def test_bad_checkpointable_actor_class():
                 return True
 
 
-def test_init_exception_in_checkpointable_actor(ray_start_regular,
-                                                ray_checkpointable_actor_cls):
+def test_init_exception_in_checkpointable_actor(
+        ray_start_regular, error_pubsub, ray_checkpointable_actor_cls):
     # This test is similar to test_failure.py::test_failed_actor_init.
     # This test is used to guarantee that checkpointable actor does not
     # break the same logic.
     error_message1 = "actor constructor failed"
     error_message2 = "actor method failed"
 
-    p = init_error_pubsub()
+    p = error_pubsub
 
     @ray.remote
     class CheckpointableFailedActor(ray_checkpointable_actor_cls):
@@ -793,16 +790,15 @@ def test_init_exception_in_checkpointable_actor(ray_start_regular,
     a = CheckpointableFailedActor.remote()
 
     # Make sure that we get errors from a failed constructor.
-    errors = get_error_message(p, 1)
+    errors = get_error_message(p, 1, ray_constants.TASK_PUSH_ERROR)
     assert len(errors) == 1
     assert error_message1 in errors[0].error_message
 
     # Make sure that we get errors from a failed method.
     a.fail_method.remote()
-    errors = get_error_message(p, 1)
+    errors = get_error_message(p, 1, ray_constants.TASK_PUSH_ERROR)
     assert len(errors) == 1
     assert error_message1 in errors[0].error_message
-    p.close()
 
 
 def test_decorated_method(ray_start_regular):
