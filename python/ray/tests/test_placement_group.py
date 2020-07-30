@@ -148,12 +148,14 @@ def test_placement_group_hang(ray_start_cluster):
         cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
 
-    ray.get(f.remote())  # <--- TODO(ekl) this line causes the later hang
+    # Warm workers up, so that this triggers the hang rice.
+    ray.get(f.remote())
 
     g1 = ray.experimental.placement_group([{"CPU": 2}])
+    # This will start out infeasible. The placement group will then be created
+    # and it transitions to feasible.
     o1 = f.options(placement_group_id=g1).remote()
 
-    # TODO(ekl) This hangs forever.
     resources = ray.get(o1)
     assert len(resources) == 1, resources
     assert "_CPU" in list(resources.keys())[0], resources
