@@ -5,6 +5,7 @@
 #include <numeric>
 
 #include "message.h"
+#include "ray/common/id.h"
 
 namespace ray {
 namespace streaming {
@@ -189,7 +190,11 @@ struct DataBundle {
   StreamingMessageBundleMetaPtr meta;
   bool is_reallocated = false;
   
-  ~DataBundle() { delete[] data; }
+  ~DataBundle() { 
+    if (is_reallocated) {
+      delete[] data;
+    }
+  }
 
   void Realloc(uint32_t size) {
     data = new uint8_t[size];

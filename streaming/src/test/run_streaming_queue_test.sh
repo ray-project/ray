@@ -52,9 +52,14 @@ REDIS_CLIENT_EXEC="$RAY_ROOT/bazel-bin/redis-cli"
 RAYLET_EXEC="$RAY_ROOT/bazel-bin/raylet"
 STREAMING_TEST_WORKER_EXEC="$RAY_ROOT/bazel-bin/streaming/streaming_test_worker"
 GCS_SERVER_EXEC="$RAY_ROOT/bazel-bin/gcs_server"
+# clear env
+ps -ax | grep -E "plasma|DefaultDriver|DefaultWorker|Application|AppStarter|redis|http_server|job_agent" | grep -v grep | awk '{print $1}' | xargs -r kill -9 &> /dev/null
 
-# Allow cleanup commands to fail.
 # Run tests.
-$RAY_ROOT/bazel-bin/streaming/streaming_queue_tests $STORE_EXEC $RAYLET_EXEC $RAYLET_PORT $STREAMING_TEST_WORKER_EXEC $GCS_SERVER_EXEC $REDIS_SERVER_EXEC $REDIS_MODULE $REDIS_CLIENT_EXEC --gtest_filter=StreamingTest/StreamingWriterTest.streaming_writer_exactly_once_test/0
-# $RAY_ROOT/bazel-bin/streaming/streaming_queue_tests $STORE_EXEC $RAYLET_EXEC $RAYLET_PORT $STREAMING_TEST_WORKER_EXEC $GCS_SERVER_EXEC $REDIS_SERVER_EXEC $REDIS_MODULE $REDIS_CLIENT_EXEC
+
+# to run specific test, add --gtest_filter, below is an example
+#$RAY_ROOT/bazel-bin/streaming/streaming_queue_tests $STORE_EXEC $RAYLET_EXEC $RAYLET_PORT $STREAMING_TEST_WORKER_EXEC $GCS_SERVER_EXEC $REDIS_SERVER_EXEC $REDIS_MODULE $REDIS_CLIENT_EXEC --gtest_filter=StreamingTest/StreamingWriterTest.streaming_writer_exactly_once_test/0
+
+# run all tests
+$RAY_ROOT/bazel-bin/streaming/streaming_queue_tests $STORE_EXEC $RAYLET_EXEC $RAYLET_PORT $STREAMING_TEST_WORKER_EXEC $GCS_SERVER_EXEC $REDIS_SERVER_EXEC $REDIS_MODULE $REDIS_CLIENT_EXEC
 sleep 1s
