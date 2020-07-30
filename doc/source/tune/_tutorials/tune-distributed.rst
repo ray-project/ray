@@ -213,16 +213,7 @@ In GCP, you can use the following configuration modification:
         scheduling:
           - preemptible: true
 
-Spot instances may be removed suddenly while trials are still running. Often times this may be difficult to deal with when using other distributed hyperparameter optimization frameworks. Tune allows users to mitigate the effects of this by preserving the progress of your model training through checkpointing.
-
-The easiest way to do this is to subclass the pre-defined ``Trainable`` class and implement ``save_checkpoint``, and ``load_checkpoint`` abstract methods, as seen in the example below:
-
-.. literalinclude:: /../../python/ray/tune/examples/mnist_pytorch_trainable.py
-   :language: python
-   :start-after: __trainable_example_begin__
-   :end-before: __trainable_example_end__
-
-This can then be used similarly to the Function API as before:
+Spot instances may be removed suddenly while trials are still running. Often times this may be difficult to deal with when using other distributed hyperparameter optimization frameworks. Tune allows users to mitigate the effects of this by preserving the progress of your model training through :ref:`checkpointing <tune-function-checkpointing>`.
 
 .. literalinclude:: /../../python/ray/tune/tests/tutorial.py
     :language: python
