@@ -311,6 +311,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ResourceIdSet ScheduleBundle(
       std::unordered_map<ClientID, SchedulingResources> &resource_map,
       const BundleSpecification &bundle_spec);
+
   /// Handle a task whose return value(s) must be reconstructed.
   ///
   /// \param task_id The relevant task ID.
