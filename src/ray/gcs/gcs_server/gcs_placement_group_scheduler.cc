@@ -128,7 +128,7 @@ void GcsPlacementGroupScheduler::Schedule(
               rpc::ScheduleData data;
               for (size_t i = 0; i < bundles.size(); i++) {
                 // TODO(ekl) this is a hack to get a string key for the proto
-                auto key = bundles[i]->PlacementGroupId().Hex() + "_" + bundles[i]->Index();
+                auto key = bundles[i]->PlacementGroupId().Hex() + "_" + std::to_string(bundles[i]->Index());
                 data.mutable_schedule_plan()->insert(
                     {key, (*decision)[bundles[i]->BundleId()].Binary()});
               }
