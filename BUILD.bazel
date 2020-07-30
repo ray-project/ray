@@ -322,10 +322,10 @@ cc_library(
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
-        "//src/ray/protobuf:common_cc_proto",
-        "//src/ray/protobuf:gcs_cc_proto",
         ":node_manager_fbs",
         ":ray_util",
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/protobuf:gcs_cc_proto",
         "@arrow",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
@@ -500,7 +500,6 @@ cc_library(
     strip_include_prefix = "src",
     visibility = ["//streaming:__subpackages__"],
     deps = [
-        "//src/ray/protobuf:common_cc_proto",
         ":gcs",
         ":node_manager_fbs",
         ":node_manager_rpc",
@@ -511,6 +510,7 @@ cc_library(
         ":service_based_gcs_client_lib",
         ":stats_lib",
         ":worker_rpc",
+        "//src/ray/protobuf:common_cc_proto",
         "@boost//:asio",
         "@com_github_jupp0r_prometheus_cpp//pull",
         "@com_google_absl//absl/base:core_headers",
