@@ -15,6 +15,7 @@
 #include "ray/core_worker/core_worker.h"
 
 #include "boost/fiber/all.hpp"
+#include "ray/common/bundle_spec.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/context.h"
@@ -161,6 +162,18 @@ CoreWorkerProcess::~CoreWorkerProcess() {
 void CoreWorkerProcess::EnsureInitialized() {
   RAY_CHECK(instance_) << "The core worker process is not initialized yet or already "
                        << "shutdown.";
+}
+
+std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker(const WorkerID &worker_id) {
+  if (!instance_) {
+    return nullptr;
+  }
+  absl::ReaderMutexLock workers_lock(&instance_->worker_map_mutex_);
+  auto it = instance_->workers_.find(worker_id);
+  if (it != instance_->workers_.end()) {
+    return it->second;
+  }
+  return nullptr;
 }
 
 CoreWorker &CoreWorkerProcess::GetCoreWorker() {
@@ -1194,7 +1207,7 @@ std::unordered_map<std::string, double> AddPlacementGroupConstraint(
   if (placement_group_id != PlacementGroupID::Nil()) {
     for (auto iter = resources.begin(); iter != resources.end(); iter++) {
       auto new_name =
-          placement_group_id.Hex() + std::to_string(bundle_index) + "_" + iter->first;
+          FormatPlacementGroupResource(iter->first, placement_group_id, bundle_index);
       new_resources[new_name] = iter->second;
     }
     return new_resources;

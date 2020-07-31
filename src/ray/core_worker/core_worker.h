@@ -178,6 +178,13 @@ class CoreWorkerProcess {
   /// `CoreWorkerProcess` has full control of the destruction timing of `CoreWorker`.
   static CoreWorker &GetCoreWorker();
 
+  /// Try to get the `CoreWorker` instance by worker ID.
+  /// If the current thread is not associated with a core worker, returns a null pointer.
+  ///
+  /// \param[in] workerId The worker ID.
+  /// \return The `CoreWorker` instance.
+  static std::shared_ptr<CoreWorker> TryGetWorker(const WorkerID &worker_id);
+
   /// Set the core worker associated with the current thread by worker ID.
   /// Currently used by Java worker only.
   ///
