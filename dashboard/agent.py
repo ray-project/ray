@@ -4,10 +4,14 @@ import logging
 import logging.handlers
 import os
 import sys
+import socket
+import json
 import traceback
 
 import aiohttp
-import aioredis
+import aiohttp.web
+import aiohttp_cors
+from aiohttp import hdrs
 from grpc.experimental import aio as aiogrpc
 
 import ray
@@ -19,6 +23,7 @@ import ray.utils
 import psutil
 
 logger = logging.getLogger(__name__)
+routes = dashboard_utils.ClassMethodRouteTable
 
 aiogrpc.init_grpc_aio()
 
@@ -33,11 +38,8 @@ class DashboardAgent(object):
                  object_store_name=None,
                  raylet_name=None):
         """Initialize the DashboardAgent object."""
-        self._agent_cls_list = dashboard_utils.get_all_modules(
-            dashboard_utils.DashboardAgentModule)
-        ip, port = redis_address.split(":")
         # Public attributes are accessible for all agent modules.
-        self.redis_address = (ip, int(port))
+        self.redis_address = dashboard_utils.address_tuple(redis_address)
         self.redis_password = redis_password
         self.temp_dir = temp_dir
         self.log_dir = log_dir
@@ -46,9 +48,9 @@ class DashboardAgent(object):
         self.raylet_name = raylet_name
         self.ip = ray.services.get_node_ip_address()
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
-        listen_address = "[::]:0"
-        logger.info("Dashboard agent listen at: %s", listen_address)
-        self.port = self.server.add_insecure_port(listen_address)
+        self.grpc_port = self.server.add_insecure_port("[::]:0")
+        logger.info("Dashboard agent grpc address: %s:%s", self.ip,
+                    self.grpc_port)
         self.aioredis_client = None
         self.aiogrpc_raylet_channel = aiogrpc.insecure_channel("{}:{}".format(
             self.ip, self.node_manager_port))
@@ -57,18 +59,30 @@ class DashboardAgent(object):
     def _load_modules(self):
         """Load dashboard agent modules."""
         modules = []
-        for cls in self._agent_cls_list:
+        agent_cls_list = dashboard_utils.get_all_modules(
+            dashboard_utils.DashboardAgentModule)
+        for cls in agent_cls_list:
             logger.info("Load %s: %s",
                         dashboard_utils.DashboardAgentModule.__name__, cls)
             c = cls(self)
+            dashboard_utils.ClassMethodRouteTable.bind(c)
             modules.append(c)
         logger.info("Load {} modules.".format(len(modules)))
         return modules
 
     async def run(self):
         # Create an aioredis client for all modules.
-        self.aioredis_client = await aioredis.create_redis_pool(
-            address=self.redis_address, password=self.redis_password)
+        try:
+            self.aioredis_client = await dashboard_utils.get_aioredis_client(
+                self.redis_address, self.redis_password,
+                dashboard_consts.CONNECT_REDIS_INTERNAL_SECONDS,
+                dashboard_consts.RETRY_REDIS_CONNECTION_TIMES)
+        except socket.gaierror as ex:
+            logger.exception(ex)
+            logger.error(
+                "Dashboard agent suicide, "
+                "Failed to connect to redis at %s", self.redis_address)
+            sys.exit(-1)
 
         # Create a http session for all modules.
         self.http_session = aiohttp.ClientSession(
@@ -76,11 +90,6 @@ class DashboardAgent(object):
 
         # Start a grpc asyncio server.
         await self.server.start()
-
-        # Write the dashboard agent port to redis.
-        await self.aioredis_client.set(
-            "{}{}".format(dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX,
-                          self.ip), self.port)
 
         async def _check_parent():
             """Check if raylet is dead."""
@@ -96,9 +105,51 @@ class DashboardAgent(object):
                     DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_SECONDS)
 
         modules = self._load_modules()
+
+        # Http server should be initialized after all modules loaded.
+        app = aiohttp.web.Application()
+        app.add_routes(routes=routes.bound_routes())
+
+        # Enable CORS on all routes.
+        cors = aiohttp_cors.setup(
+            app,
+            defaults={
+                "*": aiohttp_cors.ResourceOptions(
+                    allow_credentials=True,
+                    expose_headers="*",
+                    allow_methods="*",
+                    allow_headers=("Content-Type", "X-Header"),
+                )
+            })
+        for route in list(app.router.routes()):
+            cors.add(route)
+
+        runner = aiohttp.web.AppRunner(app)
+        await runner.setup()
+        site = aiohttp.web.TCPSite(runner, self.ip, 0)
+        await site.start()
+        http_host, http_port = site._server.sockets[0].getsockname()
+        logger.info("Dashboard agent http address: %s:%s", http_host,
+                    http_port)
+
+        # Dump registered http routes.
+        dump_routes = [
+            r for r in app.router.routes() if r.method != hdrs.METH_HEAD
+        ]
+        for r in dump_routes:
+            logger.info(r)
+        logger.info("Registered %s routes.", len(dump_routes))
+
+        # Write the dashboard agent port to redis.
+        await self.aioredis_client.set(
+            "{}{}".format(dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX,
+                          self.ip), json.dumps([http_port, self.grpc_port]))
+
         await asyncio.gather(_check_parent(),
                              *(m.run(self.server) for m in modules))
         await self.server.wait_for_termination()
+        # Wait for finish signal
+        await runner.cleanup()
 
 
 if __name__ == "__main__":

@@ -301,6 +301,7 @@ def find_version(*filepath):
 
 install_requires = [
     "aiohttp",
+    "aiohttp_cors",  # Cross Origin Resource Sharing (CORS) support for aiohttp
     "aioredis",
     "click >= 7.0",
     "colorama",
