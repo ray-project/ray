@@ -116,6 +116,8 @@ class TrainableUtil:
             checkpoint_dir (str): Path to checkpoint directory.
             index (str): A subdirectory will be created
                 at the checkpoint directory named 'checkpoint_{index}'.
+            override (bool): Deletes checkpoint_dir before creating
+                a new one.
         """
         suffix = "checkpoint"
         if index is not None:
