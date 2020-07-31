@@ -17,8 +17,8 @@ COPY requirements.txt ./
 COPY requirements_autoscaler.txt ./
 COPY $WHEEL_PATH $WHEEL_NAME
 
-RUN pip --no-cache-dir install -r requirements.txt \
-    && pip --no-cache-dir install $WHEEL_NAME[all]
+RUN $HOME/anaconda3/bin/pip --no-cache-dir install -r requirements.txt \
+    && $HOME/anaconda3/bin/pip --no-cache-dir install $WHEEL_NAME[all]
 
 # For Click
 ENV LC_ALL=C.UTF-8

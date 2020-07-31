@@ -37,4 +37,5 @@ RUN apt-get update -y && apt-get upgrade -y \
     # AttributeError: 'numpy.ufunc' object has no attribute '__module__'
     && $HOME/anaconda3/bin/pip uninstall -y dask
 
-ENV PATH "$HOME/anaconda3/bin:$PATH"
+# Use "/root" instead of $HOME because $HOME evaluates to "" instead of "/root"
+ENV PATH "/root/anaconda3/bin:$PATH"
