@@ -5,6 +5,7 @@ import inspect
 import shutil
 import threading
 import traceback
+import uuid
 
 from six.moves import queue
 
@@ -21,6 +22,62 @@ RESULT_FETCH_TIMEOUT = 0.2
 
 ERROR_REPORT_TIMEOUT = 10
 ERROR_FETCH_TIMEOUT = 1
+
+EMPTY_MARKER = ".empty_ckpt"
+TEMP_MARKER = ".temp_marker"
+
+
+class FuncCheckpointUtil:
+    """Utility class holding various function-checkpointing mechanisms."""
+
+    @staticmethod
+    def convert_empty_checkpoint_dir(checkpoint_dir):
+        """Indicate that the given checkpoint doesn't have state."""
+        open(os.path.join(checkpoint_dir, ".empty_marker"), "a").close()
+
+    @staticmethod
+    def mk_temp_checkpoint_dir(logdir):
+        """Indicate that the checkpoint is only for restoration."""
+        temporary_checkpoint_dir = TrainableUtil.make_checkpoint_dir(
+            logdir, index=uuid.uuid4().hex[:6], override=True)
+        open(os.path.join(temporary_checkpoint_dir, TEMP_MARKER), "a").close()
+        return temporary_checkpoint_dir
+
+    @staticmethod
+    def is_temp_checkpoint_dir(checkpoint_dir):
+        return os.path.exists(os.path.join(checkpoint_dir, TEMP_MARKER))
+
+    @staticmethod
+    def convert_to_permanent_checkpoint(checkpoint_dir, logdir, step):
+        checkpoint_dir = os.path.abspath(checkpoint_dir)
+        temporary_marker = os.path.join(checkpoint_dir, TEMP_MARKER)
+        assert os.path.exists(temporary_marker), (
+            "Should not be calling this method on a permanent checkpoint.")
+        os.remove(temporary_marker)
+        perm_checkpoint_dir = TrainableUtil.make_checkpoint_dir(
+            logdir, index=step, override=True)
+
+        for filename in os.listdir(checkpoint_dir):
+            shutil.move(
+                os.path.join(checkpoint_dir, filename),
+                os.path.join(perm_checkpoint_dir, filename))  # forces override
+
+
+        shutil.rmtree(checkpoint_dir)
+        assert not os.path.exists(
+            os.path.join(perm_checkpoint_dir, TEMP_MARKER))
+        return perm_checkpoint_dir
+
+    @staticmethod
+    def is_empty_checkpoint(checkpoint_dir):
+        return os.path.exists(os.path.join(checkpoint_dir, EMPTY_MARKER))
+
+    @staticmethod
+    def clear_empty_marker(checkpoint_dir):
+        empty_marker = os.path.join(checkpoint_dir, EMPTY_MARKER)
+        assert os.path.exists(empty_marker), (
+            "Should not be calling this method on a permanent checkpoint.")
+        os.remove(os.path.join(checkpoint_dir, EMPTY_MARKER))
 
 
 class StatusReporter:
@@ -44,7 +101,7 @@ class StatusReporter:
         self._trial_name = trial_name
         self._trial_id = trial_id
         self._logdir = logdir
-        self._last_checkpoint = {}
+        self._last_checkpoint = None
         self._fresh_checkpoint = False
 
     def __call__(self, **kwargs):
@@ -89,7 +146,12 @@ class StatusReporter:
         logger.debug("Making checkpoint dir at %s", checkpoint_dir)
         return checkpoint_dir
 
-    def save_checkpoint(self, checkpoint):
+    def set_checkpoint(self, checkpoint, is_new=True):
+        """Sets the checkpoint to be returned upon get_checkpoint.
+
+        If this is a "new" checkpoint, it will notify Tune
+        (via has_new_checkpoint). Otherwise, it will NOT notify Tune.
+        """
         if isinstance(checkpoint, str):
             try:
                 TrainableUtil.find_checkpoint_dir(checkpoint)
@@ -98,7 +160,8 @@ class StatusReporter:
                              "make_checkpoint_dir.")
                 raise
         self._last_checkpoint = checkpoint
-        self._fresh_checkpoint = True
+        if is_new:
+            self._fresh_checkpoint = True
 
     def has_new_checkpoint(self):
         return self._fresh_checkpoint
@@ -189,7 +252,7 @@ class FunctionRunner(Trainable):
         session.init(self._status_reporter)
         self._runner = None
         self._restore_tmpdir = None
-        self.default_checkpoint_dir = None
+        self.temp_checkpoint_dir = None
 
     def _trainable_func(self):
         """Subclasses can override this to set the trainable func."""
@@ -282,11 +345,6 @@ class FunctionRunner(Trainable):
     def execute(self, fn):
         return fn(self)
 
-    def create_default_checkpoint_dir(self):
-        self.default_checkpoint_dir = TrainableUtil.make_checkpoint_dir(
-            self.logdir, index="default")
-        return self.default_checkpoint_dir
-
     def save(self, checkpoint_path=None):
         if checkpoint_path:
             raise ValueError(
@@ -297,12 +355,33 @@ class FunctionRunner(Trainable):
 
         if not checkpoint:
             state.update(iteration=0, timesteps_total=0, episodes_total=0)
-            parent_dir = self.create_default_checkpoint_dir()
+            parent_dir = TrainableUtil.make_checkpoint_dir(
+                self.logdir, index=0)
+            # We drop a marker here to indicate that the checkpoint is empty
+            FuncCheckpointUtil.convert_empty_checkpoint_dir(parent_dir)
+            checkpoint = parent_dir
         elif isinstance(checkpoint, dict):
             parent_dir = TrainableUtil.make_checkpoint_dir(
                 self.logdir, index=self.training_iteration)
-        else:
+        elif isinstance(checkpoint, str):
             parent_dir = TrainableUtil.find_checkpoint_dir(checkpoint)
+            # When the trainable is restored, a temporary checkpoint
+            # is created. However, when saved, it should become permanent.
+            # Ideally, there are no save calls upon a temporary
+            # checkpoint, but certain schedulers might.
+            if FuncCheckpointUtil.is_temp_checkpoint_dir(parent_dir):
+                relative_path = os.path.relpath(checkpoint, parent_dir)
+                parent_dir = FuncCheckpointUtil.convert_to_permanent_checkpoint(
+                    checkpoint_dir=parent_dir,
+                    logdir=self.logdir,
+                    step=self.training_iteration)
+                checkpoint = os.path.abspath(
+                    os.path.join(parent_dir, relative_path))
+        else:
+            raise ValueError("Provided checkpoint was expected to have "
+                             "type (str, dict). Got {}.".format(
+                                 type(checkpoint)))
+
         checkpoint_path = TrainableUtil.process_checkpoint(
             checkpoint, parent_dir, state)
         return checkpoint_path
@@ -316,17 +395,21 @@ class FunctionRunner(Trainable):
         # This should be removed once Trainables are refactored.
         if "tune_checkpoint_path" in checkpoint:
             del checkpoint["tune_checkpoint_path"]
-        self._status_reporter.save_checkpoint(checkpoint)
+        # If there does not exist a checkpoint, we will not restore
+        # from it and will remove the marker.
+        if FuncCheckpointUtil.is_empty_checkpoint(checkpoint):
+            FuncCheckpointUtil.clear_empty_marker(checkpoint)
+            return
+        # By informing that this checkpoint is not new,
+        # we will not return the checkpoint path
+        # as a new checkpoint.
+        self._status_reporter.set_checkpoint(checkpoint, is_new=False)
 
     def restore_from_object(self, obj):
-        if self.default_checkpoint_dir is not None and os.path.exists(
-                self.default_checkpoint_dir):
-            shutil.rmtree(self.default_checkpoint_dir)
-            logger.debug("Clearing default checkpoint: %s",
-                         self.default_checkpoint_dir)
-
-        checkpoint_dir = self.create_default_checkpoint_dir()
-        checkpoint_path = TrainableUtil.create_from_pickle(obj, checkpoint_dir)
+        self.temp_checkpoint_dir = (FuncCheckpointUtil.mk_temp_checkpoint_dir(
+            self.logdir))
+        checkpoint_path = TrainableUtil.create_from_pickle(
+            obj, self.temp_checkpoint_dir)
         self.restore(checkpoint_path)
 
     def cleanup(self):
@@ -340,11 +423,11 @@ class FunctionRunner(Trainable):
         self._report_thread_runner_error()
         session.shutdown()
 
-        if self.default_checkpoint_dir is not None and os.path.exists(
-                self.default_checkpoint_dir):
-            shutil.rmtree(self.default_checkpoint_dir)
-            logger.debug("Clearing default checkpoint: %s",
-                         self.default_checkpoint_dir)
+        if self.temp_checkpoint_dir is not None and os.path.exists(
+                self.temp_checkpoint_dir):
+            shutil.rmtree(self.temp_checkpoint_dir)
+            logger.debug("Clearing temporary checkpoint: %s",
+                         self.temp_checkpoint_dir)
 
     def _report_thread_runner_error(self, block=False):
         try:

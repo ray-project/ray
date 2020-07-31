@@ -144,7 +144,7 @@ def checkpoint_dir(step=None):
     yield _checkpoint_dir
 
     if _session:
-        _session.save_checkpoint(_checkpoint_dir)
+        _session.set_checkpoint(_checkpoint_dir)
 
 
 def get_trial_dir():

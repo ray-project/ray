@@ -20,8 +20,8 @@ class FunctionApiTest(unittest.TestCase):
 
     def testFunctionNoCheckpointing(self):
         def train(config, checkpoint_dir=None):
-            for i in range(10):
-                tune.report(test=i)
+            for step in range(10):
+                tune.report(test=step)
 
         wrapped = wrap_function(train)
 
@@ -56,6 +56,7 @@ class FunctionApiTest(unittest.TestCase):
         checkpoint_obj = new_trainable.save_to_object()
         new_trainable.restore_from_object(checkpoint_obj)
         checkpoint = new_trainable.save()
+
         new_trainable.stop()
 
         new_trainable2 = wrapped()

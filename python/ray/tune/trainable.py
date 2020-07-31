@@ -109,7 +109,7 @@ class TrainableUtil:
         return checkpoint_dir
 
     @staticmethod
-    def make_checkpoint_dir(checkpoint_dir, index):
+    def make_checkpoint_dir(checkpoint_dir, index, override=False):
         """Creates a checkpoint directory within the provided path.
 
         Args:
@@ -122,6 +122,8 @@ class TrainableUtil:
             suffix += "_{}".format(index)
         checkpoint_dir = os.path.join(checkpoint_dir, suffix)
 
+        if override and os.path.exists(checkpoint_dir):
+            shutil.rmtree(checkpoint_dir)
         os.makedirs(checkpoint_dir, exist_ok=True)
         # Drop marker in directory to identify it as a checkpoint dir.
         open(os.path.join(checkpoint_dir, ".is_checkpoint"), "a").close()
