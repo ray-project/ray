@@ -10,7 +10,7 @@ This walkthrough will overview the core concepts of Ray:
 
 With Ray, your code will work on a single machine and can be easily scaled to large cluster.
 
-Java demo code in this documentation can be found `here <https://github.com/ray-project/ray/blob/master/java/test/src/main/java/io/ray/docdemo/WalkthroghDemo.java>`__.
+Java demo code in this documentation can be found `here <https://github.com/ray-project/ray/blob/master/java/test/src/main/java/io/ray/docdemo/WalkthroughDemo.java>`__.
 
 Installation
 ------------
@@ -113,9 +113,11 @@ Ray enables arbitrary functions to be executed asynchronously. These asynchronou
       // The result can be retrieved with ``ObjectRef::get``.
       Assert.assertTrue(res.get() == 1);
 
-      public static int slowFunction() throws InterruptedException {
-        TimeUnit.SECONDS.sleep(10);
-        return 1;
+      public class MyRayApp {
+        public static int slowFunction() throws InterruptedException {
+          TimeUnit.SECONDS.sleep(10);
+          return 1;
+        }
       }
 
       // Invocations of Ray remote functions happen in parallel.
@@ -149,8 +151,10 @@ Passing object refs to remote functions
 
   .. code-tab:: java
 
-    public static int functionWithAnArgument(int value) {
-      return value + 1;
+    public class MyRayApp {
+      public static int functionWithAnArgument(int value) {
+        return value + 1;
+      }
     }
 
     ObjectRef<Integer> objRef1 = Ray.task(MyRayApp::myFunction).remote();
