@@ -28,10 +28,10 @@ public class MetricTest extends BaseTest {
                                       int threadPoolSize,
                                       long shutdownWaitTimeMs) {
     MetricConfig config = MetricConfig.builder()
-      .timeIntervalMs(timeIntervalMs)
-      .threadPoolSize(threadPoolSize)
-      .shutdownWaitTimeMs(shutdownWaitTimeMs)
-      .create();
+        .timeIntervalMs(timeIntervalMs)
+        .threadPoolSize(threadPoolSize)
+        .shutdownWaitTimeMs(shutdownWaitTimeMs)
+        .create();
     Metrics.init(config);
     return config;
   }
@@ -122,7 +122,7 @@ public class MetricTest extends BaseTest {
     boundaries.add(15.0);
     boundaries.add(12.0);
     Histogram histogram = new Histogram("metric_histogram", "histogram", "1pc",
-      boundaries, tags);
+        boundaries, tags);
     for (int i = 1; i <= 200; ++i) {
       histogram.update(i * 1.0d);
     }
