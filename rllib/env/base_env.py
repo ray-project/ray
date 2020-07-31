@@ -133,7 +133,7 @@ class BaseEnv:
                         action_space=env.action_space,
                         observation_space=env.observation_space)
                     env = _VectorEnvToBaseEnv(env)
-        assert isinstance(env_to_check, BaseEnv), env
+        assert isinstance(env, BaseEnv), env
         return env
 
     @PublicAPI

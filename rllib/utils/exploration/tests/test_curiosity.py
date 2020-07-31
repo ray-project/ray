@@ -53,15 +53,20 @@ class TestCuriosity(unittest.TestCase):
         env = "CartPole-v0"
 
         config["framework"] = "torch"
-        config["exploration_config"] = {"type": "Curiosity"}
+
+        config["exploration_config"] = {
+            "type": "Curiosity",
+            "forward_net_hiddens": [64],
+            "inverse_net_hiddens": [32],
+            "feature_net_hiddens": [16],
+            "features_dim": 8,
+            "forward_activation": "relu",
+            "inverse_activation": "relu",
+            "feature_activation": "relu",
+            "submodule": "EpsilonGreedy",
+        }
         trainer = ppo.PPOTrainer(config=config, env=env)
         trainer.train()
-
-#                                        "obs_dim": 16,
-#                                        "emb_dim": 6,
-#                                        "action_dim": 1,
-#                                        "submodule": "EpsilonGreedy"}
-
 
 if __name__ == "__main__":
     import pytest

@@ -41,6 +41,8 @@ from ray.rllib.models.torch.misc import SlimFC
 # from ray.rllib.utils.exploration import EpsilonGreedy, GaussianNoise, Random
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 
+from ray.rllib.utils.framework import get_activation_fn
+
 torch, nn = try_import_torch()
 
 """
@@ -65,7 +67,56 @@ class Curiosity(Exploration):
             raise NotImplementedError("only torch is currently supported for "
                                       "curiosity")
 
-        # TODO kwargs remove subexploration from config dict first
+        # Parse the curiosity-specific arguments
+        submodule_type = kwargs["submodule"]
+        if "submodule_type" in kwargs:
+            submodule_type = kwargs["submodule_type"]
+            del kwargs["submodule_type"]
+        else:
+            submodule_type = "StochasticSampling"
+
+
+        if "forward_activation" in kwargs:
+            forward_activation = kwargs["forward_activation"]
+            del kwargs["forward_activation"]
+        else:
+            forward_activation = nn.ReLU
+
+        if "inverse_activation" in kwargs:
+            inverse_activation = kwargs["inverse_activation"]
+            del kwargs["inverse_activation"]
+        else:
+            inverse_activation = nn.ReLU
+
+        if "feature_activation" in kwargs:
+            feature_activation = kwargs["feature_activation"]
+            del kwargs["feature_activation"]
+        else:
+            feature_activation = nn.ReLU
+
+        if "feature_net_hiddens" in kwargs:
+            feature_net_hiddens = kwargs["feature_net_hiddens"]
+            del kwargs["feature_net_hiddens"]
+        else:
+            feature_net_hiddens = [64]
+
+        if "inverse_net_hiddens" in kwargs:
+            inverse_net_hiddens = kwargs["inverse_net_hiddens"]
+            del kwargs["inverse_net_hiddens"]
+        else:
+            inverse_net_hiddens = [64]
+
+        if "forward_net_hiddens" in kwargs:
+            forward_net_hiddens = kwargs["forward_net_hiddens"]
+            del kwargs["forward_net_hiddens"]
+        else:
+            forward_net_hiddens = [64]
+
+        if "features_dim" in kwargs:
+            self.embedding_dim = kwargs["features_dim"]
+            del kwargs["features_dim"]
+        else:
+            self.embedding_dim = [32]
 
         super().__init__(
             action_space=action_space,
@@ -73,21 +124,20 @@ class Curiosity(Exploration):
             **kwargs)
 
 
-        # TODO: config fc_net_hiddens. ask sven what the convention is
-        self.obs_space_dim = self.model.obs_space.shape[0]
-        self.embedding_dim = self.policy_config['exploration']['features_dim']
+        # TODO: what should this look like for multidimensional obs spaces
+        self.obs_space_dim = kwargs["model"].obs_space.shape[0]
         self.action_space_dim = 1 # TODO can we always assume 1?
 
         # List of dimension of each layer
-        features_dims = [self.obs_space_dim] + self.policy_config['exploration']['feature_net_hiddens'] + [self.embedding_dim]
-        inverse_dims = [2 * self.embedding_dim] + self.policy_config['exploration']['inverse_net_hiddens'] + [self.action_space_dim]
-        forwards_dims = [self.embedding_dim + self.action_space_dim] + self.policy_config['exploration']['forward_net_hiddens'] + [self.embedding_dim]
+        feature_dims = [self.obs_space_dim] + feature_net_hiddens + [self.embedding_dim]
+        inverse_dims = [2 * self.embedding_dim] + inverse_net_hiddens + [self.action_space_dim]
+        forward_dims = [self.embedding_dim + self.action_space_dim] + forward_net_hiddens + [self.embedding_dim]
 
         print(forwards_dims)
 
         # Given a list of layer dimensions, create a FC ReLU net.
         # If layer_dims is [4,8,6] we'll have a two layer net: 4->8 and 8->6
-        def create_fc_net(layer_dims):
+        def create_fc_net(layer_dims, activation):
             layers = []
             for i in range(len(layer_dims) - 1):
                 layers.append(
@@ -95,26 +145,17 @@ class Curiosity(Exploration):
                         in_size=layer_dims[i],
                         out_size=layer_dims[i + 1],
                         use_bias=False,
-                        activation_fn=nn.ReLU)
+                        activation_fn=activation)
                 )
             return nn.Sequential(*layers)
 
-        # Pass in activation_fn in model config. ask sven for convention
-        # Two layer relu nets. look over hidden_dims instead
-        self.features_model = create_fc_net(features_dims)
-        self.inverse_model = create_fc_net(inverse_dims)
-        self.forwards_model = create_fc_net(forwards_dims)
+        self.feature_model = create_fc_net(feature_dims, feature_activation)
+        self.inverse_model = create_fc_net(inverse_dims, inverse_activation)
+        self.forward_model = create_fc_net(forward_dims, forward_activation)
 
 
         self.criterion = torch.nn.MSELoss(reduction="none")
         self.criterion_reduced = torch.nn.MSELoss(reduction="sum")
-
-        # TODO finish this (probably have to delete something from the args/ policy config)
-        submodule_type = self.policy_config['exploration']['submodule']
-        if submodule_type == '':
-            submodule_type = 'StochasticSampling'
-        del self.policy_config['exploration']
-        framework = "torch"
 
         #submodule = from_config( subconfig from main config )
         self.exploration_submodule = from_config({
@@ -147,8 +188,8 @@ class Curiosity(Exploration):
             explore (bool): If true, uses the submodule strategy to select the
                 next action
         """
-        #return self.exploration_submodule.get_exploration_action(
-            #action_distribution=action_distribution, timestep=timestep)
+        return self.exploration_submodule.get_exploration_action(
+            action_distribution=action_distribution, timestep=timestep)
 
     # TODO add a hook in the main exploration class. this returns scalar loss
     def get_exploration_loss(self,
