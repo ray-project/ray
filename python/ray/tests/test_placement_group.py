@@ -136,6 +136,14 @@ def test_placement_group_task_resource_ids(ray_start_cluster):
     assert len(resources) == 1, resources
     assert "CPU_group_" in list(resources.keys())[0], resources
 
+    # Now retry with a bundle index constraint.
+    o1 = f.options(
+        placement_group_id=g1, placement_group_bundle_index=0).remote()
+    resources = ray.get(o1)
+    assert len(resources) == 2, resources
+    assert "CPU_group_" in list(resources.keys())[0], resources
+    assert "CPU_group_" in list(resources.keys())[1], resources
+
 
 def test_placement_group_hang(ray_start_cluster):
     @ray.remote(num_cpus=1)
