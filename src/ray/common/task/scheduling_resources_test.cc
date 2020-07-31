@@ -41,18 +41,22 @@ TEST_F(SchedulingResourcesTest, AddBundleResources) {
   resource_labels.pop_back();
   resource_labels.push_back("CPU_group_" + group_id.Hex() + "_1");
   resource_labels.push_back("CPU_group_" + group_id.Hex());
+  resource_capacity.push_back(1.0);
   ResourceSet result_resource(resource_labels, resource_capacity);
   ASSERT_EQ(1, resource_set->IsEqual(result_resource));
 }
 
 TEST_F(SchedulingResourcesTest, AddBundleResource) {
   PlacementGroupID group_id = PlacementGroupID::FromRandom();
-  std::string name = "CPU_group_" + group_id.Hex() + "_1";
+  std::string wild_name = "CPU_group_" + group_id.Hex();
+  std::string index_name = "CPU_group_" + group_id.Hex() + "_1";
   std::vector<int64_t> whole_ids = {1, 2, 3};
   ResourceIds resource_ids(whole_ids);
-  resource_id_set->AddBundleResource(name, resource_ids);
-  ASSERT_EQ(1, resource_id_set->AvailableResources().size());
-  ASSERT_EQ(name, resource_id_set->AvailableResources().begin()->first);
+  resource_id_set->AddBundleResourceIds(group_id, 1, "CPU", resource_ids);
+  ASSERT_EQ(2, resource_id_set->AvailableResources().size());
+  for (auto res : resource_id_set->AvailableResources()) {
+    ASSERT_TRUE(res.first == wild_name || res.first == index_name) << res.first;
+  }
 }
 
 TEST_F(SchedulingResourcesTest, ReturnBundleResources) {
@@ -62,10 +66,13 @@ TEST_F(SchedulingResourcesTest, ReturnBundleResources) {
   ResourceSet resource(resource_labels, resource_capacity);
   resource_set->AddBundleResources(group_id, 1, resource);
   resource_labels.pop_back();
+  resource_labels.push_back("CPU_group_" + group_id.Hex());
   resource_labels.push_back("CPU_group_" + group_id.Hex() + "_1");
+  resource_capacity.push_back(1.0);
   ResourceSet result_resource(resource_labels, resource_capacity);
   ASSERT_EQ(1, resource_set->IsEqual(result_resource));
-  resource_set->ReturnBundleResources(group_id, 1);
-  ASSERT_EQ(1, resource_set->IsEqual(resource));
+  resource_set->ReturnBundleResources(group_id);
+  ASSERT_EQ(1, resource_set->IsEqual(resource))
+      << resource_set->ToString() << " vs " << resource.ToString();
 }
 }  // namespace ray

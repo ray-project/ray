@@ -3,6 +3,8 @@
 #include <cmath>
 #include <sstream>
 
+#include "absl/container/flat_hash_map.h"
+
 #include "ray/common/bundle_spec.h"
 #include "ray/util/logging.h"
 
@@ -244,16 +246,20 @@ void ResourceSet::AddBundleResources(const PlacementGroupID &group_id,
 }
 
 void ResourceSet::ReturnBundleResources(const PlacementGroupID &group_id) {
+  absl::flat_hash_map<std::string, FractionalResourceQuantity> to_restore;
   for (auto iter = resource_capacity_.begin(); iter != resource_capacity_.end();) {
     const std::string &bundle_resource_label = iter->first;
     if (bundle_resource_label.find(group_id.Hex()) != std::string::npos) {
       const std::string &resource_label = GetOriginalResourceName(bundle_resource_label);
       const FractionalResourceQuantity &resource_capacity = iter->second;
-      resource_capacity_[resource_label] += resource_capacity;
+      to_restore[resource_label] = resource_capacity;
       iter = resource_capacity_.erase(iter);
     } else {
       iter++;
     }
+  }
+  for (const auto &pair : to_restore) {
+    resource_capacity_[pair.first] += pair.second;
   }
 }
 
@@ -683,27 +689,28 @@ void ResourceIdSet::AddBundleResourceIds(const PlacementGroupID &group_id,
 void ResourceIdSet::ReturnBundleResources(const PlacementGroupID &group_id,
                                           const int bundle_index,
                                           const std::string &original_resource_name) {
-  auto bundle_resource_name =
-      FormatPlacementGroupResource(original_resource_name, group_id, bundle_index);
-  auto iter_bundle = available_resources_.find(bundle_resource_name);
-  if (iter_bundle == available_resources_.end()) {
+  auto wildcard_resource_name =
+      FormatPlacementGroupResource(original_resource_name, group_id, -1);
+  auto iter_wc = available_resources_.find(wildcard_resource_name);
+  if (iter_wc == available_resources_.end()) {
     return;
   }
 
-  // Erase and transfer the bundle index resource back to the original.
+  // Erase and transfer the wildcard bundle resource back to the original.
   auto iter_orig = available_resources_.find(original_resource_name);
   if (iter_orig == available_resources_.end()) {
-    available_resources_[original_resource_name] = iter_bundle->second;
+    available_resources_[original_resource_name] = iter_wc->second;
   } else {
-    iter_orig->second.Release(iter_bundle->second);
+    iter_orig->second.Release(iter_wc->second);
   }
-  available_resources_.erase(iter_bundle);
+  available_resources_.erase(iter_wc);
 
-  // Also erase the wildcard bundle resource.
-  auto wildcard_name = FormatPlacementGroupResource(original_resource_name, group_id, -1);
-  auto iter_wc = available_resources_.find(wildcard_name);
-  if (iter_wc != available_resources_.end()) {
-    available_resources_.erase(iter_wc);
+  // Also erase the index bundle resource.
+  auto bundle_name =
+      FormatPlacementGroupResource(original_resource_name, group_id, bundle_index);
+  auto iter_bundle = available_resources_.find(bundle_name);
+  if (iter_bundle != available_resources_.end()) {
+    available_resources_.erase(iter_bundle);
   }
 }
 
