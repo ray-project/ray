@@ -227,21 +227,26 @@ void ResourceSet::AddResources(const ResourceSet &other) {
   }
 }
 
-void ResourceSet::AddBundleResources(const PlacementGroupID &bundle_id,
+void ResourceSet::AddBundleResources(const PlacementGroupID &group_id,
                                      const int bundle_index, const ResourceSet &other) {
   for (const auto &resource_pair : other.GetResourceAmountMap()) {
+    // With bundle index (e.g., CPU_group_zzz_i).
     const std::string &resource_label =
-        FormatPlacementGroupResource(resource_pair.first, bundle_id, bundle_index);
+        FormatPlacementGroupResource(resource_pair.first, group_id, bundle_index);
     const FractionalResourceQuantity &resource_capacity = resource_pair.second;
     resource_capacity_[resource_label] += resource_capacity;
+
+    // Without bundle index (e.g., CPU_group_zzz).
+    const std::string &wildcard_label =
+        FormatPlacementGroupResource(resource_pair.first, group_id, -1);
+    resource_capacity_[wildcard_label] += resource_capacity;
   }
 }
 
-void ResourceSet::ReturnBundleResources(const PlacementGroupID &bundle_id,
-                                        const int bundle_index) {
+void ResourceSet::ReturnBundleResources(const PlacementGroupID &group_id) {
   for (auto iter = resource_capacity_.begin(); iter != resource_capacity_.end();) {
     const std::string &bundle_resource_label = iter->first;
-    if (bundle_resource_label.find(bundle_id.Hex()) != std::string::npos) {
+    if (bundle_resource_label.find(group_id.Hex()) != std::string::npos) {
       const std::string &resource_label = GetOriginalResourceName(bundle_resource_label);
       const FractionalResourceQuantity &resource_capacity = iter->second;
       resource_capacity_[resource_label] += resource_capacity;
@@ -665,26 +670,43 @@ void ResourceIdSet::AddOrUpdateResource(const std::string &resource_name,
   }
 }
 
-void ResourceIdSet::AddBundleResource(const std::string &resource_name,
-                                      ResourceIds &resource_ids) {
-  available_resources_[resource_name] = resource_ids;
+void ResourceIdSet::AddBundleResources(const PlacementGroupID &group_id,
+                                       const int bundle_index,
+                                       const std::string &resource_name,
+                                       ResourceIds &resource_ids) {
+  auto index_name = FormatPlacementGroupResource(resource_name, group_id, bundle_index);
+  auto wildcard_name = FormatPlacementGroupResource(resource_name, group_id, -1);
+  available_resources_[index_name] = resource_ids;
+  available_resources_[wildcard_name] = resource_ids;
 }
 
-void ResourceIdSet::CancelResourceReserve(const std::string &resource_name) {
-  std::string origin_resource_name = GetOriginalResourceName(resource_name);
-  auto iter_orig = available_resources_.find(origin_resource_name);
-  auto iter_bundle = available_resources_.find(resource_name);
+void ResourceIdSet::ReturnBundleResources(const PlacementGroupID &group_id,
+                                          const int bundle_index,
+                                          const std::string &original_resource_name) {
+  auto bundle_resource_name =
+      FormatPlacementGroupResource(original_resource_name, group_id, bundle_index);
+  auto iter_bundle = available_resources_.find(bundle_resource_name);
   if (iter_bundle == available_resources_.end()) {
     return;
+  }
+
+  // Erase and transfer the bundle index resource back to the original.
+  auto iter_orig = available_resources_.find(original_resource_name);
+  if (iter_orig == available_resources_.end()) {
+    available_resources_[original_resource_name] = iter_bundle->second;
   } else {
-    if (iter_orig == available_resources_.end()) {
-      available_resources_[origin_resource_name] = iter_bundle->second;
-    } else {
-      iter_orig->second.Release(iter_bundle->second);
-    }
-    available_resources_.erase(iter_bundle);
+    iter_orig->second.Release(iter_bundle->second);
+  }
+  available_resources_.erase(iter_bundle);
+
+  // Also erase the wildcard bundle resource.
+  auto wildcard_name = FormatPlacementGroupResource(original_resource_name, group_id, -1);
+  auto iter_wc = available_resources_.find(wildcard_name);
+  if (iter_wc != available_resources_.end()) {
+    available_resources_.erase(iter_wc);
   }
 }
+
 void ResourceIdSet::DeleteResource(const std::string &resource_name) {
   available_resources_.erase(resource_name);
 }
@@ -837,19 +859,18 @@ void SchedulingResources::UpdateResourceCapacity(const std::string &resource_nam
   }
 }
 
-void SchedulingResources::UpdateBundleResource(const PlacementGroupID &group,
-                                               const int bundle_index,
-                                               const ResourceSet &resource_set) {
+void SchedulingResources::TransferToBundleResources(const PlacementGroupID &group,
+                                                    const int bundle_index,
+                                                    const ResourceSet &resource_set) {
   resources_available_.SubtractResourcesStrict(resource_set);
   resources_available_.AddBundleResources(group, bundle_index, resource_set);
   resources_total_.SubtractResourcesStrict(resource_set);
   resources_total_.AddBundleResources(group, bundle_index, resource_set);
 }
 
-void SchedulingResources::ReturnBundleResource(const PlacementGroupID &group,
-                                               const int bundle_index) {
-  resources_available_.ReturnBundleResources(group, bundle_index);
-  resources_total_.ReturnBundleResources(group, bundle_index);
+void SchedulingResources::ReturnBundleResources(const PlacementGroupID &group_id) {
+  resources_available_.ReturnBundleResources(group_id);
+  resources_total_.ReturnBundleResources(group_id);
 }
 
 void SchedulingResources::DeleteResource(const std::string &resource_name) {

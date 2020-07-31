@@ -52,10 +52,16 @@ int64_t BundleSpecification::Index() const {
 }
 
 std::string FormatPlacementGroupResource(const std::string &original_resource_name,
-                                         PlacementGroupID group_id,
+                                         PlacementGroupID &group_id,
                                          int64_t bundle_index) {
-  auto str = original_resource_name + "_group_" + group_id.Hex() + "_" +
-             std::to_string(bundle_index);
+  std::string str;
+  if (bundle_index >= 0) {
+    str = original_resource_name + "_group_" + group_id.Hex() + "_" +
+          std::to_string(bundle_index);
+  } else {
+    RAY_CHECK(bundle_index == -1) << "Invalid index " << bundle_index;
+    str = original_resource_name + "_group_" + group_id.Hex();
+  }
   RAY_CHECK(GetOriginalResourceName(str) == original_resource_name) << str;
   return str;
 }

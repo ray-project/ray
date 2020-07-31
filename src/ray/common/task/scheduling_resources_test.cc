@@ -40,6 +40,7 @@ TEST_F(SchedulingResourcesTest, AddBundleResources) {
   resource_set->AddBundleResources(group_id, 1, resource);
   resource_labels.pop_back();
   resource_labels.push_back("CPU_group_" + group_id.Hex() + "_1");
+  resource_labels.push_back("CPU_group_" + group_id.Hex());
   ResourceSet result_resource(resource_labels, resource_capacity);
   ASSERT_EQ(1, resource_set->IsEqual(result_resource));
 }
