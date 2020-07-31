@@ -9,8 +9,9 @@
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>org.ray</groupId>
     <artifactId>streaming-state</artifactId>
+    <name>ray streaming state</name>
+    <description>ray streaming state</description>
 
     <dependencyManagement>
         <dependencies>

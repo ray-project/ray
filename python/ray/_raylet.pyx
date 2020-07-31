@@ -879,13 +879,17 @@ cdef class CoreWorker:
                     args,
                     int num_return_vals,
                     resources,
-                    int max_retries):
+                    int max_retries,
+                    PlacementGroupID placement_group_id,
+                    int64_t placement_group_bundle_index):
         cdef:
             unordered_map[c_string, double] c_resources
             CTaskOptions task_options
             CRayFunction ray_function
             c_vector[unique_ptr[CTaskArg]] args_vector
             c_vector[CObjectID] return_ids
+            CPlacementGroupID c_placement_group_id = \
+                placement_group_id.native()
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
@@ -898,7 +902,8 @@ cdef class CoreWorker:
             with nogil:
                 CCoreWorkerProcess.GetCoreWorker().SubmitTask(
                     ray_function, args_vector, task_options, &return_ids,
-                    max_retries)
+                    max_retries, c_pair[CPlacementGroupID, int64_t](
+                        c_placement_group_id, placement_group_bundle_index))
 
             return VectorToObjectRefs(return_ids)
 
@@ -942,7 +947,9 @@ cdef class CoreWorker:
                         max_restarts, max_task_retries, max_concurrency,
                         c_resources, c_placement_resources,
                         dynamic_worker_options, is_detached, name, is_asyncio,
-                        c_pair[CPlacementGroupID, int64_t](c_placement_group_id, placement_group_bundle_index)),
+                        c_pair[CPlacementGroupID, int64_t](
+                            c_placement_group_id,
+                            placement_group_bundle_index)),
                     extension_data,
                     &c_actor_id))
 

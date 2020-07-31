@@ -15,12 +15,14 @@
 #include "ray/core_worker/core_worker.h"
 
 #include "boost/fiber/all.hpp"
+#include "ray/common/bundle_spec.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/core_worker/transport/raylet_transport.h"
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
+#include "ray/stats/stats.h"
 #include "ray/util/process.h"
 #include "ray/util/util.h"
 
@@ -127,6 +129,19 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
       CreateWorker();
     }
   }
+
+  // Assume stats module will be initialized exactly once in once process.
+  // So it must be called in CoreWorkerProcess constructor and will be reused
+  // by all of core worker.
+  RAY_LOG(DEBUG) << "Stats setup in core worker.";
+  // Initialize stats in core worker global tags.
+  const ray::stats::TagsType global_tags = {{ray::stats::ComponentKey, "core_worker"},
+                                            {ray::stats::VersionKey, "0.9.0.dev0"}};
+
+  // NOTE(lingxuan.zlx): We assume RayConfig is initialized before it's used.
+  // RayConfig is generated in Java_io_ray_runtime_RayNativeRuntime_nativeInitialize
+  // for java worker or in constructor of CoreWorker for python worker.
+  ray::stats::Init(global_tags, RayConfig::instance().metrics_agent_port());
 }
 
 CoreWorkerProcess::~CoreWorkerProcess() {
@@ -136,6 +151,9 @@ CoreWorkerProcess::~CoreWorkerProcess() {
     absl::ReaderMutexLock lock(&worker_map_mutex_);
     RAY_CHECK(workers_.empty());
   }
+  RAY_LOG(DEBUG) << "Stats stop in core worker.";
+  // Shutdown stats module if worker process exits.
+  ray::stats::Shutdown();
   if (options_.enable_logging) {
     RayLog::ShutDownRayLog();
   }
@@ -144,6 +162,18 @@ CoreWorkerProcess::~CoreWorkerProcess() {
 void CoreWorkerProcess::EnsureInitialized() {
   RAY_CHECK(instance_) << "The core worker process is not initialized yet or already "
                        << "shutdown.";
+}
+
+std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker(const WorkerID &worker_id) {
+  if (!instance_) {
+    return nullptr;
+  }
+  absl::ReaderMutexLock workers_lock(&instance_->worker_map_mutex_);
+  auto it = instance_->workers_.find(worker_id);
+  if (it != instance_->workers_.end()) {
+    return it->second;
+  }
+  return nullptr;
 }
 
 CoreWorker &CoreWorkerProcess::GetCoreWorker() {
@@ -1148,22 +1178,40 @@ Status CoreWorker::SetResource(const std::string &resource_name, const double ca
   return local_raylet_client_->SetResource(resource_name, capacity, client_id);
 }
 
+std::unordered_map<std::string, double> AddPlacementGroupConstraint(
+    const std::unordered_map<std::string, double> &resources,
+    PlacementGroupID placement_group_id, int64_t bundle_index) {
+  std::unordered_map<std::string, double> new_resources;
+  if (placement_group_id != PlacementGroupID::Nil()) {
+    for (auto iter = resources.begin(); iter != resources.end(); iter++) {
+      auto new_name =
+          FormatPlacementGroupResource(iter->first, placement_group_id, bundle_index);
+      new_resources[new_name] = iter->second;
+    }
+    return new_resources;
+  }
+  return resources;
+}
+
 void CoreWorker::SubmitTask(const RayFunction &function,
                             const std::vector<std::unique_ptr<TaskArg>> &args,
                             const TaskOptions &task_options,
-                            std::vector<ObjectID> *return_ids, int max_retries) {
+                            std::vector<ObjectID> *return_ids, int max_retries,
+                            PlacementOptions placement_options) {
   TaskSpecBuilder builder;
   const int next_task_index = worker_context_.GetNextTaskIndex();
   const auto task_id =
       TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
                             worker_context_.GetCurrentTaskID(), next_task_index);
 
+  auto constrained_resources = AddPlacementGroupConstraint(
+      task_options.resources, placement_options.first, placement_options.second);
   const std::unordered_map<std::string, double> required_resources;
   // TODO(ekl) offload task building onto a thread pool for performance
   BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, task_options.num_returns,
-                      task_options.resources, required_resources, return_ids);
+                      constrained_resources, required_resources, return_ids);
   TaskSpecification task_spec = builder.Build();
   if (options_.is_local_mode) {
     ExecuteTaskLocalMode(task_spec);
@@ -1174,21 +1222,6 @@ void CoreWorker::SubmitTask(const RayFunction &function,
       RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));
     });
   }
-}
-
-std::unordered_map<std::string, double> AddPlacementGroupConstraint(
-    const std::unordered_map<std::string, double> &resources,
-    PlacementGroupID placement_group_id, int64_t bundle_index) {
-  std::unordered_map<std::string, double> new_resources;
-  if (placement_group_id != PlacementGroupID::Nil()) {
-    for (auto iter = resources.begin(); iter != resources.end(); iter++) {
-      auto new_name =
-          placement_group_id.Hex() + std::to_string(bundle_index) + "_" + iter->first;
-      new_resources[new_name] = iter->second;
-    }
-    return new_resources;
-  }
-  return resources;
 }
 
 Status CoreWorker::CreateActor(const RayFunction &function,
