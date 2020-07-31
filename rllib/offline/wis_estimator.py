@@ -1,6 +1,8 @@
 from ray.rllib.offline.off_policy_estimator import OffPolicyEstimator, \
     OffPolicyEstimate
+from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.types import SampleBatchType
 
 
 class WeightedImportanceSamplingEstimator(OffPolicyEstimator):
@@ -8,13 +10,13 @@ class WeightedImportanceSamplingEstimator(OffPolicyEstimator):
 
     Step-wise WIS estimator in https://arxiv.org/pdf/1511.03722.pdf"""
 
-    def __init__(self, policy, gamma):
+    def __init__(self, policy: Policy, gamma: float):
         super().__init__(policy, gamma)
         self.filter_values = []
         self.filter_counts = []
 
     @override(OffPolicyEstimator)
-    def estimate(self, batch):
+    def estimate(self, batch: SampleBatchType) -> OffPolicyEstimate:
         self.check_can_estimate_for(batch)
 
         rewards, old_prob = batch["rewards"], batch["action_prob"]

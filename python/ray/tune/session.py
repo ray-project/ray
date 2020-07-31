@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 import os
 import logging
 
@@ -75,47 +76,33 @@ def report(**kwargs):
 def make_checkpoint_dir(step=None):
     """Gets the next checkpoint dir.
 
-    .. code-block:: python
-
-        import time
-        from ray import tune
-
-        def func(config, checkpoint=None):
-            start = 0
-            if checkpoint:
-                with open(checkpoint) as f:
-                    state = json.loads(f.read())
-                    start = state["step"] + 1
-
-            for iter in range(start, 100):
-                time.sleep(1)
-
-                checkpoint_dir = tune.make_checkpoint_dir(step=step)
-                path = os.path.join(checkpoint_dir, "checkpoint")
-                with open(path, "w") as f:
-                    f.write(json.dumps({"step": start}))
-                tune.save_checkpoint(path)
-
-                tune.report(hello="world", ray="tune")
-
-    .. warning:: Do not call this function within the Trainable Class API.
-
-    Args:
-        step (int): Current training iteration - used for setting
-            an index to uniquely identify the checkpoint.
-
     .. versionadded:: 0.8.6
 
+    .. deprecated:: 0.8.7
+        Use tune.checkpoint_dir instead.
     """
-    _session = get_session()
-    if _session:
-        return _session.make_checkpoint_dir(step=step)
-    else:
-        return os.path.abspath("./")
+    raise DeprecationWarning(
+        "Deprecated method. Use `tune.checkpoint_dir` instead.")
 
 
 def save_checkpoint(checkpoint):
     """Register the given checkpoint.
+
+    .. versionadded:: 0.8.6
+
+    .. deprecated:: 0.8.7
+        Use tune.checkpoint_dir instead.
+    """
+    raise DeprecationWarning(
+        "Deprecated method. Use `tune.checkpoint_dir` instead.")
+
+
+@contextmanager
+def checkpoint_dir(step=None):
+    """Returns a checkpoint dir inside a context.
+
+    Store any files related to restoring state within the
+    provided checkpoint dir.
 
     .. code-block:: python
 
@@ -124,10 +111,10 @@ def save_checkpoint(checkpoint):
         import time
         from ray import tune
 
-        def func(config, checkpoint=None):
+        def func(config, checkpoint_dir=None):
             start = 0
-            if checkpoint:
-                with open(checkpoint) as f:
+            if checkpoint_dir:
+                with open(os.path.join(checkpoint_dir, "checkpoint")) as f:
                     state = json.loads(f.read())
                     accuracy = state["acc"]
                     start = state["step"] + 1
@@ -135,27 +122,29 @@ def save_checkpoint(checkpoint):
             for iter in range(start, 10):
                 time.sleep(1)
 
-                checkpoint_dir = tune.make_checkpoint_dir(step=iter)
-                path = os.path.join(checkpoint_dir, "checkpoint")
-                with open(path, "w") as f:
-                    f.write(json.dumps({"step": start}))
-                tune.save_checkpoint(path)
+                with tune.checkpoint_dir(step=iter) as checkpoint_dir:
+                    path = os.path.join(checkpoint_dir, "checkpoint")
+                    with open(path, "w") as f:
+                        f.write(json.dumps({"step": start}))
 
                 tune.report(hello="world", ray="tune")
 
-        analysis = tune.run(run_me)
+    Yields:
+        checkpoint_dir (str): Directory for checkpointing.
 
-    .. warning:: Do not call this function within the Trainable Class API.
-
-    Args:
-        **kwargs: Any key value pair to be logged by Tune. Any of these
-            metrics can be used for early stopping or optimization.
-
-    .. versionadded:: 0.8.6
+    .. versionadded:: 0.8.7
     """
     _session = get_session()
+
     if _session:
-        return _session.save_checkpoint(checkpoint)
+        _checkpoint_dir = _session.make_checkpoint_dir(step=step)
+    else:
+        _checkpoint_dir = os.path.abspath("./")
+
+    yield _checkpoint_dir
+
+    if _session:
+        _session.save_checkpoint(_checkpoint_dir)
 
 
 def get_trial_dir():

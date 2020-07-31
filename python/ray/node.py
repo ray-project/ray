@@ -472,7 +472,8 @@ class Node:
 
         This method helps to prepare a socket file.
         1. Make the directory if the directory does not exist.
-        2. If the socket file exists, raise exception.
+        2. If the socket file exists, do nothing (this just means we aren't the
+           first worker on the node).
 
         Args:
             socket_path (string): the socket file to prepare.
@@ -488,9 +489,6 @@ class Node:
                 result = self._make_inc_temp(
                     prefix=default_prefix, directory_name=self._sockets_dir)
             else:
-                if os.path.exists(socket_path):
-                    raise RuntimeError(
-                        "Socket file {} exists!".format(socket_path))
                 try_to_create_directory(os.path.dirname(socket_path))
 
             # Check socket path length to make sure it's short enough

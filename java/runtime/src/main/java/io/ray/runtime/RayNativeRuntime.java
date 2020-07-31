@@ -16,11 +16,15 @@ import io.ray.runtime.runner.RunManager;
 import io.ray.runtime.task.NativeTaskExecutor;
 import io.ray.runtime.task.NativeTaskSubmitter;
 import io.ray.runtime.task.TaskExecutor;
+import io.ray.runtime.util.BinaryFileUtil;
 import io.ray.runtime.util.JniUtils;
 import java.io.File;
 import java.io.IOException;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,6 +37,15 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   private static final Logger LOGGER = LoggerFactory.getLogger(RayNativeRuntime.class);
 
   private RunManager manager = null;
+
+  /**
+   * In Java, GC runs in a standalone thread, and we can't control the exact
+   * timing of garbage collection. By using this lock, when
+   * {@link NativeObjectStore#nativeRemoveLocalReference} is executing, the core
+   * worker will not be shut down, therefore it guarantees some kind of
+   * thread-safety. Note that this guarantee only works for driver.
+   */
+  private final ReadWriteLock shutdownLock = new ReentrantReadWriteLock();
 
 
   static {
@@ -49,7 +62,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       rayConfig.setSessionDir(sessionDir);
     }
 
-    JniUtils.loadLibrary("core_worker_library_java", true);
+    JniUtils.loadLibrary(BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
     LOGGER.debug("Native libraries loaded.");
     // Reset library path at runtime.
     resetLibraryPath(rayConfig);
@@ -104,7 +117,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
     taskExecutor = new NativeTaskExecutor(this);
     workerContext = new NativeWorkerContext();
-    objectStore = new NativeObjectStore(workerContext);
+    objectStore = new NativeObjectStore(workerContext, shutdownLock);
     taskSubmitter = new NativeTaskSubmitter();
 
     LOGGER.debug("RayNativeRuntime started with store {}, raylet {}",
@@ -113,19 +126,25 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   @Override
   public void shutdown() {
-    if (rayConfig.workerMode == WorkerType.DRIVER) {
-      nativeShutdown();
-      if (null != manager) {
-        manager.cleanup();
-        manager = null;
+    Lock writeLock = shutdownLock.readLock();
+    writeLock.lock();
+    try {
+      if (rayConfig.workerMode == WorkerType.DRIVER) {
+        nativeShutdown();
+        if (null != manager) {
+          manager.cleanup();
+          manager = null;
+        }
       }
+      if (null != gcsClient) {
+        gcsClient.destroy();
+        gcsClient = null;
+      }
+      RayConfig.reset();
+      LOGGER.debug("RayNativeRuntime shutdown");
+    } finally {
+      writeLock.unlock();
     }
-    if (null != gcsClient) {
-      gcsClient.destroy();
-      gcsClient = null;
-    }
-    RayConfig.reset();
-    LOGGER.debug("RayNativeRuntime shutdown");
   }
 
   // For test purpose only

@@ -64,45 +64,43 @@ def get_remote_url(remote):
     return git("ls-remote", "--get-url", remote)
 
 
-def git_remote_branch_info():
+def replace_suffix(base, old_suffix, new_suffix=""):
+    if base.endswith(old_suffix):
+        base = base[:len(base) - len(old_suffix)] + new_suffix
+    return base
+
+
+def git_branch_info_to_track():
     """Obtains the remote branch name, remote name, and commit hash that
-    correspond to the local HEAD.
+    should be tracked for changes.
 
     Returns:
         ("refs/heads/mybranch", "origin", "1A2B3C4...")
     """
+    expected_sha = None
     ref = None
-    remote = None
-    expected_sha = git("rev-parse", "--verify", "HEAD")
+    remote = git("remote", "show", "-n").splitlines()[0]
 
-    try:
-        # Try to get the local branch ref. (e.g. refs/heads/mybranch)
-        head = git("symbolic-ref", "-q", "HEAD")
-        # Try to get the remotely tracked ref, if any. (e.g. origin/mybranch)
-        ref = git("for-each-ref", "--format=%(upstream:short)", head)
-    except subprocess.CalledProcessError:
-        pass
+    ci = get_current_ci()
+    if ci == GITHUB:
+        expected_sha = os.getenv("GITHUB_HEAD_SHA") or os.environ["GITHUB_SHA"]
+        ref = replace_suffix(os.environ["GITHUB_REF"], "/merge", "/head")
+    elif ci == TRAVIS:
+        pr = os.getenv("TRAVIS_PULL_REQUEST", "false")
+        if pr != "false":
+            expected_sha = os.environ["TRAVIS_PULL_REQUEST_SHA"]
+            ref = "refs/pull/{}/head".format(pr)
+        else:
+            expected_sha = os.environ["TRAVIS_COMMIT"]
+            ref = "refs/heads/{}".format(os.environ["TRAVIS_BRANCH"])
 
-    if ref:
-        (remote, ref) = ref.split("/", 1)
-        ref = "refs/heads/" + ref
-    else:
-        remote = git("remote", "show", "-n").splitlines()[0]
-        ci = get_current_ci()
-        if ci == TRAVIS:
-            travis_pr = os.getenv("TRAVIS_PULL_REQUEST")
-            if travis_pr is not None:
-                ref = "refs/pull/{}/merge".format(travis_pr)
-            else:
-                ref = "refs/heads/{}".format(os.environ["TRAVIS_BRANCH"])
-            expected_sha = os.getenv("TRAVIS_COMMIT")
-        elif ci == GITHUB:
-            ref = os.getenv("GITHUB_REF")
+    result = (ref, remote, expected_sha)
 
-    if not remote or not ref:
-        raise ValueError("Invalid remote {!r} or ref {!r}".format(remote, ref))
+    if not all(result):
+        msg = "Invalid remote {!r}, ref {!r}, or hash {!r} for CI {!r}"
+        raise ValueError(msg.format(remote, ref, expected_sha, ci))
 
-    return (ref, remote, expected_sha)
+    return result
 
 
 def get_commit_metadata(hash):
@@ -146,7 +144,7 @@ def terminate_my_process_group():
 
 
 def yield_poll_schedule():
-    schedule = [0, 5, 5, 10, 20, 40, 40] + [60] * 5 + [120] * 10 + [300, 600]
+    schedule = [0, 5, 5, 10, 20, 40, 40] + [60] * 5 + [120] * 10 + [300]
     for item in schedule:
         yield item
     while True:
@@ -197,7 +195,7 @@ def should_keep_alive(commit_msg):
 
 
 def monitor():
-    (ref, remote, expected_sha) = git_remote_branch_info()
+    (ref, remote, expected_sha) = git_branch_info_to_track()
     expected_line = "{}\t{}".format(expected_sha, ref)
 
     if should_keep_alive(git("show", "-s", "--format=%B", "HEAD^-")):
@@ -226,6 +224,7 @@ def monitor():
             logger.error("Error %d: unable to check %s on %s: %s", status, ref,
                          remote, expected_line)
         else:
+            prev = expected_line
             expected_line = detect_spurious_commit(line, expected_line, remote)
             if expected_line != line:
                 logger.info(
@@ -234,6 +233,11 @@ def monitor():
                     "    to:  \t%s", ref, remote, expected_line, line)
                 time.sleep(1)  # wait for CI to flush output
                 break
+            if expected_line != prev:
+                logger.info(
+                    "%s appeared to spuriously change on %s\n"
+                    "    from:\t%s\n"
+                    "    to:  \t%s", ref, remote, prev, expected_line)
 
     return terminate_my_process_group()
 
@@ -253,9 +257,6 @@ def main(program, *args):
 
 
 if __name__ == "__main__":
-    # Temporarily disable remote-watcher.
-    sys.exit(0)
-
     logging.basicConfig(
         format="%(levelname)s: %(message)s",
         stream=sys.stderr,
