@@ -29,7 +29,7 @@ def to_float_array(v: List[Any]) -> np.ndarray:
 class SampleBatchBuilder:
     """Util to build a SampleBatch incrementally.
 
-    Note: This will be deprecated by Trajectory and PolicyTrajectories in the
+    Note: This will be deprecated by _FastMultiAgentSampleBatchBuilder in the
     future.
 
     For efficiency, SampleBatches hold values in column form (as arrays).
@@ -79,8 +79,8 @@ class SampleBatchBuilder:
 class MultiAgentSampleBatchBuilder:
     """Util to build SampleBatches for each policy in a multi-agent env.
 
-    Note: This will be deprecated by _FastSampleBatchBuilder (using Trajectory
-    and PolicyTrajectories) in the future.
+    Note: This will be deprecated by _FastMultiAgentSampleBatchBuilder in the
+    future.
 
     Input data is per-agent, while output data is per-policy. There is an M:N
     mapping between agents and policies. We retain one local batch builder
@@ -88,16 +88,19 @@ class MultiAgentSampleBatchBuilder:
     corresponding policy batch for the agent's policy.
     """
 
-    def __init__(self, policy_map: Dict[PolicyID, Policy],
+    def __init__(self, policy_map: Dict[PolicyID, Policy], clip_rewards: bool,
                  callbacks: "DefaultCallbacks"):
         """Initialize a MultiAgentSampleBatchBuilder.
 
         Args:
             policy_map (Dict[str,Policy]): Maps policy ids to policy instances.
+            clip_rewards (Union[bool,float]): Whether to clip rewards before
+                postprocessing (at +/-1.0) or the actual value to +/- clip.
             callbacks (DefaultCallbacks): RLlib callbacks.
         """
 
         self.policy_map = policy_map
+        self.clip_rewards = clip_rewards
         # Build the Policies' SampleBatchBuilders.
         self.policy_builders = {
             k: SampleBatchBuilder()
@@ -175,6 +178,15 @@ class MultiAgentSampleBatchBuilder:
 
         # Apply postprocessor.
         post_batches = {}
+        if self.clip_rewards is True:
+            for _, (_, pre_batch) in pre_batches.items():
+                pre_batch["rewards"] = np.sign(pre_batch["rewards"])
+        elif self.clip_rewards:
+            for _, (_, pre_batch) in pre_batches.items():
+                pre_batch["rewards"] = np.clip(
+                    pre_batch["rewards"],
+                    a_min=-self.clip_rewards,
+                    a_max=self.clip_rewards)
         for agent_id, (_, pre_batch) in pre_batches.items():
             other_batches = pre_batches.copy()
             del other_batches[agent_id]

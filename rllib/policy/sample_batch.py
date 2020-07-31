@@ -34,9 +34,7 @@ class SampleBatch:
 
     # Deprecated: Use OBS instead.
     CUR_OBS = "obs"
-    # Deprecated: Use ViewRequirement for your Model instead with OBS (t+1).
     NEXT_OBS = "new_obs"
-    # deprecated: Use ViewRequirement for your Model instead with ACTIONS (t-1)
     PREV_ACTIONS = "prev_actions"
     PREV_REWARDS = "prev_rewards"
 

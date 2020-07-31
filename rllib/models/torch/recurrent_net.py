@@ -1,12 +1,13 @@
 from gym.spaces import Box
 import numpy as np
+from typing import Dict
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.trajectory_view import ViewRequirement
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 
@@ -131,29 +132,9 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
             activation_fn=None,
             initializer=torch.nn.init.xavier_uniform_)
 
-        for i in range(2):
-            self._trajectory_view["state_in_{}".format(i)] = \
-                ViewRequirement(
-                    "state_out_{}".format(i),
-                    postprocessing=False,
-                    shift=-1,
-                    space=Box(-1.0, 1.0, shape=(self.cell_size, )))
-            self._trajectory_view["state_out_{}".format(i)] = \
-                ViewRequirement(
-                    sampling=False,
-                    training=False,
-                    space=Box(-1.0, 1.0, shape=(self.cell_size,)))
-        self._trajectory_view["advantages"] = \
-            ViewRequirement(sampling=False, postprocessing=False)
-        self._trajectory_view["value_targets"] = \
-            ViewRequirement(sampling=False, postprocessing=False)
-        self._trajectory_view["action_dist_inputs"] = \
-            ViewRequirement(sampling=False, postprocessing=False)
-        self._trajectory_view["action_logp"] = \
-            ViewRequirement(sampling=False, postprocessing=False)
-
     @override(RecurrentNetwork)
-    def forward(self, input_dict, state=None, seq_lens=None):
+    def forward(self, input_dict, state, seq_lens):
+        assert seq_lens is not None
         # Push obs through "unwrapped" net's `forward()` first.
         wrapped_out, _ = self._wrapped_forward(input_dict, [], None)
 
@@ -196,3 +177,38 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
     def value_function(self):
         assert self._features is not None, "must call forward() first"
         return torch.reshape(self._value_branch(self._features), [-1])
+
+    @override(ModelV2)
+    def get_view_requirements(self) -> Dict[str, ViewRequirement]:
+        req = super().get_view_requirements()
+        # Optional: prev-actions/rewards for forward pass.
+        if self.model_config["lstm_use_prev_action_reward"]:
+            req.update({
+                SampleBatch.PREV_REWARDS: ViewRequirement(
+                    SampleBatch.REWARDS, shift=-1),
+                SampleBatch.PREV_ACTIONS: ViewRequirement(
+                    SampleBatch.ACTIONS, space=self.action_space, shift=-1),
+            })
+        return req
+
+    #for i in range(2):
+    #    self._trajectory_view["state_in_{}".format(i)] = \
+    #        ViewRequirement(
+    #            "state_out_{}".format(i),
+    #            postprocessing=False,
+    #            shift=-1,
+    #            space=Box(-1.0, 1.0, shape=(self.cell_size,)))
+    #    self._trajectory_view["state_out_{}".format(i)] = \
+    #        ViewRequirement(
+    #            sampling=False,
+    #            training=False,
+    #            space=Box(-1.0, 1.0, shape=(self.cell_size,)))
+    #self._trajectory_view["advantages"] = \
+    #    ViewRequirement(sampling=False, postprocessing=False)
+    #self._trajectory_view["value_targets"] = \
+    #    ViewRequirement(sampling=False, postprocessing=False)
+    #self._trajectory_view["action_dist_inputs"] = \
+    #    ViewRequirement(sampling=False, postprocessing=False)
+    #self._trajectory_view["action_logp"] = \
+    #    ViewRequirement(sampling=False, postprocessing=False)
+

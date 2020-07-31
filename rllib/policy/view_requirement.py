@@ -1,13 +1,9 @@
 from gym.spaces import Box, Space
-import numpy as np
-from typing import Dict, List, Optional, TYPE_CHECKING
+from typing import Optional
 
 from ray.rllib.utils.framework import try_import_torch
 
 torch, _ = try_import_torch()
-
-if TYPE_CHECKING:
-    from ray.rllib.models import ModelV2
 
 
 class ViewRequirement:
@@ -47,8 +43,6 @@ class ViewRequirement:
                 Default: Simple box space, e.g. rewards.
             shift (Union[List[int], int]): List of relative (or absolute
                 timesteps) to be present in the input_dict.
-            fill (str): The fill mode in case t<0 or t>H.
-                One of "zeros", "tile", or a TensorType to be used for filling.
             repeat_mode (str): The repeat-mode (one of "all" or "only_first").
                 E.g. for training, we only want the first internal state
                 timestep (the NN will calculate all others again anyways).
