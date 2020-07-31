@@ -1,4 +1,5 @@
 # The base-deps Docker image installs main libraries needed to run Ray
+
 FROM ubuntu:focal
 ENV TZ=America/Los_Angeles
 ARG DEBIAN_FRONTEND=noninteractive
@@ -35,6 +36,5 @@ RUN apt-get update -y && apt-get upgrade -y \
     # To avoid the following error on Jenkins:
     # AttributeError: 'numpy.ufunc' object has no attribute '__module__'
     && $HOME/anaconda3/bin/pip uninstall -y dask
-
 
 ENV PATH "$HOME/anaconda3/bin:$PATH"
