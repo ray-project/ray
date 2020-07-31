@@ -332,3 +332,6 @@ RAY_CONFIG(uint32_t, max_tasks_in_flight_per_worker, 1)
 
 /// Interval to restart agent after agent process exit.
 RAY_CONFIG(uint32_t, agent_restart_interval_ms, 1000);
+
+/// Wait timeout for agent register.
+RAY_CONFIG(uint32_t, agent_register_timeout_ms, 30 * 1000);

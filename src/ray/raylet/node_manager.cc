@@ -184,6 +184,9 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       actor_registry_(),
       node_manager_server_("NodeManager", config.node_manager_port),
       node_manager_service_(io_service, *this),
+      agent_manager_service_handler_(
+          new DefaultAgentManagerServiceHandler(agent_manager_)),
+      agent_manager_service_(io_service, *agent_manager_service_handler_),
       client_call_manager_(io_service),
       new_scheduler_enabled_(RayConfig::instance().new_scheduler_enabled()) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
@@ -228,6 +231,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
   RAY_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
   // Run the node manger rpc server.
   node_manager_server_.RegisterService(node_manager_service_);
+  node_manager_server_.RegisterService(agent_manager_service_);
   node_manager_server_.Run();
 
   AgentManager::Options options;
@@ -315,6 +319,8 @@ ray::Status NodeManager::RegisterGcs() {
       HandleJobStarted(job_id, job_data);
     } else {
       HandleJobFinished(job_id, job_data);
+    } else {
+      // The job state is JobTableData::SUBMITTED, just ignore.
     }
   };
   RAY_RETURN_NOT_OK(
