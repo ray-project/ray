@@ -33,7 +33,8 @@ using rpc::TaskReconstructionData;
 
 class ReconstructionPolicyInterface {
  public:
-  virtual void ListenAndMaybeReconstruct(const ObjectID &object_id, const rpc::Address &owner_address) = 0;
+  virtual void ListenAndMaybeReconstruct(const ObjectID &object_id,
+                                         const rpc::Address &owner_address) = 0;
   virtual void Cancel(const ObjectID &object_id) = 0;
   virtual ~ReconstructionPolicyInterface(){};
 };
@@ -65,7 +66,8 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
   /// for the task that created the object.
   ///
   /// \param object_id The object to check for reconstruction.
-  void ListenAndMaybeReconstruct(const ObjectID &object_id, const rpc::Address &owner_address);
+  void ListenAndMaybeReconstruct(const ObjectID &object_id,
+                                 const rpc::Address &owner_address);
 
   /// Cancel listening for an object. Notifications for the object will be
   /// ignored. This does not cancel a reconstruction attempt that is already in

@@ -65,8 +65,7 @@ bool TaskDependencyManager::CheckObjectRequired(const ObjectID &object_id,
   return true;
 }
 
-void TaskDependencyManager::HandleRemoteDependencyRequired(
-    const ObjectID &object_id) {
+void TaskDependencyManager::HandleRemoteDependencyRequired(const ObjectID &object_id) {
   rpc::Address owner_address;
   bool required = CheckObjectRequired(object_id, &owner_address);
   // If the object is required, then try to make the object available locally.

@@ -208,7 +208,8 @@ void ReconstructionPolicy::HandleTaskLeaseNotification(const TaskID &task_id,
   }
 }
 
-void ReconstructionPolicy::ListenAndMaybeReconstruct(const ObjectID &object_id, const rpc::Address &owner_address) {
+void ReconstructionPolicy::ListenAndMaybeReconstruct(const ObjectID &object_id,
+                                                     const rpc::Address &owner_address) {
   RAY_LOG(DEBUG) << "Listening and maybe reconstructing object " << object_id;
   TaskID task_id = object_id.TaskId();
   auto it = listening_tasks_.find(task_id);
