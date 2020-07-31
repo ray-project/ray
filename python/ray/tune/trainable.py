@@ -109,23 +109,18 @@ class TrainableUtil:
         return checkpoint_dir
 
     @staticmethod
-    def make_checkpoint_dir(checkpoint_dir, index, dryrun=False):
+    def make_checkpoint_dir(checkpoint_dir, index):
         """Creates a checkpoint directory within the provided path.
 
         Args:
             checkpoint_dir (str): Path to checkpoint directory.
             index (str): A subdirectory will be created
                 at the checkpoint directory named 'checkpoint_{index}'.
-            dryrun (bool): Generates and returns the path but does not
-                create an actual folder on file system.
         """
         suffix = "checkpoint"
         if index is not None:
             suffix += "_{}".format(index)
         checkpoint_dir = os.path.join(checkpoint_dir, suffix)
-
-        if dryrun:
-            return checkpoint_dir
 
         os.makedirs(checkpoint_dir, exist_ok=True)
         # Drop marker in directory to identify it as a checkpoint dir.
