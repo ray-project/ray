@@ -660,8 +660,13 @@ absl::flat_hash_set<ActorID> GcsActorManager::GetUnresolvedActorsByOwnerWorker(
 void GcsActorManager::OnWorkerDead(const ray::ClientID &node_id,
                                    const ray::WorkerID &worker_id,
                                    bool intentional_exit) {
-  RAY_LOG(WARNING) << "Worker " << worker_id << " on node " << node_id
-                   << " failed, intentional exit: " << intentional_exit;
+  if (intentional_exit) {
+    RAY_LOG(INFO) << "Worker " << worker_id << " on node " << node_id
+                  << " intentional exit.";
+  } else {
+    RAY_LOG(WARNING) << "Worker " << worker_id << " on node " << node_id
+                     << " failed and exited abnormally.";
+  }
   // Destroy all actors that are owned by this worker.
   const auto it = owners_.find(node_id);
   if (it != owners_.end() && it->second.count(worker_id)) {
