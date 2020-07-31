@@ -2,8 +2,13 @@ package io.ray.runtime.object;
 
 import io.ray.api.id.BaseId;
 import io.ray.api.id.ObjectId;
+import io.ray.api.id.UniqueId;
 import io.ray.runtime.context.WorkerContext;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReadWriteLock;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,8 +20,11 @@ public class NativeObjectStore extends ObjectStore {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(NativeObjectStore.class);
 
-  public NativeObjectStore(WorkerContext workerContext) {
+  private final ReadWriteLock shutdownLock;
+
+  public NativeObjectStore(WorkerContext workerContext, ReadWriteLock shutdownLock) {
     super(workerContext);
+    this.shutdownLock = shutdownLock;
   }
 
   @Override
@@ -44,6 +52,31 @@ public class NativeObjectStore extends ObjectStore {
     nativeDelete(toBinaryList(objectIds), localOnly, deleteCreatingTasks);
   }
 
+  @Override
+  public void addLocalReference(UniqueId workerId, ObjectId objectId) {
+    nativeAddLocalReference(workerId.getBytes(), objectId.getBytes());
+  }
+
+  @Override
+  public void removeLocalReference(UniqueId workerId, ObjectId objectId) {
+    Lock readLock = shutdownLock.readLock();
+    readLock.lock();
+    try {
+      nativeRemoveLocalReference(workerId.getBytes(), objectId.getBytes());
+    } finally {
+      readLock.unlock();
+    }
+  }
+
+  public Map<ObjectId, long[]> getAllReferenceCounts() {
+    Map<ObjectId, long[]> referenceCounts = new HashMap<>();
+    for (Map.Entry<byte[], long[]> entry :
+        nativeGetAllReferenceCounts().entrySet()) {
+      referenceCounts.put(new ObjectId(entry.getKey()), entry.getValue());
+    }
+    return referenceCounts;
+  }
+
   private static List<byte[]> toBinaryList(List<ObjectId> ids) {
     return ids.stream().map(BaseId::getBytes).collect(Collectors.toList());
   }
@@ -59,4 +92,10 @@ public class NativeObjectStore extends ObjectStore {
 
   private static native void nativeDelete(List<byte[]> objectIds, boolean localOnly,
       boolean deleteCreatingTasks);
+
+  private static native void nativeAddLocalReference(byte[] workerId, byte[] objectId);
+
+  private static native void nativeRemoveLocalReference(byte[] workerId, byte[] objectId);
+
+  private static native Map<byte[], long[]> nativeGetAllReferenceCounts();
 }

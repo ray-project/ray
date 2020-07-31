@@ -5,6 +5,7 @@ import io.ray.api.ObjectRef;
 import io.ray.api.WaitResult;
 import io.ray.api.exception.RayException;
 import io.ray.api.id.ObjectId;
+import io.ray.api.id.UniqueId;
 import io.ray.runtime.context.WorkerContext;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -137,7 +138,8 @@ public abstract class ObjectStore {
       return new WaitResult<>(Collections.emptyList(), Collections.emptyList());
     }
 
-    List<ObjectId> ids = waitList.stream().map(ObjectRef::getId).collect(Collectors.toList());
+    List<ObjectId> ids = waitList.stream().map(ref -> ((ObjectRefImpl<?>) ref).getId())
+        .collect(Collectors.toList());
 
     List<Boolean> ready = wait(ids, numReturns, timeoutMs);
     List<ObjectRef<T>> readyList = new ArrayList<>();
@@ -164,4 +166,18 @@ public abstract class ObjectStore {
    */
   public abstract void delete(List<ObjectId> objectIds, boolean localOnly,
       boolean deleteCreatingTasks);
+
+  /**
+   * Increase the local reference count for this object ID.
+   * @param workerId The ID of the worker to increase on.
+   * @param objectId The object ID to increase the reference count for.
+   */
+  public abstract void addLocalReference(UniqueId workerId, ObjectId objectId);
+
+  /**
+   * Decrease the reference count for this object ID.
+   * @param workerId The ID of the worker to decrease on.
+   * @param objectId The object ID to decrease the reference count for.
+   */
+  public abstract void removeLocalReference(UniqueId workerId, ObjectId objectId);
 }

@@ -1827,13 +1827,13 @@ void NodeManager::HandleCancelResourceReserve(
   auto bundle_spec = BundleSpecification(request.bundle_spec());
   RAY_LOG(DEBUG) << "bundle return resource request " << bundle_spec.BundleId().first
                  << bundle_spec.BundleId().second;
-  auto bundle_id_str = bundle_spec.BundleIdAsString();
   auto resource_set = bundle_spec.GetRequiredResources();
   for (auto resource : resource_set.GetResourceMap()) {
-    std::string resource_name = bundle_id_str + "_" + resource.first;
+    std::string resource_name = FormatPlacementGroupResource(resource.first, bundle_spec);
     local_available_resources_.CancelResourceReserve(resource_name);
   }
-  cluster_resource_map_[self_node_id_].ReturnBundleResource(bundle_id_str);
+  cluster_resource_map_[self_node_id_].ReturnBundleResource(
+      bundle_spec.PlacementGroupId(), bundle_spec.Index());
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -1995,16 +1995,17 @@ ResourceIdSet NodeManager::ScheduleBundle(
   // Invoke the scheduling policy.
   auto reserve_resource_success =
       scheduling_policy_.ScheduleBundle(resource_map, self_node_id_, bundle_spec);
-  auto bundle_id_str = bundle_spec.BundleIdAsString();
   ResourceIdSet acquired_resources;
   if (reserve_resource_success) {
     acquired_resources =
         local_available_resources_.Acquire(bundle_spec.GetRequiredResources());
     for (auto resource : acquired_resources.AvailableResources()) {
-      std::string resource_name = bundle_id_str + "_" + resource.first;
+      std::string resource_name =
+          FormatPlacementGroupResource(resource.first, bundle_spec);
       local_available_resources_.AddBundleResource(resource_name, resource.second);
     }
-    resource_map[self_node_id_].UpdateBundleResource(bundle_id_str,
+    resource_map[self_node_id_].UpdateBundleResource(bundle_spec.PlacementGroupId(),
+                                                     bundle_spec.Index(),
                                                      bundle_spec.GetRequiredResources());
   }
   return acquired_resources;
@@ -3599,7 +3600,7 @@ void NodeManager::FlushObjectsToFree() {
 void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_request,
                                      rpc::GetNodeStatsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
-  for (const auto task : local_queues_.GetTasks(TaskState::INFEASIBLE)) {
+  for (const auto &task : local_queues_.GetTasks(TaskState::INFEASIBLE)) {
     if (task.GetTaskSpecification().IsActorCreationTask()) {
       auto infeasible_task = reply->add_infeasible_tasks();
       infeasible_task->ParseFromString(task.GetTaskSpecification().Serialize());
@@ -3607,7 +3608,7 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
   }
   // Report tasks that are not scheduled because
   // resources are occupied by other actors/tasks.
-  for (const auto task : local_queues_.GetTasks(TaskState::READY)) {
+  for (const auto &task : local_queues_.GetTasks(TaskState::READY)) {
     if (task.GetTaskSpecification().IsActorCreationTask()) {
       auto ready_task = reply->add_ready_tasks();
       ready_task->ParseFromString(task.GetTaskSpecification().Serialize());

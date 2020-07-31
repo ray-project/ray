@@ -28,49 +28,49 @@ public class MetricTest extends BaseTest {
                                       int threadPoolSize,
                                       long shutdownWaitTimeMs) {
     MetricConfig config = MetricConfig.builder()
-      .timeIntervalMs(timeIntervalMs)
-      .threadPoolSize(threadPoolSize)
-      .shutdownWaitTimeMs(shutdownWaitTimeMs)
-      .create();
+        .timeIntervalMs(timeIntervalMs)
+        .threadPoolSize(threadPoolSize)
+        .shutdownWaitTimeMs(shutdownWaitTimeMs)
+        .create();
     Metrics.init(config);
     return config;
   }
 
   private Gauge registerGauge() {
     return Metrics.gauge()
-      .name("metric_gauge")
-      .description("gauge")
-      .unit("")
-      .tags(ImmutableMap.of("tag1", "value1"))
-      .register();
+        .name("metric_gauge")
+        .description("gauge")
+        .unit("")
+        .tags(ImmutableMap.of("tag1", "value1"))
+        .register();
   }
 
   private Count registerCount() {
     return Metrics.count()
-      .name("metric_count")
-      .description("counter")
-      .unit("1pc")
-      .tags(ImmutableMap.of("tag1", "value1", "count_tag", "default"))
-      .register();
+        .name("metric_count")
+        .description("counter")
+        .unit("1pc")
+        .tags(ImmutableMap.of("tag1", "value1", "count_tag", "default"))
+        .register();
   }
 
   private Sum registerSum() {
     return Metrics.sum()
-      .name("metric_sum")
-      .description("sum")
-      .unit("1pc")
-      .tags(ImmutableMap.of("tag1", "value1", "sum_tag", "default"))
-      .register();
+        .name("metric_sum")
+        .description("sum")
+        .unit("1pc")
+        .tags(ImmutableMap.of("tag1", "value1", "sum_tag", "default"))
+        .register();
   }
 
   private Histogram registerHistogram() {
     return Metrics.histogram()
-      .name("metric_histogram")
-      .description("histogram")
-      .unit("1pc")
-      .boundaries(ImmutableList.of(10.0, 15.0, 20.0))
-      .tags(ImmutableMap.of("tag1", "value1", "histogram_tag", "default"))
-      .register();
+        .name("metric_histogram")
+        .description("histogram")
+        .unit("1pc")
+        .boundaries(ImmutableList.of(10.0, 15.0, 20.0))
+        .tags(ImmutableMap.of("tag1", "value1", "histogram_tag", "default"))
+        .register();
   }
 
   @AfterMethod
@@ -122,7 +122,7 @@ public class MetricTest extends BaseTest {
     boundaries.add(15.0);
     boundaries.add(12.0);
     Histogram histogram = new Histogram("metric_histogram", "histogram", "1pc",
-      boundaries, tags);
+        boundaries, tags);
     for (int i = 1; i <= 200; ++i) {
       histogram.update(i * 1.0d);
     }

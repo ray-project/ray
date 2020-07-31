@@ -49,7 +49,7 @@
     <projetct.version>0.1-SNAPSHOT</projetct.version>
     <slf4j.version>1.7.25</slf4j.version>
     <log4j.version>1.2.17</log4j.version>
-    <testng.version>6.9.10</testng.version>
+    <testng.version>7.1.0</testng.version>
     <mockito.version>1.10.19</mockito.version>
     <guava.version>27.0.1-jre</guava.version>
     <fst.version>2.57</fst.version>
