@@ -234,7 +234,7 @@ def test_not_logging_to_driver(shutdown_only):
     output_lines = captured["out"]
     assert len(output_lines) == 0
 
-    err_lines = captures["err"]
+    err_lines = captured["err"]
     assert len(err_lines) == 0
 
 
