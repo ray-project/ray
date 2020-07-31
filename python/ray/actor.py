@@ -398,22 +398,24 @@ class ActorClass:
 
         return ActorOptionWrapper()
 
-    def _remote(self,
-                args=None,
-                kwargs=None,
-                num_cpus=None,
-                num_gpus=None,
-                memory=None,
-                object_store_memory=None,
-                resources=None,
-                is_direct_call=None,
-                max_concurrency=None,
-                max_restarts=None,
-                max_task_retries=None,
-                name=None,
-                detached=False,
-                placement_group_id=None,
-                placement_group_bundle_index=None):
+    def _remote(
+            self,
+            args=None,
+            kwargs=None,
+            num_cpus=None,
+            num_gpus=None,
+            memory=None,
+            object_store_memory=None,
+            resources=None,
+            is_direct_call=None,
+            max_concurrency=None,
+            max_restarts=None,
+            max_task_retries=None,
+            name=None,
+            detached=False,
+            placement_group_id=None,
+            # TODO(ekl) set default to -1 once we support -1 as "any index"
+            placement_group_bundle_index=0):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -503,11 +505,6 @@ class ActorClass:
         else:
             detached = False
 
-        if placement_group_id is not None and placement_group_bundle_index is \
-           None:
-            raise ValueError("The placement_group_id is set."
-                             "But the bundle_index is not set.")
-
         # Set the actor's default resources if not already set. First three
         # conditions are to check that no resources were specified in the
         # decorator. Last three conditions are to check that no resources were
@@ -580,8 +577,7 @@ class ActorClass:
             is_asyncio,
             placement_group_id
             if placement_group_id is not None else ray.PlacementGroupID.nil(),
-            placement_group_bundle_index
-            if placement_group_bundle_index is not None else -1,
+            placement_group_bundle_index,
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu))
 
