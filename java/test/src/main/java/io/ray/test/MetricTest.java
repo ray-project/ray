@@ -38,39 +38,39 @@ public class MetricTest extends BaseTest {
 
   private Gauge registerGauge() {
     return Metrics.gauge()
-      .name("metric_gauge")
-      .description("gauge")
-      .unit("")
-      .tags(ImmutableMap.of("tag1", "value1"))
-      .register();
+        .name("metric_gauge")
+        .description("gauge")
+        .unit("")
+        .tags(ImmutableMap.of("tag1", "value1"))
+        .register();
   }
 
   private Count registerCount() {
     return Metrics.count()
-      .name("metric_count")
-      .description("counter")
-      .unit("1pc")
-      .tags(ImmutableMap.of("tag1", "value1", "count_tag", "default"))
-      .register();
+        .name("metric_count")
+        .description("counter")
+        .unit("1pc")
+        .tags(ImmutableMap.of("tag1", "value1", "count_tag", "default"))
+        .register();
   }
 
   private Sum registerSum() {
     return Metrics.sum()
-      .name("metric_sum")
-      .description("sum")
-      .unit("1pc")
-      .tags(ImmutableMap.of("tag1", "value1", "sum_tag", "default"))
-      .register();
+        .name("metric_sum")
+        .description("sum")
+        .unit("1pc")
+        .tags(ImmutableMap.of("tag1", "value1", "sum_tag", "default"))
+        .register();
   }
 
   private Histogram registerHistogram() {
     return Metrics.histogram()
-      .name("metric_histogram")
-      .description("histogram")
-      .unit("1pc")
-      .boundaries(ImmutableList.of(10.0, 15.0, 20.0))
-      .tags(ImmutableMap.of("tag1", "value1", "histogram_tag", "default"))
-      .register();
+        .name("metric_histogram")
+        .description("histogram")
+        .unit("1pc")
+        .boundaries(ImmutableList.of(10.0, 15.0, 20.0))
+        .tags(ImmutableMap.of("tag1", "value1", "histogram_tag", "default"))
+        .register();
   }
 
   @AfterMethod
