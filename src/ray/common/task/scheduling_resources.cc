@@ -670,10 +670,10 @@ void ResourceIdSet::AddOrUpdateResource(const std::string &resource_name,
   }
 }
 
-void ResourceIdSet::AddBundleResources(const PlacementGroupID &group_id,
-                                       const int bundle_index,
-                                       const std::string &resource_name,
-                                       ResourceIds &resource_ids) {
+void ResourceIdSet::AddBundleResourceIds(const PlacementGroupID &group_id,
+                                         const int bundle_index,
+                                         const std::string &resource_name,
+                                         ResourceIds &resource_ids) {
   auto index_name = FormatPlacementGroupResource(resource_name, group_id, bundle_index);
   auto wildcard_name = FormatPlacementGroupResource(resource_name, group_id, -1);
   available_resources_[index_name] = resource_ids;

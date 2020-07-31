@@ -1826,7 +1826,7 @@ void NodeManager::HandleCancelResourceReserve(
                  << bundle_spec.BundleId().second;
   auto resource_set = bundle_spec.GetRequiredResources();
   for (auto resource : resource_set.GetResourceMap()) {
-    local_available_resources_.RemoveBundleResources(bundle_spec.PlacementGroupId(),
+    local_available_resources_.ReturnBundleResources(bundle_spec.PlacementGroupId(),
                                                      bundle_spec.Index(), resource.first);
   }
   cluster_resource_map_[self_node_id_].ReturnBundleResources(

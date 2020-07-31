@@ -93,7 +93,7 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
 
 /// Format a placement group resource, e.g., CPU -> CPU_group_YYY_i
 std::string FormatPlacementGroupResource(const std::string &original_resource_name,
-                                         PlacementGroupID &group_id, int64_t bundle_index);
+                                         PlacementGroupID group_id, int64_t bundle_index);
 
 /// Format a placement group resource, e.g., CPU -> CPU_group_YYY_i
 std::string FormatPlacementGroupResource(const std::string &original_resource_name,

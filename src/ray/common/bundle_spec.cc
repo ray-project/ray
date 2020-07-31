@@ -52,7 +52,7 @@ int64_t BundleSpecification::Index() const {
 }
 
 std::string FormatPlacementGroupResource(const std::string &original_resource_name,
-                                         PlacementGroupID &group_id,
+                                         PlacementGroupID group_id,
                                          int64_t bundle_index) {
   std::string str;
   if (bundle_index >= 0) {

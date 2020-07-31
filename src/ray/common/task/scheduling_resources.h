@@ -440,10 +440,12 @@ class ResourceIdSet {
 
   /// \brief remove a Bundle resource in the ResourceIdSet.
   ///
+  /// The bundle resources will be returned to their original resource names.
+  ///
   /// \param group_id: The placement group id.
   /// \param bundle_index: The index of the bundle.
   /// \param resource_name the name of the resource to remove (e.g., "CPU").
-  void RemoveBundleResources(const PlacementGroupID &group_id, const int bundle_index,
+  void ReturnBundleResources(const PlacementGroupID &group_id, const int bundle_index,
                              const std::string &resource_name);
 
   /// \brief Deletes a resource in the ResourceIdSet. This does not raise an exception,
@@ -581,7 +583,7 @@ class SchedulingResources {
 
   /// \brief delete total, available and load resources with the ResourceIds.
   ///
-  /// The bundle resource will be returned to their original resource names.
+  /// The bundle resources will be returned to their original resource names.
   /// This is the inverse of TransferToBundleResources().
   ///
   /// \param group_id: Placement group id to delete resources for.
