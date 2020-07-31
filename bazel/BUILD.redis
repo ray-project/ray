@@ -20,6 +20,18 @@ copy_file(
     visibility = ["//visibility:public"],
 )
 
+# TODO(mehrdadn): This hack is only present to suppress some "undeclared
+# inclusion" errors on Bazel that appear to be superfluous and impossible to
+# reproduce on some machines.
+# It should be removed at some point when the problem is resolved.
+cc_library(
+    name = "_undeclared_includes",
+    hdrs = glob([
+        "**/*.c",
+        "**/*.h",
+    ]),
+)
+
 cc_library(
     name = "hiredis_deps",
     hdrs = [
@@ -50,6 +62,7 @@ cc_library(
     ],
     strip_include_prefix = "deps/hiredis",
     deps = [
+        "_undeclared_includes",
         "hiredis_deps",
     ],
 )
@@ -134,6 +147,7 @@ cc_binary(
     ]),
     visibility = ["//visibility:public"],
     deps = [
+        ":_undeclared_includes",
         ":dict",
         ":hiredis",
         ":libredis",
@@ -174,6 +188,7 @@ cc_binary(
     }),
     visibility = ["//visibility:public"],
     deps = [
+        ":_undeclared_includes",
         ":dict",
         ":hiredis",
         ":libredis",
