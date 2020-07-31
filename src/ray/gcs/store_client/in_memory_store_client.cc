@@ -127,7 +127,7 @@ Status InMemoryStoreClient::AsyncBatchDeleteWithIndex(
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
 
-  for (int i = 0; i < keys.size(); ++i) {
+  for (size_t i = 0; i < keys.size(); ++i) {
     const std::string &key = keys[i];
     const std::string &index_key = index_keys[i];
     table->records_.erase(key);
