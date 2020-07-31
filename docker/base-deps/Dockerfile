@@ -11,13 +11,11 @@ RUN apt-get update -y && apt-get upgrade -y \
         build-essential \
         curl \
         unzip \
-        libgtk2.0-dev \
-        zlib1g-dev \
-        libgl1-mesa-dev \
         tmux \
         screen \
         rsync \
         openssh-client \
+    && rm -rf /var/lib/apt/lists/* \
     && apt-get clean \
     && wget \
         --quiet "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh" \
@@ -37,5 +35,5 @@ RUN apt-get update -y && apt-get upgrade -y \
     # AttributeError: 'numpy.ufunc' object has no attribute '__module__'
     && $HOME/anaconda3/bin/pip uninstall -y dask
 
-# Use "/root" instead of $HOME because $HOME evaluates to "" instead of "/root"
+# TODO(ilr) $HOME seems to point to result in "" instead of "/root"
 ENV PATH "/root/anaconda3/bin:$PATH"
