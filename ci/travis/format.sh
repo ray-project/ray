@@ -199,12 +199,12 @@ format_changed() {
             shellcheck_bazel
         fi
 
-        local shell_files
-        # shellcheck disable=SC2207
-        shell_files=($(
-          git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.sh' &&
-          git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- ':(exclude)*.*' | xargs -r git --no-pager grep -l '^#!\(/usr\)\?/bin/\(env \+\)\?\(ba\)\?sh'
-        ))
+        local shell_files non_shell_files
+        non_shell_files=($(git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- ':(exclude)*.sh'))
+        shell_files=($(git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.sh'))
+        if [ 0 -lt "${#non_shell_files[@]}" ]; then
+            shell_files+=($(git --no-pager grep -l -- '^#!\(/usr\)\?/bin/\(env \+\)\?\(ba\)\?sh' "${non_shell_files[@]}"))
+        fi
         if [ 0 -lt "${#shell_files[@]}" ]; then
             shellcheck_scripts "${shell_files[@]}"
         fi
