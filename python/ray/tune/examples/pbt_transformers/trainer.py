@@ -10,14 +10,11 @@ from transformers.file_utils import is_torch_tpu_available
 from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR
 import wandb
 
-logger = logging.getLogger(__name__)
 """A Trainer class integrated with Tune.
 The only changes to the original transformers.Trainer are:
     - Report eval metrics to Tune
     - Save state using Tune's checkpoint directories
 """
-
-
 class TuneTransformerTrainer(transformers.Trainer):
     def __init__(self, *args, wandb_args=None, **kwargs):
         self.wandb_args = wandb_args

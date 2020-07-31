@@ -2,22 +2,91 @@
 # yapf: disable
 
 import os
+from typing import Dict, Optional, Tuple
+
+# Ray imports
 import ray
+from ray import tune
 from ray.tune import CLIReporter
 from ray.tune.schedulers import PopulationBasedTraining
 
-from ray import tune
-import trainer
-from ray.tune.examples.pbt_transformers.utils import build_compute_metrics_fn, download_data
+import torch
+from torch.utils.data import Dataset
 
-from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer, EvalPrediction, GlueDataset
-from transformers import GlueDataTrainingArguments as DataTrainingArguments
+# Transformer imports
+import transformers
 from transformers import (
+    AutoConfig,
+    AutoModelForSequenceClassification,
+    AutoTokenizer,
+    GlueDataset,
+    GlueDataTrainingArguments as DataTrainingArguments,
     Trainer,
     TrainingArguments,
-    glue_output_modes,
     glue_tasks_num_labels,
 )
+
+"""A Trainer class integrated with Tune.
+The only changes to the original transformers.Trainer are:
+    - Report eval metrics to Tune
+    - Save state using Tune's checkpoint directories
+    - Pass in extra wandb args
+"""
+class TuneTransformerTrainer(transformers.Trainer):
+    def __init__(self, *args, wandb_args=None, **kwargs):
+        self.wandb_args = wandb_args
+        super().__init__(*args, **kwargs)
+
+    def get_optimizers(
+            self, num_training_steps: int
+    ) -> Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR]:
+        self.current_optimizer, self.current_scheduler = super(
+        ).get_optimizers(num_training_steps)
+        return (self.current_optimizer, self.current_scheduler)
+
+    def evaluate(self,
+                 eval_dataset: Optional[Dataset] = None) -> Dict[str, float]:
+        eval_dataloader = self.get_eval_dataloader(eval_dataset)
+        output = self._prediction_loop(
+            eval_dataloader, description="Evaluation")
+        self._log(output.metrics)
+
+        tune.report(**output.metrics)
+
+        self.save_state()
+
+        return output.metrics
+
+    def save_state(self):
+        self.args.output_dir = tune.make_checkpoint_dir()
+        output_dir = os.path.join(
+            self.args.output_dir,
+            f"{PREFIX_CHECKPOINT_DIR}-{self.global_step}")
+        self.save_model(output_dir)
+        if self.is_world_master():
+            torch.save(self.current_optimizer.state_dict(),
+                       os.path.join(output_dir, "optimizer.pt"))
+            torch.save(self.current_scheduler.state_dict(),
+                       os.path.join(output_dir, "scheduler.pt"))
+        tune.save_checkpoint(output_dir)
+
+    def _setup_wandb(self):
+        if self.is_world_master() and self.wandb_args is not None:
+            wandb.init(
+                project=self.wandb_args["project_name"],
+                name=self.wandb_args["run_name"],
+                id=self.wandb_args["run_name"],
+                config=vars(self.args),
+                reinit=True,
+                allow_val_change=True,
+                resume=self.wandb_args["run_name"])
+            # keep track of model topology and gradients, unsupported on TPU
+            if not is_torch_tpu_available(
+            ) and self.wandb_args["watch"] != "false":
+                wandb.watch(
+                    self.model,
+                    log=self.wandb_args["watch"],
+                    log_freq=max(100, self.args.logging_steps))
 
 
 def get_trainer(model_name_or_path, train_dataset, eval_dataset, task_name, training_args, wandb_args=None):
@@ -41,15 +110,13 @@ def get_trainer(model_name_or_path, train_dataset, eval_dataset, task_name, trai
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
-        compute_metrics=build_compute_metrics_fn(task_name),
+        compute_metrics=utils.build_compute_metrics_fn(task_name),
         wandb_args=wandb_args
     )
 
     return tune_trainer
 
-
-# __train_begin__
-def train_transformer(config, checkpoint=None):
+def get_datasets(config):
     data_args = DataTrainingArguments(
         task_name=config["task_name"],
         data_dir=config["data_dir"]
@@ -58,6 +125,23 @@ def train_transformer(config, checkpoint=None):
     train_dataset = GlueDataset(data_args, tokenizer=tokenizer, mode="train", cache_dir=config["data_dir"])
     eval_dataset = GlueDataset(data_args, tokenizer=tokenizer, mode="dev", cache_dir=config["data_dir"])
     eval_dataset = eval_dataset[:len(eval_dataset) // 2]
+    return train_dataset, eval_dataset
+
+def get_wandb_args():
+    # Arguments for W&B.
+    name = tune.get_trial_name()
+    wandb_args = {
+        "project_name": "transformers_pbt",
+        "watch": "false",  # Either set to gradient, false, or all
+        "run_name": name,
+    }
+    return wandb_args
+
+
+# __train_begin__
+def train_transformer(config, checkpoint=None):
+    train_dataset, eval_dataset = get_datasets(config)
+
     training_args = TrainingArguments(
         output_dir=tune.get_trial_dir(),
         learning_rate=config["learning_rate"],
@@ -75,17 +159,36 @@ def train_transformer(config, checkpoint=None):
         logging_dir="./logs",
     )
 
-    # Arguments for W&B.
-    name = tune.get_trial_name()
-    wandb_args = {
-        "project_name": "transformers_pbt",
-        "watch": "false",  # Either set to gradient, false, or all
-        "run_name": name,
-    }
+    wandb_args = get_wandb_args()
 
-    tune_trainer = get_trainer(config["model_name"], train_dataset, eval_dataset, config["task_name"], training_args,
-                               wandb_args=wandb_args)
-    tune_trainer.train(checkpoint if checkpoint is not None and len(checkpoint) > 0 else config["model_name"])
+    model_name_or_path = checkpoint if checkpoint is not None or len(checkpoint) > 0 else config["model_name"]
+    task_name = config["task_name"]
+
+    try:
+        num_labels = glue_tasks_num_labels[task_name]
+    except KeyError:
+        raise ValueError("Task not found: %s" % (task_name))
+
+    config = AutoConfig.from_pretrained(
+        model_name_or_path,
+        num_labels=num_labels,
+        finetuning_task=task_name,
+    )
+
+    model = AutoModelForSequenceClassification.from_pretrained(
+        model_name_or_path,
+        config=config,
+    )
+    tune_trainer = trainer.TuneTransformerTrainer(
+        model=model,
+        args=training_args,
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
+        compute_metrics=utils.build_compute_metrics_fn(task_name),
+        wandb_args=wandb_args
+    )
+
+    tune_trainer.train(model_name_or_path)
 
 
 # __train_end__
