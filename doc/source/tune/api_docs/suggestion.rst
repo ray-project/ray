@@ -116,8 +116,8 @@ identifier.
         local_dir="~/my_results")
 
     search_alg2 = HyperOptSearch()
-    Searcher.restore_from_dir(
-        search_alg2, os.path.join("~/my_results", "my-experiment-1"))
+    search_alg2.restore_from_dir(
+      os.path.join("~/my_results", "my-experiment-1"))
 
 .. note:: This is currently not implemented for: AxSearch, TuneBOHB, SigOptSearch, and DragonflySearch.
 

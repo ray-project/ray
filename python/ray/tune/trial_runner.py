@@ -17,7 +17,7 @@ from ray.tune.result import (TIME_THIS_ITER_S, RESULT_DUPLICATE,
 from ray.tune.syncer import get_cloud_syncer
 from ray.tune.trial import Checkpoint, Trial
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
-from ray.tune.suggest import BasicVariantGenerator
+from ray.tune.suggest import BasicVariantGenerator, Searcher
 from ray.tune.utils import warn_if_slow, flatten_dict
 from ray.tune.web_server import TuneServer
 from ray.utils import binary_to_hex, hex_to_binary
@@ -281,7 +281,7 @@ class TrialRunner:
 
         os.replace(tmp_file_name, self.checkpoint_file)
 
-        self._search_alg.save_to_dir(self._local_checkpoint_dir)
+        Searcher.save_to_dir(self._search_alg, self._local_checkpoint_dir)
 
         if force:
             self._syncer.sync_up()
