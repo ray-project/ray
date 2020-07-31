@@ -125,7 +125,7 @@ public class MetricRegistry {
       return MetricType.HISTOGRAM;
     }
     throw new RuntimeException(
-      "Unknown metric type, the metric is " + metric.getClass().getSimpleName());
+        "Unknown metric type, the metric is " + metric.getClass().getSimpleName());
   }
 
   private MetricId genMetricIdByMetric(Metric metric) {
