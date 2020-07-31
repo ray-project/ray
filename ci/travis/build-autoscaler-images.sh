@@ -13,7 +13,7 @@ DOCKER_USERNAME="raytravisbot"
 if [[ "$TRAVIS" == "true" && "$TRAVIS_PULL_REQUEST" == "false" ]]; then
     echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
 
-    wheel="$(basename "$ROOT_DIR"/.whl/*cp36m-manylinux*)"
+    wheel="$(basename "$ROOT_DIR"/.whl/*cp37m-manylinux*)"
     commit_sha=$(echo "$TRAVIS_COMMIT" | head -c 6)
     cp -r "$ROOT_DIR"/.whl "$ROOT_DIR"/docker/autoscaler/.whl
 
