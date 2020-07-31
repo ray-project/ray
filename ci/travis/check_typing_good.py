@@ -1,6 +1,5 @@
 import ray
 
-
 ray.init()
 
 
@@ -22,6 +21,9 @@ def h(a: str, b: int) -> str:
 print(f.remote(1))
 x = f.remote(1)
 print(g.remote(x))
+
+# Make sure the return type is checked.
+xy = x + "y"
 
 # typechecks but doesn't run
 print(ray.get(f.remote(x)))
