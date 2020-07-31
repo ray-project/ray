@@ -216,7 +216,7 @@ def flatten_dict(dt, delimiter="/"):
     return dt
 
 
-def unflattened_lookup(flat_key, lookup, delimiter="/", default=None):
+def unflattened_lookup(flat_key, lookup, delimiter="/", **kwargs):
     """
     Unflatten `flat_key` and iteratively look up in `lookup`. E.g.
     `flat_key="a/0/b"` will try to return `lookup["a"][0]["b"]`.
@@ -232,8 +232,10 @@ def unflattened_lookup(flat_key, lookup, delimiter="/", default=None):
                 base = base[int(key)]
             else:
                 raise KeyError()
-        except KeyError:
-            return default
+        except KeyError as e:
+            if "default" in kwargs:
+                return kwargs["default"]
+            raise e
     return base
 
 

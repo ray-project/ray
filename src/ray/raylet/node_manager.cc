@@ -1808,6 +1808,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
 void NodeManager::HandleRequestResourceReserve(
     const rpc::RequestResourceReserveRequest &request,
     rpc::RequestResourceReserveReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  RAY_CHECK(!new_scheduler_enabled_) << "Not implemented";
   auto bundle_spec = BundleSpecification(request.bundle_spec());
   RAY_LOG(DEBUG) << "bundle lease request " << bundle_spec.BundleId().first
                  << bundle_spec.BundleId().second;
@@ -1819,22 +1820,29 @@ void NodeManager::HandleRequestResourceReserve(
     reply->set_success(true);
     send_reply_callback(Status::OK(), nullptr, nullptr);
   }
+  // Call task dispatch to assign work to the new group.
+  TryLocalInfeasibleTaskScheduling();
+  DispatchTasks(local_queues_.GetReadyTasksByClass());
 }
 
 void NodeManager::HandleCancelResourceReserve(
     const rpc::CancelResourceReserveRequest &request,
     rpc::CancelResourceReserveReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  RAY_CHECK(!new_scheduler_enabled_) << "Not implemented";
   auto bundle_spec = BundleSpecification(request.bundle_spec());
   RAY_LOG(DEBUG) << "bundle return resource request " << bundle_spec.BundleId().first
                  << bundle_spec.BundleId().second;
-  auto bundle_id_str = bundle_spec.BundleIdAsString();
   auto resource_set = bundle_spec.GetRequiredResources();
   for (auto resource : resource_set.GetResourceMap()) {
-    std::string resource_name = bundle_id_str + "_" + resource.first;
+    std::string resource_name = FormatPlacementGroupResource(resource.first, bundle_spec);
     local_available_resources_.CancelResourceReserve(resource_name);
   }
-  cluster_resource_map_[self_node_id_].ReturnBundleResource(bundle_id_str);
+  cluster_resource_map_[self_node_id_].ReturnBundleResource(
+      bundle_spec.PlacementGroupId(), bundle_spec.Index());
   send_reply_callback(Status::OK(), nullptr, nullptr);
+  // Call task dispatch to assign work to the released resources.
+  TryLocalInfeasibleTaskScheduling();
+  DispatchTasks(local_queues_.GetReadyTasksByClass());
 }
 
 void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
@@ -1995,16 +2003,17 @@ ResourceIdSet NodeManager::ScheduleBundle(
   // Invoke the scheduling policy.
   auto reserve_resource_success =
       scheduling_policy_.ScheduleBundle(resource_map, self_node_id_, bundle_spec);
-  auto bundle_id_str = bundle_spec.BundleIdAsString();
   ResourceIdSet acquired_resources;
   if (reserve_resource_success) {
     acquired_resources =
         local_available_resources_.Acquire(bundle_spec.GetRequiredResources());
     for (auto resource : acquired_resources.AvailableResources()) {
-      std::string resource_name = bundle_id_str + "_" + resource.first;
+      std::string resource_name =
+          FormatPlacementGroupResource(resource.first, bundle_spec);
       local_available_resources_.AddBundleResource(resource_name, resource.second);
     }
-    resource_map[self_node_id_].UpdateBundleResource(bundle_id_str,
+    resource_map[self_node_id_].UpdateBundleResource(bundle_spec.PlacementGroupId(),
+                                                     bundle_spec.Index(),
                                                      bundle_spec.GetRequiredResources());
   }
   return acquired_resources;
@@ -2146,9 +2155,9 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_typ
   task_dependency_manager_.UnsubscribeGetDependencies(spec.TaskId());
 }
 
-void NodeManager::MarkObjectsAsFailed(const ErrorType &error_type,
-                                      const std::vector<rpc::ObjectReference> objects_to_fail,
-                                      const JobID &job_id) {
+void NodeManager::MarkObjectsAsFailed(
+    const ErrorType &error_type, const std::vector<rpc::ObjectReference> objects_to_fail,
+    const JobID &job_id) {
   const std::string meta = std::to_string(static_cast<int>(error_type));
   for (const auto &ref : objects_to_fail) {
     ObjectID object_id = ObjectID::FromBinary(ref.object_id());
@@ -2942,8 +2951,7 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
       rpc::ObjectReference ref;
       ref.set_object_id(required_object_id.Binary());
       ref.mutable_owner_address()->CopyFrom(owner_addr);
-      MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {ref},
-                          JobID::Nil());
+      MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {ref}, JobID::Nil());
     } else {
       RAY_LOG(DEBUG) << "Required object " << required_object_id
                      << " fetch timed out, asking owner "
@@ -2961,7 +2969,7 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
       request.set_owner_worker_id(owner_addr.worker_id());
       RAY_CHECK_OK(client->GetObjectStatus(
           request, [this, required_object_id, owner_addr](
-              Status status, const rpc::GetObjectStatusReply &reply) {
+                       Status status, const rpc::GetObjectStatusReply &reply) {
             if (!status.ok() ||
                 reply.status() == rpc::GetObjectStatusReply::OUT_OF_SCOPE ||
                 reply.status() == rpc::GetObjectStatusReply::FREED) {
@@ -2975,8 +2983,8 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
               rpc::ObjectReference ref;
               ref.set_object_id(required_object_id.Binary());
               ref.mutable_owner_address()->CopyFrom(owner_addr);
-              MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE,
-                                  {ref}, JobID::Nil());
+              MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {ref},
+                                  JobID::Nil());
             }
             // Do nothing if the owner replied that the object is available. The
             // object manager will continue trying to fetch the object, and this
@@ -2994,43 +3002,41 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
     // information.
     RAY_LOG(DEBUG) << "Required object " << required_object_id
                    << " fetch timed out, checking task table";
-    RAY_CHECK_OK(
-        gcs_client_->Tasks().AsyncGet(
-            task_id,
-            /*callback=*/
-            [this, required_object_id, task_id](
-                Status status, const boost::optional<TaskTableData> &task_data) {
-              if (task_data) {
-                // The task was in the GCS task table. Use the stored task spec to
-                // re-execute the task.
-                ResubmitTask(Task(task_data->task()), required_object_id);
-                return;
-              }
-              // The task was not in the GCS task table. It must therefore be in the
-              // lineage cache.
-              if (lineage_cache_.ContainsTask(task_id)) {
-                // Use a copy of the cached task spec to re-execute the task.
-                const Task task = lineage_cache_.GetTaskOrDie(task_id);
-                ResubmitTask(task, required_object_id);
-              } else {
-                // No actor creation task spec was found. This is most likely a
-                // randomly generated ObjectID whose value is unreachable. Mark the
-                // object as failed.
-                RAY_LOG(WARNING)
-                    << "Ray cannot get the value of ObjectIDs that are generated "
-                       "randomly (ObjectID.from_random()) or out-of-band "
-                       "(ObjectID.from_binary(...)) because Ray "
-                       "does not know which task will create them. "
-                       "If this was not how your object ID was generated, please file an "
-                       "issue "
-                       "at https://github.com/ray-project/ray/issues/";
-                rpc::ObjectReference ref;
-                ref.set_object_id(required_object_id.Binary());
-                // We don't know the owner of this address here, pass in empty address.
-                MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE,
-                                    {ref}, JobID::Nil());
-              }
-            }));
+    RAY_CHECK_OK(gcs_client_->Tasks().AsyncGet(
+        task_id,
+        /*callback=*/
+        [this, required_object_id, task_id](
+            Status status, const boost::optional<TaskTableData> &task_data) {
+          if (task_data) {
+            // The task was in the GCS task table. Use the stored task spec to
+            // re-execute the task.
+            ResubmitTask(Task(task_data->task()), required_object_id);
+            return;
+          }
+          // The task was not in the GCS task table. It must therefore be in the
+          // lineage cache.
+          if (lineage_cache_.ContainsTask(task_id)) {
+            // Use a copy of the cached task spec to re-execute the task.
+            const Task task = lineage_cache_.GetTaskOrDie(task_id);
+            ResubmitTask(task, required_object_id);
+          } else {
+            // No actor creation task spec was found. This is most likely a
+            // randomly generated ObjectID whose value is unreachable. Mark the
+            // object as failed.
+            RAY_LOG(WARNING)
+                << "Ray cannot get the value of ObjectIDs that are generated "
+                   "randomly (ObjectID.from_random()) or out-of-band "
+                   "(ObjectID.from_binary(...)) because Ray "
+                   "does not know which task will create them. "
+                   "If this was not how your object ID was generated, please file an "
+                   "issue "
+                   "at https://github.com/ray-project/ray/issues/";
+            rpc::ObjectReference ref;
+            ref.set_object_id(required_object_id.Binary());
+            // We don't know the owner of this address here, pass in empty address.
+            MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {ref}, JobID::Nil());
+          }
+        }));
   }
 }
 
@@ -3611,7 +3617,7 @@ void NodeManager::FlushObjectsToFree() {
 void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_request,
                                      rpc::GetNodeStatsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
-  for (const auto task : local_queues_.GetTasks(TaskState::INFEASIBLE)) {
+  for (const auto &task : local_queues_.GetTasks(TaskState::INFEASIBLE)) {
     if (task.GetTaskSpecification().IsActorCreationTask()) {
       auto infeasible_task = reply->add_infeasible_tasks();
       infeasible_task->ParseFromString(task.GetTaskSpecification().Serialize());
@@ -3619,7 +3625,7 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
   }
   // Report tasks that are not scheduled because
   // resources are occupied by other actors/tasks.
-  for (const auto task : local_queues_.GetTasks(TaskState::READY)) {
+  for (const auto &task : local_queues_.GetTasks(TaskState::READY)) {
     if (task.GetTaskSpecification().IsActorCreationTask()) {
       auto ready_task = reply->add_ready_tasks();
       ready_task->ParseFromString(task.GetTaskSpecification().Serialize());

@@ -17,7 +17,7 @@ public class Count extends Metric {
     super(name, tags);
     count = new DoubleAdder();
     metricNativePointer = NativeMetric.registerCountNative(name, description, unit,
-      tags.keySet().stream().map(TagKey::getTagKey).collect(Collectors.toList()));
+        tags.keySet().stream().map(TagKey::getTagKey).collect(Collectors.toList()));
     Preconditions.checkState(metricNativePointer != 0, "Count native pointer must not be 0.");
   }
 

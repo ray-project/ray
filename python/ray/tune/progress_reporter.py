@@ -469,6 +469,10 @@ def _get_trial_info(trial, parameters, metrics):
     result = trial.last_result
     config = trial.config
     trial_info = [str(trial), trial.status, str(trial.location)]
-    trial_info += [unflattened_lookup(param, config) for param in parameters]
-    trial_info += [unflattened_lookup(metric, result) for metric in metrics]
+    trial_info += [
+        unflattened_lookup(param, config, default=None) for param in parameters
+    ]
+    trial_info += [
+        unflattened_lookup(metric, result, default=None) for metric in metrics
+    ]
     return trial_info

@@ -4,6 +4,7 @@ import com.google.common.collect.ImmutableList;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.id.TaskId;
+import io.ray.runtime.object.ObjectRefImpl;
 import java.util.Arrays;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -19,11 +20,11 @@ public class PlasmaFreeTest extends BaseTest {
     ObjectRef<String> helloId = Ray.task(PlasmaFreeTest::hello).remote();
     String helloString = helloId.get();
     Assert.assertEquals("hello", helloString);
-    Ray.internal().free(ImmutableList.of(helloId.getId()), true, false);
+    Ray.internal().free(ImmutableList.of(helloId), true, false);
 
     final boolean result = TestUtils.waitForCondition(() ->
         !TestUtils.getRuntime().getObjectStore()
-          .wait(ImmutableList.of(helloId.getId()), 1, 0).get(0), 50);
+          .wait(ImmutableList.of(((ObjectRefImpl<String>) helloId).getId()), 1, 0).get(0), 50);
     if (TestUtils.isSingleProcessMode()) {
       Assert.assertTrue(result);
     } else {
@@ -36,9 +37,10 @@ public class PlasmaFreeTest extends BaseTest {
   public void testDeleteCreatingTasks() {
     ObjectRef<String> helloId = Ray.task(PlasmaFreeTest::hello).remote();
     Assert.assertEquals("hello", helloId.get());
-    Ray.internal().free(ImmutableList.of(helloId.getId()), true, true);
+    Ray.internal().free(ImmutableList.of(helloId), true, true);
 
-    TaskId taskId = TaskId.fromBytes(Arrays.copyOf(helloId.getId().getBytes(), TaskId.LENGTH));
+    TaskId taskId = TaskId.fromBytes(
+        Arrays.copyOf(((ObjectRefImpl<String>) helloId).getId().getBytes(), TaskId.LENGTH));
     final boolean result = TestUtils.waitForCondition(
         () -> !TestUtils.getRuntime().getGcsClient()
             .rayletTaskExistsInGcs(taskId), 50);
