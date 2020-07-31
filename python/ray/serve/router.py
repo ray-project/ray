@@ -170,9 +170,6 @@ class Router:
                          "from backend."),
             label_names=("backend", ))
 
-    def is_ready(self):
-        return True
-
     async def enqueue_request(self, request_meta, *request_args,
                               **request_kwargs):
         endpoint = request_meta.endpoint

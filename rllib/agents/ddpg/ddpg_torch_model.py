@@ -51,9 +51,9 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
 
         self.bounded = np.logical_and(action_space.bounded_above,
                                       action_space.bounded_below).any()
-        self.action_range = torch.from_numpy(
-            (action_space.high - action_space.low)[None])
-        self.low_action = torch.from_numpy(action_space.low[None])
+        self.low_action = torch.tensor(action_space.low, dtype=torch.float32)
+        self.action_range = torch.tensor(
+            action_space.high - action_space.low, dtype=torch.float32)
         self.action_dim = np.product(action_space.shape)
 
         # Build the policy network.

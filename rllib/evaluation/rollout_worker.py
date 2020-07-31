@@ -334,6 +334,8 @@ class RolloutWorker(ParallelIteratorWorker):
             # Deepmind wrappers already handle all preprocessing
             self.preprocessing_enabled = False
 
+            # If clip_rewards not explicitly set to False, switch it
+            # on here (clip between -1.0 and 1.0).
             if clip_rewards is None:
                 clip_rewards = True
 
@@ -412,7 +414,7 @@ class RolloutWorker(ParallelIteratorWorker):
                         worker_index) +
                     " on CPU (please ignore any CUDA init errors)")
             elif (policy_config["framework"] in ["tf2", "tf", "tfe"] and
-                  not tf.config.list_physical_devices("GPU")) or \
+                  not tf.config.experimental.list_physical_devices("GPU")) or \
                     (policy_config["framework"] == "torch" and
                      not torch.cuda.is_available()):
                 raise RuntimeError(

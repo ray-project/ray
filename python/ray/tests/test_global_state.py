@@ -123,9 +123,11 @@ def test_global_state_actor_entry(ray_start_regular):
     a_actor_id = a._actor_id.hex()
     b_actor_id = b._actor_id.hex()
     assert ray.actors(actor_id=a_actor_id)["ActorID"] == a_actor_id
-    assert ray.actors(actor_id=a_actor_id)["State"] == 1
+    assert ray.actors(
+        actor_id=a_actor_id)["State"] == ray.gcs_utils.ActorTableData.ALIVE
     assert ray.actors(actor_id=b_actor_id)["ActorID"] == b_actor_id
-    assert ray.actors(actor_id=b_actor_id)["State"] == 1
+    assert ray.actors(
+        actor_id=b_actor_id)["State"] == ray.gcs_utils.ActorTableData.ALIVE
 
 
 if __name__ == "__main__":

@@ -19,6 +19,11 @@ config_setting(
     flag_values = {"@bazel_tools//tools/cpp:compiler": "clang-cl"},
 )
 
+config_setting(
+    name = "opt",
+    values = {"compilation_mode": "opt"},
+)
+
 # === Begin of protobuf definitions ===
 
 proto_library(
@@ -545,6 +550,7 @@ cc_binary(
     visibility = ["//java:__subpackages__"],
     deps = [
         ":gcs_server_lib",
+        ":stats_lib",
         "@com_github_gflags_gflags//:gflags",
     ],
 )
@@ -595,7 +601,7 @@ cc_library(
             "src/ray/raylet/**/*.cc",
         ],
         exclude = [
-            "src/ray/raylet/*_test.cc",
+            "src/ray/raylet/**/*_test.cc",
             "src/ray/raylet/main.cc",
         ],
     ),
@@ -679,7 +685,7 @@ cc_library(
             "src/ray/rpc/worker/*.cc",
         ],
         exclude = [
-            "src/ray/core_worker/*_test.cc",
+            "src/ray/core_worker/**/*_test.cc",
             "src/ray/core_worker/mock_worker.cc",
         ],
     ),
@@ -699,6 +705,7 @@ cc_library(
         ":ray_util",
         ":raylet_client_lib",
         ":service_based_gcs_client_lib",
+        ":stats_lib",
         ":worker_cc_proto",
         ":worker_rpc",
         "@boost//:fiber",
@@ -830,8 +837,22 @@ cc_test(
 )
 
 cc_test(
-    name = "scheduling_test",
-    srcs = ["src/ray/raylet/scheduling/scheduling_test.cc"],
+    name = "cluster_resource_scheduler_test",
+    srcs = [
+        "src/ray/raylet/scheduling/cluster_resource_scheduler_test.cc",
+    ],
+    copts = COPTS,
+    deps = [
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "cluster_task_manager_test",
+    srcs = [
+        "src/ray/raylet/scheduling/cluster_task_manager_test.cc",
+    ],
     copts = COPTS,
     deps = [
         ":raylet_lib",
@@ -1814,30 +1835,15 @@ cc_binary(
     }),
     linkshared = 1,
     linkstatic = 1,
+    visibility = ["//java:__subpackages__"],
     deps = [
         "//:core_worker_lib",
         "//:global_state_accessor_lib",
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",
+        "//:stats_lib",
         "@bazel_tools//tools/jdk:jni",
     ],
-)
-
-genrule(
-    name = "core_worker-jni-darwin-compat",
-    srcs = [":libcore_worker_library_java.so"],
-    outs = ["libcore_worker_library_java.dylib"],
-    cmd = "cp $< $@",
-    output_to_bindir = 1,
-)
-
-filegroup(
-    name = "core_worker_library_java",
-    srcs = select({
-        "@bazel_tools//src/conditions:darwin": [":libcore_worker_library_java.dylib"],
-        "//conditions:default": [":libcore_worker_library_java.so"],
-    }),
-    visibility = ["//java:__subpackages__"],
 )
 
 filegroup(

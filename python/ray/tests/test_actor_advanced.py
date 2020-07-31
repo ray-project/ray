@@ -719,7 +719,7 @@ def test_detached_actor_cleanup(ray_start_regular):
         actor_status = ray.actors(actor_id=detached_actor._actor_id.hex())
         max_wait_time = 10
         wait_time = 0
-        while actor_status["State"] != 3:
+        while actor_status["State"] != ray.gcs_utils.ActorTableData.DEAD:
             actor_status = ray.actors(actor_id=detached_actor._actor_id.hex())
             time.sleep(1.0)
             wait_time += 1
@@ -753,7 +753,7 @@ ray.kill(detached_actor)
 actor_status = ray.actors(actor_id=detached_actor._actor_id.hex())
 max_wait_time = 10
 wait_time = 0
-while actor_status["State"] != 3:
+while actor_status["State"] != ray.gcs_utils.ActorTableData.DEAD:
     actor_status = ray.actors(actor_id=detached_actor._actor_id.hex())
     time.sleep(1.0)
     wait_time += 1
@@ -798,7 +798,7 @@ def test_detached_actor_cleanup_due_to_failure(ray_start_cluster):
         actor_status = ray.actors(actor_id=handle._actor_id.hex())
         max_wait_time = 10
         wait_time = 0
-        while actor_status["State"] != 3:
+        while actor_status["State"] != ray.gcs_utils.ActorTableData.DEAD:
             actor_status = ray.actors(actor_id=handle._actor_id.hex())
             time.sleep(1.0)
             wait_time += 1

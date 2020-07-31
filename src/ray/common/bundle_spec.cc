@@ -43,18 +43,33 @@ std::pair<PlacementGroupID, int64_t> BundleSpecification::BundleId() const {
       PlacementGroupID::FromBinary(message_->bundle_id().placement_group_id()), index);
 }
 
-std::string BundleSpecification::BundleIdAsString() const {
-  int64_t index = message_->bundle_id().bundle_index();
-  return PlacementGroupID::FromBinary(message_->bundle_id().placement_group_id()).Hex() +
-         std::to_string(index);
-}
-
 PlacementGroupID BundleSpecification::PlacementGroupId() const {
   return PlacementGroupID::FromBinary(message_->bundle_id().placement_group_id());
 }
 
 int64_t BundleSpecification::Index() const {
   return message_->bundle_id().bundle_index();
+}
+
+std::string FormatPlacementGroupResource(const std::string &original_resource_name,
+                                         PlacementGroupID group_id,
+                                         int64_t bundle_index) {
+  auto str = original_resource_name + "_group_" + group_id.Hex() + "_" +
+             std::to_string(bundle_index);
+  RAY_CHECK(GetOriginalResourceName(str) == original_resource_name) << str;
+  return str;
+}
+
+std::string FormatPlacementGroupResource(const std::string &original_resource_name,
+                                         const BundleSpecification &bundle_spec) {
+  return FormatPlacementGroupResource(
+      original_resource_name, bundle_spec.PlacementGroupId(), bundle_spec.Index());
+}
+
+std::string GetOriginalResourceName(const std::string &resource) {
+  auto idx = resource.find("_group_");
+  RAY_CHECK(idx >= 0) << "This isn't a placement group resource " << resource;
+  return resource.substr(0, idx);
 }
 
 }  // namespace ray

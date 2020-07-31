@@ -154,14 +154,17 @@ void GcsPlacementGroupManager::HandleCreatePlacementGroup(
     ray::rpc::SendReplyCallback send_reply_callback) {
   auto placement_group_id =
       PlacementGroupID::FromBinary(request.placement_group_spec().placement_group_id());
-
+  const auto &strategy = request.placement_group_spec().strategy();
+  const auto &name = request.placement_group_spec().name();
   RAY_LOG(INFO) << "Registering placement group, placement group id = "
-                << placement_group_id;
+                << placement_group_id << ", name = " << name
+                << ", strategy = " << PlacementStrategy_Name(strategy);
   RegisterPlacementGroup(
       request, [reply, send_reply_callback, placement_group_id](
                    std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
         RAY_LOG(INFO) << "Registered placement group, placement group id = "
-                      << placement_group_id;
+                      << placement_group_id << ", name = " << placement_group->GetName()
+                      << ", strategy = " << placement_group->GetStrategy();
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
       });
   auto placement_group = std::make_shared<GcsPlacementGroup>(request);
@@ -171,7 +174,7 @@ void GcsPlacementGroupManager::HandleCreatePlacementGroup(
 }
 
 void GcsPlacementGroupManager::ScheduleTick() {
-  reschedule_timer_.expires_from_now(boost::posix_time::milliseconds(5));
+  reschedule_timer_.expires_from_now(boost::posix_time::milliseconds(500));
   reschedule_timer_.async_wait([this](const boost::system::error_code &error) {
     if (error == boost::system::errc::operation_canceled) {
       return;

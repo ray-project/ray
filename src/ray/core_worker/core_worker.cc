@@ -15,12 +15,15 @@
 #include "ray/core_worker/core_worker.h"
 
 #include "boost/fiber/all.hpp"
+#include "ray/common/bundle_spec.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/core_worker/transport/raylet_transport.h"
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
+#include "ray/stats/stats.h"
+#include "ray/util/process.h"
 #include "ray/util/util.h"
 
 namespace {
@@ -126,6 +129,19 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
       CreateWorker();
     }
   }
+
+  // Assume stats module will be initialized exactly once in once process.
+  // So it must be called in CoreWorkerProcess constructor and will be reused
+  // by all of core worker.
+  RAY_LOG(DEBUG) << "Stats setup in core worker.";
+  // Initialize stats in core worker global tags.
+  const ray::stats::TagsType global_tags = {{ray::stats::ComponentKey, "core_worker"},
+                                            {ray::stats::VersionKey, "0.9.0.dev0"}};
+
+  // NOTE(lingxuan.zlx): We assume RayConfig is initialized before it's used.
+  // RayConfig is generated in Java_io_ray_runtime_RayNativeRuntime_nativeInitialize
+  // for java worker or in constructor of CoreWorker for python worker.
+  ray::stats::Init(global_tags, RayConfig::instance().metrics_agent_port());
 }
 
 CoreWorkerProcess::~CoreWorkerProcess() {
@@ -135,6 +151,9 @@ CoreWorkerProcess::~CoreWorkerProcess() {
     absl::ReaderMutexLock lock(&worker_map_mutex_);
     RAY_CHECK(workers_.empty());
   }
+  RAY_LOG(DEBUG) << "Stats stop in core worker.";
+  // Shutdown stats module if worker process exits.
+  ray::stats::Shutdown();
   if (options_.enable_logging) {
     RayLog::ShutDownRayLog();
   }
@@ -145,13 +164,21 @@ void CoreWorkerProcess::EnsureInitialized() {
                        << "shutdown.";
 }
 
+std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker(const WorkerID &worker_id) {
+  if (!instance_) {
+    return nullptr;
+  }
+  absl::ReaderMutexLock workers_lock(&instance_->worker_map_mutex_);
+  auto it = instance_->workers_.find(worker_id);
+  if (it != instance_->workers_.end()) {
+    return it->second;
+  }
+  return nullptr;
+}
+
 CoreWorker &CoreWorkerProcess::GetCoreWorker() {
   EnsureInitialized();
   if (instance_->options_.num_workers == 1) {
-    // TODO(mehrdadn): Remove this when the bug is resolved.
-    // Somewhat consistently reproducible via
-    // python/ray/tests/test_basic.py::test_background_tasks_with_max_calls
-    // with -c opt on Windows.
     RAY_CHECK(instance_->global_worker_) << "global_worker_ must not be NULL";
     return *instance_->global_worker_;
   }
@@ -380,7 +407,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   };
   task_manager_.reset(new TaskManager(
       memory_store_, reference_counter_, actor_reporter_,
-      [this](const TaskSpecification &spec, bool delay) {
+      [this](TaskSpecification &spec, bool delay) {
         if (delay) {
           // Retry after a delay to emulate the existing Raylet reconstruction
           // behaviour. TODO(ekl) backoff exponentially.
@@ -392,7 +419,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         } else {
           RAY_LOG(ERROR) << "Resubmitting task that produced lost plasma object: "
                          << spec.DebugString();
-          RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
+          if (spec.IsActorTask()) {
+            const auto &actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
+            actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
+            RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
+          } else {
+            RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
+          }
         }
       },
       check_node_alive_fn, reconstruct_object_callback));
@@ -429,13 +462,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         new raylet::RayletClient(std::move(grpc_client)));
   };
 
-  std::function<Status(const TaskSpecification &, const gcs::StatusCallback &)>
-      actor_create_callback = nullptr;
+  std::shared_ptr<ActorCreatorInterface> actor_creator = nullptr;
   if (RayConfig::instance().gcs_actor_service_enabled()) {
-    actor_create_callback = [this](const TaskSpecification &task_spec,
-                                   const gcs::StatusCallback &callback) {
-      return gcs_client_->Actors().AsyncCreateActor(task_spec, callback);
-    };
+    actor_creator = std::make_shared<DefaultActorCreator>(gcs_client_);
   }
 
   direct_actor_submitter_ = std::shared_ptr<CoreWorkerDirectActorTaskSubmitter>(
@@ -448,7 +477,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           memory_store_, task_manager_, local_raylet_id,
           RayConfig::instance().worker_lease_timeout_milliseconds(),
           RayConfig::instance().max_tasks_in_flight_per_worker(),
-          std::move(actor_create_callback), boost::asio::steady_timer(io_service_)));
+          std::move(actor_creator), boost::asio::steady_timer(io_service_)));
   future_resolver_.reset(new FutureResolver(memory_store_, client_factory, rpc_address_));
   // Unfortunately the raylet client has to be constructed after the receivers.
   if (direct_task_receiver_ != nullptr) {
@@ -658,13 +687,13 @@ void CoreWorker::RegisterToGcs() {
 
   RAY_CHECK_OK(gcs_client_->Workers().AsyncAdd(worker_data, nullptr));
 }
+
 void CoreWorker::CheckForRayletFailure(const boost::system::error_code &error) {
   if (error == boost::asio::error::operation_aborted) {
     return;
   }
 
-  // If the raylet fails, we will be reassigned to init (PID=1).
-  if (getppid() == 1) {
+  if (!IsParentProcessAlive()) {
     RAY_LOG(ERROR) << "Raylet failed. Shutting down.";
     Shutdown();
   }
@@ -1143,22 +1172,40 @@ Status CoreWorker::SetResource(const std::string &resource_name, const double ca
   return local_raylet_client_->SetResource(resource_name, capacity, client_id);
 }
 
+std::unordered_map<std::string, double> AddPlacementGroupConstraint(
+    const std::unordered_map<std::string, double> &resources,
+    PlacementGroupID placement_group_id, int64_t bundle_index) {
+  std::unordered_map<std::string, double> new_resources;
+  if (placement_group_id != PlacementGroupID::Nil()) {
+    for (auto iter = resources.begin(); iter != resources.end(); iter++) {
+      auto new_name =
+          FormatPlacementGroupResource(iter->first, placement_group_id, bundle_index);
+      new_resources[new_name] = iter->second;
+    }
+    return new_resources;
+  }
+  return resources;
+}
+
 void CoreWorker::SubmitTask(const RayFunction &function,
                             const std::vector<std::unique_ptr<TaskArg>> &args,
                             const TaskOptions &task_options,
-                            std::vector<ObjectID> *return_ids, int max_retries) {
+                            std::vector<ObjectID> *return_ids, int max_retries,
+                            PlacementOptions placement_options) {
   TaskSpecBuilder builder;
   const int next_task_index = worker_context_.GetNextTaskIndex();
   const auto task_id =
       TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
                             worker_context_.GetCurrentTaskID(), next_task_index);
 
+  auto constrained_resources = AddPlacementGroupConstraint(
+      task_options.resources, placement_options.first, placement_options.second);
   const std::unordered_map<std::string, double> required_resources;
   // TODO(ekl) offload task building onto a thread pool for performance
   BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, task_options.num_returns,
-                      task_options.resources, required_resources, return_ids);
+                      constrained_resources, required_resources, return_ids);
   TaskSpecification task_spec = builder.Build();
   if (options_.is_local_mode) {
     ExecuteTaskLocalMode(task_spec);
@@ -1169,21 +1216,6 @@ void CoreWorker::SubmitTask(const RayFunction &function,
       RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));
     });
   }
-}
-
-std::unordered_map<std::string, double> AddPlacementGroupConstraint(
-    const std::unordered_map<std::string, double> &resources,
-    PlacementGroupID placement_group_id, int64_t bundle_index) {
-  std::unordered_map<std::string, double> new_resources;
-  if (placement_group_id != PlacementGroupID::Nil()) {
-    for (auto iter = resources.begin(); iter != resources.end(); iter++) {
-      auto new_name =
-          placement_group_id.Hex() + std::to_string(bundle_index) + "_" + iter->first;
-      new_resources[new_name] = iter->second;
-    }
-    return new_resources;
-  }
-  return resources;
 }
 
 Status CoreWorker::CreateActor(const RayFunction &function,
@@ -1666,8 +1698,12 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
         metadata = std::make_shared<LocalMemoryBuffer>(
             const_cast<uint8_t *>(task.ArgMetadata(i)), task.ArgMetadataSize(i));
       }
-      args->at(i) = std::make_shared<RayObject>(data, metadata, task.ArgInlinedIds(i),
-                                                /*copy_data*/ true);
+      // NOTE: this is a workaround to avoid an extra copy for Java workers.
+      // Python workers need this copy to pass test case
+      // test_inline_arg_memory_corruption.
+      bool copy_data = options_.language == Language::PYTHON;
+      args->at(i) =
+          std::make_shared<RayObject>(data, metadata, task.ArgInlinedIds(i), copy_data);
       arg_reference_ids->at(i) = ObjectID::Nil();
       // The task borrows all ObjectIDs that were serialized in the inlined
       // arguments. The task will receive references to these IDs, so it is

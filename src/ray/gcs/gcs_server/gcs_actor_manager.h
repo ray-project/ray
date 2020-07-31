@@ -42,28 +42,26 @@ class GcsActor {
   explicit GcsActor(rpc::ActorTableData actor_table_data)
       : actor_table_data_(std::move(actor_table_data)) {}
 
-  /// Create a GcsActor by CreateActorRequest.
+  /// Create a GcsActor by TaskSpec.
   ///
-  /// \param request Contains the actor creation task specification.
-  explicit GcsActor(const ray::rpc::CreateActorRequest &request) {
-    RAY_CHECK(request.task_spec().type() == TaskType::ACTOR_CREATION_TASK);
-    const auto &actor_creation_task_spec = request.task_spec().actor_creation_task_spec();
+  /// \param task_spec Contains the actor creation task specification.
+  explicit GcsActor(const ray::rpc::TaskSpec &task_spec) {
+    RAY_CHECK(task_spec.type() == TaskType::ACTOR_CREATION_TASK);
+    const auto &actor_creation_task_spec = task_spec.actor_creation_task_spec();
     actor_table_data_.set_actor_id(actor_creation_task_spec.actor_id());
-    actor_table_data_.set_job_id(request.task_spec().job_id());
+    actor_table_data_.set_job_id(task_spec.job_id());
     actor_table_data_.set_max_restarts(actor_creation_task_spec.max_actor_restarts());
     actor_table_data_.set_num_restarts(0);
 
-    auto dummy_object =
-        TaskSpecification(request.task_spec()).ActorDummyObject().Binary();
+    auto dummy_object = TaskSpecification(task_spec).ActorDummyObject().Binary();
     actor_table_data_.set_actor_creation_dummy_object_id(dummy_object);
 
     actor_table_data_.set_is_detached(actor_creation_task_spec.is_detached());
     actor_table_data_.set_name(actor_creation_task_spec.name());
-    actor_table_data_.mutable_owner_address()->CopyFrom(
-        request.task_spec().caller_address());
+    actor_table_data_.mutable_owner_address()->CopyFrom(task_spec.caller_address());
 
-    actor_table_data_.set_state(rpc::ActorTableData::PENDING);
-    actor_table_data_.mutable_task_spec()->CopyFrom(request.task_spec());
+    actor_table_data_.set_state(rpc::ActorTableData::DEPENDENCIES_UNREADY);
+    actor_table_data_.mutable_task_spec()->CopyFrom(task_spec);
 
     actor_table_data_.mutable_address()->set_raylet_id(ClientID::Nil().Binary());
     actor_table_data_.mutable_address()->set_worker_id(WorkerID::Nil().Binary());
@@ -111,8 +109,51 @@ class GcsActor {
 };
 
 using RegisterActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;
+using CreateActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;
+
 /// GcsActorManager is responsible for managing the lifecycle of all actors.
 /// This class is not thread-safe.
+/// Actor State Transition Diagram:
+///                                                        3
+///  0                       1                   2        --->
+/// --->DEPENDENCIES_UNREADY--->PENDING_CREATION--->ALIVE      RESTARTING
+///             |                      |              |   <---      |
+///           8 |                    7 |            6 |     4       | 5
+///             |                      v              |             |
+///              ------------------> DEAD <-------------------------
+///
+/// 0: When GCS receives a `RegisterActor` request from core worker, it will add an actor
+/// to `registered_actors_` and `unresolved_actors_`.
+/// 1: When GCS receives a `CreateActor` request from core worker, it will remove the
+/// actor from `unresolved_actors_` and schedule the actor.
+/// 2: GCS selects a node to lease worker. If the worker is successfully leased,
+/// GCS will push actor creation task to the core worker, else GCS will select another
+/// node to lease worker. If the actor is created successfully, GCS will add the actor to
+/// `created_actors_`.
+/// 3: When GCS detects that the worker/node of an actor is dead, it
+/// will get actor from `registered_actors_` by actor id. If the actor's remaining
+/// restarts number is greater than 0, it will reconstruct the actor.
+/// 4: When the actor is successfully reconstructed, GCS will update its state to `ALIVE`.
+/// 5: If the actor is restarting, GCS detects that its worker or node is dead and its
+/// remaining restarts number is 0, it will update its state to `DEAD`. If the actor is
+/// detached, GCS will remove it from `registered_actors_` and `created_actors_`. If the
+/// actor is non-detached, when GCS detects that its owner is dead, GCS will remove it
+/// from `registered_actors_`.
+/// 6: When GCS detected that an actor is dead, GCS will
+/// reconstruct it. If its remaining restarts number is 0, it will update its state to
+/// `DEAD`. If the actor is detached, GCS will remove it from `registered_actors_` and
+/// `created_actors_`. If the actor is non-detached, when GCS detects that its owner is
+/// dead, it will destroy the actor and remove it from `registered_actors_` and
+/// `created_actors_`.
+/// 7: If the actor is non-detached, when GCS detects that its owner is
+/// dead, it will destroy the actor and remove it from `registered_actors_` and
+/// `created_actors_`.
+/// 8: For both detached and non-detached actors, when GCS detects that
+/// an actor's creator is dead, it will update its state to `DEAD` and remove it from
+/// `registered_actors_` and `created_actors_`. Because in this case, the actor can never
+/// be created. If the actor is non-detached, when GCS detects that its owner is dead, it
+/// will update its state to `DEAD` and remove it from `registered_actors_` and
+/// `created_actors_`.
 class GcsActorManager : public rpc::ActorInfoHandler {
  public:
   /// Create a GcsActorManager
@@ -126,6 +167,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
                   const rpc::ClientFactoryFn &worker_client_factory = nullptr);
 
   ~GcsActorManager() = default;
+
+  void HandleRegisterActor(const rpc::RegisterActorRequest &request,
+                           rpc::RegisterActorReply *reply,
+                           rpc::SendReplyCallback send_reply_callback) override;
 
   void HandleCreateActor(const rpc::CreateActorRequest &request,
                          rpc::CreateActorReply *reply,
@@ -171,8 +216,19 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// its state is `ALIVE`.
   /// \return Status::Invalid if this is a named actor and an actor with the specified
   /// name already exists. The callback will not be called in this case.
-  Status RegisterActor(const rpc::CreateActorRequest &request,
+  Status RegisterActor(const rpc::RegisterActorRequest &request,
                        RegisterActorCallback callback);
+
+  /// Create actor asynchronously.
+  ///
+  /// \param request Contains the meta info to create the actor.
+  /// \param callback Will be invoked after the actor is created successfully or be
+  /// invoked immediately if the actor is already registered to `registered_actors_` and
+  /// its state is `ALIVE`.
+  /// \return Status::Invalid if this is a named actor and an actor with the specified
+  /// name already exists. The callback will not be called in this case.
+  Status CreateActor(const rpc::CreateActorRequest &request,
+                     CreateActorCallback callback);
 
   /// Get the actor ID for the named actor. Returns nil if the actor was not found.
   /// \param name The name of the detached actor to look up.
@@ -234,6 +290,12 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   const absl::flat_hash_map<ClientID, absl::flat_hash_map<WorkerID, ActorID>>
       &GetCreatedActors() const;
 
+  const absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> &GetRegisteredActors()
+      const;
+
+  const absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
+      &GetActorRegisterCallbacks() const;
+
  private:
   /// A data structure representing an actor's owner.
   struct Owner {
@@ -258,6 +320,14 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// deregisters the actor.
   void DestroyActor(const ActorID &actor_id);
 
+  /// Get unresolved actors that were submitted from the specified node.
+  absl::flat_hash_set<ActorID> GetUnresolvedActorsByOwnerNode(
+      const ClientID &node_id) const;
+
+  /// Get unresolved actors that were submitted from the specified worker.
+  absl::flat_hash_set<ActorID> GetUnresolvedActorsByOwnerWorker(
+      const ClientID &node_id, const WorkerID &worker_id) const;
+
  private:
   /// Reconstruct the specified actor.
   ///
@@ -267,16 +337,28 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// again.
   void ReconstructActor(const ActorID &actor_id, bool need_reschedule = true);
 
-  /// Callbacks of actor registration requests that are not yet flushed.
-  /// This map is used to filter duplicated messages from a Driver/Worker caused by some
-  /// network problems.
+  /// Callbacks of pending `RegisterActor` requests.
+  /// Maps actor ID to actor registration callbacks, which is used to filter duplicated
+  /// messages from a driver/worker caused by some network problems.
   absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
       actor_to_register_callbacks_;
-  /// All registered actors (pending actors are also included).
+  /// Callbacks of actor creation requests.
+  /// Maps actor ID to actor creation callbacks, which is used to filter duplicated
+  /// messages come from a Driver/Worker caused by some network problems.
+  absl::flat_hash_map<ActorID, std::vector<CreateActorCallback>>
+      actor_to_create_callbacks_;
+  /// All registered actors (unresoved and pending actors are also included).
   /// TODO(swang): Use unique_ptr instead of shared_ptr.
   absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> registered_actors_;
   /// Maps actor names to their actor ID for lookups by name.
   absl::flat_hash_map<std::string, ActorID> named_actors_;
+  /// The actors which dependencies have not been resolved.
+  /// Maps from worker ID to a client and the IDs of the actors owned by that worker.
+  /// The actor whose dependencies are not resolved should be destroyed once it creator
+  /// dies.
+  absl::flat_hash_map<ClientID,
+                      absl::flat_hash_map<WorkerID, absl::flat_hash_set<ActorID>>>
+      unresolved_actors_;
   /// The pending actors which will not be scheduled until there's a resource change.
   std::vector<std::shared_ptr<GcsActor>> pending_actors_;
   /// Map contains the relationship of node and created actors. Each node ID
