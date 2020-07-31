@@ -4,7 +4,6 @@ import com.google.common.collect.ImmutableList;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.api.id.ObjectId;
 import java.util.ArrayList;
 import java.util.List;
 import org.testng.Assert;
@@ -21,12 +20,12 @@ public class StressTest extends BaseTest {
     for (int numIterations : ImmutableList.of(1, 10, 100, 1000)) {
       int numTasks = 1000 / numIterations;
       for (int i = 0; i < numIterations; i++) {
-        List<ObjectId> resultIds = new ArrayList<>();
+        List<ObjectRef<Integer>> results = new ArrayList<>();
         for (int j = 0; j < numTasks; j++) {
-          resultIds.add(Ray.task(StressTest::echo, 1).remote().getId());
+          results.add(Ray.task(StressTest::echo, 1).remote());
         }
 
-        for (Integer result : Ray.<Integer>get(resultIds, Integer.class)) {
+        for (Integer result : Ray.get(results)) {
           Assert.assertEquals(result, Integer.valueOf(1));
         }
       }
@@ -58,12 +57,12 @@ public class StressTest extends BaseTest {
     }
 
     public int ping(int n) {
-      List<ObjectId> objectIds = new ArrayList<>();
+      List<ObjectRef<Integer>> objectRefs = new ArrayList<>();
       for (int i = 0; i < n; i++) {
-        objectIds.add(actor.task(Actor::ping).remote().getId());
+        objectRefs.add(actor.task(Actor::ping).remote());
       }
       int sum = 0;
-      for (Integer result : Ray.<Integer>get(objectIds, Integer.class)) {
+      for (Integer result : Ray.get(objectRefs)) {
         sum += result;
       }
       return sum;
@@ -72,13 +71,13 @@ public class StressTest extends BaseTest {
 
   public void testSubmittingManyTasksToOneActor() throws Exception {
     ActorHandle<Actor> actor = Ray.actor(Actor::new).remote();
-    List<ObjectId> objectIds = new ArrayList<>();
+    List<ObjectRef<Integer>> objectRefs = new ArrayList<>();
     for (int i = 0; i < 10; i++) {
       ActorHandle<Worker> worker = Ray.actor(Worker::new, actor).remote();
-      objectIds.add(worker.task(Worker::ping, 100).remote().getId());
+      objectRefs.add(worker.task(Worker::ping, 100).remote());
     }
 
-    for (Integer result : Ray.<Integer>get(objectIds, Integer.class)) {
+    for (Integer result : Ray.get(objectRefs)) {
       Assert.assertEquals(result, Integer.valueOf(100));
     }
   }

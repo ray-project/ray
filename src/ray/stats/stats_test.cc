@@ -43,7 +43,7 @@ class MockExporter : public opencensus::stats::StatsExporter::Handler {
 
       ASSERT_EQ("current_worker", descriptor.name());
       ASSERT_EQ(opencensus::stats::ViewData::Type::kDouble, view_data.type());
-      for (const auto row : view_data.double_data()) {
+      for (const auto &row : view_data.double_data()) {
         for (size_t i = 0; i < descriptor.columns().size(); ++i) {
           if (descriptor.columns()[i].name() == "WorkerPidKey") {
             ASSERT_EQ("1000", row.first[i]);

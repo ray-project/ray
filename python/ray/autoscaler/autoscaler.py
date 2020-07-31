@@ -270,6 +270,7 @@ class StandardAutoscaler:
             (new_runtime_hash,
              new_file_mounts_contents_hash) = hash_runtime_conf(
                  new_config["file_mounts"],
+                 new_config["cluster_synced_files"],
                  [
                      new_config["worker_setup_commands"],
                      new_config["worker_start_ray_commands"],
@@ -409,6 +410,7 @@ class StandardAutoscaler:
             ray_start_commands=with_head_node_ip(ray_start_commands),
             runtime_hash=self.runtime_hash,
             file_mounts_contents_hash=self.file_mounts_contents_hash,
+            cluster_synced_files=self.config["cluster_synced_files"],
             process_runner=self.process_runner,
             use_internal_ip=True,
             docker_config=self.config.get("docker"))

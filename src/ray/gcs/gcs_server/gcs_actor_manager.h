@@ -110,8 +110,50 @@ class GcsActor {
 
 using RegisterActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;
 using CreateActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;
+
 /// GcsActorManager is responsible for managing the lifecycle of all actors.
 /// This class is not thread-safe.
+/// Actor State Transition Diagram:
+///                                                        3
+///  0                       1                   2        --->
+/// --->DEPENDENCIES_UNREADY--->PENDING_CREATION--->ALIVE      RESTARTING
+///             |                      |              |   <---      |
+///           8 |                    7 |            6 |     4       | 5
+///             |                      v              |             |
+///              ------------------> DEAD <-------------------------
+///
+/// 0: When GCS receives a `RegisterActor` request from core worker, it will add an actor
+/// to `registered_actors_` and `unresolved_actors_`.
+/// 1: When GCS receives a `CreateActor` request from core worker, it will remove the
+/// actor from `unresolved_actors_` and schedule the actor.
+/// 2: GCS selects a node to lease worker. If the worker is successfully leased,
+/// GCS will push actor creation task to the core worker, else GCS will select another
+/// node to lease worker. If the actor is created successfully, GCS will add the actor to
+/// `created_actors_`.
+/// 3: When GCS detects that the worker/node of an actor is dead, it
+/// will get actor from `registered_actors_` by actor id. If the actor's remaining
+/// restarts number is greater than 0, it will reconstruct the actor.
+/// 4: When the actor is successfully reconstructed, GCS will update its state to `ALIVE`.
+/// 5: If the actor is restarting, GCS detects that its worker or node is dead and its
+/// remaining restarts number is 0, it will update its state to `DEAD`. If the actor is
+/// detached, GCS will remove it from `registered_actors_` and `created_actors_`. If the
+/// actor is non-detached, when GCS detects that its owner is dead, GCS will remove it
+/// from `registered_actors_`.
+/// 6: When GCS detected that an actor is dead, GCS will
+/// reconstruct it. If its remaining restarts number is 0, it will update its state to
+/// `DEAD`. If the actor is detached, GCS will remove it from `registered_actors_` and
+/// `created_actors_`. If the actor is non-detached, when GCS detects that its owner is
+/// dead, it will destroy the actor and remove it from `registered_actors_` and
+/// `created_actors_`.
+/// 7: If the actor is non-detached, when GCS detects that its owner is
+/// dead, it will destroy the actor and remove it from `registered_actors_` and
+/// `created_actors_`.
+/// 8: For both detached and non-detached actors, when GCS detects that
+/// an actor's creator is dead, it will update its state to `DEAD` and remove it from
+/// `registered_actors_` and `created_actors_`. Because in this case, the actor can never
+/// be created. If the actor is non-detached, when GCS detects that its owner is dead, it
+/// will update its state to `DEAD` and remove it from `registered_actors_` and
+/// `created_actors_`.
 class GcsActorManager : public rpc::ActorInfoHandler {
  public:
   /// Create a GcsActorManager

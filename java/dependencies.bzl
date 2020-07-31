@@ -18,7 +18,7 @@ def gen_java_deps():
             "org.msgpack:msgpack-core:0.8.20",
             "org.ow2.asm:asm:6.0",
             "org.slf4j:slf4j-log4j12:1.7.25",
-            "org.testng:testng:6.9.10",
+            "org.testng:testng:7.1.0",
             "redis.clients:jedis:2.8.0",
             "net.java.dev.jna:jna:5.5.0",
         ],
