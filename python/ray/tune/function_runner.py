@@ -319,7 +319,7 @@ class FunctionRunner(Trainable):
         self._status_reporter.save_checkpoint(checkpoint)
 
     def restore_from_object(self, obj):
-        if self.default_checkpoint_dir is not None and os.exists(
+        if self.default_checkpoint_dir is not None and os.path.exists(
                 self.default_checkpoint_dir):
             shutil.rmtree(self.default_checkpoint_dir)
             logger.debug("Clearing default checkpoint: %s",
@@ -340,7 +340,7 @@ class FunctionRunner(Trainable):
         self._report_thread_runner_error()
         session.shutdown()
 
-        if self.default_checkpoint_dir is not None and os.exists(
+        if self.default_checkpoint_dir is not None and os.path.exists(
                 self.default_checkpoint_dir):
             shutil.rmtree(self.default_checkpoint_dir)
             logger.debug("Clearing default checkpoint: %s",
