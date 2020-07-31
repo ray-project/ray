@@ -189,7 +189,8 @@ class FunctionRunner(Trainable):
         session.init(self._status_reporter)
         self._runner = None
         self._restore_tmpdir = None
-        self.default_checkpoint_dir = None
+        self.default_checkpoint_dir = TrainableUtil.make_checkpoint_dir(
+            self.logdir, index="default", dryrun=True)
 
     def _trainable_func(self):
         """Subclasses can override this to set the trainable func."""
@@ -283,8 +284,10 @@ class FunctionRunner(Trainable):
         return fn(self)
 
     def create_default_checkpoint_dir(self):
-        self.default_checkpoint_dir = TrainableUtil.make_checkpoint_dir(
+        checkpoint_dir = TrainableUtil.make_checkpoint_dir(
             self.logdir, index="default")
+        assert checkpoint_dir == self.default_checkpoint_dir, (
+            "Checkpoint directory validation failed!")
         return self.default_checkpoint_dir
 
     def save(self, checkpoint_path=None):
@@ -319,8 +322,7 @@ class FunctionRunner(Trainable):
         self._status_reporter.save_checkpoint(checkpoint)
 
     def restore_from_object(self, obj):
-        if self.default_checkpoint_dir is not None and os.exists(
-                self.default_checkpoint_dir):
+        if os.exists(self.default_checkpoint_dir):
             shutil.rmtree(self.default_checkpoint_dir)
             logger.debug("Clearing default checkpoint: %s",
                          self.default_checkpoint_dir)
