@@ -74,7 +74,7 @@
 <dependency>
   <groupId>org.testng</groupId>
   <artifactId>testng</artifactId>
-  <version>6.9.10</version>
+  <version>7.1.0</version>
 </dependency>
   </dependencies>
   <build>
