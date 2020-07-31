@@ -132,8 +132,8 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
 }
 
 void ClusterTaskManager::QueueTask(const Task &task, rpc::RequestWorkerLeaseReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback) {
-  Work work = std::make_tuple(task, reply, send_reply_callback);
+                                   std::function<void(void)> callback) {
+  Work work = std::make_tuple(task, reply, callback);
   tasks_to_schedule_.push_back(work);
 }
 
@@ -151,7 +151,7 @@ void ClusterTaskManager::Dispatch(
     std::shared_ptr<WorkerInterface> worker,
     std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers_,
     const TaskSpecification &task_spec, rpc::RequestWorkerLeaseReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+    std::function<void(void)> send_reply_callback) {
   reply->mutable_worker_address()->set_ip_address(worker->IpAddress());
   reply->mutable_worker_address()->set_port(worker->Port());
   reply->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());
@@ -202,16 +202,16 @@ void ClusterTaskManager::Dispatch(
       }
     }
   }
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+  send_reply_callback();
 }
 
 void ClusterTaskManager::Spillback(ClientID spillback_to, std::string address, int port,
                                    rpc::RequestWorkerLeaseReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback) {
+                                   std::function<void(void)> send_reply_callback) {
   reply->mutable_retry_at_raylet_address()->set_ip_address(address);
   reply->mutable_retry_at_raylet_address()->set_port(port);
   reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+  send_reply_callback();
 }
 
 }  // namespace raylet

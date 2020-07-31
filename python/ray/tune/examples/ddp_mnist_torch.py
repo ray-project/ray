@@ -2,6 +2,7 @@
 # https://github.com/pytorch/examples/blob/master/mnist/main.py
 import argparse
 import logging
+import os
 import torch
 import torch.optim as optim
 from torch.nn.parallel import DistributedDataParallel
@@ -10,21 +11,21 @@ import ray
 from ray import tune
 from ray.tune.examples.mnist_pytorch import (train, test, get_data_loaders,
                                              ConvNet)
-from ray.util.sgd.torch.func_trainable import (DistributedTrainableCreator,
-                                               distributed_checkpoint)
+from ray.tune.integration.torch import (DistributedTrainableCreator,
+                                        distributed_checkpoint_dir)
 
 logger = logging.getLogger(__name__)
 
 
-def train_mnist(config, checkpoint=False):
+def train_mnist(config, checkpoint_dir=False):
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
     train_loader, test_loader = get_data_loaders()
     model = ConvNet().to(device)
     optimizer = optim.SGD(model.parameters(), lr=0.1)
 
-    if checkpoint:
-        with open(checkpoint) as f:
+    if checkpoint_dir:
+        with open(os.path.join(checkpoint_dir, "checkpoint")) as f:
             model_state, optimizer_state = torch.load(f)
 
         model.load_state_dict(model_state)
@@ -37,7 +38,8 @@ def train_mnist(config, checkpoint=False):
         acc = test(model, test_loader, device)
 
         if epoch % 3 == 0:
-            with distributed_checkpoint(label=epoch) as path:
+            with distributed_checkpoint_dir(step=epoch) as checkpoint_dir:
+                path = os.path.join(checkpoint_dir, "checkpoint")
                 torch.save((model.state_dict(), optimizer.state_dict()), path)
         tune.report(mean_accuracy=acc)
 

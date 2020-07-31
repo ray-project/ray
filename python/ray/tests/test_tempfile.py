@@ -188,11 +188,11 @@ def test_tempdir_privilege(shutdown_only):
 
 def test_session_dir_uniqueness():
     session_dirs = set()
-    for _ in range(3):
+    for i in range(2):
         ray.init(num_cpus=1)
         session_dirs.add(ray.worker._global_node.get_session_dir_path)
         ray.shutdown()
-    assert len(session_dirs) == 3
+    assert len(session_dirs) == 2
 
 
 if __name__ == "__main__":

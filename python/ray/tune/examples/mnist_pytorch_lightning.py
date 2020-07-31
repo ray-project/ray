@@ -158,16 +158,15 @@ def train_mnist_tune(config, data_dir=None, num_epochs=10, num_gpus=0):
 # __tune_checkpoint_callback_begin__
 class CheckpointCallback(Callback):
     def on_validation_end(self, trainer, pl_module):
-        path = tune.make_checkpoint_dir(trainer.global_step)
-        trainer.save_checkpoint(os.path.join(path, "checkpoint"))
-        tune.save_checkpoint(path)
+        with tune.checkpoint_dir(step=trainer.global_step) as checkpoint_dir:
+            trainer.save_checkpoint(os.path.join(checkpoint_dir, "checkpoint"))
 # __tune_checkpoint_callback_end__
 
 
 # __tune_train_checkpoint_begin__
 def train_mnist_tune_checkpoint(
     config,
-    checkpoint=None,
+    checkpoint_dir=None,
     data_dir=None,
     num_epochs=10,
     num_gpus=0):
@@ -179,13 +178,13 @@ def train_mnist_tune_checkpoint(
         progress_bar_refresh_rate=0,
         callbacks=[CheckpointCallback(),
                    TuneReportCallback()])
-    if checkpoint:
+    if checkpoint_dir:
         # Currently, this leads to errors:
         # model = LightningMNISTClassifier.load_from_checkpoint(
         #     os.path.join(checkpoint, "checkpoint"))
         # Workaround:
         ckpt = pl_load(
-            os.path.join(checkpoint, "checkpoint"),
+            os.path.join(checkpoint_dir, "checkpoint"),
             map_location=lambda storage, loc: storage)
         model = LightningMNISTClassifier._load_model_state(ckpt, config=config)
         trainer.current_epoch = ckpt["epoch"]

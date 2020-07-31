@@ -1,7 +1,9 @@
-.. _tune-user-guide:
+=============================
+User Guide & Configuring Tune
+=============================
 
-Tune User Guide
-===============
+These pages will demonstrate the various features and configurations of Tune.
+
 
 .. warning:: Before you continue, be sure to have read :ref:`tune-60-seconds`.
 
@@ -131,7 +133,7 @@ You can log arbitrary values and metrics in both training APIs:
 
 During training, Tune will automatically log the below metrics in addition to the user-provided values. All of these can be used as stopping conditions or passed as a parameter to Trial Schedulers/Search Algorithms.
 
-.. literalinclude:: ../../../../python/ray/tune/result.py
+.. literalinclude:: ../../../python/ray/tune/result.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -149,17 +151,18 @@ When running a hyperparameter search, Tune can automatically and periodically sa
 
 Checkpointing assumes that the model state will be saved to disk on whichever node the Trainable is running on.
 
-To use Tune's checkpointing features, you must expose a ``checkpoint`` argument in the function signature, and call ``tune.make_checkpoint_dir`` and ``tune.save_checkpoint``:
+To use Tune's checkpointing features, you must expose a ``checkpoint_dir`` argument in the function signature, and call ``tune.checkpoint_dir``:
 
 .. code-block:: python
 
+        import os
         import time
         from ray import tune
 
-        def train_func(config, checkpoint=None):
+        def train_func(config, checkpoint_dir=None):
             start = 0
-            if checkpoint:
-                with open(checkpoint) as f:
+            if checkpoint_dir:
+                with open(os.path.join(checkpoint_dir, "checkpoint")) as f:
                     state = json.loads(f.read())
                     start = state["step"] + 1
 
@@ -167,11 +170,10 @@ To use Tune's checkpointing features, you must expose a ``checkpoint`` argument 
                 time.sleep(1)
 
                 # Obtain a checkpoint directory
-                checkpoint_dir = tune.make_checkpoint_dir(step=step)
-                path = os.path.join(checkpoint_dir, "checkpoint")
-                with open(path, "w") as f:
-                    f.write(json.dumps({"step": start}))
-                tune.save_checkpoint(path)
+                with tune.checkpoint_dir(step=step) as checkpoint_dir:
+                    path = os.path.join(checkpoint_dir, "checkpoint")
+                    with open(path, "w") as f:
+                        f.write(json.dumps({"step": start}))
 
                 tune.report(hello="world", ray="tune")
 
@@ -344,7 +346,7 @@ If you are running Ray on a remote multi-user cluster where you do not have sudo
 
     $ export TMPDIR=/tmp/$USER; mkdir -p $TMPDIR; tensorboard --logdir=~/ray_results
 
-.. image:: ../../ray-tune-tensorboard.png
+.. image:: ../ray-tune-tensorboard.png
 
 If using TF2, Tune also automatically generates TensorBoard HParams output, as shown below:
 
@@ -358,7 +360,7 @@ If using TF2, Tune also automatically generates TensorBoard HParams output, as s
         }
     )
 
-.. image:: ../../images/tune-hparams.png
+.. image:: ../images/tune-hparams.png
 
 Console Output
 --------------

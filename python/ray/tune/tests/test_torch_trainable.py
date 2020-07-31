@@ -6,8 +6,9 @@ import torch.distributed as dist
 
 import ray
 from ray import tune
-from ray.util.sgd.torch.func_trainable import (
-    DistributedTrainableCreator, distributed_checkpoint, _train_simple)
+from ray.tune.integration.torch import (DistributedTrainableCreator,
+                                        distributed_checkpoint_dir,
+                                        _train_simple, _train_check_global)
 
 
 @pytest.fixture
@@ -47,12 +48,29 @@ def test_step_after_completion(ray_start_2_cpus):  # noqa: F811
             trainer.train()
 
 
+def test_validation(ray_start_2_cpus):  # noqa: F811
+    def bad_func(a, b, c):
+        return 1
+
+    with pytest.raises(ValueError):
+        DistributedTrainableCreator(bad_func, num_workers=2)
+
+
+def test_set_global(ray_start_2_cpus):  # noqa: F811
+    trainable_cls = DistributedTrainableCreator(
+        _train_check_global, num_workers=2)
+    trainable = trainable_cls()
+    result = trainable.train()
+    assert result["is_distributed"]
+
+
 def test_save_checkpoint(ray_start_2_cpus):  # noqa: F811
     trainable_cls = DistributedTrainableCreator(_train_simple, num_workers=2)
     trainer = trainable_cls(config={"epochs": 1})
     trainer.train()
-    path = trainer.save()
-    model_state_dict, opt_state_dict = torch.load(path)
+    checkpoint_dir = trainer.save()
+    model_state_dict, opt_state_dict = torch.load(
+        os.path.join(checkpoint_dir, "checkpoint"))
     trainer.stop()
 
 
@@ -72,11 +90,11 @@ def test_simple_tune(ray_start_4_cpus, enabled_checkpoint):
 def test_checkpoint(ray_start_2_cpus, rank):  # noqa: F811
     with patch("torch.distributed.get_rank") as rank_method:
         rank_method.return_value = rank
-        with distributed_checkpoint(label="test") as path:
+        with distributed_checkpoint_dir(step="test") as path:
             if rank == 0:
                 assert path
-            else:
-                assert path == os.devnull
+        if rank != 0:
+            assert not os.path.exists(path)
 
 
 if __name__ == "__main__":
