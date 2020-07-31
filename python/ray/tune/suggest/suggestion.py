@@ -200,7 +200,7 @@ class Searcher:
             logger.warning(e)
             success = False
 
-        if success:
+        if success and os.path.exists(tmp_search_ckpt_path):
             os.rename(tmp_search_ckpt_path,
                       os.path.join(checkpoint_dir, Searcher.CKPT_FILE))
 
