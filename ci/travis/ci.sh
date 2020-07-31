@@ -310,12 +310,7 @@ lint_readme() {
   fi
 }
 
-lint_python() {
-  # ignore dict vs {} (C408), others are defaults
-  command -V python
-  python -m flake8 --inline-quotes '"' --no-avoid-escape \
-    --exclude=python/ray/core/generated/,streaming/python/generated,doc/source/conf.py,python/ray/cloudpickle/,python/ray/thirdparty_files \
-    --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605
+lint_scripts() {
   "${ROOT_DIR}"/format.sh --all
 }
 
@@ -361,8 +356,8 @@ _lint() {
     { echo "WARNING: Skipping linting C/C++ as clang-format is not installed."; } 2> /dev/null
   fi
 
-  # Run Python linting
-  lint_python
+  # Run script linting
+  lint_scripts
 
   # Make sure that the README is formatted properly.
   lint_readme
