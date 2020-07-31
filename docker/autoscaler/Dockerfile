@@ -17,7 +17,8 @@ COPY requirements.txt ./
 COPY requirements_autoscaler.txt ./
 COPY $WHEEL_PATH $WHEEL_NAME
 
-RUN $HOME/anaconda3/bin/pip --no-cache-dir install -r requirements.txt \
+RUN $HOME/anaconda3/bin/pip --no-cache-dir install -r requirements.txt \ 
+    && $HOME/anaconda3/bin/pip --no-cache-dir install -r requirements_autoscaler.txt \
     && $HOME/anaconda3/bin/pip --no-cache-dir install $WHEEL_NAME[all]
 
 # For Click

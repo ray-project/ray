@@ -87,6 +87,7 @@ aquery:ci --noshow_progress
 build:ci --color=yes
 build:ci --curses=no
 build:ci --disk_cache=~/ray-bazel-cache
+build:ci --keep_going
 build:ci --remote_cache="https://storage.googleapis.com/ray-bazel-cache"
 build:ci --progress_report_interval=100
 build:ci --show_progress_rate_limit=15
