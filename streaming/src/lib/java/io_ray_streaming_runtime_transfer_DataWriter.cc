@@ -1,4 +1,5 @@
 #include "io_ray_streaming_runtime_transfer_DataWriter.h"
+
 #include "config/streaming_config.h"
 #include "data_writer.h"
 #include "streaming_jni_common.h"

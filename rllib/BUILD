@@ -1171,7 +1171,7 @@ py_test(
     name = "test_env_with_subprocess",
     main = "tests/test_env_with_subprocess.py",
     tags = ["tests_dir", "tests_dir_E"],
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_env_with_subprocess.py"]
 )
 
@@ -1296,13 +1296,27 @@ py_test(
     srcs = ["tests/test_reproducibility.py"]
 )
 
+# Test train/rollout scripts (w/o confirming rollout performance).
 py_test(
-    name = "test_rollout",
+    name = "test_rollout_no_learning",
     main = "tests/test_rollout.py",
     tags = ["tests_dir", "tests_dir_R"],
     size = "large",
     data = ["train.py", "rollout.py"],
-    srcs = ["tests/test_rollout.py"]
+    srcs = ["tests/test_rollout.py"],
+    args = ["TestRolloutSimple"]
+)
+
+# Test train/rollout scripts (and confirm `rllib rollout` performance is same
+# as the final one from the `rllib train` run).
+py_test(
+    name = "test_rollout_w_learning",
+    main = "tests/test_rollout.py",
+    tags = ["tests_dir", "tests_dir_R"],
+    size = "medium",
+    data = ["train.py", "rollout.py"],
+    srcs = ["tests/test_rollout.py"],
+    args = ["TestRolloutLearntPolicy"]
 )
 
 py_test(
@@ -1943,39 +1957,39 @@ py_test(
 )
 
 py_test(
-    name = "examples/twostep_game_maddpg",
-    main = "examples/twostep_game.py",
+    name = "examples/two_step_game_maddpg",
+    main = "examples/two_step_game.py",
     tags = ["examples", "examples_T"],
-    size = "large",
-    srcs = ["examples/twostep_game.py"],
-    args = ["--stop-timesteps=2000", "--run=contrib/MADDPG"]
+    size = "small",
+    srcs = ["examples/two_step_game.py"],
+    args = ["--as-test", "--stop-reward=7.5", "--run=contrib/MADDPG"]
 )
 
 py_test(
-    name = "examples/twostep_game_pg_tf",
-    main = "examples/twostep_game.py",
+    name = "examples/two_step_game_pg_tf",
+    main = "examples/two_step_game.py",
     tags = ["examples", "examples_T"],
     size = "medium",
-    srcs = ["examples/twostep_game.py"],
+    srcs = ["examples/two_step_game.py"],
     args = ["--as-test", "--stop-reward=7", "--run=PG"]
 )
 
 py_test(
-    name = "examples/twostep_game_pg_torch",
-    main = "examples/twostep_game.py",
+    name = "examples/two_step_game_pg_torch",
+    main = "examples/two_step_game.py",
     tags = ["examples", "examples_T"],
     size = "medium",
-    srcs = ["examples/twostep_game.py"],
+    srcs = ["examples/two_step_game.py"],
     args = ["--as-test", "--torch", "--stop-reward=7", "--run=PG"]
 )
 
 py_test(
-    name = "examples/twostep_game_qmix",
-    main = "examples/twostep_game.py",
+    name = "examples/two_step_game_qmix",
+    main = "examples/two_step_game.py",
     tags = ["examples", "examples_T"],
     size = "medium",
-    srcs = ["examples/twostep_game.py"],
-    args = ["--stop-timesteps=2000", "--run=QMIX"]
+    srcs = ["examples/two_step_game.py"],
+    args = ["--as-test", "--torch", "--stop-reward=7", "--run=QMIX"]
 )
 
 py_test(

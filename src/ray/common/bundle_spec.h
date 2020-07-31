@@ -51,9 +51,6 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
   // Return the bundle_id
   std::pair<PlacementGroupID, int64_t> BundleId() const;
 
-  // Return the bundle_id of string. eg: placement_group_id + index.
-  std::string BundleIdAsString() const;
-
   // Return the Placement Group id which the Bundle belong to.
   PlacementGroupID PlacementGroupId() const;
 
@@ -93,5 +90,16 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
 
   mutable SpillbackBundleCallback on_spillback_ = nullptr;
 };
+
+/// Format a placement group resource, e.g., CPU -> CPU_group_YYY_i
+std::string FormatPlacementGroupResource(const std::string &original_resource_name,
+                                         PlacementGroupID group_id, int64_t bundle_index);
+
+/// Format a placement group resource, e.g., CPU -> CPU_group_YYY_i
+std::string FormatPlacementGroupResource(const std::string &original_resource_name,
+                                         const BundleSpecification &bundle_spec);
+
+/// Return the original resource name of the placement group resource.
+std::string GetOriginalResourceName(const std::string &resource);
 
 }  // namespace ray

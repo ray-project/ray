@@ -9,12 +9,17 @@ import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyFunction;
 import io.ray.api.function.RayFunc;
+import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.UniqueId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
+import io.ray.api.placementgroup.PlacementGroup;
+import io.ray.api.placementgroup.PlacementStrategy;
 import io.ray.api.runtimecontext.RuntimeContext;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.Callable;
 
 /**
@@ -81,6 +86,20 @@ public interface RayRuntime {
    * @param nodeId The node that we want to set its resource.
    */
   void setResource(String resourceName, double capacity, UniqueId nodeId);
+
+  <T extends BaseActorHandle> T getActorHandle(ActorId actorId);
+
+  /**
+   * Get a handle to a named actor.
+   * <p>
+   * Gets a handle to a named actor with the given name. The actor must
+   * have been created with name specified.
+   *
+   * @param name The name of the named actor.
+   * @param global Whether the named actor is global.
+   * @return ActorHandle to the actor.
+   */
+  <T extends BaseActorHandle> Optional<T> getActor(String name, boolean global);
 
   /**
    * Kill the actor immediately.
@@ -152,6 +171,9 @@ public interface RayRuntime {
    */
   PyActorHandle createActor(PyActorClass pyActorClass, Object[] args,
                             ActorCreationOptions options);
+
+  PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
+      PlacementStrategy strategy);
 
   RuntimeContext getRuntimeContext();
 

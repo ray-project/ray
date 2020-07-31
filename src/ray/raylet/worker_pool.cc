@@ -29,8 +29,8 @@
 namespace {
 
 // A helper function to get a worker from a list.
-std::shared_ptr<ray::raylet::Worker> GetWorker(
-    const std::unordered_set<std::shared_ptr<ray::raylet::Worker>> &worker_pool,
+std::shared_ptr<ray::raylet::WorkerInterface> GetWorker(
+    const std::unordered_set<std::shared_ptr<ray::raylet::WorkerInterface>> &worker_pool,
     const std::shared_ptr<ray::ClientConnection> &connection) {
   for (auto it = worker_pool.begin(); it != worker_pool.end(); it++) {
     if ((*it)->Connection() == connection) {
@@ -42,8 +42,9 @@ std::shared_ptr<ray::raylet::Worker> GetWorker(
 
 // A helper function to remove a worker from a list. Returns true if the worker
 // was found and removed.
-bool RemoveWorker(std::unordered_set<std::shared_ptr<ray::raylet::Worker>> &worker_pool,
-                  const std::shared_ptr<ray::raylet::Worker> &worker) {
+bool RemoveWorker(
+    std::unordered_set<std::shared_ptr<ray::raylet::WorkerInterface>> &worker_pool,
+    const std::shared_ptr<ray::raylet::WorkerInterface> &worker) {
   return worker_pool.erase(worker) > 0;
 }
 
@@ -326,8 +327,8 @@ void WorkerPool::MarkPortAsFree(int port) {
   }
 }
 
-Status WorkerPool::RegisterWorker(const std::shared_ptr<Worker> &worker, pid_t pid,
-                                  int *port) {
+Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
+                                  pid_t pid, int *port) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
   auto it = state.starting_worker_processes.find(Process::FromPid(pid));
   if (it == state.starting_worker_processes.end()) {
@@ -347,7 +348,8 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<Worker> &worker, pid_t p
   return Status::OK();
 }
 
-Status WorkerPool::RegisterDriver(const std::shared_ptr<Worker> &driver, int *port) {
+Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver,
+                                  int *port) {
   RAY_CHECK(!driver->GetAssignedTaskId().IsNil());
   RAY_RETURN_NOT_OK(GetNextFreePort(port));
   driver->SetAssignedPort(*port);
@@ -356,7 +358,7 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<Worker> &driver, int *po
   return Status::OK();
 }
 
-std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(
+std::shared_ptr<WorkerInterface> WorkerPool::GetRegisteredWorker(
     const std::shared_ptr<ClientConnection> &connection) const {
   for (const auto &entry : states_by_lang_) {
     auto worker = GetWorker(entry.second.registered_workers, connection);
@@ -367,7 +369,7 @@ std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(
   return nullptr;
 }
 
-std::shared_ptr<Worker> WorkerPool::GetRegisteredDriver(
+std::shared_ptr<WorkerInterface> WorkerPool::GetRegisteredDriver(
     const std::shared_ptr<ClientConnection> &connection) const {
   for (const auto &entry : states_by_lang_) {
     auto driver = GetWorker(entry.second.registered_drivers, connection);
@@ -378,7 +380,7 @@ std::shared_ptr<Worker> WorkerPool::GetRegisteredDriver(
   return nullptr;
 }
 
-void WorkerPool::PushWorker(const std::shared_ptr<Worker> &worker) {
+void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   // Since the worker is now idle, unset its assigned task ID.
   RAY_CHECK(worker->GetAssignedTaskId().IsNil())
       << "Idle workers cannot have an assigned task ID";
@@ -401,10 +403,11 @@ void WorkerPool::PushWorker(const std::shared_ptr<Worker> &worker) {
   }
 }
 
-std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec) {
+std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
+    const TaskSpecification &task_spec) {
   auto &state = GetStateForLanguage(task_spec.GetLanguage());
 
-  std::shared_ptr<Worker> worker = nullptr;
+  std::shared_ptr<WorkerInterface> worker = nullptr;
   Process proc;
   if (task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) {
     // Code path of actor creation task with dynamic worker options.
@@ -455,7 +458,7 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
   return worker;
 }
 
-bool WorkerPool::DisconnectWorker(const std::shared_ptr<Worker> &worker) {
+bool WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
   RAY_CHECK(RemoveWorker(state.registered_workers, worker));
 
@@ -467,7 +470,7 @@ bool WorkerPool::DisconnectWorker(const std::shared_ptr<Worker> &worker) {
   return RemoveWorker(state.idle, worker);
 }
 
-void WorkerPool::DisconnectDriver(const std::shared_ptr<Worker> &driver) {
+void WorkerPool::DisconnectDriver(const std::shared_ptr<WorkerInterface> &driver) {
   auto &state = GetStateForLanguage(driver->GetLanguage());
   RAY_CHECK(RemoveWorker(state.registered_drivers, driver));
   stats::CurrentDriver().Record(
@@ -482,9 +485,9 @@ inline WorkerPool::State &WorkerPool::GetStateForLanguage(const Language &langua
   return state->second;
 }
 
-std::vector<std::shared_ptr<Worker>> WorkerPool::GetWorkersRunningTasksForJob(
+std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetWorkersRunningTasksForJob(
     const JobID &job_id) const {
-  std::vector<std::shared_ptr<Worker>> workers;
+  std::vector<std::shared_ptr<WorkerInterface>> workers;
 
   for (const auto &entry : states_by_lang_) {
     for (const auto &worker : entry.second.registered_workers) {
@@ -497,8 +500,9 @@ std::vector<std::shared_ptr<Worker>> WorkerPool::GetWorkersRunningTasksForJob(
   return workers;
 }
 
-const std::vector<std::shared_ptr<Worker>> WorkerPool::GetAllRegisteredWorkers() const {
-  std::vector<std::shared_ptr<Worker>> workers;
+const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredWorkers()
+    const {
+  std::vector<std::shared_ptr<WorkerInterface>> workers;
 
   for (const auto &entry : states_by_lang_) {
     for (const auto &worker : entry.second.registered_workers) {
@@ -511,8 +515,9 @@ const std::vector<std::shared_ptr<Worker>> WorkerPool::GetAllRegisteredWorkers()
   return workers;
 }
 
-const std::vector<std::shared_ptr<Worker>> WorkerPool::GetAllRegisteredDrivers() const {
-  std::vector<std::shared_ptr<Worker>> drivers;
+const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredDrivers()
+    const {
+  std::vector<std::shared_ptr<WorkerInterface>> drivers;
 
   for (const auto &entry : states_by_lang_) {
     for (const auto &driver : entry.second.registered_drivers) {

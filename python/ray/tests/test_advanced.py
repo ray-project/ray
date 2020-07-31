@@ -33,11 +33,12 @@ def test_internal_free(shutdown_only):
 
     sampler = Sampler.remote()
 
-    # Free does not delete from in-memory store.
+    # Free deletes from in-memory store.
     obj_ref = sampler.sample.remote()
     ray.get(obj_ref)
     ray.internal.free(obj_ref)
-    assert ray.get(obj_ref) == [1, 2, 3, 4, 5]
+    with pytest.raises(Exception):
+        ray.get(obj_ref)
 
     # Free deletes big objects from plasma store.
     big_id = sampler.sample_big.remote()
@@ -201,7 +202,8 @@ def test_profiling_api(ray_start_2_cpus):
             "ray.wait",
             "submit_task",
             "fetch_and_run_function",
-            "register_remote_function",
+            # TODO (Alex) :https://github.com/ray-project/ray/pull/9346
+            # "register_remote_function",
             "custom_event",  # This is the custom one from ray.profile.
         ]
 

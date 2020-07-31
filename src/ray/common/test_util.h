@@ -14,17 +14,14 @@
 
 #pragma once
 
-#include <unistd.h>
-
+#include <boost/optional.hpp>
 #include <functional>
 #include <string>
 
-#include <boost/optional.hpp>
-
 #include "gtest/gtest.h"
 #include "ray/common/id.h"
-#include "ray/protobuf/common.pb.h"
 #include "ray/util/util.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 
@@ -62,6 +59,9 @@ int KillAllExecutable(const std::string &executable_with_suffix);
 
 // A helper function to return a random task id.
 TaskID RandomTaskId();
+
+// A helper function to return a random job id.
+JobID RandomJobId();
 
 std::shared_ptr<Buffer> GenerateRandomBuffer();
 

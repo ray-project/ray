@@ -38,6 +38,7 @@ from libcpp.string cimport string as c_string
 from libcpp.utility cimport pair
 from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
+from libcpp.pair cimport pair as c_pair
 
 from cython.operator import dereference, postincrement
 
@@ -52,6 +53,7 @@ from ray.includes.common cimport (
     CTaskArgByReference,
     CTaskArgByValue,
     CTaskType,
+    CPlacementStrategy,
     CRayFunction,
     LocalMemoryBuffer,
     move,
@@ -64,15 +66,19 @@ from ray.includes.common cimport (
     TASK_TYPE_ACTOR_TASK,
     WORKER_TYPE_WORKER,
     WORKER_TYPE_DRIVER,
+    PLACEMENT_STRATEGY_PACK,
+    PLACEMENT_STRATEGY_SPREAD,
 )
 from ray.includes.unique_ids cimport (
     CActorID,
     CActorCheckpointID,
     CObjectID,
     CClientID,
+    CPlacementGroupID,
 )
 from ray.includes.libcoreworker cimport (
     CActorCreationOptions,
+    CPlacementGroupCreationOptions,
     CCoreWorkerOptions,
     CCoreWorkerProcess,
     CTaskOptions,
@@ -112,6 +118,7 @@ include "includes/common.pxi"
 include "includes/serialization.pxi"
 include "includes/libcoreworker.pxi"
 include "includes/global_state_accessor.pxi"
+include "includes/metric.pxi"
 
 # Expose GCC & Clang macro to report
 # whether C++ optimizations were enabled during compilation.
@@ -596,14 +603,12 @@ cdef void get_py_stack(c_string* stack_out) nogil:
     This can be called from within C++ code to retrieve the file name and line
     number of the Python code that is calling into the core worker.
     """
-
     with gil:
         try:
             frame = inspect.currentframe()
         except ValueError:  # overhead of exception handling is about 20us
             stack_out[0] = "".encode("ascii")
             return
-
         msg = ""
         while frame:
             filename = frame.f_code.co_filename
@@ -631,7 +636,6 @@ cdef void get_py_stack(c_string* stack_out) nogil:
                 break
             frame = frame.f_back
         stack_out[0] = msg.encode("ascii")
-
 
 cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):
     cdef shared_ptr[CBuffer] empty_metadata
@@ -909,7 +913,10 @@ cdef class CoreWorker:
                      c_bool is_detached,
                      c_string name,
                      c_bool is_asyncio,
-                     c_string extension_data):
+                     PlacementGroupID placement_group_id,
+                     int64_t placement_group_bundle_index,
+                     c_string extension_data
+                     ):
         cdef:
             CRayFunction ray_function
             c_vector[unique_ptr[CTaskArg]] args_vector
@@ -917,6 +924,8 @@ cdef class CoreWorker:
             unordered_map[c_string, double] c_resources
             unordered_map[c_string, double] c_placement_resources
             CActorID c_actor_id
+            CPlacementGroupID c_placement_group_id = \
+                placement_group_id.native()
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
@@ -931,11 +940,42 @@ cdef class CoreWorker:
                     CActorCreationOptions(
                         max_restarts, max_task_retries, max_concurrency,
                         c_resources, c_placement_resources,
-                        dynamic_worker_options, is_detached, name, is_asyncio),
+                        dynamic_worker_options, is_detached, name, is_asyncio,
+                        c_pair[CPlacementGroupID, int64_t](c_placement_group_id, placement_group_bundle_index)),
                     extension_data,
                     &c_actor_id))
 
             return ActorID(c_actor_id.Binary())
+
+    def create_placement_group(
+                            self,
+                            c_string name,
+                            c_vector[unordered_map[c_string, double]] bundles,
+                            c_string strategy):
+        cdef:
+            CPlacementGroupID c_placement_group_id
+            CPlacementStrategy c_strategy
+        
+        if strategy == b"PACK":
+            c_strategy = PLACEMENT_STRATEGY_PACK
+        else:
+            if strategy == b"SPREAD":
+                c_strategy = PLACEMENT_STRATEGY_SPREAD
+            else:
+                raise TypeError(strategy)
+
+        with nogil:
+            check_status(
+                        CCoreWorkerProcess.GetCoreWorker().
+                        CreatePlacementGroup(
+                            CPlacementGroupCreationOptions(
+                                name,
+                                c_strategy,
+                                bundles
+                            ),
+                            &c_placement_group_id))
+
+        return PlacementGroupID(c_placement_group_id.Binary())
 
     def submit_actor_task(self,
                           Language language,
@@ -1080,12 +1120,18 @@ cdef class CoreWorker:
 
     def get_named_actor_handle(self, const c_string &name):
         cdef:
+            pair[const CActorHandle*, CRayStatus] named_actor_handle_pair
             # NOTE: This handle should not be stored anywhere.
-            const CActorHandle* c_actor_handle = (
-                CCoreWorkerProcess.GetCoreWorker().GetNamedActorHandle(name))
+            const CActorHandle* c_actor_handle
 
-        if c_actor_handle == NULL:
-            raise ValueError("Named Actor Handle Not Found")
+        # We need it because GetNamedActorHandle needs
+        # to call a method that holds the gil.
+        with nogil:
+            named_actor_handle_pair = (
+                CCoreWorkerProcess.GetCoreWorker().GetNamedActorHandle(name))
+        c_actor_handle = named_actor_handle_pair.first
+        check_status(named_actor_handle_pair.second)
+
         return self.make_actor_handle(c_actor_handle)
 
     def serialize_actor_handle(self, ActorID actor_id):

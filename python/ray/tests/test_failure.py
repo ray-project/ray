@@ -821,8 +821,6 @@ def test_raylet_crash_when_get(ray_start_regular):
 
     object_ref = ray.put(np.zeros(200 * 1024, dtype=np.uint8))
     ray.internal.free(object_ref)
-    while ray.worker.global_worker.core_worker.object_exists(object_ref):
-        time.sleep(1)
 
     thread = threading.Thread(target=sleep_to_kill_raylet)
     thread.start()
@@ -984,8 +982,6 @@ def test_eviction(ray_start_cluster):
     assert (isinstance(ray.get(obj), np.ndarray))
     # Evict the object.
     ray.internal.free([obj])
-    while ray.worker.global_worker.core_worker.object_exists(obj):
-        time.sleep(1)
     # ray.get throws an exception.
     with pytest.raises(ray.exceptions.UnreconstructableError):
         ray.get(obj)
@@ -1102,21 +1098,21 @@ def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
         pid = ray.get(a.get_pid.remote())
         a.start_child.remote(use_actors=use_actors)
         # Wait for the child to be scheduled.
-        assert wait_for_condition(lambda: not child_resource_available())
+        wait_for_condition(lambda: not child_resource_available())
         # Kill the parent process.
         os.kill(pid, 9)
-        assert wait_for_condition(child_resource_available)
+        wait_for_condition(child_resource_available)
 
     # Test fate sharing if the parent node dies.
     def test_node_failure(node_to_kill, use_actors):
         a = Actor.options(resources={"parent": 1}).remote()
         a.start_child.remote(use_actors=use_actors)
         # Wait for the child to be scheduled.
-        assert wait_for_condition(lambda: not child_resource_available())
+        wait_for_condition(lambda: not child_resource_available())
         # Kill the parent process.
         cluster.remove_node(node_to_kill, allow_graceful=False)
         node_to_kill = cluster.add_node(num_cpus=1, resources={"parent": 1})
-        assert wait_for_condition(child_resource_available)
+        wait_for_condition(child_resource_available)
         return node_to_kill
 
     if node_failure:

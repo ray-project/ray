@@ -153,10 +153,19 @@ class GaussianNoise(Exploration):
                 det_actions = action_dist.deterministic_sample()
                 scale = self.scale_schedule(self.last_timestep)
                 gaussian_sample = scale * torch.normal(
-                    mean=torch.zeros(det_actions.size()), std=self.stddev)
-                action = torch.clamp(det_actions + gaussian_sample,
-                                     self.action_space.low.item(0),
-                                     self.action_space.high.item(0))
+                    mean=torch.zeros(det_actions.size()), std=self.stddev).to(
+                    self.device)
+                action = torch.min(
+                    torch.max(
+                        det_actions + gaussian_sample,
+                        torch.tensor(
+                            self.action_space.low,
+                            dtype=torch.float32,
+                            device=self.device)),
+                    torch.tensor(
+                        self.action_space.high,
+                        dtype=torch.float32,
+                        device=self.device))
         # No exploration -> Return deterministic actions.
         else:
             action = action_dist.deterministic_sample()

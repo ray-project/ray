@@ -62,7 +62,7 @@ struct ObjectTableEntry {
   ~ObjectTableEntry();
 
   /// Memory mapped file containing the object.
-  int fd;
+  MEMFD_TYPE fd;
   /// Device number.
   int device_num;
   /// Size of the underlying map.

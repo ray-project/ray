@@ -30,7 +30,7 @@ def memory_summary():
 
 
 def free(object_refs, local_only=False, delete_creating_tasks=False):
-    """Free a list of IDs from object stores.
+    """Free a list of IDs from the in-process and plasma object stores.
 
     This function is a low-level API which should be used in restricted
     scenarios.
@@ -38,8 +38,8 @@ def free(object_refs, local_only=False, delete_creating_tasks=False):
     If local_only is false, the request will be send to all object stores.
 
     This method will not return any value to indicate whether the deletion is
-    successful or not. This function is an instruction to object store. If
-    the some of the objects are in use, object stores will delete them later
+    successful or not. This function is an instruction to the object store. If
+    some of the objects are in use, the object stores will delete them later
     when the ref count is down to 0.
 
     Examples:

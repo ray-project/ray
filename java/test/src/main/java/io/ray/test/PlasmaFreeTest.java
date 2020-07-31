@@ -32,9 +32,8 @@ public class PlasmaFreeTest extends BaseTest {
     }
   }
 
-  @Test
+  @Test(groups = {"cluster"})
   public void testDeleteCreatingTasks() {
-    TestUtils.skipTestUnderSingleProcess();
     ObjectRef<String> helloId = Ray.task(PlasmaFreeTest::hello).remote();
     Assert.assertEquals("hello", helloId.get());
     Ray.internal().free(ImmutableList.of(helloId.getId()), true, true);
