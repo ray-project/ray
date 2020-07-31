@@ -29,29 +29,41 @@ namespace stats {
 /// Include tag_defs.h to define tag items
 #include "ray/stats/tag_defs.h"
 
+/// StatsConfig per process.
+/// Note that this is not thread-safe. Don't modify its internal values
+/// outside stats::Init() or stats::Shutdown() method.
 class StatsConfig final {
  public:
   static StatsConfig &instance();
 
-  /// Set the global tags that will be appended to all metrics in this process.
-  void SetGlobalTags(const TagsType &global_tags);
-
   /// Get the current global tags.
   const TagsType &GetGlobalTags() const;
-
-  /// Set if the stats are enabled in this process.
-  void SetIsDisableStats(bool disable_stats);
 
   /// Get whether or not stats are enabled.
   bool IsStatsDisabled() const;
 
-  void SetReportInterval(const absl::Duration interval);
-
   const absl::Duration &GetReportInterval() const;
 
-  void SetHarvestInterval(const absl::Duration interval);
-
   const absl::Duration &GetHarvestInterval() const;
+
+  bool IsInitialized() const;
+
+  ///
+  /// Functions that should be used only inside stats::Init()
+  /// NOTE: StatsConfig is not thread-safe. If you use these functions
+  /// in multi threaded environment, it can cause problems.
+  ///
+
+  /// Set the stats have been initialized.
+  void SetIsInitialized(bool initialized);
+  /// Set the interval where metrics are harvetsed.
+  void SetHarvestInterval(const absl::Duration interval);
+  /// Set the interval where metrics are reported to data sinks.
+  void SetReportInterval(const absl::Duration interval);
+  /// Set if the stats are enabled in this process.
+  void SetIsDisableStats(bool disable_stats);
+  /// Set the global tags that will be appended to all metrics in this process.
+  void SetGlobalTags(const TagsType &global_tags);
 
  private:
   StatsConfig() = default;
@@ -70,6 +82,8 @@ class StatsConfig final {
   // report interval. So harvest interval is suggusted to be half of report
   // interval.
   absl::Duration harvest_interval_ = absl::Seconds(5);
+  // Whether or not if the stats has been initialized.
+  bool is_initialized_ = false;
 };
 
 /// A thin wrapper that wraps the `opencensus::tag::measure` for using it simply.
@@ -171,7 +185,9 @@ struct MetricPoint {
   int64_t timestamp;
   double value;
   std::unordered_map<std::string, std::string> tags;
+  const opencensus::stats::MeasureDescriptor &measure_descriptor;
 };
+
 }  // namespace stats
 
 }  // namespace ray

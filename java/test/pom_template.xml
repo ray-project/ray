@@ -16,6 +16,10 @@
 
   <packaging>jar</packaging>
 
+  <properties>
+    <maven.deploy.skip>true</maven.deploy.skip>
+  </properties>
+
   <dependencies>
     <dependency>
       <groupId>io.ray</groupId>
@@ -36,6 +40,9 @@
         <artifactId>maven-surefire-plugin</artifactId>
         <version>2.21.0</version>
         <configuration>
+          <suiteXmlFiles>
+            <suiteXmlFile>../testng.xml</suiteXmlFile>
+          </suiteXmlFiles>
           <trimStackTrace>false</trimStackTrace>
           <testSourceDirectory>${basedir}/src/main/java/</testSourceDirectory>
           <testClassesDirectory>${project.build.directory}/classes/</testClassesDirectory>

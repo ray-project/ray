@@ -76,7 +76,6 @@ inline std::vector<std::unique_ptr<ray::TaskArg>> ToTaskArgs(JNIEnv *env, jobjec
 
 inline std::unordered_map<std::string, double> ToResources(JNIEnv *env,
                                                            jobject java_resources) {
-  std::unordered_map<std::string, double> resources;
   return JavaMapToNativeMap<std::string, double>(
       env, java_resources,
       [](JNIEnv *env, jobject java_key) {

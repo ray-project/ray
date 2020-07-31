@@ -17,10 +17,11 @@ import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
-import org.testng.SkipException;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.Test;
 
+@Test(groups = {"cluster", "multiLanguage"})
 public abstract class BaseMultiLanguageTest {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(BaseMultiLanguageTest.class);
@@ -50,18 +51,8 @@ public abstract class BaseMultiLanguageTest {
     }
   }
 
-  private void checkMultiLanguageTestFlag() {
-    if (!"1".equals(System.getenv("ENABLE_MULTI_LANGUAGE_TESTS"))) {
-      LOGGER.info("Skip Multi-language tests because environment variable "
-          + "ENABLE_MULTI_LANGUAGE_TESTS isn't set");
-      throw new SkipException("Skip test.");
-    }
-  }
-
-  @BeforeClass(alwaysRun = true)
+  @BeforeClass(alwaysRun = true, inheritGroups = false)
   public void setUp() {
-    checkMultiLanguageTestFlag();
-
     // Delete existing socket files.
     for (String socket : ImmutableList.of(RAYLET_SOCKET_NAME, PLASMA_STORE_SOCKET_NAME)) {
       File file = new File(socket);
@@ -115,10 +106,8 @@ public abstract class BaseMultiLanguageTest {
     return ImmutableMap.of();
   }
 
-  @AfterClass(alwaysRun = true)
+  @AfterClass(alwaysRun = true, inheritGroups = false)
   public void tearDown() {
-    checkMultiLanguageTestFlag();
-
     // Disconnect to the cluster.
     Ray.shutdown();
     System.clearProperty("ray.redis.address");

@@ -39,7 +39,7 @@ def compute_advantages(rollout: SampleBatch,
             processed rewards.
     """
 
-    trajsize = len(rollout[SampleBatch.ACTIONS])
+    rollout_size = len(rollout[SampleBatch.ACTIONS])
 
     assert SampleBatch.VF_PREDS in rollout or not use_critic, \
         "use_critic=True but values not found"
@@ -78,6 +78,6 @@ def compute_advantages(rollout: SampleBatch,
     rollout[Postprocessing.ADVANTAGES] = rollout[
         Postprocessing.ADVANTAGES].copy().astype(np.float32)
 
-    assert all(val.shape[0] == trajsize for key, val in rollout.items()), \
+    assert all(val.shape[0] == rollout_size for key, val in rollout.items()), \
         "Rollout stacked incorrectly!"
     return rollout

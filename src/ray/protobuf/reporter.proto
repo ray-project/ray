@@ -35,10 +35,11 @@ message GetProfilingStatsReply {
 }
 
 message ReportMetricsRequest {
-  repeated MetricPoint metrics_point = 1;
+  repeated MetricPoint metrics_points = 1;
 }
 
 message ReportMetricsReply {
+  bool metrcs_description_required = 1;
 }
 
 // Service for communicating with the reporter.py process on a remote node.

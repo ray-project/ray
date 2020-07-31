@@ -144,6 +144,7 @@ class RolloutWorker(ParallelIteratorWorker):
                  num_envs: int = 1,
                  observation_fn: "ObservationFunction" = None,
                  observation_filter: str = "NoFilter",
+                 clip_rewards: bool = None,
                  clip_actions: bool = True,
                  env_config: EnvConfigDict = None,
                  model_config: ModelConfigDict = None,
@@ -215,6 +216,9 @@ class RolloutWorker(ParallelIteratorWorker):
             observation_fn (ObservationFunction): Optional multi-agent
                 observation function.
             observation_filter (str): Name of observation filter to use.
+            clip_rewards (bool): Whether to clip rewards to [-1, 1] prior to
+                experience postprocessing. Setting to None means clip for Atari
+                only.
             clip_actions (bool): Whether to clip action values to the range
                 specified by the policy action space.
             env_config (dict): Config to pass to the env creator.
@@ -330,8 +334,10 @@ class RolloutWorker(ParallelIteratorWorker):
             # Deepmind wrappers already handle all preprocessing
             self.preprocessing_enabled = False
 
-            if self.policy_config["clip_rewards"] is None:
-                self.policy_config["clip_rewards"] = True
+            # If clip_rewards not explicitly set to False, switch it
+            # on here (clip between -1.0 and 1.0).
+            if clip_rewards is None:
+                clip_rewards = True
 
             def wrap(env):
                 env = wrap_deepmind(
@@ -488,10 +494,11 @@ class RolloutWorker(ParallelIteratorWorker):
                 policy_mapping_fn=policy_mapping_fn,
                 preprocessors=self.preprocessors,
                 obs_filters=self.filters,
+                clip_rewards=clip_rewards,
                 rollout_fragment_length=rollout_fragment_length,
                 callbacks=self.callbacks,
                 horizon=episode_horizon,
-                multiple_episodes_in_batch=pack,
+                pack_multiple_episodes_in_batch=pack,
                 tf_sess=self.tf_sess,
                 clip_actions=clip_actions,
                 blackhole_outputs="simulation" in input_evaluation,
@@ -510,10 +517,11 @@ class RolloutWorker(ParallelIteratorWorker):
                 policy_mapping_fn=policy_mapping_fn,
                 preprocessors=self.preprocessors,
                 obs_filters=self.filters,
+                clip_rewards=clip_rewards,
                 rollout_fragment_length=rollout_fragment_length,
                 callbacks=self.callbacks,
                 horizon=episode_horizon,
-                multiple_episodes_in_batch=pack,
+                pack_multiple_episodes_in_batch=pack,
                 tf_sess=self.tf_sess,
                 clip_actions=clip_actions,
                 soft_horizon=soft_horizon,
