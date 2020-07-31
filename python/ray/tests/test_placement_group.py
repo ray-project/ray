@@ -116,7 +116,7 @@ def test_placement_group_actor_resource_ids(ray_start_cluster):
     a1 = F.options(placement_group_id=g1).remote()
     resources = ray.get(a1.f.remote())
     assert len(resources) == 1, resources
-    assert "_CPU" in list(resources.keys())[0], resources
+    assert "CPU_group_" in list(resources.keys())[0], resources
 
 
 def test_placement_group_task_resource_ids(ray_start_cluster):
@@ -134,7 +134,7 @@ def test_placement_group_task_resource_ids(ray_start_cluster):
     o1 = f.options(placement_group_id=g1).remote()
     resources = ray.get(o1)
     assert len(resources) == 1, resources
-    assert "_CPU" in list(resources.keys())[0], resources
+    assert "CPU_group_" in list(resources.keys())[0], resources
 
 
 def test_placement_group_hang(ray_start_cluster):
@@ -158,7 +158,7 @@ def test_placement_group_hang(ray_start_cluster):
 
     resources = ray.get(o1)
     assert len(resources) == 1, resources
-    assert "_CPU" in list(resources.keys())[0], resources
+    assert "CPU_group_" in list(resources.keys())[0], resources
 
 
 if __name__ == "__main__":
