@@ -1,11 +1,3 @@
-# flake8: noqa
-# yapf: disable
-
-"""
-Please note that this example requires Python >= 3.7 to run.
-"""
-
-# __import_begin__
 import os
 
 import ray
@@ -13,20 +5,22 @@ from ray.tune import CLIReporter
 from ray.tune.schedulers import PopulationBasedTraining
 
 from ray import tune
-from ray.tune.examples.pbt_transformers.utils import build_compute_metrics_fn, download_data
+from ray.tune.examples.pbt_transformers.utils import \
+    build_compute_metrics_fn, download_data
 from ray.tune.examples.pbt_transformers import trainer
 
-from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer, GlueDataset
-from transformers import GlueDataTrainingArguments as DataTrainingArguments
-from transformers import (
-    Trainer,
-    TrainingArguments,
-    glue_output_modes,
-    glue_tasks_num_labels,
-)
+from transformers import (AutoConfig, AutoModelForSequenceClassification,
+                          AutoTokenizer, GlueDataset, GlueDataTrainingArguments
+                          as DataTrainingArguments, glue_tasks_num_labels,
+                          Trainer, TrainingArguments)
 
 
-def get_trainer(model_name_or_path, train_dataset, eval_dataset, task_name, training_args, wandb_args=None):
+def get_trainer(model_name_or_path,
+                train_dataset,
+                eval_dataset,
+                task_name,
+                training_args,
+                wandb_args=None):
     try:
         num_labels = glue_tasks_num_labels[task_name]
     except KeyError:
@@ -48,8 +42,7 @@ def get_trainer(model_name_or_path, train_dataset, eval_dataset, task_name, trai
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
         compute_metrics=build_compute_metrics_fn(task_name),
-        wandb_args=wandb_args
-    )
+        wandb_args=wandb_args)
 
     return tune_trainer
 
@@ -57,9 +50,12 @@ def get_trainer(model_name_or_path, train_dataset, eval_dataset, task_name, trai
 def recover_checkpoint(tune_checkpoint_dir, model_name=None):
     if tune_checkpoint_dir is None or len(tune_checkpoint_dir) == 0:
         return model_name
-    # Given Tune's checkpoint dir, get back the subdirectory used for Huggingface.
-    subdirs = [os.path.join(tune_checkpoint_dir, name) for name in os.listdir(tune_checkpoint_dir) if
-               os.path.isdir(os.path.join(tune_checkpoint_dir, name))]
+    # Get subdirectory used for Huggingface.
+    subdirs = [
+        os.path.join(tune_checkpoint_dir, name)
+        for name in os.listdir(tune_checkpoint_dir)
+        if os.path.isdir(os.path.join(tune_checkpoint_dir, name))
+    ]
     # There should only be 1 subdir.
     assert len(subdirs) == 1, subdirs
     return subdirs[0]
@@ -68,12 +64,18 @@ def recover_checkpoint(tune_checkpoint_dir, model_name=None):
 # __train_begin__
 def train_transformer(config, checkpoint_dir=None):
     data_args = DataTrainingArguments(
-        task_name=config["task_name"],
-        data_dir=config["data_dir"]
-    )
+        task_name=config["task_name"], data_dir=config["data_dir"])
     tokenizer = AutoTokenizer.from_pretrained(config["model_name"])
-    train_dataset = GlueDataset(data_args, tokenizer=tokenizer, mode="train", cache_dir=config["data_dir"])
-    eval_dataset = GlueDataset(data_args, tokenizer=tokenizer, mode="dev", cache_dir=config["data_dir"])
+    train_dataset = GlueDataset(
+        data_args,
+        tokenizer=tokenizer,
+        mode="train",
+        cache_dir=config["data_dir"])
+    eval_dataset = GlueDataset(
+        data_args,
+        tokenizer=tokenizer,
+        mode="dev",
+        cache_dir=config["data_dir"])
     eval_dataset = eval_dataset[:len(eval_dataset) // 2]
     training_args = TrainingArguments(
         output_dir=tune.get_trial_dir(),
@@ -81,9 +83,12 @@ def train_transformer(config, checkpoint_dir=None):
         do_train=True,
         do_eval=True,
         evaluate_during_training=True,
-        eval_steps=(len(train_dataset) // config["per_gpu_train_batch_size"]) + 1,
-        save_steps=0,  # We explicitly set save here to 0, and do saving in evaluate instead
+        eval_steps=(len(train_dataset) // config["per_gpu_train_batch_size"]) +
+        1,
+        # We explicitly set save to 0, and do saving in evaluate instead
+        save_steps=0,
         num_train_epochs=config["num_epochs"],
+        max_steps=config["max_steps"],
         per_device_train_batch_size=config["per_gpu_train_batch_size"],
         per_device_eval_batch_size=config["per_gpu_val_batch_size"],
         warmup_steps=0,
@@ -99,16 +104,25 @@ def train_transformer(config, checkpoint_dir=None):
         "run_name": name,
     }
 
-    tune_trainer = get_trainer(recover_checkpoint(checkpoint_dir, config["model_name"]), train_dataset, eval_dataset,
-                               config["task_name"], training_args, wandb_args=wandb_args)
-    tune_trainer.train(recover_checkpoint(checkpoint_dir, config["model_name"]))
+    tune_trainer = get_trainer(
+        recover_checkpoint(checkpoint_dir, config["model_name"]),
+        train_dataset,
+        eval_dataset,
+        config["task_name"],
+        training_args,
+        wandb_args=wandb_args)
+    tune_trainer.train(
+        recover_checkpoint(checkpoint_dir, config["model_name"]))
 
 
 # __train_end__
 
 
 # __tune_begin__
-def tune_transformer(num_samples=8, gpus_per_trial=0, smoke_test=False, ray_address=None):
+def tune_transformer(num_samples=8,
+                     gpus_per_trial=0,
+                     smoke_test=False,
+                     ray_address=None):
     ray.init(ray_address, log_to_driver=False)
     data_dir = os.path.abspath(os.path.join(os.getcwd(), "./data"))
     if not os.path.exists(data_dir):
@@ -126,12 +140,10 @@ def tune_transformer(num_samples=8, gpus_per_trial=0, smoke_test=False, ray_addr
     print("Downloading and caching pre-trained model")
 
     # Triggers model download to cache
-    AutoModelForSequenceClassification.from_pretrained(
-        model_name,
-    )
+    AutoModelForSequenceClassification.from_pretrained(model_name, )
 
     # Download data.
-    download_data(model_name, task_name, task_data_dir)
+    download_data(task_name, task_data_dir)
 
     config = {
         "model_name": model_name,
@@ -141,7 +153,8 @@ def tune_transformer(num_samples=8, gpus_per_trial=0, smoke_test=False, ray_addr
         "per_gpu_train_batch_size": tune.choice([16, 32, 64]),
         "learning_rate": tune.uniform(1e-5, 5e-5),
         "weight_decay": tune.uniform(0.0, 0.3),
-        "num_epochs": tune.choice([2, 3, 4, 5]) if not smoke_test else 1,
+        "num_epochs": tune.choice([2, 3, 4, 5]),
+        "max_steps": 1 if smoke_test else -1,  # Used for smoke test.
     }
 
     scheduler = PopulationBasedTraining(
@@ -160,12 +173,18 @@ def tune_transformer(num_samples=8, gpus_per_trial=0, smoke_test=False, ray_addr
             "weight_decay": "w_decay",
             "learning_rate": "lr",
             "per_gpu_train_batch_size": "train_bs/gpu",
-            "num_epochs": "num_epochs"},
-        metric_columns=["eval_acc", "eval_loss", "epoch", "training_iteration"])
+            "num_epochs": "num_epochs"
+        },
+        metric_columns=[
+            "eval_acc", "eval_loss", "epoch", "training_iteration"
+        ])
 
     analysis = tune.run(
         train_transformer,
-        resources_per_trial={"cpu": 1, "gpu": gpus_per_trial},
+        resources_per_trial={
+            "cpu": 1,
+            "gpu": gpus_per_trial
+        },
         config=config,
         num_samples=num_samples,
         scheduler=scheduler,
@@ -176,32 +195,36 @@ def tune_transformer(num_samples=8, gpus_per_trial=0, smoke_test=False, ray_addr
         name="tune_transformer_pbt")
 
     if not smoke_test:
-        test_best_model(analysis, config["model_name"], config["task_name"], config["data_dir"])
+        test_best_model(analysis, config["model_name"], config["task_name"],
+                        config["data_dir"])
 
 
 # __tune_end__
 
+
 def test_best_model(analysis, model_name, task_name, data_dir):
-    data_args = DataTrainingArguments(
-        task_name=task_name,
-        data_dir=data_dir
-    )
+    data_args = DataTrainingArguments(task_name=task_name, data_dir=data_dir)
 
     tokenizer = AutoTokenizer.from_pretrained(model_name)
 
     best_config = analysis.get_best_config(metric="eval_acc", mode="max")
     print(best_config)
-    best_checkpoint = recover_checkpoint(analysis.get_best_trial(metric="eval_acc", mode="max").checkpoint.value)
+    best_checkpoint = recover_checkpoint(
+        analysis.get_best_trial(metric="eval_acc",
+                                mode="max").checkpoint.value)
     print(best_checkpoint)
-    best_model = AutoModelForSequenceClassification.from_pretrained(best_checkpoint).to("cuda")
+    best_model = AutoModelForSequenceClassification.from_pretrained(
+        best_checkpoint).to("cuda")
 
-    test_args = TrainingArguments(
-        output_dir="./best_model_results",
-    )
-    test_dataset = GlueDataset(data_args, tokenizer=tokenizer, mode="dev", cache_dir=data_dir)
+    test_args = TrainingArguments(output_dir="./best_model_results", )
+    test_dataset = GlueDataset(
+        data_args, tokenizer=tokenizer, mode="dev", cache_dir=data_dir)
     test_dataset = test_dataset[len(test_dataset) // 2:]
 
-    test_trainer = Trainer(best_model, test_args, compute_metrics=build_compute_metrics_fn(task_name))
+    test_trainer = Trainer(
+        best_model,
+        test_args,
+        compute_metrics=build_compute_metrics_fn(task_name))
 
     metrics = test_trainer.evaluate(test_dataset)
     print(metrics)
@@ -214,12 +237,21 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     parser.add_argument(
-        "--ray-address", type=str, default=None, help="Address to use for Ray. Use \"auto\" for cluster. Defaults to None for local."
-    )
+        "--ray-address",
+        type=str,
+        default=None,
+        help="Address to use for Ray. "
+        "Use \"auto\" for cluster. "
+        "Defaults to None for local.")
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
-        tune_transformer(num_samples=1, gpus_per_trial=0, smoke_test=True, ray_address=args.ray_address)
+        tune_transformer(
+            num_samples=1,
+            gpus_per_trial=0,
+            smoke_test=True,
+            ray_address=args.ray_address)
     else:
         # You can change the number of GPUs here:
-        tune_transformer(num_samples=8, gpus_per_trial=1, ray_address=args.ray_address)
+        tune_transformer(
+            num_samples=8, gpus_per_trial=1, ray_address=args.ray_address)
