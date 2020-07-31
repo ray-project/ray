@@ -266,7 +266,9 @@ file_mounts: {
 }
 
 # Files or directories to copy from the head node to the worker nodes. The format is a
-# list of paths. The same path will on the head node will be copied to the worker node.
+# list of paths. The same path on the head node will be copied to the worker node.
+# This behavior is a subset of the file_mounts behavior. In the vast majority of cases
+# you should just use file_mounts. Only use this if you know what you're doing!
 cluster_synced_files: []
 
 # Whether changes to directories in file_mounts or cluster_synced_files in the head node
