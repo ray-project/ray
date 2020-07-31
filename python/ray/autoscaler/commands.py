@@ -541,8 +541,10 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             # TODO(ekl) right now we always update the head node even if the
             # hash matches.
             # We could prompt the user for what they want to do here.
+            # No need to pass in cluster_sync_files because we use this
+            # hash to set up the head node
             (runtime_hash, file_mounts_contents_hash) = hash_runtime_conf(
-                config["file_mounts"], config)
+                config["file_mounts"], None, config)
 
             cli_logger.old_info(
                 logger,
