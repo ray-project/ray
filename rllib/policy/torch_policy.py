@@ -11,6 +11,7 @@ from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
@@ -102,6 +103,11 @@ class TorchPolicy(Policy):
         else:
             self.device = torch.device("cpu")
         self.model = model.to(self.device)
+        # Combine view_requirements for Model and Policy.
+        self.view_requirements = {
+            **self.model.get_view_requirements(),
+            **self.get_view_requirements(),
+        }
         self.exploration = self._create_exploration()
         self.unwrapped_model = model  # used to support DistributedDataParallel
         self._loss = loss
@@ -118,6 +124,17 @@ class TorchPolicy(Policy):
         self.batch_divisibility_req = \
             get_batch_divisibility_req(self) if get_batch_divisibility_req \
             else 1
+
+    @override(Policy)
+    def get_view_requirements(self):
+        if hasattr(self, "view_requirements"):
+            return self.view_requirements
+        return {
+            SampleBatch.ACTIONS: ViewRequirement(
+                space=self.action_space, sampling=False),
+            SampleBatch.REWARDS: ViewRequirement(sampling=False),
+            SampleBatch.DONES: ViewRequirement(sampling=False),
+        }
 
     @override(Policy)
     @DeveloperAPI

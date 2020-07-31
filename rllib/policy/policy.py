@@ -284,6 +284,25 @@ class Policy(metaclass=ABCMeta):
         raise NotImplementedError
 
     @DeveloperAPI
+    def get_view_requirements(self):
+        """Returns a dict of view requirements for operating on this Policy.
+
+        Note: This is an experimental API method.
+
+        The view requirements dict is used to generate input_dicts and
+        SampleBatches for 1) action computations, 2) postprocessing, and 3)
+        generating training batches.
+        The Policy may ask its Model(s) as well for possible additional
+        requirements (e.g. prev-action/reward in an LSTM).
+
+        Returns:
+            Dict[str, ViewRequirement]: The view requirements dict, mapping
+                each view key (which will be available in input_dicts) to
+                an underlying requirement (actual data, timestep shift, etc..).
+        """
+        return {}
+
+    @DeveloperAPI
     def postprocess_trajectory(
             self,
             sample_batch: SampleBatch,

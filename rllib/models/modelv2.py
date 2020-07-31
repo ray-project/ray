@@ -58,20 +58,6 @@ class ModelV2:
         self.name: str = name or "default_model"
         self.framework: str = framework
         self._last_output = None
-        self._trajectory_view = {
-            SampleBatch.OBS: ViewRequirement(),
-            SampleBatch.NEXT_OBS: ViewRequirement(
-                SampleBatch.OBS, shift=1, sampling=False, training=False),
-            SampleBatch.ACTIONS: ViewRequirement(
-                space=self.action_space, sampling=False),
-            SampleBatch.PREV_ACTIONS: ViewRequirement(
-                SampleBatch.ACTIONS, space=self.action_space, shift=-1),
-            SampleBatch.REWARDS: ViewRequirement(sampling=False),
-            SampleBatch.PREV_REWARDS: ViewRequirement(
-                SampleBatch.REWARDS, shift=-1),
-            SampleBatch.DONES: ViewRequirement(sampling=False),
-            SampleBatch.VF_PREDS: ViewRequirement(sampling=False),
-        }
 
     @PublicAPI
     def get_initial_state(self) -> List[np.ndarray]:
@@ -260,29 +246,25 @@ class ModelV2:
             i += 1
         return self.__call__(input_dict, states, train_batch.get("seq_lens"))
 
-    def get_view_requirements(
-            self, is_training: bool = False) -> Dict[str, ViewRequirement]:
-        """Returns a list of ViewRequirements for this Model (or None).
+    def get_view_requirements(self) -> Dict[str, ViewRequirement]:
+        """Returns a dict of ViewRequirements for this Model.
 
         Note: This is an experimental API method.
 
-        A ViewRequirement object tells the caller of this Model, which
-        data at which timesteps are needed by this Model. This could be a
-        sequence of past observations, internal-states, previous rewards, or
-        other episode data/previous model outputs.
-
-        Args:
-            is_training (bool): Whether the returned requirements are for
-                training or inference (default).
+        The view requirements dict is used to generate input_dicts and
+        train batches for 1) action computations, 2) postprocessing, and 3)
+        generating training batches.
 
         Returns:
-            Dict[str, ViewRequirement]: The view requirements as a dict mapping
-                column names e.g. "obs" to config dicts containing supported
-                fields.
+            Dict[str, ViewRequirement]: The view requirements dict, mapping
+                each view key (which will be available in input_dicts) to
+                an underlying requirement (actual data, timestep shift, etc..).
         """
         # Default implementation for simple RL model:
         # Single requirement: Pass current obs as input.
-        return self._trajectory_view
+        return {
+            SampleBatch.OBS: ViewRequirement(),
+        }
 
     def import_from_h5(self, h5_file: str) -> None:
         """Imports weights from an h5 file.
