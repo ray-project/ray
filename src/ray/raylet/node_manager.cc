@@ -1800,6 +1800,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
 void NodeManager::HandleRequestResourceReserve(
     const rpc::RequestResourceReserveRequest &request,
     rpc::RequestResourceReserveReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  RAY_CHECK(!new_scheduler_enabled_) << "Not implemented";
   auto bundle_spec = BundleSpecification(request.bundle_spec());
   RAY_LOG(DEBUG) << "bundle lease request " << bundle_spec.BundleId().first
                  << bundle_spec.BundleId().second;
@@ -1811,11 +1812,15 @@ void NodeManager::HandleRequestResourceReserve(
     reply->set_success(true);
     send_reply_callback(Status::OK(), nullptr, nullptr);
   }
+  // Call task dispatch to assign work to the new group.
+  TryLocalInfeasibleTaskScheduling();
+  DispatchTasks(local_queues_.GetReadyTasksByClass());
 }
 
 void NodeManager::HandleCancelResourceReserve(
     const rpc::CancelResourceReserveRequest &request,
     rpc::CancelResourceReserveReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  RAY_CHECK(!new_scheduler_enabled_) << "Not implemented";
   auto bundle_spec = BundleSpecification(request.bundle_spec());
   RAY_LOG(DEBUG) << "bundle return resource request " << bundle_spec.BundleId().first
                  << bundle_spec.BundleId().second;
@@ -1827,6 +1832,9 @@ void NodeManager::HandleCancelResourceReserve(
   cluster_resource_map_[self_node_id_].ReturnBundleResource(
       bundle_spec.PlacementGroupId(), bundle_spec.Index());
   send_reply_callback(Status::OK(), nullptr, nullptr);
+  // Call task dispatch to assign work to the released resources.
+  TryLocalInfeasibleTaskScheduling();
+  DispatchTasks(local_queues_.GetReadyTasksByClass());
 }
 
 void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,

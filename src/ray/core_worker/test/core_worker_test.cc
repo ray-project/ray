@@ -264,7 +264,8 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
                                                   "MergeInputArgsAsOutput", "", "", ""));
       TaskOptions options;
       std::vector<ObjectID> return_ids;
-      driver.SubmitTask(func, args, options, &return_ids, /*max_retries=*/0);
+      driver.SubmitTask(func, args, options, &return_ids, /*max_retries=*/0,
+                        std::make_pair(PlacementGroupID::Nil(), -1));
 
       ASSERT_EQ(return_ids.size(), 1);
 
