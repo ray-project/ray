@@ -100,3 +100,34 @@ Java_io_ray_streaming_runtime_transfer_DataReader_closeReaderNative(JNIEnv *env,
                                                                     jlong ptr) {
   delete reinterpret_cast<DataReader *>(ptr);
 }
+
+
+JNIEXPORT jbyteArray JNICALL Java_io_ray_streaming_runtime_transfer_DataReader_getOffsetsInfoNative
+  (JNIEnv *env, jobject thisObj, jlong ptr) {
+  auto reader = reinterpret_cast<ray::streaming::DataReader *>(ptr);
+  std::unordered_map<ray::ObjectID, ConsumerChannelInfo> *offset_map = nullptr;
+  reader->GetOffsetInfo(offset_map);
+  STREAMING_CHECK(offset_map);
+  // queue nums + (plasma queue id + seq id + message id) * queue nums
+  int offset_data_size =
+      sizeof(uint32_t) +
+      (kUniqueIDSize + sizeof(uint64_t) * 2) * offset_map->size();
+  jbyteArray offsets_info = env->NewByteArray(offset_data_size);
+  int offset = 0;
+  // total queue nums
+  auto queue_nums = static_cast<uint32_t>(offset_map->size());
+  env->SetByteArrayRegion(offsets_info, offset, sizeof(uint32_t),
+                          reinterpret_cast<jbyte *>(&queue_nums));
+  offset += sizeof(uint32_t);
+  // queue name & offset
+  for (auto &p : *offset_map) {\
+    env->SetByteArrayRegion(offsets_info, offset, kUniqueIDSize,
+                            reinterpret_cast<const jbyte *>(p.first.Data()));
+    offset += kUniqueIDSize;
+    // msg_id
+    env->SetByteArrayRegion(offsets_info, offset, sizeof(uint64_t),
+                            reinterpret_cast<jbyte *>(&p.second.current_message_id));
+    offset += sizeof(uint64_t);
+  }
+  return offsets_info;
+}

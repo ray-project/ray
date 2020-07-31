@@ -18,6 +18,8 @@ import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.xml.bind.DatatypeConverter;
+
 public abstract class InputStreamTask extends StreamTask {
 
   private static final Logger LOG = LoggerFactory.getLogger(InputStreamTask.class);

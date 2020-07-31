@@ -130,6 +130,14 @@ class StreamingMessage {
   static StreamingMessagePtr FromBytes(const uint8_t *data, bool verifer_check = true);
 
   inline virtual uint32_t ClassBytesSize() { return kMessageHeaderSize + data_size_; }
+
+  static inline void GetBarrierIdFromRawData(const uint8_t *data,
+                                             StreamingBarrierHeader *barrier_header) {
+    barrier_header->barrier_type = *reinterpret_cast<const StreamingBarrierType *>(data);
+    barrier_header->barrier_id =
+        *reinterpret_cast<const uint64_t *>(data + sizeof(StreamingBarrierType));
+
+  }
 };
 
 }  // namespace streaming

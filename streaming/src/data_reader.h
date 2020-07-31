@@ -33,7 +33,11 @@ static inline std::ostream &operator<<(std::ostream &os,
 
 /// This is implementation of merger policy in StreamingReaderMsgPtrComparator.
 struct StreamingReaderMsgPtrComparator {
-  StreamingReaderMsgPtrComparator() = default;
+  explicit StreamingReaderMsgPtrComparator(ReliabilityLevel strategy)
+      : comp_strategy(strategy){};
+  StreamingReaderMsgPtrComparator(){};
+  ReliabilityLevel comp_strategy = ReliabilityLevel::EXACTLY_ONCE;
+
   bool operator()(const std::shared_ptr<DataBundle> &a,
                   const std::shared_ptr<DataBundle> &b);
 };
@@ -55,6 +59,8 @@ class DataReader {
       reader_merger_;
 
   std::shared_ptr<DataBundle> last_fetched_queue_item_;
+
+  std::unordered_map<uint64_t, uint32_t> global_barrier_cnt_;
 
   int64_t timer_interval_;
   int64_t last_bundle_ts_;
@@ -138,6 +144,8 @@ class DataReader {
   /// Get top item from prioprity queue.
   StreamingStatus GetMergedMessageBundle(std::shared_ptr<DataBundle> &message,
                                          bool &is_valid_break, uint32_t timeout_ms);
+
+  bool BarrierAlign(std::shared_ptr<DataBundle> &message);
 
   BundleCheckStatus CheckBundle(const std::shared_ptr<DataBundle> &message);
 

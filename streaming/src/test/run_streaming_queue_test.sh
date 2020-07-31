@@ -52,8 +52,9 @@ REDIS_CLIENT_EXEC="$RAY_ROOT/bazel-bin/redis-cli"
 RAYLET_EXEC="$RAY_ROOT/bazel-bin/raylet"
 STREAMING_TEST_WORKER_EXEC="$RAY_ROOT/bazel-bin/streaming/streaming_test_worker"
 GCS_SERVER_EXEC="$RAY_ROOT/bazel-bin/gcs_server"
+
 # clear env
-ps -ax | grep -E "plasma|DefaultDriver|DefaultWorker|Application|AppStarter|redis|http_server|job_agent" | grep -v grep | awk '{print $1}' | xargs -r kill -9 &> /dev/null
+ps -ax | grep -E "plasma|DefaultDriver|DefaultWorker|AppStarter|redis|http_server|job_agent" | grep -v grep | awk '{print $1}' | xargs kill -9 &> /dev/null
 
 # Run tests.
 

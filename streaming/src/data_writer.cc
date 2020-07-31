@@ -67,7 +67,7 @@ uint64_t DataWriter::WriteMessageToBufferRing(const ObjectID &q_id, uint8_t *dat
                                               uint32_t data_size,
                                               StreamingMessageType message_type) {
   STREAMING_LOG(DEBUG) << "WriteMessageToBufferRing q_id: " << q_id
-                       << " data_size: " << data_size;
+                       << " data_size: " << data_size << ", data=" << Util::Byte2hex(data, data_size);
   // TODO(lingxuan.zlx): currently, unsafe in multithreads
   ProducerChannelInfo &channel_info = channel_info_map_[q_id];
   // Write message id stands for current lastest message id and differs from
@@ -321,10 +321,19 @@ bool DataWriter::CollectFromRingBuffer(ProducerChannelInfo &channel_info,
   std::list<StreamingMessagePtr> message_list;
   uint32_t bundle_buffer_size = 0;
   const uint32_t max_queue_item_size = channel_info.queue_size;
+
+  bool is_barrier = false;
+
+  // Pop until one of the following condition meets:
+  // 1. ring buffer is empty
+  // 2. message count in bundle is larger than ring buffer size
+  // 3. sum of data size of messages in bundle is larger than streaming queue size
+  // 4. message type changed
   while (message_list.size() < runtime_context_->GetConfig().GetRingBufferCapacity() &&
          !buffer_ptr->IsEmpty()) {
     StreamingMessagePtr &message_ptr = buffer_ptr->Front();
     uint32_t message_total_size = message_ptr->ClassBytesSize();
+    is_barrier = message_ptr->IsBarrier();
     if (!message_list.empty() &&
         bundle_buffer_size + message_total_size >= max_queue_item_size) {
       STREAMING_LOG(DEBUG) << "message total size " << message_total_size
@@ -350,9 +359,13 @@ bool DataWriter::CollectFromRingBuffer(ProducerChannelInfo &channel_info,
   }
 
   StreamingMessageBundlePtr bundle_ptr;
+  StreamingMessageBundleType bundleType = StreamingMessageBundleType::Bundle;
+  if (is_barrier) {
+    bundleType = StreamingMessageBundleType::Barrier;
+  }
   bundle_ptr = std::make_shared<StreamingMessageBundle>(
       std::move(message_list), current_time_ms(), message_list.back()->GetMessageSeqId(),
-      StreamingMessageBundleType::Bundle, bundle_buffer_size);
+      bundleType, bundle_buffer_size);
   buffer_ptr->ReallocTransientBuffer(bundle_ptr->ClassBytesSize());
   bundle_ptr->ToBytes(buffer_ptr->GetTransientBufferMutable());
 

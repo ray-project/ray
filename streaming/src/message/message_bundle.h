@@ -187,6 +187,7 @@ struct DataBundle {
   uint8_t *data = nullptr;
   uint32_t data_size;
   ObjectID from;
+  uint32_t last_barrier_id;
   StreamingMessageBundleMetaPtr meta;
   bool is_reallocated = false;
   
@@ -200,6 +201,9 @@ struct DataBundle {
     data = new uint8_t[size];
     is_reallocated = true;
   }
+
+  friend std::ostream &operator<<(std::ostream &os,
+                                  const DataBundle &bundle);
 };
 
 }  // namespace streaming

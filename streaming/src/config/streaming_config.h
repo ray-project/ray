@@ -76,6 +76,7 @@ class StreamingConfig {
   DECL_GET_SET_PROPERTY(uint32_t, EventDrivenFlowControlInterval,
                         event_driven_flow_control_interval_)
   DECL_GET_SET_PROPERTY(StreamingRole, StreamingRole, streaming_role)
+  DECL_GET_SET_PROPERTY(ReliabilityLevel, ReliabilityLevel, streaming_strategy_)
 
   uint32_t GetRingBufferCapacity() const;
   /// Note(lingxuan.zlx), RingBufferCapacity's valid range is from 1 to

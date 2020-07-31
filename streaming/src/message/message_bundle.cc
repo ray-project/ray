@@ -196,5 +196,14 @@ bool StreamingMessageBundle::operator==(StreamingMessageBundle &bundle) const {
 bool StreamingMessageBundle::operator==(StreamingMessageBundle *bundle) const {
   return this->operator==(*bundle);
 }
+
+std::ostream &operator<<(std::ostream &os, const DataBundle &bundle) {
+  os << "{"
+     << "data: " << (void*) bundle.data
+     << ", data_size: " << bundle.data_size
+     << ", channel last_barrier_id: " << bundle.last_barrier_id
+     << ", meta: " << *(bundle.meta) << "}";
+  return os;
+}
 }  // namespace streaming
 }  // namespace ray
