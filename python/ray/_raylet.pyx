@@ -658,7 +658,7 @@ cdef class CoreWorker:
     def __cinit__(self, is_driver, store_socket, raylet_socket,
                   JobID job_id, GcsClientOptions gcs_options, log_dir,
                   node_ip_address, node_manager_port, raylet_ip_address,
-                  local_mode, driver_name, stdout_file, stderr_file):
+                  local_mode, driver_name, stdout_file, stderr_file, metrics_agent_port):
         self.is_driver = is_driver
         self.is_local_mode = local_mode
 
@@ -688,6 +688,7 @@ cdef class CoreWorker:
         options.num_workers = 1
         options.kill_main = kill_main_task
         options.terminate_asyncio_thread = terminate_asyncio_thread
+        options.metrics_agent_port = metrics_agent_port
 
         CCoreWorkerProcess.Initialize(options)
 

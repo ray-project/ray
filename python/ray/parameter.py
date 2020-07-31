@@ -89,6 +89,8 @@ class RayParams:
         java_worker_options (list): The command options for Java worker.
         load_code_from_local: Whether load code from local file or from GCS.
         metrics_agent_port(int): The port to bind metrics agent.
+        metrics_export_port(int): The port where a metrics agent exposes metrics
+            through a Prometheus endpoint.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
         lru_evict (bool): Enable LRU eviction if space is needed.
@@ -139,6 +141,7 @@ class RayParams:
                  _internal_config=None,
                  enable_object_reconstruction=False,
                  metrics_agent_port=None,
+                 metrics_export_port=None,
                  lru_evict=False):
         self.object_ref_seed = object_ref_seed
         self.redis_address = redis_address
@@ -178,6 +181,7 @@ class RayParams:
         self.java_worker_options = java_worker_options
         self.load_code_from_local = load_code_from_local
         self.metrics_agent_port = metrics_agent_port
+        self.metrics_export_port = metrics_export_port
         self._internal_config = _internal_config
         self._lru_evict = lru_evict
         self._enable_object_reconstruction = enable_object_reconstruction
@@ -288,3 +292,6 @@ class RayParams:
         if numpy_major <= 1 and numpy_minor < 16:
             logger.warning("Using ray with numpy < 1.16.0 will result in slow "
                            "serialization. Upgrade numpy if using with ray.")
+
+        if self.metrics_export_port is None:
+            self.metrics_export_port = 0

@@ -103,12 +103,13 @@ class Node:
                     head), "LRU Evict can only be passed into the head node."
 
         self._raylet_ip_address = raylet_ip_address
+        self.metrics_agent_port = self._get_unused_port()[0]
 
         ray_params.update_if_absent(
             include_log_monitor=True,
             resources={},
             temp_dir=ray.utils.get_ray_temp_dir(),
-            metrics_agent_port=self._get_unused_port()[0],
+            metrics_agent_port=self.metrics_agent_port,
             worker_path=os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
                 "workers/default_worker.py"))
@@ -561,9 +562,11 @@ class Node:
         """Start the reporter."""
         stdout_file, stderr_file = self.get_log_file_handles(
             "reporter", unique=True)
+
         process_info = ray.services.start_reporter(
             self.redis_address,
             self._ray_params.metrics_agent_port,
+            self._ray_params.metrics_export_port,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password,

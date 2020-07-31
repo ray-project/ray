@@ -1066,6 +1066,7 @@ def start_log_monitor(redis_address,
 
 def start_reporter(redis_address,
                    port,
+                   metrics_export_port,
                    stdout_file=None,
                    stderr_file=None,
                    redis_password=None,
@@ -1075,6 +1076,7 @@ def start_reporter(redis_address,
     Args:
         redis_address (str): The address of the Redis instance.
         port(int): The port to bind the reporter process.
+        metrics_export_port(int): The port to expose metrics through Prometheus.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
@@ -1088,7 +1090,8 @@ def start_reporter(redis_address,
         os.path.dirname(os.path.abspath(__file__)), "reporter.py")
     command = [
         sys.executable, "-u", reporter_filepath,
-        "--redis-address={}".format(redis_address), "--port={}".format(port)
+        "--redis-address={}".format(redis_address), "--port={}".format(port),
+        "--metrics-export-port={}".format(metrics_export_port)
     ]
     if redis_password:
         command += ["--redis-password", redis_password]
