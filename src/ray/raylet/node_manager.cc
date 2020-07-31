@@ -2147,9 +2147,9 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_typ
   task_dependency_manager_.UnsubscribeGetDependencies(spec.TaskId());
 }
 
-void NodeManager::MarkObjectsAsFailed(const ErrorType &error_type,
-                                      const std::vector<rpc::ObjectReference> objects_to_fail,
-                                      const JobID &job_id) {
+void NodeManager::MarkObjectsAsFailed(
+    const ErrorType &error_type, const std::vector<rpc::ObjectReference> objects_to_fail,
+    const JobID &job_id) {
   const std::string meta = std::to_string(static_cast<int>(error_type));
   for (const auto &ref : objects_to_fail) {
     ObjectID object_id = ObjectID::FromBinary(ref.object_id());
@@ -2942,8 +2942,7 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
       rpc::ObjectReference ref;
       ref.set_object_id(required_object_id.Binary());
       ref.mutable_owner_address()->CopyFrom(owner_addr);
-      MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {ref},
-                          JobID::Nil());
+      MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {ref}, JobID::Nil());
     } else {
       RAY_LOG(DEBUG) << "Required object " << required_object_id
                      << " fetch timed out, asking owner "
@@ -2961,7 +2960,7 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
       request.set_owner_worker_id(owner_addr.worker_id());
       RAY_CHECK_OK(client->GetObjectStatus(
           request, [this, required_object_id, owner_addr](
-              Status status, const rpc::GetObjectStatusReply &reply) {
+                       Status status, const rpc::GetObjectStatusReply &reply) {
             if (!status.ok() ||
                 reply.status() == rpc::GetObjectStatusReply::OUT_OF_SCOPE ||
                 reply.status() == rpc::GetObjectStatusReply::FREED) {
@@ -2975,8 +2974,8 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
               rpc::ObjectReference ref;
               ref.set_object_id(required_object_id.Binary());
               ref.mutable_owner_address()->CopyFrom(owner_addr);
-              MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE,
-                                  {ref}, JobID::Nil());
+              MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {ref},
+                                  JobID::Nil());
             }
             // Do nothing if the owner replied that the object is available. The
             // object manager will continue trying to fetch the object, and this
@@ -2994,43 +2993,41 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
     // information.
     RAY_LOG(DEBUG) << "Required object " << required_object_id
                    << " fetch timed out, checking task table";
-    RAY_CHECK_OK(
-        gcs_client_->Tasks().AsyncGet(
-            task_id,
-            /*callback=*/
-            [this, required_object_id, task_id](
-                Status status, const boost::optional<TaskTableData> &task_data) {
-              if (task_data) {
-                // The task was in the GCS task table. Use the stored task spec to
-                // re-execute the task.
-                ResubmitTask(Task(task_data->task()), required_object_id);
-                return;
-              }
-              // The task was not in the GCS task table. It must therefore be in the
-              // lineage cache.
-              if (lineage_cache_.ContainsTask(task_id)) {
-                // Use a copy of the cached task spec to re-execute the task.
-                const Task task = lineage_cache_.GetTaskOrDie(task_id);
-                ResubmitTask(task, required_object_id);
-              } else {
-                // No actor creation task spec was found. This is most likely a
-                // randomly generated ObjectID whose value is unreachable. Mark the
-                // object as failed.
-                RAY_LOG(WARNING)
-                    << "Ray cannot get the value of ObjectIDs that are generated "
-                       "randomly (ObjectID.from_random()) or out-of-band "
-                       "(ObjectID.from_binary(...)) because Ray "
-                       "does not know which task will create them. "
-                       "If this was not how your object ID was generated, please file an "
-                       "issue "
-                       "at https://github.com/ray-project/ray/issues/";
-                rpc::ObjectReference ref;
-                ref.set_object_id(required_object_id.Binary());
-                // We don't know the owner of this address here, pass in empty address.
-                MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE,
-                                    {ref}, JobID::Nil());
-              }
-            }));
+    RAY_CHECK_OK(gcs_client_->Tasks().AsyncGet(
+        task_id,
+        /*callback=*/
+        [this, required_object_id, task_id](
+            Status status, const boost::optional<TaskTableData> &task_data) {
+          if (task_data) {
+            // The task was in the GCS task table. Use the stored task spec to
+            // re-execute the task.
+            ResubmitTask(Task(task_data->task()), required_object_id);
+            return;
+          }
+          // The task was not in the GCS task table. It must therefore be in the
+          // lineage cache.
+          if (lineage_cache_.ContainsTask(task_id)) {
+            // Use a copy of the cached task spec to re-execute the task.
+            const Task task = lineage_cache_.GetTaskOrDie(task_id);
+            ResubmitTask(task, required_object_id);
+          } else {
+            // No actor creation task spec was found. This is most likely a
+            // randomly generated ObjectID whose value is unreachable. Mark the
+            // object as failed.
+            RAY_LOG(WARNING)
+                << "Ray cannot get the value of ObjectIDs that are generated "
+                   "randomly (ObjectID.from_random()) or out-of-band "
+                   "(ObjectID.from_binary(...)) because Ray "
+                   "does not know which task will create them. "
+                   "If this was not how your object ID was generated, please file an "
+                   "issue "
+                   "at https://github.com/ray-project/ray/issues/";
+            rpc::ObjectReference ref;
+            ref.set_object_id(required_object_id.Binary());
+            // We don't know the owner of this address here, pass in empty address.
+            MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {ref}, JobID::Nil());
+          }
+        }));
   }
 }
 

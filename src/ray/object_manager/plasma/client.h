@@ -26,8 +26,8 @@
 
 #include "ray/common/status.h"
 #include "ray/object_manager/plasma/common.h"
-#include "src/ray/protobuf/common.pb.h"
 #include "ray/util/visibility.h"
+#include "src/ray/protobuf/common.pb.h"
 
 using arrow::Buffer;
 
