@@ -17,7 +17,8 @@ COPY requirements.txt ./
 COPY requirements_autoscaler.txt ./
 COPY $WHEEL_PATH $WHEEL_NAME
 
-RUN pip --no-cache-dir install -r requirements.txt \
+RUN pip --no-cache-dir install -r requirements.txt \ 
+    && pip --no-cache-dir install -r requirements_autoscaler.txt \
     && pip --no-cache-dir install $WHEEL_NAME[all]
 
 # For Click
