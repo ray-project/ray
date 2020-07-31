@@ -711,7 +711,7 @@ Blacklisted:     No
     """
     constraints_dict = resource_spec._constraints_from_gpu_info(info_string)
     expected_dict = {
-        "{}:V100".format(ray_constants.RESOURCE_CONSTRAINT_PREFIX): 1
+        "{}V100".format(ray_constants.RESOURCE_CONSTRAINT_PREFIX): 1
     }
     assert constraints_dict == expected_dict
 
@@ -728,7 +728,7 @@ Blacklisted:     No
     """
     constraints_dict = resource_spec._constraints_from_gpu_info(info_string)
     expected_dict = {
-        "{}:T4".format(ray_constants.RESOURCE_CONSTRAINT_PREFIX): 1
+        "{}T4".format(ray_constants.RESOURCE_CONSTRAINT_PREFIX): 1
     }
     assert constraints_dict == expected_dict
 
