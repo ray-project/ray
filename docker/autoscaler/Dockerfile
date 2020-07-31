@@ -1,6 +1,4 @@
-FROM rayproject/base-deps
-ARG WHEEL_PATH
-ARG WHEEL_NAME
+FROM rayproject/ray
 
 # Install kubectl.
 RUN apt-get update \
@@ -14,11 +12,6 @@ RUN apt-get update \
 
 # We have to uninstall wrapt this way for Tensorflow compatibility
 COPY requirements.txt .
-COPY $WHEEL_PATH $WHEEL_NAME
 
-RUN pip --no-cache-dir install -r requirements.txt \
-    && pip --no-cache-dir install $WHEEL_NAME[all]
+RUN $HOME/anaconda3/bin/pip --no-cache-dir install -r requirements.txt && rm requirements.txt
 
-# For Click
-ENV LC_ALL=C.UTF-8
-ENV LANG=C.UTF-8

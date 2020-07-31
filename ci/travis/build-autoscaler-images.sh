@@ -13,20 +13,26 @@ DOCKER_USERNAME="raytravisbot"
 if [[ "$TRAVIS" == "true" && "$TRAVIS_PULL_REQUEST" == "false" ]]; then
     echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
 
-    wheel="$(basename "$ROOT_DIR"/.whl/*cp36m-manylinux*)"
+    wheel="$(basename "$ROOT_DIR"/.whl/*cp37m-manylinux*)"
     commit_sha=$(echo "$TRAVIS_COMMIT" | head -c 6)
     cp -r "$ROOT_DIR"/.whl "$ROOT_DIR"/docker/autoscaler/.whl
 
-    docker build -q -t rayproject/base-deps docker/base-deps
+    docker build -t rayproject/base-deps docker/base-deps
 
     docker build \
         --build-arg WHEEL_PATH=".whl/$wheel" \
         --build-arg WHEEL_NAME="$wheel" \
+        -t rayproject/ray \
+        "$ROOT_DIR"/docker/ray
+
+    docker build
         -t rayproject/autoscaler:"$commit_sha" \
         "$ROOT_DIR"/docker/autoscaler
 
     docker tag rayproject/base-deps rayproject/base-deps:"$commit_sha" 
+    docker tag rayproject/ray rayproject/ray:"$commit_sha" 
     docker push rayproject/base-deps:"$commit_sha"
+    docker push rayproject/ray:"$commit_sha"
     docker push rayproject/autoscaler:"$commit_sha"
 
 
@@ -35,13 +41,17 @@ if [[ "$TRAVIS" == "true" && "$TRAVIS_PULL_REQUEST" == "false" ]]; then
        # Replace / in branch name to - so it is legal tag name
        normalized_branch_name=$(echo "$TRAVIS_BRANCH" | sed -e "s/\//-/")
        docker tag rayproject/autoscaler:"$commit_sha" rayproject/autoscaler:"$normalized_branch_name"
+       docker tag rayproject/ray:"$commit_sha" rayproject/ray:"$normalized_branch_name"
        docker tag rayproject/base-deps:"$commit_sha" rayproject/base-deps:"$normalized_branch_name"
        docker push rayproject/autoscaler:"$normalized_branch_name"
+       docker push rayproject/ray:"$normalized_branch_name"
        docker push rayproject/base-deps:"$normalized_branch_name"
     else
        docker tag rayproject/autoscaler:"$commit_sha" rayproject/autoscaler:latest
+       docker tag rayproject/ray:"$commit_sha" rayproject/ray:latest
        docker tag rayproject/base-deps:"$commit_sha" rayproject/base-deps:latest
        docker push rayproject/autoscaler:latest
+       docker push rayproject/ray:latest
        docker push rayproject/base-deps:latest
     fi
 fi
