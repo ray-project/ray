@@ -164,6 +164,18 @@ void CoreWorkerProcess::EnsureInitialized() {
                        << "shutdown.";
 }
 
+std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker(const WorkerID &worker_id) {
+  if (!instance_) {
+    return nullptr;
+  }
+  absl::ReaderMutexLock workers_lock(&instance_->worker_map_mutex_);
+  auto it = instance_->workers_.find(worker_id);
+  if (it != instance_->workers_.end()) {
+    return it->second;
+  }
+  return nullptr;
+}
+
 CoreWorker &CoreWorkerProcess::GetCoreWorker() {
   EnsureInitialized();
   if (instance_->options_.num_workers == 1) {

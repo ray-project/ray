@@ -58,6 +58,13 @@ extern jmethodID java_array_list_init_with_capacity;
 extern jclass java_map_class;
 /// entrySet method of Map interface
 extern jmethodID java_map_entry_set;
+/// put method of Map interface
+extern jmethodID java_map_put;
+
+/// HashMap class
+extern jclass java_hash_map_class;
+/// Constructor of HashMap class
+extern jmethodID java_hash_map_init;
 
 /// Set interface
 extern jclass java_set_class;
@@ -77,6 +84,11 @@ extern jclass java_map_entry_class;
 extern jmethodID java_map_entry_get_key;
 /// getValue method of Map.Entry interface
 extern jmethodID java_map_entry_get_value;
+
+/// System class
+extern jclass java_system_class;
+/// gc method of System class
+extern jmethodID java_system_gc;
 
 /// RayException class
 extern jclass java_ray_exception_class;
@@ -149,6 +161,8 @@ extern jmethodID java_native_ray_object_init;
 extern jfieldID java_native_ray_object_data;
 /// metadata field of NativeRayObject class
 extern jfieldID java_native_ray_object_metadata;
+// containedObjectIds field of NativeRayObject class
+extern jfieldID java_native_ray_object_contained_object_ids;
 
 /// TaskExecutor class
 extern jclass java_task_executor_class;
@@ -323,6 +337,7 @@ inline jobject NativeVectorToJavaList(
   jobject java_list =
       env->NewObject(java_array_list_class, java_array_list_init_with_capacity,
                      (jint)native_vector.size());
+  RAY_CHECK_JAVA_EXCEPTION(env);
   for (const auto &item : native_vector) {
     auto element = element_converter(env, item);
     env->CallVoidMethod(java_list, java_list_add, element);
@@ -364,10 +379,11 @@ inline std::unordered_map<key_type, value_type> JavaMapToNativeMap(
       RAY_CHECK_JAVA_EXCEPTION(env);
       jobject map_entry = env->CallObjectMethod(iterator, java_iterator_next);
       RAY_CHECK_JAVA_EXCEPTION(env);
-      auto java_key = (jstring)env->CallObjectMethod(map_entry, java_map_entry_get_key);
+      auto java_key = env->CallObjectMethod(map_entry, java_map_entry_get_key);
       RAY_CHECK_JAVA_EXCEPTION(env);
       key_type key = key_converter(env, java_key);
       auto java_value = env->CallObjectMethod(map_entry, java_map_entry_get_value);
+      RAY_CHECK_JAVA_EXCEPTION(env);
       value_type value = value_converter(env, java_value);
       native_map.emplace(key, value);
       env->DeleteLocalRef(java_key);
@@ -379,6 +395,25 @@ inline std::unordered_map<key_type, value_type> JavaMapToNativeMap(
     env->DeleteLocalRef(entry_set);
   }
   return native_map;
+}
+
+/// Convert a C++ std::unordered_map<?, ?> to a Java Map<?, ?>
+template <typename key_type, typename value_type>
+inline jobject NativeMapToJavaMap(
+    JNIEnv *env, const std::unordered_map<key_type, value_type> &native_map,
+    const std::function<jobject(JNIEnv *, const key_type &)> &key_converter,
+    const std::function<jobject(JNIEnv *, const value_type &)> &value_converter) {
+  jobject java_map = env->NewObject(java_hash_map_class, java_hash_map_init);
+  RAY_CHECK_JAVA_EXCEPTION(env);
+  for (const auto &entry : native_map) {
+    jobject java_key = key_converter(env, entry.first);
+    jobject java_value = value_converter(env, entry.second);
+    env->CallObjectMethod(java_map, java_map_put, java_key, java_value);
+    RAY_CHECK_JAVA_EXCEPTION(env);
+    env->DeleteLocalRef(java_key);
+    env->DeleteLocalRef(java_value);
+  }
+  return java_map;
 }
 
 /// Convert a C++ ray::Buffer to a Java byte array.
@@ -423,9 +458,16 @@ inline std::shared_ptr<ray::RayObject> JavaNativeRayObjectToNativeRayObject(
   if (metadata_buffer && metadata_buffer->Size() == 0) {
     metadata_buffer = nullptr;
   }
-  // TODO: Support nested IDs for Java.
+
+  auto java_contained_ids =
+      env->GetObjectField(java_obj, java_native_ray_object_contained_object_ids);
+  std::vector<ray::ObjectID> contained_object_ids;
+  JavaListToNativeVector<ray::ObjectID>(
+      env, java_contained_ids, &contained_object_ids, [](JNIEnv *env, jobject id) {
+        return JavaByteArrayToId<ray::ObjectID>(env, static_cast<jbyteArray>(id));
+      });
   return std::make_shared<ray::RayObject>(data_buffer, metadata_buffer,
-                                          std::vector<ray::ObjectID>());
+                                          contained_object_ids);
 }
 
 /// Convert a C++ ray::RayObject to a Java NativeRayObject.
@@ -438,6 +480,7 @@ inline jobject NativeRayObjectToJavaNativeRayObject(
   auto java_metadata = NativeBufferToJavaByteArray(env, rayObject->GetMetadata());
   auto java_obj = env->NewObject(java_native_ray_object_class,
                                  java_native_ray_object_init, java_data, java_metadata);
+  RAY_CHECK_JAVA_EXCEPTION(env);
   env->DeleteLocalRef(java_metadata);
   env->DeleteLocalRef(java_data);
   return java_obj;
