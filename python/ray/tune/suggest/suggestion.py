@@ -186,8 +186,7 @@ class Searcher:
         """
         raise NotImplementedError
 
-    @staticmethod
-    def save_to_dir(searcher, checkpoint_dir):
+    def save_to_dir(self, checkpoint_dir):
         """Automatically saves the given searcher to the checkpoint_dir.
 
         This is automatically used by tune.run during a Tune job.
@@ -196,7 +195,7 @@ class Searcher:
                                             ".tmp_searcher_ckpt")
         success = True
         try:
-            searcher.save(tmp_search_ckpt_path)
+            self.save(tmp_search_ckpt_path)
         except NotImplementedError as e:
             logger.warning(e)
             success = False
@@ -205,8 +204,7 @@ class Searcher:
             os.rename(tmp_search_ckpt_path,
                       os.path.join(checkpoint_dir, Searcher.CKPT_FILE))
 
-    @staticmethod
-    def restore_from_dir(searcher, checkpoint_dir):
+    def restore_from_dir(self, checkpoint_dir):
         """Restores the state of a searcher from a given checkpoint_dir.
 
         Typically, you should use this function to restore from an
@@ -223,18 +221,18 @@ class Searcher:
                 local_dir="~/my_results")
 
             search_alg2 = Searcher()
-            Searcher.restore_from_dir(
-                search_alg2, os.path.join("~/my_results", self.experiment_name)
+            search_alg2.restore_from_dir(
+                os.path.join("~/my_results", self.experiment_name)
         """
 
         checkpoint_path = os.path.join(checkpoint_dir, Searcher.CKPT_FILE)
         if os.path.exists(checkpoint_path):
-            searcher.restore(checkpoint_path)
+            self.restore(checkpoint_path)
         else:
             raise FileNotFoundError(
                 "{filename} not found in {directory}. Unable to restore "
                 "searcher state from directory.".format(
-                    filename=checkpoint_path, directory=checkpoint_dir))
+                    filename=Searcher.CKPT_FILE, directory=checkpoint_dir))
 
     @property
     def metric(self):

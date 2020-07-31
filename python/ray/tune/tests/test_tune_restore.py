@@ -167,8 +167,8 @@ class AbstractWarmStartTest:
     def run_from_experiment_restore(self, random_state):
         search_alg, cost = self.set_basic_conf()
         search_alg = ConcurrencyLimiter(search_alg, 1)
-        Searcher.restore_from_dir(
-            search_alg, os.path.join(self.tmpdir, self.experiment_name))
+        search_alg.restore_from_dir(
+            os.path.join(self.tmpdir, self.experiment_name))
         results = tune.run(
             cost,
             num_samples=5,
@@ -326,6 +326,7 @@ class DragonflyWarmSTartTest(AbstractWarmStartTest, unittest.TestCase):
         )
         return search_alg, cost
 
+
 class SigOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
         space = [
@@ -406,9 +407,9 @@ class SearcherTest(unittest.TestCase):
         tmpdir = tempfile.mkdtemp()
         original_data = "hello-its-me"
         searcher = self.MockSearcher(original_data)
-        Searcher.save_to_dir(searcher, tmpdir)
+        searcher.save_to_dir(tmpdir)
         searcher_2 = self.MockSearcher("no-its-not-me")
-        Searcher.restore_from_dir(searcher_2, tmpdir)
+        searcher_2.restore_from_dir(tmpdir)
         assert searcher_2.data == original_data
 
 
