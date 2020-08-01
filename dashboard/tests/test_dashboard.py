@@ -27,6 +27,7 @@ def test_basic(ray_start_with_dashboard):
                 if "new_dashboard/agent.py" in c:
                     return p
 
+    # Test agent restart after dead.
     agent_proc = _search_agent(raylet_proc.children())
     assert agent_proc is not None
     agent_proc.kill()

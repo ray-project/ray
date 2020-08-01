@@ -395,7 +395,7 @@ int Process::Wait() const {
   return status;
 }
 
-void Process::Kill() {
+void Process::Kill() const {
   if (p_) {
     pid_t pid = p_->GetId();
     if (pid >= 0) {

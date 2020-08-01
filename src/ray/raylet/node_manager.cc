@@ -240,7 +240,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       new AgentManager(std::move(options),
                        /*delay_executor=*/
                        [this](std::function<void()> task, uint32_t delay_ms) {
-                         execute_after(io_service_, task, delay_ms);
+                         return execute_after(io_service_, task, delay_ms);
                        }));
 
   RAY_CHECK_OK(SetupPlasmaSubscription());
@@ -319,8 +319,6 @@ ray::Status NodeManager::RegisterGcs() {
       HandleJobStarted(job_id, job_data);
     } else {
       HandleJobFinished(job_id, job_data);
-    } else {
-      // The job state is JobTableData::SUBMITTED, just ignore.
     }
   };
   RAY_RETURN_NOT_OK(

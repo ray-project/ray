@@ -297,6 +297,46 @@ cc_library(
     ],
 )
 
+# Agent manager gRPC lib.
+proto_library(
+    name = "agent_manager_proto",
+    srcs = ["src/ray/protobuf/agent_manager.proto"],
+    deps = [],
+)
+
+python_grpc_compile(
+    name = "agent_manager_py_proto",
+    deps = [":agent_manager_proto"],
+)
+
+cc_proto_library(
+    name = "agent_manager_cc_proto",
+    deps = [":agent_manager_proto"],
+)
+
+cc_grpc_library(
+    name = "agent_manager_cc_grpc",
+    srcs = [":agent_manager_proto"],
+    grpc_only = True,
+    deps = [":agent_manager_cc_proto"],
+)
+
+cc_library(
+    name = "agent_manager_rpc",
+    hdrs = glob([
+        "src/ray/rpc/agent_manager/*.h",
+    ]),
+    strip_include_prefix = "src",
+    copts = COPTS,
+    deps = [
+        ":grpc_common_lib",
+        ":agent_manager_cc_grpc",
+        ":ray_common",
+        "@boost//:asio",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
 # === End of rpc definitions ===
 
 # === Begin of plasma definitions ===
@@ -541,6 +581,7 @@ cc_library(
         ":gcs_service_rpc",
         ":gcs_table_storage_lib",
         ":node_manager_rpc",
+        ":agent_manager_rpc",
         ":raylet_client_lib",
         ":worker_rpc",
     ],
@@ -631,6 +672,7 @@ cc_library(
         ":gcs",
         ":node_manager_fbs",
         ":node_manager_rpc",
+        ":agent_manager_rpc",
         ":object_manager",
         ":plasma_client",
         ":ray_common",
@@ -673,6 +715,7 @@ cc_library(
         ":gcs_cc_proto",
         ":node_manager_fbs",
         ":node_manager_rpc",
+        ":agent_manager_rpc",
         ":ray_common",
         ":ray_util",
         "@boost//:asio",
@@ -1591,6 +1634,7 @@ cc_library(
         ":hiredis",
         ":node_manager_fbs",
         ":node_manager_rpc",
+        ":agent_manager_rpc",
         ":ray_common",
         ":ray_util",
         ":stats_lib",
@@ -1932,6 +1976,7 @@ filegroup(
         "gcs_py_proto",
         "node_manager_py_proto",
         "reporter_py_proto",
+        "agent_manager_py_proto",
     ],
 )
 
@@ -2023,6 +2068,8 @@ genrule(
             python/ray/core/generated/common_pb2.py
             python/ray/core/generated/node_manager_pb2.py
             python/ray/core/generated/node_manager_pb2_grpc.py
+            python/ray/core/generated/agent_manager_pb2.py
+            python/ray/core/generated/agent_manager_pb2_grpc.py
             python/ray/core/generated/reporter_pb2.py
             python/ray/core/generated/reporter_pb2_grpc.py
             python/ray/core/generated/core_worker_pb2.py
