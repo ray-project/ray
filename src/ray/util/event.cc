@@ -64,7 +64,9 @@ void RayEventContext::SetCustomField(
     std::unordered_map<std::string, std::string> custom_field) {
   custom_field_ = custom_field;
 }
-
+///
+/// RayEvent
+///
 void RayEvent::ReportEvent(std::string severity, std::string label, std::string message) {
   rpc::Event_Severity severity_ele =
       rpc::Event_Severity::Event_Severity_Event_Severity_INT_MIN_SENTINEL_DO_NOT_USE_;
