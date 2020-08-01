@@ -2,6 +2,9 @@
 
 set -euo pipefail
 
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)"
+WORKSPACE_DIR="${ROOT_DIR}/../.."
+
 if [ "${OSTYPE-}" = msys ] && [ -z "${MINGW_DIR+x}" ]; then
   # On Windows MINGW_DIR (analogous to /usr) might not always be defined when we need it for some tools
   if [ "${HOSTTYPE-}" = x86_64 ]; then
@@ -14,7 +17,7 @@ invoke_cc() {
   local env_vars=() args=() env_parsed=0 result=0
   if [ "${OSTYPE}" = msys ]; then
     # On Windows we don't want automatic path conversion, since it can break non-path arguments
-    env_vars+=(MSYS2_ARG_CONV_EXCL="*")
+    env_vars+=("MSYS2_ARG_CONV_EXCL=*")
   fi
   local arg; for arg in "$@"; do
     if [ 0 -ne "${env_parsed}" ]; then
@@ -72,7 +75,45 @@ invoke_cc() {
   return "${result}"
 }
 
-main() {
+_fix_include() {
+  "$(command -v python2 || echo python)" "$(command -v fix_include)" "$@"
+}
+
+process() {
+  # TODO(mehrdadn): Install later versions of iwyu that avoid suggesting <bits/...> headers
+  case "${OSTYPE}" in
+    linux*)
+      sudo apt-get install -qq -o=Dpkg::Use-Pty=0 clang iwyu
+      ;;
+  esac
+
+  local target
+  target="$1"
+  CC=clang bazel build -k --config=iwyu "${target}"
+  CC=clang bazel aquery -k --config=iwyu --output=textproto "${target}" |
+    "$(command -v python3 || echo python)" "${ROOT_DIR}"/bazel.py textproto2json |
+    jq -s -r '{
+      "artifacts": map(select(.[0] == "artifacts") | (.[1] | map({(.[0]): .[1]}) | add) | {(.id): .exec_path}) | add,
+      "outputs": map(select(.[0] == "actions") | (.[1] | map({(.[0]): .[1]}) | add | select(.mnemonic == "iwyu_action") | .output_ids))
+    } | (. as $parent | .outputs | map($parent.artifacts[.])) | .[]' |
+    sed "s|^|$(bazel info | sed -n "s/execution_root: //p")/|" |
+    xargs -r -I {} -- sed -e "/^clang: /d" -e "s|[^ ]*_virtual_includes/[^/]*/||g" {} |
+    (
+      # Checkout & modify a clean copy of the repo to affecting the current one
+      local data new_worktree args=(--nocomments)
+      data="$(cat)"
+      new_worktree="$(TMPDIR="${WORKSPACE_DIR}/.." mktemp -d)"
+      git worktree add -q "${new_worktree}"
+      pushd "${new_worktree}"
+        echo "${data}" |             _fix_include "${args[@]}"    || true  # HACK: For files are only accessible from the workspace root
+        echo "${data}" | { cd src && _fix_include "${args[@]}"; } || true  # For files accessible from src/
+        git diff
+      popd  # this is required so we can remove the worktree when we're done
+      git worktree remove --force "${new_worktree}"
+    )
+}
+
+postbuild() {
   # Parsing might fail due to various things like aspects (e.g. BazelCcProtoAspect), but we don't want to check generated files anyway
   local data=""  # initialize in case next line fails
   data="$(exec "$1" --decode=blaze.CppCompileInfo "$2" < "${3#*=}" 2>&-)" || true
@@ -101,4 +142,4 @@ main() {
   fi
 }
 
-main "$@"
+"$@"
