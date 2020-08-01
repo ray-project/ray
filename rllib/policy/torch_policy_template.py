@@ -138,7 +138,7 @@ def build_torch_policy(name: str,
             an action distribution object from, and c) internal-state outputs
             (empty list if not applicable). If None, will either use
             `action_sampler_fn` or compute actions by calling self.model,
-            then sampling from the so parameterized action distribution.
+            then sampling from the parameterized action distribution.
         make_model (Optional[Callable[[Policy, gym.spaces.Space,
             gym.spaces.Space, TrainerConfigDict], ModelV2]]): Optional callable
             that takes the same arguments as Policy.__init__ and returns a
