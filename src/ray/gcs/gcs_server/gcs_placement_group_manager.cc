@@ -14,6 +14,8 @@
 
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 
+#include <utility>
+
 #include "ray/common/ray_config.h"
 #include "ray/gcs/pb_util.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -62,12 +64,11 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
     std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
     : gcs_placement_group_scheduler_(std::move(scheduler)),
-      gcs_table_storage_(gcs_table_storage),
+      gcs_table_storage_(std::move(gcs_table_storage)),
       reschedule_timer_(io_context) {}
 
 void GcsPlacementGroupManager::RegisterPlacementGroup(
-    const ray::rpc::CreatePlacementGroupRequest &request,
-    std::function<void(std::shared_ptr<GcsPlacementGroup>)> callback) {
+    const ray::rpc::CreatePlacementGroupRequest &request, EmptyCallback callback) {
   RAY_CHECK(callback);
   const auto &placement_group_spec = request.placement_group_spec();
   auto placement_group_id =
@@ -76,8 +77,7 @@ void GcsPlacementGroupManager::RegisterPlacementGroup(
   auto placement_group = std::make_shared<GcsPlacementGroup>(request);
   // Mark the callback as pending and invoke it after the placement_group has been
   // successfully created.
-  placement_group_to_register_callbacks_[placement_group_id].emplace_back(
-      std::move(callback));
+  placement_group_to_register_callbacks_[placement_group_id] = std::move(callback);
   RAY_CHECK(registered_placement_groups_
                 .emplace(placement_group->GetPlacementGroupID(), placement_group)
                 .second);
@@ -88,10 +88,9 @@ void GcsPlacementGroupManager::RegisterPlacementGroup(
 PlacementGroupID GcsPlacementGroupManager::GetPlacementGroupIDByName(
     const std::string &name) {
   PlacementGroupID placement_group_id = PlacementGroupID::Nil();
-  for (auto placement_group_pair : registered_placement_groups_) {
-    auto placement_group = placement_group_pair.second;
-    if (placement_group->GetName() == name) {
-      placement_group_id = placement_group_pair.first;
+  for (const auto &iter : registered_placement_groups_) {
+    if (iter.second->GetName() == name) {
+      placement_group_id = iter.first;
       break;
     }
   }
@@ -110,7 +109,7 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
 void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
     std::shared_ptr<GcsPlacementGroup> placement_group) {
   auto placement_group_id = placement_group->GetPlacementGroupID();
-  RAY_CHECK(registered_placement_groups_.count(placement_group_id) > 0);
+  RAY_CHECK(registered_placement_groups_.contains(placement_group_id));
   placement_group->UpdateState(rpc::PlacementGroupTableData::ALIVE);
 
   auto placement_group_table_data = placement_group->GetPlacementGroupTableData();
@@ -123,9 +122,7 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
   // placement_group_to_register_callbacks_.
   auto iter = placement_group_to_register_callbacks_.find(placement_group_id);
   if (iter != placement_group_to_register_callbacks_.end()) {
-    for (auto &callback : iter->second) {
-      callback(placement_group);
-    }
+    iter->second();
     placement_group_to_register_callbacks_.erase(iter);
   }
   is_creating_ = false;
@@ -154,23 +151,25 @@ void GcsPlacementGroupManager::HandleCreatePlacementGroup(
     ray::rpc::SendReplyCallback send_reply_callback) {
   auto placement_group_id =
       PlacementGroupID::FromBinary(request.placement_group_spec().placement_group_id());
-  const auto &strategy = request.placement_group_spec().strategy();
   const auto &name = request.placement_group_spec().name();
+  const auto &strategy = request.placement_group_spec().strategy();
   RAY_LOG(INFO) << "Registering placement group, placement group id = "
                 << placement_group_id << ", name = " << name
                 << ", strategy = " << PlacementStrategy_Name(strategy);
-  RegisterPlacementGroup(
-      request, [reply, send_reply_callback, placement_group_id](
-                   std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
-        RAY_LOG(INFO) << "Registered placement group, placement group id = "
-                      << placement_group_id << ", name = " << placement_group->GetName()
-                      << ", strategy = " << placement_group->GetStrategy();
-        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-      });
   auto placement_group = std::make_shared<GcsPlacementGroup>(request);
-  auto placement_group_table_data = placement_group->GetPlacementGroupTableData();
   RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
-      placement_group_id, placement_group_table_data, [](Status status) {}));
+      placement_group_id, placement_group->GetPlacementGroupTableData(),
+      [this, request, reply, send_reply_callback, placement_group_id, name,
+       strategy](Status status) {
+        RAY_CHECK_OK(status);
+        RegisterPlacementGroup(
+            request, [reply, send_reply_callback, placement_group_id, name, strategy]() {
+              RAY_LOG(INFO) << "Registered placement group, placement group id = "
+                            << placement_group_id << ", name = " << name
+                            << ", strategy = " << strategy;
+              GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+            });
+      }));
 }
 
 void GcsPlacementGroupManager::ScheduleTick() {
