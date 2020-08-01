@@ -149,8 +149,6 @@ class FunctionCheckpointingTest(unittest.TestCase):
         self.assertTrue(result[TRAINING_ITERATION] == 3)
 
     def testReuseNullCheckpoint(self):
-        """pass"""
-
         def train(config, checkpoint_dir=None):
             assert not checkpoint_dir
             for step in range(10):
@@ -179,8 +177,6 @@ class FunctionCheckpointingTest(unittest.TestCase):
         self.assertTrue(result[TRAINING_ITERATION] == 1)
 
     def testMultipleNullCheckpoints(self):
-        """pass"""
-
         def train(config, checkpoint_dir=None):
             assert not checkpoint_dir
             for step in range(10):
@@ -198,8 +194,6 @@ class FunctionCheckpointingTest(unittest.TestCase):
         self.assertTrue(result[TRAINING_ITERATION] == 1)
 
     def testMultipleNullMemoryCheckpoints(self):
-        """pass"""
-
         def train(config, checkpoint_dir=None):
             assert not checkpoint_dir
             for step in range(10):

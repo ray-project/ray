@@ -53,10 +53,6 @@ class FuncCheckpointUtil:
     will be removed. We cannot remove them any earlier because
     the loading of checkpoints is non-deterministic.
 
-    Temporary checkpoints are also not treated like regular
-    checkpoints because Tune assumes that in-memory checkpoints
-    are removed.
-
     If "save" is called on a trial whose most recent checkpoint
     is temporary, "create_perm_checkpoint" will be called. This
     migrates the temporary checkpoint to a permanent checkpoint.
