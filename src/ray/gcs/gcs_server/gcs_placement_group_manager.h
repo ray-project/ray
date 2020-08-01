@@ -148,6 +148,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// Callback of placement_group registration requests that are not yet flushed.
   absl::flat_hash_map<PlacementGroupID, EmptyCallback>
       placement_group_to_register_callback_;
+
   /// All registered placement_groups (pending placement_groups are also included).
   absl::flat_hash_map<PlacementGroupID, std::shared_ptr<GcsPlacementGroup>>
       registered_placement_groups_;
