@@ -170,7 +170,7 @@ class StatusReporter:
         # resume training.
         self._continue_semaphore.acquire()
 
-    def make_checkpoint_dir(self, step=None):
+    def make_checkpoint_dir(self, step):
         checkpoint_dir = TrainableUtil.make_checkpoint_dir(
             self.logdir, index=step)
         logger.debug("Making checkpoint dir at %s", checkpoint_dir)
@@ -386,8 +386,8 @@ class FunctionRunner(Trainable):
         if not checkpoint:
             state.update(iteration=0, timesteps_total=0, episodes_total=0)
             # We drop a marker here to indicate that the checkpoint is empty
-            FuncCheckpointUtil.mk_null_checkpoint_dir(parent_dir)
-            checkpoint = parent_dir
+            checkpoint = FuncCheckpointUtil.mk_null_checkpoint_dir(self.logdir)
+            parent_dir = checkpoint
         elif isinstance(checkpoint, dict):
             parent_dir = TrainableUtil.make_checkpoint_dir(
                 self.logdir, index=self.training_iteration)
