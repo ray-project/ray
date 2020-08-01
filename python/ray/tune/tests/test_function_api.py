@@ -1,13 +1,48 @@
 import json
 import os
+import shutil
+import tempfile
 import unittest
 
 import ray
 from ray.rllib import _register_all
 
 from ray import tune
-from ray.tune.function_runner import wrap_function
+from ray.tune.trainable import TrainableUtil
+from ray.tune.function_runner import wrap_function, FuncCheckpointUtil
 from ray.tune.result import TRAINING_ITERATION
+
+
+class FuncCheckpointUtilTest(unittest.TestCase):
+    def setUp(self):
+        self.logdir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.logdir)
+
+    def testEmptyCheckpoint(self):
+        checkpoint_dir = FuncCheckpointUtil.mk_null_checkpoint_dir(self.logdir)
+        print(os.listdir(checkpoint_dir))
+        assert FuncCheckpointUtil.is_null_checkpoint(checkpoint_dir)
+
+    def testTempCheckpointDir(self):
+        checkpoint_dir = FuncCheckpointUtil.mk_temp_checkpoint_dir(self.logdir)
+        assert FuncCheckpointUtil.is_temp_checkpoint_dir(checkpoint_dir)
+
+    def testConvertTempToPermanent(self):
+        checkpoint_dir = FuncCheckpointUtil.mk_temp_checkpoint_dir(self.logdir)
+        new_checkpoint_dir = FuncCheckpointUtil.convert_perm_checkpoint(
+            checkpoint_dir, self.logdir, step=4)
+        assert new_checkpoint_dir == TrainableUtil.find_checkpoint_dir(
+            new_checkpoint_dir)
+        assert not os.path.exists(checkpoint_dir)
+        assert os.path.exists(new_checkpoint_dir)
+        assert not FuncCheckpointUtil.is_temp_checkpoint_dir(
+            new_checkpoint_dir)
+
+        tmp_checkpoint_dir = FuncCheckpointUtil.mk_temp_checkpoint_dir(
+            self.logdir)
+        assert tmp_checkpoint_dir != new_checkpoint_dir
 
 
 class FunctionApiTest(unittest.TestCase):

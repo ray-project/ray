@@ -23,23 +23,23 @@ RESULT_FETCH_TIMEOUT = 0.2
 ERROR_REPORT_TIMEOUT = 10
 ERROR_FETCH_TIMEOUT = 1
 
-EMPTY_MARKER = ".empty_ckpt"
+NULL_MARKER = ".null_ckpt"
 TEMP_MARKER = ".temp_marker"
 
 
 class FuncCheckpointUtil:
     """Utility class holding various function-checkpointing mechanisms.
 
-    The two main modes are "empty" and "temporary" checkpoints.
+    The two special modes are "null" and "temporary" checkpoints.
 
-    *Empty Checkpoints*
+    *Null Checkpoints*
     -------------------
 
-    Empty checkpoints are generated when a trial is being saved
+    Null checkpoints are generated when a trial is being saved
     but a checkpoint has not been created. In this case,
-    a marker is set, indicating that the checkpoint is empty.
+    a marker is set, indicating that the checkpoint is null.
 
-    When restoring from an empty checkpoint, the FunctionRunner
+    When restoring from an null checkpoint, the FunctionRunner
     will detect this and *not* restore from any checkpoint at all.
 
     *Temporary Checkpoints*
@@ -58,14 +58,17 @@ class FuncCheckpointUtil:
     are removed.
 
     If "save" is called on a trial whose most recent checkpoint
-    is temporary, "convert_to_permanent_checkpoint" will be called. This
+    is temporary, "convert_perm_checkpoint" will be called. This
     migrates the temporary checkpoint to a permanent checkpoint.
     """
 
     @staticmethod
-    def convert_empty_checkpoint_dir(checkpoint_dir):
+    def mk_null_checkpoint_dir(logdir):
         """Indicate that the given checkpoint doesn't have state."""
-        open(os.path.join(checkpoint_dir, ".empty_marker"), "a").close()
+        checkpoint_dir = TrainableUtil.make_checkpoint_dir(
+            logdir, index=0, override=True)
+        open(os.path.join(checkpoint_dir, NULL_MARKER), "a").close()
+        return checkpoint_dir
 
     @staticmethod
     def mk_temp_checkpoint_dir(logdir):
@@ -81,7 +84,12 @@ class FuncCheckpointUtil:
         return os.path.exists(os.path.join(checkpoint_dir, TEMP_MARKER))
 
     @staticmethod
-    def convert_to_permanent_checkpoint(checkpoint_dir, logdir, step):
+    def is_null_checkpoint(checkpoint_dir):
+        """Checks for the empty checkpoint marker."""
+        return os.path.exists(os.path.join(checkpoint_dir, NULL_MARKER))
+
+    @staticmethod
+    def convert_perm_checkpoint(checkpoint_dir, logdir, step):
         checkpoint_dir = os.path.abspath(checkpoint_dir)
         temporary_marker = os.path.join(checkpoint_dir, TEMP_MARKER)
         assert os.path.exists(temporary_marker), (
@@ -100,11 +108,6 @@ class FuncCheckpointUtil:
         assert not os.path.exists(
             os.path.join(perm_checkpoint_dir, TEMP_MARKER))
         return perm_checkpoint_dir
-
-    @staticmethod
-    def is_empty_checkpoint(checkpoint_dir):
-        """Checks for the empty checkpoint marker."""
-        return os.path.exists(os.path.join(checkpoint_dir, EMPTY_MARKER))
 
 
 class StatusReporter:
@@ -382,10 +385,8 @@ class FunctionRunner(Trainable):
 
         if not checkpoint:
             state.update(iteration=0, timesteps_total=0, episodes_total=0)
-            parent_dir = TrainableUtil.make_checkpoint_dir(
-                self.logdir, index=0, override=True)
             # We drop a marker here to indicate that the checkpoint is empty
-            FuncCheckpointUtil.convert_empty_checkpoint_dir(parent_dir)
+            FuncCheckpointUtil.mk_null_checkpoint_dir(parent_dir)
             checkpoint = parent_dir
         elif isinstance(checkpoint, dict):
             parent_dir = TrainableUtil.make_checkpoint_dir(
@@ -398,7 +399,7 @@ class FunctionRunner(Trainable):
             # checkpoint, but certain schedulers might.
             if FuncCheckpointUtil.is_temp_checkpoint_dir(parent_dir):
                 relative_path = os.path.relpath(checkpoint, parent_dir)
-                parent_dir = FuncCheckpointUtil.convert_to_permanent_checkpoint(
+                parent_dir = FuncCheckpointUtil.convert_perm_checkpoint(
                     checkpoint_dir=parent_dir,
                     logdir=self.logdir,
                     step=self.training_iteration)
@@ -424,7 +425,7 @@ class FunctionRunner(Trainable):
             del checkpoint["tune_checkpoint_path"]
         # If there does not exist a checkpoint, we will not restore
         # from it and will remove the marker.
-        if FuncCheckpointUtil.is_empty_checkpoint(checkpoint):
+        if FuncCheckpointUtil.is_null_checkpoint(checkpoint):
             return
         # By informing that this checkpoint is not new,
         # we will not return the checkpoint path
