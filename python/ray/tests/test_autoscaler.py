@@ -190,6 +190,7 @@ SMALL_CLUSTER = {
         "TestProp": 2,
     },
     "file_mounts": {},
+    "cluster_synced_files": [],
     "initialization_commands": ["init_cmd"],
     "setup_commands": ["setup_cmd"],
     "head_setup_commands": ["head_setup_cmd"],
