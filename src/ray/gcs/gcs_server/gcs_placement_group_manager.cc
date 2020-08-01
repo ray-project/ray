@@ -14,6 +14,8 @@
 
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 
+#include <utility>
+
 #include "ray/common/ray_config.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/util/asio_util.h"
