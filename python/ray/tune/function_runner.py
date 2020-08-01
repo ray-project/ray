@@ -58,7 +58,7 @@ class FuncCheckpointUtil:
     are removed.
 
     If "save" is called on a trial whose most recent checkpoint
-    is temporary, "convert_perm_checkpoint" will be called. This
+    is temporary, "create_perm_checkpoint" will be called. This
     migrates the temporary checkpoint to a permanent checkpoint.
     """
 
@@ -74,7 +74,7 @@ class FuncCheckpointUtil:
     def mk_temp_checkpoint_dir(logdir):
         """Indicate that the checkpoint is only for restoration."""
         temporary_checkpoint_dir = TrainableUtil.make_checkpoint_dir(
-            logdir, index=uuid.uuid4().hex[:6], override=True)
+            logdir, index="tmp" + uuid.uuid4().hex[:6], override=True)
         open(os.path.join(temporary_checkpoint_dir, TEMP_MARKER), "a").close()
         return temporary_checkpoint_dir
 
@@ -89,7 +89,7 @@ class FuncCheckpointUtil:
         return os.path.exists(os.path.join(checkpoint_dir, NULL_MARKER))
 
     @staticmethod
-    def convert_perm_checkpoint(checkpoint_dir, logdir, step):
+    def create_perm_checkpoint(checkpoint_dir, logdir, step):
         checkpoint_dir = os.path.abspath(checkpoint_dir)
         temporary_marker = os.path.join(checkpoint_dir, TEMP_MARKER)
         assert os.path.exists(temporary_marker), (
@@ -97,14 +97,9 @@ class FuncCheckpointUtil:
         os.remove(temporary_marker)
         perm_checkpoint_dir = TrainableUtil.make_checkpoint_dir(
             logdir, index=step, override=True)
+        shutil.rmtree(perm_checkpoint_dir)
 
-        for filename in os.listdir(checkpoint_dir):
-            # forces override
-            shutil.move(
-                os.path.join(checkpoint_dir, filename),
-                os.path.join(perm_checkpoint_dir, filename))
-
-        shutil.rmtree(checkpoint_dir)
+        shutil.copytree(checkpoint_dir, perm_checkpoint_dir)
         assert not os.path.exists(
             os.path.join(perm_checkpoint_dir, TEMP_MARKER))
         return perm_checkpoint_dir
@@ -399,7 +394,7 @@ class FunctionRunner(Trainable):
             # checkpoint, but certain schedulers might.
             if FuncCheckpointUtil.is_temp_checkpoint_dir(parent_dir):
                 relative_path = os.path.relpath(checkpoint, parent_dir)
-                parent_dir = FuncCheckpointUtil.convert_perm_checkpoint(
+                parent_dir = FuncCheckpointUtil.create_perm_checkpoint(
                     checkpoint_dir=parent_dir,
                     logdir=self.logdir,
                     step=self.training_iteration)

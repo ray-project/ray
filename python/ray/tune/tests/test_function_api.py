@@ -18,6 +18,8 @@ def creator_generator(logdir):
     def logger_creator(config):
         return NoopLogger(config, logdir)
 
+    return logger_creator
+
 
 class FuncCheckpointUtilTest(unittest.TestCase):
     def setUp(self):
@@ -28,7 +30,6 @@ class FuncCheckpointUtilTest(unittest.TestCase):
 
     def testEmptyCheckpoint(self):
         checkpoint_dir = FuncCheckpointUtil.mk_null_checkpoint_dir(self.logdir)
-        print(os.listdir(checkpoint_dir))
         assert FuncCheckpointUtil.is_null_checkpoint(checkpoint_dir)
 
     def testTempCheckpointDir(self):
@@ -37,11 +38,10 @@ class FuncCheckpointUtilTest(unittest.TestCase):
 
     def testConvertTempToPermanent(self):
         checkpoint_dir = FuncCheckpointUtil.mk_temp_checkpoint_dir(self.logdir)
-        new_checkpoint_dir = FuncCheckpointUtil.convert_perm_checkpoint(
+        new_checkpoint_dir = FuncCheckpointUtil.create_perm_checkpoint(
             checkpoint_dir, self.logdir, step=4)
         assert new_checkpoint_dir == TrainableUtil.find_checkpoint_dir(
             new_checkpoint_dir)
-        assert not os.path.exists(checkpoint_dir)
         assert os.path.exists(new_checkpoint_dir)
         assert not FuncCheckpointUtil.is_temp_checkpoint_dir(
             new_checkpoint_dir)
@@ -64,8 +64,9 @@ class FunctionCheckpointingTest(unittest.TestCase):
 
         def train(config, checkpoint_dir=None):
             if checkpoint_dir:
-                count = sum("checkpoint" in path for path in os.listdir())
-                assert count == 1, os.listdir()
+                count = sum("checkpoint-" in path
+                            for path in os.listdir(checkpoint_dir))
+                assert count == 1, os.listdir(checkpoint_dir)
 
             for step in range(20):
                 with tune.checkpoint_dir(step=step) as checkpoint_dir:
@@ -91,8 +92,9 @@ class FunctionCheckpointingTest(unittest.TestCase):
 
         def train(config, checkpoint_dir=None):
             if checkpoint_dir:
-                count = sum("checkpoint" in path for path in os.listdir())
-                assert count == 1, os.listdir()
+                count = sum("checkpoint-" in path
+                            for path in os.listdir(checkpoint_dir))
+                assert count == 1, os.listdir(checkpoint_dir)
 
             for step in range(20):
                 with tune.checkpoint_dir(step=step) as checkpoint_dir:
@@ -111,15 +113,16 @@ class FunctionCheckpointingTest(unittest.TestCase):
                 result = new_trainable.train()
             checkpoint = new_trainable.save_to_object()
             new_trainable.stop()
-        assert result[TRAINING_ITERATION] == 10
+        self.assertTrue(result[TRAINING_ITERATION] == 10)
 
     def testCheckpointReuseObjectWithoutTraining(self):
         """Test that repeated save/restore never reuses same checkpoint dir."""
 
         def train(config, checkpoint_dir=None):
             if checkpoint_dir:
-                count = sum("checkpoint" in path for path in os.listdir())
-                assert count == 1, os.listdir()
+                count = sum("checkpoint-" in path
+                            for path in os.listdir(checkpoint_dir))
+                assert count == 1, os.listdir(checkpoint_dir)
 
             for step in range(20):
                 with tune.checkpoint_dir(step=step) as checkpoint_dir:
@@ -143,7 +146,7 @@ class FunctionCheckpointingTest(unittest.TestCase):
         new_trainable2.restore_from_object(checkpoint)
         result = new_trainable2.train()
         new_trainable2.stop()
-        assert result[TRAINING_ITERATION] == 3
+        self.assertTrue(result[TRAINING_ITERATION] == 3)
 
     def testReuseNullCheckpoint(self):
         """pass"""
@@ -173,7 +176,7 @@ class FunctionCheckpointingTest(unittest.TestCase):
         result = new_trainable.train()
         checkpoint = new_trainable.save()
         new_trainable.stop()
-        assert result[TRAINING_ITERATION] == 1
+        self.assertTrue(result[TRAINING_ITERATION] == 1)
 
     def testMultipleNullCheckpoints(self):
         """pass"""
@@ -192,7 +195,7 @@ class FunctionCheckpointingTest(unittest.TestCase):
             result = new_trainable.train()
             checkpoint = new_trainable.save()
             new_trainable.stop()
-        assert result[TRAINING_ITERATION] == 1
+        self.assertTrue(result[TRAINING_ITERATION] == 1)
 
     def testMultipleNullMemoryCheckpoints(self):
         """pass"""
@@ -215,6 +218,8 @@ class FunctionCheckpointingTest(unittest.TestCase):
 
     def testFunctionNoCheckpointing(self):
         def train(config, checkpoint_dir=None):
+            if checkpoint_dir:
+                assert os.path.exists(checkpoint_dir)
             for step in range(10):
                 tune.report(test=step)
 
@@ -236,6 +241,8 @@ class FunctionCheckpointingTest(unittest.TestCase):
         """This tests that save and restore are commutative."""
 
         def train(config, checkpoint_dir=None):
+            if checkpoint_dir:
+                assert os.path.exists(checkpoint_dir)
             for step in range(10):
                 if step % 3 == 0:
                     with tune.checkpoint_dir(step=step) as checkpoint_dir:
@@ -258,6 +265,37 @@ class FunctionCheckpointingTest(unittest.TestCase):
         new_trainable2.restore(checkpoint)
         new_trainable2.train()
         new_trainable2.stop()
+
+    def testFunctionImmediateSave(self):
+        """This tests that save and restore are commutative."""
+
+        def train(config, checkpoint_dir=None):
+            if checkpoint_dir:
+                assert os.path.exists(checkpoint_dir)
+            for step in range(10):
+                with tune.checkpoint_dir(step=step) as checkpoint_dir:
+                    print(checkpoint_dir)
+                    path = os.path.join(checkpoint_dir,
+                                        "checkpoint-{}".format(step))
+                    open(path, "w").close()
+                tune.report(test=step)
+
+        wrapped = wrap_function(train)
+        new_trainable = wrapped(logger_creator=self.logger_creator)
+        new_trainable.train()
+        new_trainable.train()
+        checkpoint_obj = new_trainable.save_to_object()
+        new_trainable.stop()
+
+        new_trainable2 = wrapped(logger_creator=self.logger_creator)
+        new_trainable2.restore_from_object(checkpoint_obj)
+        checkpoint_obj = new_trainable2.save_to_object()
+        new_trainable2.train()
+        result = new_trainable2.train()
+        assert sum("tmp" in path for path in os.listdir(self.logdir)) == 1
+        new_trainable2.stop()
+        assert sum("tmp" in path for path in os.listdir(self.logdir)) == 0
+        assert result[TRAINING_ITERATION] == 4
 
 
 class FunctionApiTest(unittest.TestCase):
