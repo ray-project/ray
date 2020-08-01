@@ -28,7 +28,39 @@ TEMP_MARKER = ".temp_marker"
 
 
 class FuncCheckpointUtil:
-    """Utility class holding various function-checkpointing mechanisms."""
+    """Utility class holding various function-checkpointing mechanisms.
+
+    The two main modes are "empty" and "temporary" checkpoints.
+
+    *Empty Checkpoints*
+    -------------------
+
+    Empty checkpoints are generated when a trial is being saved
+    but a checkpoint has not been created. In this case,
+    a marker is set, indicating that the checkpoint is empty.
+
+    When restoring from an empty checkpoint, the FunctionRunner
+    will detect this and *not* restore from any checkpoint at all.
+
+    *Temporary Checkpoints*
+    -----------------------
+
+    Temporary checkpoints are generated when a trial is being
+    restored from a prior in-memory checkpoint. In this case, a marker
+    will be set indicating that a checkpoint is temporary.
+
+    Upon termination of the trial, temporary checkpoints
+    will be removed. We cannot remove them any earlier because
+    the loading of checkpoints is non-deterministic.
+
+    Temporary checkpoints are also not treated like regular
+    checkpoints because Tune assumes that in-memory checkpoints
+    are removed.
+
+    If "save" is called on a trial whose most recent checkpoint
+    is temporary, "convert_to_permanent_checkpoint" will be called. This
+    migrates the temporary checkpoint to a permanent checkpoint.
+    """
 
     @staticmethod
     def convert_empty_checkpoint_dir(checkpoint_dir):
@@ -45,6 +77,7 @@ class FuncCheckpointUtil:
 
     @staticmethod
     def is_temp_checkpoint_dir(checkpoint_dir):
+        """Checks for the temp checkpoint marker."""
         return os.path.exists(os.path.join(checkpoint_dir, TEMP_MARKER))
 
     @staticmethod
@@ -58,10 +91,10 @@ class FuncCheckpointUtil:
             logdir, index=step, override=True)
 
         for filename in os.listdir(checkpoint_dir):
+            # forces override
             shutil.move(
                 os.path.join(checkpoint_dir, filename),
-                os.path.join(perm_checkpoint_dir, filename))  # forces override
-
+                os.path.join(perm_checkpoint_dir, filename))
 
         shutil.rmtree(checkpoint_dir)
         assert not os.path.exists(
@@ -70,14 +103,8 @@ class FuncCheckpointUtil:
 
     @staticmethod
     def is_empty_checkpoint(checkpoint_dir):
+        """Checks for the empty checkpoint marker."""
         return os.path.exists(os.path.join(checkpoint_dir, EMPTY_MARKER))
-
-    @staticmethod
-    def clear_empty_marker(checkpoint_dir):
-        empty_marker = os.path.join(checkpoint_dir, EMPTY_MARKER)
-        assert os.path.exists(empty_marker), (
-            "Should not be calling this method on a permanent checkpoint.")
-        os.remove(os.path.join(checkpoint_dir, EMPTY_MARKER))
 
 
 class StatusReporter:
@@ -356,7 +383,7 @@ class FunctionRunner(Trainable):
         if not checkpoint:
             state.update(iteration=0, timesteps_total=0, episodes_total=0)
             parent_dir = TrainableUtil.make_checkpoint_dir(
-                self.logdir, index=0)
+                self.logdir, index=0, override=True)
             # We drop a marker here to indicate that the checkpoint is empty
             FuncCheckpointUtil.convert_empty_checkpoint_dir(parent_dir)
             checkpoint = parent_dir
@@ -398,7 +425,6 @@ class FunctionRunner(Trainable):
         # If there does not exist a checkpoint, we will not restore
         # from it and will remove the marker.
         if FuncCheckpointUtil.is_empty_checkpoint(checkpoint):
-            FuncCheckpointUtil.clear_empty_marker(checkpoint)
             return
         # By informing that this checkpoint is not new,
         # we will not return the checkpoint path
