@@ -39,9 +39,11 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                     assert view_req[key].shift == 1
                 if key != SampleBatch.OBS:
                     assert view_req[key].sampling is False
+            trainer.terminate()
 
     def test_lstm_prev_actions_and_rewards(self):
         config = ppo.DEFAULT_CONFIG.copy()
+        config["model"] = config["model"].copy()
         # Activate LSTM + prev-action + rewards.
         config["model"]["use_lstm"] = True
         config["model"]["lstm_use_prev_action_reward"] = True
@@ -77,6 +79,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 if key not in [SampleBatch.OBS, SampleBatch.PREV_ACTIONS,
                                SampleBatch.PREV_REWARDS]:
                     assert view_req[key].sampling is False
+            trainer.terminate()
 
 
 if __name__ == "__main__":
