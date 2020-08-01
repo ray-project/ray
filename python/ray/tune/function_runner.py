@@ -23,7 +23,7 @@ RESULT_FETCH_TIMEOUT = 0.2
 ERROR_REPORT_TIMEOUT = 10
 ERROR_FETCH_TIMEOUT = 1
 
-NULL_MARKER = ".null_ckpt"
+NULL_MARKER = ".null_marker"
 TEMP_MARKER = ".temp_marker"
 
 
@@ -55,7 +55,7 @@ class FuncCheckpointUtil:
 
     If "save" is called on a trial whose most recent checkpoint
     is temporary, "create_perm_checkpoint" will be called. This
-    migrates the temporary checkpoint to a permanent checkpoint.
+    copies the temporary checkpoint to a permanent checkpoint directory.
     """
 
     @staticmethod
@@ -86,6 +86,7 @@ class FuncCheckpointUtil:
 
     @staticmethod
     def create_perm_checkpoint(checkpoint_dir, logdir, step):
+        """Copies temporary checkpoint to a permanent checkpoint directory."""
         checkpoint_dir = os.path.abspath(checkpoint_dir)
         temporary_marker = os.path.join(checkpoint_dir, TEMP_MARKER)
         assert os.path.exists(temporary_marker), (
