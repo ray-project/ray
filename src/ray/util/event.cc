@@ -15,7 +15,9 @@
 #include "ray/util/event.h"
 
 namespace ray {
-
+///
+/// EventManager
+///
 EventManager &EventManager::Instance() {
   static EventManager instance_;
   return instance_;
@@ -34,7 +36,9 @@ void EventManager::AddReporter(std::shared_ptr<LogBasedEventReporter> reporter) 
 }
 
 void EventManager::ClearReporters() { reporter_map_.clear(); }
-
+///
+/// RayEventContext
+///
 thread_local std::unique_ptr<RayEventContext> RayEventContext::context_ = nullptr;
 
 RayEventContext &RayEventContext::Instance() {

@@ -4,6 +4,9 @@ package ray.rpc;
 
 message Event {
   enum SourceType {
+    // The COMMON type is designed for some process that does not init there own
+    // source_type.
+    // We suppose that there will be some roles in addition to GCS, RAYLET, CORE_WORKER.
     COMMON = 0;
     CORE_WORKER = 1;
     GCS = 2;

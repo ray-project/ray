@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/util/event.h"
 #include <fstream>
 #include <set>
 #include <thread>
 #include "gtest/gtest.h"
-#include "ray/util/event.h"
 
 namespace ray {
 
