@@ -135,8 +135,7 @@ class DashboardHead:
                 self.redis_address, self.redis_password,
                 dashboard_consts.CONNECT_REDIS_INTERNAL_SECONDS,
                 dashboard_consts.RETRY_REDIS_CONNECTION_TIMES)
-        except socket.gaierror as ex:
-            logger.exception(ex)
+        except (socket.gaierror, ConnectionError):
             logger.error(
                 "Dashboard head suicide, "
                 "Failed to connect to redis at %s", self.redis_address)

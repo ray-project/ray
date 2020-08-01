@@ -384,7 +384,7 @@ async def get_aioredis_client(redis_address, redis_password,
         try:
             return await aioredis.create_redis_pool(
                 address=redis_address, password=redis_password)
-        except socket.gaierror as ex:
+        except (socket.gaierror, ConnectionError) as ex:
             logger.error("Connect to Redis failed: %s, retry...", ex)
             await asyncio.sleep(retry_interval_seconds)
     # Raise exception from create_redis_pool

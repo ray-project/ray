@@ -20,6 +20,8 @@ import ray.new_dashboard.utils as dashboard_utils
 import ray.ray_constants as ray_constants
 import ray.services
 import ray.utils
+from ray.core.generated import agent_manager_pb2
+from ray.core.generated import agent_manager_pb2_grpc
 import psutil
 
 logger = logging.getLogger(__name__)
@@ -71,26 +73,6 @@ class DashboardAgent(object):
         return modules
 
     async def run(self):
-        # Create an aioredis client for all modules.
-        try:
-            self.aioredis_client = await dashboard_utils.get_aioredis_client(
-                self.redis_address, self.redis_password,
-                dashboard_consts.CONNECT_REDIS_INTERNAL_SECONDS,
-                dashboard_consts.RETRY_REDIS_CONNECTION_TIMES)
-        except socket.gaierror as ex:
-            logger.exception(ex)
-            logger.error(
-                "Dashboard agent suicide, "
-                "Failed to connect to redis at %s", self.redis_address)
-            sys.exit(-1)
-
-        # Create a http session for all modules.
-        self.http_session = aiohttp.ClientSession(
-            loop=asyncio.get_event_loop())
-
-        # Start a grpc asyncio server.
-        await self.server.start()
-
         async def _check_parent():
             """Check if raylet is dead."""
             curr_proc = psutil.Process()
@@ -103,6 +85,27 @@ class DashboardAgent(object):
                 await asyncio.sleep(
                     dashboard_consts.
                     DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_SECONDS)
+
+        check_parent_task = asyncio.create_task(_check_parent())
+
+        # Create an aioredis client for all modules.
+        try:
+            self.aioredis_client = await dashboard_utils.get_aioredis_client(
+                self.redis_address, self.redis_password,
+                dashboard_consts.CONNECT_REDIS_INTERNAL_SECONDS,
+                dashboard_consts.RETRY_REDIS_CONNECTION_TIMES)
+        except (socket.gaierror, ConnectionRefusedError):
+            logger.error(
+                "Dashboard agent suicide, "
+                "Failed to connect to redis at %s", self.redis_address)
+            sys.exit(-1)
+
+        # Create a http session for all modules.
+        self.http_session = aiohttp.ClientSession(
+            loop=asyncio.get_event_loop())
+
+        # Start a grpc asyncio server.
+        await self.server.start()
 
         modules = self._load_modules()
 
@@ -145,10 +148,20 @@ class DashboardAgent(object):
             "{}{}".format(dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX,
                           self.ip), json.dumps([http_port, self.grpc_port]))
 
-        await asyncio.gather(_check_parent(),
+        # Register agent to agent manager.
+        raylet_stub = agent_manager_pb2_grpc.AgentManagerServiceStub(
+            self.aiogrpc_raylet_channel)
+
+        await raylet_stub.RegisterAgent(
+            agent_manager_pb2.RegisterAgentRequest(
+                agent_pid=os.getpid(),
+                agent_port=self.grpc_port,
+                agent_ip_address=self.ip))
+
+        await asyncio.gather(check_parent_task,
                              *(m.run(self.server) for m in modules))
         await self.server.wait_for_termination()
-        # Wait for finish signal
+        # Wait for finish signal.
         await runner.cleanup()
 
 
