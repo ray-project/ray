@@ -66,7 +66,7 @@ class FuncCheckpointUtil:
     def mk_null_checkpoint_dir(logdir):
         """Indicate that the given checkpoint doesn't have state."""
         checkpoint_dir = TrainableUtil.make_checkpoint_dir(
-            logdir, index=0, override=True)
+            logdir, index=-1, override=True)
         open(os.path.join(checkpoint_dir, NULL_MARKER), "a").close()
         return checkpoint_dir
 
