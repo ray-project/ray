@@ -5,7 +5,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>io.ray</groupId>
   <artifactId>ray-superpom</artifactId>
-  <version>0.1-SNAPSHOT</version>
+  <version>0.9.0-SNAPSHOT</version>
   <packaging>pom</packaging>
   <name>Ray Project Parent POM</name>
   <description>A fast and simple framework for building and running distributed applications.
@@ -46,7 +46,7 @@
   <properties>
     <java.version>1.8</java.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <projetct.version>0.1-SNAPSHOT</projetct.version>
+    <projetct.version>0.9.0-SNAPSHOT</projetct.version>
   </properties>
 
   <profiles>

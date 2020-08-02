@@ -418,7 +418,7 @@ void NodeManager::Heartbeat() {
           ResourceSet(local_resources.GetTotalResources()));
     }
 
-    local_resources.SetLoadResources(local_queues_.GetResourceLoad());
+    local_resources.SetLoadResources(local_queues_.GetTotalResourceLoad());
     if (!last_heartbeat_resources_.GetLoadResources().IsEqual(
             local_resources.GetLoadResources())) {
       for (const auto &resource_pair :
@@ -447,7 +447,7 @@ void NodeManager::Heartbeat() {
     last_heartbeat_resources_.SetTotalResources(
         ResourceSet(local_resources.GetTotalResources()));
 
-    local_resources.SetLoadResources(local_queues_.GetResourceLoad());
+    local_resources.SetLoadResources(local_queues_.GetTotalResourceLoad());
     for (const auto &resource_pair :
          local_resources.GetLoadResources().GetResourceMap()) {
       (*heartbeat_data->mutable_resource_load())[resource_pair.first] =
@@ -456,6 +456,11 @@ void NodeManager::Heartbeat() {
     last_heartbeat_resources_.SetLoadResources(
         ResourceSet(local_resources.GetLoadResources()));
   }
+
+  // Add resource load by shape. This will be used by the new autoscaler.
+  auto resource_load = local_queues_.GetResourceLoadByShape(
+      RayConfig::instance().max_resource_shapes_per_load_report());
+  heartbeat_data->mutable_resource_load_by_shape()->Swap(&resource_load);
 
   // Set the global gc bit on the outgoing heartbeat message.
   if (should_global_gc_) {
@@ -1367,7 +1372,7 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
     ScheduleAndDispatch();
   } else {
     cluster_resource_map_[self_node_id_].SetLoadResources(
-        local_queues_.GetResourceLoad());
+        local_queues_.GetTotalResourceLoad());
     // Call task dispatch to assign work to the new worker.
     DispatchTasks(local_queues_.GetReadyTasksByClass());
   }
@@ -1990,7 +1995,7 @@ ResourceIdSet NodeManager::ScheduleBundle(
     const BundleSpecification &bundle_spec) {
   // If the resource map contains the local raylet, update load before calling policy.
   if (resource_map.count(self_node_id_) > 0) {
-    resource_map[self_node_id_].SetLoadResources(local_queues_.GetResourceLoad());
+    resource_map[self_node_id_].SetLoadResources(local_queues_.GetTotalResourceLoad());
   }
   // Invoke the scheduling policy.
   auto reserve_resource_success =
@@ -2015,7 +2020,7 @@ void NodeManager::ScheduleTasks(
     std::unordered_map<ClientID, SchedulingResources> &resource_map) {
   // If the resource map contains the local raylet, update load before calling policy.
   if (resource_map.count(self_node_id_) > 0) {
-    resource_map[self_node_id_].SetLoadResources(local_queues_.GetResourceLoad());
+    resource_map[self_node_id_].SetLoadResources(local_queues_.GetTotalResourceLoad());
   }
   // Invoke the scheduling policy.
   auto policy_decision = scheduling_policy_.Schedule(resource_map, self_node_id_);
