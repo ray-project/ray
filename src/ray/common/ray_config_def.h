@@ -335,4 +335,4 @@ RAY_CONFIG(int, metrics_agent_port, -1)
 RAY_CONFIG(uint32_t, max_tasks_in_flight_per_worker, 1)
 
 /// Whether start the Plasma Store as a Raylet thread.
-RAY_CONFIG(bool, ownership_based_object_directory_enabled, true)
+RAY_CONFIG(bool, ownership_based_object_directory_enabled, false)
