@@ -441,6 +441,7 @@ class SSHCommandRunner(CommandRunnerInterface):
             return "ssh -o IdentitiesOnly=yes {}@{}\n".format(
                 self.ssh_user, self.ssh_ip)
 
+
 class DockerCommandRunner(SSHCommandRunner):
     def __init__(self, docker_config, **common_args):
         self.ssh_command_runner = SSHCommandRunner(**common_args)
