@@ -203,7 +203,7 @@ format_changed() {
         non_shell_files=($(git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- ':(exclude)*.sh'))
         shell_files=($(git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.sh'))
         if [ 0 -lt "${#non_shell_files[@]}" ]; then
-            shell_files+=($(git --no-pager grep -l -- '^#!\(/usr\)\?/bin/\(env \+\)\?\(ba\)\?sh' "${non_shell_files[@]}"))
+            shell_files+=($(git --no-pager grep -l -- '^#!\(/usr\)\?/bin/\(env \+\)\?\(ba\)\?sh' "${non_shell_files[@]}" || true))
         fi
         if [ 0 -lt "${#shell_files[@]}" ]; then
             shellcheck_scripts "${shell_files[@]}"
@@ -221,7 +221,7 @@ format_all() {
     # shellcheck disable=SC2207
     shell_files=($(
       git -C "${ROOT}" ls-files --exclude-standard HEAD -- "*.sh" &&
-      git -C "${ROOT}" --no-pager grep -l '^#!\(/usr\)\?/bin/\(env \+\)\?\(ba\)\?sh' ":(exclude)*.sh"
+      { git -C "${ROOT}" --no-pager grep -l '^#!\(/usr\)\?/bin/\(env \+\)\?\(ba\)\?sh' ":(exclude)*.sh" || true; }
     ))
     if [ 0 -lt "${#shell_files[@]}" ]; then
       shellcheck_scripts "${shell_files[@]}"

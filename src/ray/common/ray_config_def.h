@@ -334,5 +334,9 @@ RAY_CONFIG(int, metrics_agent_port, -1)
 /// pipelining task submission.
 RAY_CONFIG(uint32_t, max_tasks_in_flight_per_worker, 1)
 
+/// The maximum number of resource shapes included in the resource
+/// load reported by each raylet.
+RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)
+
 /// Whether start the Plasma Store as a Raylet thread.
 RAY_CONFIG(bool, ownership_based_object_directory_enabled, false)

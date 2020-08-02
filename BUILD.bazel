@@ -1351,8 +1351,8 @@ cc_binary(
     srcs = ["src/ray/object_manager/test/object_manager_test.cc"],
     copts = COPTS,
     deps = [
-        ":object_manager",
         ":common_cc_proto",
+        ":object_manager",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1363,8 +1363,8 @@ cc_binary(
     srcs = ["src/ray/object_manager/test/object_manager_stress_test.cc"],
     copts = COPTS,
     deps = [
-        ":object_manager",
         ":common_cc_proto",
+        ":object_manager",
         "@com_google_googletest//:gtest_main",
     ],
 )
