@@ -1,5 +1,6 @@
 click
 colorama
+colorful
 filelock
 flask
 flatbuffers

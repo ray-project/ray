@@ -71,7 +71,8 @@ def PPOLoss(dist_class,
     entropy_loss = torch.mean(entropy_loss(pi_new_dist))
 
     total_loss = -surr_loss + cur_kl_coeff * kl_loss
-    total_loss += vf_loss_coeff * vf_loss - entropy_coeff * entropy_loss
+    total_loss += vf_loss_coeff * vf_loss
+    total_loss -= entropy_coeff * entropy_loss
     return total_loss, surr_loss, kl_loss, vf_loss, entropy_loss
 
 
@@ -108,7 +109,6 @@ class WorkerLoss(object):
             vf_clip_param=vf_clip_param,
             vf_loss_coeff=vf_loss_coeff,
             clip_loss=clip_loss)
-        print("Worker Loss: ", self.loss)
 
 
 # This is the Meta-Update computation graph for main (meta-update step)
@@ -303,8 +303,7 @@ class MAMLLoss(object):
             loss,
             inputs=model.parameters(),
             create_graph=True,
-            retain_graph=True,
-            only_inputs=True)
+            allow_unused=True)
         adapted_vars = {}
         for i, tup in enumerate(network_vars.items()):
             name, var = tup

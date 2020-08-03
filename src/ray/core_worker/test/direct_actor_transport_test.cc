@@ -59,12 +59,10 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
   const rpc::Address &Addr() const override { return addr; }
 
-  ray::Status PushActorTask(
-      std::unique_ptr<rpc::PushTaskRequest> request, bool skip_queue,
-      const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {
+  void PushActorTask(std::unique_ptr<rpc::PushTaskRequest> request, bool skip_queue,
+                     const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {
     received_seq_nos.push_back(request->sequence_number());
     callbacks.push_back(callback);
-    return Status::OK();
   }
 
   bool ReplyPushTask(Status status = Status::OK()) {
