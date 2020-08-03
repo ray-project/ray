@@ -215,13 +215,13 @@ Test that it works by running the following commands from your local machine:
 Automatically Managed
 ~~~~~~~~~~~~~~~~~~~~~
 
-Start by running a coordinator server that manages all the on prem clusters:
+Start by running a coordinator server that will manage all the on prem clusters. The script for running the coordinator server is `ray/python/ray/autoscaler/local/coordinator_server.py <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/local/coordinator_server.py>`__.:
 
 .. code-block:: bash
 
     $ python coordinator_server.py --ips <list_of_node_ips> --port <PORT>
 
-where list_of_node_ips is a comma separated list of all the available nodes on the private cluster. E.g., ``160.24.42.48,160.24.42.49,160.24.42.50`` and <PORT> is the port that the coordinator server listens on.
+where ``list_of_node_ips`` is a comma separated list of all the available nodes on the private cluster. For example, ``160.24.42.48,160.24.42.49,...`` and ``<PORT>`` is the port that the coordinator server will listen on.
 After running the coordinator server it will print the address of the coordinator server. For example:
 
 .. code-block:: bash
@@ -229,7 +229,7 @@ After running the coordinator server it will print the address of the coordinato
   >> INFO:ray.autoscaler.local.coordinator_server:Running on prem coordinator server
         on address <Host:PORT>
 
-Next, the user only specifies a ``coordinator_address`` instead of specific head/worker ips in the provided `ray/python/ray/autoscaler/local/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/local/example-full.yaml>`__
+Next, the user only specifies the ``<Host:PORT>`` printed above in the ``coordinator_address`` entry instead of specific head/worker ips in the provided `ray/python/ray/autoscaler/local/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/local/example-full.yaml>`__
 
 Now we cant test that it works by running the following commands from your local machine:
 
