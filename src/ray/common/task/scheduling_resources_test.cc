@@ -39,7 +39,7 @@ TEST_F(SchedulingResourcesTest, AddBundleResources) {
   ResourceSet resource(resource_labels, resource_capacity);
   resource_set->AddBundleResources(group_id, 1, resource);
   resource_labels.pop_back();
-  resource_labels.push_back("CPU_group_" + group_id.Hex() + "_1");
+  resource_labels.push_back("CPU_group_1_" + group_id.Hex());
   resource_labels.push_back("CPU_group_" + group_id.Hex());
   resource_capacity.push_back(1.0);
   ResourceSet result_resource(resource_labels, resource_capacity);
@@ -49,7 +49,7 @@ TEST_F(SchedulingResourcesTest, AddBundleResources) {
 TEST_F(SchedulingResourcesTest, AddBundleResource) {
   PlacementGroupID group_id = PlacementGroupID::FromRandom();
   std::string wild_name = "CPU_group_" + group_id.Hex();
-  std::string index_name = "CPU_group_" + group_id.Hex() + "_1";
+  std::string index_name = "CPU_group_1_" + group_id.Hex();
   std::vector<int64_t> whole_ids = {1, 2, 3};
   ResourceIds resource_ids(whole_ids);
   resource_id_set->AddBundleResourceIds(group_id, 1, "CPU", resource_ids);
@@ -67,7 +67,7 @@ TEST_F(SchedulingResourcesTest, ReturnBundleResources) {
   resource_set->AddBundleResources(group_id, 1, resource);
   resource_labels.pop_back();
   resource_labels.push_back("CPU_group_" + group_id.Hex());
-  resource_labels.push_back("CPU_group_" + group_id.Hex() + "_1");
+  resource_labels.push_back("CPU_group_1_" + group_id.Hex());
   resource_capacity.push_back(1.0);
   ResourceSet result_resource(resource_labels, resource_capacity);
   ASSERT_EQ(1, resource_set->IsEqual(result_resource));

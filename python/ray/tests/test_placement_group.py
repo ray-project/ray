@@ -19,6 +19,12 @@ def test_placement_group_pack(ray_start_cluster):
         def value(self):
             return self.n
 
+    @ray.remote(num_cpus=2)
+    def f():
+        print("launched")
+        import time
+        time.sleep(9999)
+
     cluster = ray_start_cluster
     num_nodes = 2
     for _ in range(num_nodes):
@@ -31,14 +37,28 @@ def test_placement_group_pack(ray_start_cluster):
         }, {
             "CPU": 2
         }])
+
+    import time
+    time.sleep(1)
+
+    a1 = f.options(
+        placement_group_id=placement_group_id,
+        placement_group_bundle_index=1).remote()
+    a2 = f.options(
+        placement_group_id=placement_group_id,
+        placement_group_bundle_index=0).remote()
+    ray.get([a1, a2])
+
     actor_1 = Actor.options(
         placement_group_id=placement_group_id,
         placement_group_bundle_index=0).remote()
+    print(ray.get(actor_1.value.remote()))
+
+    time.sleep(1)
+
     actor_2 = Actor.options(
         placement_group_id=placement_group_id,
         placement_group_bundle_index=1).remote()
-
-    print(ray.get(actor_1.value.remote()))
     print(ray.get(actor_2.value.remote()))
 
     # Get all actors.

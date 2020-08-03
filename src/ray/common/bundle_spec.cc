@@ -56,8 +56,8 @@ std::string FormatPlacementGroupResource(const std::string &original_resource_na
                                          int64_t bundle_index) {
   std::string str;
   if (bundle_index >= 0) {
-    str = original_resource_name + "_group_" + group_id.Hex() + "_" +
-          std::to_string(bundle_index);
+    str = original_resource_name + "_group_" +
+          std::to_string(bundle_index) + "_" + group_id.Hex();
   } else {
     RAY_CHECK(bundle_index == -1) << "Invalid index " << bundle_index;
     str = original_resource_name + "_group_" + group_id.Hex();
