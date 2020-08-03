@@ -374,7 +374,6 @@ class SigOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 
         super().testWarmStart()
 
-
     def testRestore(self):
         if ("SIGOPT_KEY" not in os.environ):
             return
