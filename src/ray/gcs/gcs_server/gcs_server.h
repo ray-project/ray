@@ -75,6 +75,10 @@ class GcsServer {
   /// for the time being, so we need a backend client to connect to the storage.
   virtual void InitBackendClient();
 
+  /// In redis failure detector we have sync operation like `PING`, the redis client
+  /// should be isolated to keep from blocking other operations in main handler.
+  virtual void InitRedisFailureDetectorClient();
+
   /// Initialize the gcs node manager.
   /// The gcs node manager is responsible for managing and monitoring all nodes in the
   /// cluster.
@@ -159,6 +163,13 @@ class GcsServer {
   std::unique_ptr<rpc::PlacementGroupInfoGrpcService> placement_group_info_service_;
   /// Backend client
   std::shared_ptr<RedisGcsClient> redis_gcs_client_;
+  /// Client used to detect redis failure. Isolate it to avoid its sync command blocking
+  /// other operations.
+  std::shared_ptr<RedisGcsClient> redis_failure_detector_client_;
+  /// The io service used by redis failure detector in case of its sync command blocking
+  /// other operations.
+  boost::asio::io_service redis_failure_detector_io_service_;
+  std::unique_ptr<std::thread> redis_failure_detector_io_service_thread_;
   /// A publisher for publishing gcs messages.
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
   /// The gcs table storage.

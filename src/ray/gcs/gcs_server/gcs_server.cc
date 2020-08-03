@@ -43,6 +43,10 @@ void GcsServer::Start() {
   // Init backend client.
   InitBackendClient();
 
+  // Init client used to detect redis failure. Isolate it to avoid its sync command
+  // blocking other operations.
+  InitRedisFailureDetectorClient();
+
   // Init gcs pub sub instance.
   gcs_pub_sub_ = std::make_shared<gcs::GcsPubSub>(redis_gcs_client_->GetRedisClient());
 
@@ -144,6 +148,11 @@ void GcsServer::Stop() {
       node_manager_io_service_thread_->join();
     }
 
+    redis_failure_detector_io_service_.stop();
+    if (redis_failure_detector_io_service_thread_->joinable()) {
+      redis_failure_detector_io_service_thread_->join();
+    }
+
     is_stopped_ = true;
     RAY_LOG(INFO) << "GCS server stopped.";
   }
@@ -155,6 +164,21 @@ void GcsServer::InitBackendClient() {
   redis_gcs_client_ = std::make_shared<RedisGcsClient>(options);
   auto status = redis_gcs_client_->Connect(main_service_);
   RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
+}
+
+void GcsServer::InitRedisFailureDetectorClient() {
+  GcsClientOptions options(config_.redis_address, config_.redis_port,
+                           config_.redis_password, config_.is_test);
+  redis_failure_detector_io_service_thread_.reset(new std::thread([this] {
+    /// The asio work to keep redis_failure_detector_io_service_ alive.
+    boost::asio::io_service::work redis_failure_detector_io_service_work_(
+        redis_failure_detector_io_service_);
+    redis_failure_detector_io_service_.run();
+  }));
+  redis_failure_detector_client_ = std::make_shared<RedisGcsClient>(options);
+  auto status =
+      redis_failure_detector_client_->Connect(redis_failure_detector_io_service_);
+  RAY_CHECK(status.ok()) << "Failed to init redis failure detector client as " << status;
 }
 
 void GcsServer::InitGcsNodeManager() {
