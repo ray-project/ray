@@ -185,7 +185,9 @@ Private Cluster (List of nodes)
 The most preferable way to run a Ray cluster on a private cluster of hosts is via the Ray Cluster Launcher.
 
 .. tip:: To avoid getting the password prompt when running private clusters make sure to setup your ssh keys on the private cluster as follows:
+
     .. code-block:: bash
+
         $ ssh-keygen
         $ cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
 
@@ -213,15 +215,17 @@ Test that it works by running the following commands from your local machine:
 Automatically Managed
 ~~~~~~~~~~~~~~~~~~~~~
 
-We first start by running a coordinator server that manages all the on prem clusters:
+Start by running a coordinator server that manages all the on prem clusters:
 
 .. code-block:: bash
+
     $ python coordinator_server.py --ips <list_of_node_ips> --port <PORT>
 
-where list_of_node_ips is a comma separated list of all the available nodes on the private cluster. E.g., ``160.24.42.48,160.24.42.49,160.24.42.50`` and port is the port that the coordinator server listens on.
+where list_of_node_ips is a comma separated list of all the available nodes on the private cluster. E.g., ``160.24.42.48,160.24.42.49,160.24.42.50`` and <PORT> is the port that the coordinator server listens on.
 After running the coordinator server it will print the address of the coordinator server. For example:
 
 .. code-block:: bash
+
   >> INFO:ray.autoscaler.local.coordinator_server:Running on prem coordinator server
         on address <Host:PORT>
 
