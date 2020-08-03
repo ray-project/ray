@@ -30,6 +30,7 @@ def build_torch_policy(name,
                        make_model_and_action_dist=None,
                        apply_gradients_fn=None,
                        mixins=None,
+                       get_view_requirements=None,
                        get_batch_divisibility_req=None):
     """Helper function for creating a torch policy class at runtime.
 
@@ -238,6 +239,22 @@ def build_torch_policy(name,
                 return convert_to_non_torch_type(stats_dict)
 
     def with_updates(**overrides):
+        """Allows creating a TorchPolicy cls based on settings of another one.
+
+        Keyword Args:
+            **overrides: The settings (passed into `build_torch_policy`) that
+                should be different from the class that this method is called
+                on.
+
+        Returns:
+            type: A new TorchPolicy sub-class.
+
+        Examples:
+        >> MySpecialDQNPolicyClass = DQNTorchPolicy.with_updates(
+        ..    name="MySpecialDQNPolicyClass",
+        ..    loss_function=[some_new_loss_function],
+        .. )
+        """
         return build_torch_policy(**dict(original_kwargs, **overrides))
 
     policy_cls.with_updates = staticmethod(with_updates)
