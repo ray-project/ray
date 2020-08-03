@@ -18,15 +18,11 @@ namespace ray {
 
 OwnershipBasedObjectDirectory::OwnershipBasedObjectDirectory(
     boost::asio::io_service &io_service, std::shared_ptr<gcs::GcsClient> &gcs_client)
-    : io_service_(io_service),
-      gcs_client_(gcs_client),
-      client_call_manager_(io_service_) {}
+    : ObjectDirectory(io_service, gcs_client),
+      client_call_manager_(io_service) {}
 
 namespace {
 
-using ray::rpc::GcsChangeMode;
-using ray::rpc::GcsNodeInfo;
-using ray::rpc::ObjectTableData;
 /// Filter out the removed clients from the object locations.
 void FilterRemovedClients(std::shared_ptr<gcs::GcsClient> gcs_client,
                           std::unordered_set<ClientID> *node_ids) {
@@ -37,31 +33,6 @@ void FilterRemovedClients(std::shared_ptr<gcs::GcsClient> gcs_client,
       it++;
     }
   }
-}
-
-/// Process a notification of the object table entries and store the result in
-/// node_ids. This assumes that node_ids already contains the result of the
-/// object table entries up to but not including this notification.
-bool UpdateObjectLocations(bool is_added,
-                           const std::vector<ObjectTableData> &location_updates,
-                           std::shared_ptr<gcs::GcsClient> gcs_client,
-                           std::unordered_set<ClientID> *node_ids) {
-  // location_updates contains the updates of locations of the object.
-  // with GcsChangeMode, we can determine whether the update mode is
-  // addition or deletion.
-  bool isUpdated = false;
-  for (const auto &object_table_data : location_updates) {
-    ClientID node_id = ClientID::FromBinary(object_table_data.manager());
-    if (is_added && 0 == node_ids->count(node_id)) {
-      node_ids->insert(node_id);
-      isUpdated = true;
-    } else if (!is_added && 1 == node_ids->count(node_id)) {
-      node_ids->erase(node_id);
-      isUpdated = true;
-    }
-  }
-  FilterRemovedClients(gcs_client, node_ids);
-  return isUpdated;
 }
 
 }  // namespace
@@ -147,52 +118,6 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectRemoved(
       }));
   return Status::OK();
 };
-
-void OwnershipBasedObjectDirectory::LookupRemoteConnectionInfo(
-    RemoteConnectionInfo &connection_info) const {
-  auto node_info = gcs_client_->Nodes().Get(connection_info.client_id);
-  if (node_info) {
-    ClientID result_node_id = ClientID::FromBinary(node_info->node_id());
-    RAY_CHECK(result_node_id == connection_info.client_id);
-    if (node_info->state() == GcsNodeInfo::ALIVE) {
-      connection_info.ip = node_info->node_manager_address();
-      connection_info.port = static_cast<uint16_t>(node_info->object_manager_port());
-    }
-  }
-}
-
-std::vector<RemoteConnectionInfo>
-OwnershipBasedObjectDirectory::LookupAllRemoteConnections() const {
-  std::vector<RemoteConnectionInfo> remote_connections;
-  const auto &node_map = gcs_client_->Nodes().GetAll();
-  for (const auto &item : node_map) {
-    RemoteConnectionInfo info(item.first);
-    LookupRemoteConnectionInfo(info);
-    if (info.Connected() && info.client_id != gcs_client_->Nodes().GetSelfId()) {
-      remote_connections.push_back(info);
-    }
-  }
-  return remote_connections;
-}
-
-void OwnershipBasedObjectDirectory::HandleClientRemoved(const ClientID &client_id) {
-  for (auto &listener : listeners_) {
-    const ObjectID &object_id = listener.first;
-    if (listener.second.current_object_locations.count(client_id) > 0) {
-      // If the subscribed object has the removed client as a location, update
-      // its locations with an empty update so that the location will be removed.
-      UpdateObjectLocations(/*is_added*/ true, {}, gcs_client_,
-                            &listener.second.current_object_locations);
-      // Re-call all the subscribed callbacks for the object, since its
-      // locations have changed.
-      for (const auto &callback_pair : listener.second.callbacks) {
-        // It is safe to call the callback directly since this is already running
-        // in the subscription callback stack.
-        callback_pair.second(object_id, listener.second.current_object_locations);
-      }
-    }
-  }
-}
 
 void OwnershipBasedObjectDirectory::SubscriptionCallback(
     ObjectID object_id, WorkerID worker_id, Status status,

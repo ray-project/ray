@@ -31,7 +31,7 @@
 namespace ray {
 
 /// Ray OwnershipBasedObjectDirectory declaration.
-class OwnershipBasedObjectDirectory : public ObjectDirectoryInterface {
+class OwnershipBasedObjectDirectory : public ObjectDirectory {
  public:
   /// Create an ownership based object directory.
   ///
@@ -44,15 +44,9 @@ class OwnershipBasedObjectDirectory : public ObjectDirectoryInterface {
 
   virtual ~OwnershipBasedObjectDirectory() {}
 
-  void LookupRemoteConnectionInfo(RemoteConnectionInfo &connection_info) const override;
-
-  std::vector<RemoteConnectionInfo> LookupAllRemoteConnections() const override;
-
   ray::Status LookupLocations(const ObjectID &object_id,
                               const rpc::Address &owner_address,
                               const OnLocationsFound &callback) override;
-
-  void HandleClientRemoved(const ClientID &client_id) override;
 
   ray::Status SubscribeObjectLocations(const UniqueID &callback_id,
                                        const ObjectID &object_id,
@@ -74,20 +68,6 @@ class OwnershipBasedObjectDirectory : public ObjectDirectoryInterface {
   RAY_DISALLOW_COPY_AND_ASSIGN(OwnershipBasedObjectDirectory);
 
  private:
-  /// Callbacks associated with a call to GetLocations.
-  struct LocationListenerState {
-    /// The callback to invoke when object locations are found.
-    std::unordered_map<UniqueID, OnLocationsFound> callbacks;
-    /// The current set of known locations of this object.
-    std::unordered_set<ClientID> current_object_locations;
-  };
-
-  /// Reference to the event loop.
-  boost::asio::io_service &io_service_;
-  /// Reference to the gcs client.
-  std::shared_ptr<gcs::GcsClient> gcs_client_;
-  /// Info about subscribers to object locations.
-  std::unordered_map<ObjectID, LocationListenerState> listeners_;
   /// The client call manager used to create the RPC clients.
   rpc::ClientCallManager client_call_manager_;
   /// Cache of gRPC clients to workers (not necessarily running on this node).

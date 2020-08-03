@@ -175,7 +175,7 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   /// ObjectDirectory should not be copied.
   RAY_DISALLOW_COPY_AND_ASSIGN(ObjectDirectory);
 
- private:
+ protected:
   /// Callbacks associated with a call to GetLocations.
   struct LocationListenerState {
     /// The callback to invoke when object locations are found.
