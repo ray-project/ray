@@ -231,8 +231,8 @@ def get_view_requirements_fn(policy):
     return {
         # Next obs are needed for PPO postprocessing.
         SampleBatch.NEXT_OBS: ViewRequirement(
-            SampleBatch.OBS, shift=1, sampling=False, training=False,
-            repeats=[-3, -2, -1, 0] if framestack else None
+            SampleBatch.OBS, sampling=False, training=False,
+            shift=[-2, -1, -0, 1] if framestack else 1
         ),
         # VF preds are needed for the loss.
         SampleBatch.VF_PREDS: ViewRequirement(sampling=False),

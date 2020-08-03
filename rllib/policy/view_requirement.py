@@ -1,5 +1,5 @@
 from gym.spaces import Box, Space
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from ray.rllib.utils.framework import try_import_torch
 
@@ -28,8 +28,7 @@ class ViewRequirement:
     def __init__(self,
                  data_col: Optional[str] = None,
                  space: Space = None,
-                 shift: int = 0,
-                 repeats: Optional[List[int]] = None,
+                 shift: Union[int, List[int]] = 0,
                  sampling: bool = True,
                  postprocessing: bool = True,
                  training: bool = True):
@@ -42,7 +41,7 @@ class ViewRequirement:
             space (Space): The gym Space used in case we need to pad data in
                 unaccessible areas of the trajectory (t<0 or t>H).
                 Default: Simple box space, e.g. rewards.
-            shift (Union[List[int], int]): List of relative (or absolute
+            shift (Union[int, List[int]]): List of relative (or absolute
                 timesteps) to be present in the input_dict.
             repeat_mode (str): The repeat-mode (one of "all" or "only_first").
                 E.g. for training, we only want the first internal state
@@ -51,7 +50,6 @@ class ViewRequirement:
         self.data_col = data_col
         self.space = space or Box(float("-inf"), float("inf"), shape=())
         self.shift = shift
-        self.repeats = repeats
         self.sampling = sampling
         self.postprocessing = postprocessing
         self.training = training

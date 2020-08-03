@@ -183,7 +183,7 @@ class VisionNetwork(TorchModelV2, nn.Module):
         req = super().get_view_requirements()
         # Optional: framestacking obs/new_obs for Atari.
         if self.model_config["framestack"]:
-            req[SampleBatch.OBS].repeats = [-3, -2, -1, 0]
+            req[SampleBatch.OBS].shift = [-3, -2, -1, 0]
         return req
 
     def _hidden_layers(self, obs):

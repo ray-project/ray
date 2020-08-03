@@ -7,6 +7,7 @@ from ray.rllib.evaluation.rollout_sample_collector import \
     RolloutSampleCollector
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import MultiAgentBatch
+from ray.rllib.utils import force_list
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.types import AgentID, EpisodeID, PolicyID, TensorType
 from ray.util.debug import log_once
@@ -57,6 +58,17 @@ class _FastMultiAgentSampleBatchBuilder:
         # Collect SampleBatches per-policy in PolicyTrajectories objects.
         self.rollout_sample_collectors = {}
         for pid, policy in policy_map.items():
+            # Figure out max-shifts (before and after).
+            view_reqs = policy.get_view_requirements()
+            max_shift_before = 1
+            max_shift_after = 0
+            for vr in view_reqs.values():
+                shift = force_list(vr.shift)
+                if max_shift_before > shift[0]:
+                    max_shift_before = shift[0]
+                if max_shift_after < shift[-1]:
+                    max_shift_after = shift[-1]
+            # Figure out num_timesteps and num_agents.
             kwargs = {"time_major": time_major}
             if policy.is_recurrent():
                 kwargs["num_timesteps"] = \
@@ -66,7 +78,9 @@ class _FastMultiAgentSampleBatchBuilder:
                 kwargs["num_timesteps"] = num_timesteps
 
             self.rollout_sample_collectors[pid] = RolloutSampleCollector(
-                num_agents=self.num_agents, **kwargs)
+                num_agents=self.num_agents,
+                shift_before=max_shift_before, shift_after=max_shift_after,
+                **kwargs)
 
         # Internal agent-to-policy map.
         self.agent_to_policy = {}
