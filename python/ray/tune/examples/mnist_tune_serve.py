@@ -167,10 +167,20 @@ def serve_new_model(model_dir, checkpoint, config, metrics, day):
 
     serve.init()
     backend_name = "mnist:day_{}".format(day)
+
     serve.create_backend(backend_name, MNISTBackend, checkpoint_path, config,
                          metrics)
-    serve.create_endpoint(
-        "mnist", backend=backend_name, route="/mnist", methods=["POST"])
+    if "mnist" not in serve.list_endpoints():
+        serve.create_endpoint(
+            "mnist", backend=backend_name, route="/mnist", methods=["POST"])
+    else:
+        serve.set_traffic("mnist", {backend_name: 1.0})
+
+    # Delete previous existing backends
+    for existing_backend in serve.list_backends():
+        if existing_backend.startswith("mnist:day") and \
+           existing_backend != backend_name:
+            serve.delete_backend(existing_backend)
 
     return True
 
