@@ -67,7 +67,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
             /*distributed_ref_counting_enabled=*/true,
             /*lineage_pinning_enabled=*/false, client_factory) {}
 
-  ray::Status WaitForRefRemoved(
+  void WaitForRefRemoved(
       const rpc::WaitForRefRemovedRequest &request,
       const rpc::ClientCallback<rpc::WaitForRefRemovedReply> &callback) override {
     auto r = num_requests_;
@@ -93,7 +93,6 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     borrower_callbacks_[r] = borrower_callback;
 
     num_requests_++;
-    return Status::OK();
   }
 
   bool FlushBorrowerCallbacks() {

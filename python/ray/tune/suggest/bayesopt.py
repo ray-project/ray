@@ -270,16 +270,16 @@ class BayesOptSearch(Searcher):
         """Register given tuple of params and results."""
         self.optimizer.register(params, self._metric_op * result[self.metric])
 
-    def save(self, checkpoint_dir):
+    def save(self, checkpoint_path):
         """Storing current optimizer state."""
-        with open(checkpoint_dir, "wb") as f:
+        with open(checkpoint_path, "wb") as f:
             pickle.dump(
                 (self.optimizer, self._buffered_trial_results,
                  self._total_random_search_trials, self._config_counter), f)
 
-    def restore(self, checkpoint_dir):
+    def restore(self, checkpoint_path):
         """Restoring current optimizer state."""
-        with open(checkpoint_dir, "rb") as f:
+        with open(checkpoint_path, "rb") as f:
             (self.optimizer, self._buffered_trial_results,
              self._total_random_search_trials,
              self._config_counter) = pickle.load(f)

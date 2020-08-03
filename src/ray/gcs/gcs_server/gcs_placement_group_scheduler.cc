@@ -164,7 +164,7 @@ void GcsPlacementGroupScheduler::ReserveResourceFromNode(
   auto lease_client = GetOrConnectLeaseClient(remote_address);
   RAY_LOG(DEBUG) << "Start leasing resource from node " << node_id << " for bundle "
                  << bundle->BundleId().first << bundle->BundleId().second;
-  auto status = lease_client->RequestResourceReserve(
+  lease_client->RequestResourceReserve(
       *bundle, [this, node_id, bundle, node, callback](
                    const Status &status, const rpc::RequestResourceReserveReply &reply) {
         // TODO(AlisaWu): Add placement group cancel.
@@ -192,11 +192,6 @@ void GcsPlacementGroupScheduler::ReserveResourceFromNode(
           }
         }
       });
-  if (!status.ok()) {
-    rpc::RequestResourceReserveReply reply;
-    reply.set_success(false);
-    callback(status, reply);
-  }
 }
 
 void GcsPlacementGroupScheduler::CancelResourceReserve(
@@ -213,7 +208,7 @@ void GcsPlacementGroupScheduler::CancelResourceReserve(
   remote_address.set_ip_address(node->node_manager_address());
   remote_address.set_port(node->node_manager_port());
   auto return_client = GetOrConnectLeaseClient(remote_address);
-  auto status = return_client->CancelResourceReserve(
+  return_client->CancelResourceReserve(
       *bundle_spec,
       [this, bundle_spec, node](const Status &status,
                                 const rpc::CancelResourceReserveReply &reply) {
