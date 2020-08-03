@@ -62,3 +62,9 @@ class SearchAlgorithm:
     def set_finished(self):
         """Marks the search algorithm as finished."""
         self._finished = True
+
+    def save(self, *args):
+        pass
+
+    def restore(self, *args):
+        pass
