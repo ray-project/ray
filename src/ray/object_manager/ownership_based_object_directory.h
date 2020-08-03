@@ -33,7 +33,7 @@ namespace ray {
 /// Ray OwnershipBasedObjectDirectory declaration.
 class OwnershipBasedObjectDirectory : public ObjectDirectoryInterface {
  public:
-  /// Create an object directory.
+  /// Create an ownership based object directory.
   ///
   /// \param io_service The event loop to dispatch callbacks to. This should
   /// usually be the same event loop that the given gcs_client runs on.
@@ -88,12 +88,16 @@ class OwnershipBasedObjectDirectory : public ObjectDirectoryInterface {
   std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// Info about subscribers to object locations.
   std::unordered_map<ObjectID, LocationListenerState> listeners_;
-
+  /// The client call manager used to create the RPC clients.
   rpc::ClientCallManager client_call_manager_;
-
+  /// Cache of gRPC clients to workers (not necessarily running on this node).
+  /// Also includes the number of inflight requests to each worker - when this
+  /// reaches zero, the client will be deleted and a new one will need to be created
+  /// for any subsequent requests.
   absl::flat_hash_map<WorkerID, std::pair<std::unique_ptr<rpc::CoreWorkerClient>, size_t>>
       worker_rpc_clients_;
 
+  /// Internal callback function used by SubscribeObjectLocations.
   void SubscriptionCallback(ObjectID object_id, WorkerID worker_id, Status status,
                             const rpc::GetObjectLocationsOwnerReply &reply);
 };
