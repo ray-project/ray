@@ -32,17 +32,10 @@ namespace rpc {
       &SERVICE::Stub::PrepareAsync##METHOD, request, callback))
 
 // Define a void RPC client method.
-#define VOID_RPC_CLIENT_METHOD(SERVICE, METHOD, rpc_client, SPECS)               \
-  void METHOD(const METHOD##Request &request,                                    \
-              const ClientCallback<METHOD##Reply> &callback) SPECS {             \
-    RAY_UNUSED(INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client)); \
-  }
-
-// Define a RPC client method that returns ray::Status.
-#define RPC_CLIENT_METHOD(SERVICE, METHOD, rpc_client, SPECS)               \
-  ray::Status METHOD(const METHOD##Request &request,                        \
-                     const ClientCallback<METHOD##Reply> &callback) SPECS { \
-    return INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client); \
+#define VOID_RPC_CLIENT_METHOD(SERVICE, METHOD, rpc_client, SPECS)   \
+  void METHOD(const METHOD##Request &request,                        \
+              const ClientCallback<METHOD##Reply> &callback) SPECS { \
+    INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client); \
   }
 
 template <class GrpcService>
@@ -90,12 +83,12 @@ class GrpcClient {
   ///
   /// \return Status.
   template <class Request, class Reply>
-  ray::Status CallMethod(
+  void CallMethod(
       const PrepareAsyncFunction<GrpcService, Request, Reply> prepare_async_function,
       const Request &request, const ClientCallback<Reply> &callback) {
     auto call = client_call_manager_.CreateCall<GrpcService, Request, Reply>(
         *stub_, prepare_async_function, request, callback);
-    return call->GetStatus();
+    RAY_CHECK(call != nullptr);
   }
 
  private:
