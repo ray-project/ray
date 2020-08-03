@@ -42,7 +42,7 @@ if [[ "$TRAVIS" == "true" ]]; then
         -t rayproject/ray \
         "$ROOT_DIR"/docker/ray
 
-    docker build
+    docker build \
         -t rayproject/autoscaler:"$commit_sha" \
         "$ROOT_DIR"/docker/autoscaler
 
