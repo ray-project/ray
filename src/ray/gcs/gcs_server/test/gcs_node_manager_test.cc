@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <ray/gcs/gcs_server/test/gcs_server_test_util.h>
-#include <ray/gcs/test/gcs_test_util.h>
-
 #include <memory>
+
 #include "gtest/gtest.h"
+#include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
+#include "ray/gcs/test/gcs_test_util.h"
 
 namespace ray {
 class GcsNodeManagerTest : public ::testing::Test {
@@ -28,8 +28,8 @@ class GcsNodeManagerTest : public ::testing::Test {
 TEST_F(GcsNodeManagerTest, TestManagement) {
   boost::asio::io_service io_service;
   auto error_info_accessor = GcsServerMocker::MockedErrorInfoAccessor();
-  gcs::GcsNodeManager node_manager(io_service, error_info_accessor, gcs_pub_sub_,
-                                   gcs_table_storage_);
+  gcs::GcsNodeManager node_manager(io_service, io_service, error_info_accessor,
+                                   gcs_pub_sub_, gcs_table_storage_);
   // Test Add/Get/Remove functionality.
   auto node = Mocker::GenNodeInfo();
   auto node_id = ClientID::FromBinary(node->node_id());
@@ -44,8 +44,8 @@ TEST_F(GcsNodeManagerTest, TestManagement) {
 TEST_F(GcsNodeManagerTest, TestListener) {
   boost::asio::io_service io_service;
   auto error_info_accessor = GcsServerMocker::MockedErrorInfoAccessor();
-  gcs::GcsNodeManager node_manager(io_service, error_info_accessor, gcs_pub_sub_,
-                                   gcs_table_storage_);
+  gcs::GcsNodeManager node_manager(io_service, io_service, error_info_accessor,
+                                   gcs_pub_sub_, gcs_table_storage_);
   // Test AddNodeAddedListener.
   int node_count = 1000;
   std::vector<std::shared_ptr<rpc::GcsNodeInfo>> added_nodes;

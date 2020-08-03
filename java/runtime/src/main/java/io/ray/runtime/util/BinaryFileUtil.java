@@ -9,11 +9,10 @@ import java.nio.channels.FileLock;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.SystemUtils;
 
 public class BinaryFileUtil {
-  // We use a path here because the top-level Bazel target is an alias
-  public static final String REDIS_SERVER_BINARY_PATH =
-      "external/com_github_antirez_redis/redis-server";
+  public static final String REDIS_SERVER_BINARY_NAME = "redis-server";
 
   public static final String GCS_SERVER_BINARY_NAME = "gcs_server";
 
@@ -23,20 +22,18 @@ public class BinaryFileUtil {
 
   public static final String REDIS_MODULE_LIBRARY_NAME = "libray_redis_module.so";
 
-  public static final String CORE_WORKER_JAVA_LIBRARY =
-      System.mapLibraryName("core_worker_library_java");
+  public static final String CORE_WORKER_JAVA_LIBRARY = "core_worker_library_java";
 
   /**
-   * Extract a resource file to <code>destDir</code>.
+   * Extract a platform-native resource file to <code>destDir</code>.
    * Note that this a process-safe operation. If multi processes extract the file to same
    * directory concurrently, this operation will be protected by a file lock.
    *
    * @param destDir  a directory to extract resource file to
-   * @param filePath resource file path
+   * @param fileName resource file name
    * @return extracted resource file
    */
-  public static File getFile(String destDir, String filePath) {
-    String fileName = new File(filePath).getName();
+  public static File getNativeFile(String destDir, String fileName) {
     final File dir = new File(destDir);
     if (!dir.exists()) {
       try {
@@ -48,17 +45,26 @@ public class BinaryFileUtil {
     String lockFilePath = destDir + File.separator + "file_lock";
     try (FileLock ignored = new RandomAccessFile(lockFilePath, "rw")
         .getChannel().lock()) {
+      String resourceDir;
+      if (SystemUtils.IS_OS_MAC) {
+        resourceDir = "native/darwin/";
+      } else if (SystemUtils.IS_OS_LINUX) {
+        resourceDir = "native/linux/";
+      } else {
+        throw new UnsupportedOperationException("Unsupported os " + SystemUtils.OS_NAME);
+      }
+      String resourcePath = resourceDir + fileName;
       File file = new File(String.format("%s/%s", destDir, fileName));
       if (file.exists()) {
         return file;
       }
 
       // File does not exist.
-      try (InputStream is = BinaryFileUtil.class.getResourceAsStream("/" + filePath)) {
-        Preconditions.checkNotNull(is, "{} doesn't exist.", filePath);
+      try (InputStream is = BinaryFileUtil.class.getResourceAsStream("/" + resourcePath)) {
+        Preconditions.checkNotNull(is, "{} doesn't exist.", resourcePath);
         Files.copy(is, Paths.get(file.getCanonicalPath()));
       } catch (IOException e) {
-        throw new RuntimeException("Couldn't get temp file from resource " + filePath, e);
+        throw new RuntimeException("Couldn't get temp file from resource " + resourcePath, e);
       }
       return file;
     } catch (IOException e) {

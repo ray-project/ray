@@ -15,11 +15,14 @@
 #include "ray/gcs/tables.h"
 
 #include "absl/time/clock.h"
-
 #include "ray/common/common_protocol.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs/redis_gcs_client.h"
+
+extern "C" {
+#include "hiredis/hiredis.h"
+}
 
 namespace {
 

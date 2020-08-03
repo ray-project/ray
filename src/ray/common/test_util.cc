@@ -19,11 +19,11 @@
 
 #include "ray/common/buffer.h"
 #include "ray/common/ray_object.h"
+#include "ray/common/test_util.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
 #include "ray/util/process.h"
 #include "ray/util/util.h"
-#include "test_util.h"
 
 namespace ray {
 
@@ -41,6 +41,10 @@ void TestSetupUtil::StartUpRedisServers(const std::vector<int> &redis_server_por
 int TestSetupUtil::StartUpRedisServer(const int &port) {
   int actual_port = port;
   if (port == 0) {
+    static std::atomic<bool> srand_called(false);
+    if (!srand_called.exchange(true)) {
+      srand(current_time_ms() % RAND_MAX);
+    }
     // Use random port (in range [2000, 7000) to avoid port conflicts between UTs.
     actual_port = rand() % 5000 + 2000;
   }
@@ -53,7 +57,7 @@ int TestSetupUtil::StartUpRedisServer(const int &port) {
   cmdargs.insert(cmdargs.end(), {"--port", std::to_string(actual_port)});
   RAY_LOG(INFO) << "Start redis command is: " << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true).second);
-  usleep(200 * 1000);
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
   return actual_port;
 }
 
@@ -71,7 +75,7 @@ void TestSetupUtil::ShutDownRedisServer(const int &port) {
   if (Process::Call(cmdargs) != std::error_code()) {
     RAY_LOG(WARNING) << "Failed to stop redis. The redis process may no longer exist.";
   }
-  usleep(100 * 1000);
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
 }
 
 void TestSetupUtil::FlushAllRedisServers() {
@@ -87,7 +91,7 @@ void TestSetupUtil::FlushRedisServer(const int &port) {
   if (Process::Call(cmdargs)) {
     RAY_LOG(WARNING) << "Failed to flush redis. The redis process may no longer exist.";
   }
-  usleep(100 * 1000);
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
 }
 
 std::string TestSetupUtil::StartObjectStore(
@@ -104,7 +108,7 @@ std::string TestSetupUtil::StartObjectStore(
       {TEST_STORE_EXEC_PATH, "-m", "10000000", "-s", store_socket_name});
   RAY_LOG(DEBUG) << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true, store_socket_name + ".pid").second);
-  usleep(200 * 1000);
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
   return store_socket_name;
 }
 
@@ -120,7 +124,7 @@ std::string TestSetupUtil::StartGcsServer(const std::string &redis_address) {
        "--config_list=initial_reconstruction_timeout_milliseconds,2000"});
   RAY_LOG(INFO) << "Start gcs server command: " << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true, gcs_server_socket_name + ".pid").second);
-  usleep(200 * 1000);
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
   RAY_LOG(INFO) << "GCS server started.";
   return gcs_server_socket_name;
 }
@@ -149,7 +153,7 @@ std::string TestSetupUtil::StartRaylet(const std::string &store_socket_name,
        "--config_list=initial_reconstruction_timeout_milliseconds,2000"});
   RAY_LOG(DEBUG) << "Raylet Start command: " << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true, raylet_socket_name + ".pid").second);
-  usleep(200 * 1000);
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
   return raylet_socket_name;
 }
 
@@ -166,7 +170,7 @@ bool WaitForCondition(std::function<bool()> condition, int timeout_ms) {
 
     // sleep 10ms.
     const int wait_interval_ms = 10;
-    usleep(wait_interval_ms * 1000);
+    std::this_thread::sleep_for(std::chrono::milliseconds(wait_interval_ms));
     wait_time += wait_interval_ms;
     if (wait_time > timeout_ms) {
       break;
@@ -202,6 +206,12 @@ TaskID RandomTaskId() {
   std::string data(TaskID::Size(), 0);
   FillRandom(&data);
   return TaskID::FromBinary(data);
+}
+
+JobID RandomJobId() {
+  std::string data(JobID::Size(), 0);
+  FillRandom(&data);
+  return JobID::FromBinary(data);
 }
 
 std::shared_ptr<Buffer> GenerateRandomBuffer() {

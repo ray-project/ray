@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/raylet/scheduling_policy.h"
+
 #include <algorithm>
 #include <chrono>
 #include <random>
-
-#include "scheduling_policy.h"
 
 #include "ray/util/logging.h"
 
@@ -131,6 +131,38 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
   }
 
   return decision;
+}
+
+bool SchedulingPolicy::ScheduleBundle(
+    std::unordered_map<ClientID, SchedulingResources> &cluster_resources,
+    const ClientID &local_client_id, const ray::BundleSpecification &bundle_spec) {
+#ifndef NDEBUG
+  RAY_LOG(DEBUG) << "Cluster resource map: ";
+  for (const auto &client_resource_pair : cluster_resources) {
+    const ClientID &client_id = client_resource_pair.first;
+    const SchedulingResources &resources = client_resource_pair.second;
+    RAY_LOG(DEBUG) << "client_id: " << client_id << " "
+                   << resources.GetAvailableResources().ToString();
+  }
+#endif
+  const auto &client_resource_pair = cluster_resources.find(local_client_id);
+  if (client_resource_pair == cluster_resources.end()) {
+    return false;
+  }
+  const auto &resource_demand = bundle_spec.GetRequiredResources();
+  ClientID node_client_id = client_resource_pair->first;
+  const auto &node_resources = client_resource_pair->second;
+  ResourceSet available_node_resources =
+      ResourceSet(node_resources.GetAvailableResources());
+  available_node_resources.SubtractResources(node_resources.GetLoadResources());
+  RAY_LOG(DEBUG) << "Scheduling bundle, client id = " << node_client_id
+                 << ", available resources = "
+                 << node_resources.GetAvailableResources().ToString()
+                 << ", resources load = " << node_resources.GetLoadResources().ToString()
+                 << ", the resource needed = " << resource_demand.ToString();
+  /// If the resource_demand is subset of the whole available_node_resources, this bundle
+  /// can be set in this node, return true.
+  return resource_demand.IsSubset(available_node_resources);
 }
 
 std::vector<TaskID> SchedulingPolicy::SpillOver(

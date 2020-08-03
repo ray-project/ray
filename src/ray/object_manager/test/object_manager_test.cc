@@ -14,8 +14,6 @@
 
 #include "ray/object_manager/object_manager.h"
 
-#include <unistd.h>
-
 #include <iostream>
 #include <thread>
 
@@ -23,6 +21,10 @@
 #include "ray/common/status.h"
 #include "ray/common/test_util.h"
 #include "ray/util/filesystem.h"
+
+extern "C" {
+#include "hiredis/hiredis.h"
+}
 
 namespace {
 int64_t wait_timeout_ms;

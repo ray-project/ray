@@ -12,8 +12,8 @@ from ray.includes.unique_ids cimport (
 cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
     cdef cppclass CGlobalStateAccessor "ray::gcs::GlobalStateAccessor":
         CGlobalStateAccessor(const c_string &redis_address,
-                    const c_string &redis_password,
-                    c_bool is_test)
+                             const c_string &redis_password,
+                             c_bool is_test)
         c_bool Connect()
         void Disconnect()
         c_vector[c_string] GetAllJobInfo()

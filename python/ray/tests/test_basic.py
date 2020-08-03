@@ -127,7 +127,7 @@ def test_many_fractional_resources(shutdown_only):
         }
         if block:
             ray.get(g.remote())
-        return true_resources == accepted_resources
+        return ray.test_utils.dicts_equal(true_resources, accepted_resources)
 
     # Check that the resource are assigned correctly.
     result_ids = []
@@ -441,7 +441,7 @@ def test_passing_arguments_by_value_out_of_the_box(ray_start_regular):
         "local_mode": False
     }],
     indirect=True)
-def test_putting_object_that_closes_over_object_id(ray_start_regular):
+def test_putting_object_that_closes_over_object_ref(ray_start_regular):
     # This test is here to prevent a regression of
     # https://github.com/ray-project/ray/issues/1317.
 
@@ -461,26 +461,26 @@ def test_put_get(shutdown_only):
 
     for i in range(100):
         value_before = i * 10**6
-        objectid = ray.put(value_before)
-        value_after = ray.get(objectid)
+        object_ref = ray.put(value_before)
+        value_after = ray.get(object_ref)
         assert value_before == value_after
 
     for i in range(100):
         value_before = i * 10**6 * 1.0
-        objectid = ray.put(value_before)
-        value_after = ray.get(objectid)
+        object_ref = ray.put(value_before)
+        value_after = ray.get(object_ref)
         assert value_before == value_after
 
     for i in range(100):
         value_before = "h" * i
-        objectid = ray.put(value_before)
-        value_after = ray.get(objectid)
+        object_ref = ray.put(value_before)
+        value_after = ray.get(object_ref)
         assert value_before == value_after
 
     for i in range(100):
         value_before = [1] * i
-        objectid = ray.put(value_before)
-        value_after = ray.get(objectid)
+        object_ref = ray.put(value_before)
+        value_after = ray.get(object_ref)
         assert value_before == value_after
 
 
@@ -726,6 +726,29 @@ def test_args_stars_after(ray_start_regular):
     local_method = local_actor.star_args_after
     test_function(local_method, actor_method)
     ray.get(remote_test_function.remote(local_method, actor_method))
+
+
+def test_object_id_backward_compatibility(ray_start_regular):
+    # We've renamed Python's `ObjectID` to `ObjectRef`, and added a type
+    # alias for backward compatibility.
+    # This test is to make sure legacy code can still use `ObjectID`.
+    # TODO(hchen): once we completely remove Python's `ObjectID`,
+    # this test can be removed as well.
+
+    # Check that these 2 types are the same.
+    assert ray.ObjectID == ray.ObjectRef
+    object_ref = ray.put(1)
+    # Check that users can use either type in `isinstance`
+    assert isinstance(object_ref, ray.ObjectID)
+    assert isinstance(object_ref, ray.ObjectRef)
+
+
+def test_nonascii_in_function_body(ray_start_regular):
+    @ray.remote
+    def return_a_greek_char():
+        return "φ"
+
+    assert ray.get(return_a_greek_char.remote()) == "φ"
 
 
 if __name__ == "__main__":

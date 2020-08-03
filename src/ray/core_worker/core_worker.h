@@ -17,6 +17,7 @@
 #include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/buffer.h"
+#include "ray/common/placement_group.h"
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/actor_manager.h"
 #include "ray/core_worker/actor_reporter.h"
@@ -33,7 +34,7 @@
 #include "ray/core_worker/transport/raylet_transport.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/gcs/subscription_executor.h"
-#include "ray/raylet/raylet_client.h"
+#include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_server.h"
@@ -269,6 +270,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_id);
 
   CoreWorker(CoreWorker const &) = delete;
+
   void operator=(CoreWorker const &other) = delete;
 
   ///
@@ -338,6 +340,22 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// (local, submitted_task) reference counts. For debugging purposes.
   std::unordered_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const;
 
+  /// Put an object into plasma. It's a version of Put that directly put the
+  /// object into plasma and also pin the object.
+  ///
+  /// \param[in] The ray object.
+  /// \param[in] object_id The object ID to serialize.
+  /// appended to the serialized object ID.
+  void PutObjectIntoPlasma(const RayObject &object, const ObjectID &object_id);
+
+  /// Promote an object to plasma. If the
+  /// object already exists locally, it will be put into the plasma store. If
+  /// it doesn't yet exist, it will be spilled to plasma once available.
+  ///
+  /// \param[in] object_id The object ID to serialize.
+  /// appended to the serialized object ID.
+  void PromoteObjectToPlasma(const ObjectID &object_id);
+
   /// Get the RPC address of this worker.
   ///
   /// \param[out] The RPC address of this worker.
@@ -351,11 +369,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[out] The RPC address of the worker that owns this object.
   rpc::Address GetOwnerAddress(const ObjectID &object_id) const;
 
-  /// Promote an object to plasma and get its owner information. This should be
+  /// Get the owner information of an object. This should be
   /// called when serializing an object ID, and the returned information should
-  /// be stored with the serialized object ID. For plasma promotion, if the
-  /// object already exists locally, it will be put into the plasma store. If
-  /// it doesn't yet exist, it will be spilled to plasma once available.
+  /// be stored with the serialized object ID.
   ///
   /// This can only be called on object IDs that we created via task
   /// submission, ray.put, or object IDs that we deserialized. It cannot be
@@ -368,8 +384,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// appended to the serialized object ID.
   /// \param[out] owner_address The address of the object's owner. This should
   /// be appended to the serialized object ID.
-  void PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id,
-                                          rpc::Address *owner_address);
+  void GetOwnershipInfo(const ObjectID &object_id, rpc::Address *owner_address);
 
   /// Add a reference to an ObjectID that was deserialized by the language
   /// frontend. This will also start the process to resolve the future.
@@ -580,6 +595,17 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                      const ActorCreationOptions &actor_creation_options,
                      const std::string &extension_data, ActorID *actor_id);
 
+  /// Create a placement group.
+  ///
+  /// \param[in] function The remote function that generates the placement group object.
+  /// \param[in] placement_group_creation_options Options for this placement group
+  /// creation task. \param[out] placement_group_id ID of the created placement group.
+  /// This can be used to shedule actor in node \return Status error if placement group
+  /// creation fails, likely due to raylet failure.
+  Status CreatePlacementGroup(
+      const PlacementGroupCreationOptions &placement_group_creation_options,
+      PlacementGroupID *placement_group_id);
+
   /// Submit an actor task.
   ///
   /// \param[in] caller_id ID of the task submitter.
@@ -688,7 +714,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] name The name of the actor whose handle to get.
   /// \param[out] actor_handle A handle to the requested actor.
   /// \return The raw pointer to the actor handle if found, nullptr otherwise.
-  const ActorHandle *GetNamedActorHandle(const std::string &name);
+  /// The second pair contains the status of getting a named actor handle.
+  std::pair<const ActorHandle *, Status> GetNamedActorHandle(const std::string &name);
 
   ///
   /// The following methods are handlers for the core worker's gRPC server, which follow
@@ -849,10 +876,17 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void ExecuteTaskLocalMode(const TaskSpecification &task_spec,
                             const ActorID &actor_id = ActorID::Nil());
 
-  /// Build arguments for task executor. This would loop through all the arguments
-  /// in task spec, and for each of them that's passed by reference (ObjectID),
-  /// fetch its content from store and; for arguments that are passed by value,
-  /// just copy their content.
+  /// Get the values of the task arguments for the executor. Values are
+  /// retrieved from the local plasma store or, if the value is inlined, from
+  /// the task spec.
+  ///
+  /// This also pins all plasma arguments and ObjectIDs that were contained in
+  /// an inlined argument by adding a local reference in the reference counter.
+  /// This is to ensure that we have the address of the object's owner, which
+  /// is needed to retrieve the value. It also ensures that when the task
+  /// completes, we can retrieve any metadata about objects that are still
+  /// being borrowed by this process. The IDs should be unpinned once the task
+  /// completes.
   ///
   /// \param spec[in] task Task specification.
   /// \param args[out] args Argument data as RayObjects.
@@ -863,16 +897,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///                  // TODO(edoakes): this is a bit of a hack that's necessary because
   ///                  we have separate serialization paths for by-value and by-reference
   ///                  arguments in Python. This should ideally be handled better there.
-  /// \param args[out] borrowed_ids ObjectIDs that we are borrowing from the
-  ///                  task caller for the duration of the task execution. This
-  ///                  vector will be populated with all argument IDs that were
-  ///                  passed by reference and any ObjectIDs that were included
-  ///                  in the task spec's inlined arguments.
-  /// \return The arguments for passing to task executor.
-  Status BuildArgsForExecutor(const TaskSpecification &task,
-                              std::vector<std::shared_ptr<RayObject>> *args,
-                              std::vector<ObjectID> *arg_reference_ids,
-                              std::vector<ObjectID> *borrowed_ids);
+  /// \param args[out] pinned_ids ObjectIDs that should be unpinned once the
+  ///                  task completes execution.  This vector will be populated
+  ///                  with all argument IDs that were passed by reference and
+  ///                  any ObjectIDs that were included in the task spec's
+  ///                  inlined arguments.
+  /// \return Error if the values could not be retrieved.
+  Status GetAndPinArgsForExecutor(const TaskSpecification &task,
+                                  std::vector<std::shared_ptr<RayObject>> *args,
+                                  std::vector<ObjectID> *arg_reference_ids,
+                                  std::vector<ObjectID> *pinned_ids);
 
   /// Returns whether the message was sent to the wrong worker. The right error reply
   /// is sent automatically. Messages end up on the wrong worker when a worker dies
@@ -1047,6 +1081,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Common rpc service for all worker modules.
   rpc::CoreWorkerGrpcService grpc_service_;
+
+  /// Used to notify the task receiver when the arguments of a queued
+  /// actor task are ready.
+  std::shared_ptr<DependencyWaiterImpl> task_argument_waiter_;
 
   // Interface that receives tasks from direct actor calls.
   std::unique_ptr<CoreWorkerDirectTaskReceiver> direct_task_receiver_;

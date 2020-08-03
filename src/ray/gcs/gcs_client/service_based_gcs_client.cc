@@ -13,9 +13,13 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
-#include <unistd.h>
+
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_client/service_based_accessor.h"
+
+extern "C" {
+#include "hiredis/hiredis.h"
+}
 
 namespace ray {
 namespace gcs {
@@ -71,6 +75,7 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
   stats_accessor_.reset(new ServiceBasedStatsInfoAccessor(this));
   error_accessor_.reset(new ServiceBasedErrorInfoAccessor(this));
   worker_accessor_.reset(new ServiceBasedWorkerInfoAccessor(this));
+  placement_group_accessor_.reset(new ServiceBasedPlacementGroupInfoAccessor(this));
 
   // Init gcs service address check timer.
   detect_timer_.reset(new boost::asio::deadline_timer(io_service));
@@ -108,8 +113,8 @@ bool ServiceBasedGcsClient::GetGcsServerAddressFromRedis(
     num_attempts++;
 
     if (num_attempts < max_attempts) {
-      usleep(RayConfig::instance().internal_gcs_service_connect_wait_milliseconds() *
-             1000);
+      std::this_thread::sleep_for(std::chrono::milliseconds(
+          RayConfig::instance().internal_gcs_service_connect_wait_milliseconds()));
     }
   }
 
@@ -146,8 +151,8 @@ void ServiceBasedGcsClient::PeriodicallyCheckGcsServerAddress() {
       RayConfig::instance().gcs_service_address_check_interval_milliseconds());
   detect_timer_->expires_from_now(check_period);
   detect_timer_->async_wait([this](const boost::system::error_code &error) {
-    if (error == boost::system::errc::operation_canceled) {
-      // `operation_canceled` is set when `detect_timer_` is canceled or destroyed.
+    if (error == boost::asio::error::operation_aborted) {
+      // `operation_aborted` is set when `detect_timer_` is canceled or destroyed.
       return;
     }
     RAY_CHECK(!error) << "Checking gcs server address failed with error: "
@@ -190,7 +195,8 @@ void ServiceBasedGcsClient::ReconnectGcsServer() {
         break;
       }
     }
-    usleep(RayConfig::instance().ping_gcs_rpc_server_interval_milliseconds() * 1000);
+    std::this_thread::sleep_for(std::chrono::milliseconds(
+        RayConfig::instance().ping_gcs_rpc_server_interval_milliseconds()));
   }
 
   if (index < RayConfig::instance().ping_gcs_rpc_server_max_retries()) {

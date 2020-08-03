@@ -41,13 +41,13 @@ class RemoteFunction:
         _num_return_vals: The default number of return values for invocations
             of this remote function.
         _max_calls: The number of times a worker can execute this function
-            before executing.
+            before exiting.
         _decorator: An optional decorator that should be applied to the remote
             function invocation (as opposed to the function execution) before
             invoking the function. The decorator must return a function that
             takes in two arguments ("args" and "kwargs"). In most cases, it
             should call the function that was passed into the decorator and
-            return the resulting ObjectIDs. For an example, see
+            return the resulting ObjectRefs. For an example, see
             "test_decorated_function" in "python/ray/tests/test_basic.py".
         _function_signature: The function signature.
         _last_export_session_and_job: A pair of the last exported session
@@ -203,14 +203,14 @@ class RemoteFunction:
                 assert not self._is_cross_language, \
                     "Cross language remote function " \
                     "cannot be executed locally."
-            object_ids = worker.core_worker.submit_task(
+            object_refs = worker.core_worker.submit_task(
                 self._language, self._function_descriptor, list_args,
                 num_return_vals, resources, max_retries)
 
-            if len(object_ids) == 1:
-                return object_ids[0]
-            elif len(object_ids) > 1:
-                return object_ids
+            if len(object_refs) == 1:
+                return object_refs[0]
+            elif len(object_refs) > 1:
+                return object_refs
 
         if self._decorator is not None:
             invocation = self._decorator(invocation)

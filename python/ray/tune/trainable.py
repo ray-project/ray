@@ -78,6 +78,15 @@ class TrainableUtil:
         return data_dict
 
     @staticmethod
+    def checkpoint_to_object(checkpoint_path):
+        data_dict = TrainableUtil.pickle_checkpoint(checkpoint_path)
+        out = io.BytesIO()
+        if len(data_dict) > 10e6:  # getting pretty large
+            logger.info("Checkpoint size is {} bytes".format(len(data_dict)))
+        out.write(data_dict)
+        return out.getvalue()
+
+    @staticmethod
     def find_checkpoint_dir(checkpoint_path):
         """Returns the directory containing the checkpoint path.
 
@@ -175,7 +184,7 @@ class Trainable:
     Calling ``save()`` should save the training state of a trainable to disk,
     and ``restore(path)`` should restore a trainable to the given state.
 
-    Generally you only need to implement ``build``, ``step``,
+    Generally you only need to implement ``setup``, ``step``,
     ``save_checkpoint``, and ``load_checkpoint`` when subclassing Trainable.
 
     Other implementation methods that may be helpful to override are
@@ -424,14 +433,10 @@ class Trainable:
         """
         tmpdir = tempfile.mkdtemp("save_to_object", dir=self.logdir)
         checkpoint_path = self.save(tmpdir)
-        # Save all files in subtree.
-        data_dict = TrainableUtil.pickle_checkpoint(checkpoint_path)
-        out = io.BytesIO()
-        if len(data_dict) > 10e6:  # getting pretty large
-            logger.info("Checkpoint size is {} bytes".format(len(data_dict)))
-        out.write(data_dict)
+        # Save all files in subtree and delete the tmpdir.
+        obj = TrainableUtil.checkpoint_to_object(checkpoint_path)
         shutil.rmtree(tmpdir)
-        return out.getvalue()
+        return obj
 
     def restore(self, checkpoint_path):
         """Restores training state from a given model checkpoint.

@@ -4,6 +4,7 @@ import numpy as np
 import time
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
+import ray
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
@@ -39,23 +40,22 @@ class TorchPolicy(Policy):
     """
 
     @DeveloperAPI
-    def __init__(self,
-                 observation_space: gym.spaces.Space,
-                 action_space: gym.spaces.Space,
-                 config: TrainerConfigDict,
-                 *,
-                 model: ModelV2,
-                 loss: Callable[
-                     [Policy, ModelV2, type, SampleBatch], TensorType],
-                 action_distribution_class: TorchDistributionWrapper,
-                 action_sampler_fn: Callable[
-                     [TensorType, List[TensorType]], Tuple[
-                         TensorType, TensorType]] = None,
-                 action_distribution_fn: Optional[Callable[
-                     [Policy, ModelV2, TensorType, TensorType, TensorType],
-                     Tuple[TensorType, type, List[TensorType]]]] = None,
-                 max_seq_len: int = 20,
-                 get_batch_divisibility_req: Optional[int] = None):
+    def __init__(
+            self,
+            observation_space: gym.spaces.Space,
+            action_space: gym.spaces.Space,
+            config: TrainerConfigDict,
+            *,
+            model: ModelV2,
+            loss: Callable[[Policy, ModelV2, type, SampleBatch], TensorType],
+            action_distribution_class: TorchDistributionWrapper,
+            action_sampler_fn: Callable[[TensorType, List[TensorType]], Tuple[
+                TensorType, TensorType]] = None,
+            action_distribution_fn: Optional[Callable[[
+                Policy, ModelV2, TensorType, TensorType, TensorType
+            ], Tuple[TensorType, type, List[TensorType]]]] = None,
+            max_seq_len: int = 20,
+            get_batch_divisibility_req: Optional[int] = None):
         """Build a policy from policy and loss torch modules.
 
         Note that model will be placed on GPU device if CUDA_VISIBLE_DEVICES
@@ -98,8 +98,10 @@ class TorchPolicy(Policy):
         """
         self.framework = "torch"
         super().__init__(observation_space, action_space, config)
-        self.device = (torch.device("cuda")
-                       if torch.cuda.is_available() else torch.device("cpu"))
+        if torch.cuda.is_available() and ray.get_gpu_ids():
+            self.device = torch.device("cuda")
+        else:
+            self.device = torch.device("cpu")
         self.model = model.to(self.device)
         self.exploration = self._create_exploration()
         self.unwrapped_model = model  # used to support DistributedDataParallel
@@ -149,7 +151,8 @@ class TorchPolicy(Policy):
                 input_dict[SampleBatch.PREV_REWARDS] = \
                     np.asarray(prev_reward_batch)
             state_batches = [
-                convert_to_torch_tensor(s) for s in (state_batches or [])
+                convert_to_torch_tensor(s, self.device)
+                for s in (state_batches or [])
             ]
             actions, state_out, extra_fetches, logp = \
                 self._compute_action_helper(
@@ -161,14 +164,14 @@ class TorchPolicy(Policy):
                 extra_fetches[SampleBatch.ACTION_PROB] = np.exp(logp)
                 extra_fetches[SampleBatch.ACTION_LOGP] = logp
 
-            return convert_to_non_torch_type(
-                (actions, state_out, extra_fetches))
+            return convert_to_non_torch_type((actions, state_out,
+                                              extra_fetches))
 
     @override(Policy)
     def compute_actions_from_trajectories(
             self,
             trajectories: List["Trajectory"],
-            other_trajectories: Dict[AgentID, "Trajectory"],
+            other_trajectories: Optional[Dict[AgentID, "Trajectory"]] = None,
             explore: bool = None,
             timestep: Optional[int] = None,
             **kwargs) -> \
@@ -179,8 +182,9 @@ class TorchPolicy(Policy):
 
         with torch.no_grad():
             # Create a view and pass that to Model as `input_dict`.
-            input_dict = self._lazy_tensor_dict(get_trajectory_view(
-                self.model, trajectories, is_training=False))
+            input_dict = self._lazy_tensor_dict(
+                get_trajectory_view(
+                    self.model, trajectories, is_training=False))
             # TODO: (sven) support RNNs w/ fast sampling.
             state_batches = []
             seq_lens = None
@@ -228,8 +232,8 @@ class TorchPolicy(Policy):
                         is_training=False)
             else:
                 dist_class = self.dist_class
-                dist_inputs, state_out = self.model(
-                    input_dict, state_batches, seq_lens)
+                dist_inputs, state_out = self.model(input_dict, state_batches,
+                                                    seq_lens)
 
             if not (isinstance(dist_class, functools.partial)
                     or issubclass(dist_class, TorchDistributionWrapper)):
@@ -266,10 +270,10 @@ class TorchPolicy(Policy):
             actions: Union[List[TensorType], TensorType],
             obs_batch: Union[List[TensorType], TensorType],
             state_batches: Optional[List[TensorType]] = None,
-            prev_action_batch: Optional[
-                Union[List[TensorType], TensorType]] = None,
-            prev_reward_batch: Optional[
-                Union[List[TensorType], TensorType]] = None) -> TensorType:
+            prev_action_batch: Optional[Union[List[TensorType],
+                                              TensorType]] = None,
+            prev_reward_batch: Optional[Union[List[
+                TensorType], TensorType]] = None) -> TensorType:
 
         if self.action_sampler_fn and self.action_distribution_fn is None:
             raise ValueError("Cannot compute log-prob/likelihood w/o an "
@@ -310,8 +314,8 @@ class TorchPolicy(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def learn_on_batch(self, postprocessed_batch: SampleBatch) -> Dict[
-            str, TensorType]:
+    def learn_on_batch(
+            self, postprocessed_batch: SampleBatch) -> Dict[str, TensorType]:
         # Get batch ready for RNNs, if applicable.
         pad_batch_to_sequences_of_same_size(
             postprocessed_batch,
@@ -327,6 +331,7 @@ class TorchPolicy(Policy):
             loss_out = self.model.custom_loss(loss_out, train_batch)
         assert len(loss_out) == len(self._optimizers)
         # assert not any(torch.isnan(l) for l in loss_out)
+        fetches = self.extra_compute_grad_fetches()
 
         # Loop through all optimizers.
         grad_info = {"allreduce_latency": 0.0}
@@ -366,7 +371,7 @@ class TorchPolicy(Policy):
 
         grad_info["allreduce_latency"] /= len(self._optimizers)
         grad_info.update(self.extra_grad_info(train_batch))
-        return {LEARNER_STATS_KEY: grad_info}
+        return dict(fetches, **{LEARNER_STATS_KEY: grad_info})
 
     @override(Policy)
     @DeveloperAPI
@@ -376,6 +381,7 @@ class TorchPolicy(Policy):
         loss_out = force_list(
             self._loss(self, self.model, self.dist_class, train_batch))
         assert len(loss_out) == len(self._optimizers)
+        fetches = self.extra_compute_grad_fetches()
 
         grad_process_info = {}
         grads = []
@@ -395,7 +401,7 @@ class TorchPolicy(Policy):
 
         grad_info = self.extra_grad_info(train_batch)
         grad_info.update(grad_process_info)
-        return grads, {LEARNER_STATS_KEY: grad_info}
+        return grads, dict(fetches, **{LEARNER_STATS_KEY: grad_info})
 
     @override(Policy)
     @DeveloperAPI
@@ -462,10 +468,8 @@ class TorchPolicy(Policy):
         super().set_state(state)
 
     @DeveloperAPI
-    def extra_grad_process(
-            self,
-            optimizer: "torch.optim.Optimizer",
-            loss: TensorType):
+    def extra_grad_process(self, optimizer: "torch.optim.Optimizer",
+                           loss: TensorType):
         """Called after each optimizer.zero_grad() + loss.backward() call.
 
         Called for each self._optimizers/loss-value pair.
@@ -483,11 +487,19 @@ class TorchPolicy(Policy):
         return {}
 
     @DeveloperAPI
+    def extra_compute_grad_fetches(self) -> Dict[str, any]:
+        """Extra values to fetch and return from compute_gradients().
+
+        Returns:
+            Dict[str, any]: Extra fetch dict to be added to the fetch dict
+                of the compute_gradients call.
+        """
+        return {LEARNER_STATS_KEY: {}}  # e.g, stats, td error, etc.
+
+    @DeveloperAPI
     def extra_action_out(
-            self,
-            input_dict: Dict[str, TensorType],
-            state_batches: List[TensorType],
-            model: TorchModelV2,
+            self, input_dict: Dict[str, TensorType],
+            state_batches: List[TensorType], model: TorchModelV2,
             action_dist: TorchDistributionWrapper) -> Dict[str, TensorType]:
         """Returns dict of extra info to include in experience batch.
 
@@ -505,8 +517,8 @@ class TorchPolicy(Policy):
         return {}
 
     @DeveloperAPI
-    def extra_grad_info(self, train_batch: SampleBatch) -> Dict[
-            str, TensorType]:
+    def extra_grad_info(self,
+                        train_batch: SampleBatch) -> Dict[str, TensorType]:
         """Return dict of extra grad info.
 
         Args:
@@ -520,8 +532,9 @@ class TorchPolicy(Policy):
         return {}
 
     @DeveloperAPI
-    def optimizer(self) -> Union[
-            List["torch.optim.Optimizer"], "torch.optim.Optimizer"]:
+    def optimizer(
+            self
+    ) -> Union[List["torch.optim.Optimizer"], "torch.optim.Optimizer"]:
         """Custom the local PyTorch optimizer(s) to use.
 
         Returns:
@@ -556,7 +569,8 @@ class TorchPolicy(Policy):
 
     def _lazy_tensor_dict(self, postprocessed_batch):
         train_batch = UsageTrackingDict(postprocessed_batch)
-        train_batch.set_get_interceptor(convert_to_torch_tensor)
+        train_batch.set_get_interceptor(
+            functools.partial(convert_to_torch_tensor, device=self.device))
         return train_batch
 
 

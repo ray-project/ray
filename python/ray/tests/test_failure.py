@@ -819,15 +819,13 @@ def test_raylet_crash_when_get(ray_start_regular):
         time.sleep(2)
         ray.worker._global_node.kill_raylet()
 
-    object_id = ray.put(None)
-    ray.internal.free(object_id)
-    while ray.worker.global_worker.core_worker.object_exists(object_id):
-        time.sleep(1)
+    object_ref = ray.put(np.zeros(200 * 1024, dtype=np.uint8))
+    ray.internal.free(object_ref)
 
     thread = threading.Thread(target=sleep_to_kill_raylet)
     thread.start()
     with pytest.raises(ray.exceptions.UnreconstructableError):
-        ray.get(object_id)
+        ray.get(object_ref)
     thread.join()
 
 
@@ -842,15 +840,15 @@ def test_connect_with_disconnected_node(shutdown_only):
     info = relevant_errors(ray_constants.REMOVED_NODE_ERROR)
     assert len(info) == 0
     # This node is killed by SIGKILL, ray_monitor will mark it to dead.
-    dead_node = cluster.add_node(num_cpus=0, _internal_config=config)
+    dead_node = cluster.add_node(num_cpus=0)
     cluster.remove_node(dead_node, allow_graceful=False)
     wait_for_errors(ray_constants.REMOVED_NODE_ERROR, 1)
     # This node is killed by SIGKILL, ray_monitor will mark it to dead.
-    dead_node = cluster.add_node(num_cpus=0, _internal_config=config)
+    dead_node = cluster.add_node(num_cpus=0)
     cluster.remove_node(dead_node, allow_graceful=False)
     wait_for_errors(ray_constants.REMOVED_NODE_ERROR, 2)
     # This node is killed by SIGTERM, ray_monitor will not mark it again.
-    removing_node = cluster.add_node(num_cpus=0, _internal_config=config)
+    removing_node = cluster.add_node(num_cpus=0)
     cluster.remove_node(removing_node, allow_graceful=True)
     with pytest.raises(RayTestTimeoutException):
         wait_for_errors(ray_constants.REMOVED_NODE_ERROR, 3, timeout=2)
@@ -938,11 +936,11 @@ def test_fill_object_store_lru_fallback(shutdown_only):
     end = time.time()
     assert end - start < 3
 
-    oids = []
+    obj_refs = []
     for _ in range(3):
-        oid = expensive_task.remote()
-        ray.get(oid)
-        oids.append(oid)
+        obj_ref = expensive_task.remote()
+        ray.get(obj_ref)
+        obj_refs.append(obj_ref)
 
     @ray.remote
     class LargeMemoryActor:
@@ -954,16 +952,16 @@ def test_fill_object_store_lru_fallback(shutdown_only):
 
     actor = LargeMemoryActor.remote()
     for _ in range(3):
-        oid = actor.some_expensive_task.remote()
-        ray.get(oid)
-        oids.append(oid)
+        obj_ref = actor.some_expensive_task.remote()
+        ray.get(obj_ref)
+        obj_refs.append(obj_ref)
     # Make sure actor does not die
     ray.get(actor.test.remote())
 
     for _ in range(3):
-        oid = ray.put(np.zeros(10**8 // 2, dtype=np.uint8))
-        ray.get(oid)
-        oids.append(oid)
+        obj_ref = ray.put(np.zeros(10**8 // 2, dtype=np.uint8))
+        ray.get(obj_ref)
+        obj_refs.append(obj_ref)
 
 
 @pytest.mark.parametrize(
@@ -984,8 +982,6 @@ def test_eviction(ray_start_cluster):
     assert (isinstance(ray.get(obj), np.ndarray))
     # Evict the object.
     ray.internal.free([obj])
-    while ray.worker.global_worker.core_worker.object_exists(obj):
-        time.sleep(1)
     # ray.get throws an exception.
     with pytest.raises(ray.exceptions.UnreconstructableError):
         ray.get(obj)
@@ -1022,13 +1018,13 @@ def test_serialized_id(ray_start_cluster):
         return x
 
     @ray.remote
-    def get(obj_ids, test_dependent_task):
-        print("get", obj_ids)
-        obj_id = obj_ids[0]
+    def get(obj_refs, test_dependent_task):
+        print("get", obj_refs)
+        obj_ref = obj_refs[0]
         if test_dependent_task:
-            assert ray.get(dependent_task.remote(obj_id)) == 1
+            assert ray.get(dependent_task.remote(obj_ref)) == 1
         else:
-            assert ray.get(obj_id) == 1
+            assert ray.get(obj_ref) == 1
 
     obj = small_object.remote()
     ray.get(get.remote([obj], False))
@@ -1102,21 +1098,21 @@ def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
         pid = ray.get(a.get_pid.remote())
         a.start_child.remote(use_actors=use_actors)
         # Wait for the child to be scheduled.
-        assert wait_for_condition(lambda: not child_resource_available())
+        wait_for_condition(lambda: not child_resource_available())
         # Kill the parent process.
         os.kill(pid, 9)
-        assert wait_for_condition(child_resource_available)
+        wait_for_condition(child_resource_available)
 
     # Test fate sharing if the parent node dies.
     def test_node_failure(node_to_kill, use_actors):
         a = Actor.options(resources={"parent": 1}).remote()
         a.start_child.remote(use_actors=use_actors)
         # Wait for the child to be scheduled.
-        assert wait_for_condition(lambda: not child_resource_available())
+        wait_for_condition(lambda: not child_resource_available())
         # Kill the parent process.
         cluster.remove_node(node_to_kill, allow_graceful=False)
         node_to_kill = cluster.add_node(num_cpus=1, resources={"parent": 1})
-        assert wait_for_condition(child_resource_available)
+        wait_for_condition(child_resource_available)
         return node_to_kill
 
     if node_failure:

@@ -65,9 +65,11 @@ from ray._raylet import (
     WorkerID,
     FunctionID,
     ObjectID,
+    ObjectRef,
     TaskID,
     UniqueID,
     Language,
+    PlacementGroupID,
 )  # noqa: E402
 
 _config = _Config()
@@ -166,6 +168,8 @@ __all__ += [
     "WorkerID",
     "FunctionID",
     "ObjectID",
+    "ObjectRef",
     "TaskID",
     "UniqueID",
+    "PlacementGroupID",
 ]

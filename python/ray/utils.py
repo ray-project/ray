@@ -233,8 +233,8 @@ def ensure_str(s, encoding="utf-8", errors="strict"):
         return s.decode(encoding, errors)
 
 
-def binary_to_object_id(binary_object_id):
-    return ray.ObjectID(binary_object_id)
+def binary_to_object_ref(binary_object_ref):
+    return ray.ObjectRef(binary_object_ref)
 
 
 def binary_to_task_id(binary_task_id):
@@ -391,6 +391,10 @@ def setup_logger(logging_level, logging_format):
 
 
 def open_log(path, **kwargs):
+    """
+    Opens the log file at `path`, with the provided kwargs being given to
+    `open`.
+    """
     kwargs.setdefault("buffering", 1)
     kwargs.setdefault("mode", "a")
     kwargs.setdefault("encoding", "utf-8")

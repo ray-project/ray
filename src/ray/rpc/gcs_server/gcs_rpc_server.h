@@ -14,9 +14,9 @@
 
 #pragma once
 
-#include "ray/protobuf/gcs_service.grpc.pb.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
+#include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
 namespace ray {
 namespace rpc {
@@ -43,6 +43,9 @@ namespace rpc {
 
 #define WORKER_INFO_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(WorkerInfoGcsService, HANDLER)
+
+#define PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(HANDLER) \
+  RPC_SERVICE_HANDLER(PlacementGroupInfoGcsService, HANDLER)
 
 #define GCS_RPC_SEND_REPLY(send_reply_callback, reply, status) \
   reply->mutable_status()->set_code((int)status.code());       \
@@ -100,6 +103,10 @@ class ActorInfoGcsServiceHandler {
  public:
   virtual ~ActorInfoGcsServiceHandler() = default;
 
+  virtual void HandleRegisterActor(const RegisterActorRequest &request,
+                                   RegisterActorReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleCreateActor(const CreateActorRequest &request,
                                  CreateActorReply *reply,
                                  SendReplyCallback send_reply_callback) = 0;
@@ -153,6 +160,7 @@ class ActorInfoGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+    ACTOR_INFO_SERVICE_RPC_HANDLER(RegisterActor);
     ACTOR_INFO_SERVICE_RPC_HANDLER(CreateActor);
     ACTOR_INFO_SERVICE_RPC_HANDLER(GetActorInfo);
     ACTOR_INFO_SERVICE_RPC_HANDLER(GetNamedActorInfo);
@@ -202,6 +210,14 @@ class NodeInfoGcsServiceHandler {
   virtual void HandleDeleteResources(const DeleteResourcesRequest &request,
                                      DeleteResourcesReply *reply,
                                      SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleSetInternalConfig(const SetInternalConfigRequest &request,
+                                       SetInternalConfigReply *reply,
+                                       SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetInternalConfig(const GetInternalConfigRequest &request,
+                                       GetInternalConfigReply *reply,
+                                       SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeInfoGcsService`.
@@ -227,6 +243,8 @@ class NodeInfoGrpcService : public GrpcService {
     NODE_INFO_SERVICE_RPC_HANDLER(GetResources);
     NODE_INFO_SERVICE_RPC_HANDLER(UpdateResources);
     NODE_INFO_SERVICE_RPC_HANDLER(DeleteResources);
+    NODE_INFO_SERVICE_RPC_HANDLER(SetInternalConfig);
+    NODE_INFO_SERVICE_RPC_HANDLER(GetInternalConfig);
   }
 
  private:
@@ -469,6 +487,41 @@ class WorkerInfoGrpcService : public GrpcService {
   WorkerInfoGcsServiceHandler &service_handler_;
 };
 
+class PlacementGroupInfoGcsServiceHandler {
+ public:
+  virtual ~PlacementGroupInfoGcsServiceHandler() = default;
+
+  virtual void HandleCreatePlacementGroup(const CreatePlacementGroupRequest &request,
+                                          CreatePlacementGroupReply *reply,
+                                          SendReplyCallback send_reply_callback) = 0;
+};
+
+/// The `GrpcService` for `PlacementGroupInfoGcsService`.
+class PlacementGroupInfoGrpcService : public GrpcService {
+ public:
+  /// Constructor.
+  ///
+  /// \param[in] handler The service handler that actually handle the requests.
+  explicit PlacementGroupInfoGrpcService(boost::asio::io_service &io_service,
+                                         PlacementGroupInfoGcsServiceHandler &handler)
+      : GrpcService(io_service), service_handler_(handler){};
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+    PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(CreatePlacementGroup);
+  }
+
+ private:
+  /// The grpc async service object.
+  PlacementGroupInfoGcsService::AsyncService service_;
+  /// The service handler that actually handle the requests.
+  PlacementGroupInfoGcsServiceHandler &service_handler_;
+};
+
 using JobInfoHandler = JobInfoGcsServiceHandler;
 using ActorInfoHandler = ActorInfoGcsServiceHandler;
 using NodeInfoHandler = NodeInfoGcsServiceHandler;
@@ -477,6 +530,7 @@ using TaskInfoHandler = TaskInfoGcsServiceHandler;
 using StatsHandler = StatsGcsServiceHandler;
 using ErrorInfoHandler = ErrorInfoGcsServiceHandler;
 using WorkerInfoHandler = WorkerInfoGcsServiceHandler;
+using PlacementGroupInfoHandler = PlacementGroupInfoGcsServiceHandler;
 
 }  // namespace rpc
 }  // namespace ray

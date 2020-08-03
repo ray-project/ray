@@ -2,7 +2,7 @@ import copy
 import logging
 import threading
 import time
-from collections import defaultdict
+from collections import defaultdict, deque, Mapping, Sequence
 from threading import Thread
 
 import numpy as np
@@ -97,9 +97,9 @@ class UtilMonitor(Thread):
 def pin_in_object_store(obj):
     """Deprecated, use ray.put(value, weakref=False) instead."""
 
-    obj_id = ray.put(obj, weakref=False)
-    _pinned_objects.append(obj_id)
-    return obj_id
+    obj_ref = ray.put(obj, weakref=False)
+    _pinned_objects.append(obj_ref)
+    return obj_ref
 
 
 def get_pinned_object(pinned_id):
@@ -214,6 +214,27 @@ def flatten_dict(dt, delimiter="/"):
         for k in remove:
             del dt[k]
     return dt
+
+
+def unflattened_lookup(flat_key, lookup, delimiter="/", default=None):
+    """
+    Unflatten `flat_key` and iteratively look up in `lookup`. E.g.
+    `flat_key="a/0/b"` will try to return `lookup["a"][0]["b"]`.
+    """
+    keys = deque(flat_key.split(delimiter))
+    base = lookup
+    while keys:
+        key = keys.popleft()
+        try:
+            if isinstance(base, Mapping):
+                base = base[key]
+            elif isinstance(base, Sequence):
+                base = base[int(key)]
+            else:
+                raise KeyError()
+        except KeyError:
+            return default
+    return base
 
 
 def _to_pinnable(obj):

@@ -14,11 +14,9 @@
 
 #pragma once
 
-#include <unistd.h>
-
 #include "ray/common/network_util.h"
-#include "ray/protobuf/gcs_service.grpc.pb.h"
 #include "ray/rpc/grpc_client.h"
+#include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
 namespace ray {
 namespace rpc {
@@ -109,6 +107,10 @@ class GcsRpcClient {
         new GrpcClient<ErrorInfoGcsService>(address, port, client_call_manager));
     worker_info_grpc_client_ = std::unique_ptr<GrpcClient<WorkerInfoGcsService>>(
         new GrpcClient<WorkerInfoGcsService>(address, port, client_call_manager));
+    placement_group_info_grpc_client_ =
+        std::unique_ptr<GrpcClient<PlacementGroupInfoGcsService>>(
+            new GrpcClient<PlacementGroupInfoGcsService>(address, port,
+                                                         client_call_manager));
   }
 
   /// Add job info to gcs server.
@@ -119,6 +121,10 @@ class GcsRpcClient {
 
   /// Get information of all jobs from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService, GetAllJobInfo, job_info_grpc_client_, )
+
+  /// Register actor via GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, RegisterActor,
+                             actor_info_grpc_client_, )
 
   /// Create actor via GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, CreateActor, actor_info_grpc_client_, )
@@ -176,6 +182,14 @@ class GcsRpcClient {
 
   /// Delete resources of a node in GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, DeleteResources,
+                             node_info_grpc_client_, )
+
+  /// Set internal config of the cluster in the GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, SetInternalConfig,
+                             node_info_grpc_client_, )
+
+  /// Get internal config of the node from the GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetInternalConfig,
                              node_info_grpc_client_, )
 
   /// Get object's locations from GCS Service.
@@ -239,6 +253,10 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService, AddWorkerInfo,
                              worker_info_grpc_client_, )
 
+  /// Create placement group via GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, CreatePlacementGroup,
+                             placement_group_info_grpc_client_, )
+
  private:
   std::function<void(GcsServiceFailureType)> gcs_service_failure_detected_;
 
@@ -251,6 +269,8 @@ class GcsRpcClient {
   std::unique_ptr<GrpcClient<StatsGcsService>> stats_grpc_client_;
   std::unique_ptr<GrpcClient<ErrorInfoGcsService>> error_info_grpc_client_;
   std::unique_ptr<GrpcClient<WorkerInfoGcsService>> worker_info_grpc_client_;
+  std::unique_ptr<GrpcClient<PlacementGroupInfoGcsService>>
+      placement_group_info_grpc_client_;
 };
 
 }  // namespace rpc

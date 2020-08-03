@@ -2,6 +2,7 @@ package io.ray.runtime;
 
 import com.google.common.base.Preconditions;
 import io.ray.api.BaseActorHandle;
+import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.config.RayConfig;
@@ -15,10 +16,12 @@ import io.ray.runtime.runner.RunManager;
 import io.ray.runtime.task.NativeTaskExecutor;
 import io.ray.runtime.task.NativeTaskSubmitter;
 import io.ray.runtime.task.TaskExecutor;
+import io.ray.runtime.util.BinaryFileUtil;
 import io.ray.runtime.util.JniUtils;
 import java.io.File;
 import java.io.IOException;
 import java.util.Map;
+import java.util.Optional;
 import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,7 +50,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       rayConfig.setSessionDir(sessionDir);
     }
 
-    JniUtils.loadLibrary("core_worker_library_java", true);
+    JniUtils.loadLibrary(BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
     LOGGER.debug("Native libraries loaded.");
     // Reset library path at runtime.
     resetLibraryPath(rayConfig);
@@ -55,6 +58,15 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       FileUtils.forceMkdir(new File(rayConfig.logDir));
     } catch (IOException e) {
       throw new RuntimeException("Failed to create the log directory.", e);
+    }
+
+    if (rayConfig.getRedisAddress() != null) {
+      GcsClient tempGcsClient =
+          new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
+      for (Map.Entry<String, String> entry :
+          tempGcsClient.getInternalConfig().entrySet()) {
+        rayConfig.rayletConfigParameters.put(entry.getKey(), entry.getValue());
+      }
     }
   }
 
@@ -131,6 +143,18 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     nativeSetResource(resourceName, capacity, nodeId.getBytes());
   }
 
+  @SuppressWarnings("unchecked")
+  @Override
+  public <T extends BaseActorHandle> Optional<T> getActor(String name, boolean global) {
+    byte[] actorIdBytes = nativeGetActorIdOfNamedActor(name, global);
+    ActorId actorId = ActorId.fromBytes(actorIdBytes);
+    if (actorId.isNil()) {
+      return Optional.empty();
+    } else {
+      return Optional.of((T) getActorHandle(actorId));
+    }
+  }
+
   @Override
   public void killActor(BaseActorHandle actor, boolean noRestart) {
     nativeKillActor(actor.getId().getBytes(), noRestart);
@@ -155,7 +179,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     nativeRunTaskExecutor(taskExecutor);
   }
 
-  private static native void nativeInitialize(int workerMode, String ndoeIpAddress,
+  private static native void nativeInitialize(
+      int workerMode, String ndoeIpAddress,
       int nodeManagerPort, String driverName, String storeSocket, String rayletSocket,
       byte[] jobId, GcsClientOptions gcsClientOptions, int numWorkersPerProcess,
       String logDir, Map<String, String> rayletConfigParameters);
@@ -167,6 +192,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   private static native void nativeSetResource(String resourceName, double capacity, byte[] nodeId);
 
   private static native void nativeKillActor(byte[] actorId, boolean noRestart);
+
+  private static native byte[] nativeGetActorIdOfNamedActor(String actorName, boolean global);
 
   private static native void nativeSetCoreWorker(byte[] workerId);
 

@@ -65,10 +65,19 @@ Status RedisLogBasedActorInfoAccessor::AsyncGet(
                                                       on_done);
 }
 
+Status RedisLogBasedActorInfoAccessor::AsyncRegisterActor(
+    const ray::TaskSpecification &task_spec, const ray::gcs::StatusCallback &callback) {
+  const std::string error_msg =
+      "Unsupported method of AsyncRegisterActor in RedisLogBasedActorInfoAccessor.";
+  RAY_LOG(FATAL) << error_msg;
+  return Status::Invalid(error_msg);
+}
+
 Status RedisLogBasedActorInfoAccessor::AsyncCreateActor(
     const ray::TaskSpecification &task_spec, const ray::gcs::StatusCallback &callback) {
   const std::string error_msg =
-      "Unsupported method of AsyncCreateActor in RedisLogBasedActorInfoAccessor.";
+      "Unsupported method of AsyncCreateActor in "
+      "RedisLogBasedActorInfoAccessor.";
   RAY_LOG(FATAL) << error_msg;
   return Status::Invalid(error_msg);
 }
@@ -349,15 +358,10 @@ Status RedisJobInfoAccessor::DoAsyncAppend(const std::shared_ptr<JobTableData> &
   return client_impl_->job_table().Append(job_id, job_id, data_ptr, on_done);
 }
 
-Status RedisJobInfoAccessor::AsyncSubscribeToFinishedJobs(
+Status RedisJobInfoAccessor::AsyncSubscribeAll(
     const SubscribeCallback<JobID, JobTableData> &subscribe, const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  auto on_subscribe = [subscribe](const JobID &job_id, const JobTableData &job_data) {
-    if (job_data.is_dead()) {
-      subscribe(job_id, job_data);
-    }
-  };
-  return job_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), on_subscribe, done);
+  return job_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
 }
 
 RedisTaskInfoAccessor::RedisTaskInfoAccessor(RedisGcsClient *client_impl)
@@ -828,6 +832,11 @@ Status RedisWorkerInfoAccessor::AsyncGetAll(
 Status RedisWorkerInfoAccessor::AsyncAdd(
     const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
     const StatusCallback &callback) {
+  return Status::Invalid("Not implemented");
+}
+
+Status RedisPlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
+    const PlacementGroupSpecification &placement_group_spec) {
   return Status::Invalid("Not implemented");
 }
 

@@ -16,6 +16,8 @@ syntax = "proto3";
 
 package ray.rpc;
 
+import "src/ray/protobuf/common.proto";
+
 message GetProfilingStatsRequest {
   // PID of the worker process.
   uint32 pid = 1;
@@ -27,13 +29,23 @@ message GetProfilingStatsReply {
   // Profiling stats.
   string profiling_stats = 1;
   // Standard output of the profiler process.
-  string stdout = 2;
+  string std_out = 2;
   // Standard error of the profiler process.
-  string stderr = 3;
+  string std_err = 3;
+}
+
+message ReportMetricsRequest {
+  repeated MetricPoint metrics_points = 1;
+}
+
+message ReportMetricsReply {
+  bool metrcs_description_required = 1;
 }
 
 // Service for communicating with the reporter.py process on a remote node.
 service ReporterService {
   // Get the profiling stats.
   rpc GetProfilingStats(GetProfilingStatsRequest) returns (GetProfilingStatsReply);
+  // Report metrics to the local metrics agents.
+  rpc ReportMetrics(ReportMetricsRequest) returns (ReportMetricsReply);
 }

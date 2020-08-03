@@ -6,13 +6,15 @@ import pytest
 
 import ray
 from ray.exceptions import RayCancellationError, RayTaskError, \
-                           RayTimeoutError, RayWorkerError
+                           RayTimeoutError, RayWorkerError, \
+                           UnreconstructableError
 from ray.test_utils import SignalActor
 
 
 def valid_exceptions(use_force):
     if use_force:
-        return (RayTaskError, RayCancellationError, RayWorkerError)
+        return (RayTaskError, RayCancellationError, RayWorkerError,
+                UnreconstructableError)
     else:
         return (RayTaskError, RayCancellationError)
 
@@ -223,9 +225,9 @@ def test_fast(shutdown_only, use_force):
         if random.random() > 0.95:
             ray.cancel(ids[idx], use_force)
     signaler.send.remote()
-    for obj_id in ids:
+    for obj_ref in ids:
         try:
-            ray.get(obj_id)
+            ray.get(obj_ref)
         except Exception as e:
             assert isinstance(e, valid_exceptions(use_force))
 

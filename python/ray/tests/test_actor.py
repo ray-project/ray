@@ -8,6 +8,7 @@ try:
 except ImportError:
     pytest_timeout = None
 import sys
+import datetime
 
 import ray
 import ray.test_utils
@@ -614,11 +615,11 @@ def test_remote_function_within_actor(ray_start_10_cpus):
         def __init__(self, x):
             self.x = x
             self.y = val2
-            self.object_ids = [f.remote(i) for i in range(5)]
+            self.object_refs = [f.remote(i) for i in range(5)]
             self.values2 = ray.get([f.remote(i) for i in range(5)])
 
         def get_values(self):
-            return self.x, self.y, self.object_ids, self.values2
+            return self.x, self.y, self.object_refs, self.values2
 
         def f(self):
             return [f.remote(i) for i in range(5)]
@@ -626,8 +627,8 @@ def test_remote_function_within_actor(ray_start_10_cpus):
         def g(self):
             return ray.get([g.remote(i) for i in range(5)])
 
-        def h(self, object_ids):
-            return ray.get(object_ids)
+        def h(self, object_refs):
+            return ray.get(object_refs)
 
     actor = Actor.remote(1)
     values = ray.get(actor.get_values.remote())
@@ -814,6 +815,25 @@ def test_inherit_actor_from_class(ray_start_regular):
     actor = Actor.remote(1)
     assert ray.get(actor.get_value.remote()) == 1
     assert ray.get(actor.g.remote(5)) == 6
+
+
+@pytest.mark.skip(
+    "This test is just used to print the latency of creating 100 actors.")
+def test_actor_creation_latency(ray_start_regular):
+    # This test is just used to test the latency of actor creation.
+    @ray.remote
+    class Actor:
+        def get_value(self):
+            return 1
+
+    start = datetime.datetime.now()
+    actor_handles = [Actor.remote() for _ in range(100)]
+    actor_create_time = datetime.datetime.now()
+    for actor_handle in actor_handles:
+        ray.get(actor_handle.get_value.remote())
+    end = datetime.datetime.now()
+    print("actor_create_time_consume = {}, total_time_consume = {}".format(
+        actor_create_time - start, end - start))
 
 
 if __name__ == "__main__":

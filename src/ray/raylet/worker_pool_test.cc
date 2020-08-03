@@ -100,21 +100,25 @@ class WorkerPoolTest : public ::testing::Test {
     worker_pool_ = std::unique_ptr<WorkerPoolMock>(new WorkerPoolMock(io_service_));
   }
 
-  std::shared_ptr<Worker> CreateWorker(Process proc,
-                                       const Language &language = Language::PYTHON) {
+  std::shared_ptr<WorkerInterface> CreateWorker(
+      Process proc, const Language &language = Language::PYTHON) {
     std::function<void(ClientConnection &)> client_handler =
         [this](ClientConnection &client) { HandleNewClient(client); };
-    std::function<void(std::shared_ptr<ClientConnection>, int64_t, const uint8_t *)>
+    std::function<void(std::shared_ptr<ClientConnection>, int64_t,
+                       const std::vector<uint8_t> &)>
         message_handler = [this](std::shared_ptr<ClientConnection> client,
-                                 int64_t message_type, const uint8_t *message) {
+                                 int64_t message_type,
+                                 const std::vector<uint8_t> &message) {
           HandleMessage(client, message_type, message);
         };
     local_stream_socket socket(io_service_);
     auto client =
         ClientConnection::Create(client_handler, message_handler, std::move(socket),
                                  "worker", {}, error_message_type_);
-    std::shared_ptr<Worker> worker = std::make_shared<Worker>(
+    std::shared_ptr<Worker> worker_ = std::make_shared<Worker>(
         WorkerID::FromRandom(), language, "127.0.0.1", client, client_call_manager_);
+    std::shared_ptr<WorkerInterface> worker =
+        std::dynamic_pointer_cast<WorkerInterface>(worker_);
     if (!proc.IsNull()) {
       worker->SetProcess(proc);
     }
@@ -162,7 +166,8 @@ class WorkerPoolTest : public ::testing::Test {
 
  private:
   void HandleNewClient(ClientConnection &){};
-  void HandleMessage(std::shared_ptr<ClientConnection>, int64_t, const uint8_t *){};
+  void HandleMessage(std::shared_ptr<ClientConnection>, int64_t,
+                     const std::vector<uint8_t> &){};
 };
 
 static inline TaskSpecification ExampleTaskSpec(
@@ -202,7 +207,7 @@ TEST_F(WorkerPoolTest, CompareWorkerProcessObjects) {
 
 TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
   Process proc = worker_pool_->StartWorkerProcess(Language::JAVA);
-  std::vector<std::shared_ptr<Worker>> workers;
+  std::vector<std::shared_ptr<WorkerInterface>> workers;
   for (int i = 0; i < NUM_WORKERS_PER_PROCESS_JAVA; i++) {
     workers.push_back(CreateWorker(Process(), Language::JAVA));
   }
@@ -251,13 +256,13 @@ TEST_F(WorkerPoolTest, InitialWorkerProcessCount) {
 
 TEST_F(WorkerPoolTest, HandleWorkerPushPop) {
   // Try to pop a worker from the empty pool and make sure we don't get one.
-  std::shared_ptr<Worker> popped_worker;
+  std::shared_ptr<WorkerInterface> popped_worker;
   const auto task_spec = ExampleTaskSpec();
   popped_worker = worker_pool_->PopWorker(task_spec);
   ASSERT_EQ(popped_worker, nullptr);
 
   // Create some workers.
-  std::unordered_set<std::shared_ptr<Worker>> workers;
+  std::unordered_set<std::shared_ptr<WorkerInterface>> workers;
   workers.insert(CreateWorker(Process::CreateNewDummy()));
   workers.insert(CreateWorker(Process::CreateNewDummy()));
   // Add the workers to the pool.
