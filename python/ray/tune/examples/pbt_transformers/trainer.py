@@ -66,6 +66,7 @@ class TuneTransformerTrainer(transformers.Trainer):
                 project=self.wandb_args["project_name"],
                 name=self.wandb_args["run_name"],
                 id=self.wandb_args["run_name"],
+                dir=tune.get_trial_dir(),
                 config=vars(self.args),
                 reinit=True,
                 allow_val_change=True,
