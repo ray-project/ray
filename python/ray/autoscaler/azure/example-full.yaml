@@ -55,7 +55,7 @@ provider:
     location: westus2
     resource_group: ray-cluster
     # set subscription id otherwise the default from az cli will be used
-    # subscription_id: 00000000-0000-0000-0000-000000000000   
+    # subscription_id: 00000000-0000-0000-0000-000000000000
 
 # How Ray will authenticate with newly launched nodes.
 auth:
@@ -67,7 +67,7 @@ auth:
 
 # More specific customization to node configurations can be made using the ARM template azure-vm-template.json file
 # See documentation here: https://docs.microsoft.com/en-us/azure/templates/microsoft.compute/2019-03-01/virtualmachines
-# Changes to the local file will be used during deployment of the head node, however worker nodes deployment occurs 
+# Changes to the local file will be used during deployment of the head node, however worker nodes deployment occurs
 # on the head node, so changes to the template must be included in the wheel file used in setup_commands section below
 
 # Provider-specific config for the head node, e.g. instance type.
@@ -89,7 +89,7 @@ worker_nodes:
         imageOffer: ubuntu-1804
         imageSku: 1804-gen2
         imageVersion: 20.02.01
-        # optionally set priority to use Spot instances 
+        # optionally set priority to use Spot instances
         priority: Spot
         # set a maximum price for spot instances if desired
         # billingProfile:
@@ -102,7 +102,14 @@ file_mounts: {
 #    "/path2/on/remote/machine": "/path2/on/local/machine",
 }
 
-# Whether changes to mounted files in the head node should sync to the worker node continuously
+# Files or directories to copy from the head node to the worker nodes. The format is a
+# list of paths. The same path on the head node will be copied to the worker node.
+# This behavior is a subset of the file_mounts behavior. In the vast majority of cases
+# you should just use file_mounts. Only use this if you know what you're doing!
+cluster_synced_files: []
+
+# Whether changes to directories in file_mounts or cluster_synced_files in the head node
+# should sync to the worker node continuously
 file_mounts_sync_continuously: False
 
 # List of commands that will be run before `setup_commands`. If docker is

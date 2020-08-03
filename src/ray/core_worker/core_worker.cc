@@ -1172,34 +1172,6 @@ Status CoreWorker::SetResource(const std::string &resource_name, const double ca
   return local_raylet_client_->SetResource(resource_name, capacity, client_id);
 }
 
-void CoreWorker::SubmitTask(const RayFunction &function,
-                            const std::vector<std::unique_ptr<TaskArg>> &args,
-                            const TaskOptions &task_options,
-                            std::vector<ObjectID> *return_ids, int max_retries) {
-  TaskSpecBuilder builder;
-  const int next_task_index = worker_context_.GetNextTaskIndex();
-  const auto task_id =
-      TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
-                            worker_context_.GetCurrentTaskID(), next_task_index);
-
-  const std::unordered_map<std::string, double> required_resources;
-  // TODO(ekl) offload task building onto a thread pool for performance
-  BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id,
-                      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
-                      rpc_address_, function, args, task_options.num_returns,
-                      task_options.resources, required_resources, return_ids);
-  TaskSpecification task_spec = builder.Build();
-  if (options_.is_local_mode) {
-    ExecuteTaskLocalMode(task_spec);
-  } else {
-    task_manager_->AddPendingTask(task_spec.CallerAddress(), task_spec, CurrentCallSite(),
-                                  max_retries);
-    io_service_.post([this, task_spec]() {
-      RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));
-    });
-  }
-}
-
 std::unordered_map<std::string, double> AddPlacementGroupConstraint(
     const std::unordered_map<std::string, double> &resources,
     PlacementGroupID placement_group_id, int64_t bundle_index) {
@@ -1213,6 +1185,37 @@ std::unordered_map<std::string, double> AddPlacementGroupConstraint(
     return new_resources;
   }
   return resources;
+}
+
+void CoreWorker::SubmitTask(const RayFunction &function,
+                            const std::vector<std::unique_ptr<TaskArg>> &args,
+                            const TaskOptions &task_options,
+                            std::vector<ObjectID> *return_ids, int max_retries,
+                            PlacementOptions placement_options) {
+  TaskSpecBuilder builder;
+  const int next_task_index = worker_context_.GetNextTaskIndex();
+  const auto task_id =
+      TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
+                            worker_context_.GetCurrentTaskID(), next_task_index);
+
+  auto constrained_resources = AddPlacementGroupConstraint(
+      task_options.resources, placement_options.first, placement_options.second);
+  const std::unordered_map<std::string, double> required_resources;
+  // TODO(ekl) offload task building onto a thread pool for performance
+  BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id,
+                      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
+                      rpc_address_, function, args, task_options.num_returns,
+                      constrained_resources, required_resources, return_ids);
+  TaskSpecification task_spec = builder.Build();
+  if (options_.is_local_mode) {
+    ExecuteTaskLocalMode(task_spec);
+  } else {
+    task_manager_->AddPendingTask(task_spec.CallerAddress(), task_spec, CurrentCallSite(),
+                                  max_retries);
+    io_service_.post([this, task_spec]() {
+      RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));
+    });
+  }
 }
 
 Status CoreWorker::CreateActor(const RayFunction &function,
