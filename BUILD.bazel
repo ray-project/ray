@@ -1405,9 +1405,9 @@ cc_library(
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
+        ":event_cc_proto",
         ":sha256",
         "@boost//:asio",
-        ":event_cc_proto",
         "@com_github_google_glog//:glog",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
