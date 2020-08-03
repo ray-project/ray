@@ -40,9 +40,9 @@ class Ray {
   static ObjectRef<T> Put(const T &obj);
 
   /// Get a single object from the object store.
-  /// This method will be blocked until all the objects are ready.
+  /// This method will be blocked until the object is ready.
   ///
-  /// \param[in] object The object reference which should be got.
+  /// \param[in] object The object reference which should be returned.
   /// \return shared pointer of the result.
   template <typename T>
   static std::shared_ptr<T> Get(const ObjectRef<T> &object);
