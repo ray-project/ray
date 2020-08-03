@@ -229,7 +229,7 @@ After running the coordinator server it will print the address of the coordinato
   >> INFO:ray.autoscaler.local.coordinator_server:Running on prem coordinator server
         on address <Host:PORT>
 
-Next, the user only specifies the ``<Host:PORT>`` printed above in the ``coordinator_address`` entry instead of specific head/worker ips in the provided `ray/python/ray/autoscaler/local/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/local/example-full.yaml>`__
+Next, the user only specifies the ``<Host:PORT>`` printed above in the ``coordinator_address`` entry instead of specific head/worker ips in the provided `ray/python/ray/autoscaler/local/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/local/example-full.yaml>`__.
 
 Now we cant test that it works by running the following commands from your local machine:
 
