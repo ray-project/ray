@@ -215,7 +215,7 @@ Test that it works by running the following commands from your local machine:
 Automatically Managed
 ~~~~~~~~~~~~~~~~~~~~~
 
-Start by running a coordinator server that will manage all the on prem clusters. The script for running the coordinator server is `ray/python/ray/autoscaler/local/coordinator_server.py <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/local/coordinator_server.py>`__.:
+Start by launching a coordinator server that will manage all the on prem clusters. The script for running the coordinator server is `ray/python/ray/autoscaler/local/coordinator_server.py <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/local/coordinator_server.py>`__. To launch the coordinator server run:
 
 .. code-block:: bash
 
