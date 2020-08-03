@@ -181,12 +181,14 @@ Test that it works by running the following commands from your local machine:
 
 Private Cluster (List of nodes)
 -------------------------------
-A private cluster is a cluster on premise. You would use this mode if you have some local nodes that you want to manage.
+A private cluster is a cluster on premise. You would use this mode if you want to run distributed Ray applications on some local nodes available on premise.
 
 The most preferable way to run a Ray cluster on a private cluster of hosts is via the Ray Cluster Launcher.
 
 There are two ways of running private clusters:
+
 #. Manually managed, i.e., the user explicitly specifies the head and worker ips.
+
 #. Automatically managed, i.e., the user only specifies a coordinator address to a coordinating server that automatically coordinates its head and worker ips.
 
 .. tip:: To avoid getting the password prompt when running private clusters make sure to setup your ssh keys on the private cluster as follows:
