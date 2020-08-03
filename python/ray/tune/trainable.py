@@ -237,31 +237,7 @@ class Trainable:
 
         stdout_file = self.config.pop(STDOUT_FILE, None)
         stderr_file = self.config.pop(STDERR_FILE, None)
-
-        if stdout_file:
-            stdout_path = os.path.expanduser(
-                os.path.join(self._logdir, stdout_file))
-            self._stdout_fp = open(stdout_path, "a+")
-            self._stdout_stream = Tee(sys.stdout, self._stdout_fp)
-            self._stdout_context = redirect_stdout(self._stdout_stream)
-            self._stdout_context.__enter__()
-
-        if stderr_file:
-            stderr_path = os.path.expanduser(
-                os.path.join(self._logdir, stderr_file))
-            self._stderr_fp = open(stderr_path, "a+")
-            self._stderr_stream = Tee(sys.stderr, self._stderr_fp)
-            self._stderr_context = redirect_stderr(self._stderr_stream)
-            self._stderr_context.__enter__()
-
-            # Add logging handler to root ray logger
-            formatter = logging.Formatter("[%(levelname)s %(asctime)s] "
-                                          "%(filename)s: %(lineno)d  "
-                                          "%(message)s")
-            self._stderr_logging_handler = logging.StreamHandler(
-                self._stderr_fp)
-            self._stderr_logging_handler.setFormatter(formatter)
-            ray.logger.addHandler(self._stderr_logging_handler)
+        self._open_logfiles(stdout_file, stderr_file)
 
         self._iteration = 0
         self._time_total = 0.0
@@ -574,6 +550,47 @@ class Trainable:
         """
         return False
 
+    def _open_logfiles(self, stdout_file, stderr_file):
+        """Open stdout and stderr logfiles."""
+        if stdout_file:
+            stdout_path = os.path.expanduser(
+                os.path.join(self._logdir, stdout_file))
+            self._stdout_fp = open(stdout_path, "a+")
+            self._stdout_stream = Tee(sys.stdout, self._stdout_fp)
+            self._stdout_context = redirect_stdout(self._stdout_stream)
+            self._stdout_context.__enter__()
+
+        if stderr_file:
+            stderr_path = os.path.expanduser(
+                os.path.join(self._logdir, stderr_file))
+            self._stderr_fp = open(stderr_path, "a+")
+            self._stderr_stream = Tee(sys.stderr, self._stderr_fp)
+            self._stderr_context = redirect_stderr(self._stderr_stream)
+            self._stderr_context.__enter__()
+
+            # Add logging handler to root ray logger
+            formatter = logging.Formatter("[%(levelname)s %(asctime)s] "
+                                          "%(filename)s: %(lineno)d  "
+                                          "%(message)s")
+            self._stderr_logging_handler = logging.StreamHandler(
+                self._stderr_fp)
+            self._stderr_logging_handler.setFormatter(formatter)
+            ray.logger.addHandler(self._stderr_logging_handler)
+
+    def _close_logfiles(self):
+        """Close stdout and stderr logfiles."""
+        if self._stderr_logging_handler:
+            ray.logger.removeHandler(self._stderr_logging_handler)
+
+        if self._stdout_context:
+            self._stdout_stream.flush()
+            self._stdout_context.__exit__(None, None, None)
+            self._stdout_fp.close()
+        if self._stderr_context:
+            self._stderr_stream.flush()
+            self._stderr_context.__exit__(None, None, None)
+            self._stderr_fp.close()
+
     def stop(self):
         """Releases all resources used by this trainable.
 
@@ -584,15 +601,7 @@ class Trainable:
         self._result_logger.close()
         self.cleanup()
 
-        if self._stderr_logging_handler:
-            ray.logger.removeHandler(self._stderr_logging_handler)
-
-        if self._stdout_context:
-            self._stdout_context.__exit__(None, None, None)
-            self._stdout_fp.close()
-        if self._stderr_context:
-            self._stderr_context.__exit__(None, None, None)
-            self._stderr_fp.close()
+        self._close_logfiles()
 
     @property
     def logdir(self):

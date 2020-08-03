@@ -31,7 +31,8 @@ from ray.tune.utils.mock import mock_storage_client, MOCK_REMOTE_DIR
 
 class TrainableFunctionApiTest(unittest.TestCase):
     def setUp(self):
-        ray.init(num_cpus=4, num_gpus=0, object_store_memory=150 * 1024 * 1024)
+        # ray.init(num_cpus=4, num_gpus=0, object_store_memory=150 * 1024 * 1024)
+        ray.init(address="127.0.01:6379")
 
     def tearDown(self):
         ray.shutdown()

@@ -67,6 +67,31 @@ def _report_progress(runner, reporter, done=False):
         reporter.report(trials, done, sched_debug_str, executor_debug_str)
 
 
+def _validate_log_to_file(log_to_file):
+    """Validate ``tune.run``'s ``log_to_file`` parameter. Return
+    validated relative stdout and stderr filenames."""
+    if not log_to_file:
+        stdout_file = stderr_file = None
+    elif isinstance(log_to_file, bool) and log_to_file:
+        stdout_file = "stdout"
+        stderr_file = "stderr"
+    elif isinstance(log_to_file, str):
+        stdout_file = stderr_file = log_to_file
+    elif isinstance(log_to_file, Sequence):
+        if len(log_to_file) != 2:
+            raise ValueError(
+                "If you pass a Sequence to `log_to_file` it has to have "
+                "a length of 2 (for stdout and stderr, respectively). The "
+                "Sequence you passed has length {}.".format(len(log_to_file)))
+        stdout_file, stderr_file = log_to_file
+    else:
+        raise ValueError(
+            "You can pass a boolean, a string, or a Sequence of length 2 to "
+            "`log_to_file`, but you passed something else ({}).".format(
+                type(log_to_file)))
+    return stdout_file, stderr_file
+
+
 def run(run_or_experiment,
         name=None,
         stop=None,
@@ -151,9 +176,9 @@ def run(run_or_experiment,
             are written. If `true`, outputs are written to `trialdir/stdout`
             and `trialdir/stderr`, respectively. If this is a single string,
             this is interpreted as a file relative to the trialdir, to which
-            both streams are written. If this is a Sequence, it has to have
-            length 2 and the elements indicate the files to which stdout and
-            stderr are written, respectively.
+            both streams are written. If this is a Sequence (e.g. a Tuple),
+            it has to have length 2 and the elements indicate the files to
+            which stdout and stderr are written, respectively.
         sync_to_cloud (func|str): Function for syncing the local_dir to and
             from upload_dir. If string, then it must be a string template that
             includes `{source}` and `{target}` for the syncer to run. If not
@@ -264,26 +289,7 @@ def run(run_or_experiment,
     else:
         experiments = [run_or_experiment]
 
-    if not log_to_file:
-        stdout_file = stderr_file = None
-    elif isinstance(log_to_file, bool) and log_to_file:
-        stdout_file = "stdout"
-        stderr_file = "stderr"
-    elif isinstance(log_to_file, str):
-        stdout_file = stderr_file = log_to_file
-    elif isinstance(log_to_file, Sequence):
-        if len(log_to_file) != 2:
-            raise ValueError(
-                "If you pass a Sequence to `log_to_file` it has to have "
-                "a length of 2 (for stdout and stderr, respectively). The "
-                "Sequence you passed has length {}.".format(len(log_to_file)))
-        stdout_file, stderr_file = log_to_file
-    else:
-        raise ValueError(
-            "You can pass a boolean, a string, or a Sequence of length 2 to "
-            "`log_to_file`, but you passed something else ({}).".format(
-                type(log_to_file)))
-
+    stdout_file, stderr_file = _validate_log_to_file(log_to_file)
     config[STDOUT_FILE] = stdout_file
     config[STDERR_FILE] = stderr_file
 
