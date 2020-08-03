@@ -394,7 +394,7 @@ class SearchGenerator(SearchAlgorithm):
         self.searcher.save(checkpoint_path)
 
     def restore(self, checkpoint_path):
-        self.searcher.restore(cehckpoint_path)
+        self.searcher.restore(checkpoint_path)
 
 
 class _MockSearcher(Searcher):
