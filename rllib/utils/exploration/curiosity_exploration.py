@@ -29,7 +29,6 @@ from ray.rllib.policy.sample_batch import SampleBatch
 
 # TODO alphabetize imports, lint
 # TODO how to test if action space is discrete
-# TODO should i use the default docstring format. also check the types with sven
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.framework import try_import_torch, TensorType
 from ray.rllib.utils.types import TensorType, TensorStructType, SampleBatchType
@@ -38,7 +37,6 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.models.torch.misc import SlimFC
-# from ray.rllib.utils.exploration import EpsilonGreedy, GaussianNoise, Random
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 
 from ray.rllib.utils.framework import get_activation_fn
@@ -77,7 +75,7 @@ class Curiosity(Exploration):
             else:
                 return default
 
-        # Casts ints to a list, else leaves it unchanged
+        # Casts a single int to a list, else leaves it unchanged
         def cast_to_list(l):
             if type(l) == int:
                 return [l]
@@ -135,8 +133,9 @@ class Curiosity(Exploration):
         self.criterion_reduced = torch.nn.MSELoss(reduction="sum")
 
         # This is only used to select the correct action
-        self.exploration_submodule = from_config(cls=Exploration, config=
-                {
+        self.exploration_submodule = from_config(
+            cls=Exploration,
+            config={
                 'type': submodule_type,
                 'action_space': action_space,
                 'framework': framework,
@@ -174,9 +173,10 @@ class Curiosity(Exploration):
                              policy_loss,
                              sample_batch: SampleBatchType):
         # Cast to torch tensors, to be fed into the model
-        next_obs_list = torch.from_numpy(sample_batch["new_obs"]).float()
+        obs_list = sample_batch["obs"].float()
+        next_obs_list = sample_batch["new_obs"].float()
         emb_next_obs_list = self._get_latent_vector(next_obs_list).float()
-        actions_list = torch.from_numpy(sample_batch["actions"]).float()
+        actions_list = sample_batch["actions"].float()
 
         actions_pred = self._predict_action(obs_list, next_obs_list)
         embedding_pred = self._predict_next_obs(obs_list, actions_list)
@@ -186,7 +186,7 @@ class Curiosity(Exploration):
             emb_next_obs_list, embedding_pred)
         actions_loss = self.criterion_reduced(
             actions_pred.squeeze(1), actions_list)
-        return policy_loss.append(embedding_loss + actions_loss)
+        return policy_loss + [embedding_loss + actions_loss]
 
     def _get_latent_vector(self, obs: TensorType) -> TensorType:
         """
@@ -195,14 +195,14 @@ class Curiosity(Exploration):
         """
         return self.feature_model(obs)
 
-    def get_optimizer(self):
+    def get_exploration_optimizer(self, config):
         """
         Returns an optimizer for environmental dynamics networks, which will
         then be handled by the Policy
         """
-        forward_params = list(self.forwards_model.parameters())
+        forward_params = list(self.forward_model.parameters())
         inverse_params = list(self.inverse_model.parameters())
-        feature_params = list(self.features_model.parameters())
+        feature_params = list(self.feature_model.parameters())
 
         return torch.optim.Adam(
             forward_params + inverse_params + feature_params,

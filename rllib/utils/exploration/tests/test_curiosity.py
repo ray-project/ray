@@ -19,9 +19,6 @@ class TestCuriosity(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
-    def test_useless(self):
-        print("RAN")
-
     def test_no_curiosity(self):
         config = ppo.DEFAULT_CONFIG
         env = "CartPole-v0"
@@ -51,9 +48,7 @@ class TestCuriosity(unittest.TestCase):
     def test_curiosity(self):
         config = ppo.DEFAULT_CONFIG
         env = "CartPole-v0"
-
         config["framework"] = "torch"
-
         config["exploration_config"] = {
             "type": "ray.rllib.utils.exploration.curiosity_exploration.Curiosity",
             "forward_net_hiddens": [64],
