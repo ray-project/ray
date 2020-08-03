@@ -222,7 +222,7 @@ class Trainable:
 
         self._logger_creator = logger_creator
         self._result_logger = self._logdir = None
-        self._create_logger()
+        self._create_logger(self.config)
 
         self._stdout_context = self._stdout_fp = self._stdout_stream = None
         self._stderr_context = self._stderr_fp = self._stderr_stream = None
@@ -537,14 +537,16 @@ class Trainable:
         Subclasses should override reset_config() to actually
         reset actor behavior for the new config."""
         self.config = new_config
-        self.config[LOGDIR_PATH] = new_logdir
+
+        logger_config = new_config.copy()
+        logger_config[LOGDIR_PATH] = new_logdir
 
         self._logdir = new_logdir
 
         self._result_logger.flush()
         self._result_logger.close()
 
-        self._create_logger()
+        self._create_logger(logger_config)
 
         stdout_file = new_config.pop(STDOUT_FILE, None)
         stderr_file = new_config.pop(STDERR_FILE, None)
@@ -570,10 +572,10 @@ class Trainable:
         """
         return False
 
-    def _create_logger(self):
+    def _create_logger(self, config):
         """Create logger from logger creator"""
         if self._logger_creator:
-            self._result_logger = self._logger_creator(self.config)
+            self._result_logger = self._logger_creator(config)
             self._logdir = self._result_logger.logdir
         else:
             logdir_prefix = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
@@ -581,7 +583,7 @@ class Trainable:
             self._logdir = tempfile.mkdtemp(
                 prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
             self._result_logger = UnifiedLogger(
-                self.config, self._logdir, loggers=None)
+                config, self._logdir, loggers=None)
 
     def _open_logfiles(self, stdout_file, stderr_file):
         """Create loggers. Open stdout and stderr logfiles."""

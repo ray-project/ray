@@ -161,7 +161,7 @@ class RayTrialExecutor(TrialExecutor):
 
         def logger_creator(config):
             # Set the working dir in the remote process, for user file writes
-            logdir = config.get(LOGDIR_PATH, remote_logdir)
+            logdir = config.pop(LOGDIR_PATH, remote_logdir)
             os.makedirs(logdir, exist_ok=True)
             if not ray.worker._mode() == ray.worker.LOCAL_MODE:
                 os.chdir(logdir)
