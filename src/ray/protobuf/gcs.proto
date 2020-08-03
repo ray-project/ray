@@ -253,6 +253,26 @@ message GcsNodeInfo {
   string node_manager_hostname = 8;
 }
 
+// Represents the demand for a particular resource shape.
+message ResourceDemand {
+  // The resource shape requested. This is a map from the resource string
+  // (e.g., "CPU") to the amount requested.
+  map<string, double> shape = 1;
+  // The number of requests that are ready to run (i.e., dependencies have been
+  // fulfilled), but that are waiting for resources.
+  uint64 num_ready_requests_queued = 2;
+  // The number of requests for which there is no node that is a superset of
+  // the requested resource shape.
+  uint64 num_infeasible_requests_queued = 3;
+}
+
+// Represents the demand sorted by resource shape.
+message ResourceLoad {
+  // A list of all resource demands. The resource shape in each demand is
+  // unique.
+  repeated ResourceDemand resource_demands = 1;
+}
+
 message HeartbeatTableData {
   // Node manager client id
   bytes client_id = 1;
@@ -262,14 +282,19 @@ message HeartbeatTableData {
   map<string, double> resources_total = 3;
   // Aggregate outstanding resource load on this node manager.
   map<string, double> resource_load = 4;
+  // The resource load on this node, sorted by resource shape.
+  ResourceLoad resource_load_by_shape = 5;
   // Object IDs that are in use by workers on this node manager's node.
-  repeated bytes active_object_id = 5;
+  repeated bytes active_object_id = 6;
   // Whether this node manager is requesting global GC.
-  bool should_global_gc = 6;
+  bool should_global_gc = 7;
 }
 
 message HeartbeatBatchTableData {
   repeated HeartbeatTableData batch = 1;
+  // The total resource demand on all nodes included in the batch, sorted by
+  // resource shape.
+  ResourceLoad resource_load_by_shape = 2;
 }
 
 // Data for a lease on task execution.
