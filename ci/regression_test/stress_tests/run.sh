@@ -11,8 +11,8 @@ usage() {
 
 for i in "$@"
 do
-echo $i
-case $i in
+echo "$i"
+case "$i" in
     --ray-version=*)
     ray_version="${i#*=}"
 

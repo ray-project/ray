@@ -3,6 +3,7 @@
 #include <cmath>
 #include <sstream>
 
+#include "ray/common/bundle_spec.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -226,21 +227,22 @@ void ResourceSet::AddResources(const ResourceSet &other) {
   }
 }
 
-void ResourceSet::AddBundleResources(const std::string &bundle_id,
-                                     const ResourceSet &other) {
+void ResourceSet::AddBundleResources(const PlacementGroupID &bundle_id,
+                                     const int bundle_index, const ResourceSet &other) {
   for (const auto &resource_pair : other.GetResourceAmountMap()) {
-    const std::string &resource_label = bundle_id + "_" + resource_pair.first;
+    const std::string &resource_label =
+        FormatPlacementGroupResource(resource_pair.first, bundle_id, bundle_index);
     const FractionalResourceQuantity &resource_capacity = resource_pair.second;
     resource_capacity_[resource_label] += resource_capacity;
   }
 }
 
-void ResourceSet::ReturnBundleResources(const std::string &bundle_id) {
+void ResourceSet::ReturnBundleResources(const PlacementGroupID &bundle_id,
+                                        const int bundle_index) {
   for (auto iter = resource_capacity_.begin(); iter != resource_capacity_.end();) {
     const std::string &bundle_resource_label = iter->first;
-    if (bundle_resource_label.find(bundle_id) != std::string::npos) {
-      const std::string &resource_label =
-          bundle_resource_label.substr(bundle_resource_label.find_last_of("_") + 1);
+    if (bundle_resource_label.find(bundle_id.Hex()) != std::string::npos) {
+      const std::string &resource_label = GetOriginalResourceName(bundle_resource_label);
       const FractionalResourceQuantity &resource_capacity = iter->second;
       resource_capacity_[resource_label] += resource_capacity;
       iter = resource_capacity_.erase(iter);
@@ -669,7 +671,7 @@ void ResourceIdSet::AddBundleResource(const std::string &resource_name,
 }
 
 void ResourceIdSet::CancelResourceReserve(const std::string &resource_name) {
-  std::string origin_resource_name = resource_name.substr(resource_name.find("_") + 1);
+  std::string origin_resource_name = GetOriginalResourceName(resource_name);
   auto iter_orig = available_resources_.find(origin_resource_name);
   auto iter_bundle = available_resources_.find(resource_name);
   if (iter_bundle == available_resources_.end()) {
@@ -835,17 +837,19 @@ void SchedulingResources::UpdateResourceCapacity(const std::string &resource_nam
   }
 }
 
-void SchedulingResources::UpdateBundleResource(const std::string &bundle_id,
+void SchedulingResources::UpdateBundleResource(const PlacementGroupID &group,
+                                               const int bundle_index,
                                                const ResourceSet &resource_set) {
   resources_available_.SubtractResourcesStrict(resource_set);
-  resources_available_.AddBundleResources(bundle_id, resource_set);
+  resources_available_.AddBundleResources(group, bundle_index, resource_set);
   resources_total_.SubtractResourcesStrict(resource_set);
-  resources_total_.AddBundleResources(bundle_id, resource_set);
+  resources_total_.AddBundleResources(group, bundle_index, resource_set);
 }
 
-void SchedulingResources::ReturnBundleResource(const std::string &bundle_id) {
-  resources_available_.ReturnBundleResources(bundle_id);
-  resources_total_.ReturnBundleResources(bundle_id);
+void SchedulingResources::ReturnBundleResource(const PlacementGroupID &group,
+                                               const int bundle_index) {
+  resources_available_.ReturnBundleResources(group, bundle_index);
+  resources_total_.ReturnBundleResources(group, bundle_index);
 }
 
 void SchedulingResources::DeleteResource(const std::string &resource_name) {

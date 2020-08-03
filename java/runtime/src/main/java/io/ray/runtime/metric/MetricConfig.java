@@ -39,10 +39,10 @@ public class MetricConfig {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-      .add("timeIntervalMs", timeIntervalMs)
-      .add("threadPoolSize", threadPoolSize)
-      .add("shutdownWaitTimeMs", shutdownWaitTimeMs)
-      .toString();
+        .add("timeIntervalMs", timeIntervalMs)
+        .add("threadPoolSize", threadPoolSize)
+        .add("shutdownWaitTimeMs", shutdownWaitTimeMs)
+        .toString();
   }
 
   public static MetricConfigBuilder builder() {

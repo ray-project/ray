@@ -98,11 +98,15 @@ def save_checkpoint(checkpoint):
 
 
 @contextmanager
-def checkpoint_dir(step=None):
+def checkpoint_dir(step):
     """Returns a checkpoint dir inside a context.
 
     Store any files related to restoring state within the
     provided checkpoint dir.
+
+    Args:
+        step (int): Index for the checkpoint. Expected to be a
+            monotonically increasing quantity.
 
     .. code-block:: python
 
@@ -136,6 +140,9 @@ def checkpoint_dir(step=None):
     """
     _session = get_session()
 
+    if step is None:
+        raise ValueError("checkpoint_dir(step) must be provided - got None.")
+
     if _session:
         _checkpoint_dir = _session.make_checkpoint_dir(step=step)
     else:
@@ -144,7 +151,7 @@ def checkpoint_dir(step=None):
     yield _checkpoint_dir
 
     if _session:
-        _session.save_checkpoint(_checkpoint_dir)
+        _session.set_checkpoint(_checkpoint_dir)
 
 
 def get_trial_dir():

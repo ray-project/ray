@@ -190,6 +190,13 @@ py_test(
     deps = ["//:ray_lib"],
 )
 
+py_test(
+    name = "test_coordinator_server",
+    size = "small",
+    srcs = SRCS + ["test_coordinator_server.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
 
 py_test(
     name = "test_autoscaler_aws",
@@ -203,13 +210,6 @@ py_test(
     size = "small",
     srcs = SRCS + ["test_autoscaler_yaml.py"],
     data = ["additional_property.yaml"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_cython",
-    size = "small",
-    srcs = SRCS + ["test_cython.py"],
     deps = ["//:ray_lib"],
 )
 
@@ -230,7 +230,7 @@ py_test(
 
 py_test(
     name = "test_failure",
-    size = "medium",
+    size = "large",
     srcs = SRCS + ["test_failure.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],

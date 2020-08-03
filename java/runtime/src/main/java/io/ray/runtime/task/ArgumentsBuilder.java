@@ -7,6 +7,7 @@ import io.ray.api.id.ObjectId;
 import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.generated.Common.Language;
 import io.ray.runtime.object.NativeRayObject;
+import io.ray.runtime.object.ObjectRefImpl;
 import io.ray.runtime.object.ObjectSerializer;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -22,7 +23,8 @@ public class ArgumentsBuilder {
    * If the the size of an argument's serialized data is smaller than this number, the argument will
    * be passed by value. Otherwise it'll be passed by reference.
    */
-  private static final int LARGEST_SIZE_PASS_BY_VALUE = 100 * 1024;
+  // TODO(kfstorm): Read from internal config `max_direct_call_object_size`.
+  public static final int LARGEST_SIZE_PASS_BY_VALUE = 100 * 1024;
 
   /**
    * This dummy type is also defined in signature.py. Please keep it synced.
@@ -39,7 +41,8 @@ public class ArgumentsBuilder {
       ObjectId id = null;
       NativeRayObject value = null;
       if (arg instanceof ObjectRef) {
-        id = ((ObjectRef) arg).getId();
+        Preconditions.checkState(arg instanceof ObjectRefImpl);
+        id = ((ObjectRefImpl<?>) arg).getId();
       } else {
         value = ObjectSerializer.serialize(arg);
         if (language != Language.JAVA) {
