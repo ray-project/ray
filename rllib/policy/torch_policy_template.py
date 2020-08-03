@@ -30,7 +30,7 @@ def build_torch_policy(name,
                        make_model_and_action_dist=None,
                        apply_gradients_fn=None,
                        mixins=None,
-                       get_view_requirements=None,
+                       get_view_requirements_fn=None,
                        get_batch_divisibility_req=None):
     """Helper function for creating a torch policy class at runtime.
 
@@ -86,7 +86,7 @@ def build_torch_policy(name,
         mixins (list): list of any class mixins for the returned policy class.
             These mixins will be applied in order and will have higher
             precedence than the TorchPolicy class.
-        get_view_requirements (Callable[[], Dict[str, ViewRequirement]]): An
+        get_view_requirements_fn (Callable[[], Dict[str, ViewRequirement]]): An
             optional callable to retrieve additional view requirements for this
             policy.
         get_batch_divisibility_req (Optional[callable]): Optional callable that
@@ -159,8 +159,8 @@ def build_torch_policy(name,
         @override(TorchPolicy)
         def get_view_requirements(self):
             req = super().get_view_requirements()
-            if callable(get_view_requirements):
-                req.update(get_view_requirements(self))
+            if callable(get_view_requirements_fn):
+                req.update(get_view_requirements_fn(self))
             return req
 
         @override(Policy)

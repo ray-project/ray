@@ -8,22 +8,21 @@ import time
 from typing import Any, Callable, Dict, List, Iterable, Optional, Set, Tuple,\
     TYPE_CHECKING, Union
 
-from ray.util.debug import log_once
+from ray.rllib.env.base_env import BaseEnv, ASYNC_RESET_RETURN
+from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
 from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.evaluation.fast_multi_agent_sample_batch_builder import \
     _FastMultiAgentSampleBatchBuilder
 from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
 from ray.rllib.evaluation.sample_batch_builder import \
     MultiAgentSampleBatchBuilder
+from ray.rllib.models.preprocessors import Preprocessor
+from ray.rllib.offline import InputReader
 from ray.rllib.policy.policy import clip_action, Policy
 from ray.rllib.policy.tf_policy import TFPolicy
-from ray.rllib.models.preprocessors import Preprocessor
-from ray.rllib.utils.filter import Filter
-from ray.rllib.env.base_env import BaseEnv, ASYNC_RESET_RETURN
-from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
-from ray.rllib.offline import InputReader
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
+from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray, \
     unbatch
@@ -31,6 +30,7 @@ from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.types import SampleBatchType, AgentID, PolicyID, \
     EnvObsType, EnvInfoDict, EnvID, MultiEnvDict, EnvActionType, \
     TensorStructType
+from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     from ray.rllib.agents.callbacks import DefaultCallbacks
@@ -474,7 +474,9 @@ def _env_runner(worker: "RolloutWorker",
     # Only one builder per sampler (all samples are collected in a per-policy
     # fashion).
     _fast_sample_batch_builder = _FastMultiAgentSampleBatchBuilder(
-        policies, callbacks)
+        policies, callbacks,
+        num_agents=100,
+        num_timesteps=horizon if horizon != float("inf") else None)
 
     def get_batch_builder():
         if batch_builder_pool:
@@ -735,13 +737,13 @@ def _process_observations(
         for agent_id, raw_obs in agent_obs.items():
             assert agent_id != "__all__"
             policy_id: PolicyID = episode.policy_for(agent_id)
-            prep_obs: EnvObsType = _get_or_raise(preprocessors,
-                                                 policy_id).transform(raw_obs)
+            prepr = _get_or_raise(preprocessors, policy_id)
+            prep_obs: EnvObsType = prepr.transform(raw_obs)
             if log_once("prep_obs"):
                 logger.info("Preprocessed obs: {}".format(summarize(prep_obs)))
 
-            filtered_obs: EnvObsType = _get_or_raise(obs_filters,
-                                                     policy_id)(prep_obs)
+            filter = _get_or_raise(obs_filters, policy_id)
+            filtered_obs: EnvObsType = filter(prep_obs)
             if log_once("filtered_obs"):
                 logger.info("Filtered obs: {}".format(summarize(filtered_obs)))
 
@@ -1002,9 +1004,11 @@ def _do_policy_eval(
                 timestep=policy.global_timestep)
         else:
             if _use_trajectory_view_api:
+                input_dict = eval_data.get_trajectory_view(
+                    policy.get_view_requirements())
                 eval_results[policy_id] = \
-                    policy.compute_actions_from_trajectories(
-                        eval_data, timestep=policy.global_timestep)
+                    policy.compute_actions_from_input_dict(
+                        input_dict, timestep=policy.global_timestep)
             else:
                 rnn_in = [t.rnn_state for t in eval_data]
                 rnn_in_cols: StateBatch = [

@@ -73,7 +73,7 @@ class TestPPO(unittest.TestCase):
                         include_state=lstm)
                     trainer.stop()
 
-    def test_ppo_fast_sampling(self):
+    def test_trajectory_view_api_lstms(self):
         """Test whether a PPOTrainer runs faster with `_fast_sampling` option.
         """
         config = copy.deepcopy(ppo.DEFAULT_CONFIG)
@@ -154,6 +154,21 @@ class TestPPO(unittest.TestCase):
             print("w/ _fast_sampling: reward={}".format(
                 results["episode_reward_mean"]))
             self.assertGreater(results["episode_reward_mean"], 80.0)
+
+    def test_trajectory_view_api_atari_frame_stacking(self):
+        """Test whether trajectory view API supports Atari frame-stacking.
+        """
+        config = copy.deepcopy(ppo.DEFAULT_CONFIG)
+        config["_use_trajectory_view_api"] = True
+        config["num_workers"] = 0
+        config["model"]["framestack"] = True
+        num_iterations = 5
+        # Only works in torch so far.
+        for _ in framework_iterator(config, frameworks="torch"):
+            trainer = ppo.PPOTrainer(config=config, env="Pong-v0")
+            for i in range(num_iterations):
+                results = trainer.train()
+            trainer.stop()
 
     def test_ppo_fake_multi_gpu_learning(self):
         """Test whether PPOTrainer can learn CartPole w/ faked multi-GPU."""

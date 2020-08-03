@@ -33,15 +33,19 @@ class _FastMultiAgentSampleBatchBuilder:
     def __init__(self,
                  policy_map: Dict[PolicyID, Policy],
                  callbacks: "DefaultCallbacks",
-                 num_agents=1000):
+                 num_agents: int = 1000,
+                 num_timesteps=None,
+                 time_major: Optional[bool] = False):
         """Initializes a _FastMultiAgentSampleBatchBuilder object.
 
         Args:
             policy_map (Dict[PolicyID,Policy]): Maps policy ids to policy
                 instances.
             callbacks (DefaultCallbacks): RLlib callbacks.
-            buffer_size (Optional[Union[int,float]]): The max number of
-                timesteps to fit into one buffer column.
+            num_agents (int): The max number of agent slots to pre-allocate
+                in the buffer.
+            num_timesteps (int): The max number of timesteps to pre-allocate
+                in the buffer.
         """
 
         self.policy_map = policy_map
@@ -53,10 +57,14 @@ class _FastMultiAgentSampleBatchBuilder:
         # Collect SampleBatches per-policy in PolicyTrajectories objects.
         self.rollout_sample_collectors = {}
         for pid, policy in policy_map.items():
-            kwargs = {}
+            kwargs = {"time_major": time_major}
             if policy.is_recurrent():
                 kwargs["num_timesteps"] = \
                     policy.model.model_config["max_seq_len"]
+                kwargs["time_major"] = True
+            elif num_timesteps is not None:
+                kwargs["num_timesteps"] = num_timesteps
+
             self.rollout_sample_collectors[pid] = RolloutSampleCollector(
                 num_agents=self.num_agents, **kwargs)
 

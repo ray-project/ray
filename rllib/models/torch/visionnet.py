@@ -1,9 +1,13 @@
 import numpy as np
+from typing import Dict
 
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.misc import normc_initializer, same_padding, \
     SlimConv2d, SlimFC
 from ray.rllib.models.tf.visionnet_v1 import _get_filter_config
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import get_activation_fn, try_import_torch
 
@@ -173,6 +177,14 @@ class VisionNetwork(TorchModelV2, nn.Module):
             else:
                 features = self._features
             return self._value_branch(features).squeeze(1)
+
+    @override(ModelV2)
+    def get_view_requirements(self) -> Dict[str, ViewRequirement]:
+        req = super().get_view_requirements()
+        # Optional: framestacking obs/new_obs for Atari.
+        if self.model_config["framestack"]:
+            req[SampleBatch.OBS].repeats = [-3, -2, -1, 0]
+        return req
 
     def _hidden_layers(self, obs):
         res = self._convs(obs.permute(0, 3, 1, 2))  # switch to channel-major

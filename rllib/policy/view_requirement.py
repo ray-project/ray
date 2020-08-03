@@ -1,5 +1,5 @@
 from gym.spaces import Box, Space
-from typing import Optional
+from typing import List, Optional
 
 from ray.rllib.utils.framework import try_import_torch
 
@@ -29,6 +29,7 @@ class ViewRequirement:
                  data_col: Optional[str] = None,
                  space: Space = None,
                  shift: int = 0,
+                 repeats: Optional[List[int]] = None,
                  sampling: bool = True,
                  postprocessing: bool = True,
                  training: bool = True):
@@ -50,6 +51,7 @@ class ViewRequirement:
         self.data_col = data_col
         self.space = space or Box(float("-inf"), float("inf"), shape=())
         self.shift = shift
+        self.repeats = repeats
         self.sampling = sampling
         self.postprocessing = postprocessing
         self.training = training

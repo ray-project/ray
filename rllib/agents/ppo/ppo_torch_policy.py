@@ -224,10 +224,16 @@ def setup_mixins(policy, obs_space, action_space, config):
 
 
 def get_view_requirements_fn(policy):
+    if hasattr(policy, "view_requirements"):
+        return policy.view_requirements
+    framestack = policy.config["_use_trajectory_view_api"] and \
+                 policy.config["model"]["framestack"]
     return {
         # Next obs are needed for PPO postprocessing.
         SampleBatch.NEXT_OBS: ViewRequirement(
-            SampleBatch.OBS, shift=1, sampling=False, training=False),
+            SampleBatch.OBS, shift=1, sampling=False, training=False,
+            repeats=[-3, -2, -1, 0] if framestack else None
+        ),
         # VF preds are needed for the loss.
         SampleBatch.VF_PREDS: ViewRequirement(sampling=False),
     }
@@ -247,5 +253,5 @@ PPOTorchPolicy = build_torch_policy(
         LearningRateSchedule, EntropyCoeffSchedule, KLCoeffMixin,
         ValueNetworkMixin
     ],
-    get_view_requirements=get_view_requirements_fn,
+    get_view_requirements_fn=get_view_requirements_fn,
 )

@@ -223,6 +223,10 @@ COMMON_CONFIG: TrainerConfigDict = {
     # contain different information on the ongoing episode.
     # NOTE: Only supported for PyTorch so far.
     "_use_trajectory_view_api": False,
+    #"sample_collector_config": {
+    #    "collection_mode": "BxT",
+    #    "framestack": 4,
+    #},
 
     # Element-wise observation filter, either "NoFilter" or "MeanStdFilter".
     "observation_filter": "NoFilter",
