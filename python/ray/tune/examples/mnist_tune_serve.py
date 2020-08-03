@@ -1,7 +1,8 @@
 import argparse
+import json
 import os
+import shutil
 import sys
-from collections import namedtuple
 from functools import partial
 from math import ceil
 
@@ -128,6 +129,50 @@ class MNISTBackend:
         outputs = self.model(images)
         predicted = torch.max(outputs.data, 1)[1]
         return {"result": predicted.numpy().tolist()}
+
+
+def get_current_model(model_dir):
+    checkpoint_path = os.path.join(model_dir, "checkpoint")
+    meta_path = os.path.join(model_dir, "meta.json")
+
+    if not os.path.exists(checkpoint_path) or \
+       not os.path.exists(meta_path):
+        return None, None, None
+
+    with open(meta_path, "rt") as fp:
+        meta = json.load(fp)
+
+    return checkpoint_path, meta["config"], meta["metrics"]
+
+
+def serve_new_model(model_dir, checkpoint, config, metrics, day):
+    print("Serving checkpoint: {}".format(checkpoint))
+
+    if not os.path.exists(model_dir):
+        try:
+            os.mkdir(model_dir, 0o755)
+        except OSError:
+            return False
+
+    checkpoint_path = os.path.join(model_dir, "checkpoint")
+    meta_path = os.path.join(model_dir, "meta.json")
+
+    if os.path.exists(checkpoint_path):
+        shutil.rmtree(checkpoint_path)
+
+    shutil.copytree(checkpoint, checkpoint_path)
+
+    with open(meta_path, "wt") as fp:
+        json.dump(dict(config=config, metrics=metrics), fp)
+
+    serve.init()
+    backend_name = "mnist:day_{}".format(day)
+    serve.create_backend(backend_name, MNISTBackend, checkpoint_path, config,
+                         metrics)
+    serve.create_endpoint(
+        "mnist", backend=backend_name, route="/mnist", methods=["POST"])
+
+    return True
 
 
 def train_from_scratch(config,
@@ -267,6 +312,7 @@ def tune_from_scratch(num_samples=10, num_epochs=10, gpus_per_trial=0., day=0):
 
 
 def tune_from_existing(start_model,
+                       start_config,
                        num_samples=10,
                        num_epochs=10,
                        gpus_per_trial=0.,
@@ -275,11 +321,12 @@ def tune_from_existing(start_model,
     N = data_interface._get_day_slice(day) - data_interface._get_day_slice(
         day - 1)
 
-    config = {
+    config = start_config.copy()
+    config.update({
         "batch_size": tune.choice([16, 32, 64]),
         "lr": tune.loguniform(1e-4, 1e-1),
         "momentum": tune.uniform(0.1, 0.9),
-    }
+    })
 
     scheduler = ASHAScheduler(
         metric="mean_accuracy",
@@ -294,7 +341,8 @@ def tune_from_existing(start_model,
 
     analysis = tune.run(
         partial(
-            train_from_scratch,
+            train_from_existing,
+            start_model=start_model,
             data_interface=data_interface,
             num_epochs=num_epochs,
             day=day),
@@ -308,7 +356,7 @@ def tune_from_existing(start_model,
         progress_reporter=reporter,
         checkpoint_at_end=True,
         verbose=0,
-        name="tune_serve_mnist_fromscratch")
+        name="tune_serve_mnist_fromsexisting")
 
     best_trial = analysis.get_best_trial("mean_accuracy", "max", "last")
     best_accuracy = best_trial.metric_analysis["mean_accuracy"]["last"]
@@ -320,70 +368,78 @@ def tune_from_existing(start_model,
 
 if __name__ == "__main__":
     """
-    WIP usage:
+    This script offers training a new model from scratch with all
+    available data, or continuing to train an existing model
+    with newly available data.
 
-    Train with data available at day 0. Automatically serves best model:
+    For instance, we might get new data every day. Every Sunday, we
+    would like to train a new model from scratch.
 
-    ``python mnist_tune_serve.py --from_scratch --day 0``
+    Naturally, we would like to use hyperparameter optimization to
+    find the best model for out data.
 
-    Query with test data (example #5 from dataset):
+    First, we might train a model with all data available at this day:
 
-    ``python mnist_tune_serve.py --query 5``
+    .. code-block:: bash
 
-    Sample output:
+        python mnist_tune_serve.py --from_scratch --day 0
 
-    ```
-    python mnist_tune_serve.py --query 28
-    Querying our model with example #28. Label = 2, Response = 7, Correct = F
-    python mnist_tune_serve.py --query 27
-    Querying our model with example #27. Label = 3, Response = 3, Correct = T
-    ```
+    On the coming days, we want to continue to train this model with
+    newly available data:
 
-    Load model from checkpoint Y and serve as day X backend
-    (for debugging only!)
+    .. code-block:: bash
 
-    ``python mnist_tune_serve.py --day X --checkpoint Y``
+        python mnist_tune_serve.py --from_existing --day 1
+        python mnist_tune_serve.py --from_existing --day 2
+        python mnist_tune_serve.py --from_existing --day 3
+        python mnist_tune_serve.py --from_existing --day 4
+        python mnist_tune_serve.py --from_existing --day 5
+        python mnist_tune_serve.py --from_existing --day 6
+        # Retrain from scratch every 7th day:
+        python mnist_tune_serve.py --from_scratch --day 7
 
-    Load model from checkpoint Y and query with test data without using Serve
-    (for debugging only!)
+    We can also use this script to query our served model
+    with some test data:
 
-    ``python mnist_tune_serve.py --day X --checkpoint_debug Y``
+    .. code-block:: bash
+
+        python mnist_tune_serve.py --query 28
+        Querying model with example #28. Label = 2, Response = 7, Correct = F
+
     """
     parser = argparse.ArgumentParser(description="MNIST Tune/Serve example")
-    parser.add_argument("--checkpoint", type=str, default="")
-    parser.add_argument("--checkpoint_debug", type=str, default="")
+    parser.add_argument("--model_dir", type=str, default="~/mnist_tune_serve")
 
     parser.add_argument(
         "--from_scratch",
         action="store_true",
         help="Train and select best model from scratch",
         default=False)
-    parser.add_argument("--day", help="Indicate the day", type=int, default=0)
+
+    parser.add_argument(
+        "--from_existing",
+        action="store_true",
+        help="Train and select best model from existing model",
+        default=False)
+
+    parser.add_argument(
+        "--day",
+        help="Indicate the day to simulate the amount of data available to us",
+        type=int,
+        default=0)
+
     parser.add_argument(
         "--query", help="Query endpoint with example", type=int, default=-1)
 
+    parser.add_argument(
+        "--smoke_test",
+        action="store_true",
+        help="Finish quickly for testing",
+        default=False)
+
     args = parser.parse_args()
 
-    if args.checkpoint:
-        serve.init()
-        backend_name = "mnist:day_{}".format(args.day)
-        serve.create_backend(backend_name, MNISTBackend, args.checkpoint,
-                             {"layer_size": 192}, 0.8)
-        serve.create_endpoint(
-            "mnist", backend=backend_name, route="/mnist", methods=["POST"])
-        sys.exit(0)
-
-    if args.checkpoint_debug:
-        backend_name = "mnist:day_{}".format(args.day)
-        backend = MNISTBackend(args.checkpoint_debug, {"layer_size": 192}, 0.8)
-
-        dataset = MNISTDataInterface("/tmp/mnist_data", max_days=0).dataset
-        data = dataset[0]
-        label = data[1]
-        req = namedtuple("flask_request", ["json"])
-        preds = backend(req({"images": [data[0].numpy().tolist()]}))
-        print(preds)
-        sys.exit(0)
+    model_dir = os.path.expanduser(args.model_dir)
 
     if args.query >= 0:
         import requests
@@ -402,25 +458,31 @@ if __name__ == "__main__":
         except:  # noqa: E722
             pred = -1
 
-        print("Querying our model with example #{}. "
+        print("Querying model with example #{}. "
               "Label = {}, Response = {}, Correct = {}".format(
                   args.query, label, pred, label == pred))
         sys.exit(0)
 
+    gpus_per_trial = 0.5 if not args.smoke_test else 0.
+
     if args.from_scratch:  # train everyday from scratch
         print("Start training job from scratch on day {}.".format(args.day))
         acc, config, best_checkpoint, N = tune_from_scratch(
-            2, 4, 0.5, day=args.day)
+            8, 10, gpus_per_trial, day=args.day)
         print("Trained day {} from scratch on {} samples. "
               "Best accuracy: {:.4f}. Best config: {}".format(
                   args.day, N, acc, config))
-        print("Serving checkpoint: {}".format(best_checkpoint))
-        serve.init()
-        backend_name = "mnist:day_{}".format(args.day)
-        serve.create_backend(backend_name, MNISTBackend, best_checkpoint,
-                             config, acc)
-        serve.create_endpoint(
-            "mnist", backend=backend_name, route="/mnist", methods=["POST"])
+        serve_new_model(model_dir, best_checkpoint, config, acc, args.day)
 
-    if args.incremental:
-        pass  # load latest model here
+    if args.from_existing:
+        old_checkpoint, old_config, old_acc = get_current_model(model_dir)
+        if not old_checkpoint or not old_config or not old_acc:
+            print("No existing model found. Train one with --from_scratch "
+                  "first.")
+            sys.exit(1)
+        acc, config, best_checkpoint, N = tune_from_existing(
+            old_checkpoint, old_config, 8, 10, gpus_per_trial, day=args.day)
+        print("Trained day {} from existing on {} samples. "
+              "Best accuracy: {:.4f}. Best config: {}".format(
+                  args.day, N, acc, config))
+        serve_new_model(model_dir, best_checkpoint, config, acc, args.day)
