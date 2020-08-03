@@ -145,7 +145,6 @@ class Tee(object):
     def write(self, *args, **kwargs):
         self.stream1.write(*args, **kwargs)
         self.stream2.write(*args, **kwargs)
-        self.flush()
 
     def flush(self, *args, **kwargs):
         self.stream1.flush(*args, **kwargs)

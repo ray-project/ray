@@ -135,7 +135,7 @@ class ActorReuseTest(unittest.TestCase):
         with open(os.path.join(trial2.logdir, "stdout"), "rt") as fp:
             content = fp.read()
             self.assertIn("PRINT_STDOUT: Second", content)
-            self.assertIn("PRINT_STDOUT: First", content)
+            self.assertNotIn("PRINT_STDOUT: First", content)
         with open(os.path.join(trial2.logdir, "stderr"), "rt") as fp:
             content = fp.read()
             self.assertIn("PRINT_STDERR: Second", content)

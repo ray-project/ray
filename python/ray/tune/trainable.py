@@ -24,7 +24,7 @@ from ray.tune.logger import UnifiedLogger
 from ray.tune.result import (
     DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S, TIMESTEPS_THIS_ITER, DONE,
     TIMESTEPS_TOTAL, EPISODES_THIS_ITER, EPISODES_TOTAL, TRAINING_ITERATION,
-    RESULT_DUPLICATE, TRIAL_INFO, STDOUT_FILE, STDERR_FILE)
+    RESULT_DUPLICATE, TRIAL_INFO, STDOUT_FILE, STDERR_FILE, LOGDIR_PATH)
 from ray.tune.utils import UtilMonitor
 
 logger = logging.getLogger(__name__)
@@ -220,16 +220,9 @@ class Trainable:
         self.config = config or {}
         trial_info = self.config.pop(TRIAL_INFO, None)
 
-        if logger_creator:
-            self._result_logger = logger_creator(self.config)
-            self._logdir = self._result_logger.logdir
-        else:
-            logdir_prefix = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            ray.utils.try_to_create_directory(DEFAULT_RESULTS_DIR)
-            self._logdir = tempfile.mkdtemp(
-                prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
-            self._result_logger = UnifiedLogger(
-                self.config, self._logdir, loggers=None)
+        self._logger_creator = logger_creator
+        self._result_logger = self._logdir = None
+        self._create_logger()
 
         self._stdout_context = self._stdout_fp = self._stdout_stream = None
         self._stderr_context = self._stderr_fp = self._stderr_stream = None
@@ -401,6 +394,11 @@ class Trainable:
 
         self.log_result(result)
 
+        if self._stdout_stream:
+            self._stdout_stream.flush()
+        if self._stderr_stream:
+            self._stderr_stream.flush()
+
         return result
 
     def get_state(self):
@@ -533,13 +531,35 @@ class Trainable:
         export_dir = export_dir or self.logdir
         return self._export_model(export_formats, export_dir)
 
+    def reset(self, new_config, new_logdir):
+        """Resets trial for use with new config.
+
+        Subclasses should override reset_config() to actually
+        reset actor behavior for the new config."""
+        self.config = new_config
+        self.config[LOGDIR_PATH] = new_logdir
+
+        self._logdir = new_logdir
+
+        self._result_logger.flush()
+        self._result_logger.close()
+
+        self._create_logger()
+
+        stdout_file = new_config.pop(STDOUT_FILE, None)
+        stderr_file = new_config.pop(STDERR_FILE, None)
+
+        self._close_logfiles()
+        self._open_logfiles(stdout_file, stderr_file)
+
+        return self.reset_config(new_config)
+
     def reset_config(self, new_config):
         """Resets configuration without restarting the trial.
 
         This method is optional, but can be implemented to speed up algorithms
         such as PBT, and to allow performance optimizations such as running
-        experiments with reuse_actors=True. Note that self.config need to
-        be updated to reflect the latest parameter information in Ray logs.
+        experiments with reuse_actors=True.
 
         Args:
             new_config (dict): Updated hyperparameter configuration
@@ -550,8 +570,21 @@ class Trainable:
         """
         return False
 
+    def _create_logger(self):
+        """Create logger from logger creator"""
+        if self._logger_creator:
+            self._result_logger = self._logger_creator(self.config)
+            self._logdir = self._result_logger.logdir
+        else:
+            logdir_prefix = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+            ray.utils.try_to_create_directory(DEFAULT_RESULTS_DIR)
+            self._logdir = tempfile.mkdtemp(
+                prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
+            self._result_logger = UnifiedLogger(
+                self.config, self._logdir, loggers=None)
+
     def _open_logfiles(self, stdout_file, stderr_file):
-        """Open stdout and stderr logfiles."""
+        """Create loggers. Open stdout and stderr logfiles."""
         if stdout_file:
             stdout_path = os.path.expanduser(
                 os.path.join(self._logdir, stdout_file))
