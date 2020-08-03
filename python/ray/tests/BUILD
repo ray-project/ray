@@ -39,6 +39,14 @@ py_test(
 )
 
 py_test(
+    name = "test_dask_scheduler",
+    size = "small",
+    srcs = SRCS + ["test_dask_scheduler.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_iter",
     size = "medium",
     srcs = SRCS + ["test_iter.py"],
