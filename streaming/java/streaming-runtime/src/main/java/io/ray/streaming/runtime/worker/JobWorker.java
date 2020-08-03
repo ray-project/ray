@@ -138,6 +138,8 @@ public class JobWorker implements Serializable {
    * Used by upstream streaming queue to send data to this actor
    */
   public void onReaderMessage(byte[] buffer) {
+    // If our task is not ready, just drop the message, the reader
+    // will pull all the dropped messages when task is ready.
     if (task != null) {
       task.onReaderMessage(buffer);
     } else {
@@ -161,6 +163,8 @@ public class JobWorker implements Serializable {
    * Used by downstream streaming queue to send data to this actor
    */
   public void onWriterMessage(byte[] buffer) {
+    // If our task is not ready, just drop the message, the reader
+    // will resend the message to writer.
     if (task != null) {
       task.onWriterMessage(buffer);
     } else {
