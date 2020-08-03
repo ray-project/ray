@@ -39,7 +39,6 @@ if [[ "$TRAVIS" == "true" ]]; then
 
     docker build \
         --build-arg WHEEL_PATH=".whl/$wheel" \
-        --build-arg WHEEL_NAME="$wheel" \
         -t rayproject/ray \
         "$ROOT_DIR"/docker/ray
 
