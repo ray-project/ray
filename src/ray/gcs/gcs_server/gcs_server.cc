@@ -59,7 +59,7 @@ void GcsServer::Start() {
 
   // Init gcs detector.
   gcs_redis_failure_detector_ = std::make_shared<GcsRedisFailureDetector>(
-      main_service_, redis_gcs_client_->primary_context(), [this]() { Stop(); });
+      main_service_, redis_failure_detector_client_->primary_context(), [this]() { Stop(); });
   gcs_redis_failure_detector_->Start();
 
   // Init gcs actor manager.
