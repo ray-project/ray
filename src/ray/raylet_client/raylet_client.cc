@@ -296,12 +296,12 @@ Status raylet::RayletClient::SetResource(const std::string &resource_name,
   return conn_->WriteMessage(MessageType::SetResourceRequest, &fbb);
 }
 
-Status raylet::RayletClient::RequestWorkerLease(
+void raylet::RayletClient::RequestWorkerLease(
     const TaskSpecification &resource_spec,
     const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback) {
   rpc::RequestWorkerLeaseRequest request;
   request.mutable_resource_spec()->CopyFrom(resource_spec.GetMessage());
-  return grpc_client_->RequestWorkerLease(request, callback);
+  grpc_client_->RequestWorkerLease(request, callback);
 }
 
 Status raylet::RayletClient::ReturnWorker(int worker_port, const WorkerID &worker_id,
@@ -310,22 +310,23 @@ Status raylet::RayletClient::ReturnWorker(int worker_port, const WorkerID &worke
   request.set_worker_port(worker_port);
   request.set_worker_id(worker_id.Binary());
   request.set_disconnect_worker(disconnect_worker);
-  return grpc_client_->ReturnWorker(
+  grpc_client_->ReturnWorker(
       request, [](const Status &status, const rpc::ReturnWorkerReply &reply) {
         if (!status.ok()) {
           RAY_LOG(INFO) << "Error returning worker: " << status;
         }
       });
+  return Status::OK();
 }
 
-Status raylet::RayletClient::ReleaseUnusedWorkers(
+void raylet::RayletClient::ReleaseUnusedWorkers(
     const std::vector<WorkerID> &workers_in_use,
     const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) {
   rpc::ReleaseUnusedWorkersRequest request;
   for (auto &worker_id : workers_in_use) {
     request.add_worker_ids_in_use(worker_id.Binary());
   }
-  return grpc_client_->ReleaseUnusedWorkers(
+  grpc_client_->ReleaseUnusedWorkers(
       request,
       [callback](const Status &status, const rpc::ReleaseUnusedWorkersReply &reply) {
         if (!status.ok()) {
@@ -337,31 +338,31 @@ Status raylet::RayletClient::ReleaseUnusedWorkers(
       });
 }
 
-ray::Status raylet::RayletClient::CancelWorkerLease(
+void raylet::RayletClient::CancelWorkerLease(
     const TaskID &task_id,
     const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) {
   rpc::CancelWorkerLeaseRequest request;
   request.set_task_id(task_id.Binary());
-  return grpc_client_->CancelWorkerLease(request, callback);
+  grpc_client_->CancelWorkerLease(request, callback);
 }
 
-Status raylet::RayletClient::RequestResourceReserve(
+void raylet::RayletClient::RequestResourceReserve(
     const BundleSpecification &bundle_spec,
     const ray::rpc::ClientCallback<ray::rpc::RequestResourceReserveReply> &callback) {
   rpc::RequestResourceReserveRequest request;
   request.mutable_bundle_spec()->CopyFrom(bundle_spec.GetMessage());
-  return grpc_client_->RequestResourceReserve(request, callback);
+  grpc_client_->RequestResourceReserve(request, callback);
 }
 
-Status raylet::RayletClient::CancelResourceReserve(
+void raylet::RayletClient::CancelResourceReserve(
     BundleSpecification &bundle_spec,
     const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback) {
   rpc::CancelResourceReserveRequest request;
   request.mutable_bundle_spec()->CopyFrom(bundle_spec.GetMessage());
-  return grpc_client_->CancelResourceReserve(request, callback);
+  grpc_client_->CancelResourceReserve(request, callback);
 }
 
-Status raylet::RayletClient::PinObjectIDs(
+void raylet::RayletClient::PinObjectIDs(
     const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
     const rpc::ClientCallback<rpc::PinObjectIDsReply> &callback) {
   rpc::PinObjectIDsRequest request;
@@ -369,13 +370,13 @@ Status raylet::RayletClient::PinObjectIDs(
   for (const ObjectID &object_id : object_ids) {
     request.add_object_ids(object_id.Binary());
   }
-  return grpc_client_->PinObjectIDs(request, callback);
+  grpc_client_->PinObjectIDs(request, callback);
 }
 
-Status raylet::RayletClient::GlobalGC(
+void raylet::RayletClient::GlobalGC(
     const rpc::ClientCallback<rpc::GlobalGCReply> &callback) {
   rpc::GlobalGCRequest request;
-  return grpc_client_->GlobalGC(request, callback);
+  grpc_client_->GlobalGC(request, callback);
 }
 
 Status raylet::RayletClient::SubscribeToPlasma(const ObjectID &object_id) {

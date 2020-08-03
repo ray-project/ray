@@ -136,8 +136,34 @@ install_miniconda() {
   test -x "${CONDA_PYTHON_EXE}"  # make sure conda is activated
 }
 
+install_shellcheck() {
+  local shellcheck_version="0.7.1"
+  if [ "${shellcheck_version}" != "$(command -v shellcheck > /dev/null && shellcheck --version | sed -n "s/version: //p")" ]; then
+    local osname=""
+    case "${OSTYPE}" in
+      linux*) osname="linux";;
+      darwin*) osname="darwin";;
+    esac
+    local name="shellcheck-v${shellcheck_version}"
+    if [ "${osname}" = linux ] || [ "${osname}" = darwin ]; then
+      sudo mkdir -p /usr/local/bin || true
+      curl -f -s -L "https://github.com/koalaman/shellcheck/releases/download/v${shellcheck_version}/${name}.${osname}.x86_64.tar.xz" | {
+        sudo tar -C /usr/local/bin -x -v -J --strip-components=1 "${name}/shellcheck"
+      }
+    else
+      mkdir -p /usr/local/bin
+      curl -f -s -L -o "${name}.zip" "https://github.com/koalaman/shellcheck/releases/download/v${shellcheck_version}/${name}.zip"
+      unzip "${name}.zip" "${name}.exe"
+      mv -f "${name}.exe" "/usr/local/bin/shellcheck.exe"
+    fi
+    test "${shellcheck_version}" = "$(shellcheck --version | sed -n "s/version: //p")"
+  fi
+}
+
 install_linters() {
   pip install -r "${WORKSPACE_DIR}"/python/requirements_linters.txt
+
+  install_shellcheck
 }
 
 install_nvm() {
@@ -277,16 +303,16 @@ install_dependencies() {
     pip install -r "${WORKSPACE_DIR}"/python/requirements_tune.txt
   fi
 
-  # If CI has deemed that a different version of Tensorflow or Torch 
+  # If CI has deemed that a different version of Tensorflow or Torch
   # should be installed, then upgrade/downgrade to that specific version.
   if [ -n "${TORCH_VERSION-}" ] || [ -n "${TFP_VERSION-}" ] || [ -n "${TF_VERSION-}" ]; then
-    case "${TORCH_VERSION-1.4}" in
+    case "${TORCH_VERSION-1.6}" in
       1.5) TORCHVISION_VERSION=0.6.0;;
       *) TORCHVISION_VERSION=0.5.0;;
     esac
 
     pip install --upgrade tensorflow-probability=="${TFP_VERSION-0.8}" \
-      torch=="${TORCH_VERSION-1.4}" torchvision=="${TORCHVISION_VERSION}" \
+      torch=="${TORCH_VERSION-1.6}" torchvision=="${TORCHVISION_VERSION}" \
       tensorflow=="${TF_VERSION-2.2.0}" gym
   fi
 

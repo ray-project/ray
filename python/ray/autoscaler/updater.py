@@ -36,6 +36,7 @@ class NodeUpdater:
                  ray_start_commands,
                  runtime_hash,
                  file_mounts_contents_hash,
+                 cluster_synced_files=None,
                  process_runner=subprocess,
                  use_internal_ip=False,
                  docker_config=None):
@@ -60,6 +61,7 @@ class NodeUpdater:
         self.ray_start_commands = ray_start_commands
         self.runtime_hash = runtime_hash
         self.file_mounts_contents_hash = file_mounts_contents_hash
+        self.cluster_synced_files = cluster_synced_files
         self.auth_config = auth_config
 
     def run(self):
@@ -120,31 +122,50 @@ class NodeUpdater:
                 "~/ray_bootstrap_key.pem", "~/ray_bootstrap_config.yaml"
             ]
 
+        def do_sync(remote_path, local_path, allow_non_existing_paths=False):
+            if allow_non_existing_paths and not os.path.exists(local_path):
+                # Ignore missing source files. In the future we should support
+                # the --delete-missing-args command to delete files that have
+                # been removed
+                return
+
+            assert os.path.exists(local_path), local_path
+
+            if os.path.isdir(local_path):
+                if not local_path.endswith("/"):
+                    local_path += "/"
+                if not remote_path.endswith("/"):
+                    remote_path += "/"
+
+            with LogTimer(self.log_prefix +
+                          "Synced {} to {}".format(local_path, remote_path)):
+                self.cmd_runner.run("mkdir -p {}".format(
+                    os.path.dirname(remote_path)))
+                sync_cmd(local_path, remote_path)
+
+                if remote_path not in nolog_paths:
+                    # todo: timed here?
+                    cli_logger.print("{} from {}", cf.bold(remote_path),
+                                     cf.bold(local_path))
+
         # Rsync file mounts
         with cli_logger.group(
-                "Processing file mounts", _numbered=("[]", 2, 5)):
+                "Processing file mounts", _numbered=("[]", 2, 6)):
             for remote_path, local_path in self.file_mounts.items():
-                assert os.path.exists(local_path), local_path
-                if os.path.isdir(local_path):
-                    if not local_path.endswith("/"):
-                        local_path += "/"
-                    if not remote_path.endswith("/"):
-                        remote_path += "/"
+                do_sync(remote_path, local_path)
 
-                with LogTimer(self.log_prefix + "Synced {} to {}".format(
-                        local_path, remote_path)):
-                    self.cmd_runner.run("mkdir -p {}".format(
-                        os.path.dirname(remote_path)))
-                    sync_cmd(local_path, remote_path)
-
-                    if remote_path not in nolog_paths:
-                        # todo: timed here?
-                        cli_logger.print("{} from {}", cf.bold(remote_path),
-                                         cf.bold(local_path))
+        if self.cluster_synced_files:
+            with cli_logger.group(
+                    "Processing worker file mounts", _numbered=("[]", 3, 6)):
+                for path in self.cluster_synced_files:
+                    do_sync(path, path, allow_non_existing_paths=True)
+        else:
+            cli_logger.print(
+                "No worker file mounts to sync", _numbered=("[]", 3, 6))
 
     def wait_ready(self, deadline):
         with cli_logger.group(
-                "Waiting for SSH to become available", _numbered=("[]", 1, 5)):
+                "Waiting for SSH to become available", _numbered=("[]", 1, 6)):
             with LogTimer(self.log_prefix + "Got remote shell"):
                 cli_logger.old_info(logger, "{}Waiting for remote shell...",
                                     self.log_prefix)
@@ -227,8 +248,8 @@ class NodeUpdater:
                 if self.initialization_commands:
                     with cli_logger.group(
                             "Running initialization commands",
-                            _numbered=("[]", 3,
-                                       5)):  # todo: fix command numbering
+                            _numbered=("[]", 4,
+                                       6)):  # todo: fix command numbering
                         with LogTimer(
                                 self.log_prefix + "Initialization commands",
                                 show_status=True):
@@ -242,13 +263,13 @@ class NodeUpdater:
                 else:
                     cli_logger.print(
                         "No initialization commands to run.",
-                        _numbered=("[]", 3, 5))
+                        _numbered=("[]", 4, 6))
 
                 if self.setup_commands:
                     with cli_logger.group(
                             "Running setup commands",
-                            _numbered=("[]", 4,
-                                       5)):  # todo: fix command numbering
+                            _numbered=("[]", 5,
+                                       6)):  # todo: fix command numbering
                         with LogTimer(
                                 self.log_prefix + "Setup commands",
                                 show_status=True):
@@ -266,10 +287,10 @@ class NodeUpdater:
                                 self.cmd_runner.run(cmd)
                 else:
                     cli_logger.print(
-                        "No setup commands to run.", _numbered=("[]", 4, 5))
+                        "No setup commands to run.", _numbered=("[]", 5, 6))
 
         with cli_logger.group(
-                "Starting the Ray runtime", _numbered=("[]", 5, 5)):
+                "Starting the Ray runtime", _numbered=("[]", 6, 6)):
             with LogTimer(
                     self.log_prefix + "Ray start commands", show_status=True):
                 for cmd in self.ray_start_commands:
