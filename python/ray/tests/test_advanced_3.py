@@ -211,14 +211,9 @@ def test_logging_to_driver(shutdown_only):
         ray.get(f.remote())
         time.sleep(1)
 
-    output_lines = captured["out"]
+    err_lines = captured["err"]
     for i in range(200):
-        assert str(i) in output_lines
-
-    # TODO(rkn): Check that no additional logs appear beyond what we expect
-    # and that there are no duplicate logs. Once we address the issue
-    # described in https://github.com/ray-project/ray/pull/5462, we should
-    # also check that nothing is logged to stderr.
+        assert str(i) in err_lines
 
 
 def test_not_logging_to_driver(shutdown_only):
@@ -240,10 +235,8 @@ def test_not_logging_to_driver(shutdown_only):
     output_lines = captured["out"]
     assert len(output_lines) == 0
 
-    # TODO(rkn): Check that no additional logs appear beyond what we expect
-    # and that there are no duplicate logs. Once we address the issue
-    # described in https://github.com/ray-project/ray/pull/5462, we should
-    # also check that nothing is logged to stderr.
+    err_lines = captured["err"]
+    assert len(err_lines) == 0
 
 
 @pytest.mark.skipif(
