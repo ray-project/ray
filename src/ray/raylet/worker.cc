@@ -171,8 +171,7 @@ Status Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set
       task.GetTaskExecutionSpec().GetMessage());
   request.set_resource_ids(resource_id_set.Serialize());
 
-  return rpc_client_->AssignTask(request, [](Status status,
-                                             const rpc::AssignTaskReply &reply) {
+  rpc_client_->AssignTask(request, [](Status status, const rpc::AssignTaskReply &reply) {
     if (!status.ok()) {
       RAY_LOG(DEBUG) << "Worker failed to finish executing task: " << status.ToString();
     }
@@ -180,6 +179,7 @@ Status Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set
     // and assigning new task will be done when raylet receives
     // `TaskDone` message.
   });
+  return Status::OK();
 }
 
 void Worker::DirectActorCallArgWaitComplete(int64_t tag) {
@@ -187,15 +187,12 @@ void Worker::DirectActorCallArgWaitComplete(int64_t tag) {
   rpc::DirectActorCallArgWaitCompleteRequest request;
   request.set_tag(tag);
   request.set_intended_worker_id(worker_id_.Binary());
-  auto status = rpc_client_->DirectActorCallArgWaitComplete(
+  rpc_client_->DirectActorCallArgWaitComplete(
       request, [](Status status, const rpc::DirectActorCallArgWaitCompleteReply &reply) {
         if (!status.ok()) {
           RAY_LOG(ERROR) << "Failed to send wait complete: " << status.ToString();
         }
       });
-  if (!status.ok()) {
-    RAY_LOG(ERROR) << "Failed to send wait complete: " << status.ToString();
-  }
 }
 
 }  // namespace raylet
