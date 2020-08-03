@@ -55,11 +55,11 @@ class TestCuriosity(unittest.TestCase):
         config["framework"] = "torch"
 
         config["exploration_config"] = {
-            "type": "Curiosity",
+            "type": "ray.rllib.utils.exploration.curiosity_exploration.Curiosity",
             "forward_net_hiddens": [64],
             "inverse_net_hiddens": [32],
             "feature_net_hiddens": [16],
-            "features_dim": 8,
+            "feature_dim": 8,
             "forward_activation": "relu",
             "inverse_activation": "relu",
             "feature_activation": "relu",
@@ -67,6 +67,7 @@ class TestCuriosity(unittest.TestCase):
         }
         trainer = ppo.PPOTrainer(config=config, env=env)
         trainer.train()
+
 
 if __name__ == "__main__":
     import pytest

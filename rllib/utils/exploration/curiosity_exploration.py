@@ -68,72 +68,43 @@ class Curiosity(Exploration):
                                       "curiosity")
 
         # Parse the curiosity-specific arguments
-        submodule_type = kwargs["submodule"]
-        if "submodule_type" in kwargs:
-            submodule_type = kwargs["submodule_type"]
-            del kwargs["submodule_type"]
-        else:
-            submodule_type = "StochasticSampling"
+        # If it was not specified in the config, assign the given default
+        def extract_from_kwargs(key, default):
+            if key in kwargs:
+                temp = kwargs[key]
+                del kwargs[key]
+                return temp
+            else:
+                return default
 
+        # Casts ints to a list, else leaves it unchanged
+        def cast_to_list(l):
+            if type(l) == int:
+                return [l]
+            else:
+                return l
 
-        if "forward_activation" in kwargs:
-            forward_activation = kwargs["forward_activation"]
-            del kwargs["forward_activation"]
-        else:
-            forward_activation = nn.ReLU
+        submodule_type = extract_from_kwargs("submodule", "StochasticSampling")
+        self.feature_dim = extract_from_kwargs("feature_dim", 32)
 
-        if "inverse_activation" in kwargs:
-            inverse_activation = kwargs["inverse_activation"]
-            del kwargs["inverse_activation"]
-        else:
-            inverse_activation = nn.ReLU
+        forward_activation = extract_from_kwargs("forward_activation", nn.ReLU)
+        inverse_activation = extract_from_kwargs("inverse_activation", nn.ReLU)
+        feature_activation = extract_from_kwargs("feature_activation", nn.ReLU)
 
-        if "feature_activation" in kwargs:
-            feature_activation = kwargs["feature_activation"]
-            del kwargs["feature_activation"]
-        else:
-            feature_activation = nn.ReLU
-
-        if "feature_net_hiddens" in kwargs:
-            feature_net_hiddens = kwargs["feature_net_hiddens"]
-            del kwargs["feature_net_hiddens"]
-        else:
-            feature_net_hiddens = [64]
-
-        if "inverse_net_hiddens" in kwargs:
-            inverse_net_hiddens = kwargs["inverse_net_hiddens"]
-            del kwargs["inverse_net_hiddens"]
-        else:
-            inverse_net_hiddens = [64]
-
-        if "forward_net_hiddens" in kwargs:
-            forward_net_hiddens = kwargs["forward_net_hiddens"]
-            del kwargs["forward_net_hiddens"]
-        else:
-            forward_net_hiddens = [64]
-
-        if "features_dim" in kwargs:
-            self.embedding_dim = kwargs["features_dim"]
-            del kwargs["features_dim"]
-        else:
-            self.embedding_dim = [32]
+        feature_net_hiddens = cast_to_list(extract_from_kwargs("feature_net_hiddens", [64]))
+        inverse_net_hiddens = cast_to_list(extract_from_kwargs("inverse_net_hiddens", [64]))
+        forward_net_hiddens = cast_to_list(extract_from_kwargs("forward_net_hiddens", [64]))
 
         super().__init__(
             action_space=action_space,
             framework=framework,
             **kwargs)
 
-
         # TODO: what should this look like for multidimensional obs spaces
         self.obs_space_dim = kwargs["model"].obs_space.shape[0]
-        self.action_space_dim = 1 # TODO can we always assume 1?
+        # TODO can we always assume 1
+        self.action_space_dim = 1
 
-        # List of dimension of each layer
-        feature_dims = [self.obs_space_dim] + feature_net_hiddens + [self.embedding_dim]
-        inverse_dims = [2 * self.embedding_dim] + inverse_net_hiddens + [self.action_space_dim]
-        forward_dims = [self.embedding_dim + self.action_space_dim] + forward_net_hiddens + [self.embedding_dim]
-
-        print(forwards_dims)
 
         # Given a list of layer dimensions, create a FC ReLU net.
         # If layer_dims is [4,8,6] we'll have a two layer net: 4->8 and 8->6
@@ -149,16 +120,23 @@ class Curiosity(Exploration):
                 )
             return nn.Sequential(*layers)
 
+        # List of dimension of each layer. Appends the hidden dims.
+        feature_dims = [self.obs_space_dim] + feature_net_hiddens + [self.feature_dim]
+        inverse_dims = [2 * self.feature_dim] + inverse_net_hiddens + [self.action_space_dim]
+        forward_dims = [self.feature_dim + self.action_space_dim] + forward_net_hiddens + [self.feature_dim]
+
+        # Creates actual models
         self.feature_model = create_fc_net(feature_dims, feature_activation)
         self.inverse_model = create_fc_net(inverse_dims, inverse_activation)
         self.forward_model = create_fc_net(forward_dims, forward_activation)
 
-
+        # Convenient reductions
         self.criterion = torch.nn.MSELoss(reduction="none")
         self.criterion_reduced = torch.nn.MSELoss(reduction="sum")
 
-        #submodule = from_config( subconfig from main config )
-        self.exploration_submodule = from_config({
+        # This is only used to select the correct action
+        self.exploration_submodule = from_config(cls=Exploration, config=
+                {
                 'type': submodule_type,
                 'action_space': action_space,
                 'framework': framework,
@@ -195,6 +173,7 @@ class Curiosity(Exploration):
     def get_exploration_loss(self,
                              policy_loss,
                              sample_batch: SampleBatchType):
+        # Cast to torch tensors, to be fed into the model
         next_obs_list = torch.from_numpy(sample_batch["new_obs"]).float()
         emb_next_obs_list = self._get_latent_vector(next_obs_list).float()
         actions_list = torch.from_numpy(sample_batch["actions"]).float()
@@ -214,7 +193,7 @@ class Curiosity(Exploration):
         Returns the embedded vector phi(state)
             obs (TensorType): a batch of states
         """
-        return self.features_model(obs)
+        return self.feature_model(obs)
 
     def get_optimizer(self):
         """
@@ -301,7 +280,7 @@ class Curiosity(Exploration):
         obs (TensorType): Observed state at time t.
         action (TensorType): Action taken at time t
         """
-        return self.forwards_model(
+        return self.forward_model(
             torch.cat(
                 (self._get_latent_vector(obs), action.unsqueeze(1)),
                 axis=-1))
