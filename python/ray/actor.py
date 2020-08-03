@@ -398,20 +398,24 @@ class ActorClass:
 
         return ActorOptionWrapper()
 
-    def _remote(self,
-                args=None,
-                kwargs=None,
-                num_cpus=None,
-                num_gpus=None,
-                memory=None,
-                object_store_memory=None,
-                resources=None,
-                is_direct_call=None,
-                max_concurrency=None,
-                max_restarts=None,
-                max_task_retries=None,
-                name=None,
-                detached=False):
+    def _remote(
+            self,
+            args=None,
+            kwargs=None,
+            num_cpus=None,
+            num_gpus=None,
+            memory=None,
+            object_store_memory=None,
+            resources=None,
+            is_direct_call=None,
+            max_concurrency=None,
+            max_restarts=None,
+            max_task_retries=None,
+            name=None,
+            detached=False,
+            placement_group_id=None,
+            # TODO(ekl) set default to -1 once we support -1 as "any index"
+            placement_group_bundle_index=0):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -436,6 +440,10 @@ class ActorClass:
                 guaranteed when max_concurrency > 1.
             name: The globally unique name for the actor.
             detached: DEPRECATED.
+            placement_group_id: the placement group this actor belongs to,
+                or None if it doesn't belong to any group.
+            placement_group_bundle_index: the index of the bundle
+                if the actor belongs to a placement group.
 
         Returns:
             A handle to the newly created actor.
@@ -446,7 +454,6 @@ class ActorClass:
             kwargs = {}
         if is_direct_call is not None and not is_direct_call:
             raise ValueError("Non-direct call actors are no longer supported.")
-
         meta = self.__ray_metadata__
         actor_has_async_methods = len(
             inspect.getmembers(
@@ -568,6 +575,9 @@ class ActorClass:
             detached,
             name if name is not None else "",
             is_asyncio,
+            placement_group_id
+            if placement_group_id is not None else ray.PlacementGroupID.nil(),
+            placement_group_bundle_index,
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu))
 

@@ -2,11 +2,9 @@
 import glob
 import logging
 import os
-import shutil
 import json
 import sys
 import socket
-import tempfile
 import time
 
 import numpy as np
@@ -17,6 +15,7 @@ import ray
 import ray.ray_constants as ray_constants
 import ray.cluster_utils
 import ray.test_utils
+from ray import resource_spec
 import setproctitle
 
 from ray.test_utils import (check_call_ray, RayTestTimeoutException,
@@ -416,24 +415,6 @@ def test_ray_stack(ray_start_2_cpus):
                         "'ray stack'")
 
 
-def test_pandas_parquet_serialization():
-    # Only test this if pandas is installed
-    pytest.importorskip("pandas")
-
-    import pandas as pd
-    import pyarrow as pa
-    import pyarrow.parquet as pq
-
-    tempdir = tempfile.mkdtemp()
-    filename = os.path.join(tempdir, "parquet-test")
-    pd.DataFrame({"col1": [0, 1], "col2": [0, 1]}).to_parquet(filename)
-    with open(os.path.join(tempdir, "parquet-compression"), "wb") as f:
-        table = pa.Table.from_arrays([pa.array([1, 2, 3])], ["hello"])
-        pq.write_table(table, f, compression="lz4")
-    # Clean up
-    shutil.rmtree(tempdir)
-
-
 def test_socket_dir_not_existing(shutdown_only):
     if sys.platform != "win32":
         random_name = ray.ObjectRef.from_random().hex()
@@ -441,7 +422,14 @@ def test_socket_dir_not_existing(shutdown_only):
                                               "tests", random_name)
         temp_raylet_socket_name = os.path.join(temp_raylet_socket_dir,
                                                "raylet_socket")
-        ray.init(num_cpus=1, raylet_socket_name=temp_raylet_socket_name)
+        ray.init(num_cpus=2, raylet_socket_name=temp_raylet_socket_name)
+
+        @ray.remote
+        def foo(x):
+            time.sleep(1)
+            return 2 * x
+
+        ray.get([foo.remote(i) for i in range(2)])
 
 
 def test_raylet_is_robust_to_random_messages(ray_start_regular):
@@ -694,6 +682,44 @@ def test_ray_address_environment_variable(ray_start_cluster):
     ray.init()
     assert "CPU" in ray.state.cluster_resources()
     ray.shutdown()
+
+
+def test_gpu_info_parsing():
+    info_string = """Model:           Tesla V100-SXM2-16GB
+IRQ:             107
+GPU UUID:        GPU-8eaaebb8-bb64-8489-fda2-62256e821983
+Video BIOS:      88.00.4f.00.09
+Bus Type:        PCIe
+DMA Size:        47 bits
+DMA Mask:        0x7fffffffffff
+Bus Location:    0000:00:1e.0
+Device Minor:    0
+Blacklisted:     No
+    """
+    constraints_dict = resource_spec._constraints_from_gpu_info(info_string)
+    expected_dict = {
+        "{}V100".format(ray_constants.RESOURCE_CONSTRAINT_PREFIX): 1
+    }
+    assert constraints_dict == expected_dict
+
+    info_string = """Model:           Tesla T4
+IRQ:             10
+GPU UUID:        GPU-415fe7a8-f784-6e3d-a958-92ecffacafe2
+Video BIOS:      90.04.84.00.06
+Bus Type:        PCIe
+DMA Size:        47 bits
+DMA Mask:        0x7fffffffffff
+Bus Location:    0000:00:1b.0
+Device Minor:    0
+Blacklisted:     No
+    """
+    constraints_dict = resource_spec._constraints_from_gpu_info(info_string)
+    expected_dict = {
+        "{}T4".format(ray_constants.RESOURCE_CONSTRAINT_PREFIX): 1
+    }
+    assert constraints_dict == expected_dict
+
+    assert resource_spec._constraints_from_gpu_info(None) == {}
 
 
 if __name__ == "__main__":

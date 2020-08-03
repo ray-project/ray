@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include <unistd.h>
-
 #include <boost/optional.hpp>
 #include <functional>
 #include <string>
@@ -61,6 +59,9 @@ int KillAllExecutable(const std::string &executable_with_suffix);
 
 // A helper function to return a random task id.
 TaskID RandomTaskId();
+
+// A helper function to return a random job id.
+JobID RandomJobId();
 
 std::shared_ptr<Buffer> GenerateRandomBuffer();
 

@@ -178,6 +178,13 @@ class CoreWorkerProcess {
   /// `CoreWorkerProcess` has full control of the destruction timing of `CoreWorker`.
   static CoreWorker &GetCoreWorker();
 
+  /// Try to get the `CoreWorker` instance by worker ID.
+  /// If the current thread is not associated with a core worker, returns a null pointer.
+  ///
+  /// \param[in] workerId The worker ID.
+  /// \return The `CoreWorker` instance.
+  static std::shared_ptr<CoreWorker> TryGetWorker(const WorkerID &worker_id);
+
   /// Set the core worker associated with the current thread by worker ID.
   /// Currently used by Java worker only.
   ///
@@ -270,6 +277,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_id);
 
   CoreWorker(CoreWorker const &) = delete;
+
   void operator=(CoreWorker const &other) = delete;
 
   ///
@@ -576,7 +584,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void SubmitTask(const RayFunction &function,
                   const std::vector<std::unique_ptr<TaskArg>> &args,
                   const TaskOptions &task_options, std::vector<ObjectID> *return_ids,
-                  int max_retries);
+                  int max_retries, PlacementOptions placement_options);
 
   /// Create an actor.
   ///

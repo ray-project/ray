@@ -325,7 +325,15 @@ RAY_CONFIG(int64_t, enable_metrics_collection, true)
 /// Whether start the Plasma Store as a Raylet thread.
 RAY_CONFIG(bool, put_small_object_in_memory_store, false)
 
+/// Metric agent port for reporting, default -1 means no such agent will be
+/// listening.
+RAY_CONFIG(int, metrics_agent_port, -1)
+
 /// Maximum number of tasks that can be in flight between an owner and a worker for which
 /// the owner has been granted a lease. A value >1 is used when we want to enable
 /// pipelining task submission.
 RAY_CONFIG(uint32_t, max_tasks_in_flight_per_worker, 1)
+
+/// The maximum number of resource shapes included in the resource
+/// load reported by each raylet.
+RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)

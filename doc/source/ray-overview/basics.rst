@@ -19,7 +19,7 @@ Ray accomplishes this mission by:
 
 On top of **Ray Core** are several libraries for solving problems in machine learning:
 
-- :ref:`tune-index`
+- :doc:`../tune/index`
 - :ref:`rllib-index`
 - :ref:`sgd-index`
 - :ref:`rayserve`

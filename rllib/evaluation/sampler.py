@@ -345,7 +345,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
             raise RuntimeError("Sampling thread has died")
         rollout = self.queue.get(timeout=600.0)
 
-        # Propagate errors
+        # Propagate errors.
         if isinstance(rollout, BaseException):
             raise rollout
 
@@ -436,8 +436,8 @@ def _env_runner(worker: "RolloutWorker",
             terminal condition, and other fields as dictated by `policy`.
     """
 
-    # Try to get Env's max_episode_steps prop. If it doesn't exist, catch
-    # error and continue.
+    # Try to get Env's `max_episode_steps` prop. If it doesn't exist, ignore
+    # error and continue with max_episode_steps=None.
     max_episode_steps = None
     try:
         max_episode_steps = base_env.get_unwrapped()[0].spec.max_episode_steps
@@ -642,6 +642,7 @@ def _process_observations(
     large_batch_threshold: int = max(1000, rollout_fragment_length * 10) if \
         rollout_fragment_length != float("inf") else 5000
 
+    # For each environment.
     # type: EnvID, Dict[AgentID, EnvObsType]
     for env_id, agent_obs in unfiltered_obs.items():
         is_new_episode: bool = env_id not in active_episodes
@@ -657,9 +658,9 @@ def _process_observations(
                 "More than {} observations for {} env steps ".format(
                     episode.batch_builder.total(),
                     episode.batch_builder.count) + "are buffered in "
-                "the sampler. If this is more than you expected, check that "
-                "that you set a horizon on your environment correctly and that"
-                " it terminates at some point. "
+                "the sampler. If this is more than you expected, check "
+                "that you set a horizon on your environment correctly and "
+                "that it terminates at some point. "
                 "Note: In multi-agent environments, `rollout_fragment_length` "
                 "sets the batch size based on environment steps, not the "
                 "steps of "
@@ -757,8 +758,10 @@ def _process_observations(
         callbacks.on_episode_step(
             worker=worker, base_env=base_env, episode=episode)
 
-        # Cut the batch if we're not packing multiple episodes into one,
-        # or if we've exceeded the requested batch size.
+        # Cut the batch if ...
+        # - all-agents-done and not packing multiple episodes into one
+        #   (batch_mode="complete_episodes")
+        # - or if we've exceeded the rollout_fragment_length.
         if episode.batch_builder.has_pending_agent_data():
             # Sanity check, whether all agents have done=True, if done[__all__]
             # is True.
@@ -775,6 +778,7 @@ def _process_observations(
             elif all_agents_done:
                 episode.batch_builder.postprocess_batch_so_far(episode)
 
+        # Episode is done.
         if all_agents_done:
             # Handle episode termination.
             batch_builder_pool.append(episode.batch_builder)
@@ -959,7 +963,8 @@ def _process_policy_eval_results(
             available to Models. Default: False.
 
     Returns:
-        actions_to_send: Nested dict of env id -> agent id -> agent replies.
+        actions_to_send: Nested dict of env id -> agent id -> actions to be
+            sent to Env (np.ndarrays).
     """
 
     actions_to_send: Dict[EnvID, Dict[AgentID, EnvActionType]] = \

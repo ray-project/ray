@@ -18,7 +18,7 @@ cdef class TagKey:
     def __init__(self, name):
         self.name = name.encode("ascii")
         CTagKey.Register(self.name)
-    
+
     def name(self):
         return self.name
 
@@ -34,8 +34,9 @@ cdef class Metric:
 
     def __init__(self, tag_keys):
         for tag_key in tag_keys:
-            self.c_tag_keys.push_back(CTagKey.Register(tag_key.encode("ascii")))
-    
+            self.c_tag_keys.push_back(
+                CTagKey.Register(tag_key.encode("ascii")))
+
     def record(self, value, tags=None):
         """Record a measurement of metric.
 

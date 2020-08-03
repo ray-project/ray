@@ -127,9 +127,11 @@ void GcsPlacementGroupScheduler::Schedule(
             if (lease_success) {
               rpc::ScheduleData data;
               for (size_t i = 0; i < bundles.size(); i++) {
+                // TODO(ekl) this is a hack to get a string key for the proto
+                auto key = bundles[i]->PlacementGroupId().Hex() + "_" +
+                           std::to_string(bundles[i]->Index());
                 data.mutable_schedule_plan()->insert(
-                    {bundles[i]->BundleIdAsString(),
-                     (*decision)[bundles[i]->BundleId()].Binary()});
+                    {key, (*decision)[bundles[i]->BundleId()].Binary()});
               }
               RAY_CHECK_OK(gcs_table_storage_->PlacementGroupScheduleTable().Put(
                   placement_group->GetPlacementGroupID(), data, [](Status status) {}));
@@ -154,14 +156,11 @@ void GcsPlacementGroupScheduler::ReserveResourceFromNode(
     std::shared_ptr<ray::rpc::GcsNodeInfo> node, ReserveResourceCallback callback) {
   RAY_CHECK(node);
 
-  auto node_id = ClientID::FromBinary(node->node_id());
-  RAY_LOG(DEBUG) << "Start leasing resource from node " << node_id << " for bundle "
-                 << bundle->BundleId().first << std::to_string(bundle->BundleId().second);
-
   rpc::Address remote_address;
   remote_address.set_raylet_id(node->node_id());
   remote_address.set_ip_address(node->node_manager_address());
   remote_address.set_port(node->node_manager_port());
+  auto node_id = ClientID::FromBinary(node->node_id());
   auto lease_client = GetOrConnectLeaseClient(remote_address);
   RAY_LOG(DEBUG) << "Start leasing resource from node " << node_id << " for bundle "
                  << bundle->BundleId().first << bundle->BundleId().second;
@@ -183,7 +182,7 @@ void GcsPlacementGroupScheduler::ReserveResourceFromNode(
                              << " for bundle " << bundle->BundleId().first
                              << bundle->BundleId().second;
             }
-            // Remove the actor from the leasing map as the reply is returned from the
+            // Remove the bundle from the leasing map as the reply is returned from the
             // remote node.
             iter->second.erase(bundle_iter);
             if (iter->second.empty()) {

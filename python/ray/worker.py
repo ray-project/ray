@@ -1009,6 +1009,8 @@ def print_logs(redis_client, threads_stopped, job_id):
                     job_id.binary()) != data["job"]:
                 continue
 
+            print_file = sys.stderr if data["is_err"] else sys.stdout
+
             def color_for(data):
                 if data["pid"] == "raylet":
                     return colorama.Fore.YELLOW
@@ -1017,14 +1019,18 @@ def print_logs(redis_client, threads_stopped, job_id):
 
             if data["ip"] == localhost:
                 for line in data["lines"]:
-                    print("{}{}(pid={}){} {}".format(
-                        colorama.Style.DIM, color_for(data), data["pid"],
-                        colorama.Style.RESET_ALL, line))
+                    print(
+                        "{}{}(pid={}){} {}".format(
+                            colorama.Style.DIM, color_for(data), data["pid"],
+                            colorama.Style.RESET_ALL, line),
+                        file=print_file)
             else:
                 for line in data["lines"]:
-                    print("{}{}(pid={}, ip={}){} {}".format(
-                        colorama.Style.DIM, color_for(data), data["pid"],
-                        data["ip"], colorama.Style.RESET_ALL, line))
+                    print(
+                        "{}{}(pid={}, ip={}){} {}".format(
+                            colorama.Style.DIM, color_for(data), data["pid"],
+                            data["ip"], colorama.Style.RESET_ALL, line),
+                        file=print_file)
 
     except (OSError, redis.exceptions.ConnectionError) as e:
         logger.error("print_logs: {}".format(e))
@@ -1762,7 +1768,9 @@ def make_decorator(num_return_vals=None,
                    max_retries=None,
                    max_restarts=None,
                    max_task_retries=None,
-                   worker=None):
+                   worker=None,
+                   placement_group_id=None,
+                   placement_group_bundle_index=0):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
@@ -1777,7 +1785,8 @@ def make_decorator(num_return_vals=None,
             return ray.remote_function.RemoteFunction(
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
                 memory, object_store_memory, resources, num_return_vals,
-                max_calls, max_retries)
+                max_calls, max_retries, placement_group_id,
+                placement_group_bundle_index)
 
         if inspect.isclass(function_or_class):
             if num_return_vals is not None:
@@ -1848,6 +1857,10 @@ def remote(*args, **kwargs):
       number of times that the remote function should be rerun when the worker
       process executing it crashes unexpectedly. The minimum valid value is 0,
       the default is 4 (default), and a value of -1 indicates infinite retries.
+    * **placement_group_id**: the placement group this task belongs to,
+        or None if it doesn't belong to any group.
+    * **placement_group_bundle_index**: the index of the bundle
+        if the task belongs to a placement group.
 
     This can be done as follows:
 
@@ -1912,6 +1925,8 @@ def remote(*args, **kwargs):
             "max_restarts",
             "max_task_retries",
             "max_retries",
+            "placement_group_id",
+            "placement_group_bundle_index",
         ], error_string
 
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None
