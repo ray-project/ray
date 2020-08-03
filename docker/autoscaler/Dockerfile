@@ -16,5 +16,5 @@ COPY requirements_autoscaler.txt ./
 
 RUN $HOME/anaconda3/bin/pip --no-cache-dir install -r requirements.txt \ 
     && $HOME/anaconda3/bin/pip --no-cache-dir install -r requirements_autoscaler.txt \
-    && rm requirements.txt && requirements_autoscaler.txt
+    && rm requirements.txt && rm requirements_autoscaler.txt
 
