@@ -402,3 +402,5 @@ with GPU worker nodes instead.
         InstanceMarketOptions:
             MarketType: spot
         InstanceType: p2.xlarge
+
+
