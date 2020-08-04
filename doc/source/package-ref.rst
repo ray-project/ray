@@ -158,13 +158,6 @@ ray.available_resources
 
 .. autofunction:: ray.available_resources
 
-.. _ray-errors-ref:
-
-ray.errors
-~~~~~~~~~~
-
-.. autofunction:: ray.errors
-
 Experimental APIs
 -----------------
 

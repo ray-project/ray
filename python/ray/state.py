@@ -760,67 +760,6 @@ class GlobalState:
 
         return dict(total_available_resources)
 
-    def _error_messages(self, job_id):
-        """Get the error messages for a specific driver.
-
-        Args:
-            job_id: The ID of the job to get the errors for.
-
-        Returns:
-            A list of the error messages for this driver.
-        """
-        assert isinstance(job_id, ray.JobID)
-        message = self.redis_client.execute_command(
-            "RAY.TABLE_LOOKUP", gcs_utils.TablePrefix.Value("ERROR_INFO"), "",
-            job_id.binary())
-
-        # If there are no errors, return early.
-        if message is None:
-            return []
-
-        gcs_entries = gcs_utils.GcsEntry.FromString(message)
-        error_messages = []
-        for entry in gcs_entries.entries:
-            error_data = gcs_utils.ErrorTableData.FromString(entry)
-            assert job_id.binary() == error_data.job_id
-            error_message = {
-                "type": error_data.type,
-                "message": error_data.error_message,
-                "timestamp": error_data.timestamp,
-            }
-            error_messages.append(error_message)
-        return error_messages
-
-    def error_messages(self, job_id=None):
-        """Get the error messages for all drivers or a specific driver.
-
-        Args:
-            job_id: The specific job to get the errors for. If this is
-                None, then this method retrieves the errors for all jobs.
-
-        Returns:
-            A list of the error messages for the specified driver if one was
-                given, or a dictionary mapping from job ID to a list of error
-                messages for that driver otherwise.
-        """
-        self._check_connected()
-
-        if job_id is not None:
-            assert isinstance(job_id, ray.JobID)
-            return self._error_messages(job_id)
-
-        error_table_keys = self.redis_client.keys(
-            gcs_utils.TablePrefix_ERROR_INFO_string + "*")
-        job_ids = [
-            key[len(gcs_utils.TablePrefix_ERROR_INFO_string):]
-            for key in error_table_keys
-        ]
-
-        return {
-            binary_to_hex(job_id): self._error_messages(ray.JobID(job_id))
-            for job_id in job_ids
-        }
-
     def actor_checkpoint_info(self, actor_id):
         """Get checkpoint info for the given actor id.
          Args:
@@ -1001,24 +940,3 @@ def available_resources():
             resource in the cluster.
     """
     return state.available_resources()
-
-
-def errors(all_jobs=False):
-    """Get error messages from the cluster.
-
-    Args:
-        all_jobs: False if we should only include error messages for this
-            specific job, or True if we should include error messages for all
-            jobs.
-
-    Returns:
-        Error messages pushed from the cluster. This will be a single list if
-            all_jobs is False, or a dictionary mapping from job ID to a list of
-            error messages for that job if all_jobs is True.
-    """
-    if not all_jobs:
-        worker = ray.worker.global_worker
-        error_messages = state.error_messages(job_id=worker.current_job_id)
-    else:
-        error_messages = state.error_messages(job_id=None)
-    return error_messages

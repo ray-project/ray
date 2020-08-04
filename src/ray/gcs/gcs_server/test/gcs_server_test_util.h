@@ -369,17 +369,6 @@ struct GcsServerMocker {
     void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
   };
 
-  class MockedErrorInfoAccessor : public gcs::ErrorInfoAccessor {
-   public:
-    Status AsyncReportJobError(const std::shared_ptr<rpc::ErrorTableData> &data_ptr,
-                               const gcs::StatusCallback &callback) override {
-      if (callback) {
-        callback(Status::OK());
-      }
-      return Status::OK();
-    }
-  };
-
   class MockGcsPubSub : public gcs::GcsPubSub {
    public:
     MockGcsPubSub(std::shared_ptr<gcs::RedisClient> redis_client)
