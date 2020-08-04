@@ -139,11 +139,14 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   ///
   /// \param placement_group The placement_group that has been created.
   void OnPlacementGroupCreationSuccess(
-      std::shared_ptr<GcsPlacementGroup> placement_group);
+      const std::shared_ptr<GcsPlacementGroup> &placement_group);
 
  private:
-  /// Schedule another tick after a short time.
-  void ScheduleTick();
+  void RetryCreatingPlacementGroup();
+
+  /// The io loop that is used to delay execution of tasks (e.g.,
+  /// execute_after).
+  boost::asio::io_context &io_context_;
 
   /// Callback of placement_group registration requests that are not yet flushed.
   absl::flat_hash_map<PlacementGroupID, EmptyCallback>
@@ -162,9 +165,6 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   /// If a placement group is creating
   bool is_creating_ = false;
-
-  /// A timer that ticks every schedule failure milliseconds.
-  boost::asio::deadline_timer reschedule_timer_;
 };
 
 }  // namespace gcs
