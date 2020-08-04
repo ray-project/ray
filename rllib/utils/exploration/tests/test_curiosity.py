@@ -31,7 +31,7 @@ class TestCuriosity(unittest.TestCase):
         trainer.train()
 
         # Make sure all actions drawn are the same, given same
-        # observations.
+        # observations. Tests the explorations API.
 
         actions = []
         for _ in range(5):

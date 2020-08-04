@@ -22,32 +22,43 @@ reward.
 from gym.spaces import Space
 from typing import Union, Optional
 
-
-
-#from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import SampleBatch
-
-# TODO alphabetize imports, lint
-# TODO how to test if action space is discrete
-from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.framework import try_import_torch, TensorType
-from ray.rllib.utils.types import TensorType, TensorStructType, SampleBatchType
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-
-from ray.rllib.utils.framework import get_activation_fn
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.exploration.exploration import Exploration
+from ray.rllib.utils.framework import try_import_torch, TensorType, \
+    get_activation_fn
+from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.types import TensorType, TensorStructType, SampleBatchType
 
 torch, nn = try_import_torch()
 
-"""
-Example: give a full example config
+# TODO how to test if action space is discrete
 
-TODO
 """
+Example Configuration
+
+config = ppo.DEFAULT_CONFIG
+env = "CartPole-v0"
+config["framework"] = "torch"
+config["exploration_config"] = {
+    "type": "ray.rllib.utils.exploration.curiosity_exploration.Curiosity",
+    "forward_net_hiddens": [64],
+    "inverse_net_hiddens": [32,4],
+    "feature_net_hiddens": [16,8],
+    "feature_dim": 8,
+    "forward_activation": "relu",
+    "inverse_activation": "relu",
+    "feature_activation": "relu",
+    "submodule": "EpsilonGreedy",
+}
+trainer = ppo.PPOTrainer(config=config, env=env)
+trainer.train()
+"""
+
 class Curiosity(Exploration):
 
     def __init__(self,
@@ -168,10 +179,18 @@ class Curiosity(Exploration):
         return self.exploration_submodule.get_exploration_action(
             action_distribution=action_distribution, timestep=timestep)
 
-    # TODO add a hook in the main exploration class. this returns scalar loss
     def get_exploration_loss(self,
                              policy_loss,
                              sample_batch: SampleBatchType):
+        """
+        Returns the intrinsic reward associated to the explorations strategy
+            policy_loss (TensorType): The loss from the policy, not associated
+                to the exploration strategy, which we will modify
+            sample_batch (SampleBatchType): The SampleBatch of observations, to
+                which we will associate an intrinsic loss.
+        """
+
+
         # Cast to torch tensors, to be fed into the model
         obs_list = sample_batch["obs"].float()
         next_obs_list = sample_batch["new_obs"].float()
