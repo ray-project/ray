@@ -253,7 +253,7 @@ class Node:
 
         def merge_resources(env_dict, params_dict):
             """Merge two dictionaries, picking from the second in the event of a conflict.
-            Also emmit a warning on every conflict.
+            Also emit a warning on every conflict.
             """
             result = params_dict.copy()
             result.update(env_dict)
