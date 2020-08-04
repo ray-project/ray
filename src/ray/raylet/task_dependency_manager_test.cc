@@ -21,7 +21,6 @@
 #include "gtest/gtest.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
-#include "ray/gcs/redis_accessor.h"
 #include "ray/gcs/redis_gcs_client.h"
 
 namespace ray {
@@ -46,14 +45,64 @@ class MockReconstructionPolicy : public ReconstructionPolicyInterface {
   MOCK_METHOD1(Cancel, void(const ObjectID &object_id));
 };
 
-class MockTaskInfoAccessor : public gcs::RedisTaskInfoAccessor {
+class MockTaskInfoAccessor : public gcs::TaskInfoAccessor {
  public:
-  MockTaskInfoAccessor(gcs::RedisGcsClient *client)
-      : gcs::RedisTaskInfoAccessor(client) {}
+  MockTaskInfoAccessor(gcs::RedisGcsClient *client) {}
 
   MOCK_METHOD2(AsyncAddTaskLease,
                ray::Status(const std::shared_ptr<TaskLeaseData> &data_ptr,
                            const gcs::StatusCallback &callback));
+
+  Status AsyncAdd(const std::shared_ptr<rpc::TaskTableData> &data_ptr,
+                  const gcs::StatusCallback &callback) override {
+    return Status::OK();
+  }
+
+  Status AsyncGet(
+      const TaskID &task_id,
+      const gcs::OptionalItemCallback<rpc::TaskTableData> &callback) override {
+    return Status::OK();
+  }
+
+  Status AsyncDelete(const std::vector<TaskID> &task_ids,
+                     const gcs::StatusCallback &callback) override {
+    return Status::OK();
+  }
+
+  Status AsyncSubscribe(
+      const TaskID &task_id,
+      const gcs::SubscribeCallback<TaskID, rpc::TaskTableData> &subscribe,
+      const gcs::StatusCallback &done) override {
+    return Status::OK();
+  }
+
+  Status AsyncUnsubscribe(const TaskID &task_id) override { return Status::OK(); }
+
+  Status AsyncGetTaskLease(
+      const TaskID &task_id,
+      const gcs::OptionalItemCallback<rpc::TaskLeaseData> &callback) override {
+    return Status::OK();
+  }
+
+  Status AsyncSubscribeTaskLease(
+      const TaskID &task_id,
+      const gcs::SubscribeCallback<TaskID, boost::optional<rpc::TaskLeaseData>>
+          &subscribe,
+      const gcs::StatusCallback &done) override {
+    return Status::OK();
+  }
+
+  Status AsyncUnsubscribeTaskLease(const TaskID &task_id) override {
+    return Status::OK();
+  }
+
+  Status AttemptTaskReconstruction(
+      const std::shared_ptr<rpc::TaskReconstructionData> &data_ptr,
+      const gcs::StatusCallback &callback) override {
+    return Status::OK();
+  }
+
+  void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
 };
 
 class MockGcsClient : public gcs::RedisGcsClient {

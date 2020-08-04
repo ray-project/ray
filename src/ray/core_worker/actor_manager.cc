@@ -15,7 +15,7 @@
 #include "ray/core_worker/actor_manager.h"
 
 #include "ray/gcs/pb_util.h"
-#include "ray/gcs/redis_accessor.h"
+// #include "ray/gcs/redis_accessor.h"
 
 namespace ray {
 

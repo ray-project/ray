@@ -21,24 +21,22 @@
 #include "ray/core_worker/actor_reporter.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
-#include "ray/gcs/redis_accessor.h"
 #include "ray/gcs/redis_gcs_client.h"
 
 namespace ray {
 
 using ::testing::_;
 
-class MockActorInfoAccessor : public gcs::RedisActorInfoAccessor {
+class MockActorInfoAccessor : public gcs::ActorInfoAccessor {
  public:
-  MockActorInfoAccessor(gcs::RedisGcsClient *client)
-      : gcs::RedisActorInfoAccessor(client) {}
+  MockActorInfoAccessor(gcs::RedisGcsClient *client) {}
 
   ~MockActorInfoAccessor() {}
 
   ray::Status AsyncSubscribe(
       const ActorID &actor_id,
       const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-      const gcs::StatusCallback &done) {
+      const gcs::StatusCallback &done) override {
     auto callback_entry = std::make_pair(actor_id, subscribe);
     callback_map_.emplace(actor_id, subscribe);
     return Status::OK();
@@ -56,6 +54,75 @@ class MockActorInfoAccessor : public gcs::RedisActorInfoAccessor {
   bool CheckSubscriptionRequested(const ActorID &actor_id) {
     return callback_map_.find(actor_id) != callback_map_.end();
   }
+
+  Status GetAll(std::vector<rpc::ActorTableData> *actor_table_data_list) override {
+    return Status::OK();
+  }
+
+  Status AsyncGet(
+      const ActorID &actor_id,
+      const gcs::OptionalItemCallback<rpc::ActorTableData> &callback) override {
+    return Status::OK();
+  }
+
+  Status AsyncGetAll(
+      const gcs::MultiItemCallback<rpc::ActorTableData> &callback) override {
+    return Status::OK();
+  }
+
+  Status AsyncGetByName(
+      const std::string &name,
+      const gcs::OptionalItemCallback<rpc::ActorTableData> &callback) override {
+    return Status::OK();
+  }
+
+  Status AsyncRegisterActor(const TaskSpecification &task_spec,
+                            const gcs::StatusCallback &callback) override {
+    return Status::OK();
+  }
+
+  Status AsyncCreateActor(const TaskSpecification &task_spec,
+                          const gcs::StatusCallback &callback) override {
+    return Status::OK();
+  }
+
+  Status AsyncRegister(const std::shared_ptr<rpc::ActorTableData> &data_ptr,
+                       const gcs::StatusCallback &callback) override {
+    return Status::OK();
+  }
+
+  Status AsyncUpdate(const ActorID &actor_id,
+                     const std::shared_ptr<rpc::ActorTableData> &data_ptr,
+                     const gcs::StatusCallback &callback) override {
+    return Status::OK();
+  }
+
+  Status AsyncSubscribeAll(
+      const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+      const gcs::StatusCallback &done) override {
+    return Status::OK();
+  }
+
+  Status AsyncUnsubscribe(const ActorID &actor_id) override { return Status::OK(); }
+
+  Status AsyncAddCheckpoint(const std::shared_ptr<rpc::ActorCheckpointData> &data_ptr,
+                            const gcs::StatusCallback &callback) override {
+    return Status::OK();
+  }
+
+  Status AsyncGetCheckpoint(
+      const ActorCheckpointID &checkpoint_id, const ActorID &actor_id,
+      const gcs::OptionalItemCallback<rpc::ActorCheckpointData> &callback) override {
+    return Status::OK();
+  }
+
+  Status AsyncGetCheckpointID(
+      const ActorID &actor_id,
+      const gcs::OptionalItemCallback<rpc::ActorCheckpointIdData> &callback) override {
+    return Status::OK();
+  }
+
+  void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
 
   absl::flat_hash_map<ActorID, gcs::SubscribeCallback<ActorID, rpc::ActorTableData>>
       callback_map_;

@@ -21,7 +21,6 @@
 #include <boost/asio.hpp>
 
 #include "ray/gcs/callback.h"
-#include "ray/gcs/redis_accessor.h"
 
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/reconstruction_policy.h"
@@ -99,17 +98,145 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
   std::unordered_map<ObjectID, std::unordered_set<ClientID>> locations_;
 };
 
-class MockNodeInfoAccessor : public gcs::RedisNodeInfoAccessor {
+class MockNodeInfoAccessor : public gcs::NodeInfoAccessor {
  public:
-  MockNodeInfoAccessor(gcs::RedisGcsClient *client)
-      : gcs::RedisNodeInfoAccessor(client) {}
+  MockNodeInfoAccessor(gcs::RedisGcsClient *client) {}
 
   bool IsRemoved(const ClientID &node_id) const override { return false; }
+
+  Status RegisterSelf(const rpc::GcsNodeInfo &local_node_info) override {
+    return Status::OK();
+  }
+
+  Status UnregisterSelf() override { return Status::OK(); }
+
+  const ClientID &GetSelfId() const override { return client_id_; }
+
+  const rpc::GcsNodeInfo &GetSelfInfo() const override { return node_info_; }
+
+  Status AsyncRegister(const rpc::GcsNodeInfo &node_info,
+                       const gcs::StatusCallback &callback) override {
+    return Status::OK();
+  }
+
+  Status AsyncUnregister(const ClientID &node_id,
+                         const gcs::StatusCallback &callback) override {
+    return Status::OK();
+  }
+
+  Status AsyncGetAll(const gcs::MultiItemCallback<rpc::GcsNodeInfo> &callback) override {
+    return Status::OK();
+  }
+
+  Status AsyncSubscribeToNodeChange(
+      const gcs::SubscribeCallback<ClientID, rpc::GcsNodeInfo> &subscribe,
+      const gcs::StatusCallback &done) override {
+    return Status::OK();
+  }
+
+  boost::optional<rpc::GcsNodeInfo> Get(const ClientID &node_id) const override {
+    return boost::none;
+  }
+
+  const std::unordered_map<ClientID, rpc::GcsNodeInfo> &GetAll() const override {
+    return map_info_;
+  }
+
+  Status AsyncGetResources(
+      const ClientID &node_id,
+      const gcs::OptionalItemCallback<ResourceMap> &callback) override {
+    return Status::OK();
+  }
+
+  Status AsyncUpdateResources(const ClientID &node_id, const ResourceMap &resources,
+                              const gcs::StatusCallback &callback) override {
+    return Status::OK();
+  }
+
+  Status AsyncDeleteResources(const ClientID &node_id,
+                              const std::vector<std::string> &resource_names,
+                              const gcs::StatusCallback &callback) override {
+    return Status::OK();
+  }
+
+  Status AsyncSubscribeToResources(
+      const gcs::ItemCallback<rpc::NodeResourceChange> &subscribe,
+      const gcs::StatusCallback &done) override {
+    return Status::OK();
+  }
+
+  Status AsyncReportHeartbeat(const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
+                              const gcs::StatusCallback &callback) override {
+    return Status::OK();
+  }
+
+  Status AsyncSubscribeHeartbeat(
+      const gcs::SubscribeCallback<ClientID, rpc::HeartbeatTableData> &subscribe,
+      const gcs::StatusCallback &done) override {
+    return Status::OK();
+  }
+
+  Status AsyncReportBatchHeartbeat(
+      const std::shared_ptr<rpc::HeartbeatBatchTableData> &data_ptr,
+      const gcs::StatusCallback &callback) override {
+    return Status::OK();
+  }
+
+  Status AsyncSubscribeBatchHeartbeat(
+      const gcs::ItemCallback<rpc::HeartbeatBatchTableData> &subscribe,
+      const gcs::StatusCallback &done) override {
+    return Status::OK();
+  }
+
+  void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
+
+  Status AsyncSetInternalConfig(
+      std::unordered_map<std::string, std::string> &config) override {
+    return Status::OK();
+  }
+
+  Status AsyncGetInternalConfig(
+      const gcs::OptionalItemCallback<std::unordered_map<std::string, std::string>>
+          &callback) override {
+    return Status::OK();
+  }
+
+ private:
+  ClientID client_id_;
+  rpc::GcsNodeInfo node_info_;
+  std::unordered_map<ClientID, rpc::GcsNodeInfo> map_info_;
 };
 
-class MockTaskInfoAccessor : public gcs::RedisTaskInfoAccessor {
+class MockTaskInfoAccessor : public gcs::TaskInfoAccessor {
  public:
-  MockTaskInfoAccessor(gcs::RedisGcsClient *client) : RedisTaskInfoAccessor(client) {}
+  MockTaskInfoAccessor(gcs::RedisGcsClient *client) {}
+
+  Status AsyncAdd(const std::shared_ptr<rpc::TaskTableData> &data_ptr,
+                  const gcs::StatusCallback &callback) override {
+    return Status::OK();
+  }
+
+  Status AsyncGet(
+      const TaskID &task_id,
+      const gcs::OptionalItemCallback<rpc::TaskTableData> &callback) override {
+    return Status::OK();
+  }
+
+  Status AsyncDelete(const std::vector<TaskID> &task_ids,
+                     const gcs::StatusCallback &callback) override {
+    return Status::OK();
+  }
+
+  Status AsyncSubscribe(
+      const TaskID &task_id,
+      const gcs::SubscribeCallback<TaskID, rpc::TaskTableData> &subscribe,
+      const gcs::StatusCallback &done) override {
+    return Status::OK();
+  }
+
+  Status AsyncUnsubscribe(const TaskID &task_id) override { return Status::OK(); }
+
+  void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
 
   Status AsyncSubscribeTaskLease(
       const TaskID &task_id,

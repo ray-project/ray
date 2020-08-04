@@ -15,7 +15,7 @@
 #include "ray/gcs/redis_gcs_client.h"
 
 #include "ray/common/ray_config.h"
-#include "ray/gcs/redis_accessor.h"
+// #include "ray/gcs/accessor.h"
 #include "ray/gcs/redis_context.h"
 
 namespace ray {
@@ -67,21 +67,6 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   actor_checkpoint_id_table_.reset(new ActorCheckpointIdTable(shard_contexts, this));
   resource_table_.reset(new DynamicResourceTable({primary_context}, this));
   worker_table_.reset(new WorkerTable(shard_contexts, this));
-
-  if (RayConfig::instance().gcs_actor_service_enabled()) {
-    actor_accessor_.reset(new RedisActorInfoAccessor(this));
-  } else {
-    actor_accessor_.reset(new RedisLogBasedActorInfoAccessor(this));
-  }
-
-  job_accessor_.reset(new RedisJobInfoAccessor(this));
-  object_accessor_.reset(new RedisObjectInfoAccessor(this));
-  node_accessor_.reset(new RedisNodeInfoAccessor(this));
-  task_accessor_.reset(new RedisTaskInfoAccessor(this));
-  error_accessor_.reset(new RedisErrorInfoAccessor(this));
-  stats_accessor_.reset(new RedisStatsInfoAccessor(this));
-  worker_accessor_.reset(new RedisWorkerInfoAccessor(this));
-  placement_group_accessor_.reset(new RedisPlacementGroupInfoAccessor());
 
   is_connected_ = true;
 
