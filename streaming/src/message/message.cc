@@ -86,5 +86,15 @@ bool StreamingMessage::operator==(const StreamingMessage &message) const {
          !std::memcmp(RawData(), message.RawData(), data_size_);
 }
 
+std::ostream &operator<<(std::ostream &os, const StreamingMessage &message) {
+  os << "{"
+     << " message_type_: " << static_cast<int>(message.GetMessageType())
+     << " message_id_: " << message.GetMessageSeqId()
+     << " data_size_: " << message.data_size_
+     << " message_data_: " << (void*) message.message_data_.get()
+     << "}";
+  return os;
+}
+
 }  // namespace streaming
 }  // namespace ray

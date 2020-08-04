@@ -6,17 +6,23 @@ import io.ray.api.id.ActorId;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Physical plan.
  */
 public class ExecutionGraph implements Serializable {
+
+  private static final Logger LOG = LoggerFactory.getLogger(ExecutionGraph.class);
 
   /**
    * Name of the job.
@@ -92,9 +98,52 @@ public class ExecutionGraph implements Serializable {
     this.executionJobVertexMap = executionJobVertexMap;
   }
 
-  public void setActorIdExecutionVertexMap(
-      Map<ActorId, ExecutionVertex> actorIdExecutionVertexMap) {
-    this.actorIdExecutionVertexMap = actorIdExecutionVertexMap;
+
+  /**
+   * generate relation mappings between actors, execution vertices and channels
+   * this method must be called after worker actor is set.
+   */
+  public void generateActorMappings() {
+    LOG.info("Setup queue actors relation.");
+
+    channelGroupedActors = new HashMap<>();
+    actorIdExecutionVertexMap = new HashMap<>();
+
+    getAllExecutionVertices().forEach(curVertex -> {
+
+      // current
+      actorIdExecutionVertexMap.put(curVertex.getActorId(), curVertex);
+
+      // input
+      List<ExecutionEdge> inputEdges = curVertex.getInputEdges();
+      inputEdges.forEach(inputEdge -> {
+        ExecutionVertex inputVertex = inputEdge.getSourceExecutionVertex();
+        String channelId = curVertex.getChannelIdByPeerVertex(inputVertex);
+        addActorToChannelGroupedActors(channelGroupedActors, channelId,
+          inputVertex.getWorkerActor());
+      });
+
+      // output
+      List<ExecutionEdge> outputEdges = curVertex.getOutputEdges();
+      outputEdges.forEach(outputEdge -> {
+        ExecutionVertex outputVertex = outputEdge.getTargetExecutionVertex();
+        String channelId = curVertex.getChannelIdByPeerVertex(outputVertex);
+        addActorToChannelGroupedActors(channelGroupedActors, channelId,
+          outputVertex.getWorkerActor());
+      });
+    });
+
+    LOG.info("Channel grouped actors is: {}.", channelGroupedActors);
+  }
+
+  private void addActorToChannelGroupedActors(
+    Map<String, Set<BaseActorHandle>> channelGroupedActors,
+    String queueName,
+    BaseActorHandle actor) {
+
+    Set<BaseActorHandle> actorSet =
+      channelGroupedActors.computeIfAbsent(queueName, k -> new HashSet<>());
+    actorSet.add(actor);
   }
 
   public void setExecutionVertexMap(Map<Integer, ExecutionVertex> executionVertexMap) {
@@ -129,11 +178,6 @@ public class ExecutionGraph implements Serializable {
     return executionVertexIdGenerator;
   }
 
-  public void setChannelGroupedActors(
-      Map<String, Set<BaseActorHandle>> channelGroupedActors) {
-    this.channelGroupedActors = channelGroupedActors;
-  }
-
   /**
    * Get all execution vertices from current execution graph.
    *
@@ -141,9 +185,9 @@ public class ExecutionGraph implements Serializable {
    */
   public List<ExecutionVertex> getAllExecutionVertices() {
     return executionJobVertexMap.values().stream()
-        .map(ExecutionJobVertex::getExecutionVertices)
-        .flatMap(Collection::stream)
-        .collect(Collectors.toList());
+      .map(ExecutionJobVertex::getExecutionVertices)
+      .flatMap(Collection::stream)
+      .collect(Collectors.toList());
   }
 
   /**
@@ -153,10 +197,10 @@ public class ExecutionGraph implements Serializable {
    */
   public List<ExecutionVertex> getAllAddedExecutionVertices() {
     return executionJobVertexMap.values().stream()
-        .map(ExecutionJobVertex::getExecutionVertices)
-        .flatMap(Collection::stream)
-        .filter(ExecutionVertex::is2Add)
-        .collect(Collectors.toList());
+      .map(ExecutionJobVertex::getExecutionVertices)
+      .flatMap(Collection::stream)
+      .filter(ExecutionVertex::is2Add)
+      .collect(Collectors.toList());
   }
 
   /**
@@ -192,8 +236,8 @@ public class ExecutionGraph implements Serializable {
    */
   public Optional<BaseActorHandle> getActorById(ActorId actorId) {
     return getAllActors().stream()
-        .filter(actor -> actor.getId().equals(actorId))
-        .findFirst();
+      .filter(actor -> actor.getId().equals(actorId))
+      .findFirst();
   }
 
   /**
@@ -240,8 +284,8 @@ public class ExecutionGraph implements Serializable {
    */
   public List<BaseActorHandle> getSourceActors() {
     List<ExecutionJobVertex> executionJobVertices = getExecutionJobVertexList().stream()
-        .filter(ExecutionJobVertex::isSourceVertex)
-        .collect(Collectors.toList());
+      .filter(ExecutionJobVertex::isSourceVertex)
+      .collect(Collectors.toList());
 
     return getActorsFromJobVertices(executionJobVertices);
   }
@@ -253,9 +297,9 @@ public class ExecutionGraph implements Serializable {
    */
   public List<BaseActorHandle> getNonSourceActors() {
     List<ExecutionJobVertex> executionJobVertices = getExecutionJobVertexList().stream()
-        .filter(executionJobVertex -> executionJobVertex.isTransformationVertex()
-            || executionJobVertex.isSinkVertex())
-        .collect(Collectors.toList());
+      .filter(executionJobVertex -> executionJobVertex.isTransformationVertex()
+        || executionJobVertex.isSinkVertex())
+      .collect(Collectors.toList());
 
     return getActorsFromJobVertices(executionJobVertices);
   }
@@ -267,8 +311,8 @@ public class ExecutionGraph implements Serializable {
    */
   public List<BaseActorHandle> getSinkActors() {
     List<ExecutionJobVertex> executionJobVertices = getExecutionJobVertexList().stream()
-        .filter(ExecutionJobVertex::isSinkVertex)
-        .collect(Collectors.toList());
+      .filter(ExecutionJobVertex::isSinkVertex)
+      .collect(Collectors.toList());
 
     return getActorsFromJobVertices(executionJobVertices);
   }
@@ -280,19 +324,19 @@ public class ExecutionGraph implements Serializable {
    * @return actor list
    */
   public List<BaseActorHandle> getActorsFromJobVertices(
-      List<ExecutionJobVertex> executionJobVertices) {
+    List<ExecutionJobVertex> executionJobVertices) {
     return executionJobVertices.stream()
-        .map(ExecutionJobVertex::getExecutionVertices)
-        .flatMap(Collection::stream)
-        .map(ExecutionVertex::getWorkerActor)
-        .collect(Collectors.toList());
+      .map(ExecutionJobVertex::getExecutionVertices)
+      .flatMap(Collection::stream)
+      .map(ExecutionVertex::getWorkerActor)
+      .collect(Collectors.toList());
   }
 
   public Set<String> getActorName(Set<ActorId> actorIds) {
     return getAllExecutionVertices().stream()
-        .filter(executionVertex -> actorIds.contains(executionVertex.getActorId()))
-        .map(ExecutionVertex::getActorName)
-        .collect(Collectors.toSet());
+      .filter(executionVertex -> actorIds.contains(executionVertex.getActorId()))
+      .map(ExecutionVertex::getActorName)
+      .collect(Collectors.toSet());
   }
 
   public String getActorName(ActorId actorId) {
@@ -307,8 +351,8 @@ public class ExecutionGraph implements Serializable {
 
   public List<ActorId> getAllActorsId() {
     return getAllActors().stream()
-        .map(BaseActorHandle::getId)
-        .collect(Collectors.toList());
+      .map(BaseActorHandle::getId)
+      .collect(Collectors.toList());
   }
 
 }

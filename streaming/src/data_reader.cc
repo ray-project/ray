@@ -286,7 +286,8 @@ StreamingStatus DataReader::GetMergedMessageBundle(std::shared_ptr<DataBundle> &
   offset_info.current_message_id = message->meta->GetLastMessageId();
   last_bundle_ts_ = message->meta->GetMessageBundleTs();
 
-  STREAMING_LOG(DEBUG) << "[Reader] [Bundle] Get merged message bundle=" << *message << ", is_valid_break" << is_valid_break;
+  STREAMING_LOG(DEBUG) << "[Reader] [Bundle] Get merged message bundle="
+   << *message << ", is_valid_break=" << is_valid_break;
   return StreamingStatus::OK;
 }
 

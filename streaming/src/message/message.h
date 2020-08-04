@@ -138,6 +138,8 @@ class StreamingMessage {
         *reinterpret_cast<const uint64_t *>(data + sizeof(StreamingBarrierType));
 
   }
+
+  friend std::ostream &operator<<(std::ostream &os, const StreamingMessage &message);
 };
 
 }  // namespace streaming

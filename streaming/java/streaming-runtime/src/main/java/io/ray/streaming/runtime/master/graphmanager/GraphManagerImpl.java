@@ -54,8 +54,6 @@ public class GraphManagerImpl implements GraphManager {
 
     // create vertex
     Map<Integer, ExecutionJobVertex> exeJobVertexMap = new LinkedHashMap<>();
-    Map<String, Set<BaseActorHandle>> channelGroupedActors = new HashMap<>();
-    Map<ActorId, ExecutionVertex> actorIdExecutionVertexMap = new HashMap<>();
     Map<Integer, ExecutionVertex> executionVertexMap = new HashMap<>();
     long buildTime = executionGraph.getBuildTime();
     for (JobVertex jobVertex : jobGraph.getJobVertices()) {
@@ -73,8 +71,7 @@ public class GraphManagerImpl implements GraphManager {
       ExecutionJobVertex source = exeJobVertexMap.get(jobEdge.getSrcVertexId());
       ExecutionJobVertex target = exeJobVertexMap.get(jobEdge.getTargetVertexId());
 
-      ExecutionJobEdge executionJobEdge =
-          new ExecutionJobEdge(source, target, jobEdge);
+      ExecutionJobEdge executionJobEdge = new ExecutionJobEdge(source, target, jobEdge);
 
       source.getOutputEdges().add(executionJobEdge);
       target.getInputEdges().add(executionJobEdge);
@@ -82,9 +79,7 @@ public class GraphManagerImpl implements GraphManager {
       source.getExecutionVertices().forEach(sourceExeVertex -> {
         target.getExecutionVertices().forEach(targetExeVertex -> {
           // pre-process some mappings
-          actorIdExecutionVertexMap.put(targetExeVertex.getActorId(), targetExeVertex);
           executionVertexMap.put(targetExeVertex.getExecutionVertexId(), targetExeVertex);
-          actorIdExecutionVertexMap.put(sourceExeVertex.getActorId(), sourceExeVertex);
           executionVertexMap.put(sourceExeVertex.getExecutionVertexId(), sourceExeVertex);
           // build execution edge
           ExecutionEdge executionEdge =
@@ -95,27 +90,9 @@ public class GraphManagerImpl implements GraphManager {
       });
     });
 
-    jobGraph.getJobEdges().forEach(jobEdge -> {
-      ExecutionJobVertex source = exeJobVertexMap.get(jobEdge.getSrcVertexId());
-      ExecutionJobVertex target = exeJobVertexMap.get(jobEdge.getTargetVertexId());
-      source.getExecutionVertices().forEach(sourceExeVertex -> {
-        target.getExecutionVertices().forEach(targetExeVertex -> {
-          // generate channel ID
-          String channelId =
-              sourceExeVertex.getChannelIdByPeerVertex(targetExeVertex);
-          addActorToChannelGroupedActors(channelGroupedActors, channelId,
-              sourceExeVertex.getWorkerActor());
-          addActorToChannelGroupedActors(channelGroupedActors, channelId,
-              targetExeVertex.getWorkerActor());
-        });
-      });
-    });
-
     // set execution job vertex into execution graph
     executionGraph.setExecutionJobVertexMap(exeJobVertexMap);
     executionGraph.setExecutionVertexMap(executionVertexMap);
-    executionGraph.setActorIdExecutionVertexMap(actorIdExecutionVertexMap);
-    executionGraph.setChannelGroupedActors(channelGroupedActors);
 
     return executionGraph;
   }

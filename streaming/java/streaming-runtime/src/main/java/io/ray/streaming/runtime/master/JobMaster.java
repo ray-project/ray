@@ -4,6 +4,7 @@ import com.google.common.base.Preconditions;
 import com.google.protobuf.InvalidProtocolBufferException;
 import io.ray.api.ActorHandle;
 import io.ray.api.BaseActorHandle;
+import io.ray.api.Ray;
 import io.ray.api.id.ActorId;
 import io.ray.streaming.jobgraph.JobGraph;
 import io.ray.streaming.runtime.config.StreamingConfig;
@@ -48,7 +49,7 @@ public class JobMaster {
   private GraphManager graphManager;
   private StreamingMasterConfig conf;
 
-  private StateBackend<String, byte[], StateBackendConfig> stateBackend;
+  private StateBackend stateBackend;
 
   private ActorHandle<JobMaster> jobMasterActor;
 
@@ -67,7 +68,9 @@ public class JobMaster {
     runtimeContext = new JobMasterRuntimeContext(streamingConfig);
 
     // load checkpoint if is recover
-    loadMasterCheckpoint();
+    if (Ray.getRuntimeContext().wasCurrentActorRestarted()) {
+      loadMasterCheckpoint();
+    }
 
     LOG.info("Finished creating job master.");
   }

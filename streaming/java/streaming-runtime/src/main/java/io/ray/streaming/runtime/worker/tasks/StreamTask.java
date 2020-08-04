@@ -44,7 +44,7 @@ import org.slf4j.LoggerFactory;
  */
 public abstract class StreamTask implements Runnable {
   private static final Logger LOG = LoggerFactory.getLogger(StreamTask.class);
-  private final StateBackend<String, byte[], StateBackendConfig> checkpointState;
+  private final StateBackend checkpointState;
   public volatile boolean isInitialState = true;
   public long lastCheckpointId;
   protected Processor processor;

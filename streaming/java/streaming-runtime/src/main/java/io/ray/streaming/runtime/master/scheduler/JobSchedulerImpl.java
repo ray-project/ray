@@ -44,7 +44,12 @@ public class JobSchedulerImpl implements JobScheduler {
     LOG.info("Begin scheduling. Job: {}.", executionGraph.getJobName());
 
     // Allocate resource then create workers
+    // Actor creation is in this step
     prepareResourceAndCreateWorker(executionGraph);
+
+    // now actor info is available in execution graph
+    // preprocess some handy mappings in execution graph
+    executionGraph.generateActorMappings();
 
     // init worker context and start to run
     initAndStart(executionGraph);

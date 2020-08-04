@@ -1,5 +1,6 @@
 package io.ray.streaming.runtime.transfer.channel;
 
+import com.google.common.base.MoreObjects;
 import java.io.Serializable;
 
 public class OffsetInfo implements Serializable {
@@ -16,5 +17,12 @@ public class OffsetInfo implements Serializable {
 
   public void setStreamingMsgId(long streamingMsgId) {
     this.streamingMsgId = streamingMsgId;
+  }
+
+  @Override
+  public String toString() {
+    return MoreObjects.toStringHelper(this)
+      .add("streamingMsgId", streamingMsgId)
+      .toString();
   }
 }

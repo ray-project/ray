@@ -98,9 +98,17 @@ StreamingStatus StreamingQueueProducer::NotifyChannelConsumed(uint64_t msg_id) {
 
 StreamingStatus StreamingQueueProducer::ProduceItemToChannel(uint8_t *data,
                                                              uint32_t data_size) {
-  /// TODO: Fix msg_id_start and msg_id_end
-  Status status = PushQueueItem(data, data_size, current_time_ms(), 0, 0);
+  StreamingMessageBundleMetaPtr meta = StreamingMessageBundleMeta::FromBytes(data);
+  uint64_t msg_id_end = meta->GetLastMessageId();
+  uint64_t msg_id_start =
+      (meta->GetMessageListSize() == 0 ? msg_id_end
+                                       : msg_id_end - meta->GetMessageListSize() + 1);
 
+  STREAMING_LOG(DEBUG) << "ProduceItemToChannel, qid=" << channel_info_.channel_id
+                       << ", msg_id_start=" << msg_id_start
+                       << ", msg_id_end=" << msg_id_end << ", meta=" << *meta;
+
+  Status status = PushQueueItem(data, data_size, current_time_ms(), msg_id_start, msg_id_end);
   if (status.code() != StatusCode::OK) {
     STREAMING_LOG(DEBUG) << channel_info_.channel_id << " => Queue is full"
                          << " meesage => " << status.message();

@@ -47,7 +47,7 @@ public class WorkerLifecycleController {
 
     BaseActorHandle actor;
     if (Language.JAVA == language) {
-      actor = Ray.actor(JobWorker::new)
+      actor = Ray.actor(JobWorker::new, executionVertex)
           .setResources(executionVertex.getResource())
           .setMaxRestarts(-1)
           .remote();

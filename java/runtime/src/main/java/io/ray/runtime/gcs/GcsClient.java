@@ -130,6 +130,7 @@ public class GcsClient {
     } catch (InvalidProtocolBufferException e) {
       throw new RuntimeException("Received invalid protobuf data from GCS.");
     }
+    LOGGER.info("######num_restarts={}", actorTableData.getNumRestarts());
     return actorTableData.getNumRestarts() != 0;
   }
 

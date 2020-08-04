@@ -1,40 +1,23 @@
 package io.ray.streaming.runtime.state;
 
 import io.ray.streaming.runtime.config.global.StateBackendConfig;
-import java.util.List;
-import java.util.Map;
 
-public interface StateBackend<K, V, C extends StateBackendConfig> {
-
-  /**
-   * init state backend
-   *
-   * @param config config
-   */
-  void init(final C config);
+public interface StateBackend {
 
   /**
    * check if key exists in state
    *
    * @return true if exists
    */
-  boolean exists(final K key) throws Exception;
+  boolean exists(final String key) throws Exception;
 
   /**
    * get content by key
    *
    * @param key key
-   * @return coStateBackendntent
+   * @return the StateBackend
    */
-  V get(final K key) throws Exception;
-
-  /**
-   * get content by key in batch
-   *
-   * @param keys keys list
-   * @return content list
-   */
-  List<V> batchGet(final List<K> keys) throws Exception;
+  byte[] get(final String key) throws Exception;
 
   /**
    * put content by key
@@ -42,22 +25,13 @@ public interface StateBackend<K, V, C extends StateBackendConfig> {
    * @param key   key
    * @param value content
    */
-  void put(final K key, final V value) throws Exception;
-
-  /**
-   * put data in batct
-   */
-  void batchPut(final Map<K, V> batchData) throws Exception;
+  void put(final String key, final byte[] value) throws Exception;
 
   /**
    * remove content by key
    *
    * @param key key
    */
-  void remove(final K key) throws Exception;
+  void remove(final String key) throws Exception;
 
-  /**
-   * flush
-   */
-  void flush() throws Exception;
 }

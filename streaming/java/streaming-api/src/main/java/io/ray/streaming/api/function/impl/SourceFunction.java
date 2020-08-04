@@ -9,7 +9,7 @@ import io.ray.streaming.api.function.Function;
  */
 public interface SourceFunction<T> extends Function {
 
-  void init(int parallel, int index);
+  void init(int totalParallel, int currentIndex);
 
   void fetch(SourceContext<T> ctx, long checkpointId) throws Exception;
 

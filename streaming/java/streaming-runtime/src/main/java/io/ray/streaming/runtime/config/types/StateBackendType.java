@@ -8,14 +8,9 @@ public enum StateBackendType {
   MEMORY("memory", 0),
 
   /**
-   * Pangu type
+   * Local File
    */
-  PANGU("pangu", 1),
-
-  /**
-   * HBase type
-   */
-  HBASE("hbase", 2);
+  LOCAL_FILE("local_file", 1);
 
   private String name;
   private int index;

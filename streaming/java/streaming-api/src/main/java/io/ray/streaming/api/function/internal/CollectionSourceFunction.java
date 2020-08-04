@@ -19,7 +19,7 @@ public class CollectionSourceFunction<T> implements SourceFunction<T> {
   }
 
   @Override
-  public void init(int parallel, int index) {
+  public void init(int totalParallel, int currentIndex) {
   }
 
   @Override

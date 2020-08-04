@@ -18,9 +18,8 @@ public class CheckpointStateUtil {
    * @param checkpointState state backend
    * @param cpKey           checkpoint key
    */
-  public static <K, V, C extends StateBackendConfig> V get(
-      StateBackend<K, V, C> checkpointState, K cpKey) {
-    V val;
+  public static byte[] get(StateBackend checkpointState, String cpKey) {
+    byte[] val;
     try {
       val = checkpointState.get(cpKey);
     } catch (Exception e) {
@@ -33,18 +32,14 @@ public class CheckpointStateUtil {
   /**
    * ALLOW PUT EXCEPTION WHEN SAVING CHECKPOINT
    *
-   * @param checkpointState statebackend
+   * @param checkpointState state backend
    * @param key             checkpoint key
    * @param val             checkpoint value
-   * @param <K>             key generic type
-   * @param <V>             value generic type
    */
-  public static <K, V, C extends StateBackendConfig> void put(
-      StateBackend<K, V, C> checkpointState, K key, V val) {
+  public static void put(StateBackend checkpointState, String key, byte[] val) {
     try {
       checkpointState.put(key, val);
     } catch (Exception e) {
-      // TODO: @dongxu.wdx we can return boolean to judge whether putting is succeed or not.
       LOG.error("Failed to put key {} to state backend.", key, e);
     }
   }
