@@ -475,7 +475,7 @@ py_test(
 # )
 
 py_test(
-    name = "pbt_transformers_example",
+    name = "pbt_transformers",
     size = "medium",
     srcs = ["examples/pbt_transformers/pbt_transformers.py"],
     deps = [":tune_lib"],
