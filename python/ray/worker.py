@@ -1283,22 +1283,11 @@ def connect(node,
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
         (mode == SCRIPT_MODE or mode == LOCAL_MODE),
-        node.plasma_store_socket_name,
-        node.raylet_socket_name,
-        job_id,
-        gcs_options,
-        node.get_logs_dir_path(),
-        node.node_ip_address,
-        node.node_manager_port,
-        node.raylet_ip_address,
-        (mode == LOCAL_MODE),
-        driver_name,
-        log_stdout_file_path,
-        log_stderr_file_path,
-        serialized_job_config,
-        node.metrics_agent_port
-    )
->>>>>>> master
+        node.plasma_store_socket_name, node.raylet_socket_name, job_id,
+        gcs_options, node.get_logs_dir_path(), node.node_ip_address,
+        node.node_manager_port, node.raylet_ip_address, (mode == LOCAL_MODE),
+        driver_name, log_stdout_file_path, log_stderr_file_path,
+        serialized_job_config, node.metrics_agent_port)
 
     # Create an object for interfacing with the global state.
     # Note, global state should be intialized after `CoreWorker`, because it
