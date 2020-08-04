@@ -11,7 +11,7 @@ DOCKER_USERNAME="raytravisbot"
 
 docker_push() {
     if [[ "$TRAVIS_PULL_REQUEST" == "false" ]]; then
-        docker push $@
+        docker push "$@"
     else
         echo "Skipping docker push because it's in PR environment."
     fi
@@ -32,8 +32,8 @@ if [[ "$TRAVIS" == "true" ]]; then
     wheel="$(basename "$ROOT_DIR"/.whl/*cp37m-manylinux*)"
     commit_sha=$(echo "$TRAVIS_COMMIT" | head -c 6)
     cp -r "$ROOT_DIR"/.whl "$ROOT_DIR"/docker/ray/.whl
-    cp $ROOT_DIR/python/requirements.txt $ROOT_DIR/docker/autoscaler/requirements.txt
-    cp $ROOT_DIR/python/requirements_autoscaler.txt $ROOT_DIR/docker/autoscaler/requirements_autoscaler.txt
+    cp "$ROOT_DIR"/python/requirements.txt "$ROOT_DIR"/docker/autoscaler/requirements.txt
+    cp "$ROOT_DIR"/python/requirements_autoscaler.txt "$ROOT_DIR"/docker/autoscaler/requirements_autoscaler.txt
 
     docker build -t rayproject/base-deps docker/base-deps
 
