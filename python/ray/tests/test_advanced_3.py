@@ -202,7 +202,10 @@ def test_logging_to_driver(shutdown_only):
     def f():
         # It's important to make sure that these print statements occur even
         # without calling sys.stdout.flush() and sys.stderr.flush().
-        for i in range(100):
+        for i in range(10):
+            # TODO(Alex): This test case really should handle these:
+            # print(i, end=" ")
+            # print(100 + i, end=" ", file=sys.stderr)
             print(i)
             print(100 + i, file=sys.stderr)
 
@@ -211,10 +214,13 @@ def test_logging_to_driver(shutdown_only):
         ray.get(f.remote())
         time.sleep(1)
 
+    out_lines = captured["out"]
     err_lines = captured["err"]
-    for i in range(200):
-        assert str(i) in err_lines
+    for i in range(10):
+        assert str(i) in out_lines
 
+    for i in range(100,110):
+        assert str(i) in err_lines
 
 def test_not_logging_to_driver(shutdown_only):
     ray.init(num_cpus=1, log_to_driver=False)
