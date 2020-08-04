@@ -1807,7 +1807,6 @@ void NodeManager::HandleRequestResourceReserve(
   RAY_LOG(DEBUG) << "bundle lease request " << bundle_spec.BundleId().first
                  << bundle_spec.BundleId().second;
   auto resource_ids = ScheduleBundle(cluster_resource_map_, bundle_spec);
-  RAY_LOG(ERROR) << "Reserving resource ids " << resource_ids.ToString();
   if (resource_ids.AvailableResources().size() == 0) {
     reply->set_success(false);
     send_reply_callback(Status::OK(), nullptr, nullptr);
