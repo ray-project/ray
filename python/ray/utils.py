@@ -399,6 +399,7 @@ class Unbuffered(object):
     https://mail.python.org/pipermail/tutor/2003-November/026645.html.
     https://docs.python.org/3/library/functions.html#open
     """
+
     def __init__(self, stream):
         self.stream = stream
 
