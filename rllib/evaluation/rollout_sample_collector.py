@@ -283,9 +283,6 @@ class RolloutSampleCollector:
             Dict[str, TensorType]: The input_dict to be passed into the ModelV2
                 for inference/training.
         """
-        # Get ModelV2's view requirements.
-        #view_reqs = model.get_view_requirements()
-
         # Construct the view dict.
         view = {}
         for view_col, view_req in view_reqs.items():
@@ -300,7 +297,7 @@ class RolloutSampleCollector:
             # For OBS, indices must be shifted by -1.
             if data_col == SampleBatch.OBS:
                 t = self.forward_pass_indices[0]
-                indices = (list(np.array(t) - 1), self.forward_pass_indices[1])
+                indices = (list(np.array(t) - self.shift_before), self.forward_pass_indices[1])
             else:
                 indices = self.forward_pass_indices
             if self.time_major:

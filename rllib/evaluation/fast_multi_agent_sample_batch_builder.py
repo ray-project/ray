@@ -79,7 +79,7 @@ class _FastMultiAgentSampleBatchBuilder:
 
             self.rollout_sample_collectors[pid] = RolloutSampleCollector(
                 num_agents=self.num_agents,
-                shift_before=max_shift_before, shift_after=max_shift_after,
+                shift_before=-max_shift_before, shift_after=max_shift_after,
                 **kwargs)
 
         # Internal agent-to-policy map.
