@@ -67,6 +67,8 @@ struct NodeManagerConfig {
   int max_worker_port;
   /// The initial number of workers to create.
   int num_initial_workers;
+  /// Number of initial Python workers for the first job.
+  int num_initial_python_workers_for_first_job;
   /// The maximum number of workers that can be started concurrently by a
   /// worker pool.
   int maximum_startup_concurrency;
@@ -731,6 +733,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// The resources (and specific resource IDs) that are currently available.
   ResourceIdSet local_available_resources_;
   std::unordered_map<ClientID, SchedulingResources> cluster_resource_map_;
+
   /// A pool of workers.
   WorkerPool worker_pool_;
   /// A set of queues to maintain tasks.
