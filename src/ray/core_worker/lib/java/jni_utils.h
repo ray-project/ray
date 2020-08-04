@@ -15,6 +15,7 @@
 #pragma once
 
 #include <jni.h>
+
 #include <algorithm>
 
 #include "ray/common/buffer.h"

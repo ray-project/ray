@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/gcs/store_client/redis_store_client.h"
+
 #include "ray/common/test_util.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/store_client/test/store_client_test_base.h"

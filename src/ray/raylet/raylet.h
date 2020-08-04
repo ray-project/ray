@@ -14,10 +14,9 @@
 
 #pragma once
 
-#include <list>
-
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
+#include <list>
 
 // clang-format off
 #include "ray/raylet/node_manager.h"

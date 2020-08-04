@@ -1,9 +1,8 @@
 #pragma once
 
+#include "hiredis/hiredis.h"
 #include "ray/common/test_util.h"
 #include "ray/util/filesystem.h"
-
-#include "hiredis/hiredis.h"
 
 namespace ray {
 namespace streaming {

@@ -15,6 +15,7 @@
 #pragma once
 
 #include <gtest/gtest_prod.h>
+
 #include <boost/optional.hpp>
 
 #include "ray/common/id.h"
