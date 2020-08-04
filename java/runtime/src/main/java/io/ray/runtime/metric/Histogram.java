@@ -22,8 +22,8 @@ public class Histogram extends Metric {
                    Map<TagKey, String> tags) {
     super(name, tags);
     metricNativePointer = NativeMetric.registerHistogramNative(name, description, unit,
-      boundaries.stream().mapToDouble(Double::doubleValue).toArray(),
-      tags.keySet().stream().map(TagKey::getTagKey).collect(Collectors.toList()));
+        boundaries.stream().mapToDouble(Double::doubleValue).toArray(),
+        tags.keySet().stream().map(TagKey::getTagKey).collect(Collectors.toList()));
     Preconditions.checkState(metricNativePointer != 0,
         "Histogram native pointer must not be 0.");
     histogramWindow = Collections.synchronizedList(new ArrayList<>());

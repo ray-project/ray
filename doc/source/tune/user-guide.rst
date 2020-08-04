@@ -431,6 +431,58 @@ If a string is provided, then it must include replacement fields ``{source}`` an
 
 By default, syncing occurs every 300 seconds. To change the frequency of syncing, set the ``TUNE_CLOUD_SYNC_S`` environment variable in the driver to the desired syncing period. Note that uploading only happens when global experiment state is collected, and the frequency of this is determined by the ``global_checkpoint_period`` argument. So the true upload period is given by ``max(TUNE_CLOUD_SYNC_S, global_checkpoint_period)``.
 
+.. _tune-log_to_file:
+
+Redirecting stdout and stderr to files
+--------------------------------------
+The stdout and stderr streams are usually printed to the console. For remote actors,
+Ray collects these logs and prints them to the head process, as long as it
+has been initialized with ``log_to_driver=True``, which is the default.
+
+However, if you would like to collect the stream outputs in files for later
+analysis or troubleshooting, Tune offers an utility parameter, ``log_to_file``,
+for this.
+
+By passing ``log_to_file=True`` to ``tune.run()``, stdout and stderr will be logged
+to ``trial_logdir/stdout`` and ``trial_logdir/stderr``, respectively:
+
+.. code-block:: python
+
+    tune.run(
+        trainable,
+        log_to_file=True)
+
+If you would like to specify the output files, you can either pass one filename,
+where the combined output will be stored, or two filenames, for stdout and stderr,
+respectively:
+
+.. code-block:: python
+
+    tune.run(
+        trainable,
+        log_to_file="std_combined.log")
+
+    tune.run(
+        trainable,
+        log_to_file=("my_stdout.log", "my_stderr.log"))
+
+The file names are relative to the trial's logdir. You can pass absolute paths,
+too.
+
+If ``log_to_file`` is set, Tune will automatically register a new logging handler
+for Ray's base logger and log the output to the specified stderr output file.
+
+Setting ``log_to_file`` does not disable logging to the driver. If you would
+like to disable the logs showing up in the driver output (i.e. they should only
+show up in the logfiles), initialize Ray accordingly:
+
+.. code-block:: python
+
+    ray.init(log_to_driver=False)
+    tune.run(
+        trainable,
+        log_to_file=True)
+
 .. _tune-debugging:
 
 Debugging

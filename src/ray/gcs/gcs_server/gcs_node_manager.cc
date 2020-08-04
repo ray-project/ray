@@ -89,8 +89,31 @@ void GcsNodeManager::NodeFailureDetector::DetectDeadNodes() {
 void GcsNodeManager::NodeFailureDetector::SendBatchedHeartbeat() {
   if (!heartbeat_buffer_.empty()) {
     auto batch = std::make_shared<rpc::HeartbeatBatchTableData>();
-    for (const auto &heartbeat : heartbeat_buffer_) {
-      batch->add_batch()->CopyFrom(heartbeat.second);
+    std::unordered_map<ResourceSet, rpc::ResourceDemand> aggregate_load;
+    for (auto &heartbeat : heartbeat_buffer_) {
+      // Aggregate the load reported by each raylet.
+      auto load = heartbeat.second.resource_load_by_shape();
+      for (const auto &demand : load.resource_demands()) {
+        auto scheduling_key = ResourceSet(MapFromProtobuf(demand.shape()));
+        auto &aggregate_demand = aggregate_load[scheduling_key];
+        aggregate_demand.set_num_ready_requests_queued(
+            aggregate_demand.num_ready_requests_queued() +
+            demand.num_ready_requests_queued());
+        aggregate_demand.set_num_infeasible_requests_queued(
+            aggregate_demand.num_infeasible_requests_queued() +
+            demand.num_infeasible_requests_queued());
+      }
+      heartbeat.second.clear_resource_load_by_shape();
+
+      batch->add_batch()->Swap(&heartbeat.second);
+    }
+
+    for (auto &demand : aggregate_load) {
+      auto demand_proto = batch->mutable_resource_load_by_shape()->add_resource_demands();
+      demand_proto->Swap(&demand.second);
+      for (const auto &resource_pair : demand.first.GetResourceMap()) {
+        (*demand_proto->mutable_shape())[resource_pair.first] = resource_pair.second;
+      }
     }
 
     RAY_CHECK_OK(gcs_pub_sub_->Publish(HEARTBEAT_BATCH_CHANNEL, "",
@@ -117,11 +140,9 @@ void GcsNodeManager::NodeFailureDetector::ScheduleTick() {
 //////////////////////////////////////////////////////////////////////////////////////////
 GcsNodeManager::GcsNodeManager(boost::asio::io_service &main_io_service,
                                boost::asio::io_service &node_failure_detector_io_service,
-                               gcs::ErrorInfoAccessor &error_info_accessor,
                                std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
                                std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
-    : error_info_accessor_(error_info_accessor),
-      main_io_service_(main_io_service),
+    : main_io_service_(main_io_service),
       node_failure_detector_(new NodeFailureDetector(
           node_failure_detector_io_service, gcs_table_storage, gcs_pub_sub,
           [this](const ClientID &node_id) {
@@ -383,7 +404,8 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
                     << " has missed too many heartbeats from it.";
       auto error_data_ptr =
           gcs::CreateErrorTableData(type, error_message.str(), current_time_ms());
-      RAY_CHECK_OK(error_info_accessor_.AsyncReportJobError(error_data_ptr, nullptr));
+      RAY_CHECK_OK(gcs_pub_sub_->Publish(ERROR_INFO_CHANNEL, node_id.Hex(),
+                                         error_data_ptr->SerializeAsString(), nullptr));
     }
 
     // Notify all listeners.
