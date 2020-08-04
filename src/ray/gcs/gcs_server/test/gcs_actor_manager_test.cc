@@ -138,9 +138,11 @@ class GcsActorManagerTest : public ::testing::Test {
     auto register_actor_request =
         Mocker::GenRegisterActorRequest(job_id, max_restarts, detached, name);
     auto status = gcs_actor_manager_->RegisterActor(
-        register_actor_request, [promise](std::shared_ptr<gcs::GcsActor> actor) {
+        register_actor_request,
+        [promise](std::shared_ptr<gcs::GcsActor> actor) {
           promise->set_value(std::move(actor));
-        });
+        }, /* Success callback */
+        nullptr /* actor_already_destroyed_callback */);
     if (!status.ok()) {
       promise->set_value(nullptr);
     }
@@ -456,7 +458,7 @@ TEST_F(GcsActorManagerTest, TestActorWithEmptyName) {
   auto request1 = Mocker::GenRegisterActorRequest(job_id, /*max_restarts=*/0,
                                                   /*detached=*/true, /*name=*/"");
   Status status = gcs_actor_manager_->RegisterActor(
-      request1, [](std::shared_ptr<gcs::GcsActor> actor) {});
+      request1, [](std::shared_ptr<gcs::GcsActor> actor) {}, nullptr);
   // Ensure successful registration.
   ASSERT_TRUE(status.ok());
   // Make sure actor who empty name is not treated as a named actor.
@@ -466,8 +468,8 @@ TEST_F(GcsActorManagerTest, TestActorWithEmptyName) {
   // (name,actor_id) => ("", actor_id_2)
   auto request2 = Mocker::GenRegisterActorRequest(job_id, /*max_restarts=*/0,
                                                   /*detached=*/true, /*name=*/"");
-  status = gcs_actor_manager_->RegisterActor(request2,
-                                             [](std::shared_ptr<gcs::GcsActor> actor) {});
+  status = gcs_actor_manager_->RegisterActor(
+      request2, [](std::shared_ptr<gcs::GcsActor> actor) {}, nullptr);
   // Ensure successful registration.
   ASSERT_TRUE(status.ok());
 }
@@ -479,15 +481,15 @@ TEST_F(GcsActorManagerTest, TestNamedActors) {
   auto request1 = Mocker::GenRegisterActorRequest(job_id_1, /*max_restarts=*/0,
                                                   /*detached=*/true, /*name=*/"actor1");
   Status status = gcs_actor_manager_->RegisterActor(
-      request1, [](std::shared_ptr<gcs::GcsActor> actor) {});
+      request1, [](std::shared_ptr<gcs::GcsActor> actor) {}, nullptr);
   ASSERT_TRUE(status.ok());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor1").Binary(),
             request1.task_spec().actor_creation_task_spec().actor_id());
 
   auto request2 = Mocker::GenRegisterActorRequest(job_id_1, /*max_restarts=*/0,
                                                   /*detached=*/true, /*name=*/"actor2");
-  status = gcs_actor_manager_->RegisterActor(request2,
-                                             [](std::shared_ptr<gcs::GcsActor> actor) {});
+  status = gcs_actor_manager_->RegisterActor(
+      request2, [](std::shared_ptr<gcs::GcsActor> actor) {}, nullptr);
   ASSERT_TRUE(status.ok());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor2").Binary(),
             request2.task_spec().actor_creation_task_spec().actor_id());
@@ -498,8 +500,8 @@ TEST_F(GcsActorManagerTest, TestNamedActors) {
   // Check that naming collisions return Status::Invalid.
   auto request3 = Mocker::GenRegisterActorRequest(job_id_1, /*max_restarts=*/0,
                                                   /*detached=*/true, /*name=*/"actor2");
-  status = gcs_actor_manager_->RegisterActor(request3,
-                                             [](std::shared_ptr<gcs::GcsActor> actor) {});
+  status = gcs_actor_manager_->RegisterActor(
+      request3, [](std::shared_ptr<gcs::GcsActor> actor) {}, nullptr);
   ASSERT_TRUE(status.IsInvalid());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor2").Binary(),
             request2.task_spec().actor_creation_task_spec().actor_id());
@@ -507,8 +509,8 @@ TEST_F(GcsActorManagerTest, TestNamedActors) {
   // Check that naming collisions are enforced across JobIDs.
   auto request4 = Mocker::GenRegisterActorRequest(job_id_2, /*max_restarts=*/0,
                                                   /*detached=*/true, /*name=*/"actor2");
-  status = gcs_actor_manager_->RegisterActor(request4,
-                                             [](std::shared_ptr<gcs::GcsActor> actor) {});
+  status = gcs_actor_manager_->RegisterActor(
+      request4, [](std::shared_ptr<gcs::GcsActor> actor) {}, nullptr);
   ASSERT_TRUE(status.IsInvalid());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor2").Binary(),
             request2.task_spec().actor_creation_task_spec().actor_id());
@@ -644,8 +646,8 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionNotHappendWhenReconstructed) {
   const auto job_id_2 = JobID::FromInt(2);
   auto request2 = Mocker::GenRegisterActorRequest(job_id_2, /*max_restarts=*/0,
                                                   /*detached=*/true, /*name=*/"actor");
-  status = gcs_actor_manager_->RegisterActor(request2,
-                                             [](std::shared_ptr<gcs::GcsActor> actor) {});
+  status = gcs_actor_manager_->RegisterActor(
+      request2, [](std::shared_ptr<gcs::GcsActor> actor) {}, nullptr);
   ASSERT_TRUE(status.IsInvalid());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor").Binary(),
             request1.task_spec().actor_creation_task_spec().actor_id());

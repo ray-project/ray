@@ -100,12 +100,21 @@ void GcsActorManager::HandleRegisterActor(const rpc::RegisterActorRequest &reque
       ActorID::FromBinary(request.task_spec().actor_creation_task_spec().actor_id());
 
   RAY_LOG(INFO) << "Registering actor, actor id = " << actor_id;
-  Status status =
-      RegisterActor(request, [reply, send_reply_callback,
-                              actor_id](const std::shared_ptr<gcs::GcsActor> &actor) {
+  Status status = RegisterActor(
+      request,
+      [reply, send_reply_callback,
+       actor_id](const std::shared_ptr<gcs::GcsActor> &actor) {
         RAY_LOG(INFO) << "Registered actor, actor id = " << actor_id;
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-      });
+      }, /* Success Callback */
+      [reply, send_reply_callback,
+       actor_id](const std::shared_ptr<gcs::GcsActor> &actor) {
+        std::stringstream stream;
+        stream << "The actor of actor id, " << actor_id
+               << " is already destroyed before registered.";
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::NotFound(stream.str()));
+      } /* Failure Callback */
+  );
   if (!status.ok()) {
     RAY_LOG(ERROR) << "Failed to register actor: " << status.ToString();
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
@@ -380,9 +389,9 @@ void GcsActorManager::HandleGetActorCheckpointID(
 }
 
 Status GcsActorManager::RegisterActor(
-    const ray::rpc::RegisterActorRequest &request,
-    std::function<void(std::shared_ptr<GcsActor>)> callback) {
-  RAY_CHECK(callback);
+    const ray::rpc::RegisterActorRequest &request, RegisterActorCallback success_callback,
+    RegisterActorCallback actor_already_destroyed_callback) {
+  RAY_CHECK(success_callback);
   const auto &actor_creation_task_spec = request.task_spec().actor_creation_task_spec();
   auto actor_id = ActorID::FromBinary(actor_creation_task_spec.actor_id());
 
@@ -392,7 +401,7 @@ Status GcsActorManager::RegisterActor(
     // In case of temporary network failures, workers will re-send multiple duplicate
     // requests to GCS server.
     // In this case, we can just reply.
-    callback(iter->second);
+    success_callback(iter->second);
     return Status::OK();
   }
 
@@ -400,7 +409,7 @@ Status GcsActorManager::RegisterActor(
   if (pending_register_iter != actor_to_register_callbacks_.end()) {
     // It is a duplicate message, just mark the callback as pending and invoke it after
     // the actor has been flushed to the storage.
-    pending_register_iter->second.emplace_back(std::move(callback));
+    pending_register_iter->second.emplace_back(std::move(success_callback));
     return Status::OK();
   }
 
@@ -416,9 +425,7 @@ Status GcsActorManager::RegisterActor(
     }
   }
 
-  // Mark the callback as pending and invoke it after the actor has been successfully
-  // flushed to the storage.
-  actor_to_register_callbacks_[actor_id].emplace_back(std::move(callback));
+  actor_to_register_callbacks_[actor_id].emplace_back(std::move(success_callback));
   RAY_CHECK(registered_actors_.emplace(actor->GetActorID(), actor).second);
 
   const auto &owner_address = actor->GetOwnerAddress();
@@ -435,9 +442,24 @@ Status GcsActorManager::RegisterActor(
   // The backend storage is supposed to be reliable, so the status must be ok.
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
       actor->GetActorID(), *actor->GetMutableActorTableData(),
-      [this, actor](const Status &status) {
+      [this, actor, actor_already_destroyed_callback](const Status &status) {
         // The backend storage is supposed to be reliable, so the status must be ok.
         RAY_CHECK_OK(status);
+        // If an owner dies before this callback is called, the actor could have been
+        // already destroyed. In this case, we just mark this actor as dead.
+        auto registered_actor_it = registered_actors_.find(actor->GetActorID());
+        if (registered_actor_it == registered_actors_.end()) {
+          auto mutable_actor_table_data = actor->GetMutableActorTableData();
+          mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
+          auto actor_table_data =
+              std::make_shared<rpc::ActorTableData>(*mutable_actor_table_data);
+          // Make sure to flush the actor state as DEAD to avoid overwriting it.
+          RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(actor->GetActorID(),
+                                                            *actor_table_data, nullptr));
+          if (actor_already_destroyed_callback != nullptr) {
+            actor_already_destroyed_callback(actor);
+          }
+        }
         // Invoke all callbacks for all registration requests of this actor (duplicated
         // requests are included) and remove all of them from
         // actor_to_register_callbacks_.
