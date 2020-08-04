@@ -21,7 +21,7 @@ from typing import List
 
 logger = logging.getLogger(__name__)
 
-WINDOWS_DRIVES = [chr(i) for i in range(ord("a"), ord("z") + 1)]
+WINDOWS_DRIVES = [chr(i) for i in range(ord("c"), ord("z") + 1)]
 
 
 @PublicAPI
