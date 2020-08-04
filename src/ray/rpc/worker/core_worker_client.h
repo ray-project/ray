@@ -150,23 +150,17 @@ class CoreWorkerClientInterface {
       const WaitForObjectEvictionRequest &request,
       const ClientCallback<WaitForObjectEvictionReply> &callback) {}
 
-  virtual ray::Status AddObjectLocationOwner(
+  virtual void AddObjectLocationOwner(
       const AddObjectLocationOwnerRequest &request,
-      const ClientCallback<AddObjectLocationOwnerReply> &callback) {
-    return Status::NotImplemented("");
-  }
+      const ClientCallback<AddObjectLocationOwnerReply> &callback) {}
 
-  virtual ray::Status RemoveObjectLocationOwner(
+  virtual void RemoveObjectLocationOwner(
       const RemoveObjectLocationOwnerRequest &request,
-      const ClientCallback<RemoveObjectLocationOwnerReply> &callback) {
-    return Status::NotImplemented("");
-  }
+      const ClientCallback<RemoveObjectLocationOwnerReply> &callback) {}
 
-  virtual ray::Status GetObjectLocationsOwner(
+  virtual void GetObjectLocationsOwner(
       const GetObjectLocationsOwnerRequest &request,
-      const ClientCallback<GetObjectLocationsOwnerReply> &callback) {
-    return Status::NotImplemented("");
-  }
+      const ClientCallback<GetObjectLocationsOwnerReply> &callback) {}
 
   /// Tell this actor to exit immediately.
   virtual void KillActor(const KillActorRequest &request,

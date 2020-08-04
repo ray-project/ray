@@ -70,14 +70,14 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectAdded(
   request.set_object_id(object_id.Binary());
   request.set_client_id(client_id.Binary());
 
-  RAY_CHECK_OK(rpc_client->AddObjectLocationOwner(
+  rpc_client->AddObjectLocationOwner(
       request, [worker_id, object_id](Status status,
                                       const rpc::AddObjectLocationOwnerReply &reply) {
         if (!status.ok()) {
           RAY_LOG(ERROR) << "Worker " << worker_id << " failed to add the location for "
                          << object_id;
         }
-      }));
+      });
   return Status::OK();
 }
 
@@ -93,14 +93,14 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectRemoved(
   request.set_object_id(object_id.Binary());
   request.set_client_id(client_id.Binary());
 
-  RAY_CHECK_OK(rpc_client->RemoveObjectLocationOwner(
+  rpc_client->RemoveObjectLocationOwner(
       request, [worker_id, object_id](Status status,
                                       const rpc::RemoveObjectLocationOwnerReply &reply) {
         if (!status.ok()) {
           RAY_LOG(ERROR) << "Worker " << worker_id
                          << " failed to remove the location for " << object_id;
         }
-      }));
+      });
   return Status::OK();
 };
 
@@ -135,10 +135,10 @@ void OwnershipBasedObjectDirectory::SubscriptionCallback(
   rpc::GetObjectLocationsOwnerRequest request;
   request.set_intended_worker_id(worker_id.Binary());
   request.set_object_id(object_id.Binary());
-  RAY_CHECK_OK(worker_it->second->GetObjectLocationsOwner(
+  worker_it->second->GetObjectLocationsOwner(
       request,
       std::bind(&OwnershipBasedObjectDirectory::SubscriptionCallback, this, object_id,
-                worker_id, std::placeholders::_1, std::placeholders::_2)));
+                worker_id, std::placeholders::_1, std::placeholders::_2));
 }
 
 ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
@@ -152,10 +152,10 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
     rpc::GetObjectLocationsOwnerRequest request;
     request.set_intended_worker_id(owner_address.worker_id());
     request.set_object_id(object_id.Binary());
-    RAY_CHECK_OK(rpc_client->GetObjectLocationsOwner(
+    rpc_client->GetObjectLocationsOwner(
         request,
         std::bind(&OwnershipBasedObjectDirectory::SubscriptionCallback, this, object_id,
-                  worker_id, std::placeholders::_1, std::placeholders::_2)));
+                  worker_id, std::placeholders::_1, std::placeholders::_2));
   }
   auto &listener_state = it->second;
 
@@ -190,7 +190,7 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
   request.set_intended_worker_id(owner_address.worker_id());
   request.set_object_id(object_id.Binary());
   std::shared_ptr<rpc::CoreWorkerClient> rpc_client = GetClient(owner_address);
-  RAY_CHECK_OK(rpc_client->GetObjectLocationsOwner(
+  rpc_client->GetObjectLocationsOwner(
       request, [this, worker_id, object_id, callback](
                    Status status, const rpc::GetObjectLocationsOwnerReply &reply) {
         if (!status.ok()) {
@@ -203,7 +203,7 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
         }
         FilterRemovedClients(gcs_client_, &client_ids);
         callback(object_id, client_ids);
-      }));
+      });
   return Status::OK();
 }
 
