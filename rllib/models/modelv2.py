@@ -263,7 +263,7 @@ class ModelV2:
         # Default implementation for simple RL model:
         # Single requirement: Pass current obs as input.
         return {
-            SampleBatch.OBS: ViewRequirement(),
+            SampleBatch.OBS: ViewRequirement(shift=0),
         }
 
     def import_from_h5(self, h5_file: str) -> None:

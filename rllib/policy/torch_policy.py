@@ -121,9 +121,9 @@ class TorchPolicy(Policy):
         self.distributed_world_size = None
 
         self.max_seq_len = max_seq_len
-        self.batch_divisibility_req = \
-            get_batch_divisibility_req(self) if get_batch_divisibility_req \
-            else 1
+        self.batch_divisibility_req = get_batch_divisibility_req(self) if \
+            callable(get_batch_divisibility_req) else \
+            (get_batch_divisibility_req or 1)
 
     @override(Policy)
     def get_view_requirements(self):
@@ -131,9 +131,9 @@ class TorchPolicy(Policy):
             return self.view_requirements
         return {
             SampleBatch.ACTIONS: ViewRequirement(
-                space=self.action_space, sampling=False),
-            SampleBatch.REWARDS: ViewRequirement(sampling=False),
-            SampleBatch.DONES: ViewRequirement(sampling=False),
+                space=self.action_space, shift=0),
+            SampleBatch.REWARDS: ViewRequirement(shift=0),
+            SampleBatch.DONES: ViewRequirement(shift=0),
         }
 
     @override(Policy)

@@ -9,6 +9,7 @@ import subprocess
 
 import ray
 from ray.cluster_utils import Cluster
+from ray.test_utils import init_error_pubsub
 
 
 @pytest.fixture
@@ -209,3 +210,10 @@ def two_node_cluster():
     # The code after the yield will run as teardown code.
     ray.shutdown()
     cluster.shutdown()
+
+
+@pytest.fixture()
+def error_pubsub():
+    p = init_error_pubsub()
+    yield p
+    p.close()

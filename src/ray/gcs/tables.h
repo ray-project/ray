@@ -860,21 +860,6 @@ class TaskTable : public Table<TaskID, TaskTableData> {
 
 }  // namespace raylet
 
-class ErrorTable : public Log<JobID, ErrorTableData> {
- public:
-  ErrorTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
-             RedisGcsClient *client)
-      : Log(contexts, client) {
-    pubsub_channel_ = TablePubsub::ERROR_INFO_PUBSUB;
-    prefix_ = TablePrefix::ERROR_INFO;
-  };
-
-  /// Returns debug string for class.
-  ///
-  /// \return string.
-  std::string DebugString() const;
-};
-
 class ProfileTable : public Log<UniqueID, ProfileTableData> {
  public:
   ProfileTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
