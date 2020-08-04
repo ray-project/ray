@@ -36,7 +36,7 @@ class Queue:
 
     def empty(self):
         """Whether the queue is empty."""
-        return ray.get(self.actor.qsize.remote())
+        return ray.get(self.actor.empty.remote())
 
     def full(self):
         """Whether the queue is full."""

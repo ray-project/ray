@@ -746,7 +746,7 @@ void CoreWorker::PutObjectIntoPlasma(const RayObject &object, const ObjectID &ob
   if (!object_exists) {
     // Tell the raylet to pin the object **after** it is created.
     RAY_LOG(DEBUG) << "Pinning put object " << object_id;
-    RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(
+    local_raylet_client_->PinObjectIDs(
         rpc_address_, {object_id},
         [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
           // Only release the object once the raylet has responded to avoid the race
@@ -755,7 +755,7 @@ void CoreWorker::PutObjectIntoPlasma(const RayObject &object, const ObjectID &ob
             RAY_LOG(ERROR) << "Failed to release ObjectID (" << object_id
                            << "), might cause a leak in plasma.";
           }
-        }));
+        });
   }
   RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
 }
@@ -838,7 +838,7 @@ Status CoreWorker::Put(const RayObject &object,
     if (pin_object) {
       // Tell the raylet to pin the object **after** it is created.
       RAY_LOG(DEBUG) << "Pinning put object " << object_id;
-      RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(
+      local_raylet_client_->PinObjectIDs(
           rpc_address_, {object_id},
           [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
             // Only release the object once the raylet has responded to avoid the race
@@ -847,7 +847,7 @@ Status CoreWorker::Put(const RayObject &object,
               RAY_LOG(ERROR) << "Failed to release ObjectID (" << object_id
                              << "), might cause a leak in plasma.";
             }
-          }));
+          });
     } else {
       RAY_RETURN_NOT_OK(plasma_store_provider_->Release(object_id));
     }
@@ -896,7 +896,7 @@ Status CoreWorker::Seal(const ObjectID &object_id, bool pin_object,
   if (pin_object) {
     // Tell the raylet to pin the object **after** it is created.
     RAY_LOG(DEBUG) << "Pinning sealed object " << object_id;
-    RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(
+    local_raylet_client_->PinObjectIDs(
         owner_address.has_value() ? *owner_address : rpc_address_, {object_id},
         [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
           // Only release the object once the raylet has responded to avoid the race
@@ -905,7 +905,7 @@ Status CoreWorker::Seal(const ObjectID &object_id, bool pin_object,
             RAY_LOG(ERROR) << "Failed to release ObjectID (" << object_id
                            << "), might cause a leak in plasma.";
           }
-        }));
+        });
   } else {
     RAY_RETURN_NOT_OK(plasma_store_provider_->Release(object_id));
     reference_counter_->FreePlasmaObjects({object_id});
@@ -1120,15 +1120,12 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
 }
 
 void CoreWorker::TriggerGlobalGC() {
-  auto status = local_raylet_client_->GlobalGC(
+  local_raylet_client_->GlobalGC(
       [](const Status &status, const rpc::GlobalGCReply &reply) {
         if (!status.ok()) {
           RAY_LOG(ERROR) << "Failed to send global GC request: " << status.ToString();
         }
       });
-  if (!status.ok()) {
-    RAY_LOG(ERROR) << "Failed to send global GC request: " << status.ToString();
-  }
 }
 
 std::string CoreWorker::MemoryUsageString() {
@@ -1173,34 +1170,6 @@ Status CoreWorker::SetResource(const std::string &resource_name, const double ca
   return local_raylet_client_->SetResource(resource_name, capacity, client_id);
 }
 
-void CoreWorker::SubmitTask(const RayFunction &function,
-                            const std::vector<std::unique_ptr<TaskArg>> &args,
-                            const TaskOptions &task_options,
-                            std::vector<ObjectID> *return_ids, int max_retries) {
-  TaskSpecBuilder builder;
-  const int next_task_index = worker_context_.GetNextTaskIndex();
-  const auto task_id =
-      TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
-                            worker_context_.GetCurrentTaskID(), next_task_index);
-
-  const std::unordered_map<std::string, double> required_resources;
-  // TODO(ekl) offload task building onto a thread pool for performance
-  BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id,
-                      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
-                      rpc_address_, function, args, task_options.num_returns,
-                      task_options.resources, required_resources, return_ids);
-  TaskSpecification task_spec = builder.Build();
-  if (options_.is_local_mode) {
-    ExecuteTaskLocalMode(task_spec);
-  } else {
-    task_manager_->AddPendingTask(task_spec.CallerAddress(), task_spec, CurrentCallSite(),
-                                  max_retries);
-    io_service_.post([this, task_spec]() {
-      RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));
-    });
-  }
-}
-
 std::unordered_map<std::string, double> AddPlacementGroupConstraint(
     const std::unordered_map<std::string, double> &resources,
     PlacementGroupID placement_group_id, int64_t bundle_index) {
@@ -1214,6 +1183,37 @@ std::unordered_map<std::string, double> AddPlacementGroupConstraint(
     return new_resources;
   }
   return resources;
+}
+
+void CoreWorker::SubmitTask(const RayFunction &function,
+                            const std::vector<std::unique_ptr<TaskArg>> &args,
+                            const TaskOptions &task_options,
+                            std::vector<ObjectID> *return_ids, int max_retries,
+                            PlacementOptions placement_options) {
+  TaskSpecBuilder builder;
+  const int next_task_index = worker_context_.GetNextTaskIndex();
+  const auto task_id =
+      TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
+                            worker_context_.GetCurrentTaskID(), next_task_index);
+
+  auto constrained_resources = AddPlacementGroupConstraint(
+      task_options.resources, placement_options.first, placement_options.second);
+  const std::unordered_map<std::string, double> required_resources;
+  // TODO(ekl) offload task building onto a thread pool for performance
+  BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id,
+                      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
+                      rpc_address_, function, args, task_options.num_returns,
+                      constrained_resources, required_resources, return_ids);
+  TaskSpecification task_spec = builder.Build();
+  if (options_.is_local_mode) {
+    ExecuteTaskLocalMode(task_spec);
+  } else {
+    task_manager_->AddPendingTask(task_spec.CallerAddress(), task_spec, CurrentCallSite(),
+                                  max_retries);
+    io_service_.post([this, task_spec]() {
+      RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));
+    });
+  }
 }
 
 Status CoreWorker::CreateActor(const RayFunction &function,

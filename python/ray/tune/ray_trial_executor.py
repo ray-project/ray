@@ -14,7 +14,7 @@ from ray.resource_spec import ResourceSpec
 from ray.tune.durable_trainable import DurableTrainable
 from ray.tune.error import AbortTrialExecution, TuneError
 from ray.tune.logger import NoopLogger
-from ray.tune.result import TRIAL_INFO
+from ray.tune.result import TRIAL_INFO, LOGDIR_PATH
 from ray.tune.resources import Resources
 from ray.tune.trainable import TrainableUtil
 from ray.tune.trial import Trial, Checkpoint, Location, TrialInfo
@@ -161,10 +161,11 @@ class RayTrialExecutor(TrialExecutor):
 
         def logger_creator(config):
             # Set the working dir in the remote process, for user file writes
-            os.makedirs(remote_logdir, exist_ok=True)
+            logdir = config.pop(LOGDIR_PATH, remote_logdir)
+            os.makedirs(logdir, exist_ok=True)
             if not ray.worker._mode() == ray.worker.LOCAL_MODE:
-                os.chdir(remote_logdir)
-            return NoopLogger(config, remote_logdir)
+                os.chdir(logdir)
+            return NoopLogger(config, logdir)
 
         # Clear the Trial's location (to be updated later on result)
         # since we don't know where the remote runner is placed.
@@ -339,7 +340,7 @@ class RayTrialExecutor(TrialExecutor):
         super(RayTrialExecutor, self).pause_trial(trial)
 
     def reset_trial(self, trial, new_config, new_experiment_tag):
-        """Tries to invoke `Trainable.reset_config()` to reset trial.
+        """Tries to invoke `Trainable.reset()` to reset trial.
 
         Args:
             trial (Trial): Trial to be reset.
@@ -353,14 +354,13 @@ class RayTrialExecutor(TrialExecutor):
         trial.config = new_config
         trainable = trial.runner
         with self._change_working_directory(trial):
-            with warn_if_slow("reset_config"):
+            with warn_if_slow("reset"):
                 try:
                     reset_val = ray.get(
-                        trainable.reset_config.remote(new_config),
+                        trainable.reset.remote(new_config, trial.logdir),
                         DEFAULT_GET_TIMEOUT)
                 except RayTimeoutError:
-                    logger.exception("Trial %s: reset_config timed out.",
-                                     trial)
+                    logger.exception("Trial %s: reset timed out.", trial)
                     return False
         return reset_val
 
