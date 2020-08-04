@@ -76,8 +76,8 @@ def test_controller_failure(serve_instance):
 
 
 def _kill_routers():
-    routers = ray.get(serve.api._get_controller().get_router.remote())
-    for router in routers:
+    routers = ray.get(serve.api._get_controller().get_routers.remote())
+    for router in routers.values():
         ray.kill(router, no_restart=False)
 
 

@@ -1,5 +1,6 @@
 import asyncio
 from functools import singledispatch
+from itertools import groupby
 import json
 import logging
 import random
@@ -104,11 +105,16 @@ def get_random_letters(length=6):
     return "".join(random.choices(string.ascii_letters, k=length))
 
 
-def format_actor_name(actor_name, instance_name=None):
+def format_actor_name(actor_name, instance_name=None, *modifiers):
     if instance_name is None:
-        return actor_name
+        name = actor_name
     else:
-        return "{}:{}".format(instance_name, actor_name)
+        name = "{}:{}".format(instance_name, actor_name)
+
+    for modifier in modifiers:
+        name += "-{}".format(modifier)
+
+    return name
 
 
 @singledispatch
@@ -216,3 +222,23 @@ def try_schedule_resources_on_nodes(
             successfully_scheduled.append(False)
 
     return successfully_scheduled
+
+
+def get_all_node_ids():
+    """Get IDs for all nodes in the cluster.
+
+    Handles multiple nodes on the same IP by appending an index to the
+    node_id, e.g., 'node_id-index'.
+
+    Returns a list of ('node_id-index', 'node_id') tuples (the latter can be
+    used as a resource requirement for actor placements).
+    """
+    node_ids = []
+    # We need to use the node_id and index here because we could
+    # have multiple virtual nodes on the same host. In that case
+    # they will have the same IP and therefore node_id.
+    for _, node_id_group in groupby(sorted(ray.state.node_ids())):
+        for index, node_id in enumerate(node_id_group):
+            node_ids.append(("{}-{}".format(node_id, index), node_id))
+
+    return node_ids
