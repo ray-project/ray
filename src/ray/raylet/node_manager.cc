@@ -1713,7 +1713,6 @@ void NodeManager::ScheduleAndDispatch() {
 void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest &request,
                                            rpc::RequestWorkerLeaseReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(ERROR) << "Request new worker lease";
   rpc::Task task_message;
   task_message.mutable_task_spec()->CopyFrom(request.resource_spec());
   Task task(task_message);
@@ -1769,7 +1768,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
 
         auto reply_failure_handler = [this, worker_id]() {
           if (RayConfig::instance().gcs_actor_service_enabled()) {
-            RAY_LOG(ERROR)
+            RAY_LOG(WARNING)
                 << "Failed to reply to GCS server, because it might have restarted. GCS "
                    "cannot obtain the information of the leased worker, so we need to "
                    "release the leased worker to avoid leakage.";
@@ -1786,14 +1785,14 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
   task.OnSpillbackInstead(
       [reply, task_id, send_reply_callback](const ClientID &spillback_to,
                                             const std::string &address, int port) {
-        RAY_LOG(ERROR) << "Worker lease request SPILLBACK " << task_id;
+        RAY_LOG(DEBUG) << "Worker lease request SPILLBACK " << task_id;
         reply->mutable_retry_at_raylet_address()->set_ip_address(address);
         reply->mutable_retry_at_raylet_address()->set_port(port);
         reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
         send_reply_callback(Status::OK(), nullptr, nullptr);
       });
   task.OnCancellationInstead([reply, task_id, send_reply_callback]() {
-    RAY_LOG(ERROR) << "Task lease request canceled " << task_id;
+    RAY_LOG(DEBUG) << "Task lease request canceled " << task_id;
     reply->set_canceled(true);
     send_reply_callback(Status::OK(), nullptr, nullptr);
   });
