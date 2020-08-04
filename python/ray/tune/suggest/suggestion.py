@@ -8,11 +8,6 @@ from ray.tune.utils import merge_dicts, flatten_dict
 logger = logging.getLogger(__name__)
 
 
-def _warn_on_repeater(searcher, total_samples):
-    from ray.tune.suggest.repeater import _warn_num_samples
-    _warn_num_samples(searcher, total_samples)
-
-
 class Searcher:
     """Abstract class for wrapping suggesting algorithms.
 

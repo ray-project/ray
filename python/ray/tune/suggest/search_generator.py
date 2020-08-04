@@ -22,20 +22,17 @@ class SearchGenerator(SearchAlgorithm):
             is then used for generating new hyperparameter samples.
     """
 
-    @classmethod
-    def from_searcher(cls, searcher):
+    def __init__(self, searcher, num_samples):
         assert issubclass(
             type(searcher),
             Searcher), ("Searcher should be subclassing Searcher.")
-        return cls(searcher)
-
-    def __init__(self, searcher):
         self.searcher = searcher
         self._parser = make_parser()
         self._experiment = None
         self._counter = 0  # Keeps track of number of trials created.
-        self._total_samples = 0  # int: total samples to evaluate.
+        self._total_samples = num_samples  # int: total samples to evaluate.
         self._finished = False
+        _warn_on_repeater(self.searcher, self._total_samples)
 
     def add_configurations(self, experiments):
         """Registers experiment specifications.
@@ -43,15 +40,13 @@ class SearchGenerator(SearchAlgorithm):
         Arguments:
             experiments (Experiment | list | dict): Experiments to run.
         """
+        assert not self._experiment
         logger.debug("added configurations")
         experiment_list = convert_to_experiment_list(experiments)
         assert len(experiment_list) == 1, (
             "SearchAlgorithms can only support 1 experiment at a time.")
         self._experiment = experiment_list[0]
         experiment_spec = self._experiment.spec
-        self._total_samples = experiment_spec.get("num_samples", 1)
-
-        _warn_on_repeater(self.searcher, self._total_samples)
 
         if "run" not in experiment_spec:
             raise TuneError("Must specify `run` in {}".format(experiment_spec))
@@ -111,3 +106,21 @@ class SearchGenerator(SearchAlgorithm):
     def is_finished(self):
         return self._counter >= self._total_samples or self._finished
 
+    def get_state(self):
+        return {
+            "counter": self._counter,
+            "total_samples": self._total_samples
+            "finished": self._finished
+        }
+
+    def set_state(self, state):
+        self._counter = state["counter"]
+        self._total_samples = state["total_samples"]
+        self._finished = state["finished"]
+
+
+    def save(self, checkpoint_path):
+        self.searcher.save(checkpoint_path)
+
+    def restore(self, checkpoint_path):
+        self.searcher.restore(checkpoint_path)

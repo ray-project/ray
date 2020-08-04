@@ -102,6 +102,15 @@ class Repeater(Searcher):
 
     """
 
+    __slots__ = [
+        "searcher",
+        "repeat",
+        "_set_index",
+        "_groups",
+        "_trial_id_to_group",
+        "_current_group"
+    ]
+
     def __init__(self, searcher, repeat=1, set_index=True):
         self.searcher = searcher
         self.repeat = repeat
