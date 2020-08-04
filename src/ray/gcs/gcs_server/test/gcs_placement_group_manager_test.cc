@@ -64,6 +64,8 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<MockPlacementGroupScheduler> mock_placement_group_scheduler_;
   std::unique_ptr<gcs::GcsPlacementGroupManager> gcs_placement_group_manager_;
+
+  const std::chrono::milliseconds timeout_ms_{60000};
 };
 
 TEST_F(GcsPlacementGroupManagerTest, TestBasic) {
