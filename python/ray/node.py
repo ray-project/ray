@@ -258,10 +258,11 @@ class Node:
             result = params_dict.copy()
             result.update(env_dict)
 
-            for key in set(env_dict.keys()).intersection(set(params_dict.keys())):
+            for key in set(env_dict.keys()).intersection(
+                    set(params_dict.keys())):
                 logger.warning("Autoscaler is overriding your resource:"
-                    "{}: {} with {}.".format(
-                        key, params_dict[key], env_dict[key]))
+                               "{}: {} with {}.".format(
+                                   key, params_dict[key], env_dict[key]))
             return result
 
         env_resources = {}
@@ -270,7 +271,8 @@ class Node:
             env_resources = json.loads(env_string)
 
         if not self._resource_spec:
-            resources = merge_resources(env_resources, self._ray_params.resources)
+            resources = merge_resources(env_resources,
+                                        self._ray_params.resources)
             self._resource_spec = ResourceSpec(
                 self._ray_params.num_cpus, self._ray_params.num_gpus,
                 self._ray_params.memory, self._ray_params.object_store_memory,
