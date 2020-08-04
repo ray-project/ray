@@ -686,11 +686,14 @@ def test_ray_address_environment_variable(ray_start_cluster):
 def test_ray_resources_environment_variable(ray_start_cluster):
     address = ray_start_cluster.address
 
-    os.environ["RAY_RESOURCES"] = "{\"custom1\":1}"
-    ray.init(address=address, resources={"custom2": 1})
+    os.environ["RAY_OVERRIDE_RESOURCES"] = "{\"custom1\":1, \"custom2\":2}"
+    ray.init(address=address, resources={"custom1":3, "custom3": 3})
 
-    assert ("custom1" in ray.cluster_resources()
-            and "custom2" in ray.cluster_resources())
+    cluster_resources = ray.cluster_resources()
+    print(cluster_resources)
+    assert cluster_resources["custom1"] == 1
+    assert cluster_resources["custom2"] == 2
+    assert cluster_resources["custom3"] == 3
 
 
 if __name__ == "__main__":
