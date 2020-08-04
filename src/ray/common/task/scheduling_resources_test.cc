@@ -112,4 +112,58 @@ TEST_F(SchedulingResourcesTest, MultipleBundlesAddRemove) {
   ASSERT_EQ(1, resource_set->IsEqual(ResourceSet({"CPU"}, {2.0})))
       << resource_set->ToString() << " vs " << resource.ToString();
 }
+
+TEST_F(SchedulingResourcesTest, MultipleBundlesAddRemoveIdSet) {
+  PlacementGroupID group_id = PlacementGroupID::FromRandom();
+  ResourceIdSet resource_ids;
+
+  // Construct resource set containing two bundles.
+  auto rid1 = ResourceIds({1, 2});
+  auto rid2 = ResourceIds({3, 4});
+  resource_ids.AddBundleResourceIds(group_id, 1, "CPU", rid1);
+  resource_ids.AddBundleResourceIds(group_id, 2, "CPU", rid2);
+  resource_ids.AddBundleResourceIds(group_id, 1, "GPU", rid1);
+  resource_ids.AddBundleResourceIds(group_id, 2, "GPU", rid2);
+  auto result = ResourceSet(
+      {
+          "CPU_group_" + group_id.Hex(),
+          "CPU_group_1_" + group_id.Hex(),
+          "CPU_group_2_" + group_id.Hex(),
+          "GPU_group_" + group_id.Hex(),
+          "GPU_group_1_" + group_id.Hex(),
+          "GPU_group_2_" + group_id.Hex(),
+      },
+      {4.0, 2.0, 2.0, 4.0, 2.0, 2.0});
+  ASSERT_EQ(1, resource_ids.ToResourceSet().IsEqual(result))
+      << resource_ids.ToString() << " vs " << result.ToString();
+
+  // Remove the first bundle.
+  resource_ids.ReturnBundleResources(group_id, 1, "CPU");
+  resource_ids.ReturnBundleResources(group_id, 1, "GPU");
+  result = ResourceSet(
+      {
+          "CPU_group_" + group_id.Hex(),
+          "CPU",
+          "CPU_group_2_" + group_id.Hex(),
+          "GPU_group_" + group_id.Hex(),
+          "GPU",
+          "GPU_group_2_" + group_id.Hex(),
+      },
+      {2.0, 2.0, 2.0, 2.0, 2.0, 2.0});
+  ASSERT_EQ(1, resource_ids.ToResourceSet().IsEqual(result))
+      << resource_ids.ToString() << " vs " << result.ToString();
+
+  // Remove the second bundle.
+  resource_ids.ReturnBundleResources(group_id, 2, "CPU");
+  resource_ids.ReturnBundleResources(group_id, 2, "GPU");
+  result = ResourceSet(
+      {
+          "CPU",
+          "GPU",
+      },
+      {4.0, 4.0});
+  ASSERT_EQ(1, resource_ids.ToResourceSet().IsEqual(result))
+      << resource_ids.ToString() << " vs " << result.ToString();
+}
+
 }  // namespace ray

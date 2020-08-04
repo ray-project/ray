@@ -529,6 +529,8 @@ void ResourceIds::UpdateCapacity(int64_t new_capacity) {
   // Assert the new capacity is positive for sanity
   RAY_CHECK(new_capacity >= 0);
   int64_t capacity_delta = new_capacity - total_capacity_.ToDouble();
+  RAY_LOG(ERROR) << "Update capacity" << new_capacity << " " << TotalQuantity().ToDouble()
+                 << " " << total_capacity_.ToDouble() << " " << capacity_delta;
   if (capacity_delta < 0) {
     DecreaseCapacity(-1 * capacity_delta);
   } else {
@@ -700,28 +702,24 @@ void ResourceIdSet::AddBundleResourceIds(const PlacementGroupID &group_id,
 void ResourceIdSet::ReturnBundleResources(const PlacementGroupID &group_id,
                                           const int bundle_index,
                                           const std::string &original_resource_name) {
-  auto wildcard_resource_name =
-      FormatPlacementGroupResource(original_resource_name, group_id, -1);
-  auto iter_wc = available_resources_.find(wildcard_resource_name);
-  if (iter_wc == available_resources_.end()) {
+  auto index_resource_name =
+      FormatPlacementGroupResource(original_resource_name, group_id, bundle_index);
+  auto iter_index = available_resources_.find(index_resource_name);
+  if (iter_index == available_resources_.end()) {
     return;
   }
 
-  // Erase and transfer the wildcard bundle resource back to the original.
-  auto iter_orig = available_resources_.find(original_resource_name);
-  if (iter_orig == available_resources_.end()) {
-    available_resources_[original_resource_name] = iter_wc->second;
-  } else {
-    iter_orig->second.Release(iter_wc->second);
-  }
-  available_resources_.erase(iter_wc);
+  // Erase and transfer the index bundle resource back to the original.
+  auto bundle_ids = iter_index->second;
+  available_resources_.erase(iter_index);
+  available_resources_[original_resource_name] =
+      (available_resources_[original_resource_name].Plus(bundle_ids));
 
-  // Also erase the index bundle resource.
-  auto bundle_name =
-      FormatPlacementGroupResource(original_resource_name, group_id, bundle_index);
-  auto iter_bundle = available_resources_.find(bundle_name);
-  if (iter_bundle != available_resources_.end()) {
-    available_resources_.erase(iter_bundle);
+  // Also erase the the equivalent number of units from the wildcard resource.
+  auto wildcard_name = FormatPlacementGroupResource(original_resource_name, group_id, -1);
+  available_resources_[wildcard_name].Acquire(bundle_ids.TotalQuantity());
+  if (available_resources_[wildcard_name].TotalQuantityIsZero()) {
+    available_resources_.erase(wildcard_name);
   }
 }
 

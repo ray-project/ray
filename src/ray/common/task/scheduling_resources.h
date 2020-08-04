@@ -152,7 +152,7 @@ class ResourceSet {
   /// resource labels to this set.
   ///
   /// This adds both the the indexed and wildcard resources (e.g., both
-  /// CPU_group_zzz_i and CPU_group_zzz).
+  /// CPU_group_i_zzz and CPU_group_zzz).
   ///
   /// \param group_id: The placement group id.
   /// \param bundle_index: The index of the bundle.
@@ -430,7 +430,7 @@ class ResourceIdSet {
   /// \brief Add a Bundle resource in the ResourceIdSet.
   ///
   /// This adds both the the indexed and wildcard resources (e.g., both
-  /// CPU_group_zzz_i and CPU_group_zzz).
+  /// CPU_group_i_zzz and CPU_group_zzz).
   ///
   /// \param group_id: The placement group id.
   /// \param bundle_index: The index of the bundle.
@@ -575,7 +575,7 @@ class SchedulingResources {
   ///
   /// The resources will be transfered from their original resource names.
   /// This includes both the the indexed and wildcard resources (e.g., both
-  /// CPU_group_zzz_i and CPU_group_zzz).
+  /// CPU_group_i_zzz and CPU_group_zzz).
   ///
   /// \param resource_name: Name of the resource to be modified
   /// \param resource_set: New resource_set of the resource.

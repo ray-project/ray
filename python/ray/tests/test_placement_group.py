@@ -135,6 +135,7 @@ def test_placement_group_task_resource_ids(ray_start_cluster):
     resources = ray.get(o1)
     assert len(resources) == 1, resources
     assert "CPU_group_" in list(resources.keys())[0], resources
+    assert "CPU_group_0_" not in list(resources.keys())[0], resources
 
     # Now retry with a bundle index constraint.
     o1 = f.options(
@@ -143,6 +144,8 @@ def test_placement_group_task_resource_ids(ray_start_cluster):
     assert len(resources) == 2, resources
     assert "CPU_group_" in list(resources.keys())[0], resources
     assert "CPU_group_" in list(resources.keys())[1], resources
+    assert "CPU_group_0_" in list(resources.keys())[0], resources
+    assert "CPU_group_0_" in list(resources.keys())[1], resources
 
 
 def test_placement_group_hang(ray_start_cluster):

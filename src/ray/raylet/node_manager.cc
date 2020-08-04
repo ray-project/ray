@@ -1748,7 +1748,6 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
       [this, owner_address, reply, send_reply_callback](
           const std::shared_ptr<void> granted, const std::string &address, int port,
           const WorkerID &worker_id, const ResourceIdSet &resource_ids) {
-        RAY_LOG(ERROR) << "DISPATCH";
         reply->mutable_worker_address()->set_ip_address(address);
         reply->mutable_worker_address()->set_port(port);
         reply->mutable_worker_address()->set_worker_id(worker_id.Binary());
@@ -1830,6 +1829,8 @@ void NodeManager::HandleCancelResourceReserve(
   RAY_LOG(DEBUG) << "bundle return resource request " << bundle_spec.BundleId().first
                  << bundle_spec.BundleId().second;
   auto resource_set = bundle_spec.GetRequiredResources();
+  // TODO(ekl) doesn't this not return in-use resources? We need to be able to
+  // reclaim those somehow (i.e., destroy the workers allocated in the bundle).
   for (auto resource : resource_set.GetResourceMap()) {
     local_available_resources_.ReturnBundleResources(bundle_spec.PlacementGroupId(),
                                                      bundle_spec.Index(), resource.first);
