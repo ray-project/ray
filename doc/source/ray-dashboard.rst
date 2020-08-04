@@ -250,8 +250,9 @@ Logical View (Experimental)
 - Alive
 - Restarting
 - Dead
-- Infeasible
+- Infeasible (cannot be created due to not enough available resources (e.g. CPUs, GPUs, memory) in the cluster, even at full capacity)
 - Pending Creation
+- Dependencies Unready (waiting for one or more of its arguments to be ready)
 
 **Number of Pending Tasks**: The number of method calls for this actor that are still awaiting execution.
 
