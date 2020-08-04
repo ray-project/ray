@@ -8,7 +8,7 @@ usage() {
 
 for i in "$@"
 do
-case $i in
+case "$i" in
     --git-sha=*)
     git_sha="${i#*=}"
     ;;
@@ -26,8 +26,8 @@ done
 echo "git-sha: $git_sha"
 
 ./run_asan_tests.sh setup
-if [[ git_sha != "" ]]
+if [ -n "${git_sha}" ]
 then
-    git_sha=$git_sha ./run_asan_tests.sh recompile
+    git_sha="${git_sha}" ./run_asan_tests.sh recompile
 fi
 ./run_asan_tests.sh run

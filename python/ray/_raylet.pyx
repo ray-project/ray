@@ -657,7 +657,8 @@ cdef class CoreWorker:
     def __cinit__(self, is_driver, store_socket, raylet_socket,
                   JobID job_id, GcsClientOptions gcs_options, log_dir,
                   node_ip_address, node_manager_port, raylet_ip_address,
-                  local_mode, driver_name, stdout_file, stderr_file):
+                  local_mode, driver_name, stdout_file, stderr_file,
+                  serialized_job_config):
         self.is_driver = is_driver
         self.is_local_mode = local_mode
 
@@ -687,6 +688,7 @@ cdef class CoreWorker:
         options.num_workers = 1
         options.kill_main = kill_main_task
         options.terminate_asyncio_thread = terminate_asyncio_thread
+        options.serialized_job_config = serialized_job_config
 
         CCoreWorkerProcess.Initialize(options)
 
@@ -877,13 +879,17 @@ cdef class CoreWorker:
                     args,
                     int num_return_vals,
                     resources,
-                    int max_retries):
+                    int max_retries,
+                    PlacementGroupID placement_group_id,
+                    int64_t placement_group_bundle_index):
         cdef:
             unordered_map[c_string, double] c_resources
             CTaskOptions task_options
             CRayFunction ray_function
             c_vector[unique_ptr[CTaskArg]] args_vector
             c_vector[CObjectID] return_ids
+            CPlacementGroupID c_placement_group_id = \
+                placement_group_id.native()
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
@@ -896,7 +902,8 @@ cdef class CoreWorker:
             with nogil:
                 CCoreWorkerProcess.GetCoreWorker().SubmitTask(
                     ray_function, args_vector, task_options, &return_ids,
-                    max_retries)
+                    max_retries, c_pair[CPlacementGroupID, int64_t](
+                        c_placement_group_id, placement_group_bundle_index))
 
             return VectorToObjectRefs(return_ids)
 
@@ -940,7 +947,9 @@ cdef class CoreWorker:
                         max_restarts, max_task_retries, max_concurrency,
                         c_resources, c_placement_resources,
                         dynamic_worker_options, is_detached, name, is_asyncio,
-                        c_pair[CPlacementGroupID, int64_t](c_placement_group_id, placement_group_bundle_index)),
+                        c_pair[CPlacementGroupID, int64_t](
+                            c_placement_group_id,
+                            placement_group_bundle_index)),
                     extension_data,
                     &c_actor_id))
 
@@ -954,7 +963,7 @@ cdef class CoreWorker:
         cdef:
             CPlacementGroupID c_placement_group_id
             CPlacementStrategy c_strategy
-        
+
         if strategy == b"PACK":
             c_strategy = PLACEMENT_STRATEGY_PACK
         else:

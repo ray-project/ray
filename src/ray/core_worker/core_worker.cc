@@ -15,6 +15,7 @@
 #include "ray/core_worker/core_worker.h"
 
 #include "boost/fiber/all.hpp"
+#include "ray/common/bundle_spec.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/context.h"
@@ -163,6 +164,18 @@ void CoreWorkerProcess::EnsureInitialized() {
                        << "shutdown.";
 }
 
+std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker(const WorkerID &worker_id) {
+  if (!instance_) {
+    return nullptr;
+  }
+  absl::ReaderMutexLock workers_lock(&instance_->worker_map_mutex_);
+  auto it = instance_->workers_.find(worker_id);
+  if (it != instance_->workers_.end()) {
+    return it->second;
+  }
+  return nullptr;
+}
+
 CoreWorker &CoreWorkerProcess::GetCoreWorker() {
   EnsureInitialized();
   if (instance_->options_.num_workers == 1) {
@@ -298,7 +311,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       io_service_, std::move(grpc_client), options_.raylet_socket, GetWorkerID(),
       (options_.worker_type == ray::WorkerType::WORKER),
       worker_context_.GetCurrentJobID(), options_.language, options_.node_ip_address,
-      &local_raylet_id, &assigned_port, &internal_config));
+      &local_raylet_id, &assigned_port, &internal_config,
+      options_.serialized_job_config));
   connected_ = true;
 
   RAY_CHECK(assigned_port != -1)
@@ -732,7 +746,7 @@ void CoreWorker::PutObjectIntoPlasma(const RayObject &object, const ObjectID &ob
   if (!object_exists) {
     // Tell the raylet to pin the object **after** it is created.
     RAY_LOG(DEBUG) << "Pinning put object " << object_id;
-    RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(
+    local_raylet_client_->PinObjectIDs(
         rpc_address_, {object_id},
         [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
           // Only release the object once the raylet has responded to avoid the race
@@ -741,7 +755,7 @@ void CoreWorker::PutObjectIntoPlasma(const RayObject &object, const ObjectID &ob
             RAY_LOG(ERROR) << "Failed to release ObjectID (" << object_id
                            << "), might cause a leak in plasma.";
           }
-        }));
+        });
   }
   RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
 }
@@ -824,7 +838,7 @@ Status CoreWorker::Put(const RayObject &object,
     if (pin_object) {
       // Tell the raylet to pin the object **after** it is created.
       RAY_LOG(DEBUG) << "Pinning put object " << object_id;
-      RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(
+      local_raylet_client_->PinObjectIDs(
           rpc_address_, {object_id},
           [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
             // Only release the object once the raylet has responded to avoid the race
@@ -833,7 +847,7 @@ Status CoreWorker::Put(const RayObject &object,
               RAY_LOG(ERROR) << "Failed to release ObjectID (" << object_id
                              << "), might cause a leak in plasma.";
             }
-          }));
+          });
     } else {
       RAY_RETURN_NOT_OK(plasma_store_provider_->Release(object_id));
     }
@@ -882,7 +896,7 @@ Status CoreWorker::Seal(const ObjectID &object_id, bool pin_object,
   if (pin_object) {
     // Tell the raylet to pin the object **after** it is created.
     RAY_LOG(DEBUG) << "Pinning sealed object " << object_id;
-    RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(
+    local_raylet_client_->PinObjectIDs(
         owner_address.has_value() ? *owner_address : rpc_address_, {object_id},
         [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
           // Only release the object once the raylet has responded to avoid the race
@@ -891,7 +905,7 @@ Status CoreWorker::Seal(const ObjectID &object_id, bool pin_object,
             RAY_LOG(ERROR) << "Failed to release ObjectID (" << object_id
                            << "), might cause a leak in plasma.";
           }
-        }));
+        });
   } else {
     RAY_RETURN_NOT_OK(plasma_store_provider_->Release(object_id));
     reference_counter_->FreePlasmaObjects({object_id});
@@ -1106,15 +1120,12 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
 }
 
 void CoreWorker::TriggerGlobalGC() {
-  auto status = local_raylet_client_->GlobalGC(
+  local_raylet_client_->GlobalGC(
       [](const Status &status, const rpc::GlobalGCReply &reply) {
         if (!status.ok()) {
           RAY_LOG(ERROR) << "Failed to send global GC request: " << status.ToString();
         }
       });
-  if (!status.ok()) {
-    RAY_LOG(ERROR) << "Failed to send global GC request: " << status.ToString();
-  }
 }
 
 std::string CoreWorker::MemoryUsageString() {
@@ -1159,22 +1170,40 @@ Status CoreWorker::SetResource(const std::string &resource_name, const double ca
   return local_raylet_client_->SetResource(resource_name, capacity, client_id);
 }
 
+std::unordered_map<std::string, double> AddPlacementGroupConstraint(
+    const std::unordered_map<std::string, double> &resources,
+    PlacementGroupID placement_group_id, int64_t bundle_index) {
+  std::unordered_map<std::string, double> new_resources;
+  if (placement_group_id != PlacementGroupID::Nil()) {
+    for (auto iter = resources.begin(); iter != resources.end(); iter++) {
+      auto new_name =
+          FormatPlacementGroupResource(iter->first, placement_group_id, bundle_index);
+      new_resources[new_name] = iter->second;
+    }
+    return new_resources;
+  }
+  return resources;
+}
+
 void CoreWorker::SubmitTask(const RayFunction &function,
                             const std::vector<std::unique_ptr<TaskArg>> &args,
                             const TaskOptions &task_options,
-                            std::vector<ObjectID> *return_ids, int max_retries) {
+                            std::vector<ObjectID> *return_ids, int max_retries,
+                            PlacementOptions placement_options) {
   TaskSpecBuilder builder;
   const int next_task_index = worker_context_.GetNextTaskIndex();
   const auto task_id =
       TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
                             worker_context_.GetCurrentTaskID(), next_task_index);
 
+  auto constrained_resources = AddPlacementGroupConstraint(
+      task_options.resources, placement_options.first, placement_options.second);
   const std::unordered_map<std::string, double> required_resources;
   // TODO(ekl) offload task building onto a thread pool for performance
   BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, task_options.num_returns,
-                      task_options.resources, required_resources, return_ids);
+                      constrained_resources, required_resources, return_ids);
   TaskSpecification task_spec = builder.Build();
   if (options_.is_local_mode) {
     ExecuteTaskLocalMode(task_spec);
@@ -1185,21 +1214,6 @@ void CoreWorker::SubmitTask(const RayFunction &function,
       RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));
     });
   }
-}
-
-std::unordered_map<std::string, double> AddPlacementGroupConstraint(
-    const std::unordered_map<std::string, double> &resources,
-    PlacementGroupID placement_group_id, int64_t bundle_index) {
-  std::unordered_map<std::string, double> new_resources;
-  if (placement_group_id != PlacementGroupID::Nil()) {
-    for (auto iter = resources.begin(); iter != resources.end(); iter++) {
-      auto new_name =
-          placement_group_id.Hex() + std::to_string(bundle_index) + "_" + iter->first;
-      new_resources[new_name] = iter->second;
-    }
-    return new_resources;
-  }
-  return resources;
 }
 
 Status CoreWorker::CreateActor(const RayFunction &function,

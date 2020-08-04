@@ -94,6 +94,14 @@ py_test(
 )
 
 py_test(
+    name = "test_integration_wandb",
+    size = "small",
+    srcs = ["tests/test_integration_wandb.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+)
+
+py_test(
     name = "test_logger",
     size = "small",
     srcs = ["tests/test_logger.py"],
@@ -521,6 +529,15 @@ py_test(
     deps = [":tune_lib"],
     tags = ["exclusive", "example"],
     args = ["--smoke-test"]
+)
+
+py_test(
+    name = "wandb_example",
+    size = "small",
+    srcs = ["examples/wandb_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--mock-api"]
 )
 
 py_test(

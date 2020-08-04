@@ -973,6 +973,64 @@ class TrainableFunctionApiTest(unittest.TestCase):
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertTrue(trial.has_checkpoint())
 
+    def testLogToFile(self):
+        def train(config, reporter):
+            import sys
+            from ray import logger
+            for i in range(10):
+                reporter(timesteps_total=i)
+            print("PRINT_STDOUT")
+            print("PRINT_STDERR", file=sys.stderr)
+            logger.info("LOG_STDERR")
+
+        register_trainable("f1", train)
+
+        # Do not log to file
+        [trial] = tune.run("f1", log_to_file=False).trials
+        self.assertFalse(os.path.exists(os.path.join(trial.logdir, "stdout")))
+        self.assertFalse(os.path.exists(os.path.join(trial.logdir, "stderr")))
+
+        # Log to default files
+        [trial] = tune.run("f1", log_to_file=True).trials
+        self.assertTrue(os.path.exists(os.path.join(trial.logdir, "stdout")))
+        self.assertTrue(os.path.exists(os.path.join(trial.logdir, "stderr")))
+        with open(os.path.join(trial.logdir, "stdout"), "rt") as fp:
+            content = fp.read()
+            self.assertIn("PRINT_STDOUT", content)
+        with open(os.path.join(trial.logdir, "stderr"), "rt") as fp:
+            content = fp.read()
+            self.assertIn("PRINT_STDERR", content)
+            self.assertIn("LOG_STDERR", content)
+
+        # Log to one file
+        [trial] = tune.run("f1", log_to_file="combined").trials
+        self.assertFalse(os.path.exists(os.path.join(trial.logdir, "stdout")))
+        self.assertFalse(os.path.exists(os.path.join(trial.logdir, "stderr")))
+        self.assertTrue(os.path.exists(os.path.join(trial.logdir, "combined")))
+        with open(os.path.join(trial.logdir, "combined"), "rt") as fp:
+            content = fp.read()
+            self.assertIn("PRINT_STDOUT", content)
+            self.assertIn("PRINT_STDERR", content)
+            self.assertIn("LOG_STDERR", content)
+
+        # Log to two files
+        [trial] = tune.run(
+            "f1", log_to_file=("alt.stdout", "alt.stderr")).trials
+        self.assertFalse(os.path.exists(os.path.join(trial.logdir, "stdout")))
+        self.assertFalse(os.path.exists(os.path.join(trial.logdir, "stderr")))
+        self.assertTrue(
+            os.path.exists(os.path.join(trial.logdir, "alt.stdout")))
+        self.assertTrue(
+            os.path.exists(os.path.join(trial.logdir, "alt.stderr")))
+
+        with open(os.path.join(trial.logdir, "alt.stdout"), "rt") as fp:
+            content = fp.read()
+            self.assertIn("PRINT_STDOUT", content)
+        with open(os.path.join(trial.logdir, "alt.stderr"), "rt") as fp:
+            content = fp.read()
+            self.assertIn("PRINT_STDERR", content)
+            self.assertIn("LOG_STDERR", content)
+
 
 if __name__ == "__main__":
     import pytest

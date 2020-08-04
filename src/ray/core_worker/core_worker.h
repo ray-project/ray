@@ -119,6 +119,8 @@ struct CoreWorkerOptions {
   int num_workers;
   /// The function to destroy asyncio event and loops.
   std::function<void()> terminate_asyncio_thread;
+  /// Serialized representation of JobConfig.
+  std::string serialized_job_config;
 };
 
 /// Lifecycle management of one or more `CoreWorker` instances in a process.
@@ -177,6 +179,13 @@ class CoreWorkerProcess {
   /// NOTE (kfstorm): Here we return a reference instead of a `shared_ptr` to make sure
   /// `CoreWorkerProcess` has full control of the destruction timing of `CoreWorker`.
   static CoreWorker &GetCoreWorker();
+
+  /// Try to get the `CoreWorker` instance by worker ID.
+  /// If the current thread is not associated with a core worker, returns a null pointer.
+  ///
+  /// \param[in] workerId The worker ID.
+  /// \return The `CoreWorker` instance.
+  static std::shared_ptr<CoreWorker> TryGetWorker(const WorkerID &worker_id);
 
   /// Set the core worker associated with the current thread by worker ID.
   /// Currently used by Java worker only.
@@ -577,7 +586,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void SubmitTask(const RayFunction &function,
                   const std::vector<std::unique_ptr<TaskArg>> &args,
                   const TaskOptions &task_options, std::vector<ObjectID> *return_ids,
-                  int max_retries);
+                  int max_retries, PlacementOptions placement_options);
 
   /// Create an actor.
   ///
