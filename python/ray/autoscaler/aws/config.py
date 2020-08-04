@@ -33,20 +33,20 @@ NODE_TYPE_CONFIG_KEYS = {
     NODE_TYPE_HEAD: "head_node",
 }
 
-DEFAULT_AMI_NAME = "AWS Deep Learning AMI (Ubuntu 18.04) V26.0"
+DEFAULT_AMI_NAME = "AWS Deep Learning AMI (Ubuntu 18.04) V30.0"
 
-# Obtained from https://aws.amazon.com/marketplace/pp/B07Y43P7X5 on 4/25/2020.
+# Obtained from https://aws.amazon.com/marketplace/pp/B07Y43P7X5 on 8/4/2020.
 DEFAULT_AMI = {
-    "us-east-1": "ami-0dbb717f493016a1a",  # US East (N. Virginia)
-    "us-east-2": "ami-0d6808451e868a339",  # US East (Ohio)
-    "us-west-1": "ami-09f2f73141c83d4fe",  # US West (N. California)
-    "us-west-2": "ami-008d8ed4bd7dc2485",  # US West (Oregon)
-    "ca-central-1": "ami-0142046278ba71f25",  # Canada (Central)
-    "eu-central-1": "ami-09633db638556dc39",  # EU (Frankfurt)
-    "eu-west-1": "ami-0c265211f000802b0",  # EU (Ireland)
-    "eu-west-2": "ami-0f532395ff8544941",  # EU (London)
-    "eu-west-3": "ami-03dbbdf69bbb06b29",  # EU (Paris)
-    "sa-east-1": "ami-0da2c49fe75e7e5ed",  # SA (Sao Paulo)
+    "us-east-1": "ami-029510cec6d69f121",  # US East (N. Virginia)
+    "us-east-2": "ami-08bf49c7b3a0c761e",  # US East (Ohio)
+    "us-west-1": "ami-0cc472544ce594a19",  # US West (N. California)
+    "us-west-2": "ami-0a2363a9cff180a64",  # US West (Oregon)
+    "ca-central-1": "ami-0a871851b2ab39f01",  # Canada (Central)
+    "eu-central-1": "ami-049fb1ea198d189d7",  # EU (Frankfurt)
+    "eu-west-1": "ami-0abcbc65f89fb220e",  # EU (Ireland)
+    "eu-west-2": "ami-0755b39fd4dab7cbe",  # EU (London)
+    "eu-west-3": "ami-020485d8df1d45530",  # EU (Paris)
+    "sa-east-1": "ami-058a6883cbdb4e599",  # SA (Sao Paulo)
 }
 
 # todo: cli_logger should handle this assert properly
