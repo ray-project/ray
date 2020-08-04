@@ -96,6 +96,8 @@ class RayParams:
         lru_evict (bool): Enable LRU eviction if space is needed.
         enable_object_reconstruction (bool): Enable plasma reconstruction on
             failure.
+        start_initial_python_workers_for_first_job (bool): If true, start
+            initial Python workers for the first job on the node.
     """
 
     def __init__(self,
@@ -138,6 +140,7 @@ class RayParams:
                  include_java=False,
                  java_worker_options=None,
                  load_code_from_local=False,
+                 start_initial_python_workers_for_first_job=False,
                  _internal_config=None,
                  enable_object_reconstruction=False,
                  metrics_agent_port=None,
@@ -182,6 +185,8 @@ class RayParams:
         self.load_code_from_local = load_code_from_local
         self.metrics_agent_port = metrics_agent_port
         self.metrics_export_port = metrics_export_port
+        self.start_initial_python_workers_for_first_job = (
+            start_initial_python_workers_for_first_job)
         self._internal_config = _internal_config
         self._lru_evict = lru_evict
         self._enable_object_reconstruction = enable_object_reconstruction

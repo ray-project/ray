@@ -46,7 +46,8 @@ provider:
 # How Ray will authenticate with newly launched nodes.
 auth:
     ssh_user: YOUR_USERNAME
-    ssh_private_key: ~/.ssh/id_rsa
+    # Optional if an ssh private key is necessary to ssh to the cluster.
+    # ssh_private_key: ~/.ssh/id_rsa
 
 # Leave this empty.
 head_node: {}

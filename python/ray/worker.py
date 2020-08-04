@@ -20,6 +20,7 @@ import ray.cloudpickle as pickle
 import ray.gcs_utils
 import ray.memory_monitor as memory_monitor
 import ray.node
+import ray.job_config
 import ray.parameter
 import ray.ray_constants as ray_constants
 import ray.remote_function
@@ -486,6 +487,7 @@ def init(address=None,
          dashboard_host="localhost",
          dashboard_port=ray_constants.DEFAULT_DASHBOARD_PORT,
          job_id=None,
+         job_config=None,
          configure_logging=True,
          logging_level=logging.INFO,
          logging_format=ray_constants.LOGGER_FORMAT,
@@ -589,6 +591,7 @@ def init(address=None,
         dashboard_port: The port to bind the dashboard server to. Defaults to
             8265.
         job_id: The ID of this job.
+        job_config (ray.job_config.JobConfig): The job configuration.
         configure_logging: True (default) if configuration of logging is
             allowed here. Otherwise, the user may want to configure it
             separately.
@@ -717,6 +720,7 @@ def init(address=None,
             temp_dir=temp_dir,
             load_code_from_local=load_code_from_local,
             java_worker_options=java_worker_options,
+            start_initial_python_workers_for_first_job=True,
             _internal_config=_internal_config,
             lru_evict=lru_evict,
             enable_object_reconstruction=enable_object_reconstruction,
@@ -809,7 +813,8 @@ def init(address=None,
         log_to_driver=log_to_driver,
         worker=global_worker,
         driver_object_store_memory=driver_object_store_memory,
-        job_id=job_id)
+        job_id=job_id,
+        job_config=job_config)
 
     for hook in _post_init_hooks:
         hook()
@@ -1153,7 +1158,8 @@ def connect(node,
             log_to_driver=False,
             worker=global_worker,
             driver_object_store_memory=None,
-            job_id=None):
+            job_id=None,
+            job_config=None):
     """Connect this worker to the raylet, to Plasma, and to Redis.
 
     Args:
@@ -1166,6 +1172,7 @@ def connect(node,
         driver_object_store_memory: Limit the amount of memory the driver can
             use in the object store when creating objects.
         job_id: The ID of job. If it's None, then we will generate one.
+        job_config (ray.job_config.JobConfig): The job configuration.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -1271,14 +1278,27 @@ def connect(node,
         int(redis_port),
         node.redis_password,
     )
-
+    if job_config is None:
+        job_config = ray.job_config.JobConfig()
+    serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
         (mode == SCRIPT_MODE or mode == LOCAL_MODE),
-        node.plasma_store_socket_name, node.raylet_socket_name, job_id,
-        gcs_options, node.get_logs_dir_path(), node.node_ip_address,
-        node.node_manager_port, node.raylet_ip_address, (mode == LOCAL_MODE),
-        driver_name, log_stdout_file_path, log_stderr_file_path,
-        node.metrics_agent_port)
+        node.plasma_store_socket_name,
+        node.raylet_socket_name,
+        job_id,
+        gcs_options,
+        node.get_logs_dir_path(),
+        node.node_ip_address,
+        node.node_manager_port,
+        node.raylet_ip_address,
+        (mode == LOCAL_MODE),
+        driver_name,
+        log_stdout_file_path,
+        log_stderr_file_path,
+        serialized_job_config,
+        node.metrics_agent_port
+    )
+>>>>>>> master
 
     # Create an object for interfacing with the global state.
     # Note, global state should be intialized after `CoreWorker`, because it

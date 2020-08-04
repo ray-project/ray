@@ -1275,7 +1275,8 @@ def start_raylet(redis_address,
                  huge_pages=False,
                  fate_share=None,
                  socket_to_use=None,
-                 head_node=False):
+                 head_node=False,
+                 start_initial_python_workers_for_first_job=False):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1409,6 +1410,9 @@ def start_raylet(redis_address,
         "--metrics-agent-port={}".format(metrics_agent_port),
         "--metrics_export_port={}".format(metrics_export_port),
     ]
+    if start_initial_python_workers_for_first_job:
+        command.append("--num_initial_python_workers_for_first_job={}".format(
+            resource_spec.num_cpus))
     if config.get("plasma_store_as_thread"):
         # command related to the plasma store
         plasma_directory, object_store_memory = determine_plasma_store_config(

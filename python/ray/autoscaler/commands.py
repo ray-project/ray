@@ -558,7 +558,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             # head node won't be able to connect to workers
             remote_config["auth"].pop("ssh_proxy_command", None)
 
-            if config["provider"]["type"] != "kubernetes":
+            if "ssh_private_key" in config["auth"]:
                 remote_key_path = "~/ray_bootstrap_key.pem"
                 remote_config["auth"]["ssh_private_key"] = remote_key_path
 
@@ -578,7 +578,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
                 "~/ray_bootstrap_config.yaml": remote_config_file.name
             })
 
-            if config["provider"]["type"] != "kubernetes":
+            if "ssh_private_key" in config["auth"]:
                 config["file_mounts"].update({
                     remote_key_path: config["auth"]["ssh_private_key"],
                 })
