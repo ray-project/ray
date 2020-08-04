@@ -203,7 +203,6 @@ def train_mnist(config,
     # Create model
     use_cuda = use_gpus and torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
-    print("use cuda", use_cuda, device)
     model = ConvNet(layer_size=config["layer_size"]).to(device)
 
     # Create optimizer
@@ -282,6 +281,7 @@ def tune_from_scratch(num_samples=10, num_epochs=10, gpus_per_trial=0., day=0):
     analysis = tune.run(
         partial(
             train_mnist,
+            start_model=None,
             data_fn=data_interface.get_data,
             num_epochs=num_epochs,
             use_gpus=True if gpus_per_trial > 0 else False,
@@ -562,7 +562,7 @@ if __name__ == "__main__":
         "--query", help="Query endpoint with example", type=int, default=-1)
 
     parser.add_argument(
-        "--smoke_test",
+        "--smoke-test",
         action="store_true",
         help="Finish quickly for testing",
         default=False)
@@ -594,11 +594,13 @@ if __name__ == "__main__":
         sys.exit(0)
 
     gpus_per_trial = 0.5 if not args.smoke_test else 0.
+    num_samples = 8 if not args.smoke_test else 1
+    num_epochs = 10 if not args.smoke_test else 1
 
     if args.from_scratch:  # train everyday from scratch
         print("Start training job from scratch on day {}.".format(args.day))
         acc, config, best_checkpoint, N = tune_from_scratch(
-            8, 10, gpus_per_trial, day=args.day)
+            num_samples, num_epochs, gpus_per_trial, day=args.day)
         print("Trained day {} from scratch on {} samples. "
               "Best accuracy: {:.4f}. Best config: {}".format(
                   args.day, N, acc, config))
@@ -611,7 +613,12 @@ if __name__ == "__main__":
                   "first.")
             sys.exit(1)
         acc, config, best_checkpoint, N = tune_from_existing(
-            old_checkpoint, old_config, 8, 10, gpus_per_trial, day=args.day)
+            old_checkpoint,
+            old_config,
+            num_samples,
+            num_epochs,
+            gpus_per_trial,
+            day=args.day)
         print("Trained day {} from existing on {} samples. "
               "Best accuracy: {:.4f}. Best config: {}".format(
                   args.day, N, acc, config))

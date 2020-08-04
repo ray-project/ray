@@ -61,5 +61,5 @@ py_test(
     main = "source/tune/_tutorials/tune-serve-integration-mnist.py",
     srcs = ["source/tune/_tutorials/tune-serve-integration-mnist.py"],
     tags = ["exclusive", "example"],
-    args = ["--smoke-test"]
+    args = ["--smoke-test", "--from-scratch", "--day 0"]
 )
