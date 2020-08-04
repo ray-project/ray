@@ -1,8 +1,10 @@
 import logging
+from typing import Sequence
 
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list, Experiment
 from ray.tune.analysis import ExperimentAnalysis
+from ray.tune.result import STDOUT_FILE, STDERR_FILE
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.suggest.suggestion import Searcher, SearchGenerator
 from ray.tune.trial import Trial
@@ -65,6 +67,31 @@ def _report_progress(runner, reporter, done=False):
         reporter.report(trials, done, sched_debug_str, executor_debug_str)
 
 
+def _validate_log_to_file(log_to_file):
+    """Validate ``tune.run``'s ``log_to_file`` parameter. Return
+    validated relative stdout and stderr filenames."""
+    if not log_to_file:
+        stdout_file = stderr_file = None
+    elif isinstance(log_to_file, bool) and log_to_file:
+        stdout_file = "stdout"
+        stderr_file = "stderr"
+    elif isinstance(log_to_file, str):
+        stdout_file = stderr_file = log_to_file
+    elif isinstance(log_to_file, Sequence):
+        if len(log_to_file) != 2:
+            raise ValueError(
+                "If you pass a Sequence to `log_to_file` it has to have "
+                "a length of 2 (for stdout and stderr, respectively). The "
+                "Sequence you passed has length {}.".format(len(log_to_file)))
+        stdout_file, stderr_file = log_to_file
+    else:
+        raise ValueError(
+            "You can pass a boolean, a string, or a Sequence of length 2 to "
+            "`log_to_file`, but you passed something else ({}).".format(
+                type(log_to_file)))
+    return stdout_file, stderr_file
+
+
 def run(run_or_experiment,
         name=None,
         stop=None,
@@ -75,6 +102,7 @@ def run(run_or_experiment,
         upload_dir=None,
         trial_name_creator=None,
         loggers=None,
+        log_to_file=False,
         sync_to_cloud=None,
         sync_to_driver=None,
         checkpoint_freq=0,
@@ -143,6 +171,14 @@ def run(run_or_experiment,
         loggers (list): List of logger creators to be used with
             each Trial. If None, defaults to ray.tune.logger.DEFAULT_LOGGERS.
             See `ray/tune/logger.py`.
+        log_to_file (bool|str|Sequence): Log stdout and stderr to files in
+            Tune's trial directories. If this is `False` (default), no files
+            are written. If `true`, outputs are written to `trialdir/stdout`
+            and `trialdir/stderr`, respectively. If this is a single string,
+            this is interpreted as a file relative to the trialdir, to which
+            both streams are written. If this is a Sequence (e.g. a Tuple),
+            it has to have length 2 and the elements indicate the files to
+            which stdout and stderr are written, respectively.
         sync_to_cloud (func|str): Function for syncing the local_dir to and
             from upload_dir. If string, then it must be a string template that
             includes `{source}` and `{target}` for the syncer to run. If not
@@ -242,6 +278,8 @@ def run(run_or_experiment,
         space = {"lr": tune.uniform(0, 1), "momentum": tune.uniform(0, 1)}
         tune.run(my_trainable, config=space, stop={"training_iteration": 10})
     """
+    config = config or {}
+
     trial_executor = trial_executor or RayTrialExecutor(
         queue_trials=queue_trials,
         reuse_actors=reuse_actors,
@@ -250,6 +288,10 @@ def run(run_or_experiment,
         experiments = run_or_experiment
     else:
         experiments = [run_or_experiment]
+
+    stdout_file, stderr_file = _validate_log_to_file(log_to_file)
+    config[STDOUT_FILE] = stdout_file
+    config[STDERR_FILE] = stderr_file
 
     for i, exp in enumerate(experiments):
         if not isinstance(exp, Experiment):

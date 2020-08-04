@@ -337,6 +337,21 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// again.
   void ReconstructActor(const ActorID &actor_id, bool need_reschedule = true);
 
+  /// Remove the specified actor from `unresolved_actors_`.
+  ///
+  /// \param actor The actor to be removed.
+  void RemoveUnresolvedActor(const std::shared_ptr<GcsActor> &actor);
+
+  /// Remove the specified actor from owner.
+  ///
+  /// \param actor The actor to be removed.
+  void RemoveActorFromOwner(const std::shared_ptr<GcsActor> &actor);
+
+  /// Kill the specified actor.
+  ///
+  /// \param actor The actor to be killed.
+  void KillActor(const std::shared_ptr<GcsActor> &actor);
+
   /// Callbacks of pending `RegisterActor` requests.
   /// Maps actor ID to actor registration callbacks, which is used to filter duplicated
   /// messages from a driver/worker caused by some network problems.
