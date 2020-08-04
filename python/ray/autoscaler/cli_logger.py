@@ -513,6 +513,30 @@ class _CliLogger():
 
         return res
 
+    def prompt(self, msg: str, *args, **kwargs):
+        """Display a confirmation dialog.
+
+        Args:
+            msg (str): The mesage to display to the user before the prompt.
+        """
+        if self.old_style:
+            return
+
+        complete_str = cf.underlined(msg + ":") + " "
+
+        self._print(complete_str, linefeed=False)
+
+        res = None
+        try:
+            ans = sys.stdin.readline()
+            ans = ans.lower()
+            ans = ans.strip()
+        except KeyboardInterrupt:
+            self.newline()
+            res = default
+
+        return res
+
     def old_confirm(self, msg, yes):
         """Old confirm dialog proxy.
 
