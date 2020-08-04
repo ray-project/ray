@@ -1,4 +1,4 @@
-from ray.rllib.utils.exploration.curiosity_exploration import Curiosity
+from ray.rllib.utils.exploration.curiosity import Curiosity
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.exploration.epsilon_greedy import EpsilonGreedy
 from ray.rllib.utils.exploration.gaussian_noise import GaussianNoise

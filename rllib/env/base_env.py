@@ -1,4 +1,3 @@
-import gym
 from typing import Callable, Tuple, Optional, List, Dict, Any, TYPE_CHECKING
 
 from ray.rllib.env.external_env import ExternalEnv
