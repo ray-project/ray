@@ -368,6 +368,8 @@ class ServeController:
 
     async def run_control_loop(self):
         while True:
+    async def run_control_loop(self):
+        while True:
             await self.do_autoscale()
             async with self.write_lock:
                 self._start_routers_if_needed()

@@ -46,6 +46,7 @@ if __name__ == "__main__":
     RAY_CI_STREAMING_PYTHON_AFFECTED = 0
     RAY_CI_STREAMING_JAVA_AFFECTED = 0
     RAY_CI_DASHBOARD_AFFECTED = 0
+    RAY_CI_DOCKER_AFFECTED = 0
 
     event_type = None
     for key in ["GITHUB_EVENT_NAME", "TRAVIS_EVENT_TYPE"]:
@@ -102,6 +103,8 @@ if __name__ == "__main__":
             elif changed_file.startswith("java/"):
                 RAY_CI_JAVA_AFFECTED = 1
                 RAY_CI_STREAMING_JAVA_AFFECTED = 1
+            elif changed_file.startswith("docker/"):
+                RAY_CI_DOCKER_AFFECTED = 1
             elif any(
                     changed_file.startswith(prefix)
                     for prefix in skip_prefix_list):
