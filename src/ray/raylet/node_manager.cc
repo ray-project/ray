@@ -509,15 +509,12 @@ void NodeManager::DoLocalGC() {
   RAY_LOG(WARNING) << "Sending local GC request to " << all_workers.size() << " workers.";
   for (const auto &worker : all_workers) {
     rpc::LocalGCRequest request;
-    auto status = worker->rpc_client()->LocalGC(
+    worker->rpc_client()->LocalGC(
         request, [](const ray::Status &status, const rpc::LocalGCReply &r) {
           if (!status.ok()) {
             RAY_LOG(ERROR) << "Failed to send local GC request: " << status.ToString();
           }
         });
-    if (!status.ok()) {
-      RAY_LOG(ERROR) << "Failed to send local GC request: " << status.ToString();
-    }
   }
 }
 
@@ -2972,7 +2969,7 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
       rpc::GetObjectStatusRequest request;
       request.set_object_id(required_object_id.Binary());
       request.set_owner_worker_id(owner_addr.worker_id());
-      RAY_CHECK_OK(client->GetObjectStatus(
+      client->GetObjectStatus(
           request, [this, required_object_id, owner_addr](
                        Status status, const rpc::GetObjectStatusReply &reply) {
             if (!status.ok() ||
@@ -2995,7 +2992,7 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
             // object manager will continue trying to fetch the object, and this
             // handler will get triggered again if the object is still
             // unavailable after another timeout.
-          }));
+          });
     }
   } else {
     // We do not have the owner's address. This is either an actor creation
@@ -3435,14 +3432,14 @@ ray::Status NodeManager::SetupPlasmaSubscription() {
         request.set_data_size(object_info.data_size);
 
         for (auto worker : waiting_workers) {
-          RAY_CHECK_OK(worker->rpc_client()->PlasmaObjectReady(
+          worker->rpc_client()->PlasmaObjectReady(
               request, [](Status status, const rpc::PlasmaObjectReadyReply &reply) {
                 if (!status.ok()) {
                   RAY_LOG(INFO)
                       << "Problem with telling worker that plasma object is ready"
                       << status.ToString();
                 }
-              }));
+              });
         }
       });
 }
@@ -3581,7 +3578,7 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
     wait_request.set_object_id(object_id_binary);
     wait_request.set_intended_worker_id(request.owner_address().worker_id());
     worker_rpc_clients_[worker_id].second++;
-    RAY_CHECK_OK(it->second.first->WaitForObjectEviction(
+    it->second.first->WaitForObjectEviction(
         wait_request, [this, worker_id, object_id](
                           Status status, const rpc::WaitForObjectEvictionReply &reply) {
           if (!status.ok()) {
@@ -3605,7 +3602,7 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
           if (--worker_rpc_clients_[worker_id].second == 0) {
             worker_rpc_clients_.erase(worker_id);
           }
-        }));
+        });
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
@@ -3690,7 +3687,7 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
     rpc::GetCoreWorkerStatsRequest request;
     request.set_intended_worker_id(worker->WorkerId().Binary());
     request.set_include_memory_info(node_stats_request.include_memory_info());
-    auto status = worker->rpc_client()->GetCoreWorkerStats(
+    worker->rpc_client()->GetCoreWorkerStats(
         request, [reply, worker, all_workers, driver_ids, send_reply_callback](
                      const ray::Status &status, const rpc::GetCoreWorkerStatsReply &r) {
           auto worker_stats = reply->add_workers_stats();
@@ -3708,10 +3705,6 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
             send_reply_callback(Status::OK(), nullptr, nullptr);
           }
         });
-    if (!status.ok()) {
-      RAY_LOG(ERROR) << "Failed to send get core worker stats request: "
-                     << status.ToString();
-    }
   }
 }
 

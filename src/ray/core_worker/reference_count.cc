@@ -742,7 +742,7 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
                  << addr.port << " for object " << object_id;
   // Send the borrower a message about this object. The borrower responds once
   // it is no longer using the object ID.
-  RAY_CHECK_OK(it->second->WaitForRefRemoved(
+  it->second->WaitForRefRemoved(
       request, [this, object_id, addr](const Status &status,
                                        const rpc::WaitForRefRemovedReply &reply) {
         RAY_LOG(DEBUG) << "Received reply from borrower " << addr.ip_address << ":"
@@ -759,7 +759,7 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
         RAY_CHECK(it != object_id_refs_.end());
         RAY_CHECK(it->second.borrowers.erase(addr));
         DeleteReferenceInternal(it, nullptr);
-      }));
+      });
 }
 
 void ReferenceCounter::AddNestedObjectIds(const ObjectID &object_id,

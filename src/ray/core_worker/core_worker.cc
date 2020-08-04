@@ -748,7 +748,7 @@ void CoreWorker::PutObjectIntoPlasma(const RayObject &object, const ObjectID &ob
   if (!object_exists) {
     // Tell the raylet to pin the object **after** it is created.
     RAY_LOG(DEBUG) << "Pinning put object " << object_id;
-    RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(
+    local_raylet_client_->PinObjectIDs(
         rpc_address_, {object_id},
         [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
           // Only release the object once the raylet has responded to avoid the race
@@ -757,7 +757,7 @@ void CoreWorker::PutObjectIntoPlasma(const RayObject &object, const ObjectID &ob
             RAY_LOG(ERROR) << "Failed to release ObjectID (" << object_id
                            << "), might cause a leak in plasma.";
           }
-        }));
+        });
   }
   RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
 }
@@ -841,7 +841,7 @@ Status CoreWorker::Put(const RayObject &object,
     if (pin_object) {
       // Tell the raylet to pin the object **after** it is created.
       RAY_LOG(DEBUG) << "Pinning put object " << object_id;
-      RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(
+      local_raylet_client_->PinObjectIDs(
           rpc_address_, {object_id},
           [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
             // Only release the object once the raylet has responded to avoid the race
@@ -850,7 +850,7 @@ Status CoreWorker::Put(const RayObject &object,
               RAY_LOG(ERROR) << "Failed to release ObjectID (" << object_id
                              << "), might cause a leak in plasma.";
             }
-          }));
+          });
     } else {
       RAY_RETURN_NOT_OK(plasma_store_provider_->Release(object_id));
     }
@@ -901,7 +901,7 @@ Status CoreWorker::Seal(const ObjectID &object_id, bool pin_object,
   if (pin_object) {
     // Tell the raylet to pin the object **after** it is created.
     RAY_LOG(DEBUG) << "Pinning sealed object " << object_id;
-    RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(
+    local_raylet_client_->PinObjectIDs(
         owner_address.has_value() ? *owner_address : rpc_address_, {object_id},
         [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
           // Only release the object once the raylet has responded to avoid the race
@@ -910,7 +910,7 @@ Status CoreWorker::Seal(const ObjectID &object_id, bool pin_object,
             RAY_LOG(ERROR) << "Failed to release ObjectID (" << object_id
                            << "), might cause a leak in plasma.";
           }
-        }));
+        });
   } else {
     RAY_RETURN_NOT_OK(plasma_store_provider_->Release(object_id));
     reference_counter_->FreePlasmaObjects({object_id});
@@ -1125,15 +1125,12 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
 }
 
 void CoreWorker::TriggerGlobalGC() {
-  auto status = local_raylet_client_->GlobalGC(
+  local_raylet_client_->GlobalGC(
       [](const Status &status, const rpc::GlobalGCReply &reply) {
         if (!status.ok()) {
           RAY_LOG(ERROR) << "Failed to send global GC request: " << status.ToString();
         }
       });
-  if (!status.ok()) {
-    RAY_LOG(ERROR) << "Failed to send global GC request: " << status.ToString();
-  }
 }
 
 std::string CoreWorker::MemoryUsageString() {
