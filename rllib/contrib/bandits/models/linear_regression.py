@@ -135,7 +135,6 @@ class DiscreteLinearModel(TorchModelV2, nn.Module):
             return scores
 
     def partial_fit(self, x, y, arm):
-        print(x, y, arm)
         assert 0 <= arm.item() < len(self.arms), \
             "Invalid arm: {}. It should be 0 <= arm < {}".format(
                 arm.item(), len(self.arms))
