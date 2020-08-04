@@ -6,9 +6,10 @@ import numpy as np
 from transformers import EvalPrediction
 from transformers import glue_compute_metrics, glue_output_modes
 
+
 def build_compute_metrics_fn(
         task_name: str) -> Callable[[EvalPrediction], Dict]:
-    """This function is from transformers/examples/text-classification/run_glue.py"""
+    """Function from transformers/examples/text-classification/run_glue.py"""
     output_mode = glue_output_modes[task_name]
 
     def compute_metrics_fn(p: EvalPrediction):
