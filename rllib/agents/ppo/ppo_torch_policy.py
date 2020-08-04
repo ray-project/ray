@@ -220,10 +220,9 @@ def setup_mixins(policy, obs_space, action_space, config):
 def get_view_requirements_fn(policy):
     return {
         # Next obs are needed for PPO postprocessing.
-        SampleBatch.NEXT_OBS: ViewRequirement(
-            SampleBatch.OBS, shift=1, sampling=False, training=False),
+        SampleBatch.NEXT_OBS: ViewRequirement(SampleBatch.OBS, shift=1),
         # VF preds are needed for the loss.
-        SampleBatch.VF_PREDS: ViewRequirement(sampling=False),
+        SampleBatch.VF_PREDS: ViewRequirement(shift=0),
     }
 
 
