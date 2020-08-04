@@ -391,15 +391,40 @@ def setup_logger(logging_level, logging_format):
     logger.propagate = False
 
 
+class Unbuffered(object):
+    """There's no "built-in" solution to programatically disabling buffering of
+    text files. Ray expects stdout/err to be text files, so creating an unbuffered binary file is unacceptable.
+
+    See
+    https://mail.python.org/pipermail/tutor/2003-November/026645.html.
+    https://docs.python.org/3/library/functions.html#open
+    """
+    def __init__(self, stream):
+        self.stream = stream
+
+    def write(self, data):
+        self.stream.write(data)
+        self.stream.flush()
+
+    def writelines(self, datas):
+        self.stream.writelines(datas)
+        self.stream.flush()
+
+    def __getattr__(self, attr):
+        return getattr(self.stream, attr)
+
+
 def open_log(path, **kwargs):
     """
     Opens the log file at `path`, with the provided kwargs being given to
     `open`.
     """
+    # Disable buffering, see test_advanced_3.py::test_logging_to_driver
     kwargs.setdefault("buffering", 1)
     kwargs.setdefault("mode", "a")
     kwargs.setdefault("encoding", "utf-8")
-    return open(path, **kwargs)
+    stream = open(path, **kwargs)
+    return Unbuffered(stream)
 
 
 def create_and_init_new_worker_log(path, worker_pid):
