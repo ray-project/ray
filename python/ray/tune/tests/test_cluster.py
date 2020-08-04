@@ -712,6 +712,133 @@ tune.run(
     ray.shutdown()
     cluster.shutdown()
 
+def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir):
+    """Tests restoration of HyperOptSearch experiment on cluster shutdown
+    with actual interrupt.
+
+    Restoration should restore both state of trials
+    and previous search algorithm (HyperOptSearch) state.
+    This is an end-to-end test.
+    """
+    cluster = start_connected_cluster
+    dirpath = str(tmpdir)
+
+    script = """
+import ray
+import numpy as np
+import time
+import json
+import os
+from ray.tune import run, Trainable
+from ray.tune.suggest.hyperopt import HyperOptSearch
+from hyperopt import hp
+ray.init(address="{address}")
+class MyTrainableClass(Trainable):
+    def _setup(self, config):
+        self.timestep = 0
+    def _train(self):
+        self.timestep += 1
+        v = np.tanh(float(self.timestep) / self.config.get("width", 1))
+        v *= self.config.get("height", 1)
+        return {{"mean_loss": v}}
+    def _save(self, checkpoint_dir):
+        path = os.path.join(checkpoint_dir, "checkpoint")
+        with open(path, "w") as f:
+            f.write(json.dumps({{"timestep": self.timestep}}))
+        return path
+    def _restore(self, checkpoint_path):
+        with open(checkpoint_path) as f:
+            self.timestep = json.loads(f.read())["timestep"]
+space = {{
+    "width": hp.uniform("width", 0, 20),
+    "height": hp.uniform("height", -100, 100),
+    "activation": hp.choice("activation", ["relu", "tanh"])
+}}
+current_best_params = [
+    {{
+        "width": 1,
+        "height": 2,
+        "activation": 0  # Activation will be relu
+    }},
+    {{
+        "width": 4,
+        "height": 2,
+        "activation": 1  # Activation will be tanh
+    }}
+]
+config = {{
+    "num_samples": 20,
+    "stop": {{
+        "training_iteration": 2
+    }},
+    "local_dir": "{checkpoint_dir}",
+    "name": "experiment",
+}}
+algo = HyperOptSearch(
+        space,
+        max_concurrent=1,
+        metric="mean_loss",
+        mode="min",
+        random_state_seed=5,
+        points_to_evaluate=current_best_params)
+run(MyTrainableClass, search_alg=algo, global_checkpoint_period=0,
+    resume={resume_bool}, **config)
+"""
+    script_before_shutdown = script.format(
+        address=cluster.address, checkpoint_dir=dirpath, resume_bool=False)
+    run_string_as_driver_nonblocking(script_before_shutdown)
+
+    # Wait until the right checkpoint is saved.
+    # The trainable returns every 0.5 seconds, so this should not miss
+    # the checkpoint.
+    local_checkpoint_dir = os.path.join(dirpath, "experiment")
+    for i in range(50):
+        if TrialRunner.checkpoint_exists(local_checkpoint_dir):
+            # Inspect the internal trialrunner
+            runner = TrialRunner(
+                resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir)
+            trials = runner.get_trials()
+            if trials and len(trials) >= 10:
+                break
+        time.sleep(.5)
+
+    if not TrialRunner.checkpoint_exists(local_checkpoint_dir):
+        raise RuntimeError("Checkpoint file didn't appear.")
+
+    if not TrialRunner.searcher_checkpoint_exists(local_checkpoint_dir):
+        raise RuntimeError("Searcher checkpoint file didn't appear.")
+
+    ray.shutdown()
+    cluster.shutdown()
+    cluster = _start_new_cluster()
+
+    script_after_shutdown = script.format(
+        address=cluster.address,
+        checkpoint_dir=dirpath,
+        resume_bool="\"LOCAL\"")
+    run_string_as_driver_nonblocking(script_after_shutdown)
+
+    time.sleep(2)
+
+    reached = False
+    for i in range(50):
+        if TrialRunner.checkpoint_exists(local_checkpoint_dir):
+            # Inspect the internal trialrunner
+            runner = TrialRunner(
+                resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir)
+            trials = runner.get_trials()
+            if len(trials) == 0:
+                continue  # nonblocking script hasn't resumed yet, wait
+            reached = True
+            assert len(trials) >= 10
+            assert len(trials) <= 20
+            if len(trials) == 20:
+                break
+        time.sleep(.5)
+    assert reached is True
+
+    ray.shutdown()
+    cluster.shutdown()
 
 if __name__ == "__main__":
     import pytest
