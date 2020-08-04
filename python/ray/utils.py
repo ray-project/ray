@@ -393,11 +393,13 @@ def setup_logger(logging_level, logging_format):
 
 class Unbuffered(object):
     """There's no "built-in" solution to programatically disabling buffering of
-    text files. Ray expects stdout/err to be text files, so creating an unbuffered binary file is unacceptable.
+    text files. Ray expects stdout/err to be text files, so creating an
+    unbuffered binary file is unacceptable.
 
     See
     https://mail.python.org/pipermail/tutor/2003-November/026645.html.
     https://docs.python.org/3/library/functions.html#open
+
     """
 
     def __init__(self, stream):
