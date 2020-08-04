@@ -237,11 +237,11 @@ cc_library(
     linkopts = PLASMA_LINKOPTS,
     strip_include_prefix = "src",
     deps = [
-        "//src/ray/protobuf:common_cc_proto",
         ":object_manager_fbs",
         ":plasma_fbs",
         ":ray_common",
         ":ray_util",
+        "//src/ray/protobuf:common_cc_proto",
         "@arrow",
         "@com_github_google_glog//:glog",
         "@msgpack",
@@ -1211,8 +1211,8 @@ cc_library(
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
-        ":gcs",
         ":core_worker_lib",
+        ":gcs",
         ":object_manager_fbs",
         ":object_manager_rpc",
         ":plasma_store_server_lib",
@@ -1228,8 +1228,8 @@ cc_binary(
     srcs = ["src/ray/object_manager/test/object_manager_test.cc"],
     copts = COPTS,
     deps = [
-        "//src/ray/protobuf:common_cc_proto",
         ":object_manager",
+        "//src/ray/protobuf:common_cc_proto",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1240,8 +1240,8 @@ cc_binary(
     srcs = ["src/ray/object_manager/test/object_manager_stress_test.cc"],
     copts = COPTS,
     deps = [
-        "//src/ray/protobuf:common_cc_proto",
         ":object_manager",
+        "//src/ray/protobuf:common_cc_proto",
         "@com_google_googletest//:gtest_main",
     ],
 )
