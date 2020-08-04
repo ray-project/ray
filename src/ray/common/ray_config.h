@@ -42,7 +42,7 @@ class RayConfig {
 #undef RAY_CONFIG
 
  public:
-  static RayConfig &instance() {
+  static RayConfig& instance() {
     static RayConfig config;
     return config;
   }

@@ -50,49 +50,49 @@ class NodeManagerServiceHandler {
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
 
-  virtual void HandleRequestWorkerLease(const RequestWorkerLeaseRequest &request,
-                                        RequestWorkerLeaseReply *reply,
+  virtual void HandleRequestWorkerLease(const RequestWorkerLeaseRequest& request,
+                                        RequestWorkerLeaseReply* reply,
                                         SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleReturnWorker(const ReturnWorkerRequest &request,
-                                  ReturnWorkerReply *reply,
+  virtual void HandleReturnWorker(const ReturnWorkerRequest& request,
+                                  ReturnWorkerReply* reply,
                                   SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleReleaseUnusedWorkers(const ReleaseUnusedWorkersRequest &request,
-                                          ReleaseUnusedWorkersReply *reply,
+  virtual void HandleReleaseUnusedWorkers(const ReleaseUnusedWorkersRequest& request,
+                                          ReleaseUnusedWorkersReply* reply,
                                           SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &request,
-                                       rpc::CancelWorkerLeaseReply *reply,
+  virtual void HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest& request,
+                                       rpc::CancelWorkerLeaseReply* reply,
                                        rpc::SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleRequestResourceReserve(
-      const rpc::RequestResourceReserveRequest &request,
-      rpc::RequestResourceReserveReply *reply,
+      const rpc::RequestResourceReserveRequest& request,
+      rpc::RequestResourceReserveReply* reply,
       rpc::SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleCancelResourceReserve(
-      const rpc::CancelResourceReserveRequest &request,
-      rpc::CancelResourceReserveReply *reply,
+      const rpc::CancelResourceReserveRequest& request,
+      rpc::CancelResourceReserveReply* reply,
       rpc::SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleForwardTask(const ForwardTaskRequest &request,
-                                 ForwardTaskReply *reply,
+  virtual void HandleForwardTask(const ForwardTaskRequest& request,
+                                 ForwardTaskReply* reply,
                                  SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandlePinObjectIDs(const PinObjectIDsRequest &request,
-                                  PinObjectIDsReply *reply,
+  virtual void HandlePinObjectIDs(const PinObjectIDsRequest& request,
+                                  PinObjectIDsReply* reply,
                                   SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGetNodeStats(const GetNodeStatsRequest &request,
-                                  GetNodeStatsReply *reply,
+  virtual void HandleGetNodeStats(const GetNodeStatsRequest& request,
+                                  GetNodeStatsReply* reply,
                                   SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGlobalGC(const GlobalGCRequest &request, GlobalGCReply *reply,
+  virtual void HandleGlobalGC(const GlobalGCRequest& request, GlobalGCReply* reply,
                               SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleFormatGlobalMemoryInfo(const FormatGlobalMemoryInfoRequest &request,
-                                            FormatGlobalMemoryInfoReply *reply,
+  virtual void HandleFormatGlobalMemoryInfo(const FormatGlobalMemoryInfoRequest& request,
+                                            FormatGlobalMemoryInfoReply* reply,
                                             SendReplyCallback send_reply_callback) = 0;
 };
 
@@ -103,16 +103,16 @@ class NodeManagerGrpcService : public GrpcService {
   ///
   /// \param[in] io_service See super class.
   /// \param[in] handler The service handler that actually handle the requests.
-  NodeManagerGrpcService(boost::asio::io_service &io_service,
-                         NodeManagerServiceHandler &service_handler)
+  NodeManagerGrpcService(boost::asio::io_service& io_service,
+                         NodeManagerServiceHandler& service_handler)
       : GrpcService(io_service), service_handler_(service_handler){};
 
  protected:
-  grpc::Service &GetGrpcService() override { return service_; }
+  grpc::Service& GetGrpcService() override { return service_; }
 
   void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+      const std::unique_ptr<grpc::ServerCompletionQueue>& cq,
+      std::vector<std::unique_ptr<ServerCallFactory>>* server_call_factories) override {
     RAY_NODE_MANAGER_RPC_HANDLERS
   }
 
@@ -121,7 +121,7 @@ class NodeManagerGrpcService : public GrpcService {
   NodeManagerService::AsyncService service_;
 
   /// The service handler that actually handle the requests.
-  NodeManagerServiceHandler &service_handler_;
+  NodeManagerServiceHandler& service_handler_;
 };
 
 }  // namespace rpc

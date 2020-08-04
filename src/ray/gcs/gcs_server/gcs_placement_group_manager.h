@@ -43,8 +43,8 @@ class GcsPlacementGroup {
   /// Create a GcsPlacementGroup by CreatePlacementGroupRequest.
   ///
   /// \param request Contains the placement group creation task specification.
-  explicit GcsPlacementGroup(const ray::rpc::CreatePlacementGroupRequest &request) {
-    const auto &placement_group_spec = request.placement_group_spec();
+  explicit GcsPlacementGroup(const ray::rpc::CreatePlacementGroupRequest& request) {
+    const auto& placement_group_spec = request.placement_group_spec();
     placement_group_table_data_.set_placement_group_id(
         placement_group_spec.placement_group_id());
     placement_group_table_data_.set_name(placement_group_spec.name());
@@ -55,7 +55,7 @@ class GcsPlacementGroup {
   }
 
   /// Get the immutable PlacementGroupTableData of this placement group.
-  const rpc::PlacementGroupTableData &GetPlacementGroupTableData();
+  const rpc::PlacementGroupTableData& GetPlacementGroupTableData();
 
   /// Update the state of this placement_group.
   void UpdateState(rpc::PlacementGroupTableData::PlacementGroupState state);
@@ -96,14 +96,14 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param scheduler Used to schedule placement group creation tasks.
   /// \param gcs_table_storage Used to flush placement group data to storage.
   explicit GcsPlacementGroupManager(
-      boost::asio::io_context &io_context,
+      boost::asio::io_context& io_context,
       std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage);
 
   ~GcsPlacementGroupManager() = default;
 
-  void HandleCreatePlacementGroup(const rpc::CreatePlacementGroupRequest &request,
-                                  rpc::CreatePlacementGroupReply *reply,
+  void HandleCreatePlacementGroup(const rpc::CreatePlacementGroupRequest& request,
+                                  rpc::CreatePlacementGroupReply* reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
 
   /// Register placement_group asynchronously.
@@ -113,7 +113,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// be invoked immediately if the placement_group is already registered to
   /// `registered_placement_groups_` and its state is `ALIVE`. The callback will not be
   /// called in this case.
-  void RegisterPlacementGroup(const rpc::CreatePlacementGroupRequest &request,
+  void RegisterPlacementGroup(const rpc::CreatePlacementGroupRequest& request,
                               RegisterPlacementGroupCallback callback);
 
   /// Schedule placement_groups in the `pending_placement_groups_` queue.
@@ -125,7 +125,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param name The name of the  placement_group to look up.
   /// \returns PlacementGroupID The ID of the placement_group. Nil if the
   /// placement_group was not found.
-  PlacementGroupID GetPlacementGroupIDByName(const std::string &name);
+  PlacementGroupID GetPlacementGroupIDByName(const std::string& name);
 
   /// Handle placement_group creation task failure. This should be called when scheduling
   /// an placement_group creation task is infeasible.

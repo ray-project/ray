@@ -55,11 +55,11 @@ class GcsPubSubTest : public ::testing::Test {
     client_.reset();
   }
 
-  void Subscribe(const std::string &channel, const std::string &id,
-                 std::vector<std::string> &result) {
+  void Subscribe(const std::string& channel, const std::string& id,
+                 std::vector<std::string>& result) {
     std::promise<bool> promise;
-    auto done = [&promise](const Status &status) { promise.set_value(status.ok()); };
-    auto subscribe = [this, &result](const std::string &id, const std::string &data) {
+    auto done = [&promise](const Status& status) { promise.set_value(status.ok()); };
+    auto subscribe = [this, &result](const std::string& id, const std::string& data) {
       absl::MutexLock lock(&vector_mutex_);
       result.push_back(data);
     };
@@ -67,11 +67,11 @@ class GcsPubSubTest : public ::testing::Test {
     WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  void SubscribeAll(const std::string &channel,
-                    std::vector<std::pair<std::string, std::string>> &result) {
+  void SubscribeAll(const std::string& channel,
+                    std::vector<std::pair<std::string, std::string>>& result) {
     std::promise<bool> promise;
-    auto done = [&promise](const Status &status) { promise.set_value(status.ok()); };
-    auto subscribe = [this, &result](const std::string &id, const std::string &data) {
+    auto done = [&promise](const Status& status) { promise.set_value(status.ok()); };
+    auto subscribe = [this, &result](const std::string& id, const std::string& data) {
       absl::MutexLock lock(&vector_mutex_);
       result.push_back(std::make_pair(id, data));
     };
@@ -79,25 +79,25 @@ class GcsPubSubTest : public ::testing::Test {
     WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool Unsubscribe(const std::string &channel, const std::string &id) {
+  bool Unsubscribe(const std::string& channel, const std::string& id) {
     return pub_sub_->Unsubscribe(channel, id).ok();
   }
 
-  bool Publish(const std::string &channel, const std::string &id,
-               const std::string &data) {
+  bool Publish(const std::string& channel, const std::string& id,
+               const std::string& data) {
     std::promise<bool> promise;
-    auto done = [&promise](const Status &status) { promise.set_value(status.ok()); };
+    auto done = [&promise](const Status& status) { promise.set_value(status.ok()); };
     RAY_CHECK_OK((pub_sub_->Publish(channel, id, data, done)));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool WaitReady(std::future<bool> future, const std::chrono::milliseconds &timeout_ms) {
+  bool WaitReady(std::future<bool> future, const std::chrono::milliseconds& timeout_ms) {
     auto status = future.wait_for(timeout_ms);
     return status == std::future_status::ready && future.get();
   }
 
   template <typename Data>
-  void WaitPendingDone(const std::vector<Data> &data, int expected_count) {
+  void WaitPendingDone(const std::vector<Data>& data, int expected_count) {
     auto condition = [this, &data, expected_count]() {
       absl::MutexLock lock(&vector_mutex_);
       RAY_CHECK((int)data.size() <= expected_count)
@@ -148,7 +148,7 @@ TEST_F(GcsPubSubTest, TestManyPubsub) {
   SubscribeAll(channel, all_result);
   // Test many concurrent subscribes and unsubscribes.
   for (int i = 0; i < 1000; i++) {
-    auto subscribe = [](const std::string &id, const std::string &data) {};
+    auto subscribe = [](const std::string& id, const std::string& data) {};
     RAY_CHECK_OK((pub_sub_->Subscribe(channel, id, subscribe, nullptr)));
     RAY_CHECK_OK((pub_sub_->Unsubscribe(channel, id)));
   }
@@ -178,11 +178,11 @@ TEST_F(GcsPubSubTest, TestMultithreading) {
     auto id = ss.str();
     threads[index].reset(
         new std::thread([this, sub_message_count, sub_finished_count, id, channel] {
-          auto subscribe = [sub_message_count](const std::string &id,
-                                               const std::string &data) {
+          auto subscribe = [sub_message_count](const std::string& id,
+                                               const std::string& data) {
             ++(*sub_message_count);
           };
-          auto on_done = [sub_finished_count](const Status &status) {
+          auto on_done = [sub_finished_count](const Status& status) {
             RAY_CHECK_OK(status);
             ++(*sub_finished_count);
           };
@@ -193,7 +193,7 @@ TEST_F(GcsPubSubTest, TestMultithreading) {
     return sub_finished_count->load() == size;
   };
   EXPECT_TRUE(WaitForCondition(sub_finished_condition, timeout_ms_.count()));
-  for (auto &thread : threads) {
+  for (auto& thread : threads) {
     thread->join();
     thread.reset();
   }
@@ -212,7 +212,7 @@ TEST_F(GcsPubSubTest, TestMultithreading) {
     return sub_message_count->load() == size;
   };
   EXPECT_TRUE(WaitForCondition(sub_message_condition, timeout_ms_.count()));
-  for (auto &thread : threads) {
+  for (auto& thread : threads) {
     thread->join();
     thread.reset();
   }
@@ -227,9 +227,9 @@ TEST_F(GcsPubSubTest, TestPubSubWithTableData) {
   for (int index = 0; index < size; ++index) {
     ObjectID object_id = ObjectID::FromRandom();
     std::promise<bool> promise;
-    auto done = [&promise](const Status &status) { promise.set_value(status.ok()); };
-    auto subscribe = [this, channel, &result](const std::string &id,
-                                              const std::string &data) {
+    auto done = [&promise](const Status& status) { promise.set_value(status.ok()); };
+    auto subscribe = [this, channel, &result](const std::string& id,
+                                              const std::string& data) {
       RAY_CHECK_OK(pub_sub_->Unsubscribe(channel, id));
       absl::MutexLock lock(&vector_mutex_);
       result.push_back(data);
@@ -244,7 +244,7 @@ TEST_F(GcsPubSubTest, TestPubSubWithTableData) {
 
 }  // namespace ray
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 4);
   ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];

@@ -24,7 +24,7 @@
 
 namespace {
 
-const std::vector<std::string> GenerateEnumNames(const char *const *enum_names_ptr,
+const std::vector<std::string> GenerateEnumNames(const char* const* enum_names_ptr,
                                                  int start_index, int end_index) {
   std::vector<std::string> enum_names;
   for (int i = 0; i < start_index; ++i) {
@@ -32,7 +32,7 @@ const std::vector<std::string> GenerateEnumNames(const char *const *enum_names_p
   }
   size_t i = 0;
   while (true) {
-    const char *name = enum_names_ptr[i];
+    const char* name = enum_names_ptr[i];
     if (name == nullptr) {
       break;
     }
@@ -54,11 +54,11 @@ namespace ray {
 
 namespace raylet {
 
-Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_name,
-               const std::string &node_ip_address, const std::string &redis_address,
-               int redis_port, const std::string &redis_password,
-               const NodeManagerConfig &node_manager_config,
-               const ObjectManagerConfig &object_manager_config,
+Raylet::Raylet(boost::asio::io_service& main_service, const std::string& socket_name,
+               const std::string& node_ip_address, const std::string& redis_address,
+               int redis_port, const std::string& redis_password,
+               const NodeManagerConfig& node_manager_config,
+               const ObjectManagerConfig& object_manager_config,
                std::shared_ptr<gcs::GcsClient> gcs_client)
     : self_node_id_(ClientID::FromRandom()),
       gcs_client_(gcs_client),
@@ -106,9 +106,9 @@ ray::Status Raylet::RegisterGcs() {
                  << self_node_info_.node_manager_hostname();
 
   // Add resource information.
-  const NodeManagerConfig &node_manager_config = node_manager_.GetInitialConfig();
+  const NodeManagerConfig& node_manager_config = node_manager_.GetInitialConfig();
   std::unordered_map<std::string, std::shared_ptr<gcs::ResourceTableData>> resources;
-  for (const auto &resource_pair : node_manager_config.resource_config.GetResourceMap()) {
+  for (const auto& resource_pair : node_manager_config.resource_config.GetResourceMap()) {
     auto resource = std::make_shared<gcs::ResourceTableData>();
     resource->set_resource_capacity(resource_pair.second);
     resources.emplace(resource_pair.first, resource);
@@ -126,15 +126,15 @@ void Raylet::DoAccept() {
                                               boost::asio::placeholders::error));
 }
 
-void Raylet::HandleAccept(const boost::system::error_code &error) {
+void Raylet::HandleAccept(const boost::system::error_code& error) {
   if (!error) {
     // TODO: typedef these handlers.
-    ClientHandler client_handler = [this](ClientConnection &client) {
+    ClientHandler client_handler = [this](ClientConnection& client) {
       node_manager_.ProcessNewClient(client);
     };
     MessageHandler message_handler = [this](std::shared_ptr<ClientConnection> client,
                                             int64_t message_type,
-                                            const std::vector<uint8_t> &message) {
+                                            const std::vector<uint8_t>& message) {
       node_manager_.ProcessClientMessage(client, message_type, message.data());
     };
     // Accept a new local client and dispatch it to the node manager.

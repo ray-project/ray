@@ -32,30 +32,30 @@ struct TaskState {
 
 void InlineDependencies(
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> dependencies,
-    TaskSpecification &task, std::vector<ObjectID> *inlined_dependency_ids,
-    std::vector<ObjectID> *contained_ids) {
-  auto &msg = task.GetMutableMessage();
+    TaskSpecification& task, std::vector<ObjectID>* inlined_dependency_ids,
+    std::vector<ObjectID>* contained_ids) {
+  auto& msg = task.GetMutableMessage();
   size_t found = 0;
   for (size_t i = 0; i < task.NumArgs(); i++) {
     if (task.ArgByRef(i)) {
-      const auto &id = task.ArgId(i);
-      const auto &it = dependencies.find(id);
+      const auto& id = task.ArgId(i);
+      const auto& it = dependencies.find(id);
       if (it != dependencies.end()) {
         RAY_CHECK(it->second);
-        auto *mutable_arg = msg.mutable_args(i);
+        auto* mutable_arg = msg.mutable_args(i);
         if (!it->second->IsInPlasmaError()) {
           // The object has not been promoted to plasma. Inline the object by
           // clearing the reference and replacing it with the raw value.
           mutable_arg->mutable_object_ref()->Clear();
           if (it->second->HasData()) {
-            const auto &data = it->second->GetData();
+            const auto& data = it->second->GetData();
             mutable_arg->set_data(data->Data(), data->Size());
           }
           if (it->second->HasMetadata()) {
-            const auto &metadata = it->second->GetMetadata();
+            const auto& metadata = it->second->GetMetadata();
             mutable_arg->set_metadata(metadata->Data(), metadata->Size());
           }
-          for (const auto &nested_id : it->second->GetNestedIds()) {
+          for (const auto& nested_id : it->second->GetNestedIds()) {
             mutable_arg->add_nested_inlined_ids(nested_id.Binary());
             contained_ids->push_back(nested_id);
           }
@@ -69,7 +69,7 @@ void InlineDependencies(
   RAY_CHECK(found >= dependencies.size());
 }
 
-void LocalDependencyResolver::ResolveDependencies(TaskSpecification &task,
+void LocalDependencyResolver::ResolveDependencies(TaskSpecification& task,
                                                   std::function<void()> on_complete) {
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> local_dependencies;
   for (size_t i = 0; i < task.NumArgs(); i++) {
@@ -87,8 +87,8 @@ void LocalDependencyResolver::ResolveDependencies(TaskSpecification &task,
       std::make_shared<TaskState>(task, std::move(local_dependencies));
   num_pending_ += 1;
 
-  for (const auto &it : state->local_dependencies) {
-    const ObjectID &obj_id = it.first;
+  for (const auto& it : state->local_dependencies) {
+    const ObjectID& obj_id = it.first;
     in_memory_store_->GetAsync(obj_id, [this, state, obj_id,
                                         on_complete](std::shared_ptr<RayObject> obj) {
       RAY_CHECK(obj != nullptr);

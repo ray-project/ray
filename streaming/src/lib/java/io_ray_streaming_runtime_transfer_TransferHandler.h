@@ -13,7 +13,7 @@ extern "C" {
  * Signature: (J)J
  */
 JNIEXPORT jlong JNICALL
-Java_io_ray_streaming_runtime_transfer_TransferHandler_createWriterClientNative(JNIEnv *,
+Java_io_ray_streaming_runtime_transfer_TransferHandler_createWriterClientNative(JNIEnv*,
                                                                                 jobject);
 
 /*
@@ -22,7 +22,7 @@ Java_io_ray_streaming_runtime_transfer_TransferHandler_createWriterClientNative(
  * Signature: (J)J
  */
 JNIEXPORT jlong JNICALL
-Java_io_ray_streaming_runtime_transfer_TransferHandler_createReaderClientNative(JNIEnv *,
+Java_io_ray_streaming_runtime_transfer_TransferHandler_createReaderClientNative(JNIEnv*,
                                                                                 jobject);
 
 /*
@@ -32,7 +32,7 @@ Java_io_ray_streaming_runtime_transfer_TransferHandler_createReaderClientNative(
  */
 JNIEXPORT void JNICALL
 Java_io_ray_streaming_runtime_transfer_TransferHandler_handleWriterMessageNative(
-    JNIEnv *, jobject, jlong, jbyteArray);
+    JNIEnv*, jobject, jlong, jbyteArray);
 
 /*
  * Class:     io_ray_streaming_runtime_transfer_TransferHandler
@@ -41,7 +41,7 @@ Java_io_ray_streaming_runtime_transfer_TransferHandler_handleWriterMessageNative
  */
 JNIEXPORT jbyteArray JNICALL
 Java_io_ray_streaming_runtime_transfer_TransferHandler_handleWriterMessageSyncNative(
-    JNIEnv *, jobject, jlong, jbyteArray);
+    JNIEnv*, jobject, jlong, jbyteArray);
 
 /*
  * Class:     io_ray_streaming_runtime_transfer_TransferHandler
@@ -50,7 +50,7 @@ Java_io_ray_streaming_runtime_transfer_TransferHandler_handleWriterMessageSyncNa
  */
 JNIEXPORT void JNICALL
 Java_io_ray_streaming_runtime_transfer_TransferHandler_handleReaderMessageNative(
-    JNIEnv *, jobject, jlong, jbyteArray);
+    JNIEnv*, jobject, jlong, jbyteArray);
 
 /*
  * Class:     io_ray_streaming_runtime_transfer_TransferHandler
@@ -59,7 +59,7 @@ Java_io_ray_streaming_runtime_transfer_TransferHandler_handleReaderMessageNative
  */
 JNIEXPORT jbyteArray JNICALL
 Java_io_ray_streaming_runtime_transfer_TransferHandler_handleReaderMessageSyncNative(
-    JNIEnv *, jobject, jlong, jbyteArray);
+    JNIEnv*, jobject, jlong, jbyteArray);
 
 #ifdef __cplusplus
 }

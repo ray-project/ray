@@ -112,53 +112,53 @@ class RAY_EXPORT Status {
   Status() : state_(NULL) {}
   ~Status() { delete state_; }
 
-  Status(StatusCode code, const std::string &msg);
+  Status(StatusCode code, const std::string& msg);
 
   // Copy the specified status.
-  Status(const Status &s);
-  void operator=(const Status &s);
+  Status(const Status& s);
+  void operator=(const Status& s);
 
   // Return a success status.
   static Status OK() { return Status(); }
 
   // Return error status of an appropriate type.
-  static Status OutOfMemory(const std::string &msg) {
+  static Status OutOfMemory(const std::string& msg) {
     return Status(StatusCode::OutOfMemory, msg);
   }
 
-  static Status KeyError(const std::string &msg) {
+  static Status KeyError(const std::string& msg) {
     return Status(StatusCode::KeyError, msg);
   }
 
-  static Status TypeError(const std::string &msg) {
+  static Status TypeError(const std::string& msg) {
     return Status(StatusCode::TypeError, msg);
   }
 
-  static Status UnknownError(const std::string &msg) {
+  static Status UnknownError(const std::string& msg) {
     return Status(StatusCode::UnknownError, msg);
   }
 
-  static Status NotImplemented(const std::string &msg) {
+  static Status NotImplemented(const std::string& msg) {
     return Status(StatusCode::NotImplemented, msg);
   }
 
-  static Status Invalid(const std::string &msg) {
+  static Status Invalid(const std::string& msg) {
     return Status(StatusCode::Invalid, msg);
   }
 
-  static Status IOError(const std::string &msg) {
+  static Status IOError(const std::string& msg) {
     return Status(StatusCode::IOError, msg);
   }
 
-  static Status RedisError(const std::string &msg) {
+  static Status RedisError(const std::string& msg) {
     return Status(StatusCode::RedisError, msg);
   }
 
-  static Status TimedOut(const std::string &msg) {
+  static Status TimedOut(const std::string& msg) {
     return Status(StatusCode::TimedOut, msg);
   }
 
-  static Status Interrupted(const std::string &msg) {
+  static Status Interrupted(const std::string& msg) {
     return Status(StatusCode::Interrupted, msg);
   }
 
@@ -170,27 +170,27 @@ class RAY_EXPORT Status {
     return Status(StatusCode::UnexpectedSystemExit, "user code caused exit");
   }
 
-  static Status NotFound(const std::string &msg) {
+  static Status NotFound(const std::string& msg) {
     return Status(StatusCode::NotFound, msg);
   }
 
-  static Status Disconnected(const std::string &msg) {
+  static Status Disconnected(const std::string& msg) {
     return Status(StatusCode::Disconnected, msg);
   }
 
-  static Status ObjectExists(const std::string &msg) {
+  static Status ObjectExists(const std::string& msg) {
     return Status(StatusCode::ObjectExists, msg);
   }
 
-  static Status ObjectNotFound(const std::string &msg) {
+  static Status ObjectNotFound(const std::string& msg) {
     return Status(StatusCode::ObjectNotFound, msg);
   }
 
-  static Status ObjectAlreadySealed(const std::string &msg) {
+  static Status ObjectAlreadySealed(const std::string& msg) {
     return Status(StatusCode::ObjectAlreadySealed, msg);
   }
 
-  static Status ObjectStoreFull(const std::string &msg) {
+  static Status ObjectStoreFull(const std::string& msg) {
     return Status(StatusCode::ObjectStoreFull, msg);
   }
 
@@ -240,20 +240,20 @@ class RAY_EXPORT Status {
   };
   // OK status has a `NULL` state_.  Otherwise, `state_` points to
   // a `State` structure containing the error code and message(s)
-  State *state_;
+  State* state_;
 
-  void CopyFrom(const State *s);
+  void CopyFrom(const State* s);
 };
 
-static inline std::ostream &operator<<(std::ostream &os, const Status &x) {
+static inline std::ostream& operator<<(std::ostream& os, const Status& x) {
   os << x.ToString();
   return os;
 }
 
-inline Status::Status(const Status &s)
+inline Status::Status(const Status& s)
     : state_((s.state_ == NULL) ? NULL : new State(*s.state_)) {}
 
-inline void Status::operator=(const Status &s) {
+inline void Status::operator=(const Status& s) {
   // The following condition catches both aliasing (when this == &s),
   // and the common case where both s and *this are ok.
   if (state_ != s.state_) {
@@ -261,6 +261,6 @@ inline void Status::operator=(const Status &s) {
   }
 }
 
-Status boost_to_ray_status(const boost::system::error_code &error);
+Status boost_to_ray_status(const boost::system::error_code& error);
 
 }  // namespace ray

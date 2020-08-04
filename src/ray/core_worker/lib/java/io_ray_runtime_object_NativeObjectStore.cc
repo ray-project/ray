@@ -21,8 +21,8 @@
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker.h"
 
-ray::Status PutSerializedObject(JNIEnv *env, jobject obj, ray::ObjectID object_id,
-                                ray::ObjectID *out_object_id, bool pin_object = true) {
+ray::Status PutSerializedObject(JNIEnv* env, jobject obj, ray::ObjectID object_id,
+                                ray::ObjectID* out_object_id, bool pin_object = true) {
   auto native_ray_object = JavaNativeRayObjectToNativeRayObject(env, obj);
   RAY_CHECK(native_ray_object != nullptr);
 
@@ -64,7 +64,7 @@ extern "C" {
 
 JNIEXPORT jbyteArray JNICALL
 Java_io_ray_runtime_object_NativeObjectStore_nativePut__Lio_ray_runtime_object_NativeRayObject_2(
-    JNIEnv *env, jclass, jobject obj) {
+    JNIEnv* env, jclass, jobject obj) {
   ray::ObjectID object_id;
   auto status = PutSerializedObject(env, obj, /*object_id=*/ray::ObjectID::Nil(),
                                     /*out_object_id=*/&object_id, /*pin_object=*/true);
@@ -74,7 +74,7 @@ Java_io_ray_runtime_object_NativeObjectStore_nativePut__Lio_ray_runtime_object_N
 
 JNIEXPORT void JNICALL
 Java_io_ray_runtime_object_NativeObjectStore_nativePut___3BLio_ray_runtime_object_NativeRayObject_2(
-    JNIEnv *env, jclass, jbyteArray objectId, jobject obj) {
+    JNIEnv* env, jclass, jbyteArray objectId, jobject obj) {
   auto object_id = JavaByteArrayToId<ray::ObjectID>(env, objectId);
   ray::ObjectID dummy_object_id;
   auto status =
@@ -84,10 +84,10 @@ Java_io_ray_runtime_object_NativeObjectStore_nativePut___3BLio_ray_runtime_objec
 }
 
 JNIEXPORT jobject JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeGet(
-    JNIEnv *env, jclass, jobject ids, jlong timeoutMs) {
+    JNIEnv* env, jclass, jobject ids, jlong timeoutMs) {
   std::vector<ray::ObjectID> object_ids;
   JavaListToNativeVector<ray::ObjectID>(
-      env, ids, &object_ids, [](JNIEnv *env, jobject id) {
+      env, ids, &object_ids, [](JNIEnv* env, jobject id) {
         return JavaByteArrayToId<ray::ObjectID>(env, static_cast<jbyteArray>(id));
       });
   std::vector<std::shared_ptr<ray::RayObject>> results;
@@ -99,17 +99,17 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeGet
 }
 
 JNIEXPORT jobject JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeWait(
-    JNIEnv *env, jclass, jobject objectIds, jint numObjects, jlong timeoutMs) {
+    JNIEnv* env, jclass, jobject objectIds, jint numObjects, jlong timeoutMs) {
   std::vector<ray::ObjectID> object_ids;
   JavaListToNativeVector<ray::ObjectID>(
-      env, objectIds, &object_ids, [](JNIEnv *env, jobject id) {
+      env, objectIds, &object_ids, [](JNIEnv* env, jobject id) {
         return JavaByteArrayToId<ray::ObjectID>(env, static_cast<jbyteArray>(id));
       });
   std::vector<bool> results;
   auto status = ray::CoreWorkerProcess::GetCoreWorker().Wait(
       object_ids, (int)numObjects, (int64_t)timeoutMs, &results);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
-  return NativeVectorToJavaList<bool>(env, results, [](JNIEnv *env, const bool &item) {
+  return NativeVectorToJavaList<bool>(env, results, [](JNIEnv* env, const bool& item) {
     jobject java_item =
         env->NewObject(java_boolean_class, java_boolean_init, (jboolean)item);
     RAY_CHECK_JAVA_EXCEPTION(env);
@@ -118,11 +118,11 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeWai
 }
 
 JNIEXPORT void JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeDelete(
-    JNIEnv *env, jclass, jobject objectIds, jboolean localOnly,
+    JNIEnv* env, jclass, jobject objectIds, jboolean localOnly,
     jboolean deleteCreatingTasks) {
   std::vector<ray::ObjectID> object_ids;
   JavaListToNativeVector<ray::ObjectID>(
-      env, objectIds, &object_ids, [](JNIEnv *env, jobject id) {
+      env, objectIds, &object_ids, [](JNIEnv* env, jobject id) {
         return JavaByteArrayToId<ray::ObjectID>(env, static_cast<jbyteArray>(id));
       });
   auto status = ray::CoreWorkerProcess::GetCoreWorker().Delete(
@@ -132,7 +132,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeDelete
 
 JNIEXPORT void JNICALL
 Java_io_ray_runtime_object_NativeObjectStore_nativeAddLocalReference(
-    JNIEnv *env, jclass, jbyteArray workerId, jbyteArray objectId) {
+    JNIEnv* env, jclass, jbyteArray workerId, jbyteArray objectId) {
   auto worker_id = JavaByteArrayToId<ray::WorkerID>(env, workerId);
   auto object_id = JavaByteArrayToId<ray::ObjectID>(env, objectId);
   auto core_worker = ray::CoreWorkerProcess::TryGetWorker(worker_id);
@@ -142,7 +142,7 @@ Java_io_ray_runtime_object_NativeObjectStore_nativeAddLocalReference(
 
 JNIEXPORT void JNICALL
 Java_io_ray_runtime_object_NativeObjectStore_nativeRemoveLocalReference(
-    JNIEnv *env, jclass, jbyteArray workerId, jbyteArray objectId) {
+    JNIEnv* env, jclass, jbyteArray workerId, jbyteArray objectId) {
   auto worker_id = JavaByteArrayToId<ray::WorkerID>(env, workerId);
   auto object_id = JavaByteArrayToId<ray::ObjectID>(env, objectId);
   // We can't control the timing of Java GC, so it's normal that this method is called but
@@ -155,17 +155,17 @@ Java_io_ray_runtime_object_NativeObjectStore_nativeRemoveLocalReference(
 }
 
 JNIEXPORT jobject JNICALL
-Java_io_ray_runtime_object_NativeObjectStore_nativeGetAllReferenceCounts(JNIEnv *env,
+Java_io_ray_runtime_object_NativeObjectStore_nativeGetAllReferenceCounts(JNIEnv* env,
                                                                          jclass) {
   auto reference_counts = ray::CoreWorkerProcess::GetCoreWorker().GetAllReferenceCounts();
   return NativeMapToJavaMap<ray::ObjectID, std::pair<size_t, size_t>>(
       env, reference_counts,
-      [](JNIEnv *env, const ray::ObjectID &key) {
+      [](JNIEnv* env, const ray::ObjectID& key) {
         return IdToJavaByteArray<ObjectID>(env, key);
       },
-      [](JNIEnv *env, const std::pair<size_t, size_t> &value) {
+      [](JNIEnv* env, const std::pair<size_t, size_t>& value) {
         jlongArray array = env->NewLongArray(2);
-        jlong *elements = env->GetLongArrayElements(array, nullptr);
+        jlong* elements = env->GetLongArrayElements(array, nullptr);
         elements[0] = static_cast<jlong>(value.first);
         elements[1] = static_cast<jlong>(value.second);
         env->ReleaseLongArrayElements(array, elements, 0);

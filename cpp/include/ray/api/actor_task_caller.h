@@ -11,13 +11,13 @@ class ActorTaskCaller {
  public:
   ActorTaskCaller();
 
-  ActorTaskCaller(RayRuntime *runtime, ActorID id, RemoteFunctionPtrHolder ptr,
+  ActorTaskCaller(RayRuntime* runtime, ActorID id, RemoteFunctionPtrHolder ptr,
                   std::shared_ptr<msgpack::sbuffer> args);
 
   ObjectRef<ReturnType> Remote();
 
  private:
-  RayRuntime *runtime_;
+  RayRuntime* runtime_;
   ActorID id_;
   RemoteFunctionPtrHolder ptr_;
   std::shared_ptr<msgpack::sbuffer> args_;
@@ -29,7 +29,7 @@ template <typename ReturnType>
 ActorTaskCaller<ReturnType>::ActorTaskCaller() {}
 
 template <typename ReturnType>
-ActorTaskCaller<ReturnType>::ActorTaskCaller(RayRuntime *runtime, ActorID id,
+ActorTaskCaller<ReturnType>::ActorTaskCaller(RayRuntime* runtime, ActorID id,
                                              RemoteFunctionPtrHolder ptr,
                                              std::shared_ptr<msgpack::sbuffer> args)
     : runtime_(runtime), id_(id), ptr_(ptr), args_(args) {}

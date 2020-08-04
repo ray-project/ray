@@ -36,8 +36,8 @@ namespace rpc {
 
 // Define a void RPC client method.
 #define DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(METHOD)            \
-  virtual void Handle##METHOD(const rpc::METHOD##Request &request, \
-                              rpc::METHOD##Reply *reply,           \
+  virtual void Handle##METHOD(const rpc::METHOD##Request& request, \
+                              rpc::METHOD##Reply* reply,           \
                               rpc::SendReplyCallback send_reply_callback) = 0;
 
 class GrpcService;
@@ -72,10 +72,10 @@ class GrpcServer {
       // Shutdown the server with an immediate deadline.
       // TODO(edoakes): do we want to do this in all cases?
       server_->Shutdown(gpr_now(GPR_CLOCK_REALTIME));
-      for (const auto &cq : cqs_) {
+      for (const auto& cq : cqs_) {
         cq->Shutdown();
       }
-      for (auto &polling_thread : polling_threads_) {
+      for (auto& polling_thread : polling_threads_) {
         polling_thread.join();
       }
       is_closed_ = true;
@@ -91,7 +91,7 @@ class GrpcServer {
   /// `GrpcServer`, as it holds the underlying `grpc::Service`.
   ///
   /// \param[in] service A `GrpcService` to register to this server.
-  void RegisterService(GrpcService &service);
+  void RegisterService(GrpcService& service);
 
  protected:
   /// This function runs in a background thread. It keeps polling events from the
@@ -129,7 +129,7 @@ class GrpcService {
   ///
   /// \param[in] main_service The main event loop, to which service handler functions
   /// will be posted.
-  explicit GrpcService(boost::asio::io_service &main_service)
+  explicit GrpcService(boost::asio::io_service& main_service)
       : main_service_(main_service) {}
 
   /// Destruct this gRPC service.
@@ -138,7 +138,7 @@ class GrpcService {
  protected:
   /// Return the underlying grpc::Service object for this class.
   /// This is passed to `GrpcServer` to be registered to grpc `ServerBuilder`.
-  virtual grpc::Service &GetGrpcService() = 0;
+  virtual grpc::Service& GetGrpcService() = 0;
 
   /// Subclasses should implement this method to initialize the `ServerCallFactory`
   /// instances, as well as specify maximum number of concurrent requests that gRPC
@@ -148,11 +148,11 @@ class GrpcService {
   /// \param[out] server_call_factories The `ServerCallFactory` objects,
   /// and the maximum number of concurrent requests that this gRPC server can handle.
   virtual void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) = 0;
+      const std::unique_ptr<grpc::ServerCompletionQueue>& cq,
+      std::vector<std::unique_ptr<ServerCallFactory>>* server_call_factories) = 0;
 
   /// The main event loop, to which the service handler functions will be posted.
-  boost::asio::io_service &main_service_;
+  boost::asio::io_service& main_service_;
 
   friend class GrpcServer;
 };

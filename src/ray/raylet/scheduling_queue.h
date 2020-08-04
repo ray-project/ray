@@ -78,7 +78,7 @@ class TaskQueue {
   /// \param task_id The task ID for the task to append.
   /// \param task The task to append to the queue.
   /// \return Whether the append operation succeeds.
-  virtual bool AppendTask(const TaskID &task_id, const Task &task);
+  virtual bool AppendTask(const TaskID& task_id, const Task& task);
 
   /// \brief Remove a task from queue.
   ///
@@ -87,36 +87,36 @@ class TaskQueue {
   ///  removed from the queue, the task data is appended to the vector. Can
   ///  be a nullptr, in which case nothing is appended.
   /// \return Whether the removal succeeds.
-  virtual bool RemoveTask(const TaskID &task_id,
-                          std::vector<Task> *removed_tasks = nullptr);
+  virtual bool RemoveTask(const TaskID& task_id,
+                          std::vector<Task>* removed_tasks = nullptr);
 
   /// \brief Check if the queue contains a specific task id.
   ///
   /// \param task_id The task ID for the task.
   /// \return Whether the task_id exists in this queue.
-  bool HasTask(const TaskID &task_id) const;
+  bool HasTask(const TaskID& task_id) const;
 
   /// \brief Return the task list of the queue.
   ///
   /// \return A list of tasks contained in this queue.
-  const std::list<Task> &GetTasks() const;
+  const std::list<Task>& GetTasks() const;
 
   /// Get a task from the queue. The caller must ensure that the task is in
   /// the queue.
   ///
   /// \return The task.
-  const Task &GetTask(const TaskID &task_id) const;
+  const Task& GetTask(const TaskID& task_id) const;
 
   /// \brief Return all resource demand associated with the ready queue.
   ///
   /// \return Aggregate resource demand from ready tasks.
-  const ResourceSet &GetTotalResourceLoad() const;
+  const ResourceSet& GetTotalResourceLoad() const;
 
   /// \brief Get the resources required by the tasks in the queue.
   ///
   /// \return A map from resource shape key to the number of tasks queued that
   /// require that shape.
-  const std::unordered_map<SchedulingClass, uint64_t> &GetResourceLoadByShape() const;
+  const std::unordered_map<SchedulingClass, uint64_t>& GetResourceLoadByShape() const;
 
  protected:
   /// A list of tasks.
@@ -135,7 +135,7 @@ class ReadyQueue : public TaskQueue {
  public:
   ReadyQueue(){};
 
-  ReadyQueue(const ReadyQueue &other) = delete;
+  ReadyQueue(const ReadyQueue& other) = delete;
 
   /// ReadyQueue destructor.
   virtual ~ReadyQueue() {}
@@ -145,18 +145,18 @@ class ReadyQueue : public TaskQueue {
   /// \param task_id The task ID for the task to append.
   /// \param task The task to append to the queue.
   /// \return Whether the append operation succeeds.
-  bool AppendTask(const TaskID &task_id, const Task &task) override;
+  bool AppendTask(const TaskID& task_id, const Task& task) override;
 
   /// \brief Remove a task from queue.
   ///
   /// \param task_id The task ID for the task to remove from the queue.
   /// \return Whether the removal succeeds.
-  bool RemoveTask(const TaskID &task_id, std::vector<Task> *removed_tasks) override;
+  bool RemoveTask(const TaskID& task_id, std::vector<Task>* removed_tasks) override;
 
   /// \brief Get a mapping from resource shape to tasks.
   ///
   /// \return Mapping from resource set to task IDs with these resource requirements.
-  const std::unordered_map<SchedulingClass, ordered_set<TaskID>> &GetTasksByClass() const;
+  const std::unordered_map<SchedulingClass, ordered_set<TaskID>>& GetTasksByClass() const;
 
  private:
   /// Index from task description to tasks queued of that type.
@@ -171,7 +171,7 @@ class SchedulingQueue {
  public:
   /// Create a scheduling queue.
   SchedulingQueue() : ready_queue_(std::make_shared<ReadyQueue>()) {
-    for (const auto &task_state : {
+    for (const auto& task_state : {
              TaskState::PLACEABLE,
              TaskState::WAITING,
              TaskState::READY,
@@ -195,18 +195,18 @@ class SchedulingQueue {
   ///
   /// \param task_id The task ID for the task.
   /// \return Whether the task_id exists in the queue.
-  bool HasTask(const TaskID &task_id) const;
+  bool HasTask(const TaskID& task_id) const;
 
   /// \brief Get all tasks in the given state.
   ///
   /// \param task_state The requested task state. This must correspond to one
   /// of the task queues (has value < TaskState::kNumTaskQueues).
-  const std::list<Task> &GetTasks(TaskState task_state) const;
+  const std::list<Task>& GetTasks(TaskState task_state) const;
 
   /// Get a reference to the queue of ready tasks.
   ///
   /// \return A reference to the queue of ready tasks.
-  const std::unordered_map<SchedulingClass, ordered_set<TaskID>> &GetReadyTasksByClass()
+  const std::unordered_map<SchedulingClass, ordered_set<TaskID>>& GetReadyTasksByClass()
       const;
 
   /// Get a task from the queue of a given state. The caller must ensure that
@@ -215,7 +215,7 @@ class SchedulingQueue {
   /// \param task_id The task to get.
   /// \param task_state The state that the requested task should be in.
   /// \return The task.
-  const Task &GetTaskOfState(const TaskID &task_id, TaskState task_state) const;
+  const Task& GetTaskOfState(const TaskID& task_id, TaskState task_state) const;
 
   /// \brief Return an aggregate resource set for all tasks exerting load on this raylet.
   ///
@@ -237,13 +237,13 @@ class SchedulingQueue {
   /// tasks that were explicitly assigned to a worker by us, as well as tasks
   /// that were created out-of-band (e.g., the application created
   // multiple threads) are only BLOCKED.
-  const std::unordered_set<TaskID> &GetBlockedTaskIds() const;
+  const std::unordered_set<TaskID>& GetBlockedTaskIds() const;
 
   /// Get the set of driver task IDs.
   ///
   /// \return A const reference to the set of driver task IDs. These are empty
   /// tasks used to represent drivers.
-  const std::unordered_set<TaskID> &GetDriverTaskIds() const;
+  const std::unordered_set<TaskID>& GetDriverTaskIds() const;
 
   /// Remove tasks from the task queue.
   ///
@@ -251,7 +251,7 @@ class SchedulingQueue {
   /// corresponding tasks must be contained in the queue. The IDs of removed
   /// tasks will be erased from the set.
   /// \return A vector of the tasks that were removed.
-  std::vector<Task> RemoveTasks(std::unordered_set<TaskID> &task_ids);
+  std::vector<Task> RemoveTasks(std::unordered_set<TaskID>& task_ids);
 
   /// Remove a task from the task queue.
   ///
@@ -261,13 +261,13 @@ class SchedulingQueue {
   /// \param task_state If this is not nullptr, then the state of the removed
   /// task will be written here.
   /// \return true if the task was removed, false if it is not in the queue.
-  bool RemoveTask(const TaskID &task_id, Task *removed_task,
-                  TaskState *removed_task_state = nullptr);
+  bool RemoveTask(const TaskID& task_id, Task* removed_task,
+                  TaskState* removed_task_state = nullptr);
 
   /// Remove a driver task ID. This is an empty task used to represent a driver.
   ///
   /// \param The driver task ID to remove.
-  void RemoveDriverTaskId(const TaskID &task_id);
+  void RemoveDriverTaskId(const TaskID& task_id);
 
   /// Add tasks to the given queue.
   ///
@@ -275,26 +275,26 @@ class SchedulingQueue {
   /// \param task_state The state of the tasks to queue. The requested task
   /// state must correspond to one of the task queues (has value <
   /// TaskState::kNumTaskQueues).
-  void QueueTasks(const std::vector<Task> &tasks, TaskState task_state);
+  void QueueTasks(const std::vector<Task>& tasks, TaskState task_state);
 
   /// Add a task ID in the blocked state. These are tasks that have been
   /// dispatched to a worker but are blocked on a data dependency that was
   /// discovered to be missing at runtime.
   ///
   /// \param task_id The task to mark as blocked.
-  void AddBlockedTaskId(const TaskID &task_id);
+  void AddBlockedTaskId(const TaskID& task_id);
 
   /// Remove a task ID in the blocked state. These are tasks that have been
   /// dispatched to a worker but were blocked on a data dependency that was
   /// discovered to be missing at runtime.
   ///
   /// \param task_id The task to mark as unblocked.
-  void RemoveBlockedTaskId(const TaskID &task_id);
+  void RemoveBlockedTaskId(const TaskID& task_id);
 
   /// Add a driver task ID. This is an empty task used to represent a driver.
   ///
   /// \param The driver task ID to add.
-  void AddDriverTaskId(const TaskID &task_id);
+  void AddDriverTaskId(const TaskID& task_id);
 
   /// \brief Move the specified tasks from the source state to the destination
   /// state.
@@ -305,7 +305,7 @@ class SchedulingQueue {
   /// task queues.
   /// \param dst_state Destination state, corresponding to one of the internal
   /// task queues.
-  void MoveTasks(std::unordered_set<TaskID> &tasks, TaskState src_state,
+  void MoveTasks(std::unordered_set<TaskID>& tasks, TaskState src_state,
                  TaskState dst_state);
 
   /// \brief Filter out task IDs based on their scheduling state.
@@ -313,24 +313,24 @@ class SchedulingQueue {
   /// \param task_ids The set of task IDs to filter. All tasks that have the
   /// given filter_state will be removed from this set.
   /// \param filter_state The task state to filter out.
-  void FilterState(std::unordered_set<TaskID> &task_ids, TaskState filter_state) const;
+  void FilterState(std::unordered_set<TaskID>& task_ids, TaskState filter_state) const;
 
   /// \brief Get all the task IDs for a job.
   ///
   /// \param job_id All the tasks that have the given job_id are returned.
   /// \return All the tasks that have the given job ID.
-  std::unordered_set<TaskID> GetTaskIdsForJob(const JobID &job_id) const;
+  std::unordered_set<TaskID> GetTaskIdsForJob(const JobID& job_id) const;
 
   /// \brief Get all the task IDs for an actor.
   ///
   /// \param actor_id All the tasks that have the given actor_id are returned.
   /// \return All the tasks that have the given actor ID.
-  std::unordered_set<TaskID> GetTaskIdsForActor(const ActorID &actor_id) const;
+  std::unordered_set<TaskID> GetTaskIdsForActor(const ActorID& actor_id) const;
 
   /// Returns the number of running tasks in this class.
   ///
   /// \return int.
-  int NumRunning(const SchedulingClass &cls) const;
+  int NumRunning(const SchedulingClass& cls) const;
 
   /// Returns debug string for class.
   ///
@@ -344,19 +344,19 @@ class SchedulingQueue {
   /// Get the task queue in the given state. The requested task state must
   /// correspond to one of the task queues (has value <
   /// TaskState::kNumTaskQueues).
-  const std::shared_ptr<TaskQueue> &GetTaskQueue(TaskState task_state) const;
+  const std::shared_ptr<TaskQueue>& GetTaskQueue(TaskState task_state) const;
 
   /// A helper function to remove tasks from a given queue. The requested task
   /// state must correspond to one of the task queues (has value <
   /// TaskState::kNumTaskQueues).
   void RemoveTasksFromQueue(ray::raylet::TaskState task_state,
-                            std::unordered_set<ray::TaskID> &task_ids,
-                            std::vector<ray::Task> *removed_tasks);
+                            std::unordered_set<ray::TaskID>& task_ids,
+                            std::vector<ray::Task>* removed_tasks);
 
   /// A helper function to filter out tasks of a given state from the set of
   /// task IDs. The requested task state must correspond to one of the task
   /// queues (has value < TaskState::kNumTaskQueues).
-  void FilterStateFromQueue(std::unordered_set<ray::TaskID> &task_ids,
+  void FilterStateFromQueue(std::unordered_set<ray::TaskID>& task_ids,
                             TaskState task_state) const;
 
   // A pointer to the ready queue.

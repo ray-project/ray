@@ -37,9 +37,9 @@ static inline char GetPathSep() {
 std::string GetExeSuffix();
 
 /// Equivalent to Python's os.path.basename() for file system paths.
-std::string GetFileName(const std::string &path);
+std::string GetFileName(const std::string& path);
 
-size_t GetRootPathLength(const std::string &path);
+size_t GetRootPathLength(const std::string& path);
 
 /// \return A non-volatile temporary directory in which Ray can stores its files.
 std::string GetRayTempDir();
@@ -64,7 +64,7 @@ template <class... Paths>
 std::string JoinPaths(std::string base, Paths... components) {
   std::string to_append[] = {components...};
   for (size_t i = 0; i < sizeof(to_append) / sizeof(*to_append); ++i) {
-    const std::string &s = to_append[i];
+    const std::string& s = to_append[i];
     if (!base.empty() && !IsDirSep(base.back()) && !s.empty() && !IsDirSep(s[0])) {
       base += GetDirSep();
     }

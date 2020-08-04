@@ -36,14 +36,14 @@ class MockExporter : public opencensus::stats::StatsExporter::Handler {
 
   void ExportViewData(
       const std::vector<std::pair<opencensus::stats::ViewDescriptor,
-                                  opencensus::stats::ViewData>> &data) override {
-    for (const auto &datum : data) {
-      auto &descriptor = datum.first;
-      auto &view_data = datum.second;
+                                  opencensus::stats::ViewData>>& data) override {
+    for (const auto& datum : data) {
+      auto& descriptor = datum.first;
+      auto& view_data = datum.second;
 
       ASSERT_EQ("current_worker", descriptor.name());
       ASSERT_EQ(opencensus::stats::ViewData::Type::kDouble, view_data.type());
-      for (const auto &row : view_data.double_data()) {
+      for (const auto& row : view_data.double_data()) {
         for (size_t i = 0; i < descriptor.columns().size(); ++i) {
           if (descriptor.columns()[i].name() == "WorkerPidKey") {
             ASSERT_EQ("1000", row.first[i]);
@@ -101,7 +101,7 @@ TEST_F(StatsTest, InitializationTest) {
                      MetricsAgentPort, exporter);
   }
 
-  auto &first_tag = ray::stats::StatsConfig::instance().GetGlobalTags()[0];
+  auto& first_tag = ray::stats::StatsConfig::instance().GetGlobalTags()[0];
   ASSERT_TRUE(first_tag.second != test_tag_value_that_shouldnt_be_applied);
 
   ray::stats::Shutdown();
@@ -115,7 +115,7 @@ TEST_F(StatsTest, InitializationTest) {
 
   ray::stats::Init(global_tags, MetricsAgentPort, exporter);
   ASSERT_TRUE(ray::stats::StatsConfig::instance().IsInitialized());
-  auto &new_first_tag = ray::stats::StatsConfig::instance().GetGlobalTags()[0];
+  auto& new_first_tag = ray::stats::StatsConfig::instance().GetGlobalTags()[0];
   ASSERT_TRUE(new_first_tag.second == test_tag_value_that_shouldnt_be_applied);
 }
 
@@ -143,7 +143,7 @@ TEST_F(StatsTest, MultiThreadedInitializationTest) {
       }
     });
   }
-  for (auto &thread : threads) {
+  for (auto& thread : threads) {
     thread.join();
   }
   ray::stats::Shutdown();
@@ -177,7 +177,7 @@ TEST_F(StatsTest, TestShutdownTakesLongTime) {
 
 }  // namespace ray
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

@@ -89,7 +89,7 @@ class RayLogBase {
   virtual bool IsEnabled() const { return false; };
 
   template <typename T>
-  RayLogBase &operator<<(const T &t) {
+  RayLogBase& operator<<(const T& t) {
     if (IsEnabled()) {
       Stream() << t;
     }
@@ -97,12 +97,12 @@ class RayLogBase {
   }
 
  protected:
-  virtual std::ostream &Stream() { return std::cerr; };
+  virtual std::ostream& Stream() { return std::cerr; };
 };
 
 class RayLog : public RayLogBase {
  public:
-  RayLog(const char *file_name, int line_number, RayLogLevel severity);
+  RayLog(const char* file_name, int line_number, RayLogLevel severity);
 
   virtual ~RayLog();
 
@@ -116,9 +116,9 @@ class RayLog : public RayLogBase {
   /// \parem appName The app name which starts the log.
   /// \param severity_threshold Logging threshold for the program.
   /// \param logDir Logging output file name. If empty, the log won't output to file.
-  static void StartRayLog(const std::string &appName,
+  static void StartRayLog(const std::string& appName,
                           RayLogLevel severity_threshold = RayLogLevel::INFO,
-                          const std::string &logDir = "");
+                          const std::string& logDir = "");
 
   /// The shutdown function of ray log which should be used with StartRayLog as a pair.
   static void ShutDownRayLog();
@@ -141,7 +141,7 @@ class RayLog : public RayLogBase {
  private:
   // Hide the implementation of log provider by void *.
   // Otherwise, lib user may define the same macro to use the correct header file.
-  void *logging_provider_;
+  void* logging_provider_;
   /// True if log messages should be logged and false if they should be ignored.
   bool is_enabled_;
   static RayLogLevel severity_threshold_;
@@ -156,7 +156,7 @@ class RayLog : public RayLogBase {
   static bool is_failure_signal_handler_installed_;
 
  protected:
-  virtual std::ostream &Stream();
+  virtual std::ostream& Stream();
 };
 
 // This class make RAY_CHECK compilation pass to change the << operator to void.
@@ -166,7 +166,7 @@ class Voidify {
   Voidify() {}
   // This has to be an operator with a precedence lower than << but
   // higher than ?:
-  void operator&(RayLogBase &) {}
+  void operator&(RayLogBase&) {}
 };
 
 }  // namespace ray

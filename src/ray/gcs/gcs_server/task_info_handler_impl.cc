@@ -17,14 +17,14 @@
 namespace ray {
 namespace rpc {
 
-void DefaultTaskInfoHandler::HandleAddTask(const AddTaskRequest &request,
-                                           AddTaskReply *reply,
+void DefaultTaskInfoHandler::HandleAddTask(const AddTaskRequest& request,
+                                           AddTaskReply* reply,
                                            SendReplyCallback send_reply_callback) {
   JobID job_id = JobID::FromBinary(request.task_data().task().task_spec().job_id());
   TaskID task_id = TaskID::FromBinary(request.task_data().task().task_spec().task_id());
   RAY_LOG(DEBUG) << "Adding task, job id = " << job_id << ", task id = " << task_id;
   auto on_done = [this, job_id, task_id, request, reply,
-                  send_reply_callback](const Status &status) {
+                  send_reply_callback](const Status& status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to add task, job id = " << job_id
                      << ", task id = " << task_id;
@@ -44,14 +44,14 @@ void DefaultTaskInfoHandler::HandleAddTask(const AddTaskRequest &request,
   }
 }
 
-void DefaultTaskInfoHandler::HandleGetTask(const GetTaskRequest &request,
-                                           GetTaskReply *reply,
+void DefaultTaskInfoHandler::HandleGetTask(const GetTaskRequest& request,
+                                           GetTaskReply* reply,
                                            SendReplyCallback send_reply_callback) {
   TaskID task_id = TaskID::FromBinary(request.task_id());
   RAY_LOG(DEBUG) << "Getting task, job id = " << task_id.JobId()
                  << ", task id = " << task_id;
   auto on_done = [task_id, request, reply, send_reply_callback](
-                     const Status &status, const boost::optional<TaskTableData> &result) {
+                     const Status& status, const boost::optional<TaskTableData>& result) {
     if (status.ok() && result) {
       reply->mutable_task_data()->CopyFrom(*result);
     }
@@ -66,8 +66,8 @@ void DefaultTaskInfoHandler::HandleGetTask(const GetTaskRequest &request,
   }
 }
 
-void DefaultTaskInfoHandler::HandleDeleteTasks(const DeleteTasksRequest &request,
-                                               DeleteTasksReply *reply,
+void DefaultTaskInfoHandler::HandleDeleteTasks(const DeleteTasksRequest& request,
+                                               DeleteTasksReply* reply,
                                                SendReplyCallback send_reply_callback) {
   std::vector<TaskID> task_ids = IdVectorFromProtobuf<TaskID>(request.task_id_list());
   JobID job_id = task_ids.empty() ? JobID::Nil() : task_ids[0].JobId();
@@ -89,15 +89,15 @@ void DefaultTaskInfoHandler::HandleDeleteTasks(const DeleteTasksRequest &request
                  << ", task id list size = " << task_ids.size();
 }
 
-void DefaultTaskInfoHandler::HandleAddTaskLease(const AddTaskLeaseRequest &request,
-                                                AddTaskLeaseReply *reply,
+void DefaultTaskInfoHandler::HandleAddTaskLease(const AddTaskLeaseRequest& request,
+                                                AddTaskLeaseReply* reply,
                                                 SendReplyCallback send_reply_callback) {
   TaskID task_id = TaskID::FromBinary(request.task_lease_data().task_id());
   ClientID node_id = ClientID::FromBinary(request.task_lease_data().node_manager_id());
   RAY_LOG(DEBUG) << "Adding task lease, job id = " << task_id.JobId()
                  << ", task id = " << task_id << ", node id = " << node_id;
   auto on_done = [this, task_id, node_id, request, reply,
-                  send_reply_callback](const Status &status) {
+                  send_reply_callback](const Status& status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to add task lease, job id = " << task_id.JobId()
                      << ", task id = " << task_id << ", node id = " << node_id;
@@ -118,14 +118,14 @@ void DefaultTaskInfoHandler::HandleAddTaskLease(const AddTaskLeaseRequest &reque
   }
 }
 
-void DefaultTaskInfoHandler::HandleGetTaskLease(const GetTaskLeaseRequest &request,
-                                                GetTaskLeaseReply *reply,
+void DefaultTaskInfoHandler::HandleGetTaskLease(const GetTaskLeaseRequest& request,
+                                                GetTaskLeaseReply* reply,
                                                 SendReplyCallback send_reply_callback) {
   TaskID task_id = TaskID::FromBinary(request.task_id());
   RAY_LOG(DEBUG) << "Getting task lease, job id = " << task_id.JobId()
                  << ", task id = " << task_id;
   auto on_done = [task_id, request, reply, send_reply_callback](
-                     const Status &status, const boost::optional<TaskLeaseData> &result) {
+                     const Status& status, const boost::optional<TaskLeaseData>& result) {
     if (status.ok() && result) {
       reply->mutable_task_lease_data()->CopyFrom(*result);
     }
@@ -141,8 +141,8 @@ void DefaultTaskInfoHandler::HandleGetTaskLease(const GetTaskLeaseRequest &reque
 }
 
 void DefaultTaskInfoHandler::HandleAttemptTaskReconstruction(
-    const AttemptTaskReconstructionRequest &request,
-    AttemptTaskReconstructionReply *reply, SendReplyCallback send_reply_callback) {
+    const AttemptTaskReconstructionRequest& request,
+    AttemptTaskReconstructionReply* reply, SendReplyCallback send_reply_callback) {
   TaskID task_id = TaskID::FromBinary(request.task_reconstruction().task_id());
   ClientID node_id =
       ClientID::FromBinary(request.task_reconstruction().node_manager_id());
@@ -151,7 +151,7 @@ void DefaultTaskInfoHandler::HandleAttemptTaskReconstruction(
                  << request.task_reconstruction().num_reconstructions()
                  << ", node id = " << node_id;
   auto on_done = [task_id, node_id, request, reply,
-                  send_reply_callback](const Status &status) {
+                  send_reply_callback](const Status& status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to reconstruct task, job id = " << task_id.JobId()
                      << ", task id = " << task_id << ", reconstructions num = "

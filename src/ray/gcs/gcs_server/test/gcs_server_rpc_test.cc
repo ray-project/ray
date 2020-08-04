@@ -61,55 +61,55 @@ class GcsServerTest : public ::testing::Test {
     gcs_server_.reset();
   }
 
-  bool AddJob(const rpc::AddJobRequest &request) {
+  bool AddJob(const rpc::AddJobRequest& request) {
     std::promise<bool> promise;
     client_->AddJob(request,
-                    [&promise](const Status &status, const rpc::AddJobReply &reply) {
+                    [&promise](const Status& status, const rpc::AddJobReply& reply) {
                       RAY_CHECK_OK(status);
                       promise.set_value(true);
                     });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool MarkJobFinished(const rpc::MarkJobFinishedRequest &request) {
+  bool MarkJobFinished(const rpc::MarkJobFinishedRequest& request) {
     std::promise<bool> promise;
-    client_->MarkJobFinished(request, [&promise](const Status &status,
-                                                 const rpc::MarkJobFinishedReply &reply) {
+    client_->MarkJobFinished(request, [&promise](const Status& status,
+                                                 const rpc::MarkJobFinishedReply& reply) {
       RAY_CHECK_OK(status);
       promise.set_value(true);
     });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool RegisterActorInfo(const rpc::RegisterActorInfoRequest &request) {
+  bool RegisterActorInfo(const rpc::RegisterActorInfoRequest& request) {
     std::promise<bool> promise;
     client_->RegisterActorInfo(
         request,
-        [&promise](const Status &status, const rpc::RegisterActorInfoReply &reply) {
+        [&promise](const Status& status, const rpc::RegisterActorInfoReply& reply) {
           RAY_CHECK_OK(status);
           promise.set_value(true);
         });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool UpdateActorInfo(const rpc::UpdateActorInfoRequest &request) {
+  bool UpdateActorInfo(const rpc::UpdateActorInfoRequest& request) {
     std::promise<bool> promise;
-    client_->UpdateActorInfo(request, [&promise](const Status &status,
-                                                 const rpc::UpdateActorInfoReply &reply) {
+    client_->UpdateActorInfo(request, [&promise](const Status& status,
+                                                 const rpc::UpdateActorInfoReply& reply) {
       RAY_CHECK_OK(status);
       promise.set_value(true);
     });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  boost::optional<rpc::ActorTableData> GetActorInfo(const std::string &actor_id) {
+  boost::optional<rpc::ActorTableData> GetActorInfo(const std::string& actor_id) {
     rpc::GetActorInfoRequest request;
     request.set_actor_id(actor_id);
     boost::optional<rpc::ActorTableData> actor_table_data_opt;
     std::promise<bool> promise;
     client_->GetActorInfo(
-        request, [&actor_table_data_opt, &promise](const Status &status,
-                                                   const rpc::GetActorInfoReply &reply) {
+        request, [&actor_table_data_opt, &promise](const Status& status,
+                                                   const rpc::GetActorInfoReply& reply) {
           RAY_CHECK_OK(status);
           if (reply.has_actor_table_data()) {
             actor_table_data_opt = reply.actor_table_data();
@@ -122,11 +122,11 @@ class GcsServerTest : public ::testing::Test {
     return actor_table_data_opt;
   }
 
-  bool AddActorCheckpoint(const rpc::AddActorCheckpointRequest &request) {
+  bool AddActorCheckpoint(const rpc::AddActorCheckpointRequest& request) {
     std::promise<bool> promise;
     client_->AddActorCheckpoint(
         request,
-        [&promise](const Status &status, const rpc::AddActorCheckpointReply &reply) {
+        [&promise](const Status& status, const rpc::AddActorCheckpointReply& reply) {
           RAY_CHECK_OK(status);
           promise.set_value(true);
         });
@@ -134,7 +134,7 @@ class GcsServerTest : public ::testing::Test {
   }
 
   boost::optional<rpc::ActorCheckpointData> GetActorCheckpoint(
-      const std::string &actor_id, const std::string &checkpoint_id) {
+      const std::string& actor_id, const std::string& checkpoint_id) {
     rpc::GetActorCheckpointRequest request;
     request.set_actor_id(actor_id);
     request.set_checkpoint_id(checkpoint_id);
@@ -142,7 +142,7 @@ class GcsServerTest : public ::testing::Test {
     std::promise<bool> promise;
     client_->GetActorCheckpoint(
         request, [&checkpoint_data_opt, &promise](
-                     const Status &status, const rpc::GetActorCheckpointReply &reply) {
+                     const Status& status, const rpc::GetActorCheckpointReply& reply) {
           RAY_CHECK_OK(status);
           if (reply.has_checkpoint_data()) {
             checkpoint_data_opt = reply.checkpoint_data();
@@ -156,14 +156,14 @@ class GcsServerTest : public ::testing::Test {
   }
 
   boost::optional<rpc::ActorCheckpointIdData> GetActorCheckpointID(
-      const std::string &actor_id) {
+      const std::string& actor_id) {
     rpc::GetActorCheckpointIDRequest request;
     request.set_actor_id(actor_id);
     boost::optional<rpc::ActorCheckpointIdData> checkpoint_id_data_opt;
     std::promise<bool> promise;
     client_->GetActorCheckpointID(
         request, [&checkpoint_id_data_opt, &promise](
-                     const Status &status, const rpc::GetActorCheckpointIDReply &reply) {
+                     const Status& status, const rpc::GetActorCheckpointIDReply& reply) {
           RAY_CHECK_OK(status);
           if (reply.has_checkpoint_id_data()) {
             checkpoint_id_data_opt = reply.checkpoint_id_data();
@@ -176,10 +176,10 @@ class GcsServerTest : public ::testing::Test {
     return checkpoint_id_data_opt;
   }
 
-  bool RegisterNode(const rpc::RegisterNodeRequest &request) {
+  bool RegisterNode(const rpc::RegisterNodeRequest& request) {
     std::promise<bool> promise;
     client_->RegisterNode(
-        request, [&promise](const Status &status, const rpc::RegisterNodeReply &reply) {
+        request, [&promise](const Status& status, const rpc::RegisterNodeReply& reply) {
           RAY_CHECK_OK(status);
           promise.set_value(true);
         });
@@ -187,10 +187,10 @@ class GcsServerTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool UnregisterNode(const rpc::UnregisterNodeRequest &request) {
+  bool UnregisterNode(const rpc::UnregisterNodeRequest& request) {
     std::promise<bool> promise;
     client_->UnregisterNode(
-        request, [&promise](const Status &status, const rpc::UnregisterNodeReply &reply) {
+        request, [&promise](const Status& status, const rpc::UnregisterNodeReply& reply) {
           RAY_CHECK_OK(status);
           promise.set_value(true);
         });
@@ -202,8 +202,8 @@ class GcsServerTest : public ::testing::Test {
     rpc::GetAllNodeInfoRequest request;
     std::promise<bool> promise;
     client_->GetAllNodeInfo(
-        request, [&node_info_list, &promise](const Status &status,
-                                             const rpc::GetAllNodeInfoReply &reply) {
+        request, [&node_info_list, &promise](const Status& status,
+                                             const rpc::GetAllNodeInfoReply& reply) {
           RAY_CHECK_OK(status);
           for (int index = 0; index < reply.node_info_list_size(); ++index) {
             node_info_list.push_back(reply.node_info_list(index));
@@ -214,46 +214,46 @@ class GcsServerTest : public ::testing::Test {
     return node_info_list;
   }
 
-  bool ReportHeartbeat(const rpc::ReportHeartbeatRequest &request) {
+  bool ReportHeartbeat(const rpc::ReportHeartbeatRequest& request) {
     std::promise<bool> promise;
-    client_->ReportHeartbeat(request, [&promise](const Status &status,
-                                                 const rpc::ReportHeartbeatReply &reply) {
+    client_->ReportHeartbeat(request, [&promise](const Status& status,
+                                                 const rpc::ReportHeartbeatReply& reply) {
       RAY_CHECK_OK(status);
       promise.set_value(true);
     });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool UpdateResources(const rpc::UpdateResourcesRequest &request) {
+  bool UpdateResources(const rpc::UpdateResourcesRequest& request) {
     std::promise<bool> promise;
-    client_->UpdateResources(request, [&promise](const Status &status,
-                                                 const rpc::UpdateResourcesReply &reply) {
+    client_->UpdateResources(request, [&promise](const Status& status,
+                                                 const rpc::UpdateResourcesReply& reply) {
       RAY_CHECK_OK(status);
       promise.set_value(true);
     });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool DeleteResources(const rpc::DeleteResourcesRequest &request) {
+  bool DeleteResources(const rpc::DeleteResourcesRequest& request) {
     std::promise<bool> promise;
-    client_->DeleteResources(request, [&promise](const Status &status,
-                                                 const rpc::DeleteResourcesReply &reply) {
+    client_->DeleteResources(request, [&promise](const Status& status,
+                                                 const rpc::DeleteResourcesReply& reply) {
       RAY_CHECK_OK(status);
       promise.set_value(true);
     });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  std::map<std::string, gcs::ResourceTableData> GetResources(const std::string &node_id) {
+  std::map<std::string, gcs::ResourceTableData> GetResources(const std::string& node_id) {
     rpc::GetResourcesRequest request;
     request.set_node_id(node_id);
     std::map<std::string, gcs::ResourceTableData> resources;
     std::promise<bool> promise;
     client_->GetResources(request,
-                          [&resources, &promise](const Status &status,
-                                                 const rpc::GetResourcesReply &reply) {
+                          [&resources, &promise](const Status& status,
+                                                 const rpc::GetResourcesReply& reply) {
                             RAY_CHECK_OK(status);
-                            for (auto &resource : reply.resources()) {
+                            for (auto& resource : reply.resources()) {
                               resources[resource.first] = resource.second;
                             }
                             promise.set_value(true);
@@ -262,11 +262,11 @@ class GcsServerTest : public ::testing::Test {
     return resources;
   }
 
-  bool AddObjectLocation(const rpc::AddObjectLocationRequest &request) {
+  bool AddObjectLocation(const rpc::AddObjectLocationRequest& request) {
     std::promise<bool> promise;
     client_->AddObjectLocation(
         request,
-        [&promise](const Status &status, const rpc::AddObjectLocationReply &reply) {
+        [&promise](const Status& status, const rpc::AddObjectLocationReply& reply) {
           RAY_CHECK_OK(status);
           promise.set_value(true);
         });
@@ -274,11 +274,11 @@ class GcsServerTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool RemoveObjectLocation(const rpc::RemoveObjectLocationRequest &request) {
+  bool RemoveObjectLocation(const rpc::RemoveObjectLocationRequest& request) {
     std::promise<bool> promise;
     client_->RemoveObjectLocation(
         request,
-        [&promise](const Status &status, const rpc::RemoveObjectLocationReply &reply) {
+        [&promise](const Status& status, const rpc::RemoveObjectLocationReply& reply) {
           RAY_CHECK_OK(status);
           promise.set_value(true);
         });
@@ -286,14 +286,14 @@ class GcsServerTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  std::vector<rpc::ObjectTableData> GetObjectLocations(const std::string &object_id) {
+  std::vector<rpc::ObjectTableData> GetObjectLocations(const std::string& object_id) {
     std::vector<rpc::ObjectTableData> object_locations;
     rpc::GetObjectLocationsRequest request;
     request.set_object_id(object_id);
     std::promise<bool> promise;
     client_->GetObjectLocations(
         request, [&object_locations, &promise](
-                     const Status &status, const rpc::GetObjectLocationsReply &reply) {
+                     const Status& status, const rpc::GetObjectLocationsReply& reply) {
           RAY_CHECK_OK(status);
           for (int index = 0; index < reply.object_table_data_list_size(); ++index) {
             object_locations.push_back(reply.object_table_data_list(index));
@@ -305,23 +305,23 @@ class GcsServerTest : public ::testing::Test {
     return object_locations;
   }
 
-  bool AddTask(const rpc::AddTaskRequest &request) {
+  bool AddTask(const rpc::AddTaskRequest& request) {
     std::promise<bool> promise;
     client_->AddTask(request,
-                     [&promise](const Status &status, const rpc::AddTaskReply &reply) {
+                     [&promise](const Status& status, const rpc::AddTaskReply& reply) {
                        RAY_CHECK_OK(status);
                        promise.set_value(true);
                      });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  rpc::TaskTableData GetTask(const std::string &task_id) {
+  rpc::TaskTableData GetTask(const std::string& task_id) {
     rpc::TaskTableData task_data;
     rpc::GetTaskRequest request;
     request.set_task_id(task_id);
     std::promise<bool> promise;
-    client_->GetTask(request, [&task_data, &promise](const Status &status,
-                                                     const rpc::GetTaskReply &reply) {
+    client_->GetTask(request, [&task_data, &promise](const Status& status,
+                                                     const rpc::GetTaskReply& reply) {
       if (status.ok()) {
         if (reply.has_task_data()) {
           task_data.CopyFrom(reply.task_data());
@@ -334,76 +334,76 @@ class GcsServerTest : public ::testing::Test {
     return task_data;
   }
 
-  bool DeleteTasks(const rpc::DeleteTasksRequest &request) {
+  bool DeleteTasks(const rpc::DeleteTasksRequest& request) {
     std::promise<bool> promise;
     client_->DeleteTasks(
-        request, [&promise](const Status &status, const rpc::DeleteTasksReply &reply) {
+        request, [&promise](const Status& status, const rpc::DeleteTasksReply& reply) {
           RAY_CHECK_OK(status);
           promise.set_value(true);
         });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool AddTaskLease(const rpc::AddTaskLeaseRequest &request) {
+  bool AddTaskLease(const rpc::AddTaskLeaseRequest& request) {
     std::promise<bool> promise;
     client_->AddTaskLease(
-        request, [&promise](const Status &status, const rpc::AddTaskLeaseReply &reply) {
+        request, [&promise](const Status& status, const rpc::AddTaskLeaseReply& reply) {
           RAY_CHECK_OK(status);
           promise.set_value(true);
         });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool AttemptTaskReconstruction(const rpc::AttemptTaskReconstructionRequest &request) {
+  bool AttemptTaskReconstruction(const rpc::AttemptTaskReconstructionRequest& request) {
     std::promise<bool> promise;
     client_->AttemptTaskReconstruction(
-        request, [&promise](const Status &status,
-                            const rpc::AttemptTaskReconstructionReply &reply) {
+        request, [&promise](const Status& status,
+                            const rpc::AttemptTaskReconstructionReply& reply) {
           RAY_CHECK_OK(status);
           promise.set_value(true);
         });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool AddProfileData(const rpc::AddProfileDataRequest &request) {
+  bool AddProfileData(const rpc::AddProfileDataRequest& request) {
     std::promise<bool> promise;
     client_->AddProfileData(
-        request, [&promise](const Status &status, const rpc::AddProfileDataReply &reply) {
+        request, [&promise](const Status& status, const rpc::AddProfileDataReply& reply) {
           RAY_CHECK_OK(status);
           promise.set_value(true);
         });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool ReportJobError(const rpc::ReportJobErrorRequest &request) {
+  bool ReportJobError(const rpc::ReportJobErrorRequest& request) {
     std::promise<bool> promise;
     client_->ReportJobError(
-        request, [&promise](const Status &status, const rpc::ReportJobErrorReply &reply) {
+        request, [&promise](const Status& status, const rpc::ReportJobErrorReply& reply) {
           RAY_CHECK_OK(status);
           promise.set_value(true);
         });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool ReportWorkerFailure(const rpc::ReportWorkerFailureRequest &request) {
+  bool ReportWorkerFailure(const rpc::ReportWorkerFailureRequest& request) {
     std::promise<bool> promise;
     client_->ReportWorkerFailure(
         request,
-        [&promise](const Status &status, const rpc::ReportWorkerFailureReply &reply) {
+        [&promise](const Status& status, const rpc::ReportWorkerFailureReply& reply) {
           RAY_CHECK_OK(status);
           promise.set_value(status.ok());
         });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  boost::optional<rpc::WorkerTableData> GetWorkerInfo(const std::string &worker_id) {
+  boost::optional<rpc::WorkerTableData> GetWorkerInfo(const std::string& worker_id) {
     rpc::GetWorkerInfoRequest request;
     request.set_worker_id(worker_id);
     boost::optional<rpc::WorkerTableData> worker_table_data_opt;
     std::promise<bool> promise;
     client_->GetWorkerInfo(
         request, [&worker_table_data_opt, &promise](
-                     const Status &status, const rpc::GetWorkerInfoReply &reply) {
+                     const Status& status, const rpc::GetWorkerInfoReply& reply) {
           RAY_CHECK_OK(status);
           if (reply.has_worker_table_data()) {
             worker_table_data_opt = reply.worker_table_data();
@@ -421,8 +421,8 @@ class GcsServerTest : public ::testing::Test {
     rpc::GetAllWorkerInfoRequest request;
     std::promise<bool> promise;
     client_->GetAllWorkerInfo(
-        request, [&worker_table_data, &promise](const Status &status,
-                                                const rpc::GetAllWorkerInfoReply &reply) {
+        request, [&worker_table_data, &promise](const Status& status,
+                                                const rpc::GetAllWorkerInfoReply& reply) {
           RAY_CHECK_OK(status);
           for (int index = 0; index < reply.worker_table_data_size(); ++index) {
             worker_table_data.push_back(reply.worker_table_data(index));
@@ -433,17 +433,17 @@ class GcsServerTest : public ::testing::Test {
     return worker_table_data;
   }
 
-  bool AddWorkerInfo(const rpc::AddWorkerInfoRequest &request) {
+  bool AddWorkerInfo(const rpc::AddWorkerInfoRequest& request) {
     std::promise<bool> promise;
     client_->AddWorkerInfo(
-        request, [&promise](const Status &status, const rpc::AddWorkerInfoReply &reply) {
+        request, [&promise](const Status& status, const rpc::AddWorkerInfoReply& reply) {
           RAY_CHECK_OK(status);
           promise.set_value(true);
         });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool WaitReady(const std::future<bool> &future, uint64_t timeout_ms) {
+  bool WaitReady(const std::future<bool>& future, uint64_t timeout_ms) {
     auto status = future.wait_for(std::chrono::milliseconds(timeout_ms));
     return status == std::future_status::ready;
   }
@@ -793,7 +793,7 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
 
 }  // namespace ray
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 4);
   ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];

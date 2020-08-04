@@ -15,7 +15,7 @@ extern "C" {
  */
 JNIEXPORT jlong JNICALL
 Java_io_ray_streaming_runtime_transfer_DataWriter_createWriterNative(
-    JNIEnv *, jclass, jobject, jobjectArray, jlongArray, jlong, jbyteArray, jboolean);
+    JNIEnv*, jclass, jobject, jobjectArray, jlongArray, jlong, jbyteArray, jboolean);
 
 /*
  * Class:     io_ray_streaming_runtime_transfer_DataWriter
@@ -23,7 +23,7 @@ Java_io_ray_streaming_runtime_transfer_DataWriter_createWriterNative(
  * Signature: (JJJI)J
  */
 JNIEXPORT jlong JNICALL
-Java_io_ray_streaming_runtime_transfer_DataWriter_writeMessageNative(JNIEnv *, jobject,
+Java_io_ray_streaming_runtime_transfer_DataWriter_writeMessageNative(JNIEnv*, jobject,
                                                                      jlong, jlong, jlong,
                                                                      jint);
 
@@ -33,7 +33,7 @@ Java_io_ray_streaming_runtime_transfer_DataWriter_writeMessageNative(JNIEnv *, j
  * Signature: (J)V
  */
 JNIEXPORT void JNICALL Java_io_ray_streaming_runtime_transfer_DataWriter_stopWriterNative(
-    JNIEnv *, jobject, jlong);
+    JNIEnv*, jobject, jlong);
 
 /*
  * Class:     io_ray_streaming_runtime_transfer_DataWriter
@@ -41,7 +41,7 @@ JNIEXPORT void JNICALL Java_io_ray_streaming_runtime_transfer_DataWriter_stopWri
  * Signature: (J)V
  */
 JNIEXPORT void JNICALL
-Java_io_ray_streaming_runtime_transfer_DataWriter_closeWriterNative(JNIEnv *, jobject,
+Java_io_ray_streaming_runtime_transfer_DataWriter_closeWriterNative(JNIEnv*, jobject,
                                                                     jlong);
 
 #ifdef __cplusplus

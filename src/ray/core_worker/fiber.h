@@ -110,7 +110,7 @@ class FiberState {
             });
   }
 
-  void EnqueueFiber(std::function<void()> &&callback) {
+  void EnqueueFiber(std::function<void()>&& callback) {
     auto op_status = channel_.push([this, callback]() {
       rate_limiter_.Acquire();
       callback();

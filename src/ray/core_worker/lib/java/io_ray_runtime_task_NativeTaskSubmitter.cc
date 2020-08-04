@@ -25,10 +25,10 @@
 thread_local std::unordered_map<jint, std::vector<std::pair<jobject, ray::RayFunction>>>
     submitter_function_descriptor_cache;
 
-inline const ray::RayFunction &ToRayFunction(JNIEnv *env, jobject functionDescriptor,
+inline const ray::RayFunction& ToRayFunction(JNIEnv* env, jobject functionDescriptor,
                                              jint hash) {
-  auto &fd_vector = submitter_function_descriptor_cache[hash];
-  for (auto &pair : fd_vector) {
+  auto& fd_vector = submitter_function_descriptor_cache[hash];
+  for (auto& pair : fd_vector) {
     if (env->CallBooleanMethod(pair.first, java_object_equals, functionDescriptor)) {
       return pair.second;
     }
@@ -52,10 +52,10 @@ inline const ray::RayFunction &ToRayFunction(JNIEnv *env, jobject functionDescri
   return fd_vector.back().second;
 }
 
-inline std::vector<std::unique_ptr<ray::TaskArg>> ToTaskArgs(JNIEnv *env, jobject args) {
+inline std::vector<std::unique_ptr<ray::TaskArg>> ToTaskArgs(JNIEnv* env, jobject args) {
   std::vector<std::unique_ptr<ray::TaskArg>> task_args;
   JavaListToNativeVector<std::unique_ptr<ray::TaskArg>>(
-      env, args, &task_args, [](JNIEnv *env, jobject arg) {
+      env, args, &task_args, [](JNIEnv* env, jobject arg) {
         auto java_id = env->GetObjectField(arg, java_function_arg_id);
         if (java_id) {
           auto java_id_bytes = static_cast<jbyteArray>(
@@ -74,21 +74,21 @@ inline std::vector<std::unique_ptr<ray::TaskArg>> ToTaskArgs(JNIEnv *env, jobjec
   return task_args;
 }
 
-inline std::unordered_map<std::string, double> ToResources(JNIEnv *env,
+inline std::unordered_map<std::string, double> ToResources(JNIEnv* env,
                                                            jobject java_resources) {
   return JavaMapToNativeMap<std::string, double>(
       env, java_resources,
-      [](JNIEnv *env, jobject java_key) {
+      [](JNIEnv* env, jobject java_key) {
         return JavaStringToNativeString(env, (jstring)java_key);
       },
-      [](JNIEnv *env, jobject java_value) {
+      [](JNIEnv* env, jobject java_value) {
         double value = env->CallDoubleMethod(java_value, java_double_double_value);
         RAY_CHECK_JAVA_EXCEPTION(env);
         return value;
       });
 }
 
-inline ray::TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject callOptions) {
+inline ray::TaskOptions ToTaskOptions(JNIEnv* env, jint numReturns, jobject callOptions) {
   std::unordered_map<std::string, double> resources;
   if (callOptions) {
     jobject java_resources =
@@ -100,7 +100,7 @@ inline ray::TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject call
   return task_options;
 }
 
-inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
+inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv* env,
                                                         jobject actorCreationOptions) {
   bool global = false;
   std::string name = "";
@@ -165,16 +165,16 @@ inline ray::PlacementStrategy ConvertStrategy(jint java_strategy) {
 }
 
 inline ray::PlacementGroupCreationOptions ToPlacementGroupCreationOptions(
-    JNIEnv *env, jobject java_bundles, jint java_strategy) {
+    JNIEnv* env, jobject java_bundles, jint java_strategy) {
   std::vector<std::unordered_map<std::string, double>> bundles;
   JavaListToNativeVector<std::unordered_map<std::string, double>>(
-      env, java_bundles, &bundles, [](JNIEnv *env, jobject java_bundle) {
+      env, java_bundles, &bundles, [](JNIEnv* env, jobject java_bundle) {
         return JavaMapToNativeMap<std::string, double>(
             env, java_bundle,
-            [](JNIEnv *env, jobject java_key) {
+            [](JNIEnv* env, jobject java_key) {
               return JavaStringToNativeString(env, (jstring)java_key);
             },
-            [](JNIEnv *env, jobject java_value) {
+            [](JNIEnv* env, jobject java_value) {
               double value = env->CallDoubleMethod(java_value, java_double_double_value);
               RAY_CHECK_JAVA_EXCEPTION(env);
               return value;
@@ -188,9 +188,9 @@ extern "C" {
 #endif
 
 JNIEXPORT jobject JNICALL Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitTask(
-    JNIEnv *env, jclass p, jobject functionDescriptor, jint functionDescriptorHash,
+    JNIEnv* env, jclass p, jobject functionDescriptor, jint functionDescriptorHash,
     jobject args, jint numReturns, jobject callOptions) {
-  const auto &ray_function =
+  const auto& ray_function =
       ToRayFunction(env, functionDescriptor, functionDescriptorHash);
   auto task_args = ToTaskArgs(env, args);
   auto task_options = ToTaskOptions(env, numReturns, callOptions);
@@ -211,9 +211,9 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSub
 
 JNIEXPORT jbyteArray JNICALL
 Java_io_ray_runtime_task_NativeTaskSubmitter_nativeCreateActor(
-    JNIEnv *env, jclass p, jobject functionDescriptor, jint functionDescriptorHash,
+    JNIEnv* env, jclass p, jobject functionDescriptor, jint functionDescriptorHash,
     jobject args, jobject actorCreationOptions) {
-  const auto &ray_function =
+  const auto& ray_function =
       ToRayFunction(env, functionDescriptor, functionDescriptorHash);
   auto task_args = ToTaskArgs(env, args);
   auto actor_creation_options = ToActorCreationOptions(env, actorCreationOptions);
@@ -229,10 +229,10 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeCreateActor(
 
 JNIEXPORT jobject JNICALL
 Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
-    JNIEnv *env, jclass p, jbyteArray actorId, jobject functionDescriptor,
+    JNIEnv* env, jclass p, jbyteArray actorId, jobject functionDescriptor,
     jint functionDescriptorHash, jobject args, jint numReturns, jobject callOptions) {
   auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
-  const auto &ray_function =
+  const auto& ray_function =
       ToRayFunction(env, functionDescriptor, functionDescriptorHash);
   auto task_args = ToTaskArgs(env, args);
   auto task_options = ToTaskOptions(env, numReturns, callOptions);
@@ -250,7 +250,7 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
 }
 
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_task_NativeTaskSubmitter_nativeCreatePlacementGroup(JNIEnv *env,
+Java_io_ray_runtime_task_NativeTaskSubmitter_nativeCreatePlacementGroup(JNIEnv* env,
                                                                         jclass,
                                                                         jobject bundles,
                                                                         jint strategy) {

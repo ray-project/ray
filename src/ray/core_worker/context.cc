@@ -25,22 +25,22 @@ struct WorkerThreadContext {
 
   int GetNextPutIndex() { return ++put_index_; }
 
-  const TaskID &GetCurrentTaskID() const { return current_task_id_; }
+  const TaskID& GetCurrentTaskID() const { return current_task_id_; }
 
   std::shared_ptr<const TaskSpecification> GetCurrentTask() const {
     return current_task_;
   }
 
-  void SetCurrentTaskId(const TaskID &task_id) { current_task_id_ = task_id; }
+  void SetCurrentTaskId(const TaskID& task_id) { current_task_id_ = task_id; }
 
-  void SetCurrentTask(const TaskSpecification &task_spec) {
+  void SetCurrentTask(const TaskSpecification& task_spec) {
     RAY_CHECK(task_index_ == 0);
     RAY_CHECK(put_index_ == 0);
     SetCurrentTaskId(task_spec.TaskId());
     current_task_ = std::make_shared<const TaskSpecification>(task_spec);
   }
 
-  void ResetCurrentTask(const TaskSpecification &task_spec) {
+  void ResetCurrentTask(const TaskSpecification& task_spec) {
     SetCurrentTaskId(TaskID::Nil());
     task_index_ = 0;
     put_index_ = 0;
@@ -63,8 +63,8 @@ struct WorkerThreadContext {
 thread_local std::unique_ptr<WorkerThreadContext> WorkerContext::thread_context_ =
     nullptr;
 
-WorkerContext::WorkerContext(WorkerType worker_type, const WorkerID &worker_id,
-                             const JobID &job_id)
+WorkerContext::WorkerContext(WorkerType worker_type, const WorkerID& worker_id,
+                             const JobID& job_id)
     : worker_type_(worker_type),
       worker_id_(worker_id),
       current_job_id_(worker_type_ == WorkerType::DRIVER ? job_id : JobID::Nil()),
@@ -80,25 +80,25 @@ WorkerContext::WorkerContext(WorkerType worker_type, const WorkerID &worker_id,
 
 const WorkerType WorkerContext::GetWorkerType() const { return worker_type_; }
 
-const WorkerID &WorkerContext::GetWorkerID() const { return worker_id_; }
+const WorkerID& WorkerContext::GetWorkerID() const { return worker_id_; }
 
 int WorkerContext::GetNextTaskIndex() { return GetThreadContext().GetNextTaskIndex(); }
 
 int WorkerContext::GetNextPutIndex() { return GetThreadContext().GetNextPutIndex(); }
 
-const JobID &WorkerContext::GetCurrentJobID() const { return current_job_id_; }
+const JobID& WorkerContext::GetCurrentJobID() const { return current_job_id_; }
 
-const TaskID &WorkerContext::GetCurrentTaskID() const {
+const TaskID& WorkerContext::GetCurrentTaskID() const {
   return GetThreadContext().GetCurrentTaskID();
 }
 
-void WorkerContext::SetCurrentJobId(const JobID &job_id) { current_job_id_ = job_id; }
+void WorkerContext::SetCurrentJobId(const JobID& job_id) { current_job_id_ = job_id; }
 
-void WorkerContext::SetCurrentTaskId(const TaskID &task_id) {
+void WorkerContext::SetCurrentTaskId(const TaskID& task_id) {
   GetThreadContext().SetCurrentTaskId(task_id);
 }
 
-void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
+void WorkerContext::SetCurrentTask(const TaskSpecification& task_spec) {
   GetThreadContext().SetCurrentTask(task_spec);
   if (task_spec.IsNormalTask()) {
     RAY_CHECK(current_job_id_.IsNil());
@@ -120,7 +120,7 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   }
 }
 
-void WorkerContext::ResetCurrentTask(const TaskSpecification &task_spec) {
+void WorkerContext::ResetCurrentTask(const TaskSpecification& task_spec) {
   GetThreadContext().ResetCurrentTask(task_spec);
   if (task_spec.IsNormalTask()) {
     SetCurrentJobId(JobID::Nil());
@@ -131,7 +131,7 @@ std::shared_ptr<const TaskSpecification> WorkerContext::GetCurrentTask() const {
   return GetThreadContext().GetCurrentTask();
 }
 
-const ActorID &WorkerContext::GetCurrentActorID() const { return current_actor_id_; }
+const ActorID& WorkerContext::GetCurrentActorID() const { return current_actor_id_; }
 
 bool WorkerContext::CurrentThreadIsMain() const {
   return boost::this_thread::get_id() == main_thread_id_;
@@ -162,7 +162,7 @@ int WorkerContext::CurrentActorMaxConcurrency() const {
 
 bool WorkerContext::CurrentActorIsAsync() const { return current_actor_is_asyncio_; }
 
-WorkerThreadContext &WorkerContext::GetThreadContext() {
+WorkerThreadContext& WorkerContext::GetThreadContext() {
   if (thread_context_ == nullptr) {
     thread_context_ = std::unique_ptr<WorkerThreadContext>(new WorkerThreadContext());
   }

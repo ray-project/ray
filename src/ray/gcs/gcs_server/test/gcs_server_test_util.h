@@ -34,7 +34,7 @@ struct GcsServerMocker {
    public:
     void PushNormalTask(
         std::unique_ptr<rpc::PushTaskRequest> request,
-        const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {
+        const rpc::ClientCallback<rpc::PushTaskReply>& callback) override {
       callbacks.push_back(callback);
     }
 
@@ -57,7 +57,7 @@ struct GcsServerMocker {
 
   class MockRayletClient : public WorkerLeaseInterface {
    public:
-    ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
+    ray::Status ReturnWorker(int worker_port, const WorkerID& worker_id,
                              bool disconnect_worker) override {
       if (disconnect_worker) {
         num_workers_disconnected++;
@@ -68,22 +68,22 @@ struct GcsServerMocker {
     }
 
     void RequestWorkerLease(
-        const ray::TaskSpecification &resource_spec,
-        const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback) override {
+        const ray::TaskSpecification& resource_spec,
+        const rpc::ClientCallback<rpc::RequestWorkerLeaseReply>& callback) override {
       num_workers_requested += 1;
       callbacks.push_back(callback);
     }
 
     void ReleaseUnusedWorkers(
-        const std::vector<WorkerID> &workers_in_use,
-        const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) override {
+        const std::vector<WorkerID>& workers_in_use,
+        const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply>& callback) override {
       num_release_unused_workers += 1;
       release_callbacks.push_back(callback);
     }
 
     void CancelWorkerLease(
-        const TaskID &task_id,
-        const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override {
+        const TaskID& task_id,
+        const rpc::ClientCallback<rpc::CancelWorkerLeaseReply>& callback) override {
       num_leases_canceled += 1;
       cancel_callbacks.push_back(callback);
     }
@@ -93,8 +93,8 @@ struct GcsServerMocker {
     }
 
     // Trigger reply to RequestWorkerLease.
-    bool GrantWorkerLease(const std::string &address, int port, const WorkerID &worker_id,
-                          const ClientID &raylet_id, const ClientID &retry_at_raylet_id,
+    bool GrantWorkerLease(const std::string& address, int port, const WorkerID& worker_id,
+                          const ClientID& raylet_id, const ClientID& retry_at_raylet_id,
                           Status status = Status::OK()) {
       rpc::RequestWorkerLeaseReply reply;
       if (!retry_at_raylet_id.IsNil()) {
@@ -159,16 +159,16 @@ struct GcsServerMocker {
   class MockRayletResourceClient : public ResourceReserveInterface {
    public:
     void RequestResourceReserve(
-        const BundleSpecification &bundle_spec,
-        const ray::rpc::ClientCallback<ray::rpc::RequestResourceReserveReply> &callback)
+        const BundleSpecification& bundle_spec,
+        const ray::rpc::ClientCallback<ray::rpc::RequestResourceReserveReply>& callback)
         override {
       num_lease_requested += 1;
       lease_callbacks.push_back(callback);
     }
 
     void CancelResourceReserve(
-        BundleSpecification &bundle_spec,
-        const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback)
+        BundleSpecification& bundle_spec,
+        const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply>& callback)
         override {
       num_return_requested += 1;
       return_callbacks.push_back(callback);
@@ -248,8 +248,8 @@ struct GcsServerMocker {
     MockedGcsActorTable(std::shared_ptr<gcs::StoreClient> store_client)
         : GcsActorTable(store_client) {}
 
-    Status Put(const ActorID &key, const rpc::ActorTableData &value,
-               const gcs::StatusCallback &callback) override {
+    Status Put(const ActorID& key, const rpc::ActorTableData& value,
+               const gcs::StatusCallback& callback) override {
       auto status = Status::OK();
       callback(status);
       return status;
@@ -263,29 +263,29 @@ struct GcsServerMocker {
 
   class MockedNodeInfoAccessor : public gcs::NodeInfoAccessor {
    public:
-    Status RegisterSelf(const rpc::GcsNodeInfo &local_node_info) override {
+    Status RegisterSelf(const rpc::GcsNodeInfo& local_node_info) override {
       return Status::NotImplemented("");
     }
 
     Status UnregisterSelf() override { return Status::NotImplemented(""); }
 
-    const ClientID &GetSelfId() const override {
+    const ClientID& GetSelfId() const override {
       static ClientID node_id;
       return node_id;
     }
 
-    const rpc::GcsNodeInfo &GetSelfInfo() const override {
+    const rpc::GcsNodeInfo& GetSelfInfo() const override {
       static rpc::GcsNodeInfo node_info;
       return node_info;
     }
 
-    Status AsyncRegister(const rpc::GcsNodeInfo &node_info,
-                         const gcs::StatusCallback &callback) override {
+    Status AsyncRegister(const rpc::GcsNodeInfo& node_info,
+                         const gcs::StatusCallback& callback) override {
       return Status::NotImplemented("");
     }
 
-    Status AsyncUnregister(const ClientID &node_id,
-                           const gcs::StatusCallback &callback) override {
+    Status AsyncUnregister(const ClientID& node_id,
+                           const gcs::StatusCallback& callback) override {
       if (callback) {
         callback(Status::OK());
       }
@@ -293,7 +293,7 @@ struct GcsServerMocker {
     }
 
     Status AsyncGetAll(
-        const gcs::MultiItemCallback<rpc::GcsNodeInfo> &callback) override {
+        const gcs::MultiItemCallback<rpc::GcsNodeInfo>& callback) override {
       if (callback) {
         callback(Status::OK(), {});
       }
@@ -301,59 +301,59 @@ struct GcsServerMocker {
     }
 
     Status AsyncSubscribeToNodeChange(
-        const gcs::SubscribeCallback<ClientID, rpc::GcsNodeInfo> &subscribe,
-        const gcs::StatusCallback &done) override {
+        const gcs::SubscribeCallback<ClientID, rpc::GcsNodeInfo>& subscribe,
+        const gcs::StatusCallback& done) override {
       return Status::NotImplemented("");
     }
 
-    boost::optional<rpc::GcsNodeInfo> Get(const ClientID &node_id) const override {
+    boost::optional<rpc::GcsNodeInfo> Get(const ClientID& node_id) const override {
       return boost::none;
     }
 
-    const std::unordered_map<ClientID, rpc::GcsNodeInfo> &GetAll() const override {
+    const std::unordered_map<ClientID, rpc::GcsNodeInfo>& GetAll() const override {
       static std::unordered_map<ClientID, rpc::GcsNodeInfo> node_info_list;
       return node_info_list;
     }
 
-    bool IsRemoved(const ClientID &node_id) const override { return false; }
+    bool IsRemoved(const ClientID& node_id) const override { return false; }
 
     Status AsyncGetResources(
-        const ClientID &node_id,
-        const gcs::OptionalItemCallback<ResourceMap> &callback) override {
+        const ClientID& node_id,
+        const gcs::OptionalItemCallback<ResourceMap>& callback) override {
       return Status::NotImplemented("");
     }
 
-    Status AsyncUpdateResources(const ClientID &node_id, const ResourceMap &resources,
-                                const gcs::StatusCallback &callback) override {
+    Status AsyncUpdateResources(const ClientID& node_id, const ResourceMap& resources,
+                                const gcs::StatusCallback& callback) override {
       return Status::NotImplemented("");
     }
 
-    Status AsyncDeleteResources(const ClientID &node_id,
-                                const std::vector<std::string> &resource_names,
-                                const gcs::StatusCallback &callback) override {
+    Status AsyncDeleteResources(const ClientID& node_id,
+                                const std::vector<std::string>& resource_names,
+                                const gcs::StatusCallback& callback) override {
       return Status::NotImplemented("");
     }
 
     Status AsyncSubscribeToResources(
-        const gcs::ItemCallback<rpc::NodeResourceChange> &subscribe,
-        const gcs::StatusCallback &done) override {
+        const gcs::ItemCallback<rpc::NodeResourceChange>& subscribe,
+        const gcs::StatusCallback& done) override {
       return Status::NotImplemented("");
     }
 
-    Status AsyncReportHeartbeat(const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
-                                const gcs::StatusCallback &callback) override {
+    Status AsyncReportHeartbeat(const std::shared_ptr<rpc::HeartbeatTableData>& data_ptr,
+                                const gcs::StatusCallback& callback) override {
       return Status::NotImplemented("");
     }
 
     Status AsyncSubscribeHeartbeat(
-        const gcs::SubscribeCallback<ClientID, rpc::HeartbeatTableData> &subscribe,
-        const gcs::StatusCallback &done) override {
+        const gcs::SubscribeCallback<ClientID, rpc::HeartbeatTableData>& subscribe,
+        const gcs::StatusCallback& done) override {
       return Status::NotImplemented("");
     }
 
     Status AsyncReportBatchHeartbeat(
-        const std::shared_ptr<rpc::HeartbeatBatchTableData> &data_ptr,
-        const gcs::StatusCallback &callback) override {
+        const std::shared_ptr<rpc::HeartbeatBatchTableData>& data_ptr,
+        const gcs::StatusCallback& callback) override {
       if (callback) {
         callback(Status::OK());
       }
@@ -361,8 +361,8 @@ struct GcsServerMocker {
     }
 
     Status AsyncSubscribeBatchHeartbeat(
-        const gcs::ItemCallback<rpc::HeartbeatBatchTableData> &subscribe,
-        const gcs::StatusCallback &done) override {
+        const gcs::ItemCallback<rpc::HeartbeatBatchTableData>& subscribe,
+        const gcs::StatusCallback& done) override {
       return Status::NotImplemented("");
     }
 
@@ -371,8 +371,8 @@ struct GcsServerMocker {
 
   class MockedErrorInfoAccessor : public gcs::ErrorInfoAccessor {
    public:
-    Status AsyncReportJobError(const std::shared_ptr<rpc::ErrorTableData> &data_ptr,
-                               const gcs::StatusCallback &callback) override {
+    Status AsyncReportJobError(const std::shared_ptr<rpc::ErrorTableData>& data_ptr,
+                               const gcs::StatusCallback& callback) override {
       if (callback) {
         callback(Status::OK());
       }
@@ -385,8 +385,8 @@ struct GcsServerMocker {
     MockGcsPubSub(std::shared_ptr<gcs::RedisClient> redis_client)
         : GcsPubSub(redis_client) {}
 
-    Status Publish(const std::string &channel, const std::string &id,
-                   const std::string &data, const gcs::StatusCallback &done) override {
+    Status Publish(const std::string& channel, const std::string& id,
+                   const std::string& data, const gcs::StatusCallback& done) override {
       return Status::OK();
     }
   };

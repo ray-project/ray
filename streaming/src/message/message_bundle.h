@@ -51,27 +51,27 @@ class StreamingMessageBundleMeta {
   /// first member property.
   /// Reference
   /// :/http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2018/p1113r0.html#2254).
-  inline uint8_t *GetFirstMemberAddress() {
-    return reinterpret_cast<uint8_t *>(&message_bundle_ts_);
+  inline uint8_t* GetFirstMemberAddress() {
+    return reinterpret_cast<uint8_t*>(&message_bundle_ts_);
   }
 
  public:
-  explicit StreamingMessageBundleMeta(const uint8_t *bytes);
+  explicit StreamingMessageBundleMeta(const uint8_t* bytes);
 
   explicit StreamingMessageBundleMeta(const uint64_t message_bunddle_tes,
                                       const uint64_t last_offset_seq_id,
                                       const uint32_t message_list_size,
                                       const StreamingMessageBundleType bundle_type);
 
-  explicit StreamingMessageBundleMeta(StreamingMessageBundleMeta *);
+  explicit StreamingMessageBundleMeta(StreamingMessageBundleMeta*);
 
   explicit StreamingMessageBundleMeta();
 
   virtual ~StreamingMessageBundleMeta() = default;
 
-  bool operator==(StreamingMessageBundleMeta &) const;
+  bool operator==(StreamingMessageBundleMeta&) const;
 
-  bool operator==(StreamingMessageBundleMeta *) const;
+  bool operator==(StreamingMessageBundleMeta*) const;
 
   inline uint64_t GetMessageBundleTs() const { return message_bundle_ts_; }
 
@@ -84,13 +84,13 @@ class StreamingMessageBundleMeta {
   inline bool IsBarrier() { return StreamingMessageBundleType::Barrier == bundle_type_; }
   inline bool IsBundle() { return StreamingMessageBundleType::Bundle == bundle_type_; }
 
-  virtual void ToBytes(uint8_t *data);
-  static StreamingMessageBundleMetaPtr FromBytes(const uint8_t *data,
+  virtual void ToBytes(uint8_t* data);
+  static StreamingMessageBundleMetaPtr FromBytes(const uint8_t* data,
                                                  bool verifer_check = true);
   inline virtual uint32_t ClassBytesSize() { return kMessageBundleMetaHeaderSize; }
 
-  inline static bool CheckBundleMagicNum(const uint8_t *bytes) {
-    const uint32_t *magic_num = reinterpret_cast<const uint32_t *>(bytes);
+  inline static bool CheckBundleMagicNum(const uint8_t* bytes) {
+    const uint32_t* magic_num = reinterpret_cast<const uint32_t*>(bytes);
     return *magic_num == StreamingMessageBundleMagicNum;
   }
 
@@ -134,13 +134,13 @@ class StreamingMessageBundle : public StreamingMessageBundleMeta {
   std::list<StreamingMessagePtr> message_list_;
 
  public:
-  explicit StreamingMessageBundle(std::list<StreamingMessagePtr> &&message_list,
+  explicit StreamingMessageBundle(std::list<StreamingMessagePtr>&& message_list,
                                   uint64_t bundle_ts, uint64_t offset,
                                   StreamingMessageBundleType bundle_type,
                                   uint32_t raw_data_size = 0);
 
   // Duplicated copy if left reference in constructor.
-  explicit StreamingMessageBundle(std::list<StreamingMessagePtr> &message_list,
+  explicit StreamingMessageBundle(std::list<StreamingMessagePtr>& message_list,
                                   uint64_t bundle_ts, uint64_t offset,
                                   StreamingMessageBundleType bundle_type,
                                   uint32_t raw_data_size = 0);
@@ -148,34 +148,34 @@ class StreamingMessageBundle : public StreamingMessageBundleMeta {
   // New a empty bundle by passing last message id and timestamp.
   explicit StreamingMessageBundle(uint64_t, uint64_t);
 
-  explicit StreamingMessageBundle(StreamingMessageBundle &bundle);
+  explicit StreamingMessageBundle(StreamingMessageBundle& bundle);
 
   virtual ~StreamingMessageBundle() = default;
 
   inline uint32_t GetRawBundleSize() const { return raw_bundle_size_; }
 
-  bool operator==(StreamingMessageBundle &bundle) const;
+  bool operator==(StreamingMessageBundle& bundle) const;
 
-  bool operator==(StreamingMessageBundle *bundle_ptr) const;
+  bool operator==(StreamingMessageBundle* bundle_ptr) const;
 
-  void GetMessageList(std::list<StreamingMessagePtr> &message_list);
+  void GetMessageList(std::list<StreamingMessagePtr>& message_list);
 
-  const std::list<StreamingMessagePtr> &GetMessageList() const { return message_list_; }
+  const std::list<StreamingMessagePtr>& GetMessageList() const { return message_list_; }
 
-  virtual void ToBytes(uint8_t *data);
-  static StreamingMessageBundlePtr FromBytes(const uint8_t *data,
+  virtual void ToBytes(uint8_t* data);
+  static StreamingMessageBundlePtr FromBytes(const uint8_t* data,
                                              bool verifer_check = true);
   inline virtual uint32_t ClassBytesSize() {
     return kMessageBundleHeaderSize + raw_bundle_size_;
   };
 
-  static void GetMessageListFromRawData(const uint8_t *bytes, uint32_t bytes_size,
+  static void GetMessageListFromRawData(const uint8_t* bytes, uint32_t bytes_size,
                                         uint32_t message_list_size,
-                                        std::list<StreamingMessagePtr> &message_list);
+                                        std::list<StreamingMessagePtr>& message_list);
 
   static void ConvertMessageListToRawData(
-      const std::list<StreamingMessagePtr> &message_list, uint32_t raw_data_size,
-      uint8_t *raw_data);
+      const std::list<StreamingMessagePtr>& message_list, uint32_t raw_data_size,
+      uint8_t* raw_data);
 };
 }  // namespace streaming
 }  // namespace ray

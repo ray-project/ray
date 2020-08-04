@@ -48,11 +48,11 @@ class WorkerPoolInterface {
   /// \return An idle worker with the requested task spec. Returns nullptr if no
   /// such worker exists.
   virtual std::shared_ptr<WorkerInterface> PopWorker(
-      const TaskSpecification &task_spec) = 0;
+      const TaskSpecification& task_spec) = 0;
   /// Add an idle worker to the pool.
   ///
   /// \param The idle worker to add.
-  virtual void PushWorker(const std::shared_ptr<WorkerInterface> &worker) = 0;
+  virtual void PushWorker(const std::shared_ptr<WorkerInterface>& worker) = 0;
 
   virtual ~WorkerPoolInterface(){};
 };
@@ -85,11 +85,11 @@ class WorkerPool : public WorkerPoolInterface {
   /// \param raylet_config The raylet config list of this node.
   /// \param starting_worker_timeout_callback The callback that will be triggered once
   /// it times out to start a worker.
-  WorkerPool(boost::asio::io_service &io_service, int num_workers,
+  WorkerPool(boost::asio::io_service& io_service, int num_workers,
              int maximum_startup_concurrency, int min_worker_port, int max_worker_port,
              std::shared_ptr<gcs::GcsClient> gcs_client,
-             const WorkerCommandMap &worker_commands,
-             const std::unordered_map<std::string, std::string> &raylet_config,
+             const WorkerCommandMap& worker_commands,
+             const std::unordered_map<std::string, std::string>& raylet_config,
              std::function<void()> starting_worker_timeout_callback);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
@@ -103,8 +103,8 @@ class WorkerPool : public WorkerPoolInterface {
   /// \param[out] port The port that this worker's gRPC server should listen on.
   /// Returns 0 if the worker should bind on a random port.
   /// \return If the registration is successful.
-  Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker, pid_t pid,
-                        int *port);
+  Status RegisterWorker(const std::shared_ptr<WorkerInterface>& worker, pid_t pid,
+                        int* port);
 
   /// Register a new driver.
   ///
@@ -112,7 +112,7 @@ class WorkerPool : public WorkerPoolInterface {
   /// \param[out] port The port that this driver's gRPC server should listen on.
   /// Returns 0 if the driver should bind on a random port.
   /// \return If the registration is successful.
-  Status RegisterDriver(const std::shared_ptr<WorkerInterface> &worker, int *port);
+  Status RegisterDriver(const std::shared_ptr<WorkerInterface>& worker, int* port);
 
   /// Get the client connection's registered worker.
   ///
@@ -120,7 +120,7 @@ class WorkerPool : public WorkerPoolInterface {
   /// \return The Worker that owns the given client connection. Returns nullptr
   /// if the client has not registered a worker yet.
   std::shared_ptr<WorkerInterface> GetRegisteredWorker(
-      const std::shared_ptr<ClientConnection> &connection) const;
+      const std::shared_ptr<ClientConnection>& connection) const;
 
   /// Get the client connection's registered driver.
   ///
@@ -128,23 +128,23 @@ class WorkerPool : public WorkerPoolInterface {
   /// \return The Worker that owns the given client connection. Returns nullptr
   /// if the client has not registered a driver.
   std::shared_ptr<WorkerInterface> GetRegisteredDriver(
-      const std::shared_ptr<ClientConnection> &connection) const;
+      const std::shared_ptr<ClientConnection>& connection) const;
 
   /// Disconnect a registered worker.
   ///
   /// \param The worker to disconnect. The worker must be registered.
   /// \return Whether the given worker was in the pool of idle workers.
-  bool DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker);
+  bool DisconnectWorker(const std::shared_ptr<WorkerInterface>& worker);
 
   /// Disconnect a registered driver.
   ///
   /// \param The driver to disconnect. The driver must be registered.
-  void DisconnectDriver(const std::shared_ptr<WorkerInterface> &driver);
+  void DisconnectDriver(const std::shared_ptr<WorkerInterface>& driver);
 
   /// Add an idle worker to the pool.
   ///
   /// \param The idle worker to add.
-  void PushWorker(const std::shared_ptr<WorkerInterface> &worker);
+  void PushWorker(const std::shared_ptr<WorkerInterface>& worker);
 
   /// Pop an idle worker from the pool. The caller is responsible for pushing
   /// the worker back onto the pool once the worker has completed its work.
@@ -152,21 +152,21 @@ class WorkerPool : public WorkerPoolInterface {
   /// \param task_spec The returned worker must be able to execute this task.
   /// \return An idle worker with the requested task spec. Returns nullptr if no
   /// such worker exists.
-  std::shared_ptr<WorkerInterface> PopWorker(const TaskSpecification &task_spec);
+  std::shared_ptr<WorkerInterface> PopWorker(const TaskSpecification& task_spec);
 
   /// Return the current size of the worker pool for the requested language. Counts only
   /// idle workers.
   ///
   /// \param language The requested language.
   /// \return The total count of all workers (actor and non-actor) in the pool.
-  uint32_t Size(const Language &language) const;
+  uint32_t Size(const Language& language) const;
 
   /// Get all the workers which are running tasks for a given job.
   ///
   /// \param job_id The job ID.
   /// \return A list containing all the workers which are running tasks for the job.
   std::vector<std::shared_ptr<WorkerInterface>> GetWorkersRunningTasksForJob(
-      const JobID &job_id) const;
+      const JobID& job_id) const;
 
   /// Get all the registered workers.
   ///
@@ -185,7 +185,7 @@ class WorkerPool : public WorkerPoolInterface {
   ///
   /// \param language The required language.
   /// \param task_id The task that we want to query.
-  bool HasPendingWorkerForTask(const Language &language, const TaskID &task_id);
+  bool HasPendingWorkerForTask(const Language& language, const TaskID& task_id);
 
   /// Get the set of active object IDs from all workers in the worker pool.
   /// \return A set containing the active object IDs.
@@ -211,8 +211,8 @@ class WorkerPool : public WorkerPoolInterface {
   /// \param dynamic_options The dynamic options that we should add for worker command.
   /// \return The id of the process that we started if it's positive,
   /// otherwise it means we didn't start a process.
-  Process StartWorkerProcess(const Language &language,
-                             const std::vector<std::string> &dynamic_options = {});
+  Process StartWorkerProcess(const Language& language,
+                             const std::vector<std::string>& dynamic_options = {});
 
   /// The implementation of how to start a new worker process with command arguments.
   /// The lifetime of the process is tied to that of the returned object,
@@ -220,7 +220,7 @@ class WorkerPool : public WorkerPoolInterface {
   ///
   /// \param worker_command_args The command arguments of new worker process.
   /// \return An object representing the started worker process.
-  virtual Process StartProcess(const std::vector<std::string> &worker_command_args);
+  virtual Process StartProcess(const std::vector<std::string>& worker_command_args);
 
   /// Push an warning message to user if worker pool is getting to big.
   virtual void WarnAboutSize();
@@ -271,7 +271,7 @@ class WorkerPool : public WorkerPoolInterface {
 
   /// A helper function that returns the reference of the pool state
   /// for a given language.
-  State &GetStateForLanguage(const Language &language);
+  State& GetStateForLanguage(const Language& language);
 
   /// Start a timer to monitor the starting worker process.
   ///
@@ -279,7 +279,7 @@ class WorkerPool : public WorkerPoolInterface {
   /// (due to worker process crash or any other reasons), remove them
   /// from `starting_worker_processes`. Otherwise if we'll mistakenly
   /// think there are unregistered workers, and won't start new workers.
-  void MonitorStartingWorkerProcess(const Process &proc, const Language &language);
+  void MonitorStartingWorkerProcess(const Process& proc, const Language& language);
 
   /// Get the next unallocated port in the free ports list. If a port range isn't
   /// configured, returns 0.
@@ -287,14 +287,14 @@ class WorkerPool : public WorkerPoolInterface {
   /// There is a race condition where another service binds to the port sometime
   /// after this function returns and before the Worker/Driver uses the port.
   /// \param[out] port The next available port.
-  Status GetNextFreePort(int *port);
+  Status GetNextFreePort(int* port);
 
   /// Mark this port as free to be used by another worker.
   /// \param[in] port The port to mark as free.
   void MarkPortAsFree(int port);
 
   /// For Process class for managing subprocesses (e.g. reaping zombies).
-  boost::asio::io_service *io_service_;
+  boost::asio::io_service* io_service_;
   /// The maximum number of worker processes that can be started concurrently.
   int maximum_startup_concurrency_;
   /// Keeps track of unused ports that newly-created workers can bind on.

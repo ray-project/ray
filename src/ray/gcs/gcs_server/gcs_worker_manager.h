@@ -26,23 +26,23 @@ namespace gcs {
 class GcsWorkerManager : public rpc::WorkerInfoHandler {
  public:
   explicit GcsWorkerManager(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-                            std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub)
+                            std::shared_ptr<gcs::GcsPubSub>& gcs_pub_sub)
       : gcs_table_storage_(gcs_table_storage), gcs_pub_sub_(gcs_pub_sub) {}
 
-  void HandleReportWorkerFailure(const rpc::ReportWorkerFailureRequest &request,
-                                 rpc::ReportWorkerFailureReply *reply,
+  void HandleReportWorkerFailure(const rpc::ReportWorkerFailureRequest& request,
+                                 rpc::ReportWorkerFailureReply* reply,
                                  rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleGetWorkerInfo(const rpc::GetWorkerInfoRequest &request,
-                           rpc::GetWorkerInfoReply *reply,
+  void HandleGetWorkerInfo(const rpc::GetWorkerInfoRequest& request,
+                           rpc::GetWorkerInfoReply* reply,
                            rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleGetAllWorkerInfo(const rpc::GetAllWorkerInfoRequest &request,
-                              rpc::GetAllWorkerInfoReply *reply,
+  void HandleGetAllWorkerInfo(const rpc::GetAllWorkerInfoRequest& request,
+                              rpc::GetAllWorkerInfoReply* reply,
                               rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleAddWorkerInfo(const rpc::AddWorkerInfoRequest &request,
-                           rpc::AddWorkerInfoReply *reply,
+  void HandleAddWorkerInfo(const rpc::AddWorkerInfoRequest& request,
+                           rpc::AddWorkerInfoReply* reply,
                            rpc::SendReplyCallback send_reply_callback) override;
 
  private:

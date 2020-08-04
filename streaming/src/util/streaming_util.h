@@ -27,14 +27,14 @@ enum class ConfigEnum : uint32_t {
 namespace std {
 template <>
 struct hash<::ray::streaming::ConfigEnum> {
-  size_t operator()(const ::ray::streaming::ConfigEnum &config_enum_key) const {
+  size_t operator()(const ::ray::streaming::ConfigEnum& config_enum_key) const {
     return static_cast<uint32_t>(config_enum_key);
   }
 };
 
 template <>
 struct hash<const ::ray::streaming::ConfigEnum> {
-  size_t operator()(const ::ray::streaming::ConfigEnum &config_enum_key) const {
+  size_t operator()(const ::ray::streaming::ConfigEnum& config_enum_key) const {
     return static_cast<uint32_t>(config_enum_key);
   }
 };
@@ -46,17 +46,17 @@ namespace streaming {
 class Config {
  public:
   template <typename ValueType>
-  inline void Set(ConfigEnum key, const ValueType &any) {
+  inline void Set(ConfigEnum key, const ValueType& any) {
     config_map_.emplace(key, any);
   }
 
   template <typename ValueType>
-  inline void Set(ConfigEnum key, ValueType &&any) {
+  inline void Set(ConfigEnum key, ValueType&& any) {
     config_map_.emplace(key, any);
   }
 
   template <typename ValueType>
-  inline boost::any &GetOrDefault(ConfigEnum key, ValueType &&any) {
+  inline boost::any& GetOrDefault(ConfigEnum key, ValueType&& any) {
     auto item = config_map_.find(key);
     if (item != config_map_.end()) {
       return item->second;
@@ -65,7 +65,7 @@ class Config {
     return any;
   }
 
-  boost::any &Get(ConfigEnum key) const;
+  boost::any& Get(ConfigEnum key) const;
 
   boost::any Get(ConfigEnum key, boost::any default_value) const;
 
@@ -89,9 +89,9 @@ class Config {
 
 class Util {
  public:
-  static std::string Byte2hex(const uint8_t *data, uint32_t data_size);
+  static std::string Byte2hex(const uint8_t* data, uint32_t data_size);
 
-  static std::string Hexqid2str(const std::string &q_id_hex);
+  static std::string Hexqid2str(const std::string& q_id_hex);
 };
 }  // namespace streaming
 }  // namespace ray

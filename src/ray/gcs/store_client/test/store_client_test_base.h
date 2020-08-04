@@ -61,11 +61,11 @@ class StoreClientTestBase : public ::testing::Test {
 
  protected:
   void Put() {
-    auto put_calllback = [this](const Status &status) {
+    auto put_calllback = [this](const Status& status) {
       RAY_CHECK_OK(status);
       --pending_count_;
     };
-    for (const auto &elem : key_to_value_) {
+    for (const auto& elem : key_to_value_) {
       ++pending_count_;
       RAY_CHECK_OK(store_client_->AsyncPut(table_name_, elem.first.Binary(),
                                            elem.second.SerializeAsString(),
@@ -75,11 +75,11 @@ class StoreClientTestBase : public ::testing::Test {
   }
 
   void Delete() {
-    auto delete_calllback = [this](const Status &status) {
+    auto delete_calllback = [this](const Status& status) {
       RAY_CHECK_OK(status);
       --pending_count_;
     };
-    for (const auto &elem : key_to_value_) {
+    for (const auto& elem : key_to_value_) {
       ++pending_count_;
       RAY_CHECK_OK(
           store_client_->AsyncDelete(table_name_, elem.first.Binary(), delete_calllback));
@@ -88,8 +88,8 @@ class StoreClientTestBase : public ::testing::Test {
   }
 
   void Get() {
-    auto get_callback = [this](const Status &status,
-                               const boost::optional<std::string> &result) {
+    auto get_callback = [this](const Status& status,
+                               const boost::optional<std::string>& result) {
       RAY_CHECK_OK(status);
       RAY_CHECK(result);
       rpc::ActorTableData data;
@@ -99,7 +99,7 @@ class StoreClientTestBase : public ::testing::Test {
       RAY_CHECK(it != key_to_value_.end());
       --pending_count_;
     };
-    for (const auto &elem : key_to_value_) {
+    for (const auto& elem : key_to_value_) {
       ++pending_count_;
       RAY_CHECK_OK(
           store_client_->AsyncGet(table_name_, elem.first.Binary(), get_callback));
@@ -108,10 +108,10 @@ class StoreClientTestBase : public ::testing::Test {
   }
 
   void GetEmpty() {
-    for (const auto &elem : key_to_value_) {
+    for (const auto& elem : key_to_value_) {
       auto key = elem.first.Binary();
-      auto get_callback = [this, key](const Status &status,
-                                      const boost::optional<std::string> &result) {
+      auto get_callback = [this, key](const Status& status,
+                                      const boost::optional<std::string>& result) {
         RAY_CHECK_OK(status);
         RAY_CHECK(!result);
         --pending_count_;
@@ -124,8 +124,8 @@ class StoreClientTestBase : public ::testing::Test {
   }
 
   void PutWithIndex() {
-    auto put_calllback = [this](const Status &status) { --pending_count_; };
-    for (const auto &elem : key_to_value_) {
+    auto put_calllback = [this](const Status& status) { --pending_count_; };
+    for (const auto& elem : key_to_value_) {
       ++pending_count_;
       RAY_CHECK_OK(store_client_->AsyncPutWithIndex(
           table_name_, elem.first.Binary(), key_to_index_[elem.first].Hex(),
@@ -136,7 +136,7 @@ class StoreClientTestBase : public ::testing::Test {
 
   void GetByIndex() {
     auto get_calllback =
-        [this](const std::unordered_map<std::string, std::string> &result) {
+        [this](const std::unordered_map<std::string, std::string>& result) {
           if (!result.empty()) {
             auto key = ActorID::FromBinary(result.begin()->first);
             auto it = key_to_index_.find(key);
@@ -153,11 +153,11 @@ class StoreClientTestBase : public ::testing::Test {
   }
 
   void DeleteByIndex() {
-    auto delete_calllback = [this](const Status &status) {
+    auto delete_calllback = [this](const Status& status) {
       RAY_CHECK_OK(status);
       --pending_count_;
     };
-    for (const auto &elem : index_to_keys_) {
+    for (const auto& elem : index_to_keys_) {
       ++pending_count_;
       RAY_CHECK_OK(store_client_->AsyncDeleteByIndex(table_name_, elem.first.Hex(),
                                                      delete_calllback));
@@ -167,10 +167,10 @@ class StoreClientTestBase : public ::testing::Test {
 
   void GetAll() {
     auto get_all_callback =
-        [this](const std::unordered_map<std::string, std::string> &result) {
+        [this](const std::unordered_map<std::string, std::string>& result) {
           static std::unordered_set<ActorID> received_keys;
-          for (const auto &item : result) {
-            const ActorID &actor_id = ActorID::FromBinary(item.first);
+          for (const auto& item : result) {
+            const ActorID& actor_id = ActorID::FromBinary(item.first);
             auto it = received_keys.find(actor_id);
             RAY_CHECK(it == received_keys.end());
             received_keys.emplace(actor_id);
@@ -188,13 +188,13 @@ class StoreClientTestBase : public ::testing::Test {
   }
 
   void BatchDelete() {
-    auto delete_calllback = [this](const Status &status) {
+    auto delete_calllback = [this](const Status& status) {
       RAY_CHECK_OK(status);
       --pending_count_;
     };
     ++pending_count_;
     std::vector<std::string> keys;
-    for (auto &elem : key_to_value_) {
+    for (auto& elem : key_to_value_) {
       keys.push_back(elem.first.Binary());
     }
     RAY_CHECK_OK(store_client_->AsyncBatchDelete(table_name_, keys, delete_calllback));
@@ -270,7 +270,7 @@ class StoreClientTestBase : public ::testing::Test {
 
   void WaitPendingDone() { WaitPendingDone(pending_count_); }
 
-  void WaitPendingDone(std::atomic<int> &pending_count) {
+  void WaitPendingDone(std::atomic<int>& pending_count) {
     auto condition = [&pending_count]() { return pending_count == 0; };
     EXPECT_TRUE(WaitForCondition(condition, wait_pending_timeout_.count()));
   }

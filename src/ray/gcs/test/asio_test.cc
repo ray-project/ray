@@ -31,18 +31,18 @@ namespace gcs {
 
 boost::asio::io_service io_service;
 
-void ConnectCallback(const redisAsyncContext *c, int status) {
+void ConnectCallback(const redisAsyncContext* c, int status) {
   ASSERT_EQ(status, REDIS_OK);
 }
 
-void DisconnectCallback(const redisAsyncContext *c, int status) {
+void DisconnectCallback(const redisAsyncContext* c, int status) {
   ASSERT_EQ(status, REDIS_OK);
 }
 
-void GetCallback(redisAsyncContext *c, void *r, void *privdata) {
-  redisReply *reply = reinterpret_cast<redisReply *>(r);
+void GetCallback(redisAsyncContext* c, void* r, void* privdata) {
+  redisReply* reply = reinterpret_cast<redisReply*>(r);
   ASSERT_TRUE(reply != nullptr);
-  ASSERT_TRUE(std::string(reinterpret_cast<char *>(reply->str)) == "test");
+  ASSERT_TRUE(std::string(reinterpret_cast<char*>(reply->str)) == "test");
   io_service.stop();
 }
 
@@ -54,7 +54,7 @@ class RedisAsioTest : public ::testing::Test {
 };
 
 TEST_F(RedisAsioTest, TestRedisCommands) {
-  redisAsyncContext *ac = redisAsyncConnect("127.0.0.1", TEST_REDIS_SERVER_PORTS.front());
+  redisAsyncContext* ac = redisAsyncConnect("127.0.0.1", TEST_REDIS_SERVER_PORTS.front());
   ASSERT_TRUE(ac->err == 0);
   ray::gcs::RedisAsyncContext redis_async_context(ac);
 
@@ -73,7 +73,7 @@ TEST_F(RedisAsioTest, TestRedisCommands) {
 
 }  // namespace ray
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                          ray::RayLog::ShutDownRayLog, argv[0],
                                          ray::RayLogLevel::INFO,

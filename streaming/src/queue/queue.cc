@@ -113,7 +113,7 @@ size_t Queue::PendingCount() {
   return begin->SeqId() - end->SeqId() + 1;
 }
 
-Status WriterQueue::Push(uint64_t seq_id, uint8_t *data, uint32_t data_size,
+Status WriterQueue::Push(uint64_t seq_id, uint8_t* data, uint32_t data_size,
                          uint64_t timestamp, bool raw) {
   if (IsPendingFull(data_size)) {
     return Status::OutOfMemory("Queue Push OutOfMemory");
@@ -192,9 +192,9 @@ void ReaderQueue::Notify(uint64_t seq_id) {
   transport_->Send(std::move(buffer));
 }
 
-void ReaderQueue::CreateNotifyTask(uint64_t seq_id, std::vector<TaskArg> &task_args) {}
+void ReaderQueue::CreateNotifyTask(uint64_t seq_id, std::vector<TaskArg>& task_args) {}
 
-void ReaderQueue::OnData(QueueItem &item) {
+void ReaderQueue::OnData(QueueItem& item) {
   if (item.SeqId() != expect_seq_id_) {
     STREAMING_LOG(WARNING) << "OnData ignore seq_id: " << item.SeqId()
                            << " expect_seq_id_: " << expect_seq_id_;

@@ -45,7 +45,7 @@ class StreamingMessage {
   /// \param data_size raw data size
   /// \param seq_id message id
   /// \param message_type
-  StreamingMessage(std::shared_ptr<uint8_t> &data, uint32_t data_size, uint64_t seq_id,
+  StreamingMessage(std::shared_ptr<uint8_t>& data, uint32_t data_size, uint64_t seq_id,
                    StreamingMessageType message_type);
 
   /// Move outsite raw data to message data.
@@ -53,7 +53,7 @@ class StreamingMessage {
   /// \param data_size raw data size
   /// \param seq_id message id
   /// \param message_type
-  StreamingMessage(std::shared_ptr<uint8_t> &&data, uint32_t data_size, uint64_t seq_id,
+  StreamingMessage(std::shared_ptr<uint8_t>&& data, uint32_t data_size, uint64_t seq_id,
                    StreamingMessageType message_type);
 
   /// Copy raw data from outside buffer.
@@ -61,16 +61,16 @@ class StreamingMessage {
   /// \param data_size raw data size
   /// \param seq_id message id
   /// \param message_type
-  StreamingMessage(const uint8_t *data, uint32_t data_size, uint64_t seq_id,
+  StreamingMessage(const uint8_t* data, uint32_t data_size, uint64_t seq_id,
                    StreamingMessageType message_type);
 
-  StreamingMessage(const StreamingMessage &);
+  StreamingMessage(const StreamingMessage&);
 
-  StreamingMessage operator=(const StreamingMessage &) = delete;
+  StreamingMessage operator=(const StreamingMessage&) = delete;
 
   virtual ~StreamingMessage() = default;
 
-  inline uint8_t *RawData() const { return message_data_.get(); }
+  inline uint8_t* RawData() const { return message_data_.get(); }
 
   inline uint32_t GetDataSize() const { return data_size_; }
   inline StreamingMessageType GetMessageType() const { return message_type_; }
@@ -78,10 +78,10 @@ class StreamingMessage {
   inline bool IsMessage() { return StreamingMessageType::Message == message_type_; }
   inline bool IsBarrier() { return StreamingMessageType::Barrier == message_type_; }
 
-  bool operator==(const StreamingMessage &) const;
+  bool operator==(const StreamingMessage&) const;
 
-  virtual void ToBytes(uint8_t *data);
-  static StreamingMessagePtr FromBytes(const uint8_t *data, bool verifer_check = true);
+  virtual void ToBytes(uint8_t* data);
+  static StreamingMessagePtr FromBytes(const uint8_t* data, bool verifer_check = true);
 
   inline virtual uint32_t ClassBytesSize() { return kMessageHeaderSize + data_size_; }
 };

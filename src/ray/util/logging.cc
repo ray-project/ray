@@ -51,9 +51,9 @@ namespace ray {
 struct StreamLogger : public google::base::Logger {
   std::ofstream out_;
 
-  std::ostream &out() { return out_.is_open() ? out_ : std::cout; }
+  std::ostream& out() { return out_.is_open() ? out_ : std::cout; }
 
-  virtual void Write(bool /* should flush */, time_t /* timestamp */, const char *message,
+  virtual void Write(bool /* should flush */, time_t /* timestamp */, const char* message,
                      int length) {
     // note: always flush otherwise it never shows up in raylet.out
     out().write(message, length) << std::flush;
@@ -83,13 +83,13 @@ class CerrLog {
     }
   }
 
-  std::ostream &Stream() {
+  std::ostream& Stream() {
     has_logged_ = true;
     return std::cerr;
   }
 
   template <class T>
-  CerrLog &operator<<(const T &t) {
+  CerrLog& operator<<(const T& t) {
     if (severity_ != RayLogLevel::DEBUG) {
       has_logged_ = true;
       std::cerr << t;
@@ -103,8 +103,8 @@ class CerrLog {
 
   void PrintBackTrace() {
 #if defined(_EXECINFO_H) || !defined(_WIN32)
-    void *buffer[255];
-    const int calls = backtrace(buffer, sizeof(buffer) / sizeof(void *));
+    void* buffer[255];
+    const int calls = backtrace(buffer, sizeof(buffer) / sizeof(void*));
     backtrace_symbols_fd(buffer, calls, 1);
 #endif
   }
@@ -146,9 +146,9 @@ static int GetMappedSeverity(RayLogLevel severity) {
 
 #endif
 
-void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_threshold,
-                         const std::string &log_dir) {
-  const char *var_value = getenv("RAY_BACKEND_LOG_LEVEL");
+void RayLog::StartRayLog(const std::string& app_name, RayLogLevel severity_threshold,
+                         const std::string& log_dir) {
+  const char* var_value = getenv("RAY_BACKEND_LOG_LEVEL");
   if (var_value != nullptr) {
     std::string data = var_value;
     std::transform(data.begin(), data.end(), data.begin(), ::tolower);
@@ -265,7 +265,7 @@ bool RayLog::IsLevelEnabled(RayLogLevel log_level) {
   return log_level >= severity_threshold_;
 }
 
-RayLog::RayLog(const char *file_name, int line_number, RayLogLevel severity)
+RayLog::RayLog(const char* file_name, int line_number, RayLogLevel severity)
     // glog does not have DEBUG level, we can handle it using is_enabled_.
     : logging_provider_(nullptr), is_enabled_(severity >= severity_threshold_) {
 #ifdef RAY_USE_GLOG
@@ -280,8 +280,8 @@ RayLog::RayLog(const char *file_name, int line_number, RayLogLevel severity)
 #endif
 }
 
-std::ostream &RayLog::Stream() {
-  auto logging_provider = reinterpret_cast<LoggingProvider *>(logging_provider_);
+std::ostream& RayLog::Stream() {
+  auto logging_provider = reinterpret_cast<LoggingProvider*>(logging_provider_);
 #ifdef RAY_USE_GLOG
   // Before calling this function, user should check IsEnabled.
   // When IsEnabled == false, logging_provider_ will be empty.
@@ -295,7 +295,7 @@ bool RayLog::IsEnabled() const { return is_enabled_; }
 
 RayLog::~RayLog() {
   if (logging_provider_ != nullptr) {
-    delete reinterpret_cast<LoggingProvider *>(logging_provider_);
+    delete reinterpret_cast<LoggingProvider*>(logging_provider_);
     logging_provider_ = nullptr;
   }
 }

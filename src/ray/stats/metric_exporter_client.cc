@@ -22,7 +22,7 @@ namespace stats {
 ///
 /// Stdout Exporter
 ///
-void StdoutExporterClient::ReportMetrics(const std::vector<MetricPoint> &points) {
+void StdoutExporterClient::ReportMetrics(const std::vector<MetricPoint>& points) {
   RAY_LOG(DEBUG) << "Metric point size : " << points.size();
 }
 
@@ -33,7 +33,7 @@ MetricExporterDecorator::MetricExporterDecorator(
     std::shared_ptr<MetricExporterClient> exporter)
     : exporter_(exporter) {}
 
-void MetricExporterDecorator::ReportMetrics(const std::vector<MetricPoint> &points) {
+void MetricExporterDecorator::ReportMetrics(const std::vector<MetricPoint>& points) {
   if (exporter_) {
     exporter_->ReportMetrics(points);
   }
@@ -44,13 +44,13 @@ void MetricExporterDecorator::ReportMetrics(const std::vector<MetricPoint> &poin
 ///
 MetricsAgentExporter::MetricsAgentExporter(std::shared_ptr<MetricExporterClient> exporter,
                                            const int port,
-                                           boost::asio::io_service &io_service,
+                                           boost::asio::io_service& io_service,
                                            const std::string address)
     : MetricExporterDecorator(exporter), client_call_manager_(io_service) {
   client_.reset(new rpc::MetricsAgentClient(address, port, client_call_manager_));
 }
 
-void MetricsAgentExporter::ReportMetrics(const std::vector<MetricPoint> &points) {
+void MetricsAgentExporter::ReportMetrics(const std::vector<MetricPoint>& points) {
   MetricExporterDecorator::ReportMetrics(points);
   rpc::ReportMetricsRequest request;
   for (auto point : points) {
@@ -59,7 +59,7 @@ void MetricsAgentExporter::ReportMetrics(const std::vector<MetricPoint> &points)
     metric_point->set_timestamp(point.timestamp);
     metric_point->set_value(point.value);
     auto mutable_tags = metric_point->mutable_tags();
-    for (auto &tag : point.tags) {
+    for (auto& tag : point.tags) {
       (*mutable_tags)[tag.first] = tag.second;
     }
     // If description and units information is requested from
@@ -75,7 +75,7 @@ void MetricsAgentExporter::ReportMetrics(const std::vector<MetricPoint> &points)
 
   // TODO(sang): Should retry metrics report if it fails.
   client_->ReportMetrics(
-      request, [this](const Status &status, const rpc::ReportMetricsReply &reply) {
+      request, [this](const Status& status, const rpc::ReportMetricsReply& reply) {
         should_update_description_ = reply.metrcs_description_required();
       });
 }

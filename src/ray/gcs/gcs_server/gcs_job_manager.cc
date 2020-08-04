@@ -19,14 +19,14 @@
 namespace ray {
 namespace gcs {
 
-void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
-                                 rpc::AddJobReply *reply,
+void GcsJobManager::HandleAddJob(const rpc::AddJobRequest& request,
+                                 rpc::AddJobReply* reply,
                                  rpc::SendReplyCallback send_reply_callback) {
   JobID job_id = JobID::FromBinary(request.data().job_id());
   RAY_LOG(INFO) << "Adding job, job id = " << job_id
                 << ", driver pid = " << request.data().driver_pid();
   auto on_done = [this, job_id, request, reply,
-                  send_reply_callback](const Status &status) {
+                  send_reply_callback](const Status& status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to add job, job id = " << job_id
                      << ", driver pid = " << request.data().driver_pid();
@@ -45,15 +45,15 @@ void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
   }
 }
 
-void GcsJobManager::HandleMarkJobFinished(const rpc::MarkJobFinishedRequest &request,
-                                          rpc::MarkJobFinishedReply *reply,
+void GcsJobManager::HandleMarkJobFinished(const rpc::MarkJobFinishedRequest& request,
+                                          rpc::MarkJobFinishedReply* reply,
                                           rpc::SendReplyCallback send_reply_callback) {
   JobID job_id = JobID::FromBinary(request.job_id());
   RAY_LOG(INFO) << "Marking job state, job id = " << job_id;
   auto job_table_data =
       gcs::CreateJobTableData(job_id, /*is_dead*/ true, std::time(nullptr), "", -1);
   auto on_done = [this, job_id, job_table_data, reply,
-                  send_reply_callback](const Status &status) {
+                  send_reply_callback](const Status& status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to mark job state, job id = " << job_id;
     } else {
@@ -71,9 +71,9 @@ void GcsJobManager::HandleMarkJobFinished(const rpc::MarkJobFinishedRequest &req
   }
 }
 
-void GcsJobManager::ClearJobInfos(const JobID &job_id) {
+void GcsJobManager::ClearJobInfos(const JobID& job_id) {
   // Notify all listeners.
-  for (auto &listener : job_finished_listeners_) {
+  for (auto& listener : job_finished_listeners_) {
     listener(std::make_shared<JobID>(job_id));
   }
 }
@@ -87,13 +87,13 @@ void GcsJobManager::AddJobFinishedListener(
   job_finished_listeners_.emplace_back(std::move(listener));
 }
 
-void GcsJobManager::HandleGetAllJobInfo(const rpc::GetAllJobInfoRequest &request,
-                                        rpc::GetAllJobInfoReply *reply,
+void GcsJobManager::HandleGetAllJobInfo(const rpc::GetAllJobInfoRequest& request,
+                                        rpc::GetAllJobInfoReply* reply,
                                         rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(INFO) << "Getting all job info.";
   auto on_done = [reply, send_reply_callback](
-                     const std::unordered_map<JobID, JobTableData> &result) {
-    for (auto &data : result) {
+                     const std::unordered_map<JobID, JobTableData>& result) {
+    for (auto& data : result) {
       reply->add_job_info_list()->CopyFrom(data.second);
     }
     RAY_LOG(INFO) << "Finished getting all job info.";

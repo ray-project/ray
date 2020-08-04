@@ -67,7 +67,7 @@ std::string GetValidLocalIp(int port, int64_t timeout_ms) {
   return address;
 }
 
-bool Ping(const std::string &ip, int port, int64_t timeout_ms) {
+bool Ping(const std::string& ip, int port, int64_t timeout_ms) {
   AsyncClient client;
   bool is_timeout;
   return client.Connect(ip, port, timeout_ms, &is_timeout);

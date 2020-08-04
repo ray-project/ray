@@ -20,7 +20,7 @@ TEST(StreamingMockTransfer, mock_produce_consume) {
   producer.CreateTransferChannel();
   uint8_t data[3] = {1, 2, 3};
   producer.ProduceItemToChannel(data, 3);
-  uint8_t *data_consumed;
+  uint8_t* data_consumed;
   uint32_t data_size_consumed;
   uint64_t data_seq_id;
   consumer.ConsumeItemFromChannel(data_seq_id, data_consumed, data_size_consumed, -1);
@@ -77,8 +77,8 @@ TEST_F(StreamingTransferTest, exchange_single_channel_test) {
   std::shared_ptr<DataBundle> msg;
   reader->GetBundle(5000, msg);
   StreamingMessageBundlePtr bundle_ptr = StreamingMessageBundle::FromBytes(msg->data);
-  auto &message_list = bundle_ptr->GetMessageList();
-  auto &message = message_list.front();
+  auto& message_list = bundle_ptr->GetMessageList();
+  auto& message = message_list.front();
   EXPECT_EQ(std::memcmp(message->RawData(), data, data_size), 0);
 }
 
@@ -94,8 +94,8 @@ TEST_F(StreamingTransferTest, exchange_multichannel_test) {
     reader->GetBundle(5000, msg);
     EXPECT_EQ(msg->from, queue_vec[i]);
     StreamingMessageBundlePtr bundle_ptr = StreamingMessageBundle::FromBytes(msg->data);
-    auto &message_list = bundle_ptr->GetMessageList();
-    auto &message = message_list.front();
+    auto& message_list = bundle_ptr->GetMessageList();
+    auto& message = message_list.front();
     EXPECT_EQ(std::memcmp(message->RawData(), data, data_size), 0);
   }
 }
@@ -120,12 +120,12 @@ TEST_F(StreamingTransferTest, exchange_consumed_test) {
     std::shared_ptr<DataBundle> msg;
     reader->GetBundle(5000, msg);
     StreamingMessageBundlePtr bundle_ptr = StreamingMessageBundle::FromBytes(msg->data);
-    auto &message_list = bundle_ptr->GetMessageList();
+    auto& message_list = bundle_ptr->GetMessageList();
     std::copy(message_list.begin(), message_list.end(),
               std::back_inserter(read_message_list));
   }
   int index = 0;
-  for (auto &message : read_message_list) {
+  for (auto& message : read_message_list) {
     func(index++);
     EXPECT_EQ(std::memcmp(message->RawData(), data.get(), data_size), 0);
   }
@@ -146,16 +146,16 @@ TEST_F(StreamingTransferTest, flow_control_test) {
       writer->WriteMessageToBufferRing(queue_vec[0], data.get(), data_size);
     }
   });
-  std::unordered_map<ObjectID, ProducerChannelInfo> *writer_offset_info = nullptr;
-  std::unordered_map<ObjectID, ConsumerChannelInfo> *reader_offset_info = nullptr;
+  std::unordered_map<ObjectID, ProducerChannelInfo>* writer_offset_info = nullptr;
+  std::unordered_map<ObjectID, ConsumerChannelInfo>* reader_offset_info = nullptr;
   writer->GetOffsetInfo(writer_offset_info);
   reader->GetOffsetInfo(reader_offset_info);
   uint32_t writer_step = writer_runtime_context->GetConfig().GetWriterConsumedStep();
   uint32_t reader_step = reader_runtime_context->GetConfig().GetReaderConsumedStep();
-  uint64_t &writer_current_seq_id = (*writer_offset_info)[queue_vec[0]].current_seq_id;
-  uint64_t &writer_current_message_id =
+  uint64_t& writer_current_seq_id = (*writer_offset_info)[queue_vec[0]].current_seq_id;
+  uint64_t& writer_current_message_id =
       (*writer_offset_info)[queue_vec[0]].current_message_id;
-  uint64_t &reader_target_seq_id =
+  uint64_t& reader_target_seq_id =
       (*reader_offset_info)[queue_vec[0]].queue_info.target_seq_id;
   while (writer_current_seq_id < writer_step) {
     STREAMING_LOG(INFO) << "Writer currrent seq id " << writer_current_seq_id
@@ -170,21 +170,21 @@ TEST_F(StreamingTransferTest, flow_control_test) {
     std::shared_ptr<DataBundle> msg;
     reader->GetBundle(1000, msg);
     StreamingMessageBundlePtr bundle_ptr = StreamingMessageBundle::FromBytes(msg->data);
-    auto &message_list = bundle_ptr->GetMessageList();
+    auto& message_list = bundle_ptr->GetMessageList();
     std::copy(message_list.begin(), message_list.end(),
               std::back_inserter(read_message_list));
     ASSERT_GE(writer_step, writer_current_seq_id - msg->seq_id);
     ASSERT_GE(msg->seq_id + reader_step, reader_target_seq_id);
   }
   int index = 0;
-  for (auto &message : read_message_list) {
+  for (auto& message : read_message_list) {
     func(index++);
     EXPECT_EQ(std::memcmp(message->RawData(), data.get(), data_size), 0);
   }
   write_thread.join();
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

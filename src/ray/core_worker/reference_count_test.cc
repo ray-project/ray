@@ -53,7 +53,7 @@ class ReferenceCountLineageEnabledTest : public ::testing::Test {
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
   // Helper function to generate a random address.
-  rpc::Address CreateRandomAddress(const std::string &addr) {
+  rpc::Address CreateRandomAddress(const std::string& addr) {
     rpc::Address address;
     address.set_ip_address(addr);
     address.set_raylet_id(ClientID::FromRandom().Binary());
@@ -61,15 +61,15 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     return address;
   }
 
-  MockWorkerClient(const std::string &addr, rpc::ClientFactoryFn client_factory = nullptr)
+  MockWorkerClient(const std::string& addr, rpc::ClientFactoryFn client_factory = nullptr)
       : address_(CreateRandomAddress(addr)),
         rc_(rpc::WorkerAddress(address_),
             /*distributed_ref_counting_enabled=*/true,
             /*lineage_pinning_enabled=*/false, client_factory) {}
 
   void WaitForRefRemoved(
-      const rpc::WaitForRefRemovedRequest &request,
-      const rpc::ClientCallback<rpc::WaitForRefRemovedReply> &callback) override {
+      const rpc::WaitForRefRemovedRequest& request,
+      const rpc::ClientCallback<rpc::WaitForRefRemovedReply>& callback) override {
     auto r = num_requests_;
     requests_[r] = {
         std::make_shared<rpc::WaitForRefRemovedReply>(),
@@ -81,7 +81,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
       requests_[r].second(status, *requests_[r].first);
     };
     auto borrower_callback = [=]() {
-      const ObjectID &object_id = ObjectID::FromBinary(request.reference().object_id());
+      const ObjectID& object_id = ObjectID::FromBinary(request.reference().object_id());
       ObjectID contained_in_id = ObjectID::FromBinary(request.contained_in_id());
       const auto owner_address = request.reference().owner_address();
       auto ref_removed_callback =
@@ -99,7 +99,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     if (borrower_callbacks_.empty()) {
       return false;
     } else {
-      for (auto &callback : borrower_callbacks_) {
+      for (auto& callback : borrower_callbacks_) {
         callback.second();
       }
       borrower_callbacks_.clear();
@@ -108,38 +108,38 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   }
 
   void FailAllWaitForRefRemovedRequests() {
-    for (const auto &request : requests_) {
+    for (const auto& request : requests_) {
       request.second.second(Status::IOError("disconnected"), *request.second.first);
     }
   }
 
   // The below methods mirror a core worker's operations, e.g., `Put` simulates
   // a ray.put().
-  void Put(const ObjectID &object_id) {
+  void Put(const ObjectID& object_id) {
     rc_.AddOwnedObject(object_id, {}, address_, "", 0, false);
     rc_.AddLocalReference(object_id, "");
   }
 
-  void PutWrappedId(const ObjectID outer_id, const ObjectID &inner_id) {
+  void PutWrappedId(const ObjectID outer_id, const ObjectID& inner_id) {
     rc_.AddOwnedObject(outer_id, {inner_id}, address_, "", 0, false);
     rc_.AddLocalReference(outer_id, "");
   }
 
-  void GetSerializedObjectId(const ObjectID outer_id, const ObjectID &inner_id,
-                             const rpc::Address &owner_address) {
+  void GetSerializedObjectId(const ObjectID outer_id, const ObjectID& inner_id,
+                             const rpc::Address& owner_address) {
     rc_.AddLocalReference(inner_id, "");
     rc_.AddBorrowedObject(inner_id, outer_id, owner_address);
   }
 
-  void ExecuteTaskWithArg(const ObjectID &arg_id, const ObjectID &inner_id,
-                          const rpc::Address &owner_address) {
+  void ExecuteTaskWithArg(const ObjectID& arg_id, const ObjectID& inner_id,
+                          const rpc::Address& owner_address) {
     // Add a sentinel reference to keep the argument ID in scope even though
     // the frontend won't have a reference.
     rc_.AddLocalReference(arg_id, "");
     GetSerializedObjectId(arg_id, inner_id, owner_address);
   }
 
-  ObjectID SubmitTaskWithArg(const ObjectID &arg_id) {
+  ObjectID SubmitTaskWithArg(const ObjectID& arg_id) {
     rc_.UpdateSubmittedTaskReferences({arg_id});
     ObjectID return_id = ObjectID::FromRandom();
     rc_.AddOwnedObject(return_id, {}, address_, "", 0, false);
@@ -149,9 +149,9 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   }
 
   ReferenceCounter::ReferenceTableProto FinishExecutingTask(
-      const ObjectID &arg_id, const ObjectID &return_id,
-      const ObjectID *return_wrapped_id = nullptr,
-      const rpc::WorkerAddress *owner_address = nullptr) {
+      const ObjectID& arg_id, const ObjectID& return_id,
+      const ObjectID* return_wrapped_id = nullptr,
+      const rpc::WorkerAddress* owner_address = nullptr) {
     if (return_wrapped_id) {
       rc_.AddNestedObjectIds(return_id, {*return_wrapped_id}, *owner_address);
     }
@@ -166,10 +166,10 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   }
 
   void HandleSubmittedTaskFinished(
-      const ObjectID &arg_id,
-      const std::unordered_map<ObjectID, std::vector<ObjectID>> &nested_return_ids = {},
-      const rpc::Address &borrower_address = empty_borrower,
-      const ReferenceCounter::ReferenceTableProto &borrower_refs = empty_refs) {
+      const ObjectID& arg_id,
+      const std::unordered_map<ObjectID, std::vector<ObjectID>>& nested_return_ids = {},
+      const rpc::Address& borrower_address = empty_borrower,
+      const ReferenceCounter::ReferenceTableProto& borrower_refs = empty_refs) {
     std::vector<ObjectID> arguments;
     if (!arg_id.IsNil()) {
       arguments.push_back(arg_id);
@@ -267,7 +267,7 @@ TEST_F(ReferenceCountTest, TestUnreconstructableObjectOutOfScope) {
   address.set_ip_address("1234");
 
   auto out_of_scope = std::make_shared<bool>(false);
-  auto callback = [&](const ObjectID &object_id) { *out_of_scope = true; };
+  auto callback = [&](const ObjectID& object_id) { *out_of_scope = true; };
 
   // The object goes out of scope once it has no more refs.
   std::vector<ObjectID> out;
@@ -389,7 +389,7 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
 TEST(DistributedReferenceCountTest, TestNoBorrow) {
   auto borrower = std::make_shared<MockWorkerClient>("1");
   auto owner = std::make_shared<MockWorkerClient>(
-      "2", [&](const rpc::Address &addr) { return borrower; });
+      "2", [&](const rpc::Address& addr) { return borrower; });
 
   // The owner creates an inner object and wraps it.
   auto inner_id = ObjectID::FromRandom();
@@ -444,7 +444,7 @@ TEST(DistributedReferenceCountTest, TestNoBorrow) {
 TEST(DistributedReferenceCountTest, TestSimpleBorrower) {
   auto borrower = std::make_shared<MockWorkerClient>("1");
   auto owner = std::make_shared<MockWorkerClient>(
-      "2", [&](const rpc::Address &addr) { return borrower; });
+      "2", [&](const rpc::Address& addr) { return borrower; });
 
   // The owner creates an inner object and wraps it.
   auto inner_id = ObjectID::FromRandom();
@@ -511,7 +511,7 @@ TEST(DistributedReferenceCountTest, TestSimpleBorrower) {
 TEST(DistributedReferenceCountTest, TestSimpleBorrowerFailure) {
   auto borrower = std::make_shared<MockWorkerClient>("1");
   auto owner = std::make_shared<MockWorkerClient>(
-      "2", [&](const rpc::Address &addr) { return borrower; });
+      "2", [&](const rpc::Address& addr) { return borrower; });
 
   // The owner creates an inner object and wraps it.
   auto inner_id = ObjectID::FromRandom();
@@ -575,7 +575,7 @@ TEST(DistributedReferenceCountTest, TestSimpleBorrowerFailure) {
 TEST(DistributedReferenceCountTest, TestSimpleBorrowerReferenceRemoved) {
   auto borrower = std::make_shared<MockWorkerClient>("1");
   auto owner = std::make_shared<MockWorkerClient>(
-      "2", [&](const rpc::Address &addr) { return borrower; });
+      "2", [&](const rpc::Address& addr) { return borrower; });
 
   // The owner creates an inner object and wraps it.
   auto inner_id = ObjectID::FromRandom();
@@ -641,7 +641,7 @@ TEST(DistributedReferenceCountTest, TestSimpleBorrowerReferenceRemoved) {
 TEST(DistributedReferenceCountTest, TestBorrowerTree) {
   auto borrower1 = std::make_shared<MockWorkerClient>("1");
   auto borrower2 = std::make_shared<MockWorkerClient>("2");
-  auto owner = std::make_shared<MockWorkerClient>("3", [&](const rpc::Address &addr) {
+  auto owner = std::make_shared<MockWorkerClient>("3", [&](const rpc::Address& addr) {
     if (addr.ip_address() == borrower1->address_.ip_address()) {
       return borrower1;
     } else {
@@ -733,7 +733,7 @@ TEST(DistributedReferenceCountTest, TestBorrowerTree) {
 TEST(DistributedReferenceCountTest, TestNestedObjectNoBorrow) {
   auto borrower = std::make_shared<MockWorkerClient>("1");
   auto owner = std::make_shared<MockWorkerClient>(
-      "2", [&](const rpc::Address &addr) { return borrower; });
+      "2", [&](const rpc::Address& addr) { return borrower; });
 
   // The owner creates an inner object and wraps it.
   auto inner_id = ObjectID::FromRandom();
@@ -798,7 +798,7 @@ TEST(DistributedReferenceCountTest, TestNestedObjectNoBorrow) {
 TEST(DistributedReferenceCountTest, TestNestedObject) {
   auto borrower = std::make_shared<MockWorkerClient>("1");
   auto owner = std::make_shared<MockWorkerClient>(
-      "2", [&](const rpc::Address &addr) { return borrower; });
+      "2", [&](const rpc::Address& addr) { return borrower; });
 
   // The owner creates an inner object and wraps it.
   auto inner_id = ObjectID::FromRandom();
@@ -880,7 +880,7 @@ TEST(DistributedReferenceCountTest, TestNestedObject) {
 TEST(DistributedReferenceCountTest, TestNestedObjectDifferentOwners) {
   auto borrower1 = std::make_shared<MockWorkerClient>("1");
   auto borrower2 = std::make_shared<MockWorkerClient>("2");
-  auto owner = std::make_shared<MockWorkerClient>("3", [&](const rpc::Address &addr) {
+  auto owner = std::make_shared<MockWorkerClient>("3", [&](const rpc::Address& addr) {
     if (addr.ip_address() == borrower1->address_.ip_address()) {
       return borrower1;
     } else {
@@ -978,7 +978,7 @@ TEST(DistributedReferenceCountTest, TestNestedObjectDifferentOwners) {
 TEST(DistributedReferenceCountTest, TestNestedObjectDifferentOwners2) {
   auto borrower1 = std::make_shared<MockWorkerClient>("1");
   auto borrower2 = std::make_shared<MockWorkerClient>("2");
-  auto owner = std::make_shared<MockWorkerClient>("3", [&](const rpc::Address &addr) {
+  auto owner = std::make_shared<MockWorkerClient>("3", [&](const rpc::Address& addr) {
     if (addr.ip_address() == borrower1->address_.ip_address()) {
       return borrower1;
     } else {
@@ -1077,7 +1077,7 @@ TEST(DistributedReferenceCountTest, TestNestedObjectDifferentOwners2) {
 // res = borrower.remote(outer_id)
 TEST(DistributedReferenceCountTest, TestBorrowerPingPong) {
   auto borrower = std::make_shared<MockWorkerClient>("1");
-  auto owner = std::make_shared<MockWorkerClient>("2", [&](const rpc::Address &addr) {
+  auto owner = std::make_shared<MockWorkerClient>("2", [&](const rpc::Address& addr) {
     RAY_CHECK(addr.ip_address() == borrower->address_.ip_address());
     return borrower;
   });
@@ -1161,7 +1161,7 @@ TEST(DistributedReferenceCountTest, TestBorrowerPingPong) {
 TEST(DistributedReferenceCountTest, TestDuplicateBorrower) {
   auto borrower = std::make_shared<MockWorkerClient>("1");
   auto owner = std::make_shared<MockWorkerClient>(
-      "2", [&](const rpc::Address &addr) { return borrower; });
+      "2", [&](const rpc::Address& addr) { return borrower; });
 
   // The owner creates an inner object and wraps it.
   auto inner_id = ObjectID::FromRandom();
@@ -1224,7 +1224,7 @@ TEST(DistributedReferenceCountTest, TestDuplicateBorrower) {
 TEST(DistributedReferenceCountTest, TestDuplicateNestedObject) {
   auto borrower1 = std::make_shared<MockWorkerClient>("1");
   auto borrower2 = std::make_shared<MockWorkerClient>("2");
-  auto owner = std::make_shared<MockWorkerClient>("3", [&](const rpc::Address &addr) {
+  auto owner = std::make_shared<MockWorkerClient>("3", [&](const rpc::Address& addr) {
     if (addr.ip_address() == borrower1->address_.ip_address()) {
       return borrower1;
     } else {
@@ -1304,7 +1304,7 @@ TEST(DistributedReferenceCountTest, TestDuplicateNestedObject) {
 // returns_id.remote()
 TEST(DistributedReferenceCountTest, TestReturnObjectIdNoBorrow) {
   auto caller = std::make_shared<MockWorkerClient>("1");
-  auto owner = std::make_shared<MockWorkerClient>("3", [&](const rpc::Address &addr) {
+  auto owner = std::make_shared<MockWorkerClient>("3", [&](const rpc::Address& addr) {
     RAY_CHECK(addr.ip_address() == caller->address_.ip_address());
     return caller;
   });
@@ -1344,7 +1344,7 @@ TEST(DistributedReferenceCountTest, TestReturnObjectIdNoBorrow) {
 // return_id = returns_id.remote()
 TEST(DistributedReferenceCountTest, TestReturnObjectIdBorrow) {
   auto caller = std::make_shared<MockWorkerClient>("1");
-  auto owner = std::make_shared<MockWorkerClient>("3", [&](const rpc::Address &addr) {
+  auto owner = std::make_shared<MockWorkerClient>("3", [&](const rpc::Address& addr) {
     RAY_CHECK(addr.ip_address() == caller->address_.ip_address());
     return caller;
   });
@@ -1389,7 +1389,7 @@ TEST(DistributedReferenceCountTest, TestReturnObjectIdBorrow) {
 TEST(DistributedReferenceCountTest, TestReturnObjectIdBorrowChain) {
   auto caller = std::make_shared<MockWorkerClient>("1");
   auto borrower = std::make_shared<MockWorkerClient>("2");
-  auto owner = std::make_shared<MockWorkerClient>("3", [&](const rpc::Address &addr) {
+  auto owner = std::make_shared<MockWorkerClient>("3", [&](const rpc::Address& addr) {
     if (addr.ip_address() == caller->address_.ip_address()) {
       return caller;
     } else {
@@ -1459,7 +1459,7 @@ TEST(DistributedReferenceCountTest, TestReturnObjectIdBorrowChain) {
 TEST(DistributedReferenceCountTest, TestReturnBorrowedId) {
   auto caller = std::make_shared<MockWorkerClient>("1");
   auto borrower = std::make_shared<MockWorkerClient>("2");
-  auto owner = std::make_shared<MockWorkerClient>("3", [&](const rpc::Address &addr) {
+  auto owner = std::make_shared<MockWorkerClient>("3", [&](const rpc::Address& addr) {
     if (addr.ip_address() == caller->address_.ip_address()) {
       return caller;
     } else {
@@ -1543,7 +1543,7 @@ TEST(DistributedReferenceCountTest, TestReturnBorrowedId) {
 TEST(DistributedReferenceCountTest, TestReturnBorrowedIdDeserialize) {
   auto caller = std::make_shared<MockWorkerClient>("1");
   auto borrower = std::make_shared<MockWorkerClient>("2");
-  auto owner = std::make_shared<MockWorkerClient>("3", [&](const rpc::Address &addr) {
+  auto owner = std::make_shared<MockWorkerClient>("3", [&](const rpc::Address& addr) {
     if (addr.ip_address() == caller->address_.ip_address()) {
       return caller;
     } else {
@@ -1624,12 +1624,12 @@ TEST(DistributedReferenceCountTest, TestReturnBorrowedIdDeserialize) {
 // inner_id = ray.get(nested_return_id)
 TEST(DistributedReferenceCountTest, TestReturnIdChain) {
   auto root = std::make_shared<MockWorkerClient>("1");
-  auto worker = std::make_shared<MockWorkerClient>("2", [&](const rpc::Address &addr) {
+  auto worker = std::make_shared<MockWorkerClient>("2", [&](const rpc::Address& addr) {
     RAY_CHECK(addr.ip_address() == root->address_.ip_address());
     return root;
   });
   auto nested_worker =
-      std::make_shared<MockWorkerClient>("3", [&](const rpc::Address &addr) {
+      std::make_shared<MockWorkerClient>("3", [&](const rpc::Address& addr) {
         RAY_CHECK(addr.ip_address() == worker->address_.ip_address());
         return worker;
       });
@@ -1684,12 +1684,12 @@ TEST(DistributedReferenceCountTest, TestReturnIdChain) {
 // inner_id = ray.get(return_id)
 TEST(DistributedReferenceCountTest, TestReturnBorrowedIdChain) {
   auto root = std::make_shared<MockWorkerClient>("1");
-  auto worker = std::make_shared<MockWorkerClient>("2", [&](const rpc::Address &addr) {
+  auto worker = std::make_shared<MockWorkerClient>("2", [&](const rpc::Address& addr) {
     RAY_CHECK(addr.ip_address() == root->address_.ip_address());
     return root;
   });
   auto nested_worker =
-      std::make_shared<MockWorkerClient>("3", [&](const rpc::Address &addr) {
+      std::make_shared<MockWorkerClient>("3", [&](const rpc::Address& addr) {
         if (addr.ip_address() == root->address_.ip_address()) {
           return root;
         } else {
@@ -1762,12 +1762,12 @@ TEST(DistributedReferenceCountTest, TestReturnBorrowedIdChain) {
 // inner_id = ray.get(return_id)
 TEST(DistributedReferenceCountTest, TestReturnBorrowedIdChainOutOfOrder) {
   auto root = std::make_shared<MockWorkerClient>("1");
-  auto worker = std::make_shared<MockWorkerClient>("2", [&](const rpc::Address &addr) {
+  auto worker = std::make_shared<MockWorkerClient>("2", [&](const rpc::Address& addr) {
     RAY_CHECK(addr.ip_address() == root->address_.ip_address());
     return root;
   });
   auto nested_worker =
-      std::make_shared<MockWorkerClient>("3", [&](const rpc::Address &addr) {
+      std::make_shared<MockWorkerClient>("3", [&](const rpc::Address& addr) {
         if (addr.ip_address() == root->address_.ip_address()) {
           return root;
         } else {
@@ -1825,7 +1825,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestUnreconstructableObjectOutOfScope) 
   address.set_ip_address("1234");
 
   auto out_of_scope = std::make_shared<bool>(false);
-  auto callback = [&](const ObjectID &object_id) { *out_of_scope = true; };
+  auto callback = [&](const ObjectID& object_id) { *out_of_scope = true; };
 
   // The object goes out of scope once it has no more refs.
   std::vector<ObjectID> out;
@@ -1864,7 +1864,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestBasicLineage) {
   ObjectID id = ObjectID::FromRandom();
 
   rc->SetReleaseLineageCallback(
-      [&](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
+      [&](const ObjectID& object_id, std::vector<ObjectID>* ids_to_release) {
         lineage_deleted.push_back(object_id);
       });
 
@@ -1898,7 +1898,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPinLineageRecursive) {
   }
 
   rc->SetReleaseLineageCallback(
-      [&](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
+      [&](const ObjectID& object_id, std::vector<ObjectID>* ids_to_release) {
         lineage_deleted.push_back(object_id);
         // Simulate releasing objects in downstream_id's lineage.
         size_t i = 0;
@@ -1926,7 +1926,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPinLineageRecursive) {
     // We should fail to set the deletion callback because the object has
     // already gone out of scope.
     ASSERT_FALSE(rc->SetDeleteCallback(
-        id, [&](const ObjectID &object_id) { ASSERT_FALSE(true); }));
+        id, [&](const ObjectID& object_id) { ASSERT_FALSE(true); }));
 
     ASSERT_EQ(out.size(), 1);
     out.clear();
@@ -1951,7 +1951,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestResubmittedTask) {
   rc->AddOwnedObject(id, {}, rpc::Address(), "", 0, true);
 
   rc->SetReleaseLineageCallback(
-      [&](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
+      [&](const ObjectID& object_id, std::vector<ObjectID>* ids_to_release) {
         lineage_deleted.push_back(object_id);
       });
 
@@ -1982,7 +1982,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestResubmittedTask) {
 
 TEST_F(ReferenceCountLineageEnabledTest, TestPlasmaLocation) {
   auto deleted = std::make_shared<std::unordered_set<ObjectID>>();
-  auto callback = [&](const ObjectID &object_id) { deleted->insert(object_id); };
+  auto callback = [&](const ObjectID& object_id) { deleted->insert(object_id); };
 
   ObjectID borrowed_id = ObjectID::FromRandom();
   rc->AddLocalReference(borrowed_id, "");
@@ -2020,7 +2020,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPlasmaLocation) {
 
 TEST_F(ReferenceCountTest, TestFree) {
   auto deleted = std::make_shared<std::unordered_set<ObjectID>>();
-  auto callback = [&](const ObjectID &object_id) { deleted->insert(object_id); };
+  auto callback = [&](const ObjectID& object_id) { deleted->insert(object_id); };
 
   ObjectID id = ObjectID::FromRandom();
   ClientID node_id = ClientID::FromRandom();
@@ -2058,7 +2058,7 @@ TEST_F(ReferenceCountTest, TestFree) {
 
 }  // namespace ray
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

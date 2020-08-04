@@ -27,25 +27,25 @@ extern "C" {
 #endif
 
 JNIEXPORT jint JNICALL Java_io_ray_runtime_actor_NativeActorHandle_nativeGetLanguage(
-    JNIEnv *env, jclass o, jbyteArray actorId) {
+    JNIEnv* env, jclass o, jbyteArray actorId) {
   auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
-  const ray::ActorHandle *native_actor_handle =
+  const ray::ActorHandle* native_actor_handle =
       ray::CoreWorkerProcess::GetCoreWorker().GetActorHandle(actor_id);
   return native_actor_handle->ActorLanguage();
 }
 
 JNIEXPORT jobject JNICALL
 Java_io_ray_runtime_actor_NativeActorHandle_nativeGetActorCreationTaskFunctionDescriptor(
-    JNIEnv *env, jclass o, jbyteArray actorId) {
+    JNIEnv* env, jclass o, jbyteArray actorId) {
   auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
-  const ray::ActorHandle *native_actor_handle =
+  const ray::ActorHandle* native_actor_handle =
       ray::CoreWorkerProcess::GetCoreWorker().GetActorHandle(actor_id);
   auto function_descriptor = native_actor_handle->ActorCreationTaskFunctionDescriptor();
   return NativeRayFunctionDescriptorToJavaStringList(env, function_descriptor);
 }
 
 JNIEXPORT jbyteArray JNICALL Java_io_ray_runtime_actor_NativeActorHandle_nativeSerialize(
-    JNIEnv *env, jclass o, jbyteArray actorId) {
+    JNIEnv* env, jclass o, jbyteArray actorId) {
   auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
   std::string output;
   ObjectID actor_handle_id;
@@ -53,16 +53,16 @@ JNIEXPORT jbyteArray JNICALL Java_io_ray_runtime_actor_NativeActorHandle_nativeS
       actor_id, &output, &actor_handle_id);
   jbyteArray bytes = env->NewByteArray(output.size());
   env->SetByteArrayRegion(bytes, 0, output.size(),
-                          reinterpret_cast<const jbyte *>(output.c_str()));
+                          reinterpret_cast<const jbyte*>(output.c_str()));
   return bytes;
 }
 
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_actor_NativeActorHandle_nativeDeserialize(JNIEnv *env, jclass o,
+Java_io_ray_runtime_actor_NativeActorHandle_nativeDeserialize(JNIEnv* env, jclass o,
                                                               jbyteArray data) {
   auto buffer = JavaByteArrayToNativeBuffer(env, data);
   RAY_CHECK(buffer->Size() > 0);
-  auto binary = std::string(reinterpret_cast<char *>(buffer->Data()), buffer->Size());
+  auto binary = std::string(reinterpret_cast<char*>(buffer->Data()), buffer->Size());
   auto actor_id =
       ray::CoreWorkerProcess::GetCoreWorker().DeserializeAndRegisterActorHandle(
           binary, /*outer_object_id=*/ObjectID::Nil());

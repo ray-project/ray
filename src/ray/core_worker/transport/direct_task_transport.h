@@ -31,7 +31,7 @@
 
 namespace ray {
 
-typedef std::function<std::shared_ptr<WorkerLeaseInterface>(const std::string &ip_address,
+typedef std::function<std::shared_ptr<WorkerLeaseInterface>(const std::string& ip_address,
                                                             int port)>
     LeaseClientFactoryFn;
 
@@ -82,7 +82,7 @@ class CoreWorkerDirectTaskSubmitter {
   /// \param[in] force_kill Whether to kill the worker executing the task.
   Status CancelTask(TaskSpecification task_spec, bool force_kill);
 
-  Status CancelRemoteTask(const ObjectID &object_id, const rpc::Address &worker_addr,
+  Status CancelRemoteTask(const ObjectID& object_id, const rpc::Address& worker_addr,
                           bool force_kill);
 
  private:
@@ -95,43 +95,43 @@ class CoreWorkerDirectTaskSubmitter {
   /// \param[in] was_error Whether the task failed to be submitted.
   /// \param[in] assigned_resources Resource ids previously assigned to the worker.
   void OnWorkerIdle(
-      const rpc::WorkerAddress &addr, const SchedulingKey &task_queue_key, bool was_error,
-      const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources)
+      const rpc::WorkerAddress& addr, const SchedulingKey& task_queue_key, bool was_error,
+      const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>& assigned_resources)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Get an existing lease client or connect a new one. If a raylet_address is
   /// provided, this connects to a remote raylet. Else, this connects to the
   /// local raylet.
   std::shared_ptr<WorkerLeaseInterface> GetOrConnectLeaseClient(
-      const rpc::Address *raylet_address) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      const rpc::Address* raylet_address) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Request a new worker from the raylet if no such requests are currently in
   /// flight and there are tasks queued. If a raylet address is provided, then
   /// the worker should be requested from the raylet at that address. Else, the
   /// worker should be requested from the local raylet.
-  void RequestNewWorkerIfNeeded(const SchedulingKey &task_queue_key,
-                                const rpc::Address *raylet_address = nullptr)
+  void RequestNewWorkerIfNeeded(const SchedulingKey& task_queue_key,
+                                const rpc::Address* raylet_address = nullptr)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Cancel a pending worker lease and retry until the cancellation succeeds
   /// (i.e., the raylet drops the request). This should be called when there
   /// are no more tasks queued with the given scheduling key and there is an
   /// in-flight lease request for that key.
-  void CancelWorkerLeaseIfNeeded(const SchedulingKey &scheduling_key)
+  void CancelWorkerLeaseIfNeeded(const SchedulingKey& scheduling_key)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Set up client state for newly granted worker lease.
-  void AddWorkerLeaseClient(const rpc::WorkerAddress &addr,
+  void AddWorkerLeaseClient(const rpc::WorkerAddress& addr,
                             std::shared_ptr<WorkerLeaseInterface> lease_client)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Push a task to a specific worker.
-  void PushNormalTask(const rpc::WorkerAddress &addr,
-                      rpc::CoreWorkerClientInterface &client,
-                      const SchedulingKey &task_queue_key,
-                      const TaskSpecification &task_spec,
-                      const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>
-                          &assigned_resources);
+  void PushNormalTask(const rpc::WorkerAddress& addr,
+                      rpc::CoreWorkerClientInterface& client,
+                      const SchedulingKey& task_queue_key,
+                      const TaskSpecification& task_spec,
+                      const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>&
+                          assigned_resources);
 
   /// Address of our RPC server.
   rpc::Address rpc_address_;

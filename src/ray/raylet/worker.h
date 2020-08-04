@@ -54,61 +54,61 @@ class WorkerInterface {
   virtual int Port() const = 0;
   virtual int AssignedPort() const = 0;
   virtual void SetAssignedPort(int port) = 0;
-  virtual void AssignTaskId(const TaskID &task_id) = 0;
-  virtual const TaskID &GetAssignedTaskId() const = 0;
-  virtual bool AddBlockedTaskId(const TaskID &task_id) = 0;
-  virtual bool RemoveBlockedTaskId(const TaskID &task_id) = 0;
-  virtual const std::unordered_set<TaskID> &GetBlockedTaskIds() const = 0;
-  virtual void AssignJobId(const JobID &job_id) = 0;
-  virtual const JobID &GetAssignedJobId() const = 0;
-  virtual void AssignActorId(const ActorID &actor_id) = 0;
-  virtual const ActorID &GetActorId() const = 0;
+  virtual void AssignTaskId(const TaskID& task_id) = 0;
+  virtual const TaskID& GetAssignedTaskId() const = 0;
+  virtual bool AddBlockedTaskId(const TaskID& task_id) = 0;
+  virtual bool RemoveBlockedTaskId(const TaskID& task_id) = 0;
+  virtual const std::unordered_set<TaskID>& GetBlockedTaskIds() const = 0;
+  virtual void AssignJobId(const JobID& job_id) = 0;
+  virtual const JobID& GetAssignedJobId() const = 0;
+  virtual void AssignActorId(const ActorID& actor_id) = 0;
+  virtual const ActorID& GetActorId() const = 0;
   virtual void MarkDetachedActor() = 0;
   virtual bool IsDetachedActor() const = 0;
   virtual const std::shared_ptr<ClientConnection> Connection() const = 0;
-  virtual void SetOwnerAddress(const rpc::Address &address) = 0;
-  virtual const rpc::Address &GetOwnerAddress() const = 0;
+  virtual void SetOwnerAddress(const rpc::Address& address) = 0;
+  virtual const rpc::Address& GetOwnerAddress() const = 0;
 
-  virtual const ResourceIdSet &GetLifetimeResourceIds() const = 0;
-  virtual void SetLifetimeResourceIds(ResourceIdSet &resource_ids) = 0;
+  virtual const ResourceIdSet& GetLifetimeResourceIds() const = 0;
+  virtual void SetLifetimeResourceIds(ResourceIdSet& resource_ids) = 0;
   virtual void ResetLifetimeResourceIds() = 0;
 
-  virtual const ResourceIdSet &GetTaskResourceIds() const = 0;
-  virtual void SetTaskResourceIds(ResourceIdSet &resource_ids) = 0;
+  virtual const ResourceIdSet& GetTaskResourceIds() const = 0;
+  virtual void SetTaskResourceIds(ResourceIdSet& resource_ids) = 0;
   virtual void ResetTaskResourceIds() = 0;
   virtual ResourceIdSet ReleaseTaskCpuResources() = 0;
-  virtual void AcquireTaskCpuResources(const ResourceIdSet &cpu_resources) = 0;
+  virtual void AcquireTaskCpuResources(const ResourceIdSet& cpu_resources) = 0;
 
-  virtual Status AssignTask(const Task &task, const ResourceIdSet &resource_id_set) = 0;
+  virtual Status AssignTask(const Task& task, const ResourceIdSet& resource_id_set) = 0;
   virtual void DirectActorCallArgWaitComplete(int64_t tag) = 0;
 
   // Setter, geter, and clear methods  for allocated_instances_.
   virtual void SetAllocatedInstances(
-      std::shared_ptr<TaskResourceInstances> &allocated_instances) = 0;
+      std::shared_ptr<TaskResourceInstances>& allocated_instances) = 0;
 
   virtual std::shared_ptr<TaskResourceInstances> GetAllocatedInstances() = 0;
 
   virtual void ClearAllocatedInstances() = 0;
 
   virtual void SetLifetimeAllocatedInstances(
-      std::shared_ptr<TaskResourceInstances> &allocated_instances) = 0;
+      std::shared_ptr<TaskResourceInstances>& allocated_instances) = 0;
   virtual std::shared_ptr<TaskResourceInstances> GetLifetimeAllocatedInstances() = 0;
 
   virtual void ClearLifetimeAllocatedInstances() = 0;
 
-  virtual void SetBorrowedCPUInstances(std::vector<double> &cpu_instances) = 0;
+  virtual void SetBorrowedCPUInstances(std::vector<double>& cpu_instances) = 0;
 
-  virtual std::vector<double> &GetBorrowedCPUInstances() = 0;
+  virtual std::vector<double>& GetBorrowedCPUInstances() = 0;
 
   virtual void ClearBorrowedCPUInstances() = 0;
 
-  virtual Task &GetAssignedTask() = 0;
+  virtual Task& GetAssignedTask() = 0;
 
-  virtual void SetAssignedTask(Task &assigned_task) = 0;
+  virtual void SetAssignedTask(Task& assigned_task) = 0;
 
   virtual bool IsRegistered() = 0;
 
-  virtual rpc::CoreWorkerClient *rpc_client() = 0;
+  virtual rpc::CoreWorkerClient* rpc_client() = 0;
 };
 
 /// Worker class encapsulates the implementation details of a worker. A worker
@@ -118,9 +118,9 @@ class Worker : public WorkerInterface {
  public:
   /// A constructor that initializes a worker object.
   /// NOTE: You MUST manually set the worker process.
-  Worker(const WorkerID &worker_id, const Language &language,
-         const std::string &ip_address, std::shared_ptr<ClientConnection> connection,
-         rpc::ClientCallManager &client_call_manager);
+  Worker(const WorkerID& worker_id, const Language& language,
+         const std::string& ip_address, std::shared_ptr<ClientConnection> connection,
+         rpc::ClientCallManager& client_call_manager);
   /// A destructor responsible for freeing all worker state.
   ~Worker() {}
   void MarkDead();
@@ -140,37 +140,37 @@ class Worker : public WorkerInterface {
   int Port() const;
   int AssignedPort() const;
   void SetAssignedPort(int port);
-  void AssignTaskId(const TaskID &task_id);
-  const TaskID &GetAssignedTaskId() const;
-  bool AddBlockedTaskId(const TaskID &task_id);
-  bool RemoveBlockedTaskId(const TaskID &task_id);
-  const std::unordered_set<TaskID> &GetBlockedTaskIds() const;
-  void AssignJobId(const JobID &job_id);
-  const JobID &GetAssignedJobId() const;
-  void AssignActorId(const ActorID &actor_id);
-  const ActorID &GetActorId() const;
+  void AssignTaskId(const TaskID& task_id);
+  const TaskID& GetAssignedTaskId() const;
+  bool AddBlockedTaskId(const TaskID& task_id);
+  bool RemoveBlockedTaskId(const TaskID& task_id);
+  const std::unordered_set<TaskID>& GetBlockedTaskIds() const;
+  void AssignJobId(const JobID& job_id);
+  const JobID& GetAssignedJobId() const;
+  void AssignActorId(const ActorID& actor_id);
+  const ActorID& GetActorId() const;
   void MarkDetachedActor();
   bool IsDetachedActor() const;
   const std::shared_ptr<ClientConnection> Connection() const;
-  void SetOwnerAddress(const rpc::Address &address);
-  const rpc::Address &GetOwnerAddress() const;
+  void SetOwnerAddress(const rpc::Address& address);
+  const rpc::Address& GetOwnerAddress() const;
 
-  const ResourceIdSet &GetLifetimeResourceIds() const;
-  void SetLifetimeResourceIds(ResourceIdSet &resource_ids);
+  const ResourceIdSet& GetLifetimeResourceIds() const;
+  void SetLifetimeResourceIds(ResourceIdSet& resource_ids);
   void ResetLifetimeResourceIds();
 
-  const ResourceIdSet &GetTaskResourceIds() const;
-  void SetTaskResourceIds(ResourceIdSet &resource_ids);
+  const ResourceIdSet& GetTaskResourceIds() const;
+  void SetTaskResourceIds(ResourceIdSet& resource_ids);
   void ResetTaskResourceIds();
   ResourceIdSet ReleaseTaskCpuResources();
-  void AcquireTaskCpuResources(const ResourceIdSet &cpu_resources);
+  void AcquireTaskCpuResources(const ResourceIdSet& cpu_resources);
 
-  Status AssignTask(const Task &task, const ResourceIdSet &resource_id_set);
+  Status AssignTask(const Task& task, const ResourceIdSet& resource_id_set);
   void DirectActorCallArgWaitComplete(int64_t tag);
 
   // Setter, geter, and clear methods  for allocated_instances_.
   void SetAllocatedInstances(
-      std::shared_ptr<TaskResourceInstances> &allocated_instances) {
+      std::shared_ptr<TaskResourceInstances>& allocated_instances) {
     allocated_instances_ = allocated_instances;
   };
 
@@ -181,7 +181,7 @@ class Worker : public WorkerInterface {
   void ClearAllocatedInstances() { allocated_instances_ = nullptr; };
 
   void SetLifetimeAllocatedInstances(
-      std::shared_ptr<TaskResourceInstances> &allocated_instances) {
+      std::shared_ptr<TaskResourceInstances>& allocated_instances) {
     lifetime_allocated_instances_ = allocated_instances;
   };
 
@@ -191,21 +191,21 @@ class Worker : public WorkerInterface {
 
   void ClearLifetimeAllocatedInstances() { lifetime_allocated_instances_ = nullptr; };
 
-  void SetBorrowedCPUInstances(std::vector<double> &cpu_instances) {
+  void SetBorrowedCPUInstances(std::vector<double>& cpu_instances) {
     borrowed_cpu_instances_ = cpu_instances;
   };
 
-  std::vector<double> &GetBorrowedCPUInstances() { return borrowed_cpu_instances_; };
+  std::vector<double>& GetBorrowedCPUInstances() { return borrowed_cpu_instances_; };
 
   void ClearBorrowedCPUInstances() { return borrowed_cpu_instances_.clear(); };
 
-  Task &GetAssignedTask() { return assigned_task_; };
+  Task& GetAssignedTask() { return assigned_task_; };
 
-  void SetAssignedTask(Task &assigned_task) { assigned_task_ = assigned_task; };
+  void SetAssignedTask(Task& assigned_task) { assigned_task_ = assigned_task; };
 
   bool IsRegistered() { return rpc_client_ != nullptr; }
 
-  rpc::CoreWorkerClient *rpc_client() {
+  rpc::CoreWorkerClient* rpc_client() {
     RAY_CHECK(IsRegistered());
     return rpc_client_.get();
   }
@@ -248,7 +248,7 @@ class Worker : public WorkerInterface {
   std::unordered_set<TaskID> blocked_task_ids_;
   /// The `ClientCallManager` object that is shared by `CoreWorkerClient` from all
   /// workers.
-  rpc::ClientCallManager &client_call_manager_;
+  rpc::ClientCallManager& client_call_manager_;
   /// The rpc client to send tasks to this worker.
   std::unique_ptr<rpc::CoreWorkerClient> rpc_client_;
   /// Whether the worker is detached. This is applies when the worker is actor.

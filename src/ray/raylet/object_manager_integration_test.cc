@@ -97,7 +97,7 @@ class TestObjectManagerBase : public ::testing::Test {
     ASSERT_EQ(unlink((cmd_str + "/raylet_2").c_str()), 0);
   }
 
-  ObjectID WriteDataToClient(plasma::PlasmaClient &client, int64_t data_size) {
+  ObjectID WriteDataToClient(plasma::PlasmaClient& client, int64_t data_size) {
     ObjectID object_id = ObjectID::FromRandom();
     RAY_LOG(DEBUG) << "ObjectID Created: " << object_id;
     uint8_t metadata[] = {5};
@@ -135,7 +135,7 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
     node_id_1 = gcs_client_1->Nodes().GetSelfId();
     node_id_2 = gcs_client_2->Nodes().GetSelfId();
     gcs_client_1->Nodes().AsyncSubscribeToNodeChange(
-        [this](const ClientID &node_id, const rpc::GcsNodeInfo &data) {
+        [this](const ClientID& node_id, const rpc::GcsNodeInfo& data) {
           if (node_id == node_id_1 || node_id == node_id_2) {
             num_connected_clients += 1;
           }
@@ -155,7 +155,7 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
   void AddTransferTestHandlers() {
     ray::Status status = ray::Status::OK();
     status = server1->object_manager_.SubscribeObjAdded(
-        [this](const object_manager::protocol::ObjectInfoT &object_info) {
+        [this](const object_manager::protocol::ObjectInfoT& object_info) {
           v1.push_back(ObjectID::FromBinary(object_info.object_id));
           if (v1.size() == num_expected_objects && v1.size() == v2.size()) {
             TestPushComplete();
@@ -163,7 +163,7 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
         });
     RAY_CHECK_OK(status);
     status = server2->object_manager_.SubscribeObjAdded(
-        [this](const object_manager::protocol::ObjectInfoT &object_info) {
+        [this](const object_manager::protocol::ObjectInfoT& object_info) {
           v2.push_back(ObjectID::FromBinary(object_info.object_id));
           if (v2.size() == num_expected_objects && v1.size() == v2.size()) {
             TestPushComplete();
@@ -227,7 +227,7 @@ TEST_F(TestObjectManagerIntegration, StartTestObjectManagerPush) {
 
 }  // namespace ray
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   ray::raylet::test_executable = std::string(argv[0]);
   ray::TEST_STORE_EXEC_PATH = std::string(argv[1]);

@@ -28,7 +28,7 @@ TaskSpecification CreateTaskHelper(uint64_t num_returns,
   TaskSpecification task;
   task.GetMutableMessage().set_task_id(TaskID::ForFakeTask().Binary());
   task.GetMutableMessage().set_num_returns(num_returns);
-  for (const ObjectID &dep : dependencies) {
+  for (const ObjectID& dep : dependencies) {
     task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
         dep.Binary());
   }
@@ -36,7 +36,7 @@ TaskSpecification CreateTaskHelper(uint64_t num_returns,
 }
 
 class MockActorManager : public ActorReporterInterface {
-  void PublishTerminatedActor(const TaskSpecification &actor_creation_task) override {
+  void PublishTerminatedActor(const TaskSpecification& actor_creation_task) override {
     num_terminations += 1;
   }
 
@@ -53,12 +53,12 @@ class TaskManagerTest : public ::testing::Test {
         actor_reporter_(std::shared_ptr<ActorReporterInterface>(new MockActorManager())),
         manager_(
             store_, reference_counter_, actor_reporter_,
-            [this](TaskSpecification &spec, bool delay) {
+            [this](TaskSpecification& spec, bool delay) {
               num_retries_++;
               return Status::OK();
             },
-            [this](const ClientID &node_id) { return all_nodes_alive_; },
-            [this](const ObjectID &object_id) {
+            [this](const ClientID& node_id) { return all_nodes_alive_; },
+            [this](const ObjectID& object_id) {
               objects_to_recover_.push_back(object_id);
             }) {}
 
@@ -530,7 +530,7 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
 
 }  // namespace ray
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

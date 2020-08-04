@@ -4,21 +4,21 @@
 
 namespace ray {
 
-const TaskExecutionSpecification &Task::GetTaskExecutionSpec() const {
+const TaskExecutionSpecification& Task::GetTaskExecutionSpec() const {
   return task_execution_spec_;
 }
 
-const TaskSpecification &Task::GetTaskSpecification() const { return task_spec_; }
+const TaskSpecification& Task::GetTaskSpecification() const { return task_spec_; }
 
 void Task::IncrementNumForwards() { task_execution_spec_.IncrementNumForwards(); }
 
-const std::vector<rpc::ObjectReference> &Task::GetDependencies() const {
+const std::vector<rpc::ObjectReference>& Task::GetDependencies() const {
   return dependencies_;
 }
 
 void Task::ComputeDependencies() { dependencies_ = task_spec_.GetDependencies(); }
 
-void Task::CopyTaskExecutionSpec(const Task &task) {
+void Task::CopyTaskExecutionSpec(const Task& task) {
   task_execution_spec_ = task.task_execution_spec_;
 }
 

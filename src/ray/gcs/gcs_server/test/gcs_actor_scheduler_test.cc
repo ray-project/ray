@@ -43,9 +43,9 @@ class GcsActorSchedulerTest : public ::testing::Test {
           success_actors_.emplace_back(std::move(actor));
         },
         /*lease_client_factory=*/
-        [this](const rpc::Address &address) { return raylet_client_; },
+        [this](const rpc::Address& address) { return raylet_client_; },
         /*client_factory=*/
-        [this](const rpc::Address &address) { return worker_client_; });
+        [this](const rpc::Address& address) { return worker_client_; });
   }
 
  protected:
@@ -505,7 +505,7 @@ TEST_F(GcsActorSchedulerTest, TestReleaseUnusedWorkers) {
 
 }  // namespace ray
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

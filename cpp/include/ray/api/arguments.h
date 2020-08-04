@@ -10,33 +10,33 @@ namespace api {
 
 class Arguments {
  public:
-  static void WrapArgs(msgpack::packer<msgpack::sbuffer> &packer);
+  static void WrapArgs(msgpack::packer<msgpack::sbuffer>& packer);
 
   template <typename Arg1Type>
-  static void WrapArgs(msgpack::packer<msgpack::sbuffer> &packer, Arg1Type &arg1);
+  static void WrapArgs(msgpack::packer<msgpack::sbuffer>& packer, Arg1Type& arg1);
 
   template <typename Arg1Type, typename... OtherArgTypes>
-  static void WrapArgs(msgpack::packer<msgpack::sbuffer> &packer, Arg1Type &arg1,
-                       OtherArgTypes &... args);
+  static void WrapArgs(msgpack::packer<msgpack::sbuffer>& packer, Arg1Type& arg1,
+                       OtherArgTypes&... args);
 
-  static void UnwrapArgs(msgpack::unpacker &unpacker);
+  static void UnwrapArgs(msgpack::unpacker& unpacker);
 
   template <typename Arg1Type>
-  static void UnwrapArgs(msgpack::unpacker &unpacker, std::shared_ptr<Arg1Type> *arg1);
+  static void UnwrapArgs(msgpack::unpacker& unpacker, std::shared_ptr<Arg1Type>* arg1);
 
   template <typename Arg1Type, typename... OtherArgTypes>
-  static void UnwrapArgs(msgpack::unpacker &unpacker, std::shared_ptr<Arg1Type> *arg1,
-                         std::shared_ptr<OtherArgTypes> *... args);
+  static void UnwrapArgs(msgpack::unpacker& unpacker, std::shared_ptr<Arg1Type>* arg1,
+                         std::shared_ptr<OtherArgTypes>*... args);
 };
 
 // --------- inline implementation ------------
 #include <typeinfo>
 
-inline void Arguments::WrapArgs(msgpack::packer<msgpack::sbuffer> &packer) {}
+inline void Arguments::WrapArgs(msgpack::packer<msgpack::sbuffer>& packer) {}
 
 template <typename Arg1Type>
-inline void Arguments::WrapArgs(msgpack::packer<msgpack::sbuffer> &packer,
-                                Arg1Type &arg1) {
+inline void Arguments::WrapArgs(msgpack::packer<msgpack::sbuffer>& packer,
+                                Arg1Type& arg1) {
   /// Notice ObjectRefClassPrefix should be modified by ObjectRef class name or namespace.
   static const std::string ObjectRefClassPrefix = "N3ray3api9ObjectRef";
   std::string type_name = typeid(arg1).name();
@@ -51,17 +51,17 @@ inline void Arguments::WrapArgs(msgpack::packer<msgpack::sbuffer> &packer,
 }
 
 template <typename Arg1Type, typename... OtherArgTypes>
-inline void Arguments::WrapArgs(msgpack::packer<msgpack::sbuffer> &packer, Arg1Type &arg1,
-                                OtherArgTypes &... args) {
+inline void Arguments::WrapArgs(msgpack::packer<msgpack::sbuffer>& packer, Arg1Type& arg1,
+                                OtherArgTypes&... args) {
   WrapArgs(packer, arg1);
   WrapArgs(packer, args...);
 }
 
-inline void Arguments::UnwrapArgs(msgpack::unpacker &unpacker) {}
+inline void Arguments::UnwrapArgs(msgpack::unpacker& unpacker) {}
 
 template <typename Arg1Type>
-inline void Arguments::UnwrapArgs(msgpack::unpacker &unpacker,
-                                  std::shared_ptr<Arg1Type> *arg1) {
+inline void Arguments::UnwrapArgs(msgpack::unpacker& unpacker,
+                                  std::shared_ptr<Arg1Type>* arg1) {
   bool is_object_ref;
   Serializer::Deserialize(unpacker, &is_object_ref);
   if (is_object_ref) {
@@ -74,9 +74,9 @@ inline void Arguments::UnwrapArgs(msgpack::unpacker &unpacker,
 }
 
 template <typename Arg1Type, typename... OtherArgTypes>
-inline void Arguments::UnwrapArgs(msgpack::unpacker &unpacker,
-                                  std::shared_ptr<Arg1Type> *arg1,
-                                  std::shared_ptr<OtherArgTypes> *... args) {
+inline void Arguments::UnwrapArgs(msgpack::unpacker& unpacker,
+                                  std::shared_ptr<Arg1Type>* arg1,
+                                  std::shared_ptr<OtherArgTypes>*... args) {
   UnwrapArgs(unpacker, arg1);
   UnwrapArgs(unpacker, args...);
 }

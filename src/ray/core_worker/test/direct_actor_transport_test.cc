@@ -57,10 +57,10 @@ rpc::PushTaskRequest CreatePushTaskRequestHelper(ActorID actor_id, int64_t count
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
-  const rpc::Address &Addr() const override { return addr; }
+  const rpc::Address& Addr() const override { return addr; }
 
   void PushActorTask(std::unique_ptr<rpc::PushTaskRequest> request, bool skip_queue,
-                     const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {
+                     const rpc::ClientCallback<rpc::PushTaskReply>& callback) override {
     received_seq_nos.push_back(request->sequence_number());
     callbacks.push_back(callback);
   }
@@ -84,15 +84,15 @@ class MockTaskFinisher : public TaskFinisherInterface {
  public:
   MockTaskFinisher() {}
 
-  MOCK_METHOD3(CompletePendingTask, void(const TaskID &, const rpc::PushTaskReply &,
-                                         const rpc::Address &addr));
+  MOCK_METHOD3(CompletePendingTask,
+               void(const TaskID&, const rpc::PushTaskReply&, const rpc::Address& addr));
   MOCK_METHOD3(PendingTaskFailed,
-               bool(const TaskID &task_id, rpc::ErrorType error_type, Status *status));
+               bool(const TaskID& task_id, rpc::ErrorType error_type, Status* status));
 
   MOCK_METHOD2(OnTaskDependenciesInlined,
-               void(const std::vector<ObjectID> &, const std::vector<ObjectID> &));
+               void(const std::vector<ObjectID>&, const std::vector<ObjectID>&));
 
-  MOCK_METHOD1(MarkTaskCanceled, bool(const TaskID &task_id));
+  MOCK_METHOD1(MarkTaskCanceled, bool(const TaskID& task_id));
 };
 
 class DirectActorSubmitterTest : public ::testing::Test {
@@ -102,7 +102,7 @@ class DirectActorSubmitterTest : public ::testing::Test {
         store_(std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore())),
         task_finisher_(std::make_shared<MockTaskFinisher>()),
         submitter_(
-            [&](const rpc::Address &addr) {
+            [&](const rpc::Address& addr) {
               num_clients_connected_++;
               return worker_client_;
             },
@@ -402,7 +402,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
 
 class MockDependencyWaiter : public DependencyWaiter {
  public:
-  MOCK_METHOD2(Wait, void(const std::vector<rpc::ObjectReference> &dependencies,
+  MOCK_METHOD2(Wait, void(const std::vector<rpc::ObjectReference>& dependencies,
                           std::function<void()> on_dependencies_available));
 
   virtual ~MockDependencyWaiter() {}
@@ -410,7 +410,7 @@ class MockDependencyWaiter : public DependencyWaiter {
 
 class MockWorkerContext : public WorkerContext {
  public:
-  MockWorkerContext(WorkerType worker_type, const JobID &job_id)
+  MockWorkerContext(WorkerType worker_type, const JobID& job_id)
       : WorkerContext(worker_type, WorkerID::FromRandom(), job_id) {
     current_actor_is_direct_call_ = true;
   }
@@ -428,14 +428,14 @@ class DirectActorReceiverTest : public ::testing::Test {
     receiver_ = std::unique_ptr<CoreWorkerDirectTaskReceiver>(
         new CoreWorkerDirectTaskReceiver(worker_context_, main_io_service_, execute_task,
                                          [] { return Status::OK(); }));
-    receiver_->Init([&](const rpc::Address &addr) { return worker_client_; },
+    receiver_->Init([&](const rpc::Address& addr) { return worker_client_; },
                     rpc_address_, dependency_waiter_);
   }
 
-  Status MockExecuteTask(const TaskSpecification &task_spec,
-                         const std::shared_ptr<ResourceMappingType> &resource_ids,
-                         std::vector<std::shared_ptr<RayObject>> *return_objects,
-                         ReferenceCounter::ReferenceTableProto *borrowed_refs) {
+  Status MockExecuteTask(const TaskSpecification& task_spec,
+                         const std::shared_ptr<ResourceMappingType>& resource_ids,
+                         std::vector<std::shared_ptr<RayObject>>* return_objects,
+                         ReferenceCounter::ReferenceTableProto* borrowed_refs) {
     return Status::OK();
   }
 
@@ -544,7 +544,7 @@ TEST_F(DirectActorReceiverTest, TestNewTaskFromDifferentWorker) {
 
 }  // namespace ray
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
 
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,

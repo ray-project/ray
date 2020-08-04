@@ -60,9 +60,9 @@ TEST_F(GcsNodeManagerTest, TestListener) {
   ASSERT_EQ(node_count, added_nodes.size());
 
   // Test GetAllAliveNodes.
-  auto &alive_nodes = node_manager.GetAllAliveNodes();
+  auto& alive_nodes = node_manager.GetAllAliveNodes();
   ASSERT_EQ(added_nodes.size(), alive_nodes.size());
-  for (const auto &node : added_nodes) {
+  for (const auto& node : added_nodes) {
     ASSERT_EQ(1, alive_nodes.count(ClientID::FromBinary(node->node_id())));
   }
 
@@ -84,7 +84,7 @@ TEST_F(GcsNodeManagerTest, TestListener) {
 
 }  // namespace ray
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

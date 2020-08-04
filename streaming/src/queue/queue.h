@@ -104,8 +104,8 @@ class WriterQueue : public Queue {
   /// \param peer_actor_id, the actor id of downstream worker
   /// \param size, max data size in bytes
   /// \param transport, transport
-  WriterQueue(const ObjectID &queue_id, const ActorID &actor_id,
-              const ActorID &peer_actor_id, uint64_t size,
+  WriterQueue(const ObjectID& queue_id, const ActorID& actor_id,
+              const ActorID& peer_actor_id, uint64_t size,
               std::shared_ptr<Transport> transport)
       : Queue(queue_id, size, transport),
         actor_id_(actor_id),
@@ -119,7 +119,7 @@ class WriterQueue : public Queue {
 
   /// Push a continuous buffer into queue.
   /// NOTE: the buffer should be copied.
-  Status Push(uint64_t seq_id, uint8_t *data, uint32_t data_size, uint64_t timestamp,
+  Status Push(uint64_t seq_id, uint8_t* data, uint32_t data_size, uint64_t timestamp,
               bool raw = false);
 
   /// Callback function, will be called when downstream queue notifies
@@ -171,8 +171,8 @@ class ReaderQueue : public Queue {
   /// \param peer_actor_id, the actor id of downstream worker
   /// \param transport, transport
   /// NOTE: we do not restrict queue size of ReaderQueue
-  ReaderQueue(const ObjectID &queue_id, const ActorID &actor_id,
-              const ActorID &peer_actor_id, std::shared_ptr<Transport> transport)
+  ReaderQueue(const ObjectID& queue_id, const ActorID& actor_id,
+              const ActorID& peer_actor_id, std::shared_ptr<Transport> transport)
       : Queue(queue_id, std::numeric_limits<uint64_t>::max(), transport),
         actor_id_(actor_id),
         peer_actor_id_(peer_actor_id),
@@ -185,7 +185,7 @@ class ReaderQueue : public Queue {
   /// then notify upstream queue.
   void OnConsumed(uint64_t seq_id);
 
-  void OnData(QueueItem &item);
+  void OnData(QueueItem& item);
 
   uint64_t GetMinConsumedSeqID() { return min_consumed_id_; }
 
@@ -195,7 +195,7 @@ class ReaderQueue : public Queue {
 
  private:
   void Notify(uint64_t seq_id);
-  void CreateNotifyTask(uint64_t seq_id, std::vector<TaskArg> &task_args);
+  void CreateNotifyTask(uint64_t seq_id, std::vector<TaskArg>& task_args);
 
  private:
   ActorID actor_id_;

@@ -34,7 +34,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
         std::make_shared<GcsServerMocker::MockedGcsPlacementGroupScheduler>(
             io_service_, gcs_table_storage_, *gcs_node_manager_,
             /*lease_client_fplacement_groupy=*/
-            [this](const rpc::Address &address) { return raylet_client_; });
+            [this](const rpc::Address& address) { return raylet_client_; });
   }
 
  protected:
@@ -172,7 +172,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestSchedulePlacementGroupReturnResource)
 
 }  // namespace ray
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

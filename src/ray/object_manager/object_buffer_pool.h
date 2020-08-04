@@ -35,12 +35,12 @@ class ObjectBufferPool {
   /// This is the structure returned whenever an object chunk is
   /// accessed via Get and Create.
   struct ChunkInfo {
-    ChunkInfo(uint64_t chunk_index, uint8_t *data, uint64_t buffer_length)
+    ChunkInfo(uint64_t chunk_index, uint8_t* data, uint64_t buffer_length)
         : chunk_index(chunk_index), data(data), buffer_length(buffer_length){};
     /// A pointer to the start position of this object chunk.
     uint64_t chunk_index;
     /// A pointer to the start position of this object chunk.
-    uint8_t *data;
+    uint8_t* data;
     /// The size of this object chunk.
     uint64_t buffer_length;
   };
@@ -50,7 +50,7 @@ class ObjectBufferPool {
   /// \param store_socket_name The socket name of the store to which plasma clients
   /// connect.
   /// \param chunk_size The chunk size into which objects are to be split.
-  ObjectBufferPool(const std::string &store_socket_name, const uint64_t chunk_size);
+  ObjectBufferPool(const std::string& store_socket_name, const uint64_t chunk_size);
 
   ~ObjectBufferPool();
 
@@ -80,8 +80,8 @@ class ObjectBufferPool {
   /// \param chunk_index The index of the chunk.
   /// \return A pair consisting of a ChunkInfo and status of invoking this method.
   /// An IOError status is returned if the Get call on the plasma store fails.
-  std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> GetChunk(
-      const ObjectID &object_id, uint64_t data_size, uint64_t metadata_size,
+  std::pair<const ObjectBufferPool::ChunkInfo&, ray::Status> GetChunk(
+      const ObjectID& object_id, uint64_t data_size, uint64_t metadata_size,
       uint64_t chunk_index);
 
   /// When a chunk is done being used as part of a get, this method releases the chunk.
@@ -89,7 +89,7 @@ class ObjectBufferPool {
   ///
   /// \param object_id The object_id of the buffer to release.
   /// \param chunk_index The index of the chunk.
-  void ReleaseGetChunk(const ObjectID &object_id, uint64_t chunk_index);
+  void ReleaseGetChunk(const ObjectID& object_id, uint64_t chunk_index);
 
   /// Returns a chunk of an empty object at the given chunk_index. The object chunk
   /// serves as the buffer that is to be written to by a connection receiving an object
@@ -107,8 +107,8 @@ class ObjectBufferPool {
   /// An IOError status is returned if object creation on the store client fails,
   /// or if create is invoked consecutively on the same chunk
   /// (with no intermediate AbortCreateChunk).
-  std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> CreateChunk(
-      const ObjectID &object_id, uint64_t data_size, uint64_t metadata_size,
+  std::pair<const ObjectBufferPool::ChunkInfo&, ray::Status> CreateChunk(
+      const ObjectID& object_id, uint64_t data_size, uint64_t metadata_size,
       uint64_t chunk_index);
 
   /// Abort the create operation associated with a chunk at chunk_index.
@@ -118,7 +118,7 @@ class ObjectBufferPool {
   ///
   /// \param object_id The ObjectID.
   /// \param chunk_index The index of the chunk.
-  void AbortCreateChunk(const ObjectID &object_id, uint64_t chunk_index);
+  void AbortCreateChunk(const ObjectID& object_id, uint64_t chunk_index);
 
   /// Seal the object associated with a create operation. This is invoked whenever
   /// a chunk is successfully written to.
@@ -128,13 +128,13 @@ class ObjectBufferPool {
   ///
   /// \param object_id The ObjectID.
   /// \param chunk_index The index of the chunk.
-  void SealChunk(const ObjectID &object_id, uint64_t chunk_index);
+  void SealChunk(const ObjectID& object_id, uint64_t chunk_index);
 
   /// Free a list of objects from object store.
   ///
   /// \param object_ids the The list of ObjectIDs to be deleted.
   /// \return Void.
-  void FreeObjects(const std::vector<ObjectID> &object_ids);
+  void FreeObjects(const std::vector<ObjectID>& object_ids);
 
   /// Returns debug string for class.
   ///
@@ -144,14 +144,14 @@ class ObjectBufferPool {
  private:
   /// Abort the create operation associated with an object. This destroys the buffer
   /// state, including create operations in progress for all chunks of the object.
-  void AbortCreate(const ObjectID &object_id);
+  void AbortCreate(const ObjectID& object_id);
 
   /// Abort the get operation associated with an object.
-  void AbortGet(const ObjectID &object_id);
+  void AbortGet(const ObjectID& object_id);
 
   /// Splits an object into ceil(data_size/chunk_size) chunks, which will
   /// either be read or written to in parallel.
-  std::vector<ChunkInfo> BuildChunks(const ObjectID &object_id, uint8_t *data,
+  std::vector<ChunkInfo> BuildChunks(const ObjectID& object_id, uint8_t* data,
                                      uint64_t data_size);
 
   /// Holds the state of a get buffer.

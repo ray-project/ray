@@ -14,7 +14,7 @@
 
 #include "ray/raylet/scheduling/scheduling_ids.h"
 
-int64_t StringIdMap::Get(const std::string &string_id) {
+int64_t StringIdMap::Get(const std::string& string_id) {
   auto it = string_to_int_.find(string_id);
   if (it == string_to_int_.end()) {
     return -1;
@@ -34,7 +34,7 @@ std::string StringIdMap::Get(uint64_t id) {
   return id_string;
 };
 
-int64_t StringIdMap::Insert(const std::string &string_id, uint8_t max_id) {
+int64_t StringIdMap::Insert(const std::string& string_id, uint8_t max_id) {
   auto sit = string_to_int_.find(string_id);
   if (sit == string_to_int_.end()) {
     int64_t id = hasher_(string_id);
@@ -60,7 +60,7 @@ int64_t StringIdMap::Insert(const std::string &string_id, uint8_t max_id) {
   }
 };
 
-void StringIdMap::Remove(const std::string &string_id) {
+void StringIdMap::Remove(const std::string& string_id) {
   auto sit = string_to_int_.find(string_id);
   if (sit != string_to_int_.end()) {
     int_to_string_.erase(string_to_int_[string_id]);

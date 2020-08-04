@@ -39,14 +39,14 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   /// call to Connect() to the client table. Will fix this in next pr.
   ///
   /// \param options Options of this client, e.g. server address, password and so on.
-  RedisGcsClient(const GcsClientOptions &options);
+  RedisGcsClient(const GcsClientOptions& options);
 
   /// This constructor is only used for testing.
   /// Connect() must be called(and return ok) before you call any other methods.
   ///
   /// \param options Options of this client, e.g. server address, password and so on.
   /// \param command_type The commands issued type.
-  RedisGcsClient(const GcsClientOptions &options, CommandType command_type);
+  RedisGcsClient(const GcsClientOptions& options, CommandType command_type);
 
   /// Connect to GCS Service. Non-thread safe.
   /// Call this function before calling other functions.
@@ -55,7 +55,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   /// Must be single-threaded io_service (get more information from RedisAsioClient).
   ///
   /// \return Status
-  Status Connect(boost::asio::io_service &io_service) override;
+  Status Connect(boost::asio::io_service& io_service) override;
 
   /// Disconnect with GCS Service. Non-thread safe.
   void Disconnect() override;
@@ -67,10 +67,10 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
 
   // We also need something to export generic code to run on workers from the
   // driver (to set the PYTHONPATH)
-  using GetExportCallback = std::function<void(const std::string &data)>;
-  Status AddExport(const std::string &job_id, std::string &export_data);
-  Status GetExport(const std::string &job_id, int64_t export_index,
-                   const GetExportCallback &done_callback);
+  using GetExportCallback = std::function<void(const std::string& data)>;
+  Status AddExport(const std::string& job_id, std::string& export_data);
+  Status GetExport(const std::string& job_id, int64_t export_index,
+                   const GetExportCallback& done_callback);
 
   std::vector<std::shared_ptr<RedisContext>> shard_contexts() {
     return redis_client_->GetShardContexts();
@@ -84,30 +84,30 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
 
   /// The following xxx_table methods implement the Accessor interfaces.
   /// Implements the Actors() interface.
-  LogBasedActorTable &log_based_actor_table();
-  ActorTable &actor_table();
-  ActorCheckpointTable &actor_checkpoint_table();
-  ActorCheckpointIdTable &actor_checkpoint_id_table();
+  LogBasedActorTable& log_based_actor_table();
+  ActorTable& actor_table();
+  ActorCheckpointTable& actor_checkpoint_table();
+  ActorCheckpointIdTable& actor_checkpoint_id_table();
   /// Implements the Jobs() interface.
-  JobTable &job_table();
+  JobTable& job_table();
   /// Implements the Objects() interface.
-  ObjectTable &object_table();
+  ObjectTable& object_table();
   /// Implements the Nodes() interface.
-  ClientTable &client_table();
-  HeartbeatTable &heartbeat_table();
-  HeartbeatBatchTable &heartbeat_batch_table();
-  DynamicResourceTable &resource_table();
+  ClientTable& client_table();
+  HeartbeatTable& heartbeat_table();
+  HeartbeatBatchTable& heartbeat_batch_table();
+  DynamicResourceTable& resource_table();
   /// Implements the Tasks() interface.
-  virtual raylet::TaskTable &raylet_task_table();
-  TaskLeaseTable &task_lease_table();
-  TaskReconstructionLog &task_reconstruction_log();
+  virtual raylet::TaskTable& raylet_task_table();
+  TaskLeaseTable& task_lease_table();
+  TaskReconstructionLog& task_reconstruction_log();
   /// Implements the Errors() interface.
   // TODO: Some API for getting the error on the driver
-  ErrorTable &error_table();
+  ErrorTable& error_table();
   /// Implements the Stats() interface.
-  ProfileTable &profile_table();
+  ProfileTable& profile_table();
   /// Implements the Workers() interface.
-  WorkerTable &worker_table();
+  WorkerTable& worker_table();
 
  private:
   // GCS command type. If CommandType::kChain, chain-replicated versions of the tables

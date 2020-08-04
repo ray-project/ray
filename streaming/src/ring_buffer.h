@@ -37,9 +37,9 @@ class StreamingTransientBuffer {
 
   inline size_t GetMaxTransientBufferSize() const { return max_transient_buffer_size_; }
 
-  inline const uint8_t *GetTransientBuffer() const { return transient_buffer_.get(); }
+  inline const uint8_t* GetTransientBuffer() const { return transient_buffer_.get(); }
 
-  inline uint8_t *GetTransientBufferMutable() const { return transient_buffer_.get(); }
+  inline uint8_t* GetTransientBufferMutable() const { return transient_buffer_.get(); }
 
   ///  To reuse transient buffer, we will realloc buffer memory if size of needed
   ///  message bundle raw data is greater-than original buffer size.
@@ -77,9 +77,9 @@ class StreamingTransientBuffer {
 template <class T>
 class AbstractRingBuffer {
  public:
-  virtual void Push(const T &) = 0;
+  virtual void Push(const T&) = 0;
   virtual void Pop() = 0;
-  virtual T &Front() = 0;
+  virtual T& Front() = 0;
   virtual bool Empty() const = 0;
   virtual bool Full() const = 0;
   virtual size_t Size() const = 0;
@@ -91,7 +91,7 @@ class RingBufferImplThreadSafe : public AbstractRingBuffer<T> {
  public:
   RingBufferImplThreadSafe(size_t size) : buffer_(size) {}
   virtual ~RingBufferImplThreadSafe() = default;
-  void Push(const T &t) {
+  void Push(const T& t) {
     boost::unique_lock<boost::shared_mutex> lock(ring_buffer_mutex_);
     buffer_.push_back(t);
   }
@@ -99,7 +99,7 @@ class RingBufferImplThreadSafe : public AbstractRingBuffer<T> {
     boost::unique_lock<boost::shared_mutex> lock(ring_buffer_mutex_);
     buffer_.pop_front();
   }
-  T &Front() {
+  T& Front() {
     boost::shared_lock<boost::shared_mutex> lock(ring_buffer_mutex_);
     return buffer_.front();
   }
@@ -135,7 +135,7 @@ class RingBufferImplLockFree : public AbstractRingBuffer<T> {
       : buffer_(size, nullptr), capacity_(size), read_index_(0), write_index_(0) {}
   virtual ~RingBufferImplLockFree() = default;
 
-  void Push(const T &t) {
+  void Push(const T& t) {
     STREAMING_CHECK(!Full());
     buffer_[write_index_] = t;
     write_index_ = IncreaseIndex(write_index_);
@@ -146,7 +146,7 @@ class RingBufferImplLockFree : public AbstractRingBuffer<T> {
     read_index_ = IncreaseIndex(read_index_);
   }
 
-  T &Front() {
+  T& Front() {
     STREAMING_CHECK(!Empty());
     return buffer_[read_index_];
   }
@@ -181,9 +181,9 @@ class StreamingRingBuffer {
   explicit StreamingRingBuffer(size_t buf_size, StreamingRingBufferType buffer_type =
                                                     StreamingRingBufferType::SPSC_LOCK);
 
-  bool Push(const StreamingMessagePtr &msg);
+  bool Push(const StreamingMessagePtr& msg);
 
-  StreamingMessagePtr &Front();
+  StreamingMessagePtr& Front();
 
   void Pop();
 
@@ -201,9 +201,9 @@ class StreamingRingBuffer {
 
   size_t GetMaxTransientBufferSize() const;
 
-  const uint8_t *GetTransientBuffer() const;
+  const uint8_t* GetTransientBuffer() const;
 
-  uint8_t *GetTransientBufferMutable() const;
+  uint8_t* GetTransientBufferMutable() const;
 
   void ReallocTransientBuffer(uint32_t size);
 

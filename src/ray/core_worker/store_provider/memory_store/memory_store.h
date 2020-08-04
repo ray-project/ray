@@ -32,7 +32,7 @@ class CoreWorkerMemoryStore {
   ///            and the `remove_after_get` flag for Get() will be ignored.
   /// \param[in] raylet_client If not null, used to notify tasks blocked / unblocked.
   CoreWorkerMemoryStore(
-      std::function<void(const RayObject &, const ObjectID &)> store_in_plasma = nullptr,
+      std::function<void(const RayObject&, const ObjectID&)> store_in_plasma = nullptr,
       std::shared_ptr<ReferenceCounter> counter = nullptr,
       std::shared_ptr<raylet::RayletClient> raylet_client = nullptr,
       std::function<Status()> check_signals = nullptr);
@@ -44,7 +44,7 @@ class CoreWorkerMemoryStore {
   /// \param[in] object_id Object ID specified by user.
   /// \return Whether the object was put into the memory store. If false, then
   /// this is because the object was promoted to and stored in plasma instead.
-  bool Put(const RayObject &object, const ObjectID &object_id);
+  bool Put(const RayObject& object, const ObjectID& object_id);
 
   /// Get a list of objects from the object store.
   ///
@@ -56,20 +56,20 @@ class CoreWorkerMemoryStore {
   /// finishes. This has no effect if ref counting is enabled.
   /// \param[out] results Result list of objects data.
   /// \return Status.
-  Status Get(const std::vector<ObjectID> &object_ids, int num_objects, int64_t timeout_ms,
-             const WorkerContext &ctx, bool remove_after_get,
-             std::vector<std::shared_ptr<RayObject>> *results);
+  Status Get(const std::vector<ObjectID>& object_ids, int num_objects, int64_t timeout_ms,
+             const WorkerContext& ctx, bool remove_after_get,
+             std::vector<std::shared_ptr<RayObject>>* results);
 
   /// Convenience wrapper around Get() that stores results in a given result map.
-  Status Get(const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,
-             const WorkerContext &ctx,
-             absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
-             bool *got_exception);
+  Status Get(const absl::flat_hash_set<ObjectID>& object_ids, int64_t timeout_ms,
+             const WorkerContext& ctx,
+             absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>>* results,
+             bool* got_exception);
 
   /// Convenience wrapper around Get() that stores ready objects in a given result set.
-  Status Wait(const absl::flat_hash_set<ObjectID> &object_ids, int num_objects,
-              int64_t timeout_ms, const WorkerContext &ctx,
-              absl::flat_hash_set<ObjectID> *ready);
+  Status Wait(const absl::flat_hash_set<ObjectID>& object_ids, int num_objects,
+              int64_t timeout_ms, const WorkerContext& ctx,
+              absl::flat_hash_set<ObjectID>* ready);
 
   /// Asynchronously get an object from the object store. The object will not be removed
   /// from storage after GetAsync (TODO(ekl): integrate this with object GC).
@@ -77,7 +77,7 @@ class CoreWorkerMemoryStore {
   /// \param[in] object_id The object id to get.
   /// \param[in] callback The callback to run with the reference to the retrieved
   ///            object value once available.
-  void GetAsync(const ObjectID &object_id,
+  void GetAsync(const ObjectID& object_id,
                 std::function<void(std::shared_ptr<RayObject>)> callback);
 
   /// Get a single object if available. If the object is not local yet, or if the object
@@ -86,7 +86,7 @@ class CoreWorkerMemoryStore {
   ///
   /// \param[in] object_id The object id to get.
   /// \return pointer to the local object, or nullptr if promoted to plasma.
-  std::shared_ptr<RayObject> GetOrPromoteToPlasma(const ObjectID &object_id);
+  std::shared_ptr<RayObject> GetOrPromoteToPlasma(const ObjectID& object_id);
 
   /// Delete a list of objects from the object store.
   /// NOTE(swang): Objects that contain IsInPlasmaError will not be
@@ -99,14 +99,14 @@ class CoreWorkerMemoryStore {
   /// include the IDs of the plasma objects to delete, based on the
   /// in-memory objects that contained InPlasmaError.
   /// \return Void.
-  void Delete(const absl::flat_hash_set<ObjectID> &object_ids,
-              absl::flat_hash_set<ObjectID> *plasma_ids_to_delete);
+  void Delete(const absl::flat_hash_set<ObjectID>& object_ids,
+              absl::flat_hash_set<ObjectID>* plasma_ids_to_delete);
 
   /// Delete a list of objects from the object store.
   ///
   /// \param[in] object_ids IDs of the objects to delete.
   /// \return Void.
-  void Delete(const std::vector<ObjectID> &object_ids);
+  void Delete(const std::vector<ObjectID>& object_ids);
 
   /// Check whether this store contains the object.
   ///
@@ -114,7 +114,7 @@ class CoreWorkerMemoryStore {
   /// \param[out] in_plasma Set to true if the object was spilled to plasma.
   /// Will only be true if the store contains the object.
   /// \return Whether the store has the object.
-  bool Contains(const ObjectID &object_id, bool *in_plasma);
+  bool Contains(const ObjectID& object_id, bool* in_plasma);
 
   /// Returns the number of objects in this store.
   ///
@@ -138,13 +138,13 @@ class CoreWorkerMemoryStore {
   /// See the public version of `Get` for meaning of the other arguments.
   /// \param[in] abort_if_any_object_is_exception Whether we should abort if any object
   /// is an exception.
-  Status GetImpl(const std::vector<ObjectID> &object_ids, int num_objects,
-                 int64_t timeout_ms, const WorkerContext &ctx, bool remove_after_get,
-                 std::vector<std::shared_ptr<RayObject>> *results,
+  Status GetImpl(const std::vector<ObjectID>& object_ids, int num_objects,
+                 int64_t timeout_ms, const WorkerContext& ctx, bool remove_after_get,
+                 std::vector<std::shared_ptr<RayObject>>* results,
                  bool abort_if_any_object_is_exception);
 
   /// Optional callback for putting objects into the plasma store.
-  std::function<void(const RayObject &, const ObjectID &)> store_in_plasma_;
+  std::function<void(const RayObject&, const ObjectID&)> store_in_plasma_;
 
   /// If enabled, holds a reference to local worker ref counter. TODO(ekl) make this
   /// mandatory once Java is supported.

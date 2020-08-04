@@ -23,7 +23,7 @@
 /// \param c_str A string iterator that is dereferenceable. (i.e.: c_str < string::end())
 /// \param format The pattern. It must not produce any output. (e.g., use %*d, not %d.)
 /// \return The scanned prefix of the string, if any.
-static std::string ScanToken(std::string::const_iterator &c_str, std::string format) {
+static std::string ScanToken(std::string::const_iterator& c_str, std::string format) {
   int i = 0;
   std::string result;
   format += "%n";
@@ -35,7 +35,7 @@ static std::string ScanToken(std::string::const_iterator &c_str, std::string for
 }
 
 std::string EndpointToUrl(
-    const boost::asio::generic::basic_endpoint<boost::asio::generic::stream_protocol> &ep,
+    const boost::asio::generic::basic_endpoint<boost::asio::generic::stream_protocol>& ep,
     bool include_scheme) {
   std::string result, scheme;
   switch (ep.protocol().family()) {
@@ -43,9 +43,9 @@ std::string EndpointToUrl(
     scheme = "tcp://";
     boost::asio::ip::tcp::endpoint e(boost::asio::ip::tcp::v4(), 0);
     RAY_CHECK(e.size() == ep.size());
-    const sockaddr *src = ep.data();
-    sockaddr *dst = e.data();
-    *reinterpret_cast<sockaddr_in *>(dst) = *reinterpret_cast<const sockaddr_in *>(src);
+    const sockaddr* src = ep.data();
+    sockaddr* dst = e.data();
+    *reinterpret_cast<sockaddr_in*>(dst) = *reinterpret_cast<const sockaddr_in*>(src);
     std::ostringstream ss;
     ss << e;
     result = ss.str();
@@ -55,9 +55,9 @@ std::string EndpointToUrl(
     scheme = "tcp://";
     boost::asio::ip::tcp::endpoint e(boost::asio::ip::tcp::v6(), 0);
     RAY_CHECK(e.size() == ep.size());
-    const sockaddr *src = ep.data();
-    sockaddr *dst = e.data();
-    *reinterpret_cast<sockaddr_in6 *>(dst) = *reinterpret_cast<const sockaddr_in6 *>(src);
+    const sockaddr* src = ep.data();
+    sockaddr* dst = e.data();
+    *reinterpret_cast<sockaddr_in6*>(dst) = *reinterpret_cast<const sockaddr_in6*>(src);
     std::ostringstream ss;
     ss << e;
     result = ss.str();
@@ -66,7 +66,7 @@ std::string EndpointToUrl(
 #ifdef BOOST_ASIO_HAS_LOCAL_SOCKETS
   case AF_UNIX:
     scheme = "unix://";
-    result.append(reinterpret_cast<const struct sockaddr_un *>(ep.data())->sun_path,
+    result.append(reinterpret_cast<const struct sockaddr_un*>(ep.data())->sun_path,
                   ep.size() - offsetof(sockaddr_un, sun_path));
     break;
 #endif
@@ -81,7 +81,7 @@ std::string EndpointToUrl(
 }
 
 boost::asio::generic::basic_endpoint<boost::asio::generic::stream_protocol>
-ParseUrlEndpoint(const std::string &endpoint, int default_port) {
+ParseUrlEndpoint(const std::string& endpoint, int default_port) {
   // Syntax reference: https://en.wikipedia.org/wiki/URL#Syntax
   // Note that we're a bit more flexible, to allow parsing "127.0.0.1" as a URL.
   boost::asio::generic::stream_protocol::endpoint result;
@@ -130,7 +130,7 @@ ParseUrlEndpoint(const std::string &endpoint, int default_port) {
 /// To compare against the platform's behavior, try a command like the following:
 /// $ python3 -c "import sys; [print(a) for a in sys.argv[1:]]" \x\\y "\x\\y" '\x\\y'
 /// Python analog: shlex.split(s)
-static std::vector<std::string> ParsePosixCommandLine(const std::string &s) {
+static std::vector<std::string> ParsePosixCommandLine(const std::string& s) {
   RAY_CHECK(s.find('\0') >= s.size()) << "Invalid null character in command line";
   const char space = ' ', tab = '\t', backslash = '\\', squote = '\'', dquote = '\"';
   char surroundings = space;
@@ -185,7 +185,7 @@ static std::vector<std::string> ParsePosixCommandLine(const std::string &s) {
 /// To compare against the platform's behavior, try a command like the following:
 /// > python3 -c "import sys; [print(a) for a in sys.argv[1:]]" \x\\y "\x\\y"
 /// Python analog: None (would be shlex.split(s, posix=False), but it doesn't unquote)
-static std::vector<std::string> ParseWindowsCommandLine(const std::string &s) {
+static std::vector<std::string> ParseWindowsCommandLine(const std::string& s) {
   RAY_CHECK(s.find('\0') >= s.size()) << "Invalid null character in command line";
   std::vector<std::string> result;
   std::string arg, c_str = s + '\0';
@@ -210,7 +210,7 @@ static std::vector<std::string> ParseWindowsCommandLine(const std::string &s) {
   return result;
 }
 
-std::vector<std::string> ParseCommandLine(const std::string &s, CommandLineSyntax kind) {
+std::vector<std::string> ParseCommandLine(const std::string& s, CommandLineSyntax kind) {
   if (kind == CommandLineSyntax::System) {
 #ifdef _WIN32
     kind = CommandLineSyntax::Windows;
@@ -234,7 +234,7 @@ std::vector<std::string> ParseCommandLine(const std::string &s, CommandLineSynta
 }
 
 /// Python analog: shlex.join(args)
-std::string CreatePosixCommandLine(const std::vector<std::string> &args) {
+std::string CreatePosixCommandLine(const std::vector<std::string>& args) {
   std::string result;
   const std::string safe_chars("%*[-A-Za-z0-9%_=+]");
   const char single_quote = '\'';
@@ -267,7 +267,7 @@ std::string CreatePosixCommandLine(const std::vector<std::string> &args) {
 }
 
 // Python analog: subprocess.list2cmdline(args)
-static std::string CreateWindowsCommandLine(const std::vector<std::string> &args) {
+static std::string CreateWindowsCommandLine(const std::vector<std::string>& args) {
   std::string result;
   const std::string safe_chars("%*[-A-Za-z0-9%_=+]");
   const char double_quote = '\"';
@@ -299,7 +299,7 @@ static std::string CreateWindowsCommandLine(const std::vector<std::string> &args
   return result;
 }
 
-std::string CreateCommandLine(const std::vector<std::string> &args,
+std::string CreateCommandLine(const std::vector<std::string>& args,
                               CommandLineSyntax kind) {
   if (kind == CommandLineSyntax::System) {
 #ifdef _WIN32

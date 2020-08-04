@@ -19,7 +19,7 @@
 
 namespace ray {
 
-ObjectBufferPool::ObjectBufferPool(const std::string &store_socket_name,
+ObjectBufferPool::ObjectBufferPool(const std::string& store_socket_name,
                                    uint64_t chunk_size)
     : default_chunk_size_(chunk_size) {
   store_socket_name_ = store_socket_name;
@@ -29,11 +29,11 @@ ObjectBufferPool::ObjectBufferPool(const std::string &store_socket_name,
 ObjectBufferPool::~ObjectBufferPool() {
   // Abort everything in progress.
   auto get_buf_state_copy = get_buffer_state_;
-  for (const auto &pair : get_buf_state_copy) {
+  for (const auto& pair : get_buf_state_copy) {
     AbortGet(pair.first);
   }
   auto create_buf_state_copy = create_buffer_state_;
-  for (const auto &pair : create_buf_state_copy) {
+  for (const auto& pair : create_buf_state_copy) {
     AbortCreate(pair.first);
   }
   RAY_CHECK(get_buffer_state_.empty());
@@ -51,8 +51,8 @@ uint64_t ObjectBufferPool::GetBufferLength(uint64_t chunk_index, uint64_t data_s
              : default_chunk_size_;
 }
 
-std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::GetChunk(
-    const ObjectID &object_id, uint64_t data_size, uint64_t metadata_size,
+std::pair<const ObjectBufferPool::ChunkInfo&, ray::Status> ObjectBufferPool::GetChunk(
+    const ObjectID& object_id, uint64_t data_size, uint64_t metadata_size,
     uint64_t chunk_index) {
   std::lock_guard<std::mutex> lock(pool_mutex_);
   if (get_buffer_state_.count(object_id) == 0) {
@@ -60,7 +60,7 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Ge
     RAY_CHECK_OK(store_client_.Get(&object_id, 1, 0, &object_buffer));
     if (object_buffer.data == nullptr) {
       RAY_LOG(ERROR) << "Failed to get object";
-      return std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status>(
+      return std::pair<const ObjectBufferPool::ChunkInfo&, ray::Status>(
           errored_chunk_,
           ray::Status::IOError("Unable to obtain object chunk, object not local."));
     }
@@ -68,7 +68,7 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Ge
               object_buffer.data->data() + object_buffer.data->size());
     RAY_CHECK(data_size == static_cast<uint64_t>(object_buffer.data->size() +
                                                  object_buffer.metadata->size()));
-    auto *data = const_cast<uint8_t *>(object_buffer.data->data());
+    auto* data = const_cast<uint8_t*>(object_buffer.data->data());
     uint64_t num_chunks = GetNumChunks(data_size);
     get_buffer_state_.emplace(
         std::piecewise_construct, std::forward_as_tuple(object_id),
@@ -76,13 +76,13 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Ge
     RAY_CHECK(get_buffer_state_[object_id].chunk_info.size() == num_chunks);
   }
   get_buffer_state_[object_id].references++;
-  return std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status>(
+  return std::pair<const ObjectBufferPool::ChunkInfo&, ray::Status>(
       get_buffer_state_[object_id].chunk_info[chunk_index], ray::Status::OK());
 }
 
-void ObjectBufferPool::ReleaseGetChunk(const ObjectID &object_id, uint64_t chunk_index) {
+void ObjectBufferPool::ReleaseGetChunk(const ObjectID& object_id, uint64_t chunk_index) {
   std::lock_guard<std::mutex> lock(pool_mutex_);
-  GetBufferState &buffer_state = get_buffer_state_[object_id];
+  GetBufferState& buffer_state = get_buffer_state_[object_id];
   buffer_state.references--;
   if (buffer_state.references == 0) {
     RAY_CHECK_OK(store_client_.Release(object_id));
@@ -90,14 +90,14 @@ void ObjectBufferPool::ReleaseGetChunk(const ObjectID &object_id, uint64_t chunk
   }
 }
 
-void ObjectBufferPool::AbortGet(const ObjectID &object_id) {
+void ObjectBufferPool::AbortGet(const ObjectID& object_id) {
   std::lock_guard<std::mutex> lock(pool_mutex_);
   RAY_CHECK_OK(store_client_.Release(object_id));
   get_buffer_state_.erase(object_id);
 }
 
-std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::CreateChunk(
-    const ObjectID &object_id, uint64_t data_size, uint64_t metadata_size,
+std::pair<const ObjectBufferPool::ChunkInfo&, ray::Status> ObjectBufferPool::CreateChunk(
+    const ObjectID& object_id, uint64_t data_size, uint64_t metadata_size,
     uint64_t chunk_index) {
   std::lock_guard<std::mutex> lock(pool_mutex_);
   if (create_buffer_state_.count(object_id) == 0) {
@@ -110,11 +110,11 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Cr
       // Create failed. The object may already exist locally. If something else went
       // wrong, another chunk will succeed in creating the buffer, and this
       // chunk will eventually make it here via pull requests.
-      return std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status>(
+      return std::pair<const ObjectBufferPool::ChunkInfo&, ray::Status>(
           errored_chunk_, ray::Status::IOError(s.message()));
     }
     // Read object into store.
-    uint8_t *mutable_data = data->mutable_data();
+    uint8_t* mutable_data = data->mutable_data();
     uint64_t num_chunks = GetNumChunks(data_size);
     create_buffer_state_.emplace(
         std::piecewise_construct, std::forward_as_tuple(object_id),
@@ -127,16 +127,16 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Cr
   if (create_buffer_state_[object_id].chunk_state[chunk_index] !=
       CreateChunkState::AVAILABLE) {
     // There can be only one reference to this chunk at any given time.
-    return std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status>(
+    return std::pair<const ObjectBufferPool::ChunkInfo&, ray::Status>(
         errored_chunk_,
         ray::Status::IOError("Chunk already referenced by another thread."));
   }
   create_buffer_state_[object_id].chunk_state[chunk_index] = CreateChunkState::REFERENCED;
-  return std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status>(
+  return std::pair<const ObjectBufferPool::ChunkInfo&, ray::Status>(
       create_buffer_state_[object_id].chunk_info[chunk_index], ray::Status::OK());
 }
 
-void ObjectBufferPool::AbortCreateChunk(const ObjectID &object_id,
+void ObjectBufferPool::AbortCreateChunk(const ObjectID& object_id,
                                         const uint64_t chunk_index) {
   std::lock_guard<std::mutex> lock(pool_mutex_);
   RAY_CHECK(create_buffer_state_[object_id].chunk_state[chunk_index] ==
@@ -157,7 +157,7 @@ void ObjectBufferPool::AbortCreateChunk(const ObjectID &object_id,
   }
 }
 
-void ObjectBufferPool::SealChunk(const ObjectID &object_id, const uint64_t chunk_index) {
+void ObjectBufferPool::SealChunk(const ObjectID& object_id, const uint64_t chunk_index) {
   std::lock_guard<std::mutex> lock(pool_mutex_);
   RAY_CHECK(create_buffer_state_[object_id].chunk_state[chunk_index] ==
             CreateChunkState::REFERENCED);
@@ -172,14 +172,14 @@ void ObjectBufferPool::SealChunk(const ObjectID &object_id, const uint64_t chunk
   }
 }
 
-void ObjectBufferPool::AbortCreate(const ObjectID &object_id) {
+void ObjectBufferPool::AbortCreate(const ObjectID& object_id) {
   RAY_CHECK_OK(store_client_.Release(object_id));
   RAY_CHECK_OK(store_client_.Abort(object_id));
   create_buffer_state_.erase(object_id);
 }
 
 std::vector<ObjectBufferPool::ChunkInfo> ObjectBufferPool::BuildChunks(
-    const ObjectID &object_id, uint8_t *data, uint64_t data_size) {
+    const ObjectID& object_id, uint8_t* data, uint64_t data_size) {
   uint64_t space_remaining = data_size;
   std::vector<ChunkInfo> chunks;
   int64_t position = 0;
@@ -196,7 +196,7 @@ std::vector<ObjectBufferPool::ChunkInfo> ObjectBufferPool::BuildChunks(
   return chunks;
 }
 
-void ObjectBufferPool::FreeObjects(const std::vector<ObjectID> &object_ids) {
+void ObjectBufferPool::FreeObjects(const std::vector<ObjectID>& object_ids) {
   std::lock_guard<std::mutex> lock(pool_mutex_);
   RAY_CHECK_OK(store_client_.Delete(object_ids));
 }

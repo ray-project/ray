@@ -28,31 +28,31 @@ namespace ray {
 
 class TaskFinisherInterface {
  public:
-  virtual void CompletePendingTask(const TaskID &task_id, const rpc::PushTaskReply &reply,
-                                   const rpc::Address &actor_addr) = 0;
+  virtual void CompletePendingTask(const TaskID& task_id, const rpc::PushTaskReply& reply,
+                                   const rpc::Address& actor_addr) = 0;
 
-  virtual bool PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
-                                 Status *status = nullptr) = 0;
+  virtual bool PendingTaskFailed(const TaskID& task_id, rpc::ErrorType error_type,
+                                 Status* status = nullptr) = 0;
 
   virtual void OnTaskDependenciesInlined(
-      const std::vector<ObjectID> &inlined_dependency_ids,
-      const std::vector<ObjectID> &contained_ids) = 0;
+      const std::vector<ObjectID>& inlined_dependency_ids,
+      const std::vector<ObjectID>& contained_ids) = 0;
 
-  virtual bool MarkTaskCanceled(const TaskID &task_id) = 0;
+  virtual bool MarkTaskCanceled(const TaskID& task_id) = 0;
 
   virtual ~TaskFinisherInterface() {}
 };
 
 class TaskResubmissionInterface {
  public:
-  virtual Status ResubmitTask(const TaskID &task_id,
-                              std::vector<ObjectID> *task_deps) = 0;
+  virtual Status ResubmitTask(const TaskID& task_id,
+                              std::vector<ObjectID>* task_deps) = 0;
 
   virtual ~TaskResubmissionInterface() {}
 };
 
-using RetryTaskCallback = std::function<void(TaskSpecification &spec, bool delay)>;
-using ReconstructObjectCallback = std::function<void(const ObjectID &object_id)>;
+using RetryTaskCallback = std::function<void(TaskSpecification& spec, bool delay)>;
+using ReconstructObjectCallback = std::function<void(const ObjectID& object_id)>;
 
 class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {
  public:
@@ -60,7 +60,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
               std::shared_ptr<ReferenceCounter> reference_counter,
               std::shared_ptr<ActorReporterInterface> actor_reporter,
               RetryTaskCallback retry_task_callback,
-              const std::function<bool(const ClientID &node_id)> &check_node_alive,
+              const std::function<bool(const ClientID& node_id)>& check_node_alive,
               ReconstructObjectCallback reconstruct_object_callback)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
@@ -69,7 +69,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
         check_node_alive_(check_node_alive),
         reconstruct_object_callback_(reconstruct_object_callback) {
     reference_counter_->SetReleaseLineageCallback(
-        [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
+        [this](const ObjectID& object_id, std::vector<ObjectID>* ids_to_release) {
           RemoveLineageReference(object_id, ids_to_release);
           ShutdownIfNeeded();
         });
@@ -82,8 +82,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] max_retries Number of times this task may be retried
   /// on failure.
   /// \return Void.
-  void AddPendingTask(const rpc::Address &caller_address, const TaskSpecification &spec,
-                      const std::string &call_site, int max_retries = 0);
+  void AddPendingTask(const rpc::Address& caller_address, const TaskSpecification& spec,
+                      const std::string& call_site, int max_retries = 0);
 
   /// Resubmit a task that has completed execution before. This is used to
   /// reconstruct objects stored in Plasma that were lost.
@@ -96,7 +96,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// not already pending and was successfully resubmitted.
   /// \return OK if the task was successfully resubmitted or was
   /// already pending, Invalid if the task spec is no longer present.
-  Status ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *task_deps) override;
+  Status ResubmitTask(const TaskID& task_id, std::vector<ObjectID>* task_deps) override;
 
   /// Wait for all pending tasks to finish, and then shutdown.
   ///
@@ -109,8 +109,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] reply Proto response to a direct actor or task call.
   /// \param[in] worker_addr Address of the worker that executed the task.
   /// \return Void.
-  void CompletePendingTask(const TaskID &task_id, const rpc::PushTaskReply &reply,
-                           const rpc::Address &worker_addr) override;
+  void CompletePendingTask(const TaskID& task_id, const rpc::PushTaskReply& reply,
+                           const rpc::Address& worker_addr) override;
 
   /// A pending task failed. This will either retry the task or mark the task
   /// as failed if there are no retries left.
@@ -119,8 +119,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] error_type The type of the specific error.
   /// \param[in] status Optional status message.
   /// \return Whether the task will be retried or not.
-  bool PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
-                         Status *status = nullptr) override;
+  bool PendingTaskFailed(const TaskID& task_id, rpc::ErrorType error_type,
+                         Status* status = nullptr) override;
 
   /// A task's dependencies were inlined in the task spec. This will decrement
   /// the ref count for the dependency IDs. If the dependencies contained other
@@ -131,29 +131,29 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] contained_ids Any ObjectIDs that were newly inlined in the
   /// task spec, because a serialized copy of the ID was contained in one of
   /// the inlined dependencies.
-  void OnTaskDependenciesInlined(const std::vector<ObjectID> &inlined_dependency_ids,
-                                 const std::vector<ObjectID> &contained_ids) override;
+  void OnTaskDependenciesInlined(const std::vector<ObjectID>& inlined_dependency_ids,
+                                 const std::vector<ObjectID>& contained_ids) override;
 
   /// Set number of retries to zero for a task that is being canceled.
   ///
   /// \param[in] task_id to cancel.
   /// \return Whether the task was pending and was marked for cancellation.
-  bool MarkTaskCanceled(const TaskID &task_id) override;
+  bool MarkTaskCanceled(const TaskID& task_id) override;
 
   /// Return the spec for a pending task.
-  absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const;
+  absl::optional<TaskSpecification> GetTaskSpec(const TaskID& task_id) const;
 
   /// Return whether this task can be submitted for execution.
   ///
   /// \param[in] task_id ID of the task to query.
   /// \return Whether the task can be submitted for execution.
-  bool IsTaskSubmissible(const TaskID &task_id) const;
+  bool IsTaskSubmissible(const TaskID& task_id) const;
 
   /// Return whether the task is pending.
   ///
   /// \param[in] task_id ID of the task to query.
   /// \return Whether the task is pending.
-  bool IsTaskPending(const TaskID &task_id) const;
+  bool IsTaskPending(const TaskID& task_id) const;
 
   /// Return the number of submissible tasks. This includes both tasks that are
   /// pending execution and tasks that have finished but that may be
@@ -165,7 +165,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
  private:
   struct TaskEntry {
-    TaskEntry(const TaskSpecification &spec_arg, int num_retries_left_arg,
+    TaskEntry(const TaskSpecification& spec_arg, int num_retries_left_arg,
               size_t num_returns)
         : spec(spec_arg), num_retries_left(num_retries_left_arg) {
       for (size_t i = 0; i < num_returns; i++) {
@@ -207,12 +207,12 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   /// Remove a lineage reference to this object ID. This should be called
   /// whenever a task that depended on this object ID can no longer be retried.
-  void RemoveLineageReference(const ObjectID &object_id,
-                              std::vector<ObjectID> *ids_to_release) LOCKS_EXCLUDED(mu_);
+  void RemoveLineageReference(const ObjectID& object_id,
+                              std::vector<ObjectID>* ids_to_release) LOCKS_EXCLUDED(mu_);
 
   /// Treat a pending task as failed. The lock should not be held when calling
   /// this method because it may trigger callbacks in this or other classes.
-  void MarkPendingTaskFailed(const TaskID &task_id, const TaskSpecification &spec,
+  void MarkPendingTaskFailed(const TaskID& task_id, const TaskSpecification& spec,
                              rpc::ErrorType error_type) LOCKS_EXCLUDED(mu_);
 
   /// Helper function to call RemoveSubmittedTaskReferences on the remaining
@@ -220,8 +220,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// failed. The remaining dependencies are plasma objects and any ObjectIDs
   /// that were inlined in the task spec.
   void RemoveFinishedTaskReferences(
-      TaskSpecification &spec, bool release_lineage, const rpc::Address &worker_addr,
-      const ReferenceCounter::ReferenceTableProto &borrowed_refs);
+      TaskSpecification& spec, bool release_lineage, const rpc::Address& worker_addr,
+      const ReferenceCounter::ReferenceTableProto& borrowed_refs);
 
   /// Shutdown if all tasks are finished and shutdown is scheduled.
   void ShutdownIfNeeded() LOCKS_EXCLUDED(mu_);
@@ -244,7 +244,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// processing a worker's reply to check whether the node that the worker
   /// was on is still alive. If the node is down, the plasma objects returned by the task
   /// are marked as failed.
-  const std::function<bool(const ClientID &node_id)> check_node_alive_;
+  const std::function<bool(const ClientID& node_id)> check_node_alive_;
   /// Called when processing a worker's reply if the node that the worker was
   /// on died. This should be called to attempt to recover a plasma object
   /// returned by the task (or store an error if the object is not

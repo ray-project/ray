@@ -6,12 +6,12 @@
 
 #include "gtest/gtest.h"
 
-static const char *argv0 = NULL;
+static const char* argv0 = NULL;
 
 namespace ray {
 
 template <class T>
-static std::string to_str(const T &obj, bool include_scheme) {
+static std::string to_str(const T& obj, bool include_scheme) {
   return EndpointToUrl(obj, include_scheme);
 }
 
@@ -108,7 +108,7 @@ TEST(UtilTest, CreateCommandLineTest) {
       ArgList({R"(a")", R"('x)", R"(?'"{)", R"(]))", R"(!)", R"(~`\)"}),
   });
   for (CommandLineSyntax syn : all) {
-    for (const ArgList &arglist : test_cases) {
+    for (const ArgList& arglist : test_cases) {
       ASSERT_EQ(ParseCommandLine(CreateCommandLine(arglist, syn), syn), arglist);
       std::string cmdline = CreateCommandLine(arglist, syn);
       std::string buf((2 + cmdline.size()) * 6, '\0');
@@ -121,7 +121,7 @@ TEST(UtilTest, CreateCommandLineTest) {
 #ifdef _WIN32
       test_command = test_command + "\"";
 #endif
-      FILE *proc;
+      FILE* proc;
 #ifdef _WIN32
       proc = syn == win32 ? _popen(test_command.c_str(), "r") : NULL;
 #else
@@ -145,7 +145,7 @@ TEST(UtilTest, CreateCommandLineTest) {
 
 }  // namespace ray
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   argv0 = argv[0];
   int result = 0;
   if (argc > 1 && strcmp(argv[1], "--println") == 0) {

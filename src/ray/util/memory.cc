@@ -20,16 +20,16 @@
 
 namespace ray {
 
-uint8_t *pointer_logical_and(const uint8_t *address, uintptr_t bits) {
+uint8_t* pointer_logical_and(const uint8_t* address, uintptr_t bits) {
   uintptr_t value = reinterpret_cast<uintptr_t>(address);
-  return reinterpret_cast<uint8_t *>(value & bits);
+  return reinterpret_cast<uint8_t*>(value & bits);
 }
 
-void parallel_memcopy(uint8_t *dst, const uint8_t *src, int64_t nbytes,
+void parallel_memcopy(uint8_t* dst, const uint8_t* src, int64_t nbytes,
                       uintptr_t block_size, int num_threads) {
   std::vector<std::thread> threadpool(num_threads);
-  uint8_t *left = pointer_logical_and(src + block_size - 1, ~(block_size - 1));
-  uint8_t *right = pointer_logical_and(src + nbytes, ~(block_size - 1));
+  uint8_t* left = pointer_logical_and(src + block_size - 1, ~(block_size - 1));
+  uint8_t* right = pointer_logical_and(src + nbytes, ~(block_size - 1));
   int64_t num_blocks = (right - left) / block_size;
 
   // Update right address
@@ -54,7 +54,7 @@ void parallel_memcopy(uint8_t *dst, const uint8_t *src, int64_t nbytes,
   std::memcpy(dst, src, prefix);
   std::memcpy(dst + prefix + num_threads * chunk_size, right, suffix);
 
-  for (auto &t : threadpool) {
+  for (auto& t : threadpool) {
     if (t.joinable()) {
       t.join();
     }

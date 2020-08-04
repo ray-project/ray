@@ -49,11 +49,11 @@ class RedisObjectInfoAccessorTest : public AccessorTestBase<ObjectID, ObjectTabl
 };
 
 TEST_F(RedisObjectInfoAccessorTest, TestGetAddRemove) {
-  ObjectInfoAccessor &object_accessor = gcs_client_->Objects();
+  ObjectInfoAccessor& object_accessor = gcs_client_->Objects();
   // add && get
   // add
-  for (const auto &elem : object_id_to_data_) {
-    for (const auto &item : elem.second) {
+  for (const auto& elem : object_id_to_data_) {
+    for (const auto& item : elem.second) {
       ++pending_count_;
       ClientID node_id = ClientID::FromBinary(item->manager());
       RAY_CHECK_OK(
@@ -65,12 +65,12 @@ TEST_F(RedisObjectInfoAccessorTest, TestGetAddRemove) {
   }
   WaitPendingDone(wait_pending_timeout_);
   // get
-  for (const auto &elem : object_id_to_data_) {
+  for (const auto& elem : object_id_to_data_) {
     ++pending_count_;
     size_t total_size = elem.second.size();
     RAY_CHECK_OK(object_accessor.AsyncGetLocations(
         elem.first,
-        [this, total_size](Status status, const std::vector<ObjectTableData> &result) {
+        [this, total_size](Status status, const std::vector<ObjectTableData>& result) {
           RAY_CHECK_OK(status);
           RAY_CHECK(total_size == result.size());
           --pending_count_;
@@ -83,8 +83,8 @@ TEST_F(RedisObjectInfoAccessorTest, TestGetAddRemove) {
   // subscribe && delete
   // subscribe
   std::atomic<int> sub_pending_count(0);
-  auto subscribe = [this, &sub_pending_count](const ObjectID &object_id,
-                                              const ObjectChangeNotification &result) {
+  auto subscribe = [this, &sub_pending_count](const ObjectID& object_id,
+                                              const ObjectChangeNotification& result) {
     const auto it = object_id_to_data_.find(object_id);
     ASSERT_TRUE(it != object_id_to_data_.end());
     static size_t response_count = 1;
@@ -97,7 +97,7 @@ TEST_F(RedisObjectInfoAccessorTest, TestGetAddRemove) {
     ++response_count;
     --sub_pending_count;
   };
-  for (const auto &elem : object_id_to_data_) {
+  for (const auto& elem : object_id_to_data_) {
     ++pending_count_;
     ++sub_pending_count;
     RAY_CHECK_OK(object_accessor.AsyncSubscribeToLocations(elem.first, subscribe,
@@ -109,10 +109,10 @@ TEST_F(RedisObjectInfoAccessorTest, TestGetAddRemove) {
   WaitPendingDone(wait_pending_timeout_);
   WaitPendingDone(sub_pending_count, wait_pending_timeout_);
   // delete
-  for (const auto &elem : object_id_to_data_) {
+  for (const auto& elem : object_id_to_data_) {
     ++pending_count_;
     ++sub_pending_count;
-    const ObjectVector &object_vec = elem.second;
+    const ObjectVector& object_vec = elem.second;
     ClientID node_id = ClientID::FromBinary(object_vec[0]->manager());
     RAY_CHECK_OK(
         object_accessor.AsyncRemoveLocation(elem.first, node_id, [this](Status status) {
@@ -123,12 +123,12 @@ TEST_F(RedisObjectInfoAccessorTest, TestGetAddRemove) {
   WaitPendingDone(wait_pending_timeout_);
   WaitPendingDone(sub_pending_count, wait_pending_timeout_);
   // get
-  for (const auto &elem : object_id_to_data_) {
+  for (const auto& elem : object_id_to_data_) {
     ++pending_count_;
     size_t total_size = elem.second.size();
     RAY_CHECK_OK(object_accessor.AsyncGetLocations(
         elem.first,
-        [this, total_size](Status status, const std::vector<ObjectTableData> &result) {
+        [this, total_size](Status status, const std::vector<ObjectTableData>& result) {
           RAY_CHECK_OK(status);
           ASSERT_EQ(total_size - 1, result.size());
           --pending_count_;
@@ -143,7 +143,7 @@ TEST_F(RedisObjectInfoAccessorTest, TestGetAddRemove) {
 
 }  // namespace ray
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                          ray::RayLog::ShutDownRayLog, argv[0],
                                          ray::RayLogLevel::INFO,

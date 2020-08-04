@@ -20,7 +20,7 @@ void EventQueue::Freeze() {
   no_full_cv_.notify_all();
 }
 
-void EventQueue::Push(const Event &t) {
+void EventQueue::Push(const Event& t) {
   std::unique_lock<std::mutex> lock(ring_buffer_mutex_);
   while (Size() >= capacity_ && is_active_) {
     STREAMING_LOG(WARNING) << " EventQueue is full, its size:" << Size()
@@ -57,7 +57,7 @@ void EventQueue::Pop() {
   no_full_cv_.notify_all();
 }
 
-void EventQueue::WaitFor(std::unique_lock<std::mutex> &lock) {
+void EventQueue::WaitFor(std::unique_lock<std::mutex>& lock) {
   // To avoid deadlock when EventQueue is empty but is_active is changed in other
   // thread, Event queue should awaken this condtion variable and check it again.
   while (is_active_ && Empty()) {
@@ -70,7 +70,7 @@ void EventQueue::WaitFor(std::unique_lock<std::mutex> &lock) {
   }
 }
 
-bool EventQueue::Get(Event &evt) {
+bool EventQueue::Get(Event& evt) {
   std::unique_lock<std::mutex> lock(ring_buffer_mutex_);
   WaitFor(lock);
   if (!is_active_) {
@@ -107,7 +107,7 @@ Event EventQueue::PopAndGet() {
   return res;
 }
 
-Event &EventQueue::Front() {
+Event& EventQueue::Front() {
   std::unique_lock<std::mutex> lock(ring_buffer_mutex_);
   if (urgent_buffer_.size()) {
     return urgent_buffer_.front();
@@ -146,7 +146,7 @@ void EventService::Stop() {
   STREAMING_LOG(WARNING) << "event_server stop";
 }
 
-bool EventService::Register(const EventType &type, const Handle &handle) {
+bool EventService::Register(const EventType& type, const Handle& handle) {
   if (event_handle_map_.find(type) != event_handle_map_.end()) {
     STREAMING_LOG(WARNING) << "EventType had been registered!";
   }
@@ -154,15 +154,15 @@ bool EventService::Register(const EventType &type, const Handle &handle) {
   return true;
 }
 
-void EventService::Push(const Event &event) { event_queue_->Push(event); }
+void EventService::Push(const Event& event) { event_queue_->Push(event); }
 
-void EventService::Execute(Event &event) {
+void EventService::Execute(Event& event) {
   if (event_handle_map_.find(event.type) == event_handle_map_.end()) {
     STREAMING_LOG(WARNING) << "Handle has never been registered yet, type => "
                            << static_cast<int>(event.type);
     return;
   }
-  Handle &handle = event_handle_map_[event.type];
+  Handle& handle = event_handle_map_[event.type];
   if (handle(event.channel_info)) {
     event_queue_->Pop();
   }
@@ -183,7 +183,7 @@ void EventService::LoopThreadHandler() {
   }
 }
 
-void EventService::RemoveDestroyedChannelEvent(const std::vector<ObjectID> &removed_ids) {
+void EventService::RemoveDestroyedChannelEvent(const std::vector<ObjectID>& removed_ids) {
   // NOTE(lingxuan.zlx): To prevent producing invalid event for removed
   // channels, we pop out all invalid channel related events(push it to
   // original queue if it has no connection with removed channels).

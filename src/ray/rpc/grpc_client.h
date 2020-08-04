@@ -34,15 +34,15 @@ namespace rpc {
 
 // Define a void RPC client method.
 #define VOID_RPC_CLIENT_METHOD(SERVICE, METHOD, rpc_client, SPECS)   \
-  void METHOD(const METHOD##Request &request,                        \
-              const ClientCallback<METHOD##Reply> &callback) SPECS { \
+  void METHOD(const METHOD##Request& request,                        \
+              const ClientCallback<METHOD##Reply>& callback) SPECS { \
     INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client); \
   }
 
 template <class GrpcService>
 class GrpcClient {
  public:
-  GrpcClient(const std::string &address, const int port, ClientCallManager &call_manager)
+  GrpcClient(const std::string& address, const int port, ClientCallManager& call_manager)
       : client_call_manager_(call_manager) {
     grpc::ChannelArguments argument;
     // Disable http proxy since it disrupts local connections. TODO(ekl) we should make
@@ -56,7 +56,7 @@ class GrpcClient {
     stub_ = GrpcService::NewStub(channel);
   }
 
-  GrpcClient(const std::string &address, const int port, ClientCallManager &call_manager,
+  GrpcClient(const std::string& address, const int port, ClientCallManager& call_manager,
              int num_threads)
       : client_call_manager_(call_manager) {
     grpc::ResourceQuota quota;
@@ -86,14 +86,14 @@ class GrpcClient {
   template <class Request, class Reply>
   void CallMethod(
       const PrepareAsyncFunction<GrpcService, Request, Reply> prepare_async_function,
-      const Request &request, const ClientCallback<Reply> &callback) {
+      const Request& request, const ClientCallback<Reply>& callback) {
     auto call = client_call_manager_.CreateCall<GrpcService, Request, Reply>(
         *stub_, prepare_async_function, request, callback);
     RAY_CHECK(call != nullptr);
   }
 
  private:
-  ClientCallManager &client_call_manager_;
+  ClientCallManager& client_call_manager_;
   /// The gRPC-generated stub.
   std::unique_ptr<typename GrpcService::Stub> stub_;
 };

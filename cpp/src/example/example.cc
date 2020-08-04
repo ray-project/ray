@@ -19,7 +19,7 @@ class Counter {
 
   Counter() { count = 0; }
 
-  static Counter *FactoryCreate() { return new Counter(); }
+  static Counter* FactoryCreate() { return new Counter(); }
   /// non static function
   int Add(int x) {
     count += x;

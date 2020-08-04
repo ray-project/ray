@@ -10,20 +10,20 @@
 
 class UniqueIdFromJByteArray {
  private:
-  JNIEnv *_env;
+  JNIEnv* _env;
   jbyteArray _bytes;
-  jbyte *b;
+  jbyte* b;
 
  public:
   ray::ObjectID PID;
 
-  UniqueIdFromJByteArray(JNIEnv *env, jbyteArray wid) {
+  UniqueIdFromJByteArray(JNIEnv* env, jbyteArray wid) {
     _env = env;
     _bytes = wid;
 
-    b = reinterpret_cast<jbyte *>(_env->GetByteArrayElements(_bytes, nullptr));
+    b = reinterpret_cast<jbyte*>(_env->GetByteArrayElements(_bytes, nullptr));
     PID = ray::ObjectID::FromBinary(
-        std::string(reinterpret_cast<const char *>(b), ray::ObjectID::Size()));
+        std::string(reinterpret_cast<const char*>(b), ray::ObjectID::Size()));
   }
 
   ~UniqueIdFromJByteArray() { _env->ReleaseByteArrayElements(_bytes, b, 0); }
@@ -31,36 +31,36 @@ class UniqueIdFromJByteArray {
 
 class RawDataFromJByteArray {
  private:
-  JNIEnv *_env;
+  JNIEnv* _env;
   jbyteArray _bytes;
 
  public:
-  uint8_t *data;
+  uint8_t* data;
   uint32_t data_size;
 
-  RawDataFromJByteArray(JNIEnv *env, jbyteArray bytes) {
+  RawDataFromJByteArray(JNIEnv* env, jbyteArray bytes) {
     _env = env;
     _bytes = bytes;
     data_size = _env->GetArrayLength(_bytes);
-    jbyte *b = reinterpret_cast<jbyte *>(_env->GetByteArrayElements(_bytes, nullptr));
-    data = reinterpret_cast<uint8_t *>(b);
+    jbyte* b = reinterpret_cast<jbyte*>(_env->GetByteArrayElements(_bytes, nullptr));
+    data = reinterpret_cast<uint8_t*>(b);
   }
 
   ~RawDataFromJByteArray() {
-    _env->ReleaseByteArrayElements(_bytes, reinterpret_cast<jbyte *>(data), 0);
+    _env->ReleaseByteArrayElements(_bytes, reinterpret_cast<jbyte*>(data), 0);
   }
 };
 
 class StringFromJString {
  private:
-  JNIEnv *_env;
-  const char *j_str;
+  JNIEnv* _env;
+  const char* j_str;
   jstring jni_str;
 
  public:
   std::string str;
 
-  StringFromJString(JNIEnv *env, jstring jni_str_) {
+  StringFromJString(JNIEnv* env, jstring jni_str_) {
     jni_str = jni_str_;
     _env = env;
     j_str = env->GetStringUTFChars(jni_str, nullptr);
@@ -72,14 +72,14 @@ class StringFromJString {
 
 class LongVectorFromJLongArray {
  private:
-  JNIEnv *_env;
+  JNIEnv* _env;
   jlongArray long_array;
-  jlong *long_array_ptr = nullptr;
+  jlong* long_array_ptr = nullptr;
 
  public:
   std::vector<uint64_t> data;
 
-  LongVectorFromJLongArray(JNIEnv *env, jlongArray long_array_) {
+  LongVectorFromJLongArray(JNIEnv* env, jlongArray long_array_) {
     _env = env;
     long_array = long_array_;
 
@@ -93,15 +93,15 @@ class LongVectorFromJLongArray {
   }
 };
 
-std::vector<ray::ObjectID> jarray_to_object_id_vec(JNIEnv *env, jobjectArray jarr);
-std::vector<ray::ActorID> jarray_to_actor_id_vec(JNIEnv *env, jobjectArray jarr);
+std::vector<ray::ObjectID> jarray_to_object_id_vec(JNIEnv* env, jobjectArray jarr);
+std::vector<ray::ActorID> jarray_to_actor_id_vec(JNIEnv* env, jobjectArray jarr);
 
-jint throwRuntimeException(JNIEnv *env, const char *message);
-jint throwChannelInitException(JNIEnv *env, const char *message,
-                               const std::vector<ray::ObjectID> &abnormal_queues);
-jint throwChannelInterruptException(JNIEnv *env, const char *message);
+jint throwRuntimeException(JNIEnv* env, const char* message);
+jint throwChannelInitException(JNIEnv* env, const char* message,
+                               const std::vector<ray::ObjectID>& abnormal_queues);
+jint throwChannelInterruptException(JNIEnv* env, const char* message);
 std::shared_ptr<ray::RayFunction> FunctionDescriptorToRayFunction(
-    JNIEnv *env, jobject functionDescriptor);
+    JNIEnv* env, jobject functionDescriptor);
 void ParseChannelInitParameters(
-    JNIEnv *env, jobject param_obj,
-    std::vector<ray::streaming::ChannelCreationParameter> &parameter_vec);
+    JNIEnv* env, jobject param_obj,
+    std::vector<ray::streaming::ChannelCreationParameter>& parameter_vec);

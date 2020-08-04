@@ -37,21 +37,21 @@ class ActorInfoAccessor {
   ///
   /// \param actor_table_data_list The container to hold the actor specification.
   /// \return Status
-  virtual Status GetAll(std::vector<rpc::ActorTableData> *actor_table_data_list) = 0;
+  virtual Status GetAll(std::vector<rpc::ActorTableData>* actor_table_data_list) = 0;
 
   /// Get actor specification from GCS asynchronously.
   ///
   /// \param actor_id The ID of actor to look up in the GCS.
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
-  virtual Status AsyncGet(const ActorID &actor_id,
-                          const OptionalItemCallback<rpc::ActorTableData> &callback) = 0;
+  virtual Status AsyncGet(const ActorID& actor_id,
+                          const OptionalItemCallback<rpc::ActorTableData>& callback) = 0;
 
   /// Get all actor specification from GCS asynchronously.
   ///
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
-  virtual Status AsyncGetAll(const MultiItemCallback<rpc::ActorTableData> &callback) = 0;
+  virtual Status AsyncGetAll(const MultiItemCallback<rpc::ActorTableData>& callback) = 0;
 
   /// Get actor specification for a named actor from GCS asynchronously.
   ///
@@ -59,16 +59,16 @@ class ActorInfoAccessor {
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
   virtual Status AsyncGetByName(
-      const std::string &name,
-      const OptionalItemCallback<rpc::ActorTableData> &callback) = 0;
+      const std::string& name,
+      const OptionalItemCallback<rpc::ActorTableData>& callback) = 0;
 
   /// Register actor to GCS asynchronously.
   ///
   /// \param task_spec The specification for the actor creation task.
   /// \param callback Callback that will be called after the actor info is written to GCS.
   /// \return Status
-  virtual Status AsyncRegisterActor(const TaskSpecification &task_spec,
-                                    const StatusCallback &callback) = 0;
+  virtual Status AsyncRegisterActor(const TaskSpecification& task_spec,
+                                    const StatusCallback& callback) = 0;
 
   /// Asynchronously request GCS to create the actor.
   ///
@@ -80,8 +80,8 @@ class ActorInfoAccessor {
   /// \param task_spec The specification for the actor creation task.
   /// \param callback Callback that will be called after the actor info is written to GCS.
   /// \return Status
-  virtual Status AsyncCreateActor(const TaskSpecification &task_spec,
-                                  const StatusCallback &callback) = 0;
+  virtual Status AsyncCreateActor(const TaskSpecification& task_spec,
+                                  const StatusCallback& callback) = 0;
 
   /// Register an actor to GCS asynchronously.
   ///
@@ -89,8 +89,8 @@ class ActorInfoAccessor {
   /// \param callback Callback that will be called after actor has been registered
   /// to the GCS.
   /// \return Status
-  virtual Status AsyncRegister(const std::shared_ptr<rpc::ActorTableData> &data_ptr,
-                               const StatusCallback &callback) = 0;
+  virtual Status AsyncRegister(const std::shared_ptr<rpc::ActorTableData>& data_ptr,
+                               const StatusCallback& callback) = 0;
 
   /// Update dynamic states of actor in GCS asynchronously.
   ///
@@ -100,9 +100,9 @@ class ActorInfoAccessor {
   /// \return Status
   /// TODO(micafan) Don't expose the whole `ActorTableData` and only allow
   /// updating dynamic states.
-  virtual Status AsyncUpdate(const ActorID &actor_id,
-                             const std::shared_ptr<rpc::ActorTableData> &data_ptr,
-                             const StatusCallback &callback) = 0;
+  virtual Status AsyncUpdate(const ActorID& actor_id,
+                             const std::shared_ptr<rpc::ActorTableData>& data_ptr,
+                             const StatusCallback& callback) = 0;
 
   /// Subscribe to any register or update operations of actors.
   ///
@@ -112,8 +112,8 @@ class ActorInfoAccessor {
   /// are ready to receive notification.
   /// \return Status
   virtual Status AsyncSubscribeAll(
-      const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-      const StatusCallback &done) = 0;
+      const SubscribeCallback<ActorID, rpc::ActorTableData>& subscribe,
+      const StatusCallback& done) = 0;
 
   /// Subscribe to any update operations of an actor.
   ///
@@ -122,15 +122,15 @@ class ActorInfoAccessor {
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
   virtual Status AsyncSubscribe(
-      const ActorID &actor_id,
-      const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-      const StatusCallback &done) = 0;
+      const ActorID& actor_id,
+      const SubscribeCallback<ActorID, rpc::ActorTableData>& subscribe,
+      const StatusCallback& done) = 0;
 
   /// Cancel subscription to an actor.
   ///
   /// \param actor_id The ID of the actor to be unsubscribed to.
   /// \return Status
-  virtual Status AsyncUnsubscribe(const ActorID &actor_id) = 0;
+  virtual Status AsyncUnsubscribe(const ActorID& actor_id) = 0;
 
   /// Add actor checkpoint data to GCS asynchronously.
   ///
@@ -142,8 +142,8 @@ class ActorInfoAccessor {
   /// otherwise the checkpoint may be overwritten. This issue will be resolved if
   /// necessary.
   virtual Status AsyncAddCheckpoint(
-      const std::shared_ptr<rpc::ActorCheckpointData> &data_ptr,
-      const StatusCallback &callback) = 0;
+      const std::shared_ptr<rpc::ActorCheckpointData>& data_ptr,
+      const StatusCallback& callback) = 0;
 
   /// Get actor checkpoint data from GCS asynchronously.
   ///
@@ -152,8 +152,8 @@ class ActorInfoAccessor {
   /// \param callback The callback that will be called after lookup finishes.
   /// \return Status
   virtual Status AsyncGetCheckpoint(
-      const ActorCheckpointID &checkpoint_id, const ActorID &actor_id,
-      const OptionalItemCallback<rpc::ActorCheckpointData> &callback) = 0;
+      const ActorCheckpointID& checkpoint_id, const ActorID& actor_id,
+      const OptionalItemCallback<rpc::ActorCheckpointData>& callback) = 0;
 
   /// Get actor checkpoint id data from GCS asynchronously.
   ///
@@ -161,8 +161,8 @@ class ActorInfoAccessor {
   /// \param callback The callback that will be called after lookup finishes.
   /// \return Status
   virtual Status AsyncGetCheckpointID(
-      const ActorID &actor_id,
-      const OptionalItemCallback<rpc::ActorCheckpointIdData> &callback) = 0;
+      const ActorID& actor_id,
+      const OptionalItemCallback<rpc::ActorCheckpointIdData>& callback) = 0;
 
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
@@ -191,16 +191,16 @@ class JobInfoAccessor {
   /// \param callback Callback that will be called after job has been added
   /// to GCS.
   /// \return Status
-  virtual Status AsyncAdd(const std::shared_ptr<rpc::JobTableData> &data_ptr,
-                          const StatusCallback &callback) = 0;
+  virtual Status AsyncAdd(const std::shared_ptr<rpc::JobTableData>& data_ptr,
+                          const StatusCallback& callback) = 0;
 
   /// Mark job as finished in GCS asynchronously.
   ///
   /// \param job_id ID of the job that will be make finished to GCS.
   /// \param callback Callback that will be called after update finished.
   /// \return Status
-  virtual Status AsyncMarkFinished(const JobID &job_id,
-                                   const StatusCallback &callback) = 0;
+  virtual Status AsyncMarkFinished(const JobID& job_id,
+                                   const StatusCallback& callback) = 0;
 
   /// Subscribe to job updates.
   ///
@@ -208,14 +208,14 @@ class JobInfoAccessor {
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
   virtual Status AsyncSubscribeAll(
-      const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
-      const StatusCallback &done) = 0;
+      const SubscribeCallback<JobID, rpc::JobTableData>& subscribe,
+      const StatusCallback& done) = 0;
 
   /// Get all job info from GCS asynchronously.
   ///
   /// \param callback Callback that will be called after lookup finished.
   /// \return Status
-  virtual Status AsyncGetAll(const MultiItemCallback<rpc::JobTableData> &callback) = 0;
+  virtual Status AsyncGetAll(const MultiItemCallback<rpc::JobTableData>& callback) = 0;
 
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
@@ -244,16 +244,16 @@ class TaskInfoAccessor {
   /// \param callback Callback that will be called after task has been added
   /// to GCS.
   /// \return Status
-  virtual Status AsyncAdd(const std::shared_ptr<rpc::TaskTableData> &data_ptr,
-                          const StatusCallback &callback) = 0;
+  virtual Status AsyncAdd(const std::shared_ptr<rpc::TaskTableData>& data_ptr,
+                          const StatusCallback& callback) = 0;
 
   /// Get task information from GCS asynchronously.
   ///
   /// \param task_id The ID of the task to look up in GCS.
   /// \param callback Callback that is called after lookup finished.
   /// \return Status
-  virtual Status AsyncGet(const TaskID &task_id,
-                          const OptionalItemCallback<rpc::TaskTableData> &callback) = 0;
+  virtual Status AsyncGet(const TaskID& task_id,
+                          const OptionalItemCallback<rpc::TaskTableData>& callback) = 0;
 
   /// Delete tasks from GCS asynchronously.
   ///
@@ -262,8 +262,8 @@ class TaskInfoAccessor {
   /// \return Status
   // TODO(micafan) Will support callback of batch deletion in the future.
   // Currently this callback will never be called.
-  virtual Status AsyncDelete(const std::vector<TaskID> &task_ids,
-                             const StatusCallback &callback) = 0;
+  virtual Status AsyncDelete(const std::vector<TaskID>& task_ids,
+                             const StatusCallback& callback) = 0;
 
   /// Subscribe asynchronously to the event that the given task is added in GCS.
   ///
@@ -272,15 +272,15 @@ class TaskInfoAccessor {
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
   virtual Status AsyncSubscribe(
-      const TaskID &task_id,
-      const SubscribeCallback<TaskID, rpc::TaskTableData> &subscribe,
-      const StatusCallback &done) = 0;
+      const TaskID& task_id,
+      const SubscribeCallback<TaskID, rpc::TaskTableData>& subscribe,
+      const StatusCallback& done) = 0;
 
   /// Cancel subscription to a task asynchronously.
   ///
   /// \param task_id The ID of the task to be unsubscribed to.
   /// \return Status
-  virtual Status AsyncUnsubscribe(const TaskID &task_id) = 0;
+  virtual Status AsyncUnsubscribe(const TaskID& task_id) = 0;
 
   /// Add a task lease to GCS asynchronously.
   ///
@@ -288,8 +288,8 @@ class TaskInfoAccessor {
   /// \param callback Callback that will be called after task lease has been added
   /// to GCS.
   /// \return Status
-  virtual Status AsyncAddTaskLease(const std::shared_ptr<rpc::TaskLeaseData> &data_ptr,
-                                   const StatusCallback &callback) = 0;
+  virtual Status AsyncAddTaskLease(const std::shared_ptr<rpc::TaskLeaseData>& data_ptr,
+                                   const StatusCallback& callback) = 0;
 
   /// Get task lease information from GCS asynchronously.
   ///
@@ -297,8 +297,8 @@ class TaskInfoAccessor {
   /// \param callback Callback that is called after lookup finished.
   /// \return Status
   virtual Status AsyncGetTaskLease(
-      const TaskID &task_id,
-      const OptionalItemCallback<rpc::TaskLeaseData> &callback) = 0;
+      const TaskID& task_id,
+      const OptionalItemCallback<rpc::TaskLeaseData>& callback) = 0;
 
   /// Subscribe asynchronously to the event that the given task lease is added in GCS.
   ///
@@ -308,15 +308,15 @@ class TaskInfoAccessor {
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
   virtual Status AsyncSubscribeTaskLease(
-      const TaskID &task_id,
-      const SubscribeCallback<TaskID, boost::optional<rpc::TaskLeaseData>> &subscribe,
-      const StatusCallback &done) = 0;
+      const TaskID& task_id,
+      const SubscribeCallback<TaskID, boost::optional<rpc::TaskLeaseData>>& subscribe,
+      const StatusCallback& done) = 0;
 
   /// Cancel subscription to a task lease asynchronously.
   ///
   /// \param task_id The ID of the task to be unsubscribed to.
   /// \return Status
-  virtual Status AsyncUnsubscribeTaskLease(const TaskID &task_id) = 0;
+  virtual Status AsyncUnsubscribeTaskLease(const TaskID& task_id) = 0;
 
   /// Attempt task reconstruction to GCS asynchronously.
   ///
@@ -325,8 +325,8 @@ class TaskInfoAccessor {
   /// has been added to GCS.
   /// \return Status
   virtual Status AttemptTaskReconstruction(
-      const std::shared_ptr<rpc::TaskReconstructionData> &data_ptr,
-      const StatusCallback &callback) = 0;
+      const std::shared_ptr<rpc::TaskReconstructionData>& data_ptr,
+      const StatusCallback& callback) = 0;
 
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
@@ -354,15 +354,15 @@ class ObjectInfoAccessor {
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
   virtual Status AsyncGetLocations(
-      const ObjectID &object_id,
-      const MultiItemCallback<rpc::ObjectTableData> &callback) = 0;
+      const ObjectID& object_id,
+      const MultiItemCallback<rpc::ObjectTableData>& callback) = 0;
 
   /// Get all object's locations from GCS asynchronously.
   ///
   /// \param callback Callback that will be called after lookup finished.
   /// \return Status
   virtual Status AsyncGetAll(
-      const MultiItemCallback<rpc::ObjectLocationInfo> &callback) = 0;
+      const MultiItemCallback<rpc::ObjectLocationInfo>& callback) = 0;
 
   /// Add location of object to GCS asynchronously.
   ///
@@ -370,8 +370,8 @@ class ObjectInfoAccessor {
   /// \param node_id The location that will be added to GCS.
   /// \param callback Callback that will be called after object has been added to GCS.
   /// \return Status
-  virtual Status AsyncAddLocation(const ObjectID &object_id, const ClientID &node_id,
-                                  const StatusCallback &callback) = 0;
+  virtual Status AsyncAddLocation(const ObjectID& object_id, const ClientID& node_id,
+                                  const StatusCallback& callback) = 0;
 
   /// Remove location of object from GCS asynchronously.
   ///
@@ -379,8 +379,8 @@ class ObjectInfoAccessor {
   /// \param node_id The location that will be removed from GCS.
   /// \param callback Callback that will be called after the delete finished.
   /// \return Status
-  virtual Status AsyncRemoveLocation(const ObjectID &object_id, const ClientID &node_id,
-                                     const StatusCallback &callback) = 0;
+  virtual Status AsyncRemoveLocation(const ObjectID& object_id, const ClientID& node_id,
+                                     const StatusCallback& callback) = 0;
 
   /// Subscribe to any update of an object's location.
   ///
@@ -390,15 +390,15 @@ class ObjectInfoAccessor {
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
   virtual Status AsyncSubscribeToLocations(
-      const ObjectID &object_id,
-      const SubscribeCallback<ObjectID, ObjectChangeNotification> &subscribe,
-      const StatusCallback &done) = 0;
+      const ObjectID& object_id,
+      const SubscribeCallback<ObjectID, ObjectChangeNotification>& subscribe,
+      const StatusCallback& done) = 0;
 
   /// Cancel subscription to any update of an object's location.
   ///
   /// \param object_id The ID of the object to be unsubscribed to.
   /// \return Status
-  virtual Status AsyncUnsubscribeToLocations(const ObjectID &object_id) = 0;
+  virtual Status AsyncUnsubscribeToLocations(const ObjectID& object_id) = 0;
 
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
@@ -425,7 +425,7 @@ class NodeInfoAccessor {
   ///
   /// \param node_info The information of node to register to GCS.
   /// \return Status
-  virtual Status RegisterSelf(const rpc::GcsNodeInfo &local_node_info) = 0;
+  virtual Status RegisterSelf(const rpc::GcsNodeInfo& local_node_info) = 0;
 
   /// Cancel registration of local node to GCS synchronously.
   ///
@@ -435,34 +435,34 @@ class NodeInfoAccessor {
   /// Get id of local node which was registered by 'RegisterSelf'.
   ///
   /// \return ClientID
-  virtual const ClientID &GetSelfId() const = 0;
+  virtual const ClientID& GetSelfId() const = 0;
 
   /// Get information of local node which was registered by 'RegisterSelf'.
   ///
   /// \return GcsNodeInfo
-  virtual const rpc::GcsNodeInfo &GetSelfInfo() const = 0;
+  virtual const rpc::GcsNodeInfo& GetSelfInfo() const = 0;
 
   /// Register a node to GCS asynchronously.
   ///
   /// \param node_info The information of node to register to GCS.
   /// \param callback Callback that will be called when registration is complete.
   /// \return Status
-  virtual Status AsyncRegister(const rpc::GcsNodeInfo &node_info,
-                               const StatusCallback &callback) = 0;
+  virtual Status AsyncRegister(const rpc::GcsNodeInfo& node_info,
+                               const StatusCallback& callback) = 0;
 
   /// Cancel registration of a node to GCS asynchronously.
   ///
   /// \param node_id The ID of node that to be unregistered.
   /// \param callback Callback that will be called when unregistration is complete.
   /// \return Status
-  virtual Status AsyncUnregister(const ClientID &node_id,
-                                 const StatusCallback &callback) = 0;
+  virtual Status AsyncUnregister(const ClientID& node_id,
+                                 const StatusCallback& callback) = 0;
 
   /// Get information of all nodes from GCS asynchronously.
   ///
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
-  virtual Status AsyncGetAll(const MultiItemCallback<rpc::GcsNodeInfo> &callback) = 0;
+  virtual Status AsyncGetAll(const MultiItemCallback<rpc::GcsNodeInfo>& callback) = 0;
 
   /// Subscribe to node addition and removal events from GCS and cache those information.
   ///
@@ -472,8 +472,8 @@ class NodeInfoAccessor {
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
   virtual Status AsyncSubscribeToNodeChange(
-      const SubscribeCallback<ClientID, rpc::GcsNodeInfo> &subscribe,
-      const StatusCallback &done) = 0;
+      const SubscribeCallback<ClientID, rpc::GcsNodeInfo>& subscribe,
+      const StatusCallback& done) = 0;
 
   /// Get node information from local cache.
   /// Non-thread safe.
@@ -483,7 +483,7 @@ class NodeInfoAccessor {
   /// \param node_id The ID of node to look up in local cache.
   /// \return The item returned by GCS. If the item to read doesn't exist,
   /// this optional object is empty.
-  virtual boost::optional<rpc::GcsNodeInfo> Get(const ClientID &node_id) const = 0;
+  virtual boost::optional<rpc::GcsNodeInfo> Get(const ClientID& node_id) const = 0;
 
   /// Get information of all nodes from local cache.
   /// Non-thread safe.
@@ -491,7 +491,7 @@ class NodeInfoAccessor {
   /// is called before.
   ///
   /// \return All nodes in cache.
-  virtual const std::unordered_map<ClientID, rpc::GcsNodeInfo> &GetAll() const = 0;
+  virtual const std::unordered_map<ClientID, rpc::GcsNodeInfo>& GetAll() const = 0;
 
   /// Search the local cache to find out if the given node is removed.
   /// Non-thread safe.
@@ -500,7 +500,7 @@ class NodeInfoAccessor {
   ///
   /// \param node_id The id of the node to check.
   /// \return Whether the node is removed.
-  virtual bool IsRemoved(const ClientID &node_id) const = 0;
+  virtual bool IsRemoved(const ClientID& node_id) const = 0;
 
   // TODO(micafan) Define ResourceMap in GCS proto.
   typedef std::unordered_map<std::string, std::shared_ptr<rpc::ResourceTableData>>
@@ -511,26 +511,26 @@ class NodeInfoAccessor {
   /// \param node_id The ID of node to lookup dynamic resources.
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
-  virtual Status AsyncGetResources(const ClientID &node_id,
-                                   const OptionalItemCallback<ResourceMap> &callback) = 0;
+  virtual Status AsyncGetResources(const ClientID& node_id,
+                                   const OptionalItemCallback<ResourceMap>& callback) = 0;
 
   /// Update resources of node in GCS asynchronously.
   ///
   /// \param node_id The ID of node to update dynamic resources.
   /// \param resources The dynamic resources of node to be updated.
   /// \param callback Callback that will be called after update finishes.
-  virtual Status AsyncUpdateResources(const ClientID &node_id,
-                                      const ResourceMap &resources,
-                                      const StatusCallback &callback) = 0;
+  virtual Status AsyncUpdateResources(const ClientID& node_id,
+                                      const ResourceMap& resources,
+                                      const StatusCallback& callback) = 0;
 
   /// Delete resources of a node from GCS asynchronously.
   ///
   /// \param node_id The ID of node to delete resources from GCS.
   /// \param resource_names The names of resource to be deleted.
   /// \param callback Callback that will be called after delete finishes.
-  virtual Status AsyncDeleteResources(const ClientID &node_id,
-                                      const std::vector<std::string> &resource_names,
-                                      const StatusCallback &callback) = 0;
+  virtual Status AsyncDeleteResources(const ClientID& node_id,
+                                      const std::vector<std::string>& resource_names,
+                                      const StatusCallback& callback) = 0;
 
   /// Subscribe to node resource changes.
   ///
@@ -538,8 +538,8 @@ class NodeInfoAccessor {
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
   virtual Status AsyncSubscribeToResources(
-      const ItemCallback<rpc::NodeResourceChange> &subscribe,
-      const StatusCallback &done) = 0;
+      const ItemCallback<rpc::NodeResourceChange>& subscribe,
+      const StatusCallback& done) = 0;
 
   /// Report heartbeat of a node to GCS asynchronously.
   ///
@@ -548,8 +548,8 @@ class NodeInfoAccessor {
   /// \return Status
   // TODO(micafan) NodeStateAccessor will call this method to report heartbeat.
   virtual Status AsyncReportHeartbeat(
-      const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
-      const StatusCallback &callback) = 0;
+      const std::shared_ptr<rpc::HeartbeatTableData>& data_ptr,
+      const StatusCallback& callback) = 0;
 
   /// Subscribe to the heartbeat of each node from GCS.
   ///
@@ -557,8 +557,8 @@ class NodeInfoAccessor {
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
   virtual Status AsyncSubscribeHeartbeat(
-      const SubscribeCallback<ClientID, rpc::HeartbeatTableData> &subscribe,
-      const StatusCallback &done) = 0;
+      const SubscribeCallback<ClientID, rpc::HeartbeatTableData>& subscribe,
+      const StatusCallback& done) = 0;
 
   /// Report state of all nodes to GCS asynchronously.
   ///
@@ -566,8 +566,8 @@ class NodeInfoAccessor {
   /// \param callback Callback that will be called after report finishes.
   /// \return Status
   virtual Status AsyncReportBatchHeartbeat(
-      const std::shared_ptr<rpc::HeartbeatBatchTableData> &data_ptr,
-      const StatusCallback &callback) = 0;
+      const std::shared_ptr<rpc::HeartbeatBatchTableData>& data_ptr,
+      const StatusCallback& callback) = 0;
 
   /// Subscribe batched state of all nodes from GCS.
   ///
@@ -576,8 +576,8 @@ class NodeInfoAccessor {
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
   virtual Status AsyncSubscribeBatchHeartbeat(
-      const ItemCallback<rpc::HeartbeatBatchTableData> &subscribe,
-      const StatusCallback &done) = 0;
+      const ItemCallback<rpc::HeartbeatBatchTableData>& subscribe,
+      const StatusCallback& done) = 0;
 
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
@@ -594,15 +594,15 @@ class NodeInfoAccessor {
   /// \param config Map of config options
   /// \return Status
   virtual Status AsyncSetInternalConfig(
-      std::unordered_map<std::string, std::string> &config) = 0;
+      std::unordered_map<std::string, std::string>& config) = 0;
 
   /// Get the internal config string from GCS.
   ///
   /// \param callback Processes a map of config options
   /// \return Status
   virtual Status AsyncGetInternalConfig(
-      const OptionalItemCallback<std::unordered_map<std::string, std::string>>
-          &callback) = 0;
+      const OptionalItemCallback<std::unordered_map<std::string, std::string>>&
+          callback) = 0;
 
  protected:
   NodeInfoAccessor() = default;
@@ -627,8 +627,8 @@ class ErrorInfoAccessor {
   /// \param data_ptr The error message that will be reported to GCS.
   /// \param callback Callback that will be called when report is complete.
   /// \return Status
-  virtual Status AsyncReportJobError(const std::shared_ptr<rpc::ErrorTableData> &data_ptr,
-                                     const StatusCallback &callback) = 0;
+  virtual Status AsyncReportJobError(const std::shared_ptr<rpc::ErrorTableData>& data_ptr,
+                                     const StatusCallback& callback) = 0;
 
  protected:
   ErrorInfoAccessor() = default;
@@ -648,15 +648,15 @@ class StatsInfoAccessor {
   /// \param callback Callback that will be called when add is complete.
   /// \return Status
   virtual Status AsyncAddProfileData(
-      const std::shared_ptr<rpc::ProfileTableData> &data_ptr,
-      const StatusCallback &callback) = 0;
+      const std::shared_ptr<rpc::ProfileTableData>& data_ptr,
+      const StatusCallback& callback) = 0;
 
   /// Get all profile info from GCS asynchronously.
   ///
   /// \param callback Callback that will be called after lookup finished.
   /// \return Status
   virtual Status AsyncGetAll(
-      const MultiItemCallback<rpc::ProfileTableData> &callback) = 0;
+      const MultiItemCallback<rpc::ProfileTableData>& callback) = 0;
 
  protected:
   StatsInfoAccessor() = default;
@@ -677,8 +677,8 @@ class WorkerInfoAccessor {
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
   virtual Status AsyncSubscribeToWorkerFailures(
-      const SubscribeCallback<WorkerID, rpc::WorkerTableData> &subscribe,
-      const StatusCallback &done) = 0;
+      const SubscribeCallback<WorkerID, rpc::WorkerTableData>& subscribe,
+      const StatusCallback& done) = 0;
 
   /// Report a worker failure to GCS asynchronously.
   ///
@@ -686,22 +686,22 @@ class WorkerInfoAccessor {
   /// \param callback Callback that will be called when report is complate.
   /// \param Status
   virtual Status AsyncReportWorkerFailure(
-      const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
-      const StatusCallback &callback) = 0;
+      const std::shared_ptr<rpc::WorkerTableData>& data_ptr,
+      const StatusCallback& callback) = 0;
 
   /// Get worker specification from GCS asynchronously.
   ///
   /// \param worker_id The ID of worker to look up in the GCS.
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
-  virtual Status AsyncGet(const WorkerID &worker_id,
-                          const OptionalItemCallback<rpc::WorkerTableData> &callback) = 0;
+  virtual Status AsyncGet(const WorkerID& worker_id,
+                          const OptionalItemCallback<rpc::WorkerTableData>& callback) = 0;
 
   /// Get all worker info from GCS asynchronously.
   ///
   /// \param callback Callback that will be called after lookup finished.
   /// \return Status
-  virtual Status AsyncGetAll(const MultiItemCallback<rpc::WorkerTableData> &callback) = 0;
+  virtual Status AsyncGetAll(const MultiItemCallback<rpc::WorkerTableData>& callback) = 0;
 
   /// Add worker information to GCS asynchronously.
   ///
@@ -709,8 +709,8 @@ class WorkerInfoAccessor {
   /// \param callback Callback that will be called after worker information has been added
   /// to GCS.
   /// \return Status
-  virtual Status AsyncAdd(const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
-                          const StatusCallback &callback) = 0;
+  virtual Status AsyncAdd(const std::shared_ptr<rpc::WorkerTableData>& data_ptr,
+                          const StatusCallback& callback) = 0;
 
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
@@ -736,7 +736,7 @@ class PlacementGroupInfoAccessor {
   /// \param callback Callback that will be called after the placement group info is
   /// written to GCS. \return Status
   virtual Status AsyncCreatePlacementGroup(
-      const PlacementGroupSpecification &placement_group_spec) = 0;
+      const PlacementGroupSpecification& placement_group_spec) = 0;
 
  protected:
   PlacementGroupInfoAccessor() = default;

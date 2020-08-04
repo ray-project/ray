@@ -18,9 +18,9 @@ namespace ray {
 
 namespace gcs {
 
-Status InMemoryStoreClient::AsyncPut(const std::string &table_name,
-                                     const std::string &key, const std::string &data,
-                                     const StatusCallback &callback) {
+Status InMemoryStoreClient::AsyncPut(const std::string& table_name,
+                                     const std::string& key, const std::string& data,
+                                     const StatusCallback& callback) {
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   table->records_[key] = data;
@@ -28,11 +28,11 @@ Status InMemoryStoreClient::AsyncPut(const std::string &table_name,
   return Status::OK();
 }
 
-Status InMemoryStoreClient::AsyncPutWithIndex(const std::string &table_name,
-                                              const std::string &key,
-                                              const std::string &index_key,
-                                              const std::string &data,
-                                              const StatusCallback &callback) {
+Status InMemoryStoreClient::AsyncPutWithIndex(const std::string& table_name,
+                                              const std::string& key,
+                                              const std::string& index_key,
+                                              const std::string& data,
+                                              const StatusCallback& callback) {
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   table->records_[key] = data;
@@ -41,9 +41,9 @@ Status InMemoryStoreClient::AsyncPutWithIndex(const std::string &table_name,
   return Status::OK();
 }
 
-Status InMemoryStoreClient::AsyncGet(const std::string &table_name,
-                                     const std::string &key,
-                                     const OptionalItemCallback<std::string> &callback) {
+Status InMemoryStoreClient::AsyncGet(const std::string& table_name,
+                                     const std::string& key,
+                                     const OptionalItemCallback<std::string>& callback) {
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   auto iter = table->records_.find(key);
@@ -57,8 +57,8 @@ Status InMemoryStoreClient::AsyncGet(const std::string &table_name,
 }
 
 Status InMemoryStoreClient::AsyncGetAll(
-    const std::string &table_name,
-    const MapCallback<std::string, std::string> &callback) {
+    const std::string& table_name,
+    const MapCallback<std::string, std::string>& callback) {
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   std::unordered_map<std::string, std::string> result;
@@ -67,9 +67,9 @@ Status InMemoryStoreClient::AsyncGetAll(
   return Status::OK();
 }
 
-Status InMemoryStoreClient::AsyncDelete(const std::string &table_name,
-                                        const std::string &key,
-                                        const StatusCallback &callback) {
+Status InMemoryStoreClient::AsyncDelete(const std::string& table_name,
+                                        const std::string& key,
+                                        const StatusCallback& callback) {
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   table->records_.erase(key);
@@ -77,12 +77,12 @@ Status InMemoryStoreClient::AsyncDelete(const std::string &table_name,
   return Status::OK();
 }
 
-Status InMemoryStoreClient::AsyncBatchDelete(const std::string &table_name,
-                                             const std::vector<std::string> &keys,
-                                             const StatusCallback &callback) {
+Status InMemoryStoreClient::AsyncBatchDelete(const std::string& table_name,
+                                             const std::vector<std::string>& keys,
+                                             const StatusCallback& callback) {
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
-  for (auto &key : keys) {
+  for (auto& key : keys) {
     table->records_.erase(key);
   }
   main_io_service_.post([callback]() { callback(Status::OK()); });
@@ -90,14 +90,14 @@ Status InMemoryStoreClient::AsyncBatchDelete(const std::string &table_name,
 }
 
 Status InMemoryStoreClient::AsyncGetByIndex(
-    const std::string &table_name, const std::string &index_key,
-    const MapCallback<std::string, std::string> &callback) {
+    const std::string& table_name, const std::string& index_key,
+    const MapCallback<std::string, std::string>& callback) {
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   auto iter = table->index_keys_.find(index_key);
   std::unordered_map<std::string, std::string> result;
   if (iter != table->index_keys_.end()) {
-    for (auto &key : iter->second) {
+    for (auto& key : iter->second) {
       auto kv_iter = table->records_.find(key);
       if (kv_iter != table->records_.end()) {
         result[kv_iter->first] = kv_iter->second;
@@ -109,14 +109,14 @@ Status InMemoryStoreClient::AsyncGetByIndex(
   return Status::OK();
 }
 
-Status InMemoryStoreClient::AsyncDeleteByIndex(const std::string &table_name,
-                                               const std::string &index_key,
-                                               const StatusCallback &callback) {
+Status InMemoryStoreClient::AsyncDeleteByIndex(const std::string& table_name,
+                                               const std::string& index_key,
+                                               const StatusCallback& callback) {
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   auto iter = table->index_keys_.find(index_key);
   if (iter != table->index_keys_.end()) {
-    for (auto &key : iter->second) {
+    for (auto& key : iter->second) {
       table->records_.erase(key);
     }
     table->index_keys_.erase(iter);
@@ -130,7 +130,7 @@ Status InMemoryStoreClient::AsyncDeleteByIndex(const std::string &table_name,
 }
 
 std::shared_ptr<InMemoryStoreClient::InMemoryTable> InMemoryStoreClient::GetOrCreateTable(
-    const std::string &table_name) {
+    const std::string& table_name) {
   absl::MutexLock lock(&mutex_);
   auto iter = tables_.find(table_name);
   if (iter != tables_.end()) {

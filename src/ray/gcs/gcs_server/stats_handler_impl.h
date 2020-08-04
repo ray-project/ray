@@ -27,12 +27,12 @@ class DefaultStatsHandler : public rpc::StatsHandler {
   explicit DefaultStatsHandler(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
       : gcs_table_storage_(std::move(gcs_table_storage)) {}
 
-  void HandleAddProfileData(const AddProfileDataRequest &request,
-                            AddProfileDataReply *reply,
+  void HandleAddProfileData(const AddProfileDataRequest& request,
+                            AddProfileDataReply* reply,
                             SendReplyCallback send_reply_callback) override;
 
-  void HandleGetAllProfileInfo(const rpc::GetAllProfileInfoRequest &request,
-                               rpc::GetAllProfileInfoReply *reply,
+  void HandleGetAllProfileInfo(const rpc::GetAllProfileInfoRequest& request,
+                               rpc::GetAllProfileInfoReply* reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
  private:

@@ -38,14 +38,14 @@ class ObjectManagerServiceHandler {
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
-  virtual void HandlePush(const PushRequest &request, PushReply *reply,
+  virtual void HandlePush(const PushRequest& request, PushReply* reply,
                           SendReplyCallback send_reply_callback) = 0;
   /// Handle a `Pull` request
-  virtual void HandlePull(const PullRequest &request, PullReply *reply,
+  virtual void HandlePull(const PullRequest& request, PullReply* reply,
                           SendReplyCallback send_reply_callback) = 0;
   /// Handle a `FreeObjects` request
-  virtual void HandleFreeObjects(const FreeObjectsRequest &request,
-                                 FreeObjectsReply *reply,
+  virtual void HandleFreeObjects(const FreeObjectsRequest& request,
+                                 FreeObjectsReply* reply,
                                  SendReplyCallback send_reply_callback) = 0;
 };
 
@@ -56,16 +56,16 @@ class ObjectManagerGrpcService : public GrpcService {
   ///
   /// \param[in] port See `GrpcService`.
   /// \param[in] handler The service handler that actually handle the requests.
-  ObjectManagerGrpcService(boost::asio::io_service &io_service,
-                           ObjectManagerServiceHandler &service_handler)
+  ObjectManagerGrpcService(boost::asio::io_service& io_service,
+                           ObjectManagerServiceHandler& service_handler)
       : GrpcService(io_service), service_handler_(service_handler){};
 
  protected:
-  grpc::Service &GetGrpcService() override { return service_; }
+  grpc::Service& GetGrpcService() override { return service_; }
 
   void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+      const std::unique_ptr<grpc::ServerCompletionQueue>& cq,
+      std::vector<std::unique_ptr<ServerCallFactory>>* server_call_factories) override {
     RAY_OBJECT_MANAGER_RPC_HANDLERS
   }
 
@@ -73,7 +73,7 @@ class ObjectManagerGrpcService : public GrpcService {
   /// The grpc async service object.
   ObjectManagerService::AsyncService service_;
   /// The service handler that actually handle the requests.
-  ObjectManagerServiceHandler &service_handler_;
+  ObjectManagerServiceHandler& service_handler_;
 };
 
 }  // namespace rpc

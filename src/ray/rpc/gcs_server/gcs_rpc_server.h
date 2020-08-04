@@ -56,15 +56,15 @@ class JobInfoGcsServiceHandler {
  public:
   virtual ~JobInfoGcsServiceHandler() = default;
 
-  virtual void HandleAddJob(const AddJobRequest &request, AddJobReply *reply,
+  virtual void HandleAddJob(const AddJobRequest& request, AddJobReply* reply,
                             SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleMarkJobFinished(const MarkJobFinishedRequest &request,
-                                     MarkJobFinishedReply *reply,
+  virtual void HandleMarkJobFinished(const MarkJobFinishedRequest& request,
+                                     MarkJobFinishedReply* reply,
                                      SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGetAllJobInfo(const GetAllJobInfoRequest &request,
-                                   GetAllJobInfoReply *reply,
+  virtual void HandleGetAllJobInfo(const GetAllJobInfoRequest& request,
+                                   GetAllJobInfoReply* reply,
                                    SendReplyCallback send_reply_callback) = 0;
 
   virtual void AddJobFinishedListener(
@@ -77,16 +77,16 @@ class JobInfoGrpcService : public GrpcService {
   /// Constructor.
   ///
   /// \param[in] handler The service handler that actually handle the requests.
-  explicit JobInfoGrpcService(boost::asio::io_service &io_service,
-                              JobInfoGcsServiceHandler &handler)
+  explicit JobInfoGrpcService(boost::asio::io_service& io_service,
+                              JobInfoGcsServiceHandler& handler)
       : GrpcService(io_service), service_handler_(handler){};
 
  protected:
-  grpc::Service &GetGrpcService() override { return service_; }
+  grpc::Service& GetGrpcService() override { return service_; }
 
   void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+      const std::unique_ptr<grpc::ServerCompletionQueue>& cq,
+      std::vector<std::unique_ptr<ServerCallFactory>>* server_call_factories) override {
     JOB_INFO_SERVICE_RPC_HANDLER(AddJob);
     JOB_INFO_SERVICE_RPC_HANDLER(MarkJobFinished);
     JOB_INFO_SERVICE_RPC_HANDLER(GetAllJobInfo);
@@ -96,51 +96,51 @@ class JobInfoGrpcService : public GrpcService {
   /// The grpc async service object.
   JobInfoGcsService::AsyncService service_;
   /// The service handler that actually handle the requests.
-  JobInfoGcsServiceHandler &service_handler_;
+  JobInfoGcsServiceHandler& service_handler_;
 };
 
 class ActorInfoGcsServiceHandler {
  public:
   virtual ~ActorInfoGcsServiceHandler() = default;
 
-  virtual void HandleRegisterActor(const RegisterActorRequest &request,
-                                   RegisterActorReply *reply,
+  virtual void HandleRegisterActor(const RegisterActorRequest& request,
+                                   RegisterActorReply* reply,
                                    SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleCreateActor(const CreateActorRequest &request,
-                                 CreateActorReply *reply,
+  virtual void HandleCreateActor(const CreateActorRequest& request,
+                                 CreateActorReply* reply,
                                  SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGetActorInfo(const GetActorInfoRequest &request,
-                                  GetActorInfoReply *reply,
+  virtual void HandleGetActorInfo(const GetActorInfoRequest& request,
+                                  GetActorInfoReply* reply,
                                   SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGetNamedActorInfo(const GetNamedActorInfoRequest &request,
-                                       GetNamedActorInfoReply *reply,
+  virtual void HandleGetNamedActorInfo(const GetNamedActorInfoRequest& request,
+                                       GetNamedActorInfoReply* reply,
                                        SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGetAllActorInfo(const GetAllActorInfoRequest &request,
-                                     GetAllActorInfoReply *reply,
+  virtual void HandleGetAllActorInfo(const GetAllActorInfoRequest& request,
+                                     GetAllActorInfoReply* reply,
                                      SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleRegisterActorInfo(const RegisterActorInfoRequest &request,
-                                       RegisterActorInfoReply *reply,
+  virtual void HandleRegisterActorInfo(const RegisterActorInfoRequest& request,
+                                       RegisterActorInfoReply* reply,
                                        SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleUpdateActorInfo(const UpdateActorInfoRequest &request,
-                                     UpdateActorInfoReply *reply,
+  virtual void HandleUpdateActorInfo(const UpdateActorInfoRequest& request,
+                                     UpdateActorInfoReply* reply,
                                      SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleAddActorCheckpoint(const AddActorCheckpointRequest &request,
-                                        AddActorCheckpointReply *reply,
+  virtual void HandleAddActorCheckpoint(const AddActorCheckpointRequest& request,
+                                        AddActorCheckpointReply* reply,
                                         SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGetActorCheckpoint(const GetActorCheckpointRequest &request,
-                                        GetActorCheckpointReply *reply,
+  virtual void HandleGetActorCheckpoint(const GetActorCheckpointRequest& request,
+                                        GetActorCheckpointReply* reply,
                                         SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGetActorCheckpointID(const GetActorCheckpointIDRequest &request,
-                                          GetActorCheckpointIDReply *reply,
+  virtual void HandleGetActorCheckpointID(const GetActorCheckpointIDRequest& request,
+                                          GetActorCheckpointIDReply* reply,
                                           SendReplyCallback send_reply_callback) = 0;
 };
 
@@ -150,16 +150,16 @@ class ActorInfoGrpcService : public GrpcService {
   /// Constructor.
   ///
   /// \param[in] handler The service handler that actually handle the requests.
-  explicit ActorInfoGrpcService(boost::asio::io_service &io_service,
-                                ActorInfoGcsServiceHandler &handler)
+  explicit ActorInfoGrpcService(boost::asio::io_service& io_service,
+                                ActorInfoGcsServiceHandler& handler)
       : GrpcService(io_service), service_handler_(handler){};
 
  protected:
-  grpc::Service &GetGrpcService() override { return service_; }
+  grpc::Service& GetGrpcService() override { return service_; }
 
   void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+      const std::unique_ptr<grpc::ServerCompletionQueue>& cq,
+      std::vector<std::unique_ptr<ServerCallFactory>>* server_call_factories) override {
     ACTOR_INFO_SERVICE_RPC_HANDLER(RegisterActor);
     ACTOR_INFO_SERVICE_RPC_HANDLER(CreateActor);
     ACTOR_INFO_SERVICE_RPC_HANDLER(GetActorInfo);
@@ -176,47 +176,47 @@ class ActorInfoGrpcService : public GrpcService {
   /// The grpc async service object.
   ActorInfoGcsService::AsyncService service_;
   /// The service handler that actually handle the requests.
-  ActorInfoGcsServiceHandler &service_handler_;
+  ActorInfoGcsServiceHandler& service_handler_;
 };
 
 class NodeInfoGcsServiceHandler {
  public:
   virtual ~NodeInfoGcsServiceHandler() = default;
 
-  virtual void HandleRegisterNode(const RegisterNodeRequest &request,
-                                  RegisterNodeReply *reply,
+  virtual void HandleRegisterNode(const RegisterNodeRequest& request,
+                                  RegisterNodeReply* reply,
                                   SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleUnregisterNode(const UnregisterNodeRequest &request,
-                                    UnregisterNodeReply *reply,
+  virtual void HandleUnregisterNode(const UnregisterNodeRequest& request,
+                                    UnregisterNodeReply* reply,
                                     SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGetAllNodeInfo(const GetAllNodeInfoRequest &request,
-                                    GetAllNodeInfoReply *reply,
+  virtual void HandleGetAllNodeInfo(const GetAllNodeInfoRequest& request,
+                                    GetAllNodeInfoReply* reply,
                                     SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleReportHeartbeat(const ReportHeartbeatRequest &request,
-                                     ReportHeartbeatReply *reply,
+  virtual void HandleReportHeartbeat(const ReportHeartbeatRequest& request,
+                                     ReportHeartbeatReply* reply,
                                      SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGetResources(const GetResourcesRequest &request,
-                                  GetResourcesReply *reply,
+  virtual void HandleGetResources(const GetResourcesRequest& request,
+                                  GetResourcesReply* reply,
                                   SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleUpdateResources(const UpdateResourcesRequest &request,
-                                     UpdateResourcesReply *reply,
+  virtual void HandleUpdateResources(const UpdateResourcesRequest& request,
+                                     UpdateResourcesReply* reply,
                                      SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleDeleteResources(const DeleteResourcesRequest &request,
-                                     DeleteResourcesReply *reply,
+  virtual void HandleDeleteResources(const DeleteResourcesRequest& request,
+                                     DeleteResourcesReply* reply,
                                      SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleSetInternalConfig(const SetInternalConfigRequest &request,
-                                       SetInternalConfigReply *reply,
+  virtual void HandleSetInternalConfig(const SetInternalConfigRequest& request,
+                                       SetInternalConfigReply* reply,
                                        SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGetInternalConfig(const GetInternalConfigRequest &request,
-                                       GetInternalConfigReply *reply,
+  virtual void HandleGetInternalConfig(const GetInternalConfigRequest& request,
+                                       GetInternalConfigReply* reply,
                                        SendReplyCallback send_reply_callback) = 0;
 };
 
@@ -226,16 +226,16 @@ class NodeInfoGrpcService : public GrpcService {
   /// Constructor.
   ///
   /// \param[in] handler The service handler that actually handle the requests.
-  explicit NodeInfoGrpcService(boost::asio::io_service &io_service,
-                               NodeInfoGcsServiceHandler &handler)
+  explicit NodeInfoGrpcService(boost::asio::io_service& io_service,
+                               NodeInfoGcsServiceHandler& handler)
       : GrpcService(io_service), service_handler_(handler){};
 
  protected:
-  grpc::Service &GetGrpcService() override { return service_; }
+  grpc::Service& GetGrpcService() override { return service_; }
 
   void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+      const std::unique_ptr<grpc::ServerCompletionQueue>& cq,
+      std::vector<std::unique_ptr<ServerCallFactory>>* server_call_factories) override {
     NODE_INFO_SERVICE_RPC_HANDLER(RegisterNode);
     NODE_INFO_SERVICE_RPC_HANDLER(UnregisterNode);
     NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodeInfo);
@@ -251,27 +251,27 @@ class NodeInfoGrpcService : public GrpcService {
   /// The grpc async service object.
   NodeInfoGcsService::AsyncService service_;
   /// The service handler that actually handle the requests.
-  NodeInfoGcsServiceHandler &service_handler_;
+  NodeInfoGcsServiceHandler& service_handler_;
 };
 
 class ObjectInfoGcsServiceHandler {
  public:
   virtual ~ObjectInfoGcsServiceHandler() = default;
 
-  virtual void HandleGetObjectLocations(const GetObjectLocationsRequest &request,
-                                        GetObjectLocationsReply *reply,
+  virtual void HandleGetObjectLocations(const GetObjectLocationsRequest& request,
+                                        GetObjectLocationsReply* reply,
                                         SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGetAllObjectLocations(const GetAllObjectLocationsRequest &request,
-                                           GetAllObjectLocationsReply *reply,
+  virtual void HandleGetAllObjectLocations(const GetAllObjectLocationsRequest& request,
+                                           GetAllObjectLocationsReply* reply,
                                            SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleAddObjectLocation(const AddObjectLocationRequest &request,
-                                       AddObjectLocationReply *reply,
+  virtual void HandleAddObjectLocation(const AddObjectLocationRequest& request,
+                                       AddObjectLocationReply* reply,
                                        SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleRemoveObjectLocation(const RemoveObjectLocationRequest &request,
-                                          RemoveObjectLocationReply *reply,
+  virtual void HandleRemoveObjectLocation(const RemoveObjectLocationRequest& request,
+                                          RemoveObjectLocationReply* reply,
                                           SendReplyCallback send_reply_callback) = 0;
 };
 
@@ -281,16 +281,16 @@ class ObjectInfoGrpcService : public GrpcService {
   /// Constructor.
   ///
   /// \param[in] handler The service handler that actually handle the requests.
-  explicit ObjectInfoGrpcService(boost::asio::io_service &io_service,
-                                 ObjectInfoGcsServiceHandler &handler)
+  explicit ObjectInfoGrpcService(boost::asio::io_service& io_service,
+                                 ObjectInfoGcsServiceHandler& handler)
       : GrpcService(io_service), service_handler_(handler){};
 
  protected:
-  grpc::Service &GetGrpcService() override { return service_; }
+  grpc::Service& GetGrpcService() override { return service_; }
 
   void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+      const std::unique_ptr<grpc::ServerCompletionQueue>& cq,
+      std::vector<std::unique_ptr<ServerCallFactory>>* server_call_factories) override {
     OBJECT_INFO_SERVICE_RPC_HANDLER(GetObjectLocations);
     OBJECT_INFO_SERVICE_RPC_HANDLER(GetAllObjectLocations);
     OBJECT_INFO_SERVICE_RPC_HANDLER(AddObjectLocation);
@@ -301,34 +301,34 @@ class ObjectInfoGrpcService : public GrpcService {
   /// The grpc async service object.
   ObjectInfoGcsService::AsyncService service_;
   /// The service handler that actually handle the requests.
-  ObjectInfoGcsServiceHandler &service_handler_;
+  ObjectInfoGcsServiceHandler& service_handler_;
 };
 
 class TaskInfoGcsServiceHandler {
  public:
   virtual ~TaskInfoGcsServiceHandler() = default;
 
-  virtual void HandleAddTask(const AddTaskRequest &request, AddTaskReply *reply,
+  virtual void HandleAddTask(const AddTaskRequest& request, AddTaskReply* reply,
                              SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGetTask(const GetTaskRequest &request, GetTaskReply *reply,
+  virtual void HandleGetTask(const GetTaskRequest& request, GetTaskReply* reply,
                              SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleDeleteTasks(const DeleteTasksRequest &request,
-                                 DeleteTasksReply *reply,
+  virtual void HandleDeleteTasks(const DeleteTasksRequest& request,
+                                 DeleteTasksReply* reply,
                                  SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleAddTaskLease(const AddTaskLeaseRequest &request,
-                                  AddTaskLeaseReply *reply,
+  virtual void HandleAddTaskLease(const AddTaskLeaseRequest& request,
+                                  AddTaskLeaseReply* reply,
                                   SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGetTaskLease(const GetTaskLeaseRequest &request,
-                                  GetTaskLeaseReply *reply,
+  virtual void HandleGetTaskLease(const GetTaskLeaseRequest& request,
+                                  GetTaskLeaseReply* reply,
                                   SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleAttemptTaskReconstruction(
-      const AttemptTaskReconstructionRequest &request,
-      AttemptTaskReconstructionReply *reply, SendReplyCallback send_reply_callback) = 0;
+      const AttemptTaskReconstructionRequest& request,
+      AttemptTaskReconstructionReply* reply, SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `TaskInfoGcsService`.
@@ -337,16 +337,16 @@ class TaskInfoGrpcService : public GrpcService {
   /// Constructor.
   ///
   /// \param[in] handler The service handler that actually handle the requests.
-  explicit TaskInfoGrpcService(boost::asio::io_service &io_service,
-                               TaskInfoGcsServiceHandler &handler)
+  explicit TaskInfoGrpcService(boost::asio::io_service& io_service,
+                               TaskInfoGcsServiceHandler& handler)
       : GrpcService(io_service), service_handler_(handler){};
 
  protected:
-  grpc::Service &GetGrpcService() override { return service_; }
+  grpc::Service& GetGrpcService() override { return service_; }
 
   void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+      const std::unique_ptr<grpc::ServerCompletionQueue>& cq,
+      std::vector<std::unique_ptr<ServerCallFactory>>* server_call_factories) override {
     TASK_INFO_SERVICE_RPC_HANDLER(AddTask);
     TASK_INFO_SERVICE_RPC_HANDLER(GetTask);
     TASK_INFO_SERVICE_RPC_HANDLER(DeleteTasks);
@@ -359,19 +359,19 @@ class TaskInfoGrpcService : public GrpcService {
   /// The grpc async service object.
   TaskInfoGcsService::AsyncService service_;
   /// The service handler that actually handle the requests.
-  TaskInfoGcsServiceHandler &service_handler_;
+  TaskInfoGcsServiceHandler& service_handler_;
 };
 
 class StatsGcsServiceHandler {
  public:
   virtual ~StatsGcsServiceHandler() = default;
 
-  virtual void HandleAddProfileData(const AddProfileDataRequest &request,
-                                    AddProfileDataReply *reply,
+  virtual void HandleAddProfileData(const AddProfileDataRequest& request,
+                                    AddProfileDataReply* reply,
                                     SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGetAllProfileInfo(const GetAllProfileInfoRequest &request,
-                                       GetAllProfileInfoReply *reply,
+  virtual void HandleGetAllProfileInfo(const GetAllProfileInfoRequest& request,
+                                       GetAllProfileInfoReply* reply,
                                        SendReplyCallback send_reply_callback) = 0;
 };
 
@@ -381,16 +381,16 @@ class StatsGrpcService : public GrpcService {
   /// Constructor.
   ///
   /// \param[in] handler The service handler that actually handle the requests.
-  explicit StatsGrpcService(boost::asio::io_service &io_service,
-                            StatsGcsServiceHandler &handler)
+  explicit StatsGrpcService(boost::asio::io_service& io_service,
+                            StatsGcsServiceHandler& handler)
       : GrpcService(io_service), service_handler_(handler){};
 
  protected:
-  grpc::Service &GetGrpcService() override { return service_; }
+  grpc::Service& GetGrpcService() override { return service_; }
 
   void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+      const std::unique_ptr<grpc::ServerCompletionQueue>& cq,
+      std::vector<std::unique_ptr<ServerCallFactory>>* server_call_factories) override {
     STATS_SERVICE_RPC_HANDLER(AddProfileData);
     STATS_SERVICE_RPC_HANDLER(GetAllProfileInfo);
   }
@@ -399,15 +399,15 @@ class StatsGrpcService : public GrpcService {
   /// The grpc async service object.
   StatsGcsService::AsyncService service_;
   /// The service handler that actually handle the requests.
-  StatsGcsServiceHandler &service_handler_;
+  StatsGcsServiceHandler& service_handler_;
 };
 
 class ErrorInfoGcsServiceHandler {
  public:
   virtual ~ErrorInfoGcsServiceHandler() = default;
 
-  virtual void HandleReportJobError(const ReportJobErrorRequest &request,
-                                    ReportJobErrorReply *reply,
+  virtual void HandleReportJobError(const ReportJobErrorRequest& request,
+                                    ReportJobErrorReply* reply,
                                     SendReplyCallback send_reply_callback) = 0;
 };
 
@@ -417,16 +417,16 @@ class ErrorInfoGrpcService : public GrpcService {
   /// Constructor.
   ///
   /// \param[in] handler The service handler that actually handle the requests.
-  explicit ErrorInfoGrpcService(boost::asio::io_service &io_service,
-                                ErrorInfoGcsServiceHandler &handler)
+  explicit ErrorInfoGrpcService(boost::asio::io_service& io_service,
+                                ErrorInfoGcsServiceHandler& handler)
       : GrpcService(io_service), service_handler_(handler){};
 
  protected:
-  grpc::Service &GetGrpcService() override { return service_; }
+  grpc::Service& GetGrpcService() override { return service_; }
 
   void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+      const std::unique_ptr<grpc::ServerCompletionQueue>& cq,
+      std::vector<std::unique_ptr<ServerCallFactory>>* server_call_factories) override {
     ERROR_INFO_SERVICE_RPC_HANDLER(ReportJobError);
   }
 
@@ -434,27 +434,27 @@ class ErrorInfoGrpcService : public GrpcService {
   /// The grpc async service object.
   ErrorInfoGcsService::AsyncService service_;
   /// The service handler that actually handle the requests.
-  ErrorInfoGcsServiceHandler &service_handler_;
+  ErrorInfoGcsServiceHandler& service_handler_;
 };
 
 class WorkerInfoGcsServiceHandler {
  public:
   virtual ~WorkerInfoGcsServiceHandler() = default;
 
-  virtual void HandleReportWorkerFailure(const ReportWorkerFailureRequest &request,
-                                         ReportWorkerFailureReply *reply,
+  virtual void HandleReportWorkerFailure(const ReportWorkerFailureRequest& request,
+                                         ReportWorkerFailureReply* reply,
                                          SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGetWorkerInfo(const GetWorkerInfoRequest &request,
-                                   GetWorkerInfoReply *reply,
+  virtual void HandleGetWorkerInfo(const GetWorkerInfoRequest& request,
+                                   GetWorkerInfoReply* reply,
                                    SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGetAllWorkerInfo(const GetAllWorkerInfoRequest &request,
-                                      GetAllWorkerInfoReply *reply,
+  virtual void HandleGetAllWorkerInfo(const GetAllWorkerInfoRequest& request,
+                                      GetAllWorkerInfoReply* reply,
                                       SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleAddWorkerInfo(const AddWorkerInfoRequest &request,
-                                   AddWorkerInfoReply *reply,
+  virtual void HandleAddWorkerInfo(const AddWorkerInfoRequest& request,
+                                   AddWorkerInfoReply* reply,
                                    SendReplyCallback send_reply_callback) = 0;
 };
 
@@ -464,16 +464,16 @@ class WorkerInfoGrpcService : public GrpcService {
   /// Constructor.
   ///
   /// \param[in] handler The service handler that actually handle the requests.
-  explicit WorkerInfoGrpcService(boost::asio::io_service &io_service,
-                                 WorkerInfoGcsServiceHandler &handler)
+  explicit WorkerInfoGrpcService(boost::asio::io_service& io_service,
+                                 WorkerInfoGcsServiceHandler& handler)
       : GrpcService(io_service), service_handler_(handler){};
 
  protected:
-  grpc::Service &GetGrpcService() override { return service_; }
+  grpc::Service& GetGrpcService() override { return service_; }
 
   void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+      const std::unique_ptr<grpc::ServerCompletionQueue>& cq,
+      std::vector<std::unique_ptr<ServerCallFactory>>* server_call_factories) override {
     WORKER_INFO_SERVICE_RPC_HANDLER(ReportWorkerFailure);
     WORKER_INFO_SERVICE_RPC_HANDLER(GetWorkerInfo);
     WORKER_INFO_SERVICE_RPC_HANDLER(GetAllWorkerInfo);
@@ -484,15 +484,15 @@ class WorkerInfoGrpcService : public GrpcService {
   /// The grpc async service object.
   WorkerInfoGcsService::AsyncService service_;
   /// The service handler that actually handle the requests.
-  WorkerInfoGcsServiceHandler &service_handler_;
+  WorkerInfoGcsServiceHandler& service_handler_;
 };
 
 class PlacementGroupInfoGcsServiceHandler {
  public:
   virtual ~PlacementGroupInfoGcsServiceHandler() = default;
 
-  virtual void HandleCreatePlacementGroup(const CreatePlacementGroupRequest &request,
-                                          CreatePlacementGroupReply *reply,
+  virtual void HandleCreatePlacementGroup(const CreatePlacementGroupRequest& request,
+                                          CreatePlacementGroupReply* reply,
                                           SendReplyCallback send_reply_callback) = 0;
 };
 
@@ -502,16 +502,16 @@ class PlacementGroupInfoGrpcService : public GrpcService {
   /// Constructor.
   ///
   /// \param[in] handler The service handler that actually handle the requests.
-  explicit PlacementGroupInfoGrpcService(boost::asio::io_service &io_service,
-                                         PlacementGroupInfoGcsServiceHandler &handler)
+  explicit PlacementGroupInfoGrpcService(boost::asio::io_service& io_service,
+                                         PlacementGroupInfoGcsServiceHandler& handler)
       : GrpcService(io_service), service_handler_(handler){};
 
  protected:
-  grpc::Service &GetGrpcService() override { return service_; }
+  grpc::Service& GetGrpcService() override { return service_; }
 
   void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+      const std::unique_ptr<grpc::ServerCompletionQueue>& cq,
+      std::vector<std::unique_ptr<ServerCallFactory>>* server_call_factories) override {
     PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(CreatePlacementGroup);
   }
 
@@ -519,7 +519,7 @@ class PlacementGroupInfoGrpcService : public GrpcService {
   /// The grpc async service object.
   PlacementGroupInfoGcsService::AsyncService service_;
   /// The service handler that actually handle the requests.
-  PlacementGroupInfoGcsServiceHandler &service_handler_;
+  PlacementGroupInfoGcsServiceHandler& service_handler_;
 };
 
 using JobInfoHandler = JobInfoGcsServiceHandler;

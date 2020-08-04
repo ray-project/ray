@@ -21,16 +21,16 @@ namespace stats {
 
 template <>
 void MetricExporter::ExportToPoints(
-    const opencensus::stats::ViewData::DataMap<opencensus::stats::Distribution>
-        &view_data,
-    const opencensus::stats::MeasureDescriptor &measure_descriptor,
-    std::vector<std::string> &keys, std::vector<MetricPoint> &points) {
+    const opencensus::stats::ViewData::DataMap<opencensus::stats::Distribution>&
+        view_data,
+    const opencensus::stats::MeasureDescriptor& measure_descriptor,
+    std::vector<std::string>& keys, std::vector<MetricPoint>& points) {
   // Return if no raw data found in view map.
   if (view_data.size() == 0) {
     return;
   }
 
-  const auto &metric_name = measure_descriptor.name();
+  const auto& metric_name = measure_descriptor.name();
 
   // NOTE(lingxuan.zlx): No sampling in histogram data, so all points all be filled in.
   std::unordered_map<std::string, std::string> tags;
@@ -42,7 +42,7 @@ void MetricExporter::ExportToPoints(
   double hist_max = 0.0;
   double hist_min = 0.0;
   bool in_first_hist_data = true;
-  for (const auto &row : view_data) {
+  for (const auto& row : view_data) {
     if (in_first_hist_data) {
       hist_mean = static_cast<double>(row.second.mean());
       hist_max = static_cast<double>(row.second.max());
@@ -77,19 +77,19 @@ void MetricExporter::ExportToPoints(
 
 void MetricExporter::ExportViewData(
     const std::vector<std::pair<opencensus::stats::ViewDescriptor,
-                                opencensus::stats::ViewData>> &data) {
+                                opencensus::stats::ViewData>>& data) {
   std::vector<MetricPoint> points;
   // NOTE(lingxuan.zlx): There is no sampling in view data, so all raw metric
   // data will be processed.
-  for (const auto &datum : data) {
-    auto &descriptor = datum.first;
-    auto &view_data = datum.second;
+  for (const auto& datum : data) {
+    auto& descriptor = datum.first;
+    auto& view_data = datum.second;
 
     std::vector<std::string> keys;
     for (size_t i = 0; i < descriptor.columns().size(); ++i) {
       keys.push_back(descriptor.columns()[i].name());
     }
-    const auto &measure_descriptor = descriptor.measure_descriptor();
+    const auto& measure_descriptor = descriptor.measure_descriptor();
     switch (view_data.type()) {
     case opencensus::stats::ViewData::Type::kDouble:
       ExportToPoints<double>(view_data.double_data(), measure_descriptor, keys, points);

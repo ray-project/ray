@@ -24,21 +24,21 @@ namespace ray {
 
 namespace raylet {
 
-SchedulingPolicy::SchedulingPolicy(const SchedulingQueue &scheduling_queue)
+SchedulingPolicy::SchedulingPolicy(const SchedulingQueue& scheduling_queue)
     : scheduling_queue_(scheduling_queue),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
 
 std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
-    std::unordered_map<ClientID, SchedulingResources> &cluster_resources,
-    const ClientID &local_client_id) {
+    std::unordered_map<ClientID, SchedulingResources>& cluster_resources,
+    const ClientID& local_client_id) {
   // The policy decision to be returned.
   std::unordered_map<TaskID, ClientID> decision;
 #ifndef NDEBUG
   RAY_LOG(DEBUG) << "Cluster resource map: ";
-  for (const auto &client_resource_pair : cluster_resources) {
+  for (const auto& client_resource_pair : cluster_resources) {
     // pair = ClientID, SchedulingResources
-    const ClientID &client_id = client_resource_pair.first;
-    const SchedulingResources &resources = client_resource_pair.second;
+    const ClientID& client_id = client_resource_pair.first;
+    const SchedulingResources& resources = client_resource_pair.second;
     RAY_LOG(DEBUG) << "client_id: " << client_id << " "
                    << resources.GetAvailableResources().ToString();
   }
@@ -47,20 +47,20 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
   // We expect all placeable tasks to be placed on exit from this policy method.
   RAY_CHECK(scheduling_queue_.GetTasks(TaskState::PLACEABLE).size() <= 1);
   // Iterate over running tasks, get their resource demand and try to schedule.
-  for (const auto &t : scheduling_queue_.GetTasks(TaskState::PLACEABLE)) {
+  for (const auto& t : scheduling_queue_.GetTasks(TaskState::PLACEABLE)) {
     // Get task's resource demand
-    const auto &spec = t.GetTaskSpecification();
-    const auto &resource_demand = spec.GetRequiredPlacementResources();
-    const TaskID &task_id = spec.TaskId();
+    const auto& spec = t.GetTaskSpecification();
+    const auto& resource_demand = spec.GetRequiredPlacementResources();
+    const TaskID& task_id = spec.TaskId();
 
     // TODO(atumanov): try to place tasks locally first.
     // Construct a set of viable node candidates and randomly pick between them.
     // Get all the client id keys and randomly pick.
     std::vector<ClientID> client_keys;
-    for (const auto &client_resource_pair : cluster_resources) {
+    for (const auto& client_resource_pair : cluster_resources) {
       // pair = ClientID, SchedulingResources
       ClientID node_client_id = client_resource_pair.first;
-      const auto &node_resources = client_resource_pair.second;
+      const auto& node_resources = client_resource_pair.second;
       ResourceSet available_node_resources =
           ResourceSet(node_resources.GetAvailableResources());
       // We have to subtract the current "load" because we set the current "load"
@@ -84,7 +84,7 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
       // TODO(atumanov): change uniform random to discrete, weighted by resource capacity.
       std::uniform_int_distribution<int> distribution(0, client_keys.size() - 1);
       int client_key_index = distribution(gen_);
-      const ClientID &dst_client_id = client_keys[client_key_index];
+      const ClientID& dst_client_id = client_keys[client_key_index];
       decision[task_id] = dst_client_id;
       // Update dst_client_id's load to keep track of remote task load until
       // the next heartbeat.
@@ -93,10 +93,10 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
       cluster_resources[dst_client_id].SetLoadResources(std::move(new_load));
     } else {
       // If the task doesn't fit, place randomly subject to hard constraints.
-      for (const auto &client_resource_pair2 : cluster_resources) {
+      for (const auto& client_resource_pair2 : cluster_resources) {
         // pair = ClientID, SchedulingResources
         ClientID node_client_id = client_resource_pair2.first;
-        const auto &node_resources = client_resource_pair2.second;
+        const auto& node_resources = client_resource_pair2.second;
         if (resource_demand.IsSubset(node_resources.GetTotalResources())) {
           // This node is a feasible candidate.
           client_keys.push_back(node_client_id);
@@ -110,7 +110,7 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
         // capacity.
         std::uniform_int_distribution<int> distribution(0, client_keys.size() - 1);
         int client_key_index = distribution(gen_);
-        const ClientID &dst_client_id = client_keys[client_key_index];
+        const ClientID& dst_client_id = client_keys[client_key_index];
         decision[task_id] = dst_client_id;
         // Update dst_client_id's load to keep track of remote task load until
         // the next heartbeat.
@@ -134,24 +134,24 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
 }
 
 bool SchedulingPolicy::ScheduleBundle(
-    std::unordered_map<ClientID, SchedulingResources> &cluster_resources,
-    const ClientID &local_client_id, const ray::BundleSpecification &bundle_spec) {
+    std::unordered_map<ClientID, SchedulingResources>& cluster_resources,
+    const ClientID& local_client_id, const ray::BundleSpecification& bundle_spec) {
 #ifndef NDEBUG
   RAY_LOG(DEBUG) << "Cluster resource map: ";
-  for (const auto &client_resource_pair : cluster_resources) {
-    const ClientID &client_id = client_resource_pair.first;
-    const SchedulingResources &resources = client_resource_pair.second;
+  for (const auto& client_resource_pair : cluster_resources) {
+    const ClientID& client_id = client_resource_pair.first;
+    const SchedulingResources& resources = client_resource_pair.second;
     RAY_LOG(DEBUG) << "client_id: " << client_id << " "
                    << resources.GetAvailableResources().ToString();
   }
 #endif
-  const auto &client_resource_pair = cluster_resources.find(local_client_id);
+  const auto& client_resource_pair = cluster_resources.find(local_client_id);
   if (client_resource_pair == cluster_resources.end()) {
     return false;
   }
-  const auto &resource_demand = bundle_spec.GetRequiredResources();
+  const auto& resource_demand = bundle_spec.GetRequiredResources();
   ClientID node_client_id = client_resource_pair->first;
-  const auto &node_resources = client_resource_pair->second;
+  const auto& node_resources = client_resource_pair->second;
   ResourceSet available_node_resources =
       ResourceSet(node_resources.GetAvailableResources());
   available_node_resources.SubtractResources(node_resources.GetLoadResources());
@@ -166,16 +166,16 @@ bool SchedulingPolicy::ScheduleBundle(
 }
 
 std::vector<TaskID> SchedulingPolicy::SpillOver(
-    SchedulingResources &remote_scheduling_resources) const {
+    SchedulingResources& remote_scheduling_resources) const {
   // The policy decision to be returned.
   std::vector<TaskID> decision;
 
   ResourceSet new_load(remote_scheduling_resources.GetLoadResources());
 
   // Check if we can accommodate infeasible tasks.
-  for (const auto &task : scheduling_queue_.GetTasks(TaskState::INFEASIBLE)) {
-    const auto &spec = task.GetTaskSpecification();
-    const auto &placement_resources = spec.GetRequiredPlacementResources();
+  for (const auto& task : scheduling_queue_.GetTasks(TaskState::INFEASIBLE)) {
+    const auto& spec = task.GetTaskSpecification();
+    const auto& placement_resources = spec.GetRequiredPlacementResources();
     if (placement_resources.IsSubset(remote_scheduling_resources.GetTotalResources())) {
       decision.push_back(spec.TaskId());
       new_load.AddResources(spec.GetRequiredResources());
@@ -183,8 +183,8 @@ std::vector<TaskID> SchedulingPolicy::SpillOver(
   }
 
   // Try to accommodate up to a single ready task.
-  for (const auto &task : scheduling_queue_.GetTasks(TaskState::READY)) {
-    const auto &spec = task.GetTaskSpecification();
+  for (const auto& task : scheduling_queue_.GetTasks(TaskState::READY)) {
+    const auto& spec = task.GetTaskSpecification();
     if (!spec.IsActorTask()) {
       // Make sure the node has enough available resources to prevent forwarding cycles.
       if (spec.GetRequiredPlacementResources().IsSubset(

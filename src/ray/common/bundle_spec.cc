@@ -27,7 +27,7 @@ void BundleSpecification::ComputeResources() {
   }
 }
 
-const ResourceSet &BundleSpecification::GetRequiredResources() const {
+const ResourceSet& BundleSpecification::GetRequiredResources() const {
   return *unit_resource_;
 }
 
@@ -51,7 +51,7 @@ int64_t BundleSpecification::Index() const {
   return message_->bundle_id().bundle_index();
 }
 
-std::string FormatPlacementGroupResource(const std::string &original_resource_name,
+std::string FormatPlacementGroupResource(const std::string& original_resource_name,
                                          PlacementGroupID group_id,
                                          int64_t bundle_index) {
   auto str = original_resource_name + "_group_" + group_id.Hex() + "_" +
@@ -60,13 +60,13 @@ std::string FormatPlacementGroupResource(const std::string &original_resource_na
   return str;
 }
 
-std::string FormatPlacementGroupResource(const std::string &original_resource_name,
-                                         const BundleSpecification &bundle_spec) {
+std::string FormatPlacementGroupResource(const std::string& original_resource_name,
+                                         const BundleSpecification& bundle_spec) {
   return FormatPlacementGroupResource(
       original_resource_name, bundle_spec.PlacementGroupId(), bundle_spec.Index());
 }
 
-std::string GetOriginalResourceName(const std::string &resource) {
+std::string GetOriginalResourceName(const std::string& resource) {
   auto idx = resource.find("_group_");
   RAY_CHECK(idx >= 0) << "This isn't a placement group resource " << resource;
   return resource.substr(0, idx);

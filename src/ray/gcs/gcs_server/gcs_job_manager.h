@@ -31,15 +31,15 @@ class GcsJobManager : public rpc::JobInfoHandler {
       : gcs_table_storage_(std::move(gcs_table_storage)),
         gcs_pub_sub_(std::move(gcs_pub_sub)) {}
 
-  void HandleAddJob(const rpc::AddJobRequest &request, rpc::AddJobReply *reply,
+  void HandleAddJob(const rpc::AddJobRequest& request, rpc::AddJobReply* reply,
                     rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleMarkJobFinished(const rpc::MarkJobFinishedRequest &request,
-                             rpc::MarkJobFinishedReply *reply,
+  void HandleMarkJobFinished(const rpc::MarkJobFinishedRequest& request,
+                             rpc::MarkJobFinishedReply* reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleGetAllJobInfo(const rpc::GetAllJobInfoRequest &request,
-                           rpc::GetAllJobInfoReply *reply,
+  void HandleGetAllJobInfo(const rpc::GetAllJobInfoRequest& request,
+                           rpc::GetAllJobInfoReply* reply,
                            rpc::SendReplyCallback send_reply_callback) override;
 
   void AddJobFinishedListener(
@@ -52,7 +52,7 @@ class GcsJobManager : public rpc::JobInfoHandler {
   /// Listeners which monitors the finish of jobs.
   std::vector<std::function<void(std::shared_ptr<JobID>)>> job_finished_listeners_;
 
-  void ClearJobInfos(const JobID &job_id);
+  void ClearJobInfos(const JobID& job_id);
 };
 
 }  // namespace gcs

@@ -31,20 +31,19 @@ namespace ray {
 // Interface for mocking.
 class ReferenceCounterInterface {
  public:
-  virtual void AddLocalReference(const ObjectID &object_id,
-                                 const std::string &call_site) = 0;
-  virtual bool AddBorrowedObject(const ObjectID &object_id, const ObjectID &outer_id,
-                                 const rpc::Address &owner_address) = 0;
-  virtual void AddOwnedObject(const ObjectID &object_id,
-                              const std::vector<ObjectID> &contained_ids,
-                              const rpc::Address &owner_address,
-                              const std::string &call_site, const int64_t object_size,
+  virtual void AddLocalReference(const ObjectID& object_id,
+                                 const std::string& call_site) = 0;
+  virtual bool AddBorrowedObject(const ObjectID& object_id, const ObjectID& outer_id,
+                                 const rpc::Address& owner_address) = 0;
+  virtual void AddOwnedObject(const ObjectID& object_id,
+                              const std::vector<ObjectID>& contained_ids,
+                              const rpc::Address& owner_address,
+                              const std::string& call_site, const int64_t object_size,
                               bool is_reconstructable,
-                              const absl::optional<ClientID> &pinned_at_raylet_id =
+                              const absl::optional<ClientID>& pinned_at_raylet_id =
                                   absl::optional<ClientID>()) = 0;
-  virtual bool SetDeleteCallback(
-      const ObjectID &object_id,
-      const std::function<void(const ObjectID &)> callback) = 0;
+  virtual bool SetDeleteCallback(const ObjectID& object_id,
+                                 const std::function<void(const ObjectID&)> callback) = 0;
 
   virtual ~ReferenceCounterInterface() {}
 };
@@ -55,11 +54,11 @@ class ReferenceCounter : public ReferenceCounterInterface {
  public:
   using ReferenceTableProto =
       ::google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount>;
-  using ReferenceRemovedCallback = std::function<void(const ObjectID &)>;
+  using ReferenceRemovedCallback = std::function<void(const ObjectID&)>;
   using LineageReleasedCallback =
-      std::function<void(const ObjectID &, std::vector<ObjectID> *)>;
+      std::function<void(const ObjectID&, std::vector<ObjectID>*)>;
 
-  ReferenceCounter(const rpc::WorkerAddress &rpc_address,
+  ReferenceCounter(const rpc::WorkerAddress& rpc_address,
                    bool distributed_ref_counting_enabled = true,
                    bool lineage_pinning_enabled = false,
                    rpc::ClientFactoryFn client_factory = nullptr)
@@ -80,14 +79,14 @@ class ReferenceCounter : public ReferenceCounterInterface {
   /// any owner information, since we don't know how it was created.
   ///
   /// \param[in] object_id The object to to increment the count for.
-  void AddLocalReference(const ObjectID &object_id, const std::string &call_site)
+  void AddLocalReference(const ObjectID& object_id, const std::string& call_site)
       LOCKS_EXCLUDED(mutex_);
 
   /// Decrease the local reference count for the ObjectID by one.
   ///
   /// \param[in] object_id The object to decrement the count for.
   /// \param[out] deleted List to store objects that hit zero ref count.
-  void RemoveLocalReference(const ObjectID &object_id, std::vector<ObjectID> *deleted)
+  void RemoveLocalReference(const ObjectID& object_id, std::vector<ObjectID>* deleted)
       LOCKS_EXCLUDED(mutex_);
 
   /// Add references for the provided object IDs that correspond to them being
@@ -102,16 +101,16 @@ class ReferenceCounter : public ReferenceCounterInterface {
   /// \param[out] deleted Any objects that are newly out of scope after this
   /// function call.
   void UpdateSubmittedTaskReferences(
-      const std::vector<ObjectID> &argument_ids_to_add,
-      const std::vector<ObjectID> &argument_ids_to_remove = std::vector<ObjectID>(),
-      std::vector<ObjectID> *deleted = nullptr) LOCKS_EXCLUDED(mutex_);
+      const std::vector<ObjectID>& argument_ids_to_add,
+      const std::vector<ObjectID>& argument_ids_to_remove = std::vector<ObjectID>(),
+      std::vector<ObjectID>* deleted = nullptr) LOCKS_EXCLUDED(mutex_);
 
   /// Add references for the object dependencies of a resubmitted task. This
   /// does not increment the arguments' lineage ref counts because we should
   /// have already incremented them when the task was first submitted.
   ///
   /// \param[in] argument_ids The arguments of the task to add references for.
-  void UpdateResubmittedTaskReferences(const std::vector<ObjectID> &argument_ids)
+  void UpdateResubmittedTaskReferences(const std::vector<ObjectID>& argument_ids)
       LOCKS_EXCLUDED(mutex_);
 
   /// Update object references that were given to a submitted task. The task
@@ -129,10 +128,10 @@ class ReferenceCounter : public ReferenceCounterInterface {
   /// arguments. Some references in this table may still be borrowed by the
   /// worker and/or a task that the worker submitted.
   /// \param[out] deleted The object IDs whos reference counts reached zero.
-  void UpdateFinishedTaskReferences(const std::vector<ObjectID> &argument_ids,
-                                    bool release_lineage, const rpc::Address &worker_addr,
-                                    const ReferenceTableProto &borrowed_refs,
-                                    std::vector<ObjectID> *deleted)
+  void UpdateFinishedTaskReferences(const std::vector<ObjectID>& argument_ids,
+                                    bool release_lineage, const rpc::Address& worker_addr,
+                                    const ReferenceTableProto& borrowed_refs,
+                                    std::vector<ObjectID>* deleted)
       LOCKS_EXCLUDED(mutex_);
 
   /// Release the lineage ref count for this list of object IDs. An object's
@@ -143,7 +142,7 @@ class ReferenceCounter : public ReferenceCounterInterface {
   ///
   /// \param[in] argument_ids The list of objects whose lineage ref counts we
   /// should decrement.
-  void ReleaseLineageReferences(const std::vector<ObjectID> &argument_ids)
+  void ReleaseLineageReferences(const std::vector<ObjectID>& argument_ids)
       LOCKS_EXCLUDED(mutex_);
 
   /// Add an object that we own. The object may depend on other objects.
@@ -165,17 +164,17 @@ class ReferenceCounter : public ReferenceCounterInterface {
   /// \param[in] is_reconstructable Whether the object can be reconstructed
   /// through lineage re-execution.
   void AddOwnedObject(
-      const ObjectID &object_id, const std::vector<ObjectID> &contained_ids,
-      const rpc::Address &owner_address, const std::string &call_site,
+      const ObjectID& object_id, const std::vector<ObjectID>& contained_ids,
+      const rpc::Address& owner_address, const std::string& call_site,
       const int64_t object_size, bool is_reconstructable,
-      const absl::optional<ClientID> &pinned_at_raylet_id = absl::optional<ClientID>())
+      const absl::optional<ClientID>& pinned_at_raylet_id = absl::optional<ClientID>())
       LOCKS_EXCLUDED(mutex_);
 
   /// Update the size of the object.
   ///
   /// \param[in] object_id The ID of the object.
   /// \param[in] size The known size of the object.
-  void UpdateObjectSize(const ObjectID &object_id, int64_t object_size)
+  void UpdateObjectSize(const ObjectID& object_id, int64_t object_size)
       LOCKS_EXCLUDED(mutex_);
 
   /// Add an object that we are borrowing.
@@ -187,8 +186,8 @@ class ReferenceCounter : public ReferenceCounterInterface {
   /// out-of-band.
   /// task ID (for non-actors) or the actor ID of the owner.
   /// \param[in] owner_address The owner's address.
-  bool AddBorrowedObject(const ObjectID &object_id, const ObjectID &outer_id,
-                         const rpc::Address &owner_address) LOCKS_EXCLUDED(mutex_);
+  bool AddBorrowedObject(const ObjectID& object_id, const ObjectID& outer_id,
+                         const rpc::Address& owner_address) LOCKS_EXCLUDED(mutex_);
 
   /// Get the owner address of the given object.
   ///
@@ -197,7 +196,7 @@ class ReferenceCounter : public ReferenceCounterInterface {
   /// \return false if the object is out of scope or we do not yet have
   /// ownership information. The latter can happen when object IDs are pasesd
   /// out of band.
-  bool GetOwner(const ObjectID &object_id, rpc::Address *owner_address = nullptr) const
+  bool GetOwner(const ObjectID& object_id, rpc::Address* owner_address = nullptr) const
       LOCKS_EXCLUDED(mutex_);
 
   /// Get the owner addresses of the given objects. The owner address
@@ -212,20 +211,20 @@ class ReferenceCounter : public ReferenceCounterInterface {
   ///
   /// \param[in] object_id The object to check.
   /// \return Whether the object value has been freed.
-  bool IsPlasmaObjectFreed(const ObjectID &object_id) const;
+  bool IsPlasmaObjectFreed(const ObjectID& object_id) const;
 
   /// Release the underlying value from plasma (if any) for these objects.
   ///
   /// \param[in] object_ids The IDs whose values to free.
-  void FreePlasmaObjects(const std::vector<ObjectID> &object_ids) LOCKS_EXCLUDED(mutex_);
+  void FreePlasmaObjects(const std::vector<ObjectID>& object_ids) LOCKS_EXCLUDED(mutex_);
 
   /// Sets the callback that will be run when the object goes out of scope.
   /// Returns true if the object was in scope and the callback was added, else false.
-  bool SetDeleteCallback(const ObjectID &object_id,
-                         const std::function<void(const ObjectID &)> callback)
+  bool SetDeleteCallback(const ObjectID& object_id,
+                         const std::function<void(const ObjectID&)> callback)
       LOCKS_EXCLUDED(mutex_);
 
-  void ResetDeleteCallbacks(const std::vector<ObjectID> &object_ids)
+  void ResetDeleteCallbacks(const std::vector<ObjectID>& object_ids)
       LOCKS_EXCLUDED(mutex_);
 
   /// Set a callback for when we are no longer borrowing this object (when our
@@ -239,9 +238,9 @@ class ReferenceCounter : public ReferenceCounterInterface {
   /// \param[in] owner_address The owner of object_id's address.
   /// \param[in] ref_removed_callback The callback to call when we are no
   /// longer borrowing the object.
-  void SetRefRemovedCallback(const ObjectID &object_id, const ObjectID &contained_in_id,
-                             const rpc::Address &owner_address,
-                             const ReferenceRemovedCallback &ref_removed_callback)
+  void SetRefRemovedCallback(const ObjectID& object_id, const ObjectID& contained_in_id,
+                             const rpc::Address& owner_address,
+                             const ReferenceRemovedCallback& ref_removed_callback)
       LOCKS_EXCLUDED(mutex_);
 
   /// Set a callback to call whenever a Reference that we own is deleted. A
@@ -251,7 +250,7 @@ class ReferenceCounter : public ReferenceCounterInterface {
   /// the future.
   ///
   /// \param[in] callback The callback to call.
-  void SetReleaseLineageCallback(const LineageReleasedCallback &callback);
+  void SetReleaseLineageCallback(const LineageReleasedCallback& callback);
 
   /// Respond to the object's owner once we are no longer borrowing it.  The
   /// sender is the owner of the object ID. We will send the reply when our
@@ -263,7 +262,7 @@ class ReferenceCounter : public ReferenceCounterInterface {
   /// any object IDs that were nested inside the object that we or others are
   /// now borrowing.
   /// \param[in] send_reply_callback The callback to send the reply.
-  void HandleRefRemoved(const ObjectID &object_id, rpc::WaitForRefRemovedReply *reply,
+  void HandleRefRemoved(const ObjectID& object_id, rpc::WaitForRefRemovedReply* reply,
                         rpc::SendReplyCallback send_reply_callback)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
@@ -293,8 +292,8 @@ class ReferenceCounter : public ReferenceCounterInterface {
   /// arguments.
   /// \param[out] proto The protobuf table to populate with the borrowed
   /// references.
-  void GetAndClearLocalBorrowers(const std::vector<ObjectID> &borrowed_ids,
-                                 ReferenceTableProto *proto) LOCKS_EXCLUDED(mutex_);
+  void GetAndClearLocalBorrowers(const std::vector<ObjectID>& borrowed_ids,
+                                 ReferenceTableProto* proto) LOCKS_EXCLUDED(mutex_);
 
   /// Mark that this ObjectID contains another ObjectID(s). This should be
   /// called in two cases:
@@ -312,15 +311,15 @@ class ReferenceCounter : public ReferenceCounterInterface {
   /// outer object ID is not owned by us, then this is used to contact the
   /// outer object's owner, since it is considered a borrower for the inner
   /// IDs.
-  void AddNestedObjectIds(const ObjectID &object_id,
-                          const std::vector<ObjectID> &inner_ids,
-                          const rpc::WorkerAddress &owner_address) LOCKS_EXCLUDED(mutex_);
+  void AddNestedObjectIds(const ObjectID& object_id,
+                          const std::vector<ObjectID>& inner_ids,
+                          const rpc::WorkerAddress& owner_address) LOCKS_EXCLUDED(mutex_);
 
   /// Update the pinned location of an object stored in plasma.
   ///
   /// \param[in] object_id The object to update.
   /// \param[in] raylet_id The raylet that is now pinning the object ID.
-  void UpdateObjectPinnedAtRaylet(const ObjectID &object_id, const ClientID &raylet_id)
+  void UpdateObjectPinnedAtRaylet(const ObjectID& object_id, const ClientID& raylet_id)
       LOCKS_EXCLUDED(mutex_);
 
   /// Check whether the object is pinned at a remote plasma store node.
@@ -331,7 +330,7 @@ class ReferenceCounter : public ReferenceCounterInterface {
   /// \return True if the object exists and is owned by us, false otherwise. We
   /// return false here because a borrower should not know the pinned location
   /// for an object.
-  bool IsPlasmaObjectPinned(const ObjectID &object_id, bool *pinned) const
+  bool IsPlasmaObjectPinned(const ObjectID& object_id, bool* pinned) const
       LOCKS_EXCLUDED(mutex_);
 
   /// Get and reset the objects that were pinned on the given node.  This
@@ -341,20 +340,20 @@ class ReferenceCounter : public ReferenceCounterInterface {
   ///
   /// \param[in] node_id The node whose object store has been removed.
   /// \return The set of objects that were pinned on the given node.
-  std::vector<ObjectID> ResetObjectsOnRemovedNode(const ClientID &raylet_id);
+  std::vector<ObjectID> ResetObjectsOnRemovedNode(const ClientID& raylet_id);
 
   /// Whether we have a reference to a particular ObjectID.
   ///
   /// \param[in] object_id The object ID to check for.
   /// \return Whether we have a reference to the object ID.
-  bool HasReference(const ObjectID &object_id) const LOCKS_EXCLUDED(mutex_);
+  bool HasReference(const ObjectID& object_id) const LOCKS_EXCLUDED(mutex_);
 
   /// Write the current reference table to the given proto.
   ///
   /// \param[out] stats The proto to write references to.
   void AddObjectRefStats(
       const absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> pinned_objects,
-      rpc::CoreWorkerStats *stats) const LOCKS_EXCLUDED(mutex_);
+      rpc::CoreWorkerStats* stats) const LOCKS_EXCLUDED(mutex_);
 
  private:
   struct Reference {
@@ -363,9 +362,9 @@ class ReferenceCounter : public ReferenceCounterInterface {
     Reference(std::string call_site, const int64_t object_size)
         : call_site(call_site), object_size(object_size) {}
     /// Constructor for a reference that we created.
-    Reference(const rpc::Address &owner_address, std::string call_site,
+    Reference(const rpc::Address& owner_address, std::string call_site,
               const int64_t object_size, bool is_reconstructable,
-              const absl::optional<ClientID> &pinned_at_raylet_id)
+              const absl::optional<ClientID>& pinned_at_raylet_id)
         : call_site(call_site),
           object_size(object_size),
           owned_by_us(true),
@@ -375,9 +374,9 @@ class ReferenceCounter : public ReferenceCounterInterface {
 
     /// Constructor from a protobuf. This is assumed to be a message from
     /// another process, so the object defaults to not being owned by us.
-    static Reference FromProto(const rpc::ObjectReferenceCount &ref_count);
+    static Reference FromProto(const rpc::ObjectReferenceCount& ref_count);
     /// Serialize to a protobuf.
-    void ToProto(rpc::ObjectReferenceCount *ref) const;
+    void ToProto(rpc::ObjectReferenceCount* ref) const;
 
     /// The reference count. This number includes:
     /// - Python references to the ObjectID.
@@ -507,16 +506,16 @@ class ReferenceCounter : public ReferenceCounterInterface {
 
     /// Callback that will be called when this ObjectID no longer has
     /// references.
-    std::function<void(const ObjectID &)> on_delete;
+    std::function<void(const ObjectID&)> on_delete;
     /// Callback that is called when this process is no longer a borrower
     /// (RefCount() == 0).
-    std::function<void(const ObjectID &)> on_ref_removed;
+    std::function<void(const ObjectID&)> on_ref_removed;
   };
 
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
 
-  bool GetOwnerInternal(const ObjectID &object_id,
-                        rpc::Address *owner_address = nullptr) const
+  bool GetOwnerInternal(const ObjectID& object_id,
+                        rpc::Address* owner_address = nullptr) const
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Release the pinned plasma object, if any. Also unsets the raylet address
@@ -528,18 +527,18 @@ class ReferenceCounter : public ReferenceCounterInterface {
   void ShutdownIfNeeded() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Deserialize a ReferenceTable.
-  static ReferenceTable ReferenceTableFromProto(const ReferenceTableProto &proto);
+  static ReferenceTable ReferenceTableFromProto(const ReferenceTableProto& proto);
 
   /// Serialize a ReferenceTable.
-  static void ReferenceTableToProto(const ReferenceTable &table,
-                                    ReferenceTableProto *proto);
+  static void ReferenceTableToProto(const ReferenceTable& table,
+                                    ReferenceTableProto* proto);
 
   /// Remove references for the provided object IDs that correspond to them
   /// being dependencies to a submitted task. This should be called when
   /// inlined dependencies are inlined or when the task finishes for plasma
   /// dependencies.
-  void RemoveSubmittedTaskReferences(const std::vector<ObjectID> &argument_ids,
-                                     bool release_lineage, std::vector<ObjectID> *deleted)
+  void RemoveSubmittedTaskReferences(const std::vector<ObjectID>& argument_ids,
+                                     bool release_lineage, std::vector<ObjectID>* deleted)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Helper method to mark that this ObjectID contains another ObjectID(s).
@@ -551,9 +550,9 @@ class ReferenceCounter : public ReferenceCounterInterface {
   /// outer object ID is not owned by us, then this is used to contact the
   /// outer object's owner, since it is considered a borrower for the inner
   /// IDs.
-  void AddNestedObjectIdsInternal(const ObjectID &object_id,
-                                  const std::vector<ObjectID> &inner_ids,
-                                  const rpc::WorkerAddress &owner_address)
+  void AddNestedObjectIdsInternal(const ObjectID& object_id,
+                                  const std::vector<ObjectID>& inner_ids,
+                                  const rpc::WorkerAddress& owner_address)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Populates the table with the ObjectID that we were or are still
@@ -575,8 +574,8 @@ class ReferenceCounter : public ReferenceCounterInterface {
   ///   that contained it. We don't need this anymore because we already marked
   ///   that the borrowed ID contained another ID in the returned
   ///   borrowed_refs.
-  bool GetAndClearLocalBorrowersInternal(const ObjectID &object_id,
-                                         ReferenceTable *borrowed_refs)
+  bool GetAndClearLocalBorrowersInternal(const ObjectID& object_id,
+                                         ReferenceTable* borrowed_refs)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Merge remote borrowers into our local ref count. This will add any
@@ -592,9 +591,9 @@ class ReferenceCounter : public ReferenceCounterInterface {
   ///   owner.
   /// - If we are the owner of the ID, then also contact any new borrowers and
   ///   wait for them to stop using the reference.
-  void MergeRemoteBorrowers(const ObjectID &object_id,
-                            const rpc::WorkerAddress &worker_addr,
-                            const ReferenceTable &borrowed_refs)
+  void MergeRemoteBorrowers(const ObjectID& object_id,
+                            const rpc::WorkerAddress& worker_addr,
+                            const ReferenceTable& borrowed_refs)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Wait for a borrower to stop using its reference. This should only be
@@ -605,27 +604,27 @@ class ReferenceCounter : public ReferenceCounterInterface {
   /// ID. This is used in cases where we return an object ID that we own inside
   /// an object that we do not own. Then, we must notify the owner of the outer
   /// object that they are borrowing the inner.
-  void WaitForRefRemoved(const ReferenceTable::iterator &reference_it,
-                         const rpc::WorkerAddress &addr,
-                         const ObjectID &contained_in_id = ObjectID::Nil())
+  void WaitForRefRemoved(const ReferenceTable::iterator& reference_it,
+                         const rpc::WorkerAddress& addr,
+                         const ObjectID& contained_in_id = ObjectID::Nil())
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Helper method to add an object that we are borrowing. This is used when
   /// deserializing IDs from a task's arguments, or when deserializing an ID
   /// during ray.get().
-  bool AddBorrowedObjectInternal(const ObjectID &object_id, const ObjectID &outer_id,
-                                 const rpc::Address &owner_address)
+  bool AddBorrowedObjectInternal(const ObjectID& object_id, const ObjectID& outer_id,
+                                 const rpc::Address& owner_address)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Helper method to delete an entry from the reference map and run any necessary
   /// callbacks. Assumes that the entry is in object_id_refs_ and invalidates the
   /// iterator.
   void DeleteReferenceInternal(ReferenceTable::iterator entry,
-                               std::vector<ObjectID> *deleted)
+                               std::vector<ObjectID>* deleted)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Helper method to decrement the lineage ref count for a list of objects.
-  void ReleaseLineageReferencesInternal(const std::vector<ObjectID> &argument_ids)
+  void ReleaseLineageReferencesInternal(const std::vector<ObjectID>& argument_ids)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Address of our RPC server. This is used to determine whether we own a

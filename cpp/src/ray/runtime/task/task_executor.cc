@@ -9,22 +9,22 @@
 namespace ray {
 namespace api {
 
-TaskExecutor::TaskExecutor(AbstractRayRuntime &abstract_ray_tuntime_)
+TaskExecutor::TaskExecutor(AbstractRayRuntime& abstract_ray_tuntime_)
     : abstract_ray_tuntime_(abstract_ray_tuntime_) {}
 
 // TODO(Guyang Song): Make a common task execution function used for both local mode and
 // cluster mode.
-std::unique_ptr<ObjectID> TaskExecutor::Execute(const InvocationSpec &invocation) {
+std::unique_ptr<ObjectID> TaskExecutor::Execute(const InvocationSpec& invocation) {
   abstract_ray_tuntime_.GetWorkerContext();
   return std::unique_ptr<ObjectID>(new ObjectID());
 };
 
-void TaskExecutor::Invoke(const TaskSpecification &task_spec,
+void TaskExecutor::Invoke(const TaskSpecification& task_spec,
                           std::shared_ptr<msgpack::sbuffer> actor,
-                          AbstractRayRuntime *runtime) {
+                          AbstractRayRuntime* runtime) {
   auto args = std::make_shared<msgpack::sbuffer>(task_spec.ArgDataSize(0));
   /// TODO(Guyang Song): Avoid the memory copy.
-  args->write(reinterpret_cast<const char *>(task_spec.ArgData(0)),
+  args->write(reinterpret_cast<const char*>(task_spec.ArgData(0)),
               task_spec.ArgDataSize(0));
   auto function_descriptor = task_spec.FunctionDescriptor();
   auto typed_descriptor = function_descriptor->As<ray::CppFunctionDescriptor>();

@@ -15,15 +15,15 @@ std::shared_ptr<DownstreamQueueMessageHandler>
 
 std::shared_ptr<Message> QueueMessageHandler::ParseMessage(
     std::shared_ptr<LocalMemoryBuffer> buffer) {
-  uint8_t *bytes = buffer->Data();
-  uint8_t *p_cur = bytes;
-  uint32_t *magic_num = (uint32_t *)p_cur;
+  uint8_t* bytes = buffer->Data();
+  uint8_t* p_cur = bytes;
+  uint32_t* magic_num = (uint32_t*)p_cur;
   STREAMING_CHECK(*magic_num == Message::MagicNum)
       << *magic_num << " " << Message::MagicNum;
 
   p_cur += sizeof(Message::MagicNum);
-  queue::protobuf::StreamingQueueMessageType *type =
-      (queue::protobuf::StreamingQueueMessageType *)p_cur;
+  queue::protobuf::StreamingQueueMessageType* type =
+      (queue::protobuf::StreamingQueueMessageType*)p_cur;
 
   std::shared_ptr<Message> message = nullptr;
   switch (*type) {
@@ -71,22 +71,22 @@ std::shared_ptr<LocalMemoryBuffer> QueueMessageHandler::DispatchMessageSync(
 }
 
 std::shared_ptr<Transport> QueueMessageHandler::GetOutTransport(
-    const ObjectID &queue_id) {
+    const ObjectID& queue_id) {
   auto it = out_transports_.find(queue_id);
   if (it == out_transports_.end()) return nullptr;
 
   return it->second;
 }
 
-void QueueMessageHandler::SetPeerActorID(const ObjectID &queue_id,
-                                         const ActorID &actor_id, RayFunction &async_func,
-                                         RayFunction &sync_func) {
+void QueueMessageHandler::SetPeerActorID(const ObjectID& queue_id,
+                                         const ActorID& actor_id, RayFunction& async_func,
+                                         RayFunction& sync_func) {
   actors_.emplace(queue_id, actor_id);
   out_transports_.emplace(queue_id, std::make_shared<ray::streaming::Transport>(
                                         actor_id, async_func, sync_func));
 }
 
-ActorID QueueMessageHandler::GetPeerActorID(const ObjectID &queue_id) {
+ActorID QueueMessageHandler::GetPeerActorID(const ObjectID& queue_id) {
   auto it = actors_.find(queue_id);
   STREAMING_CHECK(it != actors_.end());
   return it->second;
@@ -110,7 +110,7 @@ void QueueMessageHandler::Stop() {
 }
 
 std::shared_ptr<UpstreamQueueMessageHandler> UpstreamQueueMessageHandler::CreateService(
-    const ActorID &actor_id) {
+    const ActorID& actor_id) {
   if (nullptr == upstream_handler_) {
     upstream_handler_ = std::make_shared<UpstreamQueueMessageHandler>(actor_id);
   }
@@ -122,7 +122,7 @@ std::shared_ptr<UpstreamQueueMessageHandler> UpstreamQueueMessageHandler::GetSer
 }
 
 std::shared_ptr<WriterQueue> UpstreamQueueMessageHandler::CreateUpstreamQueue(
-    const ObjectID &queue_id, const ActorID &peer_actor_id, uint64_t size) {
+    const ObjectID& queue_id, const ActorID& peer_actor_id, uint64_t size) {
   STREAMING_LOG(INFO) << "CreateUpstreamQueue: " << queue_id << " " << actor_id_ << "->"
                       << peer_actor_id;
   std::shared_ptr<WriterQueue> queue = GetUpQueue(queue_id);
@@ -138,19 +138,19 @@ std::shared_ptr<WriterQueue> UpstreamQueueMessageHandler::CreateUpstreamQueue(
   return queue;
 }
 
-bool UpstreamQueueMessageHandler::UpstreamQueueExists(const ObjectID &queue_id) {
+bool UpstreamQueueMessageHandler::UpstreamQueueExists(const ObjectID& queue_id) {
   return nullptr != GetUpQueue(queue_id);
 }
 
 std::shared_ptr<streaming::WriterQueue> UpstreamQueueMessageHandler::GetUpQueue(
-    const ObjectID &queue_id) {
+    const ObjectID& queue_id) {
   auto it = upstream_queues_.find(queue_id);
   if (it == upstream_queues_.end()) return nullptr;
 
   return it->second;
 }
 
-bool UpstreamQueueMessageHandler::CheckQueueSync(const ObjectID &queue_id) {
+bool UpstreamQueueMessageHandler::CheckQueueSync(const ObjectID& queue_id) {
   ActorID peer_actor_id = GetPeerActorID(queue_id);
   STREAMING_LOG(INFO) << "CheckQueueSync queue_id: " << queue_id
                       << " peer_actor_id: " << peer_actor_id;
@@ -178,9 +178,9 @@ bool UpstreamQueueMessageHandler::CheckQueueSync(const ObjectID &queue_id) {
   return queue::protobuf::StreamingQueueError::OK == check_rsp_msg->Error();
 }
 
-void UpstreamQueueMessageHandler::WaitQueues(const std::vector<ObjectID> &queue_ids,
+void UpstreamQueueMessageHandler::WaitQueues(const std::vector<ObjectID>& queue_ids,
                                              int64_t timeout_ms,
-                                             std::vector<ObjectID> &failed_queues) {
+                                             std::vector<ObjectID>& failed_queues) {
   failed_queues.insert(failed_queues.begin(), queue_ids.begin(), queue_ids.end());
   uint64_t start_time_us = current_time_ms();
   uint64_t current_time_us = start_time_us;
@@ -242,7 +242,7 @@ void UpstreamQueueMessageHandler::ReleaseAllUpQueues() {
 }
 
 std::shared_ptr<DownstreamQueueMessageHandler>
-DownstreamQueueMessageHandler::CreateService(const ActorID &actor_id) {
+DownstreamQueueMessageHandler::CreateService(const ActorID& actor_id) {
   if (nullptr == downstream_handler_) {
     downstream_handler_ = std::make_shared<DownstreamQueueMessageHandler>(actor_id);
   }
@@ -254,12 +254,12 @@ DownstreamQueueMessageHandler::GetService() {
   return downstream_handler_;
 }
 
-bool DownstreamQueueMessageHandler::DownstreamQueueExists(const ObjectID &queue_id) {
+bool DownstreamQueueMessageHandler::DownstreamQueueExists(const ObjectID& queue_id) {
   return nullptr != GetDownQueue(queue_id);
 }
 
 std::shared_ptr<ReaderQueue> DownstreamQueueMessageHandler::CreateDownstreamQueue(
-    const ObjectID &queue_id, const ActorID &peer_actor_id) {
+    const ObjectID& queue_id, const ActorID& peer_actor_id) {
   STREAMING_LOG(INFO) << "CreateDownstreamQueue: " << queue_id << " " << peer_actor_id
                       << "->" << actor_id_;
   auto it = downstream_queues_.find(queue_id);
@@ -276,7 +276,7 @@ std::shared_ptr<ReaderQueue> DownstreamQueueMessageHandler::CreateDownstreamQueu
 }
 
 std::shared_ptr<streaming::ReaderQueue> DownstreamQueueMessageHandler::GetDownQueue(
-    const ObjectID &queue_id) {
+    const ObjectID& queue_id) {
   auto it = downstream_queues_.find(queue_id);
   if (it == downstream_queues_.end()) return nullptr;
 

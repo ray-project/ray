@@ -31,14 +31,14 @@ enum PredefinedResources { CPU, MEM, GPU, TPU, PredefinedResources_MAX };
 static std::unordered_set<int64_t> UnitInstanceResources{CPU, GPU, TPU};
 
 /// Helper function to compare two vectors with FixedPoint values.
-bool EqualVectors(const std::vector<FixedPoint> &v1, const std::vector<FixedPoint> &v2);
+bool EqualVectors(const std::vector<FixedPoint>& v1, const std::vector<FixedPoint>& v2);
 
 /// Convert a vector of doubles to a vector of resource units.
-std::vector<FixedPoint> VectorDoubleToVectorFixedPoint(const std::vector<double> &vector);
+std::vector<FixedPoint> VectorDoubleToVectorFixedPoint(const std::vector<double>& vector);
 
 /// Convert a vector of resource units to a vector of doubles.
 std::vector<double> VectorFixedPointToVectorDouble(
-    const std::vector<FixedPoint> &vector_fp);
+    const std::vector<FixedPoint>& vector_fp);
 
 struct ResourceCapacity {
   FixedPoint total;
@@ -91,7 +91,7 @@ class TaskResourceInstances {
   std::vector<std::vector<FixedPoint>> predefined_resources;
   /// The list of instances of each custom resource allocated to a task.
   absl::flat_hash_map<int64_t, std::vector<FixedPoint>> custom_resources;
-  bool operator==(const TaskResourceInstances &other);
+  bool operator==(const TaskResourceInstances& other);
   /// For each resource of this request aggregate its instances.
   TaskRequest ToTaskRequest() const;
   /// Get CPU instances only.
@@ -154,7 +154,7 @@ class NodeResources {
   /// custom resource ID.
   absl::flat_hash_map<int64_t, ResourceCapacity> custom_resources;
   /// Returns if this equals another node resources.
-  bool operator==(const NodeResources &other);
+  bool operator==(const NodeResources& other);
   /// Returns human-readable string for these resources.
   std::string DebugString(StringIdMap string_to_int_map) const;
 };
@@ -171,7 +171,7 @@ class NodeResourceInstances {
   /// Extract available resource instances.
   TaskResourceInstances GetAvailableResourceInstances();
   /// Returns if this equals another node resources.
-  bool operator==(const NodeResourceInstances &other);
+  bool operator==(const NodeResourceInstances& other);
   /// Returns human-readable string for these resources.
   std::string DebugString(StringIdMap string_to_int_map) const;
 };
@@ -195,15 +195,15 @@ class ClusterResourceScheduler {
   ///
   /// \param[in] new_resources: New predefined resources.
   /// \param[out] old_resources: Predefined resources to be updated.
-  void SetPredefinedResources(const NodeResources &new_resources,
-                              NodeResources *old_resources);
+  void SetPredefinedResources(const NodeResources& new_resources,
+                              NodeResources* old_resources);
   /// Set custom resources.
   ///
   /// \param[in] new_resources: New custom resources.
   /// \param[out] old_resources: Custom resources to be updated.
   void SetCustomResources(
-      const absl::flat_hash_map<int64_t, ResourceCapacity> &new_custom_resources,
-      absl::flat_hash_map<int64_t, ResourceCapacity> *old_custom_resources);
+      const absl::flat_hash_map<int64_t, ResourceCapacity>& new_custom_resources,
+      absl::flat_hash_map<int64_t, ResourceCapacity>* old_custom_resources);
 
   /// Subtract the resources required by a given task request (task_req) from
   /// a given node (node_id).
@@ -215,7 +215,7 @@ class ClusterResourceScheduler {
   ///
   /// \return True if the node has enough resources to satisfy the task request.
   /// False otherwise.
-  bool AllocateTaskResources(int64_t node_id, const TaskRequest &task_req,
+  bool AllocateTaskResources(int64_t node_id, const TaskRequest& task_req,
                              std::shared_ptr<TaskResourceInstances> task_allocation);
 
  public:
@@ -227,10 +227,10 @@ class ClusterResourceScheduler {
   /// \param local_node_resources: The total and the available resources associated
   /// with the local node.
   ClusterResourceScheduler(int64_t local_node_id,
-                           const NodeResources &local_node_resources);
+                           const NodeResources& local_node_resources);
   ClusterResourceScheduler(
-      const std::string &local_node_id,
-      const std::unordered_map<std::string, double> &local_node_resources);
+      const std::string& local_node_id,
+      const std::unordered_map<std::string, double>& local_node_resources);
 
   // Mapping from predefined resource indexes to resource strings
   std::string GetResourceNameFromIndex(int64_t res_idx);
@@ -239,18 +239,18 @@ class ClusterResourceScheduler {
   ///
   /// \param node_id: Node ID.
   /// \param node_resources: Up to date total and available resources of the node.
-  void AddOrUpdateNode(int64_t node_id, const NodeResources &node_resources);
+  void AddOrUpdateNode(int64_t node_id, const NodeResources& node_resources);
   void AddOrUpdateNode(
-      const std::string &node_id,
-      const std::unordered_map<std::string, double> &resource_map_total,
-      const std::unordered_map<std::string, double> &resource_map_available);
+      const std::string& node_id,
+      const std::unordered_map<std::string, double>& resource_map_total,
+      const std::unordered_map<std::string, double>& resource_map_available);
 
   /// Remove node from the cluster data structure. This happens
   /// when a node fails or it is removed from the cluster.
   ///
   /// \param ID of the node to be removed.
   bool RemoveNode(int64_t node_id);
-  bool RemoveNode(const std::string &node_id_string);
+  bool RemoveNode(const std::string& node_id_string);
 
   /// Check whether a task request can be scheduled given a node.
   ///
@@ -266,8 +266,8 @@ class ClusterResourceScheduler {
   ///           least a hard constraints is violated.
   ///           >= 0, the number soft constraint violations. If 0, no
   ///           constraint is violated.
-  int64_t IsSchedulable(const TaskRequest &task_req, int64_t node_id,
-                        const NodeResources &resources);
+  int64_t IsSchedulable(const TaskRequest& task_req, int64_t node_id,
+                        const NodeResources& resources);
 
   ///  Find a node in the cluster on which we can schedule a given task request.
   ///
@@ -292,7 +292,7 @@ class ClusterResourceScheduler {
   ///
   ///  \return -1, if no node can schedule the current request; otherwise,
   ///          return the ID of a node that can schedule the task request.
-  int64_t GetBestSchedulableNode(const TaskRequest &task_request, int64_t *violations);
+  int64_t GetBestSchedulableNode(const TaskRequest& task_request, int64_t* violations);
 
   /// Similar to
   ///    int64_t GetBestSchedulableNode(const TaskRequest &task_request, int64_t
@@ -302,7 +302,7 @@ class ClusterResourceScheduler {
   ///          return the ID in string format of a node that can schedule the
   //           task request.
   std::string GetBestSchedulableNode(
-      const std::unordered_map<std::string, double> &task_request, int64_t *violations);
+      const std::unordered_map<std::string, double>& task_request, int64_t* violations);
 
   /// Decrease the available resources of a node when a task request is
   /// scheduled on the given node.
@@ -312,10 +312,10 @@ class ClusterResourceScheduler {
   ///
   /// \return true, if task_req can be indeed scheduled on the node,
   /// and false otherwise.
-  bool SubtractNodeAvailableResources(int64_t node_id, const TaskRequest &task_request);
+  bool SubtractNodeAvailableResources(int64_t node_id, const TaskRequest& task_request);
   bool SubtractNodeAvailableResources(
-      const std::string &node_id,
-      const std::unordered_map<std::string, double> &task_request);
+      const std::string& node_id,
+      const std::unordered_map<std::string, double>& task_request);
 
   /// Increase available resources of a node when a worker has finished
   /// a task.
@@ -325,14 +325,14 @@ class ClusterResourceScheduler {
   ///
   /// \return true, if task_req can be indeed scheduled on the node,
   /// and false otherwise.
-  bool AddNodeAvailableResources(int64_t node_id, const TaskRequest &task_request);
+  bool AddNodeAvailableResources(int64_t node_id, const TaskRequest& task_request);
   bool AddNodeAvailableResources(
-      const std::string &node_id,
-      const std::unordered_map<std::string, double> &task_request);
+      const std::string& node_id,
+      const std::unordered_map<std::string, double>& task_request);
 
   /// Return resources associated to the given node_id in ret_resources.
   /// If node_id not found, return false; otherwise return true.
-  bool GetNodeResources(int64_t node_id, NodeResources *ret_resources);
+  bool GetNodeResources(int64_t node_id, NodeResources* ret_resources);
 
   /// Get number of nodes in the cluster.
   int64_t NumNodes();
@@ -342,14 +342,14 @@ class ClusterResourceScheduler {
   /// \param node_name: Node whose resource we want to update.
   /// \param resource_name: Resource which we want to update.
   /// \param resource_total: New capacity of the resource.
-  void UpdateResourceCapacity(const std::string &node_name,
-                              const std::string &resource_name, double resource_total);
+  void UpdateResourceCapacity(const std::string& node_name,
+                              const std::string& resource_name, double resource_total);
 
   /// Delete a given resource from a given node.
   ///
   /// \param node_name: Node whose resource we want to delete.
   /// \param resource_name: Resource we want to delete
-  void DeleteResource(const std::string &node_name, const std::string &resource_name);
+  void DeleteResource(const std::string& node_name, const std::string& resource_name);
 
   /// Return local resources.
   NodeResourceInstances GetLocalResources() { return local_resources_; };
@@ -358,7 +358,7 @@ class ClusterResourceScheduler {
   /// the node's resources.
   ///
   /// \param local_resources: Total resources of the node.
-  void InitLocalResources(const NodeResources &local_resources);
+  void InitLocalResources(const NodeResources& local_resources);
 
   /// Initialize the instances of a given resource given the resource's total capacity.
   /// If unit_instances is true we split the resources in unit-size instances. For
@@ -370,7 +370,7 @@ class ClusterResourceScheduler {
   /// If false, we create a single instance of capacity "total".
   /// \param instance_list: The list of capacities this resource instances.
   void InitResourceInstances(FixedPoint total, bool unit_instances,
-                             ResourceInstanceCapacities *instance_list);
+                             ResourceInstanceCapacities* instance_list);
 
   /// Allocate enough capacity across the instances of a resource to satisfy "demand".
   /// If resource has multiple unit-capacity instances, we consider two cases.
@@ -404,8 +404,8 @@ class ClusterResourceScheduler {
   /// \return true, if allocation successful. In this case, the sum of the elements in
   /// "allocation" is equal to "demand".
   bool AllocateResourceInstances(FixedPoint demand, bool soft,
-                                 std::vector<FixedPoint> &available,
-                                 std::vector<FixedPoint> *allocation);
+                                 std::vector<FixedPoint>& available,
+                                 std::vector<FixedPoint>* allocation);
 
   /// Allocate local resources to satisfy a given request (task_req).
   ///
@@ -415,7 +415,7 @@ class ClusterResourceScheduler {
   /// \return true, if allocation successful. If false, the caller needs to free the
   /// allocated resources, i.e., task_allocation.
   bool AllocateTaskResourceInstances(
-      const TaskRequest &task_req,
+      const TaskRequest& task_req,
       std::shared_ptr<TaskResourceInstances> task_allocation);
 
   /// Free resources which were allocated with a task. The freed resources are
@@ -433,7 +433,7 @@ class ClusterResourceScheduler {
   /// capacities in "available", i.e.,
   /// min(available + resource_instances.available, resource_instances.total)
   std::vector<FixedPoint> AddAvailableResourceInstances(
-      std::vector<FixedPoint> available, ResourceInstanceCapacities *resource_instances);
+      std::vector<FixedPoint> available, ResourceInstanceCapacities* resource_instances);
 
   /// Decrease the available capacities of the instances of a given resource.
   ///
@@ -443,7 +443,7 @@ class ClusterResourceScheduler {
   /// capacities in "available", i.e.,.
   /// max(available - reasource_instances.available, 0)
   std::vector<FixedPoint> SubtractAvailableResourceInstances(
-      std::vector<FixedPoint> available, ResourceInstanceCapacities *resource_instances);
+      std::vector<FixedPoint> available, ResourceInstanceCapacities* resource_instances);
 
   /// Increase the available CPU instances of this node.
   ///
@@ -451,7 +451,7 @@ class ClusterResourceScheduler {
   ///
   /// \return Overflow capacities of CPU instances after adding CPU
   /// capacities in cpu_instances.
-  std::vector<double> AddCPUResourceInstances(std::vector<double> &cpu_instances);
+  std::vector<double> AddCPUResourceInstances(std::vector<double>& cpu_instances);
 
   /// Decrease the available CPU instances of this node.
   ///
@@ -459,7 +459,7 @@ class ClusterResourceScheduler {
   ///
   /// \return Underflow capacities of CPU instances after subtracting CPU
   /// capacities in cpu_instances.
-  std::vector<double> SubtractCPUResourceInstances(std::vector<double> &cpu_instances);
+  std::vector<double> SubtractCPUResourceInstances(std::vector<double>& cpu_instances);
 
   /// Increase the available GPU instances of this node.
   ///
@@ -467,7 +467,7 @@ class ClusterResourceScheduler {
   ///
   /// \return Overflow capacities of GPU instances after adding GPU
   /// capacities in gpu_instances.
-  std::vector<double> AddGPUResourceInstances(std::vector<double> &gpu_instances);
+  std::vector<double> AddGPUResourceInstances(std::vector<double>& gpu_instances);
 
   /// Decrease the available GPU instances of this node.
   ///
@@ -475,7 +475,7 @@ class ClusterResourceScheduler {
   ///
   /// \return Underflow capacities of GPU instances after subtracting GPU
   /// capacities in gpu_instances.
-  std::vector<double> SubtractGPUResourceInstances(std::vector<double> &gpu_instances);
+  std::vector<double> SubtractGPUResourceInstances(std::vector<double>& gpu_instances);
 
   /// Subtract the resources required by a given task request (task_req) from the
   /// local node. This function also updates the local node resources
@@ -488,7 +488,7 @@ class ClusterResourceScheduler {
   /// \return True if local node has enough resources to satisfy the task request.
   /// False otherwise.
   bool AllocateLocalTaskResources(
-      const std::unordered_map<std::string, double> &task_resources,
+      const std::unordered_map<std::string, double>& task_resources,
       std::shared_ptr<TaskResourceInstances> task_allocation);
 
   /// Subtract the resources required by a given task request (task_req) from a given
@@ -497,8 +497,8 @@ class ClusterResourceScheduler {
   /// \param node_id Remote node whose resources we allocate.
   /// \param task_req Task for which we allocate resources.
   void AllocateRemoteTaskResources(
-      std::string &node_id,
-      const std::unordered_map<std::string, double> &task_resources);
+      std::string& node_id,
+      const std::unordered_map<std::string, double>& task_resources);
 
   void FreeLocalTaskResources(std::shared_ptr<TaskResourceInstances> task_allocation);
 

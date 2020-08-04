@@ -28,7 +28,7 @@ extern "C" {
  */
 JNIEXPORT jbyteArray JNICALL
 Java_io_ray_runtime_object_NativeObjectStore_nativePut__Lio_ray_runtime_object_NativeRayObject_2(
-    JNIEnv *, jclass, jobject);
+    JNIEnv*, jclass, jobject);
 
 /*
  * Class:     io_ray_runtime_object_NativeObjectStore
@@ -37,14 +37,14 @@ Java_io_ray_runtime_object_NativeObjectStore_nativePut__Lio_ray_runtime_object_N
  */
 JNIEXPORT void JNICALL
 Java_io_ray_runtime_object_NativeObjectStore_nativePut___3BLio_ray_runtime_object_NativeRayObject_2(
-    JNIEnv *, jclass, jbyteArray, jobject);
+    JNIEnv*, jclass, jbyteArray, jobject);
 
 /*
  * Class:     io_ray_runtime_object_NativeObjectStore
  * Method:    nativeGet
  * Signature: (Ljava/util/List;J)Ljava/util/List;
  */
-JNIEXPORT jobject JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeGet(JNIEnv *,
+JNIEXPORT jobject JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeGet(JNIEnv*,
                                                                                  jclass,
                                                                                  jobject,
                                                                                  jlong);
@@ -55,7 +55,7 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeGet
  * Signature: (Ljava/util/List;IJ)Ljava/util/List;
  */
 JNIEXPORT jobject JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeWait(
-    JNIEnv *, jclass, jobject, jint, jlong);
+    JNIEnv*, jclass, jobject, jint, jlong);
 
 /*
  * Class:     io_ray_runtime_object_NativeObjectStore
@@ -63,7 +63,7 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeWai
  * Signature: (Ljava/util/List;ZZ)V
  */
 JNIEXPORT void JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeDelete(
-    JNIEnv *, jclass, jobject, jboolean, jboolean);
+    JNIEnv*, jclass, jobject, jboolean, jboolean);
 
 /*
  * Class:     io_ray_runtime_object_NativeObjectStore
@@ -71,7 +71,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeDelete
  * Signature: ([B)V
  */
 JNIEXPORT void JNICALL
-Java_io_ray_runtime_object_NativeObjectStore_nativeAddLocalReference(JNIEnv *, jclass,
+Java_io_ray_runtime_object_NativeObjectStore_nativeAddLocalReference(JNIEnv*, jclass,
                                                                      jbyteArray,
                                                                      jbyteArray);
 
@@ -81,7 +81,7 @@ Java_io_ray_runtime_object_NativeObjectStore_nativeAddLocalReference(JNIEnv *, j
  * Signature: ([B)V
  */
 JNIEXPORT void JNICALL
-Java_io_ray_runtime_object_NativeObjectStore_nativeRemoveLocalReference(JNIEnv *, jclass,
+Java_io_ray_runtime_object_NativeObjectStore_nativeRemoveLocalReference(JNIEnv*, jclass,
                                                                         jbyteArray,
                                                                         jbyteArray);
 
@@ -91,8 +91,7 @@ Java_io_ray_runtime_object_NativeObjectStore_nativeRemoveLocalReference(JNIEnv *
  * Signature: ()Ljava/util/Map;
  */
 JNIEXPORT jobject JNICALL
-Java_io_ray_runtime_object_NativeObjectStore_nativeGetAllReferenceCounts(JNIEnv *,
-                                                                         jclass);
+Java_io_ray_runtime_object_NativeObjectStore_nativeGetAllReferenceCounts(JNIEnv*, jclass);
 
 #ifdef __cplusplus
 }

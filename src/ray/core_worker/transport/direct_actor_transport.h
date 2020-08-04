@@ -49,12 +49,12 @@ const int kMaxReorderWaitSeconds = 30;
 // Interface for testing.
 class CoreWorkerDirectActorTaskSubmitterInterface {
  public:
-  virtual void AddActorQueueIfNotExists(const ActorID &actor_id) = 0;
-  virtual void ConnectActor(const ActorID &actor_id, const rpc::Address &address,
+  virtual void AddActorQueueIfNotExists(const ActorID& actor_id) = 0;
+  virtual void ConnectActor(const ActorID& actor_id, const rpc::Address& address,
                             int64_t num_restarts) = 0;
-  virtual void DisconnectActor(const ActorID &actor_id, int64_t num_restarts,
+  virtual void DisconnectActor(const ActorID& actor_id, int64_t num_restarts,
                                bool dead = false) = 0;
-  virtual void KillActor(const ActorID &actor_id, bool force_kill, bool no_restart) = 0;
+  virtual void KillActor(const ActorID& actor_id, bool force_kill, bool no_restart) = 0;
 
   virtual ~CoreWorkerDirectActorTaskSubmitterInterface() {}
 };
@@ -76,7 +76,7 @@ class CoreWorkerDirectActorTaskSubmitter
   /// not receive another reference to the same actor.
   ///
   /// \param[in] actor_id The actor for whom to add a queue.
-  void AddActorQueueIfNotExists(const ActorID &actor_id);
+  void AddActorQueueIfNotExists(const ActorID& actor_id);
 
   /// Submit a task to an actor for execution.
   ///
@@ -91,7 +91,7 @@ class CoreWorkerDirectActorTaskSubmitter
   /// try a clean exit.
   /// \param[in] no_restart If set to true, the killed actor will not be
   /// restarted anymore.
-  void KillActor(const ActorID &actor_id, bool force_kill, bool no_restart);
+  void KillActor(const ActorID& actor_id, bool force_kill, bool no_restart);
 
   /// Create connection to actor and send all pending tasks.
   ///
@@ -100,7 +100,7 @@ class CoreWorkerDirectActorTaskSubmitter
   /// \param[in] num_restarts How many times this actor has been restarted
   /// before. If we've already seen a later incarnation of the actor, we will
   /// ignore the command to connect.
-  void ConnectActor(const ActorID &actor_id, const rpc::Address &address,
+  void ConnectActor(const ActorID& actor_id, const rpc::Address& address,
                     int64_t num_restarts);
 
   /// Disconnect from a failed actor.
@@ -111,7 +111,7 @@ class CoreWorkerDirectActorTaskSubmitter
   /// ignore the command to connect.
   /// \param[in] dead Whether the actor is permanently dead. In this case, all
   /// pending tasks for the actor should be failed.
-  void DisconnectActor(const ActorID &actor_id, int64_t num_restarts, bool dead = false);
+  void DisconnectActor(const ActorID& actor_id, int64_t num_restarts, bool dead = false);
 
   /// Set the timerstamp for the caller.
   void SetCallerCreationTimestamp(int64_t timestamp);
@@ -197,7 +197,7 @@ class CoreWorkerDirectActorTaskSubmitter
   /// \param[in] skip_queue Whether to skip the task queue. This will send the
   /// task for execution immediately.
   /// \return Void.
-  void PushActorTask(const ClientQueue &queue, const TaskSpecification &task_spec,
+  void PushActorTask(const ClientQueue& queue, const TaskSpecification& task_spec,
                      bool skip_queue) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Send all pending tasks for an actor.
@@ -206,16 +206,16 @@ class CoreWorkerDirectActorTaskSubmitter
   ///
   /// \param[in] actor_id Actor ID.
   /// \return Void.
-  void SendPendingTasks(const ActorID &actor_id) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void SendPendingTasks(const ActorID& actor_id) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Disconnect the RPC client for an actor.
-  void DisconnectRpcClient(ClientQueue &queue) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void DisconnectRpcClient(ClientQueue& queue) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Whether the specified actor is alive.
   ///
   /// \param[in] actor_id The actor ID.
   /// \return Whether this actor is alive.
-  bool IsActorAlive(const ActorID &actor_id) const;
+  bool IsActorAlive(const ActorID& actor_id) const;
 
   /// Factory for producing new core worker clients.
   rpc::ClientFactoryFn client_factory_;
@@ -259,7 +259,7 @@ class InboundRequest {
 class DependencyWaiter {
  public:
   /// Calls `callback` once the specified objects become available.
-  virtual void Wait(const std::vector<rpc::ObjectReference> &dependencies,
+  virtual void Wait(const std::vector<rpc::ObjectReference>& dependencies,
                     std::function<void()> on_dependencies_available) = 0;
 
   virtual ~DependencyWaiter(){};
@@ -267,10 +267,10 @@ class DependencyWaiter {
 
 class DependencyWaiterImpl : public DependencyWaiter {
  public:
-  DependencyWaiterImpl(DependencyWaiterInterface &dependency_client)
+  DependencyWaiterImpl(DependencyWaiterInterface& dependency_client)
       : dependency_client_(dependency_client) {}
 
-  void Wait(const std::vector<rpc::ObjectReference> &dependencies,
+  void Wait(const std::vector<rpc::ObjectReference>& dependencies,
             std::function<void()> on_dependencies_available) override {
     auto tag = next_request_id_++;
     requests_[tag] = on_dependencies_available;
@@ -288,7 +288,7 @@ class DependencyWaiterImpl : public DependencyWaiter {
  private:
   int64_t next_request_id_ = 0;
   std::unordered_map<int64_t, std::function<void()>> requests_;
-  DependencyWaiterInterface &dependency_client_;
+  DependencyWaiterInterface& dependency_client_;
 };
 
 /// Wraps a thread-pool to block posts until the pool has free slots. This is used
@@ -329,8 +329,8 @@ class BoundedExecutor {
 /// See direct_actor.proto for a description of the ordering protocol.
 class SchedulingQueue {
  public:
-  SchedulingQueue(boost::asio::io_service &main_io_service, DependencyWaiter &waiter,
-                  WorkerContext &worker_context,
+  SchedulingQueue(boost::asio::io_service& main_io_service, DependencyWaiter& waiter,
+                  WorkerContext& worker_context,
                   int64_t reorder_wait_seconds = kMaxReorderWaitSeconds)
       : worker_context_(worker_context),
         reorder_wait_seconds_(reorder_wait_seconds),
@@ -340,7 +340,7 @@ class SchedulingQueue {
 
   void Add(int64_t seq_no, int64_t client_processed_up_to,
            std::function<void()> accept_request, std::function<void()> reject_request,
-           const std::vector<rpc::ObjectReference> &dependencies = {}) {
+           const std::vector<rpc::ObjectReference>& dependencies = {}) {
     if (seq_no == -1) {
       accept_request();  // A seq_no of -1 means no ordering constraint.
       return;
@@ -425,7 +425,7 @@ class SchedulingQueue {
       wait_timer_.expires_from_now(boost::posix_time::seconds(reorder_wait_seconds_));
       RAY_LOG(DEBUG) << "waiting for " << next_seq_no_ << " queue size "
                      << pending_tasks_.size();
-      wait_timer_.async_wait([this](const boost::system::error_code &error) {
+      wait_timer_.async_wait([this](const boost::system::error_code& error) {
         if (error == boost::asio::error::operation_aborted) {
           return;  // time deadline was adjusted
         }
@@ -448,7 +448,7 @@ class SchedulingQueue {
   }
 
   // Worker context.
-  WorkerContext &worker_context_;
+  WorkerContext& worker_context_;
   /// Max time in seconds to wait for dependencies to show up.
   const int64_t reorder_wait_seconds_ = 0;
   /// Sorted map of (accept, rej) task callbacks keyed by their sequence number.
@@ -461,7 +461,7 @@ class SchedulingQueue {
   /// The id of the thread that constructed this scheduling queue.
   boost::thread::id main_thread_id_;
   /// Reference to the waiter owned by the task receiver.
-  DependencyWaiter &waiter_;
+  DependencyWaiter& waiter_;
   /// If concurrent calls are allowed, holds the pool for executing these tasks.
   std::unique_ptr<BoundedExecutor> pool_;
   /// Whether we should enqueue requests into asyncio pool. Setting this to true
@@ -476,17 +476,17 @@ class SchedulingQueue {
 class CoreWorkerDirectTaskReceiver {
  public:
   using TaskHandler =
-      std::function<Status(const TaskSpecification &task_spec,
+      std::function<Status(const TaskSpecification& task_spec,
                            const std::shared_ptr<ResourceMappingType> resource_ids,
-                           std::vector<std::shared_ptr<RayObject>> *return_objects,
-                           ReferenceCounter::ReferenceTableProto *borrower_refs)>;
+                           std::vector<std::shared_ptr<RayObject>>* return_objects,
+                           ReferenceCounter::ReferenceTableProto* borrower_refs)>;
 
   using OnTaskDone = std::function<ray::Status()>;
 
-  CoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
-                               boost::asio::io_service &main_io_service,
-                               const TaskHandler &task_handler,
-                               const OnTaskDone &task_done)
+  CoreWorkerDirectTaskReceiver(WorkerContext& worker_context,
+                               boost::asio::io_service& main_io_service,
+                               const TaskHandler& task_handler,
+                               const OnTaskDone& task_done)
       : worker_context_(worker_context),
         task_handler_(task_handler),
         task_main_io_service_(main_io_service),
@@ -501,16 +501,16 @@ class CoreWorkerDirectTaskReceiver {
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
-  void HandlePushTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
+  void HandlePushTask(const rpc::PushTaskRequest& request, rpc::PushTaskReply* reply,
                       rpc::SendReplyCallback send_reply_callback);
 
  private:
   // Worker context.
-  WorkerContext &worker_context_;
+  WorkerContext& worker_context_;
   /// The callback function to process a task.
   TaskHandler task_handler_;
   /// The IO event loop for running tasks on.
-  boost::asio::io_service &task_main_io_service_;
+  boost::asio::io_service& task_main_io_service_;
   /// The callback function to be invoked when finishing a task.
   OnTaskDone task_done_;
   /// Factory for producing new core worker clients.

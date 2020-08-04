@@ -11,13 +11,13 @@ class ActorCreator {
  public:
   ActorCreator();
 
-  ActorCreator(RayRuntime *runtime, RemoteFunctionPtrHolder ptr,
+  ActorCreator(RayRuntime* runtime, RemoteFunctionPtrHolder ptr,
                std::shared_ptr<msgpack::sbuffer> args);
 
   ActorHandle<ActorType> Remote();
 
  private:
-  RayRuntime *runtime_;
+  RayRuntime* runtime_;
   RemoteFunctionPtrHolder ptr_;
   std::shared_ptr<msgpack::sbuffer> args_;
 };
@@ -28,7 +28,7 @@ template <typename ActorType>
 ActorCreator<ActorType>::ActorCreator() {}
 
 template <typename ActorType>
-ActorCreator<ActorType>::ActorCreator(RayRuntime *runtime, RemoteFunctionPtrHolder ptr,
+ActorCreator<ActorType>::ActorCreator(RayRuntime* runtime, RemoteFunctionPtrHolder ptr,
                                       std::shared_ptr<msgpack::sbuffer> args)
     : runtime_(runtime), ptr_(ptr), args_(args) {}
 

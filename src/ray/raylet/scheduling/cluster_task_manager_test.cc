@@ -40,7 +40,7 @@ namespace raylet {
 
 class MockWorkerPool : public WorkerPoolInterface {
  public:
-  std::shared_ptr<WorkerInterface> PopWorker(const TaskSpecification &task_spec) {
+  std::shared_ptr<WorkerInterface> PopWorker(const TaskSpecification& task_spec) {
     if (workers.empty()) {
       return nullptr;
     }
@@ -49,7 +49,7 @@ class MockWorkerPool : public WorkerPoolInterface {
     return worker_ptr;
   }
 
-  void PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
+  void PushWorker(const std::shared_ptr<WorkerInterface>& worker) {
     workers.push_front(worker);
   }
 
@@ -64,23 +64,23 @@ class MockWorker : public WorkerInterface {
 
   int Port() const { return port_; }
 
-  void SetOwnerAddress(const rpc::Address &address) { address_ = address; }
+  void SetOwnerAddress(const rpc::Address& address) { address_ = address; }
 
-  void AssignTaskId(const TaskID &task_id) {}
+  void AssignTaskId(const TaskID& task_id) {}
 
-  void AssignJobId(const JobID &job_id) {}
+  void AssignJobId(const JobID& job_id) {}
 
-  void SetAssignedTask(Task &assigned_task) {}
+  void SetAssignedTask(Task& assigned_task) {}
 
   const std::string IpAddress() const { return address_.ip_address(); }
 
   void SetAllocatedInstances(
-      std::shared_ptr<TaskResourceInstances> &allocated_instances) {
+      std::shared_ptr<TaskResourceInstances>& allocated_instances) {
     allocated_instances_ = allocated_instances;
   }
 
   void SetLifetimeAllocatedInstances(
-      std::shared_ptr<TaskResourceInstances> &allocated_instances) {
+      std::shared_ptr<TaskResourceInstances>& allocated_instances) {
     lifetime_allocated_instances_ = allocated_instances;
   }
 
@@ -120,29 +120,29 @@ class MockWorker : public WorkerInterface {
     return -1;
   }
   void SetAssignedPort(int port) { RAY_CHECK(false) << "Method unused"; }
-  const TaskID &GetAssignedTaskId() const {
+  const TaskID& GetAssignedTaskId() const {
     RAY_CHECK(false) << "Method unused";
     return TaskID::Nil();
   }
-  bool AddBlockedTaskId(const TaskID &task_id) {
+  bool AddBlockedTaskId(const TaskID& task_id) {
     RAY_CHECK(false) << "Method unused";
     return false;
   }
-  bool RemoveBlockedTaskId(const TaskID &task_id) {
+  bool RemoveBlockedTaskId(const TaskID& task_id) {
     RAY_CHECK(false) << "Method unused";
     return false;
   }
-  const std::unordered_set<TaskID> &GetBlockedTaskIds() const {
+  const std::unordered_set<TaskID>& GetBlockedTaskIds() const {
     RAY_CHECK(false) << "Method unused";
-    auto *t = new std::unordered_set<TaskID>();
+    auto* t = new std::unordered_set<TaskID>();
     return *t;
   }
-  const JobID &GetAssignedJobId() const {
+  const JobID& GetAssignedJobId() const {
     RAY_CHECK(false) << "Method unused";
     return JobID::Nil();
   }
-  void AssignActorId(const ActorID &actor_id) { RAY_CHECK(false) << "Method unused"; }
-  const ActorID &GetActorId() const {
+  void AssignActorId(const ActorID& actor_id) { RAY_CHECK(false) << "Method unused"; }
+  const ActorID& GetActorId() const {
     RAY_CHECK(false) << "Method unused";
     return ActorID::Nil();
   }
@@ -155,40 +155,40 @@ class MockWorker : public WorkerInterface {
     RAY_CHECK(false) << "Method unused";
     return nullptr;
   }
-  const rpc::Address &GetOwnerAddress() const {
+  const rpc::Address& GetOwnerAddress() const {
     RAY_CHECK(false) << "Method unused";
     return address_;
   }
 
-  const ResourceIdSet &GetLifetimeResourceIds() const {
+  const ResourceIdSet& GetLifetimeResourceIds() const {
     RAY_CHECK(false) << "Method unused";
-    auto *t = new ResourceIdSet();
+    auto* t = new ResourceIdSet();
     return *t;
   }
-  void SetLifetimeResourceIds(ResourceIdSet &resource_ids) {
+  void SetLifetimeResourceIds(ResourceIdSet& resource_ids) {
     RAY_CHECK(false) << "Method unused";
   }
   void ResetLifetimeResourceIds() { RAY_CHECK(false) << "Method unused"; }
 
-  const ResourceIdSet &GetTaskResourceIds() const {
+  const ResourceIdSet& GetTaskResourceIds() const {
     RAY_CHECK(false) << "Method unused";
-    auto *t = new ResourceIdSet();
+    auto* t = new ResourceIdSet();
     return *t;
   }
-  void SetTaskResourceIds(ResourceIdSet &resource_ids) {
+  void SetTaskResourceIds(ResourceIdSet& resource_ids) {
     RAY_CHECK(false) << "Method unused";
   }
   void ResetTaskResourceIds() { RAY_CHECK(false) << "Method unused"; }
   ResourceIdSet ReleaseTaskCpuResources() {
     RAY_CHECK(false) << "Method unused";
-    auto *t = new ResourceIdSet();
+    auto* t = new ResourceIdSet();
     return *t;
   }
-  void AcquireTaskCpuResources(const ResourceIdSet &cpu_resources) {
+  void AcquireTaskCpuResources(const ResourceIdSet& cpu_resources) {
     RAY_CHECK(false) << "Method unused";
   }
 
-  Status AssignTask(const Task &task, const ResourceIdSet &resource_id_set) {
+  Status AssignTask(const Task& task, const ResourceIdSet& resource_id_set) {
     RAY_CHECK(false) << "Method unused";
     Status s;
     return s;
@@ -201,21 +201,21 @@ class MockWorker : public WorkerInterface {
 
   void ClearLifetimeAllocatedInstances() { RAY_CHECK(false) << "Method unused"; }
 
-  void SetBorrowedCPUInstances(std::vector<double> &cpu_instances) {
+  void SetBorrowedCPUInstances(std::vector<double>& cpu_instances) {
     RAY_CHECK(false) << "Method unused";
   }
 
-  std::vector<double> &GetBorrowedCPUInstances() {
+  std::vector<double>& GetBorrowedCPUInstances() {
     RAY_CHECK(false) << "Method unused";
-    auto *t = new std::vector<double>();
+    auto* t = new std::vector<double>();
     return *t;
   }
 
   void ClearBorrowedCPUInstances() { RAY_CHECK(false) << "Method unused"; }
 
-  Task &GetAssignedTask() {
+  Task& GetAssignedTask() {
     RAY_CHECK(false) << "Method unused";
-    auto *t = new Task();
+    auto* t = new Task();
     return *t;
   }
 
@@ -224,7 +224,7 @@ class MockWorker : public WorkerInterface {
     return false;
   }
 
-  rpc::CoreWorkerClient *rpc_client() {
+  rpc::CoreWorkerClient* rpc_client() {
     RAY_CHECK(false) << "Method unused";
     return nullptr;
   }
@@ -238,7 +238,7 @@ class MockWorker : public WorkerInterface {
 };
 
 std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
-    const std::string &id) {
+    const std::string& id) {
   std::unordered_map<std::string, double> local_node_resources;
   local_node_resources[ray::kCPU_ResourceLabel] = 8;
   local_node_resources[ray::kGPU_ResourceLabel] = 4;
@@ -250,7 +250,7 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
   return scheduler;
 }
 
-Task CreateTask(const std::unordered_map<std::string, double> &required_resources) {
+Task CreateTask(const std::unordered_map<std::string, double>& required_resources) {
   TaskSpecBuilder spec_builder;
   TaskID id = RandomTaskId();
   JobID job_id = RandomJobId();
@@ -274,11 +274,11 @@ class ClusterTaskManagerTest : public ::testing::Test {
         node_info_(boost::optional<rpc::GcsNodeInfo>{}),
         task_manager_(
             id_, single_node_resource_scheduler_,
-            [this](const Task &_task) {
+            [this](const Task& _task) {
               fulfills_dependencies_calls_++;
               return dependencies_fulfilled_;
             },
-            [this](const ClientID &node_id) {
+            [this](const ClientID& node_id) {
               node_info_calls_++;
               return node_info_;
             }) {}
@@ -310,7 +310,7 @@ TEST_F(ClusterTaskManagerTest, BasicTest) {
   Task task = CreateTask({{ray::kCPU_ResourceLabel, 4}});
   rpc::RequestWorkerLeaseReply reply;
   bool callback_occurred = false;
-  bool *callback_occurred_ptr = &callback_occurred;
+  bool* callback_occurred_ptr = &callback_occurred;
   auto callback = [callback_occurred_ptr]() { *callback_occurred_ptr = true; };
 
   task_manager_.QueueTask(task, &reply, callback);
@@ -338,7 +338,7 @@ TEST_F(ClusterTaskManagerTest, BasicTest) {
 
 }  // namespace ray
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

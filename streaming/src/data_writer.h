@@ -31,7 +31,7 @@ namespace streaming {
 /// buffers have no data in that moment.
 class DataWriter {
  public:
-  explicit DataWriter(std::shared_ptr<RuntimeContext> &runtime_context);
+  explicit DataWriter(std::shared_ptr<RuntimeContext>& runtime_context);
   virtual ~DataWriter();
 
   /// Streaming writer client initialization.
@@ -39,10 +39,10 @@ class DataWriter {
   /// \param init_params some parameters for initializing channels
   /// \param channel_message_id_vec channel seq id is related with message checkpoint
   /// \param queue_size queue size (memory size not length)
-  StreamingStatus Init(const std::vector<ObjectID> &channel_ids,
-                       const std::vector<ChannelCreationParameter> &init_params,
-                       const std::vector<uint64_t> &channel_message_id_vec,
-                       const std::vector<uint64_t> &queue_size_vec);
+  StreamingStatus Init(const std::vector<ObjectID>& channel_ids,
+                       const std::vector<ChannelCreationParameter>& init_params,
+                       const std::vector<uint64_t>& channel_message_id_vec,
+                       const std::vector<uint64_t>& queue_size_vec);
 
   ///  To increase throughout, we employed an output buffer for message transformation,
   ///  which means we merge a lot of message to a message bundle and no message will be
@@ -54,7 +54,7 @@ class DataWriter {
   ///  \param message_type
   ///  \return message seq iq
   uint64_t WriteMessageToBufferRing(
-      const ObjectID &q_id, uint8_t *data, uint32_t data_size,
+      const ObjectID& q_id, uint8_t* data, uint32_t data_size,
       StreamingMessageType message_type = StreamingMessageType::Message);
 
   void Run();
@@ -63,10 +63,10 @@ class DataWriter {
 
   /// Get offset information about channels for checkpoint.
   ///  \param offset_map (return value)
-  void GetOffsetInfo(std::unordered_map<ObjectID, ProducerChannelInfo> *&offset_map);
+  void GetOffsetInfo(std::unordered_map<ObjectID, ProducerChannelInfo>*& offset_map);
 
  private:
-  bool IsMessageAvailableInBuffer(ProducerChannelInfo &channel_info);
+  bool IsMessageAvailableInBuffer(ProducerChannelInfo& channel_info);
 
   /// This function handles two scenarios. When there is data in the transient
   /// buffer, the existing data is written into the channel first, otherwise a
@@ -74,41 +74,41 @@ class DataWriter {
   /// into the transient buffer, and finally written to the channel.
   /// \\param channel_info
   /// \\param buffer_remain
-  StreamingStatus WriteBufferToChannel(ProducerChannelInfo &channel_info,
-                                       uint64_t &buffer_remain);
+  StreamingStatus WriteBufferToChannel(ProducerChannelInfo& channel_info,
+                                       uint64_t& buffer_remain);
 
   /// Push empty message when no valid message or bundle was produced each time
   /// interval.
   /// \param channel_info
-  StreamingStatus WriteEmptyMessage(ProducerChannelInfo &channel_info);
+  StreamingStatus WriteEmptyMessage(ProducerChannelInfo& channel_info);
 
   /// Flush all data from transient buffer to channel for transporting.
   /// \param channel_info
-  StreamingStatus WriteTransientBufferToChannel(ProducerChannelInfo &channel_info);
+  StreamingStatus WriteTransientBufferToChannel(ProducerChannelInfo& channel_info);
 
-  bool CollectFromRingBuffer(ProducerChannelInfo &channel_info, uint64_t &buffer_remain);
+  bool CollectFromRingBuffer(ProducerChannelInfo& channel_info, uint64_t& buffer_remain);
 
-  StreamingStatus WriteChannelProcess(ProducerChannelInfo &channel_info,
-                                      bool *is_empty_message);
+  StreamingStatus WriteChannelProcess(ProducerChannelInfo& channel_info,
+                                      bool* is_empty_message);
 
-  StreamingStatus InitChannel(const ObjectID &q_id, const ChannelCreationParameter &param,
+  StreamingStatus InitChannel(const ObjectID& q_id, const ChannelCreationParameter& param,
                               uint64_t channel_message_id, uint64_t queue_size);
 
   /// Write all messages to channel util ringbuffer is empty.
   /// \param channel_info
-  bool WriteAllToChannel(ProducerChannelInfo *channel_info);
+  bool WriteAllToChannel(ProducerChannelInfo* channel_info);
 
   /// Trigger an empty message for channel with no valid data.
   /// \param channel_info
-  bool SendEmptyToChannel(ProducerChannelInfo *channel_info);
+  bool SendEmptyToChannel(ProducerChannelInfo* channel_info);
 
   void EmptyMessageTimerCallback();
 
   /// Notify channel consumed  refreshing downstream queue stats.
-  void RefreshChannelAndNotifyConsumed(ProducerChannelInfo &channel_info);
+  void RefreshChannelAndNotifyConsumed(ProducerChannelInfo& channel_info);
 
   /// Notify channel consumed by given offset.
-  void NotifyConsumedItem(ProducerChannelInfo &channel_info, uint32_t offset);
+  void NotifyConsumedItem(ProducerChannelInfo& channel_info, uint32_t offset);
 
   void FlowControlTimer();
 

@@ -30,7 +30,7 @@ typedef boost::asio::generic::stream_protocol local_stream_protocol;
 typedef boost::asio::basic_stream_socket<local_stream_protocol> local_stream_socket;
 
 /// Connect to a socket with retry times.
-Status ConnectSocketRetry(local_stream_socket &socket, const std::string &endpoint,
+Status ConnectSocketRetry(local_stream_socket& socket, const std::string& endpoint,
                           int num_retries = -1, int64_t timeout_in_ms = -1);
 
 /// \typename ServerConnection
@@ -46,7 +46,7 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
   ///
   /// \param socket A reference to the server socket.
   /// \return std::shared_ptr<ServerConnection>.
-  static std::shared_ptr<ServerConnection> Create(local_stream_socket &&socket);
+  static std::shared_ptr<ServerConnection> Create(local_stream_socket&& socket);
 
   /// Write a message to the client.
   ///
@@ -54,7 +54,7 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
   /// \param length The size in bytes of the message.
   /// \param message A pointer to the message buffer.
   /// \return Status.
-  ray::Status WriteMessage(int64_t type, int64_t length, const uint8_t *message);
+  ray::Status WriteMessage(int64_t type, int64_t length, const uint8_t* message);
 
   /// Write a message to the client asynchronously.
   ///
@@ -62,43 +62,43 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
   /// \param length The size in bytes of the message.
   /// \param message A pointer to the message buffer.
   /// \param handler A callback to run on write completion.
-  void WriteMessageAsync(int64_t type, int64_t length, const uint8_t *message,
-                         const std::function<void(const ray::Status &)> &handler);
+  void WriteMessageAsync(int64_t type, int64_t length, const uint8_t* message,
+                         const std::function<void(const ray::Status&)>& handler);
 
   /// Read a message from the client.
   ///
   /// \param type The message type (e.g., a flatbuffer enum).
   /// \param message A pointer to the message buffer.
   /// \return Status.
-  Status ReadMessage(int64_t type, std::vector<uint8_t> *message);
+  Status ReadMessage(int64_t type, std::vector<uint8_t>* message);
 
   /// Write a buffer to this connection.
   ///
   /// \param buffer The buffer.
   /// \return Status.
-  Status WriteBuffer(const std::vector<boost::asio::const_buffer> &buffer);
+  Status WriteBuffer(const std::vector<boost::asio::const_buffer>& buffer);
 
   /// Write a buffer to this connection asynchronously.
   ///
   /// \param buffer The buffer.
   /// \param handler A callback to run on write completion.
   /// \return Status.
-  void WriteBufferAsync(const std::vector<boost::asio::const_buffer> &buffer,
-                        const std::function<void(const ray::Status &)> &handler);
+  void WriteBufferAsync(const std::vector<boost::asio::const_buffer>& buffer,
+                        const std::function<void(const ray::Status&)>& handler);
 
   /// Read a buffer from this connection.
   ///
   /// \param buffer The buffer.
   /// \return Status.
-  Status ReadBuffer(const std::vector<boost::asio::mutable_buffer> &buffer);
+  Status ReadBuffer(const std::vector<boost::asio::mutable_buffer>& buffer);
 
   /// Read a buffer from this connection asynchronously.
   ///
   /// \param buffer The buffer.
   /// \param handler A callback to run on read completion.
   /// \return Status.
-  void ReadBufferAsync(const std::vector<boost::asio::mutable_buffer> &buffer,
-                       const std::function<void(const ray::Status &)> &handler);
+  void ReadBufferAsync(const std::vector<boost::asio::mutable_buffer>& buffer,
+                       const std::function<void(const ray::Status&)>& handler);
 
   /// Shuts down socket for this connection.
   void Close() {
@@ -120,7 +120,7 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
 
  protected:
   /// A private constructor for a server connection.
-  ServerConnection(local_stream_socket &&socket);
+  ServerConnection(local_stream_socket&& socket);
 
   /// A message that is queued for writing asynchronously.
   struct AsyncWriteBuffer {
@@ -128,7 +128,7 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
     int64_t write_type;
     uint64_t write_length;
     std::vector<uint8_t> write_message;
-    std::function<void(const ray::Status &)> handler;
+    std::function<void(const ray::Status&)> handler;
   };
 
   /// The socket connection to the server.
@@ -167,9 +167,9 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
 
 class ClientConnection;
 
-using ClientHandler = std::function<void(ClientConnection &)>;
+using ClientHandler = std::function<void(ClientConnection&)>;
 using MessageHandler = std::function<void(std::shared_ptr<ClientConnection>, int64_t,
-                                          const std::vector<uint8_t> &)>;
+                                          const std::vector<uint8_t>&)>;
 
 /// \typename ClientConnection
 ///
@@ -191,9 +191,9 @@ class ClientConnection : public ServerConnection {
   /// message types received from this client, used for debug messages.
   /// \return std::shared_ptr<ClientConnection>.
   static std::shared_ptr<ClientConnection> Create(
-      ClientHandler &new_client_handler, MessageHandler &message_handler,
-      local_stream_socket &&socket, const std::string &debug_label,
-      const std::vector<std::string> &message_type_enum_names,
+      ClientHandler& new_client_handler, MessageHandler& message_handler,
+      local_stream_socket&& socket, const std::string& debug_label,
+      const std::vector<std::string>& message_type_enum_names,
       int64_t error_message_type);
 
   std::shared_ptr<ClientConnection> shared_ClientConnection_from_this() {
@@ -210,16 +210,16 @@ class ClientConnection : public ServerConnection {
 
  protected:
   /// A protected constructor for a node client connection.
-  ClientConnection(MessageHandler &message_handler, local_stream_socket &&socket,
-                   const std::string &debug_label,
-                   const std::vector<std::string> &message_type_enum_names,
+  ClientConnection(MessageHandler& message_handler, local_stream_socket&& socket,
+                   const std::string& debug_label,
+                   const std::vector<std::string>& message_type_enum_names,
                    int64_t error_message_type);
   /// Process an error from the last operation, then process the  message
   /// header from the client.
-  void ProcessMessageHeader(const boost::system::error_code &error);
+  void ProcessMessageHeader(const boost::system::error_code& error);
   /// Process an error from reading the message header, then process the
   /// message from the client.
-  void ProcessMessage(const boost::system::error_code &error);
+  void ProcessMessage(const boost::system::error_code& error);
   /// Check if the ray cookie in a received message is correct. Note, if the cookie
   /// is wrong and the remote endpoint is known, raylet process will crash. If the remote
   /// endpoint is unknown, this method will only print a warning.

@@ -22,19 +22,19 @@ class ActorContext {
 
 class TaskExecutor {
  public:
-  TaskExecutor(AbstractRayRuntime &abstract_ray_tuntime_);
+  TaskExecutor(AbstractRayRuntime& abstract_ray_tuntime_);
 
   /// TODO(Guyang Song): support multiple tasks execution
-  std::unique_ptr<ObjectID> Execute(const InvocationSpec &invocation);
+  std::unique_ptr<ObjectID> Execute(const InvocationSpec& invocation);
 
-  static void Invoke(const TaskSpecification &task_spec,
+  static void Invoke(const TaskSpecification& task_spec,
                      std::shared_ptr<msgpack::sbuffer> actor,
-                     AbstractRayRuntime *runtime);
+                     AbstractRayRuntime* runtime);
 
   virtual ~TaskExecutor(){};
 
  private:
-  AbstractRayRuntime &abstract_ray_tuntime_;
+  AbstractRayRuntime& abstract_ray_tuntime_;
 };
 }  // namespace api
 }  // namespace ray

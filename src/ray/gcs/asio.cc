@@ -20,8 +20,8 @@ extern "C" {
 #include "hiredis/async.h"
 }
 
-RedisAsioClient::RedisAsioClient(boost::asio::io_service &io_service,
-                                 ray::gcs::RedisAsyncContext &redis_async_context)
+RedisAsioClient::RedisAsioClient(boost::asio::io_service& io_service,
+                                 ray::gcs::RedisAsyncContext& redis_async_context)
     : redis_async_context_(redis_async_context),
       io_service_(io_service),
       socket_(io_service),
@@ -29,10 +29,10 @@ RedisAsioClient::RedisAsioClient(boost::asio::io_service &io_service,
       write_requested_(false),
       read_in_progress_(false),
       write_in_progress_(false) {
-  redisAsyncContext *async_context = redis_async_context_.GetRawRedisAsyncContext();
+  redisAsyncContext* async_context = redis_async_context_.GetRawRedisAsyncContext();
 
   // gives access to c->fd
-  redisContext *c = &(async_context->c);
+  redisContext* c = &(async_context->c);
 
 #ifdef _WIN32
   SOCKET sock = SOCKET_ERROR;
@@ -110,27 +110,27 @@ void RedisAsioClient::del_io(bool write) {
 
 void RedisAsioClient::cleanup() {}
 
-static inline RedisAsioClient *cast_to_client(void *private_data) {
+static inline RedisAsioClient* cast_to_client(void* private_data) {
   RAY_CHECK(private_data != nullptr);
-  return static_cast<RedisAsioClient *>(private_data);
+  return static_cast<RedisAsioClient*>(private_data);
 }
 
-extern "C" void call_C_addRead(void *private_data) {
+extern "C" void call_C_addRead(void* private_data) {
   cast_to_client(private_data)->add_io(false);
 }
 
-extern "C" void call_C_delRead(void *private_data) {
+extern "C" void call_C_delRead(void* private_data) {
   cast_to_client(private_data)->del_io(false);
 }
 
-extern "C" void call_C_addWrite(void *private_data) {
+extern "C" void call_C_addWrite(void* private_data) {
   cast_to_client(private_data)->add_io(true);
 }
 
-extern "C" void call_C_delWrite(void *private_data) {
+extern "C" void call_C_delWrite(void* private_data) {
   cast_to_client(private_data)->del_io(true);
 }
 
-extern "C" void call_C_cleanup(void *private_data) {
+extern "C" void call_C_cleanup(void* private_data) {
   cast_to_client(private_data)->cleanup();
 }

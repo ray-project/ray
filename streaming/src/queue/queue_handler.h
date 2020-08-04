@@ -24,7 +24,7 @@ class QueueMessageHandler {
  public:
   /// Construct a QueueMessageHandler instance.
   /// \param[in] actor_id actor id of current actor.
-  QueueMessageHandler(const ActorID &actor_id)
+  QueueMessageHandler(const ActorID& actor_id)
       : actor_id_(actor_id), queue_dummy_work_(queue_service_) {
     Start();
   }
@@ -44,7 +44,7 @@ class QueueMessageHandler {
   /// Get transport to a peer actor specified by actor_id.
   /// \param[in] actor_id actor id of peer actor
   /// \return transport
-  std::shared_ptr<Transport> GetOutTransport(const ObjectID &actor_id);
+  std::shared_ptr<Transport> GetOutTransport(const ObjectID& actor_id);
 
   /// The actual function where message being dispatched, called by DispatchMessageAsync
   /// and DispatchMessageSync.
@@ -61,12 +61,12 @@ class QueueMessageHandler {
   /// downstream queue with same queue_id, and vice versa.
   /// \param[in] queue_id queue id of current queue.
   /// \param[in] actor_id actor_id actor id of corresponded peer actor.
-  void SetPeerActorID(const ObjectID &queue_id, const ActorID &actor_id,
-                      RayFunction &async_func, RayFunction &sync_func);
+  void SetPeerActorID(const ObjectID& queue_id, const ActorID& actor_id,
+                      RayFunction& async_func, RayFunction& sync_func);
 
   /// Obtain the actor id of the peer actor specified by queue_id.
   /// \return actor id
-  ActorID GetPeerActorID(const ObjectID &queue_id);
+  ActorID GetPeerActorID(const ObjectID& queue_id);
 
   /// Release all queues in current queue service.
   void Release();
@@ -102,26 +102,26 @@ class QueueMessageHandler {
 class UpstreamQueueMessageHandler : public QueueMessageHandler {
  public:
   /// Construct a UpstreamQueueMessageHandler instance.
-  UpstreamQueueMessageHandler(const ActorID &actor_id) : QueueMessageHandler(actor_id) {}
+  UpstreamQueueMessageHandler(const ActorID& actor_id) : QueueMessageHandler(actor_id) {}
   /// Create a upstream queue.
   /// \param[in] queue_id queue id of the queue to be created.
   /// \param[in] peer_actor_id actor id of peer actor.
   /// \param[in] size the max memory size of the queue.
-  std::shared_ptr<WriterQueue> CreateUpstreamQueue(const ObjectID &queue_id,
-                                                   const ActorID &peer_actor_id,
+  std::shared_ptr<WriterQueue> CreateUpstreamQueue(const ObjectID& queue_id,
+                                                   const ActorID& peer_actor_id,
                                                    uint64_t size);
   /// Check whether the upstream queue specified by queue_id exists or not.
-  bool UpstreamQueueExists(const ObjectID &queue_id);
+  bool UpstreamQueueExists(const ObjectID& queue_id);
   /// Wait all queues in queue_ids vector ready, until timeout.
   /// \param[in] queue_ids a group of queues.
   /// \param[in] timeout_ms max timeout time interval for wait all queues.
   /// \param[out] failed_queues a group of queues which are not ready when timeout.
-  void WaitQueues(const std::vector<ObjectID> &queue_ids, int64_t timeout_ms,
-                  std::vector<ObjectID> &failed_queues);
+  void WaitQueues(const std::vector<ObjectID>& queue_ids, int64_t timeout_ms,
+                  std::vector<ObjectID>& failed_queues);
   /// Handle notify message from corresponded downstream queue.
   void OnNotify(std::shared_ptr<NotificationMessage> notify_msg);
   /// Obtain upstream queue specified by queue_id.
-  std::shared_ptr<streaming::WriterQueue> GetUpQueue(const ObjectID &queue_id);
+  std::shared_ptr<streaming::WriterQueue> GetUpQueue(const ObjectID& queue_id);
   /// Release all upstream queues
   void ReleaseAllUpQueues();
 
@@ -130,11 +130,11 @@ class UpstreamQueueMessageHandler : public QueueMessageHandler {
       std::function<void(std::shared_ptr<LocalMemoryBuffer>)> callback) override;
 
   static std::shared_ptr<UpstreamQueueMessageHandler> CreateService(
-      const ActorID &actor_id);
+      const ActorID& actor_id);
   static std::shared_ptr<UpstreamQueueMessageHandler> GetService();
 
  private:
-  bool CheckQueueSync(const ObjectID &queue_ids);
+  bool CheckQueueSync(const ObjectID& queue_ids);
 
  private:
   std::unordered_map<ObjectID, std::shared_ptr<streaming::WriterQueue>> upstream_queues_;
@@ -144,18 +144,18 @@ class UpstreamQueueMessageHandler : public QueueMessageHandler {
 /// UpstreamQueueMessageHandler holds and manages all downstream queues of current actor.
 class DownstreamQueueMessageHandler : public QueueMessageHandler {
  public:
-  DownstreamQueueMessageHandler(const ActorID &actor_id)
+  DownstreamQueueMessageHandler(const ActorID& actor_id)
       : QueueMessageHandler(actor_id) {}
-  std::shared_ptr<ReaderQueue> CreateDownstreamQueue(const ObjectID &queue_id,
-                                                     const ActorID &peer_actor_id);
-  bool DownstreamQueueExists(const ObjectID &queue_id);
+  std::shared_ptr<ReaderQueue> CreateDownstreamQueue(const ObjectID& queue_id,
+                                                     const ActorID& peer_actor_id);
+  bool DownstreamQueueExists(const ObjectID& queue_id);
 
-  void UpdateDownActor(const ObjectID &queue_id, const ActorID &actor_id);
+  void UpdateDownActor(const ObjectID& queue_id, const ActorID& actor_id);
 
   std::shared_ptr<LocalMemoryBuffer> OnCheckQueue(
       std::shared_ptr<CheckMessage> check_msg);
 
-  std::shared_ptr<streaming::ReaderQueue> GetDownQueue(const ObjectID &queue_id);
+  std::shared_ptr<streaming::ReaderQueue> GetDownQueue(const ObjectID& queue_id);
 
   void ReleaseAllDownQueues();
 
@@ -165,7 +165,7 @@ class DownstreamQueueMessageHandler : public QueueMessageHandler {
       std::function<void(std::shared_ptr<LocalMemoryBuffer>)> callback);
 
   static std::shared_ptr<DownstreamQueueMessageHandler> CreateService(
-      const ActorID &actor_id);
+      const ActorID& actor_id);
   static std::shared_ptr<DownstreamQueueMessageHandler> GetService();
 
  private:

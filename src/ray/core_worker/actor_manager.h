@@ -29,15 +29,15 @@ class ActorCreatorInterface {
   ///
   /// \param task_spec The specification for the actor creation task.
   /// \return Status
-  virtual Status RegisterActor(const TaskSpecification &task_spec) = 0;
+  virtual Status RegisterActor(const TaskSpecification& task_spec) = 0;
 
   /// Asynchronously request GCS to create the actor.
   ///
   /// \param task_spec The specification for the actor creation task.
   /// \param callback Callback that will be called after the actor info is written to GCS.
   /// \return Status
-  virtual Status AsyncCreateActor(const TaskSpecification &task_spec,
-                                  const gcs::StatusCallback &callback) = 0;
+  virtual Status AsyncCreateActor(const TaskSpecification& task_spec,
+                                  const gcs::StatusCallback& callback) = 0;
 };
 
 class DefaultActorCreator : public ActorCreatorInterface {
@@ -45,18 +45,18 @@ class DefaultActorCreator : public ActorCreatorInterface {
   explicit DefaultActorCreator(std::shared_ptr<gcs::GcsClient> gcs_client)
       : gcs_client_(std::move(gcs_client)) {}
 
-  Status RegisterActor(const TaskSpecification &task_spec) override {
+  Status RegisterActor(const TaskSpecification& task_spec) override {
     auto promise = std::make_shared<std::promise<void>>();
     auto status = gcs_client_->Actors().AsyncRegisterActor(
-        task_spec, [promise](const Status &status) { promise->set_value(); });
+        task_spec, [promise](const Status& status) { promise->set_value(); });
     if (status.ok()) {
       promise->get_future().wait();
     }
     return status;
   }
 
-  Status AsyncCreateActor(const TaskSpecification &task_spec,
-                          const gcs::StatusCallback &callback) override {
+  Status AsyncCreateActor(const TaskSpecification& task_spec,
+                          const gcs::StatusCallback& callback) override {
     return gcs_client_->Actors().AsyncCreateActor(task_spec, callback);
   }
 
@@ -95,21 +95,21 @@ class ActorManager {
   /// \param[in] call_site The caller's site.
   /// \return The ActorID of the deserialized handle.
   ActorID RegisterActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                              const ObjectID &outer_object_id, const TaskID &caller_id,
-                              const std::string &call_site,
-                              const rpc::Address &caller_address);
+                              const ObjectID& outer_object_id, const TaskID& caller_id,
+                              const std::string& call_site,
+                              const rpc::Address& caller_address);
 
   /// Get a handle to an actor.
   ///
   /// \param[in] actor_id The actor handle to get.
   /// \return reference to the actor_handle's pointer.
   /// NOTE: Returned actorHandle should not be stored anywhere.
-  const std::unique_ptr<ActorHandle> &GetActorHandle(const ActorID &actor_id);
+  const std::unique_ptr<ActorHandle>& GetActorHandle(const ActorID& actor_id);
 
   /// Check if an actor handle that corresponds to an actor_id exists.
   /// \param[in] actor_id The actor id of a handle.
   /// \return True if the actor_handle for an actor_id exists. False otherwise.
-  bool CheckActorHandleExists(const ActorID &actor_id);
+  bool CheckActorHandleExists(const ActorID& actor_id);
 
   /// Give this worker a new handle to an actor.
   ///
@@ -128,8 +128,8 @@ class ActorManager {
   /// actor. \return True if the handle was added and False if we already had a handle to
   /// the same actor.
   bool AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                         const TaskID &caller_id, const std::string &call_site,
-                         const rpc::Address &caller_address, bool is_detached);
+                         const TaskID& caller_id, const std::string& call_site,
+                         const rpc::Address& caller_address, bool is_detached);
 
   /// Wait for actor out of scope.
   ///
@@ -137,8 +137,8 @@ class ActorManager {
   /// \param actor_out_of_scope_callback The callback function that will be called when
   /// an actor_id goes out of scope.
   void WaitForActorOutOfScope(
-      const ActorID &actor_id,
-      std::function<void(const ActorID &)> actor_out_of_scope_callback);
+      const ActorID& actor_id,
+      std::function<void(const ActorID&)> actor_out_of_scope_callback);
 
   /// Get a list of actor_ids from existing actor handles.
   /// This is used for debugging purpose.
@@ -163,16 +163,16 @@ class ActorManager {
   /// \return True if the handle was added and False if we already had a handle
   /// to the same actor.
   bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle, bool is_owner_handle,
-                      const TaskID &caller_id, const std::string &call_site,
-                      const rpc::Address &caller_address, const ActorID &actor_id,
-                      const ObjectID &actor_creation_return_id);
+                      const TaskID& caller_id, const std::string& call_site,
+                      const rpc::Address& caller_address, const ActorID& actor_id,
+                      const ObjectID& actor_creation_return_id);
 
   /// Handle actor state notification published from GCS.
   ///
   /// \param[in] actor_id The actor id of this notification.
   /// \param[in] actor_data The GCS actor data.
-  void HandleActorStateNotification(const ActorID &actor_id,
-                                    const gcs::ActorTableData &actor_data);
+  void HandleActorStateNotification(const ActorID& actor_id,
+                                    const gcs::ActorTableData& actor_data);
 
   /// GCS client.
   std::shared_ptr<gcs::GcsClient> gcs_client_;

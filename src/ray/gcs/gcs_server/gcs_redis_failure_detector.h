@@ -36,7 +36,7 @@ class GcsRedisFailureDetector {
   /// \param io_service The event loop to run the monitor on.
   /// \param redis_context The redis context is used to ping redis.
   /// \param callback Callback that will be called when redis is detected as not alive.
-  explicit GcsRedisFailureDetector(boost::asio::io_service &io_service,
+  explicit GcsRedisFailureDetector(boost::asio::io_service& io_service,
                                    std::shared_ptr<RedisContext> redis_context,
                                    std::function<void()> callback);
 

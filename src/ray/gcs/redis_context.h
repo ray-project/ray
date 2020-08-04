@@ -40,7 +40,7 @@ using rpc::TablePubsub;
 /// A simple reply wrapper for redis reply.
 class CallbackReply {
  public:
-  explicit CallbackReply(redisReply *redis_reply);
+  explicit CallbackReply(redisReply* redis_reply);
 
   /// Whether this reply is `nil` type reply.
   bool IsNil() const;
@@ -55,19 +55,19 @@ class CallbackReply {
   ///
   /// Note that this will return an empty string if
   /// the type of this reply is `nil` or `status`.
-  const std::string &ReadAsString() const;
+  const std::string& ReadAsString() const;
 
   /// Read this reply data as pub-sub data.
-  const std::string &ReadAsPubsubData() const;
+  const std::string& ReadAsPubsubData() const;
 
   /// Read this reply data as a string array.
-  const std::vector<std::string> &ReadAsStringArray() const;
+  const std::vector<std::string>& ReadAsStringArray() const;
 
   /// Read this reply data as a scan array.
   ///
   /// \param array The result array of scan.
   /// \return size_t The next cursor for scan.
-  size_t ReadAsScanArray(std::vector<std::string> *array) const;
+  size_t ReadAsScanArray(std::vector<std::string>* array) const;
 
   bool IsSubscribeCallback() const { return is_subscribe_callback_; }
 
@@ -75,10 +75,10 @@ class CallbackReply {
 
  private:
   /// Parse redis reply as string array or scan array.
-  void ParseAsStringArrayOrScanArray(redisReply *redis_reply);
+  void ParseAsStringArrayOrScanArray(redisReply* redis_reply);
 
   /// Parse redis reply as string array.
-  void ParseAsStringArray(redisReply *redis_reply);
+  void ParseAsStringArray(redisReply* redis_reply);
 
   /// Flag indicating the type of reply this represents.
   int reply_type_;
@@ -107,11 +107,11 @@ class CallbackReply {
 /// operation.
 using RedisCallback = std::function<void(std::shared_ptr<CallbackReply>)>;
 
-void GlobalRedisCallback(void *c, void *r, void *privdata);
+void GlobalRedisCallback(void* c, void* r, void* privdata);
 
 class RedisCallbackManager {
  public:
-  static RedisCallbackManager &instance() {
+  static RedisCallbackManager& instance() {
     static RedisCallbackManager instance;
     return instance;
   }
@@ -119,14 +119,14 @@ class RedisCallbackManager {
   struct CallbackItem : public std::enable_shared_from_this<CallbackItem> {
     CallbackItem() = default;
 
-    CallbackItem(const RedisCallback &callback, bool is_subscription, int64_t start_time,
-                 boost::asio::io_service &io_service)
+    CallbackItem(const RedisCallback& callback, bool is_subscription, int64_t start_time,
+                 boost::asio::io_service& io_service)
         : callback_(callback),
           is_subscription_(is_subscription),
           start_time_(start_time),
           io_service_(&io_service) {}
 
-    void Dispatch(std::shared_ptr<CallbackReply> &reply) {
+    void Dispatch(std::shared_ptr<CallbackReply>& reply) {
       std::shared_ptr<CallbackItem> self = shared_from_this();
       if (callback_ != nullptr) {
         io_service_->post([self, reply]() { self->callback_(std::move(reply)); });
@@ -136,15 +136,15 @@ class RedisCallbackManager {
     RedisCallback callback_;
     bool is_subscription_;
     int64_t start_time_;
-    boost::asio::io_service *io_service_;
+    boost::asio::io_service* io_service_;
   };
 
   /// Allocate an index at which we can add a callback later on.
   int64_t AllocateCallbackIndex();
 
   /// Add a callback at an optionally specified index.
-  int64_t AddCallback(const RedisCallback &function, bool is_subscription,
-                      boost::asio::io_service &io_service, int64_t callback_index = -1);
+  int64_t AddCallback(const RedisCallback& function, bool is_subscription,
+                      boost::asio::io_service& io_service, int64_t callback_index = -1);
 
   /// Remove a callback.
   void RemoveCallback(int64_t callback_index);
@@ -165,13 +165,13 @@ class RedisCallbackManager {
 
 class RedisContext {
  public:
-  RedisContext(boost::asio::io_service &io_service)
+  RedisContext(boost::asio::io_service& io_service)
       : io_service_(io_service), context_(nullptr) {}
 
   ~RedisContext();
 
-  Status Connect(const std::string &address, int port, bool sharding,
-                 const std::string &password);
+  Status Connect(const std::string& address, int port, bool sharding,
+                 const std::string& password);
 
   /// Run an operation on some table key synchronously.
   ///
@@ -188,8 +188,8 @@ class RedisContext {
   /// -1 for unused. If set, then data must be provided.
   /// \return The reply from redis.
   template <typename ID>
-  std::shared_ptr<CallbackReply> RunSync(const std::string &command, const ID &id,
-                                         const void *data, size_t length,
+  std::shared_ptr<CallbackReply> RunSync(const std::string& command, const ID& id,
+                                         const void* data, size_t length,
                                          const TablePrefix prefix,
                                          const TablePubsub pubsub_channel,
                                          int log_length = -1);
@@ -198,7 +198,7 @@ class RedisContext {
   ///
   /// \param args The vector of command args to pass to Redis.
   /// \return CallbackReply(The reply from redis).
-  std::unique_ptr<CallbackReply> RunArgvSync(const std::vector<std::string> &args);
+  std::unique_ptr<CallbackReply> RunArgvSync(const std::vector<std::string>& args);
 
   /// Run an operation on some table key.
   ///
@@ -216,7 +216,7 @@ class RedisContext {
   /// -1 for unused. If set, then data must be provided.
   /// \return Status.
   template <typename ID>
-  Status RunAsync(const std::string &command, const ID &id, const void *data,
+  Status RunAsync(const std::string& command, const ID& id, const void* data,
                   size_t length, const TablePrefix prefix,
                   const TablePubsub pubsub_channel, RedisCallback redisCallback,
                   int log_length = -1);
@@ -226,8 +226,8 @@ class RedisContext {
   /// \param args The vector of command args to pass to Redis.
   /// \param redis_callback The Redis callback function.
   /// \return Status.
-  Status RunArgvAsync(const std::vector<std::string> &args,
-                      const RedisCallback &redis_callback = nullptr);
+  Status RunArgvAsync(const std::vector<std::string>& args,
+                      const RedisCallback& redis_callback = nullptr);
 
   /// Subscribe to a specific Pub-Sub channel.
   ///
@@ -236,8 +236,8 @@ class RedisContext {
   /// \param redisCallback The callback function that the notification calls.
   /// \param out_callback_index The output pointer to callback index.
   /// \return Status.
-  Status SubscribeAsync(const ClientID &client_id, const TablePubsub pubsub_channel,
-                        const RedisCallback &redisCallback, int64_t *out_callback_index);
+  Status SubscribeAsync(const ClientID& client_id, const TablePubsub pubsub_channel,
+                        const RedisCallback& redisCallback, int64_t* out_callback_index);
 
   /// Subscribes the client to the given pattern.
   ///
@@ -247,14 +247,14 @@ class RedisContext {
   /// must already be allocated in the callback manager via
   /// RedisCallbackManager::AllocateCallbackIndex.
   /// \return Status.
-  Status PSubscribeAsync(const std::string &pattern, const RedisCallback &redisCallback,
+  Status PSubscribeAsync(const std::string& pattern, const RedisCallback& redisCallback,
                          int64_t callback_index);
 
   /// Unsubscribes the client from the given pattern.
   ///
   /// \param pattern The pattern of unsubscription channel.
   /// \return Status.
-  Status PUnsubscribeAsync(const std::string &pattern);
+  Status PUnsubscribeAsync(const std::string& pattern);
 
   /// Posts a message to the given channel.
   ///
@@ -262,39 +262,39 @@ class RedisContext {
   /// \param message The message to be published to redis.
   /// \param redisCallback The callback will be called when the message is published to
   /// redis. \return Status.
-  Status PublishAsync(const std::string &channel, const std::string &message,
-                      const RedisCallback &redisCallback);
+  Status PublishAsync(const std::string& channel, const std::string& message,
+                      const RedisCallback& redisCallback);
 
-  redisContext *sync_context() {
+  redisContext* sync_context() {
     RAY_CHECK(context_);
     return context_;
   }
 
-  RedisAsyncContext &async_context() {
+  RedisAsyncContext& async_context() {
     RAY_CHECK(redis_async_context_);
     return *redis_async_context_;
   }
 
-  RedisAsyncContext &subscribe_context() {
+  RedisAsyncContext& subscribe_context() {
     RAY_CHECK(async_redis_subscribe_context_);
     return *async_redis_subscribe_context_;
   }
 
-  boost::asio::io_service &io_service() { return io_service_; }
+  boost::asio::io_service& io_service() { return io_service_; }
 
  private:
   // These functions avoid problems with dependence on hiredis headers with clang-cl.
-  static int GetRedisError(redisContext *context);
-  static void FreeRedisReply(void *reply);
+  static int GetRedisError(redisContext* context);
+  static void FreeRedisReply(void* reply);
 
-  boost::asio::io_service &io_service_;
-  redisContext *context_;
+  boost::asio::io_service& io_service_;
+  redisContext* context_;
   std::unique_ptr<RedisAsyncContext> redis_async_context_;
   std::unique_ptr<RedisAsyncContext> async_redis_subscribe_context_;
 };
 
 template <typename ID>
-Status RedisContext::RunAsync(const std::string &command, const ID &id, const void *data,
+Status RedisContext::RunAsync(const std::string& command, const ID& id, const void* data,
                               size_t length, const TablePrefix prefix,
                               const TablePubsub pubsub_channel,
                               RedisCallback redisCallback, int log_length) {
@@ -306,22 +306,22 @@ Status RedisContext::RunAsync(const std::string &command, const ID &id, const vo
     if (log_length >= 0) {
       std::string redis_command = command + " %d %d %b %b %d";
       status = redis_async_context_->RedisAsyncCommand(
-          reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
-          reinterpret_cast<void *>(callback_index), redis_command.c_str(), prefix,
+          reinterpret_cast<redisCallbackFn*>(&GlobalRedisCallback),
+          reinterpret_cast<void*>(callback_index), redis_command.c_str(), prefix,
           pubsub_channel, id.Data(), id.Size(), data, length, log_length);
     } else {
       std::string redis_command = command + " %d %d %b %b";
       status = redis_async_context_->RedisAsyncCommand(
-          reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
-          reinterpret_cast<void *>(callback_index), redis_command.c_str(), prefix,
+          reinterpret_cast<redisCallbackFn*>(&GlobalRedisCallback),
+          reinterpret_cast<void*>(callback_index), redis_command.c_str(), prefix,
           pubsub_channel, id.Data(), id.Size(), data, length);
     }
   } else {
     RAY_CHECK(log_length == -1);
     std::string redis_command = command + " %d %d %b";
     status = redis_async_context_->RedisAsyncCommand(
-        reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
-        reinterpret_cast<void *>(callback_index), redis_command.c_str(), prefix,
+        reinterpret_cast<redisCallbackFn*>(&GlobalRedisCallback),
+        reinterpret_cast<void*>(callback_index), redis_command.c_str(), prefix,
         pubsub_channel, id.Data(), id.Size());
   }
   return status;
@@ -329,10 +329,10 @@ Status RedisContext::RunAsync(const std::string &command, const ID &id, const vo
 
 template <typename ID>
 std::shared_ptr<CallbackReply> RedisContext::RunSync(
-    const std::string &command, const ID &id, const void *data, size_t length,
+    const std::string& command, const ID& id, const void* data, size_t length,
     const TablePrefix prefix, const TablePubsub pubsub_channel, int log_length) {
   RAY_CHECK(context_);
-  void *redis_reply = nullptr;
+  void* redis_reply = nullptr;
   if (length > 0) {
     if (log_length >= 0) {
       std::string redis_command = command + " %d %d %b %b %d";
@@ -354,7 +354,7 @@ std::shared_ptr<CallbackReply> RedisContext::RunSync(
     return nullptr;
   } else {
     std::shared_ptr<CallbackReply> callback_reply =
-        std::make_shared<CallbackReply>(reinterpret_cast<redisReply *>(redis_reply));
+        std::make_shared<CallbackReply>(reinterpret_cast<redisReply*>(redis_reply));
     FreeRedisReply(redis_reply);
     return callback_reply;
   }

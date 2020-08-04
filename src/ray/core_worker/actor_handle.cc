@@ -19,11 +19,11 @@
 namespace {
 
 ray::rpc::ActorHandle CreateInnerActorHandle(
-    const class ActorID &actor_id, const TaskID &owner_id,
-    const ray::rpc::Address &owner_address, const class JobID &job_id,
-    const ObjectID &initial_cursor, const Language actor_language,
-    const ray::FunctionDescriptor &actor_creation_task_function_descriptor,
-    const std::string &extension_data, int64_t max_task_retries) {
+    const class ActorID& actor_id, const TaskID& owner_id,
+    const ray::rpc::Address& owner_address, const class JobID& job_id,
+    const ObjectID& initial_cursor, const Language actor_language,
+    const ray::FunctionDescriptor& actor_creation_task_function_descriptor,
+    const std::string& extension_data, int64_t max_task_retries) {
   ray::rpc::ActorHandle inner;
   inner.set_actor_id(actor_id.Data(), actor_id.Size());
   inner.set_owner_id(owner_id.Binary());
@@ -38,14 +38,14 @@ ray::rpc::ActorHandle CreateInnerActorHandle(
   return inner;
 }
 
-ray::rpc::ActorHandle CreateInnerActorHandleFromString(const std::string &serialized) {
+ray::rpc::ActorHandle CreateInnerActorHandleFromString(const std::string& serialized) {
   ray::rpc::ActorHandle inner;
   inner.ParseFromString(serialized);
   return inner;
 }
 
 ray::rpc::ActorHandle CreateInnerActorHandleFromActorTableData(
-    const ray::gcs::ActorTableData &actor_table_data) {
+    const ray::gcs::ActorTableData& actor_table_data) {
   ray::rpc::ActorHandle inner;
   inner.set_actor_id(actor_table_data.actor_id());
   inner.set_owner_id(actor_table_data.parent_id());
@@ -66,22 +66,22 @@ ray::rpc::ActorHandle CreateInnerActorHandleFromActorTableData(
 namespace ray {
 
 ActorHandle::ActorHandle(
-    const class ActorID &actor_id, const TaskID &owner_id,
-    const rpc::Address &owner_address, const class JobID &job_id,
-    const ObjectID &initial_cursor, const Language actor_language,
-    const ray::FunctionDescriptor &actor_creation_task_function_descriptor,
-    const std::string &extension_data, int64_t max_task_retries)
+    const class ActorID& actor_id, const TaskID& owner_id,
+    const rpc::Address& owner_address, const class JobID& job_id,
+    const ObjectID& initial_cursor, const Language actor_language,
+    const ray::FunctionDescriptor& actor_creation_task_function_descriptor,
+    const std::string& extension_data, int64_t max_task_retries)
     : ActorHandle(CreateInnerActorHandle(
           actor_id, owner_id, owner_address, job_id, initial_cursor, actor_language,
           actor_creation_task_function_descriptor, extension_data, max_task_retries)) {}
 
-ActorHandle::ActorHandle(const std::string &serialized)
+ActorHandle::ActorHandle(const std::string& serialized)
     : ActorHandle(CreateInnerActorHandleFromString(serialized)) {}
 
-ActorHandle::ActorHandle(const gcs::ActorTableData &actor_table_data)
+ActorHandle::ActorHandle(const gcs::ActorTableData& actor_table_data)
     : ActorHandle(CreateInnerActorHandleFromActorTableData(actor_table_data)) {}
 
-void ActorHandle::SetActorTaskSpec(TaskSpecBuilder &builder, const ObjectID new_cursor) {
+void ActorHandle::SetActorTaskSpec(TaskSpecBuilder& builder, const ObjectID new_cursor) {
   absl::MutexLock guard(&mutex_);
   // Build actor task spec.
   const TaskID actor_creation_task_id = TaskID::ForActorCreationTask(GetActorID());
@@ -93,7 +93,7 @@ void ActorHandle::SetActorTaskSpec(TaskSpecBuilder &builder, const ObjectID new_
   actor_cursor_ = new_cursor;
 }
 
-void ActorHandle::SetResubmittedActorTaskSpec(TaskSpecification &spec,
+void ActorHandle::SetResubmittedActorTaskSpec(TaskSpecification& spec,
                                               const ObjectID new_cursor) {
   absl::MutexLock guard(&mutex_);
   auto mutable_spec = spec.GetMutableMessage().mutable_actor_task_spec();
@@ -102,6 +102,6 @@ void ActorHandle::SetResubmittedActorTaskSpec(TaskSpecification &spec,
   actor_cursor_ = new_cursor;
 }
 
-void ActorHandle::Serialize(std::string *output) { inner_.SerializeToString(output); }
+void ActorHandle::Serialize(std::string* output) { inner_.SerializeToString(output); }
 
 }  // namespace ray

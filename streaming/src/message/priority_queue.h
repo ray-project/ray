@@ -17,14 +17,14 @@ class PriorityQueue {
   C comparator_;
 
  public:
-  PriorityQueue(C &comparator) : comparator_(comparator){};
+  PriorityQueue(C& comparator) : comparator_(comparator){};
 
-  inline void push(T &&item) {
+  inline void push(T&& item) {
     merge_vec_.push_back(std::forward<T>(item));
     std::push_heap(merge_vec_.begin(), merge_vec_.end(), comparator_);
   }
 
-  inline void push(const T &item) {
+  inline void push(const T& item) {
     merge_vec_.push_back(item);
     std::push_heap(merge_vec_.begin(), merge_vec_.end(), comparator_);
   }
@@ -39,13 +39,13 @@ class PriorityQueue {
     std::make_heap(merge_vec_.begin(), merge_vec_.end(), comparator_);
   }
 
-  inline T &top() { return merge_vec_.front(); }
+  inline T& top() { return merge_vec_.front(); }
 
   inline uint32_t size() { return merge_vec_.size(); }
 
   inline bool isEmpty() { return merge_vec_.empty(); }
 
-  std::vector<T> &getRawVector() { return merge_vec_; }
+  std::vector<T>& getRawVector() { return merge_vec_; }
 };
 }  // namespace streaming
 }  // namespace ray

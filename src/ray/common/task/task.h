@@ -8,12 +8,12 @@
 
 namespace ray {
 
-typedef std::function<void(const std::shared_ptr<void>, const std::string &, int,
-                           const WorkerID &, const ResourceIdSet &)>
+typedef std::function<void(const std::shared_ptr<void>, const std::string&, int,
+                           const WorkerID&, const ResourceIdSet&)>
     DispatchTaskCallback;
 /// Arguments are the raylet ID to spill back to, the raylet's
 /// address and the raylet's port.
-typedef std::function<void(const ClientID &, const std::string &, int)>
+typedef std::function<void(const ClientID&, const std::string&, int)>
     SpillbackTaskCallback;
 
 typedef std::function<void()> CancelTaskCallback;
@@ -33,7 +33,7 @@ class Task {
   /// Construct a `Task` object from a protobuf message.
   ///
   /// \param message The protobuf message.
-  explicit Task(const rpc::Task &message)
+  explicit Task(const rpc::Task& message)
       : task_spec_(message.task_spec()),
         task_execution_spec_(message.task_execution_spec()) {
     ComputeDependencies();
@@ -48,17 +48,17 @@ class Task {
   }
 
   /// Override dispatch behaviour.
-  void OnDispatchInstead(const DispatchTaskCallback &callback) {
+  void OnDispatchInstead(const DispatchTaskCallback& callback) {
     on_dispatch_ = callback;
   }
 
   /// Override spillback behaviour.
-  void OnSpillbackInstead(const SpillbackTaskCallback &callback) {
+  void OnSpillbackInstead(const SpillbackTaskCallback& callback) {
     on_spillback_ = callback;
   }
 
   /// Override cancellation behaviour.
-  void OnCancellationInstead(const CancelTaskCallback &callback) {
+  void OnCancellationInstead(const CancelTaskCallback& callback) {
     on_cancellation_ = callback;
   }
 
@@ -66,12 +66,12 @@ class Task {
   /// updated at runtime.
   ///
   /// \return The mutable specification for the task.
-  const TaskExecutionSpecification &GetTaskExecutionSpec() const;
+  const TaskExecutionSpecification& GetTaskExecutionSpec() const;
 
   /// Get the immutable specification for the task.
   ///
   /// \return The immutable specification for the task.
-  const TaskSpecification &GetTaskSpecification() const;
+  const TaskSpecification& GetTaskSpecification() const;
 
   /// Increment the number of times this task has been forwarded.
   void IncrementNumForwards();
@@ -80,20 +80,20 @@ class Task {
   /// arguments and the mutable execution dependencies.
   ///
   /// \return The object dependencies.
-  const std::vector<rpc::ObjectReference> &GetDependencies() const;
+  const std::vector<rpc::ObjectReference>& GetDependencies() const;
 
   /// Update the dynamic/mutable information for this task.
   /// \param task Task structure with updated dynamic information.
-  void CopyTaskExecutionSpec(const Task &task);
+  void CopyTaskExecutionSpec(const Task& task);
 
   /// Returns the override dispatch task callback, or nullptr.
-  const DispatchTaskCallback &OnDispatch() const { return on_dispatch_; }
+  const DispatchTaskCallback& OnDispatch() const { return on_dispatch_; }
 
   /// Returns the override spillback task callback, or nullptr.
-  const SpillbackTaskCallback &OnSpillback() const { return on_spillback_; }
+  const SpillbackTaskCallback& OnSpillback() const { return on_spillback_; }
 
   /// Returns the cancellation task callback, or nullptr.
-  const CancelTaskCallback &OnCancellation() const { return on_cancellation_; }
+  const CancelTaskCallback& OnCancellation() const { return on_cancellation_; }
 
   std::string DebugString() const;
 

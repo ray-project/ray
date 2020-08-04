@@ -27,7 +27,7 @@ namespace ray {
 
 void Sleep() { std::this_thread::sleep_for(std::chrono::milliseconds(100)); }
 
-void TestSendSignal(const std::string &test_name, int signal) {
+void TestSendSignal(const std::string& test_name, int signal) {
   pid_t pid;
   pid = fork();
   ASSERT_TRUE(pid >= 0);
@@ -69,7 +69,7 @@ TEST(SignalTest, SIGSEGV_Test) {
   pid = fork();
   ASSERT_TRUE(pid >= 0);
   if (pid == 0) {
-    int *pointer = reinterpret_cast<int *>(0x1237896);
+    int* pointer = reinterpret_cast<int*>(0x1237896);
     *pointer = 100;
   } else {
     Sleep();
@@ -96,7 +96,7 @@ TEST(SignalTest, SIGILL_Test) {
 #endif  // !_WIN32
 }  // namespace ray
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                          ray::RayLog::ShutDownRayLog, argv[0],
                                          ray::RayLogLevel::INFO,

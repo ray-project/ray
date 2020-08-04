@@ -19,12 +19,12 @@ StreamingRingBuffer::StreamingRingBuffer(size_t buf_size,
   }
 }
 
-bool StreamingRingBuffer::Push(const StreamingMessagePtr &msg) {
+bool StreamingRingBuffer::Push(const StreamingMessagePtr& msg) {
   message_buffer_->Push(msg);
   return true;
 }
 
-StreamingMessagePtr &StreamingRingBuffer::Front() {
+StreamingMessagePtr& StreamingRingBuffer::Front() {
   STREAMING_CHECK(!message_buffer_->Empty());
   return message_buffer_->Front();
 }
@@ -54,11 +54,11 @@ size_t StreamingRingBuffer::GetMaxTransientBufferSize() const {
   return transient_buffer_.GetMaxTransientBufferSize();
 }
 
-const uint8_t *StreamingRingBuffer::GetTransientBuffer() const {
+const uint8_t* StreamingRingBuffer::GetTransientBuffer() const {
   return transient_buffer_.GetTransientBuffer();
 }
 
-uint8_t *StreamingRingBuffer::GetTransientBufferMutable() const {
+uint8_t* StreamingRingBuffer::GetTransientBufferMutable() const {
   return transient_buffer_.GetTransientBufferMutable();
 }
 

@@ -57,14 +57,14 @@ namespace ray {
 #define STATUS_CODE_OBJECT_STORE_ALREADY_SEALED "ObjectAlreadySealed"
 #define STATUS_CODE_OBJECT_STORE_FULL "ObjectStoreFull"
 
-Status::Status(StatusCode code, const std::string &msg) {
+Status::Status(StatusCode code, const std::string& msg) {
   assert(code != StatusCode::OK);
   state_ = new State;
   state_->code = code;
   state_->msg = msg;
 }
 
-void Status::CopyFrom(const State *state) {
+void Status::CopyFrom(const State* state) {
   delete state_;
   if (state == nullptr) {
     state_ = nullptr;
@@ -116,7 +116,7 @@ std::string Status::ToString() const {
   return result;
 }
 
-Status boost_to_ray_status(const boost::system::error_code &error) {
+Status boost_to_ray_status(const boost::system::error_code& error) {
   switch (error.value()) {
   case boost::system::errc::success:
     return Status::OK();

@@ -20,16 +20,16 @@ namespace ray {
 
 namespace worker {
 
-ProfileEvent::ProfileEvent(const std::shared_ptr<Profiler> &profiler,
-                           const std::string &event_type)
+ProfileEvent::ProfileEvent(const std::shared_ptr<Profiler>& profiler,
+                           const std::string& event_type)
     : profiler_(profiler) {
   rpc_event_.set_event_type(event_type);
   rpc_event_.set_start_time(absl::GetCurrentTimeNanos() / 1e9);
 }
 
-Profiler::Profiler(WorkerContext &worker_context, const std::string &node_ip_address,
-                   boost::asio::io_service &io_service,
-                   const std::shared_ptr<gcs::GcsClient> &gcs_client)
+Profiler::Profiler(WorkerContext& worker_context, const std::string& node_ip_address,
+                   boost::asio::io_service& io_service,
+                   const std::shared_ptr<gcs::GcsClient>& gcs_client)
     : io_service_(io_service),
       timer_(io_service_, boost::asio::chrono::seconds(1)),
       rpc_profile_data_(new rpc::ProfileTableData()),
@@ -40,7 +40,7 @@ Profiler::Profiler(WorkerContext &worker_context, const std::string &node_ip_add
   timer_.async_wait(boost::bind(&Profiler::FlushEvents, this));
 }
 
-void Profiler::AddEvent(const rpc::ProfileTableData::ProfileEvent &event) {
+void Profiler::AddEvent(const rpc::ProfileTableData::ProfileEvent& event) {
   absl::MutexLock lock(&mutex_);
   rpc_profile_data_->add_profile_events()->CopyFrom(event);
 }

@@ -28,7 +28,7 @@ namespace ray {
 class FutureResolver {
  public:
   FutureResolver(std::shared_ptr<CoreWorkerMemoryStore> store,
-                 rpc::ClientFactoryFn client_factory, const rpc::Address &rpc_address)
+                 rpc::ClientFactoryFn client_factory, const rpc::Address& rpc_address)
       : in_memory_store_(store),
         client_factory_(client_factory),
         rpc_address_(rpc_address) {}
@@ -41,7 +41,7 @@ class FutureResolver {
   /// \param[in] object_id The ID of the future to resolve.
   /// \param[in] owner_address The address of the task or actor that owns the
   /// future.
-  void ResolveFutureAsync(const ObjectID &object_id, const rpc::Address &owner_address);
+  void ResolveFutureAsync(const ObjectID& object_id, const rpc::Address& owner_address);
 
  private:
   /// Used to store values of resolved futures.

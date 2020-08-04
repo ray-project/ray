@@ -35,8 +35,8 @@ class ObjectStoreNotificationManagerIPC : public ObjectStoreNotificationManager 
   /// \param store_socket_name The store socket to connect to.
   /// \param exit_on_error The manager will exit with error when it fails
   ///                      to process messages from socket.
-  ObjectStoreNotificationManagerIPC(boost::asio::io_service &io_service,
-                                    const std::string &store_socket_name,
+  ObjectStoreNotificationManagerIPC(boost::asio::io_service& io_service,
+                                    const std::string& store_socket_name,
                                     bool exit_on_error = true);
 
   ~ObjectStoreNotificationManagerIPC() override;
@@ -47,8 +47,8 @@ class ObjectStoreNotificationManagerIPC : public ObjectStoreNotificationManager 
  private:
   /// Async loop for handling object store notifications.
   void NotificationWait();
-  void ProcessStoreLength(const ray::Status &s);
-  void ProcessStoreNotification(const ray::Status &s);
+  void ProcessStoreLength(const ray::Status& s);
+  void ProcessStoreNotification(const ray::Status& s);
 
   std::shared_ptr<ServerConnection> store_client_;
   int64_t length_;

@@ -32,8 +32,8 @@ namespace ray {
 /// for more details on how this class is used.
 class MockWorker {
  public:
-  MockWorker(const std::string &store_socket, const std::string &raylet_socket,
-             int node_manager_port, const gcs::GcsClientOptions &gcs_options) {
+  MockWorker(const std::string& store_socket, const std::string& raylet_socket,
+             int node_manager_port, const gcs::GcsClientOptions& gcs_options) {
     CoreWorkerOptions options = {
         WorkerType::WORKER,  // worker_type
         Language::PYTHON,    // langauge
@@ -66,12 +66,12 @@ class MockWorker {
   void RunTaskExecutionLoop() { CoreWorkerProcess::RunTaskExecutionLoop(); }
 
  private:
-  Status ExecuteTask(TaskType task_type, const RayFunction &ray_function,
-                     const std::unordered_map<std::string, double> &required_resources,
-                     const std::vector<std::shared_ptr<RayObject>> &args,
-                     const std::vector<ObjectID> &arg_reference_ids,
-                     const std::vector<ObjectID> &return_ids,
-                     std::vector<std::shared_ptr<RayObject>> *results) {
+  Status ExecuteTask(TaskType task_type, const RayFunction& ray_function,
+                     const std::unordered_map<std::string, double>& required_resources,
+                     const std::vector<std::shared_ptr<RayObject>>& args,
+                     const std::vector<ObjectID>& arg_reference_ids,
+                     const std::vector<ObjectID>& return_ids,
+                     std::vector<std::shared_ptr<RayObject>>* results) {
     // Note that this doesn't include dummy object id.
     const ray::FunctionDescriptor function_descriptor =
         ray_function.GetFunctionDescriptor();
@@ -93,11 +93,10 @@ class MockWorker {
     }
   }
 
-  Status GetWorkerPid(std::vector<std::shared_ptr<RayObject>> *results) {
+  Status GetWorkerPid(std::vector<std::shared_ptr<RayObject>>* results) {
     // Save the pid of current process to the return object.
     std::string pid_string = std::to_string(static_cast<int>(getpid()));
-    auto data =
-        const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(pid_string.data()));
+    auto data = const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(pid_string.data()));
     auto memory_buffer =
         std::make_shared<LocalMemoryBuffer>(data, pid_string.size(), true);
     results->push_back(
@@ -105,17 +104,17 @@ class MockWorker {
     return Status::OK();
   }
 
-  Status MergeInputArgsAsOutput(const std::vector<std::shared_ptr<RayObject>> &args,
-                                const std::vector<ObjectID> &return_ids,
-                                std::vector<std::shared_ptr<RayObject>> *results) {
+  Status MergeInputArgsAsOutput(const std::vector<std::shared_ptr<RayObject>>& args,
+                                const std::vector<ObjectID>& return_ids,
+                                std::vector<std::shared_ptr<RayObject>>* results) {
     // Merge all the content from input args.
     std::vector<uint8_t> buffer;
-    for (const auto &arg : args) {
-      auto &data = arg->GetData();
+    for (const auto& arg : args) {
+      auto& data = arg->GetData();
       buffer.insert(buffer.end(), data->Data(), data->Data() + data->Size());
     }
     if (buffer.size() >= 8) {
-      auto int_arr = reinterpret_cast<int64_t *>(buffer.data());
+      auto int_arr = reinterpret_cast<int64_t*>(buffer.data());
       if (int_arr[0] == SHOULD_CHECK_MESSAGE_ORDER) {
         auto seq_no = int_arr[1];
         if (seq_no > 0) {
@@ -141,7 +140,7 @@ class MockWorker {
 
 }  // namespace ray
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   RAY_CHECK(argc == 4);
   auto store_socket = std::string(argv[1]);
   auto raylet_socket = std::string(argv[2]);

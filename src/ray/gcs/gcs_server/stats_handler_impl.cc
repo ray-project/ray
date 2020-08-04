@@ -17,8 +17,8 @@
 namespace ray {
 namespace rpc {
 
-void DefaultStatsHandler::HandleAddProfileData(const AddProfileDataRequest &request,
-                                               AddProfileDataReply *reply,
+void DefaultStatsHandler::HandleAddProfileData(const AddProfileDataRequest& request,
+                                               AddProfileDataReply* reply,
                                                SendReplyCallback send_reply_callback) {
   ClientID node_id = ClientID::FromBinary(request.profile_data().component_id());
   RAY_LOG(DEBUG) << "Adding profile data, component type = "
@@ -44,12 +44,12 @@ void DefaultStatsHandler::HandleAddProfileData(const AddProfileDataRequest &requ
 }
 
 void DefaultStatsHandler::HandleGetAllProfileInfo(
-    const rpc::GetAllProfileInfoRequest &request, rpc::GetAllProfileInfoReply *reply,
+    const rpc::GetAllProfileInfoRequest& request, rpc::GetAllProfileInfoReply* reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Getting all profile info.";
   auto on_done = [reply, send_reply_callback](
-                     const std::unordered_map<UniqueID, ProfileTableData> &result) {
-    for (auto &data : result) {
+                     const std::unordered_map<UniqueID, ProfileTableData>& result) {
+    for (auto& data : result) {
       reply->add_profile_info_list()->CopyFrom(data.second);
     }
     RAY_LOG(DEBUG) << "Finished getting all profile info.";

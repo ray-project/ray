@@ -11,7 +11,7 @@ using namespace ray::streaming;
 
 JNIEXPORT jlong JNICALL
 Java_io_ray_streaming_runtime_transfer_DataReader_createDataReaderNative(
-    JNIEnv *env, jclass, jobject streaming_queue_initial_parameters,
+    JNIEnv* env, jclass, jobject streaming_queue_initial_parameters,
     jobjectArray input_channels, jlongArray seq_id_array, jlongArray msg_id_array,
     jlong timer_interval, jboolean isRecreate, jbyteArray config_bytes,
     jboolean is_mock) {
@@ -39,10 +39,10 @@ Java_io_ray_streaming_runtime_transfer_DataReader_createDataReaderNative(
 }
 
 JNIEXPORT void JNICALL Java_io_ray_streaming_runtime_transfer_DataReader_getBundleNative(
-    JNIEnv *env, jobject, jlong reader_ptr, jlong timeout_millis, jlong out,
+    JNIEnv* env, jobject, jlong reader_ptr, jlong timeout_millis, jlong out,
     jlong meta_addr) {
   std::shared_ptr<ray::streaming::DataBundle> bundle;
-  auto reader = reinterpret_cast<ray::streaming::DataReader *>(reader_ptr);
+  auto reader = reinterpret_cast<ray::streaming::DataReader*>(reader_ptr);
   auto status = reader->GetBundle((uint32_t)timeout_millis, bundle);
 
   // over timeout, return empty array.
@@ -56,20 +56,20 @@ JNIEXPORT void JNICALL Java_io_ray_streaming_runtime_transfer_DataReader_getBund
   }
 
   if (StreamingStatus::OK != status) {
-    *reinterpret_cast<uint64_t *>(out) = 0;
-    *reinterpret_cast<uint32_t *>(out + 8) = 0;
+    *reinterpret_cast<uint64_t*>(out) = 0;
+    *reinterpret_cast<uint32_t*>(out + 8) = 0;
     return;
   }
 
   // bundle data
   // In streaming queue, bundle data and metadata will be different args of direct call,
   // so we separate it here for future extensibility.
-  *reinterpret_cast<uint64_t *>(out) =
+  *reinterpret_cast<uint64_t*>(out) =
       reinterpret_cast<uint64_t>(bundle->data + kMessageBundleHeaderSize);
-  *reinterpret_cast<uint32_t *>(out + 8) = bundle->data_size - kMessageBundleHeaderSize;
+  *reinterpret_cast<uint32_t*>(out + 8) = bundle->data_size - kMessageBundleHeaderSize;
 
   // bundle metadata
-  auto meta = reinterpret_cast<uint8_t *>(meta_addr);
+  auto meta = reinterpret_cast<uint8_t*>(meta_addr);
   // bundle header written by writer
   std::memcpy(meta, bundle->data, kMessageBundleHeaderSize);
   // append qid
@@ -77,14 +77,14 @@ JNIEXPORT void JNICALL Java_io_ray_streaming_runtime_transfer_DataReader_getBund
 }
 
 JNIEXPORT void JNICALL Java_io_ray_streaming_runtime_transfer_DataReader_stopReaderNative(
-    JNIEnv *env, jobject thisObj, jlong ptr) {
-  auto reader = reinterpret_cast<DataReader *>(ptr);
+    JNIEnv* env, jobject thisObj, jlong ptr) {
+  auto reader = reinterpret_cast<DataReader*>(ptr);
   reader->Stop();
 }
 
 JNIEXPORT void JNICALL
-Java_io_ray_streaming_runtime_transfer_DataReader_closeReaderNative(JNIEnv *env,
+Java_io_ray_streaming_runtime_transfer_DataReader_closeReaderNative(JNIEnv* env,
                                                                     jobject thisObj,
                                                                     jlong ptr) {
-  delete reinterpret_cast<DataReader *>(ptr);
+  delete reinterpret_cast<DataReader*>(ptr);
 }

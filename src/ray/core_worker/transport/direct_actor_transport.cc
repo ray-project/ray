@@ -23,14 +23,14 @@ using ray::rpc::ActorTableData;
 namespace ray {
 
 void CoreWorkerDirectActorTaskSubmitter::AddActorQueueIfNotExists(
-    const ActorID &actor_id) {
+    const ActorID& actor_id) {
   absl::MutexLock lock(&mu_);
   // No need to check whether the insert was successful, since it is possible
   // for this worker to have multiple references to the same actor.
   client_queues_.emplace(actor_id, ClientQueue());
 }
 
-void CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id,
+void CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID& actor_id,
                                                    bool force_kill, bool no_restart) {
   absl::MutexLock lock(&mu_);
   rpc::KillActorRequest request;
@@ -112,14 +112,14 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
   return Status::OK();
 }
 
-void CoreWorkerDirectActorTaskSubmitter::DisconnectRpcClient(ClientQueue &queue) {
+void CoreWorkerDirectActorTaskSubmitter::DisconnectRpcClient(ClientQueue& queue) {
   queue.rpc_client = nullptr;
   queue.worker_id.clear();
   queue.pending_force_kill.reset();
 }
 
-void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
-                                                      const rpc::Address &address,
+void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID& actor_id,
+                                                      const rpc::Address& address,
                                                       int64_t num_restarts) {
   RAY_LOG(DEBUG) << "Connecting to actor " << actor_id << " at worker "
                  << WorkerID::FromBinary(address.worker_id());
@@ -161,7 +161,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   SendPendingTasks(actor_id);
 }
 
-void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
+void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID& actor_id,
                                                          int64_t num_restarts,
                                                          bool dead) {
   RAY_LOG(DEBUG) << "Disconnecting from actor " << actor_id;
@@ -183,10 +183,10 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
     queue->second.state = rpc::ActorTableData::DEAD;
     // If there are pending requests, treat the pending tasks as failed.
     RAY_LOG(INFO) << "Failing pending tasks for actor " << actor_id;
-    auto &requests = queue->second.requests;
+    auto& requests = queue->second.requests;
     auto head = requests.begin();
     while (head != requests.end()) {
-      const auto &task_spec = head->second.first;
+      const auto& task_spec = head->second.first;
       task_finisher_->MarkTaskCanceled(task_spec.TaskId());
       auto status = Status::IOError("cancelling all pending tasks of dead actor");
       // No need to increment the number of completed tasks since the actor is
@@ -208,7 +208,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
   }
 }
 
-void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
+void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID& actor_id) {
   auto it = client_queues_.find(actor_id);
   RAY_CHECK(it != client_queues_.end());
   if (!it->second.rpc_client) {
@@ -225,7 +225,7 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
   }
 
   // Submit all pending requests.
-  auto &requests = it->second.requests;
+  auto& requests = it->second.requests;
   auto head = requests.begin();
   while (head != requests.end() && head->first <= it->second.next_send_position &&
          head->second.second) {
@@ -241,8 +241,8 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
   }
 }
 
-void CoreWorkerDirectActorTaskSubmitter::PushActorTask(const ClientQueue &queue,
-                                                       const TaskSpecification &task_spec,
+void CoreWorkerDirectActorTaskSubmitter::PushActorTask(const ClientQueue& queue,
+                                                       const TaskSpecification& task_spec,
                                                        bool skip_queue) {
   auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest());
   // NOTE(swang): CopyFrom is needed because if we use Swap here and the task
@@ -264,7 +264,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(const ClientQueue &queue,
   rpc::Address addr(queue.rpc_client->Addr());
   queue.rpc_client->PushActorTask(
       std::move(request), skip_queue,
-      [this, addr, task_id, actor_id](Status status, const rpc::PushTaskReply &reply) {
+      [this, addr, task_id, actor_id](Status status, const rpc::PushTaskReply& reply) {
         bool increment_completed_tasks = true;
         if (!status.ok()) {
           bool will_retry = task_finisher_->PendingTaskFailed(
@@ -285,7 +285,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(const ClientQueue &queue,
       });
 }
 
-bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) const {
+bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID& actor_id) const {
   absl::MutexLock lock(&mu_);
 
   auto iter = client_queues_.find(actor_id);
@@ -301,7 +301,7 @@ void CoreWorkerDirectTaskReceiver::Init(
 }
 
 void CoreWorkerDirectTaskReceiver::HandlePushTask(
-    const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
+    const rpc::PushTaskRequest& request, rpc::PushTaskReply* reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
   const TaskSpecification task_spec(request.task_spec());
@@ -323,9 +323,9 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
   std::shared_ptr<ResourceMappingType> resource_ids;
   if (!task_spec.IsActorTask()) {
     resource_ids.reset(new ResourceMappingType());
-    for (const auto &mapping : request.resource_mapping()) {
+    for (const auto& mapping : request.resource_mapping()) {
       std::vector<std::pair<int64_t, double>> rids;
-      for (const auto &ids : mapping.resource_ids()) {
+      for (const auto& ids : mapping.resource_ids()) {
         rids.push_back(std::make_pair(ids.index(), ids.quantity()));
       }
       (*resource_ids)[mapping.name()] = rids;
@@ -352,7 +352,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
         return_object->set_object_id(id.Binary());
 
         // The object is nullptr if it already existed in the object store.
-        const auto &result = return_objects[i];
+        const auto& result = return_objects[i];
         return_object->set_size(result->GetSize());
         if (result->GetData() != nullptr && result->GetData()->IsPlasmaBuffer()) {
           return_object->set_in_plasma(true);
@@ -364,7 +364,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
             return_object->set_metadata(result->GetMetadata()->Data(),
                                         result->GetMetadata()->Size());
           }
-          for (const auto &nested_id : result->GetNestedIds()) {
+          for (const auto& nested_id : result->GetNestedIds()) {
             return_object->add_nested_inlined_ids(nested_id.Binary());
           }
         }

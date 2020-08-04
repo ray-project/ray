@@ -20,8 +20,8 @@ class Counter {
 
   Counter() { count = 0; }
 
-  static Counter *FactoryCreate() {
-    Counter *counter = new Counter();
+  static Counter* FactoryCreate() {
+    Counter* counter = new Counter();
     return counter;
   }
 

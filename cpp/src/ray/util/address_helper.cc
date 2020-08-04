@@ -8,7 +8,7 @@ uintptr_t dynamic_library_base_addr;
 
 extern "C" void GenerateBaseAddressOfCurrentLibrary() {
   Dl_info info;
-  dladdr((void *)GenerateBaseAddressOfCurrentLibrary, &info);
+  dladdr((void*)GenerateBaseAddressOfCurrentLibrary, &info);
   dynamic_library_base_addr = (uintptr_t)info.dli_fbase;
   return;
 }

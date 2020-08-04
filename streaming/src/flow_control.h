@@ -15,29 +15,29 @@ class ProducerTransfer;
 class FlowControl {
  public:
   virtual ~FlowControl() = default;
-  virtual bool ShouldFlowControl(ProducerChannelInfo &channel_info) = 0;
+  virtual bool ShouldFlowControl(ProducerChannelInfo& channel_info) = 0;
 };
 
 class NoFlowControl : public FlowControl {
  public:
-  bool ShouldFlowControl(ProducerChannelInfo &channel_info) { return false; }
+  bool ShouldFlowControl(ProducerChannelInfo& channel_info) { return false; }
   ~NoFlowControl() = default;
 };
 
 class UnconsumedSeqFlowControl : public FlowControl {
  public:
   UnconsumedSeqFlowControl(
-      std::unordered_map<ObjectID, std::shared_ptr<ProducerChannel>> &channel_map,
+      std::unordered_map<ObjectID, std::shared_ptr<ProducerChannel>>& channel_map,
       uint32_t step);
   ~UnconsumedSeqFlowControl() = default;
-  bool ShouldFlowControl(ProducerChannelInfo &channel_info);
+  bool ShouldFlowControl(ProducerChannelInfo& channel_info);
 
  private:
   /// NOTE(wanxing.wwx) Reference to channel_map_ variable in DataWriter.
   /// Flow-control is checked in FlowControlThread, so channel_map_ is accessed
   /// in multithread situation. Especially, while rescaling, channel_map_ maybe
   /// changed. But for now, FlowControlThread is stopped before rescaling.
-  std::unordered_map<ObjectID, std::shared_ptr<ProducerChannel>> &channel_map_;
+  std::unordered_map<ObjectID, std::shared_ptr<ProducerChannel>>& channel_map_;
   uint32_t consumed_step_;
 };
 }  // namespace streaming

@@ -27,18 +27,18 @@
 
 namespace ray {
 
-void TestSetupUtil::StartUpRedisServers(const std::vector<int> &redis_server_ports) {
+void TestSetupUtil::StartUpRedisServers(const std::vector<int>& redis_server_ports) {
   if (redis_server_ports.empty()) {
     TEST_REDIS_SERVER_PORTS.push_back(StartUpRedisServer(0));
   } else {
-    for (const auto &port : redis_server_ports) {
+    for (const auto& port : redis_server_ports) {
       TEST_REDIS_SERVER_PORTS.push_back(StartUpRedisServer(port));
     }
   }
 }
 
 // start a redis server with specified port, use random one when 0 given
-int TestSetupUtil::StartUpRedisServer(const int &port) {
+int TestSetupUtil::StartUpRedisServer(const int& port) {
   int actual_port = port;
   if (port == 0) {
     static std::atomic<bool> srand_called(false);
@@ -62,13 +62,13 @@ int TestSetupUtil::StartUpRedisServer(const int &port) {
 }
 
 void TestSetupUtil::ShutDownRedisServers() {
-  for (const auto &port : TEST_REDIS_SERVER_PORTS) {
+  for (const auto& port : TEST_REDIS_SERVER_PORTS) {
     ShutDownRedisServer(port);
   }
   TEST_REDIS_SERVER_PORTS = std::vector<int>();
 }
 
-void TestSetupUtil::ShutDownRedisServer(const int &port) {
+void TestSetupUtil::ShutDownRedisServer(const int& port) {
   std::vector<std::string> cmdargs(
       {TEST_REDIS_CLIENT_EXEC_PATH, "-p", std::to_string(port), "shutdown"});
   RAY_LOG(INFO) << "Stop redis command is: " << CreateCommandLine(cmdargs);
@@ -79,12 +79,12 @@ void TestSetupUtil::ShutDownRedisServer(const int &port) {
 }
 
 void TestSetupUtil::FlushAllRedisServers() {
-  for (const auto &port : TEST_REDIS_SERVER_PORTS) {
+  for (const auto& port : TEST_REDIS_SERVER_PORTS) {
     FlushRedisServer(port);
   }
 }
 
-void TestSetupUtil::FlushRedisServer(const int &port) {
+void TestSetupUtil::FlushRedisServer(const int& port) {
   std::vector<std::string> cmdargs(
       {TEST_REDIS_CLIENT_EXEC_PATH, "-p", std::to_string(port), "flushall"});
   RAY_LOG(INFO) << "Cleaning up redis with command: " << CreateCommandLine(cmdargs);
@@ -95,7 +95,7 @@ void TestSetupUtil::FlushRedisServer(const int &port) {
 }
 
 std::string TestSetupUtil::StartObjectStore(
-    const boost::optional<std::string> &socket_name) {
+    const boost::optional<std::string>& socket_name) {
   std::string socket_suffix;
   if (socket_name) {
     socket_suffix = *socket_name;
@@ -112,11 +112,11 @@ std::string TestSetupUtil::StartObjectStore(
   return store_socket_name;
 }
 
-void TestSetupUtil::StopObjectStore(const std::string &store_socket_name) {
+void TestSetupUtil::StopObjectStore(const std::string& store_socket_name) {
   KillProcessBySocketName(store_socket_name);
 }
 
-std::string TestSetupUtil::StartGcsServer(const std::string &redis_address) {
+std::string TestSetupUtil::StartGcsServer(const std::string& redis_address) {
   std::string gcs_server_socket_name =
       ray::JoinPaths(ray::GetUserTempDir(), "gcs_server" + ObjectID::FromRandom().Hex());
   std::vector<std::string> cmdargs(
@@ -129,14 +129,14 @@ std::string TestSetupUtil::StartGcsServer(const std::string &redis_address) {
   return gcs_server_socket_name;
 }
 
-void TestSetupUtil::StopGcsServer(const std::string &gcs_server_socket_name) {
+void TestSetupUtil::StopGcsServer(const std::string& gcs_server_socket_name) {
   KillProcessBySocketName(gcs_server_socket_name);
 }
 
-std::string TestSetupUtil::StartRaylet(const std::string &store_socket_name,
-                                       const std::string &node_ip_address,
-                                       const int &port, const std::string &redis_address,
-                                       const std::string &resource) {
+std::string TestSetupUtil::StartRaylet(const std::string& store_socket_name,
+                                       const std::string& node_ip_address,
+                                       const int& port, const std::string& redis_address,
+                                       const std::string& resource) {
   std::string raylet_socket_name =
       ray::JoinPaths(ray::GetUserTempDir(), "raylet" + ObjectID::FromRandom().Hex());
   std::vector<std::string> cmdargs(
@@ -157,7 +157,7 @@ std::string TestSetupUtil::StartRaylet(const std::string &store_socket_name,
   return raylet_socket_name;
 }
 
-void TestSetupUtil::StopRaylet(const std::string &raylet_socket_name) {
+void TestSetupUtil::StopRaylet(const std::string& raylet_socket_name) {
   KillProcessBySocketName(raylet_socket_name);
 }
 
@@ -192,7 +192,7 @@ void KillProcessBySocketName(std::string socket_name) {
   ASSERT_EQ(unlink(pidfile_path.c_str()), 0);
 }
 
-int KillAllExecutable(const std::string &executable) {
+int KillAllExecutable(const std::string& executable) {
   std::vector<std::string> cmdargs;
 #ifdef _WIN32
   cmdargs.insert(cmdargs.end(), {"taskkill", "/IM", executable});
@@ -225,7 +225,7 @@ std::shared_ptr<Buffer> GenerateRandomBuffer() {
 }
 
 std::shared_ptr<RayObject> GenerateRandomObject(
-    const std::vector<ObjectID> &inlined_ids) {
+    const std::vector<ObjectID>& inlined_ids) {
   return std::shared_ptr<RayObject>(
       new RayObject(GenerateRandomBuffer(), nullptr, inlined_ids));
 }

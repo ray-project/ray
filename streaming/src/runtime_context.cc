@@ -8,13 +8,13 @@
 namespace ray {
 namespace streaming {
 
-void RuntimeContext::SetConfig(const StreamingConfig &streaming_config) {
+void RuntimeContext::SetConfig(const StreamingConfig& streaming_config) {
   STREAMING_CHECK(runtime_status_ == RuntimeStatus::Init)
       << "set config must be at beginning";
   config_ = streaming_config;
 }
 
-void RuntimeContext::SetConfig(const uint8_t *data, uint32_t size) {
+void RuntimeContext::SetConfig(const uint8_t* data, uint32_t size) {
   STREAMING_CHECK(runtime_status_ == RuntimeStatus::Init)
       << "set config must be at beginning";
   if (!data) {

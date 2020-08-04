@@ -19,7 +19,7 @@
 
 namespace ray {
 
-void ActorReporter::PublishTerminatedActor(const TaskSpecification &actor_creation_task) {
+void ActorReporter::PublishTerminatedActor(const TaskSpecification& actor_creation_task) {
   auto actor_id = actor_creation_task.ActorCreationId();
   auto data = gcs::CreateActorTableData(actor_creation_task, rpc::Address(),
                                         rpc::ActorTableData::DEAD, 0);

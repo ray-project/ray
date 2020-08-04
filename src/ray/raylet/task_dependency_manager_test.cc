@@ -36,31 +36,31 @@ const static TaskID kDefaultDriverTaskId = TaskID::ForDriverTask(kDefaultJobId);
 
 class MockObjectManager : public ObjectManagerInterface {
  public:
-  MOCK_METHOD1(Pull, ray::Status(const ObjectID &object_id));
-  MOCK_METHOD1(CancelPull, void(const ObjectID &object_id));
+  MOCK_METHOD1(Pull, ray::Status(const ObjectID& object_id));
+  MOCK_METHOD1(CancelPull, void(const ObjectID& object_id));
 };
 
 class MockReconstructionPolicy : public ReconstructionPolicyInterface {
  public:
-  MOCK_METHOD1(ListenAndMaybeReconstruct, void(const ObjectID &object_id));
-  MOCK_METHOD1(Cancel, void(const ObjectID &object_id));
+  MOCK_METHOD1(ListenAndMaybeReconstruct, void(const ObjectID& object_id));
+  MOCK_METHOD1(Cancel, void(const ObjectID& object_id));
 };
 
 class MockTaskInfoAccessor : public gcs::RedisTaskInfoAccessor {
  public:
-  MockTaskInfoAccessor(gcs::RedisGcsClient *client)
+  MockTaskInfoAccessor(gcs::RedisGcsClient* client)
       : gcs::RedisTaskInfoAccessor(client) {}
 
   MOCK_METHOD2(AsyncAddTaskLease,
-               ray::Status(const std::shared_ptr<TaskLeaseData> &data_ptr,
-                           const gcs::StatusCallback &callback));
+               ray::Status(const std::shared_ptr<TaskLeaseData>& data_ptr,
+                           const gcs::StatusCallback& callback));
 };
 
 class MockGcsClient : public gcs::RedisGcsClient {
  public:
-  MockGcsClient(const gcs::GcsClientOptions &options) : gcs::RedisGcsClient(options) {}
+  MockGcsClient(const gcs::GcsClientOptions& options) : gcs::RedisGcsClient(options) {}
 
-  void Init(MockTaskInfoAccessor *task_accessor_mock) {
+  void Init(MockTaskInfoAccessor* task_accessor_mock) {
     task_accessor_.reset(task_accessor_mock);
   }
 };
@@ -84,7 +84,7 @@ class TaskDependencyManagerTest : public ::testing::Test {
   void Run(uint64_t timeout_ms) {
     auto timer_period = boost::posix_time::milliseconds(timeout_ms);
     auto timer = std::make_shared<boost::asio::deadline_timer>(io_service_, timer_period);
-    timer->async_wait([this](const boost::system::error_code &error) {
+    timer->async_wait([this](const boost::system::error_code& error) {
       ASSERT_FALSE(error);
       io_service_.stop();
     });
@@ -98,12 +98,12 @@ class TaskDependencyManagerTest : public ::testing::Test {
   boost::asio::io_service io_service_;
   gcs::GcsClientOptions options_;
   std::shared_ptr<MockGcsClient> gcs_client_mock_;
-  MockTaskInfoAccessor *task_accessor_mock_;
+  MockTaskInfoAccessor* task_accessor_mock_;
   int64_t initial_lease_period_ms_;
   TaskDependencyManager task_dependency_manager_;
 };
 
-static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
+static inline Task ExampleTask(const std::vector<ObjectID>& arguments,
                                uint64_t num_returns) {
   TaskSpecBuilder builder;
   rpc::Address address;
@@ -112,7 +112,7 @@ static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
                             JobID::Nil(), RandomTaskId(), 0, RandomTaskId(), address,
                             num_returns, {}, {});
   builder.SetActorCreationTaskSpec(ActorID::Nil(), 1, {}, 1, false, "", false);
-  for (const auto &arg : arguments) {
+  for (const auto& arg : arguments) {
     builder.AddArg(TaskArgByReference(arg, rpc::Address()));
   }
   rpc::TaskExecutionSpec execution_spec_message;
@@ -121,7 +121,7 @@ static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
 }
 
 std::vector<Task> MakeTaskChain(int chain_size,
-                                const std::vector<ObjectID> &initial_arguments,
+                                const std::vector<ObjectID>& initial_arguments,
                                 int64_t num_returns) {
   std::vector<Task> task_chain;
   std::vector<ObjectID> arguments = initial_arguments;
@@ -146,7 +146,7 @@ TEST_F(TaskDependencyManagerTest, TestSimpleTask) {
   TaskID task_id = RandomTaskId();
   // No objects have been registered in the task dependency manager, so all
   // arguments should be remote.
-  for (const auto &argument_id : arguments) {
+  for (const auto& argument_id : arguments) {
     EXPECT_CALL(object_manager_mock_, Pull(argument_id));
     EXPECT_CALL(reconstruction_policy_mock_, ListenAndMaybeReconstruct(argument_id));
   }
@@ -156,7 +156,7 @@ TEST_F(TaskDependencyManagerTest, TestSimpleTask) {
   ASSERT_FALSE(ready);
 
   // All arguments should be canceled as they become available locally.
-  for (const auto &argument_id : arguments) {
+  for (const auto& argument_id : arguments) {
     EXPECT_CALL(object_manager_mock_, CancelPull(argument_id));
     EXPECT_CALL(reconstruction_policy_mock_, Cancel(argument_id));
   }
@@ -194,7 +194,7 @@ TEST_F(TaskDependencyManagerTest, TestDuplicateSubscribeGetDependencies) {
   }
 
   // All arguments should be canceled as they become available locally.
-  for (const auto &argument_id : arguments) {
+  for (const auto& argument_id : arguments) {
     EXPECT_CALL(object_manager_mock_, CancelPull(argument_id));
     EXPECT_CALL(reconstruction_policy_mock_, Cancel(argument_id));
   }
@@ -236,7 +236,7 @@ TEST_F(TaskDependencyManagerTest, TestMultipleTasks) {
   auto ready_task_ids = task_dependency_manager_.HandleObjectLocal(argument_id);
   // Check that all tasks are now ready to run.
   ASSERT_EQ(ready_task_ids.size(), dependent_tasks.size());
-  for (const auto &task_id : ready_task_ids) {
+  for (const auto& task_id : ready_task_ids) {
     ASSERT_NE(std::find(dependent_tasks.begin(), dependent_tasks.end(), task_id),
               dependent_tasks.end());
   }
@@ -255,9 +255,9 @@ TEST_F(TaskDependencyManagerTest, TestTaskChain) {
   EXPECT_CALL(reconstruction_policy_mock_, ListenAndMaybeReconstruct(_)).Times(0);
   EXPECT_CALL(object_manager_mock_, CancelPull(_)).Times(0);
   EXPECT_CALL(reconstruction_policy_mock_, Cancel(_)).Times(0);
-  for (const auto &task : tasks) {
+  for (const auto& task : tasks) {
     // Subscribe to each of the tasks' arguments.
-    const auto &arguments = task.GetDependencies();
+    const auto& arguments = task.GetDependencies();
     bool ready = task_dependency_manager_.SubscribeGetDependencies(
         task.GetTaskSpecification().TaskId(), arguments);
     if (i < num_ready_tasks) {
@@ -329,9 +329,9 @@ TEST_F(TaskDependencyManagerTest, TestTaskForwarding) {
   // Create 2 tasks, one dependent on the other. The first has no arguments.
   int num_tasks = 2;
   auto tasks = MakeTaskChain(num_tasks, {}, 1);
-  for (const auto &task : tasks) {
+  for (const auto& task : tasks) {
     // Subscribe to each of the tasks' arguments.
-    const auto &arguments = task.GetDependencies();
+    const auto& arguments = task.GetDependencies();
     static_cast<void>(task_dependency_manager_.SubscribeGetDependencies(
         task.GetTaskSpecification().TaskId(), arguments));
     EXPECT_CALL(*task_accessor_mock_, AsyncAddTaskLease(_, _));
@@ -370,7 +370,7 @@ TEST_F(TaskDependencyManagerTest, TestEviction) {
   TaskID task_id = RandomTaskId();
   // No objects have been registered in the task dependency manager, so all
   // arguments should be remote.
-  for (const auto &argument_id : arguments) {
+  for (const auto& argument_id : arguments) {
     EXPECT_CALL(object_manager_mock_, Pull(argument_id));
     EXPECT_CALL(reconstruction_policy_mock_, ListenAndMaybeReconstruct(argument_id));
   }
@@ -381,7 +381,7 @@ TEST_F(TaskDependencyManagerTest, TestEviction) {
 
   // Tell the task dependency manager that each of the arguments is now
   // available.
-  for (const auto &argument_id : arguments) {
+  for (const auto& argument_id : arguments) {
     EXPECT_CALL(object_manager_mock_, CancelPull(argument_id));
     EXPECT_CALL(reconstruction_policy_mock_, Cancel(argument_id));
   }
@@ -398,7 +398,7 @@ TEST_F(TaskDependencyManagerTest, TestEviction) {
 
   // Simulate each of the arguments getting evicted. Each object should now be
   // considered remote.
-  for (const auto &argument_id : arguments) {
+  for (const auto& argument_id : arguments) {
     EXPECT_CALL(object_manager_mock_, Pull(argument_id));
     EXPECT_CALL(reconstruction_policy_mock_, ListenAndMaybeReconstruct(argument_id));
   }
@@ -419,7 +419,7 @@ TEST_F(TaskDependencyManagerTest, TestEviction) {
 
   // Tell the task dependency manager that each of the arguments is available
   // again.
-  for (const auto &argument_id : arguments) {
+  for (const auto& argument_id : arguments) {
     EXPECT_CALL(object_manager_mock_, CancelPull(argument_id));
     EXPECT_CALL(reconstruction_policy_mock_, Cancel(argument_id));
   }
@@ -471,9 +471,9 @@ TEST_F(TaskDependencyManagerTest, TestRemoveTasksAndRelatedObjects) {
   EXPECT_CALL(reconstruction_policy_mock_, ListenAndMaybeReconstruct(_)).Times(0);
   EXPECT_CALL(object_manager_mock_, CancelPull(_)).Times(0);
   EXPECT_CALL(reconstruction_policy_mock_, Cancel(_)).Times(0);
-  for (const auto &task : tasks) {
+  for (const auto& task : tasks) {
     // Subscribe to each of the tasks' arguments.
-    const auto &arguments = task.GetDependencies();
+    const auto& arguments = task.GetDependencies();
     task_dependency_manager_.SubscribeGetDependencies(
         task.GetTaskSpecification().TaskId(), arguments);
     // Mark each task as pending. A lease entry should be added to the GCS for
@@ -498,7 +498,7 @@ TEST_F(TaskDependencyManagerTest, TestRemoveTasksAndRelatedObjects) {
   // Remove all tasks from the manager except the first task, which already
   // finished executing.
   std::unordered_set<TaskID> task_ids;
-  for (const auto &task : tasks) {
+  for (const auto& task : tasks) {
     task_ids.insert(task.GetTaskSpecification().TaskId());
   }
   task_ids.erase(task_id);
@@ -562,7 +562,7 @@ TEST_F(TaskDependencyManagerTest, TestWaitDependenciesObjectLocal) {
 
   // Simulate a worker calling `ray.wait` on the objects. It should only make
   // requests for the objects that are not local.
-  for (const auto &object_id : wait_object_ids) {
+  for (const auto& object_id : wait_object_ids) {
     if (object_id != local_object_id) {
       EXPECT_CALL(object_manager_mock_, Pull(object_id));
       EXPECT_CALL(reconstruction_policy_mock_, ListenAndMaybeReconstruct(object_id));
@@ -576,7 +576,7 @@ TEST_F(TaskDependencyManagerTest, TestWaitDependenciesObjectLocal) {
   ASSERT_TRUE(waiting_task_ids.empty());
   // Simulate a worker calling `ray.wait` on the objects. It should only make
   // requests for the objects that are not local.
-  for (const auto &object_id : wait_object_ids) {
+  for (const auto& object_id : wait_object_ids) {
     if (object_id != local_object_id) {
       EXPECT_CALL(object_manager_mock_, CancelPull(object_id));
       EXPECT_CALL(reconstruction_policy_mock_, Cancel(object_id));
@@ -615,7 +615,7 @@ TEST_F(TaskDependencyManagerTest, TestWaitDependenciesHandleObjectLocal) {
   ASSERT_TRUE(waiting_task_ids.empty());
   // Cancel the worker's `ray.wait` calls. Only the objects that are still not
   // local should be canceled.
-  for (const auto &object_id : wait_object_ids) {
+  for (const auto& object_id : wait_object_ids) {
     EXPECT_CALL(object_manager_mock_, CancelPull(object_id));
     EXPECT_CALL(reconstruction_policy_mock_, Cancel(object_id));
   }
@@ -626,7 +626,7 @@ TEST_F(TaskDependencyManagerTest, TestWaitDependenciesHandleObjectLocal) {
 
 }  // namespace ray
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

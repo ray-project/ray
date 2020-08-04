@@ -18,7 +18,7 @@ namespace ray {
 namespace rpc {
 
 void DefaultErrorInfoHandler::HandleReportJobError(
-    const ReportJobErrorRequest &request, ReportJobErrorReply *reply,
+    const ReportJobErrorRequest& request, ReportJobErrorReply* reply,
     SendReplyCallback send_reply_callback) {
   JobID job_id = JobID::FromBinary(request.error_data().job_id());
   std::string type = request.error_data().type();

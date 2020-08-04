@@ -50,17 +50,17 @@ class ProcessFD {
   ~ProcessFD();
   ProcessFD();
   ProcessFD(pid_t pid, intptr_t fd = -1);
-  ProcessFD(const ProcessFD &other);
-  ProcessFD(ProcessFD &&other);
-  ProcessFD &operator=(const ProcessFD &other);
-  ProcessFD &operator=(ProcessFD &&other);
+  ProcessFD(const ProcessFD& other);
+  ProcessFD(ProcessFD&& other);
+  ProcessFD& operator=(const ProcessFD& other);
+  ProcessFD& operator=(ProcessFD&& other);
   intptr_t CloneFD() const;
   void CloseFD();
   intptr_t GetFD() const;
   pid_t GetId() const;
 
   // Fork + exec combo. Returns -1 for the PID on failure.
-  static ProcessFD spawnvp(const char *argv[], std::error_code &ec, bool decouple) {
+  static ProcessFD spawnvp(const char* argv[], std::error_code& ec, bool decouple) {
     ec = std::error_code();
     intptr_t fd;
     pid_t pid;
@@ -81,10 +81,10 @@ class ProcessFD {
     bool succeeded = false;
     PROCESS_INFORMATION pi = {};
     for (int attempt = 0; attempt < sizeof(cmds) / sizeof(*cmds); ++attempt) {
-      std::string &cmd = cmds[attempt];
+      std::string& cmd = cmds[attempt];
       if (!cmd.empty()) {
         (void)cmd.c_str();  // We'll need this to be null-terminated (but mutable) below
-        TCHAR *cmdline = &*cmd.begin();
+        TCHAR* cmdline = &*cmd.begin();
         STARTUPINFO si = {sizeof(si)};
         if (CreateProcessA(NULL, cmdline, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
           succeeded = true;
@@ -127,7 +127,7 @@ class ProcessFD {
       // This is the spawned process. Any intermediate parent is now dead.
       pid_t my_pid = getpid();
       if (write(pipefds[1], &my_pid, sizeof(my_pid)) == sizeof(my_pid)) {
-        execvp(argv[0], const_cast<char *const *>(argv));
+        execvp(argv[0], const_cast<char* const*>(argv));
       }
       _exit(errno);  // fork() succeeded and exec() failed, so abort the child
     }
@@ -210,11 +210,11 @@ ProcessFD::ProcessFD(pid_t pid, intptr_t fd) : pid_(pid), fd_(fd) {
   }
 }
 
-ProcessFD::ProcessFD(const ProcessFD &other) : ProcessFD(other.pid_, other.CloneFD()) {}
+ProcessFD::ProcessFD(const ProcessFD& other) : ProcessFD(other.pid_, other.CloneFD()) {}
 
-ProcessFD::ProcessFD(ProcessFD &&other) : ProcessFD() { *this = std::move(other); }
+ProcessFD::ProcessFD(ProcessFD&& other) : ProcessFD() { *this = std::move(other); }
 
-ProcessFD &ProcessFD::operator=(const ProcessFD &other) {
+ProcessFD& ProcessFD::operator=(const ProcessFD& other) {
   if (this != &other) {
     // Construct a copy, then call the move constructor
     *this = static_cast<ProcessFD>(other);
@@ -222,7 +222,7 @@ ProcessFD &ProcessFD::operator=(const ProcessFD &other) {
   return *this;
 }
 
-ProcessFD &ProcessFD::operator=(ProcessFD &&other) {
+ProcessFD& ProcessFD::operator=(ProcessFD&& other) {
   if (this != &other) {
     // We use swap() to make sure the argument is actually moved from
     using std::swap;
@@ -263,18 +263,18 @@ Process::~Process() {}
 
 Process::Process() {}
 
-Process::Process(const Process &) = default;
+Process::Process(const Process&) = default;
 
-Process::Process(Process &&) = default;
+Process::Process(Process&&) = default;
 
-Process &Process::operator=(Process other) {
+Process& Process::operator=(Process other) {
   p_ = std::move(other.p_);
   return *this;
 }
 
 Process::Process(pid_t pid) { p_ = std::make_shared<ProcessFD>(pid); }
 
-Process::Process(const char *argv[], void *io_service, std::error_code &ec,
+Process::Process(const char* argv[], void* io_service, std::error_code& ec,
                  bool decouple) {
   (void)io_service;
   ProcessFD procfd = ProcessFD::spawnvp(argv, ec, decouple);
@@ -283,8 +283,8 @@ Process::Process(const char *argv[], void *io_service, std::error_code &ec,
   }
 }
 
-std::error_code Process::Call(const std::vector<std::string> &args) {
-  std::vector<const char *> argv;
+std::error_code Process::Call(const std::vector<std::string>& args) {
+  std::vector<const char*> argv;
   for (size_t i = 0; i != args.size(); ++i) {
     argv.push_back(args[i].c_str());
   }
@@ -312,7 +312,7 @@ Process Process::FromPid(pid_t pid) {
   return result;
 }
 
-const void *Process::Get() const { return p_ ? &*p_ : NULL; }
+const void* Process::Get() const { return p_ ? &*p_ : NULL; }
 
 pid_t Process::GetId() const { return p_ ? p_->GetId() : -1; }
 
@@ -320,10 +320,10 @@ bool Process::IsNull() const { return !p_; }
 
 bool Process::IsValid() const { return GetId() != -1; }
 
-std::pair<Process, std::error_code> Process::Spawn(const std::vector<std::string> &args,
+std::pair<Process, std::error_code> Process::Spawn(const std::vector<std::string>& args,
                                                    bool decouple,
-                                                   const std::string &pid_file) {
-  std::vector<const char *> argv;
+                                                   const std::string& pid_file) {
+  std::vector<const char*> argv;
   for (size_t i = 0; i != args.size(); ++i) {
     argv.push_back(args[i].c_str());
   }
@@ -454,15 +454,15 @@ typedef NTSTATUS WINAPI NtQueryInformationProcess_t(HANDLE ProcessHandle,
                                                     ULONG ProcessInformationClass,
                                                     PVOID ProcessInformation,
                                                     ULONG ProcessInformationLength,
-                                                    ULONG *ReturnLength);
+                                                    ULONG* ReturnLength);
 
-static std::atomic<NtQueryInformationProcess_t *> NtQueryInformationProcess_ =
+static std::atomic<NtQueryInformationProcess_t*> NtQueryInformationProcess_ =
     ATOMIC_VAR_INIT(NULL);
 
 pid_t GetParentPID() {
-  NtQueryInformationProcess_t *NtQueryInformationProcess = NtQueryInformationProcess_;
+  NtQueryInformationProcess_t* NtQueryInformationProcess = NtQueryInformationProcess_;
   if (!NtQueryInformationProcess) {
-    NtQueryInformationProcess = reinterpret_cast<NtQueryInformationProcess_t *>(
+    NtQueryInformationProcess = reinterpret_cast<NtQueryInformationProcess_t*>(
         GetProcAddress(GetModuleHandle(TEXT("ntdll.dll")),
                        _CRT_STRINGIZE(NtQueryInformationProcess)));
     NtQueryInformationProcess_ = NtQueryInformationProcess;
@@ -481,9 +481,9 @@ pid_t GetParentPID() {
     if (HANDLE parent = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, ppid)) {
       long long me_created, parent_created;
       FILETIME unused;
-      if (GetProcessTimes(GetCurrentProcess(), reinterpret_cast<FILETIME *>(&me_created),
+      if (GetProcessTimes(GetCurrentProcess(), reinterpret_cast<FILETIME*>(&me_created),
                           &unused, &unused, &unused) &&
-          GetProcessTimes(parent, reinterpret_cast<FILETIME *>(&parent_created), &unused,
+          GetProcessTimes(parent, reinterpret_cast<FILETIME*>(&parent_created), &unused,
                           &unused, &unused)) {
         if (me_created >= parent_created) {
           // We verified the child is younger than the parent, so we know the parent
@@ -508,23 +508,22 @@ bool IsParentProcessAlive() { return GetParentPID() != 1; }
 
 namespace std {
 
-bool equal_to<ray::Process>::operator()(const ray::Process &x,
-                                        const ray::Process &y) const {
+bool equal_to<ray::Process>::operator()(const ray::Process& x,
+                                        const ray::Process& y) const {
   using namespace ray;
   return !x.IsNull()
              ? !y.IsNull()
                    ? x.IsValid()
                          ? y.IsValid() ? equal_to<pid_t>()(x.GetId(), y.GetId()) : false
-                         : y.IsValid() ? false
-                                       : equal_to<void const *>()(x.Get(), y.Get())
+                         : y.IsValid() ? false : equal_to<void const*>()(x.Get(), y.Get())
                    : false
              : y.IsNull();
 }
 
-size_t hash<ray::Process>::operator()(const ray::Process &value) const {
+size_t hash<ray::Process>::operator()(const ray::Process& value) const {
   using namespace ray;
   return !value.IsNull() ? value.IsValid() ? hash<pid_t>()(value.GetId())
-                                           : hash<void const *>()(value.Get())
+                                           : hash<void const*>()(value.Get())
                          : size_t();
 }
 

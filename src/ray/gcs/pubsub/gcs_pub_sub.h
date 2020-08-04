@@ -42,7 +42,7 @@ namespace gcs {
 class GcsPubSub {
  public:
   /// The callback is called when a subscription message is received.
-  using Callback = std::function<void(const std::string &id, const std::string &data)>;
+  using Callback = std::function<void(const std::string& id, const std::string& data)>;
 
   explicit GcsPubSub(std::shared_ptr<RedisClient> redis_client)
       : redis_client_(redis_client) {}
@@ -56,8 +56,8 @@ class GcsPubSub {
   /// \param data The data of message to be published to redis.
   /// \param done Callback that will be called when the message is published to redis.
   /// \return Status
-  virtual Status Publish(const std::string &channel, const std::string &id,
-                         const std::string &data, const StatusCallback &done);
+  virtual Status Publish(const std::string& channel, const std::string& id,
+                         const std::string& data, const StatusCallback& done);
 
   /// Subscribe to messages with the specified ID under the specified channel.
   ///
@@ -67,8 +67,8 @@ class GcsPubSub {
   /// received.
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
-  Status Subscribe(const std::string &channel, const std::string &id,
-                   const Callback &subscribe, const StatusCallback &done);
+  Status Subscribe(const std::string& channel, const std::string& id,
+                   const Callback& subscribe, const StatusCallback& done);
 
   /// Subscribe to messages with the specified channel.
   ///
@@ -77,22 +77,22 @@ class GcsPubSub {
   /// received.
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
-  Status SubscribeAll(const std::string &channel, const Callback &subscribe,
-                      const StatusCallback &done);
+  Status SubscribeAll(const std::string& channel, const Callback& subscribe,
+                      const StatusCallback& done);
 
   /// Unsubscribe to messages with the specified ID under the specified channel.
   ///
   /// \param channel The channel to unsubscribe from redis.
   /// \param id The id of message to be unsubscribed from redis.
   /// \return Status
-  Status Unsubscribe(const std::string &channel, const std::string &id);
+  Status Unsubscribe(const std::string& channel, const std::string& id);
 
  private:
   /// Represents a caller's command to subscribe or unsubscribe to a given
   /// channel.
   struct Command {
     /// SUBSCRIBE constructor.
-    Command(const Callback &subscribe_callback, const StatusCallback &done_callback)
+    Command(const Callback& subscribe_callback, const StatusCallback& done_callback)
         : is_subscribe(true),
           subscribe_callback(subscribe_callback),
           done_callback(done_callback) {}
@@ -135,16 +135,16 @@ class GcsPubSub {
   /// subscribe command can execute if the channel's callback index is not set.
   /// An unsubscribe command can execute if the channel's callback index is
   /// set.
-  Status ExecuteCommandIfPossible(const std::string &channel_key,
-                                  GcsPubSub::Channel &channel)
+  Status ExecuteCommandIfPossible(const std::string& channel_key,
+                                  GcsPubSub::Channel& channel)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  Status SubscribeInternal(const std::string &channel_name, const Callback &subscribe,
-                           const StatusCallback &done,
-                           const boost::optional<std::string> &id = boost::none);
+  Status SubscribeInternal(const std::string& channel_name, const Callback& subscribe,
+                           const StatusCallback& done,
+                           const boost::optional<std::string>& id = boost::none);
 
-  std::string GenChannelPattern(const std::string &channel,
-                                const boost::optional<std::string> &id);
+  std::string GenChannelPattern(const std::string& channel,
+                                const boost::optional<std::string>& id);
 
   std::shared_ptr<RedisClient> redis_client_;
 

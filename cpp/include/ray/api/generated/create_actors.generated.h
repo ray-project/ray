@@ -18,7 +18,7 @@ static ActorCreator<ActorType> Actor(CreateActorFunc1<ActorType, Arg1Type> creat
 
 template <typename ActorType, typename Arg1Type>
 static ActorCreator<ActorType> Actor(CreateActorFunc1<ActorType, Arg1Type> create_func,
-                                     ObjectRef<Arg1Type> &arg1);
+                                     ObjectRef<Arg1Type>& arg1);
 
 // 2 args
 template <typename ActorType, typename Arg1Type, typename Arg2Type>
@@ -29,14 +29,14 @@ static ActorCreator<ActorType> Actor(
 template <typename ActorType, typename Arg1Type, typename Arg2Type>
 static ActorCreator<ActorType> Actor(
     CreateActorFunc2<ActorType, Arg1Type, Arg2Type> create_func,
-    ObjectRef<Arg1Type> &arg1, Arg2Type arg2);
+    ObjectRef<Arg1Type>& arg1, Arg2Type arg2);
 
 template <typename ActorType, typename Arg1Type, typename Arg2Type>
 static ActorCreator<ActorType> Actor(
     CreateActorFunc2<ActorType, Arg1Type, Arg2Type> create_func, Arg1Type arg1,
-    ObjectRef<Arg2Type> &arg2);
+    ObjectRef<Arg2Type>& arg2);
 
 template <typename ActorType, typename Arg1Type, typename Arg2Type>
 static ActorCreator<ActorType> Actor(
     CreateActorFunc2<ActorType, Arg1Type, Arg2Type> create_func,
-    ObjectRef<Arg1Type> &arg1, ObjectRef<Arg2Type> &arg2);
+    ObjectRef<Arg1Type>& arg1, ObjectRef<Arg2Type>& arg2);

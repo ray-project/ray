@@ -16,8 +16,8 @@
 
 namespace ray {
 
-void FutureResolver::ResolveFutureAsync(const ObjectID &object_id,
-                                        const rpc::Address &owner_address) {
+void FutureResolver::ResolveFutureAsync(const ObjectID& object_id,
+                                        const rpc::Address& owner_address) {
   absl::MutexLock lock(&mu_);
   const auto owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
   if (rpc_address_.worker_id() == owner_address.worker_id()) {
@@ -37,7 +37,7 @@ void FutureResolver::ResolveFutureAsync(const ObjectID &object_id,
   request.set_owner_worker_id(owner_worker_id.Binary());
   it->second->GetObjectStatus(
       request,
-      [this, object_id](const Status &status, const rpc::GetObjectStatusReply &reply) {
+      [this, object_id](const Status& status, const rpc::GetObjectStatusReply& reply) {
         if (!status.ok()) {
           RAY_LOG(WARNING) << "Error retrieving the value of object ID " << object_id
                            << " that was deserialized: " << status.ToString();

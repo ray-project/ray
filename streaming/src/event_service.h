@@ -30,13 +30,13 @@ enum class EventType : uint8_t {
 
 struct EnumTypeHash {
   template <typename T>
-  std::size_t operator()(const T &t) const {
+  std::size_t operator()(const T& t) const {
     return static_cast<std::size_t>(t);
   }
 };
 
 struct Event {
-  ProducerChannelInfo *channel_info;
+  ProducerChannelInfo* channel_info;
   EventType type;
   bool urgent;
 };
@@ -60,15 +60,15 @@ class EventQueue {
   /// Push is prohibited when event queue is not active.
   void Freeze();
 
-  void Push(const Event &t);
+  void Push(const Event& t);
 
   void Pop();
 
-  bool Get(Event &evt);
+  bool Get(Event& evt);
 
   Event PopAndGet();
 
-  Event &Front();
+  Event& Front();
 
   inline size_t Capacity() const { return capacity_; }
 
@@ -85,7 +85,7 @@ class EventQueue {
   inline bool Full() const { return buffer_.size() + urgent_buffer_.size() == capacity_; }
 
   /// Wait for queue util it's timeout or any stuff in.
-  void WaitFor(std::unique_lock<std::mutex> &lock);
+  void WaitFor(std::unique_lock<std::mutex>& lock);
 
  private:
   std::mutex ring_buffer_mutex_;
@@ -107,7 +107,7 @@ class EventQueue {
 class EventService {
  public:
   /// User-define event handle for different types.
-  typedef std::function<bool(ProducerChannelInfo *info)> Handle;
+  typedef std::function<bool(ProducerChannelInfo* info)> Handle;
 
   EventService(uint32_t event_size = kEventQueueCapacity);
 
@@ -117,16 +117,16 @@ class EventService {
 
   void Stop();
 
-  bool Register(const EventType &type, const Handle &handle);
+  bool Register(const EventType& type, const Handle& handle);
 
-  void Push(const Event &event);
+  void Push(const Event& event);
 
   inline size_t EventNums() const { return event_queue_->Size(); }
 
-  void RemoveDestroyedChannelEvent(const std::vector<ObjectID> &removed_ids);
+  void RemoveDestroyedChannelEvent(const std::vector<ObjectID>& removed_ids);
 
  private:
-  void Execute(Event &event);
+  void Execute(Event& event);
 
   /// A single thread should be invoked to run this loop function, so that
   /// event server can poll and execute registered callback function event

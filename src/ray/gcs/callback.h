@@ -37,30 +37,30 @@ using StatusCallback = std::function<void(Status status)>;
 /// this optional object is empty.
 template <typename Data>
 using OptionalItemCallback =
-    std::function<void(Status status, const boost::optional<Data> &result)>;
+    std::function<void(Status status, const boost::optional<Data>& result)>;
 
 /// This callback is used to receive multiple items from GCS when a read completes.
 /// \param status Status indicates whether the read was successful.
 /// \param result The items returned by GCS.
 template <typename Data>
 using MultiItemCallback =
-    std::function<void(Status status, const std::vector<Data> &result)>;
+    std::function<void(Status status, const std::vector<Data>& result)>;
 
 /// This callback is used to receive notifications of the subscribed items in the GCS.
 /// \param id The id of the item.
 /// \param result The notification message.
 template <typename ID, typename Data>
-using SubscribeCallback = std::function<void(const ID &id, const Data &result)>;
+using SubscribeCallback = std::function<void(const ID& id, const Data& result)>;
 
 /// This callback is used to receive a single item from GCS.
 /// \param result The item returned by GCS.
 template <typename Data>
-using ItemCallback = std::function<void(const Data &result)>;
+using ItemCallback = std::function<void(const Data& result)>;
 
 /// This callback is used to receive multiple key-value items from GCS.
 /// \param result The key-value items returned by GCS.
 template <typename Key, typename Value>
-using MapCallback = std::function<void(const std::unordered_map<Key, Value> &result)>;
+using MapCallback = std::function<void(const std::unordered_map<Key, Value>& result)>;
 
 }  // namespace gcs
 

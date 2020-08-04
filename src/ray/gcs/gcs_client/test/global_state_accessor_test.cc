@@ -77,7 +77,7 @@ class GlobalStateAccessorTest : public ::testing::Test {
     TestSetupUtil::FlushAllRedisServers();
   }
 
-  bool WaitReady(std::future<bool> future, const std::chrono::milliseconds &timeout_ms) {
+  bool WaitReady(std::future<bool> future, const std::chrono::milliseconds& timeout_ms) {
     auto status = future.wait_for(timeout_ms);
     return status == std::future_status::ready && future.get();
   }
@@ -223,7 +223,7 @@ TEST_F(GlobalStateAccessorTest, TestObjectTable) {
   }
   ASSERT_EQ(global_state_->GetAllObjectInfo().size(), object_count);
 
-  for (auto &object_id : object_ids) {
+  for (auto& object_id : object_ids) {
     ASSERT_TRUE(global_state_->GetObjectInfo(object_id));
   }
 }
@@ -244,7 +244,7 @@ TEST_F(GlobalStateAccessorTest, TestActorTable) {
   }
   ASSERT_EQ(global_state_->GetAllActorInfo().size(), actor_count);
 
-  for (auto &actor_id : actor_ids) {
+  for (auto& actor_id : actor_ids) {
     ASSERT_TRUE(global_state_->GetActorInfo(actor_id));
   }
 }
@@ -271,7 +271,7 @@ TEST_F(GlobalStateAccessorTest, TestWorkerTable) {
 
 }  // namespace ray
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                          ray::RayLog::ShutDownRayLog, argv[0],
                                          ray::RayLogLevel::INFO,

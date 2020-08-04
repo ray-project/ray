@@ -35,28 +35,28 @@ class ordered_set {
  public:
   ordered_set() {}
 
-  ordered_set(const ordered_set &other) = delete;
+  ordered_set(const ordered_set& other) = delete;
 
-  ordered_set &operator=(const ordered_set &other) = delete;
+  ordered_set& operator=(const ordered_set& other) = delete;
 
-  void push_back(const T &value) {
+  void push_back(const T& value) {
     RAY_CHECK(positions_.find(value) == positions_.end());
     auto list_iterator = elements_.insert(elements_.end(), value);
     positions_[value] = list_iterator;
   }
 
-  size_t count(const T &k) const { return positions_.count(k); }
+  size_t count(const T& k) const { return positions_.count(k); }
 
   void pop_front() {
     positions_.erase(elements_.front());
     elements_.pop_front();
   }
 
-  const T &front() const { return elements_.front(); }
+  const T& front() const { return elements_.front(); }
 
   size_t size() const noexcept { return positions_.size(); }
 
-  size_t erase(const T &k) {
+  size_t erase(const T& k) {
     auto it = positions_.find(k);
     RAY_CHECK(it != positions_.end());
     elements_.erase(it->second);

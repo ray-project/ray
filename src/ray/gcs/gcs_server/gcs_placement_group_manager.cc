@@ -51,14 +51,14 @@ rpc::PlacementStrategy GcsPlacementGroup::GetStrategy() const {
   return placement_group_table_data_.strategy();
 }
 
-const rpc::PlacementGroupTableData &GcsPlacementGroup::GetPlacementGroupTableData() {
+const rpc::PlacementGroupTableData& GcsPlacementGroup::GetPlacementGroupTableData() {
   return placement_group_table_data_;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
 
 GcsPlacementGroupManager::GcsPlacementGroupManager(
-    boost::asio::io_context &io_context,
+    boost::asio::io_context& io_context,
     std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
     : gcs_placement_group_scheduler_(std::move(scheduler)),
@@ -66,10 +66,10 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
       reschedule_timer_(io_context) {}
 
 void GcsPlacementGroupManager::RegisterPlacementGroup(
-    const ray::rpc::CreatePlacementGroupRequest &request,
+    const ray::rpc::CreatePlacementGroupRequest& request,
     std::function<void(std::shared_ptr<GcsPlacementGroup>)> callback) {
   RAY_CHECK(callback);
-  const auto &placement_group_spec = request.placement_group_spec();
+  const auto& placement_group_spec = request.placement_group_spec();
   auto placement_group_id =
       PlacementGroupID::FromBinary(placement_group_spec.placement_group_id());
 
@@ -86,7 +86,7 @@ void GcsPlacementGroupManager::RegisterPlacementGroup(
 }
 
 PlacementGroupID GcsPlacementGroupManager::GetPlacementGroupIDByName(
-    const std::string &name) {
+    const std::string& name) {
   PlacementGroupID placement_group_id = PlacementGroupID::Nil();
   for (auto placement_group_pair : registered_placement_groups_) {
     auto placement_group = placement_group_pair.second;
@@ -123,7 +123,7 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
   // placement_group_to_register_callbacks_.
   auto iter = placement_group_to_register_callbacks_.find(placement_group_id);
   if (iter != placement_group_to_register_callbacks_.end()) {
-    for (auto &callback : iter->second) {
+    for (auto& callback : iter->second) {
       callback(placement_group);
     }
     placement_group_to_register_callbacks_.erase(iter);
@@ -149,13 +149,13 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
 }
 
 void GcsPlacementGroupManager::HandleCreatePlacementGroup(
-    const ray::rpc::CreatePlacementGroupRequest &request,
-    ray::rpc::CreatePlacementGroupReply *reply,
+    const ray::rpc::CreatePlacementGroupRequest& request,
+    ray::rpc::CreatePlacementGroupReply* reply,
     ray::rpc::SendReplyCallback send_reply_callback) {
   auto placement_group_id =
       PlacementGroupID::FromBinary(request.placement_group_spec().placement_group_id());
-  const auto &strategy = request.placement_group_spec().strategy();
-  const auto &name = request.placement_group_spec().name();
+  const auto& strategy = request.placement_group_spec().strategy();
+  const auto& name = request.placement_group_spec().name();
   RAY_LOG(INFO) << "Registering placement group, placement group id = "
                 << placement_group_id << ", name = " << name
                 << ", strategy = " << PlacementStrategy_Name(strategy);
@@ -175,7 +175,7 @@ void GcsPlacementGroupManager::HandleCreatePlacementGroup(
 
 void GcsPlacementGroupManager::ScheduleTick() {
   reschedule_timer_.expires_from_now(boost::posix_time::milliseconds(500));
-  reschedule_timer_.async_wait([this](const boost::system::error_code &error) {
+  reschedule_timer_.async_wait([this](const boost::system::error_code& error) {
     if (error == boost::system::errc::operation_canceled) {
       return;
     } else {

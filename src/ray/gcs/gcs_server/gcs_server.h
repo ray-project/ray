@@ -50,8 +50,8 @@ class GcsPlacementGroupManager;
 /// https://docs.google.com/document/d/1d-9qBlsh2UQHo-AWMWR0GptI_Ajwu4SKx0Q0LHKPpeI/edit#heading=h.csi0gaglj2pv
 class GcsServer {
  public:
-  explicit GcsServer(const GcsServerConfig &config,
-                     boost::asio::io_service &main_service);
+  explicit GcsServer(const GcsServerConfig& config,
+                     boost::asio::io_service& main_service);
   virtual ~GcsServer();
 
   /// Start gcs server.
@@ -115,7 +115,7 @@ class GcsServer {
   /// Gcs server configuration
   GcsServerConfig config_;
   /// The main io service to drive event posted from grpc threads.
-  boost::asio::io_context &main_service_;
+  boost::asio::io_context& main_service_;
   /// The io service used by node manager in case of node failure detector being blocked
   /// by main thread.
   boost::asio::io_service node_manager_io_service_;

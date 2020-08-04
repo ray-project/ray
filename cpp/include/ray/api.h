@@ -38,7 +38,7 @@ class Ray {
   /// \param[in] obj The object which should be stored.
   /// \return ObjectRef A reference to the object in the object store.
   template <typename T>
-  static ObjectRef<T> Put(const T &obj);
+  static ObjectRef<T> Put(const T& obj);
 
   /// Get a list of objects from the object store.
   /// This method will be blocked until all the objects are ready.
@@ -46,7 +46,7 @@ class Ray {
   /// \param[in] ids The object id array which should be got.
   /// \return shared pointer array of the result.
   template <typename T>
-  static std::vector<std::shared_ptr<T>> Get(const std::vector<ObjectID> &ids);
+  static std::vector<std::shared_ptr<T>> Get(const std::vector<ObjectID>& ids);
 
   /// Get a list of objects from the object store.
   /// This method will be blocked until all the objects are ready.
@@ -54,7 +54,7 @@ class Ray {
   /// \param[in] objects The object array which should be got.
   /// \return shared pointer array of the result.
   template <typename T>
-  static std::vector<std::shared_ptr<T>> Get(const std::vector<ObjectRef<T>> &ids);
+  static std::vector<std::shared_ptr<T>> Get(const std::vector<ObjectRef<T>>& ids);
 
   /// Wait for a list of objects to be locally available,
   /// until specified number of objects are ready, or specified timeout has passed.
@@ -64,7 +64,7 @@ class Ray {
   /// \param[in] timeout_ms The maximum wait time in milliseconds.
   /// \return Two arrays, one containing locally available objects, one containing the
   /// rest.
-  static WaitResult Wait(const std::vector<ObjectID> &ids, int num_objects,
+  static WaitResult Wait(const std::vector<ObjectID>& ids, int num_objects,
                          int timeout_ms);
 
 /// Include the `Call` methods for calling remote functions.
@@ -74,31 +74,31 @@ class Ray {
 #include "api/generated/create_actors.generated.h"
 
  private:
-  static RayRuntime *runtime_;
+  static RayRuntime* runtime_;
 
   static std::once_flag is_inited_;
 
   /// Used by ObjectRef to implement .Get()
   template <typename T>
-  static std::shared_ptr<T> Get(const ObjectRef<T> &object);
+  static std::shared_ptr<T> Get(const ObjectRef<T>& object);
 
   template <typename ReturnType, typename FuncType, typename ExecFuncType,
             typename... ArgTypes>
-  static TaskCaller<ReturnType> TaskInternal(FuncType &func, ExecFuncType &exec_func,
-                                             ArgTypes &... args);
+  static TaskCaller<ReturnType> TaskInternal(FuncType& func, ExecFuncType& exec_func,
+                                             ArgTypes&... args);
 
   template <typename ActorType, typename FuncType, typename ExecFuncType,
             typename... ArgTypes>
-  static ActorCreator<ActorType> CreateActorInternal(FuncType &func,
-                                                     ExecFuncType &exec_func,
-                                                     ArgTypes &... args);
+  static ActorCreator<ActorType> CreateActorInternal(FuncType& func,
+                                                     ExecFuncType& exec_func,
+                                                     ArgTypes&... args);
 
   template <typename ReturnType, typename ActorType, typename FuncType,
             typename ExecFuncType, typename... ArgTypes>
-  static ActorTaskCaller<ReturnType> CallActorInternal(FuncType &actor_func,
-                                                       ExecFuncType &exec_func,
-                                                       ActorHandle<ActorType> &actor,
-                                                       ArgTypes &... args);
+  static ActorTaskCaller<ReturnType> CallActorInternal(FuncType& actor_func,
+                                                       ExecFuncType& exec_func,
+                                                       ActorHandle<ActorType>& actor,
+                                                       ArgTypes&... args);
 
 /// Include the `Call` methods for calling actor methods.
 /// Used by ActorHandle to implement .Call()
@@ -129,7 +129,7 @@ namespace api {
 
 template <typename T>
 inline static std::vector<ObjectID> ObjectRefsToObjectIDs(
-    const std::vector<ObjectRef<T>> &object_refs) {
+    const std::vector<ObjectRef<T>>& object_refs) {
   std::vector<ObjectID> object_ids;
   for (auto it = object_refs.begin(); it != object_refs.end(); it++) {
     object_ids.push_back(it->ID());
@@ -138,7 +138,7 @@ inline static std::vector<ObjectID> ObjectRefsToObjectIDs(
 }
 
 template <typename T>
-inline ObjectRef<T> Ray::Put(const T &obj) {
+inline ObjectRef<T> Ray::Put(const T& obj) {
   std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
   msgpack::packer<msgpack::sbuffer> packer(buffer.get());
   Serializer::Serialize(packer, obj);
@@ -147,7 +147,7 @@ inline ObjectRef<T> Ray::Put(const T &obj) {
 }
 
 template <typename T>
-inline std::shared_ptr<T> Ray::Get(const ObjectRef<T> &object) {
+inline std::shared_ptr<T> Ray::Get(const ObjectRef<T>& object) {
   auto packed_object = runtime_->Get(object.ID());
   msgpack::unpacker unpacker;
   unpacker.reserve_buffer(packed_object->size());
@@ -159,7 +159,7 @@ inline std::shared_ptr<T> Ray::Get(const ObjectRef<T> &object) {
 }
 
 template <typename T>
-inline std::vector<std::shared_ptr<T>> Ray::Get(const std::vector<ObjectID> &ids) {
+inline std::vector<std::shared_ptr<T>> Ray::Get(const std::vector<ObjectID>& ids) {
   auto result = runtime_->Get(ids);
   std::vector<std::shared_ptr<T>> return_objects;
   return_objects.reserve(result.size());
@@ -176,20 +176,20 @@ inline std::vector<std::shared_ptr<T>> Ray::Get(const std::vector<ObjectID> &ids
 }
 
 template <typename T>
-inline std::vector<std::shared_ptr<T>> Ray::Get(const std::vector<ObjectRef<T>> &ids) {
+inline std::vector<std::shared_ptr<T>> Ray::Get(const std::vector<ObjectRef<T>>& ids) {
   auto object_ids = ObjectRefsToObjectIDs<T>(ids);
   return Get<T>(object_ids);
 }
 
-inline WaitResult Ray::Wait(const std::vector<ObjectID> &ids, int num_objects,
+inline WaitResult Ray::Wait(const std::vector<ObjectID>& ids, int num_objects,
                             int timeout_ms) {
   return runtime_->Wait(ids, num_objects, timeout_ms);
 }
 
 template <typename ReturnType, typename FuncType, typename ExecFuncType,
           typename... ArgTypes>
-inline TaskCaller<ReturnType> Ray::TaskInternal(FuncType &func, ExecFuncType &exec_func,
-                                                ArgTypes &... args) {
+inline TaskCaller<ReturnType> Ray::TaskInternal(FuncType& func, ExecFuncType& exec_func,
+                                                ArgTypes&... args) {
   std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
   msgpack::packer<msgpack::sbuffer> packer(buffer.get());
   Arguments::WrapArgs(packer, args...);
@@ -201,9 +201,9 @@ inline TaskCaller<ReturnType> Ray::TaskInternal(FuncType &func, ExecFuncType &ex
 
 template <typename ActorType, typename FuncType, typename ExecFuncType,
           typename... ArgTypes>
-inline ActorCreator<ActorType> Ray::CreateActorInternal(FuncType &create_func,
-                                                        ExecFuncType &exec_func,
-                                                        ArgTypes &... args) {
+inline ActorCreator<ActorType> Ray::CreateActorInternal(FuncType& create_func,
+                                                        ExecFuncType& exec_func,
+                                                        ArgTypes&... args) {
   std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
   msgpack::packer<msgpack::sbuffer> packer(buffer.get());
   Arguments::WrapArgs(packer, args...);
@@ -215,15 +215,15 @@ inline ActorCreator<ActorType> Ray::CreateActorInternal(FuncType &create_func,
 
 template <typename ReturnType, typename ActorType, typename FuncType,
           typename ExecFuncType, typename... ArgTypes>
-inline ActorTaskCaller<ReturnType> Ray::CallActorInternal(FuncType &actor_func,
-                                                          ExecFuncType &exec_func,
-                                                          ActorHandle<ActorType> &actor,
-                                                          ArgTypes &... args) {
+inline ActorTaskCaller<ReturnType> Ray::CallActorInternal(FuncType& actor_func,
+                                                          ExecFuncType& exec_func,
+                                                          ActorHandle<ActorType>& actor,
+                                                          ArgTypes&... args) {
   std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
   msgpack::packer<msgpack::sbuffer> packer(buffer.get());
   Arguments::WrapArgs(packer, args...);
   RemoteFunctionPtrHolder ptr;
-  MemberFunctionPtrHolder holder = *(MemberFunctionPtrHolder *)(&actor_func);
+  MemberFunctionPtrHolder holder = *(MemberFunctionPtrHolder*)(&actor_func);
   ptr.function_pointer = reinterpret_cast<uintptr_t>(holder.value[0]);
   ptr.exec_function_pointer = reinterpret_cast<uintptr_t>(exec_func);
   return ActorTaskCaller<ReturnType>(runtime_, actor.ID(), ptr, buffer);

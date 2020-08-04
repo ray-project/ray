@@ -40,13 +40,13 @@ class ActorRegistration {
   ///
   /// \param actor_table_data Information from the global actor table about
   /// this actor. This includes the actor's node manager location.
-  explicit ActorRegistration(const ActorTableData &actor_table_data);
+  explicit ActorRegistration(const ActorTableData& actor_table_data);
 
   /// Recreate an actor's registration from a checkpoint.
   ///
   /// \param checkpoint_data The checkpoint used to restore the actor.
-  ActorRegistration(const ActorTableData &actor_table_data,
-                    const ActorCheckpointData &checkpoint_data);
+  ActorRegistration(const ActorTableData& actor_table_data,
+                    const ActorCheckpointData& checkpoint_data);
 
   /// Each actor may have multiple callers, or "handles". A frontier leaf
   /// represents the execution state of the actor with respect to a single
@@ -63,7 +63,7 @@ class ActorRegistration {
   /// Get the actor table data.
   ///
   /// \return The actor table data.
-  const ActorTableData &GetTableData() const { return actor_table_data_; }
+  const ActorTableData& GetTableData() const { return actor_table_data_; }
 
   /// Get the actor's current state (ALIVE or DEAD).
   ///
@@ -71,7 +71,7 @@ class ActorRegistration {
   const ActorState GetState() const { return actor_table_data_.state(); }
 
   /// Update actor's state.
-  void SetState(const ActorState &state) { actor_table_data_.set_state(state); }
+  void SetState(const ActorState& state) { actor_table_data_.set_state(state); }
 
   /// Get the actor's node manager location.
   ///
@@ -113,10 +113,10 @@ class ActorRegistration {
   ///
   /// \return The actor frontier, a map from handle ID to execution state for
   /// that handle.
-  const std::unordered_map<TaskID, FrontierLeaf> &GetFrontier() const;
+  const std::unordered_map<TaskID, FrontierLeaf>& GetFrontier() const;
 
   /// Get all the dummy objects of this actor's tasks.
-  const std::unordered_map<ObjectID, int64_t> &GetDummyObjects() const {
+  const std::unordered_map<ObjectID, int64_t>& GetDummyObjects() const {
     return dummy_objects_;
   }
 
@@ -128,7 +128,7 @@ class ActorRegistration {
   /// state. This is the execution dependency returned by the task.
   /// \return The dummy object that can be released as a result of the executed
   /// task. If no dummy object can be released, then this is nil.
-  ObjectID ExtendFrontier(const TaskID &caller_id, const ObjectID &execution_dependency);
+  ObjectID ExtendFrontier(const TaskID& caller_id, const ObjectID& execution_dependency);
 
   /// Returns num handles to this actor entry.
   ///
@@ -141,8 +141,8 @@ class ActorRegistration {
   /// \param task The task that just finished on the actor. (nullptr when it's direct
   /// call.)
   /// \return A shared pointer to the generated checkpoint data.
-  std::shared_ptr<ActorCheckpointData> GenerateCheckpointData(const ActorID &actor_id,
-                                                              const Task *task);
+  std::shared_ptr<ActorCheckpointData> GenerateCheckpointData(const ActorID& actor_id,
+                                                              const Task* task);
 
  private:
   /// Information from the global actor table about this actor, including the

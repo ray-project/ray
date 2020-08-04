@@ -16,12 +16,12 @@
 
 #include "ray/util/logging.h"
 
-std::string string_from_flatbuf(const flatbuffers::String &string) {
+std::string string_from_flatbuf(const flatbuffers::String& string) {
   return std::string(string.data(), string.size());
 }
 
 std::vector<std::string> string_vec_from_flatbuf(
-    const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &flatbuf_vec) {
+    const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>& flatbuf_vec) {
   std::vector<std::string> string_vector;
   string_vector.reserve(flatbuf_vec.size());
   for (int64_t i = 0; i < flatbuf_vec.size(); i++) {
@@ -32,11 +32,11 @@ std::vector<std::string> string_vec_from_flatbuf(
 }
 
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
-string_vec_to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
-                      const std::vector<std::string> &string_vector) {
+string_vec_to_flatbuf(flatbuffers::FlatBufferBuilder& fbb,
+                      const std::vector<std::string>& string_vector) {
   std::vector<flatbuffers::Offset<flatbuffers::String>> flatbuf_str_vec;
   flatbuf_str_vec.reserve(flatbuf_str_vec.size());
-  for (auto const &str : string_vector) {
+  for (auto const& str : string_vector) {
     flatbuf_str_vec.push_back(fbb.CreateString(str));
   }
   return fbb.CreateVector(flatbuf_str_vec);

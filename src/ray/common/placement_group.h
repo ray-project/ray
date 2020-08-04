@@ -64,9 +64,9 @@ class PlacementGroupSpecBuilder {
   /// See `common.proto` for meaning of the arguments.
   ///
   /// \return Reference to the builder object itself.
-  PlacementGroupSpecBuilder &SetPlacementGroupSpec(
-      const PlacementGroupID &placement_group_id, std::string name,
-      const std::vector<std::unordered_map<std::string, double>> &bundles,
+  PlacementGroupSpecBuilder& SetPlacementGroupSpec(
+      const PlacementGroupID& placement_group_id, std::string name,
+      const std::vector<std::unordered_map<std::string, double>>& bundles,
       const rpc::PlacementStrategy strategy) {
     message_->set_placement_group_id(placement_group_id.Binary());
     message_->set_name(name);

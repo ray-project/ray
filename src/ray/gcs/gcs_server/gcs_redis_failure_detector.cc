@@ -24,7 +24,7 @@ namespace ray {
 namespace gcs {
 
 GcsRedisFailureDetector::GcsRedisFailureDetector(
-    boost::asio::io_service &io_service, std::shared_ptr<RedisContext> redis_context,
+    boost::asio::io_service& io_service, std::shared_ptr<RedisContext> redis_context,
     std::function<void()> callback)
     : redis_context_(redis_context),
       detect_timer_(io_service),
@@ -36,8 +36,8 @@ void GcsRedisFailureDetector::Start() {
 }
 
 void GcsRedisFailureDetector::DetectRedis() {
-  auto *reply = reinterpret_cast<redisReply *>(
-      redisCommand(redis_context_->sync_context(), "PING"));
+  auto* reply =
+      reinterpret_cast<redisReply*>(redisCommand(redis_context_->sync_context(), "PING"));
   if (reply == nullptr || reply->type == REDIS_REPLY_NIL) {
     RAY_LOG(ERROR) << "Redis is inactive.";
     callback_();
@@ -56,7 +56,7 @@ void GcsRedisFailureDetector::ScheduleTick() {
   auto detect_period = boost::posix_time::milliseconds(
       RayConfig::instance().gcs_redis_heartbeat_interval_milliseconds());
   detect_timer_.expires_from_now(detect_period);
-  detect_timer_.async_wait([this](const boost::system::error_code &error) {
+  detect_timer_.async_wait([this](const boost::system::error_code& error) {
     if (error == boost::asio::error::operation_aborted) {
       return;
     }

@@ -13,13 +13,13 @@ class FixedPoint {
  public:
   FixedPoint(double d = 0);
 
-  FixedPoint operator+(FixedPoint const &ru);
+  FixedPoint operator+(FixedPoint const& ru);
 
-  FixedPoint operator+=(FixedPoint const &ru);
+  FixedPoint operator+=(FixedPoint const& ru);
 
-  FixedPoint operator-(FixedPoint const &ru);
+  FixedPoint operator-(FixedPoint const& ru);
 
-  FixedPoint operator-=(FixedPoint const &ru);
+  FixedPoint operator-=(FixedPoint const& ru);
 
   FixedPoint operator-() const;
 
@@ -29,14 +29,14 @@ class FixedPoint {
 
   FixedPoint operator=(double const d);
 
-  friend bool operator<(FixedPoint const &ru1, FixedPoint const &ru2);
-  friend bool operator>(FixedPoint const &ru1, FixedPoint const &ru2);
-  friend bool operator<=(FixedPoint const &ru1, FixedPoint const &ru2);
-  friend bool operator>=(FixedPoint const &ru1, FixedPoint const &ru2);
-  friend bool operator==(FixedPoint const &ru1, FixedPoint const &ru2);
-  friend bool operator!=(FixedPoint const &ru1, FixedPoint const &ru2);
+  friend bool operator<(FixedPoint const& ru1, FixedPoint const& ru2);
+  friend bool operator>(FixedPoint const& ru1, FixedPoint const& ru2);
+  friend bool operator<=(FixedPoint const& ru1, FixedPoint const& ru2);
+  friend bool operator>=(FixedPoint const& ru1, FixedPoint const& ru2);
+  friend bool operator==(FixedPoint const& ru1, FixedPoint const& ru2);
+  friend bool operator!=(FixedPoint const& ru1, FixedPoint const& ru2);
 
   double Double();
 
-  friend std::ostream &operator<<(std::ostream &out, const FixedPoint &ru);
+  friend std::ostream& operator<<(std::ostream& out, const FixedPoint& ru);
 };

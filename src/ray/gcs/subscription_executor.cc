@@ -20,8 +20,8 @@ namespace gcs {
 
 template <typename ID, typename Data, typename Table>
 Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribeAll(
-    const ClientID &client_id, const SubscribeCallback<ID, Data> &subscribe,
-    const StatusCallback &done) {
+    const ClientID& client_id, const SubscribeCallback<ID, Data>& subscribe,
+    const StatusCallback& done) {
   // TODO(micafan) Optimize the lock when necessary.
   // Consider avoiding locking in single-threaded processes.
   std::unique_lock<std::mutex> lock(mutex_);
@@ -60,8 +60,8 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribeAll(
     return Status::OK();
   }
 
-  auto on_subscribe = [this](RedisGcsClient *client, const ID &id,
-                             const std::vector<Data> &result) {
+  auto on_subscribe = [this](RedisGcsClient* client, const ID& id,
+                             const std::vector<Data>& result) {
     if (result.empty()) {
       return;
     }
@@ -85,7 +85,7 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribeAll(
     }
   };
 
-  auto on_done = [this](RedisGcsClient *client) {
+  auto on_done = [this](RedisGcsClient* client) {
     std::list<StatusCallback> pending_callbacks;
     {
       std::unique_lock<std::mutex> lock(mutex_);
@@ -94,7 +94,7 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribeAll(
       RAY_CHECK(pending_subscriptions_.empty());
     }
 
-    for (const auto &callback : pending_callbacks) {
+    for (const auto& callback : pending_callbacks) {
       callback(Status::OK());
     }
   };
@@ -110,8 +110,8 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribeAll(
 
 template <typename ID, typename Data, typename Table>
 Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
-    const ClientID &client_id, const ID &id, const SubscribeCallback<ID, Data> &subscribe,
-    const StatusCallback &done) {
+    const ClientID& client_id, const ID& id, const SubscribeCallback<ID, Data>& subscribe,
+    const StatusCallback& done) {
   RAY_CHECK(client_id != ClientID::Nil());
 
   // NOTE(zhijunfu): `Subscribe` and other operations use different redis contexts,
@@ -160,7 +160,7 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
 
 template <typename ID, typename Data, typename Table>
 Status SubscriptionExecutor<ID, Data, Table>::AsyncUnsubscribe(
-    const ClientID &client_id, const ID &id, const StatusCallback &done) {
+    const ClientID& client_id, const ID& id, const StatusCallback& done) {
   SubscribeCallback<ID, Data> subscribe = nullptr;
   {
     std::unique_lock<std::mutex> lock(mutex_);

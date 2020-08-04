@@ -30,8 +30,8 @@ namespace {
 
 // A helper function to get a worker from a list.
 std::shared_ptr<ray::raylet::WorkerInterface> GetWorker(
-    const std::unordered_set<std::shared_ptr<ray::raylet::WorkerInterface>> &worker_pool,
-    const std::shared_ptr<ray::ClientConnection> &connection) {
+    const std::unordered_set<std::shared_ptr<ray::raylet::WorkerInterface>>& worker_pool,
+    const std::shared_ptr<ray::ClientConnection>& connection) {
   for (auto it = worker_pool.begin(); it != worker_pool.end(); it++) {
     if ((*it)->Connection() == connection) {
       return (*it);
@@ -43,8 +43,8 @@ std::shared_ptr<ray::raylet::WorkerInterface> GetWorker(
 // A helper function to remove a worker from a list. Returns true if the worker
 // was found and removed.
 bool RemoveWorker(
-    std::unordered_set<std::shared_ptr<ray::raylet::WorkerInterface>> &worker_pool,
-    const std::shared_ptr<ray::raylet::WorkerInterface> &worker) {
+    std::unordered_set<std::shared_ptr<ray::raylet::WorkerInterface>>& worker_pool,
+    const std::shared_ptr<ray::raylet::WorkerInterface>& worker) {
   return worker_pool.erase(worker) > 0;
 }
 
@@ -56,11 +56,11 @@ namespace raylet {
 
 /// A constructor that initializes a worker pool with num_workers workers for
 /// each language.
-WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
+WorkerPool::WorkerPool(boost::asio::io_service& io_service, int num_workers,
                        int maximum_startup_concurrency, int min_worker_port,
                        int max_worker_port, std::shared_ptr<gcs::GcsClient> gcs_client,
-                       const WorkerCommandMap &worker_commands,
-                       const std::unordered_map<std::string, std::string> &raylet_config,
+                       const WorkerCommandMap& worker_commands,
+                       const std::unordered_map<std::string, std::string>& raylet_config,
                        std::function<void()> starting_worker_timeout_callback)
     : io_service_(&io_service),
       maximum_startup_concurrency_(maximum_startup_concurrency),
@@ -73,9 +73,9 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
   // become zombies instead of dying gracefully.
   signal(SIGCHLD, SIG_IGN);
 #endif
-  for (const auto &entry : worker_commands) {
+  for (const auto& entry : worker_commands) {
     // Initialize the pool state for this language.
-    auto &state = states_by_lang_[entry.first];
+    auto& state = states_by_lang_[entry.first];
     switch (entry.first) {
     case Language::PYTHON:
       state.num_workers_per_process =
@@ -115,8 +115,8 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
 }
 
 void WorkerPool::Start(int num_workers) {
-  for (auto &entry : states_by_lang_) {
-    auto &state = entry.second;
+  for (auto& entry : states_by_lang_) {
+    auto& state = entry.second;
     int num_worker_processes = static_cast<int>(
         std::ceil(static_cast<double>(num_workers) / state.num_workers_per_process));
     for (int i = 0; i < num_worker_processes; i++) {
@@ -127,14 +127,14 @@ void WorkerPool::Start(int num_workers) {
 
 WorkerPool::~WorkerPool() {
   std::unordered_set<Process> procs_to_kill;
-  for (const auto &entry : states_by_lang_) {
+  for (const auto& entry : states_by_lang_) {
     // Kill all registered workers. NOTE(swang): This assumes that the registered
     // workers were started by the pool.
-    for (const auto &worker : entry.second.registered_workers) {
+    for (const auto& worker : entry.second.registered_workers) {
       procs_to_kill.insert(worker->GetProcess());
     }
     // Kill all the workers that have been started but not registered.
-    for (const auto &starting_worker : entry.second.starting_worker_processes) {
+    for (const auto& starting_worker : entry.second.starting_worker_processes) {
       procs_to_kill.insert(starting_worker.first);
     }
   }
@@ -144,7 +144,7 @@ WorkerPool::~WorkerPool() {
   }
 }
 
-uint32_t WorkerPool::Size(const Language &language) const {
+uint32_t WorkerPool::Size(const Language& language) const {
   const auto state = states_by_lang_.find(language);
   if (state == states_by_lang_.end()) {
     return 0;
@@ -154,13 +154,13 @@ uint32_t WorkerPool::Size(const Language &language) const {
   }
 }
 
-Process WorkerPool::StartWorkerProcess(const Language &language,
-                                       const std::vector<std::string> &dynamic_options) {
-  auto &state = GetStateForLanguage(language);
+Process WorkerPool::StartWorkerProcess(const Language& language,
+                                       const std::vector<std::string>& dynamic_options) {
+  auto& state = GetStateForLanguage(language);
   // If we are already starting up too many workers, then return without starting
   // more.
   int starting_workers = 0;
-  for (auto &entry : state.starting_worker_processes) {
+  for (auto& entry : state.starting_worker_processes) {
     starting_workers += entry.second;
   }
   if (starting_workers >= maximum_startup_concurrency_) {
@@ -186,7 +186,7 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
   std::vector<std::string> worker_command_args;
   size_t dynamic_option_index = 0;
   bool worker_raylet_config_placeholder_found = false;
-  for (auto const &token : state.worker_command) {
+  for (auto const& token : state.worker_command) {
     const auto option_placeholder =
         kWorkerDynamicOptionPlaceholderPrefix + std::to_string(dynamic_option_index);
 
@@ -205,7 +205,7 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
       worker_raylet_config_placeholder_found = true;
       switch (language) {
       case Language::JAVA:
-        for (auto &entry : raylet_config_) {
+        for (auto& entry : raylet_config_) {
           if (entry.first == "num_workers_per_process_java") {
             continue;
           }
@@ -249,8 +249,8 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
   return proc;
 }
 
-void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
-                                              const Language &language) {
+void WorkerPool::MonitorStartingWorkerProcess(const Process& proc,
+                                              const Language& language) {
   auto timer = std::make_shared<boost::asio::deadline_timer>(
       *io_service_, boost::posix_time::seconds(
                         RayConfig::instance().worker_register_timeout_seconds()));
@@ -258,7 +258,7 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
   timer->async_wait(
       [timer, language, proc, this](const boost::system::error_code e) -> void {
         // check the error code.
-        auto &state = this->GetStateForLanguage(language);
+        auto& state = this->GetStateForLanguage(language);
         // Since this process times out to start, remove it from starting_worker_processes
         // to avoid the zombie worker.
         auto it = state.starting_worker_processes.find(proc);
@@ -271,11 +271,11 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
       });
 }
 
-Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_args) {
+Process WorkerPool::StartProcess(const std::vector<std::string>& worker_command_args) {
   if (RAY_LOG_ENABLED(DEBUG)) {
     std::stringstream stream;
     stream << "Starting worker process with command:";
-    for (const auto &arg : worker_command_args) {
+    for (const auto& arg : worker_command_args) {
       stream << " " << arg;
     }
     RAY_LOG(DEBUG) << stream.str();
@@ -283,8 +283,8 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
 
   // Launch the process to create the worker.
   std::error_code ec;
-  std::vector<const char *> argv;
-  for (const std::string &arg : worker_command_args) {
+  std::vector<const char*> argv;
+  for (const std::string& arg : worker_command_args) {
     argv.push_back(arg.c_str());
   }
   argv.push_back(NULL);
@@ -297,7 +297,7 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
   return child;
 }
 
-Status WorkerPool::GetNextFreePort(int *port) {
+Status WorkerPool::GetNextFreePort(int* port) {
   if (!free_ports_) {
     *port = 0;
     return Status::OK();
@@ -327,9 +327,9 @@ void WorkerPool::MarkPortAsFree(int port) {
   }
 }
 
-Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
-                                  pid_t pid, int *port) {
-  auto &state = GetStateForLanguage(worker->GetLanguage());
+Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface>& worker,
+                                  pid_t pid, int* port) {
+  auto& state = GetStateForLanguage(worker->GetLanguage());
   auto it = state.starting_worker_processes.find(Process::FromPid(pid));
   if (it == state.starting_worker_processes.end()) {
     RAY_LOG(WARNING) << "Received a register request from an unknown worker " << pid;
@@ -348,19 +348,19 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
   return Status::OK();
 }
 
-Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver,
-                                  int *port) {
+Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface>& driver,
+                                  int* port) {
   RAY_CHECK(!driver->GetAssignedTaskId().IsNil());
   RAY_RETURN_NOT_OK(GetNextFreePort(port));
   driver->SetAssignedPort(*port);
-  auto &state = GetStateForLanguage(driver->GetLanguage());
+  auto& state = GetStateForLanguage(driver->GetLanguage());
   state.registered_drivers.insert(std::move(driver));
   return Status::OK();
 }
 
 std::shared_ptr<WorkerInterface> WorkerPool::GetRegisteredWorker(
-    const std::shared_ptr<ClientConnection> &connection) const {
-  for (const auto &entry : states_by_lang_) {
+    const std::shared_ptr<ClientConnection>& connection) const {
+  for (const auto& entry : states_by_lang_) {
     auto worker = GetWorker(entry.second.registered_workers, connection);
     if (worker != nullptr) {
       return worker;
@@ -370,8 +370,8 @@ std::shared_ptr<WorkerInterface> WorkerPool::GetRegisteredWorker(
 }
 
 std::shared_ptr<WorkerInterface> WorkerPool::GetRegisteredDriver(
-    const std::shared_ptr<ClientConnection> &connection) const {
-  for (const auto &entry : states_by_lang_) {
+    const std::shared_ptr<ClientConnection>& connection) const {
+  for (const auto& entry : states_by_lang_) {
     auto driver = GetWorker(entry.second.registered_drivers, connection);
     if (driver != nullptr) {
       return driver;
@@ -380,11 +380,11 @@ std::shared_ptr<WorkerInterface> WorkerPool::GetRegisteredDriver(
   return nullptr;
 }
 
-void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
+void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface>& worker) {
   // Since the worker is now idle, unset its assigned task ID.
   RAY_CHECK(worker->GetAssignedTaskId().IsNil())
       << "Idle workers cannot have an assigned task ID";
-  auto &state = GetStateForLanguage(worker->GetLanguage());
+  auto& state = GetStateForLanguage(worker->GetLanguage());
 
   auto it = state.dedicated_workers_to_tasks.find(worker->GetProcess());
   if (it != state.dedicated_workers_to_tasks.end()) {
@@ -404,8 +404,8 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
 }
 
 std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
-    const TaskSpecification &task_spec) {
-  auto &state = GetStateForLanguage(task_spec.GetLanguage());
+    const TaskSpecification& task_spec) {
+  auto& state = GetStateForLanguage(task_spec.GetLanguage());
 
   std::shared_ptr<WorkerInterface> worker = nullptr;
   Process proc;
@@ -443,7 +443,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
     }
   } else {
     // Code path of actor task.
-    const auto &actor_id = task_spec.ActorId();
+    const auto& actor_id = task_spec.ActorId();
     auto actor_entry = state.idle_actor.find(actor_id);
     if (actor_entry != state.idle_actor.end()) {
       worker = std::move(actor_entry->second);
@@ -458,8 +458,8 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
   return worker;
 }
 
-bool WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker) {
-  auto &state = GetStateForLanguage(worker->GetLanguage());
+bool WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface>& worker) {
+  auto& state = GetStateForLanguage(worker->GetLanguage());
   RAY_CHECK(RemoveWorker(state.registered_workers, worker));
 
   stats::CurrentWorker().Record(
@@ -470,8 +470,8 @@ bool WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
   return RemoveWorker(state.idle, worker);
 }
 
-void WorkerPool::DisconnectDriver(const std::shared_ptr<WorkerInterface> &driver) {
-  auto &state = GetStateForLanguage(driver->GetLanguage());
+void WorkerPool::DisconnectDriver(const std::shared_ptr<WorkerInterface>& driver) {
+  auto& state = GetStateForLanguage(driver->GetLanguage());
   RAY_CHECK(RemoveWorker(state.registered_drivers, driver));
   stats::CurrentDriver().Record(
       0, {{stats::LanguageKey, Language_Name(driver->GetLanguage())},
@@ -479,18 +479,18 @@ void WorkerPool::DisconnectDriver(const std::shared_ptr<WorkerInterface> &driver
   MarkPortAsFree(driver->AssignedPort());
 }
 
-inline WorkerPool::State &WorkerPool::GetStateForLanguage(const Language &language) {
+inline WorkerPool::State& WorkerPool::GetStateForLanguage(const Language& language) {
   auto state = states_by_lang_.find(language);
   RAY_CHECK(state != states_by_lang_.end()) << "Required Language isn't supported.";
   return state->second;
 }
 
 std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetWorkersRunningTasksForJob(
-    const JobID &job_id) const {
+    const JobID& job_id) const {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
 
-  for (const auto &entry : states_by_lang_) {
-    for (const auto &worker : entry.second.registered_workers) {
+  for (const auto& entry : states_by_lang_) {
+    for (const auto& worker : entry.second.registered_workers) {
       if (worker->GetAssignedJobId() == job_id) {
         workers.push_back(worker);
       }
@@ -504,8 +504,8 @@ const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegistered
     const {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
 
-  for (const auto &entry : states_by_lang_) {
-    for (const auto &worker : entry.second.registered_workers) {
+  for (const auto& entry : states_by_lang_) {
+    for (const auto& worker : entry.second.registered_workers) {
       if (worker->IsRegistered()) {
         workers.push_back(worker);
       }
@@ -519,8 +519,8 @@ const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegistered
     const {
   std::vector<std::shared_ptr<WorkerInterface>> drivers;
 
-  for (const auto &entry : states_by_lang_) {
-    for (const auto &driver : entry.second.registered_drivers) {
+  for (const auto& entry : states_by_lang_) {
+    for (const auto& driver : entry.second.registered_drivers) {
       if (driver->IsRegistered()) {
         drivers.push_back(driver);
       }
@@ -531,12 +531,12 @@ const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegistered
 }
 
 void WorkerPool::WarnAboutSize() {
-  for (const auto &entry : states_by_lang_) {
+  for (const auto& entry : states_by_lang_) {
     auto state = entry.second;
     int64_t num_workers_started_or_registered = 0;
     num_workers_started_or_registered +=
         static_cast<int64_t>(state.registered_workers.size());
-    for (const auto &starting_process : state.starting_worker_processes) {
+    for (const auto& starting_process : state.starting_worker_processes) {
       num_workers_started_or_registered += starting_process.second;
     }
     int64_t multiple = num_workers_started_or_registered / state.multiple_for_warning;
@@ -559,9 +559,9 @@ void WorkerPool::WarnAboutSize() {
   }
 }
 
-bool WorkerPool::HasPendingWorkerForTask(const Language &language,
-                                         const TaskID &task_id) {
-  auto &state = GetStateForLanguage(language);
+bool WorkerPool::HasPendingWorkerForTask(const Language& language,
+                                         const TaskID& task_id) {
+  auto& state = GetStateForLanguage(language);
   auto it = state.tasks_to_dedicated_workers.find(task_id);
   return it != state.tasks_to_dedicated_workers.end();
 }
@@ -569,7 +569,7 @@ bool WorkerPool::HasPendingWorkerForTask(const Language &language,
 std::string WorkerPool::DebugString() const {
   std::stringstream result;
   result << "WorkerPool:";
-  for (const auto &entry : states_by_lang_) {
+  for (const auto& entry : states_by_lang_) {
     result << "\n- num " << Language_Name(entry.first)
            << " workers: " << entry.second.registered_workers.size();
     result << "\n- num " << Language_Name(entry.first)
@@ -579,7 +579,7 @@ std::string WorkerPool::DebugString() const {
 }
 
 void WorkerPool::RecordMetrics() const {
-  for (const auto &entry : states_by_lang_) {
+  for (const auto& entry : states_by_lang_) {
     // Record worker.
     for (auto worker : entry.second.registered_workers) {
       stats::CurrentWorker().Record(

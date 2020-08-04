@@ -20,7 +20,7 @@
 namespace ray {
 
 ObjectStoreNotificationManagerIPC::ObjectStoreNotificationManagerIPC(
-    boost::asio::io_service &io_service, const std::string &store_socket_name,
+    boost::asio::io_service& io_service, const std::string& store_socket_name,
     bool exit_on_error)
     : ObjectStoreNotificationManager(io_service),
       length_(0),
@@ -47,10 +47,10 @@ void ObjectStoreNotificationManagerIPC::Shutdown() { store_client_->Close(); }
 
 void ObjectStoreNotificationManagerIPC::NotificationWait() {
   store_client_->ReadBufferAsync({boost::asio::buffer(&length_, sizeof(length_))},
-                                 [this](const ray::Status &s) { ProcessStoreLength(s); });
+                                 [this](const ray::Status& s) { ProcessStoreLength(s); });
 }
 
-void ObjectStoreNotificationManagerIPC::ProcessStoreLength(const ray::Status &s) {
+void ObjectStoreNotificationManagerIPC::ProcessStoreLength(const ray::Status& s) {
   notification_.resize(length_);
   if (!s.ok()) {
     if (exit_on_error_) {
@@ -73,10 +73,10 @@ void ObjectStoreNotificationManagerIPC::ProcessStoreLength(const ray::Status &s)
 
   store_client_->ReadBufferAsync(
       {boost::asio::buffer(notification_)},
-      [this](const ray::Status &s) { ProcessStoreNotification(s); });
+      [this](const ray::Status& s) { ProcessStoreNotification(s); });
 }
 
-void ObjectStoreNotificationManagerIPC::ProcessStoreNotification(const ray::Status &s) {
+void ObjectStoreNotificationManagerIPC::ProcessStoreNotification(const ray::Status& s) {
   if (!s.ok()) {
     if (exit_on_error_) {
       RAY_LOG(FATAL)
@@ -93,7 +93,7 @@ void ObjectStoreNotificationManagerIPC::ProcessStoreNotification(const ray::Stat
     }
   }
 
-  const auto &object_notification =
+  const auto& object_notification =
       flatbuffers::GetRoot<object_manager::protocol::PlasmaNotification>(
           notification_.data());
   for (size_t i = 0; i < object_notification->object_info()->size(); ++i) {

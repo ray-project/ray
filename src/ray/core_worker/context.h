@@ -25,29 +25,29 @@ struct WorkerThreadContext;
 
 class WorkerContext {
  public:
-  WorkerContext(WorkerType worker_type, const WorkerID &worker_id, const JobID &job_id);
+  WorkerContext(WorkerType worker_type, const WorkerID& worker_id, const JobID& job_id);
 
   const WorkerType GetWorkerType() const;
 
-  const WorkerID &GetWorkerID() const;
+  const WorkerID& GetWorkerID() const;
 
-  const JobID &GetCurrentJobID() const;
+  const JobID& GetCurrentJobID() const;
 
-  const TaskID &GetCurrentTaskID() const;
-
-  // TODO(edoakes): remove this once Python core worker uses the task interfaces.
-  void SetCurrentJobId(const JobID &job_id);
+  const TaskID& GetCurrentTaskID() const;
 
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
-  void SetCurrentTaskId(const TaskID &task_id);
+  void SetCurrentJobId(const JobID& job_id);
 
-  void SetCurrentTask(const TaskSpecification &task_spec);
+  // TODO(edoakes): remove this once Python core worker uses the task interfaces.
+  void SetCurrentTaskId(const TaskID& task_id);
 
-  void ResetCurrentTask(const TaskSpecification &task_spec);
+  void SetCurrentTask(const TaskSpecification& task_spec);
+
+  void ResetCurrentTask(const TaskSpecification& task_spec);
 
   std::shared_ptr<const TaskSpecification> GetCurrentTask() const;
 
-  const ActorID &GetCurrentActorID() const;
+  const ActorID& GetCurrentActorID() const;
 
   /// Returns whether the current thread is the main worker thread.
   bool CurrentThreadIsMain() const;
@@ -88,7 +88,7 @@ class WorkerContext {
   boost::thread::id main_thread_id_;
 
  private:
-  static WorkerThreadContext &GetThreadContext();
+  static WorkerThreadContext& GetThreadContext();
 
   /// Per-thread worker context.
   static thread_local std::unique_ptr<WorkerThreadContext> thread_context_;

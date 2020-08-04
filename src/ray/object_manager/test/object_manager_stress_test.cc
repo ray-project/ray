@@ -32,7 +32,7 @@ namespace ray {
 using rpc::GcsNodeInfo;
 
 static inline void flushall_redis(void) {
-  redisContext *context = redisConnect("127.0.0.1", 6379);
+  redisContext* context = redisConnect("127.0.0.1", 6379);
   freeReplyObject(redisCommand(context, "FLUSHALL"));
   redisFree(context);
 }
@@ -46,8 +46,8 @@ int64_t current_time_ms() {
 
 class MockServer {
  public:
-  MockServer(boost::asio::io_service &main_service,
-             const ObjectManagerConfig &object_manager_config,
+  MockServer(boost::asio::io_service& main_service,
+             const ObjectManagerConfig& object_manager_config,
              std::shared_ptr<gcs::GcsClient> gcs_client)
       : node_id_(ClientID::FromRandom()),
         config_(object_manager_config),
@@ -60,7 +60,7 @@ class MockServer {
   ~MockServer() { RAY_CHECK_OK(gcs_client_->Nodes().UnregisterSelf()); }
 
  private:
-  ray::Status RegisterGcs(boost::asio::io_service &io_service) {
+  ray::Status RegisterGcs(boost::asio::io_service& io_service) {
     auto object_manager_port = object_manager_.GetServerPort();
     GcsNodeInfo node_info;
     node_info.set_node_id(node_id_.Binary());
@@ -139,7 +139,7 @@ class TestObjectManagerBase : public ::testing::Test {
     TestSetupUtil::StopObjectStore(socket_name_2);
   }
 
-  ObjectID WriteDataToClient(plasma::PlasmaClient &client, int64_t data_size) {
+  ObjectID WriteDataToClient(plasma::PlasmaClient& client, int64_t data_size) {
     ObjectID object_id = ObjectID::FromRandom();
     RAY_LOG(DEBUG) << "ObjectID Created: " << object_id;
     uint8_t metadata[] = {5};
@@ -206,7 +206,7 @@ class StressTestObjectManager : public TestObjectManagerBase {
     node_id_1 = gcs_client_1->Nodes().GetSelfId();
     node_id_2 = gcs_client_2->Nodes().GetSelfId();
     RAY_CHECK_OK(gcs_client_1->Nodes().AsyncSubscribeToNodeChange(
-        [this](const ClientID &node_id, const GcsNodeInfo &data) {
+        [this](const ClientID& node_id, const GcsNodeInfo& data) {
           if (node_id == node_id_1 || node_id == node_id_2) {
             num_connected_clients += 1;
           }
@@ -216,7 +216,7 @@ class StressTestObjectManager : public TestObjectManagerBase {
         },
         nullptr));
     RAY_CHECK_OK(gcs_client_2->Nodes().AsyncSubscribeToNodeChange(
-        [this](const ClientID &node_id, const GcsNodeInfo &data) {
+        [this](const ClientID& node_id, const GcsNodeInfo& data) {
           if (node_id == node_id_1 || node_id == node_id_2) {
             num_connected_clients += 1;
           }
@@ -236,7 +236,7 @@ class StressTestObjectManager : public TestObjectManagerBase {
   void AddTransferTestHandlers() {
     ray::Status status = ray::Status::OK();
     status = server1->object_manager_.SubscribeObjAdded(
-        [this](const object_manager::protocol::ObjectInfoT &object_info) {
+        [this](const object_manager::protocol::ObjectInfoT& object_info) {
           object_added_handler_1(ObjectID::FromBinary(object_info.object_id));
           if (v1.size() == num_expected_objects && v1.size() == v2.size()) {
             TransferTestComplete();
@@ -244,7 +244,7 @@ class StressTestObjectManager : public TestObjectManagerBase {
         });
     RAY_CHECK_OK(status);
     status = server2->object_manager_.SubscribeObjAdded(
-        [this](const object_manager::protocol::ObjectInfoT &object_info) {
+        [this](const object_manager::protocol::ObjectInfoT& object_info) {
           object_added_handler_2(ObjectID::FromBinary(object_info.object_id));
           if (v2.size() == num_expected_objects && v1.size() == v2.size()) {
             TransferTestComplete();
@@ -263,17 +263,17 @@ class StressTestObjectManager : public TestObjectManagerBase {
     }
   }
 
-  plasma::ObjectBuffer GetObject(plasma::PlasmaClient &client, ObjectID &object_id) {
+  plasma::ObjectBuffer GetObject(plasma::PlasmaClient& client, ObjectID& object_id) {
     plasma::ObjectBuffer object_buffer;
     RAY_CHECK_OK(client.Get(&object_id, 1, 0, &object_buffer));
     return object_buffer;
   }
 
-  void CompareObjects(ObjectID &object_id_1, ObjectID &object_id_2) {
+  void CompareObjects(ObjectID& object_id_1, ObjectID& object_id_2) {
     plasma::ObjectBuffer object_buffer_1 = GetObject(client1, object_id_1);
     plasma::ObjectBuffer object_buffer_2 = GetObject(client2, object_id_2);
-    uint8_t *data_1 = const_cast<uint8_t *>(object_buffer_1.data->data());
-    uint8_t *data_2 = const_cast<uint8_t *>(object_buffer_2.data->data());
+    uint8_t* data_1 = const_cast<uint8_t*>(object_buffer_1.data->data());
+    uint8_t* data_2 = const_cast<uint8_t*>(object_buffer_2.data->data());
     ASSERT_EQ(object_buffer_1.data->size(), object_buffer_2.data->size());
     ASSERT_EQ(object_buffer_1.metadata->size(), object_buffer_2.metadata->size());
     int64_t total_size = object_buffer_1.data->size() + object_buffer_1.metadata->size();
@@ -413,7 +413,7 @@ TEST_F(StressTestObjectManager, StartStressTestObjectManager) {
 
 }  // namespace ray
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   ray::TEST_STORE_EXEC_PATH = std::string(argv[1]);
   return RUN_ALL_TESTS();

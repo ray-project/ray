@@ -10,7 +10,7 @@ namespace streaming {
 ray::ObjectID RandomObjectID() { return ObjectID::FromRandom(); }
 
 static void flushall_redis(void) {
-  redisContext *context = redisConnect("127.0.0.1", 6379);
+  redisContext* context = redisConnect("127.0.0.1", 6379);
   freeReplyObject(redisCommand(context, "FLUSHALL"));
   freeReplyObject(redisCommand(context, "SET NumRedisShards 1"));
   freeReplyObject(redisCommand(context, "LPUSH RedisShards 127.0.0.1:6380"));
@@ -33,7 +33,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     }
 
     // start plasma store.
-    for (auto &store_socket : raylet_store_socket_names_) {
+    for (auto& store_socket : raylet_store_socket_names_) {
       store_socket = TestSetupUtil::StartObjectStore();
     }
 
@@ -51,11 +51,11 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
 
   ~StreamingQueueTestBase() {
     STREAMING_LOG(INFO) << "Stop raylet store and actors";
-    for (const auto &raylet_socket_name : raylet_socket_names_) {
+    for (const auto& raylet_socket_name : raylet_socket_names_) {
       TestSetupUtil::StopRaylet(raylet_socket_name);
     }
 
-    for (const auto &store_socket_name : raylet_store_socket_names_) {
+    for (const auto& store_socket_name : raylet_store_socket_names_) {
       TestSetupUtil::StopObjectStore(store_socket_name);
     }
 
@@ -68,12 +68,12 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     return JobID::FromInt(job_counter++);
   }
 
-  void InitWorker(ActorID &self_actor_id, ActorID &peer_actor_id,
+  void InitWorker(ActorID& self_actor_id, ActorID& peer_actor_id,
                   const queue::protobuf::StreamingQueueTestRole role,
-                  const std::vector<ObjectID> &queue_ids,
-                  const std::vector<ObjectID> &rescale_queue_ids, std::string suite_name,
+                  const std::vector<ObjectID>& queue_ids,
+                  const std::vector<ObjectID>& rescale_queue_ids, std::string suite_name,
                   std::string test_name, uint64_t param) {
-    auto &driver = CoreWorkerProcess::GetCoreWorker();
+    auto& driver = CoreWorkerProcess::GetCoreWorker();
     std::string forked_serialized_str;
     ObjectID actor_handle_id;
     Status st = driver.SerializeActorHandle(peer_actor_id, &forked_serialized_str,
@@ -95,8 +95,8 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     driver.SubmitActorTask(self_actor_id, func, args, options, &return_ids);
   }
 
-  void SubmitTestToActor(ActorID &actor_id, const std::string test) {
-    auto &driver = CoreWorkerProcess::GetCoreWorker();
+  void SubmitTestToActor(ActorID& actor_id, const std::string test) {
+    auto& driver = CoreWorkerProcess::GetCoreWorker();
     uint8_t data[8];
     auto buffer = std::make_shared<LocalMemoryBuffer>(data, 8, true);
     std::vector<std::unique_ptr<TaskArg>> args;
@@ -111,8 +111,8 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
   }
 
-  bool CheckCurTest(ActorID &actor_id, const std::string test_name) {
-    auto &driver = CoreWorkerProcess::GetCoreWorker();
+  bool CheckCurTest(ActorID& actor_id, const std::string test_name) {
+    auto& driver = CoreWorkerProcess::GetCoreWorker();
     uint8_t data[8];
     auto buffer = std::make_shared<LocalMemoryBuffer>(data, 8, true);
     std::vector<std::unique_ptr<TaskArg>> args;
@@ -157,14 +157,14 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
         std::make_shared<LocalMemoryBuffer>(result_buffer->Data(), result_buffer->Size(),
                                             true);
 
-    uint8_t *bytes = result_buffer->Data();
-    uint8_t *p_cur = bytes;
-    uint32_t *magic_num = (uint32_t *)p_cur;
+    uint8_t* bytes = result_buffer->Data();
+    uint8_t* p_cur = bytes;
+    uint32_t* magic_num = (uint32_t*)p_cur;
     STREAMING_CHECK(*magic_num == Message::MagicNum);
 
     p_cur += sizeof(Message::MagicNum);
-    queue::protobuf::StreamingQueueMessageType *type =
-        (queue::protobuf::StreamingQueueMessageType *)p_cur;
+    queue::protobuf::StreamingQueueMessageType* type =
+        (queue::protobuf::StreamingQueueMessageType*)p_cur;
     STREAMING_CHECK(*type == queue::protobuf::StreamingQueueMessageType::
                                  StreamingQueueTestCheckStatusRspMsgType);
     std::shared_ptr<TestCheckStatusRspMsg> message =
@@ -173,7 +173,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     return message->Status();
   }
 
-  ActorID CreateActorHelper(const std::unordered_map<std::string, double> &resources,
+  ActorID CreateActorHelper(const std::unordered_map<std::string, double>& resources,
                             bool is_direct_call, int64_t max_restarts) {
     std::unique_ptr<ActorHandle> actor_handle;
 
@@ -218,7 +218,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     for (size_t i = 0; i < queue_id_vec.size(); ++i) {
       STREAMING_LOG(INFO) << " qid hex => " << queue_id_vec[i].Hex();
     }
-    for (auto &qid : rescale_queue_id_vec) {
+    for (auto& qid : rescale_queue_id_vec) {
       STREAMING_LOG(INFO) << " rescale qid hex => " << qid.Hex();
     }
     STREAMING_LOG(INFO) << "Sub process: writer.";

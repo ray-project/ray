@@ -38,7 +38,7 @@ class GcsClientOptions {
   /// \param port GCS service port.
   /// \param password GCS service password.
   /// \param is_test_client Whether this client is used for tests.
-  GcsClientOptions(const std::string &ip, int port, const std::string &password,
+  GcsClientOptions(const std::string& ip, int port, const std::string& password,
                    bool is_test_client = false)
       : server_ip_(ip),
         server_port_(port),
@@ -71,7 +71,7 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// This function must be called before calling other functions.
   ///
   /// \return Status
-  virtual Status Connect(boost::asio::io_service &io_service) = 0;
+  virtual Status Connect(boost::asio::io_service& io_service) = 0;
 
   /// Disconnect with GCS Service. Non-thread safe.
   virtual void Disconnect() = 0;
@@ -81,63 +81,63 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   /// Get the sub-interface for accessing actor information in GCS.
   /// This function is thread safe.
-  ActorInfoAccessor &Actors() {
+  ActorInfoAccessor& Actors() {
     RAY_CHECK(actor_accessor_ != nullptr);
     return *actor_accessor_;
   }
 
   /// Get the sub-interface for accessing job information in GCS.
   /// This function is thread safe.
-  JobInfoAccessor &Jobs() {
+  JobInfoAccessor& Jobs() {
     RAY_CHECK(job_accessor_ != nullptr);
     return *job_accessor_;
   }
 
   /// Get the sub-interface for accessing object information in GCS.
   /// This function is thread safe.
-  ObjectInfoAccessor &Objects() {
+  ObjectInfoAccessor& Objects() {
     RAY_CHECK(object_accessor_ != nullptr);
     return *object_accessor_;
   }
 
   /// Get the sub-interface for accessing node information in GCS.
   /// This function is thread safe.
-  NodeInfoAccessor &Nodes() {
+  NodeInfoAccessor& Nodes() {
     RAY_CHECK(node_accessor_ != nullptr);
     return *node_accessor_;
   }
 
   /// Get the sub-interface for accessing task information in GCS.
   /// This function is thread safe.
-  TaskInfoAccessor &Tasks() {
+  TaskInfoAccessor& Tasks() {
     RAY_CHECK(task_accessor_ != nullptr);
     return *task_accessor_;
   }
 
   /// Get the sub-interface for accessing error information in GCS.
   /// This function is thread safe.
-  ErrorInfoAccessor &Errors() {
+  ErrorInfoAccessor& Errors() {
     RAY_CHECK(error_accessor_ != nullptr);
     return *error_accessor_;
   }
 
   /// Get the sub-interface for accessing stats information in GCS.
   /// This function is thread safe.
-  StatsInfoAccessor &Stats() {
+  StatsInfoAccessor& Stats() {
     RAY_CHECK(stats_accessor_ != nullptr);
     return *stats_accessor_;
   }
 
   /// Get the sub-interface for accessing worker information in GCS.
   /// This function is thread safe.
-  WorkerInfoAccessor &Workers() {
+  WorkerInfoAccessor& Workers() {
     RAY_CHECK(worker_accessor_ != nullptr);
     return *worker_accessor_;
   }
 
   /// Get the sub-interface for accessing worker information in GCS.
   /// This function is thread safe.
-  PlacementGroupInfoAccessor &PlacementGroups() {
+  PlacementGroupInfoAccessor& PlacementGroups() {
     RAY_CHECK(placement_group_accessor_ != nullptr);
     return *placement_group_accessor_;
   }
@@ -146,7 +146,7 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// Constructor of GcsClient.
   ///
   /// \param options Options for client.
-  GcsClient(const GcsClientOptions &options) : options_(options) {}
+  GcsClient(const GcsClientOptions& options) : options_(options) {}
 
   GcsClientOptions options_;
 

@@ -2,7 +2,7 @@
 // 0 args
 template <typename ReturnType, typename ActorType>
 ActorTaskCaller<ReturnType> Ray::Task(ActorFunc0<ActorType, ReturnType> actor_func,
-                                      ActorHandle<ActorType> &actor) {
+                                      ActorHandle<ActorType>& actor) {
   return CallActorInternal<ReturnType, ActorType>(
       actor_func, ActorExecFunction<ReturnType, ActorType>, actor);
 }
@@ -10,7 +10,7 @@ ActorTaskCaller<ReturnType> Ray::Task(ActorFunc0<ActorType, ReturnType> actor_fu
 // 1 arg
 template <typename ReturnType, typename ActorType, typename Arg1Type>
 ActorTaskCaller<ReturnType> Ray::Task(
-    ActorFunc1<ActorType, ReturnType, Arg1Type> actor_func, ActorHandle<ActorType> &actor,
+    ActorFunc1<ActorType, ReturnType, Arg1Type> actor_func, ActorHandle<ActorType>& actor,
     Arg1Type arg1) {
   return CallActorInternal<ReturnType, ActorType>(
       actor_func, ActorExecFunction<ReturnType, ActorType, Arg1Type>, actor, arg1);
@@ -18,8 +18,8 @@ ActorTaskCaller<ReturnType> Ray::Task(
 
 template <typename ReturnType, typename ActorType, typename Arg1Type>
 ActorTaskCaller<ReturnType> Ray::Task(
-    ActorFunc1<ActorType, ReturnType, Arg1Type> actor_func, ActorHandle<ActorType> &actor,
-    ObjectRef<Arg1Type> &arg1) {
+    ActorFunc1<ActorType, ReturnType, Arg1Type> actor_func, ActorHandle<ActorType>& actor,
+    ObjectRef<Arg1Type>& arg1) {
   return CallActorInternal<ReturnType, ActorType>(
       actor_func, ActorExecFunction<ReturnType, ActorType, Arg1Type>, actor, arg1);
 }
@@ -28,7 +28,7 @@ ActorTaskCaller<ReturnType> Ray::Task(
 template <typename ReturnType, typename ActorType, typename Arg1Type, typename Arg2Type>
 ActorTaskCaller<ReturnType> Ray::Task(
     ActorFunc2<ActorType, ReturnType, Arg1Type, Arg2Type> actor_func,
-    ActorHandle<ActorType> &actor, Arg1Type arg1, Arg2Type arg2) {
+    ActorHandle<ActorType>& actor, Arg1Type arg1, Arg2Type arg2) {
   return CallActorInternal<ReturnType, ActorType>(
       actor_func, ActorExecFunction<ReturnType, ActorType, Arg1Type, Arg2Type>, actor,
       arg1, arg2);
@@ -37,7 +37,7 @@ ActorTaskCaller<ReturnType> Ray::Task(
 template <typename ReturnType, typename ActorType, typename Arg1Type, typename Arg2Type>
 ActorTaskCaller<ReturnType> Ray::Task(
     ActorFunc2<ActorType, ReturnType, Arg1Type, Arg2Type> actor_func,
-    ActorHandle<ActorType> &actor, ObjectRef<Arg1Type> &arg1, Arg2Type arg2) {
+    ActorHandle<ActorType>& actor, ObjectRef<Arg1Type>& arg1, Arg2Type arg2) {
   return CallActorInternal<ReturnType, ActorType>(
       actor_func, ActorExecFunction<ReturnType, ActorType, Arg1Type, Arg2Type>, actor,
       arg1, arg2);
@@ -46,7 +46,7 @@ ActorTaskCaller<ReturnType> Ray::Task(
 template <typename ReturnType, typename ActorType, typename Arg1Type, typename Arg2Type>
 ActorTaskCaller<ReturnType> Ray::Task(
     ActorFunc2<ActorType, ReturnType, Arg1Type, Arg2Type> actor_func,
-    ActorHandle<ActorType> &actor, Arg1Type arg1, ObjectRef<Arg2Type> &arg2) {
+    ActorHandle<ActorType>& actor, Arg1Type arg1, ObjectRef<Arg2Type>& arg2) {
   return CallActorInternal<ReturnType, ActorType>(
       actor_func, ActorExecFunction<ReturnType, ActorType, Arg1Type, Arg2Type>, actor,
       arg1, arg2);
@@ -55,7 +55,7 @@ ActorTaskCaller<ReturnType> Ray::Task(
 template <typename ReturnType, typename ActorType, typename Arg1Type, typename Arg2Type>
 ActorTaskCaller<ReturnType> Ray::Task(
     ActorFunc2<ActorType, ReturnType, Arg1Type, Arg2Type> actor_func,
-    ActorHandle<ActorType> &actor, ObjectRef<Arg1Type> &arg1, ObjectRef<Arg2Type> &arg2) {
+    ActorHandle<ActorType>& actor, ObjectRef<Arg1Type>& arg1, ObjectRef<Arg2Type>& arg2) {
   return CallActorInternal<ReturnType, ActorType>(
       actor_func, ActorExecFunction<ReturnType, ActorType, Arg1Type, Arg2Type>, actor,
       arg1, arg2);

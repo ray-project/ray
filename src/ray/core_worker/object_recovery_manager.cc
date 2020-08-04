@@ -18,7 +18,7 @@
 
 namespace ray {
 
-Status ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
+Status ObjectRecoveryManager::RecoverObject(const ObjectID& object_id) {
   // Check the ReferenceCounter to see if there is a location for the object.
   bool pinned = false;
   bool owned_by_us = reference_counter_->IsPlasmaObjectPinned(object_id, &pinned);
@@ -49,7 +49,7 @@ Status ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
     // Lookup the object in the GCS to find another copy.
     RAY_RETURN_NOT_OK(object_lookup_(
         object_id,
-        [this](const ObjectID &object_id, const std::vector<rpc::Address> &locations) {
+        [this](const ObjectID& object_id, const std::vector<rpc::Address>& locations) {
           PinOrReconstructObject(object_id, locations);
         }));
   } else {
@@ -59,7 +59,7 @@ Status ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
 }
 
 void ObjectRecoveryManager::PinOrReconstructObject(
-    const ObjectID &object_id, const std::vector<rpc::Address> &locations) {
+    const ObjectID& object_id, const std::vector<rpc::Address>& locations) {
   RAY_LOG(INFO) << "Lost object " << object_id << " has " << locations.size()
                 << " locations";
   if (!locations.empty()) {
@@ -76,8 +76,8 @@ void ObjectRecoveryManager::PinOrReconstructObject(
 }
 
 void ObjectRecoveryManager::PinExistingObjectCopy(
-    const ObjectID &object_id, const rpc::Address &raylet_address,
-    const std::vector<rpc::Address> &other_locations) {
+    const ObjectID& object_id, const rpc::Address& raylet_address,
+    const std::vector<rpc::Address>& other_locations) {
   // If a copy still exists, pin the object by sending a
   // PinObjectIDs RPC.
   const auto node_id = ClientID::FromBinary(raylet_address.raylet_id());
@@ -102,7 +102,7 @@ void ObjectRecoveryManager::PinExistingObjectCopy(
 
   client->PinObjectIDs(rpc_address_, {object_id},
                        [this, object_id, other_locations, node_id](
-                           const Status &status, const rpc::PinObjectIDsReply &reply) {
+                           const Status& status, const rpc::PinObjectIDsReply& reply) {
                          if (status.ok()) {
                            // TODO(swang): Make sure that the node is still alive when
                            // marking the object as pinned.
@@ -118,7 +118,7 @@ void ObjectRecoveryManager::PinExistingObjectCopy(
                        });
 }
 
-void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
+void ObjectRecoveryManager::ReconstructObject(const ObjectID& object_id) {
   // Notify the task manager that we are retrying the task that created this
   // object.
   const auto task_id = object_id.TaskId();
@@ -127,7 +127,7 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
 
   if (status.ok()) {
     // Try to recover the task's dependencies.
-    for (const auto &dep : task_deps) {
+    for (const auto& dep : task_deps) {
       auto status = RecoverObject(dep);
       if (!status.ok()) {
         RAY_LOG(INFO) << "Failed to reconstruct object " << dep << ": "

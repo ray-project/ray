@@ -22,21 +22,21 @@ namespace ray {
 namespace gcs {
 
 ClientID GcsActor::GetNodeID() const {
-  const auto &raylet_id_binary = actor_table_data_.address().raylet_id();
+  const auto& raylet_id_binary = actor_table_data_.address().raylet_id();
   if (raylet_id_binary.empty()) {
     return ClientID::Nil();
   }
   return ClientID::FromBinary(raylet_id_binary);
 }
 
-void GcsActor::UpdateAddress(const rpc::Address &address) {
+void GcsActor::UpdateAddress(const rpc::Address& address) {
   actor_table_data_.mutable_address()->CopyFrom(address);
 }
 
-const rpc::Address &GcsActor::GetAddress() const { return actor_table_data_.address(); }
+const rpc::Address& GcsActor::GetAddress() const { return actor_table_data_.address(); }
 
 WorkerID GcsActor::GetWorkerID() const {
-  const auto &address = actor_table_data_.address();
+  const auto& address = actor_table_data_.address();
   if (address.worker_id().empty()) {
     return WorkerID::Nil();
   }
@@ -51,7 +51,7 @@ ClientID GcsActor::GetOwnerNodeID() const {
   return ClientID::FromBinary(GetOwnerAddress().raylet_id());
 }
 
-const rpc::Address &GcsActor::GetOwnerAddress() const {
+const rpc::Address& GcsActor::GetOwnerAddress() const {
   return actor_table_data_.owner_address();
 }
 
@@ -72,28 +72,28 @@ bool GcsActor::IsDetached() const { return actor_table_data_.is_detached(); }
 std::string GcsActor::GetName() const { return actor_table_data_.name(); }
 
 TaskSpecification GcsActor::GetCreationTaskSpecification() const {
-  const auto &task_spec = actor_table_data_.task_spec();
+  const auto& task_spec = actor_table_data_.task_spec();
   return TaskSpecification(task_spec);
 }
 
-const rpc::ActorTableData &GcsActor::GetActorTableData() const {
+const rpc::ActorTableData& GcsActor::GetActorTableData() const {
   return actor_table_data_;
 }
 
-rpc::ActorTableData *GcsActor::GetMutableActorTableData() { return &actor_table_data_; }
+rpc::ActorTableData* GcsActor::GetMutableActorTableData() { return &actor_table_data_; }
 
 /////////////////////////////////////////////////////////////////////////////////////////
 GcsActorManager::GcsActorManager(std::shared_ptr<GcsActorSchedulerInterface> scheduler,
                                  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
                                  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
-                                 const rpc::ClientFactoryFn &worker_client_factory)
+                                 const rpc::ClientFactoryFn& worker_client_factory)
     : gcs_actor_scheduler_(std::move(scheduler)),
       gcs_table_storage_(std::move(gcs_table_storage)),
       gcs_pub_sub_(std::move(gcs_pub_sub)),
       worker_client_factory_(worker_client_factory) {}
 
-void GcsActorManager::HandleRegisterActor(const rpc::RegisterActorRequest &request,
-                                          rpc::RegisterActorReply *reply,
+void GcsActorManager::HandleRegisterActor(const rpc::RegisterActorRequest& request,
+                                          rpc::RegisterActorReply* reply,
                                           rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(request.task_spec().type() == TaskType::ACTOR_CREATION_TASK);
   auto actor_id =
@@ -102,7 +102,7 @@ void GcsActorManager::HandleRegisterActor(const rpc::RegisterActorRequest &reque
   RAY_LOG(INFO) << "Registering actor, actor id = " << actor_id;
   Status status =
       RegisterActor(request, [reply, send_reply_callback,
-                              actor_id](const std::shared_ptr<gcs::GcsActor> &actor) {
+                              actor_id](const std::shared_ptr<gcs::GcsActor>& actor) {
         RAY_LOG(INFO) << "Registered actor, actor id = " << actor_id;
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
       });
@@ -112,8 +112,8 @@ void GcsActorManager::HandleRegisterActor(const rpc::RegisterActorRequest &reque
   }
 }
 
-void GcsActorManager::HandleCreateActor(const rpc::CreateActorRequest &request,
-                                        rpc::CreateActorReply *reply,
+void GcsActorManager::HandleCreateActor(const rpc::CreateActorRequest& request,
+                                        rpc::CreateActorReply* reply,
                                         rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(request.task_spec().type() == TaskType::ACTOR_CREATION_TASK);
   auto actor_id =
@@ -121,7 +121,7 @@ void GcsActorManager::HandleCreateActor(const rpc::CreateActorRequest &request,
 
   RAY_LOG(INFO) << "Creating actor, actor id = " << actor_id;
   Status status = CreateActor(request, [reply, send_reply_callback, actor_id](
-                                           const std::shared_ptr<gcs::GcsActor> &actor) {
+                                           const std::shared_ptr<gcs::GcsActor>& actor) {
     RAY_LOG(INFO) << "Created actor, actor id = " << actor_id;
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   });
@@ -132,16 +132,16 @@ void GcsActorManager::HandleCreateActor(const rpc::CreateActorRequest &request,
   }
 }
 
-void GcsActorManager::HandleGetActorInfo(const rpc::GetActorInfoRequest &request,
-                                         rpc::GetActorInfoReply *reply,
+void GcsActorManager::HandleGetActorInfo(const rpc::GetActorInfoRequest& request,
+                                         rpc::GetActorInfoReply* reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   ActorID actor_id = ActorID::FromBinary(request.actor_id());
   RAY_LOG(DEBUG) << "Getting actor info"
                  << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
 
   auto on_done = [actor_id, reply, send_reply_callback](
-                     const Status &status,
-                     const boost::optional<ActorTableData> &result) {
+                     const Status& status,
+                     const boost::optional<ActorTableData>& result) {
     if (result) {
       reply->mutable_actor_table_data()->CopyFrom(*result);
     }
@@ -157,14 +157,14 @@ void GcsActorManager::HandleGetActorInfo(const rpc::GetActorInfoRequest &request
   }
 }
 
-void GcsActorManager::HandleGetAllActorInfo(const rpc::GetAllActorInfoRequest &request,
-                                            rpc::GetAllActorInfoReply *reply,
+void GcsActorManager::HandleGetAllActorInfo(const rpc::GetAllActorInfoRequest& request,
+                                            rpc::GetAllActorInfoReply* reply,
                                             rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Getting all actor info.";
 
   auto on_done = [reply, send_reply_callback](
-                     const std::unordered_map<ActorID, ActorTableData> &result) {
-    for (auto &it : result) {
+                     const std::unordered_map<ActorID, ActorTableData>& result) {
+    for (auto& it : result) {
       reply->add_actor_table_data()->CopyFrom(it.second);
     }
     RAY_LOG(DEBUG) << "Finished getting all actor info.";
@@ -178,15 +178,15 @@ void GcsActorManager::HandleGetAllActorInfo(const rpc::GetAllActorInfoRequest &r
 }
 
 void GcsActorManager::HandleGetNamedActorInfo(
-    const rpc::GetNamedActorInfoRequest &request, rpc::GetNamedActorInfoReply *reply,
+    const rpc::GetNamedActorInfoRequest& request, rpc::GetNamedActorInfoReply* reply,
     rpc::SendReplyCallback send_reply_callback) {
-  const std::string &name = request.name();
+  const std::string& name = request.name();
   RAY_LOG(DEBUG) << "Getting actor info"
                  << ", name = " << name;
 
   auto on_done = [name, reply, send_reply_callback](
-                     const Status &status,
-                     const boost::optional<ActorTableData> &result) {
+                     const Status& status,
+                     const boost::optional<ActorTableData>& result) {
     if (status.ok()) {
       if (result) {
         reply->mutable_actor_table_data()->CopyFrom(*result);
@@ -217,14 +217,14 @@ void GcsActorManager::HandleGetNamedActorInfo(
   }
 }
 void GcsActorManager::HandleRegisterActorInfo(
-    const rpc::RegisterActorInfoRequest &request, rpc::RegisterActorInfoReply *reply,
+    const rpc::RegisterActorInfoRequest& request, rpc::RegisterActorInfoReply* reply,
     rpc::SendReplyCallback send_reply_callback) {
   ActorID actor_id = ActorID::FromBinary(request.actor_table_data().actor_id());
   RAY_LOG(DEBUG) << "Registering actor info, job id = " << actor_id.JobId()
                  << ", actor id = " << actor_id;
-  const auto &actor_table_data = request.actor_table_data();
+  const auto& actor_table_data = request.actor_table_data();
   auto on_done = [this, actor_id, actor_table_data, reply,
-                  send_reply_callback](const Status &status) {
+                  send_reply_callback](const Status& status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to register actor info: " << status.ToString()
                      << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
@@ -244,15 +244,15 @@ void GcsActorManager::HandleRegisterActorInfo(
   }
 }
 
-void GcsActorManager::HandleUpdateActorInfo(const rpc::UpdateActorInfoRequest &request,
-                                            rpc::UpdateActorInfoReply *reply,
+void GcsActorManager::HandleUpdateActorInfo(const rpc::UpdateActorInfoRequest& request,
+                                            rpc::UpdateActorInfoReply* reply,
                                             rpc::SendReplyCallback send_reply_callback) {
   ActorID actor_id = ActorID::FromBinary(request.actor_id());
   RAY_LOG(DEBUG) << "Updating actor info, job id = " << actor_id.JobId()
                  << ", actor id = " << actor_id;
-  const auto &actor_table_data = request.actor_table_data();
+  const auto& actor_table_data = request.actor_table_data();
   auto on_done = [this, actor_id, actor_table_data, reply,
-                  send_reply_callback](const Status &status) {
+                  send_reply_callback](const Status& status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to update actor info: " << status.ToString()
                      << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
@@ -273,7 +273,7 @@ void GcsActorManager::HandleUpdateActorInfo(const rpc::UpdateActorInfoRequest &r
 }
 
 void GcsActorManager::HandleAddActorCheckpoint(
-    const rpc::AddActorCheckpointRequest &request, rpc::AddActorCheckpointReply *reply,
+    const rpc::AddActorCheckpointRequest& request, rpc::AddActorCheckpointReply* reply,
     rpc::SendReplyCallback send_reply_callback) {
   ActorID actor_id = ActorID::FromBinary(request.checkpoint_data().actor_id());
   ActorCheckpointID checkpoint_id =
@@ -281,15 +281,15 @@ void GcsActorManager::HandleAddActorCheckpoint(
   RAY_LOG(DEBUG) << "Adding actor checkpoint, job id = " << actor_id.JobId()
                  << ", actor id = " << actor_id << ", checkpoint id = " << checkpoint_id;
   auto on_done = [this, actor_id, checkpoint_id, reply,
-                  send_reply_callback](const Status &status) {
+                  send_reply_callback](const Status& status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to add actor checkpoint: " << status.ToString()
                      << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id
                      << ", checkpoint id = " << checkpoint_id;
     } else {
       auto on_get_done = [this, actor_id, checkpoint_id, reply, send_reply_callback](
-                             const Status &status,
-                             const boost::optional<ActorCheckpointIdData> &result) {
+                             const Status& status,
+                             const boost::optional<ActorCheckpointIdData>& result) {
         ActorCheckpointIdData actor_checkpoint_id;
         if (result) {
           actor_checkpoint_id.CopyFrom(*result);
@@ -299,7 +299,7 @@ void GcsActorManager::HandleAddActorCheckpoint(
         actor_checkpoint_id.add_checkpoint_ids(checkpoint_id.Binary());
         actor_checkpoint_id.add_timestamps(absl::GetCurrentTimeNanos() / 1000000);
         auto on_put_done = [actor_id, checkpoint_id, reply,
-                            send_reply_callback](const Status &status) {
+                            send_reply_callback](const Status& status) {
           RAY_LOG(DEBUG) << "Finished adding actor checkpoint, job id = "
                          << actor_id.JobId() << ", actor id = " << actor_id
                          << ", checkpoint id = " << checkpoint_id;
@@ -321,7 +321,7 @@ void GcsActorManager::HandleAddActorCheckpoint(
 }
 
 void GcsActorManager::HandleGetActorCheckpoint(
-    const rpc::GetActorCheckpointRequest &request, rpc::GetActorCheckpointReply *reply,
+    const rpc::GetActorCheckpointRequest& request, rpc::GetActorCheckpointReply* reply,
     rpc::SendReplyCallback send_reply_callback) {
   ActorID actor_id = ActorID::FromBinary(request.actor_id());
   ActorCheckpointID checkpoint_id =
@@ -329,8 +329,8 @@ void GcsActorManager::HandleGetActorCheckpoint(
   RAY_LOG(DEBUG) << "Getting actor checkpoint, job id = " << actor_id.JobId()
                  << ", checkpoint id = " << checkpoint_id;
   auto on_done = [actor_id, checkpoint_id, reply, send_reply_callback](
-                     const Status &status,
-                     const boost::optional<ActorCheckpointData> &result) {
+                     const Status& status,
+                     const boost::optional<ActorCheckpointData>& result) {
     if (status.ok()) {
       if (result) {
         reply->mutable_checkpoint_data()->CopyFrom(*result);
@@ -352,14 +352,14 @@ void GcsActorManager::HandleGetActorCheckpoint(
 }
 
 void GcsActorManager::HandleGetActorCheckpointID(
-    const rpc::GetActorCheckpointIDRequest &request,
-    rpc::GetActorCheckpointIDReply *reply, rpc::SendReplyCallback send_reply_callback) {
+    const rpc::GetActorCheckpointIDRequest& request,
+    rpc::GetActorCheckpointIDReply* reply, rpc::SendReplyCallback send_reply_callback) {
   ActorID actor_id = ActorID::FromBinary(request.actor_id());
   RAY_LOG(DEBUG) << "Getting actor checkpoint id, job id = " << actor_id.JobId()
                  << ", actor id = " << actor_id;
   auto on_done = [actor_id, reply, send_reply_callback](
-                     const Status &status,
-                     const boost::optional<ActorCheckpointIdData> &result) {
+                     const Status& status,
+                     const boost::optional<ActorCheckpointIdData>& result) {
     if (status.ok()) {
       if (result) {
         reply->mutable_checkpoint_id_data()->CopyFrom(*result);
@@ -380,10 +380,10 @@ void GcsActorManager::HandleGetActorCheckpointID(
 }
 
 Status GcsActorManager::RegisterActor(
-    const ray::rpc::RegisterActorRequest &request,
+    const ray::rpc::RegisterActorRequest& request,
     std::function<void(std::shared_ptr<GcsActor>)> callback) {
   RAY_CHECK(callback);
-  const auto &actor_creation_task_spec = request.task_spec().actor_creation_task_spec();
+  const auto& actor_creation_task_spec = request.task_spec().actor_creation_task_spec();
   auto actor_id = ActorID::FromBinary(actor_creation_task_spec.actor_id());
 
   auto iter = registered_actors_.find(actor_id);
@@ -421,7 +421,7 @@ Status GcsActorManager::RegisterActor(
   actor_to_register_callbacks_[actor_id].emplace_back(std::move(callback));
   RAY_CHECK(registered_actors_.emplace(actor->GetActorID(), actor).second);
 
-  const auto &owner_address = actor->GetOwnerAddress();
+  const auto& owner_address = actor->GetOwnerAddress();
   auto node_id = ClientID::FromBinary(owner_address.raylet_id());
   auto worker_id = WorkerID::FromBinary(owner_address.worker_id());
   RAY_CHECK(unresolved_actors_[node_id][worker_id].emplace(actor->GetActorID()).second);
@@ -435,7 +435,7 @@ Status GcsActorManager::RegisterActor(
   // The backend storage is supposed to be reliable, so the status must be ok.
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
       actor->GetActorID(), *actor->GetMutableActorTableData(),
-      [this, actor](const Status &status) {
+      [this, actor](const Status& status) {
         // The backend storage is supposed to be reliable, so the status must be ok.
         RAY_CHECK_OK(status);
         // Invoke all callbacks for all registration requests of this actor (duplicated
@@ -446,17 +446,17 @@ Status GcsActorManager::RegisterActor(
         RAY_CHECK(iter != actor_to_register_callbacks_.end() && !iter->second.empty());
         auto callbacks = std::move(iter->second);
         actor_to_register_callbacks_.erase(iter);
-        for (auto &callback : callbacks) {
+        for (auto& callback : callbacks) {
           callback(actor);
         }
       }));
   return Status::OK();
 }
 
-Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
+Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest& request,
                                     CreateActorCallback callback) {
   RAY_CHECK(callback);
-  const auto &actor_creation_task_spec = request.task_spec().actor_creation_task_spec();
+  const auto& actor_creation_task_spec = request.task_spec().actor_creation_task_spec();
   auto actor_id = ActorID::FromBinary(actor_creation_task_spec.actor_id());
 
   auto iter = registered_actors_.find(actor_id);
@@ -483,7 +483,7 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
   // Remove the actor from the unresolved actor map.
   auto actor = std::make_shared<GcsActor>(request.task_spec());
   actor->GetMutableActorTableData()->set_state(rpc::ActorTableData::PENDING_CREATION);
-  const auto &owner_address = actor->GetOwnerAddress();
+  const auto& owner_address = actor->GetOwnerAddress();
   auto node_id = ClientID::FromBinary(owner_address.raylet_id());
   auto worker_id = WorkerID::FromBinary(owner_address.worker_id());
   auto it = unresolved_actors_.find(node_id);
@@ -506,7 +506,7 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
   return Status::OK();
 }
 
-ActorID GcsActorManager::GetActorIDByName(const std::string &name) {
+ActorID GcsActorManager::GetActorIDByName(const std::string& name) {
   ActorID actor_id = ActorID::Nil();
   auto it = named_actors_.find(name);
   if (it != named_actors_.end()) {
@@ -516,11 +516,11 @@ ActorID GcsActorManager::GetActorIDByName(const std::string &name) {
 }
 
 void GcsActorManager::PollOwnerForActorOutOfScope(
-    const std::shared_ptr<GcsActor> &actor) {
-  const auto &actor_id = actor->GetActorID();
-  const auto &owner_node_id = actor->GetOwnerNodeID();
-  const auto &owner_id = actor->GetOwnerID();
-  auto &workers = owners_[owner_node_id];
+    const std::shared_ptr<GcsActor>& actor) {
+  const auto& actor_id = actor->GetActorID();
+  const auto& owner_node_id = actor->GetOwnerNodeID();
+  const auto& owner_id = actor->GetOwnerID();
+  auto& workers = owners_[owner_node_id];
   auto it = workers.find(owner_id);
   if (it == workers.end()) {
     RAY_LOG(DEBUG) << "Adding owner " << owner_id << " of actor " << actor_id;
@@ -535,7 +535,7 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
   wait_request.set_actor_id(actor_id.Binary());
   it->second.client->WaitForActorOutOfScope(
       wait_request, [this, owner_node_id, owner_id, actor_id](
-                        Status status, const rpc::WaitForActorOutOfScopeReply &reply) {
+                        Status status, const rpc::WaitForActorOutOfScopeReply& reply) {
         if (!status.ok()) {
           RAY_LOG(INFO) << "Worker " << owner_id << " failed, destroying actor child";
         }
@@ -549,7 +549,7 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
       });
 }
 
-void GcsActorManager::DestroyActor(const ActorID &actor_id) {
+void GcsActorManager::DestroyActor(const ActorID& actor_id) {
   RAY_LOG(DEBUG) << "Destroying actor " << actor_id;
   actor_to_register_callbacks_.erase(actor_id);
   actor_to_create_callbacks_.erase(actor_id);
@@ -561,14 +561,14 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
 
   // Clean up the client to the actor's owner, if necessary.
   if (!actor->IsDetached()) {
-    const auto &owner_node_id = actor->GetOwnerNodeID();
-    const auto &owner_id = actor->GetOwnerID();
+    const auto& owner_node_id = actor->GetOwnerNodeID();
+    const auto& owner_id = actor->GetOwnerID();
     RAY_LOG(DEBUG) << "Erasing actor " << actor_id << " owned by " << owner_id;
 
-    auto &node = owners_[owner_node_id];
+    auto& node = owners_[owner_node_id];
     auto worker_it = node.find(owner_id);
     RAY_CHECK(worker_it != node.end());
-    auto &owner = worker_it->second;
+    auto& owner = worker_it->second;
     RAY_CHECK(owner.children_actor_ids.erase(actor_id));
     if (owner.children_actor_ids.empty()) {
       node.erase(worker_it);
@@ -586,7 +586,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   if (actor->GetState() == rpc::ActorTableData::DEPENDENCIES_UNREADY) {
     // The actor creation task still has unresolved dependencies. Remove from the
     // unresolved actors map.
-    const auto &owner_address = actor->GetOwnerAddress();
+    const auto& owner_address = actor->GetOwnerAddress();
     auto node_id = ClientID::FromBinary(owner_address.raylet_id());
     auto worker_id = WorkerID::FromBinary(owner_address.worker_id());
     auto iter = unresolved_actors_.find(node_id);
@@ -604,8 +604,8 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   } else {
     // The actor is still alive or pending creation. Clean up all remaining
     // state.
-    const auto &node_id = actor->GetNodeID();
-    const auto &worker_id = actor->GetWorkerID();
+    const auto& node_id = actor->GetNodeID();
+    const auto& worker_id = actor->GetWorkerID();
     auto node_it = created_actors_.find(node_id);
     if (node_it != created_actors_.end() && node_it->second.count(worker_id)) {
       // The actor has already been created. Destroy the process by force-killing
@@ -632,7 +632,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
       } else {
         auto pending_it =
             std::find_if(pending_actors_.begin(), pending_actors_.end(),
-                         [actor_id](const std::shared_ptr<GcsActor> &actor) {
+                         [actor_id](const std::shared_ptr<GcsActor>& actor) {
                            return actor->GetActorID() == actor_id;
                          });
 
@@ -670,11 +670,11 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
 }
 
 absl::flat_hash_set<ActorID> GcsActorManager::GetUnresolvedActorsByOwnerNode(
-    const ClientID &node_id) const {
+    const ClientID& node_id) const {
   absl::flat_hash_set<ActorID> actor_ids;
   auto iter = unresolved_actors_.find(node_id);
   if (iter != unresolved_actors_.end()) {
-    for (auto &entry : iter->second) {
+    for (auto& entry : iter->second) {
       actor_ids.insert(entry.second.begin(), entry.second.end());
     }
   }
@@ -682,7 +682,7 @@ absl::flat_hash_set<ActorID> GcsActorManager::GetUnresolvedActorsByOwnerNode(
 }
 
 absl::flat_hash_set<ActorID> GcsActorManager::GetUnresolvedActorsByOwnerWorker(
-    const ClientID &node_id, const WorkerID &worker_id) const {
+    const ClientID& node_id, const WorkerID& worker_id) const {
   absl::flat_hash_set<ActorID> actor_ids;
   auto iter = unresolved_actors_.find(node_id);
   if (iter != unresolved_actors_.end()) {
@@ -694,8 +694,8 @@ absl::flat_hash_set<ActorID> GcsActorManager::GetUnresolvedActorsByOwnerWorker(
   return actor_ids;
 }
 
-void GcsActorManager::OnWorkerDead(const ray::ClientID &node_id,
-                                   const ray::WorkerID &worker_id,
+void GcsActorManager::OnWorkerDead(const ray::ClientID& node_id,
+                                   const ray::WorkerID& worker_id,
                                    bool intentional_exit) {
   // Destroy all actors that are owned by this worker.
   const auto it = owners_.find(node_id);
@@ -704,7 +704,7 @@ void GcsActorManager::OnWorkerDead(const ray::ClientID &node_id,
     // Make a copy of the children actor IDs since we will delete from the
     // list.
     const auto children_ids = owner->second.children_actor_ids;
-    for (const auto &child_id : children_ids) {
+    for (const auto& child_id : children_ids) {
       DestroyActor(child_id);
     }
   }
@@ -713,7 +713,7 @@ void GcsActorManager::OnWorkerDead(const ray::ClientID &node_id,
   // case, these actors will never be created successfully. So we need to destroy them,
   // to prevent actor tasks hang forever.
   auto unresolved_actors = GetUnresolvedActorsByOwnerWorker(node_id, worker_id);
-  for (auto &actor_id : unresolved_actors) {
+  for (auto& actor_id : unresolved_actors) {
     if (registered_actors_.count(actor_id)) {
       DestroyActor(actor_id);
     }
@@ -744,25 +744,25 @@ void GcsActorManager::OnWorkerDead(const ray::ClientID &node_id,
   ReconstructActor(actor_id, /*need_reschedule=*/!intentional_exit);
 }
 
-void GcsActorManager::OnNodeDead(const ClientID &node_id) {
+void GcsActorManager::OnNodeDead(const ClientID& node_id) {
   RAY_LOG(WARNING) << "Node " << node_id << " failed, reconstructing actors.";
   const auto it = owners_.find(node_id);
   if (it != owners_.end()) {
     std::vector<ActorID> children_ids;
     // Make a copy of all the actor IDs owned by workers on the dead node.
-    for (const auto &owner : it->second) {
-      for (const auto &child_id : owner.second.children_actor_ids) {
+    for (const auto& owner : it->second) {
+      for (const auto& child_id : owner.second.children_actor_ids) {
         children_ids.push_back(child_id);
       }
     }
-    for (const auto &child_id : children_ids) {
+    for (const auto& child_id : children_ids) {
       DestroyActor(child_id);
     }
   }
 
   // Cancel the scheduling of all related actors.
   auto scheduling_actor_ids = gcs_actor_scheduler_->CancelOnNode(node_id);
-  for (auto &actor_id : scheduling_actor_ids) {
+  for (auto& actor_id : scheduling_actor_ids) {
     // Reconstruct the canceled actor.
     ReconstructActor(actor_id);
   }
@@ -773,7 +773,7 @@ void GcsActorManager::OnNodeDead(const ClientID &node_id) {
     auto created_actors = std::move(iter->second);
     // Remove all created actors from node_to_created_actors_.
     created_actors_.erase(iter);
-    for (auto &entry : created_actors) {
+    for (auto& entry : created_actors) {
       // Reconstruct the removed actor.
       ReconstructActor(entry.second);
     }
@@ -783,15 +783,15 @@ void GcsActorManager::OnNodeDead(const ClientID &node_id) {
   // case, these actors will never be created successfully. So we need to destroy them,
   // to prevent actor tasks hang forever.
   auto unresolved_actors = GetUnresolvedActorsByOwnerNode(node_id);
-  for (auto &actor_id : unresolved_actors) {
+  for (auto& actor_id : unresolved_actors) {
     if (registered_actors_.count(actor_id)) {
       DestroyActor(actor_id);
     }
   }
 }
 
-void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_reschedule) {
-  auto &actor = registered_actors_[actor_id];
+void GcsActorManager::ReconstructActor(const ActorID& actor_id, bool need_reschedule) {
+  auto& actor = registered_actors_[actor_id];
   // If the owner and this actor is dead at the same time, the actor
   // could've been destroyed and dereigstered before reconstruction.
   if (actor == nullptr) {
@@ -869,7 +869,7 @@ void GcsActorManager::OnActorCreationFailed(std::shared_ptr<GcsActor> actor) {
   pending_actors_.emplace_back(std::move(actor));
 }
 
-void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor) {
+void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor>& actor) {
   auto actor_id = actor->GetActorID();
   RAY_LOG(DEBUG) << "Actor created successfully, actor id = " << actor_id;
   // NOTE: If an actor is deleted immediately after the user creates the actor, reference
@@ -896,7 +896,7 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
         // actor_to_create_callbacks_.
         auto iter = actor_to_create_callbacks_.find(actor_id);
         if (iter != actor_to_create_callbacks_.end()) {
-          for (auto &callback : iter->second) {
+          for (auto& callback : iter->second) {
             callback(actor);
           }
           actor_to_create_callbacks_.erase(iter);
@@ -917,17 +917,17 @@ void GcsActorManager::SchedulePendingActors() {
 
   RAY_LOG(DEBUG) << "Scheduling actor creation tasks, size = " << pending_actors_.size();
   auto actors = std::move(pending_actors_);
-  for (auto &actor : actors) {
+  for (auto& actor : actors) {
     gcs_actor_scheduler_->Schedule(std::move(actor));
   }
 }
 
-void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
+void GcsActorManager::LoadInitialData(const EmptyCallback& done) {
   RAY_LOG(INFO) << "Loading initial data.";
   auto callback = [this,
-                   done](const std::unordered_map<ActorID, ActorTableData> &result) {
+                   done](const std::unordered_map<ActorID, ActorTableData>& result) {
     std::unordered_map<ClientID, std::vector<WorkerID>> node_to_workers;
-    for (auto &item : result) {
+    for (auto& item : result) {
       if (item.second.state() != ray::rpc::ActorTableData::DEAD) {
         auto actor = std::make_shared<GcsActor>(item.second);
         registered_actors_.emplace(item.first, actor);
@@ -937,9 +937,9 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
         }
 
         if (item.second.state() == ray::rpc::ActorTableData::DEPENDENCIES_UNREADY) {
-          const auto &owner = actor->GetOwnerAddress();
-          const auto &owner_node = ClientID::FromBinary(owner.raylet_id());
-          const auto &owner_worker = WorkerID::FromBinary(owner.worker_id());
+          const auto& owner = actor->GetOwnerAddress();
+          const auto& owner_node = ClientID::FromBinary(owner.raylet_id());
+          const auto& owner_worker = WorkerID::FromBinary(owner.worker_id());
           RAY_CHECK(unresolved_actors_[owner_node][owner_worker]
                         .emplace(actor->GetActorID())
                         .second);
@@ -953,7 +953,7 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
                                                       actor->GetActorID());
         }
 
-        auto &workers = owners_[actor->GetNodeID()];
+        auto& workers = owners_[actor->GetNodeID()];
         auto it = workers.find(actor->GetWorkerID());
         if (it == workers.end()) {
           std::shared_ptr<rpc::CoreWorkerClientInterface> client =
@@ -975,8 +975,8 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
 
     RAY_LOG(DEBUG) << "The number of registered actors is " << registered_actors_.size()
                    << ", and the number of created actors is " << created_actors_.size();
-    for (auto &item : registered_actors_) {
-      auto &actor = item.second;
+    for (auto& item : registered_actors_) {
+      auto& actor = item.second;
       if (actor->GetState() == ray::rpc::ActorTableData::PENDING_CREATION ||
           actor->GetState() == ray::rpc::ActorTableData::RESTARTING) {
         // We should not reschedule actors in state of `ALIVE`.
@@ -994,13 +994,13 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().GetAll(callback));
 }
 
-void GcsActorManager::OnJobFinished(const JobID &job_id) {
+void GcsActorManager::OnJobFinished(const JobID& job_id) {
   auto on_done = [this,
-                  job_id](const std::unordered_map<ActorID, ActorTableData> &result) {
+                  job_id](const std::unordered_map<ActorID, ActorTableData>& result) {
     if (!result.empty()) {
       std::vector<ActorID> non_detached_actors;
       std::unordered_set<ActorID> non_detached_actors_set;
-      for (auto &item : result) {
+      for (auto& item : result) {
         if (!item.second.is_detached()) {
           non_detached_actors.push_back(item.first);
           non_detached_actors_set.insert(item.first);
@@ -1013,15 +1013,15 @@ void GcsActorManager::OnJobFinished(const JobID &job_id) {
       // related to this job
       RAY_CHECK_OK(gcs_table_storage_->ActorCheckpointIdTable().GetByJobId(
           job_id, [this, non_detached_actors_set](
-                      const std::unordered_map<ActorID, ActorCheckpointIdData> &result) {
+                      const std::unordered_map<ActorID, ActorCheckpointIdData>& result) {
             if (!result.empty()) {
               std::vector<ActorID> checkpoints;
               std::vector<ActorCheckpointID> checkpoint_ids;
-              for (auto &item : result) {
+              for (auto& item : result) {
                 if (non_detached_actors_set.find(item.first) !=
                     non_detached_actors_set.end()) {
                   checkpoints.push_back(item.first);
-                  for (auto &id : item.second.checkpoint_ids()) {
+                  for (auto& id : item.second.checkpoint_ids()) {
                     checkpoint_ids.push_back(ActorCheckpointID::FromBinary(id));
                   }
                 }
@@ -1041,18 +1041,18 @@ void GcsActorManager::OnJobFinished(const JobID &job_id) {
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().GetByJobId(job_id, on_done));
 }
 
-const absl::flat_hash_map<ClientID, absl::flat_hash_map<WorkerID, ActorID>>
-    &GcsActorManager::GetCreatedActors() const {
+const absl::flat_hash_map<ClientID, absl::flat_hash_map<WorkerID, ActorID>>&
+GcsActorManager::GetCreatedActors() const {
   return created_actors_;
 }
 
-const absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>>
-    &GcsActorManager::GetRegisteredActors() const {
+const absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>>&
+GcsActorManager::GetRegisteredActors() const {
   return registered_actors_;
 }
 
-const absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
-    &GcsActorManager::GetActorRegisterCallbacks() const {
+const absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>&
+GcsActorManager::GetActorRegisterCallbacks() const {
   return actor_to_register_callbacks_;
 }
 

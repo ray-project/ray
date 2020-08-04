@@ -28,7 +28,7 @@ extern "C" {
  * (ILjava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;[BLio/ray/runtime/gcs/GcsClientOptions;ILjava/lang/String;Ljava/util/Map;)V
  */
 JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
-    JNIEnv *, jclass, jint, jstring, jint, jstring, jstring, jstring, jbyteArray, jobject,
+    JNIEnv*, jclass, jint, jstring, jint, jstring, jstring, jstring, jbyteArray, jobject,
     jint, jstring, jobject);
 
 /*
@@ -37,14 +37,14 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
  * Signature: (Lio/ray/runtime/task/TaskExecutor;)V
  */
 JNIEXPORT void JNICALL
-Java_io_ray_runtime_RayNativeRuntime_nativeRunTaskExecutor(JNIEnv *, jclass, jobject);
+Java_io_ray_runtime_RayNativeRuntime_nativeRunTaskExecutor(JNIEnv*, jclass, jobject);
 
 /*
  * Class:     io_ray_runtime_RayNativeRuntime
  * Method:    nativeShutdown
  * Signature: ()V
  */
-JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeShutdown(JNIEnv *,
+JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeShutdown(JNIEnv*,
                                                                            jclass);
 
 /*
@@ -53,14 +53,14 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeShutdown(JNIEn
  * Signature: (Ljava/lang/String;D[B)V
  */
 JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeSetResource(
-    JNIEnv *, jclass, jstring, jdouble, jbyteArray);
+    JNIEnv*, jclass, jstring, jdouble, jbyteArray);
 
 /*
  * Class:     io_ray_runtime_RayNativeRuntime
  * Method:    nativeKillActor
  * Signature: ([BZ)V
  */
-JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeKillActor(JNIEnv *,
+JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeKillActor(JNIEnv*,
                                                                             jclass,
                                                                             jbyteArray,
                                                                             jboolean);
@@ -71,7 +71,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeKillActor(JNIE
  * Signature: (Ljava/lang/String;Z)[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(JNIEnv *, jclass,
+Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(JNIEnv*, jclass,
                                                                   jstring, jboolean);
 
 /*
@@ -80,7 +80,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(JNIEnv *, jcla
  * Signature: ([B)V
  */
 JNIEXPORT void JNICALL
-Java_io_ray_runtime_RayNativeRuntime_nativeSetCoreWorker(JNIEnv *, jclass, jbyteArray);
+Java_io_ray_runtime_RayNativeRuntime_nativeSetCoreWorker(JNIEnv*, jclass, jbyteArray);
 
 #ifdef __cplusplus
 }

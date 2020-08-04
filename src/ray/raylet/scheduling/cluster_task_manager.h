@@ -15,9 +15,9 @@ namespace raylet {
 /// Work represents all the information needed to make a scheduling decision.
 /// This includes the task, the information we need to communicate to
 /// dispatch/spillback and the callback to trigger it.
-typedef std::tuple<Task, rpc::RequestWorkerLeaseReply *, std::function<void(void)>> Work;
+typedef std::tuple<Task, rpc::RequestWorkerLeaseReply*, std::function<void(void)>> Work;
 
-typedef std::function<boost::optional<rpc::GcsNodeInfo>(const ClientID &node_id)>
+typedef std::function<boost::optional<rpc::GcsNodeInfo>(const ClientID& node_id)>
     NodeInfoGetter;
 
 /// Manages the queuing and dispatching of tasks. The logic is as follows:
@@ -45,9 +45,9 @@ class ClusterTaskManager {
   /// \param fulfills_dependencies_func: Returns true if all of a task's
   /// dependencies are fulfilled.
   /// \param gcs_client: A gcs client.
-  ClusterTaskManager(const ClientID &self_node_id,
+  ClusterTaskManager(const ClientID& self_node_id,
                      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
-                     std::function<bool(const Task &)> fulfills_dependencies_func,
+                     std::function<bool(const Task&)> fulfills_dependencies_func,
                      NodeInfoGetter get_node_info);
 
   /// (Step 2) For each task in tasks_to_schedule_, pick a node in the system
@@ -64,13 +64,13 @@ class ClusterTaskManager {
   /// `worker_pool` state will be modified (idle workers will be popped) during
   /// dispatching.
   void DispatchScheduledTasksToWorkers(
-      WorkerPoolInterface &worker_pool,
-      std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers);
+      WorkerPoolInterface& worker_pool,
+      std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>>& leased_workers);
 
   /// (Step 1) Queue tasks for scheduling.
   /// \param fn: The function used during dispatching.
   /// \param task: The incoming task to schedule.
-  void QueueTask(const Task &task, rpc::RequestWorkerLeaseReply *reply,
+  void QueueTask(const Task& task, rpc::RequestWorkerLeaseReply* reply,
                  std::function<void(void)>);
 
   /// Move tasks from waiting to ready for dispatch. Called when a task's
@@ -80,9 +80,9 @@ class ClusterTaskManager {
   void TasksUnblocked(const std::vector<TaskID> ready_ids);
 
  private:
-  const ClientID &self_node_id_;
+  const ClientID& self_node_id_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
-  std::function<bool(const Task &)> fulfills_dependencies_func_;
+  std::function<bool(const Task&)> fulfills_dependencies_func_;
   NodeInfoGetter get_node_info_;
 
   /// Queue of lease requests that are waiting for resources to become available.
@@ -101,12 +101,12 @@ class ClusterTaskManager {
 
   void Dispatch(
       std::shared_ptr<WorkerInterface> worker,
-      std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers_,
-      const TaskSpecification &task_spec, rpc::RequestWorkerLeaseReply *reply,
+      std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>>& leased_workers_,
+      const TaskSpecification& task_spec, rpc::RequestWorkerLeaseReply* reply,
       std::function<void(void)> send_reply_callback);
 
   void Spillback(ClientID spillback_to, std::string address, int port,
-                 rpc::RequestWorkerLeaseReply *reply,
+                 rpc::RequestWorkerLeaseReply* reply,
                  std::function<void(void)> send_reply_callback);
 };
 }  // namespace raylet

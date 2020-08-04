@@ -24,7 +24,7 @@ class MockWaiter : public DependencyWaiter {
  public:
   MockWaiter() {}
 
-  void Wait(const std::vector<rpc::ObjectReference> &dependencies,
+  void Wait(const std::vector<rpc::ObjectReference>& dependencies,
             std::function<void()> on_dependencies_available) override {
     callbacks_.push_back([on_dependencies_available]() { on_dependencies_available(); });
   }
@@ -160,7 +160,7 @@ TEST(SchedulingQueueTest, TestSkipAlreadyProcessedByClient) {
 
 }  // namespace ray
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

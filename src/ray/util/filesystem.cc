@@ -18,7 +18,7 @@ std::string GetExeSuffix() {
   return result;
 }
 
-std::string GetFileName(const std::string &path) {
+std::string GetFileName(const std::string& path) {
   size_t i = GetRootPathLength(path), j = path.size();
   while (j > i && !IsDirSep(path[j - 1])) {
     --j;
@@ -26,7 +26,7 @@ std::string GetFileName(const std::string &path) {
   return path.substr(j);
 }
 
-size_t GetRootPathLength(const std::string &path) {
+size_t GetRootPathLength(const std::string& path) {
   size_t i = 0;
 #ifdef _WIN32
   if (i + 2 < path.size() && IsDirSep(path[i]) && IsDirSep(path[i + 1]) &&
@@ -67,9 +67,9 @@ std::string GetUserTempDir() {
   }
   result.resize(0 < n && n <= result.size() ? static_cast<size_t>(n) : 0);
 #else  // not Linux, Darwin, or Windows
-  const char *candidates[] = {"TMPDIR", "TMP", "TEMP", "TEMPDIR"};
-  const char *found = NULL;
-  for (char const *candidate : candidates) {
+  const char* candidates[] = {"TMPDIR", "TMP", "TEMP", "TEMPDIR"};
+  const char* found = NULL;
+  for (char const* candidate : candidates) {
     found = getenv(candidate);
     if (found) {
       break;

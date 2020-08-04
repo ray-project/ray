@@ -40,55 +40,55 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \param gcs_pub_sub GCS message publisher.
   /// \param gcs_table_storage GCS table external storage accessor.
   /// when detecting the death of nodes.
-  explicit GcsNodeManager(boost::asio::io_service &main_io_service,
-                          boost::asio::io_service &node_failure_detector_io_service,
-                          gcs::ErrorInfoAccessor &error_info_accessor,
+  explicit GcsNodeManager(boost::asio::io_service& main_io_service,
+                          boost::asio::io_service& node_failure_detector_io_service,
+                          gcs::ErrorInfoAccessor& error_info_accessor,
                           std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
                           std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage);
 
   /// Handle register rpc request come from raylet.
-  void HandleRegisterNode(const rpc::RegisterNodeRequest &request,
-                          rpc::RegisterNodeReply *reply,
+  void HandleRegisterNode(const rpc::RegisterNodeRequest& request,
+                          rpc::RegisterNodeReply* reply,
                           rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle unregister rpc request come from raylet.
-  void HandleUnregisterNode(const rpc::UnregisterNodeRequest &request,
-                            rpc::UnregisterNodeReply *reply,
+  void HandleUnregisterNode(const rpc::UnregisterNodeRequest& request,
+                            rpc::UnregisterNodeReply* reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle get all node info rpc request.
-  void HandleGetAllNodeInfo(const rpc::GetAllNodeInfoRequest &request,
-                            rpc::GetAllNodeInfoReply *reply,
+  void HandleGetAllNodeInfo(const rpc::GetAllNodeInfoRequest& request,
+                            rpc::GetAllNodeInfoReply* reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle heartbeat rpc come from raylet.
-  void HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &request,
-                             rpc::ReportHeartbeatReply *reply,
+  void HandleReportHeartbeat(const rpc::ReportHeartbeatRequest& request,
+                             rpc::ReportHeartbeatReply* reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle get resource rpc request.
-  void HandleGetResources(const rpc::GetResourcesRequest &request,
-                          rpc::GetResourcesReply *reply,
+  void HandleGetResources(const rpc::GetResourcesRequest& request,
+                          rpc::GetResourcesReply* reply,
                           rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle update resource rpc request.
-  void HandleUpdateResources(const rpc::UpdateResourcesRequest &request,
-                             rpc::UpdateResourcesReply *reply,
+  void HandleUpdateResources(const rpc::UpdateResourcesRequest& request,
+                             rpc::UpdateResourcesReply* reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle delete resource rpc request.
-  void HandleDeleteResources(const rpc::DeleteResourcesRequest &request,
-                             rpc::DeleteResourcesReply *reply,
+  void HandleDeleteResources(const rpc::DeleteResourcesRequest& request,
+                             rpc::DeleteResourcesReply* reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle setting internal config.
-  void HandleSetInternalConfig(const rpc::SetInternalConfigRequest &request,
-                               rpc::SetInternalConfigReply *reply,
+  void HandleSetInternalConfig(const rpc::SetInternalConfigRequest& request,
+                               rpc::SetInternalConfigReply* reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle getting internal config.
-  void HandleGetInternalConfig(const rpc::GetInternalConfigRequest &request,
-                               rpc::GetInternalConfigReply *reply,
+  void HandleGetInternalConfig(const rpc::GetInternalConfigRequest& request,
+                               rpc::GetInternalConfigReply* reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
   /// Add an alive node.
@@ -101,20 +101,20 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \param node_id The ID of the node to be removed.
   /// \param is_intended False if this is triggered by `node_failure_detector_`, else
   /// True.
-  std::shared_ptr<rpc::GcsNodeInfo> RemoveNode(const ClientID &node_id,
+  std::shared_ptr<rpc::GcsNodeInfo> RemoveNode(const ClientID& node_id,
                                                bool is_intended = false);
 
   /// Get alive node by ID.
   ///
   /// \param node_id The id of the node.
   /// \return the node if it is alive else return nullptr.
-  std::shared_ptr<rpc::GcsNodeInfo> GetNode(const ClientID &node_id) const;
+  std::shared_ptr<rpc::GcsNodeInfo> GetNode(const ClientID& node_id) const;
 
   /// Get all alive nodes.
   ///
   /// \return all alive nodes.
-  const absl::flat_hash_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>>
-      &GetAllAliveNodes() const {
+  const absl::flat_hash_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>>&
+  GetAllAliveNodes() const {
     return alive_nodes_;
   }
 
@@ -140,7 +140,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// This should be called when GCS server restarts after a failure.
   ///
   /// \param done Callback that will be called when load is complete.
-  void LoadInitialData(const EmptyCallback &done);
+  void LoadInitialData(const EmptyCallback& done);
 
   /// Start node failure detector.
   void StartNodeFailureDetector();
@@ -156,10 +156,10 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     /// \param on_node_death_callback Callback that will be called when node death is
     /// detected.
     explicit NodeFailureDetector(
-        boost::asio::io_service &io_service,
+        boost::asio::io_service& io_service,
         std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
         std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
-        std::function<void(const ClientID &)> on_node_death_callback);
+        std::function<void(const ClientID&)> on_node_death_callback);
 
     // Note: To avoid heartbeats being delayed by main thread, all public methods below
     // should be posted to its own IO service.
@@ -171,14 +171,14 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     /// Only if the node has registered, its heartbeat data will be accepted.
     ///
     /// \param node_id ID of the node to be registered.
-    void AddNode(const ClientID &node_id);
+    void AddNode(const ClientID& node_id);
 
     /// Handle a heartbeat from a Raylet.
     ///
     /// \param node_id The client ID of the Raylet that sent the heartbeat.
     /// \param heartbeat_data The heartbeat sent by the client.
-    void HandleHeartbeat(const ClientID &node_id,
-                         const rpc::HeartbeatTableData &heartbeat_data);
+    void HandleHeartbeat(const ClientID& node_id,
+                         const rpc::HeartbeatTableData& heartbeat_data);
 
    protected:
     /// A periodic timer that fires on every heartbeat period. Raylets that have
@@ -200,7 +200,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     /// Storage for GCS tables.
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
     /// The callback of node death.
-    std::function<void(const ClientID &)> on_node_death_callback_;
+    std::function<void(const ClientID&)> on_node_death_callback_;
     /// The number of heartbeats that can be missed before a node is removed.
     int64_t num_heartbeats_timeout_;
     // Only the changed part will be included in heartbeat if this is true.
@@ -220,13 +220,13 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
 
  private:
   /// Error info accessor.
-  gcs::ErrorInfoAccessor &error_info_accessor_;
+  gcs::ErrorInfoAccessor& error_info_accessor_;
   /// The main event loop for node failure detector.
-  boost::asio::io_service &main_io_service_;
+  boost::asio::io_service& main_io_service_;
   /// Detector to detect the failure of node.
   std::unique_ptr<NodeFailureDetector> node_failure_detector_;
   /// The event loop for node failure detector.
-  boost::asio::io_service &node_failure_detector_service_;
+  boost::asio::io_service& node_failure_detector_service_;
   /// Alive nodes.
   absl::flat_hash_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes_;
   /// Dead nodes.

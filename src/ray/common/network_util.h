@@ -47,8 +47,8 @@ class AsyncClient {
   /// \param is_timeout Whether connection timeout.
   /// \param error_code Set to indicate what error occurred, if any.
   /// \return Whether the connection is successful.
-  bool Connect(const std::string &ip, int port, int64_t timeout_ms, bool *is_timeout,
-               boost::system::error_code *error_code = nullptr) {
+  bool Connect(const std::string& ip, int port, int64_t timeout_ms, bool* is_timeout,
+               boost::system::error_code* error_code = nullptr) {
     try {
       auto endpoint =
           boost::asio::ip::tcp::endpoint(boost::asio::ip::address::from_string(ip), port);
@@ -86,14 +86,14 @@ class AsyncClient {
   }
 
  private:
-  void ConnectHandle(boost::system::error_code error_code, bool &is_connected) {
+  void ConnectHandle(boost::system::error_code error_code, bool& is_connected) {
     error_code_ = error_code;
     if (!error_code) {
       is_connected = true;
     }
   }
 
-  void TimerHandle(bool *is_timeout) {
+  void TimerHandle(bool* is_timeout) {
     socket_.close();
     *is_timeout = true;
   }
@@ -121,6 +121,6 @@ std::string GetValidLocalIp(int port, int64_t timeout_ms);
 /// \param port The port that the target rpc server is listening on.
 /// \param timeout_ms The maximum wait time in milliseconds.
 /// \return Whether target rpc server is valid.
-bool Ping(const std::string &ip, int port, int64_t timeout_ms);
+bool Ping(const std::string& ip, int port, int64_t timeout_ms);
 
 bool CheckFree(int port);

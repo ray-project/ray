@@ -45,9 +45,9 @@ class GcsActor {
   /// Create a GcsActor by TaskSpec.
   ///
   /// \param task_spec Contains the actor creation task specification.
-  explicit GcsActor(const ray::rpc::TaskSpec &task_spec) {
+  explicit GcsActor(const ray::rpc::TaskSpec& task_spec) {
     RAY_CHECK(task_spec.type() == TaskType::ACTOR_CREATION_TASK);
-    const auto &actor_creation_task_spec = task_spec.actor_creation_task_spec();
+    const auto& actor_creation_task_spec = task_spec.actor_creation_task_spec();
     actor_table_data_.set_actor_id(actor_creation_task_spec.actor_id());
     actor_table_data_.set_job_id(task_spec.job_id());
     actor_table_data_.set_max_restarts(actor_creation_task_spec.max_actor_restarts());
@@ -76,12 +76,12 @@ class GcsActor {
   /// Get the node ID of the actor's owner.
   ClientID GetOwnerNodeID() const;
   /// Get the address of the actor's owner.
-  const rpc::Address &GetOwnerAddress() const;
+  const rpc::Address& GetOwnerAddress() const;
 
   /// Update the `Address` of this actor (see gcs.proto).
-  void UpdateAddress(const rpc::Address &address);
+  void UpdateAddress(const rpc::Address& address);
   /// Get the `Address` of this actor.
-  const rpc::Address &GetAddress() const;
+  const rpc::Address& GetAddress() const;
 
   /// Update the state of this actor.
   void UpdateState(rpc::ActorTableData::ActorState state);
@@ -98,9 +98,9 @@ class GcsActor {
   TaskSpecification GetCreationTaskSpecification() const;
 
   /// Get the immutable ActorTableData of this actor.
-  const rpc::ActorTableData &GetActorTableData() const;
+  const rpc::ActorTableData& GetActorTableData() const;
   /// Get the mutable ActorTableData of this actor.
-  rpc::ActorTableData *GetMutableActorTableData();
+  rpc::ActorTableData* GetMutableActorTableData();
 
  private:
   /// The actor meta data which contains the task specification as well as the state of
@@ -164,48 +164,48 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   GcsActorManager(std::shared_ptr<GcsActorSchedulerInterface> scheduler,
                   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
                   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
-                  const rpc::ClientFactoryFn &worker_client_factory = nullptr);
+                  const rpc::ClientFactoryFn& worker_client_factory = nullptr);
 
   ~GcsActorManager() = default;
 
-  void HandleRegisterActor(const rpc::RegisterActorRequest &request,
-                           rpc::RegisterActorReply *reply,
+  void HandleRegisterActor(const rpc::RegisterActorRequest& request,
+                           rpc::RegisterActorReply* reply,
                            rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleCreateActor(const rpc::CreateActorRequest &request,
-                         rpc::CreateActorReply *reply,
+  void HandleCreateActor(const rpc::CreateActorRequest& request,
+                         rpc::CreateActorReply* reply,
                          rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleGetActorInfo(const rpc::GetActorInfoRequest &request,
-                          rpc::GetActorInfoReply *reply,
+  void HandleGetActorInfo(const rpc::GetActorInfoRequest& request,
+                          rpc::GetActorInfoReply* reply,
                           rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleGetNamedActorInfo(const rpc::GetNamedActorInfoRequest &request,
-                               rpc::GetNamedActorInfoReply *reply,
+  void HandleGetNamedActorInfo(const rpc::GetNamedActorInfoRequest& request,
+                               rpc::GetNamedActorInfoReply* reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleGetAllActorInfo(const rpc::GetAllActorInfoRequest &request,
-                             rpc::GetAllActorInfoReply *reply,
+  void HandleGetAllActorInfo(const rpc::GetAllActorInfoRequest& request,
+                             rpc::GetAllActorInfoReply* reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleRegisterActorInfo(const rpc::RegisterActorInfoRequest &request,
-                               rpc::RegisterActorInfoReply *reply,
+  void HandleRegisterActorInfo(const rpc::RegisterActorInfoRequest& request,
+                               rpc::RegisterActorInfoReply* reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleUpdateActorInfo(const rpc::UpdateActorInfoRequest &request,
-                             rpc::UpdateActorInfoReply *reply,
+  void HandleUpdateActorInfo(const rpc::UpdateActorInfoRequest& request,
+                             rpc::UpdateActorInfoReply* reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleAddActorCheckpoint(const rpc::AddActorCheckpointRequest &request,
-                                rpc::AddActorCheckpointReply *reply,
+  void HandleAddActorCheckpoint(const rpc::AddActorCheckpointRequest& request,
+                                rpc::AddActorCheckpointReply* reply,
                                 rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleGetActorCheckpoint(const rpc::GetActorCheckpointRequest &request,
-                                rpc::GetActorCheckpointReply *reply,
+  void HandleGetActorCheckpoint(const rpc::GetActorCheckpointRequest& request,
+                                rpc::GetActorCheckpointReply* reply,
                                 rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleGetActorCheckpointID(const rpc::GetActorCheckpointIDRequest &request,
-                                  rpc::GetActorCheckpointIDReply *reply,
+  void HandleGetActorCheckpointID(const rpc::GetActorCheckpointIDRequest& request,
+                                  rpc::GetActorCheckpointIDReply* reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
 
   /// Register actor asynchronously.
@@ -216,7 +216,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// its state is `ALIVE`.
   /// \return Status::Invalid if this is a named actor and an actor with the specified
   /// name already exists. The callback will not be called in this case.
-  Status RegisterActor(const rpc::RegisterActorRequest &request,
+  Status RegisterActor(const rpc::RegisterActorRequest& request,
                        RegisterActorCallback callback);
 
   /// Create actor asynchronously.
@@ -227,13 +227,13 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// its state is `ALIVE`.
   /// \return Status::Invalid if this is a named actor and an actor with the specified
   /// name already exists. The callback will not be called in this case.
-  Status CreateActor(const rpc::CreateActorRequest &request,
+  Status CreateActor(const rpc::CreateActorRequest& request,
                      CreateActorCallback callback);
 
   /// Get the actor ID for the named actor. Returns nil if the actor was not found.
   /// \param name The name of the detached actor to look up.
   /// \returns ActorID The ID of the actor. Nil if the actor was not found.
-  ActorID GetActorIDByName(const std::string &name);
+  ActorID GetActorIDByName(const std::string& name);
 
   /// Schedule actors in the `pending_actors_` queue.
   /// This method should be called when new nodes are registered or resources
@@ -247,7 +247,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// owned an actor, those actors will be destroyed.
   ///
   /// \param node_id The specified node id.
-  void OnNodeDead(const ClientID &node_id);
+  void OnNodeDead(const ClientID& node_id);
 
   /// Handle a worker failure. This will restart the associated actor, if any,
   /// which may be pending or already created. If the worker owned other
@@ -257,7 +257,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param worker_id ID of the dead worker.
   /// \param intentional_exit Whether the death was intentional. If yes and the
   /// worker was an actor, we should not attempt to restart the actor.
-  void OnWorkerDead(const ClientID &node_id, const WorkerID &worker_id,
+  void OnWorkerDead(const ClientID& node_id, const WorkerID& worker_id,
                     bool intentional_exit = false);
 
   /// Handle actor creation task failure. This should be called when scheduling
@@ -270,31 +270,31 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// creation task has been scheduled successfully.
   ///
   /// \param actor The actor that has been created.
-  void OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor);
+  void OnActorCreationSuccess(const std::shared_ptr<GcsActor>& actor);
 
   /// Load initial data from gcs storage to memory cache asynchronously.
   /// This should be called when GCS server restarts after a failure.
   ///
   /// \param done Callback that will be called when load is complete.
-  void LoadInitialData(const EmptyCallback &done);
+  void LoadInitialData(const EmptyCallback& done);
 
   /// Delete non-detached actor information from durable storage once the associated job
   /// finishes.
   ///
   /// \param job_id The id of finished job.
-  void OnJobFinished(const JobID &job_id);
+  void OnJobFinished(const JobID& job_id);
 
   /// Get the created actors.
   ///
   /// \return The created actors.
-  const absl::flat_hash_map<ClientID, absl::flat_hash_map<WorkerID, ActorID>>
-      &GetCreatedActors() const;
+  const absl::flat_hash_map<ClientID, absl::flat_hash_map<WorkerID, ActorID>>&
+  GetCreatedActors() const;
 
-  const absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> &GetRegisteredActors()
+  const absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>>& GetRegisteredActors()
       const;
 
-  const absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
-      &GetActorRegisterCallbacks() const;
+  const absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>&
+  GetActorRegisterCallbacks() const;
 
  private:
   /// A data structure representing an actor's owner.
@@ -310,7 +310,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// Poll an actor's owner so that we will receive a notification when the
   /// actor has gone out of scope, or the owner has died. This should not be
   /// called for detached actors.
-  void PollOwnerForActorOutOfScope(const std::shared_ptr<GcsActor> &actor);
+  void PollOwnerForActorOutOfScope(const std::shared_ptr<GcsActor>& actor);
 
   /// Destroy an actor that has gone out of scope. This cleans up all local
   /// state associated with the actor and marks the actor as dead. For owned
@@ -318,15 +318,15 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// scope or the owner has died.
   /// TODO: For detached actors, this should be called when the application
   /// deregisters the actor.
-  void DestroyActor(const ActorID &actor_id);
+  void DestroyActor(const ActorID& actor_id);
 
   /// Get unresolved actors that were submitted from the specified node.
   absl::flat_hash_set<ActorID> GetUnresolvedActorsByOwnerNode(
-      const ClientID &node_id) const;
+      const ClientID& node_id) const;
 
   /// Get unresolved actors that were submitted from the specified worker.
   absl::flat_hash_set<ActorID> GetUnresolvedActorsByOwnerWorker(
-      const ClientID &node_id, const WorkerID &worker_id) const;
+      const ClientID& node_id, const WorkerID& worker_id) const;
 
  private:
   /// Reconstruct the specified actor.
@@ -335,7 +335,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param need_reschedule Whether to reschedule the actor creation task, sometimes
   /// users want to kill an actor intentionally and don't want it to be reconstructed
   /// again.
-  void ReconstructActor(const ActorID &actor_id, bool need_reschedule = true);
+  void ReconstructActor(const ActorID& actor_id, bool need_reschedule = true);
 
   /// Callbacks of pending `RegisterActor` requests.
   /// Maps actor ID to actor registration callbacks, which is used to filter duplicated

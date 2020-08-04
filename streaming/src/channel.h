@@ -77,58 +77,58 @@ struct ConsumerChannelInfo {
 ///  ConsumeItemFrom channel)
 class ProducerChannel {
  public:
-  explicit ProducerChannel(std::shared_ptr<Config> &transfer_config,
-                           ProducerChannelInfo &p_channel_info);
+  explicit ProducerChannel(std::shared_ptr<Config>& transfer_config,
+                           ProducerChannelInfo& p_channel_info);
   virtual ~ProducerChannel() = default;
   virtual StreamingStatus CreateTransferChannel() = 0;
   virtual StreamingStatus DestroyTransferChannel() = 0;
   virtual StreamingStatus ClearTransferCheckpoint(uint64_t checkpoint_id,
                                                   uint64_t checkpoint_offset) = 0;
   virtual StreamingStatus RefreshChannelInfo() = 0;
-  virtual StreamingStatus ProduceItemToChannel(uint8_t *data, uint32_t data_size) = 0;
+  virtual StreamingStatus ProduceItemToChannel(uint8_t* data, uint32_t data_size) = 0;
   virtual StreamingStatus NotifyChannelConsumed(uint64_t channel_offset) = 0;
 
  protected:
   std::shared_ptr<Config> transfer_config_;
-  ProducerChannelInfo &channel_info_;
+  ProducerChannelInfo& channel_info_;
 };
 
 class ConsumerChannel {
  public:
-  explicit ConsumerChannel(std::shared_ptr<Config> &transfer_config,
-                           ConsumerChannelInfo &c_channel_info);
+  explicit ConsumerChannel(std::shared_ptr<Config>& transfer_config,
+                           ConsumerChannelInfo& c_channel_info);
   virtual ~ConsumerChannel() = default;
   virtual StreamingStatus CreateTransferChannel() = 0;
   virtual StreamingStatus DestroyTransferChannel() = 0;
   virtual StreamingStatus ClearTransferCheckpoint(uint64_t checkpoint_id,
                                                   uint64_t checkpoint_offset) = 0;
   virtual StreamingStatus RefreshChannelInfo() = 0;
-  virtual StreamingStatus ConsumeItemFromChannel(uint64_t &offset_id, uint8_t *&data,
-                                                 uint32_t &data_size,
+  virtual StreamingStatus ConsumeItemFromChannel(uint64_t& offset_id, uint8_t*& data,
+                                                 uint32_t& data_size,
                                                  uint32_t timeout) = 0;
   virtual StreamingStatus NotifyChannelConsumed(uint64_t offset_id) = 0;
 
  protected:
   std::shared_ptr<Config> transfer_config_;
-  ConsumerChannelInfo &channel_info_;
+  ConsumerChannelInfo& channel_info_;
 };
 
 class StreamingQueueProducer : public ProducerChannel {
  public:
-  explicit StreamingQueueProducer(std::shared_ptr<Config> &transfer_config,
-                                  ProducerChannelInfo &p_channel_info);
+  explicit StreamingQueueProducer(std::shared_ptr<Config>& transfer_config,
+                                  ProducerChannelInfo& p_channel_info);
   ~StreamingQueueProducer() override;
   StreamingStatus CreateTransferChannel() override;
   StreamingStatus DestroyTransferChannel() override;
   StreamingStatus ClearTransferCheckpoint(uint64_t checkpoint_id,
                                           uint64_t checkpoint_offset) override;
   StreamingStatus RefreshChannelInfo() override;
-  StreamingStatus ProduceItemToChannel(uint8_t *data, uint32_t data_size) override;
+  StreamingStatus ProduceItemToChannel(uint8_t* data, uint32_t data_size) override;
   StreamingStatus NotifyChannelConsumed(uint64_t offset_id) override;
 
  private:
   StreamingStatus CreateQueue();
-  Status PushQueueItem(uint64_t seq_id, uint8_t *data, uint32_t data_size,
+  Status PushQueueItem(uint64_t seq_id, uint8_t* data, uint32_t data_size,
                        uint64_t timestamp);
 
  private:
@@ -137,16 +137,16 @@ class StreamingQueueProducer : public ProducerChannel {
 
 class StreamingQueueConsumer : public ConsumerChannel {
  public:
-  explicit StreamingQueueConsumer(std::shared_ptr<Config> &transfer_config,
-                                  ConsumerChannelInfo &c_channel_info);
+  explicit StreamingQueueConsumer(std::shared_ptr<Config>& transfer_config,
+                                  ConsumerChannelInfo& c_channel_info);
   ~StreamingQueueConsumer() override;
   StreamingStatus CreateTransferChannel() override;
   StreamingStatus DestroyTransferChannel() override;
   StreamingStatus ClearTransferCheckpoint(uint64_t checkpoint_id,
                                           uint64_t checkpoint_offset) override;
   StreamingStatus RefreshChannelInfo() override;
-  StreamingStatus ConsumeItemFromChannel(uint64_t &offset_id, uint8_t *&data,
-                                         uint32_t &data_size, uint32_t timeout) override;
+  StreamingStatus ConsumeItemFromChannel(uint64_t& offset_id, uint8_t*& data,
+                                         uint32_t& data_size, uint32_t timeout) override;
   StreamingStatus NotifyChannelConsumed(uint64_t offset_id) override;
 
  private:
@@ -157,8 +157,8 @@ class StreamingQueueConsumer : public ConsumerChannel {
 /// conduct a very simple memory channel for unit tests or intergation test.
 class MockProducer : public ProducerChannel {
  public:
-  explicit MockProducer(std::shared_ptr<Config> &transfer_config,
-                        ProducerChannelInfo &channel_info)
+  explicit MockProducer(std::shared_ptr<Config>& transfer_config,
+                        ProducerChannelInfo& channel_info)
       : ProducerChannel(transfer_config, channel_info){};
   StreamingStatus CreateTransferChannel() override;
 
@@ -171,7 +171,7 @@ class MockProducer : public ProducerChannel {
 
   StreamingStatus RefreshChannelInfo() override;
 
-  StreamingStatus ProduceItemToChannel(uint8_t *data, uint32_t data_size) override;
+  StreamingStatus ProduceItemToChannel(uint8_t* data, uint32_t data_size) override;
 
   StreamingStatus NotifyChannelConsumed(uint64_t channel_offset) override {
     return StreamingStatus::OK;
@@ -180,8 +180,8 @@ class MockProducer : public ProducerChannel {
 
 class MockConsumer : public ConsumerChannel {
  public:
-  explicit MockConsumer(std::shared_ptr<Config> &transfer_config,
-                        ConsumerChannelInfo &c_channel_info)
+  explicit MockConsumer(std::shared_ptr<Config>& transfer_config,
+                        ConsumerChannelInfo& c_channel_info)
       : ConsumerChannel(transfer_config, c_channel_info){};
   StreamingStatus CreateTransferChannel() override { return StreamingStatus::OK; }
   StreamingStatus DestroyTransferChannel() override { return StreamingStatus::OK; }
@@ -190,8 +190,8 @@ class MockConsumer : public ConsumerChannel {
     return StreamingStatus::OK;
   }
   StreamingStatus RefreshChannelInfo() override;
-  StreamingStatus ConsumeItemFromChannel(uint64_t &offset_id, uint8_t *&data,
-                                         uint32_t &data_size, uint32_t timeout) override;
+  StreamingStatus ConsumeItemFromChannel(uint64_t& offset_id, uint8_t*& data,
+                                         uint32_t& data_size, uint32_t timeout) override;
   StreamingStatus NotifyChannelConsumed(uint64_t offset_id) override;
 };
 

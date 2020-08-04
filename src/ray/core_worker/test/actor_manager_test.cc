@@ -30,22 +30,22 @@ using ::testing::_;
 
 class MockActorInfoAccessor : public gcs::RedisActorInfoAccessor {
  public:
-  MockActorInfoAccessor(gcs::RedisGcsClient *client)
+  MockActorInfoAccessor(gcs::RedisGcsClient* client)
       : gcs::RedisActorInfoAccessor(client) {}
 
   ~MockActorInfoAccessor() {}
 
   ray::Status AsyncSubscribe(
-      const ActorID &actor_id,
-      const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-      const gcs::StatusCallback &done) {
+      const ActorID& actor_id,
+      const gcs::SubscribeCallback<ActorID, rpc::ActorTableData>& subscribe,
+      const gcs::StatusCallback& done) {
     auto callback_entry = std::make_pair(actor_id, subscribe);
     callback_map_.emplace(actor_id, subscribe);
     return Status::OK();
   }
 
-  bool ActorStateNotificationPublished(const ActorID &actor_id,
-                                       const gcs::ActorTableData &actor_data) {
+  bool ActorStateNotificationPublished(const ActorID& actor_id,
+                                       const gcs::ActorTableData& actor_data) {
     auto it = callback_map_.find(actor_id);
     if (it == callback_map_.end()) return false;
     auto actor_state_notification_callback = it->second;
@@ -53,7 +53,7 @@ class MockActorInfoAccessor : public gcs::RedisActorInfoAccessor {
     return true;
   }
 
-  bool CheckSubscriptionRequested(const ActorID &actor_id) {
+  bool CheckSubscriptionRequested(const ActorID& actor_id) {
     return callback_map_.find(actor_id) != callback_map_.end();
   }
 
@@ -63,9 +63,9 @@ class MockActorInfoAccessor : public gcs::RedisActorInfoAccessor {
 
 class MockGcsClient : public gcs::RedisGcsClient {
  public:
-  MockGcsClient(const gcs::GcsClientOptions &options) : gcs::RedisGcsClient(options) {}
+  MockGcsClient(const gcs::GcsClientOptions& options) : gcs::RedisGcsClient(options) {}
 
-  void Init(MockActorInfoAccessor *actor_accesor_mock) {
+  void Init(MockActorInfoAccessor* actor_accesor_mock) {
     actor_accessor_.reset(actor_accesor_mock);
   }
 
@@ -76,13 +76,13 @@ class MockDirectActorSubmitter : public CoreWorkerDirectActorTaskSubmitterInterf
  public:
   MockDirectActorSubmitter() : CoreWorkerDirectActorTaskSubmitterInterface() {}
 
-  MOCK_METHOD1(AddActorQueueIfNotExists, void(const ActorID &actor_id));
-  MOCK_METHOD3(ConnectActor, void(const ActorID &actor_id, const rpc::Address &address,
+  MOCK_METHOD1(AddActorQueueIfNotExists, void(const ActorID& actor_id));
+  MOCK_METHOD3(ConnectActor, void(const ActorID& actor_id, const rpc::Address& address,
                                   int64_t num_restarts));
   MOCK_METHOD3(DisconnectActor,
-               void(const ActorID &actor_id, int64_t num_restarts, bool dead));
+               void(const ActorID& actor_id, int64_t num_restarts, bool dead));
   MOCK_METHOD3(KillActor,
-               void(const ActorID &actor_id, bool force_kill, bool no_restart));
+               void(const ActorID& actor_id, bool force_kill, bool no_restart));
 
   virtual ~MockDirectActorSubmitter() {}
 };
@@ -92,21 +92,21 @@ class MockReferenceCounter : public ReferenceCounterInterface {
   MockReferenceCounter() : ReferenceCounterInterface() {}
 
   MOCK_METHOD2(AddLocalReference,
-               void(const ObjectID &object_id, const std::string &call_sit));
+               void(const ObjectID& object_id, const std::string& call_sit));
 
   MOCK_METHOD3(AddBorrowedObject,
-               bool(const ObjectID &object_id, const ObjectID &outer_id,
-                    const rpc::Address &owner_address));
+               bool(const ObjectID& object_id, const ObjectID& outer_id,
+                    const rpc::Address& owner_address));
 
   MOCK_METHOD7(AddOwnedObject,
-               void(const ObjectID &object_id, const std::vector<ObjectID> &contained_ids,
-                    const rpc::Address &owner_address, const std::string &call_site,
+               void(const ObjectID& object_id, const std::vector<ObjectID>& contained_ids,
+                    const rpc::Address& owner_address, const std::string& call_site,
                     const int64_t object_size, bool is_reconstructable,
-                    const absl::optional<ClientID> &pinned_at_raylet_id));
+                    const absl::optional<ClientID>& pinned_at_raylet_id));
 
   MOCK_METHOD2(SetDeleteCallback,
-               bool(const ObjectID &object_id,
-                    const std::function<void(const ObjectID &)> callback));
+               bool(const ObjectID& object_id,
+                    const std::function<void(const ObjectID&)> callback));
 
   virtual ~MockReferenceCounter() {}
 };
@@ -152,7 +152,7 @@ class ActorManagerTest : public ::testing::Test {
 
   gcs::GcsClientOptions options_;
   std::shared_ptr<MockGcsClient> gcs_client_mock_;
-  MockActorInfoAccessor *actor_info_accessor_;
+  MockActorInfoAccessor* actor_info_accessor_;
   std::shared_ptr<MockDirectActorSubmitter> direct_actor_submitter_;
   std::shared_ptr<MockReferenceCounter> reference_counter_;
   std::shared_ptr<ActorManager> actor_manager_;
@@ -186,7 +186,7 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
   ASSERT_FALSE(actor_manager_->AddNewActorHandle(move(actor_handle2), task_id, call_site,
                                                  caller_address, false));
   // Make sure we can get an actor handle correctly.
-  const std::unique_ptr<ActorHandle> &actor_handle_to_get =
+  const std::unique_ptr<ActorHandle>& actor_handle_to_get =
       actor_manager_->GetActorHandle(actor_id);
   ASSERT_TRUE(actor_handle_to_get->GetActorID() == actor_id);
 
@@ -233,7 +233,7 @@ TEST_F(ActorManagerTest, RegisterActorHandles) {
       std::move(actor_handle), outer_object_id, task_id, call_site, caller_address);
   ASSERT_TRUE(returned_actor_id == actor_id);
   // Let's try to get the handle and make sure it works.
-  const std::unique_ptr<ActorHandle> &actor_handle_to_get =
+  const std::unique_ptr<ActorHandle>& actor_handle_to_get =
       actor_manager_->GetActorHandle(actor_id);
   ASSERT_TRUE(actor_handle_to_get->GetActorID() == actor_id);
   ASSERT_TRUE(actor_handle_to_get->CreationJobID() == job_id);
@@ -289,7 +289,7 @@ TEST_F(ActorManagerTest, TestActorStateNotificationAlive) {
 
 }  // namespace ray
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

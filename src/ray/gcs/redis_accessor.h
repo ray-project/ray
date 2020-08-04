@@ -32,64 +32,64 @@ class RedisGcsClient;
 /// that uses Redis as the backend storage.
 class RedisLogBasedActorInfoAccessor : public ActorInfoAccessor {
  public:
-  explicit RedisLogBasedActorInfoAccessor(RedisGcsClient *client_impl);
+  explicit RedisLogBasedActorInfoAccessor(RedisGcsClient* client_impl);
 
   virtual ~RedisLogBasedActorInfoAccessor() {}
 
-  Status GetAll(std::vector<ActorTableData> *actor_table_data_list) override;
+  Status GetAll(std::vector<ActorTableData>* actor_table_data_list) override;
 
-  Status AsyncGet(const ActorID &actor_id,
-                  const OptionalItemCallback<ActorTableData> &callback) override;
+  Status AsyncGet(const ActorID& actor_id,
+                  const OptionalItemCallback<ActorTableData>& callback) override;
 
-  Status AsyncGetAll(const MultiItemCallback<rpc::ActorTableData> &callback) override {
+  Status AsyncGetAll(const MultiItemCallback<rpc::ActorTableData>& callback) override {
     return Status::NotImplemented(
         "RedisLogBasedActorInfoAccessor does not support AsyncGetAll.");
   }
 
-  Status AsyncGetByName(const std::string &name,
-                        const OptionalItemCallback<ActorTableData> &callback) override {
+  Status AsyncGetByName(const std::string& name,
+                        const OptionalItemCallback<ActorTableData>& callback) override {
     return Status::NotImplemented(
         "RedisLogBasedActorInfoAccessor does not support named detached actors.");
   }
 
-  Status AsyncRegisterActor(const TaskSpecification &task_spec,
-                            const StatusCallback &callback) override;
+  Status AsyncRegisterActor(const TaskSpecification& task_spec,
+                            const StatusCallback& callback) override;
 
-  Status AsyncCreateActor(const TaskSpecification &task_spec,
-                          const StatusCallback &callback) override;
+  Status AsyncCreateActor(const TaskSpecification& task_spec,
+                          const StatusCallback& callback) override;
 
-  Status AsyncRegister(const std::shared_ptr<ActorTableData> &data_ptr,
-                       const StatusCallback &callback) override;
+  Status AsyncRegister(const std::shared_ptr<ActorTableData>& data_ptr,
+                       const StatusCallback& callback) override;
 
-  Status AsyncUpdate(const ActorID &actor_id,
-                     const std::shared_ptr<ActorTableData> &data_ptr,
-                     const StatusCallback &callback) override;
+  Status AsyncUpdate(const ActorID& actor_id,
+                     const std::shared_ptr<ActorTableData>& data_ptr,
+                     const StatusCallback& callback) override;
 
-  Status AsyncSubscribeAll(const SubscribeCallback<ActorID, ActorTableData> &subscribe,
-                           const StatusCallback &done) override;
+  Status AsyncSubscribeAll(const SubscribeCallback<ActorID, ActorTableData>& subscribe,
+                           const StatusCallback& done) override;
 
-  Status AsyncSubscribe(const ActorID &actor_id,
-                        const SubscribeCallback<ActorID, ActorTableData> &subscribe,
-                        const StatusCallback &done) override;
+  Status AsyncSubscribe(const ActorID& actor_id,
+                        const SubscribeCallback<ActorID, ActorTableData>& subscribe,
+                        const StatusCallback& done) override;
 
-  Status AsyncUnsubscribe(const ActorID &actor_id) override;
+  Status AsyncUnsubscribe(const ActorID& actor_id) override;
 
-  Status AsyncAddCheckpoint(const std::shared_ptr<ActorCheckpointData> &data_ptr,
-                            const StatusCallback &callback) override;
+  Status AsyncAddCheckpoint(const std::shared_ptr<ActorCheckpointData>& data_ptr,
+                            const StatusCallback& callback) override;
 
   Status AsyncGetCheckpoint(
-      const ActorCheckpointID &checkpoint_id, const ActorID &actor_id,
-      const OptionalItemCallback<ActorCheckpointData> &callback) override;
+      const ActorCheckpointID& checkpoint_id, const ActorID& actor_id,
+      const OptionalItemCallback<ActorCheckpointData>& callback) override;
 
   Status AsyncGetCheckpointID(
-      const ActorID &actor_id,
-      const OptionalItemCallback<ActorCheckpointIdData> &callback) override;
+      const ActorID& actor_id,
+      const OptionalItemCallback<ActorCheckpointIdData>& callback) override;
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
 
  protected:
   virtual std::vector<ActorID> GetAllActorID() const;
-  virtual Status Get(const ActorID &actor_id, ActorTableData *actor_table_data) const;
+  virtual Status Get(const ActorID& actor_id, ActorTableData* actor_table_data) const;
 
  private:
   /// Add checkpoint id to GCS asynchronously.
@@ -97,12 +97,12 @@ class RedisLogBasedActorInfoAccessor : public ActorInfoAccessor {
   /// \param actor_id The ID of actor that the checkpoint belongs to.
   /// \param checkpoint_id The ID of checkpoint that will be added to GCS.
   /// \return Status
-  Status AsyncAddCheckpointID(const ActorID &actor_id,
-                              const ActorCheckpointID &checkpoint_id,
-                              const StatusCallback &callback);
+  Status AsyncAddCheckpointID(const ActorID& actor_id,
+                              const ActorCheckpointID& checkpoint_id,
+                              const StatusCallback& callback);
 
  protected:
-  RedisGcsClient *client_impl_{nullptr};
+  RedisGcsClient* client_impl_{nullptr};
   // Use a random ClientID for actor subscription. Because:
   // If we use ClientID::Nil, GCS will still send all actors' updates to this GCS Client.
   // Even we can filter out irrelevant updates, but there will be extra overhead.
@@ -122,40 +122,40 @@ class RedisLogBasedActorInfoAccessor : public ActorInfoAccessor {
 /// that uses Redis as the backend storage.
 class RedisActorInfoAccessor : public RedisLogBasedActorInfoAccessor {
  public:
-  explicit RedisActorInfoAccessor(RedisGcsClient *client_impl);
+  explicit RedisActorInfoAccessor(RedisGcsClient* client_impl);
 
   virtual ~RedisActorInfoAccessor() {}
 
-  Status AsyncGet(const ActorID &actor_id,
-                  const OptionalItemCallback<ActorTableData> &callback) override;
+  Status AsyncGet(const ActorID& actor_id,
+                  const OptionalItemCallback<ActorTableData>& callback) override;
 
-  Status AsyncGetAll(const MultiItemCallback<rpc::ActorTableData> &callback) override;
+  Status AsyncGetAll(const MultiItemCallback<rpc::ActorTableData>& callback) override;
 
-  Status AsyncGetByName(const std::string &name,
-                        const OptionalItemCallback<ActorTableData> &callback) override {
+  Status AsyncGetByName(const std::string& name,
+                        const OptionalItemCallback<ActorTableData>& callback) override {
     return Status::NotImplemented(
         "RedisActorInfoAccessor does not support named detached actors.");
   }
 
-  Status AsyncRegister(const std::shared_ptr<ActorTableData> &data_ptr,
-                       const StatusCallback &callback) override;
+  Status AsyncRegister(const std::shared_ptr<ActorTableData>& data_ptr,
+                       const StatusCallback& callback) override;
 
-  Status AsyncUpdate(const ActorID &actor_id,
-                     const std::shared_ptr<ActorTableData> &data_ptr,
-                     const StatusCallback &callback) override;
+  Status AsyncUpdate(const ActorID& actor_id,
+                     const std::shared_ptr<ActorTableData>& data_ptr,
+                     const StatusCallback& callback) override;
 
-  Status AsyncSubscribeAll(const SubscribeCallback<ActorID, ActorTableData> &subscribe,
-                           const StatusCallback &done) override;
+  Status AsyncSubscribeAll(const SubscribeCallback<ActorID, ActorTableData>& subscribe,
+                           const StatusCallback& done) override;
 
-  Status AsyncSubscribe(const ActorID &actor_id,
-                        const SubscribeCallback<ActorID, ActorTableData> &subscribe,
-                        const StatusCallback &done) override;
+  Status AsyncSubscribe(const ActorID& actor_id,
+                        const SubscribeCallback<ActorID, ActorTableData>& subscribe,
+                        const StatusCallback& done) override;
 
-  Status AsyncUnsubscribe(const ActorID &actor_id) override;
+  Status AsyncUnsubscribe(const ActorID& actor_id) override;
 
  protected:
   std::vector<ActorID> GetAllActorID() const override;
-  Status Get(const ActorID &actor_id, ActorTableData *actor_table_data) const override;
+  Status Get(const ActorID& actor_id, ActorTableData* actor_table_data) const override;
 
  private:
   typedef SubscriptionExecutor<ActorID, ActorTableData, ActorTable>
@@ -168,19 +168,19 @@ class RedisActorInfoAccessor : public RedisLogBasedActorInfoAccessor {
 /// that uses Redis as the backend storage.
 class RedisJobInfoAccessor : public JobInfoAccessor {
  public:
-  explicit RedisJobInfoAccessor(RedisGcsClient *client_impl);
+  explicit RedisJobInfoAccessor(RedisGcsClient* client_impl);
 
   virtual ~RedisJobInfoAccessor() {}
 
-  Status AsyncAdd(const std::shared_ptr<JobTableData> &data_ptr,
-                  const StatusCallback &callback) override;
+  Status AsyncAdd(const std::shared_ptr<JobTableData>& data_ptr,
+                  const StatusCallback& callback) override;
 
-  Status AsyncMarkFinished(const JobID &job_id, const StatusCallback &callback) override;
+  Status AsyncMarkFinished(const JobID& job_id, const StatusCallback& callback) override;
 
-  Status AsyncSubscribeAll(const SubscribeCallback<JobID, JobTableData> &subscribe,
-                           const StatusCallback &done) override;
+  Status AsyncSubscribeAll(const SubscribeCallback<JobID, JobTableData>& subscribe,
+                           const StatusCallback& done) override;
 
-  Status AsyncGetAll(const MultiItemCallback<rpc::JobTableData> &callback) override {
+  Status AsyncGetAll(const MultiItemCallback<rpc::JobTableData>& callback) override {
     return Status::NotImplemented("AsyncGetAll not implemented");
   }
 
@@ -192,10 +192,10 @@ class RedisJobInfoAccessor : public JobInfoAccessor {
   /// \param data_ptr The job information that will be appended to GCS.
   /// \param callback Callback that will be called after append done.
   /// \return Status
-  Status DoAsyncAppend(const std::shared_ptr<JobTableData> &data_ptr,
-                       const StatusCallback &callback);
+  Status DoAsyncAppend(const std::shared_ptr<JobTableData>& data_ptr,
+                       const StatusCallback& callback);
 
-  RedisGcsClient *client_impl_{nullptr};
+  RedisGcsClient* client_impl_{nullptr};
 
   typedef SubscriptionExecutor<JobID, JobTableData, JobTable> JobSubscriptionExecutor;
   JobSubscriptionExecutor job_sub_executor_;
@@ -206,46 +206,46 @@ class RedisJobInfoAccessor : public JobInfoAccessor {
 /// that uses Redis as the backend storage.
 class RedisTaskInfoAccessor : public TaskInfoAccessor {
  public:
-  explicit RedisTaskInfoAccessor(RedisGcsClient *client_impl);
+  explicit RedisTaskInfoAccessor(RedisGcsClient* client_impl);
 
   virtual ~RedisTaskInfoAccessor() {}
 
-  Status AsyncAdd(const std::shared_ptr<TaskTableData> &data_ptr,
-                  const StatusCallback &callback) override;
+  Status AsyncAdd(const std::shared_ptr<TaskTableData>& data_ptr,
+                  const StatusCallback& callback) override;
 
-  Status AsyncGet(const TaskID &task_id,
-                  const OptionalItemCallback<TaskTableData> &callback) override;
+  Status AsyncGet(const TaskID& task_id,
+                  const OptionalItemCallback<TaskTableData>& callback) override;
 
-  Status AsyncDelete(const std::vector<TaskID> &task_ids,
-                     const StatusCallback &callback) override;
+  Status AsyncDelete(const std::vector<TaskID>& task_ids,
+                     const StatusCallback& callback) override;
 
-  Status AsyncSubscribe(const TaskID &task_id,
-                        const SubscribeCallback<TaskID, TaskTableData> &subscribe,
-                        const StatusCallback &done) override;
+  Status AsyncSubscribe(const TaskID& task_id,
+                        const SubscribeCallback<TaskID, TaskTableData>& subscribe,
+                        const StatusCallback& done) override;
 
-  Status AsyncUnsubscribe(const TaskID &task_id) override;
+  Status AsyncUnsubscribe(const TaskID& task_id) override;
 
-  Status AsyncAddTaskLease(const std::shared_ptr<TaskLeaseData> &data_ptr,
-                           const StatusCallback &callback) override;
+  Status AsyncAddTaskLease(const std::shared_ptr<TaskLeaseData>& data_ptr,
+                           const StatusCallback& callback) override;
 
-  Status AsyncGetTaskLease(const TaskID &task_id,
-                           const OptionalItemCallback<TaskLeaseData> &callback) override;
+  Status AsyncGetTaskLease(const TaskID& task_id,
+                           const OptionalItemCallback<TaskLeaseData>& callback) override;
 
   Status AsyncSubscribeTaskLease(
-      const TaskID &task_id,
-      const SubscribeCallback<TaskID, boost::optional<TaskLeaseData>> &subscribe,
-      const StatusCallback &done) override;
+      const TaskID& task_id,
+      const SubscribeCallback<TaskID, boost::optional<TaskLeaseData>>& subscribe,
+      const StatusCallback& done) override;
 
-  Status AsyncUnsubscribeTaskLease(const TaskID &task_id) override;
+  Status AsyncUnsubscribeTaskLease(const TaskID& task_id) override;
 
   Status AttemptTaskReconstruction(
-      const std::shared_ptr<TaskReconstructionData> &data_ptr,
-      const StatusCallback &callback) override;
+      const std::shared_ptr<TaskReconstructionData>& data_ptr,
+      const StatusCallback& callback) override;
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
 
  private:
-  RedisGcsClient *client_impl_{nullptr};
+  RedisGcsClient* client_impl_{nullptr};
   // Use a random ClientID for task subscription. Because:
   // If we use ClientID::Nil, GCS will still send all tasks' updates to this GCS Client.
   // Even we can filter out irrelevant updates, but there will be extra overhead.
@@ -268,35 +268,35 @@ class RedisTaskInfoAccessor : public TaskInfoAccessor {
 /// that uses Redis as the backend storage.
 class RedisObjectInfoAccessor : public ObjectInfoAccessor {
  public:
-  explicit RedisObjectInfoAccessor(RedisGcsClient *client_impl);
+  explicit RedisObjectInfoAccessor(RedisGcsClient* client_impl);
 
   virtual ~RedisObjectInfoAccessor() {}
 
-  Status AsyncGetLocations(const ObjectID &object_id,
-                           const MultiItemCallback<ObjectTableData> &callback) override;
+  Status AsyncGetLocations(const ObjectID& object_id,
+                           const MultiItemCallback<ObjectTableData>& callback) override;
 
   Status AsyncGetAll(
-      const MultiItemCallback<rpc::ObjectLocationInfo> &callback) override {
+      const MultiItemCallback<rpc::ObjectLocationInfo>& callback) override {
     return Status::NotImplemented("AsyncGetAll not implemented");
   }
 
-  Status AsyncAddLocation(const ObjectID &object_id, const ClientID &node_id,
-                          const StatusCallback &callback) override;
+  Status AsyncAddLocation(const ObjectID& object_id, const ClientID& node_id,
+                          const StatusCallback& callback) override;
 
-  Status AsyncRemoveLocation(const ObjectID &object_id, const ClientID &node_id,
-                             const StatusCallback &callback) override;
+  Status AsyncRemoveLocation(const ObjectID& object_id, const ClientID& node_id,
+                             const StatusCallback& callback) override;
 
   Status AsyncSubscribeToLocations(
-      const ObjectID &object_id,
-      const SubscribeCallback<ObjectID, ObjectChangeNotification> &subscribe,
-      const StatusCallback &done) override;
+      const ObjectID& object_id,
+      const SubscribeCallback<ObjectID, ObjectChangeNotification>& subscribe,
+      const StatusCallback& done) override;
 
-  Status AsyncUnsubscribeToLocations(const ObjectID &object_id) override;
+  Status AsyncUnsubscribeToLocations(const ObjectID& object_id) override;
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
 
  private:
-  RedisGcsClient *client_impl_{nullptr};
+  RedisGcsClient* client_impl_{nullptr};
 
   // Use a random ClientID for object subscription. Because:
   // If we use ClientID::Nil, GCS will still send all objects' updates to this GCS Client.
@@ -316,79 +316,79 @@ class RedisObjectInfoAccessor : public ObjectInfoAccessor {
 /// that uses Redis as the backend storage.
 class RedisNodeInfoAccessor : public NodeInfoAccessor {
  public:
-  explicit RedisNodeInfoAccessor(RedisGcsClient *client_impl);
+  explicit RedisNodeInfoAccessor(RedisGcsClient* client_impl);
 
   virtual ~RedisNodeInfoAccessor() {}
 
-  Status RegisterSelf(const GcsNodeInfo &local_node_info) override;
+  Status RegisterSelf(const GcsNodeInfo& local_node_info) override;
 
   Status UnregisterSelf() override;
 
-  const ClientID &GetSelfId() const override;
+  const ClientID& GetSelfId() const override;
 
-  const GcsNodeInfo &GetSelfInfo() const override;
+  const GcsNodeInfo& GetSelfInfo() const override;
 
-  Status AsyncRegister(const GcsNodeInfo &node_info,
-                       const StatusCallback &callback) override;
+  Status AsyncRegister(const GcsNodeInfo& node_info,
+                       const StatusCallback& callback) override;
 
-  Status AsyncUnregister(const ClientID &node_id,
-                         const StatusCallback &callback) override;
+  Status AsyncUnregister(const ClientID& node_id,
+                         const StatusCallback& callback) override;
 
-  Status AsyncGetAll(const MultiItemCallback<GcsNodeInfo> &callback) override;
+  Status AsyncGetAll(const MultiItemCallback<GcsNodeInfo>& callback) override;
 
   Status AsyncSubscribeToNodeChange(
-      const SubscribeCallback<ClientID, GcsNodeInfo> &subscribe,
-      const StatusCallback &done) override;
+      const SubscribeCallback<ClientID, GcsNodeInfo>& subscribe,
+      const StatusCallback& done) override;
 
-  boost::optional<GcsNodeInfo> Get(const ClientID &node_id) const override;
+  boost::optional<GcsNodeInfo> Get(const ClientID& node_id) const override;
 
-  const std::unordered_map<ClientID, GcsNodeInfo> &GetAll() const override;
+  const std::unordered_map<ClientID, GcsNodeInfo>& GetAll() const override;
 
-  bool IsRemoved(const ClientID &node_id) const override;
+  bool IsRemoved(const ClientID& node_id) const override;
 
-  Status AsyncGetResources(const ClientID &node_id,
-                           const OptionalItemCallback<ResourceMap> &callback) override;
+  Status AsyncGetResources(const ClientID& node_id,
+                           const OptionalItemCallback<ResourceMap>& callback) override;
 
-  Status AsyncUpdateResources(const ClientID &node_id, const ResourceMap &resources,
-                              const StatusCallback &callback) override;
+  Status AsyncUpdateResources(const ClientID& node_id, const ResourceMap& resources,
+                              const StatusCallback& callback) override;
 
-  Status AsyncDeleteResources(const ClientID &node_id,
-                              const std::vector<std::string> &resource_names,
-                              const StatusCallback &callback) override;
+  Status AsyncDeleteResources(const ClientID& node_id,
+                              const std::vector<std::string>& resource_names,
+                              const StatusCallback& callback) override;
 
-  Status AsyncSubscribeToResources(const ItemCallback<rpc::NodeResourceChange> &subscribe,
-                                   const StatusCallback &done) override;
+  Status AsyncSubscribeToResources(const ItemCallback<rpc::NodeResourceChange>& subscribe,
+                                   const StatusCallback& done) override;
 
-  Status AsyncReportHeartbeat(const std::shared_ptr<HeartbeatTableData> &data_ptr,
-                              const StatusCallback &callback) override;
+  Status AsyncReportHeartbeat(const std::shared_ptr<HeartbeatTableData>& data_ptr,
+                              const StatusCallback& callback) override;
 
   Status AsyncSubscribeHeartbeat(
-      const SubscribeCallback<ClientID, HeartbeatTableData> &subscribe,
-      const StatusCallback &done) override;
+      const SubscribeCallback<ClientID, HeartbeatTableData>& subscribe,
+      const StatusCallback& done) override;
 
   Status AsyncReportBatchHeartbeat(
-      const std::shared_ptr<HeartbeatBatchTableData> &data_ptr,
-      const StatusCallback &callback) override;
+      const std::shared_ptr<HeartbeatBatchTableData>& data_ptr,
+      const StatusCallback& callback) override;
 
   Status AsyncSubscribeBatchHeartbeat(
-      const ItemCallback<HeartbeatBatchTableData> &subscribe,
-      const StatusCallback &done) override;
+      const ItemCallback<HeartbeatBatchTableData>& subscribe,
+      const StatusCallback& done) override;
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
 
   Status AsyncSetInternalConfig(
-      std::unordered_map<std::string, std::string> &config) override {
+      std::unordered_map<std::string, std::string>& config) override {
     return Status::NotImplemented("SetInternaConfig not implemented.");
   }
 
   Status AsyncGetInternalConfig(
-      const OptionalItemCallback<std::unordered_map<std::string, std::string>> &callback)
+      const OptionalItemCallback<std::unordered_map<std::string, std::string>>& callback)
       override {
     return Status::NotImplemented("GetInternalConfig not implemented.");
   }
 
  private:
-  RedisGcsClient *client_impl_{nullptr};
+  RedisGcsClient* client_impl_{nullptr};
 
   typedef SubscriptionExecutor<ClientID, ResourceChangeNotification, DynamicResourceTable>
       DynamicResourceSubscriptionExecutor;
@@ -408,15 +408,15 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
 /// that uses Redis as the backend storage.
 class RedisErrorInfoAccessor : public ErrorInfoAccessor {
  public:
-  explicit RedisErrorInfoAccessor(RedisGcsClient *client_impl);
+  explicit RedisErrorInfoAccessor(RedisGcsClient* client_impl);
 
   virtual ~RedisErrorInfoAccessor() = default;
 
-  Status AsyncReportJobError(const std::shared_ptr<ErrorTableData> &data_ptr,
-                             const StatusCallback &callback) override;
+  Status AsyncReportJobError(const std::shared_ptr<ErrorTableData>& data_ptr,
+                             const StatusCallback& callback) override;
 
  private:
-  RedisGcsClient *client_impl_{nullptr};
+  RedisGcsClient* client_impl_{nullptr};
 };
 
 /// \class RedisStatsInfoAccessor
@@ -424,19 +424,19 @@ class RedisErrorInfoAccessor : public ErrorInfoAccessor {
 /// that uses Redis as the backend storage.
 class RedisStatsInfoAccessor : public StatsInfoAccessor {
  public:
-  explicit RedisStatsInfoAccessor(RedisGcsClient *client_impl);
+  explicit RedisStatsInfoAccessor(RedisGcsClient* client_impl);
 
   virtual ~RedisStatsInfoAccessor() = default;
 
-  Status AsyncAddProfileData(const std::shared_ptr<ProfileTableData> &data_ptr,
-                             const StatusCallback &callback) override;
+  Status AsyncAddProfileData(const std::shared_ptr<ProfileTableData>& data_ptr,
+                             const StatusCallback& callback) override;
 
-  Status AsyncGetAll(const MultiItemCallback<rpc::ProfileTableData> &callback) override {
+  Status AsyncGetAll(const MultiItemCallback<rpc::ProfileTableData>& callback) override {
     return Status::NotImplemented("AsyncGetAll not implemented");
   }
 
  private:
-  RedisGcsClient *client_impl_{nullptr};
+  RedisGcsClient* client_impl_{nullptr};
 };
 
 /// \class RedisWorkerInfoAccessor
@@ -444,29 +444,29 @@ class RedisStatsInfoAccessor : public StatsInfoAccessor {
 /// that uses Redis as the backend storage.
 class RedisWorkerInfoAccessor : public WorkerInfoAccessor {
  public:
-  explicit RedisWorkerInfoAccessor(RedisGcsClient *client_impl);
+  explicit RedisWorkerInfoAccessor(RedisGcsClient* client_impl);
 
   virtual ~RedisWorkerInfoAccessor() = default;
 
   Status AsyncSubscribeToWorkerFailures(
-      const SubscribeCallback<WorkerID, WorkerTableData> &subscribe,
-      const StatusCallback &done) override;
+      const SubscribeCallback<WorkerID, WorkerTableData>& subscribe,
+      const StatusCallback& done) override;
 
-  Status AsyncReportWorkerFailure(const std::shared_ptr<WorkerTableData> &data_ptr,
-                                  const StatusCallback &callback) override;
+  Status AsyncReportWorkerFailure(const std::shared_ptr<WorkerTableData>& data_ptr,
+                                  const StatusCallback& callback) override;
 
-  Status AsyncGet(const WorkerID &worker_id,
-                  const OptionalItemCallback<rpc::WorkerTableData> &callback) override;
+  Status AsyncGet(const WorkerID& worker_id,
+                  const OptionalItemCallback<rpc::WorkerTableData>& callback) override;
 
-  Status AsyncGetAll(const MultiItemCallback<rpc::WorkerTableData> &callback) override;
+  Status AsyncGetAll(const MultiItemCallback<rpc::WorkerTableData>& callback) override;
 
-  Status AsyncAdd(const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
-                  const StatusCallback &callback) override;
+  Status AsyncAdd(const std::shared_ptr<rpc::WorkerTableData>& data_ptr,
+                  const StatusCallback& callback) override;
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
 
  private:
-  RedisGcsClient *client_impl_{nullptr};
+  RedisGcsClient* client_impl_{nullptr};
 
   typedef SubscriptionExecutor<WorkerID, WorkerTableData, WorkerTable>
       WorkerFailureSubscriptionExecutor;
@@ -478,7 +478,7 @@ class RedisPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor {
   virtual ~RedisPlacementGroupInfoAccessor() = default;
 
   Status AsyncCreatePlacementGroup(
-      const PlacementGroupSpecification &placement_group_spec) override;
+      const PlacementGroupSpecification& placement_group_spec) override;
 };
 
 }  // namespace gcs

@@ -48,7 +48,7 @@ void GrpcServer::Run() {
     if (services_.empty()) {
       RAY_LOG(WARNING) << "No service is found when start grpc server " << name_;
     }
-    for (auto &entry : services_) {
+    for (auto& entry : services_) {
       builder.RegisterService(&entry.get());
     }
     // Get hold of the completion queue used for the asynchronous communication
@@ -74,7 +74,7 @@ void GrpcServer::Run() {
   RAY_LOG(INFO) << name_ << " server started, listening on port " << port_ << ".";
 
   // Create calls for all the server call factories.
-  for (auto &entry : server_call_factories_) {
+  for (auto& entry : server_call_factories_) {
     for (int i = 0; i < num_threads_; i++) {
       // Create a buffer of 100 calls for each RPC handler.
       // TODO(edoakes): a small buffer should be fine and seems to have better
@@ -92,7 +92,7 @@ void GrpcServer::Run() {
   is_closed_ = false;
 }
 
-void GrpcServer::RegisterService(GrpcService &service) {
+void GrpcServer::RegisterService(GrpcService& service) {
   services_.emplace_back(service.GetGrpcService());
 
   for (int i = 0; i < num_threads_; i++) {
@@ -101,12 +101,12 @@ void GrpcServer::RegisterService(GrpcService &service) {
 }
 
 void GrpcServer::PollEventsFromCompletionQueue(int index) {
-  void *tag;
+  void* tag;
   bool ok;
 
   // Keep reading events from the `CompletionQueue` until it's shutdown.
   while (cqs_[index]->Next(&tag, &ok)) {
-    auto *server_call = static_cast<ServerCall *>(tag);
+    auto* server_call = static_cast<ServerCall*>(tag);
     bool delete_call = false;
     if (ok) {
       switch (server_call->GetState()) {

@@ -34,7 +34,7 @@ class SubscriptionExecutorTest : public AccessorTestBase<ActorID, ActorTableData
 
     actor_sub_executor_.reset(new ActorSubExecutor(gcs_client_->log_based_actor_table()));
 
-    subscribe_ = [this](const ActorID &id, const ActorTableData &data) {
+    subscribe_ = [this](const ActorID& id, const ActorTableData& data) {
       const auto it = id_to_data_.find(id);
       ASSERT_TRUE(it != id_to_data_.end());
       --sub_pending_count_;
@@ -74,9 +74,9 @@ class SubscriptionExecutorTest : public AccessorTestBase<ActorID, ActorTableData
   }
 
   size_t AsyncRegisterActorToGcs() {
-    ActorInfoAccessor &actor_accessor = gcs_client_->Actors();
-    for (const auto &elem : id_to_data_) {
-      const auto &actor = elem.second;
+    ActorInfoAccessor& actor_accessor = gcs_client_->Actors();
+    for (const auto& elem : id_to_data_) {
+      const auto& actor = elem.second;
       auto done = [this](Status status) {
         ASSERT_TRUE(status.ok());
         --pending_count_;
@@ -114,7 +114,7 @@ TEST_F(SubscriptionExecutorTest, SubscribeAllTest) {
 }
 
 TEST_F(SubscriptionExecutorTest, SubscribeOneWithClientIDTest) {
-  const auto &item = id_to_data_.begin();
+  const auto& item = id_to_data_.begin();
   ++do_sub_pending_count_;
   ++sub_pending_count_;
   Status status = actor_sub_executor_->AsyncSubscribe(ClientID::FromRandom(), item->first,
@@ -129,7 +129,7 @@ TEST_F(SubscriptionExecutorTest, SubscribeOneWithClientIDTest) {
 }
 
 TEST_F(SubscriptionExecutorTest, SubscribeOneAfterActorRegistrationWithClientIDTest) {
-  const auto &item = id_to_data_.begin();
+  const auto& item = id_to_data_.begin();
   ++do_sub_pending_count_;
   ++sub_pending_count_;
   AsyncRegisterActorToGcs();
@@ -149,7 +149,7 @@ TEST_F(SubscriptionExecutorTest, SubscribeAllAndSubscribeOneTest) {
       actor_sub_executor_->AsyncSubscribeAll(ClientID::Nil(), subscribe_, sub_done_);
   ASSERT_TRUE(status.ok());
   WaitPendingDone(do_sub_pending_count_, wait_pending_timeout_);
-  for (const auto &item : id_to_data_) {
+  for (const auto& item : id_to_data_) {
     status = actor_sub_executor_->AsyncSubscribe(ClientID::FromRandom(), item.first,
                                                  subscribe_, sub_done_);
     ASSERT_FALSE(status.ok());
@@ -162,43 +162,43 @@ TEST_F(SubscriptionExecutorTest, SubscribeAllAndSubscribeOneTest) {
 TEST_F(SubscriptionExecutorTest, UnsubscribeTest) {
   ClientID client_id = ClientID::FromRandom();
   Status status;
-  for (const auto &item : id_to_data_) {
+  for (const auto& item : id_to_data_) {
     status = actor_sub_executor_->AsyncUnsubscribe(client_id, item.first, unsub_done_);
     ASSERT_TRUE(status.IsInvalid());
   }
 
-  for (const auto &item : id_to_data_) {
+  for (const auto& item : id_to_data_) {
     ++do_sub_pending_count_;
     status =
         actor_sub_executor_->AsyncSubscribe(client_id, item.first, subscribe_, sub_done_);
     ASSERT_TRUE(status.ok());
   }
   WaitPendingDone(do_sub_pending_count_, wait_pending_timeout_);
-  for (const auto &item : id_to_data_) {
+  for (const auto& item : id_to_data_) {
     ++do_unsub_pending_count_;
     status = actor_sub_executor_->AsyncUnsubscribe(client_id, item.first, unsub_done_);
     ASSERT_TRUE(status.ok());
   }
   WaitPendingDone(do_unsub_pending_count_, wait_pending_timeout_);
-  for (const auto &item : id_to_data_) {
+  for (const auto& item : id_to_data_) {
     status = actor_sub_executor_->AsyncUnsubscribe(client_id, item.first, unsub_done_);
     ASSERT_TRUE(!status.ok());
   }
 
-  for (const auto &item : id_to_data_) {
+  for (const auto& item : id_to_data_) {
     ++do_sub_pending_count_;
     status =
         actor_sub_executor_->AsyncSubscribe(client_id, item.first, subscribe_, sub_done_);
     ASSERT_TRUE(status.ok());
   }
   WaitPendingDone(do_sub_pending_count_, wait_pending_timeout_);
-  for (const auto &item : id_to_data_) {
+  for (const auto& item : id_to_data_) {
     ++do_unsub_pending_count_;
     status = actor_sub_executor_->AsyncUnsubscribe(client_id, item.first, unsub_done_);
     ASSERT_TRUE(status.ok());
   }
   WaitPendingDone(do_unsub_pending_count_, wait_pending_timeout_);
-  for (const auto &item : id_to_data_) {
+  for (const auto& item : id_to_data_) {
     ++do_sub_pending_count_;
     status =
         actor_sub_executor_->AsyncSubscribe(client_id, item.first, subscribe_, sub_done_);
@@ -215,7 +215,7 @@ TEST_F(SubscriptionExecutorTest, UnsubscribeTest) {
 
 }  // namespace ray
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 4);
   ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];

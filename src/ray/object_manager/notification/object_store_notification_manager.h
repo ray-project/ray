@@ -32,7 +32,7 @@ namespace ray {
 /// Encapsulates notification handling from the object store.
 class ObjectStoreNotificationManager {
  public:
-  ObjectStoreNotificationManager(boost::asio::io_service &io_service)
+  ObjectStoreNotificationManager(boost::asio::io_service& io_service)
       : main_service_(&io_service), num_adds_processed_(0), num_removes_processed_(0) {}
   virtual ~ObjectStoreNotificationManager() {}
   /// Subscribe to notifications of objects added to local store.
@@ -41,7 +41,7 @@ class ObjectStoreNotificationManager {
   ///
   /// \param callback A callback expecting an ObjectID.
   void SubscribeObjAdded(
-      std::function<void(const object_manager::protocol::ObjectInfoT &)> callback) {
+      std::function<void(const object_manager::protocol::ObjectInfoT&)> callback) {
     absl::MutexLock lock(&store_add_mutex_);
     add_handlers_.push_back(std::move(callback));
   }
@@ -49,24 +49,24 @@ class ObjectStoreNotificationManager {
   /// Subscribe to notifications of objects deleted from local store.
   ///
   /// \param callback A callback expecting an ObjectID.
-  void SubscribeObjDeleted(std::function<void(const ray::ObjectID &)> callback) {
+  void SubscribeObjDeleted(std::function<void(const ray::ObjectID&)> callback) {
     absl::MutexLock lock(&store_remove_mutex_);
     rem_handlers_.push_back(std::move(callback));
   }
 
   /// Support for rebroadcasting object add/rem events.
-  void ProcessStoreAdd(const object_manager::protocol::ObjectInfoT &object_info) {
+  void ProcessStoreAdd(const object_manager::protocol::ObjectInfoT& object_info) {
     // TODO(suquark): Use strand in boost asio to enforce sequential execution.
     absl::MutexLock lock(&store_add_mutex_);
-    for (auto &handler : add_handlers_) {
+    for (auto& handler : add_handlers_) {
       main_service_->post([handler, object_info]() { handler(object_info); });
     }
     num_adds_processed_++;
   }
 
-  void ProcessStoreRemove(const ObjectID &object_id) {
+  void ProcessStoreRemove(const ObjectID& object_id) {
     absl::MutexLock lock(&store_remove_mutex_);
-    for (auto &handler : rem_handlers_) {
+    for (auto& handler : rem_handlers_) {
       main_service_->post([handler, object_id]() { handler(object_id); });
     }
     num_removes_processed_++;
@@ -86,10 +86,10 @@ class ObjectStoreNotificationManager {
  private:
   /// Weak reference to main service. We ensure this object is destroyed before
   /// main_service_ is stopped.
-  boost::asio::io_service *main_service_;
-  std::vector<std::function<void(const object_manager::protocol::ObjectInfoT &)>>
+  boost::asio::io_service* main_service_;
+  std::vector<std::function<void(const object_manager::protocol::ObjectInfoT&)>>
       add_handlers_;
-  std::vector<std::function<void(const ray::ObjectID &)>> rem_handlers_;
+  std::vector<std::function<void(const ray::ObjectID&)>> rem_handlers_;
   absl::Mutex store_add_mutex_;
   absl::Mutex store_remove_mutex_;
   int64_t num_adds_processed_;

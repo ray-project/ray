@@ -56,16 +56,16 @@ class NodeDynamicResourceTest : public AccessorTestBase<ClientID, ResourceTableD
 };
 
 TEST_F(NodeDynamicResourceTest, UpdateAndGet) {
-  NodeInfoAccessor &node_accessor = gcs_client_->Nodes();
-  for (const auto &node_rs : id_to_resource_map_) {
+  NodeInfoAccessor& node_accessor = gcs_client_->Nodes();
+  for (const auto& node_rs : id_to_resource_map_) {
     ++pending_count_;
-    const ClientID &id = node_rs.first;
+    const ClientID& id = node_rs.first;
     // Update
     Status status = node_accessor.AsyncUpdateResources(
         node_rs.first, node_rs.second, [this, &node_accessor, id](Status status) {
           RAY_CHECK_OK(status);
           auto get_callback = [this, id](Status status,
-                                         const boost::optional<ResourceMap> &result) {
+                                         const boost::optional<ResourceMap>& result) {
             --pending_count_;
             RAY_CHECK_OK(status);
             const auto it = id_to_resource_map_.find(id);
@@ -81,8 +81,8 @@ TEST_F(NodeDynamicResourceTest, UpdateAndGet) {
 }
 
 TEST_F(NodeDynamicResourceTest, Delete) {
-  NodeInfoAccessor &node_accessor = gcs_client_->Nodes();
-  for (const auto &node_rs : id_to_resource_map_) {
+  NodeInfoAccessor& node_accessor = gcs_client_->Nodes();
+  for (const auto& node_rs : id_to_resource_map_) {
     ++pending_count_;
     // Update
     Status status = node_accessor.AsyncUpdateResources(node_rs.first, node_rs.second,
@@ -93,16 +93,16 @@ TEST_F(NodeDynamicResourceTest, Delete) {
   }
   WaitPendingDone(wait_pending_timeout_);
 
-  for (const auto &node_rs : id_to_resource_map_) {
+  for (const auto& node_rs : id_to_resource_map_) {
     ++pending_count_;
-    const ClientID &id = node_rs.first;
+    const ClientID& id = node_rs.first;
     // Delete
     Status status = node_accessor.AsyncDeleteResources(
         id, resource_to_delete_, [this, &node_accessor, id](Status status) {
           RAY_CHECK_OK(status);
           // Get
           status = node_accessor.AsyncGetResources(
-              id, [this, id](Status status, const boost::optional<ResourceMap> &result) {
+              id, [this, id](Status status, const boost::optional<ResourceMap>& result) {
                 --pending_count_;
                 RAY_CHECK_OK(status);
                 const auto it = id_to_resource_map_.find(id);
@@ -115,8 +115,8 @@ TEST_F(NodeDynamicResourceTest, Delete) {
 }
 
 TEST_F(NodeDynamicResourceTest, Subscribe) {
-  NodeInfoAccessor &node_accessor = gcs_client_->Nodes();
-  for (const auto &node_rs : id_to_resource_map_) {
+  NodeInfoAccessor& node_accessor = gcs_client_->Nodes();
+  for (const auto& node_rs : id_to_resource_map_) {
     ++pending_count_;
     // Update
     Status status = node_accessor.AsyncUpdateResources(node_rs.first, node_rs.second,
@@ -127,7 +127,7 @@ TEST_F(NodeDynamicResourceTest, Subscribe) {
   }
   WaitPendingDone(wait_pending_timeout_);
 
-  auto subscribe = [this](const rpc::NodeResourceChange &notification) {
+  auto subscribe = [this](const rpc::NodeResourceChange& notification) {
     auto id = ClientID::FromBinary(notification.node_id());
     RAY_LOG(INFO) << "receive client id=" << id;
     auto it = id_to_resource_map_.find(id);
@@ -150,7 +150,7 @@ TEST_F(NodeDynamicResourceTest, Subscribe) {
   Status status = node_accessor.AsyncSubscribeToResources(subscribe, done);
   RAY_CHECK_OK(status);
 
-  for (const auto &node_rs : id_to_resource_map_) {
+  for (const auto& node_rs : id_to_resource_map_) {
     // Delete
     ++pending_count_;
     ++sub_pending_count_;
@@ -170,7 +170,7 @@ TEST_F(NodeDynamicResourceTest, Subscribe) {
 
 }  // namespace ray
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 4);
   ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];

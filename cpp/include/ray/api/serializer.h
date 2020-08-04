@@ -11,23 +11,23 @@ namespace api {
 class Serializer {
  public:
   template <typename T>
-  static void Serialize(msgpack::packer<msgpack::sbuffer> &packer, const T &val);
+  static void Serialize(msgpack::packer<msgpack::sbuffer>& packer, const T& val);
 
   template <typename T>
-  static void Deserialize(msgpack::unpacker &unpacker, T *val);
+  static void Deserialize(msgpack::unpacker& unpacker, T* val);
 };
 
 // ---------- implementation ----------
 
 template <typename T>
-inline void Serializer::Serialize(msgpack::packer<msgpack::sbuffer> &packer,
-                                  const T &val) {
+inline void Serializer::Serialize(msgpack::packer<msgpack::sbuffer>& packer,
+                                  const T& val) {
   packer.pack(val);
   return;
 }
 
 template <typename T>
-inline void Serializer::Deserialize(msgpack::unpacker &unpacker, T *val) {
+inline void Serializer::Deserialize(msgpack::unpacker& unpacker, T* val) {
   msgpack::object_handle oh;
   bool result = unpacker.next(oh);
   if (result == false) {

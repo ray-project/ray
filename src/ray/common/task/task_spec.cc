@@ -13,7 +13,7 @@ std::unordered_map<SchedulingClass, SchedulingClassDescriptor>
     TaskSpecification::sched_id_to_cls_;
 int TaskSpecification::next_sched_id_;
 
-SchedulingClassDescriptor &TaskSpecification::GetSchedulingClassDescriptor(
+SchedulingClassDescriptor& TaskSpecification::GetSchedulingClassDescriptor(
     SchedulingClass id) {
   absl::MutexLock lock(&mutex_);
   auto it = sched_id_to_cls_.find(id);
@@ -21,7 +21,7 @@ SchedulingClassDescriptor &TaskSpecification::GetSchedulingClassDescriptor(
   return it->second;
 }
 
-SchedulingClass TaskSpecification::GetSchedulingClass(const ResourceSet &sched_cls) {
+SchedulingClass TaskSpecification::GetSchedulingClass(const ResourceSet& sched_cls) {
   SchedulingClass sched_cls_id;
   absl::MutexLock lock(&mutex_);
   auto it = sched_cls_to_id_.find(sched_cls);
@@ -128,16 +128,16 @@ rpc::ObjectReference TaskSpecification::ArgRef(size_t arg_index) const {
   return message_->args(arg_index).object_ref();
 }
 
-const uint8_t *TaskSpecification::ArgData(size_t arg_index) const {
-  return reinterpret_cast<const uint8_t *>(message_->args(arg_index).data().data());
+const uint8_t* TaskSpecification::ArgData(size_t arg_index) const {
+  return reinterpret_cast<const uint8_t*>(message_->args(arg_index).data().data());
 }
 
 size_t TaskSpecification::ArgDataSize(size_t arg_index) const {
   return message_->args(arg_index).data().size();
 }
 
-const uint8_t *TaskSpecification::ArgMetadata(size_t arg_index) const {
-  return reinterpret_cast<const uint8_t *>(message_->args(arg_index).metadata().data());
+const uint8_t* TaskSpecification::ArgMetadata(size_t arg_index) const {
+  return reinterpret_cast<const uint8_t*>(message_->args(arg_index).metadata().data());
 }
 
 size_t TaskSpecification::ArgMetadataSize(size_t arg_index) const {
@@ -148,7 +148,7 @@ const std::vector<ObjectID> TaskSpecification::ArgInlinedIds(size_t arg_index) c
   return IdVectorFromProtobuf<ObjectID>(message_->args(arg_index).nested_inlined_ids());
 }
 
-const ResourceSet &TaskSpecification::GetRequiredResources() const {
+const ResourceSet& TaskSpecification::GetRequiredResources() const {
   return *required_resources_;
 }
 
@@ -173,14 +173,14 @@ std::vector<rpc::ObjectReference> TaskSpecification::GetDependencies() const {
     }
   }
   if (IsActorTask()) {
-    const auto &dummy_ref =
+    const auto& dummy_ref =
         GetReferenceForActorDummyObject(PreviousActorTaskDummyObjectId());
     dependencies.push_back(dummy_ref);
   }
   return dependencies;
 }
 
-const ResourceSet &TaskSpecification::GetRequiredPlacementResources() const {
+const ResourceSet& TaskSpecification::GetRequiredPlacementResources() const {
   return *required_placement_resources_;
 }
 
@@ -224,7 +224,7 @@ TaskID TaskSpecification::CallerId() const {
   return TaskID::FromBinary(message_->caller_id());
 }
 
-const rpc::Address &TaskSpecification::CallerAddress() const {
+const rpc::Address& TaskSpecification::CallerAddress() const {
   return message_->caller_address();
 }
 

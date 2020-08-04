@@ -44,14 +44,14 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
  public:
   MockObjectDirectory() {}
 
-  ray::Status LookupLocations(const ObjectID &object_id,
-                              const OnLocationsFound &callback) override {
+  ray::Status LookupLocations(const ObjectID& object_id,
+                              const OnLocationsFound& callback) override {
     callbacks_.push_back({object_id, callback});
     return ray::Status::OK();
   }
 
   void FlushCallbacks() {
-    for (const auto &callback : callbacks_) {
+    for (const auto& callback : callbacks_) {
       const ObjectID object_id = callback.first;
       auto it = locations_.find(object_id);
       if (it == locations_.end()) {
@@ -63,13 +63,13 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
     callbacks_.clear();
   }
 
-  void SetObjectLocations(const ObjectID &object_id,
-                          const std::unordered_set<ClientID> &locations) {
+  void SetObjectLocations(const ObjectID& object_id,
+                          const std::unordered_set<ClientID>& locations) {
     locations_[object_id] = locations;
   }
 
-  void HandleClientRemoved(const ClientID &client_id) override {
-    for (auto &locations : locations_) {
+  void HandleClientRemoved(const ClientID& client_id) override {
+    for (auto& locations : locations_) {
       locations.second.erase(client_id);
     }
   }
@@ -77,19 +77,19 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
   std::string DebugString() const override { return ""; }
 
   MOCK_METHOD0(GetLocalClientID, ray::ClientID());
-  MOCK_CONST_METHOD1(LookupRemoteConnectionInfo, void(RemoteConnectionInfo &));
+  MOCK_CONST_METHOD1(LookupRemoteConnectionInfo, void(RemoteConnectionInfo&));
   MOCK_CONST_METHOD0(LookupAllRemoteConnections, std::vector<RemoteConnectionInfo>());
   MOCK_METHOD3(SubscribeObjectLocations,
-               ray::Status(const ray::UniqueID &, const ObjectID &,
-                           const OnLocationsFound &));
+               ray::Status(const ray::UniqueID&, const ObjectID&,
+                           const OnLocationsFound&));
   MOCK_METHOD2(UnsubscribeObjectLocations,
-               ray::Status(const ray::UniqueID &, const ObjectID &));
+               ray::Status(const ray::UniqueID&, const ObjectID&));
   MOCK_METHOD3(ReportObjectAdded,
-               ray::Status(const ObjectID &, const ClientID &,
-                           const object_manager::protocol::ObjectInfoT &));
+               ray::Status(const ObjectID&, const ClientID&,
+                           const object_manager::protocol::ObjectInfoT&));
   MOCK_METHOD3(ReportObjectRemoved,
-               ray::Status(const ObjectID &, const ClientID &,
-                           const object_manager::protocol::ObjectInfoT &));
+               ray::Status(const ObjectID&, const ClientID&,
+                           const object_manager::protocol::ObjectInfoT&));
 
  private:
   std::vector<std::pair<ObjectID, OnLocationsFound>> callbacks_;
@@ -98,20 +98,20 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
 
 class MockNodeInfoAccessor : public gcs::RedisNodeInfoAccessor {
  public:
-  MockNodeInfoAccessor(gcs::RedisGcsClient *client)
+  MockNodeInfoAccessor(gcs::RedisGcsClient* client)
       : gcs::RedisNodeInfoAccessor(client) {}
 
-  bool IsRemoved(const ClientID &node_id) const override { return false; }
+  bool IsRemoved(const ClientID& node_id) const override { return false; }
 };
 
 class MockTaskInfoAccessor : public gcs::RedisTaskInfoAccessor {
  public:
-  MockTaskInfoAccessor(gcs::RedisGcsClient *client) : RedisTaskInfoAccessor(client) {}
+  MockTaskInfoAccessor(gcs::RedisGcsClient* client) : RedisTaskInfoAccessor(client) {}
 
   Status AsyncSubscribeTaskLease(
-      const TaskID &task_id,
-      const gcs::SubscribeCallback<TaskID, boost::optional<TaskLeaseData>> &subscribe,
-      const gcs::StatusCallback &done) override {
+      const TaskID& task_id,
+      const gcs::SubscribeCallback<TaskID, boost::optional<TaskLeaseData>>& subscribe,
+      const gcs::StatusCallback& done) override {
     subscribe_callback_ = subscribe;
     subscribed_tasks_.insert(task_id);
     auto entry = task_lease_table_.find(task_id);
@@ -125,13 +125,13 @@ class MockTaskInfoAccessor : public gcs::RedisTaskInfoAccessor {
     return ray::Status::OK();
   }
 
-  Status AsyncUnsubscribeTaskLease(const TaskID &task_id) override {
+  Status AsyncUnsubscribeTaskLease(const TaskID& task_id) override {
     subscribed_tasks_.erase(task_id);
     return ray::Status::OK();
   }
 
-  Status AsyncAddTaskLease(const std::shared_ptr<TaskLeaseData> &task_lease_data,
-                           const gcs::StatusCallback &done) override {
+  Status AsyncAddTaskLease(const std::shared_ptr<TaskLeaseData>& task_lease_data,
+                           const gcs::StatusCallback& done) override {
     TaskID task_id = TaskID::FromBinary(task_lease_data->task_id());
     task_lease_table_[task_id] = task_lease_data;
     if (subscribed_tasks_.count(task_id) == 1) {
@@ -142,8 +142,8 @@ class MockTaskInfoAccessor : public gcs::RedisTaskInfoAccessor {
   }
 
   Status AsyncGetTaskLease(
-      const TaskID &task_id,
-      const gcs::OptionalItemCallback<rpc::TaskLeaseData> &callback) override {
+      const TaskID& task_id,
+      const gcs::OptionalItemCallback<rpc::TaskLeaseData>& callback) override {
     auto iter = task_lease_table_.find(task_id);
     if (iter != task_lease_table_.end()) {
       callback(Status::OK(), *iter->second);
@@ -154,8 +154,8 @@ class MockTaskInfoAccessor : public gcs::RedisTaskInfoAccessor {
   }
 
   Status AttemptTaskReconstruction(
-      const std::shared_ptr<TaskReconstructionData> &task_data,
-      const gcs::StatusCallback &done) override {
+      const std::shared_ptr<TaskReconstructionData>& task_data,
+      const gcs::StatusCallback& done) override {
     int log_index = task_data->num_reconstructions();
     TaskID task_id = TaskID::FromBinary(task_data->task_id());
     if (task_reconstruction_log_[task_id].size() == static_cast<size_t>(log_index)) {
@@ -183,7 +183,7 @@ class MockGcs : public gcs::RedisGcsClient {
  public:
   MockGcs() : gcs::RedisGcsClient(gcs::GcsClientOptions("", 0, "")){};
 
-  void Init(gcs::TaskInfoAccessor *task_accessor, gcs::NodeInfoAccessor *node_accessor) {
+  void Init(gcs::TaskInfoAccessor* task_accessor, gcs::NodeInfoAccessor* node_accessor) {
     task_accessor_.reset(task_accessor);
     node_accessor_.reset(node_accessor);
   }
@@ -200,14 +200,14 @@ class ReconstructionPolicyTest : public ::testing::Test {
         reconstruction_timeout_ms_(50),
         reconstruction_policy_(std::make_shared<ReconstructionPolicy>(
             io_service_,
-            [this](const TaskID &task_id, const ObjectID &obj) {
+            [this](const TaskID& task_id, const ObjectID& obj) {
               TriggerReconstruction(task_id);
             },
             reconstruction_timeout_ms_, ClientID::FromRandom(), mock_gcs_,
             mock_object_directory_)),
         timer_canceled_(false) {
-    subscribe_callback_ = [this](const TaskID &task_id,
-                                 const boost::optional<TaskLeaseData> &task_lease) {
+    subscribe_callback_ = [this](const TaskID& task_id,
+                                 const boost::optional<TaskLeaseData>& task_lease) {
       if (task_lease) {
         reconstruction_policy_->HandleTaskLeaseNotification(task_id,
                                                             task_lease->timeout());
@@ -219,12 +219,12 @@ class ReconstructionPolicyTest : public ::testing::Test {
     mock_gcs_->Init(task_accessor_, node_accessor_);
   }
 
-  void TriggerReconstruction(const TaskID &task_id) { reconstructed_tasks_[task_id]++; }
+  void TriggerReconstruction(const TaskID& task_id) { reconstructed_tasks_[task_id]++; }
 
-  void Tick(const std::function<void(void)> &handler,
+  void Tick(const std::function<void(void)>& handler,
             std::shared_ptr<boost::asio::deadline_timer> timer,
             boost::posix_time::milliseconds timer_period,
-            const boost::system::error_code &error) {
+            const boost::system::error_code& error) {
     if (timer_canceled_) {
       return;
     }
@@ -233,17 +233,17 @@ class ReconstructionPolicyTest : public ::testing::Test {
     // Fire the timer again after another period.
     timer->expires_from_now(timer_period);
     timer->async_wait(
-        [this, handler, timer, timer_period](const boost::system::error_code &error) {
+        [this, handler, timer, timer_period](const boost::system::error_code& error) {
           Tick(handler, timer, timer_period, error);
         });
   }
 
-  void SetPeriodicTimer(uint64_t period_ms, const std::function<void(void)> &handler) {
+  void SetPeriodicTimer(uint64_t period_ms, const std::function<void(void)>& handler) {
     timer_canceled_ = false;
     auto timer_period = boost::posix_time::milliseconds(period_ms);
     auto timer = std::make_shared<boost::asio::deadline_timer>(io_service_, timer_period);
     timer->async_wait(
-        [this, handler, timer, timer_period](const boost::system::error_code &error) {
+        [this, handler, timer, timer_period](const boost::system::error_code& error) {
           Tick(handler, timer, timer_period, error);
         });
   }
@@ -253,7 +253,7 @@ class ReconstructionPolicyTest : public ::testing::Test {
   void Run(uint64_t reconstruction_timeout_ms) {
     auto timer_period = boost::posix_time::milliseconds(reconstruction_timeout_ms);
     auto timer = std::make_shared<boost::asio::deadline_timer>(io_service_, timer_period);
-    timer->async_wait([this, timer](const boost::system::error_code &error) {
+    timer->async_wait([this, timer](const boost::system::error_code& error) {
       ASSERT_FALSE(error);
       io_service_.stop();
     });
@@ -266,8 +266,8 @@ class ReconstructionPolicyTest : public ::testing::Test {
  protected:
   boost::asio::io_service io_service_;
   std::shared_ptr<MockGcs> mock_gcs_;
-  MockTaskInfoAccessor *task_accessor_;
-  MockNodeInfoAccessor *node_accessor_;
+  MockTaskInfoAccessor* task_accessor_;
+  MockNodeInfoAccessor* node_accessor_;
   gcs::SubscribeCallback<TaskID, boost::optional<TaskLeaseData>> subscribe_callback_;
   std::shared_ptr<MockObjectDirectory> mock_object_directory_;
   uint64_t reconstruction_timeout_ms_;
@@ -426,7 +426,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionCanceled) {
   // reconstruction.
   auto timer_period = boost::posix_time::milliseconds(reconstruction_timeout_ms_);
   auto timer = std::make_shared<boost::asio::deadline_timer>(io_service_, timer_period);
-  timer->async_wait([this, timer, object_id](const boost::system::error_code &error) {
+  timer->async_wait([this, timer, object_id](const boost::system::error_code& error) {
     ASSERT_FALSE(error);
     reconstruction_policy_->Cancel(object_id);
   });
@@ -479,7 +479,7 @@ TEST_F(ReconstructionPolicyTest, TestSimultaneousReconstructionSuppressed) {
 
 }  // namespace ray
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

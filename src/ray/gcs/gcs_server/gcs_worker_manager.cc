@@ -18,7 +18,7 @@ namespace ray {
 namespace gcs {
 
 void GcsWorkerManager::HandleReportWorkerFailure(
-    const rpc::ReportWorkerFailureRequest &request, rpc::ReportWorkerFailureReply *reply,
+    const rpc::ReportWorkerFailureRequest& request, rpc::ReportWorkerFailureReply* reply,
     rpc::SendReplyCallback send_reply_callback) {
   const rpc::Address worker_address = request.worker_failure().worker_address();
   RAY_LOG(DEBUG) << "Reporting worker failure, " << worker_address.DebugString();
@@ -30,10 +30,10 @@ void GcsWorkerManager::HandleReportWorkerFailure(
   // Before handle ReportWorkerFailureRequest, you should check if the worker is exists.
   auto on_get_done =
       [this, worker_address, worker_id, worker_failure_data, reply, send_reply_callback](
-          const Status &status, const boost::optional<WorkerTableData> &result) {
+          const Status& status, const boost::optional<WorkerTableData>& result) {
         if (result) {
           auto on_put_done = [this, worker_address, worker_id, worker_failure_data, reply,
-                              send_reply_callback](const Status &status) {
+                              send_reply_callback](const Status& status) {
             if (!status.ok()) {
               RAY_LOG(ERROR) << "Failed to report worker failure, "
                              << worker_address.DebugString();
@@ -65,15 +65,15 @@ void GcsWorkerManager::HandleReportWorkerFailure(
   }
 }
 
-void GcsWorkerManager::HandleGetWorkerInfo(const rpc::GetWorkerInfoRequest &request,
-                                           rpc::GetWorkerInfoReply *reply,
+void GcsWorkerManager::HandleGetWorkerInfo(const rpc::GetWorkerInfoRequest& request,
+                                           rpc::GetWorkerInfoReply* reply,
                                            rpc::SendReplyCallback send_reply_callback) {
   WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
   RAY_LOG(DEBUG) << "Getting worker info, worker id = " << worker_id;
 
   auto on_done = [worker_id, reply, send_reply_callback](
-                     const Status &status,
-                     const boost::optional<WorkerTableData> &result) {
+                     const Status& status,
+                     const boost::optional<WorkerTableData>& result) {
     if (result) {
       reply->mutable_worker_table_data()->CopyFrom(*result);
     }
@@ -88,12 +88,12 @@ void GcsWorkerManager::HandleGetWorkerInfo(const rpc::GetWorkerInfoRequest &requ
 }
 
 void GcsWorkerManager::HandleGetAllWorkerInfo(
-    const rpc::GetAllWorkerInfoRequest &request, rpc::GetAllWorkerInfoReply *reply,
+    const rpc::GetAllWorkerInfoRequest& request, rpc::GetAllWorkerInfoReply* reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Getting all worker info.";
   auto on_done = [reply, send_reply_callback](
-                     const std::unordered_map<WorkerID, WorkerTableData> &result) {
-    for (auto &data : result) {
+                     const std::unordered_map<WorkerID, WorkerTableData>& result) {
+    for (auto& data : result) {
       reply->add_worker_table_data()->CopyFrom(data.second);
     }
     RAY_LOG(DEBUG) << "Finished getting all worker info.";
@@ -105,8 +105,8 @@ void GcsWorkerManager::HandleGetAllWorkerInfo(
   }
 }
 
-void GcsWorkerManager::HandleAddWorkerInfo(const rpc::AddWorkerInfoRequest &request,
-                                           rpc::AddWorkerInfoReply *reply,
+void GcsWorkerManager::HandleAddWorkerInfo(const rpc::AddWorkerInfoRequest& request,
+                                           rpc::AddWorkerInfoReply* reply,
                                            rpc::SendReplyCallback send_reply_callback) {
   auto worker_data = std::make_shared<WorkerTableData>();
   worker_data->CopyFrom(request.worker_data());
@@ -114,7 +114,7 @@ void GcsWorkerManager::HandleAddWorkerInfo(const rpc::AddWorkerInfoRequest &requ
   RAY_LOG(DEBUG) << "Adding worker " << worker_id;
 
   auto on_done = [worker_id, worker_data, reply,
-                  send_reply_callback](const Status &status) {
+                  send_reply_callback](const Status& status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to add worker information, "
                      << worker_data->DebugString();

@@ -22,17 +22,17 @@ namespace ray {
 
 namespace gcs {
 
-RedisGcsClient::RedisGcsClient(const GcsClientOptions &options)
+RedisGcsClient::RedisGcsClient(const GcsClientOptions& options)
     : RedisGcsClient(options, CommandType::kRegular) {}
 
-RedisGcsClient::RedisGcsClient(const GcsClientOptions &options, CommandType command_type)
+RedisGcsClient::RedisGcsClient(const GcsClientOptions& options, CommandType command_type)
     : GcsClient(options), command_type_(command_type) {
   RedisClientOptions redis_client_options(options.server_ip_, options.server_port_,
                                           options.password_, options.is_test_client_);
   redis_client_.reset(new RedisClient(redis_client_options));
 }
 
-Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
+Status RedisGcsClient::Connect(boost::asio::io_service& io_service) {
   RAY_CHECK(!is_connected_);
 
   Status status = redis_client_->Connect(io_service);
@@ -114,47 +114,47 @@ std::string RedisGcsClient::DebugString() const {
   return result.str();
 }
 
-ObjectTable &RedisGcsClient::object_table() { return *object_table_; }
+ObjectTable& RedisGcsClient::object_table() { return *object_table_; }
 
-raylet::TaskTable &RedisGcsClient::raylet_task_table() { return *raylet_task_table_; }
+raylet::TaskTable& RedisGcsClient::raylet_task_table() { return *raylet_task_table_; }
 
-LogBasedActorTable &RedisGcsClient::log_based_actor_table() {
+LogBasedActorTable& RedisGcsClient::log_based_actor_table() {
   return *log_based_actor_table_;
 }
 
-ActorTable &RedisGcsClient::actor_table() { return *actor_table_; }
+ActorTable& RedisGcsClient::actor_table() { return *actor_table_; }
 
-WorkerTable &RedisGcsClient::worker_table() { return *worker_table_; }
+WorkerTable& RedisGcsClient::worker_table() { return *worker_table_; }
 
-TaskReconstructionLog &RedisGcsClient::task_reconstruction_log() {
+TaskReconstructionLog& RedisGcsClient::task_reconstruction_log() {
   return *task_reconstruction_log_;
 }
 
-TaskLeaseTable &RedisGcsClient::task_lease_table() { return *task_lease_table_; }
+TaskLeaseTable& RedisGcsClient::task_lease_table() { return *task_lease_table_; }
 
-ClientTable &RedisGcsClient::client_table() { return *client_table_; }
+ClientTable& RedisGcsClient::client_table() { return *client_table_; }
 
-HeartbeatTable &RedisGcsClient::heartbeat_table() { return *heartbeat_table_; }
+HeartbeatTable& RedisGcsClient::heartbeat_table() { return *heartbeat_table_; }
 
-HeartbeatBatchTable &RedisGcsClient::heartbeat_batch_table() {
+HeartbeatBatchTable& RedisGcsClient::heartbeat_batch_table() {
   return *heartbeat_batch_table_;
 }
 
-ErrorTable &RedisGcsClient::error_table() { return *error_table_; }
+ErrorTable& RedisGcsClient::error_table() { return *error_table_; }
 
-JobTable &RedisGcsClient::job_table() { return *job_table_; }
+JobTable& RedisGcsClient::job_table() { return *job_table_; }
 
-ProfileTable &RedisGcsClient::profile_table() { return *profile_table_; }
+ProfileTable& RedisGcsClient::profile_table() { return *profile_table_; }
 
-ActorCheckpointTable &RedisGcsClient::actor_checkpoint_table() {
+ActorCheckpointTable& RedisGcsClient::actor_checkpoint_table() {
   return *actor_checkpoint_table_;
 }
 
-ActorCheckpointIdTable &RedisGcsClient::actor_checkpoint_id_table() {
+ActorCheckpointIdTable& RedisGcsClient::actor_checkpoint_id_table() {
   return *actor_checkpoint_id_table_;
 }
 
-DynamicResourceTable &RedisGcsClient::resource_table() { return *resource_table_; }
+DynamicResourceTable& RedisGcsClient::resource_table() { return *resource_table_; }
 
 }  // namespace gcs
 

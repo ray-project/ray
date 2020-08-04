@@ -27,12 +27,12 @@ class GcsRpcClient;
 /// Executor saves operation and support retries.
 class Executor {
  public:
-  explicit Executor(GcsRpcClient *gcs_rpc_client) : gcs_rpc_client_(gcs_rpc_client) {}
+  explicit Executor(GcsRpcClient* gcs_rpc_client) : gcs_rpc_client_(gcs_rpc_client) {}
 
   /// This function is used to execute the given operation.
   ///
   /// \param operation The operation to be executed.
-  void Execute(const std::function<void(GcsRpcClient *gcs_rpc_client)> &operation) {
+  void Execute(const std::function<void(GcsRpcClient* gcs_rpc_client)>& operation) {
     operation_ = operation;
     operation(gcs_rpc_client_);
   }
@@ -41,18 +41,18 @@ class Executor {
   void Retry() { operation_(gcs_rpc_client_); }
 
  private:
-  GcsRpcClient *gcs_rpc_client_;
-  std::function<void(GcsRpcClient *gcs_rpc_client)> operation_;
+  GcsRpcClient* gcs_rpc_client_;
+  std::function<void(GcsRpcClient* gcs_rpc_client)> operation_;
 };
 
 // Define a void GCS RPC client method.
 #define VOID_GCS_RPC_CLIENT_METHOD(SERVICE, METHOD, grpc_client, SPECS)                \
-  void METHOD(const METHOD##Request &request,                                          \
-              const ClientCallback<METHOD##Reply> &callback) SPECS {                   \
+  void METHOD(const METHOD##Request& request,                                          \
+              const ClientCallback<METHOD##Reply>& callback) SPECS {                   \
     auto executor = new Executor(this);                                                \
     auto operation_callback = [this, request, callback, executor](                     \
-                                  const ray::Status &status,                           \
-                                  const METHOD##Reply &reply) {                        \
+                                  const ray::Status& status,                           \
+                                  const METHOD##Reply& reply) {                        \
       if (!status.IsIOError()) {                                                       \
         auto status =                                                                  \
             reply.status().code() == (int)StatusCode::OK                               \
@@ -65,7 +65,7 @@ class Executor {
         executor->Retry();                                                             \
       }                                                                                \
     };                                                                                 \
-    auto operation = [request, operation_callback](GcsRpcClient *gcs_rpc_client) {     \
+    auto operation = [request, operation_callback](GcsRpcClient* gcs_rpc_client) {     \
       RAY_UNUSED(INVOKE_RPC_CALL(SERVICE, METHOD, request, operation_callback,         \
                                  gcs_rpc_client->grpc_client));                        \
     };                                                                                 \
@@ -83,14 +83,14 @@ class GcsRpcClient {
   /// \param[in] gcs_service_failure_detected The function is used to redo subscription
   /// and reconnect to GCS RPC server when gcs service failure is detected.
   GcsRpcClient(
-      const std::string &address, const int port, ClientCallManager &client_call_manager,
+      const std::string& address, const int port, ClientCallManager& client_call_manager,
       std::function<void(GcsServiceFailureType)> gcs_service_failure_detected = nullptr)
       : gcs_service_failure_detected_(std::move(gcs_service_failure_detected)) {
     Reset(address, port, client_call_manager);
   };
 
-  void Reset(const std::string &address, const int port,
-             ClientCallManager &client_call_manager) {
+  void Reset(const std::string& address, const int port,
+             ClientCallManager& client_call_manager) {
     job_info_grpc_client_ = std::unique_ptr<GrpcClient<JobInfoGcsService>>(
         new GrpcClient<JobInfoGcsService>(address, port, client_call_manager));
     actor_info_grpc_client_ = std::unique_ptr<GrpcClient<ActorInfoGcsService>>(

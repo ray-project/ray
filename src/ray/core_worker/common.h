@@ -37,12 +37,12 @@ std::string LanguageString(Language language);
 class RayFunction {
  public:
   RayFunction() {}
-  RayFunction(Language language, const ray::FunctionDescriptor &function_descriptor)
+  RayFunction(Language language, const ray::FunctionDescriptor& function_descriptor)
       : language_(language), function_descriptor_(function_descriptor) {}
 
   Language GetLanguage() const { return language_; }
 
-  const ray::FunctionDescriptor &GetFunctionDescriptor() const {
+  const ray::FunctionDescriptor& GetFunctionDescriptor() const {
     return function_descriptor_;
   }
 
@@ -54,7 +54,7 @@ class RayFunction {
 /// Options for all tasks (actor and non-actor) except for actor creation.
 struct TaskOptions {
   TaskOptions() {}
-  TaskOptions(int num_returns, std::unordered_map<std::string, double> &resources)
+  TaskOptions(int num_returns, std::unordered_map<std::string, double>& resources)
       : num_returns(num_returns), resources(resources) {}
 
   /// Number of returns of this task.
@@ -68,10 +68,10 @@ struct ActorCreationOptions {
   ActorCreationOptions() {}
   ActorCreationOptions(
       int64_t max_restarts, int64_t max_task_retries, int max_concurrency,
-      const std::unordered_map<std::string, double> &resources,
-      const std::unordered_map<std::string, double> &placement_resources,
-      const std::vector<std::string> &dynamic_worker_options, bool is_detached,
-      std::string &name, bool is_asyncio,
+      const std::unordered_map<std::string, double>& resources,
+      const std::unordered_map<std::string, double>& placement_resources,
+      const std::vector<std::string>& dynamic_worker_options, bool is_detached,
+      std::string& name, bool is_asyncio,
       PlacementOptions placement_options = std::make_pair(PlacementGroupID::Nil(), -1))
       : max_restarts(max_restarts),
         max_task_retries(max_task_retries),

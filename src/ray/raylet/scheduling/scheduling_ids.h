@@ -36,7 +36,7 @@ class StringIdMap {
   ///
   /// \param String ID.
   /// \return The integer ID associated with the given string ID.
-  int64_t Get(const std::string &string_id);
+  int64_t Get(const std::string& string_id);
 
   /// Get string ID associated with an existing integer ID.
   ///
@@ -50,12 +50,12 @@ class StringIdMap {
   /// \param max_id The number of unique possible ids. This is used
   ///               to force collisions for testing. If -1, it is not used.
   /// \return The integer ID associated with string ID string_id.
-  int64_t Insert(const std::string &string_id, uint8_t num_ids = 0);
+  int64_t Insert(const std::string& string_id, uint8_t num_ids = 0);
 
   /// Delete an ID identified by its string format.
   ///
   /// \param ID to be deleted.
-  void Remove(const std::string &string_id);
+  void Remove(const std::string& string_id);
 
   /// Delete an ID identified by its integer format.
   ///

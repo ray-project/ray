@@ -29,7 +29,7 @@ extern "C" {
  * Signature: ()[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_task_NativeTaskExecutor_nativePrepareCheckpoint(JNIEnv *, jclass);
+Java_io_ray_runtime_task_NativeTaskExecutor_nativePrepareCheckpoint(JNIEnv*, jclass);
 
 /*
  * Class:     io_ray_runtime_task_NativeTaskExecutor
@@ -38,7 +38,7 @@ Java_io_ray_runtime_task_NativeTaskExecutor_nativePrepareCheckpoint(JNIEnv *, jc
  */
 JNIEXPORT void JNICALL
 Java_io_ray_runtime_task_NativeTaskExecutor_nativeNotifyActorResumedFromCheckpoint(
-    JNIEnv *, jclass, jbyteArray);
+    JNIEnv*, jclass, jbyteArray);
 
 #ifdef __cplusplus
 }

@@ -13,12 +13,12 @@ namespace ray {
 namespace api {
 
 LocalModeTaskSubmitter::LocalModeTaskSubmitter(
-    LocalModeRayRuntime &local_mode_ray_tuntime)
+    LocalModeRayRuntime& local_mode_ray_tuntime)
     : local_mode_ray_tuntime_(local_mode_ray_tuntime) {
   thread_pool_.reset(new boost::asio::thread_pool(10));
 }
 
-ObjectID LocalModeTaskSubmitter::Submit(const InvocationSpec &invocation, TaskType type) {
+ObjectID LocalModeTaskSubmitter::Submit(const InvocationSpec& invocation, TaskType type) {
   /// TODO(Guyang Song): Make the infomation of TaskSpecification more reasonable
   /// We just reuse the TaskSpecification class and make the single process mode work.
   /// Maybe some infomation of TaskSpecification are not reasonable or invalid.
@@ -49,8 +49,7 @@ ObjectID LocalModeTaskSubmitter::Submit(const InvocationSpec &invocation, TaskTy
     throw RayException("unknown task type");
   }
   auto buffer = std::make_shared<::ray::LocalMemoryBuffer>(
-      reinterpret_cast<uint8_t *>(invocation.args->data()), invocation.args->size(),
-      true);
+      reinterpret_cast<uint8_t*>(invocation.args->data()), invocation.args->size(), true);
   /// TODO(Guyang Song): Use both 'AddByRefArg' and 'AddByValueArg' to distinguish
   auto arg = TaskArgByValue(
       std::make_shared<::ray::RayObject>(buffer, nullptr, std::vector<ObjectID>()));
@@ -65,7 +64,7 @@ ObjectID LocalModeTaskSubmitter::Submit(const InvocationSpec &invocation, TaskTy
     actor = actor_contexts_.at(invocation.actor_id).get()->current_actor;
     mutex = actor_contexts_.at(invocation.actor_id).get()->actor_mutex;
   }
-  AbstractRayRuntime *runtime = &local_mode_ray_tuntime_;
+  AbstractRayRuntime* runtime = &local_mode_ray_tuntime_;
   if (type == TaskType::ACTOR_CREATION_TASK || type == TaskType::ACTOR_TASK) {
     /// TODO(Guyang Song): Handle task dependencies.
     /// Execute actor task directly in the main thread because we must guarantee the actor
@@ -74,7 +73,7 @@ ObjectID LocalModeTaskSubmitter::Submit(const InvocationSpec &invocation, TaskTy
   } else {
     boost::asio::post(*thread_pool_.get(),
                       std::bind(
-                          [actor, mutex, runtime](TaskSpecification &ts) {
+                          [actor, mutex, runtime](TaskSpecification& ts) {
                             if (mutex) {
                               absl::MutexLock lock(mutex.get());
                             }
@@ -85,11 +84,11 @@ ObjectID LocalModeTaskSubmitter::Submit(const InvocationSpec &invocation, TaskTy
   return return_object_id;
 }
 
-ObjectID LocalModeTaskSubmitter::SubmitTask(const InvocationSpec &invocation) {
+ObjectID LocalModeTaskSubmitter::SubmitTask(const InvocationSpec& invocation) {
   return Submit(invocation, TaskType::NORMAL_TASK);
 }
 
-ActorID LocalModeTaskSubmitter::CreateActor(RemoteFunctionPtrHolder &fptr,
+ActorID LocalModeTaskSubmitter::CreateActor(RemoteFunctionPtrHolder& fptr,
                                             std::shared_ptr<msgpack::sbuffer> args) {
   ActorID id = local_mode_ray_tuntime_.GetNextActorID();
   typedef std::shared_ptr<msgpack::sbuffer> (*ExecFunction)(
@@ -105,7 +104,7 @@ ActorID LocalModeTaskSubmitter::CreateActor(RemoteFunctionPtrHolder &fptr,
   return id;
 }
 
-ObjectID LocalModeTaskSubmitter::SubmitActorTask(const InvocationSpec &invocation) {
+ObjectID LocalModeTaskSubmitter::SubmitActorTask(const InvocationSpec& invocation) {
   return Submit(invocation, TaskType::ACTOR_TASK);
 }
 

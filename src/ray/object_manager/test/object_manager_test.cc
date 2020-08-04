@@ -35,15 +35,15 @@ namespace ray {
 using rpc::GcsNodeInfo;
 
 static inline void flushall_redis(void) {
-  redisContext *context = redisConnect("127.0.0.1", 6379);
+  redisContext* context = redisConnect("127.0.0.1", 6379);
   freeReplyObject(redisCommand(context, "FLUSHALL"));
   redisFree(context);
 }
 
 class MockServer {
  public:
-  MockServer(boost::asio::io_service &main_service,
-             const ObjectManagerConfig &object_manager_config,
+  MockServer(boost::asio::io_service& main_service,
+             const ObjectManagerConfig& object_manager_config,
              std::shared_ptr<gcs::GcsClient> gcs_client)
       : node_id_(ClientID::FromRandom()),
         config_(object_manager_config),
@@ -56,7 +56,7 @@ class MockServer {
   ~MockServer() { RAY_CHECK_OK(gcs_client_->Nodes().UnregisterSelf()); }
 
  private:
-  ray::Status RegisterGcs(boost::asio::io_service &io_service) {
+  ray::Status RegisterGcs(boost::asio::io_service& io_service) {
     auto object_manager_port = object_manager_.GetServerPort();
     GcsNodeInfo node_info;
     node_info.set_node_id(node_id_.Binary());
@@ -134,11 +134,11 @@ class TestObjectManagerBase : public ::testing::Test {
     TestSetupUtil::StopObjectStore(socket_name_2);
   }
 
-  ObjectID WriteDataToClient(plasma::PlasmaClient &client, int64_t data_size) {
+  ObjectID WriteDataToClient(plasma::PlasmaClient& client, int64_t data_size) {
     return WriteDataToClient(client, data_size, ObjectID::FromRandom());
   }
 
-  ObjectID WriteDataToClient(plasma::PlasmaClient &client, int64_t data_size,
+  ObjectID WriteDataToClient(plasma::PlasmaClient& client, int64_t data_size,
                              ObjectID object_id) {
     RAY_LOG(DEBUG) << "ObjectID Created: " << object_id;
     uint8_t metadata[] = {5};
@@ -190,7 +190,7 @@ class TestObjectManager : public TestObjectManagerBase {
     node_id_1 = gcs_client_1->Nodes().GetSelfId();
     node_id_2 = gcs_client_2->Nodes().GetSelfId();
     RAY_CHECK_OK(gcs_client_1->Nodes().AsyncSubscribeToNodeChange(
-        [this](const ClientID &node_id, const GcsNodeInfo &data) {
+        [this](const ClientID& node_id, const GcsNodeInfo& data) {
           if (node_id == node_id_1 || node_id == node_id_2) {
             num_connected_clients += 1;
           }
@@ -209,13 +209,13 @@ class TestObjectManager : public TestObjectManagerBase {
   void TestNotifications() {
     ray::Status status = ray::Status::OK();
     status = server1->object_manager_.SubscribeObjAdded(
-        [this](const object_manager::protocol::ObjectInfoT &object_info) {
+        [this](const object_manager::protocol::ObjectInfoT& object_info) {
           object_added_handler_1(ObjectID::FromBinary(object_info.object_id));
           NotificationTestCompleteIfSatisfied();
         });
     RAY_CHECK_OK(status);
     status = server2->object_manager_.SubscribeObjAdded(
-        [this](const object_manager::protocol::ObjectInfoT &object_info) {
+        [this](const object_manager::protocol::ObjectInfoT& object_info) {
           object_added_handler_2(ObjectID::FromBinary(object_info.object_id));
           NotificationTestCompleteIfSatisfied();
         });
@@ -237,7 +237,7 @@ class TestObjectManager : public TestObjectManagerBase {
     auto period = boost::posix_time::milliseconds(push_timeout_ms + 10);
     timer->expires_from_now(period);
     created_object_id2 = ObjectID::FromRandom();
-    timer->async_wait([this, data_size](const boost::system::error_code &error) {
+    timer->async_wait([this, data_size](const boost::system::error_code& error) {
       WriteDataToClient(client2, data_size, created_object_id2);
     });
   }
@@ -261,8 +261,8 @@ class TestObjectManager : public TestObjectManagerBase {
     RAY_CHECK_OK(server1->object_manager_.object_directory_->SubscribeObjectLocations(
         sub_id, object_1,
         [this, sub_id, object_1, object_2](
-            const ray::ObjectID &object_id,
-            const std::unordered_set<ray::ClientID> &clients) {
+            const ray::ObjectID& object_id,
+            const std::unordered_set<ray::ClientID>& clients) {
           if (!clients.empty()) {
             TestWaitWhileSubscribed(sub_id, object_1, object_2);
           }
@@ -281,8 +281,8 @@ class TestObjectManager : public TestObjectManagerBase {
     RAY_CHECK_OK(server1->object_manager_.AddWaitRequest(
         wait_id, object_ids, timeout_ms, required_objects, false,
         [this, sub_id, object_1, object_ids, start_time](
-            const std::vector<ray::ObjectID> &found,
-            const std::vector<ray::ObjectID> &remaining) {
+            const std::vector<ray::ObjectID>& found,
+            const std::vector<ray::ObjectID>& remaining) {
           int64_t elapsed = (boost::posix_time::second_clock::local_time() - start_time)
                                 .total_milliseconds();
           RAY_LOG(DEBUG) << "elapsed " << elapsed;
@@ -354,8 +354,8 @@ class TestObjectManager : public TestObjectManagerBase {
     RAY_CHECK_OK(server1->object_manager_.Wait(
         object_ids, timeout_ms, required_objects, false,
         [this, object_ids, num_objects, timeout_ms, required_objects, start_time](
-            const std::vector<ray::ObjectID> &found,
-            const std::vector<ray::ObjectID> &remaining) {
+            const std::vector<ray::ObjectID>& found,
+            const std::vector<ray::ObjectID>& remaining) {
           int64_t elapsed = (boost::posix_time::second_clock::local_time() - start_time)
                                 .total_milliseconds();
           RAY_LOG(DEBUG) << "elapsed " << elapsed;
@@ -448,7 +448,7 @@ TEST_F(TestObjectManager, StartTestObjectManager) {
 
 }  // namespace ray
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   ray::TEST_STORE_EXEC_PATH = std::string(argv[1]);
   wait_timeout_ms = std::stoi(std::string(argv[2]));

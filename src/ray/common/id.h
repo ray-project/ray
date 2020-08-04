@@ -40,7 +40,7 @@ class JobID;
 /// once we separated the `WorkerID` from `UniqueID`.
 ///
 /// A helper function that get the `DriverID` of the given job.
-WorkerID ComputeDriverIdFromJob(const JobID &job_id);
+WorkerID ComputeDriverIdFromJob(const JobID& job_id);
 
 /// The type of this object. `PUT_OBJECT` indicates this object
 /// is generated through `ray.put` during the task's execution.
@@ -54,7 +54,7 @@ enum class ObjectType : uint8_t {
 using ObjectIDFlagsType = uint16_t;
 using ObjectIDIndexType = uint32_t;
 // Declaration.
-uint64_t MurmurHash64A(const void *key, int len, unsigned int seed);
+uint64_t MurmurHash64A(const void* key, int len, unsigned int seed);
 
 // Change the compiler alignment to 1 byte (default is 8).
 #pragma pack(push, 1)
@@ -70,27 +70,27 @@ class BaseID {
   BaseID();
   // Warning: this can duplicate IDs after a fork() call. We assume this never happens.
   static T FromRandom();
-  static T FromBinary(const std::string &binary);
-  static const T &Nil();
+  static T FromBinary(const std::string& binary);
+  static const T& Nil();
   static size_t Size() { return T::Size(); }
 
   size_t Hash() const;
   bool IsNil() const;
-  bool operator==(const BaseID &rhs) const;
-  bool operator!=(const BaseID &rhs) const;
-  const uint8_t *Data() const;
+  bool operator==(const BaseID& rhs) const;
+  bool operator!=(const BaseID& rhs) const;
+  const uint8_t* Data() const;
   std::string Binary() const;
   std::string Hex() const;
 
  protected:
-  BaseID(const std::string &binary) {
+  BaseID(const std::string& binary) {
     RAY_CHECK(binary.size() == Size() || binary.size() == 0)
         << "expected size is " << Size() << ", but got " << binary.size();
-    std::memcpy(const_cast<uint8_t *>(this->Data()), binary.data(), binary.size());
+    std::memcpy(const_cast<uint8_t*>(this->Data()), binary.data(), binary.size());
   }
   // All IDs are immutable for hash evaluations. MutableData is only allow to use
   // in construction time, so this function is protected.
-  uint8_t *MutableData();
+  uint8_t* MutableData();
   // For lazy evaluation, be careful to have one Id contained in another.
   // This hash code will be duplicated.
   mutable size_t hash_ = 0;
@@ -105,7 +105,7 @@ class UniqueID : public BaseID<UniqueID> {
   MSGPACK_DEFINE(id_);
 
  protected:
-  UniqueID(const std::string &binary);
+  UniqueID(const std::string& binary);
 
  protected:
   uint8_t id_[kUniqueIDSize];
@@ -150,7 +150,7 @@ class ActorID : public BaseID<ActorID> {
   /// \param parent_task_counter The counter of the parent task.
   ///
   /// \return The random `ActorID`.
-  static ActorID Of(const JobID &job_id, const TaskID &parent_task_id,
+  static ActorID Of(const JobID& job_id, const TaskID& parent_task_id,
                     const size_t parent_task_counter);
 
   /// Creates a nil ActorID with the given job.
@@ -158,7 +158,7 @@ class ActorID : public BaseID<ActorID> {
   /// \param job_id The job id to which this actor belongs.
   ///
   /// \return The `ActorID` with unique bytes being nil.
-  static ActorID NilFromJob(const JobID &job_id);
+  static ActorID NilFromJob(const JobID& job_id);
 
   // Warning: this can duplicate IDs after a fork() call. We assume this never happens.
   static ActorID FromRandom() = delete;
@@ -188,13 +188,13 @@ class TaskID : public BaseID<TaskID> {
 
   static size_t Size() { return kLength; }
 
-  static TaskID ComputeDriverTaskId(const WorkerID &driver_id);
+  static TaskID ComputeDriverTaskId(const WorkerID& driver_id);
 
   // Warning: this can duplicate IDs after a fork() call. We assume this never happens.
   static TaskID FromRandom() = delete;
 
   /// The ID generated for driver task.
-  static TaskID ForDriverTask(const JobID &job_id);
+  static TaskID ForDriverTask(const JobID& job_id);
 
   /// Generate driver task id for the given job.
   static TaskID ForFakeTask();
@@ -205,7 +205,7 @@ class TaskID : public BaseID<TaskID> {
   ///        by this actor creation task.
   ///
   /// \return The ID of the actor creation task.
-  static TaskID ForActorCreationTask(const ActorID &actor_id);
+  static TaskID ForActorCreationTask(const ActorID& actor_id);
 
   /// Creates a TaskID for actor task.
   ///
@@ -216,8 +216,8 @@ class TaskID : public BaseID<TaskID> {
   /// \param actor_id The ID of the actor to which this task belongs.
   ///
   /// \return The ID of the actor task.
-  static TaskID ForActorTask(const JobID &job_id, const TaskID &parent_task_id,
-                             size_t parent_task_counter, const ActorID &actor_id);
+  static TaskID ForActorTask(const JobID& job_id, const TaskID& parent_task_id,
+                             size_t parent_task_counter, const ActorID& actor_id);
 
   /// Creates a TaskID for normal task.
   ///
@@ -227,7 +227,7 @@ class TaskID : public BaseID<TaskID> {
   ///        parent task before this one.
   ///
   /// \return The ID of the normal task.
-  static TaskID ForNormalTask(const JobID &job_id, const TaskID &parent_task_id,
+  static TaskID ForNormalTask(const JobID& job_id, const TaskID& parent_task_id,
                               size_t parent_task_counter);
 
   /// Get the id of the actor to which this task belongs.
@@ -303,7 +303,7 @@ class ObjectID : public BaseID<ObjectID> {
   /// \param index What index of the object put in the task.
   ///
   /// \return The computed object ID.
-  static ObjectID ForPut(const TaskID &task_id, ObjectIDIndexType put_index);
+  static ObjectID ForPut(const TaskID& task_id, ObjectIDIndexType put_index);
 
   /// Compute the object ID of an object returned by the task.
   ///
@@ -311,7 +311,7 @@ class ObjectID : public BaseID<ObjectID> {
   /// \param return_index What index of the object returned by in the task.
   ///
   /// \return The computed object ID.
-  static ObjectID ForTaskReturn(const TaskID &task_id, ObjectIDIndexType return_index);
+  static ObjectID ForTaskReturn(const TaskID& task_id, ObjectIDIndexType return_index);
 
   /// Create an object id randomly.
   ///
@@ -327,13 +327,13 @@ class ObjectID : public BaseID<ObjectID> {
   ///
   /// \param actor_id The ID of the actor to track.
   /// \return The computed object ID.
-  static ObjectID ForActorHandle(const ActorID &actor_id);
+  static ObjectID ForActorHandle(const ActorID& actor_id);
 
   MSGPACK_DEFINE(id_);
 
  private:
   /// A helper method to generate an ObjectID.
-  static ObjectID GenerateObjectId(const std::string &task_id_binary,
+  static ObjectID GenerateObjectId(const std::string& task_id_binary,
                                    ObjectIDFlagsType flags,
                                    ObjectIDIndexType object_index = 0);
 
@@ -373,27 +373,27 @@ static_assert(sizeof(ObjectID) == ObjectID::kLength + sizeof(size_t),
 static_assert(sizeof(PlacementGroupID) == PlacementGroupID::kLength + sizeof(size_t),
               "PlacementGroupID size is not as expected");
 
-std::ostream &operator<<(std::ostream &os, const UniqueID &id);
-std::ostream &operator<<(std::ostream &os, const JobID &id);
-std::ostream &operator<<(std::ostream &os, const ActorID &id);
-std::ostream &operator<<(std::ostream &os, const TaskID &id);
-std::ostream &operator<<(std::ostream &os, const ObjectID &id);
-std::ostream &operator<<(std::ostream &os, const PlacementGroupID &id);
+std::ostream& operator<<(std::ostream& os, const UniqueID& id);
+std::ostream& operator<<(std::ostream& os, const JobID& id);
+std::ostream& operator<<(std::ostream& os, const ActorID& id);
+std::ostream& operator<<(std::ostream& os, const TaskID& id);
+std::ostream& operator<<(std::ostream& os, const ObjectID& id);
+std::ostream& operator<<(std::ostream& os, const PlacementGroupID& id);
 
 #define DEFINE_UNIQUE_ID(type)                                                 \
   class RAY_EXPORT type : public UniqueID {                                    \
    public:                                                                     \
-    explicit type(const UniqueID &from) {                                      \
+    explicit type(const UniqueID& from) {                                      \
       std::memcpy(&id_, from.Data(), kUniqueIDSize);                           \
     }                                                                          \
     type() : UniqueID() {}                                                     \
     static type FromRandom() { return type(UniqueID::FromRandom()); }          \
-    static type FromBinary(const std::string &binary) { return type(binary); } \
+    static type FromBinary(const std::string& binary) { return type(binary); } \
     static type Nil() { return type(UniqueID::Nil()); }                        \
     static size_t Size() { return kUniqueIDSize; }                             \
                                                                                \
    private:                                                                    \
-    explicit type(const std::string &binary) {                                 \
+    explicit type(const std::string& binary) {                                 \
       RAY_CHECK(binary.size() == Size() || binary.size() == 0)                 \
           << "expected size is " << Size() << ", but got " << binary.size();   \
       std::memcpy(&id_, binary.data(), binary.size());                         \
@@ -422,7 +422,7 @@ T BaseID<T>::FromRandom() {
 }
 
 template <typename T>
-T BaseID<T>::FromBinary(const std::string &binary) {
+T BaseID<T>::FromBinary(const std::string& binary) {
   RAY_CHECK(binary.size() == T::Size() || binary.size() == 0)
       << "expected size is " << T::Size() << ", but got " << binary.size();
   T t;
@@ -431,7 +431,7 @@ T BaseID<T>::FromBinary(const std::string &binary) {
 }
 
 template <typename T>
-const T &BaseID<T>::Nil() {
+const T& BaseID<T>::Nil() {
   static const T nil_id;
   return nil_id;
 }
@@ -453,34 +453,34 @@ size_t BaseID<T>::Hash() const {
 }
 
 template <typename T>
-bool BaseID<T>::operator==(const BaseID &rhs) const {
+bool BaseID<T>::operator==(const BaseID& rhs) const {
   return std::memcmp(Data(), rhs.Data(), T::Size()) == 0;
 }
 
 template <typename T>
-bool BaseID<T>::operator!=(const BaseID &rhs) const {
+bool BaseID<T>::operator!=(const BaseID& rhs) const {
   return !(*this == rhs);
 }
 
 template <typename T>
-uint8_t *BaseID<T>::MutableData() {
-  return reinterpret_cast<uint8_t *>(this) + sizeof(hash_);
+uint8_t* BaseID<T>::MutableData() {
+  return reinterpret_cast<uint8_t*>(this) + sizeof(hash_);
 }
 
 template <typename T>
-const uint8_t *BaseID<T>::Data() const {
-  return reinterpret_cast<const uint8_t *>(this) + sizeof(hash_);
+const uint8_t* BaseID<T>::Data() const {
+  return reinterpret_cast<const uint8_t*>(this) + sizeof(hash_);
 }
 
 template <typename T>
 std::string BaseID<T>::Binary() const {
-  return std::string(reinterpret_cast<const char *>(Data()), T::Size());
+  return std::string(reinterpret_cast<const char*>(Data()), T::Size());
 }
 
 template <typename T>
 std::string BaseID<T>::Hex() const {
   constexpr char hex[] = "0123456789abcdef";
-  const uint8_t *id = Data();
+  const uint8_t* id = Data();
   std::string result;
   for (size_t i = 0; i < T::Size(); i++) {
     unsigned int val = id[i];
@@ -497,11 +497,11 @@ namespace std {
 #define DEFINE_UNIQUE_ID(type)                                           \
   template <>                                                            \
   struct hash<::ray::type> {                                             \
-    size_t operator()(const ::ray::type &id) const { return id.Hash(); } \
+    size_t operator()(const ::ray::type& id) const { return id.Hash(); } \
   };                                                                     \
   template <>                                                            \
   struct hash<const ::ray::type> {                                       \
-    size_t operator()(const ::ray::type &id) const { return id.Hash(); } \
+    size_t operator()(const ::ray::type& id) const { return id.Hash(); } \
   };
 
 DEFINE_UNIQUE_ID(UniqueID);

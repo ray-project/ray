@@ -78,17 +78,17 @@ class GcsTableStorageTestBase : public ::testing::Test {
   }
 
   template <typename TABLE, typename KEY, typename VALUE>
-  void Put(TABLE &table, const KEY &key, const VALUE &value) {
-    auto on_done = [this](const Status &status) { --pending_count_; };
+  void Put(TABLE& table, const KEY& key, const VALUE& value) {
+    auto on_done = [this](const Status& status) { --pending_count_; };
     ++pending_count_;
     RAY_CHECK_OK(table.Put(key, value, on_done));
     WaitPendingDone();
   }
 
   template <typename TABLE, typename KEY, typename VALUE>
-  int Get(TABLE &table, const KEY &key, std::vector<VALUE> &values) {
-    auto on_done = [this, &values](const Status &status,
-                                   const boost::optional<VALUE> &result) {
+  int Get(TABLE& table, const KEY& key, std::vector<VALUE>& values) {
+    auto on_done = [this, &values](const Status& status,
+                                   const boost::optional<VALUE>& result) {
       RAY_CHECK_OK(status);
       values.clear();
       if (result) {
@@ -106,12 +106,12 @@ class GcsTableStorageTestBase : public ::testing::Test {
   }
 
   template <typename TABLE, typename KEY, typename VALUE>
-  int GetByJobId(TABLE &table, const JobID &job_id, const KEY &key,
-                 std::vector<VALUE> &values) {
-    auto on_done = [this, &values](const std::unordered_map<KEY, VALUE> &result) {
+  int GetByJobId(TABLE& table, const JobID& job_id, const KEY& key,
+                 std::vector<VALUE>& values) {
+    auto on_done = [this, &values](const std::unordered_map<KEY, VALUE>& result) {
       values.clear();
       if (!result.empty()) {
-        for (auto &item : result) {
+        for (auto& item : result) {
           values.push_back(item.second);
         }
       }
@@ -127,8 +127,8 @@ class GcsTableStorageTestBase : public ::testing::Test {
   }
 
   template <typename TABLE, typename KEY>
-  void Delete(TABLE &table, const KEY &key) {
-    auto on_done = [this](const Status &status) {
+  void Delete(TABLE& table, const KEY& key) {
+    auto on_done = [this](const Status& status) {
       RAY_CHECK_OK(status);
       --pending_count_;
     };
@@ -139,7 +139,7 @@ class GcsTableStorageTestBase : public ::testing::Test {
 
   void WaitPendingDone() { WaitPendingDone(pending_count_); }
 
-  void WaitPendingDone(std::atomic<int> &pending_count) {
+  void WaitPendingDone(std::atomic<int>& pending_count) {
     auto condition = [&pending_count]() { return pending_count == 0; };
     EXPECT_TRUE(WaitForCondition(condition, wait_pending_timeout_.count()));
   }

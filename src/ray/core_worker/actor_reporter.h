@@ -22,7 +22,7 @@ namespace ray {
 // Interface for testing.
 class ActorReporterInterface {
  public:
-  virtual void PublishTerminatedActor(const TaskSpecification &actor_creation_task) = 0;
+  virtual void PublishTerminatedActor(const TaskSpecification& actor_creation_task) = 0;
 
   virtual ~ActorReporterInterface() {}
 };
@@ -34,7 +34,7 @@ class ActorReporter : public ActorReporterInterface {
   ~ActorReporter() {}
 
   /// Called when an actor that we own can no longer be restarted.
-  void PublishTerminatedActor(const TaskSpecification &actor_creation_task) override;
+  void PublishTerminatedActor(const TaskSpecification& actor_creation_task) override;
 
  private:
   /// GCS client

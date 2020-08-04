@@ -18,7 +18,7 @@
 
 namespace ray {
 
-void TestReturnObjectId(const TaskID &task_id, int64_t return_index) {
+void TestReturnObjectId(const TaskID& task_id, int64_t return_index) {
   // Round trip test for computing the object ID for a task's return value,
   // then computing the task ID that created the object.
   ObjectID return_id = ObjectID::ForTaskReturn(task_id, return_index);
@@ -29,7 +29,7 @@ void TestReturnObjectId(const TaskID &task_id, int64_t return_index) {
   ASSERT_EQ(return_id.ObjectIndex(), return_index);
 }
 
-void TestPutObjectId(const TaskID &task_id, int64_t put_index) {
+void TestPutObjectId(const TaskID& task_id, int64_t put_index) {
   // Round trip test for computing the object ID for a task's put value, then
   // computing the task ID that created the object.
   ObjectID put_id = ObjectID::ForPut(task_id, put_index);
@@ -121,7 +121,7 @@ TEST(HashTest, TestNilHash) {
 
 }  // namespace ray
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

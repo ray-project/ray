@@ -16,8 +16,8 @@
 
 namespace ray {
 
-ObjectDirectory::ObjectDirectory(boost::asio::io_service &io_service,
-                                 std::shared_ptr<gcs::GcsClient> &gcs_client)
+ObjectDirectory::ObjectDirectory(boost::asio::io_service& io_service,
+                                 std::shared_ptr<gcs::GcsClient>& gcs_client)
     : io_service_(io_service), gcs_client_(gcs_client) {}
 
 namespace {
@@ -30,14 +30,14 @@ using ray::rpc::ObjectTableData;
 /// node_ids. This assumes that node_ids already contains the result of the
 /// object table entries up to but not including this notification.
 bool UpdateObjectLocations(bool is_added,
-                           const std::vector<ObjectTableData> &location_updates,
+                           const std::vector<ObjectTableData>& location_updates,
                            std::shared_ptr<gcs::GcsClient> gcs_client,
-                           std::unordered_set<ClientID> *node_ids) {
+                           std::unordered_set<ClientID>* node_ids) {
   // location_updates contains the updates of locations of the object.
   // with GcsChangeMode, we can determine whether the update mode is
   // addition or deletion.
   bool isUpdated = false;
-  for (const auto &object_table_data : location_updates) {
+  for (const auto& object_table_data : location_updates) {
     ClientID node_id = ClientID::FromBinary(object_table_data.manager());
     if (is_added && 0 == node_ids->count(node_id)) {
       node_ids->insert(node_id);
@@ -62,8 +62,8 @@ bool UpdateObjectLocations(bool is_added,
 }  // namespace
 
 ray::Status ObjectDirectory::ReportObjectAdded(
-    const ObjectID &object_id, const ClientID &client_id,
-    const object_manager::protocol::ObjectInfoT &object_info) {
+    const ObjectID& object_id, const ClientID& client_id,
+    const object_manager::protocol::ObjectInfoT& object_info) {
   RAY_LOG(DEBUG) << "Reporting object added to GCS " << object_id;
   ray::Status status =
       gcs_client_->Objects().AsyncAddLocation(object_id, client_id, nullptr);
@@ -71,8 +71,8 @@ ray::Status ObjectDirectory::ReportObjectAdded(
 }
 
 ray::Status ObjectDirectory::ReportObjectRemoved(
-    const ObjectID &object_id, const ClientID &client_id,
-    const object_manager::protocol::ObjectInfoT &object_info) {
+    const ObjectID& object_id, const ClientID& client_id,
+    const object_manager::protocol::ObjectInfoT& object_info) {
   RAY_LOG(DEBUG) << "Reporting object removed to GCS " << object_id;
   ray::Status status =
       gcs_client_->Objects().AsyncRemoveLocation(object_id, client_id, nullptr);
@@ -80,7 +80,7 @@ ray::Status ObjectDirectory::ReportObjectRemoved(
 };
 
 void ObjectDirectory::LookupRemoteConnectionInfo(
-    RemoteConnectionInfo &connection_info) const {
+    RemoteConnectionInfo& connection_info) const {
   auto node_info = gcs_client_->Nodes().Get(connection_info.client_id);
   if (node_info) {
     ClientID result_node_id = ClientID::FromBinary(node_info->node_id());
@@ -94,8 +94,8 @@ void ObjectDirectory::LookupRemoteConnectionInfo(
 
 std::vector<RemoteConnectionInfo> ObjectDirectory::LookupAllRemoteConnections() const {
   std::vector<RemoteConnectionInfo> remote_connections;
-  const auto &node_map = gcs_client_->Nodes().GetAll();
-  for (const auto &item : node_map) {
+  const auto& node_map = gcs_client_->Nodes().GetAll();
+  for (const auto& item : node_map) {
     RemoteConnectionInfo info(item.first);
     LookupRemoteConnectionInfo(info);
     if (info.Connected() && info.client_id != gcs_client_->Nodes().GetSelfId()) {
@@ -105,9 +105,9 @@ std::vector<RemoteConnectionInfo> ObjectDirectory::LookupAllRemoteConnections() 
   return remote_connections;
 }
 
-void ObjectDirectory::HandleClientRemoved(const ClientID &client_id) {
-  for (auto &listener : listeners_) {
-    const ObjectID &object_id = listener.first;
+void ObjectDirectory::HandleClientRemoved(const ClientID& client_id) {
+  for (auto& listener : listeners_) {
+    const ObjectID& object_id = listener.first;
     if (listener.second.current_object_locations.count(client_id) > 0) {
       // If the subscribed object has the removed client as a location, update
       // its locations with an empty update so that the location will be removed.
@@ -115,7 +115,7 @@ void ObjectDirectory::HandleClientRemoved(const ClientID &client_id) {
                             &listener.second.current_object_locations);
       // Re-call all the subscribed callbacks for the object, since its
       // locations have changed.
-      for (const auto &callback_pair : listener.second.callbacks) {
+      for (const auto& callback_pair : listener.second.callbacks) {
         // It is safe to call the callback directly since this is already running
         // in the subscription callback stack.
         callback_pair.second(object_id, listener.second.current_object_locations);
@@ -124,17 +124,17 @@ void ObjectDirectory::HandleClientRemoved(const ClientID &client_id) {
   }
 }
 
-ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_id,
-                                                      const ObjectID &object_id,
-                                                      const OnLocationsFound &callback) {
+ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID& callback_id,
+                                                      const ObjectID& object_id,
+                                                      const OnLocationsFound& callback) {
   ray::Status status = ray::Status::OK();
   auto it = listeners_.find(object_id);
   if (it == listeners_.end()) {
     it = listeners_.emplace(object_id, LocationListenerState()).first;
 
     auto object_notification_callback =
-        [this](const ObjectID &object_id,
-               const gcs::ObjectChangeNotification &object_notification) {
+        [this](const ObjectID& object_id,
+               const gcs::ObjectChangeNotification& object_notification) {
           // Objects are added to this map in SubscribeObjectLocations.
           auto it = listeners_.find(object_id);
           // Do nothing for objects we are not listening for.
@@ -158,7 +158,7 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
           // received.  This notifies the client even if the list of locations is
           // empty, since this may indicate that the objects have been evicted from
           // all nodes.
-          for (const auto &callback_pair : callbacks) {
+          for (const auto& callback_pair : callbacks) {
             // It is safe to call the callback directly since this is already running
             // in the subscription callback stack.
             callback_pair.second(object_id, it->second.current_object_locations);
@@ -168,7 +168,7 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
         object_id, object_notification_callback, /*done*/ nullptr);
   }
 
-  auto &listener_state = it->second;
+  auto& listener_state = it->second;
   // TODO(hme): Make this fatal after implementing Pull suppression.
   if (listener_state.callbacks.count(callback_id) > 0) {
     return ray::Status::OK();
@@ -177,15 +177,15 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
   // If we previously received some notifications about the object's locations,
   // immediately notify the caller of the current known locations.
   if (listener_state.subscribed) {
-    auto &locations = listener_state.current_object_locations;
+    auto& locations = listener_state.current_object_locations;
     io_service_.post(
         [callback, locations, object_id]() { callback(object_id, locations); });
   }
   return status;
 }
 
-ray::Status ObjectDirectory::UnsubscribeObjectLocations(const UniqueID &callback_id,
-                                                        const ObjectID &object_id) {
+ray::Status ObjectDirectory::UnsubscribeObjectLocations(const UniqueID& callback_id,
+                                                        const ObjectID& object_id) {
   ray::Status status = ray::Status::OK();
   auto entry = listeners_.find(object_id);
   if (entry == listeners_.end()) {
@@ -199,8 +199,8 @@ ray::Status ObjectDirectory::UnsubscribeObjectLocations(const UniqueID &callback
   return status;
 }
 
-ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
-                                             const OnLocationsFound &callback) {
+ray::Status ObjectDirectory::LookupLocations(const ObjectID& object_id,
+                                             const OnLocationsFound& callback) {
   ray::Status status;
   auto it = listeners_.find(object_id);
   if (it != listeners_.end() && it->second.subscribed) {
@@ -208,7 +208,7 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
     // call, and we have received at least one notification from the GCS about
     // the object's creation, then call the callback immediately with the
     // cached locations.
-    auto &locations = it->second.current_object_locations;
+    auto& locations = it->second.current_object_locations;
     io_service_.post(
         [callback, object_id, locations]() { callback(object_id, locations); });
   } else {
@@ -218,7 +218,7 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
     status = gcs_client_->Objects().AsyncGetLocations(
         object_id,
         [this, object_id, callback](
-            Status status, const std::vector<ObjectTableData> &location_updates) {
+            Status status, const std::vector<ObjectTableData>& location_updates) {
           RAY_CHECK(status.ok())
               << "Failed to get object location from GCS: " << status.message();
           // Build the set of current locations based on the entries in the log.

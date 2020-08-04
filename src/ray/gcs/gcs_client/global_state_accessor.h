@@ -31,8 +31,8 @@ class GlobalStateAccessor {
   /// \param redis_address The address of GCS Redis.
   /// \param redis_password The password of GCS Redis.
   /// \param is_test Whether this accessor is used for tests.
-  explicit GlobalStateAccessor(const std::string &redis_address,
-                               const std::string &redis_password, bool is_test = false);
+  explicit GlobalStateAccessor(const std::string& redis_address,
+                               const std::string& redis_password, bool is_test = false);
 
   ~GlobalStateAccessor();
 
@@ -76,7 +76,7 @@ class GlobalStateAccessor {
   /// \return Object info. To support multi-language, we serialize each ObjectTableData
   /// and return the serialized string. Where used, it needs to be deserialized with
   /// protobuf function.
-  std::unique_ptr<std::string> GetObjectInfo(const ObjectID &object_id);
+  std::unique_ptr<std::string> GetObjectInfo(const ObjectID& object_id);
 
   /// Get information of a node resource from GCS Service.
   ///
@@ -84,7 +84,7 @@ class GlobalStateAccessor {
   /// \return node resource map info. To support multi-language, we serialize each
   /// ResourceTableData and return the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
-  std::string GetNodeResourceInfo(const ClientID &node_id);
+  std::string GetNodeResourceInfo(const ClientID& node_id);
 
   /// Get internal config from GCS Service.
   ///
@@ -105,7 +105,7 @@ class GlobalStateAccessor {
   /// \return Actor info. To support multi-language, we serialize each ActorTableData and
   /// return the serialized string. Where used, it needs to be deserialized with
   /// protobuf function.
-  std::unique_ptr<std::string> GetActorInfo(const ActorID &actor_id);
+  std::unique_ptr<std::string> GetActorInfo(const ActorID& actor_id);
 
   /// Get checkpoint id of an actor from GCS Service.
   ///
@@ -113,7 +113,7 @@ class GlobalStateAccessor {
   /// \return Actor checkpoint id. To support multi-language, we serialize each
   /// ActorCheckpointIdData and return the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
-  std::unique_ptr<std::string> GetActorCheckpointId(const ActorID &actor_id);
+  std::unique_ptr<std::string> GetActorCheckpointId(const ActorID& actor_id);
 
   /// Get information of a worker from GCS Service.
   ///
@@ -121,7 +121,7 @@ class GlobalStateAccessor {
   /// \return Worker info. To support multi-language, we serialize each WorkerTableData
   /// and return the serialized string. Where used, it needs to be deserialized with
   /// protobuf function.
-  std::unique_ptr<std::string> GetWorkerInfo(const WorkerID &worker_id);
+  std::unique_ptr<std::string> GetWorkerInfo(const WorkerID& worker_id);
 
   /// Get information of all workers from GCS Service.
   ///
@@ -135,7 +135,7 @@ class GlobalStateAccessor {
   /// \param serialized_string The serialized data of worker to be added in the GCS
   /// Service, use string is convenient for python to use.
   /// \return Is operation success.
-  bool AddWorkerInfo(const std::string &serialized_string);
+  bool AddWorkerInfo(const std::string& serialized_string);
 
  private:
   /// MultiItem transformation helper in template style.
@@ -143,11 +143,11 @@ class GlobalStateAccessor {
   /// \return MultiItemCallback within in rpc type DATA.
   template <class DATA>
   MultiItemCallback<DATA> TransformForMultiItemCallback(
-      std::vector<std::string> &data_vec, std::promise<bool> &promise) {
-    return [&data_vec, &promise](const Status &status, const std::vector<DATA> &result) {
+      std::vector<std::string>& data_vec, std::promise<bool>& promise) {
+    return [&data_vec, &promise](const Status& status, const std::vector<DATA>& result) {
       RAY_CHECK_OK(status);
       std::transform(result.begin(), result.end(), std::back_inserter(data_vec),
-                     [](const DATA &data) { return data.SerializeAsString(); });
+                     [](const DATA& data) { return data.SerializeAsString(); });
       promise.set_value(true);
     };
   }
@@ -157,8 +157,8 @@ class GlobalStateAccessor {
   /// \return OptionalItemCallback within in rpc type DATA.
   template <class DATA>
   OptionalItemCallback<DATA> TransformForOptionalItemCallback(
-      std::unique_ptr<std::string> &data, std::promise<bool> &promise) {
-    return [&data, &promise](const Status &status, const boost::optional<DATA> &result) {
+      std::unique_ptr<std::string>& data, std::promise<bool>& promise) {
+    return [&data, &promise](const Status& status, const boost::optional<DATA>& result) {
       RAY_CHECK_OK(status);
       if (result) {
         data.reset(new std::string(result->SerializeAsString()));

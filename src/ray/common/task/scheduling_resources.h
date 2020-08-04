@@ -35,23 +35,23 @@ class FractionalResourceQuantity {
   FractionalResourceQuantity(double resource_quantity);
 
   /// \brief Addition of FractionalResourceQuantity.
-  const FractionalResourceQuantity operator+(const FractionalResourceQuantity &rhs) const;
+  const FractionalResourceQuantity operator+(const FractionalResourceQuantity& rhs) const;
 
   /// \brief Subtraction of FractionalResourceQuantity.
-  const FractionalResourceQuantity operator-(const FractionalResourceQuantity &rhs) const;
+  const FractionalResourceQuantity operator-(const FractionalResourceQuantity& rhs) const;
 
   /// \brief Addition and assignment of FractionalResourceQuantity.
-  void operator+=(const FractionalResourceQuantity &rhs);
+  void operator+=(const FractionalResourceQuantity& rhs);
 
   /// \brief Subtraction and assignment of FractionalResourceQuantity.
-  void operator-=(const FractionalResourceQuantity &rhs);
+  void operator-=(const FractionalResourceQuantity& rhs);
 
-  bool operator==(const FractionalResourceQuantity &rhs) const;
-  bool operator!=(const FractionalResourceQuantity &rhs) const;
-  bool operator<(const FractionalResourceQuantity &rhs) const;
-  bool operator>(const FractionalResourceQuantity &rhs) const;
-  bool operator<=(const FractionalResourceQuantity &rhs) const;
-  bool operator>=(const FractionalResourceQuantity &rhs) const;
+  bool operator==(const FractionalResourceQuantity& rhs) const;
+  bool operator!=(const FractionalResourceQuantity& rhs) const;
+  bool operator<(const FractionalResourceQuantity& rhs) const;
+  bool operator>(const FractionalResourceQuantity& rhs) const;
+  bool operator<=(const FractionalResourceQuantity& rhs) const;
+  bool operator>=(const FractionalResourceQuantity& rhs) const;
 
   /// \brief Return actual resource amount as a double.
   double ToDouble() const;
@@ -77,14 +77,14 @@ class ResourceSet {
 
   /// \brief Constructs ResourceSet from the specified resource map.
   ResourceSet(
-      const std::unordered_map<std::string, FractionalResourceQuantity> &resource_map);
+      const std::unordered_map<std::string, FractionalResourceQuantity>& resource_map);
 
   /// \brief Constructs ResourceSet from the specified resource map.
-  ResourceSet(const std::unordered_map<std::string, double> &resource_map);
+  ResourceSet(const std::unordered_map<std::string, double>& resource_map);
 
   /// \brief Constructs ResourceSet from two equal-length vectors with label and capacity
   /// specification.
-  ResourceSet(const std::vector<std::string> &resource_labels,
+  ResourceSet(const std::vector<std::string>& resource_labels,
               const std::vector<double> resource_capacity);
 
   /// \brief Empty ResourceSet destructor.
@@ -94,42 +94,42 @@ class ResourceSet {
   ///
   /// \param rhs: Right-hand side object for equality comparison.
   /// \return True if objects are equal, False otherwise.
-  bool operator==(const ResourceSet &rhs) const;
+  bool operator==(const ResourceSet& rhs) const;
 
   /// \brief Test equality with the other specified ResourceSet object.
   ///
   /// \param other: Right-hand side object for equality comparison.
   /// \return True if objects are equal, False otherwise.
-  bool IsEqual(const ResourceSet &other) const;
+  bool IsEqual(const ResourceSet& other) const;
 
   /// \brief Test whether this ResourceSet is a subset of the other ResourceSet.
   ///
   /// \param other: The resource set we check being a subset of.
   /// \return True if the current resource set is the subset of other. False
   /// otherwise.
-  bool IsSubset(const ResourceSet &other) const;
+  bool IsSubset(const ResourceSet& other) const;
 
   /// \brief Test if this ResourceSet is a superset of the other ResourceSet.
   ///
   /// \param other: The resource set we check being a superset of.
   /// \return True if the current resource set is the superset of other.
   /// False otherwise.
-  bool IsSuperset(const ResourceSet &other) const;
+  bool IsSuperset(const ResourceSet& other) const;
 
   /// \brief Add or update a new resource to the resource set.
   ///
   /// \param resource_name: name/label of the resource to add.
   /// \param capacity: numeric capacity value for the resource to add.
   /// \return True, if the resource was successfully added. False otherwise.
-  void AddOrUpdateResource(const std::string &resource_name,
-                           const FractionalResourceQuantity &capacity);
+  void AddOrUpdateResource(const std::string& resource_name,
+                           const FractionalResourceQuantity& capacity);
 
   /// \brief Delete a resource from the resource set.
   ///
   /// \param resource_name: name/label of the resource to delete.
   /// \return True if the resource was found while deleting, false if the resource did not
   /// exist in the set.
-  bool DeleteResource(const std::string &resource_name);
+  bool DeleteResource(const std::string& resource_name);
 
   /// \brief Add a set of resources to the current set of resources subject to upper
   /// limits on capacity from the total_resource set.
@@ -138,15 +138,15 @@ class ResourceSet {
   /// \param total_resources: Total resource set which sets upper limits on capacity for
   /// each label. \return True if the resource set was added successfully. False
   /// otherwise.
-  void AddResourcesCapacityConstrained(const ResourceSet &other,
-                                       const ResourceSet &total_resources);
+  void AddResourcesCapacityConstrained(const ResourceSet& other,
+                                       const ResourceSet& total_resources);
 
   /// \brief Aggregate resources from the other set into this set, adding any missing
   /// resource labels to this set.
   ///
   /// \param other: The other resource set to add.
   /// \return Void.
-  void AddResources(const ResourceSet &other);
+  void AddResources(const ResourceSet& other);
 
   /// \brief Aggregate resources from the other set into this set, adding any missing
   /// resource labels to this set.
@@ -155,8 +155,8 @@ class ResourceSet {
   /// \param bundle_index: The index of the bundle.
   /// \param other: The other resource set to add.
   /// \return Void.
-  void AddBundleResources(const PlacementGroupID &bundle_id, const int bundle_index,
-                          const ResourceSet &other);
+  void AddBundleResources(const PlacementGroupID& bundle_id, const int bundle_index,
+                          const ResourceSet& other);
 
   /// \brief Return back all the bundle resource. Changing the resource name and adding
   /// any missing resource labels to this set.
@@ -164,7 +164,7 @@ class ResourceSet {
   /// \param bundle_id: The placement group id.
   /// \param bundle_index: The index of the bundle.
   /// \return Void.
-  void ReturnBundleResources(const PlacementGroupID &bundle_id, const int bundle_index);
+  void ReturnBundleResources(const PlacementGroupID& bundle_id, const int bundle_index);
 
   /// \brief Subtract a set of resources from the current set of resources and
   /// check that the post-subtraction result nonnegative. Assumes other
@@ -173,21 +173,21 @@ class ResourceSet {
   ///
   /// \param other: The resource set to subtract from the current resource set.
   /// \return Void.
-  void SubtractResources(const ResourceSet &other);
+  void SubtractResources(const ResourceSet& other);
 
   /// \brief Same as SubtractResources but throws an error if the resource value
   /// goes below zero.
   ///
   /// \param other: The resource set to subtract from the current resource set.
   /// \return Void.
-  void SubtractResourcesStrict(const ResourceSet &other);
+  void SubtractResourcesStrict(const ResourceSet& other);
 
   /// Return the capacity value associated with the specified resource.
   ///
   /// \param resource_name: Resource name for which capacity is requested.
   /// \return The capacity value associated with the specified resource, zero if resource
   /// does not exist.
-  FractionalResourceQuantity GetResource(const std::string &resource_name) const;
+  FractionalResourceQuantity GetResource(const std::string& resource_name) const;
 
   /// Return the number of CPUs.
   ///
@@ -212,8 +212,8 @@ class ResourceSet {
   /// size is in kResourceConversionFactor of a unit.
   ///
   /// \return map of resource in string to size in FractionalResourceQuantity.
-  const std::unordered_map<std::string, FractionalResourceQuantity>
-      &GetResourceAmountMap() const;
+  const std::unordered_map<std::string, FractionalResourceQuantity>&
+  GetResourceAmountMap() const;
 
   const std::string ToString() const;
 
@@ -242,21 +242,21 @@ class ResourceIds {
   /// \brief Constructs ResourceIds with a given set of whole IDs.
   ///
   /// \param whole_ids: A vector of the resource IDs that are completely available.
-  explicit ResourceIds(const std::vector<int64_t> &whole_ids);
+  explicit ResourceIds(const std::vector<int64_t>& whole_ids);
 
   /// \brief Constructs ResourceIds with a given set of fractional IDs.
   ///
   /// \param fractional_ids: A vector of the resource IDs that are partially available.
   explicit ResourceIds(
-      const std::vector<std::pair<int64_t, FractionalResourceQuantity>> &fractional_ids);
+      const std::vector<std::pair<int64_t, FractionalResourceQuantity>>& fractional_ids);
 
   /// \brief Constructs ResourceIds with a given set of whole IDs and fractional IDs.
   ///
   /// \param whole_ids: A vector of the resource IDs that are completely available.
   /// \param fractional_ids: A vector of the resource IDs that are partially available.
   ResourceIds(
-      const std::vector<int64_t> &whole_ids,
-      const std::vector<std::pair<int64_t, FractionalResourceQuantity>> &fractional_ids);
+      const std::vector<int64_t>& whole_ids,
+      const std::vector<std::pair<int64_t, FractionalResourceQuantity>>& fractional_ids);
 
   /// \brief Check if we have at least the requested amount.
   ///
@@ -268,36 +268,36 @@ class ResourceIds {
   ///
   /// \param resource_quantity Either a whole number or a fraction less than 1.
   /// \return True if there we have enough of the resource.
-  bool Contains(const FractionalResourceQuantity &resource_quantity) const;
+  bool Contains(const FractionalResourceQuantity& resource_quantity) const;
 
   /// \brief Acquire the requested amount of the resource.
   ///
   /// \param resource_quantity The amount to acquire. Either a whole number or a
   /// fraction less than 1.
   /// \return A ResourceIds representing the specific acquired IDs.
-  ResourceIds Acquire(const FractionalResourceQuantity &resource_quantity);
+  ResourceIds Acquire(const FractionalResourceQuantity& resource_quantity);
 
   /// \brief Return some resource IDs.
   ///
   /// \param resource_ids The specific resource IDs to return.
   /// \return Void.
-  void Release(const ResourceIds &resource_ids);
+  void Release(const ResourceIds& resource_ids);
 
   /// \brief Combine these IDs with some other IDs and return the result.
   ///
   /// \param resource_ids The IDs to add to these ones.
   /// \return The combination of the IDs.
-  ResourceIds Plus(const ResourceIds &resource_ids) const;
+  ResourceIds Plus(const ResourceIds& resource_ids) const;
 
   /// \brief Return just the whole IDs.
   ///
   /// \return The whole IDs.
-  const std::vector<int64_t> &WholeIds() const;
+  const std::vector<int64_t>& WholeIds() const;
 
   /// \brief Return just the fractional IDs.
   ///
   /// \return The fractional IDs.
-  const std::vector<std::pair<int64_t, FractionalResourceQuantity>> &FractionalIds()
+  const std::vector<std::pair<int64_t, FractionalResourceQuantity>>& FractionalIds()
       const;
 
   /// \brief Check if ResourceIds has any resources.
@@ -366,32 +366,32 @@ class ResourceIdSet {
   /// \brief Construct a ResourceIdSet from a ResourceSet.
   ///
   /// \param resource_set A mapping from resource name to quantity.
-  ResourceIdSet(const ResourceSet &resource_set);
+  ResourceIdSet(const ResourceSet& resource_set);
 
   /// \brief Construct a ResourceIdSet from a mapping from resource names to ResourceIds.
   ///
   /// \param resource_set A mapping from resource name to IDs.
-  ResourceIdSet(const std::unordered_map<std::string, ResourceIds> &available_resources);
+  ResourceIdSet(const std::unordered_map<std::string, ResourceIds>& available_resources);
 
   /// \brief See if a requested collection of resources is contained.
   ///
   /// \param resource_set A mapping from resource name to quantity.
   /// \return True if each resource in resource_set is contained in the corresponding
   /// ResourceIds in this ResourceIdSet.
-  bool Contains(const ResourceSet &resource_set) const;
+  bool Contains(const ResourceSet& resource_set) const;
 
   /// \brief Acquire a set of resources and return the specific acquired IDs.
   ///
   /// \param resource_set A mapping from resource name to quantity. This specifies
   /// the amount of each resource to acquire.
   /// \return A ResourceIdSet with the requested quantities, but with specific IDs.
-  ResourceIdSet Acquire(const ResourceSet &resource_set);
+  ResourceIdSet Acquire(const ResourceSet& resource_set);
 
   /// \brief Return a set of resource IDs.
   ///
   /// \param resource_id_set The resource IDs to return.
   /// \return Void.
-  void Release(const ResourceIdSet &resource_id_set);
+  void Release(const ResourceIdSet& resource_id_set);
 
   /// \brief Return a set of resource IDs subject to their existence in the
   /// resources_total set.
@@ -400,8 +400,8 @@ class ResourceIdSet {
   /// \param resources_total Constraint set to restrict the release to. If a resource
   /// exists in resource_id_set but not in resources_total, it is not added to this
   /// ResourceIdSet. \return Void.
-  void ReleaseConstrained(const ResourceIdSet &resource_id_set,
-                          const ResourceSet &resources_total);
+  void ReleaseConstrained(const ResourceIdSet& resource_id_set,
+                          const ResourceSet& resources_total);
 
   /// \brief Clear out all of the resource IDs.
   ///
@@ -412,7 +412,7 @@ class ResourceIdSet {
   ///
   /// \param resource_id_set The other set of resource IDs to combine with this one.
   /// \return The combination of the two sets of resource IDs.
-  ResourceIdSet Plus(const ResourceIdSet &resource_id_set) const;
+  ResourceIdSet Plus(const ResourceIdSet& resource_id_set) const;
 
   /// \brief Creates or updates a resource in the ResourceIdSet if it already exists.
   /// Raises an exception if the new capacity (when less than old capacity) cannot be set
@@ -420,29 +420,29 @@ class ResourceIdSet {
   ///
   /// \param resource_name the name of the resource to create/update
   /// \param capacity capacity of the resource being added
-  void AddOrUpdateResource(const std::string &resource_name, int64_t capacity);
+  void AddOrUpdateResource(const std::string& resource_name, int64_t capacity);
 
   /// \brief  Add a Bundle resource in the ResourceIdSet.
   ///
   /// \param resource_name the name of the resource to create/update
   /// \param resource_ids resource_ids of the resource being added
-  void AddBundleResource(const std::string &resource_name, ResourceIds &resource_ids);
+  void AddBundleResource(const std::string& resource_name, ResourceIds& resource_ids);
 
   /// \brief  remove a Bundle resource in the ResourceIdSet.
   ///
   /// \param resource_name the name of the resource to remove.
 
-  void CancelResourceReserve(const std::string &resource_name);
+  void CancelResourceReserve(const std::string& resource_name);
   /// \brief Deletes a resource in the ResourceIdSet. This does not raise an exception,
   /// just deletes the resource. Tasks with acquired resources keep running.
   ///
   /// \param resource_name the name of the resource to delete
-  void DeleteResource(const std::string &resource_name);
+  void DeleteResource(const std::string& resource_name);
 
   /// \brief Get the underlying mapping from resource name to resource IDs.
   ///
   /// \return The resource name to resource IDs mapping.
-  const std::unordered_map<std::string, ResourceIds> &AvailableResources() const;
+  const std::unordered_map<std::string, ResourceIds>& AvailableResources() const;
 
   /// Return the CPU resources.
   ///
@@ -464,7 +464,7 @@ class ResourceIdSet {
   /// \param fbb A flatbuffer builder object.
   /// \return A flatbuffer serialized version of this object.
   std::vector<flatbuffers::Offset<ray::protocol::ResourceIdSetInfo>> ToFlatbuf(
-      flatbuffers::FlatBufferBuilder &fbb) const;
+      flatbuffers::FlatBufferBuilder& fbb) const;
 
   /// \brief Serialize this object as a string.
   ///
@@ -491,7 +491,7 @@ class SchedulingResources {
   /// to the resource set specified.
   ///
   /// \param total: The amount of total configured capacity.
-  SchedulingResources(const ResourceSet &total);
+  SchedulingResources(const ResourceSet& total);
 
   /// \brief SchedulingResources destructor.
   ~SchedulingResources();
@@ -499,47 +499,47 @@ class SchedulingResources {
   /// \brief Request the set and capacity of resources currently available.
   ///
   /// \return Immutable set of resources with currently available capacity.
-  const ResourceSet &GetAvailableResources() const;
+  const ResourceSet& GetAvailableResources() const;
 
   /// \brief Overwrite available resource capacity with the specified resource set.
   ///
   /// \param newset: The set of resources that replaces available resource capacity.
   /// \return Void.
-  void SetAvailableResources(ResourceSet &&newset);
+  void SetAvailableResources(ResourceSet&& newset);
 
   /// \brief Request the total resources capacity.
   ///
   /// \return Immutable set of resources with currently total capacity.
-  const ResourceSet &GetTotalResources() const;
+  const ResourceSet& GetTotalResources() const;
 
   /// \brief Overwrite total resource capacity with the specified resource set.
   ///
   /// \param newset: The set of resources that replaces total resource capacity.
   /// \return Void.
-  void SetTotalResources(ResourceSet &&newset);
+  void SetTotalResources(ResourceSet&& newset);
 
   /// \brief Request the resource load information.
   ///
   /// \return Immutable set of resources describing the load information.
-  const ResourceSet &GetLoadResources() const;
+  const ResourceSet& GetLoadResources() const;
 
   /// \brief Overwrite information about resource load with new resource load set.
   ///
   /// \param newset: The set of resources that replaces resource load information.
   /// \return Void.
-  void SetLoadResources(ResourceSet &&newset);
+  void SetLoadResources(ResourceSet&& newset);
 
   /// \brief Release the amount of resources specified.
   ///
   /// \param resources: the amount of resources to be released.
   /// \return Void.
-  void Release(const ResourceSet &resources);
+  void Release(const ResourceSet& resources);
 
   /// \brief Acquire the amount of resources specified.
   ///
   /// \param resources: the amount of resources to be acquired.
   /// \return Void.
-  void Acquire(const ResourceSet &resources);
+  void Acquire(const ResourceSet& resources);
 
   /// Returns debug string for class.
   ///
@@ -552,25 +552,25 @@ class SchedulingResources {
   /// \param resource_name: Name of the resource to be modified
   /// \param capacity: New capacity of the resource.
   /// \return Void.
-  void UpdateResourceCapacity(const std::string &resource_name, int64_t capacity);
+  void UpdateResourceCapacity(const std::string& resource_name, int64_t capacity);
 
   /// \brief Update total, available and load resources with the ResourceIds.
   /// Create if not exists.
   /// \param resource_name: Name of the resource to be modified
   /// \param resource_set: New resource_set of the resource.
-  void UpdateBundleResource(const PlacementGroupID &group, const int bundle_index,
-                            const ResourceSet &resource_set);
+  void UpdateBundleResource(const PlacementGroupID& group, const int bundle_index,
+                            const ResourceSet& resource_set);
 
   /// \brief delete total, available and load resources with the ResourceIds.
   /// Create if not exists.
   /// \param resource_name: Name of the resource to be deleted
-  void ReturnBundleResource(const PlacementGroupID &group, const int bundle_index);
+  void ReturnBundleResource(const PlacementGroupID& group, const int bundle_index);
 
   /// \brief Delete resource from total, available and load resources.
   ///
   /// \param resource_name: Name of the resource to be deleted.
   /// \return Void.
-  void DeleteResource(const std::string &resource_name);
+  void DeleteResource(const std::string& resource_name);
 
  private:
   /// Static resource configuration (e.g., static_resources).
@@ -586,9 +586,9 @@ class SchedulingResources {
 namespace std {
 template <>
 struct hash<ray::ResourceSet> {
-  size_t operator()(ray::ResourceSet const &k) const {
+  size_t operator()(ray::ResourceSet const& k) const {
     size_t seed = k.GetResourceMap().size();
-    for (auto &elem : k.GetResourceMap()) {
+    for (auto& elem : k.GetResourceMap()) {
       seed ^= std::hash<std::string>()(elem.first);
       seed ^= std::hash<double>()(elem.second);
     }

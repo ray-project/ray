@@ -17,10 +17,10 @@ class ActorHandle {
  public:
   ActorHandle();
 
-  ActorHandle(const ActorID &id);
+  ActorHandle(const ActorID& id);
 
   /// Get a untyped ID of the actor
-  const ActorID &ID() const;
+  const ActorID& ID() const;
 
   /// Include the `Call` methods for calling remote functions.
 #include <ray/api/generated/actor_call.generated.h>
@@ -38,12 +38,12 @@ template <typename ActorType>
 ActorHandle<ActorType>::ActorHandle() {}
 
 template <typename ActorType>
-ActorHandle<ActorType>::ActorHandle(const ActorID &id) {
+ActorHandle<ActorType>::ActorHandle(const ActorID& id) {
   id_ = id;
 }
 
 template <typename ActorType>
-const ActorID &ActorHandle<ActorType>::ID() const {
+const ActorID& ActorHandle<ActorType>::ID() const {
   return id_;
 }
 

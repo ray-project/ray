@@ -26,31 +26,31 @@ namespace rpc {
 class DefaultTaskInfoHandler : public rpc::TaskInfoHandler {
  public:
   explicit DefaultTaskInfoHandler(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-                                  std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub)
+                                  std::shared_ptr<gcs::GcsPubSub>& gcs_pub_sub)
       : gcs_table_storage_(gcs_table_storage), gcs_pub_sub_(gcs_pub_sub) {}
 
-  void HandleAddTask(const AddTaskRequest &request, AddTaskReply *reply,
+  void HandleAddTask(const AddTaskRequest& request, AddTaskReply* reply,
                      SendReplyCallback send_reply_callback) override;
 
-  void HandleGetTask(const GetTaskRequest &request, GetTaskReply *reply,
+  void HandleGetTask(const GetTaskRequest& request, GetTaskReply* reply,
                      SendReplyCallback send_reply_callback) override;
 
-  void HandleDeleteTasks(const DeleteTasksRequest &request, DeleteTasksReply *reply,
+  void HandleDeleteTasks(const DeleteTasksRequest& request, DeleteTasksReply* reply,
                          SendReplyCallback send_reply_callback) override;
 
-  void HandleAddTaskLease(const AddTaskLeaseRequest &request, AddTaskLeaseReply *reply,
+  void HandleAddTaskLease(const AddTaskLeaseRequest& request, AddTaskLeaseReply* reply,
                           SendReplyCallback send_reply_callback) override;
 
-  void HandleGetTaskLease(const GetTaskLeaseRequest &request, GetTaskLeaseReply *reply,
+  void HandleGetTaskLease(const GetTaskLeaseRequest& request, GetTaskLeaseReply* reply,
                           SendReplyCallback send_reply_callback) override;
 
-  void HandleAttemptTaskReconstruction(const AttemptTaskReconstructionRequest &request,
-                                       AttemptTaskReconstructionReply *reply,
+  void HandleAttemptTaskReconstruction(const AttemptTaskReconstructionRequest& request,
+                                       AttemptTaskReconstructionReply* reply,
                                        SendReplyCallback send_reply_callback) override;
 
  private:
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub_;
+  std::shared_ptr<gcs::GcsPubSub>& gcs_pub_sub_;
 };
 
 }  // namespace rpc

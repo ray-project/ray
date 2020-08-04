@@ -102,9 +102,9 @@ jmethodID java_task_executor_execute;
 jclass java_placement_group_class;
 jfieldID java_placement_group_id;
 
-JavaVM *jvm;
+JavaVM* jvm;
 
-inline jclass LoadClass(JNIEnv *env, const char *class_name) {
+inline jclass LoadClass(JNIEnv* env, const char* class_name) {
   jclass tempLocalClassRef = env->FindClass(class_name);
   jclass ret = (jclass)env->NewGlobalRef(tempLocalClassRef);
   RAY_CHECK(ret) << "Can't load Java class " << class_name;
@@ -113,9 +113,9 @@ inline jclass LoadClass(JNIEnv *env, const char *class_name) {
 }
 
 /// Load and cache frequently-used Java classes and methods
-jint JNI_OnLoad(JavaVM *vm, void *reserved) {
-  JNIEnv *env;
-  if (vm->GetEnv(reinterpret_cast<void **>(&env), CURRENT_JNI_VERSION) != JNI_OK) {
+jint JNI_OnLoad(JavaVM* vm, void* reserved) {
+  JNIEnv* env;
+  if (vm->GetEnv(reinterpret_cast<void**>(&env), CURRENT_JNI_VERSION) != JNI_OK) {
     return JNI_ERR;
   }
 
@@ -249,9 +249,9 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 }
 
 /// Unload java classes
-void JNI_OnUnload(JavaVM *vm, void *reserved) {
-  JNIEnv *env;
-  vm->GetEnv(reinterpret_cast<void **>(&env), CURRENT_JNI_VERSION);
+void JNI_OnUnload(JavaVM* vm, void* reserved) {
+  JNIEnv* env;
+  vm->GetEnv(reinterpret_cast<void**>(&env), CURRENT_JNI_VERSION);
 
   env->DeleteGlobalRef(java_boolean_class);
   env->DeleteGlobalRef(java_double_class);

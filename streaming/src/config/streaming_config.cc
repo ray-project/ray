@@ -24,7 +24,7 @@ const uint32_t StreamingConfig::MESSAGE_BUNDLE_MAX_SIZE = 2048;
     Set##KEY(VALUE);                                   \
   }
 
-void StreamingConfig::FromProto(const uint8_t *data, uint32_t size) {
+void StreamingConfig::FromProto(const uint8_t* data, uint32_t size) {
   proto::StreamingConfig config;
   STREAMING_CHECK(config.ParseFromArray(data, size)) << "Parse streaming conf failed";
   RESET_IF_STR_CONF(JobName, config.job_name())

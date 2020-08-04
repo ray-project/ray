@@ -31,12 +31,12 @@ class EntryChangeNotification {
   EntryChangeNotification(rpc::GcsChangeMode change_mode, Data data)
       : change_mode_(change_mode), data_(std::move(data)) {}
 
-  EntryChangeNotification(EntryChangeNotification &&other) {
+  EntryChangeNotification(EntryChangeNotification&& other) {
     change_mode_ = other.change_mode_;
     data_ = std::move(other.data_);
   }
 
-  EntryChangeNotification &operator=(EntryChangeNotification &&other) {
+  EntryChangeNotification& operator=(EntryChangeNotification&& other) {
     change_mode_ = other.change_mode_;
     data_ = std::move(other.data_);
   }
@@ -55,7 +55,7 @@ class EntryChangeNotification {
   /// Get data of this notification.
   ///
   /// \return Data
-  const Data &GetData() const { return data_; }
+  const Data& GetData() const { return data_; }
 
  private:
   rpc::GcsChangeMode change_mode_;

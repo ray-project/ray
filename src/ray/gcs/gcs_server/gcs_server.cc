@@ -29,8 +29,8 @@
 namespace ray {
 namespace gcs {
 
-GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
-                     boost::asio::io_service &main_service)
+GcsServer::GcsServer(const ray::gcs::GcsServerConfig& config,
+                     boost::asio::io_service& main_service)
     : config_(config),
       main_service_(main_service),
       rpc_server_(config.grpc_server_name, config.grpc_server_port,
@@ -187,22 +187,22 @@ void GcsServer::InitGcsActorManager() {
         gcs_actor_manager_->OnActorCreationSuccess(std::move(actor));
       },
       /*lease_client_factory=*/
-      [this](const rpc::Address &address) {
+      [this](const rpc::Address& address) {
         auto node_manager_worker_client = rpc::NodeManagerWorkerClient::make(
             address.ip_address(), address.port(), client_call_manager_);
         return std::make_shared<ray::raylet::RayletClient>(
             std::move(node_manager_worker_client));
       },
       /*client_factory=*/
-      [this](const rpc::Address &address) {
+      [this](const rpc::Address& address) {
         return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
       });
   gcs_actor_manager_ = std::make_shared<GcsActorManager>(
-      scheduler, gcs_table_storage_, gcs_pub_sub_, [this](const rpc::Address &address) {
+      scheduler, gcs_table_storage_, gcs_pub_sub_, [this](const rpc::Address& address) {
         return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
       });
   gcs_node_manager_->AddNodeAddedListener(
-      [this](const std::shared_ptr<rpc::GcsNodeInfo> &) {
+      [this](const std::shared_ptr<rpc::GcsNodeInfo>&) {
         // Because a new node has been added, we need to try to schedule the pending
         // actors.
         gcs_actor_manager_->SchedulePendingActors();
@@ -215,10 +215,10 @@ void GcsServer::InitGcsActorManager() {
         gcs_actor_manager_->OnNodeDead(ClientID::FromBinary(node->node_id()));
       });
 
-  auto on_subscribe = [this](const std::string &id, const std::string &data) {
+  auto on_subscribe = [this](const std::string& id, const std::string& data) {
     rpc::WorkerTableData worker_failure_data;
     worker_failure_data.ParseFromString(data);
-    auto &worker_address = worker_failure_data.worker_address();
+    auto& worker_address = worker_failure_data.worker_address();
     WorkerID worker_id = WorkerID::FromBinary(id);
     ClientID node_id = ClientID::FromBinary(worker_address.raylet_id());
     gcs_actor_manager_->OnWorkerDead(node_id, worker_id,
@@ -240,7 +240,7 @@ void GcsServer::InitGcsPlacementGroupManager() {
   auto scheduler = std::make_shared<GcsPlacementGroupScheduler>(
       main_service_, gcs_table_storage_, *gcs_node_manager_,
       /*lease_client_factory=*/
-      [this](const rpc::Address &address) {
+      [this](const rpc::Address& address) {
         auto node_manager_worker_client = rpc::NodeManagerWorkerClient::make(
             address.ip_address(), address.port(), client_call_manager_);
         return std::make_shared<ray::raylet::RayletClient>(

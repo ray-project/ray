@@ -28,7 +28,7 @@ namespace ray {
 static inline std::vector<rpc::ObjectReference> ObjectIdsToRefs(
     std::vector<ObjectID> object_ids) {
   std::vector<rpc::ObjectReference> refs;
-  for (const auto &object_id : object_ids) {
+  for (const auto& object_id : object_ids) {
     rpc::ObjectReference ref;
     ref.set_object_id(object_id.Binary());
     refs.push_back(ref);
@@ -55,7 +55,7 @@ void KillProcessBySocketName(std::string socket_name);
 /// Kills all processes with the given executable name (similar to killall).
 /// Note: On Windows, this should include the file extension (e.g. ".exe"), if any.
 /// This cannot be done automatically as doing so may be incorrect in some cases.
-int KillAllExecutable(const std::string &executable_with_suffix);
+int KillAllExecutable(const std::string& executable_with_suffix);
 
 // A helper function to return a random task id.
 TaskID RandomTaskId();
@@ -66,7 +66,7 @@ JobID RandomJobId();
 std::shared_ptr<Buffer> GenerateRandomBuffer();
 
 std::shared_ptr<RayObject> GenerateRandomObject(
-    const std::vector<ObjectID> &inlined_ids = {});
+    const std::vector<ObjectID>& inlined_ids = {});
 
 /// Path to redis server executable binary.
 extern std::string TEST_REDIS_SERVER_EXEC_PATH;
@@ -99,27 +99,27 @@ extern std::string TEST_MOCK_WORKER_EXEC_PATH;
 /// 5. start/stop raylet monitor
 class TestSetupUtil {
  public:
-  static void StartUpRedisServers(const std::vector<int> &redis_server_ports);
+  static void StartUpRedisServers(const std::vector<int>& redis_server_ports);
   static void ShutDownRedisServers();
   static void FlushAllRedisServers();
 
   static std::string StartObjectStore(
-      const boost::optional<std::string> &socket_name = boost::none);
-  static void StopObjectStore(const std::string &store_socket_name);
+      const boost::optional<std::string>& socket_name = boost::none);
+  static void StopObjectStore(const std::string& store_socket_name);
 
-  static std::string StartGcsServer(const std::string &redis_address);
-  static void StopGcsServer(const std::string &gcs_server_socket_name);
+  static std::string StartGcsServer(const std::string& redis_address);
+  static void StopGcsServer(const std::string& gcs_server_socket_name);
 
-  static std::string StartRaylet(const std::string &store_socket_name,
-                                 const std::string &node_ip_address, const int &port,
-                                 const std::string &redis_address,
-                                 const std::string &resource);
-  static void StopRaylet(const std::string &raylet_socket_name);
+  static std::string StartRaylet(const std::string& store_socket_name,
+                                 const std::string& node_ip_address, const int& port,
+                                 const std::string& redis_address,
+                                 const std::string& resource);
+  static void StopRaylet(const std::string& raylet_socket_name);
 
  private:
-  static int StartUpRedisServer(const int &port);
-  static void ShutDownRedisServer(const int &port);
-  static void FlushRedisServer(const int &port);
+  static int StartUpRedisServer(const int& port);
+  static void ShutDownRedisServer(const int& port);
+  static void FlushRedisServer(const int& port);
 };
 
 }  // namespace ray

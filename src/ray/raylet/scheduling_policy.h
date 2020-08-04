@@ -34,7 +34,7 @@ class SchedulingPolicy {
   /// \param scheduling_queue: reference to a scheduler queues object for access to
   /// tasks.
   /// \return Void.
-  SchedulingPolicy(const SchedulingQueue &scheduling_queue);
+  SchedulingPolicy(const SchedulingQueue& scheduling_queue);
 
   /// \brief Perform a scheduling operation, given a set of cluster resources and
   /// producing a mapping of tasks to raylets.
@@ -47,8 +47,8 @@ class SchedulingPolicy {
   /// SchedulingPolicy object.
   /// \return Scheduling decision, mapping tasks to raylets for placement.
   std::unordered_map<TaskID, ClientID> Schedule(
-      std::unordered_map<ClientID, SchedulingResources> &cluster_resources,
-      const ClientID &local_client_id);
+      std::unordered_map<ClientID, SchedulingResources>& cluster_resources,
+      const ClientID& local_client_id);
 
   /// \param cluster_resources: a set of cluster resources containing resource and load
   /// information for some subset of the cluster.
@@ -58,8 +58,8 @@ class SchedulingPolicy {
   /// need. \return If this bundle can be scheduled in this node, return true; else return
   /// false.
   bool ScheduleBundle(
-      std::unordered_map<ClientID, SchedulingResources> &cluster_resources,
-      const ClientID &local_client_id, const ray::BundleSpecification &bundle_spec);
+      std::unordered_map<ClientID, SchedulingResources>& cluster_resources,
+      const ClientID& local_client_id, const ray::BundleSpecification& bundle_spec);
 
   /// \brief Given a set of cluster resources perform a spill-over scheduling operation.
   ///
@@ -68,14 +68,14 @@ class SchedulingPolicy {
   /// placement map, the corresponding SchedulingResources::resources_load_ is
   /// incremented by the aggregate resource demand of the tasks assigned to it.
   /// \return Scheduling decision, mapping tasks to raylets for placement.
-  std::vector<TaskID> SpillOver(SchedulingResources &remote_scheduling_resources) const;
+  std::vector<TaskID> SpillOver(SchedulingResources& remote_scheduling_resources) const;
 
   /// \brief SchedulingPolicy destructor.
   virtual ~SchedulingPolicy();
 
  private:
   /// An immutable reference to the scheduling task queues.
-  const SchedulingQueue &scheduling_queue_;
+  const SchedulingQueue& scheduling_queue_;
   /// Internally maintained random number generator.
   std::mt19937_64 gen_;
 };

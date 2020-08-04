@@ -4,12 +4,12 @@ namespace ray {
 namespace streaming {
 
 UnconsumedSeqFlowControl::UnconsumedSeqFlowControl(
-    std::unordered_map<ObjectID, std::shared_ptr<ProducerChannel>> &channel_map,
+    std::unordered_map<ObjectID, std::shared_ptr<ProducerChannel>>& channel_map,
     uint32_t step)
     : channel_map_(channel_map), consumed_step_(step){};
 
-bool UnconsumedSeqFlowControl::ShouldFlowControl(ProducerChannelInfo &channel_info) {
-  auto &queue_info = channel_info.queue_info;
+bool UnconsumedSeqFlowControl::ShouldFlowControl(ProducerChannelInfo& channel_info) {
+  auto& queue_info = channel_info.queue_info;
   if (queue_info.target_seq_id <= channel_info.current_seq_id) {
     channel_map_[channel_info.channel_id]->RefreshChannelInfo();
     // Target seq id is maximum upper limit in current condition.

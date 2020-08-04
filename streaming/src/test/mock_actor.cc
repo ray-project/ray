@@ -20,7 +20,7 @@ namespace streaming {
 
 class StreamingQueueTestSuite {
  public:
-  StreamingQueueTestSuite(ActorID &peer_actor_id, std::vector<ObjectID> queue_ids,
+  StreamingQueueTestSuite(ActorID& peer_actor_id, std::vector<ObjectID> queue_ids,
                           std::vector<ObjectID> rescale_queue_ids)
       : peer_actor_id_(peer_actor_id),
         queue_ids_(queue_ids),
@@ -57,7 +57,7 @@ class StreamingQueueTestSuite {
 
 class StreamingQueueWriterTestSuite : public StreamingQueueTestSuite {
  public:
-  StreamingQueueWriterTestSuite(ActorID &peer_actor_id, std::vector<ObjectID> queue_ids,
+  StreamingQueueWriterTestSuite(ActorID& peer_actor_id, std::vector<ObjectID> queue_ids,
                                 std::vector<ObjectID> rescale_queue_ids)
       : StreamingQueueTestSuite(peer_actor_id, queue_ids, rescale_queue_ids) {
     test_func_map_ = {
@@ -68,14 +68,14 @@ class StreamingQueueWriterTestSuite : public StreamingQueueTestSuite {
 
  private:
   void TestWriteMessageToBufferRing(std::shared_ptr<DataWriter> writer_client,
-                                    std::vector<ray::ObjectID> &q_list) {
+                                    std::vector<ray::ObjectID>& q_list) {
     // const uint8_t temp_data[] = {1, 2, 4, 5};
 
     uint32_t i = 1;
     while (i <= MESSAGE_BOUND_SIZE) {
-      for (auto &q_id : q_list) {
+      for (auto& q_id : q_list) {
         uint64_t buffer_len = (i % DEFAULT_STREAMING_MESSAGE_BUFFER_SIZE);
-        uint8_t *data = new uint8_t[buffer_len];
+        uint8_t* data = new uint8_t[buffer_len];
         for (uint32_t j = 0; j < buffer_len; ++j) {
           data[j] = j % 128;
         }
@@ -90,8 +90,8 @@ class StreamingQueueWriterTestSuite : public StreamingQueueTestSuite {
     std::this_thread::sleep_for(std::chrono::milliseconds(5000));
   }
 
-  void StreamingWriterStrategyTest(StreamingConfig &config) {
-    for (auto &queue_id : queue_ids_) {
+  void StreamingWriterStrategyTest(StreamingConfig& config) {
+    for (auto& queue_id : queue_ids_) {
       STREAMING_LOG(INFO) << "queue_id: " << queue_id;
     }
     ChannelCreationParameter param{
@@ -152,11 +152,11 @@ class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
  private:
   void ReaderLoopForward(std::shared_ptr<DataReader> reader_client,
                          std::shared_ptr<DataWriter> writer_client,
-                         std::vector<ray::ObjectID> &queue_id_vec) {
+                         std::vector<ray::ObjectID>& queue_id_vec) {
     uint64_t recevied_message_cnt = 0;
     std::unordered_map<ray::ObjectID, uint64_t> queue_last_cp_id;
 
-    for (auto &q_id : queue_id_vec) {
+    for (auto& q_id : queue_id_vec) {
       queue_last_cp_id[q_id] = 0;
     }
     STREAMING_LOG(INFO) << "Start read message bundle";
@@ -175,10 +175,10 @@ class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
       if (msg->meta->GetBundleType() == StreamingMessageBundleType::Barrier) {
         STREAMING_LOG(DEBUG) << "barrier message recevied => "
                              << msg->meta->GetMessageBundleTs();
-        std::unordered_map<ray::ObjectID, ConsumerChannelInfo> *offset_map;
+        std::unordered_map<ray::ObjectID, ConsumerChannelInfo>* offset_map;
         reader_client->GetOffsetInfo(offset_map);
 
-        for (auto &q_id : queue_id_vec) {
+        for (auto& q_id : queue_id_vec) {
           reader_client->NotifyConsumedItem((*offset_map)[q_id],
                                             (*offset_map)[q_id].current_seq_id);
         }
@@ -200,14 +200,14 @@ class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
                           << " last message id => " << msg->meta->GetLastMessageId();
 
       recevied_message_cnt += message_list.size();
-      for (auto &item : message_list) {
+      for (auto& item : message_list) {
         uint64_t i = item->GetMessageSeqId();
 
         uint32_t buff_len = i % DEFAULT_STREAMING_MESSAGE_BUFFER_SIZE;
         if (i > MESSAGE_BOUND_SIZE) break;
 
         EXPECT_EQ(buff_len, item->GetDataSize());
-        uint8_t *compared_data = new uint8_t[buff_len];
+        uint8_t* compared_data = new uint8_t[buff_len];
         for (uint32_t j = 0; j < item->GetDataSize(); ++j) {
           compared_data[j] = j % 128;
         }
@@ -223,7 +223,7 @@ class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
     }
   }
 
-  void StreamingReaderStrategyTest(StreamingConfig &config) {
+  void StreamingReaderStrategyTest(StreamingConfig& config) {
     ChannelCreationParameter param{
         peer_actor_id_,
         std::make_shared<RayFunction>(
@@ -264,8 +264,8 @@ class TestSuiteFactory {
     std::shared_ptr<StreamingQueueTestSuite> test_suite = nullptr;
     std::string suite_name = message->TestSuiteName();
     queue::protobuf::StreamingQueueTestRole role = message->Role();
-    const std::vector<ObjectID> &queue_ids = message->QueueIds();
-    const std::vector<ObjectID> &rescale_queue_ids = message->RescaleQueueIds();
+    const std::vector<ObjectID>& queue_ids = message->QueueIds();
+    const std::vector<ObjectID>& rescale_queue_ids = message->RescaleQueueIds();
     ActorID peer_actor_id = message->PeerActorId();
 
     if (role == queue::protobuf::StreamingQueueTestRole::WRITER) {
@@ -290,8 +290,8 @@ class TestSuiteFactory {
 
 class StreamingWorker {
  public:
-  StreamingWorker(const std::string &store_socket, const std::string &raylet_socket,
-                  int node_manager_port, const gcs::GcsClientOptions &gcs_options)
+  StreamingWorker(const std::string& store_socket, const std::string& raylet_socket,
+                  int node_manager_port, const gcs::GcsClientOptions& gcs_options)
       : test_suite_(nullptr), peer_actor_handle_(nullptr) {
     CoreWorkerOptions options = {
         WorkerType::WORKER,  // worker_type
@@ -332,12 +332,12 @@ class StreamingWorker {
   }
 
  private:
-  Status ExecuteTask(TaskType task_type, const RayFunction &ray_function,
-                     const std::unordered_map<std::string, double> &required_resources,
-                     const std::vector<std::shared_ptr<RayObject>> &args,
-                     const std::vector<ObjectID> &arg_reference_ids,
-                     const std::vector<ObjectID> &return_ids,
-                     std::vector<std::shared_ptr<RayObject>> *results) {
+  Status ExecuteTask(TaskType task_type, const RayFunction& ray_function,
+                     const std::unordered_map<std::string, double>& required_resources,
+                     const std::vector<std::shared_ptr<RayObject>>& args,
+                     const std::vector<ObjectID>& arg_reference_ids,
+                     const std::vector<ObjectID>& return_ids,
+                     std::vector<std::shared_ptr<RayObject>>* results) {
     // Only one arg param used in streaming.
     STREAMING_CHECK(args.size() >= 1) << "args.size() = " << args.size();
 
@@ -409,14 +409,14 @@ class StreamingWorker {
 
  private:
   void HandleInitTask(std::shared_ptr<LocalMemoryBuffer> buffer) {
-    uint8_t *bytes = buffer->Data();
-    uint8_t *p_cur = bytes;
-    uint32_t *magic_num = (uint32_t *)p_cur;
+    uint8_t* bytes = buffer->Data();
+    uint8_t* p_cur = bytes;
+    uint32_t* magic_num = (uint32_t*)p_cur;
     STREAMING_CHECK(*magic_num == Message::MagicNum);
 
     p_cur += sizeof(Message::MagicNum);
-    queue::protobuf::StreamingQueueMessageType *type =
-        (queue::protobuf::StreamingQueueMessageType *)p_cur;
+    queue::protobuf::StreamingQueueMessageType* type =
+        (queue::protobuf::StreamingQueueMessageType*)p_cur;
     STREAMING_CHECK(
         *type ==
         queue::protobuf::StreamingQueueMessageType::StreamingQueueTestInitMsgType);
@@ -457,7 +457,7 @@ class StreamingWorker {
 }  // namespace streaming
 }  // namespace ray
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   RAY_CHECK(argc == 4);
   auto store_socket = std::string(argv[1]);
   auto raylet_socket = std::string(argv[2]);

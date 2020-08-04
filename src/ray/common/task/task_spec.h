@@ -21,7 +21,7 @@ typedef ResourceSet SchedulingClassDescriptor;
 typedef int SchedulingClass;
 
 static inline rpc::ObjectReference GetReferenceForActorDummyObject(
-    const ObjectID &object_id) {
+    const ObjectID& object_id) {
   rpc::ObjectReference ref;
   ref.set_object_id(object_id.Binary());
   return ref;
@@ -54,7 +54,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// Construct from protobuf-serialized binary.
   ///
   /// \param serialized_binary Protobuf-serialized binary.
-  explicit TaskSpecification(const std::string &serialized_binary)
+  explicit TaskSpecification(const std::string& serialized_binary)
       : MessageWrapper(serialized_binary) {
     ComputeResources();
   }
@@ -82,11 +82,11 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   ObjectID ReturnId(size_t return_index) const;
 
-  const uint8_t *ArgData(size_t arg_index) const;
+  const uint8_t* ArgData(size_t arg_index) const;
 
   size_t ArgDataSize(size_t arg_index) const;
 
-  const uint8_t *ArgMetadata(size_t arg_index) const;
+  const uint8_t* ArgMetadata(size_t arg_index) const;
 
   size_t ArgMetadataSize(size_t arg_index) const;
 
@@ -105,7 +105,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   ///
   /// \return The resources that will be acquired during the execution of this
   /// task.
-  const ResourceSet &GetRequiredResources() const;
+  const ResourceSet& GetRequiredResources() const;
 
   /// Return the resources that are required for a task to be placed on a node.
   /// This will typically be the same as the resources acquired during execution
@@ -116,7 +116,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// so the placement of the actor should take this into account.
   ///
   /// \return The resources that are required to place a task on a node.
-  const ResourceSet &GetRequiredPlacementResources() const;
+  const ResourceSet& GetRequiredPlacementResources() const;
 
   /// Return the ObjectIDs of any dependencies passed by reference to this
   /// task. This is recomputed each time, so it can be used if the task spec is
@@ -158,7 +158,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   TaskID CallerId() const;
 
-  const rpc::Address &CallerAddress() const;
+  const rpc::Address& CallerAddress() const;
 
   WorkerID CallerWorkerId() const;
 
@@ -184,10 +184,10 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   std::string CallSiteString() const;
 
   // Lookup the resource shape that corresponds to the static key.
-  static SchedulingClassDescriptor &GetSchedulingClassDescriptor(SchedulingClass id);
+  static SchedulingClassDescriptor& GetSchedulingClassDescriptor(SchedulingClass id);
 
   // Compute a static key that represents the given resource shape.
-  static SchedulingClass GetSchedulingClass(const ResourceSet &sched_cls);
+  static SchedulingClass GetSchedulingClass(const ResourceSet& sched_cls);
 
  private:
   void ComputeResources();

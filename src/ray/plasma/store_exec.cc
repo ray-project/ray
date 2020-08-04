@@ -27,7 +27,7 @@ DEFINE_bool(z, false, "Run idle as a placeholder, optional");
 // Function to use (instead of ARROW_LOG(FATAL)) for usage, etc. errors before
 // the main server loop starts, so users don't get a backtrace if they
 // simply forgot a command-line switch.
-void ExitWithUsageError(const char *error_msg) {
+void ExitWithUsageError(const char* error_msg) {
   std::cerr << gflags::ProgramInvocationShortName() << ": " << error_msg << std::endl;
   exit(1);
 }
@@ -39,7 +39,7 @@ void HandleSignal(int signal) {
   }
 }
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
   gflags::SetUsageMessage("Plasma store server.\nUsage: ");
   gflags::ParseCommandLineFlags(&argc, &argv, /*remove_flags=*/true);
 

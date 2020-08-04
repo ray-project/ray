@@ -49,7 +49,7 @@ class ClientCallManager;
 ///
 /// \tparam Reply Type of the reply message.
 template <class Reply>
-using ClientCallback = std::function<void(const Status &status, const Reply &reply)>;
+using ClientCallback = std::function<void(const Status& status, const Reply& reply)>;
 
 /// Implementation of the `ClientCall`. It represents a `ClientCall` for a particular
 /// RPC method.
@@ -61,7 +61,7 @@ class ClientCallImpl : public ClientCall {
   /// Constructor.
   ///
   /// \param[in] callback The callback function to handle the reply.
-  explicit ClientCallImpl(const ClientCallback<Reply> &callback) : callback_(callback) {}
+  explicit ClientCallImpl(const ClientCallback<Reply>& callback) : callback_(callback) {}
 
   Status GetStatus() override {
     absl::MutexLock lock(&mutex_);
@@ -133,7 +133,7 @@ class ClientCallTag {
   explicit ClientCallTag(std::shared_ptr<ClientCall> call) : call_(std::move(call)) {}
 
   /// Get the wrapped `ClientCall`.
-  const std::shared_ptr<ClientCall> &GetCall() const { return call_; }
+  const std::shared_ptr<ClientCall>& GetCall() const { return call_; }
 
  private:
   std::shared_ptr<ClientCall> call_;
@@ -148,7 +148,7 @@ class ClientCallTag {
 template <class GrpcService, class Request, class Reply>
 using PrepareAsyncFunction =
     std::unique_ptr<grpc_impl::ClientAsyncResponseReader<Reply>> (GrpcService::Stub::*)(
-        grpc::ClientContext *context, const Request &request, grpc::CompletionQueue *cq);
+        grpc::ClientContext* context, const Request& request, grpc::CompletionQueue* cq);
 
 /// `ClientCallManager` is used to manage outgoing gRPC requests and the lifecycles of
 /// `ClientCall` objects.
@@ -163,7 +163,7 @@ class ClientCallManager {
   ///
   /// \param[in] main_service The main event loop, to which the callback functions will be
   /// posted.
-  explicit ClientCallManager(boost::asio::io_service &main_service, int num_threads = 1)
+  explicit ClientCallManager(boost::asio::io_service& main_service, int num_threads = 1)
       : main_service_(main_service), num_threads_(num_threads), shutdown_(false) {
     rr_index_ = rand() % num_threads_;
     // Start the polling threads.
@@ -177,10 +177,10 @@ class ClientCallManager {
 
   ~ClientCallManager() {
     shutdown_ = true;
-    for (auto &cq : cqs_) {
+    for (auto& cq : cqs_) {
       cq.Shutdown();
     }
-    for (auto &polling_thread : polling_threads_) {
+    for (auto& polling_thread : polling_threads_) {
       polling_thread.join();
     }
   }
@@ -200,9 +200,9 @@ class ClientCallManager {
   /// \return A `ClientCall` representing the request that was just sent.
   template <class GrpcService, class Request, class Reply>
   std::shared_ptr<ClientCall> CreateCall(
-      typename GrpcService::Stub &stub,
+      typename GrpcService::Stub& stub,
       const PrepareAsyncFunction<GrpcService, Request, Reply> prepare_async_function,
-      const Request &request, const ClientCallback<Reply> &callback) {
+      const Request& request, const ClientCallback<Reply>& callback) {
     auto call = std::make_shared<ClientCallImpl<Reply>>(callback);
     // Send request.
     // Find the next completion queue to wait for response.
@@ -217,7 +217,7 @@ class ClientCallManager {
     // `ClientCall` is safe to use. But `response_reader_->Finish` only accepts a raw
     // pointer.
     auto tag = new ClientCallTag(call);
-    call->response_reader_->Finish(&call->reply_, &call->status_, (void *)tag);
+    call->response_reader_->Finish(&call->reply_, &call->status_, (void*)tag);
     return call;
   }
 
@@ -226,7 +226,7 @@ class ClientCallManager {
   /// `CompletionQueue`, and dispatches the event to the callbacks via the `ClientCall`
   /// objects.
   void PollEventsFromCompletionQueue(int index) {
-    void *got_tag;
+    void* got_tag;
     bool ok = false;
     // Keep reading events from the `CompletionQueue` until it's shutdown.
     // NOTE(edoakes): we use AsyncNext here because for some unknown reason,
@@ -244,7 +244,7 @@ class ClientCallManager {
         // cases (e.g., test_wait will hang on shutdown without this check).
         break;
       } else if (status != grpc::CompletionQueue::TIMEOUT) {
-        auto tag = reinterpret_cast<ClientCallTag *>(got_tag);
+        auto tag = reinterpret_cast<ClientCallTag*>(got_tag);
         tag->GetCall()->SetReturnStatus();
         if (ok && !main_service_.stopped() && !shutdown_) {
           // Post the callback to the main event loop.
@@ -261,7 +261,7 @@ class ClientCallManager {
   }
 
   /// The main event loop, to which the callback functions will be posted.
-  boost::asio::io_service &main_service_;
+  boost::asio::io_service& main_service_;
 
   /// The number of polling threads.
   int num_threads_;

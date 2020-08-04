@@ -51,24 +51,24 @@ class Process {
   ~Process();
   /// Creates a null process object. Two null process objects are assumed equal.
   Process();
-  Process(const Process &);
-  Process(Process &&);
-  Process &operator=(Process other);
+  Process(const Process&);
+  Process(Process&&);
+  Process& operator=(Process other);
   /// Creates a new process.
   /// \param[in] argv The command-line of the process to spawn (terminated with NULL).
   /// \param[in] io_service Boost.Asio I/O service (optional).
   /// \param[in] ec Returns any error that occurred when spawning the process.
   /// \param[in] decouple True iff the parent will not wait for the child to exit.
-  explicit Process(const char *argv[], void *io_service, std::error_code &ec,
+  explicit Process(const char* argv[], void* io_service, std::error_code& ec,
                    bool decouple = false);
   /// Convenience function to run the given command line and wait for it to finish.
-  static std::error_code Call(const std::vector<std::string> &args);
+  static std::error_code Call(const std::vector<std::string>& args);
   static Process CreateNewDummy();
   static Process FromPid(pid_t pid);
   pid_t GetId() const;
   /// Returns an opaque pointer or handle to the underlying process object.
   /// Implementation detail, used only for identity testing. Do not dereference.
-  const void *Get() const;
+  const void* Get() const;
   bool IsNull() const;
   bool IsValid() const;
   /// Forcefully kills the process. Unsafe for unowned processes.
@@ -76,8 +76,8 @@ class Process {
   /// Convenience function to start a process in the background.
   /// \param pid_file A file to write the PID of the spawned process in.
   static std::pair<Process, std::error_code> Spawn(
-      const std::vector<std::string> &args, bool decouple,
-      const std::string &pid_file = std::string());
+      const std::vector<std::string>& args, bool decouple,
+      const std::string& pid_file = std::string());
   /// Waits for process to terminate. Not supported for unowned processes.
   /// \return The process's exit code. Returns 0 for a dummy process, -1 for a null one.
   int Wait() const;
@@ -98,12 +98,12 @@ namespace std {
 
 template <>
 struct equal_to<ray::Process> {
-  bool operator()(const ray::Process &x, const ray::Process &y) const;
+  bool operator()(const ray::Process& x, const ray::Process& y) const;
 };
 
 template <>
 struct hash<ray::Process> {
-  size_t operator()(const ray::Process &value) const;
+  size_t operator()(const ray::Process& value) const;
 };
 
 }  // namespace std

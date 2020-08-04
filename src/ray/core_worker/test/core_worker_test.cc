@@ -45,14 +45,14 @@ int node_manager_port = 0;
 namespace ray {
 
 static void flushall_redis(void) {
-  redisContext *context = redisConnect("127.0.0.1", 6379);
+  redisContext* context = redisConnect("127.0.0.1", 6379);
   freeReplyObject(redisCommand(context, "FLUSHALL"));
   freeReplyObject(redisCommand(context, "SET NumRedisShards 1"));
   freeReplyObject(redisCommand(context, "LPUSH RedisShards 127.0.0.1:6380"));
   redisFree(context);
 }
 
-ActorID CreateActorHelper(std::unordered_map<std::string, double> &resources,
+ActorID CreateActorHelper(std::unordered_map<std::string, double>& resources,
                           int64_t max_restarts) {
   std::unique_ptr<ActorHandle> actor_handle;
 
@@ -81,7 +81,7 @@ ActorID CreateActorHelper(std::unordered_map<std::string, double> &resources,
 
 std::string MetadataToString(std::shared_ptr<RayObject> obj) {
   auto metadata = obj->GetMetadata();
-  return std::string(reinterpret_cast<const char *>(metadata->Data()), metadata->Size());
+  return std::string(reinterpret_cast<const char*>(metadata->Data()), metadata->Size());
 }
 
 class CoreWorkerTest : public ::testing::Test {
@@ -100,7 +100,7 @@ class CoreWorkerTest : public ::testing::Test {
     }
 
     // start plasma store.
-    for (auto &store_socket : raylet_store_socket_names_) {
+    for (auto& store_socket : raylet_store_socket_names_) {
       store_socket = TestSetupUtil::StartObjectStore();
     }
 
@@ -117,11 +117,11 @@ class CoreWorkerTest : public ::testing::Test {
   }
 
   ~CoreWorkerTest() {
-    for (const auto &raylet_socket_name : raylet_socket_names_) {
+    for (const auto& raylet_socket_name : raylet_socket_names_) {
       TestSetupUtil::StopRaylet(raylet_socket_name);
     }
 
-    for (const auto &store_socket_name : raylet_store_socket_names_) {
+    for (const auto& store_socket_name : raylet_store_socket_names_) {
       TestSetupUtil::StopObjectStore(store_socket_name);
     }
 
@@ -175,28 +175,28 @@ class CoreWorkerTest : public ::testing::Test {
   }
 
   // Test normal tasks.
-  void TestNormalTask(std::unordered_map<std::string, double> &resources);
+  void TestNormalTask(std::unordered_map<std::string, double>& resources);
 
   // Test actor tasks.
-  void TestActorTask(std::unordered_map<std::string, double> &resources);
+  void TestActorTask(std::unordered_map<std::string, double>& resources);
 
   // Test actor failure case, verify that the tasks would either succeed or
   // fail with exceptions, in that case the return objects fetched from `Get`
   // contain errors.
-  void TestActorFailure(std::unordered_map<std::string, double> &resources);
+  void TestActorFailure(std::unordered_map<std::string, double>& resources);
 
   // Test actor failover case. Verify that actor can be reconstructed successfully,
   // and as long as we wait for actor reconstruction before submitting new tasks,
   // it is guaranteed that all tasks are successfully completed.
-  void TestActorRestart(std::unordered_map<std::string, double> &resources);
+  void TestActorRestart(std::unordered_map<std::string, double>& resources);
 
  protected:
-  bool WaitForDirectCallActorState(const ActorID &actor_id, bool wait_alive,
+  bool WaitForDirectCallActorState(const ActorID& actor_id, bool wait_alive,
                                    int timeout_ms);
 
   // Get the pid for the worker process that runs the actor.
-  int GetActorPid(const ActorID &actor_id,
-                  std::unordered_map<std::string, double> &resources);
+  int GetActorPid(const ActorID& actor_id,
+                  std::unordered_map<std::string, double>& resources);
 
   int num_nodes_;
   std::vector<std::string> raylet_socket_names_;
@@ -205,7 +205,7 @@ class CoreWorkerTest : public ::testing::Test {
   std::string gcs_server_socket_name_;
 };
 
-bool CoreWorkerTest::WaitForDirectCallActorState(const ActorID &actor_id, bool wait_alive,
+bool CoreWorkerTest::WaitForDirectCallActorState(const ActorID& actor_id, bool wait_alive,
                                                  int timeout_ms) {
   auto condition_func = [actor_id, wait_alive]() -> bool {
     bool actor_alive =
@@ -217,8 +217,8 @@ bool CoreWorkerTest::WaitForDirectCallActorState(const ActorID &actor_id, bool w
   return WaitForCondition(condition_func, timeout_ms);
 }
 
-int CoreWorkerTest::GetActorPid(const ActorID &actor_id,
-                                std::unordered_map<std::string, double> &resources) {
+int CoreWorkerTest::GetActorPid(const ActorID& actor_id,
+                                std::unordered_map<std::string, double>& resources) {
   std::vector<std::unique_ptr<TaskArg>> args;
   TaskOptions options{1, resources};
   std::vector<ObjectID> return_ids;
@@ -236,13 +236,13 @@ int CoreWorkerTest::GetActorPid(const ActorID &actor_id,
     return -1;
   }
 
-  auto data = reinterpret_cast<char *>(results[0]->GetData()->Data());
+  auto data = reinterpret_cast<char*>(results[0]->GetData()->Data());
   std::string pid_string(data, results[0]->GetData()->Size());
   return std::stoi(pid_string);
 }
 
-void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &resources) {
-  auto &driver = CoreWorkerProcess::GetCoreWorker();
+void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double>& resources) {
+  auto& driver = CoreWorkerProcess::GetCoreWorker();
 
   // Test for tasks with by-value and by-ref args.
   {
@@ -283,8 +283,8 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
   }
 }
 
-void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &resources) {
-  auto &driver = CoreWorkerProcess::GetCoreWorker();
+void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double>& resources) {
+  auto& driver = CoreWorkerProcess::GetCoreWorker();
 
   auto actor_id = CreateActorHelper(resources, 1000);
 
@@ -366,8 +366,8 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
 }
 
 void CoreWorkerTest::TestActorRestart(
-    std::unordered_map<std::string, double> &resources) {
-  auto &driver = CoreWorkerProcess::GetCoreWorker();
+    std::unordered_map<std::string, double>& resources) {
+  auto& driver = CoreWorkerProcess::GetCoreWorker();
 
   // creating actor.
   auto actor_id = CreateActorHelper(resources, 1000);
@@ -425,8 +425,8 @@ void CoreWorkerTest::TestActorRestart(
 }
 
 void CoreWorkerTest::TestActorFailure(
-    std::unordered_map<std::string, double> &resources) {
-  auto &driver = CoreWorkerProcess::GetCoreWorker();
+    std::unordered_map<std::string, double>& resources) {
+  auto& driver = CoreWorkerProcess::GetCoreWorker();
 
   // creating actor.
   auto actor_id = CreateActorHelper(resources, 0 /* not reconstructable */);
@@ -462,7 +462,7 @@ void CoreWorkerTest::TestActorFailure(
     }
 
     for (int i = 0; i < num_tasks; i++) {
-      const auto &entry = all_results[i];
+      const auto& entry = all_results[i];
       std::vector<ObjectID> return_ids;
       return_ids.push_back(entry.first);
       std::vector<std::shared_ptr<RayObject>> results;
@@ -543,7 +543,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
                               function.GetFunctionDescriptor(), job_id, RandomTaskId(), 0,
                               RandomTaskId(), address, num_returns, resources, resources);
     // Set task arguments.
-    for (const auto &arg : args) {
+    for (const auto& arg : args) {
       builder.AddArg(*arg);
     }
 
@@ -560,7 +560,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
 }
 
 TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
-  auto &driver = CoreWorkerProcess::GetCoreWorker();
+  auto& driver = CoreWorkerProcess::GetCoreWorker();
   std::vector<ObjectID> object_ids;
   // Create an actor.
   std::unordered_map<std::string, double> resources;
@@ -576,7 +576,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
     // Create arguments with PassByValue.
     std::vector<std::unique_ptr<TaskArg>> args;
     int64_t array[] = {SHOULD_CHECK_MESSAGE_ORDER, i};
-    auto buffer = std::make_shared<LocalMemoryBuffer>(reinterpret_cast<uint8_t *>(array),
+    auto buffer = std::make_shared<LocalMemoryBuffer>(reinterpret_cast<uint8_t*>(array),
                                                       sizeof(array));
     args.emplace_back(new TaskArgByValue(
         std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
@@ -593,7 +593,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
   RAY_LOG(INFO) << "finish submitting " << num_tasks << " tasks"
                 << ", which takes " << current_time_ms() - start_ms << " ms";
 
-  for (const auto &object_id : object_ids) {
+  for (const auto& object_id : object_ids) {
     std::vector<std::shared_ptr<RayObject>> results;
     RAY_CHECK_OK(driver.Get({object_id}, -1, &results));
     ASSERT_EQ(results.size(), 1);
@@ -648,7 +648,7 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
   std::shared_ptr<CoreWorkerMemoryStore> provider_ptr =
       std::make_shared<CoreWorkerMemoryStore>();
 
-  auto &provider = *provider_ptr;
+  auto& provider = *provider_ptr;
 
   uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
   uint8_t array2[] = {10, 11, 12, 13, 14, 15};
@@ -692,7 +692,7 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
   ASSERT_TRUE(!got_exception);
   ASSERT_EQ(results.size(), ids.size());
   for (size_t i = 0; i < ids.size(); i++) {
-    const auto &expected = buffers[i];
+    const auto& expected = buffers[i];
     ASSERT_EQ(results[ids[i]]->GetData()->Size(), expected.GetData()->Size());
     ASSERT_EQ(memcmp(results[ids[i]]->GetData()->Data(), expected.GetData()->Data(),
                      expected.GetData()->Size()),
@@ -743,10 +743,10 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
   // Check that only the ready ids are returned when timeout ends before thread runs.
   RAY_CHECK_OK(provider.Wait(wait_ids, ready_ids.size() + 1, 100, ctx, &wait_results));
   ASSERT_EQ(ready_ids.size(), wait_results.size());
-  for (const auto &ready_id : ready_ids) {
+  for (const auto& ready_id : ready_ids) {
     ASSERT_TRUE(wait_results.find(ready_id) != wait_results.end());
   }
-  for (const auto &unready_id : unready_ids) {
+  for (const auto& unready_id : unready_ids) {
     ASSERT_TRUE(wait_results.find(unready_id) == wait_results.end());
   }
 
@@ -754,7 +754,7 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
   // Check that enough objects are returned after the thread inserts at least one object.
   RAY_CHECK_OK(provider.Wait(wait_ids, ready_ids.size() + 1, 5000, ctx, &wait_results));
   ASSERT_TRUE(wait_results.size() >= ready_ids.size() + 1);
-  for (const auto &ready_id : ready_ids) {
+  for (const auto& ready_id : ready_ids) {
     ASSERT_TRUE(wait_results.find(ready_id) != wait_results.end());
   }
 
@@ -763,20 +763,20 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
   async_thread.join();
   RAY_CHECK_OK(provider.Wait(wait_ids, wait_ids.size(), -1, ctx, &wait_results));
   ASSERT_EQ(wait_results.size(), ready_ids.size() + unready_ids.size());
-  for (const auto &ready_id : ready_ids) {
+  for (const auto& ready_id : ready_ids) {
     ASSERT_TRUE(wait_results.find(ready_id) != wait_results.end());
   }
-  for (const auto &unready_id : unready_ids) {
+  for (const auto& unready_id : unready_ids) {
     ASSERT_TRUE(wait_results.find(unready_id) != wait_results.end());
   }
 }
 
 TEST_F(SingleNodeTest, TestObjectInterface) {
-  auto &core_worker = CoreWorkerProcess::GetCoreWorker();
+  auto& core_worker = CoreWorkerProcess::GetCoreWorker();
 
   uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
   const size_t array2_size = 200 * 1024;
-  uint8_t *array2 = new uint8_t[array2_size];
+  uint8_t* array2 = new uint8_t[array2_size];
 
   std::vector<RayObject> buffers;
   buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1)),
@@ -877,7 +877,7 @@ TEST_F(TwoNodeTest, TestActorTaskCrossNodesFailure) {
 
 }  // namespace ray
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 8);
   ray::TEST_STORE_EXEC_PATH = std::string(argv[1]);

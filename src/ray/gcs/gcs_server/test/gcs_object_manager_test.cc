@@ -23,29 +23,29 @@ namespace ray {
 class MockedGcsObjectManager : public gcs::GcsObjectManager {
  public:
   explicit MockedGcsObjectManager(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-                                  std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub,
-                                  gcs::GcsNodeManager &gcs_node_manager)
+                                  std::shared_ptr<gcs::GcsPubSub>& gcs_pub_sub,
+                                  gcs::GcsNodeManager& gcs_node_manager)
       : gcs::GcsObjectManager(gcs_table_storage, gcs_pub_sub, gcs_node_manager) {}
 
  public:
-  void AddObjectsLocation(const ClientID &node_id,
-                          const absl::flat_hash_set<ObjectID> &object_ids) {
+  void AddObjectsLocation(const ClientID& node_id,
+                          const absl::flat_hash_set<ObjectID>& object_ids) {
     gcs::GcsObjectManager::AddObjectsLocation(node_id, object_ids);
   }
 
-  void AddObjectLocationInCache(const ObjectID &object_id, const ClientID &node_id) {
+  void AddObjectLocationInCache(const ObjectID& object_id, const ClientID& node_id) {
     gcs::GcsObjectManager::AddObjectLocationInCache(object_id, node_id);
   }
 
-  absl::flat_hash_set<ClientID> GetObjectLocations(const ObjectID &object_id) {
+  absl::flat_hash_set<ClientID> GetObjectLocations(const ObjectID& object_id) {
     return gcs::GcsObjectManager::GetObjectLocations(object_id);
   }
 
-  void OnNodeRemoved(const ClientID &node_id) {
+  void OnNodeRemoved(const ClientID& node_id) {
     gcs::GcsObjectManager::OnNodeRemoved(node_id);
   }
 
-  void RemoveObjectLocationInCache(const ObjectID &object_id, const ClientID &node_id) {
+  void RemoveObjectLocationInCache(const ObjectID& object_id, const ClientID& node_id) {
     gcs::GcsObjectManager::RemoveObjectLocationInCache(object_id, node_id);
   }
 };
@@ -72,9 +72,9 @@ class GcsObjectManagerTest : public ::testing::Test {
     }
   }
 
-  void CheckLocations(const absl::flat_hash_set<ClientID> &locations) {
+  void CheckLocations(const absl::flat_hash_set<ClientID>& locations) {
     ASSERT_EQ(locations.size(), node_ids_.size());
-    for (const auto &location : locations) {
+    for (const auto& location : locations) {
       auto it = node_ids_.find(location);
       ASSERT_TRUE(it != node_ids_.end());
       ASSERT_TRUE(location == *it);
@@ -97,30 +97,30 @@ class GcsObjectManagerTest : public ::testing::Test {
 };
 
 TEST_F(GcsObjectManagerTest, AddObjectsLocationAndGetLocationTest) {
-  for (const auto &node_id : node_ids_) {
+  for (const auto& node_id : node_ids_) {
     gcs_object_manager_->AddObjectsLocation(node_id, object_ids_);
   }
-  for (const auto &object_id : object_ids_) {
+  for (const auto& object_id : object_ids_) {
     auto locations = gcs_object_manager_->GetObjectLocations(object_id);
     CheckLocations(locations);
   }
 }
 
 TEST_F(GcsObjectManagerTest, AddObjectLocationInCacheTest) {
-  for (const auto &object_id : object_ids_) {
-    for (const auto &node_id : node_ids_) {
+  for (const auto& object_id : object_ids_) {
+    for (const auto& node_id : node_ids_) {
       gcs_object_manager_->AddObjectLocationInCache(object_id, node_id);
     }
   }
 
-  for (const auto &object_id : object_ids_) {
+  for (const auto& object_id : object_ids_) {
     auto locations = gcs_object_manager_->GetObjectLocations(object_id);
     CheckLocations(locations);
   }
 }
 
 TEST_F(GcsObjectManagerTest, RemoveNodeTest) {
-  for (const auto &node_id : node_ids_) {
+  for (const auto& node_id : node_ids_) {
     gcs_object_manager_->AddObjectsLocation(node_id, object_ids_);
   }
 
@@ -133,7 +133,7 @@ TEST_F(GcsObjectManagerTest, RemoveNodeTest) {
 }
 
 TEST_F(GcsObjectManagerTest, RemoveObjectLocationTest) {
-  for (const auto &node_id : node_ids_) {
+  for (const auto& node_id : node_ids_) {
     gcs_object_manager_->AddObjectsLocation(node_id, object_ids_);
   }
 
@@ -148,7 +148,7 @@ TEST_F(GcsObjectManagerTest, RemoveObjectLocationTest) {
 
 }  // namespace ray
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

@@ -35,8 +35,8 @@ class NodeManagerClient {
   /// \param[in] address Address of the node manager server.
   /// \param[in] port Port of the node manager server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
-  NodeManagerClient(const std::string &address, const int port,
-                    ClientCallManager &client_call_manager) {
+  NodeManagerClient(const std::string& address, const int port,
+                    ClientCallManager& client_call_manager) {
     grpc_client_ = std::unique_ptr<GrpcClient<NodeManagerService>>(
         new GrpcClient<NodeManagerService>(address, port, client_call_manager));
   };
@@ -50,7 +50,7 @@ class NodeManagerClient {
   /// Get current node stats.
   VOID_RPC_CLIENT_METHOD(NodeManagerService, GetNodeStats, grpc_client_, )
 
-  void GetNodeStats(const ClientCallback<GetNodeStatsReply> &callback) {
+  void GetNodeStats(const ClientCallback<GetNodeStatsReply>& callback) {
     GetNodeStatsRequest request;
     GetNodeStats(request, callback);
   }
@@ -70,8 +70,8 @@ class NodeManagerWorkerClient
   /// \param[in] port Port of the node manager server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   static std::shared_ptr<NodeManagerWorkerClient> make(
-      const std::string &address, const int port,
-      ClientCallManager &client_call_manager) {
+      const std::string& address, const int port,
+      ClientCallManager& client_call_manager) {
     auto instance = new NodeManagerWorkerClient(address, port, client_call_manager);
     return std::shared_ptr<NodeManagerWorkerClient>(instance);
   }
@@ -106,8 +106,8 @@ class NodeManagerWorkerClient
   /// \param[in] address Address of the node manager server.
   /// \param[in] port Port of the node manager server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
-  NodeManagerWorkerClient(const std::string &address, const int port,
-                          ClientCallManager &client_call_manager) {
+  NodeManagerWorkerClient(const std::string& address, const int port,
+                          ClientCallManager& client_call_manager) {
     grpc_client_ = std::unique_ptr<GrpcClient<NodeManagerService>>(
         new GrpcClient<NodeManagerService>(address, port, client_call_manager));
   };

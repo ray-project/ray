@@ -33,10 +33,10 @@ vector<int64_t> EmptyIntVector;
 vector<bool> EmptyBoolVector;
 vector<FixedPoint> EmptyFixedPointVector;
 
-void initTaskRequest(TaskRequest &tr, vector<FixedPoint> &pred_demands,
-                     vector<bool> &pred_soft, vector<int64_t> &cust_ids,
-                     vector<FixedPoint> &cust_demands, vector<bool> &cust_soft,
-                     vector<int64_t> &placement_hints) {
+void initTaskRequest(TaskRequest& tr, vector<FixedPoint>& pred_demands,
+                     vector<bool>& pred_soft, vector<int64_t>& cust_ids,
+                     vector<FixedPoint>& cust_demands, vector<bool>& cust_soft,
+                     vector<int64_t>& placement_hints) {
   for (size_t i = 0; i < pred_demands.size(); i++) {
     ResourceRequest rq;
     rq.demand = pred_demands[i];
@@ -65,7 +65,7 @@ void initTaskRequest(TaskRequest &tr, vector<FixedPoint> &pred_demands,
 };
 
 void addTaskResourceInstances(bool predefined, vector<double> allocation, uint64_t idx,
-                              TaskResourceInstances *task_allocation) {
+                              TaskResourceInstances* task_allocation) {
   std::vector<FixedPoint> allocation_fp = VectorDoubleToVectorFixedPoint(allocation);
 
   if (task_allocation->predefined_resources.size() < PredefinedResources_MAX) {
@@ -79,8 +79,8 @@ void addTaskResourceInstances(bool predefined, vector<double> allocation, uint64
   }
 };
 
-void initNodeResources(NodeResources &node, vector<FixedPoint> &pred_capacities,
-                       vector<int64_t> &cust_ids, vector<FixedPoint> &cust_capacities) {
+void initNodeResources(NodeResources& node, vector<FixedPoint>& pred_capacities,
+                       vector<int64_t>& cust_ids, vector<FixedPoint>& cust_capacities) {
   for (size_t i = 0; i < pred_capacities.size(); i++) {
     ResourceCapacity rc;
     rc.total = rc.available = pred_capacities[i];
@@ -102,7 +102,7 @@ void initNodeResources(NodeResources &node, vector<FixedPoint> &pred_capacities,
   }
 }
 
-void initCluster(ClusterResourceScheduler &cluster_resources, int n) {
+void initCluster(ClusterResourceScheduler& cluster_resources, int n) {
   vector<FixedPoint> pred_capacities;
   vector<int64_t> cust_ids;
   vector<FixedPoint> cust_capacities;
@@ -135,7 +135,7 @@ void initCluster(ClusterResourceScheduler &cluster_resources, int n) {
   }
 }
 
-bool nodeResourcesEqual(const NodeResources &nr1, const NodeResources &nr2) {
+bool nodeResourcesEqual(const NodeResources& nr1, const NodeResources& nr2) {
   if (nr1.predefined_resources.size() != nr2.predefined_resources.size()) {
     cout << nr1.predefined_resources.size() << " " << nr2.predefined_resources.size()
          << endl;
@@ -972,7 +972,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithHardRequestTest) {
 
 }  // namespace ray
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

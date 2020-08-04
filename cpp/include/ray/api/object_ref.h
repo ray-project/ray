@@ -17,12 +17,12 @@ class ObjectRef {
  public:
   ObjectRef();
 
-  ObjectRef(const ObjectID &id);
+  ObjectRef(const ObjectID& id);
 
-  bool operator==(const ObjectRef<T> &object) const;
+  bool operator==(const ObjectRef<T>& object) const;
 
   /// Get a untyped ID of the object
-  const ObjectID &ID() const;
+  const ObjectID& ID() const;
 
   /// Get the object from the object store.
   /// This method will be blocked until the object is ready.
@@ -44,17 +44,17 @@ template <typename T>
 ObjectRef<T>::ObjectRef() {}
 
 template <typename T>
-ObjectRef<T>::ObjectRef(const ObjectID &id) {
+ObjectRef<T>::ObjectRef(const ObjectID& id) {
   id_ = id;
 }
 
 template <typename T>
-inline bool ObjectRef<T>::operator==(const ObjectRef<T> &object) const {
+inline bool ObjectRef<T>::operator==(const ObjectRef<T>& object) const {
   return id_ == object.id_;
 }
 
 template <typename T>
-const ObjectID &ObjectRef<T>::ID() const {
+const ObjectID& ObjectRef<T>::ID() const {
   return id_;
 }
 

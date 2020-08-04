@@ -37,8 +37,8 @@ class ObjectManagerClient {
   /// \param[in] address Address of the node manager server.
   /// \param[in] port Port of the node manager server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
-  ObjectManagerClient(const std::string &address, const int port,
-                      ClientCallManager &client_call_manager, int num_connections = 4)
+  ObjectManagerClient(const std::string& address, const int port,
+                      ClientCallManager& client_call_manager, int num_connections = 4)
       : num_connections_(num_connections) {
     push_rr_index_ = rand() % num_connections_;
     pull_rr_index_ = rand() % num_connections_;

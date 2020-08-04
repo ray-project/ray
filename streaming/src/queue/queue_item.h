@@ -30,7 +30,7 @@ class QueueItem {
   /// \param[in] data_size the data size in bytes.
   /// \param[in] timestamp the time when this QueueItem created.
   /// \param[in] raw whether the data content is raw bytes, only used in some tests.
-  QueueItem(uint64_t seq_id, uint8_t *data, uint32_t data_size, uint64_t timestamp,
+  QueueItem(uint64_t seq_id, uint8_t* data, uint32_t data_size, uint64_t timestamp,
             bool raw = false)
       : seq_id_(seq_id),
         timestamp_(timestamp),
@@ -46,21 +46,21 @@ class QueueItem {
         raw_(data_msg->IsRaw()),
         buffer_(data_msg->Buffer()) {}
 
-  QueueItem(const QueueItem &&item) {
+  QueueItem(const QueueItem&& item) {
     buffer_ = item.buffer_;
     seq_id_ = item.seq_id_;
     timestamp_ = item.timestamp_;
     raw_ = item.raw_;
   }
 
-  QueueItem(const QueueItem &item) {
+  QueueItem(const QueueItem& item) {
     buffer_ = item.buffer_;
     seq_id_ = item.seq_id_;
     timestamp_ = item.timestamp_;
     raw_ = item.raw_;
   }
 
-  QueueItem &operator=(const QueueItem &item) {
+  QueueItem& operator=(const QueueItem& item) {
     buffer_ = item.buffer_;
     seq_id_ = item.seq_id_;
     timestamp_ = item.timestamp_;

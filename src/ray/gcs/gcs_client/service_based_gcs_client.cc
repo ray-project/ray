@@ -24,10 +24,10 @@ extern "C" {
 namespace ray {
 namespace gcs {
 
-ServiceBasedGcsClient::ServiceBasedGcsClient(const GcsClientOptions &options)
+ServiceBasedGcsClient::ServiceBasedGcsClient(const GcsClientOptions& options)
     : GcsClient(options) {}
 
-Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
+Status ServiceBasedGcsClient::Connect(boost::asio::io_service& io_service) {
   RAY_CHECK(!is_connected_);
 
   if (options_.server_ip_.empty()) {
@@ -43,7 +43,7 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
   gcs_pub_sub_.reset(new GcsPubSub(redis_gcs_client_->GetRedisClient()));
 
   // Get gcs service address.
-  get_server_address_func_ = [this](std::pair<std::string, int> *address) {
+  get_server_address_func_ = [this](std::pair<std::string, int>* address) {
     return GetGcsServerAddressFromRedis(
         redis_gcs_client_->primary_context()->sync_context(), address);
   };
@@ -98,12 +98,12 @@ void ServiceBasedGcsClient::Disconnect() {
 }
 
 bool ServiceBasedGcsClient::GetGcsServerAddressFromRedis(
-    redisContext *context, std::pair<std::string, int> *address, int max_attempts) {
+    redisContext* context, std::pair<std::string, int>* address, int max_attempts) {
   // Get gcs server address.
   int num_attempts = 0;
-  redisReply *reply = nullptr;
+  redisReply* reply = nullptr;
   while (num_attempts < max_attempts) {
-    reply = reinterpret_cast<redisReply *>(redisCommand(context, "GET GcsServerAddress"));
+    reply = reinterpret_cast<redisReply*>(redisCommand(context, "GET GcsServerAddress"));
     if (reply && reply->type != REDIS_REPLY_NIL) {
       break;
     }
@@ -150,7 +150,7 @@ void ServiceBasedGcsClient::PeriodicallyCheckGcsServerAddress() {
   auto check_period = boost::posix_time::milliseconds(
       RayConfig::instance().gcs_service_address_check_interval_milliseconds());
   detect_timer_->expires_from_now(check_period);
-  detect_timer_->async_wait([this](const boost::system::error_code &error) {
+  detect_timer_->async_wait([this](const boost::system::error_code& error) {
     if (error == boost::asio::error::operation_aborted) {
       // `operation_aborted` is set when `detect_timer_` is canceled or destroyed.
       return;

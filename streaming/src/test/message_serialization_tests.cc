@@ -13,7 +13,7 @@ TEST(StreamingSerializationTest, streaming_message_serialization_test) {
   StreamingMessagePtr message =
       std::make_shared<StreamingMessage>(data, 3, 7, StreamingMessageType::Message);
   uint32_t message_length = message->ClassBytesSize();
-  uint8_t *bytes = new uint8_t[message_length];
+  uint8_t* bytes = new uint8_t[message_length];
   message->ToBytes(bytes);
   StreamingMessagePtr new_message = StreamingMessage::FromBytes(bytes);
   EXPECT_EQ(std::memcmp(new_message->RawData(), data, 3), 0);
@@ -24,7 +24,7 @@ TEST(StreamingSerializationTest, streaming_message_empty_bundle_serialization_te
   for (int i = 0; i < 10; ++i) {
     StreamingMessageBundle bundle(i, i);
     uint64_t bundle_size = bundle.ClassBytesSize();
-    uint8_t *bundle_bytes = new uint8_t[bundle_size];
+    uint8_t* bundle_bytes = new uint8_t[bundle_size];
     bundle.ToBytes(bundle_bytes);
     StreamingMessageBundlePtr bundle_ptr =
         StreamingMessageBundle::FromBytes(bundle_bytes);
@@ -64,7 +64,7 @@ TEST(StreamingSerializationTest, streaming_message_barrier_bundle_serialization_
     StreamingMessageBundle bundle(message_list_cpy, i, i,
                                   StreamingMessageBundleType::Barrier);
     uint64_t bundle_size = bundle.ClassBytesSize();
-    uint8_t *bundle_bytes = new uint8_t[bundle_size];
+    uint8_t* bundle_bytes = new uint8_t[bundle_size];
     bundle.ToBytes(bundle_bytes);
     StreamingMessageBundlePtr bundle_ptr =
         StreamingMessageBundle::FromBytes(bundle_bytes);
@@ -95,7 +95,7 @@ TEST(StreamingSerializationTest, streaming_message_bundle_serialization_test) {
     std::list<StreamingMessagePtr> message_list;
 
     for (int i = 0; i < 100; ++i) {
-      uint8_t *data = new uint8_t[i + 1];
+      uint8_t* data = new uint8_t[i + 1];
       data[0] = i;
       StreamingMessagePtr message = std::make_shared<StreamingMessage>(
           data, i + 1, i + 1, StreamingMessageType::Message);
@@ -105,7 +105,7 @@ TEST(StreamingSerializationTest, streaming_message_bundle_serialization_test) {
     StreamingMessageBundle messageBundle(message_list, 0, 1,
                                          StreamingMessageBundleType::Bundle);
     size_t message_length = messageBundle.ClassBytesSize();
-    uint8_t *bytes = new uint8_t[message_length];
+    uint8_t* bytes = new uint8_t[message_length];
     messageBundle.ToBytes(bytes);
 
     StreamingMessageBundlePtr bundle_ptr = StreamingMessageBundle::FromBytes(bytes);
@@ -129,7 +129,7 @@ TEST(StreamingSerializationTest, streaming_message_bundle_equal_test) {
   std::list<StreamingMessagePtr> message_list_same;
   std::list<StreamingMessagePtr> message_list_cpy;
   for (int i = 0; i < 100; ++i) {
-    uint8_t *data = new uint8_t[i + 1];
+    uint8_t* data = new uint8_t[i + 1];
     for (int j = 0; j < i + 1; ++j) {
       data[j] = i;
     }
@@ -140,7 +140,7 @@ TEST(StreamingSerializationTest, streaming_message_bundle_equal_test) {
     delete[] data;
   }
   for (int i = 0; i < 100; ++i) {
-    uint8_t *data = new uint8_t[i + 1];
+    uint8_t* data = new uint8_t[i + 1];
     for (int j = 0; j < i + 1; ++j) {
       data[j] = i;
     }
@@ -158,7 +158,7 @@ TEST(StreamingSerializationTest, streaming_message_bundle_equal_test) {
   EXPECT_TRUE(message_bundle_same == message_bundle);
   EXPECT_FALSE(message_bundle_reverse == message_bundle);
   size_t message_length = message_bundle.ClassBytesSize();
-  uint8_t *bytes = new uint8_t[message_length];
+  uint8_t* bytes = new uint8_t[message_length];
   message_bundle.ToBytes(bytes);
 
   StreamingMessageBundlePtr bundle_ptr = StreamingMessageBundle::FromBytes(bytes);
@@ -169,7 +169,7 @@ TEST(StreamingSerializationTest, streaming_message_bundle_equal_test) {
   delete[] bytes;
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

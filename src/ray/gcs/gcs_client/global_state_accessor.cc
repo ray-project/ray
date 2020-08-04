@@ -19,8 +19,8 @@
 namespace ray {
 namespace gcs {
 
-GlobalStateAccessor::GlobalStateAccessor(const std::string &redis_address,
-                                         const std::string &redis_password,
+GlobalStateAccessor::GlobalStateAccessor(const std::string& redis_address,
+                                         const std::string& redis_password,
                                          bool is_test) {
   RAY_LOG(INFO) << "Redis server address = " << redis_address
                 << ", is test flag = " << is_test;
@@ -105,17 +105,17 @@ std::vector<std::string> GlobalStateAccessor::GetAllObjectInfo() {
 }
 
 std::unique_ptr<std::string> GlobalStateAccessor::GetObjectInfo(
-    const ObjectID &object_id) {
+    const ObjectID& object_id) {
   std::unique_ptr<std::string> object_info;
   std::promise<bool> promise;
   auto on_done = [object_id, &object_info, &promise](
-                     const Status &status,
-                     const std::vector<rpc::ObjectTableData> &result) {
+                     const Status& status,
+                     const std::vector<rpc::ObjectTableData>& result) {
     RAY_CHECK_OK(status);
     if (!result.empty()) {
       rpc::ObjectLocationInfo object_location_info;
       object_location_info.set_object_id(object_id.Binary());
-      for (auto &data : result) {
+      for (auto& data : result) {
         object_location_info.add_locations()->CopyFrom(data);
       }
       object_info.reset(new std::string(object_location_info.SerializeAsString()));
@@ -127,17 +127,17 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetObjectInfo(
   return object_info;
 }
 
-std::string GlobalStateAccessor::GetNodeResourceInfo(const ClientID &node_id) {
+std::string GlobalStateAccessor::GetNodeResourceInfo(const ClientID& node_id) {
   rpc::ResourceMap node_resource_map;
   std::promise<void> promise;
   auto on_done =
       [&node_resource_map, &promise](
-          const Status &status,
-          const boost::optional<ray::gcs::NodeInfoAccessor::ResourceMap> &result) {
+          const Status& status,
+          const boost::optional<ray::gcs::NodeInfoAccessor::ResourceMap>& result) {
         RAY_CHECK_OK(status);
         if (result) {
           auto result_value = result.get();
-          for (auto &data : result_value) {
+          for (auto& data : result_value) {
             (*node_resource_map.mutable_items())[data.first] = *data.second;
           }
         }
@@ -178,7 +178,7 @@ std::vector<std::string> GlobalStateAccessor::GetAllActorInfo() {
   return actor_table_data;
 }
 
-std::unique_ptr<std::string> GlobalStateAccessor::GetActorInfo(const ActorID &actor_id) {
+std::unique_ptr<std::string> GlobalStateAccessor::GetActorInfo(const ActorID& actor_id) {
   std::unique_ptr<std::string> actor_table_data;
   std::promise<bool> promise;
   RAY_CHECK_OK(gcs_client_->Actors().AsyncGet(
@@ -189,7 +189,7 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetActorInfo(const ActorID &ac
 }
 
 std::unique_ptr<std::string> GlobalStateAccessor::GetActorCheckpointId(
-    const ActorID &actor_id) {
+    const ActorID& actor_id) {
   std::unique_ptr<std::string> actor_checkpoint_id_data;
   std::promise<bool> promise;
   RAY_CHECK_OK(gcs_client_->Actors().AsyncGetCheckpointID(
@@ -200,7 +200,7 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetActorCheckpointId(
 }
 
 std::unique_ptr<std::string> GlobalStateAccessor::GetWorkerInfo(
-    const WorkerID &worker_id) {
+    const WorkerID& worker_id) {
   std::unique_ptr<std::string> worker_table_data;
   std::promise<bool> promise;
   RAY_CHECK_OK(gcs_client_->Workers().AsyncGet(
@@ -219,12 +219,12 @@ std::vector<std::string> GlobalStateAccessor::GetAllWorkerInfo() {
   return worker_table_data;
 }
 
-bool GlobalStateAccessor::AddWorkerInfo(const std::string &serialized_string) {
+bool GlobalStateAccessor::AddWorkerInfo(const std::string& serialized_string) {
   auto data_ptr = std::make_shared<WorkerTableData>();
   data_ptr->ParseFromString(serialized_string);
   std::promise<bool> promise;
   RAY_CHECK_OK(
-      gcs_client_->Workers().AsyncAdd(data_ptr, [&promise](const Status &status) {
+      gcs_client_->Workers().AsyncAdd(data_ptr, [&promise](const Status& status) {
         RAY_CHECK_OK(status);
         promise.set_value(true);
       }));

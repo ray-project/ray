@@ -29,7 +29,7 @@ class RedisContext;
 
 class RedisClientOptions {
  public:
-  RedisClientOptions(const std::string &ip, int port, const std::string &password,
+  RedisClientOptions(const std::string& ip, int port, const std::string& password,
                      bool is_test_client = false)
       : server_ip_(ip),
         server_port_(port),
@@ -51,7 +51,7 @@ class RedisClientOptions {
 /// This class is used to send commands to Redis.
 class RedisClient {
  public:
-  RedisClient(const RedisClientOptions &options);
+  RedisClient(const RedisClientOptions& options);
 
   /// Connect to Redis. Non-thread safe.
   /// Call this function before calling other functions.
@@ -60,7 +60,7 @@ class RedisClient {
   /// This io_service must be single-threaded. Because `RedisAsioClient` is
   /// non-thread safe.
   /// \return Status
-  Status Connect(boost::asio::io_service &io_service);
+  Status Connect(boost::asio::io_service& io_service);
 
   // TODO(micafan) Maybe it's not necessary to use multi threads.
   /// Connect to Redis. Non-thread safe.
@@ -70,7 +70,7 @@ class RedisClient {
   /// an event loop. Each io_service must be single-threaded. Because `RedisAsioClient`
   /// is non-thread safe.
   /// \return Status
-  Status Connect(std::vector<boost::asio::io_service *> io_services);
+  Status Connect(std::vector<boost::asio::io_service*> io_services);
 
   /// Disconnect with Redis. Non-thread safe.
   void Disconnect();
@@ -79,7 +79,7 @@ class RedisClient {
     return shard_contexts_;
   }
 
-  std::shared_ptr<RedisContext> GetShardContext(const std::string &shard_key);
+  std::shared_ptr<RedisContext> GetShardContext(const std::string& shard_key);
 
   std::shared_ptr<RedisContext> GetPrimaryContext() { return primary_context_; }
 

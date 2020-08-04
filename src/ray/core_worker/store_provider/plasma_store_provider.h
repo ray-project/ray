@@ -34,7 +34,7 @@ namespace ray {
 class CoreWorkerPlasmaStoreProvider {
  public:
   CoreWorkerPlasmaStoreProvider(
-      const std::string &store_socket,
+      const std::string& store_socket,
       const std::shared_ptr<raylet::RayletClient> raylet_client,
       const std::shared_ptr<ReferenceCounter> reference_counter,
       std::function<Status()> check_signals, bool evict_if_full,
@@ -55,7 +55,7 @@ class CoreWorkerPlasmaStoreProvider {
   /// \param[out] object_exists Optional. Returns whether an object with the
   /// same ID already exists. If this is true, then the Put does not write any
   /// object data.
-  Status Put(const RayObject &object, const ObjectID &object_id, bool *object_exists);
+  Status Put(const RayObject& object, const ObjectID& object_id, bool* object_exists);
 
   /// Create an object in plasma and return a mutable buffer to it. The buffer should be
   /// subsequently written to and then sealed using Seal().
@@ -64,8 +64,8 @@ class CoreWorkerPlasmaStoreProvider {
   /// \param[in] data_size The size of the object.
   /// \param[in] object_id The ID of the object.
   /// \param[out] data The mutable object buffer in plasma that can be written to.
-  Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
-                const ObjectID &object_id, std::shared_ptr<Buffer> *data);
+  Status Create(const std::shared_ptr<Buffer>& metadata, const size_t data_size,
+                const ObjectID& object_id, std::shared_ptr<Buffer>* data);
 
   /// Seal an object buffer created with Create().
   ///
@@ -74,7 +74,7 @@ class CoreWorkerPlasmaStoreProvider {
   ///
   /// \param[in] object_id The ID of the object. This can be used as an
   /// argument to Get to retrieve the object data.
-  Status Seal(const ObjectID &object_id);
+  Status Seal(const ObjectID& object_id);
 
   /// Release the first reference to the object created by Put() or Create(). This should
   /// be called exactly once per object and until it is called, the object is pinned and
@@ -82,20 +82,20 @@ class CoreWorkerPlasmaStoreProvider {
   ///
   /// \param[in] object_id The ID of the object. This can be used as an
   /// argument to Get to retrieve the object data.
-  Status Release(const ObjectID &object_id);
+  Status Release(const ObjectID& object_id);
 
-  Status Get(const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,
-             const WorkerContext &ctx,
-             absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
-             bool *got_exception);
+  Status Get(const absl::flat_hash_set<ObjectID>& object_ids, int64_t timeout_ms,
+             const WorkerContext& ctx,
+             absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>>* results,
+             bool* got_exception);
 
-  Status Contains(const ObjectID &object_id, bool *has_object);
+  Status Contains(const ObjectID& object_id, bool* has_object);
 
-  Status Wait(const absl::flat_hash_set<ObjectID> &object_ids, int num_objects,
-              int64_t timeout_ms, const WorkerContext &ctx,
-              absl::flat_hash_set<ObjectID> *ready);
+  Status Wait(const absl::flat_hash_set<ObjectID>& object_ids, int num_objects,
+              int64_t timeout_ms, const WorkerContext& ctx,
+              absl::flat_hash_set<ObjectID>* ready);
 
-  Status Delete(const absl::flat_hash_set<ObjectID> &object_ids, bool local_only,
+  Status Delete(const absl::flat_hash_set<ObjectID>& object_ids, bool local_only,
                 bool delete_creating_tasks);
 
   /// Lists objects in used (pinned) by the current client.
@@ -124,11 +124,11 @@ class CoreWorkerPlasmaStoreProvider {
   /// exception.
   /// \return Status.
   Status FetchAndGetFromPlasmaStore(
-      absl::flat_hash_set<ObjectID> &remaining, const std::vector<ObjectID> &batch_ids,
+      absl::flat_hash_set<ObjectID>& remaining, const std::vector<ObjectID>& batch_ids,
       int64_t timeout_ms, bool fetch_only, bool in_direct_call_task,
-      const TaskID &task_id,
-      absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
-      bool *got_exception);
+      const TaskID& task_id,
+      absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>>* results,
+      bool* got_exception);
 
   /// Print a warning if we've attempted too many times, but some objects are still
   /// unavailable. Only the keys in the 'remaining' map are used.
@@ -136,7 +136,7 @@ class CoreWorkerPlasmaStoreProvider {
   /// \param[in] num_attemps The number of attempted times.
   /// \param[in] remaining The remaining objects.
   static void WarnIfAttemptedTooManyTimes(int num_attempts,
-                                          const absl::flat_hash_set<ObjectID> &remaining);
+                                          const absl::flat_hash_set<ObjectID>& remaining);
 
   /// Put something in the plasma store so that subsequent plasma store accesses
   /// will be faster. Currently the first access is always slow, and we don't
@@ -164,7 +164,7 @@ class CoreWorkerPlasmaStoreProvider {
     // automatically removed from this list via destructor callback. The map key uniquely
     // identifies a buffer. It should not be a shared ptr since that would keep the Buffer
     // alive forever (i.e., this is a weak ref map).
-    absl::flat_hash_map<std::pair<ObjectID, PlasmaBuffer *>, std::string> active_buffers_
+    absl::flat_hash_map<std::pair<ObjectID, PlasmaBuffer*>, std::string> active_buffers_
         GUARDED_BY(active_buffers_mutex_);
   };
 

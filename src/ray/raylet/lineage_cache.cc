@@ -23,7 +23,7 @@ namespace ray {
 
 namespace raylet {
 
-LineageEntry::LineageEntry(const Task &task, GcsStatus status)
+LineageEntry::LineageEntry(const Task& task, GcsStatus status)
     : status_(status), task_(task) {
   ComputeParentTaskIds();
 }
@@ -44,11 +44,11 @@ void LineageEntry::ResetStatus(GcsStatus new_status) {
   status_ = new_status;
 }
 
-void LineageEntry::MarkExplicitlyForwarded(const ClientID &node_id) {
+void LineageEntry::MarkExplicitlyForwarded(const ClientID& node_id) {
   forwarded_to_.insert(node_id);
 }
 
-bool LineageEntry::WasExplicitlyForwarded(const ClientID &node_id) const {
+bool LineageEntry::WasExplicitlyForwarded(const ClientID& node_id) const {
   return forwarded_to_.find(node_id) != forwarded_to_.end();
 }
 
@@ -56,48 +56,48 @@ const TaskID LineageEntry::GetEntryId() const {
   return task_.GetTaskSpecification().TaskId();
 }
 
-const std::unordered_set<TaskID> &LineageEntry::GetParentTaskIds() const {
+const std::unordered_set<TaskID>& LineageEntry::GetParentTaskIds() const {
   return parent_task_ids_;
 }
 
 void LineageEntry::ComputeParentTaskIds() {
   parent_task_ids_.clear();
   // A task's parents are the tasks that created its arguments.
-  for (const auto &dependency : task_.GetDependencies()) {
+  for (const auto& dependency : task_.GetDependencies()) {
     parent_task_ids_.insert(ObjectID::FromBinary(dependency.object_id()).TaskId());
   }
 }
 
-const Task &LineageEntry::TaskData() const { return task_; }
+const Task& LineageEntry::TaskData() const { return task_; }
 
-Task &LineageEntry::TaskDataMutable() { return task_; }
+Task& LineageEntry::TaskDataMutable() { return task_; }
 
-void LineageEntry::UpdateTaskData(const Task &task) {
+void LineageEntry::UpdateTaskData(const Task& task) {
   task_.CopyTaskExecutionSpec(task);
   ComputeParentTaskIds();
 }
 
 Lineage::Lineage() {}
 
-boost::optional<const LineageEntry &> Lineage::GetEntry(const TaskID &task_id) const {
+boost::optional<const LineageEntry&> Lineage::GetEntry(const TaskID& task_id) const {
   auto entry = entries_.find(task_id);
   if (entry != entries_.end()) {
     return entry->second;
   } else {
-    return boost::optional<const LineageEntry &>();
+    return boost::optional<const LineageEntry&>();
   }
 }
 
-boost::optional<LineageEntry &> Lineage::GetEntryMutable(const TaskID &task_id) {
+boost::optional<LineageEntry&> Lineage::GetEntryMutable(const TaskID& task_id) {
   auto entry = entries_.find(task_id);
   if (entry != entries_.end()) {
     return entry->second;
   } else {
-    return boost::optional<LineageEntry &>();
+    return boost::optional<LineageEntry&>();
   }
 }
 
-void Lineage::RemoveChild(const TaskID &parent_id, const TaskID &child_id) {
+void Lineage::RemoveChild(const TaskID& parent_id, const TaskID& child_id) {
   auto parent_it = children_.find(parent_id);
   RAY_CHECK(parent_it->second.erase(child_id) == 1);
   if (parent_it->second.empty()) {
@@ -105,12 +105,12 @@ void Lineage::RemoveChild(const TaskID &parent_id, const TaskID &child_id) {
   }
 }
 
-void Lineage::AddChild(const TaskID &parent_id, const TaskID &child_id) {
+void Lineage::AddChild(const TaskID& parent_id, const TaskID& child_id) {
   auto inserted = children_[parent_id].insert(child_id);
   RAY_CHECK(inserted.second);
 }
 
-bool Lineage::SetEntry(const Task &task, GcsStatus status) {
+bool Lineage::SetEntry(const Task& task, GcsStatus status) {
   // Get the status of the current entry at the key.
   auto task_id = task.GetTaskSpecification().TaskId();
   auto it = entries_.find(task_id);
@@ -130,20 +130,20 @@ bool Lineage::SetEntry(const Task &task, GcsStatus status) {
 
     // New task data was added to the local cache, so record which tasks it
     // depends on. Add all new tasks that it depends on.
-    for (const auto &parent_id : it->second.GetParentTaskIds()) {
+    for (const auto& parent_id : it->second.GetParentTaskIds()) {
       AddChild(parent_id, task_id);
     }
   }
   return updated;
 }
 
-boost::optional<LineageEntry> Lineage::PopEntry(const TaskID &task_id) {
+boost::optional<LineageEntry> Lineage::PopEntry(const TaskID& task_id) {
   auto entry = entries_.find(task_id);
   if (entry != entries_.end()) {
     LineageEntry entry = std::move(entries_.at(task_id));
 
     // Remove the task's dependencies.
-    for (const auto &parent_id : entry.GetParentTaskIds()) {
+    for (const auto& parent_id : entry.GetParentTaskIds()) {
       RemoveChild(parent_id, task_id);
     }
     entries_.erase(task_id);
@@ -154,11 +154,11 @@ boost::optional<LineageEntry> Lineage::PopEntry(const TaskID &task_id) {
   }
 }
 
-const std::unordered_map<const TaskID, LineageEntry> &Lineage::GetEntries() const {
+const std::unordered_map<const TaskID, LineageEntry>& Lineage::GetEntries() const {
   return entries_;
 }
 
-const std::unordered_set<TaskID> &Lineage::GetChildren(const TaskID &task_id) const {
+const std::unordered_set<TaskID>& Lineage::GetChildren(const TaskID& task_id) const {
   static const std::unordered_set<TaskID> empty_children;
   const auto it = children_.find(task_id);
   if (it != children_.end()) {
@@ -168,14 +168,14 @@ const std::unordered_set<TaskID> &Lineage::GetChildren(const TaskID &task_id) co
   }
 }
 
-LineageCache::LineageCache(const ClientID &self_node_id,
+LineageCache::LineageCache(const ClientID& self_node_id,
                            std::shared_ptr<gcs::GcsClient> gcs_client,
                            uint64_t max_lineage_size)
     : self_node_id_(self_node_id), gcs_client_(gcs_client) {}
 
 /// A helper function to add some uncommitted lineage to the local cache.
-void LineageCache::AddUncommittedLineage(const TaskID &task_id,
-                                         const Lineage &uncommitted_lineage) {
+void LineageCache::AddUncommittedLineage(const TaskID& task_id,
+                                         const Lineage& uncommitted_lineage) {
   // TODO(edoakes): remove this method, it's currently only called in unit tests.
   RAY_LOG(DEBUG) << "Adding uncommitted task " << task_id << " on " << self_node_id_;
   // If the entry is not found in the lineage to merge, then we stop since
@@ -187,19 +187,19 @@ void LineageCache::AddUncommittedLineage(const TaskID &task_id,
   RAY_CHECK(entry->GetStatus() == GcsStatus::UNCOMMITTED);
 
   // Insert a copy of the entry into our cache.
-  const auto &parent_ids = entry->GetParentTaskIds();
+  const auto& parent_ids = entry->GetParentTaskIds();
   // If the insert is successful, then continue the DFS. The insert will fail
   // if the new entry has an equal or lower GCS status than the current entry
   // in our cache. This also prevents us from traversing the same node twice.
   if (lineage_.SetEntry(entry->TaskData(), entry->GetStatus())) {
     RAY_CHECK(SubscribeTask(task_id));
-    for (const auto &parent_id : parent_ids) {
+    for (const auto& parent_id : parent_ids) {
       AddUncommittedLineage(parent_id, uncommitted_lineage);
     }
   }
 }
 
-bool LineageCache::CommitTask(const Task &task) {
+bool LineageCache::CommitTask(const Task& task) {
   // TODO(edoakes): remove this method, it's currently only called in unit tests.
   const TaskID task_id = task.GetTaskSpecification().TaskId();
   RAY_LOG(DEBUG) << "Committing task " << task_id << " on " << self_node_id_;
@@ -217,7 +217,7 @@ bool LineageCache::CommitTask(const Task &task) {
 
 void LineageCache::FlushAllUncommittedTasks() {
   size_t num_flushed = 0;
-  for (const auto &entry : lineage_.GetEntries()) {
+  for (const auto& entry : lineage_.GetEntries()) {
     // Flush all tasks that have not yet committed.
     if (entry.second.GetStatus() == GcsStatus::UNCOMMITTED) {
       RAY_CHECK(UnsubscribeTask(entry.first));
@@ -229,7 +229,7 @@ void LineageCache::FlushAllUncommittedTasks() {
   RAY_LOG(DEBUG) << "Flushed " << num_flushed << " uncommitted tasks";
 }
 
-void LineageCache::MarkTaskAsForwarded(const TaskID &task_id, const ClientID &node_id) {
+void LineageCache::MarkTaskAsForwarded(const TaskID& task_id, const ClientID& node_id) {
   RAY_CHECK(!node_id.IsNil());
   auto entry = lineage_.GetEntryMutable(task_id);
   if (entry) {
@@ -238,8 +238,8 @@ void LineageCache::MarkTaskAsForwarded(const TaskID &task_id, const ClientID &no
 }
 
 /// A helper function to get the uncommitted lineage of a task.
-void GetUncommittedLineageHelper(const TaskID &task_id, const Lineage &lineage_from,
-                                 Lineage &lineage_to, const ClientID &node_id) {
+void GetUncommittedLineageHelper(const TaskID& task_id, const Lineage& lineage_from,
+                                 Lineage& lineage_to, const ClientID& node_id) {
   // If the entry is not found in the lineage to merge, then we stop since
   // there is nothing to copy into the merged lineage.
   auto entry = lineage_from.GetEntry(task_id);
@@ -256,14 +256,14 @@ void GetUncommittedLineageHelper(const TaskID &task_id, const Lineage &lineage_f
   // or lower GCS status than the current entry in lineage_to. This also
   // prevents us from traversing the same node twice.
   if (lineage_to.SetEntry(entry->TaskData(), entry->GetStatus())) {
-    for (const auto &parent_id : entry->GetParentTaskIds()) {
+    for (const auto& parent_id : entry->GetParentTaskIds()) {
       GetUncommittedLineageHelper(parent_id, lineage_from, lineage_to, node_id);
     }
   }
 }
 
-Lineage LineageCache::GetUncommittedLineage(const TaskID &task_id,
-                                            const ClientID &node_id) const {
+Lineage LineageCache::GetUncommittedLineage(const TaskID& task_id,
+                                            const ClientID& node_id) const {
   Lineage uncommitted_lineage;
   // Add all uncommitted ancestors from the lineage cache to the uncommitted
   // lineage of the requested task.
@@ -280,7 +280,7 @@ Lineage LineageCache::GetUncommittedLineage(const TaskID &task_id,
   return uncommitted_lineage;
 }
 
-void LineageCache::FlushTask(const TaskID &task_id) {
+void LineageCache::FlushTask(const TaskID& task_id) {
   auto entry = lineage_.GetEntryMutable(task_id);
   RAY_CHECK(entry);
   RAY_CHECK(entry->GetStatus() < GcsStatus::COMMITTING);
@@ -302,11 +302,11 @@ void LineageCache::FlushTask(const TaskID &task_id) {
   RAY_CHECK(entry->SetStatus(GcsStatus::COMMITTING));
 }
 
-bool LineageCache::SubscribeTask(const TaskID &task_id) {
+bool LineageCache::SubscribeTask(const TaskID& task_id) {
   auto inserted = subscribed_tasks_.insert(task_id);
   bool unsubscribed = inserted.second;
   if (unsubscribed) {
-    auto subscribe = [this](const TaskID &task_id, const TaskTableData) {
+    auto subscribe = [this](const TaskID& task_id, const TaskTableData) {
       HandleEntryCommitted(task_id);
     };
     // Subscribe to the task.
@@ -318,7 +318,7 @@ bool LineageCache::SubscribeTask(const TaskID &task_id) {
   return unsubscribed;
 }
 
-bool LineageCache::UnsubscribeTask(const TaskID &task_id) {
+bool LineageCache::UnsubscribeTask(const TaskID& task_id) {
   auto it = subscribed_tasks_.find(task_id);
   bool subscribed = (it != subscribed_tasks_.end());
   if (subscribed) {
@@ -331,7 +331,7 @@ bool LineageCache::UnsubscribeTask(const TaskID &task_id) {
   return subscribed;
 }
 
-void LineageCache::EvictTask(const TaskID &task_id) {
+void LineageCache::EvictTask(const TaskID& task_id) {
   // If the entry has already been evicted, exit.
   auto entry = lineage_.GetEntry(task_id);
   if (!entry) {
@@ -342,7 +342,7 @@ void LineageCache::EvictTask(const TaskID &task_id) {
     return;
   }
   // Entries cannot be safely evicted until their parents are all evicted.
-  for (const auto &parent_id : entry->GetParentTaskIds()) {
+  for (const auto& parent_id : entry->GetParentTaskIds()) {
     if (ContainsTask(parent_id)) {
       return;
     }
@@ -354,12 +354,12 @@ void LineageCache::EvictTask(const TaskID &task_id) {
   // Try to evict the children of the evict task. These are the tasks that have
   // a dependency on the evicted task.
   const auto children = lineage_.GetChildren(task_id);
-  for (const auto &child_id : children) {
+  for (const auto& child_id : children) {
     EvictTask(child_id);
   }
 }
 
-void LineageCache::HandleEntryCommitted(const TaskID &task_id) {
+void LineageCache::HandleEntryCommitted(const TaskID& task_id) {
   RAY_LOG(DEBUG) << "Task committed: " << task_id;
   auto entry = lineage_.GetEntryMutable(task_id);
   if (!entry) {
@@ -374,20 +374,20 @@ void LineageCache::HandleEntryCommitted(const TaskID &task_id) {
   UnsubscribeTask(task_id);
 }
 
-const Task &LineageCache::GetTaskOrDie(const TaskID &task_id) const {
-  const auto &entries = lineage_.GetEntries();
+const Task& LineageCache::GetTaskOrDie(const TaskID& task_id) const {
+  const auto& entries = lineage_.GetEntries();
   auto it = entries.find(task_id);
   RAY_CHECK(it != entries.end());
   return it->second.TaskData();
 }
 
-bool LineageCache::ContainsTask(const TaskID &task_id) const {
-  const auto &entries = lineage_.GetEntries();
+bool LineageCache::ContainsTask(const TaskID& task_id) const {
+  const auto& entries = lineage_.GetEntries();
   auto it = entries.find(task_id);
   return it != entries.end();
 }
 
-const Lineage &LineageCache::GetLineage() const { return lineage_; }
+const Lineage& LineageCache::GetLineage() const { return lineage_; }
 
 std::string LineageCache::DebugString() const {
   std::stringstream result;

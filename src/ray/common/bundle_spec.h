@@ -27,7 +27,7 @@
 
 namespace ray {
 
-typedef std::function<void(const ResourceIdSet &)> ScheduleBundleCallback;
+typedef std::function<void(const ResourceIdSet&)> ScheduleBundleCallback;
 /// Arguments are the raylet ID to spill back to, the raylet's
 /// address and the raylet's port.
 typedef std::function<void()> SpillbackBundleCallback;
@@ -60,23 +60,23 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
   /// Return the resources that are to be acquired by this bundle.
   ///
   /// \return The resources that will be acquired by this bundle.
-  const ResourceSet &GetRequiredResources() const;
+  const ResourceSet& GetRequiredResources() const;
 
   /// Override dispatch behaviour.
-  void OnScheduleInstead(const ScheduleBundleCallback &callback) {
+  void OnScheduleInstead(const ScheduleBundleCallback& callback) {
     on_schedule_ = callback;
   }
 
   /// Override spillback behaviour.
-  void OnSpillbackInstead(const SpillbackBundleCallback &callback) {
+  void OnSpillbackInstead(const SpillbackBundleCallback& callback) {
     on_spillback_ = callback;
   }
 
   /// Returns the schedule bundle callback, or nullptr.
-  const ScheduleBundleCallback &OnSchedule() const { return on_schedule_; }
+  const ScheduleBundleCallback& OnSchedule() const { return on_schedule_; }
 
   /// Returns the spillback bundle callback, or nullptr.
-  const SpillbackBundleCallback &OnSpillback() const { return on_spillback_; }
+  const SpillbackBundleCallback& OnSpillback() const { return on_spillback_; }
 
  private:
   void ComputeResources();
@@ -92,14 +92,14 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
 };
 
 /// Format a placement group resource, e.g., CPU -> CPU_group_YYY_i
-std::string FormatPlacementGroupResource(const std::string &original_resource_name,
+std::string FormatPlacementGroupResource(const std::string& original_resource_name,
                                          PlacementGroupID group_id, int64_t bundle_index);
 
 /// Format a placement group resource, e.g., CPU -> CPU_group_YYY_i
-std::string FormatPlacementGroupResource(const std::string &original_resource_name,
-                                         const BundleSpecification &bundle_spec);
+std::string FormatPlacementGroupResource(const std::string& original_resource_name,
+                                         const BundleSpecification& bundle_spec);
 
 /// Return the original resource name of the placement group resource.
-std::string GetOriginalResourceName(const std::string &resource);
+std::string GetOriginalResourceName(const std::string& resource);
 
 }  // namespace ray

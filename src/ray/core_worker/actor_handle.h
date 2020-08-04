@@ -32,17 +32,17 @@ class ActorHandle {
       : inner_(inner), actor_cursor_(ObjectID::FromBinary(inner_.actor_cursor())) {}
 
   // Constructs a new ActorHandle as part of the actor creation process.
-  ActorHandle(const ActorID &actor_id, const TaskID &owner_id,
-              const rpc::Address &owner_address, const JobID &job_id,
-              const ObjectID &initial_cursor, const Language actor_language,
-              const ray::FunctionDescriptor &actor_creation_task_function_descriptor,
-              const std::string &extension_data, int64_t max_task_retries);
+  ActorHandle(const ActorID& actor_id, const TaskID& owner_id,
+              const rpc::Address& owner_address, const JobID& job_id,
+              const ObjectID& initial_cursor, const Language actor_language,
+              const ray::FunctionDescriptor& actor_creation_task_function_descriptor,
+              const std::string& extension_data, int64_t max_task_retries);
 
   /// Constructs an ActorHandle from a serialized string.
-  ActorHandle(const std::string &serialized);
+  ActorHandle(const std::string& serialized);
 
   /// Constructs an ActorHandle from a gcs::ActorTableData message.
-  ActorHandle(const gcs::ActorTableData &actor_table_data);
+  ActorHandle(const gcs::ActorTableData& actor_table_data);
 
   ActorID GetActorID() const { return ActorID::FromBinary(inner_.actor_id()); };
 
@@ -68,7 +68,7 @@ class ActorHandle {
   /// \param[in] builder Task spec builder.
   /// \param[in] new_cursor Actor dummy object. This is legacy code needed for
   /// raylet-based actor restart.
-  void SetActorTaskSpec(TaskSpecBuilder &builder, const ObjectID new_cursor);
+  void SetActorTaskSpec(TaskSpecBuilder& builder, const ObjectID new_cursor);
 
   /// Reset the actor task spec fields of an existing task so that the task can
   /// be re-executed.
@@ -77,9 +77,9 @@ class ActorHandle {
   /// before.
   /// \param[in] new_cursor Actor dummy object. This is legacy code needed for
   /// raylet-based actor restart.
-  void SetResubmittedActorTaskSpec(TaskSpecification &spec, const ObjectID new_cursor);
+  void SetResubmittedActorTaskSpec(TaskSpecification& spec, const ObjectID new_cursor);
 
-  void Serialize(std::string *output);
+  void Serialize(std::string* output);
 
   int64_t MaxTaskRetries() const { return inner_.max_task_retries(); }
 

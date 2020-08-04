@@ -22,17 +22,17 @@ namespace ray {
 namespace gcs {
 
 template <typename Key, typename Data>
-Status GcsTable<Key, Data>::Put(const Key &key, const Data &value,
-                                const StatusCallback &callback) {
+Status GcsTable<Key, Data>::Put(const Key& key, const Data& value,
+                                const StatusCallback& callback) {
   return store_client_->AsyncPut(table_name_, key.Binary(), value.SerializeAsString(),
                                  callback);
 }
 
 template <typename Key, typename Data>
-Status GcsTable<Key, Data>::Get(const Key &key,
-                                const OptionalItemCallback<Data> &callback) {
-  auto on_done = [callback](const Status &status,
-                            const boost::optional<std::string> &result) {
+Status GcsTable<Key, Data>::Get(const Key& key,
+                                const OptionalItemCallback<Data>& callback) {
+  auto on_done = [callback](const Status& status,
+                            const boost::optional<std::string>& result) {
     boost::optional<Data> value;
     if (result) {
       Data data;
@@ -45,10 +45,10 @@ Status GcsTable<Key, Data>::Get(const Key &key,
 }
 
 template <typename Key, typename Data>
-Status GcsTable<Key, Data>::GetAll(const MapCallback<Key, Data> &callback) {
-  auto on_done = [callback](const std::unordered_map<std::string, std::string> &result) {
+Status GcsTable<Key, Data>::GetAll(const MapCallback<Key, Data>& callback) {
+  auto on_done = [callback](const std::unordered_map<std::string, std::string>& result) {
     std::unordered_map<Key, Data> values;
-    for (auto &item : result) {
+    for (auto& item : result) {
       Data data;
       data.ParseFromString(item.second);
       values[Key::FromBinary(item.first)] = data;
@@ -59,16 +59,16 @@ Status GcsTable<Key, Data>::GetAll(const MapCallback<Key, Data> &callback) {
 }
 
 template <typename Key, typename Data>
-Status GcsTable<Key, Data>::Delete(const Key &key, const StatusCallback &callback) {
+Status GcsTable<Key, Data>::Delete(const Key& key, const StatusCallback& callback) {
   return store_client_->AsyncDelete(table_name_, key.Binary(), callback);
 }
 
 template <typename Key, typename Data>
-Status GcsTable<Key, Data>::BatchDelete(const std::vector<Key> &keys,
-                                        const StatusCallback &callback) {
+Status GcsTable<Key, Data>::BatchDelete(const std::vector<Key>& keys,
+                                        const StatusCallback& callback) {
   std::vector<std::string> keys_to_delete;
   keys_to_delete.reserve(keys.size());
-  for (auto &key : keys) {
+  for (auto& key : keys) {
     keys_to_delete.emplace_back(std::move(key.Binary()));
   }
   return this->store_client_->AsyncBatchDelete(this->table_name_, keys_to_delete,
@@ -76,19 +76,19 @@ Status GcsTable<Key, Data>::BatchDelete(const std::vector<Key> &keys,
 }
 
 template <typename Key, typename Data>
-Status GcsTableWithJobId<Key, Data>::Put(const Key &key, const Data &value,
-                                         const StatusCallback &callback) {
+Status GcsTableWithJobId<Key, Data>::Put(const Key& key, const Data& value,
+                                         const StatusCallback& callback) {
   return this->store_client_->AsyncPutWithIndex(this->table_name_, key.Binary(),
                                                 GetJobIdFromKey(key).Binary(),
                                                 value.SerializeAsString(), callback);
 }
 
 template <typename Key, typename Data>
-Status GcsTableWithJobId<Key, Data>::GetByJobId(const JobID &job_id,
-                                                const MapCallback<Key, Data> &callback) {
-  auto on_done = [callback](const std::unordered_map<std::string, std::string> &result) {
+Status GcsTableWithJobId<Key, Data>::GetByJobId(const JobID& job_id,
+                                                const MapCallback<Key, Data>& callback) {
+  auto on_done = [callback](const std::unordered_map<std::string, std::string>& result) {
     std::unordered_map<Key, Data> values;
-    for (auto &item : result) {
+    for (auto& item : result) {
       Data data;
       data.ParseFromString(item.second);
       values[Key::FromBinary(item.first)] = std::move(data);
@@ -100,8 +100,8 @@ Status GcsTableWithJobId<Key, Data>::GetByJobId(const JobID &job_id,
 }
 
 template <typename Key, typename Data>
-Status GcsTableWithJobId<Key, Data>::DeleteByJobId(const JobID &job_id,
-                                                   const StatusCallback &callback) {
+Status GcsTableWithJobId<Key, Data>::DeleteByJobId(const JobID& job_id,
+                                                   const StatusCallback& callback) {
   return this->store_client_->AsyncDeleteByIndex(this->table_name_, job_id.Binary(),
                                                  callback);
 }

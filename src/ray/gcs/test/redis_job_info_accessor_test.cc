@@ -40,9 +40,9 @@ class RedisJobInfoAccessorTest : public AccessorTestBase<JobID, JobTableData> {
 };
 
 TEST_F(RedisJobInfoAccessorTest, AddAndSubscribe) {
-  JobInfoAccessor &job_accessor = gcs_client_->Jobs();
+  JobInfoAccessor& job_accessor = gcs_client_->Jobs();
   // SubscribeAll
-  auto on_subscribe = [this](const JobID &job_id, const JobTableData &data) {
+  auto on_subscribe = [this](const JobID& job_id, const JobTableData& data) {
     const auto it = id_to_data_.find(job_id);
     RAY_CHECK(it != id_to_data_.end());
     if (data.is_dead()) {
@@ -62,7 +62,7 @@ TEST_F(RedisJobInfoAccessorTest, AddAndSubscribe) {
   WaitPendingDone(subscribe_pending_count_, wait_pending_timeout_);
 
   // Register
-  for (const auto &item : id_to_data_) {
+  for (const auto& item : id_to_data_) {
     ++pending_count_;
     RAY_CHECK_OK(job_accessor.AsyncAdd(item.second, [this](Status status) {
       RAY_CHECK_OK(status);
@@ -73,7 +73,7 @@ TEST_F(RedisJobInfoAccessorTest, AddAndSubscribe) {
   WaitPendingDone(subscribe_pending_count_, wait_pending_timeout_);
 
   // Update
-  for (auto &item : id_to_data_) {
+  for (auto& item : id_to_data_) {
     ++pending_count_;
     ++subscribe_pending_count_;
     RAY_CHECK_OK(job_accessor.AsyncMarkFinished(item.first, [this](Status status) {
@@ -89,7 +89,7 @@ TEST_F(RedisJobInfoAccessorTest, AddAndSubscribe) {
 
 }  // namespace ray
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 4);
   ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];

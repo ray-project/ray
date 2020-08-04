@@ -22,8 +22,8 @@ namespace ray {
 
 class RandomSampleTest : public ::testing::Test {
  protected:
-  std::vector<int> *sample;
-  std::vector<int> *test_vector;
+  std::vector<int>* sample;
+  std::vector<int>* test_vector;
   virtual void SetUp() {
     sample = new std::vector<int>();
     test_vector = new std::vector<int>();
@@ -77,7 +77,7 @@ TEST_F(RandomSampleTest, TestEqualOccurrenceChance) {
 
 }  // namespace ray
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

@@ -8,9 +8,9 @@ namespace api {
 
 class RayException : public std::exception {
  public:
-  RayException(const std::string &msg) : msg_(msg){};
+  RayException(const std::string& msg) : msg_(msg){};
 
-  const char *what() const noexcept override { return msg_.c_str(); };
+  const char* what() const noexcept override { return msg_.c_str(); };
 
   std::string msg_;
 };

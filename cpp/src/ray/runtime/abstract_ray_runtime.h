@@ -19,31 +19,31 @@ class AbstractRayRuntime : public RayRuntime {
  public:
   virtual ~AbstractRayRuntime(){};
 
-  void Put(std::shared_ptr<msgpack::sbuffer> data, const ObjectID &object_id);
+  void Put(std::shared_ptr<msgpack::sbuffer> data, const ObjectID& object_id);
 
   ObjectID Put(std::shared_ptr<msgpack::sbuffer> data);
 
-  std::shared_ptr<msgpack::sbuffer> Get(const ObjectID &id);
+  std::shared_ptr<msgpack::sbuffer> Get(const ObjectID& id);
 
-  std::vector<std::shared_ptr<msgpack::sbuffer>> Get(const std::vector<ObjectID> &ids);
+  std::vector<std::shared_ptr<msgpack::sbuffer>> Get(const std::vector<ObjectID>& ids);
 
-  WaitResult Wait(const std::vector<ObjectID> &ids, int num_objects, int timeout_ms);
+  WaitResult Wait(const std::vector<ObjectID>& ids, int num_objects, int timeout_ms);
 
-  ObjectID Call(RemoteFunctionPtrHolder &fptr, std::shared_ptr<msgpack::sbuffer> args);
+  ObjectID Call(RemoteFunctionPtrHolder& fptr, std::shared_ptr<msgpack::sbuffer> args);
 
-  ActorID CreateActor(RemoteFunctionPtrHolder &fptr,
+  ActorID CreateActor(RemoteFunctionPtrHolder& fptr,
                       std::shared_ptr<msgpack::sbuffer> args);
 
-  ObjectID CallActor(const RemoteFunctionPtrHolder &fptr, const ActorID &actor,
+  ObjectID CallActor(const RemoteFunctionPtrHolder& fptr, const ActorID& actor,
                      std::shared_ptr<msgpack::sbuffer> args);
 
   ActorID GetNextActorID();
 
-  const TaskID &GetCurrentTaskId();
+  const TaskID& GetCurrentTaskId();
 
-  const JobID &GetCurrentJobID();
+  const JobID& GetCurrentJobID();
 
-  const std::unique_ptr<WorkerContext> &GetWorkerContext();
+  const std::unique_ptr<WorkerContext>& GetWorkerContext();
 
  protected:
   std::shared_ptr<RayConfig> config_;
@@ -53,9 +53,9 @@ class AbstractRayRuntime : public RayRuntime {
   std::unique_ptr<ObjectStore> object_store_;
 
  private:
-  static AbstractRayRuntime *DoInit(std::shared_ptr<RayConfig> config);
+  static AbstractRayRuntime* DoInit(std::shared_ptr<RayConfig> config);
 
-  void Execute(const TaskSpecification &task_spec);
+  void Execute(const TaskSpecification& task_spec);
 
   friend class Ray;
 };

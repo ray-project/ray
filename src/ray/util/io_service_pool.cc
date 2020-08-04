@@ -26,7 +26,7 @@ void IOServicePool::Run() {
   for (size_t i = 0; i < io_service_num_; ++i) {
     io_services_.emplace_back(
         std::unique_ptr<boost::asio::io_service>(new boost::asio::io_service));
-    boost::asio::io_service &io_service = *io_services_[i];
+    boost::asio::io_service& io_service = *io_services_[i];
     threads_.emplace_back([&io_service] {
       boost::asio::io_service::work work(io_service);
       io_service.run();
@@ -37,11 +37,11 @@ void IOServicePool::Run() {
 }
 
 void IOServicePool::Stop() {
-  for (auto &io_service : io_services_) {
+  for (auto& io_service : io_services_) {
     io_service->stop();
   }
 
-  for (auto &thread : threads_) {
+  for (auto& thread : threads_) {
     thread.join();
   }
 

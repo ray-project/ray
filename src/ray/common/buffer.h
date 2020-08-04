@@ -26,7 +26,7 @@ namespace ray {
 class Buffer {
  public:
   /// Pointer to the data.
-  virtual uint8_t *Data() const = 0;
+  virtual uint8_t* Data() const = 0;
 
   /// Size of this buffer.
   virtual size_t Size() const = 0;
@@ -38,7 +38,7 @@ class Buffer {
 
   virtual ~Buffer(){};
 
-  bool operator==(const Buffer &rhs) const {
+  bool operator==(const Buffer& rhs) const {
     if (this->Size() != rhs.Size()) {
       return false;
     }
@@ -61,7 +61,7 @@ class LocalMemoryBuffer : public Buffer {
   /// \param size The size of the passed in buffer.
   /// \param copy_data If true, data will be copied and owned by this buffer,
   ///                  otherwise the buffer only points to the given address.
-  LocalMemoryBuffer(uint8_t *data, size_t size, bool copy_data = false)
+  LocalMemoryBuffer(uint8_t* data, size_t size, bool copy_data = false)
       : has_data_copy_(copy_data) {
     if (copy_data) {
       RAY_CHECK(data != nullptr);
@@ -82,7 +82,7 @@ class LocalMemoryBuffer : public Buffer {
     size_ = buffer_.size();
   }
 
-  uint8_t *Data() const override { return data_; }
+  uint8_t* Data() const override { return data_; }
 
   size_t Size() const override { return size_; }
 
@@ -95,11 +95,11 @@ class LocalMemoryBuffer : public Buffer {
  private:
   /// Disable copy constructor and assignment, as default copy will
   /// cause invalid data_.
-  LocalMemoryBuffer &operator=(const LocalMemoryBuffer &) = delete;
-  LocalMemoryBuffer(const LocalMemoryBuffer &) = delete;
+  LocalMemoryBuffer& operator=(const LocalMemoryBuffer&) = delete;
+  LocalMemoryBuffer(const LocalMemoryBuffer&) = delete;
 
   /// Pointer to the data.
-  uint8_t *data_;
+  uint8_t* data_;
   /// Size of the buffer.
   size_t size_;
   /// Whether this buffer holds a copy of data.
@@ -113,10 +113,10 @@ class LocalMemoryBuffer : public Buffer {
 class PlasmaBuffer : public Buffer {
  public:
   PlasmaBuffer(std::shared_ptr<arrow::Buffer> buffer,
-               std::function<void(PlasmaBuffer *)> on_delete = nullptr)
+               std::function<void(PlasmaBuffer*)> on_delete = nullptr)
       : buffer_(buffer), on_delete_(on_delete) {}
 
-  uint8_t *Data() const override { return const_cast<uint8_t *>(buffer_->data()); }
+  uint8_t* Data() const override { return const_cast<uint8_t*>(buffer_->data()); }
 
   size_t Size() const override { return buffer_->size(); }
 
@@ -135,7 +135,7 @@ class PlasmaBuffer : public Buffer {
   /// for the object (when it's a plasma::PlasmaBuffer).
   std::shared_ptr<arrow::Buffer> buffer_;
   /// Callback to run on destruction.
-  std::function<void(PlasmaBuffer *)> on_delete_;
+  std::function<void(PlasmaBuffer*)> on_delete_;
 };
 
 }  // namespace ray

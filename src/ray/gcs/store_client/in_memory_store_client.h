@@ -28,34 +28,34 @@ namespace gcs {
 /// This class is thread safe.
 class InMemoryStoreClient : public StoreClient {
  public:
-  explicit InMemoryStoreClient(boost::asio::io_service &main_io_service)
+  explicit InMemoryStoreClient(boost::asio::io_service& main_io_service)
       : main_io_service_(main_io_service) {}
 
-  Status AsyncPut(const std::string &table_name, const std::string &key,
-                  const std::string &data, const StatusCallback &callback) override;
+  Status AsyncPut(const std::string& table_name, const std::string& key,
+                  const std::string& data, const StatusCallback& callback) override;
 
-  Status AsyncPutWithIndex(const std::string &table_name, const std::string &key,
-                           const std::string &index_key, const std::string &data,
-                           const StatusCallback &callback) override;
+  Status AsyncPutWithIndex(const std::string& table_name, const std::string& key,
+                           const std::string& index_key, const std::string& data,
+                           const StatusCallback& callback) override;
 
-  Status AsyncGet(const std::string &table_name, const std::string &key,
-                  const OptionalItemCallback<std::string> &callback) override;
+  Status AsyncGet(const std::string& table_name, const std::string& key,
+                  const OptionalItemCallback<std::string>& callback) override;
 
-  Status AsyncGetByIndex(const std::string &table_name, const std::string &index_key,
-                         const MapCallback<std::string, std::string> &callback) override;
+  Status AsyncGetByIndex(const std::string& table_name, const std::string& index_key,
+                         const MapCallback<std::string, std::string>& callback) override;
 
-  Status AsyncGetAll(const std::string &table_name,
-                     const MapCallback<std::string, std::string> &callback) override;
+  Status AsyncGetAll(const std::string& table_name,
+                     const MapCallback<std::string, std::string>& callback) override;
 
-  Status AsyncDelete(const std::string &table_name, const std::string &key,
-                     const StatusCallback &callback) override;
+  Status AsyncDelete(const std::string& table_name, const std::string& key,
+                     const StatusCallback& callback) override;
 
-  Status AsyncBatchDelete(const std::string &table_name,
-                          const std::vector<std::string> &keys,
-                          const StatusCallback &callback) override;
+  Status AsyncBatchDelete(const std::string& table_name,
+                          const std::vector<std::string>& keys,
+                          const StatusCallback& callback) override;
 
-  Status AsyncDeleteByIndex(const std::string &table_name, const std::string &index_key,
-                            const StatusCallback &callback) override;
+  Status AsyncDeleteByIndex(const std::string& table_name, const std::string& index_key,
+                            const StatusCallback& callback) override;
 
  private:
   struct InMemoryTable {
@@ -69,7 +69,7 @@ class InMemoryStoreClient : public StoreClient {
   };
 
   std::shared_ptr<InMemoryStoreClient::InMemoryTable> GetOrCreateTable(
-      const std::string &table_name);
+      const std::string& table_name);
 
   /// Mutex to protect the tables_ field.
   absl::Mutex mutex_;
@@ -78,7 +78,7 @@ class InMemoryStoreClient : public StoreClient {
 
   /// Async API Callback needs to post to main_io_service_ to ensure the orderly execution
   /// of the callback.
-  boost::asio::io_service &main_io_service_;
+  boost::asio::io_service& main_io_service_;
 };
 
 }  // namespace gcs

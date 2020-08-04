@@ -45,7 +45,7 @@ class ClientConnectionTest : public ::testing::Test {
   }
 
   ray::Status WriteBadMessage(std::shared_ptr<ray::ClientConnection> conn, int64_t type,
-                              int64_t length, const uint8_t *message) {
+                              int64_t length, const uint8_t* message) {
     std::vector<boost::asio::const_buffer> message_buffers;
     auto write_cookie = 123456;  // incorrect version.
     message_buffers.push_back(boost::asio::buffer(&write_cookie, sizeof(write_cookie)));
@@ -66,11 +66,11 @@ TEST_F(ClientConnectionTest, SimpleSyncWrite) {
   const uint8_t arr[5] = {1, 2, 3, 4, 5};
   int num_messages = 0;
 
-  ClientHandler client_handler = [](ClientConnection &client) {};
+  ClientHandler client_handler = [](ClientConnection& client) {};
 
   MessageHandler message_handler =
       [&arr, &num_messages](std::shared_ptr<ClientConnection> client,
-                            int64_t message_type, const std::vector<uint8_t> &message) {
+                            int64_t message_type, const std::vector<uint8_t>& message) {
         ASSERT_TRUE(!std::memcmp(arr, message.data(), 5));
         num_messages += 1;
       };
@@ -95,18 +95,18 @@ TEST_F(ClientConnectionTest, SimpleAsyncWrite) {
   const uint8_t msg3[5] = {8, 8, 8, 8, 8};
   int num_messages = 0;
 
-  ClientHandler client_handler = [](ClientConnection &client) {};
+  ClientHandler client_handler = [](ClientConnection& client) {};
 
   MessageHandler noop_handler = [](std::shared_ptr<ClientConnection> client,
                                    int64_t message_type,
-                                   const std::vector<uint8_t> &message) {};
+                                   const std::vector<uint8_t>& message) {};
 
   std::shared_ptr<ClientConnection> reader = NULL;
 
   MessageHandler message_handler = [&msg1, &msg2, &msg3, &num_messages, &reader](
                                        std::shared_ptr<ClientConnection> client,
                                        int64_t message_type,
-                                       const std::vector<uint8_t> &message) {
+                                       const std::vector<uint8_t>& message) {
     if (num_messages == 0) {
       ASSERT_TRUE(!std::memcmp(msg1, message.data(), 5));
     } else if (num_messages == 1) {
@@ -126,7 +126,7 @@ TEST_F(ClientConnectionTest, SimpleAsyncWrite) {
   reader = ClientConnection::Create(client_handler, message_handler, std::move(out_),
                                     "reader", {}, error_message_type_);
 
-  std::function<void(const ray::Status &)> callback = [](const ray::Status &status) {
+  std::function<void(const ray::Status&)> callback = [](const ray::Status& status) {
     RAY_CHECK_OK(status);
   };
 
@@ -158,10 +158,10 @@ TEST_F(ClientConnectionTest, SimpleAsyncReadWriteBuffers) {
   std::vector<uint8_t> read_buffer = {0, 0, 0, 0, 0};
 
   writer->WriteBufferAsync({boost::asio::buffer(write_buffer)},
-                           [](const ray::Status &status) { RAY_CHECK_OK(status); });
+                           [](const ray::Status& status) { RAY_CHECK_OK(status); });
 
   reader->ReadBufferAsync({boost::asio::buffer(read_buffer)},
-                          [&write_buffer, &read_buffer](const ray::Status &status) {
+                          [&write_buffer, &read_buffer](const ray::Status& status) {
                             RAY_CHECK_OK(status);
                             RAY_CHECK(write_buffer == read_buffer);
                           });
@@ -171,16 +171,16 @@ TEST_F(ClientConnectionTest, SimpleAsyncReadWriteBuffers) {
 TEST_F(ClientConnectionTest, SimpleAsyncError) {
   const uint8_t msg1[5] = {1, 2, 3, 4, 5};
 
-  ClientHandler client_handler = [](ClientConnection &client) {};
+  ClientHandler client_handler = [](ClientConnection& client) {};
 
   MessageHandler noop_handler = [](std::shared_ptr<ClientConnection> client,
                                    int64_t message_type,
-                                   const std::vector<uint8_t> &message) {};
+                                   const std::vector<uint8_t>& message) {};
 
   auto writer = ClientConnection::Create(client_handler, noop_handler, std::move(in_),
                                          "writer", {}, error_message_type_);
 
-  std::function<void(const ray::Status &)> callback = [](const ray::Status &status) {
+  std::function<void(const ray::Status&)> callback = [](const ray::Status& status) {
     ASSERT_TRUE(!status.ok());
   };
 
@@ -192,20 +192,19 @@ TEST_F(ClientConnectionTest, SimpleAsyncError) {
 TEST_F(ClientConnectionTest, CallbackWithSharedRefDoesNotLeakConnection) {
   const uint8_t msg1[5] = {1, 2, 3, 4, 5};
 
-  ClientHandler client_handler = [](ClientConnection &client) {};
+  ClientHandler client_handler = [](ClientConnection& client) {};
 
   MessageHandler noop_handler = [](std::shared_ptr<ClientConnection> client,
                                    int64_t message_type,
-                                   const std::vector<uint8_t> &message) {};
+                                   const std::vector<uint8_t>& message) {};
 
   auto writer = ClientConnection::Create(client_handler, noop_handler, std::move(in_),
                                          "writer", {}, error_message_type_);
 
-  std::function<void(const ray::Status &)> callback =
-      [writer](const ray::Status &status) {
-        static_cast<void>(writer);
-        ASSERT_TRUE(status.ok());
-      };
+  std::function<void(const ray::Status&)> callback = [writer](const ray::Status& status) {
+    static_cast<void>(writer);
+    ASSERT_TRUE(status.ok());
+  };
   writer->WriteMessageAsync(0, 5, msg1, callback);
   io_service_.run();
 }
@@ -214,11 +213,11 @@ TEST_F(ClientConnectionTest, ProcessBadMessage) {
   const uint8_t arr[5] = {1, 2, 3, 4, 5};
   int num_messages = 0;
 
-  ClientHandler client_handler = [](ClientConnection &client) {};
+  ClientHandler client_handler = [](ClientConnection& client) {};
 
   MessageHandler message_handler =
       [&arr, &num_messages](std::shared_ptr<ClientConnection> client,
-                            int64_t message_type, const std::vector<uint8_t> &message) {
+                            int64_t message_type, const std::vector<uint8_t>& message) {
         ASSERT_TRUE(!std::memcmp(arr, message.data(), 5));
         num_messages += 1;
       };
@@ -244,7 +243,7 @@ TEST_F(ClientConnectionTest, ProcessBadMessage) {
 
 }  // namespace ray
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

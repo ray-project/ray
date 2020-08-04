@@ -22,22 +22,22 @@ namespace ray {
 
 namespace raylet {
 
-ActorRegistration::ActorRegistration(const ActorTableData &actor_table_data)
+ActorRegistration::ActorRegistration(const ActorTableData& actor_table_data)
     : actor_table_data_(actor_table_data) {
   // The first task submitted on each new actor handle will depend on the actor
   // creation object, so we always pin it.
   dummy_objects_[GetActorCreationDependency()]++;
 }
 
-ActorRegistration::ActorRegistration(const ActorTableData &actor_table_data,
-                                     const ActorCheckpointData &checkpoint_data)
+ActorRegistration::ActorRegistration(const ActorTableData& actor_table_data,
+                                     const ActorCheckpointData& checkpoint_data)
     : actor_table_data_(actor_table_data),
       execution_dependency_(
           ObjectID::FromBinary(checkpoint_data.execution_dependency())) {
   // Restore `frontier_`.
   for (int64_t i = 0; i < checkpoint_data.handle_ids_size(); i++) {
     auto caller_id = TaskID::FromBinary(checkpoint_data.handle_ids(i));
-    auto &frontier_entry = frontier_[caller_id];
+    auto& frontier_entry = frontier_[caller_id];
     frontier_entry.task_counter = checkpoint_data.task_counters(i);
     frontier_entry.execution_dependency =
         ObjectID::FromBinary(checkpoint_data.frontier_dependencies(i));
@@ -80,14 +80,14 @@ const uint64_t ActorRegistration::GetNumRestarts() const {
   return actor_table_data_.num_restarts();
 }
 
-const std::unordered_map<TaskID, ActorRegistration::FrontierLeaf>
-    &ActorRegistration::GetFrontier() const {
+const std::unordered_map<TaskID, ActorRegistration::FrontierLeaf>&
+ActorRegistration::GetFrontier() const {
   return frontier_;
 }
 
-ObjectID ActorRegistration::ExtendFrontier(const TaskID &caller_id,
-                                           const ObjectID &execution_dependency) {
-  auto &frontier_entry = frontier_[caller_id];
+ObjectID ActorRegistration::ExtendFrontier(const TaskID& caller_id,
+                                           const ObjectID& execution_dependency) {
+  auto& frontier_entry = frontier_[caller_id];
   // Release the reference to the previous cursor for this
   // actor handle, if there was one.
   ObjectID object_to_release;
@@ -113,7 +113,7 @@ ObjectID ActorRegistration::ExtendFrontier(const TaskID &caller_id,
 int ActorRegistration::NumHandles() const { return frontier_.size(); }
 
 std::shared_ptr<ActorCheckpointData> ActorRegistration::GenerateCheckpointData(
-    const ActorID &actor_id, const Task *task) {
+    const ActorID& actor_id, const Task* task) {
   // Make a copy of the actor registration
   ActorRegistration copy = *this;
   if (task) {
@@ -131,13 +131,13 @@ std::shared_ptr<ActorCheckpointData> ActorRegistration::GenerateCheckpointData(
   auto checkpoint_data = std::make_shared<ActorCheckpointData>();
   checkpoint_data->set_actor_id(actor_id.Binary());
   checkpoint_data->set_execution_dependency(copy.GetExecutionDependency().Binary());
-  for (const auto &frontier : copy.GetFrontier()) {
+  for (const auto& frontier : copy.GetFrontier()) {
     checkpoint_data->add_handle_ids(frontier.first.Binary());
     checkpoint_data->add_task_counters(frontier.second.task_counter);
     checkpoint_data->add_frontier_dependencies(
         frontier.second.execution_dependency.Binary());
   }
-  for (const auto &entry : copy.GetDummyObjects()) {
+  for (const auto& entry : copy.GetDummyObjects()) {
     checkpoint_data->add_unreleased_dummy_objects(entry.first.Binary());
     checkpoint_data->add_num_dummy_object_dependencies(entry.second);
   }

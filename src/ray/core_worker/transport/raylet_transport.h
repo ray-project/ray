@@ -26,14 +26,14 @@ namespace ray {
 class CoreWorkerRayletTaskReceiver {
  public:
   using TaskHandler =
-      std::function<Status(const TaskSpecification &task_spec,
-                           const std::shared_ptr<ResourceMappingType> &resource_ids,
-                           std::vector<std::shared_ptr<RayObject>> *return_objects,
-                           ReferenceCounter::ReferenceTableProto *borrower_refs)>;
+      std::function<Status(const TaskSpecification& task_spec,
+                           const std::shared_ptr<ResourceMappingType>& resource_ids,
+                           std::vector<std::shared_ptr<RayObject>>* return_objects,
+                           ReferenceCounter::ReferenceTableProto* borrower_refs)>;
 
-  CoreWorkerRayletTaskReceiver(const WorkerID &worker_id,
-                               std::shared_ptr<raylet::RayletClient> &raylet_client,
-                               const TaskHandler &task_handler);
+  CoreWorkerRayletTaskReceiver(const WorkerID& worker_id,
+                               std::shared_ptr<raylet::RayletClient>& raylet_client,
+                               const TaskHandler& task_handler);
 
   /// Handle a `AssignTask` request.
   /// The implementation can handle this request asynchronously. When handling is done,
@@ -42,8 +42,8 @@ class CoreWorkerRayletTaskReceiver {
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
-  void HandleAssignTask(const rpc::AssignTaskRequest &request,
-                        rpc::AssignTaskReply *reply,
+  void HandleAssignTask(const rpc::AssignTaskRequest& request,
+                        rpc::AssignTaskReply* reply,
                         rpc::SendReplyCallback send_reply_callback);
 
  private:
@@ -51,7 +51,7 @@ class CoreWorkerRayletTaskReceiver {
   WorkerID worker_id_;
   /// Reference to the core worker's raylet client. This is a pointer ref so that it
   /// can be initialized by core worker after this class is constructed.
-  std::shared_ptr<raylet::RayletClient> &raylet_client_;
+  std::shared_ptr<raylet::RayletClient>& raylet_client_;
   /// The callback function to process a task.
   TaskHandler task_handler_;
   /// The callback to process arg wait complete.

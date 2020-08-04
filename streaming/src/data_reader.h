@@ -18,7 +18,7 @@ namespace streaming {
 /// Databundle is super-bundle that contains channel information (upstream
 /// channel id & bundle meta data) and raw buffer pointer.
 struct DataBundle {
-  uint8_t *data = nullptr;
+  uint8_t* data = nullptr;
   uint32_t data_size;
   ObjectID from;
   uint64_t seq_id;
@@ -28,8 +28,8 @@ struct DataBundle {
 /// This is implementation of merger policy in StreamingReaderMsgPtrComparator.
 struct StreamingReaderMsgPtrComparator {
   StreamingReaderMsgPtrComparator() = default;
-  bool operator()(const std::shared_ptr<DataBundle> &a,
-                  const std::shared_ptr<DataBundle> &b);
+  bool operator()(const std::shared_ptr<DataBundle>& a,
+                  const std::shared_ptr<DataBundle>& b);
 };
 
 /// DataReader will fetch data bundles from channels of upstream workers, once
@@ -67,7 +67,7 @@ class DataReader {
   std::shared_ptr<RuntimeContext> runtime_context_;
 
  public:
-  explicit DataReader(std::shared_ptr<RuntimeContext> &runtime_context);
+  explicit DataReader(std::shared_ptr<RuntimeContext>& runtime_context);
   virtual ~DataReader();
 
   /// During initialization, only the channel parameters and necessary member properties
@@ -77,23 +77,23 @@ class DataReader {
   ///  \param channel_seq_ids
   ///  \param msg_ids
   ///  \param timer_interval
-  void Init(const std::vector<ObjectID> &input_ids,
-            const std::vector<ChannelCreationParameter> &init_params,
-            const std::vector<uint64_t> &channel_seq_ids,
-            const std::vector<uint64_t> &msg_ids, int64_t timer_interval);
+  void Init(const std::vector<ObjectID>& input_ids,
+            const std::vector<ChannelCreationParameter>& init_params,
+            const std::vector<uint64_t>& channel_seq_ids,
+            const std::vector<uint64_t>& msg_ids, int64_t timer_interval);
 
-  void Init(const std::vector<ObjectID> &input_ids,
-            const std::vector<ChannelCreationParameter> &init_params,
+  void Init(const std::vector<ObjectID>& input_ids,
+            const std::vector<ChannelCreationParameter>& init_params,
             int64_t timer_interval);
 
   /// Get latest message from input queues.
   ///  \param timeout_ms
   ///  \param message, return the latest message
-  StreamingStatus GetBundle(uint32_t timeout_ms, std::shared_ptr<DataBundle> &message);
+  StreamingStatus GetBundle(uint32_t timeout_ms, std::shared_ptr<DataBundle>& message);
 
   /// Get offset information about channels for checkpoint.
   ///  \param offset_map (return value)
-  void GetOffsetInfo(std::unordered_map<ObjectID, ConsumerChannelInfo> *&offset_map);
+  void GetOffsetInfo(std::unordered_map<ObjectID, ConsumerChannelInfo>*& offset_map);
 
   void Stop();
 
@@ -101,10 +101,10 @@ class DataReader {
   /// It's used when checkpoint is done.
   ///  \param channel_info consumer's channel info
   ///  \param offset consumed channel offset
-  void NotifyConsumedItem(ConsumerChannelInfo &channel_info, uint64_t offset);
+  void NotifyConsumedItem(ConsumerChannelInfo& channel_info, uint64_t offset);
 
   //// Notify message related channel to clear data.
-  void NotifyConsumed(std::shared_ptr<DataBundle> &message);
+  void NotifyConsumed(std::shared_ptr<DataBundle>& message);
 
  private:
   /// Create channels and connect to all upstream.
@@ -116,14 +116,14 @@ class DataReader {
   /// in merged queue.
   StreamingStatus InitChannelMerger();
 
-  StreamingStatus StashNextMessage(std::shared_ptr<DataBundle> &message);
+  StreamingStatus StashNextMessage(std::shared_ptr<DataBundle>& message);
 
-  StreamingStatus GetMessageFromChannel(ConsumerChannelInfo &channel_info,
-                                        std::shared_ptr<DataBundle> &message);
+  StreamingStatus GetMessageFromChannel(ConsumerChannelInfo& channel_info,
+                                        std::shared_ptr<DataBundle>& message);
 
   /// Get top item from prioprity queue.
-  StreamingStatus GetMergedMessageBundle(std::shared_ptr<DataBundle> &message,
-                                         bool &is_valid_break);
+  StreamingStatus GetMergedMessageBundle(std::shared_ptr<DataBundle>& message,
+                                         bool& is_valid_break);
 };
 }  // namespace streaming
 }  // namespace ray

@@ -24,7 +24,7 @@
 extern "C" {
 struct redisAsyncContext;
 struct redisReply;
-typedef void redisCallbackFn(struct redisAsyncContext *, void *, void *);
+typedef void redisCallbackFn(struct redisAsyncContext*, void*, void*);
 }
 
 namespace ray {
@@ -36,14 +36,14 @@ namespace gcs {
 /// C++ style and thread-safe API.
 class RedisAsyncContext {
  public:
-  explicit RedisAsyncContext(redisAsyncContext *redis_async_context);
+  explicit RedisAsyncContext(redisAsyncContext* redis_async_context);
 
   ~RedisAsyncContext();
 
   /// Get the raw 'redisAsyncContext' pointer.
   ///
   /// \return redisAsyncContext *
-  redisAsyncContext *GetRawRedisAsyncContext();
+  redisAsyncContext* GetRawRedisAsyncContext();
 
   /// Reset the raw 'redisAsyncContext' pointer to nullptr.
   void ResetRawRedisAsyncContext();
@@ -61,7 +61,7 @@ class RedisAsyncContext {
   /// \param format Command format.
   /// \param ... Command list.
   /// \return Status
-  Status RedisAsyncCommand(redisCallbackFn *fn, void *privdata, const char *format, ...);
+  Status RedisAsyncCommand(redisCallbackFn* fn, void* privdata, const char* format, ...);
 
   /// Perform command 'redisAsyncCommandArgv'. Thread-safe.
   ///
@@ -71,8 +71,8 @@ class RedisAsyncContext {
   /// \param argv Array with arguments.
   /// \param argvlen Array with each argument's length.
   /// \return Status
-  Status RedisAsyncCommandArgv(redisCallbackFn *fn, void *privdata, int argc,
-                               const char **argv, const size_t *argvlen);
+  Status RedisAsyncCommandArgv(redisCallbackFn* fn, void* privdata, int argc,
+                               const char** argv, const size_t* argvlen);
 
  private:
   /// This mutex is used to protect `redis_async_context`.
@@ -80,7 +80,7 @@ class RedisAsyncContext {
   /// data and don't actually do any IO operations. So the perf impact of adding the lock
   /// should be minimum.
   std::mutex mutex_;
-  redisAsyncContext *redis_async_context_{nullptr};
+  redisAsyncContext* redis_async_context_{nullptr};
 };
 
 }  // namespace gcs

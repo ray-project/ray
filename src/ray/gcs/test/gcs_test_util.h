@@ -28,9 +28,9 @@
 namespace ray {
 
 struct Mocker {
-  static TaskSpecification GenActorCreationTask(const JobID &job_id, int max_restarts,
-                                                bool detached, const std::string &name,
-                                                const rpc::Address &owner_address) {
+  static TaskSpecification GenActorCreationTask(const JobID& job_id, int max_restarts,
+                                                bool detached, const std::string& name,
+                                                const rpc::Address& owner_address) {
     TaskSpecBuilder builder;
     rpc::Address empty_address;
     ray::FunctionDescriptor empty_descriptor =
@@ -45,7 +45,7 @@ struct Mocker {
     return builder.Build();
   }
 
-  static rpc::CreateActorRequest GenCreateActorRequest(const JobID &job_id,
+  static rpc::CreateActorRequest GenCreateActorRequest(const JobID& job_id,
                                                        int max_restarts = 0,
                                                        bool detached = false,
                                                        const std::string name = "") {
@@ -61,7 +61,7 @@ struct Mocker {
     return request;
   }
 
-  static rpc::RegisterActorRequest GenRegisterActorRequest(const JobID &job_id,
+  static rpc::RegisterActorRequest GenRegisterActorRequest(const JobID& job_id,
                                                            int max_restarts = 0,
                                                            bool detached = false,
                                                            const std::string name = "") {
@@ -78,8 +78,8 @@ struct Mocker {
   }
 
   static PlacementGroupSpecification GenPlacementGroupCreation(
-      const std::string &name,
-      std::vector<std::unordered_map<std::string, double>> &bundles,
+      const std::string& name,
+      std::vector<std::unordered_map<std::string, double>>& bundles,
       rpc::PlacementStrategy strategy) {
     PlacementGroupSpecBuilder builder;
 
@@ -122,7 +122,7 @@ struct Mocker {
     return job_table_data;
   }
 
-  static std::shared_ptr<rpc::ActorTableData> GenActorTableData(const JobID &job_id) {
+  static std::shared_ptr<rpc::ActorTableData> GenActorTableData(const JobID& job_id) {
     auto actor_table_data = std::make_shared<rpc::ActorTableData>();
     ActorID actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
     actor_table_data->set_actor_id(actor_id.Binary());
@@ -134,7 +134,7 @@ struct Mocker {
   }
 
   static std::shared_ptr<rpc::TaskTableData> GenTaskTableData(
-      const std::string &job_id, const std::string &task_id) {
+      const std::string& job_id, const std::string& task_id) {
     auto task_table_data = std::make_shared<rpc::TaskTableData>();
     rpc::Task task;
     rpc::TaskSpec task_spec;
@@ -146,7 +146,7 @@ struct Mocker {
   }
 
   static std::shared_ptr<rpc::TaskLeaseData> GenTaskLeaseData(
-      const std::string &task_id, const std::string &node_id) {
+      const std::string& task_id, const std::string& node_id) {
     auto task_lease_data = std::make_shared<rpc::TaskLeaseData>();
     task_lease_data->set_task_id(task_id);
     task_lease_data->set_node_manager_id(node_id);
@@ -155,13 +155,13 @@ struct Mocker {
   }
 
   static std::shared_ptr<rpc::ProfileTableData> GenProfileTableData(
-      const ClientID &node_id) {
+      const ClientID& node_id) {
     auto profile_table_data = std::make_shared<rpc::ProfileTableData>();
     profile_table_data->set_component_id(node_id.Binary());
     return profile_table_data;
   }
 
-  static std::shared_ptr<rpc::ErrorTableData> GenErrorTableData(const JobID &job_id) {
+  static std::shared_ptr<rpc::ErrorTableData> GenErrorTableData(const JobID& job_id) {
     auto error_table_data = std::make_shared<rpc::ErrorTableData>();
     error_table_data->set_job_id(job_id.Binary());
     return error_table_data;

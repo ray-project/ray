@@ -52,7 +52,7 @@ DEFINE_bool(huge_pages, false, "Whether enable huge pages");
 
 #ifndef RAYLET_TEST
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                          ray::RayLog::ShutDownRayLog, argv[0],
                                          ray::RayLogLevel::INFO,
@@ -235,7 +235,7 @@ int main(int argc, char *argv[]) {
   // instead of returning immediately.
   // We should stop the service and remove the local socket file.
   auto handler = [&main_service, &raylet_socket_name, &server, &gcs_client](
-                     const boost::system::error_code &error, int signal_number) {
+                     const boost::system::error_code& error, int signal_number) {
     RAY_LOG(INFO) << "Raylet received SIGTERM, shutting down...";
     server->Stop();
     gcs_client->Disconnect();

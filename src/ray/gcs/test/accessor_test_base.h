@@ -72,7 +72,7 @@ class AccessorTestBase : public ::testing::Test {
     WaitPendingDone(pending_count_, timeout);
   }
 
-  void WaitPendingDone(std::atomic<int> &pending_count,
+  void WaitPendingDone(std::atomic<int>& pending_count,
                        std::chrono::milliseconds timeout) {
     auto condition = [&pending_count]() { return pending_count == 0; };
     EXPECT_TRUE(WaitForCondition(condition, timeout.count()));

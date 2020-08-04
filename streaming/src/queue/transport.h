@@ -13,7 +13,7 @@ class Transport {
  public:
   /// Construct a Transport object.
   /// \param[in] peer_actor_id actor id of peer actor.
-  Transport(const ActorID &peer_actor_id, RayFunction &async_func, RayFunction &sync_func)
+  Transport(const ActorID& peer_actor_id, RayFunction& async_func, RayFunction& sync_func)
       : peer_actor_id_(peer_actor_id), async_func_(async_func), sync_func_(sync_func) {
     STREAMING_LOG(INFO) << "Transport constructor:";
     STREAMING_LOG(INFO) << "async_func lang: " << async_func_.GetLanguage();
@@ -54,8 +54,8 @@ class Transport {
   /// \param[in] return_num return value number of the call.
   /// \param[out] return_ids return ids from SubmitActorTask.
   virtual void SendInternal(std::shared_ptr<LocalMemoryBuffer> buffer,
-                            RayFunction &function, int return_num,
-                            std::vector<ObjectID> &return_ids);
+                            RayFunction& function, int return_num,
+                            std::vector<ObjectID>& return_ids);
 
  private:
   WorkerID worker_id_;

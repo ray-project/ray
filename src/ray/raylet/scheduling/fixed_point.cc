@@ -8,24 +8,24 @@ FixedPoint::FixedPoint(double d) {
   i_ = (uint64_t)((d * RESOURCE_UNIT_SCALING) + 0.5);
 }
 
-FixedPoint FixedPoint::operator+(FixedPoint const &ru) {
+FixedPoint FixedPoint::operator+(FixedPoint const& ru) {
   FixedPoint res;
   res.i_ = i_ + ru.i_;
   return res;
 }
 
-FixedPoint FixedPoint::operator+=(FixedPoint const &ru) {
+FixedPoint FixedPoint::operator+=(FixedPoint const& ru) {
   i_ += ru.i_;
   return *this;
 }
 
-FixedPoint FixedPoint::operator-(FixedPoint const &ru) {
+FixedPoint FixedPoint::operator-(FixedPoint const& ru) {
   FixedPoint res;
   res.i_ = i_ - ru.i_;
   return res;
 }
 
-FixedPoint FixedPoint::operator-=(FixedPoint const &ru) {
+FixedPoint FixedPoint::operator-=(FixedPoint const& ru) {
   i_ -= ru.i_;
   return *this;
 }

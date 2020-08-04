@@ -45,8 +45,8 @@ class ActorInfoAccessorTest : public AccessorTestBase<ActorID, ActorTableData> {
   }
 
   void GenCheckpointData() {
-    for (const auto &item : id_to_data_) {
-      const ActorID &id = item.first;
+    for (const auto& item : id_to_data_) {
+      const ActorID& id = item.first;
       ActorCheckpointList checkpoints;
       for (size_t i = 0; i < checkpoint_number_; ++i) {
         ActorCheckpointID checkpoint_id = ActorCheckpointID::FromRandom();
@@ -66,10 +66,10 @@ class ActorInfoAccessorTest : public AccessorTestBase<ActorID, ActorTableData> {
 };
 
 TEST_F(ActorInfoAccessorTest, RegisterAndGet) {
-  ActorInfoAccessor &actor_accessor = gcs_client_->Actors();
+  ActorInfoAccessor& actor_accessor = gcs_client_->Actors();
   // register
-  for (const auto &elem : id_to_data_) {
-    const auto &actor = elem.second;
+  for (const auto& elem : id_to_data_) {
+    const auto& actor = elem.second;
     ++pending_count_;
     RAY_CHECK_OK(actor_accessor.AsyncRegister(actor, [this](Status status) {
       RAY_CHECK_OK(status);
@@ -80,10 +80,10 @@ TEST_F(ActorInfoAccessorTest, RegisterAndGet) {
   WaitPendingDone(wait_pending_timeout_);
 
   // async get
-  for (const auto &elem : id_to_data_) {
+  for (const auto& elem : id_to_data_) {
     ++pending_count_;
     RAY_CHECK_OK(actor_accessor.AsyncGet(
-        elem.first, [this](Status status, const boost::optional<ActorTableData> &data) {
+        elem.first, [this](Status status, const boost::optional<ActorTableData>& data) {
           ASSERT_TRUE(data);
           ActorID actor_id = ActorID::FromBinary(data->actor_id());
           auto it = id_to_data_.find(actor_id);
@@ -98,19 +98,19 @@ TEST_F(ActorInfoAccessorTest, RegisterAndGet) {
   std::vector<ActorTableData> actor_table_data_list;
   RAY_CHECK_OK(actor_accessor.GetAll(&actor_table_data_list));
   ASSERT_EQ(id_to_data_.size(), actor_table_data_list.size());
-  for (auto &data : actor_table_data_list) {
+  for (auto& data : actor_table_data_list) {
     ActorID actor_id = ActorID::FromBinary(data.actor_id());
     ASSERT_TRUE(id_to_data_.count(actor_id) != 0);
   }
 }
 
 TEST_F(ActorInfoAccessorTest, Subscribe) {
-  ActorInfoAccessor &actor_accessor = gcs_client_->Actors();
+  ActorInfoAccessor& actor_accessor = gcs_client_->Actors();
   // subscribe
   std::atomic<int> sub_pending_count(0);
   std::atomic<int> do_sub_pending_count(0);
-  auto subscribe = [this, &sub_pending_count](const ActorID &actor_id,
-                                              const ActorTableData &data) {
+  auto subscribe = [this, &sub_pending_count](const ActorID& actor_id,
+                                              const ActorTableData& data) {
     const auto it = id_to_data_.find(actor_id);
     ASSERT_TRUE(it != id_to_data_.end());
     --sub_pending_count;
@@ -127,8 +127,8 @@ TEST_F(ActorInfoAccessorTest, Subscribe) {
 
   // register
   std::atomic<int> register_pending_count(0);
-  for (const auto &elem : id_to_data_) {
-    const auto &actor = elem.second;
+  for (const auto& elem : id_to_data_) {
+    const auto& actor = elem.second;
     ++sub_pending_count;
     ++register_pending_count;
     RAY_CHECK_OK(
@@ -145,15 +145,15 @@ TEST_F(ActorInfoAccessorTest, Subscribe) {
 }
 
 TEST_F(ActorInfoAccessorTest, GetActorCheckpointTest) {
-  ActorInfoAccessor &actor_accessor = gcs_client_->Actors();
+  ActorInfoAccessor& actor_accessor = gcs_client_->Actors();
   auto on_add_done = [this](Status status) {
     RAY_CHECK_OK(status);
     --pending_count_;
   };
   for (size_t index = 0; index < checkpoint_number_; ++index) {
-    for (const auto &actor_checkpoints : id_to_checkpoints_) {
-      const ActorCheckpointList &checkpoints = actor_checkpoints.second;
-      const auto &checkpoint = checkpoints[index];
+    for (const auto& actor_checkpoints : id_to_checkpoints_) {
+      const ActorCheckpointList& checkpoints = actor_checkpoints.second;
+      const auto& checkpoint = checkpoints[index];
       ++pending_count_;
       Status status = actor_accessor.AsyncAddCheckpoint(checkpoint, on_add_done);
       RAY_CHECK_OK(status);
@@ -161,14 +161,14 @@ TEST_F(ActorInfoAccessorTest, GetActorCheckpointTest) {
     WaitPendingDone(wait_pending_timeout_);
   }
 
-  for (const auto &actor_checkpoints : id_to_checkpoints_) {
-    const ActorCheckpointList &checkpoints = actor_checkpoints.second;
-    for (const auto &checkpoint : checkpoints) {
+  for (const auto& actor_checkpoints : id_to_checkpoints_) {
+    const ActorCheckpointList& checkpoints = actor_checkpoints.second;
+    for (const auto& checkpoint : checkpoints) {
       ActorCheckpointID checkpoint_id =
           ActorCheckpointID::FromBinary(checkpoint->checkpoint_id());
       auto on_get_done = [this, checkpoint_id](
                              Status status,
-                             const boost::optional<ActorCheckpointData> &result) {
+                             const boost::optional<ActorCheckpointData>& result) {
         RAY_CHECK(result);
         ActorCheckpointID result_checkpoint_id =
             ActorCheckpointID::FromBinary(result->checkpoint_id());
@@ -183,17 +183,17 @@ TEST_F(ActorInfoAccessorTest, GetActorCheckpointTest) {
   }
   WaitPendingDone(wait_pending_timeout_);
 
-  for (const auto &actor_checkpoints : id_to_checkpoints_) {
-    const ActorID &actor_id = actor_checkpoints.first;
-    const ActorCheckpointList &checkpoints = actor_checkpoints.second;
+  for (const auto& actor_checkpoints : id_to_checkpoints_) {
+    const ActorID& actor_id = actor_checkpoints.first;
+    const ActorCheckpointList& checkpoints = actor_checkpoints.second;
     auto on_get_done = [this, &checkpoints](
                            Status status,
-                           const boost::optional<ActorCheckpointIdData> &result) {
+                           const boost::optional<ActorCheckpointIdData>& result) {
       RAY_CHECK(result);
       ASSERT_EQ(checkpoints.size(), result->checkpoint_ids_size());
       for (size_t i = 0; i < checkpoints.size(); ++i) {
         const std::string checkpoint_id_str = checkpoints[i]->checkpoint_id();
-        const std::string &result_checkpoint_id_str = result->checkpoint_ids(i);
+        const std::string& result_checkpoint_id_str = result->checkpoint_ids(i);
         ASSERT_EQ(checkpoint_id_str, result_checkpoint_id_str);
       }
       --pending_count_;
@@ -209,7 +209,7 @@ TEST_F(ActorInfoAccessorTest, GetActorCheckpointTest) {
 
 }  // namespace ray
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 4);
   ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];

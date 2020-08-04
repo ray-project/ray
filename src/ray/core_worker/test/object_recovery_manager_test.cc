@@ -33,16 +33,16 @@ class MockTaskResubmitter : public TaskResubmissionInterface {
  public:
   MockTaskResubmitter() {}
 
-  void AddTask(const TaskID &task_id, std::vector<ObjectID> task_deps) {
+  void AddTask(const TaskID& task_id, std::vector<ObjectID> task_deps) {
     task_specs[task_id] = task_deps;
   }
 
-  Status ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *task_deps) {
+  Status ResubmitTask(const TaskID& task_id, std::vector<ObjectID>* task_deps) {
     if (task_specs.find(task_id) == task_specs.end()) {
       return Status::Invalid("");
     }
 
-    for (const auto &dep : task_specs[task_id]) {
+    for (const auto& dep : task_specs[task_id]) {
       task_deps->push_back(dep);
     }
     num_tasks_resubmitted++;
@@ -56,15 +56,15 @@ class MockTaskResubmitter : public TaskResubmissionInterface {
 class MockRayletClient : public PinObjectsInterface {
  public:
   void PinObjectIDs(
-      const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
-      const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override {
+      const rpc::Address& caller_address, const std::vector<ObjectID>& object_ids,
+      const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply>& callback) override {
     RAY_LOG(INFO) << "PinObjectIDs " << object_ids.size();
     callbacks.push_back(callback);
   }
 
   size_t Flush() {
     size_t flushed = callbacks.size();
-    for (const auto &callback : callbacks) {
+    for (const auto& callback : callbacks) {
       callback(Status::OK(), rpc::PinObjectIDsReply());
     }
     callbacks.clear();
@@ -76,19 +76,19 @@ class MockRayletClient : public PinObjectsInterface {
 
 class MockObjectDirectory {
  public:
-  void AsyncGetLocations(const ObjectID &object_id,
-                         const ObjectLookupCallback &callback) {
+  void AsyncGetLocations(const ObjectID& object_id,
+                         const ObjectLookupCallback& callback) {
     callbacks.push_back({object_id, callback});
   }
 
-  void SetLocations(const ObjectID &object_id,
-                    const std::vector<rpc::Address> &addresses) {
+  void SetLocations(const ObjectID& object_id,
+                    const std::vector<rpc::Address>& addresses) {
     locations[object_id] = addresses;
   }
 
   size_t Flush() {
     size_t flushed = callbacks.size();
-    for (const auto &pair : callbacks) {
+    for (const auto& pair : callbacks) {
       pair.second(pair.first, locations[pair.first]);
     }
     for (size_t i = 0; i < flushed; i++) {
@@ -114,21 +114,21 @@ class ObjectRecoveryManagerTest : public ::testing::Test {
             /*lineage_pinning_enabled=*/true)),
         manager_(
             rpc::Address(),
-            [&](const std::string &ip, int port) { return raylet_client_; },
+            [&](const std::string& ip, int port) { return raylet_client_; },
             raylet_client_,
-            [&](const ObjectID &object_id, const ObjectLookupCallback &callback) {
+            [&](const ObjectID& object_id, const ObjectLookupCallback& callback) {
               object_directory_->AsyncGetLocations(object_id, callback);
               return Status::OK();
             },
             task_resubmitter_, ref_counter_, memory_store_,
-            [&](const ObjectID &object_id, bool pin_object) {
+            [&](const ObjectID& object_id, bool pin_object) {
               RAY_CHECK(failed_reconstructions_.count(object_id) == 0);
               failed_reconstructions_[object_id] = pin_object;
 
               std::string meta =
                   std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
               auto metadata =
-                  const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
+                  const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(meta.data()));
               auto meta_buffer =
                   std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
               auto data = RayObject(nullptr, meta_buffer, std::vector<ObjectID>());
@@ -232,7 +232,7 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstructionChain) {
 
 }  // namespace ray
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

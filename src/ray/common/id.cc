@@ -34,18 +34,18 @@ extern "C" {
 
 namespace ray {
 
-uint64_t MurmurHash64A(const void *key, int len, unsigned int seed);
+uint64_t MurmurHash64A(const void* key, int len, unsigned int seed);
 
 /// A helper function to generate the unique bytes by hash.
-std::string GenerateUniqueBytes(const JobID &job_id, const TaskID &parent_task_id,
+std::string GenerateUniqueBytes(const JobID& job_id, const TaskID& parent_task_id,
                                 size_t parent_task_counter, size_t length) {
   RAY_CHECK(length <= DIGEST_SIZE);
   SHA256_CTX ctx;
   sha256_init(&ctx);
-  sha256_update(&ctx, reinterpret_cast<const BYTE *>(job_id.Data()), job_id.Size());
-  sha256_update(&ctx, reinterpret_cast<const BYTE *>(parent_task_id.Data()),
+  sha256_update(&ctx, reinterpret_cast<const BYTE*>(job_id.Data()), job_id.Size());
+  sha256_update(&ctx, reinterpret_cast<const BYTE*>(parent_task_id.Data()),
                 parent_task_id.Size());
-  sha256_update(&ctx, (const BYTE *)&parent_task_counter, sizeof(parent_task_counter));
+  sha256_update(&ctx, (const BYTE*)&parent_task_counter, sizeof(parent_task_counter));
 
   BYTE buff[DIGEST_SIZE];
   sha256_final(&ctx, buff);
@@ -68,13 +68,13 @@ constexpr ObjectIDFlagsType kCreatedByTaskFlagBitMask = 0x1 << kCreatedByTaskBit
 constexpr ObjectIDFlagsType kObjectTypeFlagBitMask = 0x1 << kObjectTypeBitsOffset;
 
 /// The implementations of helper functions.
-inline void SetCreatedByTaskFlag(bool created_by_task, ObjectIDFlagsType *flags) {
+inline void SetCreatedByTaskFlag(bool created_by_task, ObjectIDFlagsType* flags) {
   const ObjectIDFlagsType object_type_bits =
       static_cast<ObjectIDFlagsType>(created_by_task) << kCreatedByTaskBitsOffset;
   *flags = (*flags | object_type_bits);
 }
 
-inline void SetObjectTypeFlag(ObjectType object_type, ObjectIDFlagsType *flags) {
+inline void SetObjectTypeFlag(ObjectType object_type, ObjectIDFlagsType* flags) {
   const ObjectIDFlagsType object_type_bits = static_cast<ObjectIDFlagsType>(object_type)
                                              << kObjectTypeBitsOffset;
   *flags = (*flags | object_type_bits);
@@ -93,19 +93,19 @@ inline ObjectType GetObjectType(ObjectIDFlagsType flags) {
 }  // namespace
 
 template <typename T>
-void FillNil(T *data) {
+void FillNil(T* data) {
   RAY_CHECK(data != nullptr);
   for (size_t i = 0; i < data->size(); i++) {
     (*data)[i] = static_cast<uint8_t>(0xFF);
   }
 }
 
-WorkerID ComputeDriverIdFromJob(const JobID &job_id) {
+WorkerID ComputeDriverIdFromJob(const JobID& job_id) {
   std::vector<uint8_t> data(WorkerID::Size(), 0);
   std::memcpy(data.data(), job_id.Data(), JobID::Size());
   std::fill_n(data.data() + JobID::Size(), WorkerID::Size() - JobID::Size(), 0xFF);
   return WorkerID::FromBinary(
-      std::string(reinterpret_cast<const char *>(data.data()), data.size()));
+      std::string(reinterpret_cast<const char*>(data.data()), data.size()));
 }
 
 ObjectIDFlagsType ObjectID::GetFlags() const {
@@ -126,14 +126,14 @@ bool ObjectID::IsReturnObject() const {
 
 // This code is from https://sites.google.com/site/murmurhash/
 // and is public domain.
-uint64_t MurmurHash64A(const void *key, int len, unsigned int seed) {
+uint64_t MurmurHash64A(const void* key, int len, unsigned int seed) {
   const uint64_t m = 0xc6a4a7935bd1e995;
   const int r = 47;
 
   uint64_t h = seed ^ (len * m);
 
-  const uint64_t *data = reinterpret_cast<const uint64_t *>(key);
-  const uint64_t *end = data + (len / 8);
+  const uint64_t* data = reinterpret_cast<const uint64_t*>(key);
+  const uint64_t* end = data + (len / 8);
 
   while (data != end) {
     uint64_t k = *data++;
@@ -146,7 +146,7 @@ uint64_t MurmurHash64A(const void *key, int len, unsigned int seed) {
     h *= m;
   }
 
-  const unsigned char *data2 = reinterpret_cast<const unsigned char *>(data);
+  const unsigned char* data2 = reinterpret_cast<const unsigned char*>(data);
 
   switch (len & 7) {
   case 7:
@@ -173,7 +173,7 @@ uint64_t MurmurHash64A(const void *key, int len, unsigned int seed) {
   return h;
 }
 
-ActorID ActorID::Of(const JobID &job_id, const TaskID &parent_task_id,
+ActorID ActorID::Of(const JobID& job_id, const TaskID& parent_task_id,
                     const size_t parent_task_counter) {
   auto data = GenerateUniqueBytes(job_id, parent_task_id, parent_task_counter,
                                   ActorID::kUniqueBytesLength);
@@ -182,7 +182,7 @@ ActorID ActorID::Of(const JobID &job_id, const TaskID &parent_task_id,
   return ActorID::FromBinary(data);
 }
 
-ActorID ActorID::NilFromJob(const JobID &job_id) {
+ActorID ActorID::NilFromJob(const JobID& job_id) {
   std::string data(kUniqueBytesLength, 0);
   FillNil(&data);
   std::copy_n(job_id.Data(), JobID::kLength, std::back_inserter(data));
@@ -193,10 +193,10 @@ ActorID ActorID::NilFromJob(const JobID &job_id) {
 JobID ActorID::JobId() const {
   RAY_CHECK(!IsNil());
   return JobID::FromBinary(std::string(
-      reinterpret_cast<const char *>(this->Data() + kUniqueBytesLength), JobID::kLength));
+      reinterpret_cast<const char*>(this->Data() + kUniqueBytesLength), JobID::kLength));
 }
 
-TaskID TaskID::ForDriverTask(const JobID &job_id) {
+TaskID TaskID::ForDriverTask(const JobID& job_id) {
   std::string data(kUniqueBytesLength, 0);
   FillNil(&data);
   const auto dummy_actor_id = ActorID::NilFromJob(job_id);
@@ -211,7 +211,7 @@ TaskID TaskID::ForFakeTask() {
   return TaskID::FromBinary(data);
 }
 
-TaskID TaskID::ForActorCreationTask(const ActorID &actor_id) {
+TaskID TaskID::ForActorCreationTask(const ActorID& actor_id) {
   std::string data(kUniqueBytesLength, 0);
   FillNil(&data);
   std::copy_n(actor_id.Data(), ActorID::kLength, std::back_inserter(data));
@@ -219,8 +219,8 @@ TaskID TaskID::ForActorCreationTask(const ActorID &actor_id) {
   return TaskID::FromBinary(data);
 }
 
-TaskID TaskID::ForActorTask(const JobID &job_id, const TaskID &parent_task_id,
-                            size_t parent_task_counter, const ActorID &actor_id) {
+TaskID TaskID::ForActorTask(const JobID& job_id, const TaskID& parent_task_id,
+                            size_t parent_task_counter, const ActorID& actor_id) {
   std::string data = GenerateUniqueBytes(job_id, parent_task_id, parent_task_counter,
                                          TaskID::kUniqueBytesLength);
   std::copy_n(actor_id.Data(), ActorID::kLength, std::back_inserter(data));
@@ -228,7 +228,7 @@ TaskID TaskID::ForActorTask(const JobID &job_id, const TaskID &parent_task_id,
   return TaskID::FromBinary(data);
 }
 
-TaskID TaskID::ForNormalTask(const JobID &job_id, const TaskID &parent_task_id,
+TaskID TaskID::ForNormalTask(const JobID& job_id, const TaskID& parent_task_id,
                              size_t parent_task_counter) {
   std::string data = GenerateUniqueBytes(job_id, parent_task_id, parent_task_counter,
                                          TaskID::kUniqueBytesLength);
@@ -240,12 +240,12 @@ TaskID TaskID::ForNormalTask(const JobID &job_id, const TaskID &parent_task_id,
 
 ActorID TaskID::ActorId() const {
   return ActorID::FromBinary(std::string(
-      reinterpret_cast<const char *>(id_ + kUniqueBytesLength), ActorID::Size()));
+      reinterpret_cast<const char*>(id_ + kUniqueBytesLength), ActorID::Size()));
 }
 
 JobID TaskID::JobId() const { return ActorId().JobId(); }
 
-TaskID TaskID::ComputeDriverTaskId(const WorkerID &driver_id) {
+TaskID TaskID::ComputeDriverTaskId(const WorkerID& driver_id) {
   std::string driver_id_str = driver_id.Binary();
   driver_id_str.resize(Size());
   return TaskID::FromBinary(driver_id_str);
@@ -253,10 +253,10 @@ TaskID TaskID::ComputeDriverTaskId(const WorkerID &driver_id) {
 
 TaskID ObjectID::TaskId() const {
   return TaskID::FromBinary(
-      std::string(reinterpret_cast<const char *>(id_), TaskID::Size()));
+      std::string(reinterpret_cast<const char*>(id_), TaskID::Size()));
 }
 
-ObjectID ObjectID::ForPut(const TaskID &task_id, ObjectIDIndexType put_index) {
+ObjectID ObjectID::ForPut(const TaskID& task_id, ObjectIDIndexType put_index) {
   RAY_CHECK(put_index >= 1 && put_index <= kMaxObjectIndex) << "index=" << put_index;
 
   ObjectIDFlagsType flags = 0x0000;
@@ -272,7 +272,7 @@ ObjectIDIndexType ObjectID::ObjectIndex() const {
   return index;
 }
 
-ObjectID ObjectID::ForTaskReturn(const TaskID &task_id, ObjectIDIndexType return_index) {
+ObjectID ObjectID::ForTaskReturn(const TaskID& task_id, ObjectIDIndexType return_index) {
   RAY_CHECK(return_index >= 1 && return_index <= kMaxObjectIndex)
       << "index=" << return_index;
 
@@ -291,18 +291,17 @@ ObjectID ObjectID::FromRandom() {
   std::vector<uint8_t> task_id_bytes(TaskID::kLength, 0x0);
   FillRandom(&task_id_bytes);
 
-  return GenerateObjectId(
-      std::string(reinterpret_cast<const char *>(task_id_bytes.data()),
-                  task_id_bytes.size()),
-      flags);
+  return GenerateObjectId(std::string(reinterpret_cast<const char*>(task_id_bytes.data()),
+                                      task_id_bytes.size()),
+                          flags);
 }
 
-ObjectID ObjectID::ForActorHandle(const ActorID &actor_id) {
+ObjectID ObjectID::ForActorHandle(const ActorID& actor_id) {
   return ObjectID::ForTaskReturn(TaskID::ForActorCreationTask(actor_id),
                                  /*return_index=*/1);
 }
 
-ObjectID ObjectID::GenerateObjectId(const std::string &task_id_binary,
+ObjectID ObjectID::GenerateObjectId(const std::string& task_id_binary,
                                     ObjectIDFlagsType flags,
                                     ObjectIDIndexType object_index) {
   RAY_CHECK(task_id_binary.size() == TaskID::Size());
@@ -318,11 +317,11 @@ JobID JobID::FromInt(uint16_t value) {
   std::vector<uint8_t> data(JobID::Size(), 0);
   std::memcpy(data.data(), &value, JobID::Size());
   return JobID::FromBinary(
-      std::string(reinterpret_cast<const char *>(data.data()), data.size()));
+      std::string(reinterpret_cast<const char*>(data.data()), data.size()));
 }
 
 #define ID_OSTREAM_OPERATOR(id_type)                              \
-  std::ostream &operator<<(std::ostream &os, const id_type &id) { \
+  std::ostream& operator<<(std::ostream& os, const id_type& id) { \
     if (id.IsNil()) {                                             \
       os << "NIL_ID";                                             \
     } else {                                                      \

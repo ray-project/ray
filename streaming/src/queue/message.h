@@ -20,7 +20,7 @@ class Message {
   /// \param[in] peer_actor_id ActorID of message receiver.
   /// \param[in] queue_id queue id to identify which queue the message is sent to.
   /// \param[in] buffer an optional param, a chunk of data to send.
-  Message(const ActorID &actor_id, const ActorID &peer_actor_id, const ObjectID &queue_id,
+  Message(const ActorID& actor_id, const ActorID& peer_actor_id, const ObjectID& queue_id,
           std::shared_ptr<LocalMemoryBuffer> buffer = nullptr)
       : actor_id_(actor_id),
         peer_actor_id_(peer_actor_id),
@@ -42,7 +42,7 @@ class Message {
   virtual queue::protobuf::StreamingQueueMessageType Type() = 0;
 
   /// All subclasses should implement `ToProtobuf` to serialize its own protobuf data.
-  virtual void ToProtobuf(std::string *output) = 0;
+  virtual void ToProtobuf(std::string* output) = 0;
 
  protected:
   ActorID actor_id_;
@@ -60,13 +60,13 @@ class Message {
 /// exists between DataMessage and QueueItem.
 class DataMessage : public Message {
  public:
-  DataMessage(const ActorID &actor_id, const ActorID &peer_actor_id, ObjectID queue_id,
+  DataMessage(const ActorID& actor_id, const ActorID& peer_actor_id, ObjectID queue_id,
               uint64_t seq_id, std::shared_ptr<LocalMemoryBuffer> buffer, bool raw)
       : Message(actor_id, peer_actor_id, queue_id, buffer), seq_id_(seq_id), raw_(raw) {}
   virtual ~DataMessage() {}
 
-  static std::shared_ptr<DataMessage> FromBytes(uint8_t *bytes);
-  virtual void ToProtobuf(std::string *output);
+  static std::shared_ptr<DataMessage> FromBytes(uint8_t* bytes);
+  virtual void ToProtobuf(std::string* output);
   uint64_t SeqId() { return seq_id_; }
   bool IsRaw() { return raw_; }
   queue::protobuf::StreamingQueueMessageType Type() { return type_; }
@@ -84,14 +84,14 @@ class DataMessage : public Message {
 /// to inform the data writer of the consumed offset.
 class NotificationMessage : public Message {
  public:
-  NotificationMessage(const ActorID &actor_id, const ActorID &peer_actor_id,
-                      const ObjectID &queue_id, uint64_t seq_id)
+  NotificationMessage(const ActorID& actor_id, const ActorID& peer_actor_id,
+                      const ObjectID& queue_id, uint64_t seq_id)
       : Message(actor_id, peer_actor_id, queue_id), seq_id_(seq_id) {}
 
   virtual ~NotificationMessage() {}
 
-  static std::shared_ptr<NotificationMessage> FromBytes(uint8_t *bytes);
-  virtual void ToProtobuf(std::string *output);
+  static std::shared_ptr<NotificationMessage> FromBytes(uint8_t* bytes);
+  virtual void ToProtobuf(std::string* output);
 
   uint64_t SeqId() { return seq_id_; }
   queue::protobuf::StreamingQueueMessageType Type() { return type_; }
@@ -107,13 +107,13 @@ class NotificationMessage : public Message {
 /// whether the corresponded downstream queue is read or not.
 class CheckMessage : public Message {
  public:
-  CheckMessage(const ActorID &actor_id, const ActorID &peer_actor_id,
-               const ObjectID &queue_id)
+  CheckMessage(const ActorID& actor_id, const ActorID& peer_actor_id,
+               const ObjectID& queue_id)
       : Message(actor_id, peer_actor_id, queue_id) {}
   virtual ~CheckMessage() {}
 
-  static std::shared_ptr<CheckMessage> FromBytes(uint8_t *bytes);
-  virtual void ToProtobuf(std::string *output);
+  static std::shared_ptr<CheckMessage> FromBytes(uint8_t* bytes);
+  virtual void ToProtobuf(std::string* output);
 
   queue::protobuf::StreamingQueueMessageType Type() { return type_; }
 
@@ -127,13 +127,13 @@ class CheckMessage : public Message {
 /// CheckMessage to indicate whether downstream queue is ready or not.
 class CheckRspMessage : public Message {
  public:
-  CheckRspMessage(const ActorID &actor_id, const ActorID &peer_actor_id,
-                  const ObjectID &queue_id, queue::protobuf::StreamingQueueError err_code)
+  CheckRspMessage(const ActorID& actor_id, const ActorID& peer_actor_id,
+                  const ObjectID& queue_id, queue::protobuf::StreamingQueueError err_code)
       : Message(actor_id, peer_actor_id, queue_id), err_code_(err_code) {}
   virtual ~CheckRspMessage() {}
 
-  static std::shared_ptr<CheckRspMessage> FromBytes(uint8_t *bytes);
-  virtual void ToProtobuf(std::string *output);
+  static std::shared_ptr<CheckRspMessage> FromBytes(uint8_t* bytes);
+  virtual void ToProtobuf(std::string* output);
   queue::protobuf::StreamingQueueMessageType Type() { return type_; }
   queue::protobuf::StreamingQueueError Error() { return err_code_; }
 
@@ -148,10 +148,10 @@ class CheckRspMessage : public Message {
 class TestInitMessage : public Message {
  public:
   TestInitMessage(const queue::protobuf::StreamingQueueTestRole role,
-                  const ActorID &actor_id, const ActorID &peer_actor_id,
+                  const ActorID& actor_id, const ActorID& peer_actor_id,
                   const std::string actor_handle_serialized,
-                  const std::vector<ObjectID> &queue_ids,
-                  const std::vector<ObjectID> &rescale_queue_ids,
+                  const std::vector<ObjectID>& queue_ids,
+                  const std::vector<ObjectID>& rescale_queue_ids,
                   std::string test_suite_name, std::string test_name, uint64_t param)
       : Message(actor_id, peer_actor_id, queue_ids[0]),
         actor_handle_serialized_(actor_handle_serialized),
@@ -163,8 +163,8 @@ class TestInitMessage : public Message {
         param_(param) {}
   virtual ~TestInitMessage() {}
 
-  static std::shared_ptr<TestInitMessage> FromBytes(uint8_t *bytes);
-  virtual void ToProtobuf(std::string *output);
+  static std::shared_ptr<TestInitMessage> FromBytes(uint8_t* bytes);
+  virtual void ToProtobuf(std::string* output);
   queue::protobuf::StreamingQueueMessageType Type() { return type_; }
   std::string ActorHandleSerialized() { return actor_handle_serialized_; }
   queue::protobuf::StreamingQueueTestRole Role() { return role_; }
@@ -180,11 +180,11 @@ class TestInitMessage : public Message {
     os << " actor_id: " << ActorId();
     os << " peer_actor_id: " << PeerActorId();
     os << " queue_ids:[";
-    for (auto &qid : queue_ids_) {
+    for (auto& qid : queue_ids_) {
       os << qid << ",";
     }
     os << "], rescale_queue_ids:[";
-    for (auto &qid : rescale_queue_ids_) {
+    for (auto& qid : rescale_queue_ids_) {
       os << qid << ",";
     }
     os << "],";
@@ -216,8 +216,8 @@ class TestCheckStatusRspMsg : public Message {
       : test_name_(test_name), status_(status) {}
   virtual ~TestCheckStatusRspMsg() {}
 
-  static std::shared_ptr<TestCheckStatusRspMsg> FromBytes(uint8_t *bytes);
-  virtual void ToProtobuf(std::string *output);
+  static std::shared_ptr<TestCheckStatusRspMsg> FromBytes(uint8_t* bytes);
+  virtual void ToProtobuf(std::string* output);
   queue::protobuf::StreamingQueueMessageType Type() { return type_; }
   std::string TestName() { return test_name_; }
   bool Status() { return status_; }

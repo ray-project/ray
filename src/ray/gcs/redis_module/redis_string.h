@@ -29,13 +29,13 @@
  * @params ... The parameters to be formated.
  * @return The formatted RedisModuleString, needs to be freed by the caller.
  */
-RedisModuleString *RedisString_Format(RedisModuleCtx *ctx, const char *fmt, ...) {
-  RedisModuleString *result = RedisModule_CreateString(ctx, "", 0);
+RedisModuleString* RedisString_Format(RedisModuleCtx* ctx, const char* fmt, ...) {
+  RedisModuleString* result = RedisModule_CreateString(ctx, "", 0);
   size_t initlen = strlen(fmt);
   size_t l;
-  RedisModuleString *redisstr;
-  const char *s;
-  const char *f = fmt;
+  RedisModuleString* redisstr;
+  const char* s;
+  const char* f = fmt;
   int i;
   va_list ap;
 
@@ -50,18 +50,18 @@ RedisModuleString *RedisString_Format(RedisModuleCtx *ctx, const char *fmt, ...)
       f++;
       switch (next) {
       case 'S':
-        redisstr = va_arg(ap, RedisModuleString *);
+        redisstr = va_arg(ap, RedisModuleString*);
         s = RedisModule_StringPtrLen(redisstr, &l);
         RedisModule_StringAppendBuffer(ctx, result, s, l);
         i += 1;
         break;
       case 's':
-        s = va_arg(ap, const char *);
+        s = va_arg(ap, const char*);
         RedisModule_StringAppendBuffer(ctx, result, s, strlen(s));
         i += 1;
         break;
       case 'b':
-        s = va_arg(ap, const char *);
+        s = va_arg(ap, const char*);
         l = va_arg(ap, size_t);
         RedisModule_StringAppendBuffer(ctx, result, s, l);
         i += 1;
@@ -83,8 +83,8 @@ RedisModuleString *RedisString_Format(RedisModuleCtx *ctx, const char *fmt, ...)
   return result;
 }
 
-std::string RedisString_ToString(RedisModuleString *string) {
+std::string RedisString_ToString(RedisModuleString* string) {
   size_t size;
-  const char *data = RedisModule_StringPtrLen(string, &size);
+  const char* data = RedisModule_StringPtrLen(string, &size);
   return std::string(data, size);
 }

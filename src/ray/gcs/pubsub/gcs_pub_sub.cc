@@ -17,8 +17,8 @@
 namespace ray {
 namespace gcs {
 
-Status GcsPubSub::Publish(const std::string &channel, const std::string &id,
-                          const std::string &data, const StatusCallback &done) {
+Status GcsPubSub::Publish(const std::string& channel, const std::string& id,
+                          const std::string& data, const StatusCallback& done) {
   rpc::PubSubMessage message;
   message.set_id(id);
   message.set_data(data);
@@ -34,17 +34,17 @@ Status GcsPubSub::Publish(const std::string &channel, const std::string &id,
       message.SerializeAsString(), on_done);
 }
 
-Status GcsPubSub::Subscribe(const std::string &channel, const std::string &id,
-                            const Callback &subscribe, const StatusCallback &done) {
+Status GcsPubSub::Subscribe(const std::string& channel, const std::string& id,
+                            const Callback& subscribe, const StatusCallback& done) {
   return SubscribeInternal(channel, subscribe, done, boost::optional<std::string>(id));
 }
 
-Status GcsPubSub::SubscribeAll(const std::string &channel, const Callback &subscribe,
-                               const StatusCallback &done) {
+Status GcsPubSub::SubscribeAll(const std::string& channel, const Callback& subscribe,
+                               const StatusCallback& done) {
   return SubscribeInternal(channel, subscribe, done);
 }
 
-Status GcsPubSub::Unsubscribe(const std::string &channel_name, const std::string &id) {
+Status GcsPubSub::Unsubscribe(const std::string& channel_name, const std::string& id) {
   std::string pattern = GenChannelPattern(channel_name, id);
 
   absl::MutexLock lock(&mutex_);
@@ -57,9 +57,9 @@ Status GcsPubSub::Unsubscribe(const std::string &channel_name, const std::string
   return ExecuteCommandIfPossible(channel->first, channel->second);
 }
 
-Status GcsPubSub::SubscribeInternal(const std::string &channel_name,
-                                    const Callback &subscribe, const StatusCallback &done,
-                                    const boost::optional<std::string> &id) {
+Status GcsPubSub::SubscribeInternal(const std::string& channel_name,
+                                    const Callback& subscribe, const StatusCallback& done,
+                                    const boost::optional<std::string>& id) {
   std::string pattern = GenChannelPattern(channel_name, id);
 
   absl::MutexLock lock(&mutex_);
@@ -77,18 +77,18 @@ Status GcsPubSub::SubscribeInternal(const std::string &channel_name,
   return ExecuteCommandIfPossible(channel->first, channel->second);
 }
 
-Status GcsPubSub::ExecuteCommandIfPossible(const std::string &channel_key,
-                                           GcsPubSub::Channel &channel) {
+Status GcsPubSub::ExecuteCommandIfPossible(const std::string& channel_key,
+                                           GcsPubSub::Channel& channel) {
   // Process the first command on the queue, if possible.
   Status status;
-  auto &command = channel.command_queue.front();
+  auto& command = channel.command_queue.front();
   if (command.is_subscribe && channel.callback_index == -1) {
     // The next command is SUBSCRIBE and we are currently unsubscribed, so we
     // can execute the command.
     int64_t callback_index =
         ray::gcs::RedisCallbackManager::instance().AllocateCallbackIndex();
-    const auto &command_done_callback = command.done_callback;
-    const auto &command_subscribe_callback = command.subscribe_callback;
+    const auto& command_done_callback = command.done_callback;
+    const auto& command_subscribe_callback = command.subscribe_callback;
     auto callback = [this, channel_key, command_done_callback, command_subscribe_callback,
                      callback_index](std::shared_ptr<CallbackReply> reply) {
       if (reply->IsNil()) {
@@ -162,8 +162,8 @@ Status GcsPubSub::ExecuteCommandIfPossible(const std::string &channel_key,
   return status;
 }
 
-std::string GcsPubSub::GenChannelPattern(const std::string &channel,
-                                         const boost::optional<std::string> &id) {
+std::string GcsPubSub::GenChannelPattern(const std::string& channel,
+                                         const boost::optional<std::string>& id) {
   std::stringstream pattern;
   pattern << channel << ":";
   if (id) {

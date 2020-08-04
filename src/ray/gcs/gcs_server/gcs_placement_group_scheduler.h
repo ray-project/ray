@@ -31,15 +31,15 @@ namespace ray {
 namespace gcs {
 
 using ReserveResourceClientFactoryFn =
-    std::function<std::shared_ptr<ResourceReserveInterface>(const rpc::Address &address)>;
+    std::function<std::shared_ptr<ResourceReserveInterface>(const rpc::Address& address)>;
 
 using ReserveResourceCallback =
-    std::function<void(const Status &, const rpc::RequestResourceReserveReply &)>;
+    std::function<void(const Status&, const rpc::RequestResourceReserveReply&)>;
 
 typedef std::pair<PlacementGroupID, int64_t> BundleID;
 struct pair_hash {
   template <class T1, class T2>
-  std::size_t operator()(const std::pair<T1, T2> &pair) const {
+  std::size_t operator()(const std::pair<T1, T2>& pair) const {
     return std::hash<T1>()(pair.first) ^ std::hash<T2>()(pair.second);
   }
 };
@@ -64,20 +64,20 @@ class GcsScheduleStrategy {
  public:
   virtual ~GcsScheduleStrategy() {}
   virtual ScheduleMap Schedule(
-      std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
-      const GcsNodeManager &node_manager) = 0;
+      std::vector<std::shared_ptr<ray::BundleSpecification>>& bundles,
+      const GcsNodeManager& node_manager) = 0;
 };
 
 class GcsPackStrategy : public GcsScheduleStrategy {
  public:
-  ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
-                       const GcsNodeManager &node_manager) override;
+  ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>>& bundles,
+                       const GcsNodeManager& node_manager) override;
 };
 
 class GcsSpreadStrategy : public GcsScheduleStrategy {
  public:
-  ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
-                       const GcsNodeManager &node_manager) override;
+  ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>>& bundles,
+                       const GcsNodeManager& node_manager) override;
 };
 
 /// GcsPlacementGroupScheduler is responsible for scheduling placement_groups registered
@@ -90,9 +90,9 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param placement_group_info_accessor Used to flush placement_group info to storage.
   /// \param gcs_node_manager The node manager which is used when scheduling.
   GcsPlacementGroupScheduler(
-      boost::asio::io_context &io_context,
+      boost::asio::io_context& io_context,
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-      const GcsNodeManager &gcs_node_manager,
+      const GcsNodeManager& gcs_node_manager,
       ReserveResourceClientFactoryFn lease_client_factory = nullptr);
   virtual ~GcsPlacementGroupScheduler() = default;
   /// Schedule the specified placement_group.
@@ -122,13 +122,13 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
 
   /// Get an existing lease client or connect a new one.
   std::shared_ptr<ResourceReserveInterface> GetOrConnectLeaseClient(
-      const rpc::Address &raylet_address);
+      const rpc::Address& raylet_address);
   /// A timer that ticks every cancel resource failure milliseconds.
   boost::asio::deadline_timer return_timer_;
   /// Used to update placement group information upon creation, deletion, etc.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   /// Reference of GcsNodeManager.
-  const GcsNodeManager &gcs_node_manager_;
+  const GcsNodeManager& gcs_node_manager_;
   /// The cached node clients which are used to communicate with raylet to lease workers.
   absl::flat_hash_map<ClientID, std::shared_ptr<ResourceReserveInterface>>
       remote_lease_clients_;

@@ -22,14 +22,14 @@ namespace ray {
 namespace stats {
 
 static void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
-                           const std::vector<opencensus::tags::TagKey> &keys) {
+                           const std::vector<opencensus::tags::TagKey>& keys) {
   // Register global keys.
-  for (const auto &tag : ray::stats::StatsConfig::instance().GetGlobalTags()) {
+  for (const auto& tag : ray::stats::StatsConfig::instance().GetGlobalTags()) {
     view_descriptor = view_descriptor.add_column(tag.first);
   }
 
   // Register custom keys.
-  for (const auto &key : keys) {
+  for (const auto& key : keys) {
     view_descriptor = view_descriptor.add_column(key);
   }
   opencensus::stats::View view(view_descriptor);
@@ -40,16 +40,16 @@ static void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
 /// Stats Config
 ///
 
-StatsConfig &StatsConfig::instance() {
+StatsConfig& StatsConfig::instance() {
   static StatsConfig instance;
   return instance;
 }
 
-void StatsConfig::SetGlobalTags(const TagsType &global_tags) {
+void StatsConfig::SetGlobalTags(const TagsType& global_tags) {
   global_tags_ = global_tags;
 }
 
-const TagsType &StatsConfig::GetGlobalTags() const { return global_tags_; }
+const TagsType& StatsConfig::GetGlobalTags() const { return global_tags_; }
 
 void StatsConfig::SetIsDisableStats(bool disable_stats) {
   is_stats_disabled_ = disable_stats;
@@ -61,13 +61,13 @@ void StatsConfig::SetReportInterval(const absl::Duration interval) {
   report_interval_ = interval;
 }
 
-const absl::Duration &StatsConfig::GetReportInterval() const { return report_interval_; }
+const absl::Duration& StatsConfig::GetReportInterval() const { return report_interval_; }
 
 void StatsConfig::SetHarvestInterval(const absl::Duration interval) {
   harvest_interval_ = interval;
 }
 
-const absl::Duration &StatsConfig::GetHarvestInterval() const {
+const absl::Duration& StatsConfig::GetHarvestInterval() const {
   return harvest_interval_;
 }
 
@@ -78,7 +78,7 @@ bool StatsConfig::IsInitialized() const { return is_initialized_; }
 ///
 /// Metric
 ///
-void Metric::Record(double value, const TagsType &tags) {
+void Metric::Record(double value, const TagsType& tags) {
   if (StatsConfig::instance().IsStatsDisabled()) {
     return;
   }
@@ -97,7 +97,7 @@ void Metric::Record(double value, const TagsType &tags) {
   opencensus::stats::Record({{*measure_, value}}, combined_tags);
 }
 
-void Metric::Record(double value, std::unordered_map<std::string, std::string> &tags) {
+void Metric::Record(double value, std::unordered_map<std::string, std::string>& tags) {
   TagsType tags_pair_vec;
   std::for_each(
       tags.begin(), tags.end(),

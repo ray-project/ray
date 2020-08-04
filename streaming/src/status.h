@@ -28,7 +28,7 @@ enum class StreamingStatus : uint32_t {
   MAX = TailStatus
 };
 
-static inline std::ostream &operator<<(std::ostream &os, const StreamingStatus &status) {
+static inline std::ostream& operator<<(std::ostream& os, const StreamingStatus& status) {
   os << static_cast<std::underlying_type<StreamingStatus>::type>(status);
   return os;
 }

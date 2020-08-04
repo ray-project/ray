@@ -25,7 +25,7 @@ namespace stats {
 /// Interface class for abstract metrics exporter client.
 class MetricExporterClient {
  public:
-  virtual void ReportMetrics(const std::vector<MetricPoint> &points) = 0;
+  virtual void ReportMetrics(const std::vector<MetricPoint>& points) = 0;
   virtual ~MetricExporterClient() = default;
 };
 
@@ -34,7 +34,7 @@ class MetricExporterClient {
 /// use stdout as the default concrete class.
 class StdoutExporterClient : public MetricExporterClient {
  public:
-  void ReportMetrics(const std::vector<MetricPoint> &points) override;
+  void ReportMetrics(const std::vector<MetricPoint>& points) override;
 };
 
 /// The decoration mode is that the user can apply it by configuring different
@@ -49,7 +49,7 @@ class StdoutExporterClient : public MetricExporterClient {
 class MetricExporterDecorator : public MetricExporterClient {
  public:
   MetricExporterDecorator(std::shared_ptr<MetricExporterClient> exporter);
-  virtual void ReportMetrics(const std::vector<MetricPoint> &points);
+  virtual void ReportMetrics(const std::vector<MetricPoint>& points);
 
  private:
   std::shared_ptr<MetricExporterClient> exporter_;
@@ -58,11 +58,11 @@ class MetricExporterDecorator : public MetricExporterClient {
 class MetricsAgentExporter : public MetricExporterDecorator {
  public:
   MetricsAgentExporter(std::shared_ptr<MetricExporterClient> exporter, const int port,
-                       boost::asio::io_service &io_service, const std::string address);
+                       boost::asio::io_service& io_service, const std::string address);
 
   ~MetricsAgentExporter() {}
 
-  void ReportMetrics(const std::vector<MetricPoint> &points) override;
+  void ReportMetrics(const std::vector<MetricPoint>& points) override;
 
  private:
   /// Client to call a metrics agent gRPC server.

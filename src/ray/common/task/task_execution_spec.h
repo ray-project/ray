@@ -25,7 +25,7 @@ class TaskExecutionSpecification : public MessageWrapper<rpc::TaskExecutionSpec>
   /// Construct from protobuf-serialized binary.
   ///
   /// \param serialized_binary Protobuf-serialized binary.
-  explicit TaskExecutionSpecification(const std::string &serialized_binary)
+  explicit TaskExecutionSpecification(const std::string& serialized_binary)
       : MessageWrapper(serialized_binary) {}
 
   /// Get the number of times this task has been forwarded.

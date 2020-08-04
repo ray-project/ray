@@ -20,10 +20,10 @@
 namespace ray {
 
 ActorID ActorManager::RegisterActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                                          const ObjectID &outer_object_id,
-                                          const TaskID &caller_id,
-                                          const std::string &call_site,
-                                          const rpc::Address &caller_address) {
+                                          const ObjectID& outer_object_id,
+                                          const TaskID& caller_id,
+                                          const std::string& call_site,
+                                          const rpc::Address& caller_address) {
   const ActorID actor_id = actor_handle->GetActorID();
   const rpc::Address owner_address = actor_handle->GetOwnerAddress();
   const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
@@ -36,8 +36,8 @@ ActorID ActorManager::RegisterActorHandle(std::unique_ptr<ActorHandle> actor_han
   return actor_id;
 }
 
-const std::unique_ptr<ActorHandle> &ActorManager::GetActorHandle(
-    const ActorID &actor_id) {
+const std::unique_ptr<ActorHandle>& ActorManager::GetActorHandle(
+    const ActorID& actor_id) {
   absl::MutexLock lock(&mutex_);
   auto it = actor_handles_.find(actor_id);
   RAY_CHECK(it != actor_handles_.end())
@@ -46,17 +46,17 @@ const std::unique_ptr<ActorHandle> &ActorManager::GetActorHandle(
   return it->second;
 }
 
-bool ActorManager::CheckActorHandleExists(const ActorID &actor_id) {
+bool ActorManager::CheckActorHandleExists(const ActorID& actor_id) {
   absl::MutexLock lock(&mutex_);
   return actor_handles_.find(actor_id) != actor_handles_.end();
 }
 
 bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                                     const TaskID &caller_id,
-                                     const std::string &call_site,
-                                     const rpc::Address &caller_address,
+                                     const TaskID& caller_id,
+                                     const std::string& call_site,
+                                     const rpc::Address& caller_address,
                                      bool is_detached) {
-  const auto &actor_id = actor_handle->GetActorID();
+  const auto& actor_id = actor_handle->GetActorID();
   const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
   // Detached actor doesn't need ref counting.
   if (!is_detached) {
@@ -72,11 +72,11 @@ bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
 }
 
 bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                                  bool is_owner_handle, const TaskID &caller_id,
-                                  const std::string &call_site,
-                                  const rpc::Address &caller_address,
-                                  const ActorID &actor_id,
-                                  const ObjectID &actor_creation_return_id) {
+                                  bool is_owner_handle, const TaskID& caller_id,
+                                  const std::string& call_site,
+                                  const rpc::Address& caller_address,
+                                  const ActorID& actor_id,
+                                  const ObjectID& actor_creation_return_id) {
   reference_counter_->AddLocalReference(actor_creation_return_id, call_site);
   direct_actor_submitter_->AddActorQueueIfNotExists(actor_id);
   bool inserted;
@@ -95,7 +95,7 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
     if (!RayConfig::instance().gcs_actor_service_enabled()) {
       RAY_CHECK(reference_counter_->SetDeleteCallback(
           actor_creation_return_id,
-          [this, actor_id, is_owner_handle](const ObjectID &object_id) {
+          [this, actor_id, is_owner_handle](const ObjectID& object_id) {
             if (is_owner_handle) {
               // If we own the actor and the actor handle is no longer in scope,
               // terminate the actor. We do not do this if the GCS service is
@@ -126,8 +126,8 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
 }
 
 void ActorManager::WaitForActorOutOfScope(
-    const ActorID &actor_id,
-    std::function<void(const ActorID &)> actor_out_of_scope_callback) {
+    const ActorID& actor_id,
+    std::function<void(const ActorID&)> actor_out_of_scope_callback) {
   absl::MutexLock lock(&mutex_);
   auto it = actor_handles_.find(actor_id);
   if (it == actor_handles_.end()) {
@@ -135,7 +135,7 @@ void ActorManager::WaitForActorOutOfScope(
   } else {
     // GCS actor manager will wait until the actor has been created before polling the
     // owner. This should avoid any asynchronous problems.
-    auto callback = [actor_id, actor_out_of_scope_callback](const ObjectID &object_id) {
+    auto callback = [actor_id, actor_out_of_scope_callback](const ObjectID& object_id) {
       actor_out_of_scope_callback(actor_id);
     };
 
@@ -150,9 +150,9 @@ void ActorManager::WaitForActorOutOfScope(
   }
 }
 
-void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
-                                                const gcs::ActorTableData &actor_data) {
-  const auto &actor_state = gcs::ActorTableData::ActorState_Name(actor_data.state());
+void ActorManager::HandleActorStateNotification(const ActorID& actor_id,
+                                                const gcs::ActorTableData& actor_data) {
+  const auto& actor_state = gcs::ActorTableData::ActorState_Name(actor_data.state());
   RAY_LOG(INFO) << "received notification on actor, state: " << actor_state
                 << ", actor_id: " << actor_id
                 << ", ip address: " << actor_data.address().ip_address()
@@ -179,7 +179,7 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
 std::vector<ObjectID> ActorManager::GetActorHandleIDsFromHandles() {
   absl::MutexLock lock(&mutex_);
   std::vector<ObjectID> actor_handle_ids;
-  for (const auto &handle : actor_handles_) {
+  for (const auto& handle : actor_handles_) {
     auto actor_id = handle.first;
     auto actor_handle_id = ObjectID::ForActorHandle(actor_id);
     actor_handle_ids.push_back(actor_handle_id);

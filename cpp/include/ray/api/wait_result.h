@@ -15,8 +15,8 @@ class WaitResult {
   /// The object id array of unready objects
   std::vector<ObjectID> unready;
   WaitResult(){};
-  WaitResult(std::vector<ObjectID> &&ready_objects,
-             std::vector<ObjectID> &&unready_objects)
+  WaitResult(std::vector<ObjectID>&& ready_objects,
+             std::vector<ObjectID>&& unready_objects)
       : ready(std::move(ready_objects)), unready(std::move(unready_objects)){};
 };
 }  // namespace api

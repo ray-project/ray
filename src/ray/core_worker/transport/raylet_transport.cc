@@ -20,15 +20,15 @@
 namespace ray {
 
 CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
-    const WorkerID &worker_id, std::shared_ptr<raylet::RayletClient> &raylet_client,
-    const TaskHandler &task_handler)
+    const WorkerID& worker_id, std::shared_ptr<raylet::RayletClient>& raylet_client,
+    const TaskHandler& task_handler)
     : worker_id_(worker_id), raylet_client_(raylet_client), task_handler_(task_handler) {}
 
 void CoreWorkerRayletTaskReceiver::HandleAssignTask(
-    const rpc::AssignTaskRequest &request, rpc::AssignTaskReply *reply,
+    const rpc::AssignTaskRequest& request, rpc::AssignTaskReply* reply,
     rpc::SendReplyCallback send_reply_callback) {
   const Task task(request.task());
-  const auto &task_spec = task.GetTaskSpecification();
+  const auto& task_spec = task.GetTaskSpecification();
   RAY_LOG(DEBUG) << "Received task " << task_spec.TaskId() << " is create "
                  << task_spec.IsActorCreationTask();
 
@@ -39,8 +39,8 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
       flatbuffers::GetRoot<protocol::ResourceIdSetInfos>(request.resource_ids().data())
           ->resource_infos();
   for (size_t i = 0; i < resource_infos->size(); ++i) {
-    auto const &fractional_resource_ids = resource_infos->Get(i);
-    auto &acquired_resources =
+    auto const& fractional_resource_ids = resource_infos->Get(i);
+    auto& acquired_resources =
         (*resource_ids)[string_from_flatbuf(*fractional_resource_ids->resource_name())];
 
     size_t num_resource_ids = fractional_resource_ids->resource_ids()->size();

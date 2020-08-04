@@ -28,7 +28,7 @@ DEFINE_string(config_list, "", "The config list of raylet.");
 DEFINE_string(redis_password, "", "The password of redis.");
 DEFINE_bool(retry_redis, false, "Whether we retry to connect to the redis.");
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                          ray::RayLog::ShutDownRayLog, argv[0],
                                          ray::RayLogLevel::INFO, /*log_dir=*/"");
@@ -80,7 +80,7 @@ int main(int argc, char *argv[]) {
   // Destroy the GCS server on a SIGTERM. The pointer to main_service is
   // guaranteed to be valid since this function will run the event loop
   // instead of returning immediately.
-  auto handler = [&main_service, &gcs_server](const boost::system::error_code &error,
+  auto handler = [&main_service, &gcs_server](const boost::system::error_code& error,
                                               int signal_number) {
     RAY_LOG(INFO) << "GCS server received SIGTERM, shutting down...";
     gcs_server.Stop();

@@ -23,7 +23,7 @@
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/core_worker.h"
 
-thread_local JNIEnv *local_env = nullptr;
+thread_local JNIEnv* local_env = nullptr;
 jobject java_task_executor = nullptr;
 
 /// Store Java instances of function descriptor in the cache to avoid unnessesary JNI
@@ -32,7 +32,7 @@ thread_local std::unordered_map<size_t,
                                 std::vector<std::pair<ray::FunctionDescriptor, jobject>>>
     executor_function_descriptor_cache;
 
-inline ray::gcs::GcsClientOptions ToGcsClientOptions(JNIEnv *env,
+inline ray::gcs::GcsClientOptions ToGcsClientOptions(JNIEnv* env,
                                                      jobject gcs_client_options) {
   std::string ip = JavaStringToNativeString(
       env, (jstring)env->GetObjectField(gcs_client_options, java_gcs_client_options_ip));
@@ -43,19 +43,19 @@ inline ray::gcs::GcsClientOptions ToGcsClientOptions(JNIEnv *env,
   return ray::gcs::GcsClientOptions(ip, port, password, /*is_test_client=*/false);
 }
 
-jobject ToJavaArgs(JNIEnv *env, jbooleanArray java_check_results,
-                   const std::vector<std::shared_ptr<ray::RayObject>> &args) {
+jobject ToJavaArgs(JNIEnv* env, jbooleanArray java_check_results,
+                   const std::vector<std::shared_ptr<ray::RayObject>>& args) {
   if (java_check_results == nullptr) {
     // If `java_check_results` is null, it means that `checkByteBufferArguments`
     // failed. In this case, just return null here. The args won't be used anyway.
     return nullptr;
   } else {
-    jboolean *check_results = env->GetBooleanArrayElements(java_check_results, nullptr);
+    jboolean* check_results = env->GetBooleanArrayElements(java_check_results, nullptr);
     size_t i = 0;
     jobject args_array_list = NativeVectorToJavaList<std::shared_ptr<ray::RayObject>>(
         env, args,
-        [check_results, &i](JNIEnv *env,
-                            const std::shared_ptr<ray::RayObject> &native_object) {
+        [check_results, &i](JNIEnv* env,
+                            const std::shared_ptr<ray::RayObject>& native_object) {
           if (*(check_results + (i++))) {
             // If the type of this argument is ByteBuffer, we create a
             // DirectByteBuffer here To avoid data copy.
@@ -72,12 +72,12 @@ jobject ToJavaArgs(JNIEnv *env, jbooleanArray java_check_results,
   }
 }
 
-JNIEnv *GetJNIEnv() {
-  JNIEnv *env = local_env;
+JNIEnv* GetJNIEnv() {
+  JNIEnv* env = local_env;
   if (!env) {
     // Attach the native thread to JVM.
     auto status =
-        jvm->AttachCurrentThreadAsDaemon(reinterpret_cast<void **>(&env), nullptr);
+        jvm->AttachCurrentThreadAsDaemon(reinterpret_cast<void**>(&env), nullptr);
     RAY_CHECK(status == JNI_OK) << "Failed to get JNIEnv. Return code: " << status;
     local_env = env;
   }
@@ -90,36 +90,36 @@ extern "C" {
 #endif
 
 JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
-    JNIEnv *env, jclass, jint workerMode, jstring nodeIpAddress, jint nodeManagerPort,
+    JNIEnv* env, jclass, jint workerMode, jstring nodeIpAddress, jint nodeManagerPort,
     jstring driverName, jstring storeSocket, jstring rayletSocket, jbyteArray jobId,
     jobject gcsClientOptions, jint numWorkersPerProcess, jstring logDir,
     jobject rayletConfigParameters) {
   auto raylet_config = JavaMapToNativeMap<std::string, std::string>(
       env, rayletConfigParameters,
-      [](JNIEnv *env, jobject java_key) {
+      [](JNIEnv* env, jobject java_key) {
         return JavaStringToNativeString(env, (jstring)java_key);
       },
-      [](JNIEnv *env, jobject java_value) {
+      [](JNIEnv* env, jobject java_value) {
         return JavaStringToNativeString(env, (jstring)java_value);
       });
   RayConfig::instance().initialize(raylet_config);
 
   auto task_execution_callback =
-      [](ray::TaskType task_type, const ray::RayFunction &ray_function,
-         const std::unordered_map<std::string, double> &required_resources,
-         const std::vector<std::shared_ptr<ray::RayObject>> &args,
-         const std::vector<ObjectID> &arg_reference_ids,
-         const std::vector<ObjectID> &return_ids,
-         std::vector<std::shared_ptr<ray::RayObject>> *results) {
-        JNIEnv *env = GetJNIEnv();
+      [](ray::TaskType task_type, const ray::RayFunction& ray_function,
+         const std::unordered_map<std::string, double>& required_resources,
+         const std::vector<std::shared_ptr<ray::RayObject>>& args,
+         const std::vector<ObjectID>& arg_reference_ids,
+         const std::vector<ObjectID>& return_ids,
+         std::vector<std::shared_ptr<ray::RayObject>>* results) {
+        JNIEnv* env = GetJNIEnv();
         RAY_CHECK(java_task_executor);
 
         // convert RayFunction
         auto function_descriptor = ray_function.GetFunctionDescriptor();
         size_t fd_hash = function_descriptor->Hash();
-        auto &fd_vector = executor_function_descriptor_cache[fd_hash];
+        auto& fd_vector = executor_function_descriptor_cache[fd_hash];
         jobject ray_function_array_list = nullptr;
-        for (auto &pair : fd_vector) {
+        for (auto& pair : fd_vector) {
           if (pair.first == function_descriptor) {
             ray_function_array_list = pair.second;
             break;
@@ -151,7 +151,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
           std::vector<std::shared_ptr<ray::RayObject>> return_objects;
           JavaListToNativeVector<std::shared_ptr<ray::RayObject>>(
               env, java_return_objects, &return_objects,
-              [](JNIEnv *env, jobject java_native_ray_object) {
+              [](JNIEnv* env, jobject java_native_ray_object) {
                 return JavaNativeRayObjectToNativeRayObject(env, java_native_ray_object);
               });
           std::vector<size_t> data_sizes;
@@ -194,7 +194,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
     absl::MutexLock lock(&mutex);
     int64_t start = current_time_ms();
     if (last_gc_time_ms + 1000 < start) {
-      JNIEnv *env = GetJNIEnv();
+      JNIEnv* env = GetJNIEnv();
       RAY_LOG(INFO) << "Calling System.gc() ...";
       env->CallStaticObjectMethod(java_system_class, java_system_gc);
       last_gc_time_ms = current_time_ms();
@@ -234,21 +234,21 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
 }
 
 JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeRunTaskExecutor(
-    JNIEnv *env, jclass o, jobject javaTaskExecutor) {
+    JNIEnv* env, jclass o, jobject javaTaskExecutor) {
   java_task_executor = javaTaskExecutor;
   ray::CoreWorkerProcess::RunTaskExecutionLoop();
   java_task_executor = nullptr;
 }
 
-JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeShutdown(JNIEnv *env,
+JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeShutdown(JNIEnv* env,
                                                                            jclass o) {
   ray::CoreWorkerProcess::Shutdown();
 }
 
 JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeSetResource(
-    JNIEnv *env, jclass, jstring resourceName, jdouble capacity, jbyteArray nodeId) {
+    JNIEnv* env, jclass, jstring resourceName, jdouble capacity, jbyteArray nodeId) {
   const auto node_id = JavaByteArrayToId<ClientID>(env, nodeId);
-  const char *native_resource_name = env->GetStringUTFChars(resourceName, JNI_FALSE);
+  const char* native_resource_name = env->GetStringUTFChars(resourceName, JNI_FALSE);
 
   auto status = ray::CoreWorkerProcess::GetCoreWorker().SetResource(
       native_resource_name, static_cast<double>(capacity), node_id);
@@ -257,13 +257,13 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeSetResource(
 }
 
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(JNIEnv *env, jclass,
+Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(JNIEnv* env, jclass,
                                                                   jstring actor_name,
                                                                   jboolean global) {
-  const char *native_actor_name = env->GetStringUTFChars(actor_name, JNI_FALSE);
+  const char* native_actor_name = env->GetStringUTFChars(actor_name, JNI_FALSE);
   auto full_name = GetActorFullName(global, native_actor_name);
 
-  const auto *actor_handle =
+  const auto* actor_handle =
       ray::CoreWorkerProcess::GetCoreWorker().GetNamedActorHandle(full_name).first;
   ray::ActorID actor_id;
   if (actor_handle) {
@@ -273,12 +273,12 @@ Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(JNIEnv *env, j
   }
   jbyteArray bytes = env->NewByteArray(actor_id.Size());
   env->SetByteArrayRegion(bytes, 0, actor_id.Size(),
-                          reinterpret_cast<const jbyte *>(actor_id.Data()));
+                          reinterpret_cast<const jbyte*>(actor_id.Data()));
   return bytes;
 }
 
 JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeKillActor(
-    JNIEnv *env, jclass, jbyteArray actorId, jboolean noRestart) {
+    JNIEnv* env, jclass, jbyteArray actorId, jboolean noRestart) {
   auto status = ray::CoreWorkerProcess::GetCoreWorker().KillActor(
       JavaByteArrayToId<ActorID>(env, actorId),
       /*force_kill=*/true, noRestart);
@@ -286,7 +286,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeKillActor(
 }
 
 JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeSetCoreWorker(
-    JNIEnv *env, jclass, jbyteArray workerId) {
+    JNIEnv* env, jclass, jbyteArray workerId) {
   const auto worker_id = JavaByteArrayToId<ray::WorkerID>(env, workerId);
   ray::CoreWorkerProcess::SetCurrentThreadWorkerId(worker_id);
 }

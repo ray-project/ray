@@ -24,26 +24,26 @@
 
 namespace ray {
 
-typedef std::function<std::shared_ptr<PinObjectsInterface>(const std::string &ip_address,
+typedef std::function<std::shared_ptr<PinObjectsInterface>(const std::string& ip_address,
                                                            int port)>
     ObjectPinningClientFactoryFn;
 
-typedef std::function<void(const ObjectID &object_id,
-                           const std::vector<rpc::Address> &raylet_locations)>
+typedef std::function<void(const ObjectID& object_id,
+                           const std::vector<rpc::Address>& raylet_locations)>
     ObjectLookupCallback;
 
 class ObjectRecoveryManager {
  public:
-  ObjectRecoveryManager(const rpc::Address &rpc_address,
+  ObjectRecoveryManager(const rpc::Address& rpc_address,
                         ObjectPinningClientFactoryFn client_factory,
                         std::shared_ptr<PinObjectsInterface> local_object_pinning_client,
-                        std::function<Status(const ObjectID &object_id,
-                                             const ObjectLookupCallback &callback)>
+                        std::function<Status(const ObjectID& object_id,
+                                             const ObjectLookupCallback& callback)>
                             object_lookup,
                         std::shared_ptr<TaskResubmissionInterface> task_resubmitter,
                         std::shared_ptr<ReferenceCounter> reference_counter,
                         std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
-                        std::function<void(const ObjectID &object_id, bool pin_object)>
+                        std::function<void(const ObjectID& object_id, bool pin_object)>
                             reconstruction_failure_callback,
                         bool lineage_reconstruction_enabled)
       : task_resubmitter_(task_resubmitter),
@@ -83,23 +83,23 @@ class ObjectRecoveryManager {
   /// if the object is not recoverable because we do not own it. Note that the
   /// Status::OK value only indicates that the recovery operation has started,
   /// but does not guarantee that the recovery operation is successful.
-  Status RecoverObject(const ObjectID &object_id);
+  Status RecoverObject(const ObjectID& object_id);
 
  private:
   /// Pin a new copy for a lost object from the given locations or, if that
   /// fails, attempt to reconstruct it by resubmitting the task that created
   /// the object.
-  void PinOrReconstructObject(const ObjectID &object_id,
-                              const std::vector<rpc::Address> &locations);
+  void PinOrReconstructObject(const ObjectID& object_id,
+                              const std::vector<rpc::Address>& locations);
 
   /// Pin a new copy for the object at the given location. If that fails, then
   /// try one of the other locations.
-  void PinExistingObjectCopy(const ObjectID &object_id,
-                             const rpc::Address &raylet_address,
-                             const std::vector<rpc::Address> &other_locations);
+  void PinExistingObjectCopy(const ObjectID& object_id,
+                             const rpc::Address& raylet_address,
+                             const std::vector<rpc::Address>& other_locations);
 
   /// Reconstruct an object by resubmitting the task that created it.
-  void ReconstructObject(const ObjectID &object_id);
+  void ReconstructObject(const ObjectID& object_id);
 
   /// Used to resubmit tasks.
   std::shared_ptr<TaskResubmissionInterface> task_resubmitter_;
@@ -117,15 +117,15 @@ class ObjectRecoveryManager {
   std::shared_ptr<PinObjectsInterface> local_object_pinning_client_;
 
   /// Function to lookup an object's locations from the global database.
-  const std::function<Status(const ObjectID &object_id,
-                             const ObjectLookupCallback &callback)>
+  const std::function<Status(const ObjectID& object_id,
+                             const ObjectLookupCallback& callback)>
       object_lookup_;
 
   /// Used to store object values (InPlasmaError) if recovery succeeds.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
 
   /// Callback to call if recovery fails.
-  const std::function<void(const ObjectID &object_id, bool pin_object)>
+  const std::function<void(const ObjectID& object_id, bool pin_object)>
       reconstruction_failure_callback_;
 
   /// Whether lineage reconstruction is enabled. If disabled, then we will try

@@ -72,7 +72,7 @@ inline int64_t current_sys_time_ms() {
 ///
 /// \return The command-line arguments, after processing any escape sequences.
 std::vector<std::string> ParseCommandLine(
-    const std::string &cmdline, CommandLineSyntax syntax = CommandLineSyntax::System);
+    const std::string& cmdline, CommandLineSyntax syntax = CommandLineSyntax::System);
 
 /// A helper function to combine command-line arguments in a platform-compatible manner.
 /// The result of this function is intended to be suitable for the shell used by popen().
@@ -80,14 +80,14 @@ std::vector<std::string> ParseCommandLine(
 /// \param cmdline The command-line arguments to combine.
 ///
 /// \return The command-line string, including any necessary escape sequences.
-std::string CreateCommandLine(const std::vector<std::string> &args,
+std::string CreateCommandLine(const std::vector<std::string>& args,
                               CommandLineSyntax syntax = CommandLineSyntax::System);
 
 /// Converts the given endpoint (such as TCP or UNIX domain socket address) to a string.
 /// \param include_scheme Whether to include the scheme prefix (such as tcp://).
 ///                       This is recommended to avoid later ambiguity when parsing.
 std::string EndpointToUrl(
-    const boost::asio::generic::basic_endpoint<boost::asio::generic::stream_protocol> &ep,
+    const boost::asio::generic::basic_endpoint<boost::asio::generic::stream_protocol>& ep,
     bool include_scheme = true);
 
 /// Parses the endpoint socket address of a URL.
@@ -95,7 +95,7 @@ std::string EndpointToUrl(
 /// For TCP/IP, the endpoint comprises the IP address and port number in the URL.
 /// For UNIX domain sockets, the endpoint comprises the socket path.
 boost::asio::generic::basic_endpoint<boost::asio::generic::stream_protocol>
-ParseUrlEndpoint(const std::string &endpoint, int default_port = 0);
+ParseUrlEndpoint(const std::string& endpoint, int default_port = 0);
 
 class InitShutdownRAII {
  public:
@@ -109,7 +109,7 @@ class InitShutdownRAII {
   /// \param shutdown_func The shutdown function.
   /// \param args The arguments for the init function.
   template <class InitFunc, class... Args>
-  InitShutdownRAII(InitFunc init_func, ShutdownFunc shutdown_func, Args &&... args)
+  InitShutdownRAII(InitFunc init_func, ShutdownFunc shutdown_func, Args&&... args)
       : shutdown_(shutdown_func) {
     init_func(args...);
   }
@@ -139,7 +139,7 @@ using EnumUnorderedMap = std::unordered_map<Key, T, EnumClassHash>;
 /// A helper function to fill random bytes into the `data`.
 /// Warning: this is not fork-safe, we need to re-seed after that.
 template <typename T>
-void FillRandom(T *data) {
+void FillRandom(T* data) {
   RAY_CHECK(data != nullptr);
   auto randomly_seeded_mersenne_twister = []() {
     auto seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();

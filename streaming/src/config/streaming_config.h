@@ -41,17 +41,17 @@ class StreamingConfig {
   uint32_t event_driven_flow_control_interval_ = 1;
 
  public:
-  void FromProto(const uint8_t *, uint32_t size);
+  void FromProto(const uint8_t*, uint32_t size);
 
 #define DECL_GET_SET_PROPERTY(TYPE, NAME, VALUE) \
   TYPE Get##NAME() const { return VALUE; }       \
   void Set##NAME(TYPE value) { VALUE = value; }
 
-  DECL_GET_SET_PROPERTY(const std::string &, WorkerName, worker_name_)
-  DECL_GET_SET_PROPERTY(const std::string &, OpName, op_name_)
+  DECL_GET_SET_PROPERTY(const std::string&, WorkerName, worker_name_)
+  DECL_GET_SET_PROPERTY(const std::string&, OpName, op_name_)
   DECL_GET_SET_PROPERTY(uint32_t, EmptyMessageTimeInterval, empty_message_time_interval_)
   DECL_GET_SET_PROPERTY(streaming::proto::NodeType, NodeType, node_type_)
-  DECL_GET_SET_PROPERTY(const std::string &, JobName, job_name_)
+  DECL_GET_SET_PROPERTY(const std::string&, JobName, job_name_)
   DECL_GET_SET_PROPERTY(uint32_t, WriterConsumedStep, writer_consumed_step_)
   DECL_GET_SET_PROPERTY(uint32_t, ReaderConsumedStep, reader_consumed_step_)
   DECL_GET_SET_PROPERTY(streaming::proto::FlowControlType, FlowControlType,
