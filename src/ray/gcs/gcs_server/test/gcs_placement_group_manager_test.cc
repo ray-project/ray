@@ -78,7 +78,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestBasic) {
   mock_placement_group_scheduler_->placement_groups.pop_back();
 
   gcs_placement_group_manager_->OnPlacementGroupCreationSuccess(placement_group);
-  WaitPendingDone(finished_placement_group_count, 1);
+  WaitForExpectedCount(finished_placement_group_count, 1);
   ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::ALIVE);
 }
 
@@ -102,7 +102,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestSchedulingFailed) {
 
   // Check that the placement_group is in state `ALIVE`.
   gcs_placement_group_manager_->OnPlacementGroupCreationSuccess(placement_group);
-  WaitPendingDone(finished_placement_group_count, 1);
+  WaitForExpectedCount(finished_placement_group_count, 1);
   ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::ALIVE);
 }
 
@@ -120,7 +120,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestGetPlacementGroupIDByName) {
   mock_placement_group_scheduler_->placement_groups.pop_back();
 
   gcs_placement_group_manager_->OnPlacementGroupCreationSuccess(placement_group);
-  WaitPendingDone(finished_placement_group_count, 1);
+  WaitForExpectedCount(finished_placement_group_count, 1);
   ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::ALIVE);
   ASSERT_EQ(
       gcs_placement_group_manager_->GetPlacementGroupIDByName("test_name"),
