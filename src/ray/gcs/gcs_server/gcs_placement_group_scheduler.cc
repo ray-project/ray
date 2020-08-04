@@ -171,7 +171,7 @@ void GcsPlacementGroupScheduler::ReserveResourceFromNode(
         if (bundles->second.empty()) {
           node_to_bundles_when_leasing_.erase(bundles);
         }
-        callback(status);
+        callback(result);
       });
 }
 

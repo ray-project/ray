@@ -59,20 +59,11 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
     thread_io_service_->join();
   }
 
-  void WaitPendingDone(std::atomic<int> &current_count, int expected_count) {
-    auto condition = [&current_count, expected_count]() {
-      return current_count == expected_count;
-    };
-    EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
-  }
-
   std::unique_ptr<std::thread> thread_io_service_;
   boost::asio::io_service io_service_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<MockPlacementGroupScheduler> mock_placement_group_scheduler_;
   std::unique_ptr<gcs::GcsPlacementGroupManager> gcs_placement_group_manager_;
-
-  const std::chrono::milliseconds timeout_ms_{60000};
 };
 
 TEST_F(GcsPlacementGroupManagerTest, TestBasic) {
