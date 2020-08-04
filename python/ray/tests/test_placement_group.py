@@ -11,7 +11,7 @@ import ray.cluster_utils
 
 
 def test_placement_group_pack(ray_start_cluster):
-    @ray.remote(num_cpus=2)
+    @ray.remote(num_cpus=1)
     class Actor(object):
         def __init__(self):
             self.n = 0
@@ -19,23 +19,23 @@ def test_placement_group_pack(ray_start_cluster):
         def value(self):
             return self.n
 
-    @ray.remote(num_cpus=2)
+    @ray.remote(num_cpus=1)
     def f():
-        print("launched")
+        print("launched", ray.get_resource_ids())
         import time
         time.sleep(9999)
 
     cluster = ray_start_cluster
-    num_nodes = 2
+    num_nodes = 1
     for _ in range(num_nodes):
-        cluster.add_node(num_cpus=4)
+        cluster.add_node(num_cpus=8)
     ray.init(address=cluster.address)
 
     placement_group_id = ray.experimental.placement_group(
         name="name", strategy="PACK", bundles=[{
-            "CPU": 2
+            "CPU": 1
         }, {
-            "CPU": 2
+            "CPU": 1
         }])
 
     import time

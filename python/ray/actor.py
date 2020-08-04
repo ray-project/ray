@@ -398,23 +398,22 @@ class ActorClass:
 
         return ActorOptionWrapper()
 
-    def _remote(
-            self,
-            args=None,
-            kwargs=None,
-            num_cpus=None,
-            num_gpus=None,
-            memory=None,
-            object_store_memory=None,
-            resources=None,
-            is_direct_call=None,
-            max_concurrency=None,
-            max_restarts=None,
-            max_task_retries=None,
-            name=None,
-            detached=False,
-            placement_group_id=None,
-            placement_group_bundle_index=-1):
+    def _remote(self,
+                args=None,
+                kwargs=None,
+                num_cpus=None,
+                num_gpus=None,
+                memory=None,
+                object_store_memory=None,
+                resources=None,
+                is_direct_call=None,
+                max_concurrency=None,
+                max_restarts=None,
+                max_task_retries=None,
+                name=None,
+                detached=False,
+                placement_group_id=None,
+                placement_group_bundle_index=-1):
         """Create an actor.
 
         This method allows more flexibility than the remote method because

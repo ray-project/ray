@@ -1178,8 +1178,7 @@ std::unordered_map<std::string, double> AddPlacementGroupConstraint(
   std::unordered_map<std::string, double> new_resources;
   if (placement_group_id != PlacementGroupID::Nil()) {
     for (auto iter = resources.begin(); iter != resources.end(); iter++) {
-      auto new_name =
-          FormatPlacementGroupResource(iter->first, placement_group_id, -1);
+      auto new_name = FormatPlacementGroupResource(iter->first, placement_group_id, -1);
       new_resources[new_name] = iter->second;
       if (bundle_index >= 0) {
         auto index_name =

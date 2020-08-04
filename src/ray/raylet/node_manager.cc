@@ -1062,10 +1062,14 @@ void NodeManager::DispatchTasks(
   for (const auto &it : fair_order) {
     const auto &task_resources =
         TaskSpecification::GetSchedulingClassDescriptor(it->first);
+    RAY_LOG(ERROR) << "CONSIDER " << task_resources.ToString();
     // FIFO order within each class.
     for (const auto &task_id : it->second) {
       const auto &task = local_queues_.GetTaskOfState(task_id, TaskState::READY);
       if (!local_available_resources_.Contains(task_resources)) {
+        RAY_LOG(ERROR) << "Task not feasiable " << task_resources.ToString();
+        RAY_LOG(ERROR) << "local avail resources "
+                       << local_available_resources_.ToString();
         // All the tasks in it.second have the same resource shape, so
         // once the first task is not feasible, we can break out of this loop
         break;
@@ -1748,6 +1752,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
       [this, owner_address, reply, send_reply_callback](
           const std::shared_ptr<void> granted, const std::string &address, int port,
           const WorkerID &worker_id, const ResourceIdSet &resource_ids) {
+        RAY_LOG(ERROR) << "DISPATCH";
         reply->mutable_worker_address()->set_ip_address(address);
         reply->mutable_worker_address()->set_port(port);
         reply->mutable_worker_address()->set_worker_id(worker_id.Binary());
@@ -1769,7 +1774,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
 
         auto reply_failure_handler = [this, worker_id]() {
           if (RayConfig::instance().gcs_actor_service_enabled()) {
-            RAY_LOG(WARNING)
+            RAY_LOG(ERROR)
                 << "Failed to reply to GCS server, because it might have restarted. GCS "
                    "cannot obtain the information of the leased worker, so we need to "
                    "release the leased worker to avoid leakage.";
@@ -1786,14 +1791,14 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
   task.OnSpillbackInstead(
       [reply, task_id, send_reply_callback](const ClientID &spillback_to,
                                             const std::string &address, int port) {
-        RAY_LOG(DEBUG) << "Worker lease request SPILLBACK " << task_id;
+        RAY_LOG(ERROR) << "Worker lease request SPILLBACK " << task_id;
         reply->mutable_retry_at_raylet_address()->set_ip_address(address);
         reply->mutable_retry_at_raylet_address()->set_port(port);
         reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
         send_reply_callback(Status::OK(), nullptr, nullptr);
       });
   task.OnCancellationInstead([reply, task_id, send_reply_callback]() {
-    RAY_LOG(DEBUG) << "Task lease request canceled " << task_id;
+    RAY_LOG(ERROR) << "Task lease request canceled " << task_id;
     reply->set_canceled(true);
     send_reply_callback(Status::OK(), nullptr, nullptr);
   });
@@ -1808,6 +1813,7 @@ void NodeManager::HandleRequestResourceReserve(
   RAY_LOG(DEBUG) << "bundle lease request " << bundle_spec.BundleId().first
                  << bundle_spec.BundleId().second;
   auto resource_ids = ScheduleBundle(cluster_resource_map_, bundle_spec);
+  RAY_LOG(ERROR) << "Reserving resource ids " << resource_ids.ToString();
   if (resource_ids.AvailableResources().size() == 0) {
     reply->set_success(false);
     send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -1833,7 +1839,7 @@ void NodeManager::HandleCancelResourceReserve(
                                                      bundle_spec.Index(), resource.first);
   }
   cluster_resource_map_[self_node_id_].ReturnBundleResources(
-      bundle_spec.PlacementGroupId());
+      bundle_spec.PlacementGroupId(), bundle_spec.Index());
   send_reply_callback(Status::OK(), nullptr, nullptr);
   // Call task dispatch to assign work to the released resources.
   TryLocalInfeasibleTaskScheduling();

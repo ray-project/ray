@@ -167,8 +167,9 @@ class ResourceSet {
   /// This is the inverse of AddBundleResources().
   ///
   /// \param group_id: The placement group id.
+  /// \param bundle_index: The bundle index to return resources for.
   /// \return Void.
-  void ReturnBundleResources(const PlacementGroupID &group_id);
+  void ReturnBundleResources(const PlacementGroupID &group_id, const int bundle_index);
 
   /// \brief Subtract a set of resources from the current set of resources and
   /// check that the post-subtraction result nonnegative. Assumes other
@@ -587,7 +588,8 @@ class SchedulingResources {
   /// This is the inverse of TransferToBundleResources().
   ///
   /// \param group_id: Placement group id to delete resources for.
-  void ReturnBundleResources(const PlacementGroupID &group_id);
+  /// \param bundle_index: The bundle index to return resources for.
+  void ReturnBundleResources(const PlacementGroupID &group_id, const int bundle_index);
 
   /// \brief Delete resource from total, available and load resources.
   ///

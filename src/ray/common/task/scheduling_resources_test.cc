@@ -71,7 +71,41 @@ TEST_F(SchedulingResourcesTest, ReturnBundleResources) {
   resource_capacity.push_back(1.0);
   ResourceSet result_resource(resource_labels, resource_capacity);
   ASSERT_EQ(1, resource_set->IsEqual(result_resource));
-  resource_set->ReturnBundleResources(group_id);
+  resource_set->ReturnBundleResources(group_id, 1);
+  ASSERT_EQ(1, resource_set->IsEqual(resource))
+      << resource_set->ToString() << " vs " << resource.ToString();
+}
+
+TEST_F(SchedulingResourcesTest, MultipleBundlesAddRemove) {
+  PlacementGroupID group_id = PlacementGroupID::FromRandom();
+  std::vector<std::string> resource_labels = {"CPU"};
+  std::vector<double> resource_capacity = {1.0};
+  ResourceSet resource(resource_labels, resource_capacity);
+  resource_set->AddBundleResources(group_id, 1, resource);
+  resource_set->AddBundleResources(group_id, 2, resource);
+  resource_labels = {
+      "CPU_group_" + group_id.Hex(),
+      "CPU_group_1_" + group_id.Hex(),
+      "CPU_group_2_" + group_id.Hex(),
+  };
+  resource_capacity = {2.0, 1.0, 1.0};
+  ResourceSet result_resource(resource_labels, resource_capacity);
+  ASSERT_EQ(1, resource_set->IsEqual(result_resource))
+      << resource_set->ToString() << " vs " << result_resource.ToString();
+
+  // Return group 2.
+  resource_set->ReturnBundleResources(group_id, 2);
+  resource_labels = {
+      "CPU_group_" + group_id.Hex(),
+      "CPU_group_1_" + group_id.Hex(),
+  };
+  resource_capacity = {1.0, 1.0};
+  ResourceSet result_resource2(resource_labels, resource_capacity);
+  ASSERT_EQ(1, resource_set->IsEqual(result_resource2))
+      << resource_set->ToString() << " vs " << result_resource2.ToString();
+
+  // Return group 1.
+  resource_set->ReturnBundleResources(group_id, 1);
   ASSERT_EQ(1, resource_set->IsEqual(resource))
       << resource_set->ToString() << " vs " << resource.ToString();
 }

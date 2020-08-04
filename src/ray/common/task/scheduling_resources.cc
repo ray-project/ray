@@ -232,7 +232,7 @@ void ResourceSet::AddResources(const ResourceSet &other) {
 void ResourceSet::AddBundleResources(const PlacementGroupID &group_id,
                                      const int bundle_index, const ResourceSet &other) {
   for (const auto &resource_pair : other.GetResourceAmountMap()) {
-    // With bundle index (e.g., CPU_group_zzz_i).
+    // With bundle index (e.g., CPU_group_i_zzz).
     const std::string &resource_label =
         FormatPlacementGroupResource(resource_pair.first, group_id, bundle_index);
     const FractionalResourceQuantity &resource_capacity = resource_pair.second;
@@ -245,7 +245,8 @@ void ResourceSet::AddBundleResources(const PlacementGroupID &group_id,
   }
 }
 
-void ResourceSet::ReturnBundleResources(const PlacementGroupID &group_id) {
+void ResourceSet::ReturnBundleResources(const PlacementGroupID &group_id,
+                                        const int bundle_index) {
   absl::flat_hash_map<std::string, FractionalResourceQuantity> to_restore;
   for (auto iter = resource_capacity_.begin(); iter != resource_capacity_.end();) {
     const std::string &bundle_resource_label = iter->first;
@@ -682,8 +683,9 @@ void ResourceIdSet::AddBundleResourceIds(const PlacementGroupID &group_id,
                                          ResourceIds &resource_ids) {
   auto index_name = FormatPlacementGroupResource(resource_name, group_id, bundle_index);
   auto wildcard_name = FormatPlacementGroupResource(resource_name, group_id, -1);
-  available_resources_[index_name] = resource_ids;
-  available_resources_[wildcard_name] = resource_ids;
+  available_resources_[index_name] = available_resources_[index_name].Plus(resource_ids);
+  available_resources_[wildcard_name] =
+      available_resources_[wildcard_name].Plus(resource_ids);
 }
 
 void ResourceIdSet::ReturnBundleResources(const PlacementGroupID &group_id,
@@ -875,9 +877,10 @@ void SchedulingResources::TransferToBundleResources(const PlacementGroupID &grou
   resources_total_.AddBundleResources(group, bundle_index, resource_set);
 }
 
-void SchedulingResources::ReturnBundleResources(const PlacementGroupID &group_id) {
-  resources_available_.ReturnBundleResources(group_id);
-  resources_total_.ReturnBundleResources(group_id);
+void SchedulingResources::ReturnBundleResources(const PlacementGroupID &group_id,
+                                                const int bundle_index) {
+  resources_available_.ReturnBundleResources(group_id, bundle_index);
+  resources_total_.ReturnBundleResources(group_id, bundle_index);
 }
 
 void SchedulingResources::DeleteResource(const std::string &resource_name) {
