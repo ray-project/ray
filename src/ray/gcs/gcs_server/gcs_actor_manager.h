@@ -211,13 +211,12 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// Register actor asynchronously.
   ///
   /// \param request Contains the meta info to create the actor.
-  /// \param callback Will be invoked after the actor is created successfully or be
-  /// invoked immediately if the actor is already registered to `registered_actors_` and
-  /// its state is `ALIVE`.
-  /// \param actor_already_destroyed_callback Will be invoked if actor is destroyed before
-  /// it is flushed to GCS.
-  /// \return Status::Invalid if this is a named actor and an actor with the specified
-  /// name already exists. The callback will not be called in this case.
+  /// \param success_callback Will be invoked after the actor is created successfully or
+  /// be invoked immediately if the actor is already registered to `registered_actors_`
+  /// and its state is `ALIVE`. \param actor_already_destroyed_callback Will be invoked if
+  /// actor is destroyed before it is flushed to GCS. \return Status::Invalid if this is a
+  /// named actor and an actor with the specified name already exists. The callback will
+  /// not be called in this case.
   Status RegisterActor(const rpc::RegisterActorRequest &request,
                        RegisterActorCallback success_callback,
                        RegisterActorCallback actor_already_destroyed_callback);

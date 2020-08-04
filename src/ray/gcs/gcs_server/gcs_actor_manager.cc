@@ -445,17 +445,15 @@ Status GcsActorManager::RegisterActor(
       [this, actor, actor_already_destroyed_callback](const Status &status) {
         // The backend storage is supposed to be reliable, so the status must be ok.
         RAY_CHECK_OK(status);
-        // If an owner dies before this callback is called, the actor could have been
+        // If a creator dies before this callback is called, the actor could have been
         // already destroyed. In this case, we just mark this actor as dead.
         auto registered_actor_it = registered_actors_.find(actor->GetActorID());
         if (registered_actor_it == registered_actors_.end()) {
           auto mutable_actor_table_data = actor->GetMutableActorTableData();
           mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
-          auto actor_table_data =
-              std::make_shared<rpc::ActorTableData>(*mutable_actor_table_data);
           // Make sure to flush the actor state as DEAD to avoid overwriting it.
-          RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(actor->GetActorID(),
-                                                            *actor_table_data, nullptr));
+          RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
+              actor->GetActorID(), *mutable_actor_table_data, nullptr));
           if (actor_already_destroyed_callback != nullptr) {
             actor_already_destroyed_callback(actor);
           }
