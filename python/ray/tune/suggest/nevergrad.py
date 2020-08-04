@@ -137,13 +137,13 @@ class NevergradSearch(Searcher):
         self._nevergrad_opt.tell(ng_trial_info,
                                  self._metric_op * result[self._metric])
 
-    def save(self, checkpoint_dir):
+    def save(self, checkpoint_path):
         trials_object = (self._nevergrad_opt, self._parameters)
-        with open(checkpoint_dir, "wb") as outputFile:
+        with open(checkpoint_path, "wb") as outputFile:
             pickle.dump(trials_object, outputFile)
 
-    def restore(self, checkpoint_dir):
-        with open(checkpoint_dir, "rb") as inputFile:
+    def restore(self, checkpoint_path):
+        with open(checkpoint_path, "rb") as inputFile:
             trials_object = pickle.load(inputFile)
         self._nevergrad_opt = trials_object[0]
         self._parameters = trials_object[1]

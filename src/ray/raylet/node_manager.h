@@ -723,6 +723,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// The time that we last sent a FreeObjects request to other nodes for
   /// objects that have gone out of scope in the application.
   uint64_t last_free_objects_at_ms_;
+  /// The number of heartbeats that we should wait before sending the
+  /// next load report.
+  uint8_t num_heartbeats_before_load_report_;
   /// Initial node manager configuration.
   const NodeManagerConfig initial_config_;
   /// The resources (and specific resource IDs) that are currently available.

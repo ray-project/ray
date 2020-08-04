@@ -43,18 +43,15 @@ class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
-  ray::Status WaitForActorOutOfScope(
+  void WaitForActorOutOfScope(
       const rpc::WaitForActorOutOfScopeRequest &request,
       const rpc::ClientCallback<rpc::WaitForActorOutOfScopeReply> &callback) override {
     callbacks.push_back(callback);
-    return Status::OK();
   }
 
-  ray::Status KillActor(
-      const rpc::KillActorRequest &request,
-      const rpc::ClientCallback<rpc::KillActorReply> &callback) override {
+  void KillActor(const rpc::KillActorRequest &request,
+                 const rpc::ClientCallback<rpc::KillActorReply> &callback) override {
     killed_actors.push_back(ActorID::FromBinary(request.intended_actor_id()));
-    return Status::OK();
   }
 
   bool Reply(Status status = Status::OK()) {

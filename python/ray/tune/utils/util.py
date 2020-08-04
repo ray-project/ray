@@ -137,6 +137,20 @@ class warn_if_slow:
                 now - self.start)
 
 
+class Tee(object):
+    def __init__(self, stream1, stream2):
+        self.stream1 = stream1
+        self.stream2 = stream2
+
+    def write(self, *args, **kwargs):
+        self.stream1.write(*args, **kwargs)
+        self.stream2.write(*args, **kwargs)
+
+    def flush(self, *args, **kwargs):
+        self.stream1.flush(*args, **kwargs)
+        self.stream2.flush(*args, **kwargs)
+
+
 def merge_dicts(d1, d2):
     """
     Args:
