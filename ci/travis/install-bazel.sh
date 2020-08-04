@@ -128,6 +128,7 @@ if [ "${TRAVIS-}" = true ]; then
   # test/build event.
   cat <<EOF >> ~/.bashrc
 bazel_export_log_opt() {
+  mkdir -p /tmp/bazel_event_logs
   echo "--build_event_json_file $(mktemp /tmp/bazel_event_logs/bazel_log.XXXXX)"
 }
 EOF
