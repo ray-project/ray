@@ -165,8 +165,7 @@ class ServeController:
                 continue
 
             router_name = format_actor_name(SERVE_PROXY_NAME,
-                                            self.instance_name,
-                                            node_id)
+                                            self.instance_name, node_id)
             try:
                 router = ray.get_actor(router_name)
             except ValueError:
@@ -244,10 +243,10 @@ class ServeController:
         logger.debug("Writing checkpoint")
         start = time.time()
         checkpoint = pickle.dumps(
-            (self.routes, list(self.routers.keys()), self.backends,
-             self.traffic_policies, self.replicas, self.replicas_to_start,
-             self.replicas_to_stop, self.backends_to_remove,
-             self.endpoints_to_remove))
+            (self.routes, list(
+                self.routers.keys()), self.backends, self.traffic_policies,
+             self.replicas, self.replicas_to_start, self.replicas_to_stop,
+             self.backends_to_remove, self.endpoints_to_remove))
 
         self.kv_store.put(CHECKPOINT_KEY, checkpoint)
         logger.debug("Wrote checkpoint in {:.2f}".format(time.time() - start))
@@ -289,8 +288,7 @@ class ServeController:
 
         for node_id in router_node_ids:
             router_name = format_actor_name(SERVE_PROXY_NAME,
-                                            self.instance_name,
-                                            node_id)
+                                            self.instance_name, node_id)
             self.routers[node_id] = ray.get_actor(router_name)
 
         # Fetch actor handles for all of the backend replicas in the system.
