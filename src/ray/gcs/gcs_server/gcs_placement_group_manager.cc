@@ -110,7 +110,7 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
 }
 
 void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
-    std::shared_ptr<GcsPlacementGroup> placement_group) {
+    const std::shared_ptr<GcsPlacementGroup> &placement_group) {
   RAY_LOG(INFO) << "Successfully created placement group " << placement_group->GetName();
   placement_group->UpdateState(rpc::PlacementGroupTableData::ALIVE);
   auto placement_group_id = placement_group->GetPlacementGroupID();

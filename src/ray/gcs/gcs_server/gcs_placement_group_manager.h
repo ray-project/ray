@@ -142,6 +142,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
       const std::shared_ptr<GcsPlacementGroup> &placement_group);
 
  private:
+  /// Try to create placement group after a short time.
   void RetryCreatingPlacementGroup();
 
   /// The io loop that is used to delay execution of tasks (e.g.,
