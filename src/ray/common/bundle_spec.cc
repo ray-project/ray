@@ -72,8 +72,10 @@ std::string FormatPlacementGroupResource(const std::string &original_resource_na
       original_resource_name, bundle_spec.PlacementGroupId(), bundle_spec.Index());
 }
 
-bool IsBundleIndex(const std::string &resource, PlacementGroupID group_id, const int bundle_index) {
-  return resource.find("_group_" + std::to_string(bundle_index) + "_" + group_id.Hex()) != std::string::npos;
+bool IsBundleIndex(const std::string &resource, PlacementGroupID group_id,
+                   const int bundle_index) {
+  return resource.find("_group_" + std::to_string(bundle_index) + "_" + group_id.Hex()) !=
+         std::string::npos;
 }
 
 std::string GetOriginalResourceName(const std::string &resource) {
