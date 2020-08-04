@@ -337,3 +337,6 @@ RAY_CONFIG(uint32_t, max_tasks_in_flight_per_worker, 1)
 /// The maximum number of resource shapes included in the resource
 /// load reported by each raylet.
 RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)
+
+/// Whether to enable multi tenancy features.
+RAY_CONFIG(bool, enable_multi_tenancy, false)

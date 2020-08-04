@@ -112,6 +112,14 @@ py_test(
 )
 
 py_test(
+    name = "test_multi_tenancy",
+    size = "small",
+    srcs = SRCS + ["test_multi_tenancy.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_component_failures",
     size = "small",
     srcs = SRCS + ["test_component_failures.py"],
@@ -190,6 +198,13 @@ py_test(
     deps = ["//:ray_lib"],
 )
 
+py_test(
+    name = "test_coordinator_server",
+    size = "small",
+    srcs = SRCS + ["test_coordinator_server.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
 
 py_test(
     name = "test_autoscaler_aws",
