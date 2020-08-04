@@ -237,7 +237,7 @@ cc_library(
     linkopts = PLASMA_LINKOPTS,
     strip_include_prefix = "src",
     deps = [
-        ":common_cc_proto",
+        "//src/ray/protobuf:common_cc_proto",
         ":object_manager_fbs",
         ":plasma_fbs",
         ":ray_common",
@@ -1228,7 +1228,7 @@ cc_binary(
     srcs = ["src/ray/object_manager/test/object_manager_test.cc"],
     copts = COPTS,
     deps = [
-        ":common_cc_proto",
+        "//src/ray/protobuf:common_cc_proto",
         ":object_manager",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1240,7 +1240,7 @@ cc_binary(
     srcs = ["src/ray/object_manager/test/object_manager_stress_test.cc"],
     copts = COPTS,
     deps = [
-        ":common_cc_proto",
+        "//src/ray/protobuf:common_cc_proto",
         ":object_manager",
         "@com_google_googletest//:gtest_main",
     ],
