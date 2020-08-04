@@ -302,7 +302,7 @@ matrix:
         - TORCH_VERSION=1.5
         - PYTHONWARNINGS=ignore
       install:
-        - . ./ci/travis/ci.sh init RAY_CI_PYTHON_AFFECTED
+        - . ./ci/travis/ci.sh init RAY_CI_PYTHON_AFFECTED,RAY_CI_TUNE_AFFECTED
       before_script:
         - . ./ci/travis/ci.sh build
       script:
