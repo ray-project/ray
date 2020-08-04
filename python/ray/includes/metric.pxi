@@ -74,7 +74,7 @@ cdef class Gauge(Metric):
             value = 5
             key1= "key1"
             key2 = "key2"
-            
+s
             gauge.record(value, {"tagk1": key1, "tagk2": key2})
     """
     def __init__(self, name, description, unit, tag_keys):
@@ -111,7 +111,7 @@ cdef class Count(Metric):
             value = 5
             key1= "key1"
             key2 = "key2"
-            
+
             count.record(value, {"tagk1": key1, "tagk2": key2})
 
        Count: The count of the number of metric points.
@@ -150,7 +150,7 @@ cdef class Sum(Metric):
             value = 5
             key1= "key1"
             key2 = "key2"
-            
+
             metric_sum.record(value, {"tagk1": key1, "tagk2": key2})
 
        Sum: A sum up of the metric points.
@@ -190,7 +190,7 @@ cdef class Histogram(Metric):
                 ["tagk1"])
             value = 5
             key1= "key1"
-            
+
             histogram.record(value, {"tagk1": key1})
 
        Histogram: Histogram distribution of metric points.
