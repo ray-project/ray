@@ -27,7 +27,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client_);
     gcs_pub_sub_ = std::make_shared<GcsServerMocker::MockGcsPubSub>(redis_client_);
     gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
-        io_service_, io_service_, error_info_accessor_, gcs_pub_sub_, gcs_table_storage_);
+        io_service_, io_service_, gcs_pub_sub_, gcs_table_storage_);
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
     gcs_placement_group_scheduler_ =
@@ -39,7 +39,6 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
 
  protected:
   boost::asio::io_service io_service_;
-  GcsServerMocker::MockedErrorInfoAccessor error_info_accessor_;
   std::shared_ptr<gcs::StoreClient> store_client_;
 
   std::shared_ptr<GcsServerMocker::MockRayletResourceClient> raylet_client_;

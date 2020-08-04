@@ -425,20 +425,6 @@ service StatsGcsService {
   rpc GetAllProfileInfo(GetAllProfileInfoRequest) returns (GetAllProfileInfoReply);
 }
 
-message ReportJobErrorRequest {
-  ErrorTableData error_data = 1;
-}
-
-message ReportJobErrorReply {
-  GcsStatus status = 1;
-}
-
-// Service for error info access.
-service ErrorInfoGcsService {
-  // Report a job error to GCS Service.
-  rpc ReportJobError(ReportJobErrorRequest) returns (ReportJobErrorReply);
-}
-
 message ReportWorkerFailureRequest {
   WorkerTableData worker_failure = 1;
 }

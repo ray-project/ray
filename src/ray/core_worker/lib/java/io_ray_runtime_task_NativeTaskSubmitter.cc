@@ -197,9 +197,11 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSub
 
   std::vector<ObjectID> return_ids;
   // TODO (kfstorm): Allow setting `max_retries` via `CallOptions`.
-  ray::CoreWorkerProcess::GetCoreWorker().SubmitTask(ray_function, task_args,
-                                                     task_options, &return_ids,
-                                                     /*max_retries=*/0);
+  ray::CoreWorkerProcess::GetCoreWorker().SubmitTask(
+      ray_function, task_args, task_options, &return_ids,
+      /*max_retries=*/0,
+      /*placement_options=*/
+      std::pair<ray::PlacementGroupID, int64_t>(ray::PlacementGroupID::Nil(), 0));
 
   // This is to avoid creating an empty java list and boost performance.
   if (return_ids.empty()) {
