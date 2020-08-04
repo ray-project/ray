@@ -227,7 +227,8 @@ int main(int argc, char *argv[]) {
         // Initialize the node manager.
         server.reset(new ray::raylet::Raylet(
             main_service, raylet_socket_name, node_ip_address, redis_address, redis_port,
-            redis_password, node_manager_config, object_manager_config, gcs_client, metrics_export_port));
+            redis_password, node_manager_config, object_manager_config, gcs_client,
+            metrics_export_port));
 
         server->Start();
       }));
