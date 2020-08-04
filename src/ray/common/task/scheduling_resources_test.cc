@@ -81,6 +81,8 @@ TEST_F(SchedulingResourcesTest, MultipleBundlesAddRemove) {
   std::vector<std::string> resource_labels = {"CPU"};
   std::vector<double> resource_capacity = {1.0};
   ResourceSet resource(resource_labels, resource_capacity);
+
+  // Construct resource set containing two bundles.
   resource_set->AddBundleResources(group_id, 1, resource);
   resource_set->AddBundleResources(group_id, 2, resource);
   resource_labels = {
@@ -96,17 +98,18 @@ TEST_F(SchedulingResourcesTest, MultipleBundlesAddRemove) {
   // Return group 2.
   resource_set->ReturnBundleResources(group_id, 2);
   resource_labels = {
+      "CPU",
       "CPU_group_" + group_id.Hex(),
       "CPU_group_1_" + group_id.Hex(),
   };
-  resource_capacity = {1.0, 1.0};
+  resource_capacity = {1.0, 1.0, 1.0};
   ResourceSet result_resource2(resource_labels, resource_capacity);
   ASSERT_EQ(1, resource_set->IsEqual(result_resource2))
       << resource_set->ToString() << " vs " << result_resource2.ToString();
 
   // Return group 1.
   resource_set->ReturnBundleResources(group_id, 1);
-  ASSERT_EQ(1, resource_set->IsEqual(resource))
+  ASSERT_EQ(1, resource_set->IsEqual(ResourceSet({"CPU"}, {2.0})))
       << resource_set->ToString() << " vs " << resource.ToString();
 }
 }  // namespace ray

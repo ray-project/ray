@@ -99,6 +99,9 @@ std::string FormatPlacementGroupResource(const std::string &original_resource_na
 std::string FormatPlacementGroupResource(const std::string &original_resource_name,
                                          const BundleSpecification &bundle_spec);
 
+/// Return whether a formatted resource is a bundle of the given index.
+bool IsBundleIndex(const std::string &resource, PlacementGroupID group_id, const int bundle_index);
+
 /// Return the original resource name of the placement group resource.
 std::string GetOriginalResourceName(const std::string &resource);
 

@@ -1062,14 +1062,10 @@ void NodeManager::DispatchTasks(
   for (const auto &it : fair_order) {
     const auto &task_resources =
         TaskSpecification::GetSchedulingClassDescriptor(it->first);
-    RAY_LOG(ERROR) << "CONSIDER " << task_resources.ToString();
     // FIFO order within each class.
     for (const auto &task_id : it->second) {
       const auto &task = local_queues_.GetTaskOfState(task_id, TaskState::READY);
       if (!local_available_resources_.Contains(task_resources)) {
-        RAY_LOG(ERROR) << "Task not feasiable " << task_resources.ToString();
-        RAY_LOG(ERROR) << "local avail resources "
-                       << local_available_resources_.ToString();
         // All the tasks in it.second have the same resource shape, so
         // once the first task is not feasible, we can break out of this loop
         break;
@@ -1752,7 +1748,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
       [this, owner_address, reply, send_reply_callback](
           const std::shared_ptr<void> granted, const std::string &address, int port,
           const WorkerID &worker_id, const ResourceIdSet &resource_ids) {
-        RAY_LOG(ERROR) << "DISPATCH";
+      RAY_LOG(ERROR) << "DISPATCH";
         reply->mutable_worker_address()->set_ip_address(address);
         reply->mutable_worker_address()->set_port(port);
         reply->mutable_worker_address()->set_worker_id(worker_id.Binary());

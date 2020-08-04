@@ -250,7 +250,10 @@ void ResourceSet::ReturnBundleResources(const PlacementGroupID &group_id,
   absl::flat_hash_map<std::string, FractionalResourceQuantity> to_restore;
   for (auto iter = resource_capacity_.begin(); iter != resource_capacity_.end();) {
     const std::string &bundle_resource_label = iter->first;
-    if (bundle_resource_label.find(group_id.Hex()) != std::string::npos) {
+    // We only consider the indexed resources, ignoring the wildcard resource.
+    // This is because when multiple bundles are created on one node, the quantity
+    // of the wildcard resources contains resources from multiple bundles.
+    if (IsBundleIndex(bundle_resource_label, group_id, bundle_index)) {
       const std::string &resource_label = GetOriginalResourceName(bundle_resource_label);
       const FractionalResourceQuantity &resource_capacity = iter->second;
       to_restore[resource_label] = resource_capacity;
@@ -259,8 +262,14 @@ void ResourceSet::ReturnBundleResources(const PlacementGroupID &group_id,
       iter++;
     }
   }
+  // For each matching resource to restore (e.g., key like CPU, GPU).
   for (const auto &pair : to_restore) {
     resource_capacity_[pair.first] += pair.second;
+    auto wildcard_resource = FormatPlacementGroupResource(pair.first, group_id, -1);
+    resource_capacity_[wildcard_resource] -= pair.second;
+    if (resource_capacity_[wildcard_resource] <= 0) {
+      resource_capacity_.erase(wildcard_resource);
+    }
   }
 }
 
