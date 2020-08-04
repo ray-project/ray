@@ -220,7 +220,7 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
   if (it->second.pending_force_kill) {
     RAY_LOG(INFO) << "Sending KillActor request to actor " << actor_id;
     // It's okay if this fails because this means the worker is already dead.
-    RAY_UNUSED(it->second.rpc_client->KillActor(*it->second.pending_force_kill, nullptr));
+    it->second.rpc_client->KillActor(*it->second.pending_force_kill, nullptr);
     it->second.pending_force_kill.reset();
   }
 
@@ -262,7 +262,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(const ClientQueue &queue,
                  << " actor counter " << counter << " seq no "
                  << request->sequence_number();
   rpc::Address addr(queue.rpc_client->Addr());
-  RAY_UNUSED(queue.rpc_client->PushActorTask(
+  queue.rpc_client->PushActorTask(
       std::move(request), skip_queue,
       [this, addr, task_id, actor_id](Status status, const rpc::PushTaskReply &reply) {
         bool increment_completed_tasks = true;
@@ -282,7 +282,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(const ClientQueue &queue,
           RAY_CHECK(queue != client_queues_.end());
           queue->second.num_completed_tasks++;
         }
-      }));
+      });
 }
 
 bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) const {
