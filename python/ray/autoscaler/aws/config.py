@@ -289,6 +289,10 @@ def _configure_key_pair(config):
 
     ec2 = _resource("ec2", config)
 
+    # Writing the new ssh key to the filesystem fails if the ~/.ssh
+    # directory doesn't already exist.
+    os.makedirs(os.path.expanduser("~/.ssh"), exist_ok=True)
+
     # Try a few times to get or create a good key pair.
     MAX_NUM_KEYS = 30
     for i in range(MAX_NUM_KEYS):

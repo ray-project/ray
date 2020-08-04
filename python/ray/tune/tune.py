@@ -1,10 +1,8 @@
 import logging
-from typing import Sequence
 
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list, Experiment
 from ray.tune.analysis import ExperimentAnalysis
-from ray.tune.result import STDOUT_FILE, STDERR_FILE
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.suggest.suggestion import Searcher, SearchGenerator
 from ray.tune.trial import Trial
@@ -65,31 +63,6 @@ def _report_progress(runner, reporter, done=False):
         sched_debug_str = runner.scheduler_alg.debug_string()
         executor_debug_str = runner.trial_executor.debug_string()
         reporter.report(trials, done, sched_debug_str, executor_debug_str)
-
-
-def _validate_log_to_file(log_to_file):
-    """Validate ``tune.run``'s ``log_to_file`` parameter. Return
-    validated relative stdout and stderr filenames."""
-    if not log_to_file:
-        stdout_file = stderr_file = None
-    elif isinstance(log_to_file, bool) and log_to_file:
-        stdout_file = "stdout"
-        stderr_file = "stderr"
-    elif isinstance(log_to_file, str):
-        stdout_file = stderr_file = log_to_file
-    elif isinstance(log_to_file, Sequence):
-        if len(log_to_file) != 2:
-            raise ValueError(
-                "If you pass a Sequence to `log_to_file` it has to have "
-                "a length of 2 (for stdout and stderr, respectively). The "
-                "Sequence you passed has length {}.".format(len(log_to_file)))
-        stdout_file, stderr_file = log_to_file
-    else:
-        raise ValueError(
-            "You can pass a boolean, a string, or a Sequence of length 2 to "
-            "`log_to_file`, but you passed something else ({}).".format(
-                type(log_to_file)))
-    return stdout_file, stderr_file
 
 
 def run(run_or_experiment,
@@ -289,10 +262,6 @@ def run(run_or_experiment,
     else:
         experiments = [run_or_experiment]
 
-    stdout_file, stderr_file = _validate_log_to_file(log_to_file)
-    config[STDOUT_FILE] = stdout_file
-    config[STDERR_FILE] = stderr_file
-
     for i, exp in enumerate(experiments):
         if not isinstance(exp, Experiment):
             run_identifier = Experiment.register_if_needed(exp)
@@ -308,6 +277,7 @@ def run(run_or_experiment,
                 sync_to_driver=sync_to_driver,
                 trial_name_creator=trial_name_creator,
                 loggers=loggers,
+                log_to_file=log_to_file,
                 checkpoint_freq=checkpoint_freq,
                 checkpoint_at_end=checkpoint_at_end,
                 sync_on_checkpoint=sync_on_checkpoint,

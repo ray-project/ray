@@ -23,36 +23,61 @@ import SortableTableHead, {
 import { getComparator, Order, stableSort } from "../../../common/tableUtils";
 import { StoreState } from "../../../store";
 import { dashboardActions } from "../state";
+import ExpanderRow from "./ExpanderRow";
 import MemoryRowGroup from "./MemoryRowGroup";
 import { MemoryTableRow } from "./MemoryTableRow";
 
-const makeGroupedEntries = (
-  memoryTableGroups: MemoryTableGroups,
-  order: Order,
-  orderBy: keyof MemoryTableEntry | null,
-) => {
-  const comparator = orderBy && getComparator(order, orderBy);
-  return Object.entries(memoryTableGroups).map(([groupKey, group]) => {
-    const sortedEntries = comparator
-      ? stableSort(group.entries, comparator)
-      : group.entries;
+const DEFAULT_ENTRIES_PER_GROUP = 10;
+const DEFAULT_UNGROUPED_ENTRIES = 25;
 
-    return (
-      <MemoryRowGroup
-        groupKey={groupKey}
-        summary={group.summary}
-        entries={sortedEntries}
-        initialExpanded={true}
-      />
-    );
-  });
+type GroupedMemoryRowsProps = {
+  memoryTableGroups: MemoryTableGroups;
+  order: Order;
+  orderBy: keyof MemoryTableEntry | null;
 };
 
-const makeUngroupedEntries = (
-  memoryTableGroups: MemoryTableGroups,
-  order: Order,
-  orderBy: memoryColumnId | null,
-) => {
+const GroupedMemoryRows: React.FC<GroupedMemoryRowsProps> = ({
+  memoryTableGroups,
+  order,
+  orderBy,
+}) => {
+  const comparator = orderBy && getComparator(order, orderBy);
+  return (
+    <React.Fragment>
+      {Object.entries(memoryTableGroups).map(([groupKey, group]) => {
+        const sortedEntries = comparator
+          ? stableSort(group.entries, comparator)
+          : group.entries;
+
+        return (
+          <MemoryRowGroup
+            groupKey={groupKey}
+            summary={group.summary}
+            entries={sortedEntries}
+            initialExpanded={true}
+            initialVisibleEntries={DEFAULT_ENTRIES_PER_GROUP}
+          />
+        );
+      })}
+    </React.Fragment>
+  );
+};
+
+type UngroupedMemoryRowsProps = {
+  memoryTableGroups: MemoryTableGroups;
+  order: Order;
+  orderBy: memoryColumnId | null;
+};
+
+const UngroupedMemoryRows: React.FC<UngroupedMemoryRowsProps> = ({
+  memoryTableGroups,
+  order,
+  orderBy,
+}) => {
+  const [visibleEntries, setVisibleEntries] = useState(
+    DEFAULT_UNGROUPED_ENTRIES,
+  );
+  const onExpand = () => setVisibleEntries(visibleEntries + 10);
   const allEntries = Object.values(memoryTableGroups).reduce(
     (allEntries: Array<MemoryTableEntry>, memoryTableGroup) => {
       const groupEntries = memoryTableGroup.entries;
@@ -64,12 +89,18 @@ const makeUngroupedEntries = (
     orderBy === null
       ? allEntries
       : stableSort(allEntries, getComparator(order, orderBy));
-  return sortedEntries.map((memoryTableEntry, index) => (
-    <MemoryTableRow
-      memoryTableEntry={memoryTableEntry}
-      key={`mem-row-${index}`}
-    />
-  ));
+  return (
+    <React.Fragment>
+      {" "}
+      {sortedEntries.slice(0, visibleEntries).map((memoryTableEntry, index) => (
+        <MemoryTableRow
+          memoryTableEntry={memoryTableEntry}
+          key={index.toString()}
+        />
+      ))}
+      <ExpanderRow onExpand={onExpand} />
+    </React.Fragment>
+  );
 };
 
 type memoryColumnId =
@@ -177,9 +208,19 @@ const MemoryInfo: React.FC<{}> = () => {
               firstColumnEmpty={false}
             />
             <TableBody>
-              {isGrouped
-                ? makeGroupedEntries(memoryTable.group, order, orderBy)
-                : makeUngroupedEntries(memoryTable.group, order, orderBy)}
+              {isGrouped ? (
+                <GroupedMemoryRows
+                  memoryTableGroups={memoryTable.group}
+                  order={order}
+                  orderBy={orderBy}
+                />
+              ) : (
+                <UngroupedMemoryRows
+                  memoryTableGroups={memoryTable.group}
+                  order={order}
+                  orderBy={orderBy}
+                />
+              )}
             </TableBody>
           </Table>
         </React.Fragment>
