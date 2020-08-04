@@ -13,6 +13,7 @@ import tempfile
 import zipfile
 
 from itertools import chain
+from itertools import takewhile
 
 import urllib.error
 import urllib.parse
@@ -104,6 +105,9 @@ if os.getenv("RAY_USE_NEW_GCS") == "on":
         "ray/core/src/credis/redis/src/redis-server" + exe_suffix,
     ]
 
+# If you're adding dependencies for ray extras, please
+# also update the matching section of requirements.txt
+# in this directory
 extras = {
     "debug": [],
     "serve": ["uvicorn", "flask", "blist", "requests"],
@@ -120,9 +124,34 @@ extras["rllib"] = extras["tune"] + [
     "scipy",
 ]
 
-extras["streaming"] = ["msgpack >= 0.6.2"]
+extras["streaming"] = []
 
 extras["all"] = list(set(chain.from_iterable(extras.values())))
+
+# These are the main dependencies for users of ray. This list
+# should be carefully curated. If you change it, please reflect
+# the change in the matching section of requirements.txt
+install_requires = [
+    "aiohttp",
+    "aioredis",
+    "click >= 7.0",
+    "colorama",
+    "colorful",
+    "filelock",
+    "google",
+    "gpustat",
+    "grpcio >= 1.28.1",
+    "jsonschema",
+    "msgpack >= 1.0.0, < 2.0.0",
+    "numpy >= 1.16",
+    "protobuf >= 3.8.0",
+    "py-spy >= 0.2.0",
+    "pyyaml",
+    "requests",
+    "redis >= 3.3.2, < 3.5.0",
+    "opencensus",
+    "prometheus_client >= 0.7.1",
+]
 
 
 def is_native_windows_or_msys():
@@ -255,7 +284,11 @@ def build(build_python, build_java):
 
     version_info = bazel_invoke(subprocess.check_output, ["--version"])
     bazel_version_str = version_info.rstrip().decode("utf-8").split(" ", 1)[1]
-    bazel_version = tuple(map(int, bazel_version_str.split(".")))
+    bazel_version_split = bazel_version_str.split(".")
+    bazel_version_digits = [
+        "".join(takewhile(str.isdigit, s)) for s in bazel_version_split
+    ]
+    bazel_version = tuple(map(int, bazel_version_digits))
     if bazel_version < SUPPORTED_BAZEL:
         logger.warning("Expected Bazel version {} but found {}".format(
             ".".join(map(str, SUPPORTED_BAZEL)), bazel_version_str))
@@ -303,29 +336,6 @@ def find_version(*filepath):
         if version_match:
             return version_match.group(1)
         raise RuntimeError("Unable to find version string.")
-
-
-install_requires = [
-    "aiohttp",
-    "aioredis",
-    "click >= 7.0",
-    "colorama",
-    "colorful",
-    "filelock",
-    "google",
-    "gpustat",
-    "grpcio >= 1.28.1",
-    "jsonschema",
-    "msgpack >= 0.6.0, < 2.0.0",
-    "numpy >= 1.16",
-    "protobuf >= 3.8.0",
-    "py-spy >= 0.2.0",
-    "pyyaml",
-    "requests",
-    "redis >= 3.3.2, < 3.5.0",
-    "opencensus",
-    "prometheus_client >= 0.7.1",
-]
 
 
 def pip_run(build_ext):

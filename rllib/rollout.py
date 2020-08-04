@@ -241,7 +241,6 @@ def create_parser(parser_creator=None):
 
 
 def run(args, parser):
-    config = {}
     # Load configuration from checkpoint file.
     config_dir = os.path.dirname(args.checkpoint)
     config_path = os.path.join(config_dir, "params.pkl")
@@ -255,6 +254,8 @@ def run(args, parser):
             raise ValueError(
                 "Could not find params.pkl in either the checkpoint dir or "
                 "its parent directory AND no config given on command line!")
+        else:
+            config = args.config
 
     # Load the config from pickled.
     else:
@@ -265,10 +266,14 @@ def run(args, parser):
     if "num_workers" in config:
         config["num_workers"] = min(2, config["num_workers"])
 
-    # Merge with `evaluation_config`.
-    evaluation_config = copy.deepcopy(config.get("evaluation_config", {}))
+    # Merge with `evaluation_config` (first try from command line, then from
+    # pkl file).
+    evaluation_config = copy.deepcopy(
+        args.config.get("evaluation_config", config.get(
+            "evaluation_config", {})))
     config = merge_dicts(config, evaluation_config)
-    # Merge with command line `--config` settings.
+    # Merge with command line `--config` settings (if not already the same
+    # anyways).
     config = merge_dicts(config, args.config)
     if not args.env:
         if not config.get("env"):

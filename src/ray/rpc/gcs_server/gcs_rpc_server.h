@@ -38,9 +38,6 @@ namespace rpc {
 
 #define STATS_SERVICE_RPC_HANDLER(HANDLER) RPC_SERVICE_HANDLER(StatsGcsService, HANDLER)
 
-#define ERROR_INFO_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(ErrorInfoGcsService, HANDLER)
-
 #define WORKER_INFO_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(WorkerInfoGcsService, HANDLER)
 
@@ -402,41 +399,6 @@ class StatsGrpcService : public GrpcService {
   StatsGcsServiceHandler &service_handler_;
 };
 
-class ErrorInfoGcsServiceHandler {
- public:
-  virtual ~ErrorInfoGcsServiceHandler() = default;
-
-  virtual void HandleReportJobError(const ReportJobErrorRequest &request,
-                                    ReportJobErrorReply *reply,
-                                    SendReplyCallback send_reply_callback) = 0;
-};
-
-/// The `GrpcService` for `ErrorInfoGcsService`.
-class ErrorInfoGrpcService : public GrpcService {
- public:
-  /// Constructor.
-  ///
-  /// \param[in] handler The service handler that actually handle the requests.
-  explicit ErrorInfoGrpcService(boost::asio::io_service &io_service,
-                                ErrorInfoGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler){};
-
- protected:
-  grpc::Service &GetGrpcService() override { return service_; }
-
-  void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
-    ERROR_INFO_SERVICE_RPC_HANDLER(ReportJobError);
-  }
-
- private:
-  /// The grpc async service object.
-  ErrorInfoGcsService::AsyncService service_;
-  /// The service handler that actually handle the requests.
-  ErrorInfoGcsServiceHandler &service_handler_;
-};
-
 class WorkerInfoGcsServiceHandler {
  public:
   virtual ~WorkerInfoGcsServiceHandler() = default;
@@ -528,7 +490,6 @@ using NodeInfoHandler = NodeInfoGcsServiceHandler;
 using ObjectInfoHandler = ObjectInfoGcsServiceHandler;
 using TaskInfoHandler = TaskInfoGcsServiceHandler;
 using StatsHandler = StatsGcsServiceHandler;
-using ErrorInfoHandler = ErrorInfoGcsServiceHandler;
 using WorkerInfoHandler = WorkerInfoGcsServiceHandler;
 using PlacementGroupInfoHandler = PlacementGroupInfoGcsServiceHandler;
 

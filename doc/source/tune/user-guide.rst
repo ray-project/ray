@@ -151,17 +151,18 @@ When running a hyperparameter search, Tune can automatically and periodically sa
 
 Checkpointing assumes that the model state will be saved to disk on whichever node the Trainable is running on.
 
-To use Tune's checkpointing features, you must expose a ``checkpoint`` argument in the function signature, and call ``tune.make_checkpoint_dir`` and ``tune.save_checkpoint``:
+To use Tune's checkpointing features, you must expose a ``checkpoint_dir`` argument in the function signature, and call ``tune.checkpoint_dir``:
 
 .. code-block:: python
 
+        import os
         import time
         from ray import tune
 
-        def train_func(config, checkpoint=None):
+        def train_func(config, checkpoint_dir=None):
             start = 0
-            if checkpoint:
-                with open(checkpoint) as f:
+            if checkpoint_dir:
+                with open(os.path.join(checkpoint_dir, "checkpoint")) as f:
                     state = json.loads(f.read())
                     start = state["step"] + 1
 
@@ -169,11 +170,10 @@ To use Tune's checkpointing features, you must expose a ``checkpoint`` argument 
                 time.sleep(1)
 
                 # Obtain a checkpoint directory
-                checkpoint_dir = tune.make_checkpoint_dir(step=step)
-                path = os.path.join(checkpoint_dir, "checkpoint")
-                with open(path, "w") as f:
-                    f.write(json.dumps({"step": start}))
-                tune.save_checkpoint(path)
+                with tune.checkpoint_dir(step=step) as checkpoint_dir:
+                    path = os.path.join(checkpoint_dir, "checkpoint")
+                    with open(path, "w") as f:
+                        f.write(json.dumps({"step": start}))
 
                 tune.report(hello="world", ray="tune")
 
@@ -430,6 +430,58 @@ If a string is provided, then it must include replacement fields ``{source}`` an
         sync_process.wait()
 
 By default, syncing occurs every 300 seconds. To change the frequency of syncing, set the ``TUNE_CLOUD_SYNC_S`` environment variable in the driver to the desired syncing period. Note that uploading only happens when global experiment state is collected, and the frequency of this is determined by the ``global_checkpoint_period`` argument. So the true upload period is given by ``max(TUNE_CLOUD_SYNC_S, global_checkpoint_period)``.
+
+.. _tune-log_to_file:
+
+Redirecting stdout and stderr to files
+--------------------------------------
+The stdout and stderr streams are usually printed to the console. For remote actors,
+Ray collects these logs and prints them to the head process, as long as it
+has been initialized with ``log_to_driver=True``, which is the default.
+
+However, if you would like to collect the stream outputs in files for later
+analysis or troubleshooting, Tune offers an utility parameter, ``log_to_file``,
+for this.
+
+By passing ``log_to_file=True`` to ``tune.run()``, stdout and stderr will be logged
+to ``trial_logdir/stdout`` and ``trial_logdir/stderr``, respectively:
+
+.. code-block:: python
+
+    tune.run(
+        trainable,
+        log_to_file=True)
+
+If you would like to specify the output files, you can either pass one filename,
+where the combined output will be stored, or two filenames, for stdout and stderr,
+respectively:
+
+.. code-block:: python
+
+    tune.run(
+        trainable,
+        log_to_file="std_combined.log")
+
+    tune.run(
+        trainable,
+        log_to_file=("my_stdout.log", "my_stderr.log"))
+
+The file names are relative to the trial's logdir. You can pass absolute paths,
+too.
+
+If ``log_to_file`` is set, Tune will automatically register a new logging handler
+for Ray's base logger and log the output to the specified stderr output file.
+
+Setting ``log_to_file`` does not disable logging to the driver. If you would
+like to disable the logs showing up in the driver output (i.e. they should only
+show up in the logfiles), initialize Ray accordingly:
+
+.. code-block:: python
+
+    ray.init(log_to_driver=False)
+    tune.run(
+        trainable,
+        log_to_file=True)
 
 .. _tune-debugging:
 

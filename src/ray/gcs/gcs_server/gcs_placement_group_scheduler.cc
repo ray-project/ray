@@ -127,9 +127,11 @@ void GcsPlacementGroupScheduler::Schedule(
             if (lease_success) {
               rpc::ScheduleData data;
               for (size_t i = 0; i < bundles.size(); i++) {
+                // TODO(ekl) this is a hack to get a string key for the proto
+                auto key = bundles[i]->PlacementGroupId().Hex() + "_" +
+                           std::to_string(bundles[i]->Index());
                 data.mutable_schedule_plan()->insert(
-                    {bundles[i]->BundleIdAsString(),
-                     (*decision)[bundles[i]->BundleId()].Binary()});
+                    {key, (*decision)[bundles[i]->BundleId()].Binary()});
               }
               RAY_CHECK_OK(gcs_table_storage_->PlacementGroupScheduleTable().Put(
                   placement_group->GetPlacementGroupID(), data, [](Status status) {}));
@@ -162,7 +164,7 @@ void GcsPlacementGroupScheduler::ReserveResourceFromNode(
   auto lease_client = GetOrConnectLeaseClient(remote_address);
   RAY_LOG(DEBUG) << "Start leasing resource from node " << node_id << " for bundle "
                  << bundle->BundleId().first << bundle->BundleId().second;
-  auto status = lease_client->RequestResourceReserve(
+  lease_client->RequestResourceReserve(
       *bundle, [this, node_id, bundle, node, callback](
                    const Status &status, const rpc::RequestResourceReserveReply &reply) {
         // TODO(AlisaWu): Add placement group cancel.
@@ -190,11 +192,6 @@ void GcsPlacementGroupScheduler::ReserveResourceFromNode(
           }
         }
       });
-  if (!status.ok()) {
-    rpc::RequestResourceReserveReply reply;
-    reply.set_success(false);
-    callback(status, reply);
-  }
 }
 
 void GcsPlacementGroupScheduler::CancelResourceReserve(
@@ -211,7 +208,7 @@ void GcsPlacementGroupScheduler::CancelResourceReserve(
   remote_address.set_ip_address(node->node_manager_address());
   remote_address.set_port(node->node_manager_port());
   auto return_client = GetOrConnectLeaseClient(remote_address);
-  auto status = return_client->CancelResourceReserve(
+  return_client->CancelResourceReserve(
       *bundle_spec,
       [this, bundle_spec, node](const Status &status,
                                 const rpc::CancelResourceReserveReply &reply) {

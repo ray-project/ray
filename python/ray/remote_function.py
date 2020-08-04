@@ -60,7 +60,8 @@ class RemoteFunction:
 
     def __init__(self, language, function, function_descriptor, num_cpus,
                  num_gpus, memory, object_store_memory, resources,
-                 num_return_vals, max_calls, max_retries):
+                 num_return_vals, max_calls, max_retries, placement_group_id,
+                 placement_group_bundle_index):
         self._language = language
         self._function = function
         self._function_name = (
@@ -138,17 +139,21 @@ class RemoteFunction:
 
         return FuncWrapper()
 
-    def _remote(self,
-                args=None,
-                kwargs=None,
-                num_return_vals=None,
-                is_direct_call=None,
-                num_cpus=None,
-                num_gpus=None,
-                memory=None,
-                object_store_memory=None,
-                resources=None,
-                max_retries=None):
+    def _remote(
+            self,
+            args=None,
+            kwargs=None,
+            num_return_vals=None,
+            is_direct_call=None,
+            num_cpus=None,
+            num_gpus=None,
+            memory=None,
+            object_store_memory=None,
+            resources=None,
+            max_retries=None,
+            placement_group_id=None,
+            # TODO(ekl) set default to -1 once we support -1 as "any index"
+            placement_group_bundle_index=0):
         """Submit the remote function for execution."""
         worker = ray.worker.global_worker
         worker.check_connected()
@@ -184,6 +189,8 @@ class RemoteFunction:
             raise ValueError("Non-direct call tasks are no longer supported.")
         if max_retries is None:
             max_retries = self._max_retries
+        if placement_group_id is None:
+            placement_group_id = ray.PlacementGroupID.nil()
 
         resources = ray.utils.resources_from_resource_arguments(
             self._num_cpus, self._num_gpus, self._memory,
@@ -205,7 +212,8 @@ class RemoteFunction:
                     "cannot be executed locally."
             object_refs = worker.core_worker.submit_task(
                 self._language, self._function_descriptor, list_args,
-                num_return_vals, resources, max_retries)
+                num_return_vals, resources, max_retries, placement_group_id,
+                placement_group_bundle_index)
 
             if len(object_refs) == 1:
                 return object_refs[0]

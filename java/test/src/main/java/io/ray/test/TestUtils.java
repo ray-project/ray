@@ -1,10 +1,12 @@
 package io.ray.test;
 
+import com.google.common.base.Preconditions;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.RayRuntimeProxy;
 import io.ray.runtime.config.RunMode;
+import io.ray.runtime.task.ArgumentsBuilder;
 import java.io.Serializable;
 import java.util.function.Supplier;
 import org.testng.Assert;
@@ -13,7 +15,16 @@ public class TestUtils {
 
   public static class LargeObject implements Serializable {
 
-    public byte[] data = new byte[1024 * 1024];
+    public byte[] data;
+
+    public LargeObject() {
+      this(1024 * 1024);
+    }
+
+    public LargeObject(int size) {
+      Preconditions.checkState(size > ArgumentsBuilder.LARGEST_SIZE_PASS_BY_VALUE);
+      data = new byte[size];
+    }
   }
 
   private static final int WAIT_INTERVAL_MS = 5;
@@ -55,11 +66,12 @@ public class TestUtils {
 
   /**
    * Warm up the cluster to make sure there's at least one idle worker.
-   * <p>
-   * This is needed before calling `wait`. Because, in Travis CI, starting a new worker
-   * process could be slower than the wait timeout.
-   * TODO(hchen): We should consider supporting always reversing a certain number of
-   * idle workers in Raylet's worker pool.
+   * <p/>
+   * This is needed before calling `wait`. Because, in Travis CI, starting a new worker process
+   * could be slower than the wait timeout.
+   * <p/>
+   * TODO(hchen): We should consider supporting always reversing a certain number of idle workers in
+   * Raylet's worker pool.
    */
   public static void warmUpCluster() {
     ObjectRef<String> obj = Ray.task(TestUtils::hi).remote();

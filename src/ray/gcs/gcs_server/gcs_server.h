@@ -98,9 +98,6 @@ class GcsServer {
   /// The stats handler
   virtual std::unique_ptr<rpc::StatsHandler> InitStatsHandler();
 
-  /// The error info handler
-  virtual std::unique_ptr<rpc::ErrorInfoHandler> InitErrorInfoHandler();
-
   /// The worker manager
   virtual std::unique_ptr<GcsWorkerManager> InitGcsWorkerManager();
 
@@ -148,9 +145,6 @@ class GcsServer {
   /// Stats handler and service
   std::unique_ptr<rpc::StatsHandler> stats_handler_;
   std::unique_ptr<rpc::StatsGrpcService> stats_service_;
-  /// Error info handler and service
-  std::unique_ptr<rpc::ErrorInfoHandler> error_info_handler_;
-  std::unique_ptr<rpc::ErrorInfoGrpcService> error_info_service_;
   /// The gcs worker manager
   std::unique_ptr<GcsWorkerManager> gcs_worker_manager_;
   /// Worker info service

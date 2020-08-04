@@ -1100,16 +1100,11 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
 
     # Really we should just subscribe to the errors for this specific job.
     # However, currently all errors seem to be published on the same channel.
-    error_pubsub_channel = str(
-        ray.gcs_utils.TablePubsub.Value("ERROR_INFO_PUBSUB")).encode("ascii")
-    worker.error_message_pubsub_client.subscribe(error_pubsub_channel)
-    # worker.error_message_pubsub_client.psubscribe("*")
+    error_pubsub_channel = ray.gcs_utils.RAY_ERROR_PUBSUB_PATTERN
+    worker.error_message_pubsub_client.psubscribe(error_pubsub_channel)
 
     try:
         # Get the errors that occurred before the call to subscribe.
-        error_messages = ray.errors()
-        for error_message in error_messages:
-            logger.error(error_message)
 
         while True:
             # Exit if we received a signal that we should stop.
@@ -1120,10 +1115,9 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
             if msg is None:
                 threads_stopped.wait(timeout=0.01)
                 continue
-            gcs_entry = ray.gcs_utils.GcsEntry.FromString(msg["data"])
-            assert len(gcs_entry.entries) == 1
+            pubsub_msg = ray.gcs_utils.PubSubMessage.FromString(msg["data"])
             error_data = ray.gcs_utils.ErrorTableData.FromString(
-                gcs_entry.entries[0])
+                pubsub_msg.data)
             job_id = error_data.job_id
             if job_id not in [
                     worker.current_job_id.binary(),
@@ -1774,7 +1768,9 @@ def make_decorator(num_return_vals=None,
                    max_retries=None,
                    max_restarts=None,
                    max_task_retries=None,
-                   worker=None):
+                   worker=None,
+                   placement_group_id=None,
+                   placement_group_bundle_index=0):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
@@ -1789,7 +1785,8 @@ def make_decorator(num_return_vals=None,
             return ray.remote_function.RemoteFunction(
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
                 memory, object_store_memory, resources, num_return_vals,
-                max_calls, max_retries)
+                max_calls, max_retries, placement_group_id,
+                placement_group_bundle_index)
 
         if inspect.isclass(function_or_class):
             if num_return_vals is not None:
@@ -1860,6 +1857,10 @@ def remote(*args, **kwargs):
       number of times that the remote function should be rerun when the worker
       process executing it crashes unexpectedly. The minimum valid value is 0,
       the default is 4 (default), and a value of -1 indicates infinite retries.
+    * **placement_group_id**: the placement group this task belongs to,
+        or None if it doesn't belong to any group.
+    * **placement_group_bundle_index**: the index of the bundle
+        if the task belongs to a placement group.
 
     This can be done as follows:
 
@@ -1924,6 +1925,8 @@ def remote(*args, **kwargs):
             "max_restarts",
             "max_task_retries",
             "max_retries",
+            "placement_group_id",
+            "placement_group_bundle_index",
         ], error_string
 
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None

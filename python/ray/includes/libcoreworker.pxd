@@ -5,6 +5,7 @@
 from libc.stdint cimport int64_t
 from libcpp cimport bool as c_bool
 from libcpp.memory cimport shared_ptr, unique_ptr
+from libcpp.pair cimport pair as c_pair
 from libcpp.string cimport string as c_string
 from libcpp.unordered_map cimport unordered_map
 from libcpp.utility cimport pair
@@ -87,14 +88,15 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,
             const CTaskOptions &options, c_vector[CObjectID] *return_ids,
-            int max_retries)
+            int max_retries,
+            c_pair[CPlacementGroupID, int64_t] placement_options)
         CRayStatus CreateActor(
             const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,
             const CActorCreationOptions &options,
             const c_string &extension_data, CActorID *actor_id)
         CRayStatus CreatePlacementGroup(
-            const CPlacementGroupCreationOptions &options, 
+            const CPlacementGroupCreationOptions &options,
             CPlacementGroupID *placement_group_id)
         void SubmitActorTask(
             const CActorID &actor_id, const CRayFunction &function,

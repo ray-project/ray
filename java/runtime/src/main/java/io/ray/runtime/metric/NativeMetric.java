@@ -26,6 +26,4 @@ class NativeMetric {
 
   public static native void unregisterMetricNative(long gaugePtr);
 
-
-
 }
