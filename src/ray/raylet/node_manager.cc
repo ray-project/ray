@@ -2970,30 +2970,28 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
       rpc::GetObjectStatusRequest request;
       request.set_object_id(required_object_id.Binary());
       request.set_owner_worker_id(owner_addr.worker_id());
-      client->GetObjectStatus(
-          request, [this, required_object_id, owner_addr](
-                       Status status, const rpc::GetObjectStatusReply &reply) {
-            if (!status.ok() ||
-                reply.status() == rpc::GetObjectStatusReply::OUT_OF_SCOPE ||
-                reply.status() == rpc::GetObjectStatusReply::FREED) {
-              // The owner is gone, or the owner replied that the object has
-              // gone out of scope (this is an edge case in the distributed ref
-              // counting protocol where a borrower dies before it can notify
-              // the owner of another borrower), or the object value has been
-              // freed. Store an error in the local plasma store so that an
-              // exception will be thrown when the worker tries to get the
-              // value.
-              rpc::ObjectReference ref;
-              ref.set_object_id(required_object_id.Binary());
-              ref.mutable_owner_address()->CopyFrom(owner_addr);
-              MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {ref},
-                                  JobID::Nil());
-            }
-            // Do nothing if the owner replied that the object is available. The
-            // object manager will continue trying to fetch the object, and this
-            // handler will get triggered again if the object is still
-            // unavailable after another timeout.
-          });
+      client->GetObjectStatus(request, [this, required_object_id, owner_addr](
+                                           Status status,
+                                           const rpc::GetObjectStatusReply &reply) {
+        if (!status.ok() || reply.status() == rpc::GetObjectStatusReply::OUT_OF_SCOPE ||
+            reply.status() == rpc::GetObjectStatusReply::FREED) {
+          // The owner is gone, or the owner replied that the object has
+          // gone out of scope (this is an edge case in the distributed ref
+          // counting protocol where a borrower dies before it can notify
+          // the owner of another borrower), or the object value has been
+          // freed. Store an error in the local plasma store so that an
+          // exception will be thrown when the worker tries to get the
+          // value.
+          rpc::ObjectReference ref;
+          ref.set_object_id(required_object_id.Binary());
+          ref.mutable_owner_address()->CopyFrom(owner_addr);
+          MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {ref}, JobID::Nil());
+        }
+        // Do nothing if the owner replied that the object is available. The
+        // object manager will continue trying to fetch the object, and this
+        // handler will get triggered again if the object is still
+        // unavailable after another timeout.
+      });
     }
   } else {
     // We do not have the owner's address. This is either an actor creation
