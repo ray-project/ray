@@ -35,7 +35,7 @@ public class RayConfig {
   private static final Random RANDOM = new Random();
 
   private static final DateTimeFormatter DATE_TIME_FORMATTER =
-      DateTimeFormatter.ofPattern("YYYY-MM-dd_HH-mm-ss");
+      DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss");
 
   private static final String DEFAULT_TEMP_DIR = "/tmp/ray";
 

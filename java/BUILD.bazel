@@ -128,12 +128,12 @@ java_binary(
 
 java_proto_compile(
     name = "common_java_proto",
-    deps = ["@//:common_proto"],
+    deps = ["@//src/ray/protobuf:common_proto"],
 )
 
 java_proto_compile(
     name = "gcs_java_proto",
-    deps = ["@//:gcs_proto"],
+    deps = ["@//src/ray/protobuf:gcs_proto"],
 )
 
 filegroup(
