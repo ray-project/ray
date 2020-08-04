@@ -156,9 +156,6 @@ class Curiosity(Exploration):
                 'worker_index': self.worker_index
                 }
             )
-#        elif submodule_type != "":
-#            raise NotImplementedError("Called with a sub-exploration module "
-#                                      "we don't support!")
 
 
     def get_exploration_action(self,

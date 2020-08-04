@@ -50,7 +50,6 @@ if __name__ == "__main__":
 
     config = {
         "env": SimpleContextualBandit,
-        "num_workers": 2
     }
 
     results = tune.run(args.run, config=config, stop=stop)
