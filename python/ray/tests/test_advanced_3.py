@@ -203,11 +203,8 @@ def test_logging_to_driver(shutdown_only):
         # It's important to make sure that these print statements occur even
         # without calling sys.stdout.flush() and sys.stderr.flush().
         for i in range(10):
-            # TODO(Alex): This test case really should handle these:
             print(i, end=" ")
             print(100 + i, end=" ", file=sys.stderr)
-            # print(i)
-            # print(100 + i, file=sys.stderr)
 
     captured = {}
     with CaptureOutputAndError(captured):

@@ -417,7 +417,7 @@ class Unbuffered(object):
         return getattr(self.stream, attr)
 
 
-def open_log(path, **kwargs):
+def open_log(path, unbuffered=False, **kwargs):
     """
     Opens the log file at `path`, with the provided kwargs being given to
     `open`.
@@ -427,12 +427,16 @@ def open_log(path, **kwargs):
     kwargs.setdefault("mode", "a")
     kwargs.setdefault("encoding", "utf-8")
     stream = open(path, **kwargs)
-    return Unbuffered(stream)
+    if unbuffered:
+        return Unbuffered(stream)
+    else:
+        return stream
 
 
 def create_and_init_new_worker_log(path, worker_pid):
-    """
-    Opens a path (or creates if necessary) for a log.
+    """Opens or creates and sets up a new worker log file. Note that because we
+    expect to dup the underlying file descriptor, then fdopen it, the python
+    level metadata is not important.
 
     Args:
         path (str): The name/path of the file to be opened.
@@ -440,6 +444,7 @@ def create_and_init_new_worker_log(path, worker_pid):
 
     Returns:
         A file-like object which can be written to.
+
     """
     # TODO (Alex): We should eventually be able to replace this with
     # named-pipes.
