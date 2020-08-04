@@ -1076,7 +1076,7 @@ def start_reporter(redis_address,
     Args:
         redis_address (str): The address of the Redis instance.
         port(int): The port to bind the reporter process.
-        metrics_export_port(int): The port to expose metrics through Prometheus.
+        metrics_export_port(int): The port at which metrics are exposed to.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
@@ -1262,6 +1262,7 @@ def start_raylet(redis_address,
                  object_manager_port=None,
                  redis_password=None,
                  metrics_agent_port=None,
+                 metrics_export_port=None,
                  use_valgrind=False,
                  use_profiler=False,
                  stdout_file=None,
@@ -1298,6 +1299,7 @@ def start_raylet(redis_address,
             on. If set, min_worker_port must also be set.
         redis_password: The password to use when connecting to Redis.
         metrics_agent_port(int): The port where metrics agent is bound to.
+        metrics_export_port(int): The port at which metrics are exposed to.
         use_valgrind (bool): True if the raylet should be started inside
             of valgrind. If this is True, use_profiler must be False.
         use_profiler (bool): True if the raylet should be started inside
@@ -1405,6 +1407,7 @@ def start_raylet(redis_address,
         "--temp_dir={}".format(temp_dir),
         "--session_dir={}".format(session_dir),
         "--metrics-agent-port={}".format(metrics_agent_port),
+        "--metrics_export_port={}".format(metrics_export_port),
     ]
     if config.get("plasma_store_as_thread"):
         # command related to the plasma store

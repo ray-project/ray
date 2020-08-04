@@ -19,7 +19,6 @@ import ray.services
 import ray.utils
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
-from ray.dashboard.util import get_unused_port
 from ray.metrics_agent import MetricsAgent
 
 # Logger for this module. It should be configured at the entry point
@@ -117,14 +116,16 @@ class Reporter:
         redis_client: A client used to communicate with the Redis server.
     """
 
-    def __init__(self, redis_address, port, metrics_export_port, redis_password=None):
+    def __init__(self,
+                 redis_address,
+                 port,
+                 metrics_export_port,
+                 redis_password=None):
         """Initialize the reporter object."""
         self.cpu_counts = (psutil.cpu_count(), psutil.cpu_count(logical=False))
         self.ip = ray.services.get_node_ip_address()
         self.hostname = platform.node()
         self.port = port
-        if not metrics_export_port:
-            metrics_export_port = get_unused_port()
         self.metrics_agent = MetricsAgent(metrics_export_port)
         self.reporter_grpc_server = ReporterServer(self.metrics_agent)
 
@@ -284,7 +285,7 @@ if __name__ == "__main__":
         help="The port to bind the reporter process.")
     parser.add_argument(
         "--metrics-export-port",
-        required=False,
+        required=True,
         type=int,
         help="The port to expose metrics through Prometheus.")
     parser.add_argument(
@@ -310,7 +311,10 @@ if __name__ == "__main__":
     ray.utils.setup_logger(args.logging_level, args.logging_format)
 
     reporter = Reporter(
-        args.redis_address, args.port, args.metrics_export_port, redis_password=args.redis_password)
+        args.redis_address,
+        args.port,
+        args.metrics_export_port,
+        redis_password=args.redis_password)
 
     try:
         reporter.run()

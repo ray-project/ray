@@ -623,9 +623,9 @@ def init(address=None,
             created the object. Arguments to the task will be recursively
             reconstructed. If False, then ray.UnreconstructableError will be
             thrown.
-        _metrics_export_port(int): Port number Ray exposes system metrics through
-            a Prometheus endpoint. It is currently under development, and the API
-            is subject to change.
+        _metrics_export_port(int): Port number Ray exposes system metrics
+            through a Prometheus endpoint. It is currently under active
+            development, and the API is subject to change.
 
     Returns:
         Address information about the started processes.
@@ -794,7 +794,8 @@ def init(address=None,
             load_code_from_local=load_code_from_local,
             _internal_config=_internal_config,
             lru_evict=lru_evict,
-            enable_object_reconstruction=enable_object_reconstruction)
+            enable_object_reconstruction=enable_object_reconstruction,
+            metrics_export_port=_metrics_export_port)
         _global_node = ray.node.Node(
             ray_params,
             head=False,
@@ -1273,20 +1274,11 @@ def connect(node,
 
     worker.core_worker = ray._raylet.CoreWorker(
         (mode == SCRIPT_MODE or mode == LOCAL_MODE),
-        node.plasma_store_socket_name,
-        node.raylet_socket_name,
-        job_id,
-        gcs_options,
-        node.get_logs_dir_path(),
-        node.node_ip_address,
-        node.node_manager_port,
-        node.raylet_ip_address,
-        (mode == LOCAL_MODE),
-        driver_name,
-        log_stdout_file_path,
-        log_stderr_file_path,
-        node.metrics_agent_port
-    )
+        node.plasma_store_socket_name, node.raylet_socket_name, job_id,
+        gcs_options, node.get_logs_dir_path(), node.node_ip_address,
+        node.node_manager_port, node.raylet_ip_address, (mode == LOCAL_MODE),
+        driver_name, log_stdout_file_path, log_stderr_file_path,
+        node.metrics_agent_port)
 
     # Create an object for interfacing with the global state.
     # Note, global state should be intialized after `CoreWorker`, because it

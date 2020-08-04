@@ -89,7 +89,7 @@ class RayParams:
         java_worker_options (list): The command options for Java worker.
         load_code_from_local: Whether load code from local file or from GCS.
         metrics_agent_port(int): The port to bind metrics agent.
-        metrics_export_port(int): The port where a metrics agent exposes metrics
+        metrics_export_port(int): The port at which metrics are exposed to.
             through a Prometheus endpoint.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
@@ -292,6 +292,3 @@ class RayParams:
         if numpy_major <= 1 and numpy_minor < 16:
             logger.warning("Using ray with numpy < 1.16.0 will result in slow "
                            "serialization. Upgrade numpy if using with ray.")
-
-        if self.metrics_export_port is None:
-            self.metrics_export_port = 0
