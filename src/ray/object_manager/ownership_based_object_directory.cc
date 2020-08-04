@@ -48,6 +48,10 @@ rpc::Address GetOwnerAddressFromObjectInfo(
 
 std::shared_ptr<rpc::CoreWorkerClient> OwnershipBasedObjectDirectory::GetClient(
     const rpc::Address &owner_address) {
+  if (owner_address.worker_id() == "") {
+    // If an object does not have owner, return nullptr.
+    return nullptr;
+  }
   WorkerID worker_id = WorkerID::FromBinary(owner_address.worker_id());
   auto it = worker_rpc_clients_.find(worker_id);
   if (it == worker_rpc_clients_.end()) {
@@ -65,6 +69,11 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectAdded(
   WorkerID worker_id = WorkerID::FromBinary(object_info.owner_worker_id);
   rpc::Address owner_address = GetOwnerAddressFromObjectInfo(object_info);
   std::shared_ptr<rpc::CoreWorkerClient> rpc_client = GetClient(owner_address);
+  if (rpc_client == nullptr) {
+    RAY_LOG(WARNING) << "Object " << object_id << " does not have owner. "
+                     << "ReportObjectAdded becomes a no-op.";
+    return Status::OK();
+  }
   rpc::AddObjectLocationOwnerRequest request;
   request.set_intended_worker_id(object_info.owner_worker_id);
   request.set_object_id(object_id.Binary());
@@ -87,6 +96,11 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectRemoved(
   WorkerID worker_id = WorkerID::FromBinary(object_info.owner_worker_id);
   rpc::Address owner_address = GetOwnerAddressFromObjectInfo(object_info);
   std::shared_ptr<rpc::CoreWorkerClient> rpc_client = GetClient(owner_address);
+  if (rpc_client == nullptr) {
+    RAY_LOG(WARNING) << "Object " << object_id << " does not have owner. "
+                     << "ReportObjectRemoved becomes a no-op.";
+    return Status::OK();
+  }
 
   rpc::RemoveObjectLocationOwnerRequest request;
   request.set_intended_worker_id(object_info.owner_worker_id);
@@ -135,6 +149,7 @@ void OwnershipBasedObjectDirectory::SubscriptionCallback(
   rpc::GetObjectLocationsOwnerRequest request;
   request.set_intended_worker_id(worker_id.Binary());
   request.set_object_id(object_id.Binary());
+  // TODO(zhuohan): Fix this infinite loop.
   worker_it->second->GetObjectLocationsOwner(
       request,
       std::bind(&OwnershipBasedObjectDirectory::SubscriptionCallback, this, object_id,
@@ -146,9 +161,13 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
     const rpc::Address &owner_address, const OnLocationsFound &callback) {
   auto it = listeners_.find(object_id);
   if (it == listeners_.end()) {
-    it = listeners_.emplace(object_id, LocationListenerState()).first;
     WorkerID worker_id = WorkerID::FromBinary(owner_address.worker_id());
     std::shared_ptr<rpc::CoreWorkerClient> rpc_client = GetClient(owner_address);
+    if (rpc_client == nullptr) {
+      RAY_LOG(WARNING) << "Object " << object_id << " does not have owner. "
+                       << "SubscribeObjectLocations becomes a no-op.";
+      return Status::OK();
+    }
     rpc::GetObjectLocationsOwnerRequest request;
     request.set_intended_worker_id(owner_address.worker_id());
     request.set_object_id(object_id.Binary());
@@ -156,6 +175,7 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
         request,
         std::bind(&OwnershipBasedObjectDirectory::SubscriptionCallback, this, object_id,
                   worker_id, std::placeholders::_1, std::placeholders::_2));
+    it = listeners_.emplace(object_id, LocationListenerState()).first;
   }
   auto &listener_state = it->second;
 
@@ -163,8 +183,6 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
     return Status::OK();
   }
   listener_state.callbacks.emplace(callback_id, callback);
-  // If we previously received some notifications about the object's locations,
-  // immediately notify the caller of the current known locations.
   return Status::OK();
 }
 
@@ -185,11 +203,19 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
     const ObjectID &object_id, const rpc::Address &owner_address,
     const OnLocationsFound &callback) {
   WorkerID worker_id = WorkerID::FromBinary(owner_address.worker_id());
+  std::shared_ptr<rpc::CoreWorkerClient> rpc_client = GetClient(owner_address);
+  if (rpc_client == nullptr) {
+    RAY_LOG(WARNING) << "Object " << object_id << " does not have owner. "
+                      << "LookupLocations returns an empty list of locations.";
+    io_service_.post([callback, object_id]() {
+        callback(object_id, std::unordered_set<ClientID>()); });
+    return Status::OK();
+  }
 
   rpc::GetObjectLocationsOwnerRequest request;
   request.set_intended_worker_id(owner_address.worker_id());
   request.set_object_id(object_id.Binary());
-  std::shared_ptr<rpc::CoreWorkerClient> rpc_client = GetClient(owner_address);
+
   rpc_client->GetObjectLocationsOwner(
       request, [this, worker_id, object_id, callback](
                    Status status, const rpc::GetObjectLocationsOwnerReply &reply) {
