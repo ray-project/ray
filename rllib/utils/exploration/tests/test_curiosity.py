@@ -52,8 +52,8 @@ class TestCuriosity(unittest.TestCase):
         config["exploration_config"] = {
             "type": "ray.rllib.utils.exploration.curiosity_exploration.Curiosity",
             "forward_net_hiddens": [64],
-            "inverse_net_hiddens": [32],
-            "feature_net_hiddens": [16],
+            "inverse_net_hiddens": [32,4],
+            "feature_net_hiddens": [16,8],
             "feature_dim": 8,
             "forward_activation": "relu",
             "inverse_activation": "relu",
