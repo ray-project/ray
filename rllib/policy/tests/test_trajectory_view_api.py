@@ -102,22 +102,39 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             [[0, 0, 0], [0, 0, 0], [0, 0, 0], [1, 2, 3]])
         # Reset inference registry.
         collector.reset_inference_call()
-        # Collect some experience.
+
+        # Collect some experience and test.
         collector.add_action_reward_next_obs(
             episode_id, agent_id, env_id, False, {
                 SampleBatch.NEXT_OBS: np.array([4.0, 5.0, 6.0]),
                 SampleBatch.ACTIONS: 2, SampleBatch.REWARDS: 0.1,
-                SampleBatch.DONE: False,
+                SampleBatch.DONES: False,
             })
+        input_dict = collector.get_inference_input_dict(view_reqs_model)
+        assert SampleBatch.ACTIONS not in input_dict
+        assert input_dict[SampleBatch.OBS].shape == (4, 3)
+        check(input_dict[SampleBatch.OBS],
+            [[0, 0, 0], [0, 0, 0], [1, 2, 3], [4, 5, 6]])
+        collector.reset_inference_call()
+
         collector.add_action_reward_next_obs(
             episode_id, agent_id, env_id, False, {
-                "new_obs": np.array([7.0, 8.0, 9.0]),
-                "actions": 1, "rewards": 0.1, "done": False,
+                SampleBatch.NEXT_OBS: np.array([7.0, 8.0, 9.0]),
+                SampleBatch.ACTIONS: 2, SampleBatch.REWARDS: 0.1,
+                SampleBatch.DONES: False,
             })
+        input_dict = collector.get_inference_input_dict(view_reqs_model)
+        assert SampleBatch.ACTIONS not in input_dict
+        assert input_dict[SampleBatch.OBS].shape == (4, 3)
+        check(input_dict[SampleBatch.OBS],
+            [[0, 0, 0], [1, 2, 3], [4, 5, 6], [7, 8, 9]])
+        collector.reset_inference_call()
+
         collector.add_action_reward_next_obs(
             episode_id, agent_id, env_id, False, {
-                "new_obs": np.array([4.0, 5.0, 6.0]),
-                "actions": 0, "rewards": -0.1, "done": True,
+                SampleBatch.NEXT_OBS: np.array([10.0, 11.0, 12.0]),
+                SampleBatch.ACTIONS: 2, SampleBatch.REWARDS: 0.1,
+                SampleBatch.DONES: False,
             })
         # Check input_dict again.
         input_dict = collector.get_inference_input_dict(view_reqs_model)

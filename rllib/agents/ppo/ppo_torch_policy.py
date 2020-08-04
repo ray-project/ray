@@ -223,7 +223,7 @@ def setup_mixins(policy, obs_space, action_space, config):
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
-def get_view_requirements_fn(policy):
+def get_vKiew_requirements_fn(policy):
     if hasattr(policy, "view_requirements"):
         return policy.view_requirements
     framestack = policy.config["_use_trajectory_view_api"] and \
