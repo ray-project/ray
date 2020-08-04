@@ -23,9 +23,15 @@ void GcsWorkerManager::HandleReportWorkerFailure(
   const rpc::Address worker_address = request.worker_failure().worker_address();
   const auto worker_id = WorkerID::FromBinary(worker_address.worker_id());
   const auto node_id = ClientID::FromBinary(worker_address.raylet_id());
-  RAY_LOG(WARNING) << "Reporting worker failure, worker id = " << worker_id
-                   << ", node id = " << node_id
-                   << ", address = " << worker_address.ip_address();
+  std::stringstream log_stream;
+  log_stream << "Reporting worker failure, worker id = " << worker_id
+             << ", node id = " << node_id
+             << ", address = " << worker_address.ip_address();
+  if (request.worker_failure().intentional_disconnect()) {
+    RAY_LOG(INFO) << log_stream.str();
+  } else {
+    RAY_LOG(WARNING) << log_stream.str();
+  }
   auto worker_failure_data = std::make_shared<WorkerTableData>();
   worker_failure_data->CopyFrom(request.worker_failure());
   worker_failure_data->set_is_alive(false);

@@ -907,11 +907,12 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
   } else {
     it->second = actor_registration;
   }
-  RAY_LOG(INFO) << "Actor notification received: actor_id = " << actor_id
-                << ", node_manager_id = " << actor_registration.GetNodeManagerId()
-                << ", state = "
-                << ActorTableData::ActorState_Name(actor_registration.GetState())
-                << ", remaining_restarts = " << actor_registration.GetRemainingRestarts();
+  RAY_LOG(DEBUG) << "Actor notification received: actor_id = " << actor_id
+                 << ", node_manager_id = " << actor_registration.GetNodeManagerId()
+                 << ", state = "
+                 << ActorTableData::ActorState_Name(actor_registration.GetState())
+                 << ", remaining_restarts = "
+                 << actor_registration.GetRemainingRestarts();
 
   if (actor_registration.GetState() == ActorTableData::ALIVE) {
     // The actor is now alive (created for the first time or restarted). We can
