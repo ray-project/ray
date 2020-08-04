@@ -142,10 +142,10 @@ def test_placement_group_task_resource_ids(ray_start_cluster):
         placement_group_id=g1, placement_group_bundle_index=0).remote()
     resources = ray.get(o1)
     assert len(resources) == 2, resources
-    assert "CPU_group_" in list(resources.keys())[0], resources
-    assert "CPU_group_" in list(resources.keys())[1], resources
-    assert "CPU_group_0_" in list(resources.keys())[0], resources
-    assert "CPU_group_0_" in list(resources.keys())[1], resources
+    keys = list(resources.keys())
+    assert "CPU_group_" in keys[0], resources
+    assert "CPU_group_" in keys[1], resources
+    assert "CPU_group_0_" in keys[0] or "CPU_group_0_" in keys[1], resources
 
 
 def test_placement_group_hang(ray_start_cluster):
