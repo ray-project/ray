@@ -219,8 +219,9 @@ def test_logging_to_driver(shutdown_only):
     for i in range(10):
         assert str(i) in out_lines
 
-    for i in range(100,110):
+    for i in range(100, 110):
         assert str(i) in err_lines
+
 
 def test_not_logging_to_driver(shutdown_only):
     ray.init(num_cpus=1, log_to_driver=False)
