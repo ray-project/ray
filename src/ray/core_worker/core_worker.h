@@ -119,6 +119,8 @@ struct CoreWorkerOptions {
   int num_workers;
   /// The function to destroy asyncio event and loops.
   std::function<void()> terminate_asyncio_thread;
+  /// Serialized representation of JobConfig.
+  std::string serialized_job_config;
 };
 
 /// Lifecycle management of one or more `CoreWorker` instances in a process.
@@ -584,7 +586,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void SubmitTask(const RayFunction &function,
                   const std::vector<std::unique_ptr<TaskArg>> &args,
                   const TaskOptions &task_options, std::vector<ObjectID> *return_ids,
-                  int max_retries);
+                  int max_retries, PlacementOptions placement_options);
 
   /// Create an actor.
   ///
