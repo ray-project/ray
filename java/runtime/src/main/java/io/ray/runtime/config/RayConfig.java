@@ -3,6 +3,7 @@ package io.ray.runtime.config;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigException;
 import com.typesafe.config.ConfigFactory;
@@ -28,6 +29,8 @@ public class RayConfig {
 
   public static final String DEFAULT_CONFIG_FILE = "ray.default.conf";
   public static final String CUSTOM_CONFIG_FILE = "ray.conf";
+
+  private static int DEFAULT_NUM_JAVA_WORKER_PER_PROCESS = 10;
 
   private static final Random RANDOM = new Random();
 
@@ -90,6 +93,9 @@ public class RayConfig {
 
   public final int numWorkersPerProcess;
 
+  public final List<String> jvmOptionsForJavaWorker;
+  public final Map<String, String> workerEnv;
+
   private void validate() {
     if (workerMode == WorkerType.WORKER) {
       Preconditions.checkArgument(redisAddress != null,
@@ -141,6 +147,17 @@ public class RayConfig {
       this.jobId = JobId.NIL;
     }
 
+    // jvm options for java workers of this job.
+    jvmOptionsForJavaWorker = config.getStringList("ray.job.jvm-options");
+
+    ImmutableMap.Builder<String, String> workerEnvBuilder = ImmutableMap.builder();
+    Config workerEnvConfig = config.getConfig("ray.job.worker-env");
+    if (workerEnvConfig != null) {
+      for (Map.Entry<String, ConfigValue> entry : workerEnvConfig.entrySet()) {
+        workerEnvBuilder.put(entry.getKey(), workerEnvConfig.getString(entry.getKey()));
+      }
+    }
+    workerEnv = workerEnvBuilder.build();
     updateSessionDir();
     // Object store configurations.
     objectStoreSize = config.getBytes("ray.object-store.size");
@@ -206,7 +223,22 @@ public class RayConfig {
       jobResourcePath = null;
     }
 
-    numWorkersPerProcess = config.getInt("ray.raylet.config.num_workers_per_process_java");
+    boolean enableMultiTenancy = false;
+    if (config.hasPath("ray.raylet.config.enable_multi_tenancy")) {
+      enableMultiTenancy =
+          Boolean.valueOf(config.getString("ray.raylet.config.enable_multi_tenancy"));
+    }
+
+    if (!enableMultiTenancy) {
+      numWorkersPerProcess = config.getInt("ray.raylet.config.num_workers_per_process_java");
+    } else {
+      final int localNumWorkersPerProcess = config.getInt("ray.job.num-java-workers-per-process");
+      if (localNumWorkersPerProcess <= 0) {
+        numWorkersPerProcess = DEFAULT_NUM_JAVA_WORKER_PER_PROCESS;
+      } else {
+        numWorkersPerProcess = localNumWorkersPerProcess;
+      }
+    }
 
     // Validate config.
     validate();

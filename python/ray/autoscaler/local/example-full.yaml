@@ -38,6 +38,10 @@ provider:
     type: local
     head_ip: YOUR_HEAD_NODE_HOSTNAME
     worker_ips: [WORKER_NODE_1_HOSTNAME, WORKER_NODE_2_HOSTNAME, ... ]
+    # Optional when running automatic cluster management on prem. If you use a coordinator server,
+    # then you can launch multiple autoscaling clusters on the same set of machines, and the coordinator
+    # will assign individual nodes to clusters as needed.
+    #    coordinator_address: "<host>:<port>"
 
 # How Ray will authenticate with newly launched nodes.
 auth:

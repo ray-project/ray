@@ -36,6 +36,8 @@ DEFINE_int32(min_worker_port, 0,
 DEFINE_int32(max_worker_port, 0,
              "The highest port that workers' gRPC servers will bind on.");
 DEFINE_int32(num_initial_workers, 0, "Number of initial workers.");
+DEFINE_int32(num_initial_python_workers_for_first_job, 0,
+             "Number of initial Python workers for the first job.");
 DEFINE_int32(maximum_startup_concurrency, 1, "Maximum startup concurrency");
 DEFINE_string(static_resource_list, "", "The static resource list of this node.");
 DEFINE_string(config_list, "", "The raylet config list of this node.");
@@ -71,6 +73,8 @@ int main(int argc, char *argv[]) {
   const int min_worker_port = static_cast<int>(FLAGS_min_worker_port);
   const int max_worker_port = static_cast<int>(FLAGS_max_worker_port);
   const int num_initial_workers = static_cast<int>(FLAGS_num_initial_workers);
+  const int num_initial_python_workers_for_first_job =
+      static_cast<int>(FLAGS_num_initial_python_workers_for_first_job);
   const int maximum_startup_concurrency =
       static_cast<int>(FLAGS_maximum_startup_concurrency);
   const std::string static_resource_list = FLAGS_static_resource_list;
@@ -160,6 +164,8 @@ int main(int argc, char *argv[]) {
         node_manager_config.node_manager_address = node_ip_address;
         node_manager_config.node_manager_port = node_manager_port;
         node_manager_config.num_initial_workers = num_initial_workers;
+        node_manager_config.num_initial_python_workers_for_first_job =
+            num_initial_python_workers_for_first_job;
         node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;
         node_manager_config.min_worker_port = min_worker_port;
         node_manager_config.max_worker_port = max_worker_port;
