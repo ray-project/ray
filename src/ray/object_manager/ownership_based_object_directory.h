@@ -74,8 +74,11 @@ class OwnershipBasedObjectDirectory : public ObjectDirectory {
   /// Also includes the number of inflight requests to each worker - when this
   /// reaches zero, the client will be deleted and a new one will need to be created
   /// for any subsequent requests.
-  absl::flat_hash_map<WorkerID, std::pair<std::unique_ptr<rpc::CoreWorkerClient>, size_t>>
+  absl::flat_hash_map<WorkerID, std::shared_ptr<rpc::CoreWorkerClient>>
       worker_rpc_clients_;
+
+  /// Get or create the rpc client in the worker_rpc_clients.
+  std::shared_ptr<rpc::CoreWorkerClient> GetClient(const rpc::Address &owner_address);
 
   /// Internal callback function used by SubscribeObjectLocations.
   void SubscriptionCallback(ObjectID object_id, WorkerID worker_id, Status status,
