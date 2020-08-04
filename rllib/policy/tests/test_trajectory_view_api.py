@@ -1,9 +1,13 @@
+import numpy as np
 import unittest
 
 import ray
 import ray.rllib.agents.ppo as ppo
+from ray.rllib.evaluation.rollout_sample_collector import \
+    RolloutSampleCollector
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.test_utils import framework_iterator
+from ray.rllib.policy.view_requirement import ViewRequirement
+from ray.rllib.utils.test_utils import check, framework_iterator
 
 
 class TestTrajectoryViewAPI(unittest.TestCase):
@@ -73,6 +77,50 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                     assert view_req_policy[key].data_col == SampleBatch.OBS
                     assert view_req_policy[key].shift == 1
             trainer.stop()
+
+    def test_atari_frame_stacking(self):
+        """Test whether trajectory view API supports Atari frame-stacking.
+        """
+        agent_id = 0
+        episode_id = 1234
+        env_id = 0
+        view_reqs_model = {
+            "obs": ViewRequirement(shift=[-3, -2, -1, 0])
+        }
+        #policy_id = "pol0"
+        collector = RolloutSampleCollector(
+            num_agents=10, num_timesteps=5, time_major=False,
+            shift_before=3, shift_after=0)
+        # Create a trajectory for some agent.
+        obs = np.array([1.0, 2.0, 3.0])
+        collector.add_init_obs(episode_id, agent_id, env_id, 0, obs)
+        # Get input_dict for forward pass.
+        input_dict = collector.get_inference_input_dict(view_reqs_model)
+        assert SampleBatch.OBS in input_dict
+        assert input_dict[SampleBatch.OBS].shape == (4, 3)
+        check(input_dict[SampleBatch.OBS],
+            [[0, 0, 0], [0, 0, 0], [0, 0, 0], [1, 2, 3]])
+        # Reset inference registry.
+        collector.reset_inference_call()
+        # Collect some experience.
+        collector.add_action_reward_next_obs(
+            episode_id, agent_id, env_id, False, {
+                SampleBatch.NEXT_OBS: np.array([4.0, 5.0, 6.0]),
+                SampleBatch.ACTIONS: 2, SampleBatch.REWARDS: 0.1,
+                SampleBatch.DONE: False,
+            })
+        collector.add_action_reward_next_obs(
+            episode_id, agent_id, env_id, False, {
+                "new_obs": np.array([7.0, 8.0, 9.0]),
+                "actions": 1, "rewards": 0.1, "done": False,
+            })
+        collector.add_action_reward_next_obs(
+            episode_id, agent_id, env_id, False, {
+                "new_obs": np.array([4.0, 5.0, 6.0]),
+                "actions": 0, "rewards": -0.1, "done": True,
+            })
+        # Check input_dict again.
+        input_dict = collector.get_inference_input_dict(view_reqs_model)
 
 
 if __name__ == "__main__":

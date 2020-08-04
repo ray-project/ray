@@ -4,7 +4,7 @@ from typing import Dict, Optional
 
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.types import AgentID, EpisodeID, TensorType
+from ray.rllib.utils.types import AgentID, EnvID, EpisodeID, TensorType
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -20,7 +20,7 @@ class RolloutSampleCollector:
                  num_agents: Optional[int] = None,
                  num_timesteps: Optional[int] = None,
                  time_major: bool = True,
-                 shift_before=1,
+                 shift_before=0,
                  shift_after=0,
                  policy_id=None):
         """Initializes a ... object.
@@ -33,7 +33,7 @@ class RolloutSampleCollector:
         self.time_major = time_major
         #assert num_timesteps, \
         #    "Only supports RNN style PolicyTrajectories for now!"
-        self.shift_before = shift_before
+        self.shift_before = shift_before + 1
         self.shift_after = shift_after
 
         # The offset on the agent dim to start the next SampleBatch build from.
@@ -65,7 +65,7 @@ class RolloutSampleCollector:
         self.agent_key_to_forward_pass_index = {}
 
     def add_init_obs(self, episode_id: EpisodeID, agent_id: AgentID,
-                     chunk_num: int, init_obs: TensorType) -> None:
+                     env_id: int, chunk_num: int, init_obs: TensorType) -> None:
         """Adds a single initial observation (after env.reset()) to the buffer.
 
         #Stores it in self.initial_obs.
@@ -94,8 +94,13 @@ class RolloutSampleCollector:
                 init_obs
         self.agent_key_to_timestep[agent_key] = self.shift_before
 
+        self._add_to_next_inference_call(
+            agent_key, env_id, agent_slot, self.shift_before-1)
+
     def add_action_reward_next_obs(self, episode_id: EpisodeID,
                                    agent_id: AgentID,
+                                   env_id: EnvID,
+                                   agent_done: bool,
                                    values: Dict[str, TensorType]) -> None:
         """Add the given dictionary (row) of values to this batch.
 
@@ -104,7 +109,9 @@ class RolloutSampleCollector:
                 values for.
             agent_id (AgentID): Unique id for the agent we are adding the
                 values for.
-            policy_id (PolicyID): Unique id for policy controlling the agent.
+            agent_done (bool): Whether next obs should not be used for an
+                upcoming inference call. Default: False = next-obs should be
+                used for upcoming inference.
             values (Dict[str, TensorType]): Data dict (interpreted as a single
                 row) to be added to buffer. Must contain keys:
                 SampleBatch.ACTIONS, REWARDS, DONES, and NEXT_OBS.
@@ -139,6 +146,10 @@ class RolloutSampleCollector:
 
         self.timesteps_since_last_reset += 1
 
+        if not agent_done:
+            self._add_to_next_inference_call(
+                agent_key, env_id, agent_slot, ts)
+
     def next_agent_slot(self):
         self.agent_slot_cursor += 1
         if self.agent_slot_cursor >= self.num_agents:
@@ -167,23 +178,24 @@ class RolloutSampleCollector:
         self.next_agent_slot()
         self.agent_key_to_timestep[new_agent_key] = self.shift_before
 
-    def add_to_forward_pass(self, agent_id, episode_id, env_id):
-        agent_key = (agent_id, episode_id,
-                     self.agent_key_to_chunk_num[(agent_id, episode_id)])
-        b = self.agent_key_to_slot[agent_key]
-        t = self.agent_key_to_timestep[agent_key]
+    def _add_to_next_inference_call(
+            self, agent_key, env_id, agent_slot, timestep):
+        #agent_key = (agent_id, episode_id,
+        #             self.agent_key_to_chunk_num[(agent_id, episode_id)])
+        #agent_slot = self.agent_key_to_slot[agent_key]
+        #timestep = self.agent_key_to_timestep[agent_key]
         idx = self.forward_pass_size
-        self.forward_pass_index_to_agent_info[idx] = (agent_id, episode_id,
-                                                      env_id)
+        self.forward_pass_index_to_agent_info[idx] = (
+            agent_key[0], agent_key[1], env_id)
         self.agent_key_to_forward_pass_index[agent_key[:2]] = idx
         if self.forward_pass_size == 0:
             self.forward_pass_indices[0].clear()
             self.forward_pass_indices[1].clear()
-        self.forward_pass_indices[0].append(t)
-        self.forward_pass_indices[1].append(b)
+        self.forward_pass_indices[0].append(timestep)
+        self.forward_pass_indices[1].append(agent_slot)
         self.forward_pass_size += 1
 
-    def reset_forward_pass(self):
+    def reset_inference_call(self):
         self.forward_pass_size = 0
 
     def get_train_sample_batch_and_reset(self, model) -> SampleBatch:
@@ -270,7 +282,7 @@ class RolloutSampleCollector:
 
         return batch
 
-    def get_trajectory_view(self, view_reqs) -> Dict[str, TensorType]:
+    def get_inference_input_dict(self, view_reqs) -> Dict[str, TensorType]:
         """Returns an input_dict for a Model's forward pass given our data.
 
         Args:
@@ -286,24 +298,26 @@ class RolloutSampleCollector:
         # Construct the view dict.
         view = {}
         for view_col, view_req in view_reqs.items():
-            # Skip columns that do not need to be included for sampling.
-            if not view_req.sampling:
-                continue
             # Create the batch of data from the different buffers.
             data_col = view_req.data_col or view_col
             if data_col not in self.buffers:
                 self._build_buffers({data_col: view_req.space.sample()})
 
             # For OBS, indices must be shifted by -1.
-            if data_col == SampleBatch.OBS:
-                t = self.forward_pass_indices[0]
-                indices = (list(np.array(t) - self.shift_before), self.forward_pass_indices[1])
-            else:
-                indices = self.forward_pass_indices
+            #if data_col == SampleBatch.OBS:
+            #    t = self.forward_pass_indices[0]
+            #    indices = (list(np.array(t) - 1), self.forward_pass_indices[1])
+            #else:
+            indices = self.forward_pass_indices
             if self.time_major:
                 view[view_col] = self.buffers[data_col][indices]
             else:
-                view[view_col] = self.buffers[data_col][indices[1], indices[0]]
+                if isinstance(view_req.shift, (list, tuple)):
+                    time_indices = np.array(view_req.shift) + np.array(indices[0])
+                    view[view_col] = self.buffers[data_col][
+                        indices[1], time_indices]
+                else:
+                    view[view_col] = self.buffers[data_col][indices[1], indices[0]]
 
         return view
 

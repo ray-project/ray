@@ -1005,7 +1005,7 @@ class RolloutWorker(ParallelIteratorWorker):
             # Tf.
             if policy_config["framework"] in ["tf2", "tf", "tfe"]:
                 assert tf1
-                if policy_config["framework"] == "tfe":
+                if policy_config["framework"] in ["tf2", "tfe"]:
                     assert tf1.executing_eagerly()
                     if hasattr(cls, "as_eager"):
                         cls = cls.as_eager()

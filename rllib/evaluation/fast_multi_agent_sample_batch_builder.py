@@ -9,7 +9,8 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils import force_list
 from ray.rllib.utils.debug import summarize
-from ray.rllib.utils.types import AgentID, EpisodeID, PolicyID, TensorType
+from ray.rllib.utils.types import AgentID, EnvID, EpisodeID, PolicyID, \
+    TensorType
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
@@ -108,8 +109,13 @@ class _FastMultiAgentSampleBatchBuilder:
 
         return self.total() > 0
 
-    def add_init_obs(self, episode_id: EpisodeID, agent_id: AgentID,
-                     policy_id: PolicyID, obs: TensorType) -> None:
+    def add_init_obs(
+            self,
+            episode_id: EpisodeID,
+            agent_id: AgentID,
+            env_id: EnvID,
+            policy_id: PolicyID,
+            obs: TensorType) -> None:
         """Add the given dictionary (row) of values to this batch.
 
         Args:
@@ -128,11 +134,16 @@ class _FastMultiAgentSampleBatchBuilder:
 
         # Add initial obs to Trajectory.
         self.rollout_sample_collectors[policy_id].add_init_obs(
-            episode_id, agent_id, chunk_num=0, init_obs=obs)
+            episode_id, agent_id, env_id, chunk_num=0, init_obs=obs)
 
-    def add_action_reward_next_obs(self, episode_id: EpisodeID,
-                                   agent_id: AgentID, policy_id: PolicyID,
-                                   values: Dict[str, TensorType]) -> None:
+    def add_action_reward_next_obs(
+            self,
+            episode_id: EpisodeID,
+            agent_id: AgentID,
+            env_id: EnvID,
+            policy_id: PolicyID,
+            agent_done: bool,
+            values: Dict[str, TensorType]) -> None:
         """Add the given dictionary (row) of values to this batch.
 
         Args:
@@ -157,7 +168,7 @@ class _FastMultiAgentSampleBatchBuilder:
 
         # Add action/reward/next-obs (and other data) to Trajectory.
         self.rollout_sample_collectors[policy_id].add_action_reward_next_obs(
-            episode_id, agent_id, values)
+            episode_id, agent_id, env_id, agent_done, values)
 
     def postprocess_batches_so_far(
             self, episode: Optional[MultiAgentEpisode] = None) -> None:
