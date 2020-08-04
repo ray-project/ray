@@ -1,9 +1,62 @@
 # flake8: noqa
 """
-Combining Ray Tune selection with Ray Serve model serving
-=========================================================
-"""
+Model selection and serving with Ray Tune and Ray Serve
+=======================================================
+A machine learning workflow can be quite simple: You decide on
+the objective you're trying to solve, collect and annotate the
+data, and build a model to hopefully solve your problem. But
+usually the work is not over yet. First, you would likely continue
+to do some hyperparameter optimization to obtain the best possible
+model (called *model selection*). Second, your trained model
+somehow has to be moved to production - in other words, users
+or services should be enabled to use your model to actually make
+predictions. This part is called *model serving*.
 
+Fortunately, Ray includes two libraries that help you with these
+two steps: Ray Tune and Ray Serve. And even more, they compliment
+each other nicely. Most notably, both are able to scale up your
+workloads easily - so both your model training and serving benefit
+from additional resources and can adapt to your environment. If you
+need to train on more data or have more hyperparameters to tune,
+Ray Tune can leverage your whole cluster for training. If you have
+many users doing inference on your served models, Ray Serve can
+automatically distribute the inference backends to multiple nodes.
+
+This tutorial will show you an end-to-end example how to train a MNIST
+image classifier on incrementally arriving data and automatically
+serve an updated model on a HTTP endpoint.
+
+By the end of this tutorial you will be able to
+
+1. Do hyperparameter optimization on a simple MNIST classifier
+2. Continue to train this classifier from an existing model with
+   newly arriving data
+3. Automatically create and serve data backends with Ray Serve
+
+
+Roadmap
+-------
+The general idea of this example is that we simulate newly arriving
+data each day. So at day 0 we might have some initial data available
+already, but at each day, new data arrives.
+
+Our approach here is that we offer to ways to train: From scratch and
+from an existing model. Maybe you would like to train and select models
+from scratch each week with all data available until then, e.g. each
+Sunday. During the other days you might want to improve your model, but
+not train everything from scratch, saving some cluster resources.
+
+This example will support both modes. After each model selection run,
+we will tell Ray Serve to serve an updated model. We also include a
+small utility to query our served model to see if it works as it should.
+
+Imports
+-------
+Let's start with our dependencies. Most of these should be familiar
+if you worked with PyTorch before. The most notable import for Ray
+is the ``from ray import tune, serve`` import statement - which
+includes almost all the things we need from the Ray side.
+"""
 import argparse
 import json
 import os
@@ -24,7 +77,10 @@ from torch.utils.data import random_split, Subset
 from torchvision.datasets import MNIST
 from torchvision.transforms import transforms
 
+
 #######################################################################
+# Data interface
+# --------------
 # Let's start with a simulated data interface. This class acts as the
 # interface between your training code and your database. We simulate
 # that new data arrives each day with a ``day`` parameter. So, calling
@@ -51,7 +107,7 @@ class MNISTDataInterface(object):
             return 0
         n = len(self.dataset)
         # Start with 30% of the data, get more data each day
-        return ceil(n * (0.3 + 0.7 * day / self.max_days))
+        return min(n, ceil(n * (0.3 + 0.7 * day / self.max_days)))
 
     def get_data(self, day=0):
         """Get complete normalized train and validation data to date."""
@@ -74,6 +130,16 @@ class MNISTDataInterface(object):
         return random_split(available_data, [train_n, end - start - train_n])
 
 
+#######################################################################
+# PyTorch neural network classifier
+# ---------------------------------
+# Next, we will introduce our PyTorch neural network model and the
+# train and test function. These are adapted directly from
+# our :doc:`PyTorch MNIST example </tune/examples/mnist_pytorch>`.
+# We only introduced an additional neural network layer with a configurable
+# layer size. This is not strictly needed for learning good performance on
+# MNIST, but it is useful to demonstrate scenarios where your hyperparameter
+# search space affects the model complexity.
 class ConvNet(nn.Module):
     def __init__(self, layer_size=192):
         super(ConvNet, self).__init__()
@@ -118,155 +184,48 @@ def test(model, data_loader, device=None):
     return correct / total
 
 
-# Define Ray Serve model,
-class MNISTBackend:
-    def __init__(self, checkpoint_dir, config, metrics):
-        self.checkpoint_dir = checkpoint_dir
-        self.config = config
-        self.metrics = metrics
-
-        # use_cuda = config.get("use_gpu") and torch.cuda.is_available()
-        # self.device = torch.device("cuda" if use_cuda else "cpu")
-        self.device = "cpu"
-        model = ConvNet(layer_size=self.config["layer_size"]).to(self.device)
-
-        model_state, optimizer_state = torch.load(
-            os.path.join(self.checkpoint_dir, "checkpoint"))
-        model.load_state_dict(model_state)
-
-        self.model = model
-
-    def __call__(self, flask_request):
-        images = torch.tensor(flask_request.json["images"])
-        images = images.to(self.device)
-        outputs = self.model(images)
-        predicted = torch.max(outputs.data, 1)[1]
-        return {"result": predicted.numpy().tolist()}
-
-
-def get_current_model(model_dir):
-    checkpoint_path = os.path.join(model_dir, "checkpoint")
-    meta_path = os.path.join(model_dir, "meta.json")
-
-    if not os.path.exists(checkpoint_path) or \
-       not os.path.exists(meta_path):
-        return None, None, None
-
-    with open(meta_path, "rt") as fp:
-        meta = json.load(fp)
-
-    return checkpoint_path, meta["config"], meta["metrics"]
-
-
-def serve_new_model(model_dir, checkpoint, config, metrics, day):
-    print("Serving checkpoint: {}".format(checkpoint))
-
-    if not os.path.exists(model_dir):
-        try:
-            os.mkdir(model_dir, 0o755)
-        except OSError:
-            return False
-
-    checkpoint_path = os.path.join(model_dir, "checkpoint")
-    meta_path = os.path.join(model_dir, "meta.json")
-
-    if os.path.exists(checkpoint_path):
-        shutil.rmtree(checkpoint_path)
-
-    shutil.copytree(checkpoint, checkpoint_path)
-
-    with open(meta_path, "wt") as fp:
-        json.dump(dict(config=config, metrics=metrics), fp)
-
-    serve.init()
-    backend_name = "mnist:day_{}".format(day)
-
-    serve.create_backend(backend_name, MNISTBackend, checkpoint_path, config,
-                         metrics)
-    if "mnist" not in serve.list_endpoints():
-        serve.create_endpoint(
-            "mnist", backend=backend_name, route="/mnist", methods=["POST"])
-    else:
-        serve.set_traffic("mnist", {backend_name: 1.0})
-
-    # Delete previous existing backends
-    for existing_backend in serve.list_backends():
-        if existing_backend.startswith("mnist:day") and \
-           existing_backend != backend_name:
-            serve.delete_backend(existing_backend)
-
-    return True
-
-
-def train_from_scratch(config,
-                       checkpoint_dir=None,
-                       num_epochs=10,
-                       data_interface=None,
-                       day=0):
+#######################################################################
+# Tune trainable for model selection
+# ----------------------------------
+# We'll now define our Tune trainable function. This function takes
+# a ``config`` parameter containing the hyperparameters we should train
+# the model on, and will start a full training run. This means it
+# will take care of creating the model and optimizer and repeatedly
+# call the ``train`` function to train the model. Also, this function
+# will report the training progress back to Tune.
+def train_mnist(config,
+                start_model=None,
+                checkpoint_dir=None,
+                num_epochs=10,
+                use_gpus=False,
+                data_fn=None,
+                day=0):
     # Create model
-    use_cuda = config.get("use_gpu") and torch.cuda.is_available()
+    use_cuda = use_gpus and torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
+    print("use cuda", use_cuda, device)
     model = ConvNet(layer_size=config["layer_size"]).to(device)
 
     # Create optimizer
     optimizer = optim.SGD(
         model.parameters(), lr=config["lr"], momentum=config["momentum"])
 
+    # Load checkpoint, or load start model if no checkpoint has been
+    # passed and a start model is specified
+    load_dir = None
     if checkpoint_dir:
-        model_state, optimizer_state = torch.load(
-            os.path.join(checkpoint_dir, "checkpoint"))
-        model.load_state_dict(model_state)
-        optimizer.load_state_dict(optimizer_state)
-
-    # Get full training datasets
-    train_dataset, validation_dataset = data_interface.get_data(day=day)
-
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=config["batch_size"], shuffle=True)
-
-    validation_loader = torch.utils.data.DataLoader(
-        validation_dataset, batch_size=config["batch_size"], shuffle=True)
-
-    for i in range(num_epochs):
-        train(model, optimizer, train_loader, device)
-        acc = test(model, validation_loader, device)
-        if i == num_epochs - 1:
-            with tune.checkpoint_dir(step=i) as checkpoint_dir:
-                torch.save((model.state_dict(), optimizer.state_dict()),
-                           os.path.join(checkpoint_dir, "checkpoint"))
-            tune.report(mean_accuracy=acc, done=True)
-        else:
-            tune.report(mean_accuracy=acc)
-
-
-def train_from_existing(config,
-                        checkpoint_dir=None,
-                        start_model=None,
-                        num_epochs=10,
-                        data_interface=None,
-                        day=0):
-    # Create model
-    use_cuda = config.get("use_gpu") and torch.cuda.is_available()
-    device = torch.device("cuda" if use_cuda else "cpu")
-    model = ConvNet(layer_size=config["layer_size"]).to(device)
-
-    # Create optimizer
-    optimizer = optim.SGD(
-        model.parameters(), lr=config["lr"], momentum=config["momentum"])
-
-    if checkpoint_dir:
-        model_state, optimizer_state = torch.load(
-            os.path.join(checkpoint_dir, "checkpoint"))
-        model.load_state_dict(model_state)
-        optimizer.load_state_dict(optimizer_state)
+        load_dir = checkpoint_dir
     elif start_model:
+        load_dir = start_model
+
+    if load_dir:
         model_state, optimizer_state = torch.load(
-            os.path.join(start_model, "checkpoint"))
+            os.path.join(load_dir, "checkpoint"))
         model.load_state_dict(model_state)
         optimizer.load_state_dict(optimizer_state)
 
     # Get full training datasets
-    train_dataset, validation_dataset = data_interface.get_data(day=day)
+    train_dataset, validation_dataset = data_fn(day=day)
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=config["batch_size"], shuffle=True)
@@ -286,6 +245,18 @@ def train_from_existing(config,
             tune.report(mean_accuracy=acc)
 
 
+#######################################################################
+# Configuring the search space and starting Ray Tune
+# --------------------------------------------------
+# We would like to support two modes of training the model: Training
+# a model from scratch, and continuing to train a model from an
+# existing one.
+#
+# This is our function to train a number of models with different
+# hyperparameters from scratch, i.e. from all data that is available
+# until the given day. Our search space can thus also contain parameters
+# that affect the model complexity (such as the layer size), since it
+# does not have to be compatible to an existing model.
 def tune_from_scratch(num_samples=10, num_epochs=10, gpus_per_trial=0., day=0):
     data_interface = MNISTDataInterface("/tmp/mnist_data", max_days=10)
     N = data_interface._get_day_slice(day)
@@ -310,9 +281,10 @@ def tune_from_scratch(num_samples=10, num_epochs=10, gpus_per_trial=0., day=0):
 
     analysis = tune.run(
         partial(
-            train_from_scratch,
-            data_interface=data_interface,
+            train_mnist,
+            data_fn=data_interface.get_data,
             num_epochs=num_epochs,
+            use_gpus=True if gpus_per_trial > 0 else False,
             day=day),
         resources_per_trial={
             "cpu": 1,
@@ -334,6 +306,15 @@ def tune_from_scratch(num_samples=10, num_epochs=10, gpus_per_trial=0., day=0):
     return best_accuracy, best_trial_config, best_checkpoint, N
 
 
+#######################################################################
+# To continue training from an existing model, we can use this function
+# instead. It takes a starting model (a checkpoint) as a parameter and
+# the old config.
+#
+# Note that this time the search space does _not_ contain the
+# layer size parameter. Since we continue to train an existing model,
+# we cannot change the layer size mid training, so we just continue
+# to use the existing one.
 def tune_from_existing(start_model,
                        start_config,
                        num_samples=10,
@@ -364,10 +345,11 @@ def tune_from_existing(start_model,
 
     analysis = tune.run(
         partial(
-            train_from_existing,
+            train_mnist,
             start_model=start_model,
-            data_interface=data_interface,
+            data_fn=data_interface.get_incremental_data,
             num_epochs=num_epochs,
+            use_gpus=True if gpus_per_trial > 0 else False,
             day=day),
         resources_per_trial={
             "cpu": 1,
@@ -389,6 +371,131 @@ def tune_from_existing(start_model,
     return best_accuracy, best_trial_config, best_checkpoint, N
 
 
+#######################################################################
+# Serving tuned models with Ray Serve
+# -----------------------------------
+# Let's now turn to the model serving part with Ray Serve. Serve
+# distinguishes between _backends_ and _endpoints_. Broadly speaking, a
+# backend handles incoming requests and replies with a result. For
+# instance, our MNIST backend takes an image as input and outputs the
+# digit it recognized from it. An endpoint on the other hand forwards
+# incoming HTTP requests to one or more different backends, according
+# to a routing policy.
+#
+# First, we will define our backend. This backend loads our PyTorch
+# MNIST model from a checkpoint, takes an image as an input and
+# outputs our digit prediction according to our trained model:
+class MNISTBackend:
+    def __init__(self, checkpoint_dir, config, metrics):
+        self.checkpoint_dir = checkpoint_dir
+        self.config = config
+        self.metrics = metrics
+
+        # use_cuda = config.get("use_gpu") and torch.cuda.is_available()
+        # self.device = torch.device("cuda" if use_cuda else "cpu")
+        self.device = "cpu"
+        model = ConvNet(layer_size=self.config["layer_size"]).to(self.device)
+
+        model_state, optimizer_state = torch.load(
+            os.path.join(self.checkpoint_dir, "checkpoint"))
+        model.load_state_dict(model_state)
+
+        self.model = model
+
+    def __call__(self, flask_request):
+        images = torch.tensor(flask_request.json["images"])
+        images = images.to(self.device)
+        outputs = self.model(images)
+        predicted = torch.max(outputs.data, 1)[1]
+        return {"result": predicted.numpy().tolist()}
+
+
+#######################################################################
+# We would like to have a fixed location where we store the currently
+# active model. We call this directory ``model_dir``. Everytime we
+# would like to update our model, we copy the checkpoint of the new
+# model to this directory. We then create a new backend pointing to
+# that directory, route all the traffic on our model endpoint to this
+# backend, and then delete the old backends to free up some memory.
+def serve_new_model(model_dir, checkpoint, config, metrics, day):
+    print("Serving checkpoint: {}".format(checkpoint))
+
+    if not os.path.exists(model_dir):
+        try:
+            os.mkdir(model_dir, 0o755)
+        except OSError:
+            return False
+
+    checkpoint_path = os.path.join(model_dir, "checkpoint")
+    meta_path = os.path.join(model_dir, "meta.json")
+
+    if os.path.exists(checkpoint_path):
+        shutil.rmtree(checkpoint_path)
+
+    shutil.copytree(checkpoint, checkpoint_path)
+
+    with open(meta_path, "wt") as fp:
+        json.dump(dict(config=config, metrics=metrics), fp)
+
+    serve.init()
+    backend_name = "mnist:day_{}".format(day)
+
+    serve.create_backend(backend_name, MNISTBackend, checkpoint_path, config,
+                         metrics)
+
+    if "mnist" not in serve.list_endpoints():
+        # First time we serve a model - create endpoint
+        serve.create_endpoint(
+            "mnist", backend=backend_name, route="/mnist", methods=["POST"])
+    else:
+        # The endpoint already exists, route all traffic to the new model
+        serve.set_traffic("mnist", {backend_name: 1.0})
+
+    # Delete previous existing backends
+    for existing_backend in serve.list_backends():
+        if existing_backend.startswith("mnist:day") and \
+           existing_backend != backend_name:
+            serve.delete_backend(existing_backend)
+
+    return True
+
+
+#######################################################################
+# Since we would like to continue training from the current existing
+# model, we introduce an utility function that fetches the currently
+# served checkpoint as well as the hyperparameter config and achieved
+# accuracy.
+def get_current_model(model_dir):
+    checkpoint_path = os.path.join(model_dir, "checkpoint")
+    meta_path = os.path.join(model_dir, "meta.json")
+
+    if not os.path.exists(checkpoint_path) or \
+       not os.path.exists(meta_path):
+        return None, None, None
+
+    with open(meta_path, "rt") as fp:
+        meta = json.load(fp)
+
+    return checkpoint_path, meta["config"], meta["metrics"]
+
+
+#######################################################################
+# Putting everything together
+# ---------------------------
+# Now we only need to glue this code together. This is the main
+# entrypoint of the script, and we will define three methods:
+#
+# 1. Train new model from scratch with all data
+# 2. Continue training from existing model with new data only
+# 3. Query the model with test data
+#
+# Internally, this will just call the ``tune_from_scratch`` and
+# ``tune_from_existing()`` functions.
+# Both training functions will then call ``serve_new_model()`` to serve
+# the newly trained or updated model.
+
+# The query function will send a HTTP request to Serve with some
+# test data obtained from the MNIST dataset.
 if __name__ == "__main__":
     """
     This script offers training a new model from scratch with all
@@ -509,3 +616,23 @@ if __name__ == "__main__":
               "Best accuracy: {:.4f}. Best config: {}".format(
                   args.day, N, acc, config))
         serve_new_model(model_dir, best_checkpoint, config, acc, args.day)
+
+#######################################################################
+# That's it! We now have an end-to-end workflow to train and update a
+# model every day with newly arrived data. Every week we might retrain
+# the whole model. At every point in time we make sure to serve the
+# model that achieved the best validation set accuracy.
+#
+# There are some ways we might extend this example. For instance, right
+# now we only serve the latest trained model. We could  also choose to
+# route only a certain percentage of users to the new model, maybe to
+# see if the new model really does it's job right. These kind of
+# deployments are called :ref:`canary deployments <serve-split-traffic>`.
+# These kind of deployments would also require us to keep more than one
+# model in our ``model_dir`` - which should be quite easy: We could just
+# create subdirectories for each training day.
+#
+# Still, this example should show you how easy it is to integrate the
+# Ray libraries Ray Tune and Ray Serve in your workflow. While both tools
+# also work independently of each other, they complement each other
+# nicely and support a large number of use cases.
