@@ -78,7 +78,7 @@ void GcsPlacementGroupManager::RegisterPlacementGroup(
   //  which will lead to resource leakage, we will solve it in next pr.
   // Mark the callback as pending and invoke it after the placement_group has been
   // successfully created.
-  placement_group_to_register_callbacks_[placement_group_id] = std::move(callback);
+  placement_group_to_register_callback_[placement_group_id] = std::move(callback);
   registered_placement_groups_.emplace(placement_group->GetPlacementGroupID(),
                                        placement_group);
   pending_placement_groups_.emplace_back(std::move(placement_group));
@@ -110,8 +110,7 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
 
 void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
     std::shared_ptr<GcsPlacementGroup> placement_group) {
-  RAY_LOG(WARNING) << "Successfully created placement group "
-                   << placement_group->GetName();
+  RAY_LOG(INFO) << "Successfully created placement group " << placement_group->GetName();
   placement_group->UpdateState(rpc::PlacementGroupTableData::ALIVE);
   auto placement_group_id = placement_group->GetPlacementGroupID();
   RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
@@ -120,11 +119,11 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
         RAY_CHECK_OK(status);
 
         // Invoke callback for registration request of this placement_group
-        // and remove it from placement_group_to_register_callbacks_.
-        auto iter = placement_group_to_register_callbacks_.find(placement_group_id);
-        if (iter != placement_group_to_register_callbacks_.end()) {
+        // and remove it from placement_group_to_register_callback_.
+        auto iter = placement_group_to_register_callback_.find(placement_group_id);
+        if (iter != placement_group_to_register_callback_.end()) {
           iter->second();
-          placement_group_to_register_callbacks_.erase(iter);
+          placement_group_to_register_callback_.erase(iter);
         }
         is_creating_ = false;
         SchedulePendingPlacementGroups();
