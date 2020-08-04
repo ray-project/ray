@@ -103,11 +103,7 @@ class Repeater(Searcher):
     """
 
     __slots__ = [
-        "searcher",
-        "repeat",
-        "_set_index",
-        "_groups",
-        "_trial_id_to_group",
+        "searcher", "repeat", "_set_index", "_groups", "_trial_id_to_group",
         "_current_group"
     ]
 

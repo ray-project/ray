@@ -348,7 +348,6 @@ def run(run_or_experiment,
         fail_fast=fail_fast,
         trial_executor=trial_executor)
 
-
     if not runner.resumed:
         for exp in experiments:
             search_alg.add_configurations([experiment])

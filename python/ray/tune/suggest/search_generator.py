@@ -109,7 +109,7 @@ class SearchGenerator(SearchAlgorithm):
     def get_state(self):
         return {
             "counter": self._counter,
-            "total_samples": self._total_samples
+            "total_samples": self._total_samples,
             "finished": self._finished
         }
 
@@ -117,7 +117,6 @@ class SearchGenerator(SearchAlgorithm):
         self._counter = state["counter"]
         self._total_samples = state["total_samples"]
         self._finished = state["finished"]
-
 
     def save(self, checkpoint_path):
         self.searcher.save(checkpoint_path)
