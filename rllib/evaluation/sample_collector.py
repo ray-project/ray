@@ -128,11 +128,7 @@ class _SampleCollector(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def get_input_dict(
-            self,
-            model: ModelV2,
-            is_training: bool = False,
-            is_postprocessing: bool = False) -> Dict[str, TensorType]:
+    def get_input_dict(self, model: ModelV2) -> Dict[str, TensorType]:
         """Returns an input_dict for a Model's forward pass given our data.
 
         The input_dict can be used for either action computation or training.
@@ -140,11 +136,6 @@ class _SampleCollector(metaclass=ABCMeta):
         Args:
             model (ModelV2): The ModelV2 object for which to generate the view
                 (input_dict) from `data`.
-            is_training (bool): Whether the input_dict should be generated for
-                training purposes (default: False).
-            is_postprocessing (bool): Experimental: Whether the input_dict
-                should be generated for postprocessing purposes
-                (default: False).
 
         Returns:
             Dict[str, TensorType]: The input_dict to be passed into the ModelV2
