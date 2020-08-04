@@ -127,6 +127,8 @@ def tune_transformer(num_samples=8,
     data_dir = os.path.abspath(os.path.join(os.getcwd(), "./data"))
     if not os.path.exists(data_dir):
         os.mkdir(data_dir, 0o755)
+
+    # Change these as needed.
     model_name = "bert-base-uncased"
     task_name = "rte"
 
@@ -143,7 +145,7 @@ def tune_transformer(num_samples=8,
     AutoModelForSequenceClassification.from_pretrained(model_name, )
 
     # Download data.
-    download_data(task_name, task_data_dir)
+    download_data(task_name, data_dir)
 
     config = {
         "model_name": model_name,
