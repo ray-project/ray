@@ -360,19 +360,22 @@ class ReferenceCounter : public ReferenceCounterInterface {
   ///
   /// \param[in] object_id The object to update.
   /// \param[in] node_id The node to be added to the location table.
-  void AddObjectLocation(const ObjectID &object_id, const ClientID &node_id) LOCKS_EXCLUDED(mutex_);
+  void AddObjectLocation(const ObjectID &object_id, const ClientID &node_id)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Remove location from the location table of the given object.
   ///
   /// \param[in] object_id The object to update.
   /// \param[in] node_id The node to be removed from the location table.
-  void RemoveObjectLocation(const ObjectID &object_id, const ClientID &node_id) LOCKS_EXCLUDED(mutex_);
+  void RemoveObjectLocation(const ObjectID &object_id, const ClientID &node_id)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Get the locations from the location table of the given object.
   ///
   /// \param[in] object_id The object to get locations for.
   /// \return The nodes that have the object.
-  std::unordered_set<ClientID> GetObjectLocations(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
+  std::unordered_set<ClientID> GetObjectLocations(const ObjectID &object_id)
+      LOCKS_EXCLUDED(mutex_);
 
  private:
   struct Reference {

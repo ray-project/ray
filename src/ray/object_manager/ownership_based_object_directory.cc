@@ -18,8 +18,7 @@ namespace ray {
 
 OwnershipBasedObjectDirectory::OwnershipBasedObjectDirectory(
     boost::asio::io_service &io_service, std::shared_ptr<gcs::GcsClient> &gcs_client)
-    : ObjectDirectory(io_service, gcs_client),
-      client_call_manager_(io_service) {}
+    : ObjectDirectory(io_service, gcs_client), client_call_manager_(io_service) {}
 
 namespace {
 
@@ -53,8 +52,8 @@ std::shared_ptr<rpc::CoreWorkerClient> OwnershipBasedObjectDirectory::GetClient(
   auto it = worker_rpc_clients_.find(worker_id);
   if (it == worker_rpc_clients_.end()) {
     it = worker_rpc_clients_
-             .emplace(worker_id,
-                      std::make_shared<rpc::CoreWorkerClient>(owner_address, client_call_manager_))
+             .emplace(worker_id, std::make_shared<rpc::CoreWorkerClient>(
+                                     owner_address, client_call_manager_))
              .first;
   }
   return it->second;
@@ -72,8 +71,8 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectAdded(
   request.set_client_id(client_id.Binary());
 
   RAY_CHECK_OK(rpc_client->AddObjectLocationOwner(
-      request, [worker_id, object_id](
-                   Status status, const rpc::AddObjectLocationOwnerReply &reply) {
+      request, [worker_id, object_id](Status status,
+                                      const rpc::AddObjectLocationOwnerReply &reply) {
         if (!status.ok()) {
           RAY_LOG(ERROR) << "Worker " << worker_id << " failed to add the location for "
                          << object_id;
@@ -95,8 +94,8 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectRemoved(
   request.set_client_id(client_id.Binary());
 
   RAY_CHECK_OK(rpc_client->RemoveObjectLocationOwner(
-      request, [worker_id, object_id](
-                   Status status, const rpc::RemoveObjectLocationOwnerReply &reply) {
+      request, [worker_id, object_id](Status status,
+                                      const rpc::RemoveObjectLocationOwnerReply &reply) {
         if (!status.ok()) {
           RAY_LOG(ERROR) << "Worker " << worker_id
                          << " failed to remove the location for " << object_id;
