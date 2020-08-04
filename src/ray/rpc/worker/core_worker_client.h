@@ -226,11 +226,14 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, WaitForObjectEviction, grpc_client_, override)
 
-  VOID_RPC_CLIENT_METHOD(CoreWorkerService, AddObjectLocationOwner, grpc_client_, override)
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, AddObjectLocationOwner, grpc_client_,
+                         override)
 
-  VOID_RPC_CLIENT_METHOD(CoreWorkerService, RemoveObjectLocationOwner, grpc_client_, override)
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, RemoveObjectLocationOwner, grpc_client_,
+                         override)
 
-  VOID_RPC_CLIENT_METHOD(CoreWorkerService, GetObjectLocationsOwner, grpc_client_, override)
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, GetObjectLocationsOwner, grpc_client_,
+                         override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, GetCoreWorkerStats, grpc_client_, override)
 
