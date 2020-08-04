@@ -43,8 +43,8 @@ std::string GcsPlacementGroup::GetName() const {
 std::vector<std::shared_ptr<BundleSpecification>> GcsPlacementGroup::GetBundles() const {
   auto bundles = placement_group_table_data_.bundles();
   std::vector<std::shared_ptr<BundleSpecification>> ret_bundles;
-  for (auto iter = bundles.begin(); iter != bundles.end(); iter++) {
-    ret_bundles.push_back(std::make_shared<BundleSpecification>(*iter));
+  for (auto &bundle : bundles) {
+    ret_bundles.push_back(std::make_shared<BundleSpecification>(bundle));
   }
   return ret_bundles;
 }
@@ -73,14 +73,16 @@ void GcsPlacementGroupManager::RegisterPlacementGroup(
   const auto &placement_group_spec = request.placement_group_spec();
   auto placement_group_id =
       PlacementGroupID::FromBinary(placement_group_spec.placement_group_id());
-
   auto placement_group = std::make_shared<GcsPlacementGroup>(request);
+
+  // TODO(ffbin): If GCS is restarted, GCS client will repeatedly send
+  // `CreatePlacementGroup` requests,
+  //  which will lead to resource leakage, we will solve it in next pr.
   // Mark the callback as pending and invoke it after the placement_group has been
   // successfully created.
   placement_group_to_register_callbacks_[placement_group_id] = std::move(callback);
-  RAY_CHECK(registered_placement_groups_
-                .emplace(placement_group->GetPlacementGroupID(), placement_group)
-                .second);
+  registered_placement_groups_.emplace(placement_group->GetPlacementGroupID(),
+                                       placement_group);
   pending_placement_groups_.emplace_back(std::move(placement_group));
   SchedulePendingPlacementGroups();
 }
@@ -99,6 +101,8 @@ PlacementGroupID GcsPlacementGroupManager::GetPlacementGroupIDByName(
 
 void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
     std::shared_ptr<GcsPlacementGroup> placement_group) {
+  RAY_LOG(WARNING) << "Failed to create placement group " << placement_group->GetName()
+                   << ", try again.";
   // We will attempt to schedule this placement_group once an eligible node is
   // registered.
   pending_placement_groups_.emplace_back(std::move(placement_group));
@@ -108,25 +112,25 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
 
 void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
     std::shared_ptr<GcsPlacementGroup> placement_group) {
-  auto placement_group_id = placement_group->GetPlacementGroupID();
-  RAY_CHECK(registered_placement_groups_.contains(placement_group_id));
+  RAY_LOG(WARNING) << "Successfully created placement group "
+                   << placement_group->GetName();
   placement_group->UpdateState(rpc::PlacementGroupTableData::ALIVE);
-
-  auto placement_group_table_data = placement_group->GetPlacementGroupTableData();
-  // The backend storage is reliable in the future, so the status must be ok.
+  auto placement_group_id = placement_group->GetPlacementGroupID();
   RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
-      placement_group_id, placement_group_table_data, [](Status status) {}));
+      placement_group_id, placement_group->GetPlacementGroupTableData(),
+      [this, placement_group_id](Status status) {
+        RAY_CHECK_OK(status);
 
-  // Invoke all callbacks for all registration requests of this placement_group
-  // (duplicated requests are included) and remove all of them from
-  // placement_group_to_register_callbacks_.
-  auto iter = placement_group_to_register_callbacks_.find(placement_group_id);
-  if (iter != placement_group_to_register_callbacks_.end()) {
-    iter->second();
-    placement_group_to_register_callbacks_.erase(iter);
-  }
-  is_creating_ = false;
-  SchedulePendingPlacementGroups();
+        // Invoke callback for registration request of this placement_group
+        // and remove it from placement_group_to_register_callbacks_.
+        auto iter = placement_group_to_register_callbacks_.find(placement_group_id);
+        if (iter != placement_group_to_register_callbacks_.end()) {
+          iter->second();
+          placement_group_to_register_callbacks_.erase(iter);
+        }
+        is_creating_ = false;
+        SchedulePendingPlacementGroups();
+      }));
 }
 
 void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
@@ -135,7 +139,7 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
   }
   is_creating_ = true;
   gcs_placement_group_scheduler_->Schedule(
-      *pending_placement_groups_.begin(),
+      pending_placement_groups_.front(),
       [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
         OnPlacementGroupCreationFailed(std::move(placement_group));
       },
@@ -162,20 +166,20 @@ void GcsPlacementGroupManager::HandleCreatePlacementGroup(
       [this, request, reply, send_reply_callback, placement_group_id, name,
        strategy](Status status) {
         RAY_CHECK_OK(status);
-        RegisterPlacementGroup(
-            request, [reply, send_reply_callback, placement_group_id, name, strategy]() {
-              RAY_LOG(INFO) << "Registered placement group, placement group id = "
-                            << placement_group_id << ", name = " << name
-                            << ", strategy = " << strategy;
-              GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-            });
+        RegisterPlacementGroup(request, [reply, send_reply_callback, placement_group_id,
+                                         name, strategy]() {
+          RAY_LOG(INFO) << "Finished registering placement group, placement group id = "
+                        << placement_group_id << ", name = " << name
+                        << ", strategy = " << strategy;
+          GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+        });
       }));
 }
 
 void GcsPlacementGroupManager::ScheduleTick() {
   reschedule_timer_.expires_from_now(boost::posix_time::milliseconds(500));
   reschedule_timer_.async_wait([this](const boost::system::error_code &error) {
-    if (error == boost::system::errc::operation_canceled) {
+    if (error == boost::asio::error::operation_aborted) {
       return;
     } else {
       SchedulePendingPlacementGroups();
