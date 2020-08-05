@@ -231,7 +231,7 @@ class NodeUpdater:
 
         node_tags = self.provider.node_tags(self.node_id)
         logger.debug("Node tags: {}".format(str(node_tags)))
-        if node_tags.get(TAG_RAY_RUNTIME_CONFIG) == self.runtime_hash:
+        if False and node_tags.get(TAG_RAY_RUNTIME_CONFIG) == self.runtime_hash:
             # todo: we lie in the confirmation message since
             # full setup might be cancelled here
             cli_logger.print(
@@ -262,12 +262,21 @@ class NodeUpdater:
                     with LogTimer(
                             self.log_prefix + "Initialization commands",
                             show_status=True):
-
                         for cmd in self.initialization_commands:
-                            self.cmd_runner.run(
-                                cmd,
-                                ssh_options_override=SSHOptions(
-                                    self.auth_config.get("ssh_private_key")))
+                            try:
+                                self.cmd_runner.run(
+                                    cmd,
+                                    ssh_options_override=SSHOptions(
+                                        self.auth_config.get("ssh_private_key")))
+                            except ProcessRunnerError as e:
+                                if e.msg_type == "ssh_command_failed":
+                                    cli_logger.error(
+                                        "Failed.")
+                                    cli_logger.error(
+                                        "See above for stderr.")
+
+                                raise click.ClickException(
+                                    "Initialization command failed.")
             else:
                 cli_logger.print(
                     "No initialization commands to run.",
@@ -311,7 +320,17 @@ class NodeUpdater:
             with LogTimer(
                     self.log_prefix + "Ray start commands", show_status=True):
                 for cmd in self.ray_start_commands:
-                    self.cmd_runner.run(cmd)
+                    try:
+                        self.cmd_runner.run(cmd)
+                    except ProcessRunnerError as e:
+                        if e.msg_type == "ssh_command_failed":
+                            cli_logger.error(
+                                "Failed.")
+                            cli_logger.error(
+                                "See above for stderr.")
+
+                        raise click.ClickException(
+                            "Start command failed.")
 
     def rsync_up(self, source, target):
         cli_logger.old_info(logger, "{}Syncing {} to {}...", self.log_prefix,

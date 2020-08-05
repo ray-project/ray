@@ -29,6 +29,7 @@ from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
 
 from ray.ray_constants import AUTOSCALER_RESOURCE_REQUEST_CHANNEL
 from ray.autoscaler.updater import NodeUpdaterThread
+import ray.autoscaler.command_runner as cmd_runner
 from ray.autoscaler.command_runner import DockerCommandRunner
 from ray.autoscaler.log_timer import LogTimer
 from ray.worker import global_worker
@@ -95,19 +96,33 @@ def create_or_update_cluster(
         override_max_workers: Optional[int], no_restart: bool,
         restart_only: bool, yes: bool, override_cluster_name: Optional[str],
         no_config_cache: bool, log_old_style: bool, log_color: str,
+        dump_command_output: bool, use_login_shells: bool,
         verbose: int) -> None:
     """Create or updates an autoscaling Ray cluster from a config json."""
     cli_logger.old_style = log_old_style
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
 
-    cli_logger.dump_command_output = False # todo: flag
+    cmd_runner.config["use_login_shells"] = use_login_shells
+    cmd_runner.config["dump_command_output"] = dump_command_output
+
+    if use_login_shells:
+        cli_logger.warning(
+            "Commands running under a login shell can produce more "
+            "output than special processing can handle.")
+        cli_logger.warning(
+            "The logs that cluster commands produce will be subpar.")
+        cli_logger.warning(
+            "Consider using {}, {}.",
+            cf.bold("--use-normal-shells"),
+            cf.underlined("if you tested your workflow and it is compatible"))
+        cli_logger.newline()
 
     cli_logger.detect_colors()
 
     def handle_yaml_error(e):
+        cli_logger.error("Cluster config invalid\n")
         cli_logger.error(
-            "Cluster config invalid.\n"
             "Failed to load YAML file " + cf.bold("{}"), config_file)
         cli_logger.newline()
         with cli_logger.verbatim_error_ctx("PyYAML error:"):
@@ -118,7 +133,7 @@ def create_or_update_cluster(
         config = yaml.safe_load(open(config_file).read())
     except FileNotFoundError:
         cli_logger.abort(
-            "Provided cluster configuration file ({}) does not exist.",
+            "Provided cluster configuration file ({}) does not exist",
             cf.bold(config_file))
     except yaml.parser.ParserError as e:
         handle_yaml_error(e)
@@ -139,7 +154,7 @@ def create_or_update_cluster(
         raise NotImplementedError("Unsupported provider {}".format(
             config["provider"]))
 
-    cli_logger.success("Cluster configuration valid.\n")
+    cli_logger.success("Cluster configuration valid\n")
 
     printed_overrides = False
 
@@ -200,8 +215,17 @@ def _bootstrap_config(config: Dict[str, Any],
             # relatively cheap
             try_reload_log_state(config_cache["config"]["provider"],
                                  config_cache.get("provider_log_info"))
-            cli_logger.verbose("Loaded cached config from " + cf.bold("{}"),
-                               cache_key)
+
+            cli_logger.newline()
+            cli_logger.verbose_warning("Loaded cached provider configuration "
+                                       "from " + cf.bold("{}"),
+                                       cache_key)
+            if cli_logger.verbosity == 0:
+                cli_logger.warning("Loaded cached provider configuration")
+            cli_logger.warning("If you experience issues with "
+                               "the node provider, try re-running "
+                               "the command with {}.",
+                               cf.bold("--no-config-cache"))
 
             return config_cache["config"]
         else:
@@ -432,6 +456,8 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
                             override_cluster_name):
     """Create the cluster head node, which in turn creates the workers."""
     provider = get_node_provider(config["provider"], config["cluster_name"])
+
+    raw_config_file = config_file  # used for printing to the user
     config_file = os.path.abspath(config_file)
     try:
         head_node_tags = {
@@ -624,25 +650,43 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
                     logger, "get_or_create_head_node: "
                     "Updating {} failed", head_node_ip)
                 sys.exit(1)
-            logger.info(
-                "get_or_create_head_node: "
-                "Head node up-to-date, IP address is: {}".format(head_node_ip))
 
-            monitor_str = "tail -n 100 -f /tmp/ray/session_*/logs/monitor*"
-            if override_cluster_name:
-                modifiers = " --cluster-name={}".format(
-                    quote(override_cluster_name))
-            else:
-                modifiers = ""
+            cli_logger.old_info(
+                logger,
+                "get_or_create_head_node: "
+                "Head node up-to-date, IP address is: {}",
+                head_node_ip)
+
+        monitor_str = "tail -n 100 -f /tmp/ray/session_*/logs/monitor*"
+        if override_cluster_name:
+            modifiers = " --cluster-name={}".format(
+                quote(override_cluster_name))
+        else:
+            modifiers = ""
+
+        if cli_logger.old_style:
             print("To monitor auto-scaling activity, you can run:\n\n"
                   "  ray exec {} {}{}\n".format(config_file,
-                                                quote(monitor_str), modifiers))
+                                                quote(monitor_str),
+                                                modifiers))
             print("To open a console on the cluster:\n\n"
                   "  ray attach {}{}\n".format(config_file, modifiers))
 
             print("To get a remote shell to the cluster manually, run:\n\n"
                   "  {}\n".format(
                       updater.cmd_runner.remote_shell_command_str()))
+
+        cli_logger.newline()
+        with cli_logger.group("Useful commands"):
+            cli_logger.print("Monitor auto-sclaing with")
+            cli_logger.print(cf.bold("  ray exec {}{} {}"),
+                             raw_config_file,
+                             modifiers,
+                             quote(monitor_str))
+
+            cli_logger.print("Connect to a terminal on the cluster head")
+            cli_logger.print(cf.bold("  ray attach {}{}"),
+                             raw_config_file, modifiers)
     finally:
         provider.cleanup()
 

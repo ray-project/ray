@@ -66,8 +66,6 @@ class _CliLogger():
         self.indent_level = 0
         self.verbosity = 0
 
-        self.dump_command_output = False
-
         self.info = {}
 
     def detect_colors(self):
@@ -144,6 +142,10 @@ class _CliLogger():
     def verbose(self, msg, *args, **kwargs):
         if self.verbosity > 0:
             self.print(msg, *args, **kwargs)
+
+    def verbose_warning(self, msg, *args, **kwargs):
+        if self.verbosity > 0:
+            self.warning(msg, *args, **kwargs)
 
     def verbose_error(self, msg, *args, **kwargs):
         if self.verbosity > 0:

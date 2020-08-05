@@ -26,6 +26,11 @@ KUBECTL_RSYNC = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "kubernetes/kubectl-rsync.sh")
 
 
+config = {
+    "dump_command_output": False,
+    "use_login_shells": True
+}
+
 class ProcessRunnerError(Exception):
     def __init__(self,
                  msg,
@@ -47,12 +52,10 @@ class ProcessRunnerError(Exception):
 def _with_interactive(cmd):
     force_interactive = ("true && source ~/.bashrc && "
                          "export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && ")
-    hide_ttys = "> >(tee) 2> >(tee 1>&2)"
-    # todo: this might need to be disabled iff we are dumping output
 
     return [
         "bash", "--login", "-c", "-i",
-        quote(force_interactive + "{ " + cmd + "; }" + hide_ttys)]
+        quote(force_interactive + cmd)]
 
 
 class CommandRunnerInterface:
@@ -346,8 +349,7 @@ class SSHCommandRunner(CommandRunnerInterface):
             cli_logger.old_warning(logger, e)
 
     def _read_subprocess_stream(self, f, output_file,
-                                is_stdout=False,
-                                stderr_to_file=False):
+                                is_stdout=False):
         """Read and process a subprocess output stream in a loop.
 
         Ran in a thread each for both `stdout` and `stderr` to
@@ -379,12 +381,10 @@ class SSHCommandRunner(CommandRunnerInterface):
                 # EOF
                 break
 
-            if is_stdout:
-                print('stdout', l)
-                output_file.write(l+"\n")
-            else:
-                print('stderr', l)
+            if l[-1] == "\n":
+                l = l[:-1]
 
+            if not is_stdout:
                 if self.connection_closed_msg_re.\
                     fullmatch(l) is not None:
                     # Do not log "connection closed" messages which SSH
@@ -430,14 +430,14 @@ class SSHCommandRunner(CommandRunnerInterface):
                     # we should silence the host control warnings.
                     continue
 
-                if stderr_to_file:
-                    output_file.write(l+"\n")
-
                 cli_logger.error(l)
+
+            if output_file is not None:
+                output_file.write(l + "\n")
 
         return detected_special_case
 
-    def _run_and_process_output(self, cmd, output_file, stderr_to_file=False):
+    def _run_and_process_output(self, cmd, stdout_file, stderr_file=None):
         """Run a command and process its output for special cases.
 
         Args:
@@ -449,6 +449,30 @@ class SSHCommandRunner(CommandRunnerInterface):
                 If `stderr_to_file` is `True`, stderr will also be written
                 to `output_file`.
         """
+
+        if config["use_login_shells"]:
+            # output processing will get overwhelemed with interactive output
+            # e.g. `pip install` outputs HUNDREDS of progress-bar lines
+            # and we have to read + write all of them with non-trival overhead
+            #
+            # after all, even just printing output to console can often slow
+            # down a fast-printing app, and we do more than just print, and
+            # all that from Python, which is much slower than C in stream
+            # processing
+            if stdout_file is None:
+                stdout_file = self.process_runner.DEVNULL
+            if stderr_file is None:
+                stderr_file = self.process_runner.DEVNULL
+
+            return self.process_runner.check_call(cmd,
+                    # Do not inherit stdin as it messes with bash signals
+                    # (ctrl-C for SIGINT) and these commands aren't supposed to
+                    # take input anyway.
+                    stdin=self.process_runner.PIPE,
+                    stdout=stdout_file,
+                    stderr=stderr_file)
+
+
 
         with self.process_runner.Popen(
             cmd,
@@ -481,14 +505,12 @@ class SSHCommandRunner(CommandRunnerInterface):
             with ThreadPoolExecutor(max_workers=2) as pool:
                 stdout_future = \
                     pool.submit(self._read_subprocess_stream,
-                        p.stdout, output_file,
-                        is_stdout=True,
-                        stderr_to_file=stderr_to_file)
+                        p.stdout, stdout_file,
+                        is_stdout=True)
                 stderr_future = \
                     pool.submit(self._read_subprocess_stream,
-                        p.stderr, output_file,
-                        is_stdout=False,
-                        stderr_to_file=stderr_to_file)
+                        p.stderr, stderr_file,
+                        is_stdout=False)
 
                 # Regarding command timeout (parameter of `self.run()`):
                 # The timeout is passed to SSH by default, so here
@@ -534,18 +556,19 @@ class SSHCommandRunner(CommandRunnerInterface):
                         command=cmd,
                         special_case="died_to_signal")
 
-    def _run_redirected(self, cmd):
+                return p.returncode
+
+    def _run_redirected(self, cmd, silent=False):
         """Run a command and optionally redirect output to a file.
 
         Args:
             cmd (List[str]): Command to run.
         """
+        if silent and cli_logger.verbosity < 1:
+            return self._run_and_process_output(cmd, stdout_file=None)
 
-        if cli_logger.dump_command_output:
-            # todo: stderr should go to sys.stderr probably
-            return self._run_and_process_output(cmd,
-                                                output_file=sys.stdout,
-                                                stderr_to_file=True)
+        if config["dump_command_output"]:
+            return self._run_and_process_output(cmd, stdout_file=sys.stdout)
         else:
             tmpfile_path = os.path.join(
                 tempfile.gettempdir(),
@@ -558,14 +581,16 @@ class SSHCommandRunner(CommandRunnerInterface):
                     "Command stdout is redirected to {}",
                     cf.bold(tmp.name))
                 cli_logger.verbose(
-                    cf.gray("Use -vvv to dump to console instead"))
+                    cf.gray("Use --dump-command-output to "
+                            "dump to terminal instead."))
 
                 return self._run_and_process_output(cmd,
-                                                    output_file=tmp,
-                                                    stderr_to_file=True)
+                                                    stdout_file=tmp,
+                                                    stderr_file=tmp)
 
     def _run_raw(self, final_cmd,
-                 with_output=False, exit_on_fail=False):
+                 with_output=False, exit_on_fail=False,
+                 silent=False):
         """Run a command without pre-processing special options.
 
         Args:
@@ -585,11 +610,11 @@ class SSHCommandRunner(CommandRunnerInterface):
             # In the future we could update the new logic to support
             # capturing output, but it is probably not needed.
             if not cli_logger.old_style and not with_output:
-                return self._run_redirected(final_cmd)
+                return self._run_redirected(final_cmd, silent=silent)
             if with_output:
                 return self.process_runner.check_output(final_cmd)
             else:
-                self.process_runner.check_call(final_cmd)
+                return self.process_runner.check_call(final_cmd)
         except subprocess.CalledProcessError as e:
             quoted_cmd = " ".join(final_cmd[:-1] + [quote(final_cmd[-1])])
             if not cli_logger.old_style:
@@ -625,7 +650,10 @@ class SSHCommandRunner(CommandRunnerInterface):
 
         self._set_ssh_ip_if_required()
 
-        ssh = ["ssh", "-tt"]
+        if config["use_login_shells"]:
+            ssh = ["ssh", "-tt"]
+        else:
+            ssh = ["ssh"]
 
         if port_forward:
             with cli_logger.group("Forwarding ports"):
@@ -644,7 +672,10 @@ class SSHCommandRunner(CommandRunnerInterface):
             "{}@{}".format(self.ssh_user, self.ssh_ip)
         ]
         if cmd:
-            final_cmd += _with_interactive(cmd)
+            if config["use_login_shells"]:
+                final_cmd += _with_interactive(cmd)
+            else:
+                final_cmd += [cmd]
             cli_logger.old_info(logger, "{}Running {}", self.log_prefix,
                                 " ".join(final_cmd))
         else:
@@ -673,7 +704,7 @@ class SSHCommandRunner(CommandRunnerInterface):
                                               target)
         ]
         cli_logger.verbose("Running `{}`", cf.bold(" ".join(command)))
-        self._run_raw(command)
+        self._run_raw(command, silent=True)
 
     def run_rsync_down(self, source, target):
         self._set_ssh_ip_if_required()
@@ -686,7 +717,7 @@ class SSHCommandRunner(CommandRunnerInterface):
                                       source), target
         ]
         cli_logger.verbose("Running `{}`", cf.bold(" ".join(command)))
-        self._run_raw(command)
+        self._run_raw(command, silent=True)
 
     def remote_shell_command_str(self):
         return "ssh -o IdentitiesOnly=yes -i {} {}@{}\n".format(
