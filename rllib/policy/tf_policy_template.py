@@ -154,6 +154,8 @@ def build_tf_policy(name,
                                    sample_batch,
                                    other_agent_batches=None,
                                    episode=None):
+            # Call super's postprocess_trajectory first.
+            sample_batch = Policy.postprocess_trajectory(self, sample_batch)
             if postprocess_fn:
                 return postprocess_fn(self, sample_batch, other_agent_batches,
                                       episode)

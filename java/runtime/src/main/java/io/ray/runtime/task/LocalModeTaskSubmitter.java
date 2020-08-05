@@ -12,6 +12,8 @@ import io.ray.api.id.TaskId;
 import io.ray.api.id.UniqueId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
+import io.ray.api.placementgroup.PlacementGroup;
+import io.ray.api.placementgroup.PlacementStrategy;
 import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.actor.LocalModeActorHandle;
 import io.ray.runtime.context.LocalModeWorkerContext;
@@ -27,6 +29,7 @@ import io.ray.runtime.generated.Common.TaskSpec;
 import io.ray.runtime.generated.Common.TaskType;
 import io.ray.runtime.object.LocalModeObjectStore;
 import io.ray.runtime.object.NativeRayObject;
+import io.ray.runtime.placementgroup.PlacementGroupImpl;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -102,7 +105,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     // Check whether task arguments are ready.
     for (TaskArg arg : taskSpec.getArgsList()) {
       ByteString idByteString = arg.getObjectRef().getObjectId();
-      if (idByteString  != ByteString.EMPTY) {
+      if (idByteString != ByteString.EMPTY) {
         ObjectId id = new ObjectId(idByteString.toByteArray());
         if (!objectStore.isObjectReady(id)) {
           unreadyObjects.add(id);
@@ -207,6 +210,12 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     } else {
       return ImmutableList.of(returnIds.get(0));
     }
+  }
+
+  @Override
+  public PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
+      PlacementStrategy strategy) {
+    return new PlacementGroupImpl();
   }
 
   @Override

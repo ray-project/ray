@@ -206,6 +206,10 @@ def get_variable(value,
     elif framework == "torch" and torch_tensor is True:
         torch, _ = try_import_torch()
         var_ = torch.from_numpy(value)
+        if dtype == torch.float32:
+            var_ = var_.float()
+        elif dtype == torch.int32:
+            var_ = var_.int()
         if device:
             var_ = var_.to(device)
         var_.requires_grad = trainable

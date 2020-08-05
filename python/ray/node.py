@@ -472,7 +472,8 @@ class Node:
 
         This method helps to prepare a socket file.
         1. Make the directory if the directory does not exist.
-        2. If the socket file exists, raise exception.
+        2. If the socket file exists, do nothing (this just means we aren't the
+           first worker on the node).
 
         Args:
             socket_path (string): the socket file to prepare.
@@ -488,9 +489,6 @@ class Node:
                 result = self._make_inc_temp(
                     prefix=default_prefix, directory_name=self._sockets_dir)
             else:
-                if os.path.exists(socket_path):
-                    raise RuntimeError(
-                        "Socket file {} exists!".format(socket_path))
                 try_to_create_directory(os.path.dirname(socket_path))
 
             # Check socket path length to make sure it's short enough
@@ -635,7 +633,8 @@ class Node:
             redis_password=self._ray_params.redis_password,
             config=self._config,
             fate_share=self.kernel_fate_share,
-            gcs_server_port=self._ray_params.gcs_server_port)
+            gcs_server_port=self._ray_params.gcs_server_port,
+            metrics_agent_port=self._ray_params.metrics_agent_port)
         assert (
             ray_constants.PROCESS_TYPE_GCS_SERVER not in self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] = [
@@ -680,7 +679,9 @@ class Node:
             huge_pages=self._ray_params.huge_pages,
             fate_share=self.kernel_fate_share,
             socket_to_use=self.socket,
-            head_node=self.head)
+            head_node=self.head,
+            start_initial_python_workers_for_first_job=self._ray_params.
+            start_initial_python_workers_for_first_job)
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
 

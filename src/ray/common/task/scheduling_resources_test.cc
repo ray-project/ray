@@ -33,20 +33,20 @@ class SchedulingResourcesTest : public ::testing::Test {
 };
 
 TEST_F(SchedulingResourcesTest, AddBundleResources) {
-  UniqueID bundle_id = UniqueID::FromRandom();
+  PlacementGroupID group_id = PlacementGroupID::FromRandom();
   std::vector<std::string> resource_labels = {"CPU"};
   std::vector<double> resource_capacity = {1.0};
   ResourceSet resource(resource_labels, resource_capacity);
-  resource_set->AddBundleResources(bundle_id.Binary(), resource);
+  resource_set->AddBundleResources(group_id, 1, resource);
   resource_labels.pop_back();
-  resource_labels.push_back(bundle_id.Binary() + "_" + "CPU");
+  resource_labels.push_back("CPU_group_" + group_id.Hex() + "_1");
   ResourceSet result_resource(resource_labels, resource_capacity);
   ASSERT_EQ(1, resource_set->IsEqual(result_resource));
 }
 
 TEST_F(SchedulingResourcesTest, AddBundleResource) {
-  UniqueID bundle_id = UniqueID::FromRandom();
-  std::string name = bundle_id.Binary() + "_" + "CPU";
+  PlacementGroupID group_id = PlacementGroupID::FromRandom();
+  std::string name = "CPU_group_" + group_id.Hex() + "_1";
   std::vector<int64_t> whole_ids = {1, 2, 3};
   ResourceIds resource_ids(whole_ids);
   resource_id_set->AddBundleResource(name, resource_ids);
@@ -55,16 +55,16 @@ TEST_F(SchedulingResourcesTest, AddBundleResource) {
 }
 
 TEST_F(SchedulingResourcesTest, ReturnBundleResources) {
-  UniqueID bundle_id = UniqueID::FromRandom();
+  PlacementGroupID group_id = PlacementGroupID::FromRandom();
   std::vector<std::string> resource_labels = {"CPU"};
   std::vector<double> resource_capacity = {1.0};
   ResourceSet resource(resource_labels, resource_capacity);
-  resource_set->AddBundleResources(bundle_id.Binary(), resource);
+  resource_set->AddBundleResources(group_id, 1, resource);
   resource_labels.pop_back();
-  resource_labels.push_back(bundle_id.Binary() + "_" + "CPU");
+  resource_labels.push_back("CPU_group_" + group_id.Hex() + "_1");
   ResourceSet result_resource(resource_labels, resource_capacity);
   ASSERT_EQ(1, resource_set->IsEqual(result_resource));
-  resource_set->ReturnBundleResources(bundle_id.Binary());
+  resource_set->ReturnBundleResources(group_id, 1);
   ASSERT_EQ(1, resource_set->IsEqual(resource));
 }
 }  // namespace ray

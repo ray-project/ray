@@ -11,7 +11,7 @@ asan_install() {
 asan_setup() {
   echo "Setting up the environment"
   pip install -r ray-project/requirements.txt
-  pip install -U pytest
+  pip install -U pytest==5.4.3
 
   echo "Installing cython example"
   (cd "${ROOT_DIR}"/../doc/examples/cython && python setup.py install --user)
@@ -47,7 +47,7 @@ asan_run() {
 
 asan_recompile() {
   git fetch
-  git checkout "${git_sha}"
+  git checkout "$1"
   asan_install || true
 }
 

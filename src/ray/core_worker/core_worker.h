@@ -119,6 +119,8 @@ struct CoreWorkerOptions {
   int num_workers;
   /// The function to destroy asyncio event and loops.
   std::function<void()> terminate_asyncio_thread;
+  /// Serialized representation of JobConfig.
+  std::string serialized_job_config;
 };
 
 /// Lifecycle management of one or more `CoreWorker` instances in a process.
@@ -177,6 +179,13 @@ class CoreWorkerProcess {
   /// NOTE (kfstorm): Here we return a reference instead of a `shared_ptr` to make sure
   /// `CoreWorkerProcess` has full control of the destruction timing of `CoreWorker`.
   static CoreWorker &GetCoreWorker();
+
+  /// Try to get the `CoreWorker` instance by worker ID.
+  /// If the current thread is not associated with a core worker, returns a null pointer.
+  ///
+  /// \param[in] workerId The worker ID.
+  /// \return The `CoreWorker` instance.
+  static std::shared_ptr<CoreWorker> TryGetWorker(const WorkerID &worker_id);
 
   /// Set the core worker associated with the current thread by worker ID.
   /// Currently used by Java worker only.
@@ -270,6 +279,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_id);
 
   CoreWorker(CoreWorker const &) = delete;
+
   void operator=(CoreWorker const &other) = delete;
 
   ///
@@ -576,7 +586,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void SubmitTask(const RayFunction &function,
                   const std::vector<std::unique_ptr<TaskArg>> &args,
                   const TaskOptions &task_options, std::vector<ObjectID> *return_ids,
-                  int max_retries);
+                  int max_retries, PlacementOptions placement_options);
 
   /// Create an actor.
   ///
@@ -875,6 +885,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void ExecuteTaskLocalMode(const TaskSpecification &task_spec,
                             const ActorID &actor_id = ActorID::Nil());
 
+  /// KillActor API for a local mode.
+  Status KillActorLocalMode(const ActorID &actor_id);
+
+  /// Get a handle to a named actor for local mode.
+  std::pair<const ActorHandle *, Status> GetNamedActorHandleLocalMode(
+      const std::string &name);
+
   /// Get the values of the task arguments for the executor. Values are
   /// retrieved from the local plasma store or, if the value is inlined, from
   /// the task spec.
@@ -1090,6 +1107,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   // Queue of tasks to resubmit when the specified time passes.
   std::deque<std::pair<int64_t, TaskSpecification>> to_resubmit_ GUARDED_BY(mutex_);
+
+  /// Map of named actor registry. It doesn't need to hold a lock because
+  /// local mode is single-threaded.
+  absl::flat_hash_map<std::string, ActorID> local_mode_named_actor_registry_;
 
   // Guard for `async_plasma_callbacks_` map.
   mutable absl::Mutex plasma_mutex_;
