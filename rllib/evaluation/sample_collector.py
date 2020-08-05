@@ -103,20 +103,6 @@ class _SampleCollector(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
-    #@abstractmethod
-    #def reset_inference_call(self) -> None:
-    #    """Resets all inference information (new indices will be registered).
-    #
-    #    When calling `add_init_obs` or `add_action_reward_next_obs`, the
-    #    SampleCollector object should keep track of the current
-    #    agentID/episodeID combinations that have new observations available
-    #    for action calculations. These will be batched together when producing
-    #    a next input_dict via `get_inference_input_dict`.
-    #    Calling `reset_inference_call` will reset all this information to make
-    #    room for new batched data in upcoming calls.
-    #    """
-    #    raise NotImplementedError
-
     @abstractmethod
     def get_inference_input_dict(self, model: ModelV2) -> \
             Dict[str, TensorType]:
