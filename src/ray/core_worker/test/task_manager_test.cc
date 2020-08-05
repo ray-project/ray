@@ -52,7 +52,7 @@ class TaskManagerTest : public ::testing::Test {
             /*distributed_ref_counting_enabled=*/true, lineage_pinning_enabled))),
         actor_reporter_(std::shared_ptr<ActorReporterInterface>(new MockActorManager())),
         manager_(store_, reference_counter_, actor_reporter_,
-                 [this](const TaskSpecification &spec, bool delay) {
+                 [this](TaskSpecification &spec, bool delay) {
                    num_retries_++;
                    return Status::OK();
                  },
@@ -505,7 +505,7 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
   // The task finished, its return ID is still in scope, and the return object
   // was stored in plasma. It is okay to resubmit it now.
   ASSERT_TRUE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps).ok());
-  ASSERT_EQ(resubmitted_task_deps, spec.GetDependencies());
+  ASSERT_EQ(resubmitted_task_deps, spec.GetDependencyIds());
   ASSERT_EQ(num_retries_, 1);
   resubmitted_task_deps.clear();
 

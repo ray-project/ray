@@ -1,5 +1,6 @@
 click
 colorama
+colorful
 filelock
 flask
 flatbuffers
@@ -19,9 +20,11 @@ sphinx-click
 sphinx-copybutton
 sphinx-gallery
 sphinx-jsonschema
+sphinx-tabs
 sphinx-version-warning
 sphinx_rtd_theme
 tabulate
 uvicorn
 werkzeug
-git+https://github.com/ray-project/tune-sklearn.git#egg=tune-sklearn
+tune-sklearn==0.0.5
+scikit-optimize

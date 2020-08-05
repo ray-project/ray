@@ -7,8 +7,7 @@
 PORTS="2000 2001 2002 2003 2004 2005 2006 2007 2008 2009"
 RAYLET_PORT=0
 for port in $PORTS; do
-    nc -z localhost $port
-    if [[ $? != 0 ]]; then
+    if ! nc -z localhost "$port"; then
         RAYLET_PORT=$port
         break
     fi
@@ -24,13 +23,13 @@ set -e
 set -x
 
 # Get the directory in which this script is executing.
-SCRIPT_DIR="`dirname \"$0\"`"
+SCRIPT_DIR="$(dirname "$0")"
 
 # Get the directory in which this script is executing.
-SCRIPT_DIR="`dirname \"$0\"`"
+SCRIPT_DIR="$(dirname "$0")"
 RAY_ROOT="$SCRIPT_DIR/../../.."
 # Makes $RAY_ROOT an absolute path.
-RAY_ROOT="`( cd \"$RAY_ROOT\" && pwd )`"
+RAY_ROOT="$(cd "$RAY_ROOT" && pwd)"
 if [ -z "$RAY_ROOT" ] ; then
   exit 1
 fi
@@ -62,5 +61,5 @@ ps -ax | grep -E "plasma|DefaultDriver|DefaultWorker|AppStarter|redis|http_serve
 #$RAY_ROOT/bazel-bin/streaming/streaming_queue_tests $STORE_EXEC $RAYLET_EXEC $RAYLET_PORT $STREAMING_TEST_WORKER_EXEC $GCS_SERVER_EXEC $REDIS_SERVER_EXEC $REDIS_MODULE $REDIS_CLIENT_EXEC --gtest_filter=StreamingTest/StreamingWriterTest.streaming_writer_exactly_once_test/0
 
 # run all tests
-$RAY_ROOT/bazel-bin/streaming/streaming_queue_tests $STORE_EXEC $RAYLET_EXEC $RAYLET_PORT $STREAMING_TEST_WORKER_EXEC $GCS_SERVER_EXEC $REDIS_SERVER_EXEC $REDIS_MODULE $REDIS_CLIENT_EXEC
+$RAY_ROOT/bazel-bin/streaming/streaming_queue_tests $STORE_EXEC $RAYLET_EXEC "$RAYLET_PORT" $STREAMING_TEST_WORKER_EXEC $GCS_SERVER_EXEC $REDIS_SERVER_EXEC $REDIS_MODULE $REDIS_CLIENT_EXEC
 sleep 1s

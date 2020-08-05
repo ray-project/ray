@@ -29,6 +29,7 @@ class LogFileInfo:
                  size_when_last_opened=None,
                  file_position=None,
                  file_handle=None,
+                 is_err_file=False,
                  job_id=None):
         assert (filename is not None and size_when_last_opened is not None
                 and file_position is not None)
@@ -36,6 +37,7 @@ class LogFileInfo:
         self.size_when_last_opened = size_when_last_opened
         self.file_position = file_position
         self.file_handle = file_handle
+        self.is_err_file = is_err_file
         self.job_id = job_id
         self.worker_pid = None
 
@@ -128,6 +130,8 @@ class LogMonitor:
                 else:
                     job_id = None
 
+                is_err_file = file_path.endswith("err")
+
                 self.log_filenames.add(file_path)
                 self.closed_file_infos.append(
                     LogFileInfo(
@@ -135,6 +139,7 @@ class LogMonitor:
                         size_when_last_opened=0,
                         file_position=0,
                         file_handle=None,
+                        is_err_file=is_err_file,
                         job_id=job_id))
                 log_filename = os.path.basename(file_path)
                 logger.info("Beginning to track file {}".format(log_filename))
@@ -245,6 +250,7 @@ class LogMonitor:
                         "ip": self.ip,
                         "pid": file_info.worker_pid,
                         "job": file_info.job_id,
+                        "is_err": file_info.is_err_file,
                         "lines": lines_to_publish
                     }))
                 anything_published = True

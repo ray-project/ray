@@ -1,6 +1,7 @@
-#include "queue_handler.h"
+#include "queue/queue_handler.h"
+
+#include "queue/utils.h"
 #include "util/streaming_util.h"
-#include "utils.h"
 
 namespace ray {
 namespace streaming {

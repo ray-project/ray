@@ -39,6 +39,14 @@ py_test(
 )
 
 py_test(
+    name = "test_dask_scheduler",
+    size = "small",
+    srcs = SRCS + ["test_dask_scheduler.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_iter",
     size = "medium",
     srcs = SRCS + ["test_iter.py"],
@@ -107,6 +115,14 @@ py_test(
     name = "test_advanced_3",
     size = "medium",
     srcs = SRCS + ["test_advanced_3.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_multi_tenancy",
+    size = "small",
+    srcs = SRCS + ["test_multi_tenancy.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
@@ -190,6 +206,13 @@ py_test(
     deps = ["//:ray_lib"],
 )
 
+py_test(
+    name = "test_coordinator_server",
+    size = "small",
+    srcs = SRCS + ["test_coordinator_server.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
 
 py_test(
     name = "test_autoscaler_aws",
@@ -203,13 +226,6 @@ py_test(
     size = "small",
     srcs = SRCS + ["test_autoscaler_yaml.py"],
     data = ["additional_property.yaml"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_cython",
-    size = "small",
-    srcs = SRCS + ["test_cython.py"],
     deps = ["//:ray_lib"],
 )
 
@@ -230,7 +246,7 @@ py_test(
 
 py_test(
     name = "test_failure",
-    size = "medium",
+    size = "large",
     srcs = SRCS + ["test_failure.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
@@ -301,9 +317,9 @@ py_test(
 )
 
 py_test(
-    name = "test_metrics_export",
+    name = "test_metrics_agent",
     size = "small",
-    srcs = SRCS + ["test_metrics_export.py"],
+    srcs = SRCS + ["test_metrics_agent.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
@@ -468,8 +484,7 @@ py_test(
     name = "test_gcs_fault_tolerance",
     size = "medium",
     srcs = SRCS + ["test_gcs_fault_tolerance.py"],
-    # TODO(swang): Enable again once pubsub client supports GCS server restart.
-    tags = ["exclusive", "manual"],
+    tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
 
@@ -485,6 +500,14 @@ py_test(
     name = "test_async",
     size = "medium",
     srcs = SRCS + ["test_async.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_placement_group",
+    size = "medium",
+    srcs = SRCS + ["test_placement_group.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )

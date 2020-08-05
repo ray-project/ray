@@ -102,7 +102,7 @@ public class RemoteCallPool implements Runnable {
                   singletonHandlerMap.get(bundle).handle(readyObjs.get(0).get());
                   singletonHandlerMap.remove(bundle);
                 } catch (Throwable th) {
-                  LOG.error("Error when get object, objectId = {}.", readyObjs.get(0).getId(), th);
+                  LOG.error("Error when get object, objectId = {}.", readyObjs.get(0).toString(), th);
                   if (exceptionHandler != null) {
                     exceptionHandler.handle(th);
                   }
@@ -111,8 +111,8 @@ public class RemoteCallPool implements Runnable {
             } else {
               List<Object> results =
                   readyObjs.stream().map(ObjectRef::get).collect(Collectors.toList());
-              List<ObjectId> resultIds =
-                  readyObjs.stream().map(ObjectRef::getId).collect(Collectors.toList());
+              List<String> resultIds =
+                  readyObjs.stream().map(ObjectRef::toString).collect(Collectors.toList());
               callBackPool.execute(Ray.wrapRunnable(() -> {
                 try {
                   bundleHandlerMap.get(bundle).handle(results);
@@ -161,7 +161,7 @@ public class RemoteCallPool implements Runnable {
     public String toString() {
       StringBuilder sb = new StringBuilder();
       sb.append("[");
-      objects.forEach(rayObj -> sb.append(rayObj.getId()).append(","));
+      objects.forEach(rayObj -> sb.append(rayObj.toString()).append(","));
       sb.append("]");
       return sb.toString();
     }

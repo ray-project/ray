@@ -29,7 +29,7 @@ extern "C" {
  */
 JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
     JNIEnv *, jclass, jint, jstring, jint, jstring, jstring, jstring, jbyteArray, jobject,
-    jint, jstring, jobject);
+    jint, jstring, jobject, jbyteArray);
 
 /*
  * Class:     io_ray_runtime_RayNativeRuntime
@@ -64,6 +64,15 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeKillActor(JNIE
                                                                             jclass,
                                                                             jbyteArray,
                                                                             jboolean);
+
+/*
+ * Class:     io_ray_runtime_RayNativeRuntime
+ * Method:    nativeGetActorIdOfNamedActor
+ * Signature: (Ljava/lang/String;Z)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(JNIEnv *, jclass,
+                                                                  jstring, jboolean);
 
 /*
  * Class:     io_ray_runtime_RayNativeRuntime

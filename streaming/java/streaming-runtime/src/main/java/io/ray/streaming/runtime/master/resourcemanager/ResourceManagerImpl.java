@@ -112,7 +112,7 @@ public class ResourceManagerImpl implements ResourceManager {
 
     List<UniqueId> deleteNodes = resources.getRegisteredContainerMap().keySet().stream()
         .filter(nodeId -> !latestNodeInfos.containsKey(nodeId)).collect(Collectors.toList());
-    LOG.info("Latest node infos: {}, current containers: {}, add nodes: {}, delete nodes: {}.",
+    LOG.debug("Latest node infos: {}, current containers: {}, add nodes: {}, delete nodes: {}.",
         latestNodeInfos, resources.getRegisteredContainers(), addNodes, deleteNodes);
 
     if (!addNodes.isEmpty() || !deleteNodes.isEmpty()) {

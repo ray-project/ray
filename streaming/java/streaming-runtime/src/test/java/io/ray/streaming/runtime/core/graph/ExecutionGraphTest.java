@@ -66,7 +66,7 @@ public class ExecutionGraphTest extends BaseUnitTest {
     List<ExecutionVertex> upStreamVertices = upStream.getExecutionVertices();
     List<ExecutionVertex> downStreamVertices = downStream.getExecutionVertices();
     upStreamVertices.forEach(vertex -> {
-        Assert.assertEquals(vertex.getResource().get(ResourceType.CPU.name()), 2.0);
+        Assert.assertEquals((double) vertex.getResource().get(ResourceType.CPU.name()), 2.0);
         vertex.getOutputEdges().forEach(upStreamOutPutEdge -> {
             Assert.assertTrue(downStreamVertices.contains(upStreamOutPutEdge.getTargetExecutionVertex()));
         });

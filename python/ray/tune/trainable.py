@@ -1,3 +1,5 @@
+import sys
+from contextlib import redirect_stdout, redirect_stderr
 from datetime import datetime
 
 import copy
@@ -7,7 +9,9 @@ import glob
 import os
 import pickle
 import platform
+
 import pandas as pd
+from ray.tune.utils.util import Tee
 from six import string_types
 import shutil
 import tempfile
@@ -17,10 +21,10 @@ import uuid
 import ray
 from ray.util.debug import log_once
 from ray.tune.logger import UnifiedLogger
-from ray.tune.result import (DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S,
-                             TIMESTEPS_THIS_ITER, DONE, TIMESTEPS_TOTAL,
-                             EPISODES_THIS_ITER, EPISODES_TOTAL,
-                             TRAINING_ITERATION, RESULT_DUPLICATE, TRIAL_INFO)
+from ray.tune.result import (
+    DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S, TIMESTEPS_THIS_ITER, DONE,
+    TIMESTEPS_TOTAL, EPISODES_THIS_ITER, EPISODES_TOTAL, TRAINING_ITERATION,
+    RESULT_DUPLICATE, TRIAL_INFO, STDOUT_FILE, STDERR_FILE, LOGDIR_PATH)
 from ray.tune.utils import UtilMonitor
 
 logger = logging.getLogger(__name__)
@@ -78,6 +82,15 @@ class TrainableUtil:
         return data_dict
 
     @staticmethod
+    def checkpoint_to_object(checkpoint_path):
+        data_dict = TrainableUtil.pickle_checkpoint(checkpoint_path)
+        out = io.BytesIO()
+        if len(data_dict) > 10e6:  # getting pretty large
+            logger.info("Checkpoint size is {} bytes".format(len(data_dict)))
+        out.write(data_dict)
+        return out.getvalue()
+
+    @staticmethod
     def find_checkpoint_dir(checkpoint_path):
         """Returns the directory containing the checkpoint path.
 
@@ -100,19 +113,23 @@ class TrainableUtil:
         return checkpoint_dir
 
     @staticmethod
-    def make_checkpoint_dir(checkpoint_dir, index):
+    def make_checkpoint_dir(checkpoint_dir, index, override=False):
         """Creates a checkpoint directory within the provided path.
 
         Args:
             checkpoint_dir (str): Path to checkpoint directory.
             index (str): A subdirectory will be created
                 at the checkpoint directory named 'checkpoint_{index}'.
+            override (bool): Deletes checkpoint_dir before creating
+                a new one.
         """
         suffix = "checkpoint"
         if index is not None:
             suffix += "_{}".format(index)
         checkpoint_dir = os.path.join(checkpoint_dir, suffix)
 
+        if override and os.path.exists(checkpoint_dir):
+            shutil.rmtree(checkpoint_dir)
         os.makedirs(checkpoint_dir, exist_ok=True)
         # Drop marker in directory to identify it as a checkpoint dir.
         open(os.path.join(checkpoint_dir, ".is_checkpoint"), "a").close()
@@ -175,7 +192,7 @@ class Trainable:
     Calling ``save()`` should save the training state of a trainable to disk,
     and ``restore(path)`` should restore a trainable to the given state.
 
-    Generally you only need to implement ``build``, ``step``,
+    Generally you only need to implement ``setup``, ``step``,
     ``save_checkpoint``, and ``load_checkpoint`` when subclassing Trainable.
 
     Other implementation methods that may be helpful to override are
@@ -207,16 +224,17 @@ class Trainable:
         self.config = config or {}
         trial_info = self.config.pop(TRIAL_INFO, None)
 
-        if logger_creator:
-            self._result_logger = logger_creator(self.config)
-            self._logdir = self._result_logger.logdir
-        else:
-            logdir_prefix = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            ray.utils.try_to_create_directory(DEFAULT_RESULTS_DIR)
-            self._logdir = tempfile.mkdtemp(
-                prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
-            self._result_logger = UnifiedLogger(
-                self.config, self._logdir, loggers=None)
+        self._logger_creator = logger_creator
+        self._result_logger = self._logdir = None
+        self._create_logger(self.config)
+
+        self._stdout_context = self._stdout_fp = self._stdout_stream = None
+        self._stderr_context = self._stderr_fp = self._stderr_stream = None
+        self._stderr_logging_handler = None
+
+        stdout_file = self.config.pop(STDOUT_FILE, None)
+        stderr_file = self.config.pop(STDERR_FILE, None)
+        self._open_logfiles(stdout_file, stderr_file)
 
         self._iteration = 0
         self._time_total = 0.0
@@ -380,6 +398,11 @@ class Trainable:
 
         self.log_result(result)
 
+        if self._stdout_stream:
+            self._stdout_stream.flush()
+        if self._stderr_stream:
+            self._stderr_stream.flush()
+
         return result
 
     def get_state(self):
@@ -424,14 +447,10 @@ class Trainable:
         """
         tmpdir = tempfile.mkdtemp("save_to_object", dir=self.logdir)
         checkpoint_path = self.save(tmpdir)
-        # Save all files in subtree.
-        data_dict = TrainableUtil.pickle_checkpoint(checkpoint_path)
-        out = io.BytesIO()
-        if len(data_dict) > 10e6:  # getting pretty large
-            logger.info("Checkpoint size is {} bytes".format(len(data_dict)))
-        out.write(data_dict)
+        # Save all files in subtree and delete the tmpdir.
+        obj = TrainableUtil.checkpoint_to_object(checkpoint_path)
         shutil.rmtree(tmpdir)
-        return out.getvalue()
+        return obj
 
     def restore(self, checkpoint_path):
         """Restores training state from a given model checkpoint.
@@ -516,13 +535,37 @@ class Trainable:
         export_dir = export_dir or self.logdir
         return self._export_model(export_formats, export_dir)
 
+    def reset(self, new_config, new_logdir):
+        """Resets trial for use with new config.
+
+        Subclasses should override reset_config() to actually
+        reset actor behavior for the new config."""
+        self.config = new_config
+
+        logger_config = new_config.copy()
+        logger_config[LOGDIR_PATH] = new_logdir
+
+        self._logdir = new_logdir
+
+        self._result_logger.flush()
+        self._result_logger.close()
+
+        self._create_logger(logger_config)
+
+        stdout_file = new_config.pop(STDOUT_FILE, None)
+        stderr_file = new_config.pop(STDERR_FILE, None)
+
+        self._close_logfiles()
+        self._open_logfiles(stdout_file, stderr_file)
+
+        return self.reset_config(new_config)
+
     def reset_config(self, new_config):
         """Resets configuration without restarting the trial.
 
         This method is optional, but can be implemented to speed up algorithms
         such as PBT, and to allow performance optimizations such as running
-        experiments with reuse_actors=True. Note that self.config need to
-        be updated to reflect the latest parameter information in Ray logs.
+        experiments with reuse_actors=True.
 
         Args:
             new_config (dict): Updated hyperparameter configuration
@@ -533,6 +576,60 @@ class Trainable:
         """
         return False
 
+    def _create_logger(self, config):
+        """Create logger from logger creator"""
+        if self._logger_creator:
+            self._result_logger = self._logger_creator(config)
+            self._logdir = self._result_logger.logdir
+        else:
+            logdir_prefix = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+            ray.utils.try_to_create_directory(DEFAULT_RESULTS_DIR)
+            self._logdir = tempfile.mkdtemp(
+                prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
+            self._result_logger = UnifiedLogger(
+                config, self._logdir, loggers=None)
+
+    def _open_logfiles(self, stdout_file, stderr_file):
+        """Create loggers. Open stdout and stderr logfiles."""
+        if stdout_file:
+            stdout_path = os.path.expanduser(
+                os.path.join(self._logdir, stdout_file))
+            self._stdout_fp = open(stdout_path, "a+")
+            self._stdout_stream = Tee(sys.stdout, self._stdout_fp)
+            self._stdout_context = redirect_stdout(self._stdout_stream)
+            self._stdout_context.__enter__()
+
+        if stderr_file:
+            stderr_path = os.path.expanduser(
+                os.path.join(self._logdir, stderr_file))
+            self._stderr_fp = open(stderr_path, "a+")
+            self._stderr_stream = Tee(sys.stderr, self._stderr_fp)
+            self._stderr_context = redirect_stderr(self._stderr_stream)
+            self._stderr_context.__enter__()
+
+            # Add logging handler to root ray logger
+            formatter = logging.Formatter("[%(levelname)s %(asctime)s] "
+                                          "%(filename)s: %(lineno)d  "
+                                          "%(message)s")
+            self._stderr_logging_handler = logging.StreamHandler(
+                self._stderr_fp)
+            self._stderr_logging_handler.setFormatter(formatter)
+            ray.logger.addHandler(self._stderr_logging_handler)
+
+    def _close_logfiles(self):
+        """Close stdout and stderr logfiles."""
+        if self._stderr_logging_handler:
+            ray.logger.removeHandler(self._stderr_logging_handler)
+
+        if self._stdout_context:
+            self._stdout_stream.flush()
+            self._stdout_context.__exit__(None, None, None)
+            self._stdout_fp.close()
+        if self._stderr_context:
+            self._stderr_stream.flush()
+            self._stderr_context.__exit__(None, None, None)
+            self._stderr_fp.close()
+
     def stop(self):
         """Releases all resources used by this trainable.
 
@@ -542,6 +639,8 @@ class Trainable:
         self._result_logger.flush()
         self._result_logger.close()
         self.cleanup()
+
+        self._close_logfiles()
 
     @property
     def logdir(self):

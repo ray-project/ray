@@ -146,17 +146,17 @@ public class RemoteCallWorker {
   private static List<Object> cpCompleteCommonCallTwoWay(
       List<BaseActorHandle> actors, Long stateCheckpointId, Long queueCheckpointId,
       String pyFuncName, RayFunc3<JobWorker, Long, Long, Boolean> rayFunc) {
-    List<ObjectId> waitFor = cpCompleteCommonCall(actors, stateCheckpointId, queueCheckpointId,
+    List<ObjectRef<Object>> waitFor = cpCompleteCommonCall(actors, stateCheckpointId, queueCheckpointId,
         pyFuncName, rayFunc);
-    return Ray.get(waitFor, Object.class);
+    return Ray.get(waitFor);
   }
 
-  private static List<ObjectId> cpCompleteCommonCall(
+  private static List<ObjectRef<Object>> cpCompleteCommonCall(
       List<BaseActorHandle> actors,
       Long stateCheckpointId, Long queueCheckpointId,
       String pyFuncName,
       RayFunc3<JobWorker, Long, Long, Boolean> rayFunc) {
-    List<ObjectId> waitFor = new ArrayList<>();
+    List<ObjectRef<Object>> waitFor = new ArrayList<>();
     actors.forEach(actor -> {
       // python
       if (actor instanceof PyActorHandle) {
@@ -168,11 +168,11 @@ public class RemoteCallWorker {
             .setCheckpointId(queueCheckpointId)
             .build();
         waitFor.add(((PyActorHandle) actor).task(PyActorMethod.of(pyFuncName),
-            stateCheckpointIdPb.toByteArray(), queueCheckpointIdPb.toByteArray()).remote().getId());
+            stateCheckpointIdPb.toByteArray(), queueCheckpointIdPb.toByteArray()).remote());
       } else {
         // java
         waitFor.add(((ActorHandle) actor).task(rayFunc, stateCheckpointId, queueCheckpointId)
-            .remote().getId());
+            .remote());
       }
     });
     return waitFor;

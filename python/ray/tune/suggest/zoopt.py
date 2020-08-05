@@ -133,12 +133,12 @@ class ZOOptSearch(Searcher):
 
         del self._live_trial_mapping[trial_id]
 
-    def save(self, checkpoint_dir):
+    def save(self, checkpoint_path):
         trials_object = self.optimizer
-        with open(checkpoint_dir, "wb") as output:
+        with open(checkpoint_path, "wb") as output:
             pickle.dump(trials_object, output)
 
-    def restore(self, checkpoint_dir):
-        with open(checkpoint_dir, "rb") as input:
+    def restore(self, checkpoint_path):
+        with open(checkpoint_path, "rb") as input:
             trials_object = pickle.load(input)
         self.optimizer = trials_object

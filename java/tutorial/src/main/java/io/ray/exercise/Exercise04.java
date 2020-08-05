@@ -50,7 +50,6 @@ public class Exercise04 {
       System.out.printf("%d ready object(s): \n", waitResult.getReady().size());
       waitResult.getReady().forEach(rayObject -> System.out.println(rayObject.get()));
       System.out.printf("%d unready object(s): \n", waitResult.getUnready().size());
-      waitResult.getUnready().forEach(rayObject -> System.out.println(rayObject.getId()));
     } catch (Throwable t) {
       t.printStackTrace();
     } finally {

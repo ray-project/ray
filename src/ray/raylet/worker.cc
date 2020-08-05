@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "worker.h"
+#include "ray/raylet/worker.h"
 
 #include <boost/bind.hpp>
 
-#include "ray/protobuf/core_worker.grpc.pb.h"
-#include "ray/protobuf/core_worker.pb.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/raylet.h"
+#include "src/ray/protobuf/core_worker.grpc.pb.h"
+#include "src/ray/protobuf/core_worker.pb.h"
 
 namespace ray {
 
@@ -65,7 +65,12 @@ Language Worker::GetLanguage() const { return language_; }
 const std::string Worker::IpAddress() const { return ip_address_; }
 
 int Worker::Port() const {
-  RAY_CHECK(port_ > 0);
+  // NOTE(kfstorm): Since `RayletClient::AnnounceWorkerPort` is an asynchronous
+  // operation, the worker may crash before the `AnnounceWorkerPort` request is received
+  // by raylet. In this case, Accessing `Worker::Port` in
+  // `NodeManager::ProcessDisconnectClientMessage` will fail the check. So disable the
+  // check here.
+  // RAY_CHECK(port_ > 0);
   return port_;
 }
 
@@ -101,7 +106,20 @@ const std::unordered_set<TaskID> &Worker::GetBlockedTaskIds() const {
   return blocked_task_ids_;
 }
 
-void Worker::AssignJobId(const JobID &job_id) { assigned_job_id_ = job_id; }
+void Worker::AssignJobId(const JobID &job_id) {
+  if (!RayConfig::instance().enable_multi_tenancy()) {
+    assigned_job_id_ = job_id;
+  } else {
+    if (!assigned_job_id_.IsNil()) {
+      RAY_CHECK(assigned_job_id_ == job_id)
+          << "The worker " << worker_id_ << " is already assigned to job "
+          << assigned_job_id_ << ". It cannot be reassigned to job " << job_id;
+    } else {
+      assigned_job_id_ = job_id;
+      RAY_LOG(INFO) << "Assigned worker " << worker_id_ << " to job " << job_id;
+    }
+  }
+}
 
 const JobID &Worker::GetAssignedJobId() const { return assigned_job_id_; }
 
@@ -166,8 +184,7 @@ Status Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set
       task.GetTaskExecutionSpec().GetMessage());
   request.set_resource_ids(resource_id_set.Serialize());
 
-  return rpc_client_->AssignTask(request, [](Status status,
-                                             const rpc::AssignTaskReply &reply) {
+  rpc_client_->AssignTask(request, [](Status status, const rpc::AssignTaskReply &reply) {
     if (!status.ok()) {
       RAY_LOG(DEBUG) << "Worker failed to finish executing task: " << status.ToString();
     }
@@ -175,6 +192,7 @@ Status Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set
     // and assigning new task will be done when raylet receives
     // `TaskDone` message.
   });
+  return Status::OK();
 }
 
 void Worker::DirectActorCallArgWaitComplete(int64_t tag) {
@@ -182,15 +200,12 @@ void Worker::DirectActorCallArgWaitComplete(int64_t tag) {
   rpc::DirectActorCallArgWaitCompleteRequest request;
   request.set_tag(tag);
   request.set_intended_worker_id(worker_id_.Binary());
-  auto status = rpc_client_->DirectActorCallArgWaitComplete(
+  rpc_client_->DirectActorCallArgWaitComplete(
       request, [](Status status, const rpc::DirectActorCallArgWaitCompleteReply &reply) {
         if (!status.ok()) {
           RAY_LOG(ERROR) << "Failed to send wait complete: " << status.ToString();
         }
       });
-  if (!status.ok()) {
-    RAY_LOG(ERROR) << "Failed to send wait complete: " << status.ToString();
-  }
 }
 
 }  // namespace raylet

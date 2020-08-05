@@ -1,3 +1,5 @@
+#include "data_reader.h"
+
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
@@ -5,11 +7,9 @@
 #include <memory>
 #include <thread>
 
+#include "message/message_bundle.h"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
-
-#include "data_reader.h"
-#include "message/message_bundle.h"
 
 namespace ray {
 namespace streaming {

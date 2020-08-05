@@ -1,10 +1,10 @@
+#include "message/message_bundle.h"
+
 #include <cstring>
 #include <string>
 
-#include "ray/common/status.h"
-
 #include "config/streaming_config.h"
-#include "message_bundle.h"
+#include "ray/common/status.h"
 #include "util/streaming_logging.h"
 
 namespace ray {

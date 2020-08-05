@@ -14,18 +14,27 @@
 
 #pragma once
 
-#include <unistd.h>
-
+#include <boost/optional.hpp>
 #include <functional>
 #include <string>
-
-#include <boost/optional.hpp>
 
 #include "gtest/gtest.h"
 #include "ray/common/id.h"
 #include "ray/util/util.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
+
+static inline std::vector<rpc::ObjectReference> ObjectIdsToRefs(
+    std::vector<ObjectID> object_ids) {
+  std::vector<rpc::ObjectReference> refs;
+  for (const auto &object_id : object_ids) {
+    rpc::ObjectReference ref;
+    ref.set_object_id(object_id.Binary());
+    refs.push_back(ref);
+  }
+  return refs;
+}
 
 class Buffer;
 class RayObject;
@@ -50,6 +59,9 @@ int KillAllExecutable(const std::string &executable_with_suffix);
 
 // A helper function to return a random task id.
 TaskID RandomTaskId();
+
+// A helper function to return a random job id.
+JobID RandomJobId();
 
 std::shared_ptr<Buffer> GenerateRandomBuffer();
 

@@ -14,7 +14,6 @@
 
 #include "ray/gcs/redis_gcs_client.h"
 
-#include <unistd.h>
 #include "ray/common/ray_config.h"
 #include "ray/gcs/redis_accessor.h"
 #include "ray/gcs/redis_context.h"
@@ -55,7 +54,6 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   // For raylet, NodeID should be initialized in raylet layer(not here).
   client_table_.reset(new ClientTable({primary_context}, this));
 
-  error_table_.reset(new ErrorTable({primary_context}, this));
   job_table_.reset(new JobTable({primary_context}, this));
   heartbeat_batch_table_.reset(new HeartbeatBatchTable({primary_context}, this));
   // Tables below would be sharded.
@@ -83,6 +81,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   error_accessor_.reset(new RedisErrorInfoAccessor(this));
   stats_accessor_.reset(new RedisStatsInfoAccessor(this));
   worker_accessor_.reset(new RedisWorkerInfoAccessor(this));
+  placement_group_accessor_.reset(new RedisPlacementGroupInfoAccessor());
 
   is_connected_ = true;
 
@@ -107,7 +106,6 @@ std::string RedisGcsClient::DebugString() const {
   result << "\n- TaskReconstructionLog: " << task_reconstruction_log_->DebugString();
   result << "\n- TaskLeaseTable: " << task_lease_table_->DebugString();
   result << "\n- HeartbeatTable: " << heartbeat_table_->DebugString();
-  result << "\n- ErrorTable: " << error_table_->DebugString();
   result << "\n- ProfileTable: " << profile_table_->DebugString();
   result << "\n- ClientTable: " << client_table_->DebugString();
   result << "\n- JobTable: " << job_table_->DebugString();
@@ -139,8 +137,6 @@ HeartbeatTable &RedisGcsClient::heartbeat_table() { return *heartbeat_table_; }
 HeartbeatBatchTable &RedisGcsClient::heartbeat_batch_table() {
   return *heartbeat_batch_table_;
 }
-
-ErrorTable &RedisGcsClient::error_table() { return *error_table_; }
 
 JobTable &RedisGcsClient::job_table() { return *job_table_; }
 

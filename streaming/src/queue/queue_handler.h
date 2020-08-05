@@ -5,7 +5,7 @@
 #include <boost/thread.hpp>
 #include <thread>
 
-#include "queue.h"
+#include "queue/queue.h"
 #include "util/streaming_logging.h"
 
 namespace ray {

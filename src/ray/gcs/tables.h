@@ -25,8 +25,8 @@
 #include "ray/gcs/callback.h"
 #include "ray/gcs/entry_change_notification.h"
 #include "ray/gcs/redis_context.h"
-#include "ray/protobuf/gcs.pb.h"
 #include "ray/util/logging.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 struct redisAsyncContext;
 
@@ -859,21 +859,6 @@ class TaskTable : public Table<TaskID, TaskTableData> {
 };
 
 }  // namespace raylet
-
-class ErrorTable : public Log<JobID, ErrorTableData> {
- public:
-  ErrorTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
-             RedisGcsClient *client)
-      : Log(contexts, client) {
-    pubsub_channel_ = TablePubsub::ERROR_INFO_PUBSUB;
-    prefix_ = TablePrefix::ERROR_INFO;
-  };
-
-  /// Returns debug string for class.
-  ///
-  /// \return string.
-  std::string DebugString() const;
-};
 
 class ProfileTable : public Log<UniqueID, ProfileTableData> {
  public:

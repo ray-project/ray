@@ -1,5 +1,6 @@
 #include "io_ray_streaming_runtime_transfer_channel_ChannelId.h"
 #include "streaming_jni_common.h"
+
 using namespace ray::streaming;
 
 JNIEXPORT jlong JNICALL Java_io_ray_streaming_runtime_transfer_channel_ChannelId_createNativeId(

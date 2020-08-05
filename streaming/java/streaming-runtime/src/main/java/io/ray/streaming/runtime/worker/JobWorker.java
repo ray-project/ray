@@ -84,14 +84,14 @@ public class JobWorker implements Serializable {
     this.workerConfig = new StreamingWorkerConfig(executionVertex.getWorkerConfig());
     this.stateBackend = StateBackendFactory.getStateBackend(this.workerConfig);
 
-//
-//    LOG.info("Ray.getRuntimeContext().wasCurrentActorRestarted()={}",
-//      Ray.getRuntimeContext().wasCurrentActorRestarted());
-//    if (!Ray.getRuntimeContext().wasCurrentActorRestarted()) {
-//      saveContext();
-//      LOG.info("Job worker is fresh started, init success.");
-//      return;
-//    }
+
+    LOG.info("Ray.getRuntimeContext().wasCurrentActorRestarted()={}",
+      Ray.getRuntimeContext().wasCurrentActorRestarted());
+    if (!Ray.getRuntimeContext().wasCurrentActorRestarted()) {
+      saveContext();
+      LOG.info("Job worker is fresh started, init success.");
+      return;
+    }
 
     LOG.info("Begin load job worker checkpoint state.");
 
@@ -103,10 +103,10 @@ public class JobWorker implements Serializable {
       init(context);
       requestRollback("LoadCheckpoint request rollback in new actor.");
     } else {
-//      LOG.error(
-//        "Worker is reconstructed, but can't load checkpoint. " +
-//          "Check whether you checkpoint state is reliable. Current checkpoint state is {}.",
-//        stateBackend.getClass().getName());
+      LOG.error(
+        "Worker is reconstructed, but can't load checkpoint. " +
+          "Check whether you checkpoint state is reliable. Current checkpoint state is {}.",
+        stateBackend.getClass().getName());
     }
   }
 

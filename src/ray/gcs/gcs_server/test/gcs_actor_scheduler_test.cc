@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <ray/gcs/gcs_server/test/gcs_server_test_util.h>
-#include <ray/gcs/test/gcs_test_util.h>
-
 #include <memory>
+
 #include "gtest/gtest.h"
+#include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
+#include "ray/gcs/test/gcs_test_util.h"
 
 namespace ray {
 
@@ -28,7 +28,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
     gcs_pub_sub_ = std::make_shared<GcsServerMocker::MockGcsPubSub>(redis_client_);
     gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client_);
     gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
-        io_service_, error_info_accessor_, gcs_pub_sub_, gcs_table_storage_);
+        io_service_, io_service_, gcs_pub_sub_, gcs_table_storage_);
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
     gcs_actor_table_ =
         std::make_shared<GcsServerMocker::MockedGcsActorTable>(store_client_);
@@ -52,9 +52,6 @@ class GcsActorSchedulerTest : public ::testing::Test {
   boost::asio::io_service io_service_;
   std::shared_ptr<gcs::StoreClient> store_client_;
   std::shared_ptr<GcsServerMocker::MockedGcsActorTable> gcs_actor_table_;
-
-  GcsServerMocker::MockedErrorInfoAccessor error_info_accessor_;
-
   std::shared_ptr<GcsServerMocker::MockRayletClient> raylet_client_;
   std::shared_ptr<GcsServerMocker::MockWorkerClient> worker_client_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
@@ -71,7 +68,7 @@ TEST_F(GcsActorSchedulerTest, TestScheduleFailedWithZeroNode) {
 
   auto job_id = JobID::FromInt(1);
   auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
-  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request);
+  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request.task_spec());
 
   // Schedule the actor with zero node.
   gcs_actor_scheduler_->Schedule(actor);
@@ -93,7 +90,7 @@ TEST_F(GcsActorSchedulerTest, TestScheduleActorSuccess) {
 
   auto job_id = JobID::FromInt(1);
   auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
-  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request);
+  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request.task_spec());
 
   // Schedule the actor with 1 available node, and the lease request should be send to the
   // node.
@@ -128,7 +125,7 @@ TEST_F(GcsActorSchedulerTest, TestScheduleRetryWhenLeasing) {
 
   auto job_id = JobID::FromInt(1);
   auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
-  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request);
+  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request.task_spec());
 
   // Schedule the actor with 1 available node, and the lease request should be send to the
   // node.
@@ -173,7 +170,7 @@ TEST_F(GcsActorSchedulerTest, TestScheduleRetryWhenCreating) {
 
   auto job_id = JobID::FromInt(1);
   auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
-  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request);
+  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request.task_spec());
 
   // Schedule the actor with 1 available node, and the lease request should be send to the
   // node.
@@ -214,7 +211,7 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenLeasing) {
 
   auto job_id = JobID::FromInt(1);
   auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
-  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request);
+  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request.task_spec());
 
   // Schedule the actor with 1 available node, and the lease request should be send to the
   // node.
@@ -244,6 +241,39 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenLeasing) {
   ASSERT_EQ(0, failure_actors_.size());
 }
 
+TEST_F(GcsActorSchedulerTest, TestLeasingCancelledWhenLeasing) {
+  auto node = Mocker::GenNodeInfo();
+  auto node_id = ClientID::FromBinary(node->node_id());
+  gcs_node_manager_->AddNode(node);
+  ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
+
+  auto job_id = JobID::FromInt(1);
+  auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
+  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request.task_spec());
+
+  // Schedule the actor with 1 available node, and the lease request should be send to the
+  // node.
+  gcs_actor_scheduler_->Schedule(actor);
+  ASSERT_EQ(1, raylet_client_->num_workers_requested);
+  ASSERT_EQ(1, raylet_client_->callbacks.size());
+
+  // Cancel the lease request.
+  gcs_actor_scheduler_->CancelOnLeasing(node_id, actor->GetActorID());
+  ASSERT_EQ(1, raylet_client_->num_workers_requested);
+  ASSERT_EQ(1, raylet_client_->callbacks.size());
+
+  // Grant a worker, which will influence nothing.
+  ASSERT_TRUE(raylet_client_->GrantWorkerLease(
+      node->node_manager_address(), node->node_manager_port(), WorkerID::FromRandom(),
+      node_id, ClientID::Nil()));
+  ASSERT_EQ(1, raylet_client_->num_workers_requested);
+  ASSERT_EQ(0, raylet_client_->callbacks.size());
+  ASSERT_EQ(0, gcs_actor_scheduler_->num_retry_leasing_count_);
+
+  ASSERT_EQ(0, success_actors_.size());
+  ASSERT_EQ(0, failure_actors_.size());
+}
+
 TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenCreating) {
   auto node = Mocker::GenNodeInfo();
   auto node_id = ClientID::FromBinary(node->node_id());
@@ -252,7 +282,7 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenCreating) {
 
   auto job_id = JobID::FromInt(1);
   auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
-  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request);
+  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request.task_spec());
 
   // Schedule the actor with 1 available node, and the lease request should be send to the
   // node.
@@ -294,7 +324,7 @@ TEST_F(GcsActorSchedulerTest, TestWorkerFailedWhenCreating) {
 
   auto job_id = JobID::FromInt(1);
   auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
-  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request);
+  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request.task_spec());
 
   // Schedule the actor with 1 available node, and the lease request should be send to the
   // node.
@@ -333,7 +363,7 @@ TEST_F(GcsActorSchedulerTest, TestSpillback) {
 
   auto job_id = JobID::FromInt(1);
   auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
-  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request);
+  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request.task_spec());
 
   // Schedule the actor with 1 available node, and the lease request should be send to the
   // node.
@@ -394,7 +424,7 @@ TEST_F(GcsActorSchedulerTest, TestReschedule) {
   // 1.Actor is already tied to a leased worker.
   auto job_id = JobID::FromInt(1);
   auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
-  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request);
+  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request.task_spec());
   rpc::Address address;
   WorkerID worker_id = WorkerID::FromRandom();
   address.set_raylet_id(node_id_1.Binary());
@@ -432,6 +462,42 @@ TEST_F(GcsActorSchedulerTest, TestReschedule) {
 
   ASSERT_EQ(0, failure_actors_.size());
   ASSERT_EQ(2, success_actors_.size());
+}
+
+TEST_F(GcsActorSchedulerTest, TestReleaseUnusedWorkers) {
+  // Test the case that GCS won't send `RequestWorkerLease` request to the raylet,
+  // if there is still a pending `ReleaseUnusedWorkers` request.
+
+  // Add a node to the cluster.
+  auto node = Mocker::GenNodeInfo();
+  auto node_id = ClientID::FromBinary(node->node_id());
+  gcs_node_manager_->AddNode(node);
+  ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
+
+  // Send a `ReleaseUnusedWorkers` request to the node.
+  std::unordered_map<ClientID, std::vector<WorkerID>> node_to_workers;
+  node_to_workers[node_id].push_back({WorkerID::FromRandom()});
+  gcs_actor_scheduler_->ReleaseUnusedWorkers(node_to_workers);
+  ASSERT_EQ(1, raylet_client_->num_release_unused_workers);
+  ASSERT_EQ(1, raylet_client_->release_callbacks.size());
+
+  // Schedule an actor which is not tied to a worker, this should invoke the
+  // `LeaseWorkerFromNode` method.
+  // But since the `ReleaseUnusedWorkers` request hasn't finished, `GcsActorScheduler`
+  // won't send `RequestWorkerLease` request to node immediately. But instead, it will
+  // invoke the `RetryLeasingWorkerFromNode` to retry later.
+  auto job_id = JobID::FromInt(1);
+  auto request = Mocker::GenCreateActorRequest(job_id);
+  auto actor = std::make_shared<gcs::GcsActor>(request.task_spec());
+  gcs_actor_scheduler_->Schedule(actor);
+  ASSERT_EQ(2, gcs_actor_scheduler_->num_retry_leasing_count_);
+  ASSERT_EQ(raylet_client_->num_workers_requested, 0);
+
+  // When `GcsActorScheduler` receives the `ReleaseUnusedWorkers` reply, it will send
+  // out the `RequestWorkerLease` request.
+  ASSERT_TRUE(raylet_client_->ReplyReleaseUnusedWorkers());
+  gcs_actor_scheduler_->TryLeaseWorkerFromNodeAgain(actor, node);
+  ASSERT_EQ(raylet_client_->num_workers_requested, 1);
 }
 
 }  // namespace ray

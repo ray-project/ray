@@ -3,6 +3,7 @@ from .multi_agent_env import MultiAgentEnv
 
 class PettingZooEnv(MultiAgentEnv):
     """An interface to the PettingZoo MARL environment library.
+
     See: https://github.com/PettingZoo-Team/PettingZoo
 
     Inherits from MultiAgentEnv and exposes a given AEC
@@ -31,33 +32,32 @@ class PettingZooEnv(MultiAgentEnv):
         >>> env = POMGameEnv(env_creator=prison_v0})
         >>> obs = env.reset()
         >>> print(obs)
-
-        {
-            "0": [110, 119],
-            "1": [105, 102],
-            "2": [99, 95],
-        }
+            {
+                "0": [110, 119],
+                "1": [105, 102],
+                "2": [99, 95],
+            }
         >>> obs, rewards, dones, infos = env.step(
             action_dict={
                 "0": 1, "1": 0, "2": 2,
             })
         >>> print(rewards)
-        {
-            "0": 0,
-            "1": 1,
-            "2": 0,
-        }
+            {
+                "0": 0,
+                "1": 1,
+                "2": 0,
+            }
         >>> print(dones)
-        {
-            "0": False,    # agent 0 is still running
-            "1": True,     # agent 1 is done
-            "__all__": False,  # the env is not done
-        }
+            {
+                "0": False,    # agent 0 is still running
+                "1": True,     # agent 1 is done
+                "__all__": False,  # the env is not done
+            }
         >>> print(infos)
-        {
-            "0": {},  # info for agent 0
-            "1": {},  # info for agent 1
-        }
+            {
+                "0": {},  # info for agent 0
+                "1": {},  # info for agent 1
+            }
     """
 
     def __init__(self, env):

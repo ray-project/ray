@@ -22,6 +22,48 @@
 
 namespace ray {
 
+class ActorCreatorInterface {
+ public:
+  virtual ~ActorCreatorInterface() = default;
+  /// Register actor to GCS synchronously.
+  ///
+  /// \param task_spec The specification for the actor creation task.
+  /// \return Status
+  virtual Status RegisterActor(const TaskSpecification &task_spec) = 0;
+
+  /// Asynchronously request GCS to create the actor.
+  ///
+  /// \param task_spec The specification for the actor creation task.
+  /// \param callback Callback that will be called after the actor info is written to GCS.
+  /// \return Status
+  virtual Status AsyncCreateActor(const TaskSpecification &task_spec,
+                                  const gcs::StatusCallback &callback) = 0;
+};
+
+class DefaultActorCreator : public ActorCreatorInterface {
+ public:
+  explicit DefaultActorCreator(std::shared_ptr<gcs::GcsClient> gcs_client)
+      : gcs_client_(std::move(gcs_client)) {}
+
+  Status RegisterActor(const TaskSpecification &task_spec) override {
+    auto promise = std::make_shared<std::promise<void>>();
+    auto status = gcs_client_->Actors().AsyncRegisterActor(
+        task_spec, [promise](const Status &status) { promise->set_value(); });
+    if (status.ok()) {
+      promise->get_future().wait();
+    }
+    return status;
+  }
+
+  Status AsyncCreateActor(const TaskSpecification &task_spec,
+                          const gcs::StatusCallback &callback) override {
+    return gcs_client_->Actors().AsyncCreateActor(task_spec, callback);
+  }
+
+ private:
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
+};
+
 /// Class to manage lifetimes of actors that we create (actor children).
 /// Currently this class is only used to publish actor DEAD event
 /// for actor creation task failures. All other cases are managed
@@ -89,14 +131,14 @@ class ActorManager {
                          const TaskID &caller_id, const std::string &call_site,
                          const rpc::Address &caller_address, bool is_detached);
 
-  /// Add a callback that is called when an actor goes out of scope.
+  /// Wait for actor out of scope.
   ///
   /// \param actor_id The actor id that owns the callback.
-  /// \param actor_out_of_scope_callbacks The callback function that will be called when
+  /// \param actor_out_of_scope_callback The callback function that will be called when
   /// an actor_id goes out of scope.
-  void AddActorOutOfScopeCallback(
+  void WaitForActorOutOfScope(
       const ActorID &actor_id,
-      std::function<void(const ActorID &)> actor_out_of_scope_callbacks);
+      std::function<void(const ActorID &)> actor_out_of_scope_callback);
 
   /// Get a list of actor_ids from existing actor handles.
   /// This is used for debugging purpose.
@@ -132,7 +174,7 @@ class ActorManager {
   void HandleActorStateNotification(const ActorID &actor_id,
                                     const gcs::ActorTableData &actor_data);
 
-  /// GCS client
+  /// GCS client.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
 
   /// Interface to submit tasks directly to other actors.
@@ -148,11 +190,6 @@ class ActorManager {
   /// Actor handle is a logical abstraction that holds actor handle's states.
   absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_
       GUARDED_BY(mutex_);
-
-  /// Map from actor ID to a callback. Callback is called when
-  /// the corresponding handles are gone out of scope.
-  absl::flat_hash_map<ActorID, std::function<void(const ActorID &)>>
-      actor_out_of_scope_callbacks_ GUARDED_BY(mutex_);
 };
 
 }  // namespace ray

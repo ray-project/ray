@@ -15,11 +15,14 @@
 #include "ray/gcs/tables.h"
 
 #include "absl/time/clock.h"
-
 #include "ray/common/common_protocol.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs/redis_gcs_client.h"
+
+extern "C" {
+#include "hiredis/hiredis.h"
+}
 
 namespace {
 
@@ -529,10 +532,6 @@ Status Hash<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
   return Status::OK();
 }
 
-std::string ErrorTable::DebugString() const {
-  return Log<JobID, ErrorTableData>::DebugString();
-}
-
 std::string ProfileTable::DebugString() const {
   return Log<UniqueID, ProfileTableData>::DebugString();
 }
@@ -866,7 +865,6 @@ template class Log<TaskID, TaskReconstructionData>;
 template class Table<TaskID, TaskLeaseData>;
 template class Table<ClientID, HeartbeatTableData>;
 template class Table<ClientID, HeartbeatBatchTableData>;
-template class Log<JobID, ErrorTableData>;
 template class Log<ClientID, GcsNodeInfo>;
 template class Log<JobID, JobTableData>;
 template class Log<UniqueID, ProfileTableData>;

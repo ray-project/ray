@@ -117,10 +117,11 @@ def push_error_to_driver_through_redis(redis_client,
     # of through the raylet.
     error_data = ray.gcs_utils.construct_error_message(job_id, error_type,
                                                        message, time.time())
-    redis_client.execute_command(
-        "RAY.TABLE_APPEND", ray.gcs_utils.TablePrefix.Value("ERROR_INFO"),
-        ray.gcs_utils.TablePubsub.Value("ERROR_INFO_PUBSUB"), job_id.binary(),
-        error_data)
+    pubsub_msg = ray.gcs_utils.PubSubMessage()
+    pubsub_msg.id = job_id.hex()
+    pubsub_msg.data = error_data
+    redis_client.publish("ERROR_INFO:" + job_id.hex(),
+                         pubsub_msg.SerializeAsString())
 
 
 def is_cython(obj):
@@ -233,8 +234,8 @@ def ensure_str(s, encoding="utf-8", errors="strict"):
         return s.decode(encoding, errors)
 
 
-def binary_to_object_id(binary_object_id):
-    return ray.ObjectID(binary_object_id)
+def binary_to_object_ref(binary_object_ref):
+    return ray.ObjectRef(binary_object_ref)
 
 
 def binary_to_task_id(binary_task_id):
@@ -391,6 +392,10 @@ def setup_logger(logging_level, logging_format):
 
 
 def open_log(path, **kwargs):
+    """
+    Opens the log file at `path`, with the provided kwargs being given to
+    `open`.
+    """
     kwargs.setdefault("buffering", 1)
     kwargs.setdefault("mode", "a")
     kwargs.setdefault("encoding", "utf-8")

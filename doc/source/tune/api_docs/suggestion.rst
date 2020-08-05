@@ -25,39 +25,39 @@ Summary
    * - :ref:`AxSearch <tune-ax>`
      - Bayesian/Bandit Optimization
      - [`Ax <https://ax.dev/>`__]
-     - `Link <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/ax_example.py>`__
+     - :doc:`/tune/examples/ax_example`
    * - :ref:`DragonflySearch <Dragonfly>`
      - Scalable Bayesian Optimization
      - [`Dragonfly <https://dragonfly-opt.readthedocs.io/>`__]
-     - `Link <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/dragonfly_example.py>`__
+     - :doc:`/tune/examples/dragonfly_example`
    * - :ref:`SkoptSearch <skopt>`
      - Bayesian Optimization
      - [`Scikit-Optimize <https://scikit-optimize.github.io>`__]
-     - `Link <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/skopt_example.py>`__
+     - :doc:`/tune/examples/skopt_example`
    * - :ref:`HyperOptSearch <tune-hyperopt>`
      - Tree-Parzen Estimators
      - [`HyperOpt <http://hyperopt.github.io/hyperopt>`__]
-     - `Link <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperopt_example.py>`__
+     - :doc:`/tune/examples/hyperopt_example`
    * - :ref:`BayesOptSearch <bayesopt>`
      - Bayesian Optimization
      - [`BayesianOptimization <https://github.com/fmfn/BayesianOptimization>`__]
-     - `Link <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/bayesopt_example.py>`__
+     - :doc:`/tune/examples/bayesopt_example`
    * - :ref:`TuneBOHB <suggest-TuneBOHB>`
      - Bayesian Opt/HyperBand
      - [`BOHB <https://github.com/automl/HpBandSter>`__]
-     - `Link <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/bohb_example.py>`__
+     - :doc:`/tune/examples/bohb_example`
    * - :ref:`NevergradSearch <nevergrad>`
      - Gradient-free Optimization
      - [`Nevergrad <https://github.com/facebookresearch/nevergrad>`__]
-     - `Link <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/nevergrad_example.py>`__
+     - :doc:`/tune/examples/nevergrad_example`
    * - :ref:`ZOOptSearch <zoopt>`
      - Zeroth-order Optimization
      - [`ZOOpt <https://github.com/polixir/ZOOpt>`__]
-     - `Link <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/zoopt_example.py>`__
+     - :doc:`/tune/examples/zoopt_example`
    * - :ref:`SigOptSearch <sigopt>`
      - Closed source
      - [`SigOpt <https://sigopt.com/>`__]
-     - `Link <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/sigopt_example.py>`__
+     - :doc:`/tune/examples/sigopt_example`
 
 
 .. note::Search algorithms will require a different search space declaration than the default Tune format - meaning that you will not be able to combine ``tune.grid_search`` with the below integrations.
@@ -72,6 +72,54 @@ Tune also provides helpful utilities to use with Search Algorithms:
  * :ref:`repeater`: Support for running each *sampled hyperparameter* with multiple random seeds.
  * :ref:`limiter`: Limits the amount of concurrent trials when running optimization.
 
+Saving and Restoring
+--------------------
+
+Certain search algorithms have ``save/restore`` implemented,
+allowing reuse of learnings across multiple tuning runs.
+
+.. code-block:: python
+
+    search_alg = HyperOptSearch()
+
+    experiment_1 = tune.run(
+        trainable,
+        search_alg=search_alg)
+
+    search_alg.save("./my-checkpoint.pkl")
+
+    # Restore the saved state onto another search algorithm
+
+    search_alg2 = HyperOptSearch()
+    search_alg2.restore("./my-checkpoint.pkl")
+
+    experiment_2 = tune.run(
+        trainable,
+        search_alg=search_alg2)
+
+Further, Tune automatically saves its state inside the current experiment folder ("Result Dir") during tuning.
+
+Note that if you have two Tune runs with the same experiment folder,
+the previous state checkpoint will be overwritten. You can
+avoid this by making sure ``tune.run(name=...)`` is set to a unique
+identifier.
+
+.. code-block:: python
+
+    search_alg = HyperOptSearch()
+    experiment_1 = tune.run(
+        cost,
+        num_samples=5,
+        search_alg=search_alg,
+        verbose=0,
+        name="my-experiment-1",
+        local_dir="~/my_results")
+
+    search_alg2 = HyperOptSearch()
+    search_alg2.restore_from_dir(
+      os.path.join("~/my_results", "my-experiment-1"))
+
+.. note:: This is currently not implemented for: AxSearch, TuneBOHB, SigOptSearch, and DragonflySearch.
 
 .. _tune-ax:
 
@@ -87,6 +135,7 @@ Bayesian Optimization (tune.suggest.bayesopt.BayesOptSearch)
 
 
 .. autoclass:: ray.tune.suggest.bayesopt.BayesOptSearch
+  :members: save, restore
 
 .. _`BayesianOptimization search space specification`: https://github.com/fmfn/BayesianOptimization/blob/master/examples/advanced-tour.ipynb
 
@@ -115,6 +164,7 @@ Dragonfly (tune.suggest.dragonfly.DragonflySearch)
 --------------------------------------------------
 
 .. autoclass:: ray.tune.suggest.dragonfly.DragonflySearch
+  :members: save, restore
 
 .. _tune-hyperopt:
 
@@ -122,6 +172,7 @@ HyperOpt (tune.suggest.hyperopt.HyperOptSearch)
 -----------------------------------------------
 
 .. autoclass:: ray.tune.suggest.hyperopt.HyperOptSearch
+  :members: save, restore
 
 .. _nevergrad:
 
@@ -129,6 +180,7 @@ Nevergrad (tune.suggest.nevergrad.NevergradSearch)
 --------------------------------------------------
 
 .. autoclass:: ray.tune.suggest.nevergrad.NevergradSearch
+  :members: save, restore
 
 .. _`Nevergrad README's Optimization section`: https://github.com/facebookresearch/nevergrad/blob/master/docs/optimization.rst#choosing-an-optimizer
 
@@ -147,6 +199,7 @@ Scikit-Optimize (tune.suggest.skopt.SkOptSearch)
 ------------------------------------------------
 
 .. autoclass:: ray.tune.suggest.skopt.SkOptSearch
+  :members: save, restore
 
 .. _`skopt Optimizer object`: https://scikit-optimize.github.io/#skopt.Optimizer
 
@@ -156,6 +209,7 @@ ZOOpt (tune.suggest.zoopt.ZOOptSearch)
 --------------------------------------
 
 .. autoclass:: ray.tune.suggest.zoopt.ZOOptSearch
+  :members: save, restore
 
 .. _repeater:
 
@@ -188,8 +242,8 @@ Use ``ray.tune.suggest.ConcurrencyLimiter`` to limit the amount of concurrency w
 
 .. _byo-algo:
 
-Implementing your own Search Algorithm
---------------------------------------
+Custom Search Algorithms (tune.suggest.Searcher)
+------------------------------------------------
 
 If you are interested in implementing or contributing a new Search Algorithm, provide the following interface:
 
