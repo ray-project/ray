@@ -38,6 +38,12 @@ TEST_F(InMemoryStoreClientTest, AsyncGetAllAndBatchDeleteTest) {
   TestAsyncGetAllAndBatchDelete();
 }
 
+TEST_F(InMemoryStoreClientTest, TestAsyncDeleteWithIndex) { TestAsyncDeleteWithIndex(); }
+
+TEST_F(InMemoryStoreClientTest, TestAsyncBatchDeleteWithIndex) {
+  TestAsyncBatchDeleteWithIndex();
+}
+
 }  // namespace gcs
 
 }  // namespace ray

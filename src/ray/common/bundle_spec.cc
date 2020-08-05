@@ -51,6 +51,14 @@ int64_t BundleSpecification::Index() const {
   return message_->bundle_id().bundle_index();
 }
 
+std::string BundleSpecification::DebugString() const {
+  std::ostringstream stream;
+  auto bundle_id = BundleId();
+  stream << "placement group id={" << bundle_id.first << "}, bundle index={"
+         << bundle_id.second << "}";
+  return stream.str();
+}
+
 std::string FormatPlacementGroupResource(const std::string &original_resource_name,
                                          PlacementGroupID group_id,
                                          int64_t bundle_index) {
