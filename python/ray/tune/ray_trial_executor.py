@@ -14,7 +14,7 @@ from ray.resource_spec import ResourceSpec
 from ray.tune.durable_trainable import DurableTrainable
 from ray.tune.error import AbortTrialExecution, TuneError
 from ray.tune.logger import NoopLogger
-from ray.tune.result import TRIAL_INFO, LOGDIR_PATH
+from ray.tune.result import TRIAL_INFO, LOGDIR_PATH, STDOUT_FILE, STDERR_FILE
 from ray.tune.resources import Resources
 from ray.tune.trainable import TrainableUtil
 from ray.tune.trial import Trial, Checkpoint, Location, TrialInfo
@@ -175,6 +175,10 @@ class RayTrialExecutor(TrialExecutor):
         # configure the remote runner to use a noop-logger.
         trial_config = copy.deepcopy(trial.config)
         trial_config[TRIAL_INFO] = TrialInfo(trial)
+
+        stdout_file, stderr_file = trial.log_to_file
+        trial_config[STDOUT_FILE] = stdout_file
+        trial_config[STDERR_FILE] = stderr_file
         kwargs = {
             "config": trial_config,
             "logger_creator": logger_creator,
