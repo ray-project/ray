@@ -187,7 +187,7 @@ int main(int argc, char *argv[]) {
         if (!agent_command.empty()) {
           node_manager_config.agent_command = agent_command;
         } else {
-          RAY_LOG(INFO) << "Agent command is empty.";
+          RAY_LOG(DEBUG) << "Agent command is empty.";
         }
 
         node_manager_config.heartbeat_period_ms =
