@@ -885,6 +885,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void ExecuteTaskLocalMode(const TaskSpecification &task_spec,
                             const ActorID &actor_id = ActorID::Nil());
 
+  /// KillActor API for a local mode.
+  Status KillActorLocalMode(const ActorID &actor_id);
+
+  /// Get a handle to a named actor for local mode.
+  std::pair<const ActorHandle *, Status> GetNamedActorHandleLocalMode(
+      const std::string &name);
+
   /// Get the values of the task arguments for the executor. Values are
   /// retrieved from the local plasma store or, if the value is inlined, from
   /// the task spec.
@@ -1100,6 +1107,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   // Queue of tasks to resubmit when the specified time passes.
   std::deque<std::pair<int64_t, TaskSpecification>> to_resubmit_ GUARDED_BY(mutex_);
+
+  /// Map of named actor registry. It doesn't need to hold a lock because
+  /// local mode is single-threaded.
+  absl::flat_hash_map<std::string, ActorID> local_mode_named_actor_registry_;
 
   // Guard for `async_plasma_callbacks_` map.
   mutable absl::Mutex plasma_mutex_;

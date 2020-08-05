@@ -1266,6 +1266,11 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   TaskSpecification task_spec = builder.Build();
   Status status;
   if (options_.is_local_mode) {
+    if (task_spec.IsDetachedActor()) {
+      // Since local mode doesn't pass GCS actor management code path,
+      // it just register actor names in memory.
+      local_mode_named_actor_registry_.emplace(actor_creation_options.name, actor_id);
+    }
     ExecuteTaskLocalMode(task_spec);
   } else {
     int max_retries;
@@ -1359,12 +1364,30 @@ Status CoreWorker::CancelTask(const ObjectID &object_id, bool force_kill) {
 }
 
 Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill, bool no_restart) {
+  if (options_.is_local_mode) {
+    return KillActorLocalMode(actor_id);
+  }
+
   if (!actor_manager_->CheckActorHandleExists(actor_id)) {
     std::stringstream stream;
     stream << "Failed to find a corresponding actor handle for " << actor_id;
     return Status::Invalid(stream.str());
   }
   direct_actor_submitter_->KillActor(actor_id, force_kill, no_restart);
+  return Status::OK();
+}
+
+// SANG-TODO
+Status CoreWorker::KillActorLocalMode(const ActorID &actor_id) {
+  // KillActor doesn't do anything in local mode. We only remove named actor entry if
+  // exists.
+  for (auto it = local_mode_named_actor_registry_.begin();
+       it != local_mode_named_actor_registry_.end();) {
+    auto current = it++;
+    if (current->second == actor_id) {
+      local_mode_named_actor_registry_.erase(current);
+    }
+  }
   return Status::OK();
 }
 
@@ -1398,6 +1421,9 @@ std::pair<const ActorHandle *, Status> CoreWorker::GetNamedActorHandle(
     const std::string &name) {
   RAY_CHECK(RayConfig::instance().gcs_actor_service_enabled());
   RAY_CHECK(!name.empty());
+  if (options_.is_local_mode) {
+    return GetNamedActorHandleLocalMode(name);
+  }
 
   // This call needs to be blocking because we can't return until the actor
   // handle is created, which requires the response from the RPC. This is
@@ -1442,6 +1468,18 @@ std::pair<const ActorHandle *, Status> CoreWorker::GetNamedActorHandle(
   }
 
   return std::make_pair(GetActorHandle(actor_id), Status::OK());
+}
+
+std::pair<const ActorHandle *, Status> CoreWorker::GetNamedActorHandleLocalMode(
+    const std::string &name) {
+  auto it = local_mode_named_actor_registry_.find(name);
+  if (it == local_mode_named_actor_registry_.end()) {
+    std::ostringstream stream;
+    stream << "Failed to look up actor with name '" << name;
+    return std::make_pair(nullptr, Status::NotFound(stream.str()));
+  }
+
+  return std::make_pair(GetActorHandle(it->second), Status::OK());
 }
 
 const ResourceMappingType CoreWorker::GetResourceIDs() const {
