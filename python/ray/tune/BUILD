@@ -474,6 +474,16 @@ py_test(
 #     args = ["--smoke-test"]
 # )
 
+py_test(
+    name = "pbt_transformers",
+    size = "large",
+    srcs = ["examples/pbt_transformers/pbt_transformers.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+
 # Requires GPUs. Add smoke test?
 # py_test(
 #     name = "pbt_tune_cifar10_with_keras",
