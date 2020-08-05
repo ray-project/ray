@@ -76,6 +76,17 @@ def test_no_route(serve_instance):
     assert result == 1
 
 
+def test_reject_duplicate_backend(serve_instance):
+    def f():
+        pass
+
+    def g():
+        pass
+
+    serve.create_backend("backend", f)
+    with pytest.raises(ValueError):
+        serve.create_backend("backend", g)        
+        
 def test_reject_duplicate_route(serve_instance):
     def f():
         pass
