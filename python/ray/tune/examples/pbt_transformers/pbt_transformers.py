@@ -194,6 +194,7 @@ def tune_transformer(num_samples=8,
         scheduler=scheduler,
         keep_checkpoints_num=3,
         checkpoint_score_attr="training_iteration",
+        stop={"training_iteration": 1} if smoke_test else None,
         progress_reporter=reporter,
         local_dir="~/ray_results/",
         name="tune_transformer_pbt")
