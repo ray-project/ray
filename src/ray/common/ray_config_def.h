@@ -333,3 +333,6 @@ RAY_CONFIG(int, metrics_agent_port, -1)
 /// the owner has been granted a lease. A value >1 is used when we want to enable
 /// pipelining task submission.
 RAY_CONFIG(uint32_t, max_tasks_in_flight_per_worker, 1)
+
+/// The timeout for synchronous GCS requests in seconds.
+RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 5)
