@@ -931,7 +931,7 @@ def _set_log_file(file_name, worker_pid, old_obj, setter_func):
     # and stderr are heavily buffered resulting in seemingly lost logging
     # statements. We never want to close the stdout file descriptor, dup2 will
     # close it when necessary and we don't want python's GC to close it.
-    setter_func(open_log(fileno, closefd=False))
+    setter_func(open_log(fileno, unbuffered=True, closefd=False))
 
     return os.path.abspath(f.name)
 
