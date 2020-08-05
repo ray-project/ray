@@ -83,8 +83,8 @@ ScheduleMap GcsSpreadStrategy::Schedule(
   auto &alive_nodes = context->node_manager_.GetClusterRealtimeResources();
   auto iter = alive_nodes.begin();
   size_t index = 0;
-  size_t alive_nodes_size = alive_nodes.size();
-  for (; iter != alive_nodes.end(); iter++, index++) {
+  size_t alive_nodes_size = alive_nodes->size();
+  for (; iter != alive_nodes->end(); iter++, index++) {
     for (size_t base = 0;; base++) {
       if (index + base * alive_nodes_size >= bundles.size()) {
         break;
