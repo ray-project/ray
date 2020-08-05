@@ -184,14 +184,7 @@ void GcsActorScheduler::ReleaseUnusedWorkers(
     // nodes do not have leased workers. In this case, GCS will send an empty list.
     auto workers_in_use =
         iter != node_to_workers.end() ? iter->second : std::vector<WorkerID>{};
-    const auto &status = lease_client->ReleaseUnusedWorkers(
-        workers_in_use, release_unused_workers_callback);
-    if (!status.ok()) {
-      RAY_LOG(WARNING) << "Failed to send ReleaseUnusedWorkers request to raylet because "
-                          "raylet may be dead, node id: "
-                       << node_id << ", status: " << status.ToString();
-      nodes_of_releasing_unused_workers_.erase(node_id);
-    }
+    lease_client->ReleaseUnusedWorkers(workers_in_use, release_unused_workers_callback);
   }
 }
 
@@ -215,7 +208,7 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
   remote_address.set_ip_address(node->node_manager_address());
   remote_address.set_port(node->node_manager_port());
   auto lease_client = GetOrConnectLeaseClient(remote_address);
-  auto status = lease_client->RequestWorkerLease(
+  lease_client->RequestWorkerLease(
       actor->GetCreationTaskSpecification(),
       [this, node_id, actor, node](const Status &status,
                                    const rpc::RequestWorkerLeaseReply &reply) {
@@ -252,10 +245,6 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
           }
         }
       });
-
-  if (!status.ok()) {
-    RetryLeasingWorkerFromNode(actor, node);
-  }
 }
 
 void GcsActorScheduler::RetryLeasingWorkerFromNode(
@@ -344,7 +333,7 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
   request->mutable_resource_mapping()->CopyFrom(resources);
 
   auto client = GetOrConnectCoreWorkerClient(worker->GetAddress());
-  auto status = client->PushNormalTask(
+  client->PushNormalTask(
       std::move(request),
       [this, actor, worker](Status status, const rpc::PushTaskReply &reply) {
         RAY_UNUSED(reply);
@@ -377,9 +366,6 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
           }
         }
       });
-  if (!status.ok()) {
-    RetryCreatingActorOnWorker(actor, worker);
-  }
 }
 
 void GcsActorScheduler::RetryCreatingActorOnWorker(

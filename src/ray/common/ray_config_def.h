@@ -343,3 +343,6 @@ RAY_CONFIG(uint32_t, agent_register_timeout_ms, 30 * 1000)
 /// The maximum number of resource shapes included in the resource
 /// load reported by each raylet.
 RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)
+
+/// Whether to enable multi tenancy features.
+RAY_CONFIG(bool, enable_multi_tenancy, false)

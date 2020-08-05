@@ -157,13 +157,13 @@ class SkOptSearch(Searcher):
         self._skopt_opt.tell(skopt_trial_info,
                              self._metric_op * result[self._metric])
 
-    def save(self, checkpoint_dir):
+    def save(self, checkpoint_path):
         trials_object = (self._initial_points, self._skopt_opt)
-        with open(checkpoint_dir, "wb") as outputFile:
+        with open(checkpoint_path, "wb") as outputFile:
             pickle.dump(trials_object, outputFile)
 
-    def restore(self, checkpoint_dir):
-        with open(checkpoint_dir, "rb") as inputFile:
+    def restore(self, checkpoint_path):
+        with open(checkpoint_path, "rb") as inputFile:
             trials_object = pickle.load(inputFile)
         self._initial_points = trials_object[0]
         self._skopt_opt = trials_object[1]
