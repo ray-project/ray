@@ -155,8 +155,9 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   absl::flat_hash_map<ClientID, absl::flat_hash_set<BundleID>>
       node_to_bundles_when_leasing_;
 
-  /// Map from node ID to the set of bundles.
-  absl::flat_hash_map<ClientID, absl::flat_hash_set<std::shared_ptr<BundleSpecification>>>
+  /// Map from node ID to the set of bundles. This is needed so that we can reschedule
+  /// bundles when a node is dead.
+  absl::flat_hash_map<ClientID, std::vector<std::shared_ptr<BundleSpecification>>>
       node_to_leased_bundles_;
   absl::flat_hash_map<PlacementGroupID, absl::flat_hash_map<int64_t, ClientID>>
       placement_group_bundle_locations_;

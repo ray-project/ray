@@ -43,14 +43,14 @@ ScheduleMap GcsPackStrategy::Schedule(
   const auto &alive_nodes = context->node_to_bundles_;
 
   // Select the node with the least number of bundles.
-  std::vector<const std::pair<int64_t, ClientID>> order;
+  std::vector<std::pair<int64_t, ClientID>> order;
   for (auto &it : *alive_nodes) {
     order.emplace_back(it.second, it.first);
   }
   std::sort(
       std::begin(order), std::end(order),
       [](const std::pair<int64_t, ClientID> &left,
-         const std::pair<int64_t, ClientID> &right) { return left.first > right.first; });
+         const std::pair<int64_t, ClientID> &right) { return left.first < right.first; });
 
   for (auto &bundle : bundles) {
     schedule_map[bundle->BundleId()] = order.front().second;
@@ -133,7 +133,7 @@ void GcsPlacementGroupScheduler::Schedule(
               // Update `node_to_leased_bundles_` and `bundle_locations_`.
               for (const auto &iter : *bundle_locations) {
                 const auto &location = iter.second;
-                node_to_leased_bundles_[location.first].insert(location.second);
+                node_to_leased_bundles_[location.first].push_back(location.second);
                 placement_group_bundle_locations_[placement_group->GetPlacementGroupID()]
                                                  [location.second->Index()] =
                                                      location.first;
@@ -226,6 +226,15 @@ GcsPlacementGroupScheduler::GetOrConnectLeaseClient(const rpc::Address &raylet_a
 
 std::shared_ptr<ScheduleContext> GcsPlacementGroupScheduler::GetScheduleContext(
     const PlacementGroupID &placement_group_id) {
+  // TODO(ffbin): We will add listener to the GCS node manager to handle node deletion.
+  auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
+  for (const auto &iter : alive_nodes) {
+    if (!node_to_leased_bundles_.contains(iter.first)) {
+      node_to_leased_bundles_.emplace(
+          iter.first, std::vector<std::shared_ptr<BundleSpecification>>());
+    }
+  }
+
   auto node_to_bundles = std::make_shared<absl::flat_hash_map<ClientID, int64_t>>();
   for (const auto &iter : node_to_leased_bundles_) {
     node_to_bundles->emplace(iter.first, iter.second.size());
