@@ -126,6 +126,4 @@ set -x #TODO(simon): debugging, remove this later
 if [ "${TRAVIS-}" = true ]; then
   cat "$ROOT_DIR/bazel_bashrc.inc.sh" >> ~/.bashrc
   . "$ROOT_DIR/bazel_bashrc.inc.sh"
-  command -v bazel
-  bazel --start-up-opt-should-fail || true
 fi
