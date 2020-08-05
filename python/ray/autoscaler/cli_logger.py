@@ -518,6 +518,9 @@ class _CliLogger():
 
         Args:
             msg (str): The mesage to display to the user before the prompt.
+
+        Returns:
+            The string entered by the user.
         """
         if self.old_style:
             return
