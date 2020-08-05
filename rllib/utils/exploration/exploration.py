@@ -50,14 +50,14 @@ class Exploration:
     @DeveloperAPI
     def before_compute_actions(self,
                                *,
-                               timestep: Optional[Union[int, TensorType]] = None,
+                               timestep: Optional[int] = None,
                                explore: bool = False,
                                tf_sess: Optional["tf.Session"] = None,
                                **kwargs):
         """Hook for preparations before policy.compute_actions() is called.
 
         Args:
-            timestep (Optional[int|TensorType]): An optional timestep tensor.
+            timestep (Optional[int]): An optional timestep tensor.
             explore (bool): An optional explore boolean flag.
             tf_sess (Optional[tf.Session]): The tf-session object to use.
             **kwargs: Forward compatibility kwargs.

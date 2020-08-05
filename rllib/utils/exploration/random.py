@@ -57,7 +57,7 @@ class Random(Exploration):
 
     def get_tf_exploration_action_op(self,
                                      action_dist: ActionDistribution,
-                                     explore: Optional[bool]):
+                                     explore: Optional[bool, TensorType]):
         def true_fn():
             batch_size = 1
             req = force_tuple(

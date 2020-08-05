@@ -75,7 +75,7 @@ class EpsilonGreedy(Exploration):
                                                       timestep)
 
     def _get_tf_exploration_action_op(self,
-                                      q_values: TensorType,
+                                      q_values: Union[bool, TensorType],
                                       explore: bool,
                                       timestep: Union[int, TensorType]):
         """TF method to produce the tf op for an epsilon exploration action.

@@ -141,7 +141,7 @@ class ParameterNoise(Exploration):
     @override(Exploration)
     def before_compute_actions(self,
                                *,
-                               timestep: Union[int, TensorType] = None,
+                               timestep: Optional[int] = None,
                                explore: bool = None,
                                tf_sess: Optional["tf.Session"] = None):
         explore = explore if explore is not None else \

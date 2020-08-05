@@ -87,7 +87,7 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
     @override(GaussianNoise)
     def _get_tf_exploration_action_op(self,
                                       action_dist: ActionDistribution,
-                                      explore: bool,
+                                      explore: Union[bool, TensorType] ,
                                       timestep: Union[int, TensorType]):
         ts = timestep if timestep is not None else self.last_timestep
         scale = self.scale_schedule(ts)

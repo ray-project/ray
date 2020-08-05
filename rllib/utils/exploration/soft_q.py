@@ -7,7 +7,6 @@ from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.stochastic_sampling import StochasticSampling
 from ray.rllib.utils.framework import TensorType
-from ray.rllib.utils.schedules import Schedule
 
 
 class SoftQ(StochasticSampling):
@@ -18,12 +17,12 @@ class SoftQ(StochasticSampling):
     """
 
     def __init__(self, action_space: Space, *, framework: Optional[str],
-                 temperature: Schedule = 1.0, **kwargs):
+                 temperature: float = 1.0, **kwargs):
         """Initializes a SoftQ Exploration object.
 
         Args:
             action_space (Space): The gym action space used by the environment.
-            temperature (Schedule): The temperature to divide model outputs by
+            temperature (float): The temperature to divide model outputs by
                 before creating the Categorical distribution to sample from.
             framework (str): One of None, "tf", "torch".
         """
