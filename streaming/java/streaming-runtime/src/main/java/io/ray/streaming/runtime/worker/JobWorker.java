@@ -195,9 +195,9 @@ public class JobWorker implements Serializable {
     LOG.debug("Stream processor created: {}.", streamProcessor);
 
     if (streamProcessor instanceof SourceProcessor) {
-      task = new SourceStreamTask(streamProcessor, this);
+      task = new SourceStreamTask(streamProcessor, this, checkpointId);
     } else if (streamProcessor instanceof OneInputProcessor) {
-      task = new OneInputStreamTask(streamProcessor, this);
+      task = new OneInputStreamTask(streamProcessor, this, checkpointId);
     } else {
       throw new RuntimeException("Unsupported processor type:" + streamProcessor);
     }
@@ -229,7 +229,7 @@ public class JobWorker implements Serializable {
   }
 
   public Boolean clearExpiredCp(Long expiredStateCpId, Long expiredQueueCpId) {
-    LOG.info("Clear expired checkpoint state, checkpoint id is {};" +
+    LOG.info("Clear expired checkpoint state, checkpoint id is {}; " +
         "Clear expired queue msg, checkpoint id is {}",
       expiredStateCpId, expiredQueueCpId);
     if (task != null) {

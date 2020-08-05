@@ -23,8 +23,8 @@ public class SourceStreamTask extends StreamTask {
    * SourceStreamTask for executing a {@link SourceOperator}.
    * It is responsible for running the corresponding source operator.
    */
-  public SourceStreamTask(Processor sourceProcessor, JobWorker jobWorker) {
-    super(sourceProcessor, jobWorker);
+  public SourceStreamTask(Processor sourceProcessor, JobWorker jobWorker, long lastCheckpointId) {
+    super(sourceProcessor, jobWorker, lastCheckpointId);
     this.sourceProcessor = (SourceProcessor) processor;
   }
 

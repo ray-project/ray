@@ -13,8 +13,9 @@ public class TwoInputStreamTask extends InputStreamTask {
       Processor processor,
       JobWorker jobWorker,
       String leftStream,
-      String rightStream) {
-    super(processor, jobWorker);
+      String rightStream,
+      long lastCheckpointId) {
+    super(processor, jobWorker, lastCheckpointId);
     ((TwoInputProcessor) (super.processor)).setLeftStream(leftStream);
     ((TwoInputProcessor) (super.processor)).setRightStream(rightStream);
   }

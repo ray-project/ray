@@ -28,8 +28,8 @@ public abstract class InputStreamTask extends StreamTask {
   private final io.ray.streaming.runtime.serialization.Serializer crossLangSerializer;
   private final long readTimeoutMillis;
 
-  public InputStreamTask(Processor processor, JobWorker jobWorker) {
-    super(processor, jobWorker);
+  public InputStreamTask(Processor processor, JobWorker jobWorker, long lastCheckpointId) {
+    super(processor, jobWorker, lastCheckpointId);
     readTimeoutMillis = jobWorker.getWorkerConfig().transferConfig.readerTimerIntervalMs();
     javaSerializer = new JavaSerializer();
     crossLangSerializer = new CrossLangSerializer();

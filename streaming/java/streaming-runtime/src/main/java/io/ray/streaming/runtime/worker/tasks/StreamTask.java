@@ -6,7 +6,6 @@ import io.ray.streaming.api.collector.Collector;
 import io.ray.streaming.api.context.RuntimeContext;
 import io.ray.streaming.api.partition.Partition;
 import io.ray.streaming.runtime.barrier.Barrier;
-import io.ray.streaming.runtime.config.global.StateBackendConfig;
 import io.ray.streaming.runtime.config.worker.WorkerInternalConfig;
 import io.ray.streaming.runtime.core.collector.OutputCollector;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionEdge;
@@ -57,13 +56,14 @@ public abstract class StreamTask implements Runnable {
   private Set<Long> outdatedCheckpoints = new HashSet<>();
   private Thread thread;
 
-  protected StreamTask(Processor processor, JobWorker jobWorker) {
+  protected StreamTask(Processor processor, JobWorker jobWorker, long lastCheckpointId) {
     this.processor = processor;
     this.jobWorker = jobWorker;
     this.checkpointState = jobWorker.stateBackend;
+    this.lastCheckpointId = lastCheckpointId;
 
     this.thread = new Thread(Ray.wrapRunnable(this),
-        this.getClass().getName() + "-" + System.currentTimeMillis());
+      this.getClass().getName() + "-" + System.currentTimeMillis());
     this.thread.setDaemon(true);
   }
 
@@ -83,7 +83,7 @@ public abstract class StreamTask implements Runnable {
     }
 
     thread.setUncaughtExceptionHandler(
-        (t, e) -> LOG.error("Uncaught exception in runner thread.", e));
+      (t, e) -> LOG.error("Uncaught exception in runner thread.", e));
     LOG.info("Start stream task: {}.", this.getClass().getSimpleName());
     thread.start();
 
@@ -101,14 +101,14 @@ public abstract class StreamTask implements Runnable {
    * channels according to {@link ExecutionVertex}.
    */
   private void prepareTask(boolean isRecreate) {
-    LOG.debug("Preparing stream task.");
+    LOG.info("Preparing stream task, isRecreate={}.", isRecreate);
     ExecutionVertex executionVertex = jobWorker.getExecutionVertex();
 
     // set vertex info into config for native using
     jobWorker.getWorkerConfig().workerInternalConfig.setProperty(
-        WorkerInternalConfig.WORKER_NAME_INTERNAL, executionVertex.getExecutionVertexName());
+      WorkerInternalConfig.WORKER_NAME_INTERNAL, executionVertex.getExecutionVertexName());
     jobWorker.getWorkerConfig().workerInternalConfig.setProperty(
-        WorkerInternalConfig.OP_NAME_INTERNAL, executionVertex.getExecutionJobVertexName());
+      WorkerInternalConfig.OP_NAME_INTERNAL, executionVertex.getExecutionJobVertexName());
 
 
     OpCheckpointInfo opCheckpointInfo = new OpCheckpointInfo();
@@ -118,38 +118,48 @@ public abstract class StreamTask implements Runnable {
     // in rescaling or something like that.
     if (isRecreate) {
       String cpKey = genOpCheckpointKey(lastCheckpointId);
+      LOG.info("Getting task checkpoints from state, cpKey={}, checkpointId={}.", cpKey,
+        lastCheckpointId);
       bytes = CheckpointStateUtil.get(checkpointState, cpKey);
+      if (bytes == null) {
+        String msg = String.format("Task recover failed, checkpoint is null! cpKey=%s", cpKey);
+        throw new RuntimeException(msg);
+      }
     }
 
     // when use memory state, if actor throw exception, will miss state
     Map<String, OffsetInfo> inputCheckpoints = new HashMap<>();
     Map<String, OffsetInfo> outputCheckpoints = new HashMap<>();
     if (bytes != null) {
-      LOG.info("Stream task recover from checkpoint state.");
       opCheckpointInfo = Serializer.decode(bytes);
       inputCheckpoints = opCheckpointInfo.inputPoints;
       outputCheckpoints = opCheckpointInfo.outputPoints;
+      LOG.info(
+        "Stream task recover from checkpoint state, checkpoint bytes len={}, checkpointInfo={}.",
+        bytes.length, opCheckpointInfo);
     }
 
     // writer
     if (!executionVertex.getOutputEdges().isEmpty()) {
-      LOG.info("Register queue writer, channels {}.", executionVertex.getOutputChannelIdList());
+      LOG.info("Register queue writer, channels={}, outputCheckpoints={}.",
+        executionVertex.getOutputChannelIdList(), outputCheckpoints);
       writer = new DataWriter(
-          executionVertex.getOutputChannelIdList(),
-          executionVertex.getOutputActorList(),
-          inputCheckpoints,
-          jobWorker.getWorkerConfig()
+        executionVertex.getOutputChannelIdList(),
+        executionVertex.getOutputActorList(),
+        outputCheckpoints,
+        jobWorker.getWorkerConfig()
       );
     }
 
     // reader
     if (!executionVertex.getInputEdges().isEmpty()) {
-      LOG.info("Register queue reader, channels {}.", executionVertex.getInputChannelIdList());
+      LOG.info("Register queue reader, channels={}, inputCheckpoints={}.",
+        executionVertex.getInputChannelIdList(), inputCheckpoints);
       reader = new DataReader(
-          executionVertex.getInputChannelIdList(),
-          executionVertex.getInputActorList(),
-          outputCheckpoints,
-          jobWorker.getWorkerConfig()
+        executionVertex.getInputChannelIdList(),
+        executionVertex.getInputActorList(),
+        inputCheckpoints,
+        jobWorker.getWorkerConfig()
       );
     }
 
@@ -181,13 +191,13 @@ public abstract class StreamTask implements Runnable {
     }
     opPartitionMap.keySet().forEach(opName -> {
       collectors.add(new OutputCollector(
-          writer, opGroupedChannelId.get(opName),
-          opGroupedActor.get(opName), opPartitionMap.get(opName)
+        writer, opGroupedChannelId.get(opName),
+        opGroupedActor.get(opName), opPartitionMap.get(opName)
       ));
     });
 
     RuntimeContext runtimeContext = new StreamingRuntimeContext(executionVertex,
-        jobWorker.getWorkerConfig().configMap, executionVertex.getParallelism());
+      jobWorker.getWorkerConfig().configMap, executionVertex.getParallelism());
 
     processor.open(collectors, runtimeContext);
   }
@@ -231,24 +241,26 @@ public abstract class StreamTask implements Runnable {
   }
 
   public void doCheckpoint(long checkpointId, Map<String, OffsetInfo> inputPoints) {
-    LOG.info("Start do checkpoint, cp id {}, inputPoints {}.", checkpointId, inputPoints);
-
     Map<String, OffsetInfo> outputPoints = null;
     if (writer != null) {
       outputPoints = writer.getOutputCheckpoints();
       RemoteCall.Barrier barrierPb =
-          RemoteCall.Barrier.newBuilder().setId(checkpointId).build();
+        RemoteCall.Barrier.newBuilder().setId(checkpointId).build();
       ByteBuffer byteBuffer = ByteBuffer.wrap(barrierPb.toByteArray());
       byteBuffer.order(ByteOrder.nativeOrder());
       writer.broadcastBarrier(checkpointId, byteBuffer);
     }
+
+    LOG.info("Start do checkpoint, cp id={}, inputPoints={}, outputPoints={}.", checkpointId,
+      inputPoints, outputPoints);
+
     this.lastCheckpointId = checkpointId;
     Object processorCheckpoint = processor.doCheckpoint(checkpointId);
 
     try {
       OpCheckpointInfo opCpInfo =
-          new OpCheckpointInfo(inputPoints, outputPoints, processorCheckpoint,
-              checkpointId);
+        new OpCheckpointInfo(inputPoints, outputPoints, processorCheckpoint,
+          checkpointId);
       saveCpStateAndReport(opCpInfo, checkpointId);
     } catch (Exception e) {
       // there will be exceptions when flush state to backend.
@@ -260,8 +272,8 @@ public abstract class StreamTask implements Runnable {
   }
 
   private void saveCpStateAndReport(
-      OpCheckpointInfo opCheckpointInfo,
-      long checkpointId) {
+    OpCheckpointInfo opCheckpointInfo,
+    long checkpointId) {
     saveCp(opCheckpointInfo, checkpointId);
     reportCommit(checkpointId);
 
@@ -271,6 +283,8 @@ public abstract class StreamTask implements Runnable {
   private void saveCp(OpCheckpointInfo opCheckpointInfo, long checkpointId) {
     byte[] bytes = Serializer.encode(opCheckpointInfo);
     String cpKey = genOpCheckpointKey(checkpointId);
+    LOG.info("Saving task checkpoint, cpKey={}, byte len={}, checkpointInfo={}.", cpKey,
+      bytes.length, opCheckpointInfo);
     synchronized (checkpointState) {
       if (outdatedCheckpoints.contains(checkpointId)) {
         LOG.info("Outdated checkpoint, skip save checkpoint.");
@@ -285,7 +299,7 @@ public abstract class StreamTask implements Runnable {
     final JobWorkerContext context = jobWorker.getWorkerContext();
     LOG.info("Report commit async, checkpoint id {}.", checkpointId);
     RemoteCallMaster.reportJobWorkerCommitAsync(context.getMaster(),
-        new WorkerCommitReport(context.getWorkerActorId(), checkpointId));
+      new WorkerCommitReport(context.getWorkerActorId(), checkpointId));
   }
 
   public void notifyCheckpointTimeout(long checkpointId) {
@@ -335,7 +349,7 @@ public abstract class StreamTask implements Runnable {
     // TODO: need to support job restart and actorId changed
     final JobWorkerContext context = jobWorker.getWorkerContext();
     return jobWorker.getWorkerConfig().checkpointConfig.jobWorkerOpCpPrefixKey()
-        + context.getJobName() + "_" + context.getWorkerName() + "_" + checkpointId;
+      + context.getJobName() + "_" + context.getWorkerName() + "_" + checkpointId;
   }
 
   // ----------------------------------------------------------------------

@@ -1,5 +1,6 @@
 package io.ray.streaming.runtime.state;
 
+import com.google.common.base.MoreObjects;
 import io.ray.streaming.runtime.transfer.channel.OffsetInfo;
 import java.io.Serializable;
 import java.util.Map;
@@ -21,5 +22,15 @@ public class OpCheckpointInfo implements Serializable {
     this.inputPoints = inputPoints;
     this.outputPoints = outputPoints;
     this.checkpointId = checkpointId;
+  }
+
+  @Override
+  public String toString() {
+    return MoreObjects.toStringHelper(this)
+      .add("inputPoints", inputPoints)
+      .add("outputPoints", outputPoints)
+      .add("processorCheckpoint", processorCheckpoint)
+      .add("checkpointId", checkpointId)
+      .toString();
   }
 }

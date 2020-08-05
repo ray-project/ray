@@ -48,6 +48,7 @@ public class TestFailover {
     @Override
     public void fetch(
       SourceContext<Integer> ctx, long checkpointId) throws Exception {
+      Thread.sleep(100);
       ctx.collect(value++);
     }
 
