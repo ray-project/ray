@@ -68,10 +68,8 @@ class TaskDependencyManagerTest : public ::testing::Test {
         gcs_client_mock_(new MockGcsClient(options_)),
         task_accessor_mock_(new MockTaskInfoAccessor(gcs_client_mock_.get())),
         initial_lease_period_ms_(100),
-        task_dependency_manager_(object_manager_mock_,
-                                 io_service_, ClientID::Nil(),
-                                 initial_lease_period_ms_,
-                                 gcs_client_mock_) {
+        task_dependency_manager_(object_manager_mock_, io_service_, ClientID::Nil(),
+                                 initial_lease_period_ms_, gcs_client_mock_) {
     gcs_client_mock_->Init(task_accessor_mock_);
   }
 

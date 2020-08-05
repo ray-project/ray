@@ -21,10 +21,11 @@ namespace ray {
 
 namespace raylet {
 
-TaskDependencyManager::TaskDependencyManager(
-    ObjectManagerInterface &object_manager,
-    boost::asio::io_service &io_service, const ClientID &client_id,
-    int64_t initial_lease_period_ms, std::shared_ptr<gcs::GcsClient> gcs_client)
+TaskDependencyManager::TaskDependencyManager(ObjectManagerInterface &object_manager,
+                                             boost::asio::io_service &io_service,
+                                             const ClientID &client_id,
+                                             int64_t initial_lease_period_ms,
+                                             std::shared_ptr<gcs::GcsClient> gcs_client)
     : object_manager_(object_manager),
       io_service_(io_service),
       client_id_(client_id),

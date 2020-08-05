@@ -671,7 +671,7 @@ void NodeManager::NodeRemoved(const GcsNodeInfo &node_info) {
   if (client_entry != remote_node_manager_clients_.end()) {
     remote_node_manager_clients_.erase(client_entry);
   }
- 
+
   // Notify the object directory that the client has been removed so that it
   // can remove it from any cached locations.
   object_directory_->HandleClientRemoved(node_id);
@@ -1637,8 +1637,8 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
         auto reply_failure_handler = [this, worker_id]() {
           RAY_LOG(WARNING)
               << "Failed to reply to GCS server, because it might have restarted. GCS "
-                  "cannot obtain the information of the leased worker, so we need to "
-                  "release the leased worker to avoid leakage.";
+                 "cannot obtain the information of the leased worker, so we need to "
+                 "release the leased worker to avoid leakage.";
           leased_workers_.erase(worker_id);
         };
         send_reply_callback(Status::OK(), nullptr, reply_failure_handler);
@@ -2352,17 +2352,17 @@ void NodeManager::AssignTask(const std::shared_ptr<WorkerInterface> &worker,
   const auto owner_node_id = ClientID::FromBinary(spec.CallerAddress().raylet_id());
   RAY_CHECK(!owner_worker_id.IsNil());
   RAY_LOG(DEBUG) << "Worker lease request DISPATCH " << task_id << " to worker "
-                  << worker->WorkerId() << ", owner ID " << owner_worker_id;
+                 << worker->WorkerId() << ", owner ID " << owner_worker_id;
 
   task.OnDispatch()(worker, initial_config_.node_manager_address, worker->Port(),
                     worker->WorkerId(),
                     spec.IsActorCreationTask() ? worker->GetLifetimeResourceIds()
-                                                : worker->GetTaskResourceIds());
+                                               : worker->GetTaskResourceIds());
 
   // If the owner has died since this task was queued, cancel the task by
   // killing the worker (unless this task is for a detached actor).
   if (!worker->IsDetachedActor() && (failed_workers_cache_.count(owner_worker_id) > 0 ||
-                                      failed_nodes_cache_.count(owner_node_id) > 0)) {
+                                     failed_nodes_cache_.count(owner_node_id) > 0)) {
     // TODO(swang): Skip assigning this task to this worker instead of
     // killing the worker?
     RAY_LOG(INFO) << "Owner of assigned task " << task.GetTaskSpecification().TaskId()
@@ -2372,7 +2372,7 @@ void NodeManager::AssignTask(const std::shared_ptr<WorkerInterface> &worker,
 
   post_assign_callbacks->push_back([this, worker, task_id]() {
     RAY_LOG(DEBUG) << "Finished assigning task " << task_id << " to worker "
-                    << worker->WorkerId();
+                   << worker->WorkerId();
 
     FinishAssignTask(worker, task_id, /*success=*/true);
   });
@@ -2489,7 +2489,8 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
   return actor_info_ptr;
 }
 
-void NodeManager::FinishAssignedActorCreationTask(WorkerInterface &worker, const Task &task) {
+void NodeManager::FinishAssignedActorCreationTask(WorkerInterface &worker,
+                                                  const Task &task) {
   RAY_LOG(DEBUG) << "Finishing assigned actor creation task";
   ActorID actor_id;
   TaskID caller_id;
@@ -2624,22 +2625,21 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
                                         const ClientID &node_manager_id) {
   // Attempt to forward the task.
   // TODO(sang): Modify method names.
-  ForwardTask(
-      task, node_manager_id,
-      [this, node_manager_id](ray::Status error, const Task &task) {
-        const TaskID task_id = task.GetTaskSpecification().TaskId();
-        RAY_LOG(INFO) << "Failed to forward task " << task_id << " to node manager "
-                      << node_manager_id;
+  ForwardTask(task, node_manager_id,
+              [this, node_manager_id](ray::Status error, const Task &task) {
+                const TaskID task_id = task.GetTaskSpecification().TaskId();
+                RAY_LOG(INFO) << "Failed to forward task " << task_id
+                              << " to node manager " << node_manager_id;
 
-        // Mark the failed task as pending to let other raylets know that we still
-        // have the task. TaskDependencyManager::TaskPending() is assumed to be
-        // idempotent.
-        task_dependency_manager_.TaskPending(task);
-        // The task is not for an actor and may therefore be placed on another
-        // node immediately. Send it to the scheduling policy to be placed again.
-        local_queues_.QueueTasks({task}, TaskState::PLACEABLE);
-        ScheduleTasks(cluster_resource_map_);
-      });
+                // Mark the failed task as pending to let other raylets know that we still
+                // have the task. TaskDependencyManager::TaskPending() is assumed to be
+                // idempotent.
+                task_dependency_manager_.TaskPending(task);
+                // The task is not for an actor and may therefore be placed on another
+                // node immediately. Send it to the scheduling policy to be placed again.
+                local_queues_.QueueTasks({task}, TaskState::PLACEABLE);
+                ScheduleTasks(cluster_resource_map_);
+              });
 }
 
 void NodeManager::ForwardTask(
@@ -2652,7 +2652,7 @@ void NodeManager::ForwardTask(
   RAY_CHECK(node_info)
       << "Spilling back to a node manager, but no GCS info found for node " << node_id;
   task.OnSpillback()(node_id, node_info->node_manager_address(),
-                      node_info->node_manager_port());
+                     node_info->node_manager_port());
 }
 
 void NodeManager::FinishAssignTask(const std::shared_ptr<WorkerInterface> &worker,
