@@ -123,22 +123,6 @@ EOF
 fi
 
 if [ "${TRAVIS-}" = true ]; then
-  # Inject the wrapper function to bashrc, so in future invocation
-  # we get a shorthand to export logs to a temp file on each
-  # test/build event.
-  read -r -d '' bazel_wrapper_func <<-'END'
-bazel() {
-  case "${1-}" in
-    --*) echo "Bazel startup options not yet implemented for this thunk" 1>&2; false;;
-    test) command bazel "$1" --build_event_json_file "$(mktemp /tmp/bazel_event_logs/bazel_log.XXXXX)" "${@:2}";;
-    *) command bazel "$@";;
-  esac
-}
-END
-
-  echo "DEBUG: appending func to bashrc"
-  printf "%s\n" "${bazel_wrapper_func}" >> ~/.bashrc
-
-  echo "DEBUG: eval func"
-  eval "${bazel_wrapper_func}"
+  cat "$ROOT_DIR/bazel_bashrc.inc.sh" >> ~/.bashrc
+  source "$ROOT_DIR/bazel_bashrc.inc.sh"
 fi
