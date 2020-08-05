@@ -459,7 +459,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   std::shared_ptr<ActorCreatorInterface> actor_creator =
       std::make_shared<DefaultActorCreator>(gcs_client_);
-  ;
 
   direct_actor_submitter_ = std::shared_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(client_factory, memory_store_,
