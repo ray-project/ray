@@ -124,12 +124,13 @@ def tune_transformer(num_samples=8,
                      smoke_test=False,
                      ray_address=None):
     ray.init(ray_address, log_to_driver=False)
-    data_dir = os.path.abspath(os.path.join(os.getcwd(), "./data"))
+    data_dir_name = "./data" if not smoke_test else "./test_data"
+    data_dir = os.path.abspath(os.path.join(os.getcwd(), data_dir_name))
     if not os.path.exists(data_dir):
         os.mkdir(data_dir, 0o755)
 
     # Change these as needed.
-    model_name = "bert-base-uncased"
+    model_name = "bert-base-uncased" if not smoke_test else "distilbert-base-uncased"
     task_name = "rte"
 
     task_data_dir = os.path.join(data_dir, task_name.upper())
@@ -142,7 +143,7 @@ def tune_transformer(num_samples=8,
     print("Downloading and caching pre-trained model")
 
     # Triggers model download to cache
-    AutoModelForSequenceClassification.from_pretrained(model_name, )
+    AutoModelForSequenceClassification.from_pretrained(model_name)
 
     # Download data.
     download_data(task_name, data_dir)
