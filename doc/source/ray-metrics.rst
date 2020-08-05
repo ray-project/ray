@@ -4,7 +4,7 @@ To help monitoring Ray applications, Ray
 
 - Collects Ray's pre-selected system level metrics.
 - Exposes metrics through Prometheus endpoints.
-- Supports application-level metrics collection APIs.
+- Supports application-level metrics collection APIs (EXPERIMENTAL).
 
 .. note::
 
@@ -12,7 +12,7 @@ To help monitoring Ray applications, Ray
 
 Getting Started (Single Node)
 -----------------------------
-You can access Ray's metrics through Prometheus endpoints.
+Ray exposes its metrics in Prometheus format. For the simplicty, let's use Prometheus to scrape these metrics.
 
 First, let's learn how to access metrics when you use `ray.init()`.
 
@@ -124,8 +124,9 @@ You can now get the url of metrics agents using `ray.nodes()`
     """
 
 Now, setup your prometheus to read metrics from `[NodeManagerAddress]:[MetricsExportPort]` from all nodes in the cluster.
+If you'd like to make this process automated, you can also use `file based service discovery <https://prometheus.io/docs/guides/file-sd/#installing-configuring-and-running-prometheus>`_.
 
 Getting Started (Cluster Launcher)
 ----------------------------------
-When you use a Ray cluster launcher, it is common node IP addresses are changing. 
+When you use a Ray cluster launcher, it is common node IP addresses are changing because cluster is scaling up and down. 
 In this case, you can use Prometheus' `file based service discovery <https://prometheus.io/docs/guides/file-sd/#installing-configuring-and-running-prometheus>`_.
