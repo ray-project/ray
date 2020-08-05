@@ -78,6 +78,8 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
   /// Returns the spillback bundle callback, or nullptr.
   const SpillbackBundleCallback &OnSpillback() const { return on_spillback_; }
 
+  std::string DebugString() const;
+
  private:
   void ComputeResources();
 
