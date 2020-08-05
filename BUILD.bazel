@@ -132,6 +132,9 @@ cc_library(
     hdrs = glob([
         "src/ray/rpc/worker/*.h",
     ]),
+    srcs = glob([
+      "src/ray/rpc/worker/*.cc",
+    ]),
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
