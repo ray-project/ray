@@ -54,7 +54,6 @@ class FutureResolver {
   /// address, so the owner can contact us to ask when our reference to the
   /// object has gone out of scope.
   const rpc::Address rpc_address_;
-
 };
 
 }  // namespace ray

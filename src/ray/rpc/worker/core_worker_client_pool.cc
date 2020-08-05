@@ -3,7 +3,8 @@
 namespace ray {
 namespace rpc {
 
-optional<shared_ptr<CoreWorkerClientInterface>> CoreWorkerClientPool::GetByID(ray::WorkerID id) {
+optional<shared_ptr<CoreWorkerClientInterface>> CoreWorkerClientPool::GetByID(
+    ray::WorkerID id) {
   absl::MutexLock lock(&mu_);
   auto it = client_map_.find(id);
   if (it == client_map_.end()) {
@@ -12,11 +13,13 @@ optional<shared_ptr<CoreWorkerClientInterface>> CoreWorkerClientPool::GetByID(ra
   return it->second;
 }
 
-shared_ptr<CoreWorkerClientInterface> CoreWorkerClientPool::GetOrConnect(const WorkerAddress& addr) {
+shared_ptr<CoreWorkerClientInterface> CoreWorkerClientPool::GetOrConnect(
+    const WorkerAddress &addr) {
   return GetOrConnect(addr.ToProto());
 }
 
-shared_ptr<CoreWorkerClientInterface> CoreWorkerClientPool::GetOrConnect(const Address& addr_proto) {
+shared_ptr<CoreWorkerClientInterface> CoreWorkerClientPool::GetOrConnect(
+    const Address &addr_proto) {
   RAY_CHECK(addr_proto.worker_id() != "");
   auto id = WorkerID::FromBinary(addr_proto.worker_id());
   auto existing = GetByID(id);
