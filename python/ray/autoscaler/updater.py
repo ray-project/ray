@@ -20,7 +20,7 @@ import colorful as cf
 logger = logging.getLogger(__name__)
 
 READY_CHECK_INTERVAL = 5
-CONN_REFUSED_PATIENCE = 30 # how long to wait for sshd to run
+CONN_REFUSED_PATIENCE = 30  # how long to wait for sshd to run
 
 
 class NodeUpdater:
@@ -190,7 +190,7 @@ class NodeUpdater:
                             if e.special_case == "ssh_conn_refused":
                                 if first_conn_refused_time is not None and \
                                     time.time() - first_conn_refused_time > \
-                                    CONN_REFUSED_PATIENCE:
+                                        CONN_REFUSED_PATIENCE:
                                     cli_logger.error(
                                         "SSH connection was being refused "
                                         "for {} seconds. Head node assumed "
@@ -211,8 +211,8 @@ class NodeUpdater:
                                 first_conn_refused_time = time.time()
 
                             if e.special_case in [
-                                "ssh_timeout",
-                                "ssh_conn_refused"]:
+                                    "ssh_timeout", "ssh_conn_refused"
+                            ]:
 
                                 cli_logger.print(
                                     "SSH still not available, "
@@ -307,11 +307,11 @@ class NodeUpdater:
                                     self.cmd_runner.run(
                                         cmd,
                                         ssh_options_override=SSHOptions(
-                                            self.auth_config.get("ssh_private_key")))
+                                            self.auth_config.get(
+                                                "ssh_private_key")))
                                 except ProcessRunnerError as e:
                                     if e.msg_type == "ssh_command_failed":
-                                        cli_logger.error(
-                                            "Failed.")
+                                        cli_logger.error("Failed.")
                                         cli_logger.error(
                                             "See above for stderr.")
 
@@ -345,8 +345,7 @@ class NodeUpdater:
                                     self.cmd_runner.run(cmd)
                                 except ProcessRunnerError as e:
                                     if e.msg_type == "ssh_command_failed":
-                                        cli_logger.error(
-                                            "Failed.")
+                                        cli_logger.error("Failed.")
                                         cli_logger.error(
                                             "See above for stderr.")
 
@@ -365,13 +364,10 @@ class NodeUpdater:
                         self.cmd_runner.run(cmd)
                     except ProcessRunnerError as e:
                         if e.msg_type == "ssh_command_failed":
-                            cli_logger.error(
-                                "Failed.")
-                            cli_logger.error(
-                                "See above for stderr.")
+                            cli_logger.error("Failed.")
+                            cli_logger.error("See above for stderr.")
 
-                        raise click.ClickException(
-                            "Start command failed.")
+                        raise click.ClickException("Start command failed.")
 
     def rsync_up(self, source, target):
         cli_logger.old_info(logger, "{}Syncing {} to {}...", self.log_prefix,

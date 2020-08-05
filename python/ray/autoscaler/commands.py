@@ -113,8 +113,7 @@ def create_or_update_cluster(
         cli_logger.warning(
             "The logs that cluster commands produce will be subpar.")
         cli_logger.warning(
-            "Consider using {}, {}.",
-            cf.bold("--use-normal-shells"),
+            "Consider using {}, {}.", cf.bold("--use-normal-shells"),
             cf.underlined("if you tested your workflow and it is compatible"))
         cli_logger.newline()
 
@@ -122,8 +121,8 @@ def create_or_update_cluster(
 
     def handle_yaml_error(e):
         cli_logger.error("Cluster config invalid\n")
-        cli_logger.error(
-            "Failed to load YAML file " + cf.bold("{}"), config_file)
+        cli_logger.error("Failed to load YAML file " + cf.bold("{}"),
+                         config_file)
         cli_logger.newline()
         with cli_logger.verbatim_error_ctx("PyYAML error:"):
             cli_logger.error(e)
@@ -217,15 +216,15 @@ def _bootstrap_config(config: Dict[str, Any],
                                  config_cache.get("provider_log_info"))
 
             cli_logger.newline()
-            cli_logger.verbose_warning("Loaded cached provider configuration "
-                                       "from " + cf.bold("{}"),
-                                       cache_key)
+            cli_logger.verbose_warning(
+                "Loaded cached provider configuration "
+                "from " + cf.bold("{}"), cache_key)
             if cli_logger.verbosity == 0:
                 cli_logger.warning("Loaded cached provider configuration")
-            cli_logger.warning("If you experience issues with "
-                               "the node provider, try re-running "
-                               "the command with {}.",
-                               cf.bold("--no-config-cache"))
+            cli_logger.warning(
+                "If you experience issues with "
+                "the node provider, try re-running "
+                "the command with {}.", cf.bold("--no-config-cache"))
 
             return config_cache["config"]
         else:
@@ -657,10 +656,8 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
                 sys.exit(1)
 
             cli_logger.old_info(
-                logger,
-                "get_or_create_head_node: "
-                "Head node up-to-date, IP address is: {}",
-                head_node_ip)
+                logger, "get_or_create_head_node: "
+                "Head node up-to-date, IP address is: {}", head_node_ip)
 
         monitor_str = "tail -n 100 -f /tmp/ray/session_*/logs/monitor*"
         if override_cluster_name:
@@ -672,8 +669,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
         if cli_logger.old_style:
             print("To monitor auto-scaling activity, you can run:\n\n"
                   "  ray exec {} {}{}\n".format(config_file,
-                                                quote(monitor_str),
-                                                modifiers))
+                                                quote(monitor_str), modifiers))
             print("To open a console on the cluster:\n\n"
                   "  ray attach {}{}\n".format(config_file, modifiers))
 
@@ -684,14 +680,13 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
         cli_logger.newline()
         with cli_logger.group("Useful commands"):
             cli_logger.print("Monitor auto-sclaing with")
-            cli_logger.print(cf.bold("  ray exec {}{} {}"),
-                             raw_config_file,
-                             modifiers,
-                             quote(monitor_str))
+            cli_logger.print(
+                cf.bold("  ray exec {}{} {}"), raw_config_file, modifiers,
+                quote(monitor_str))
 
             cli_logger.print("Connect to a terminal on the cluster head")
-            cli_logger.print(cf.bold("  ray attach {}{}"),
-                             raw_config_file, modifiers)
+            cli_logger.print(
+                cf.bold("  ray attach {}{}"), raw_config_file, modifiers)
     finally:
         provider.cleanup()
 
