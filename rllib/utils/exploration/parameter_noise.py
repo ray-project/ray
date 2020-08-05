@@ -1,5 +1,6 @@
 from gym.spaces import Box, Discrete
 import numpy as np
+from typing import Optional, Union
 
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.modelv2 import ModelV2
@@ -8,7 +9,8 @@ from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
     TorchDeterministic
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
+    TensorType
 from ray.rllib.utils.framework import get_variable
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.numpy import softmax, SMALL_NUMBER
@@ -36,9 +38,9 @@ class ParameterNoise(Exploration):
                  framework: str,
                  policy_config: dict,
                  model: ModelV2,
-                 initial_stddev=1.0,
-                 random_timesteps=10000,
-                 sub_exploration=None,
+                 initial_stddev: float = 1.0,
+                 random_timesteps: int = 10000,
+                 sub_exploration: Optional[dict] = None,
                  **kwargs):
         """Initializes a ParameterNoise Exploration object.
 
@@ -139,9 +141,9 @@ class ParameterNoise(Exploration):
     @override(Exploration)
     def before_compute_actions(self,
                                *,
-                               timestep=None,
-                               explore=None,
-                               tf_sess=None):
+                               timestep: Union[int, TensorType] = None,
+                               explore: bool = None,
+                               tf_sess: Optional["tf.Session"] = None):
         explore = explore if explore is not None else \
             self.policy_config["explore"]
 

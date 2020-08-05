@@ -1,3 +1,4 @@
+from gym.spaces import Space
 import tree
 from typing import Union
 
@@ -21,7 +22,7 @@ class StochasticSampling(Exploration):
     lowering stddev, temperature, etc.. over time.
     """
 
-    def __init__(self, action_space, *, framework: str, model: ModelV2,
+    def __init__(self, action_space: Space, *, framework: str, model: ModelV2,
                  **kwargs):
         """Initializes a StochasticSampling Exploration object.
 
@@ -66,7 +67,8 @@ class StochasticSampling(Exploration):
         return action, logp
 
     @staticmethod
-    def _get_torch_exploration_action(action_dist, explore):
+    def _get_torch_exploration_action(action_dist: ActionDistribution,
+                                      explore: bool):
         if explore:
             action = action_dist.sample()
             logp = action_dist.sampled_action_logp()

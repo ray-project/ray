@@ -1,3 +1,6 @@
+from gym.spaces import Space
+from typing import Optional
+
 from ray.rllib.utils.exploration.gaussian_noise import GaussianNoise
 from ray.rllib.utils.schedules import ConstantSchedule
 
@@ -10,7 +13,8 @@ class PerWorkerGaussianNoise(GaussianNoise):
     See Ape-X paper.
     """
 
-    def __init__(self, action_space, *, framework, num_workers, worker_index,
+    def __init__(self, action_space: Space, *, framework: Optional[str],
+                 num_workers: Optional[int], worker_index: Optional[int],
                  **kwargs):
         """
         Args:

@@ -1,10 +1,13 @@
 from gym.spaces import Space
-from typing import Union
+from typing import Union, Optional
 
-from ray.rllib.utils.framework import try_import_torch, TensorType
+from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.framework import try_import_torch, TensorType
+
 
 torch, nn = try_import_torch()
 
@@ -47,15 +50,15 @@ class Exploration:
     @DeveloperAPI
     def before_compute_actions(self,
                                *,
-                               timestep=None,
-                               explore=None,
-                               tf_sess=None,
+                               timestep: Optional[Union[int, TensorType]] = None,
+                               explore: bool = False,
+                               tf_sess: Optional["tf.Session"] = None,
                                **kwargs):
         """Hook for preparations before policy.compute_actions() is called.
 
         Args:
-            timestep (Optional[TensorType]): An optional timestep tensor.
-            explore (Optional[TensorType]): An optional explore boolean flag.
+            timestep (Optional[int|TensorType]): An optional timestep tensor.
+            explore (bool): An optional explore boolean flag.
             tf_sess (Optional[tf.Session]): The tf-session object to use.
             **kwargs: Forward compatibility kwargs.
         """
@@ -92,11 +95,11 @@ class Exploration:
 
     @DeveloperAPI
     def on_episode_start(self,
-                         policy,
+                         policy: "Policy",
                          *,
-                         environment=None,
-                         episode=None,
-                         tf_sess=None):
+                         environment: BaseEnv = None,
+                         episode: int = None,
+                         tf_sess: Optional["tf.Session"] = None):
         """Handles necessary exploration logic at the beginning of an episode.
 
         Args:
@@ -109,11 +112,11 @@ class Exploration:
 
     @DeveloperAPI
     def on_episode_end(self,
-                       policy,
+                       policy: "Policy",
                        *,
-                       environment=None,
-                       episode=None,
-                       tf_sess=None):
+                       environment: BaseEnv = None,
+                       episode: int = None,
+                       tf_sess: Optional["tf.Session"] = None):
         """Handles necessary exploration logic at the end of an episode.
 
         Args:
@@ -125,7 +128,10 @@ class Exploration:
         pass
 
     @DeveloperAPI
-    def postprocess_trajectory(self, policy, sample_batch, tf_sess=None):
+    def postprocess_trajectory(self,
+                               policy: "Policy",
+                               sample_batch: SampleBatch,
+                               tf_sess: Optional["tf.Session"] = None):
         """Handles post-processing of done episode trajectories.
 
         Changes the given batch in place. This callback is invoked by the
@@ -139,7 +145,7 @@ class Exploration:
         return sample_batch
 
     @DeveloperAPI
-    def get_info(self, sess=None):
+    def get_info(self, sess: Optional["tf.Session"] = None):
         """Returns a description of the current exploration state.
 
         This is not necessarily the state itself (and cannot be used in

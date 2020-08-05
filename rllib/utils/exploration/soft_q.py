@@ -1,5 +1,5 @@
-from gym.spaces import Discrete
-from typing import Union
+from gym.spaces import Discrete, Space
+from typing import Union, Optional
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.tf.tf_action_dist import Categorical
@@ -7,6 +7,7 @@ from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.stochastic_sampling import StochasticSampling
 from ray.rllib.utils.framework import TensorType
+from ray.rllib.utils.schedules import Schedule
 
 
 class SoftQ(StochasticSampling):
@@ -16,7 +17,8 @@ class SoftQ(StochasticSampling):
     output divided by the temperature. Returns the argmax iff explore=False.
     """
 
-    def __init__(self, action_space, *, framework, temperature=1.0, **kwargs):
+    def __init__(self, action_space: Space, *, framework: Optional[str],
+                 temperature: Schedule = 1.0, **kwargs):
         """Initializes a SoftQ Exploration object.
 
         Args:
