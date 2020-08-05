@@ -1,5 +1,9 @@
+import json
 import logging
+import os
 import threading
+import time
+import traceback
 
 from collections import defaultdict
 from typing import List
@@ -185,7 +189,35 @@ class MetricsAgent:
             self._missing_information = False
 
 
-class PrometheusServiceDiscoveryHelper:
+class PrometheusServiceDiscoveryFileWriter:
+    def __init__(self, temp_dir):
+        self.temp_dir = temp_dir
+
+    def write(self):
+        # Write a file based on https://prometheus.io/docs/guides/file-sd/
+        nodes = ray.nodes()
+        metrics_export_addresses = [
+            "{}:{}".format(node["NodeManagerAddress"],
+                           node["MetricsExportPort"]) for node in nodes
+        ]
+        data = [{
+            "labels": {
+                "job": "ray"
+            },
+            "targets": [
+                metrics_export_address
+                for metrics_export_address in metrics_export_addresses
+            ]
+        }]
+        with open(self.get_target_file_name(), "w") as json_file:
+            json.dump(data, json_file)
+
+    def get_target_file_name(self):
+        return os.path.join(
+            self.temp_dir, ray.ray_constants.PROMETHEUS_SERVICE_DISCOVERY_FILE)
+
+
+class PrometheusServiceDiscoveryThread(threading.Thread):
     """A thread to support Prometheus service discovery.
 
     It supports file-based service discovery. Checkout
@@ -194,11 +226,26 @@ class PrometheusServiceDiscoveryHelper:
     Args:
         redis_address(str): Ray's redis address.
         redis_password(str): Ray's redis password.
+        temp_dir(str): Temporary directory used by
+            Ray to store logs and metadata.
     """
-    def __init__(self, redis_address, redis_password):
+
+    def __init__(self, redis_address, redis_password, temp_dir):
         ray.state.state._initialize_global_state(
             redis_address=redis_address, redis_password=redis_password)
-        from pprint import pprint
-        pprint(ray.nodes())
+        self.writer = PrometheusServiceDiscoveryFileWriter(temp_dir)
+        self.default_service_discovery_flush_period = 5
+        super().__init__()
 
-    def start(self):
+    def run(self):
+        while True:
+            # This thread won't be broken by exceptions.
+            try:
+                self.writer.write()
+            except Exception as e:
+                logger.warning("Writing a service discovery file, {},"
+                               "failed."
+                               .format(self.writer.get_target_file_name()))
+                logger.warning(traceback.format_exc())
+                logger.warning("Error message: {}".format(e))
+            time.sleep(self.default_service_discovery_flush_period)

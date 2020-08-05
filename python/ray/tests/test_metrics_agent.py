@@ -1,3 +1,4 @@
+import json
 import pytest
 
 from collections import defaultdict
@@ -7,9 +8,12 @@ import requests
 from opencensus.tags import tag_key as tag_key_module
 from prometheus_client.parser import text_string_to_metric_families
 
+import ray
+
 from ray.core.generated.common_pb2 import MetricPoint
 from ray.dashboard.util import get_unused_port
-from ray.metrics_agent import Gauge, MetricsAgent
+from ray.metrics_agent import (Gauge, MetricsAgent,
+                               PrometheusServiceDiscoveryFileWriter)
 
 
 def generate_metrics_point(name: str,
@@ -178,6 +182,45 @@ def test_multiple_record(cleanup_agent):
             for sample in family.samples:
                 sample_values.append(sample.value)
     assert sample_values == [point.value for point in points]
+
+
+def test_prometheus_file_based_service_discovery(ray_start_cluster):
+    # Make sure Prometheus service discovery file is correctly written
+    # when number of nodes are dynamically changed.
+    NUM_NODES = 5
+    cluster = ray_start_cluster
+    nodes = [cluster.add_node() for _ in range(NUM_NODES)]
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+    writer = PrometheusServiceDiscoveryFileWriter("/tmp/ray")
+    writer.write()
+
+    def get_metrics_export_address_from_node(nodes):
+        return [
+            "{}:{}".format(node.node_ip_address, node.metrics_export_port)
+            for node in nodes
+        ]
+
+    with open(writer.get_target_file_name(), "r") as json_file:
+        # File will be in this form:
+        # https://prometheus.io/docs/guides/file-sd/
+        loaded_json_data = json.load(json_file)[0]
+        assert (set(get_metrics_export_address_from_node(nodes)) == set(
+            loaded_json_data["targets"]))
+
+    # Let's update nodes.
+    for _ in range(3):
+        nodes.append(cluster.add_node())
+
+    # Flush again.
+    writer.write()
+    # Make sure service discovery file is correctly updated.
+    with open(writer.get_target_file_name(), "r") as json_file:
+        # File will be in this form:
+        # https://prometheus.io/docs/guides/file-sd/
+        loaded_json_data = json.load(json_file)[0]
+        assert (set(get_metrics_export_address_from_node(nodes)) == set(
+            loaded_json_data["targets"]))
 
 
 if __name__ == "__main__":
