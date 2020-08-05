@@ -314,20 +314,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
       std::unordered_map<ClientID, SchedulingResources> &resource_map,
       const BundleSpecification &bundle_spec);
 
-  /// Handle a task whose return value(s) must be reconstructed.
-  ///
-  /// \param task_id The relevant task ID.
-  /// \param required_object_id The object id we are reconstructing for.
-  /// \return Void.
-  void HandleTaskReconstruction(const TaskID &task_id,
-                                const ObjectID &required_object_id);
-  /// Resubmit a task for execution. This is a task that was previously already
-  /// submitted to a raylet but which must now be re-executed.
-  ///
-  /// \param task The task being resubmitted.
-  /// \param required_object_id The object id that triggered the resubmission.
-  /// \return Void.
-  void ResubmitTask(const Task &task, const ObjectID &required_object_id);
   /// Attempt to forward a task to a remote different node manager. If this
   /// fails, the task will be resubmit locally.
   ///
@@ -566,18 +552,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void ProcessSetResourceRequest(const std::shared_ptr<ClientConnection> &client,
                                  const uint8_t *message_data);
-
-  /// Handle the case where an actor is disconnected, determine whether this
-  /// actor needs to be restarted and then update actor table.
-  /// This function needs to be called either when actor process dies or when
-  /// a node dies.
-  ///
-  /// \param actor_id Id of this actor.
-  /// \param was_local Whether the disconnected was on this local node.
-  /// \param intentional_disconnect Wether the client was intentionally disconnected.
-  /// \return Void.
-  void HandleDisconnectedActor(const ActorID &actor_id, bool was_local,
-                               bool intentional_disconnect);
 
   /// Finish assigning a task to a worker.
   ///

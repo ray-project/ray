@@ -127,11 +127,6 @@ OPTIMIZED = __OPTIMIZE__
 logger = logging.getLogger(__name__)
 
 
-def gcs_actor_service_enabled():
-    return (
-        RayConfig.instance().gcs_actor_service_enabled())
-
-
 cdef int check_status(const CRayStatus& status) nogil except -1:
     if status.ok():
         return 0

@@ -21,24 +21,8 @@ def _calculate_key(name):
 
 
 def _get_actor(name):
-    if ray._raylet.gcs_actor_service_enabled():
-        worker = ray.worker.global_worker
-        handle = worker.core_worker.get_named_actor_handle(name)
-    else:
-        actor_name = _calculate_key(name)
-        pickled_state = _internal_kv_get(actor_name)
-        if pickled_state is None:
-            raise ValueError(
-                "The actor with name={} doesn't exist".format(name))
-        handle = pickle.loads(pickled_state)
-        # If the actor state is dead, that means that this name is reusable.
-        # We don't delete the name entry from key value store when
-        # the actor is killed because ray.kill is asynchronous,
-        # and it can cause worker leaks.
-        actor_info = ray.actors(actor_id=handle._actor_id.hex())
-        actor_state = actor_info.get("State", None)
-        if actor_state and actor_state == ActorTableData.DEAD:
-            raise ValueError("The actor with name={} is dead.".format(name))
+    worker = ray.worker.global_worker
+    handle = worker.core_worker.get_named_actor_handle(name)
     return handle
 
 

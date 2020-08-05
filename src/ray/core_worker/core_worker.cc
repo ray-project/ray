@@ -463,10 +463,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         new raylet::RayletClient(std::move(grpc_client)));
   };
 
-  std::shared_ptr<ActorCreatorInterface> actor_creator = nullptr;
-  if (RayConfig::instance().gcs_actor_service_enabled()) {
-    actor_creator = std::make_shared<DefaultActorCreator>(gcs_client_);
-  }
+  std::shared_ptr<ActorCreatorInterface> actor_creator = std::make_shared<DefaultActorCreator>(gcs_client_);;
 
   direct_actor_submitter_ = std::shared_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(client_factory, memory_store_,
@@ -1419,7 +1416,6 @@ const ActorHandle *CoreWorker::GetActorHandle(const ActorID &actor_id) const {
 
 std::pair<const ActorHandle *, Status> CoreWorker::GetNamedActorHandle(
     const std::string &name) {
-  RAY_CHECK(RayConfig::instance().gcs_actor_service_enabled());
   RAY_CHECK(!name.empty());
   if (options_.is_local_mode) {
     return GetNamedActorHandleLocalMode(name);
@@ -1874,7 +1870,6 @@ void CoreWorker::HandleWaitForActorOutOfScope(
     const rpc::WaitForActorOutOfScopeRequest &request,
     rpc::WaitForActorOutOfScopeReply *reply, rpc::SendReplyCallback send_reply_callback) {
   // Currently WaitForActorOutOfScope is only used when GCS actor service is enabled.
-  RAY_CHECK(RayConfig::instance().gcs_actor_service_enabled());
   if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
                            send_reply_callback)) {
     return;
