@@ -13,15 +13,15 @@ class ViewRequirement:
     `_use_trajectory_view_api` in the config is set to True.
 
     Policies and ModelV2s return a Dict[str, ViewRequirement] upon calling
-    their `get_view_requirements()` methods, where the str key represents the
-    column name (C) under which the view is available in the
+    their `[train|inference]_view_requirements()` methods, where the str key
+    represents the column name (C) under which the view is available in the
     input_dict/SampleBatch and ViewRequirement specifies the actual underlying
     column names (in the original data buffer), timestep shifts, and other
     options to build the view.
 
     Examples:
         >>> # The default ViewRequirement for a Model is:
-        >>> req = [ModelV2].get_view_requirements()
+        >>> req = [ModelV2].inference_view_requirements()
         >>> print(req)
         {"obs": ViewRequirement(shift=0)}
     """

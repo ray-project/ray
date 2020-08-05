@@ -20,8 +20,8 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         for _ in framework_iterator(config, frameworks="torch"):
             trainer = ppo.PPOTrainer(config, env="CartPole-v0")
             policy = trainer.get_policy()
-            view_req_model = policy.model.get_view_requirements()
-            view_req_policy = policy.get_view_requirements()
+            view_req_model = policy.model.inference_view_requirements()
+            view_req_policy = policy.training_view_requirements()
             assert len(view_req_model) == 1
             assert len(view_req_policy) == 6
             for key in [
@@ -48,8 +48,8 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         for _ in framework_iterator(config, frameworks="torch"):
             trainer = ppo.PPOTrainer(config, env="CartPole-v0")
             policy = trainer.get_policy()
-            view_req_model = policy.model.get_view_requirements()
-            view_req_policy = policy.get_view_requirements()
+            view_req_model = policy.model.inference_view_requirements()
+            view_req_policy = policy.training_view_requirements()
             assert len(view_req_model) == 3  # obs, prev_a, prev_r
             assert len(view_req_policy) == 8
             for key in [

@@ -173,8 +173,8 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
         return torch.reshape(self._value_branch(self._features), [-1])
 
     @override(ModelV2)
-    def get_view_requirements(self) -> Dict[str, ViewRequirement]:
-        req = super().get_view_requirements()
+    def inference_view_requirements(self) -> Dict[str, ViewRequirement]:
+        req = super().inference_view_requirements()
         # Optional: prev-actions/rewards for forward pass.
         if self.model_config["lstm_use_prev_action_reward"]:
             req.update({

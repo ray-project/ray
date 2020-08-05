@@ -284,7 +284,7 @@ class Policy(metaclass=ABCMeta):
         raise NotImplementedError
 
     @DeveloperAPI
-    def get_view_requirements(self):
+    def training_view_requirements(self):
         """Returns a dict of view requirements for operating on this Policy.
 
         Note: This is an experimental API method.
