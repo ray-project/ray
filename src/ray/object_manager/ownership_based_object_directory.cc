@@ -206,9 +206,9 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
   std::shared_ptr<rpc::CoreWorkerClient> rpc_client = GetClient(owner_address);
   if (rpc_client == nullptr) {
     RAY_LOG(WARNING) << "Object " << object_id << " does not have owner. "
-                      << "LookupLocations returns an empty list of locations.";
-    io_service_.post([callback, object_id]() {
-        callback(object_id, std::unordered_set<ClientID>()); });
+                     << "LookupLocations returns an empty list of locations.";
+    io_service_.post(
+        [callback, object_id]() { callback(object_id, std::unordered_set<ClientID>()); });
     return Status::OK();
   }
 

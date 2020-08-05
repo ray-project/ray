@@ -36,13 +36,15 @@ const static TaskID kDefaultDriverTaskId = TaskID::ForDriverTask(kDefaultJobId);
 
 class MockObjectManager : public ObjectManagerInterface {
  public:
-  MOCK_METHOD2(Pull, ray::Status(const ObjectID &object_id, const rpc::Address &owner_address));
+  MOCK_METHOD2(Pull,
+               ray::Status(const ObjectID &object_id, const rpc::Address &owner_address));
   MOCK_METHOD1(CancelPull, void(const ObjectID &object_id));
 };
 
 class MockReconstructionPolicy : public ReconstructionPolicyInterface {
  public:
-  MOCK_METHOD2(ListenAndMaybeReconstruct, void(const ObjectID &object_id, const rpc::Address &owner_address));
+  MOCK_METHOD2(ListenAndMaybeReconstruct,
+               void(const ObjectID &object_id, const rpc::Address &owner_address));
   MOCK_METHOD1(Cancel, void(const ObjectID &object_id));
 };
 

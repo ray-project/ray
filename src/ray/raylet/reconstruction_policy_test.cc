@@ -84,8 +84,8 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
   MOCK_CONST_METHOD1(LookupRemoteConnectionInfo, void(RemoteConnectionInfo &));
   MOCK_CONST_METHOD0(LookupAllRemoteConnections, std::vector<RemoteConnectionInfo>());
   MOCK_METHOD4(SubscribeObjectLocations,
-               ray::Status(const ray::UniqueID &, const ObjectID &, const rpc::Address &owner_address,
-                           const OnLocationsFound &));
+               ray::Status(const ray::UniqueID &, const ObjectID &,
+                           const rpc::Address &owner_address, const OnLocationsFound &));
   MOCK_METHOD2(UnsubscribeObjectLocations,
                ray::Status(const ray::UniqueID &, const ObjectID &));
   MOCK_METHOD3(ReportObjectAdded,
