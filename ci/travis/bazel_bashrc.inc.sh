@@ -1,4 +1,5 @@
-#!/usr/bin/env bash
+# shellcheck shell=bash
+# ^ Avoid shebang line. (This script must be sourced, not executed.)
 
 # This is the content to be included in Travis bashrc
 
