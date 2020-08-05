@@ -2492,16 +2492,8 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
 void NodeManager::FinishAssignedActorCreationTask(WorkerInterface &worker,
                                                   const Task &task) {
   RAY_LOG(DEBUG) << "Finishing assigned actor creation task";
-  ActorID actor_id;
-  TaskID caller_id;
   const TaskSpecification task_spec = task.GetTaskSpecification();
-  bool resumed_from_checkpoint = false;
-
-  actor_id = task_spec.ActorCreationId();
-  caller_id = TaskID::Nil();
-  if (checkpoint_id_to_restore_.count(actor_id) > 0) {
-    resumed_from_checkpoint = true;
-  }
+  ActorID actor_id = task_spec.ActorCreationId();
 
   // This was an actor creation task. Convert the worker to an actor.
   worker.AssignActorId(actor_id);
