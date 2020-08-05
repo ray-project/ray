@@ -442,17 +442,14 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
         // The backend storage is supposed to be reliable, so the status must be ok.
         RAY_CHECK_OK(status);
         // If a creator dies before this callback is called, the actor could have been
-        // already destroyed. In this case, we just mark this actor as dead.
-        // NOTE: We don't need to reply to a caller because
-        // the owner of the actor (creator in this case) already died.
+        // already destroyed. It is okay not to invoke a callback because we don't need
+        // to reply to the creator as it is already dead.
         auto registered_actor_it = registered_actors_.find(actor->GetActorID());
         if (registered_actor_it == registered_actors_.end()) {
-          auto mutable_actor_table_data = actor->GetMutableActorTableData();
-          mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
-          // Make sure to flush the actor state as DEAD one more time
-          // to avoid overwriting the actor state as DEPENDENCIES_UNREADY.
-          RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
-              actor->GetActorID(), *mutable_actor_table_data, nullptr));
+          // NOTE(sang): This logic assumes that the ordering of backend call is
+          // guaranteed. It is currently true because we use a single TCP socket to call
+          // the default Redis backend. If ordering is not guaranteed, we should overwrite
+          // the actor state to DEAD to avoid race condition.
           return;
         }
         // Invoke all callbacks for all registration requests of this actor (duplicated
