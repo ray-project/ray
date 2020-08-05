@@ -126,7 +126,7 @@ if [ "${TRAVIS-}" = true ]; then
   # Inject the wrapper function to bashrc, so in future invocation
   # we get a shorthand to export logs to a temp file on each
   # test/build event.
-  read -r -d '' bazel_wrapper_func <<END
+  read -r -d '' bazel_wrapper_func <<-'END'
 bazel() {
   case "${1-}" in
     --*) echo "Bazel startup options not yet implemented for this thunk" 1>&2; false;;
