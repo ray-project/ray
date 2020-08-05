@@ -224,7 +224,7 @@ The above information includes:
   - `alive`: Whether the node is still alive.
   - `NodeManagerAddress`: PrivateIP of the node that the raylet is on.
   - `Resources`: The total resource capacity on the node.
-  - `MetricsExportPort`: The port number at which metrics are exposed to through a Prometheus endpoint.
+  - `MetricsExportPort`: The port number at which metrics are exposed to through a `Prometheus endpoint <ray-metrics.html>`_.
 
 Resource Information
 ~~~~~~~~~~~~~~~~~~~~

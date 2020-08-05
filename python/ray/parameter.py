@@ -89,7 +89,7 @@ class RayParams:
         java_worker_options (list): The command options for Java worker.
         load_code_from_local: Whether load code from local file or from GCS.
         metrics_agent_port(int): The port to bind metrics agent.
-        metrics_export_port(int): The port at which metrics are exposed to.
+        metrics_export_port(int): The port at which metrics are exposed
             through a Prometheus endpoint.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.

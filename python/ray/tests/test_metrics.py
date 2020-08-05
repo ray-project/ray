@@ -398,6 +398,7 @@ def test_multi_node_metrics_export_port_discovery(ray_start_cluster):
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
     node_info_list = ray.nodes()
+
     for node_info in node_info_list:
         metrics_export_port = node_info["MetricsExportPort"]
         address_info = nodes[metrics_export_port]
