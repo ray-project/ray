@@ -349,21 +349,21 @@ class StressTestObjectManager : public TestObjectManagerBase {
     case TransferPattern::PULL_A_B: {
       for (int i = -1; ++i < num_trials;) {
         ObjectID oid1 = WriteDataToClient(client1, data_size);
-        status = server2->object_manager_.Pull(oid1);
+        status = server2->object_manager_.Pull(oid1, rpc::Address());
       }
     } break;
     case TransferPattern::PULL_B_A: {
       for (int i = -1; ++i < num_trials;) {
         ObjectID oid2 = WriteDataToClient(client2, data_size);
-        status = server1->object_manager_.Pull(oid2);
+        status = server1->object_manager_.Pull(oid2, rpc::Address());
       }
     } break;
     case TransferPattern::BIDIRECTIONAL_PULL: {
       for (int i = -1; ++i < num_trials;) {
         ObjectID oid1 = WriteDataToClient(client1, data_size);
-        status = server2->object_manager_.Pull(oid1);
+        status = server2->object_manager_.Pull(oid1, rpc::Address());
         ObjectID oid2 = WriteDataToClient(client2, data_size);
-        status = server1->object_manager_.Pull(oid2);
+        status = server1->object_manager_.Pull(oid2, rpc::Address());
       }
     } break;
     case TransferPattern::BIDIRECTIONAL_PULL_VARIABLE_DATA_SIZE: {
@@ -372,9 +372,9 @@ class StressTestObjectManager : public TestObjectManagerBase {
       std::uniform_int_distribution<> dis(1, 50);
       for (int i = -1; ++i < num_trials;) {
         ObjectID oid1 = WriteDataToClient(client1, data_size + dis(gen));
-        status = server2->object_manager_.Pull(oid1);
+        status = server2->object_manager_.Pull(oid1, rpc::Address());
         ObjectID oid2 = WriteDataToClient(client2, data_size + dis(gen));
-        status = server1->object_manager_.Pull(oid2);
+        status = server1->object_manager_.Pull(oid2, rpc::Address());
       }
     } break;
     default: {
