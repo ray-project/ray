@@ -4,6 +4,7 @@ import time
 import os
 import pytest
 import shutil
+import subprocess
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -729,14 +730,14 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir):
         current_dir = os.path.dirname(__file__)
         script = os.path.join(current_dir,
                               "_test_cluster_interrupt_searcher.py")
-
-        proc = subprocess.Popen([sys.executable, script] + args)
+        print(args)
+        proc = subprocess.Popen([sys.executable, script] + list(args))
 
     args = [
         "--ray-address", cluster.address, "--checkpoint-dir",
         local_checkpoint_dir
     ]
-    execute_script_with_args(args)
+    execute_script_with_args(*args)
     # Wait until the right checkpoint is saved.
     # The trainable returns every 0.5 seconds, so this should not miss
     # the checkpoint.
@@ -760,7 +761,7 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir):
     cluster.shutdown()
 
     cluster = _start_new_cluster()
-    execute_script_with_args(args + ["--resume"])
+    execute_script_with_args(*(args + ["--resume"]))
 
     time.sleep(2)
 
