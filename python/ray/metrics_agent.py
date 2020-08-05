@@ -13,6 +13,8 @@ from opencensus.tags import tag_map as tag_map_module
 from opencensus.tags import tag_value as tag_value_module
 from opencensus.stats import view
 
+import ray
+
 from ray import prometheus_exporter
 from ray.core.generated.common_pb2 import MetricPoint
 
@@ -181,3 +183,19 @@ class MetricsAgent:
                 metric_name].view.measure._description = metric_description
             self._registry[metric_name].view.measure._unit = metric_units
             self._missing_information = False
+
+
+class PrometheusServiceDiscoveryHelper:
+    """A thread to support Prometheus service discovery.
+
+    It supports file-based service discovery. Checkout
+    https://prometheus.io/docs/guides/file-sd/ for more details.
+    """
+    def __init__(self, redis_address, redis_password):
+        """
+        
+        """
+        ray.state.state._initialize_global_state(
+            redis_address=redis_address, redis_password=redis_password)
+        from pprint import pprint
+        pprint(ray.nodes())

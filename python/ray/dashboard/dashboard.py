@@ -36,6 +36,7 @@ from ray.dashboard.metrics_exporter.client import Exporter
 from ray.dashboard.metrics_exporter.client import MetricsExportClient
 from ray.dashboard.node_stats import NodeStats
 from ray.dashboard.util import to_unix_time, measures_to_dict, format_resource
+from ray.metrics_agent import PrometheusServiceDiscoveryHelper
 
 try:
     from ray.tune import Analysis
@@ -75,6 +76,7 @@ class DashboardController(BaseDashboardController):
         if Analysis is not None:
             self.tune_stats = TuneCollector(2.0)
         self.memory_table = MemoryTable([])
+        self.prometheus_service_discovery_helper = PrometheusServiceDiscoveryHelper(redis_address, redis_password)
 
     def _construct_raylet_info(self):
         D = self.raylet_stats.get_raylet_stats()
