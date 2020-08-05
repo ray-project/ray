@@ -1006,7 +1006,7 @@ def _do_policy_eval(
                 timestep=policy.global_timestep)
         else:
             if _use_trajectory_view_api:
-                input_dict = eval_data.get_input_dict(
+                input_dict = eval_data.get_inference(
                     policy.model.get_view_requirements())
                 eval_results[policy_id] = \
                     policy.compute_actions_from_input_dict(
@@ -1085,8 +1085,8 @@ def _process_policy_eval_results(
 
     # type: PolicyID, List[PolicyEvalData]
     for policy_id, eval_data in to_eval.items():
-        if _use_trajectory_view_api:
-            eval_data.reset_inference_call()
+        #if _use_trajectory_view_api:
+        #    eval_data.reset_inference_call()
 
         actions: TensorStructType = eval_results[policy_id][0]
         actions = convert_to_numpy(actions)

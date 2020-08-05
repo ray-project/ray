@@ -121,14 +121,15 @@ class _SampleCollector(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
-    @abstractmethod
-    def reset_forward_pass(self) -> None:
-        """Resets all forward pass information (new items can be registered).
-        """
-        raise NotImplementedError
+    #@abstractmethod
+    #def reset_forward_pass(self) -> None:
+    #    """Resets all forward pass information (new items can be registered).
+    #    """
+    #    raise NotImplementedError
 
     @abstractmethod
-    def get_input_dict(self, model: ModelV2) -> Dict[str, TensorType]:
+    def get_inference_input_dict(self, model: ModelV2) -> \
+            Dict[str, TensorType]:
         """Returns an input_dict for a Model's forward pass given our data.
 
         The input_dict can be used for either action computation or training.

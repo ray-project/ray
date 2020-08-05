@@ -2,7 +2,9 @@ import logging
 import numpy as np
 from typing import Dict, Optional
 
+from ray.rllib.evaluation.sample_collector import _SampleCollector
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.types import AgentID, EnvID, EpisodeID, TensorType
 
@@ -12,7 +14,7 @@ torch, _ = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-class RolloutSampleCollector:
+class RolloutSampleCollector(_SampleCollector):
     """
     """
 
@@ -64,6 +66,7 @@ class RolloutSampleCollector:
         self.forward_pass_index_to_agent_info = {}
         self.agent_key_to_forward_pass_index = {}
 
+    @override(_SampleCollector)
     def add_init_obs(self, episode_id: EpisodeID, agent_id: AgentID,
                      env_id: int, chunk_num: int, init_obs: TensorType) -> None:
         """Adds a single initial observation (after env.reset()) to the buffer.
@@ -97,6 +100,7 @@ class RolloutSampleCollector:
         self._add_to_next_inference_call(
             agent_key, env_id, agent_slot, self.shift_before-1)
 
+    @override(_SampleCollector)
     def add_action_reward_next_obs(self, episode_id: EpisodeID,
                                    agent_id: AgentID,
                                    env_id: EnvID,
@@ -195,9 +199,10 @@ class RolloutSampleCollector:
         self.forward_pass_indices[1].append(agent_slot)
         self.forward_pass_size += 1
 
-    def reset_inference_call(self):
+    def _reset_inference_call(self):
         self.forward_pass_size = 0
 
+    @override(_SampleCollector)
     def get_train_sample_batch_and_reset(self, model) -> SampleBatch:
         """Returns a SampleBatch carrying all previously added data.
 
@@ -282,6 +287,7 @@ class RolloutSampleCollector:
 
         return batch
 
+    @override(_SampleCollector)
     def get_inference_input_dict(self, view_reqs) -> Dict[str, TensorType]:
         """Returns an input_dict for a Model's forward pass given our data.
 
@@ -319,8 +325,11 @@ class RolloutSampleCollector:
                 else:
                     view[view_col] = self.buffers[data_col][indices[1], indices[0]]
 
+        self._reset_inference_call()
+
         return view
 
+    @override(_SampleCollector)
     def get_postprocessing_sample_batches(self, model, episode):
         # Loop through all agents and create a SampleBatch
         # (as "view"; no copying).
