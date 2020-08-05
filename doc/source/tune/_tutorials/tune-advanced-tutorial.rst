@@ -143,7 +143,6 @@ thus just use the same ``Trainable`` for the replay run.
     tune.run(
         PytorchTrainable,
         scheduler=replay,
-        config=replay.config,
         stop={"training_iteration": 100})
 
 

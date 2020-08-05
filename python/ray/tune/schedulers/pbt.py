@@ -412,9 +412,6 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
     start with the initial config of the existing trial and update the
     config according to the schedule.
 
-    Use ``PopulationBasedTrainingReplay.config`` to pass the initial
-    config to ``tune.run()`` (see example below).
-
     Args:
         experiment_dir (str): The directory where the results of the
             PBT run were stored. Usually this is a subdirectory of
@@ -437,7 +434,6 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
         tune.run(
             PytorchTrainable,
             scheduler=replay,
-            config=replay.config,
             stop={"training_iteration": 100})
 
 
@@ -544,6 +540,11 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
                 "means the same schedule will be trained multiple "
                 "times. Do you want to set `n_samples=1`?")
         self._trial = trial
+        if self._trial.config:
+            logger.warning(
+                "Trial was initialized with a config, which was overwritten. "
+                "Did you start the PBT replay with a `config` parameter?")
+        self._trial.config = self.config
 
     def on_trial_result(self, trial_runner, trial, result):
         if TRAINING_ITERATION not in result:

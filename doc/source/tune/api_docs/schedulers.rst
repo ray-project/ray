@@ -165,8 +165,7 @@ config according to the obtained schedule.
         trial_id="XXXXX_00001")
     tune.run(
         ...,
-        scheduler=replay,
-        config=replay.config)
+        scheduler=replay)
 
 See :ref:`here for an example <tune-advanced-tutorial-pbt-replay>` on how to use the
 replay utility in practice.
