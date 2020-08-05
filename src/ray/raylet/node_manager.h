@@ -274,11 +274,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param worker The port that the actor is listening on.
   std::shared_ptr<ActorTableData> CreateActorTableDataFromCreationTask(
       const TaskSpecification &task_spec, int port, const WorkerID &worker_id);
-  /// Handle a worker finishing an assigned actor task or actor creation task.
+  /// Handle a worker finishing an assigned actor creation task.
   /// \param worker The worker that finished the task.
   /// \param task The actor task or actor creation task.
   /// \return Void.
-  void FinishAssignedActorTask(WorkerInterface &worker, const Task &task);
+  void FinishAssignedActorCreationTask(WorkerInterface &worker, const Task &task);
   /// Make a placement decision for placeable tasks given the resource_map
   /// provided. This will perform task state transitions and task forwarding.
   ///

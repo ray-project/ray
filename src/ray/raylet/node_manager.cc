@@ -2450,7 +2450,7 @@ bool NodeManager::FinishAssignedTask(WorkerInterface &worker) {
   if ((spec.IsActorCreationTask())) {
     // If this was an actor or actor creation task, handle the actor's new
     // state.
-    FinishAssignedActorTask(worker, task);
+    FinishAssignedActorCreationTask(worker, task);
   } else {
     // If this was a non-actor task, then cancel any ray.wait calls that were
     // made during the task execution.
@@ -2531,30 +2531,24 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
   return actor_info_ptr;
 }
 
-void NodeManager::FinishAssignedActorTask(WorkerInterface &worker, const Task &task) {
-  RAY_LOG(DEBUG) << "Finishing assigned actor task";
+void NodeManager::FinishAssignedActorCreationTask(WorkerInterface &worker, const Task &task) {
+  RAY_LOG(DEBUG) << "Finishing assigned actor creation task";
   ActorID actor_id;
   TaskID caller_id;
   const TaskSpecification task_spec = task.GetTaskSpecification();
   bool resumed_from_checkpoint = false;
-  if (task_spec.IsActorCreationTask()) {
-    actor_id = task_spec.ActorCreationId();
-    caller_id = TaskID::Nil();
-    if (checkpoint_id_to_restore_.count(actor_id) > 0) {
-      resumed_from_checkpoint = true;
-    }
-  } else {
-    actor_id = task_spec.ActorId();
-    caller_id = task_spec.CallerId();
+
+  actor_id = task_spec.ActorCreationId();
+  caller_id = TaskID::Nil();
+  if (checkpoint_id_to_restore_.count(actor_id) > 0) {
+    resumed_from_checkpoint = true;
   }
 
-  if (task_spec.IsActorCreationTask()) {
-    // This was an actor creation task. Convert the worker to an actor.
-    worker.AssignActorId(actor_id);
+  // This was an actor creation task. Convert the worker to an actor.
+  worker.AssignActorId(actor_id);
 
-    if (task_spec.IsDetachedActor()) {
-      worker.MarkDetachedActor();
-    }
+  if (task_spec.IsDetachedActor()) {
+    worker.MarkDetachedActor();
   }
 }
 
