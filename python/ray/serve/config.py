@@ -137,7 +137,7 @@ class ReplicaConfig:
             raise ValueError("Specifying max_restarts in "
                              "actor_init_args is not allowed.")
         else:
-            num_cpus = self.ray_actor_options.get("num_cpus", 0)
+            num_cpus = self.ray_actor_options.get("num_cpus", 1)
             if not isinstance(num_cpus, (int, float)):
                 raise TypeError(
                     "num_cpus in ray_actor_options must be an int or a float.")
