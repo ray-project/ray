@@ -44,16 +44,141 @@ int64_t current_time_ms() {
   return ms_since_epoch.count();
 }
 
+class MockNodeInfoAccessor : public gcs::NodeInfoAccessor {
+ public:
+  MockNodeInfoAccessor(gcs::RedisGcsClient *client) : client_impl_(client) {}
+
+  bool IsRemoved(const ClientID &node_id) const override { return false; }
+
+  Status RegisterSelf(const rpc::GcsNodeInfo &local_node_info) override {
+    gcs::ClientTable &client_table = client_impl_->client_table();
+    return client_table.Connect(local_node_info);
+  }
+
+  Status UnregisterSelf() override { return Status::OK(); }
+
+  const ClientID &GetSelfId() const override {
+    gcs::ClientTable &client_table = client_impl_->client_table();
+    return client_table.GetLocalClientId();
+  }
+
+  const rpc::GcsNodeInfo &GetSelfInfo() const override { return node_info_; }
+
+  Status AsyncRegister(const rpc::GcsNodeInfo &node_info,
+                       const gcs::StatusCallback &callback) override {
+    return Status::OK();
+  }
+
+  Status AsyncUnregister(const ClientID &node_id,
+                         const gcs::StatusCallback &callback) override {
+    gcs::ClientTable &client_table = client_impl_->client_table();
+    return client_table.Disconnect();
+  }
+
+  Status AsyncGetAll(const gcs::MultiItemCallback<rpc::GcsNodeInfo> &callback) override {
+    return Status::OK();
+  }
+
+  Status AsyncSubscribeToNodeChange(
+      const gcs::SubscribeCallback<ClientID, rpc::GcsNodeInfo> &subscribe,
+      const gcs::StatusCallback &done) override {
+    return Status::OK();
+  }
+
+  boost::optional<rpc::GcsNodeInfo> Get(const ClientID &node_id) const override {
+    return boost::none;
+  }
+
+  const std::unordered_map<ClientID, rpc::GcsNodeInfo> &GetAll() const override {
+    return map_info_;
+  }
+
+  Status AsyncGetResources(
+      const ClientID &node_id,
+      const gcs::OptionalItemCallback<ResourceMap> &callback) override {
+    return Status::OK();
+  }
+
+  Status AsyncUpdateResources(const ClientID &node_id, const ResourceMap &resources,
+                              const gcs::StatusCallback &callback) override {
+    return Status::OK();
+  }
+
+  Status AsyncDeleteResources(const ClientID &node_id,
+                              const std::vector<std::string> &resource_names,
+                              const gcs::StatusCallback &callback) override {
+    return Status::OK();
+  }
+
+  Status AsyncSubscribeToResources(
+      const gcs::ItemCallback<rpc::NodeResourceChange> &subscribe,
+      const gcs::StatusCallback &done) override {
+    return Status::OK();
+  }
+
+  Status AsyncReportHeartbeat(const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
+                              const gcs::StatusCallback &callback) override {
+    return Status::OK();
+  }
+
+  Status AsyncSubscribeHeartbeat(
+      const gcs::SubscribeCallback<ClientID, rpc::HeartbeatTableData> &subscribe,
+      const gcs::StatusCallback &done) override {
+    return Status::OK();
+  }
+
+  Status AsyncReportBatchHeartbeat(
+      const std::shared_ptr<rpc::HeartbeatBatchTableData> &data_ptr,
+      const gcs::StatusCallback &callback) override {
+    return Status::OK();
+  }
+
+  Status AsyncSubscribeBatchHeartbeat(
+      const gcs::ItemCallback<rpc::HeartbeatBatchTableData> &subscribe,
+      const gcs::StatusCallback &done) override {
+    return Status::OK();
+  }
+
+  void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
+
+  Status AsyncSetInternalConfig(
+      std::unordered_map<std::string, std::string> &config) override {
+    return Status::OK();
+  }
+
+  Status AsyncGetInternalConfig(
+      const gcs::OptionalItemCallback<std::unordered_map<std::string, std::string>>
+          &callback) override {
+    return Status::OK();
+  }
+
+ private:
+  rpc::GcsNodeInfo node_info_;
+  std::unordered_map<ClientID, rpc::GcsNodeInfo> map_info_;
+  gcs::RedisGcsClient *client_impl_{nullptr};
+};
+
+class MockGcsClient : public gcs::RedisGcsClient {
+ public:
+  MockGcsClient(gcs::GcsClientOptions option) : gcs::RedisGcsClient(option){};
+
+  void Init(gcs::NodeInfoAccessor *node_accessor) { node_accessor_.reset(node_accessor); }
+};
+
 class MockServer {
  public:
   MockServer(boost::asio::io_service &main_service,
              const ObjectManagerConfig &object_manager_config,
-             std::shared_ptr<gcs::GcsClient> gcs_client)
+             std::shared_ptr<gcs::GcsClient> gcs_client,
+             std::shared_ptr<MockGcsClient> redis_client)
       : node_id_(ClientID::FromRandom()),
         config_(object_manager_config),
-        gcs_client_(gcs_client),
+        gcs_client_(redis_client),
         object_manager_(main_service, node_id_, object_manager_config,
-                        std::make_shared<ObjectDirectory>(main_service, gcs_client_)) {
+                        std::make_shared<ObjectDirectory>(main_service, gcs_client)),
+        node_accessor_(new MockNodeInfoAccessor(redis_client.get())) {
+    gcs_client_->Init(node_accessor_);
+
     RAY_CHECK_OK(RegisterGcs(main_service));
   }
 
@@ -76,8 +201,9 @@ class MockServer {
 
   ClientID node_id_;
   ObjectManagerConfig config_;
-  std::shared_ptr<gcs::GcsClient> gcs_client_;
+  std::shared_ptr<MockGcsClient> gcs_client_;
   ObjectManager object_manager_;
+  MockNodeInfoAccessor *node_accessor_;
 };
 
 class TestObjectManagerBase : public ::testing::Test {
@@ -96,7 +222,7 @@ class TestObjectManagerBase : public ::testing::Test {
     // start first server
     gcs::GcsClientOptions client_options("127.0.0.1", 6379, /*password*/ "",
                                          /*is_test_client=*/true);
-    gcs_client_1 = std::make_shared<gcs::RedisGcsClient>(client_options);
+    gcs_client_1 = std::make_shared<MockGcsClient>(client_options);
     RAY_CHECK_OK(gcs_client_1->Connect(main_service));
     ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = socket_name_1;
@@ -105,10 +231,10 @@ class TestObjectManagerBase : public ::testing::Test {
     om_config_1.push_timeout_ms = push_timeout_ms;
     om_config_1.object_manager_port = 0;
     om_config_1.rpc_service_threads_number = 3;
-    server1.reset(new MockServer(main_service, om_config_1, gcs_client_1));
+    server1.reset(new MockServer(main_service, om_config_1, gcs_client_1, gcs_client_1));
 
     // start second server
-    gcs_client_2 = std::make_shared<gcs::RedisGcsClient>(client_options);
+    gcs_client_2 = std::make_shared<MockGcsClient>(client_options);
     RAY_CHECK_OK(gcs_client_2->Connect(main_service));
     ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = socket_name_2;
@@ -117,7 +243,7 @@ class TestObjectManagerBase : public ::testing::Test {
     om_config_2.push_timeout_ms = push_timeout_ms;
     om_config_2.object_manager_port = 0;
     om_config_2.rpc_service_threads_number = 3;
-    server2.reset(new MockServer(main_service, om_config_2, gcs_client_2));
+    server2.reset(new MockServer(main_service, om_config_2, gcs_client_2, gcs_client_2));
 
     // connect to stores.
     RAY_CHECK_OK(client1.Connect(socket_name_1));
@@ -157,8 +283,8 @@ class TestObjectManagerBase : public ::testing::Test {
  protected:
   std::thread p;
   boost::asio::io_service main_service;
-  std::shared_ptr<gcs::GcsClient> gcs_client_1;
-  std::shared_ptr<gcs::GcsClient> gcs_client_2;
+  std::shared_ptr<MockGcsClient> gcs_client_1;
+  std::shared_ptr<MockGcsClient> gcs_client_2;
   std::unique_ptr<MockServer> server1;
   std::unique_ptr<MockServer> server2;
 
