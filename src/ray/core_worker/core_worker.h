@@ -31,7 +31,6 @@
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/core_worker/transport/direct_task_transport.h"
-#include "ray/core_worker/transport/raylet_transport.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/gcs/subscription_executor.h"
 #include "ray/raylet_client/raylet_client.h"
@@ -733,11 +732,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
 
   /// Implements gRPC server handler.
-  void HandleAssignTask(const rpc::AssignTaskRequest &request,
-                        rpc::AssignTaskReply *reply,
-                        rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Implements gRPC server handler.
   void HandlePushTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
                       rpc::SendReplyCallback send_reply_callback) override;
 
@@ -1091,9 +1085,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// for this worker. Each pair consists of the resource ID and the fraction
   /// of that resource allocated for this worker. This is set on task assignment.
   std::shared_ptr<ResourceMappingType> resource_ids_ GUARDED_BY(mutex_);
-
-  // Interface that receives tasks from the raylet.
-  std::unique_ptr<CoreWorkerRayletTaskReceiver> raylet_task_receiver_;
 
   /// Common rpc service for all worker modules.
   rpc::CoreWorkerGrpcService grpc_service_;

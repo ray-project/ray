@@ -2500,56 +2500,39 @@ void NodeManager::AssignTask(const std::shared_ptr<WorkerInterface> &worker,
   }
 
   auto task_id = spec.TaskId();
-  if (task.OnDispatch() != nullptr) {
-    if (task.GetTaskSpecification().IsDetachedActor()) {
-      worker->MarkDetachedActor();
-    }
-
-    const auto owner_worker_id = WorkerID::FromBinary(spec.CallerAddress().worker_id());
-    const auto owner_node_id = ClientID::FromBinary(spec.CallerAddress().raylet_id());
-    RAY_CHECK(!owner_worker_id.IsNil());
-    RAY_LOG(DEBUG) << "Worker lease request DISPATCH " << task_id << " to worker "
-                   << worker->WorkerId() << ", owner ID " << owner_worker_id;
-
-    task.OnDispatch()(worker, initial_config_.node_manager_address, worker->Port(),
-                      worker->WorkerId(),
-                      spec.IsActorCreationTask() ? worker->GetLifetimeResourceIds()
-                                                 : worker->GetTaskResourceIds());
-
-    // If the owner has died since this task was queued, cancel the task by
-    // killing the worker (unless this task is for a detached actor).
-    if (!worker->IsDetachedActor() && (failed_workers_cache_.count(owner_worker_id) > 0 ||
-                                       failed_nodes_cache_.count(owner_node_id) > 0)) {
-      // TODO(swang): Skip assigning this task to this worker instead of
-      // killing the worker?
-      RAY_LOG(INFO) << "Owner of assigned task " << task.GetTaskSpecification().TaskId()
-                    << " died, killing leased worker " << worker->WorkerId();
-      KillWorker(worker);
-    }
-
-    post_assign_callbacks->push_back([this, worker, task_id]() {
-      RAY_LOG(DEBUG) << "Finished assigning task " << task_id << " to worker "
-                     << worker->WorkerId();
-
-      FinishAssignTask(worker, task_id, /*success=*/true);
-    });
-  } else {
-    ResourceIdSet resource_id_set =
-        worker->GetTaskResourceIds().Plus(worker->GetLifetimeResourceIds());
-    if (worker->AssignTask(task, resource_id_set).ok()) {
-      RAY_LOG(DEBUG) << "Assigned task " << task_id << " to worker "
-                     << worker->WorkerId();
-      post_assign_callbacks->push_back([this, worker, task_id]() {
-        FinishAssignTask(worker, task_id, /*success=*/true);
-      });
-    } else {
-      RAY_LOG(ERROR) << "Failed to assign task " << task_id << " to worker "
-                     << worker->WorkerId() << ", disconnecting client";
-      post_assign_callbacks->push_back([this, worker, task_id]() {
-        FinishAssignTask(worker, task_id, /*success=*/false);
-      });
-    }
+  RAY_CHECK(task.OnDispatch() != nullptr);
+  if (task.GetTaskSpecification().IsDetachedActor()) {
+    worker->MarkDetachedActor();
   }
+
+  const auto owner_worker_id = WorkerID::FromBinary(spec.CallerAddress().worker_id());
+  const auto owner_node_id = ClientID::FromBinary(spec.CallerAddress().raylet_id());
+  RAY_CHECK(!owner_worker_id.IsNil());
+  RAY_LOG(DEBUG) << "Worker lease request DISPATCH " << task_id << " to worker "
+                  << worker->WorkerId() << ", owner ID " << owner_worker_id;
+
+  task.OnDispatch()(worker, initial_config_.node_manager_address, worker->Port(),
+                    worker->WorkerId(),
+                    spec.IsActorCreationTask() ? worker->GetLifetimeResourceIds()
+                                                : worker->GetTaskResourceIds());
+
+  // If the owner has died since this task was queued, cancel the task by
+  // killing the worker (unless this task is for a detached actor).
+  if (!worker->IsDetachedActor() && (failed_workers_cache_.count(owner_worker_id) > 0 ||
+                                      failed_nodes_cache_.count(owner_node_id) > 0)) {
+    // TODO(swang): Skip assigning this task to this worker instead of
+    // killing the worker?
+    RAY_LOG(INFO) << "Owner of assigned task " << task.GetTaskSpecification().TaskId()
+                  << " died, killing leased worker " << worker->WorkerId();
+    KillWorker(worker);
+  }
+
+  post_assign_callbacks->push_back([this, worker, task_id]() {
+    RAY_LOG(DEBUG) << "Finished assigning task " << task_id << " to worker "
+                    << worker->WorkerId();
+
+    FinishAssignTask(worker, task_id, /*success=*/true);
+  });
 }
 
 bool NodeManager::FinishAssignedTask(WorkerInterface &worker) {

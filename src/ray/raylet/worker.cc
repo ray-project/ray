@@ -174,27 +174,6 @@ void Worker::AcquireTaskCpuResources(const ResourceIdSet &cpu_resources) {
   task_resource_ids_.Release(cpu_resources);
 }
 
-Status Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set) {
-  RAY_CHECK(port_ > 0);
-  rpc::AssignTaskRequest request;
-  request.set_intended_worker_id(worker_id_.Binary());
-  request.mutable_task()->mutable_task_spec()->CopyFrom(
-      task.GetTaskSpecification().GetMessage());
-  request.mutable_task()->mutable_task_execution_spec()->CopyFrom(
-      task.GetTaskExecutionSpec().GetMessage());
-  request.set_resource_ids(resource_id_set.Serialize());
-
-  rpc_client_->AssignTask(request, [](Status status, const rpc::AssignTaskReply &reply) {
-    if (!status.ok()) {
-      RAY_LOG(DEBUG) << "Worker failed to finish executing task: " << status.ToString();
-    }
-    // Worker has finished this task. There's nothing to do here
-    // and assigning new task will be done when raylet receives
-    // `TaskDone` message.
-  });
-  return Status::OK();
-}
-
 void Worker::DirectActorCallArgWaitComplete(int64_t tag) {
   RAY_CHECK(port_ > 0);
   rpc::DirectActorCallArgWaitCompleteRequest request;
