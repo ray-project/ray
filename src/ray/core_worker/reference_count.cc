@@ -338,24 +338,27 @@ bool ReferenceCounter::GetOwner(const ObjectID &object_id,
   }
 }
 
-void ReferenceCounter::DeleteReferences(const std::vector<ObjectID> &object_ids) {
+void ReferenceCounter::FreePlasmaObjects(const std::vector<ObjectID> &object_ids) {
   absl::MutexLock lock(&mutex_);
   for (const ObjectID &object_id : object_ids) {
     auto it = object_id_refs_.find(object_id);
     if (it == object_id_refs_.end()) {
-      return;
+      RAY_LOG(WARNING) << "Tried to free an object " << object_id
+                       << " that is already out of scope";
+      continue;
     }
-    it->second.local_ref_count = 0;
-    it->second.submitted_task_ref_count = 0;
-    if (distributed_ref_counting_enabled_ &&
-        !it->second.OutOfScope(lineage_pinning_enabled_)) {
-      RAY_LOG(ERROR)
-          << "ray.internal.free does not currently work for objects that are still in "
-             "scope when distributed reference "
-             "counting is enabled. Try disabling ref counting by passing "
-             "distributed_ref_counting_enabled: 0 in the ray.init internal config.";
+    // The object is still in scope. It will be removed from this set
+    // once its Reference has been deleted.
+    freed_objects_.insert(object_id);
+    if (!it->second.owned_by_us) {
+      RAY_LOG(WARNING)
+          << "Tried to free an object " << object_id
+          << " that we did not create. The object value may not be released.";
+      continue;
     }
-    DeleteReferenceInternal(it, nullptr);
+    // Free only the plasma value. We must keep the reference around so that we
+    // have the ownership information.
+    ReleasePlasmaObject(it);
   }
 }
 
@@ -408,12 +411,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
 
   // Perform the deletion.
   if (should_delete_value) {
-    if (it->second.on_delete) {
-      RAY_LOG(DEBUG) << "Calling on_delete for object " << id;
-      it->second.on_delete(id);
-      it->second.on_delete = nullptr;
-      it->second.pinned_at_raylet_id.reset();
-    }
+    ReleasePlasmaObject(it);
     if (deleted) {
       deleted->push_back(id);
     }
@@ -428,9 +426,19 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
       ReleaseLineageReferencesInternal(ids_to_release);
     }
 
+    freed_objects_.erase(id);
     object_id_refs_.erase(it);
     ShutdownIfNeeded();
   }
+}
+
+void ReferenceCounter::ReleasePlasmaObject(ReferenceTable::iterator it) {
+  if (it->second.on_delete) {
+    RAY_LOG(DEBUG) << "Calling on_delete for object " << it->first;
+    it->second.on_delete(it->first);
+    it->second.on_delete = nullptr;
+  }
+  it->second.pinned_at_raylet_id.reset();
 }
 
 bool ReferenceCounter::SetDeleteCallback(
@@ -444,6 +452,10 @@ bool ReferenceCounter::SetDeleteCallback(
     // The object has already gone out of scope but cannot be deleted yet. Do
     // not set the deletion callback because it may never get called.
     return false;
+  } else if (freed_objects_.count(object_id) > 0) {
+    // The object has been freed by the language frontend, so it
+    // should be deleted immediately.
+    return false;
   }
 
   RAY_CHECK(!it->second.on_delete) << object_id;
@@ -455,16 +467,11 @@ std::vector<ObjectID> ReferenceCounter::ResetObjectsOnRemovedNode(
     const ClientID &raylet_id) {
   absl::MutexLock lock(&mutex_);
   std::vector<ObjectID> lost_objects;
-  for (auto &it : object_id_refs_) {
-    const auto &object_id = it.first;
-    auto &ref = it.second;
-    if (ref.pinned_at_raylet_id.value_or(ClientID::Nil()) == raylet_id) {
+  for (auto it = object_id_refs_.begin(); it != object_id_refs_.end(); it++) {
+    const auto &object_id = it->first;
+    if (it->second.pinned_at_raylet_id.value_or(ClientID::Nil()) == raylet_id) {
       lost_objects.push_back(object_id);
-      ref.pinned_at_raylet_id.reset();
-      if (ref.on_delete) {
-        ref.on_delete(object_id);
-        ref.on_delete = nullptr;
-      }
+      ReleasePlasmaObject(it);
     }
   }
   return lost_objects;
@@ -475,6 +482,11 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it != object_id_refs_.end()) {
+    if (freed_objects_.count(object_id) > 0) {
+      // The object has been freed by the language frontend.
+      return;
+    }
+
     // The object is still in scope. Track the raylet location until the object
     // has gone out of scope or the raylet fails, whichever happens first.
     RAY_CHECK(!it->second.pinned_at_raylet_id.has_value());

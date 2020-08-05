@@ -110,15 +110,11 @@ ObjectID TaskSpecification::ReturnId(size_t return_index) const {
 }
 
 bool TaskSpecification::ArgByRef(size_t arg_index) const {
-  return (ArgIdCount(arg_index) != 0);
+  return message_->args(arg_index).object_ref().object_id() != "";
 }
 
-size_t TaskSpecification::ArgIdCount(size_t arg_index) const {
-  return message_->args(arg_index).object_ids_size();
-}
-
-ObjectID TaskSpecification::ArgId(size_t arg_index, size_t id_index) const {
-  return ObjectID::FromBinary(message_->args(arg_index).object_ids(id_index));
+ObjectID TaskSpecification::ArgId(size_t arg_index) const {
+  return ObjectID::FromBinary(message_->args(arg_index).object_ref().object_id());
 }
 
 const uint8_t *TaskSpecification::ArgData(size_t arg_index) const {
@@ -148,9 +144,8 @@ const ResourceSet &TaskSpecification::GetRequiredResources() const {
 std::vector<ObjectID> TaskSpecification::GetDependencies() const {
   std::vector<ObjectID> dependencies;
   for (size_t i = 0; i < NumArgs(); ++i) {
-    int count = ArgIdCount(i);
-    for (int j = 0; j < count; j++) {
-      dependencies.push_back(ArgId(i, j));
+    if (ArgByRef(i)) {
+      dependencies.push_back(ArgId(i));
     }
   }
   if (IsActorTask()) {

@@ -214,7 +214,7 @@ TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
   auto data = RayObject(nullptr, meta_buffer, std::vector<ObjectID>());
   ASSERT_TRUE(store->Put(data, obj1));
   TaskSpecification task;
-  task.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
+  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
   bool ok = false;
   resolver.ResolveDependencies(task, [&ok]() { ok = true; });
   ASSERT_TRUE(ok);
@@ -235,8 +235,8 @@ TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
   ASSERT_TRUE(store->Put(*data, obj1));
   ASSERT_TRUE(store->Put(*data, obj2));
   TaskSpecification task;
-  task.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
-  task.GetMutableMessage().add_args()->add_object_ids(obj2.Binary());
+  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
+  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj2.Binary());
   bool ok = false;
   resolver.ResolveDependencies(task, [&ok]() { ok = true; });
   // Tests that the task proto was rewritten to have inline argument values.
@@ -257,8 +257,8 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
   ObjectID obj2 = ObjectID::FromRandom();
   auto data = GenerateRandomObject();
   TaskSpecification task;
-  task.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
-  task.GetMutableMessage().add_args()->add_object_ids(obj2.Binary());
+  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
+  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj2.Binary());
   bool ok = false;
   resolver.ResolveDependencies(task, [&ok]() { ok = true; });
   ASSERT_EQ(resolver.NumPendingTasks(), 1);
@@ -286,8 +286,8 @@ TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
   ObjectID obj3 = ObjectID::FromRandom();
   auto data = GenerateRandomObject({obj3});
   TaskSpecification task;
-  task.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
-  task.GetMutableMessage().add_args()->add_object_ids(obj2.Binary());
+  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
+  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj2.Binary());
   bool ok = false;
   resolver.ResolveDependencies(task, [&ok]() { ok = true; });
   ASSERT_EQ(resolver.NumPendingTasks(), 1);
@@ -860,17 +860,25 @@ TEST(DirectTaskTransportTest, TestSchedulingKeys) {
   ASSERT_TRUE(store->Put(plasma_data, plasma2));
 
   TaskSpecification same_deps_1 = BuildTaskSpec(resources1, descriptor1);
-  same_deps_1.GetMutableMessage().add_args()->add_object_ids(direct1.Binary());
-  same_deps_1.GetMutableMessage().add_args()->add_object_ids(plasma1.Binary());
+  same_deps_1.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+      direct1.Binary());
+  same_deps_1.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+      plasma1.Binary());
   TaskSpecification same_deps_2 = BuildTaskSpec(resources1, descriptor1);
-  same_deps_2.GetMutableMessage().add_args()->add_object_ids(direct1.Binary());
-  same_deps_2.GetMutableMessage().add_args()->add_object_ids(direct2.Binary());
-  same_deps_2.GetMutableMessage().add_args()->add_object_ids(plasma1.Binary());
+  same_deps_2.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+      direct1.Binary());
+  same_deps_2.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+      direct2.Binary());
+  same_deps_2.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+      plasma1.Binary());
 
   TaskSpecification different_deps = BuildTaskSpec(resources1, descriptor1);
-  different_deps.GetMutableMessage().add_args()->add_object_ids(direct1.Binary());
-  different_deps.GetMutableMessage().add_args()->add_object_ids(direct2.Binary());
-  different_deps.GetMutableMessage().add_args()->add_object_ids(plasma2.Binary());
+  different_deps.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+      direct1.Binary());
+  different_deps.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+      direct2.Binary());
+  different_deps.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+      plasma2.Binary());
 
   // Tasks with different plasma dependencies should request different worker leases,
   // but direct call dependencies shouldn't be considered.
@@ -1014,7 +1022,7 @@ TEST(DirectTaskTransportTest, TestKillResolvingTask) {
       ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
   TaskSpecification task = BuildTaskSpec(empty_resources, empty_descriptor);
   ObjectID obj1 = ObjectID::FromRandom();
-  task.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
+  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
   ASSERT_EQ(task_finisher->num_inlined_dependencies, 0);
   ASSERT_TRUE(submitter.CancelTask(task, true).ok());

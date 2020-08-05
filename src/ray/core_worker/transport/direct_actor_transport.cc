@@ -295,9 +295,8 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
 
   std::vector<ObjectID> dependencies;
   for (size_t i = 0; i < task_spec.NumArgs(); ++i) {
-    int count = task_spec.ArgIdCount(i);
-    for (int j = 0; j < count; j++) {
-      dependencies.push_back(task_spec.ArgId(i, j));
+    if (task_spec.ArgByRef(i)) {
+      dependencies.push_back(task_spec.ArgId(i));
     }
   }
 

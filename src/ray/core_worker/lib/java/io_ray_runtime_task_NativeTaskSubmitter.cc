@@ -39,23 +39,24 @@ inline ray::RayFunction ToRayFunction(JNIEnv *env, jobject functionDescriptor) {
   return ray_function;
 }
 
-inline std::vector<ray::TaskArg> ToTaskArgs(JNIEnv *env, jobject args) {
-  std::vector<ray::TaskArg> task_args;
-  JavaListToNativeVector<ray::TaskArg>(
+inline std::vector<std::unique_ptr<ray::TaskArg>> ToTaskArgs(JNIEnv *env, jobject args) {
+  std::vector<std::unique_ptr<ray::TaskArg>> task_args;
+  JavaListToNativeVector<std::unique_ptr<ray::TaskArg>>(
       env, args, &task_args, [](JNIEnv *env, jobject arg) {
         auto java_id = env->GetObjectField(arg, java_function_arg_id);
         if (java_id) {
           auto java_id_bytes = static_cast<jbyteArray>(
               env->CallObjectMethod(java_id, java_base_id_get_bytes));
           RAY_CHECK_JAVA_EXCEPTION(env);
-          return ray::TaskArg::PassByReference(
-              JavaByteArrayToId<ray::ObjectID>(env, java_id_bytes));
+          auto id = JavaByteArrayToId<ray::ObjectID>(env, java_id_bytes);
+          return std::unique_ptr<ray::TaskArg>(new ray::TaskArgByReference(
+              id, ray::CoreWorkerProcess::GetCoreWorker().GetOwnerAddress(id)));
         }
         auto java_value =
             static_cast<jbyteArray>(env->GetObjectField(arg, java_function_arg_value));
         RAY_CHECK(java_value) << "Both id and value of FunctionArg are null.";
         auto value = JavaNativeRayObjectToNativeRayObject(env, java_value);
-        return ray::TaskArg::PassByValue(value);
+        return std::unique_ptr<ray::TaskArg>(new ray::TaskArgByValue(value));
       });
   return task_args;
 }

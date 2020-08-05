@@ -128,13 +128,17 @@ message TaskSpec {
   int32 max_retries = 16;
 }
 
+message ObjectReference {
+  // ObjectID that the worker has a reference to.
+  bytes object_id = 1;
+  // The address of the object's owner.
+  Address owner_address = 2;
+}
+
 // Argument in the task.
 message TaskArg {
-  // Object IDs for pass-by-reference arguments. Normally there is only one
-  // object ID in this list which represents the object that is being passed.
-  // However to support reducers in a MapReduce workload, we also support
-  // passing multiple object IDs for each argument.
-  repeated bytes object_ids = 1;
+  // A pass-by-ref argument.
+  ObjectReference object_ref = 1;
   // Data for pass-by-value arguments.
   bytes data = 2;
   // Metadata for pass-by-value arguments.
