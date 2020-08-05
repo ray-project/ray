@@ -61,10 +61,6 @@ static Gauge ObjectManagerStats("object_manager_stats",
                                 "Stat the metric values of object in raylet", "pcs",
                                 {ValueTypeKey});
 
-static Gauge LineageCacheStats("lineage_cache_stats",
-                               "Stats the metric values of lineage cache.", "pcs",
-                               {ValueTypeKey});
-
 static Gauge TaskDependencyManagerStats("task_dependency_manager_stats",
                                         "Stat the metric values of task dependency.",
                                         "pcs", {ValueTypeKey});

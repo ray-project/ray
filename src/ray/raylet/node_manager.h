@@ -27,7 +27,6 @@
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/actor_registration.h"
-#include "ray/raylet/lineage_cache.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
@@ -245,12 +244,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Handle specified task's submission to the local node manager.
   ///
   /// \param task The task being submitted.
-  /// \param uncommitted_lineage The uncommitted lineage of the task.
-  /// \param forwarded True if the task has been forwarded from a different
-  /// node manager and false if it was submitted by a local worker.
   /// \return Void.
-  void SubmitTask(const Task &task, const Lineage &uncommitted_lineage,
-                  bool forwarded = false);
+  void SubmitTask(const Task &task);
   /// Assign a task to a worker. The task is assumed to not be queued in local_queues_.
   ///
   /// \param[in] worker The worker to assign the task to.
@@ -590,11 +585,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                rpc::CancelWorkerLeaseReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `ForwardTask` request.
-  void HandleForwardTask(const rpc::ForwardTaskRequest &request,
-                         rpc::ForwardTaskReply *reply,
-                         rpc::SendReplyCallback send_reply_callback) override;
-
   /// Handle a `PinObjectIDs` request.
   void HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
                           rpc::PinObjectIDsReply *reply,
@@ -701,8 +691,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   SchedulingPolicy scheduling_policy_;
   /// A manager to make waiting tasks's missing object dependencies available.
   TaskDependencyManager task_dependency_manager_;
-  /// The lineage cache for the GCS object and task tables.
-  LineageCache lineage_cache_;
   /// A mapping from actor ID to registration information about that actor
   /// (including which node manager owns it).
   std::unordered_map<ActorID, ActorRegistration> actor_registry_;

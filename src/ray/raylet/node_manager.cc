@@ -154,7 +154,6 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
           object_manager, io_service, self_node_id_,
           RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
           gcs_client_),
-      lineage_cache_(self_node_id_, gcs_client_, config.max_lineage_size),
       actor_registry_(),
       node_manager_server_("NodeManager", config.node_manager_port),
       node_manager_service_(io_service, *this),
@@ -677,11 +676,6 @@ void NodeManager::NodeRemoved(const GcsNodeInfo &node_info) {
   // can remove it from any cached locations.
   object_directory_->HandleClientRemoved(node_id);
 
-  // Flush all uncommitted tasks from the local lineage cache. This is to
-  // guarantee that all tasks get flushed eventually, in case one of the tasks
-  // in our local cache was supposed to be flushed by the node that died.
-  lineage_cache_.FlushAllUncommittedTasks();
-
   // Clean up workers that were owned by processes that were on the failed
   // node.
   rpc::Address address;
@@ -938,7 +932,7 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
       // The task's uncommitted lineage was already added to the local lineage
       // cache upon the initial submission, so it's okay to resubmit it with an
       // empty lineage this time.
-      SubmitTask(method, Lineage());
+      SubmitTask(method);
     }
   } else if (actor_registration.GetState() == ActorTableData::DEAD) {
     // When an actor dies, loop over all of the queued tasks for that actor
@@ -956,7 +950,7 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     auto tasks_to_remove = local_queues_.GetTaskIdsForActor(actor_id);
     auto removed_tasks = local_queues_.RemoveTasks(tasks_to_remove);
     for (auto const &task : removed_tasks) {
-      SubmitTask(task, Lineage());
+      SubmitTask(task);
     }
   }
 }
@@ -1575,7 +1569,7 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
 
   // Submit the task to the raylet. Since the task was submitted
   // locally, there is no uncommitted lineage.
-  SubmitTask(Task(task_message), Lineage());
+  SubmitTask(Task(task_message));
 }
 
 void NodeManager::ScheduleAndDispatch() {
@@ -1668,7 +1662,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
     reply->set_canceled(true);
     send_reply_callback(Status::OK(), nullptr, nullptr);
   });
-  SubmitTask(task, Lineage());
+  SubmitTask(task);
 }
 
 void NodeManager::HandleRequestResourceReserve(
@@ -1798,24 +1792,6 @@ void NodeManager::HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &r
   // successful if we did have the task queued, since we have now replied to
   // the client that requested the lease.
   reply->set_success(canceled);
-  send_reply_callback(Status::OK(), nullptr, nullptr);
-}
-
-void NodeManager::HandleForwardTask(const rpc::ForwardTaskRequest &request,
-                                    rpc::ForwardTaskReply *reply,
-                                    rpc::SendReplyCallback send_reply_callback) {
-  // Get the forwarded task and its uncommitted lineage from the request.
-  TaskID task_id = TaskID::FromBinary(request.task_id());
-  Lineage uncommitted_lineage;
-  for (int i = 0; i < request.uncommitted_tasks_size(); i++) {
-    Task task(request.uncommitted_tasks(i));
-    RAY_CHECK(uncommitted_lineage.SetEntry(task, GcsStatus::UNCOMMITTED));
-  }
-  const Task &task = uncommitted_lineage.GetEntry(task_id)->TaskData();
-  RAY_LOG(DEBUG) << "Received forwarded task " << task.GetTaskSpecification().TaskId()
-                 << " on node " << self_node_id_
-                 << " spillback=" << task.GetTaskExecutionSpec().NumForwards();
-  SubmitTask(task, uncommitted_lineage, /* forwarded = */ true);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -2086,8 +2062,7 @@ void NodeManager::TreatTaskAsFailedIfLost(const Task &task) {
   }
 }
 
-void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineage,
-                             bool forwarded) {
+void NodeManager::SubmitTask(const Task &task) {
   stats::TaskCountReceived().Record(1);
   const TaskSpecification &spec = task.GetTaskSpecification();
   // Actor tasks should be no longer submitted to raylet.
@@ -2114,18 +2089,11 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       return;
     }
   }
-  // This is a non-actor task. Queue the task for a placement decision or for dispatch
-  // if the task was forwarded.
-  if (forwarded) {
-    // Check for local dependencies and enqueue as waiting or ready for dispatch.
-    EnqueuePlaceableTask(task);
-  } else {
-    // (See design_docs/task_states.rst for the state transition diagram.)
-    local_queues_.QueueTasks({task}, TaskState::PLACEABLE);
-    ScheduleTasks(cluster_resource_map_);
-    // TODO(atumanov): assert that !placeable.isempty() => insufficient available
-    // resources locally.
-  }
+  // (See design_docs/task_states.rst for the state transition diagram.)
+  local_queues_.QueueTasks({task}, TaskState::PLACEABLE);
+  ScheduleTasks(cluster_resource_map_);
+  // TODO(atumanov): assert that !placeable.isempty() => insufficient available
+  // resources locally.
 }
 
 void NodeManager::HandleDirectCallTaskBlocked(
@@ -2353,6 +2321,7 @@ void NodeManager::EnqueuePlaceableTask(const Task &task) {
 void NodeManager::AssignTask(const std::shared_ptr<WorkerInterface> &worker,
                              const Task &task,
                              std::vector<std::function<void()>> *post_assign_callbacks) {
+  // TODO(sang): Modify method names.
   const TaskSpecification &spec = task.GetTaskSpecification();
   RAY_CHECK(post_assign_callbacks);
 
@@ -2653,9 +2622,8 @@ void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
 
 void NodeManager::ForwardTaskOrResubmit(const Task &task,
                                         const ClientID &node_manager_id) {
-  /// TODO(rkn): Should we check that the node manager is remote and not local?
-  /// TODO(rkn): Should we check if the remote node manager is known to be dead?
   // Attempt to forward the task.
+  // TODO(sang): Modify method names.
   ForwardTask(
       task, node_manager_id,
       [this, node_manager_id](ray::Status error, const Task &task) {
@@ -2677,86 +2645,19 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
 void NodeManager::ForwardTask(
     const Task &task, const ClientID &node_id,
     const std::function<void(const ray::Status &, const Task &)> &on_error) {
-  // Override spillback for direct tasks.
-  if (task.OnSpillback() != nullptr) {
-    auto node_info = gcs_client_->Nodes().Get(node_id);
-    RAY_CHECK(node_info)
-        << "Spilling back to a node manager, but no GCS info found for node " << node_id;
-    task.OnSpillback()(node_id, node_info->node_manager_address(),
-                       node_info->node_manager_port());
-    return;
-  }
-
-  // Lookup node manager client for this node_id and use it to send the request.
-  auto client_entry = remote_node_manager_clients_.find(node_id);
-  if (client_entry == remote_node_manager_clients_.end()) {
-    // TODO(atumanov): caller must handle failure to ensure tasks are not lost.
-    RAY_LOG(INFO) << "No node manager client found for GCS client id " << node_id;
-    on_error(ray::Status::IOError("Node manager client not found"), task);
-    return;
-  }
-  auto &client = client_entry->second;
-
-  const auto &spec = task.GetTaskSpecification();
-  auto task_id = spec.TaskId();
-
-  if (worker_pool_.HasPendingWorkerForTask(spec.GetLanguage(), task_id)) {
-    // There is a worker being starting for this task,
-    // so we shouldn't forward this task to another node.
-    on_error(ray::Status::Invalid("Already has pending worker for this task"), task);
-    return;
-  }
-
-  // Get the task's unforwarded, uncommitted lineage.
-  Lineage uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_id, node_id);
-  if (uncommitted_lineage.GetEntries().empty()) {
-    // There is no uncommitted lineage. This can happen if the lineage was
-    // already evicted before we forwarded the task.
-    uncommitted_lineage.SetEntry(task, GcsStatus::NONE);
-  }
-  auto entry = uncommitted_lineage.GetEntryMutable(task_id);
-  Task &lineage_cache_entry_task = entry->TaskDataMutable();
-  // Increment forward count for the forwarded task.
-  lineage_cache_entry_task.IncrementNumForwards();
-  RAY_LOG(DEBUG) << "Forwarding task " << task_id << " from " << self_node_id_ << " to "
-                 << node_id << " spillback="
-                 << lineage_cache_entry_task.GetTaskExecutionSpec().NumForwards();
-
-  // Prepare the request message.
-  rpc::ForwardTaskRequest request;
-  request.set_task_id(task_id.Binary());
-  for (auto &task_entry : uncommitted_lineage.GetEntries()) {
-    auto task = request.add_uncommitted_tasks();
-    task->mutable_task_spec()->CopyFrom(
-        task_entry.second.TaskData().GetTaskSpecification().GetMessage());
-    task->mutable_task_execution_spec()->CopyFrom(
-        task_entry.second.TaskData().GetTaskExecutionSpec().GetMessage());
-  }
-
-  client->ForwardTask(request, [this, on_error, task, task_id, node_id](
-                                   Status status, const rpc::ForwardTaskReply &reply) {
-    if (local_queues_.HasTask(task_id)) {
-      // It must have been forwarded back to us if it's in the queue again
-      // so just return here.
-      return;
-    }
-
-    if (status.ok()) {
-      // Mark as forwarded so that the task and its lineage are not
-      // re-forwarded in the future to the receiving node.
-      lineage_cache_.MarkTaskAsForwarded(task_id, node_id);
-
-      // Notify the task dependency manager that we are no longer responsible
-      // for executing this task.
-      task_dependency_manager_.TaskCanceled(task_id);
-    } else {
-      on_error(status, task);
-    }
-  });
+  // This method spillbacks lease requests to other nodes.
+  // TODO(sang): Modify method names.
+  RAY_CHECK(task.OnSpillback() != nullptr);
+  auto node_info = gcs_client_->Nodes().Get(node_id);
+  RAY_CHECK(node_info)
+      << "Spilling back to a node manager, but no GCS info found for node " << node_id;
+  task.OnSpillback()(node_id, node_info->node_manager_address(),
+                      node_info->node_manager_port());
 }
 
 void NodeManager::FinishAssignTask(const std::shared_ptr<WorkerInterface> &worker,
                                    const TaskID &task_id, bool success) {
+  // TODO(sang): Modify method names.
   RAY_LOG(DEBUG) << "FinishAssignTask: " << task_id;
   // Remove the ASSIGNED task from the READY queue.
   Task assigned_task;
@@ -2878,7 +2779,6 @@ std::string NodeManager::DebugString() const {
   result << "\n" << worker_pool_.DebugString();
   result << "\n" << local_queues_.DebugString();
   result << "\n" << task_dependency_manager_.DebugString();
-  result << "\n" << lineage_cache_.DebugString();
   {
     absl::MutexLock guard(&plasma_object_notification_lock_);
     result << "\nnum async plasma notifications: "
@@ -3275,7 +3175,6 @@ void NodeManager::RecordMetrics() {
   worker_pool_.RecordMetrics();
   local_queues_.RecordMetrics();
   task_dependency_manager_.RecordMetrics();
-  lineage_cache_.RecordMetrics();
 
   auto statistical_data = GetActorStatisticalData(actor_registry_);
   stats::ActorStats().Record(statistical_data.live_actors,

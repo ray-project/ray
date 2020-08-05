@@ -69,8 +69,6 @@ enum MessageType:int {
   // before the checkpoint, and make any tasks on the frontier runnable by
   // making their execution dependencies available.
   SetActorFrontier,
-  // A node manager request to process a task forwarded from another node manager.
-  ForwardTaskRequest,
   // Wait for objects to be ready either from local or remote Plasma stores.
   WaitRequest,
   // The response message to WaitRequest; replies with the objects found and objects
@@ -180,14 +178,6 @@ table AnnounceWorkerPort {
 table RegisterNodeManagerRequest {
   // GCS ClientID of the connecting node manager.
   client_id: string;
-}
-
-table ForwardTaskRequest {
-  // The ID of the task to be forwarded.
-  task_id: string;
-  // The tasks in the uncommitted lineage of the forwarded task. This
-  // should include task_id.
-  uncommitted_tasks: [Task];
 }
 
 // Mimics the Address protobuf.
