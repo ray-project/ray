@@ -187,7 +187,7 @@ class ServeController:
                         node_resource: 0.01
                     },
                 ).remote(
-                    router_name,
+                    node_id,
                     self.http_host,
                     self.http_port,
                     instance_name=self.instance_name)

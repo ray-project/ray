@@ -186,8 +186,6 @@ class RayServeWorker:
 
         self.restart_counter.labels(replica_tag=self.replica_tag).add()
 
-        self.controller = serve.api._get_controller()
-
         asyncio.get_event_loop().create_task(self.main_loop())
 
     def get_runner_method(self, request_item):

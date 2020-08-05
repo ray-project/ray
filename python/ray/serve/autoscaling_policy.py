@@ -22,16 +22,15 @@ class AutoscalingPolicy:
         """Make a decision to scale backends.
 
         Arguments:
-            router_queue_lens: Dict[str: int] mapping routers to their most
-                recent queue length for this backend.
-            curr_replicas: int The number of replicas that the backend
+            router_queue_lens (Dict[str, int]): map of routers to their most
+                recent queue length of unsent queries for this backend.
+            curr_replicas (int): The number of replicas that the backend
                 currently has.
 
         Returns:
-            int The new number of replicas to scale this backend to. Returns -1
-                if there should be no change.
+            int The new number of replicas to scale this backend to.
         """
-        return -1
+        return curr_replicas
 
 
 class BasicAutoscalingPolicy(AutoscalingPolicy):
@@ -76,56 +75,51 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
         if len(queue_lens) == 0:
             return -1
 
+        new_replicas = curr_replicas
         avg_queue_len = sum(queue_lens) / len(queue_lens)
 
         # Scale up.
         if avg_queue_len > self.scale_up_threshold:
+            # If the previous decision was to scale down (the counter was
+            # negative), we reset it and then increment it (set to 1).
+            # Otherwise, just increment.
+            if self.decision_counter < 0:
+                self.decision_counter = 1
+            else:
+                self.decision_counter += 1
+
             # Only actually scale the replicas if we've made this decision for
             # 'scale_up_consecutive_periods' in a row.
-            if self.decision_counter >= self.scale_up_consecutive_periods - 1:
+            if self.decision_counter >= self.scale_up_consecutive_periods:
                 # TODO(edoakes): should we be resetting the counter here?
                 self.decision_counter = 0
-                decision = curr_replicas + self.scale_up_num_replicas
+                new_replicas = curr_replicas + self.scale_up_num_replicas
                 logger.info("Increasing number of replicas for backend '{}' "
                             "from {} to {}".format(self.backend, curr_replicas,
-                                                   decision))
-            # Otherwise, just log this 'scale up' decision and do nothing.
-            else:
-                # If the previous decision was to scale down (the counter was
-                # negative), we reset it and then increment it (set to 1).
-                # Otherwise, just increment.
-                if self.decision_counter < 0:
-                    self.decision_counter = 1
-                else:
-                    self.decision_counter += 1
-                decision = -1
+                                                   new_replicas))
 
         # Scale down.
         elif avg_queue_len < self.scale_down_threshold and curr_replicas > 1:
+            # If the previous decision was to scale up (the counter was
+            # positive), reset it to zero before decrementing.
+            if self.decision_counter > 0:
+                self.decision_counter = -1
+            else:
+                self.decision_counter -= 1
+
             # Only actually scale the replicas if we've made this decision for
             # 'scale_down_consecutive_periods' in a row.
             if (self.decision_counter <=
                     -self.scale_down_consecutive_periods + 1):
                 # TODO(edoakes): should we be resetting the counter here?
                 self.decision_counter = 0
-                decision = curr_replicas - self.scale_down_num_replicas
+                new_replicas = curr_replicas - self.scale_down_num_replicas
                 logger.info("Decreasing number of replicas for backend '{}' "
                             "from {} to {}".format(self.backend, curr_replicas,
-                                                   decision))
-            # Otherwise, just log this 'scale down' decision and do nothing.
-            else:
-                # If the previous decision was to scale up (the counter was
-                # positive), we reset it and then decrement it (set to -1).
-                # Otherwise, just decrement.
-                if self.decision_counter > 0:
-                    self.decision_counter = -1
-                else:
-                    self.decision_counter -= 1
-                decision = -1
+                                                   new_replicas))
 
         # Do nothing.
         else:
-            decision = -1
             self.decision_counter = 0
 
-        return decision
+        return new_replicas
