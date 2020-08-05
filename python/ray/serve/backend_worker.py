@@ -23,8 +23,6 @@ from ray.serve.router import Query
 
 logger = _get_logger()
 
-REPORT_QUEUE_LENGTH_PERIOD_S = 1.0
-
 
 class BatchQueue:
     def __init__(self, max_batch_size, timeout_s):
@@ -191,7 +189,6 @@ class RayServeWorker:
         self.controller = serve.api._get_controller()
 
         asyncio.get_event_loop().create_task(self.main_loop())
-        asyncio.get_event_loop().create_task(self.report_queue_length())
 
     def get_runner_method(self, request_item):
         method_name = request_item.call_method
@@ -317,12 +314,6 @@ class RayServeWorker:
             self.error_counter.add()
             self._reset_context()
             return [wrapped_exception for _ in range(batch_size)]
-
-    async def report_queue_length(self):
-        while True:
-            self.controller.report_queue_length.remote(
-                self.backend_tag, self.replica_tag, self.batch_queue.qsize())
-            await asyncio.sleep(REPORT_QUEUE_LENGTH_PERIOD_S)
 
     async def main_loop(self):
         while True:

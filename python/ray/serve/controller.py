@@ -6,6 +6,7 @@ import time
 
 import ray
 import ray.cloudpickle as pickle
+from ray.serve.autoscaling_policy import BasicAutoscalingPolicy
 from ray.serve.backend_worker import create_backend_worker
 from ray.serve.constants import (ASYNC_CONCURRENCY, SERVE_PROXY_NAME,
                                  SERVE_METRIC_SINK_NAME)
@@ -101,6 +102,8 @@ class ServeController:
         self.routes = dict()
         # backend -> BackendInfo.
         self.backends = dict()
+        # backend -> AutoscalingPolicy
+        self.autoscaling_policies = dict()
         # backend -> replica_tags.
         self.replicas = defaultdict(list)
         # replicas that should be started if recovering from a checkpoint.
@@ -118,8 +121,8 @@ class ServeController:
         # Dictionary of backend tag to dictionaries of replica tag to worker.
         # TODO(edoakes): consider removing this and just using the names.
         self.workers = defaultdict(dict)
-        # Dictionary of backend_tag -> replica_tag -> most recent queue length.
-        self.backend_stats = defaultdict(dict)
+        # Dictionary of backend_tag -> router_name -> most recent queue length.
+        self.backend_stats = defaultdict(lambda: defaultdict(dict))
 
         # Used to ensure that only a single state-changing operation happens
         # at any given time.
@@ -184,6 +187,7 @@ class ServeController:
                         node_resource: 0.01
                     },
                 ).remote(
+                    router_name,
                     self.http_host,
                     self.http_port,
                     instance_name=self.instance_name)
@@ -326,6 +330,9 @@ class ServeController:
                 for router in self.routers.values()
             ])
             await self.broadcast_backend_config(backend)
+            if info.backend_config.autoscaling_config is not None:
+                self.autoscaling_policies[backend] = BasicAutoscalingPolicy(
+                    backend, info.backend_config.autoscaling_config)
 
         # Push configuration state to the routers.
         await asyncio.gather(*[
@@ -347,27 +354,17 @@ class ServeController:
         self.write_lock.release()
 
     async def do_autoscale(self):
-        for backend, replica_dict in self.backend_stats.items():
-            replica_queue_lens = list(replica_dict.values())
-            curr_replicas = self.backends[backend].backend_config.num_replicas
-            new_replicas = 0
-            if sum(replica_queue_lens) / len(replica_queue_lens) > 2:
-                new_replicas = curr_replicas + 3
-                logger.info("Increasing number of replicas for backend '{}' "
-                            "from {} to {}".format(backend, curr_replicas,
-                                                   new_replicas))
-            elif curr_replicas > 1 and sum(replica_queue_lens) / len(
-                    replica_queue_lens) == 0:
-                new_replicas = max(1, curr_replicas - 5)
-                logger.info(
-                    "Decreasing number of replicas for backend '{}' from {} "
-                    "to {}".format(backend, curr_replicas, new_replicas))
-            if new_replicas != 0:
-                await self.update_backend_config(
-                    backend, {"num_replicas": new_replicas})
+        for backend in self.backends:
+            if backend not in self.autoscaling_policies:
+                continue
 
-    async def run_control_loop(self):
-        while True:
+            new_num_replicas = self.autoscaling_policies[backend].scale(
+                self.backend_stats[backend],
+                self.backends[backend].backend_config.num_replicas)
+            if new_num_replicas > 0:
+                await self.update_backend_config(
+                    backend, {"num_replicas": new_num_replicas})
+
     async def run_control_loop(self):
         while True:
             await self.do_autoscale()
@@ -755,6 +752,10 @@ class ServeController:
             # and the configuration for the backends.
             self.backends[backend_tag] = BackendInfo(
                 backend_worker, backend_config, replica_config)
+            if backend_config.autoscaling_config is not None:
+                self.autoscaling_policies[
+                    backend_tag] = BasicAutoscalingPolicy(
+                        backend_tag, backend_config.autoscaling_config)
 
             self._scale_replicas(backend_tag, backend_config.num_replicas)
 
@@ -866,5 +867,7 @@ class ServeController:
                     ray.kill(replica, no_restart=True)
             self.kv_store.delete(CHECKPOINT_KEY)
 
-    async def report_queue_length(self, backend_tag, replica_tag, length):
-        self.backend_stats[backend_tag][replica_tag] = length
+    async def report_queue_lengths(self, router_name, queue_lengths):
+        # TODO: remove old router stats when removing them.
+        for backend, queue_length in queue_lengths.items():
+            self.backend_stats[backend][router_name] = queue_length

@@ -30,6 +30,7 @@ class BackendConfig:
         self.batch_wait_timeout = config_dict.pop("batch_wait_timeout", 0)
         self.max_concurrent_queries = config_dict.pop("max_concurrent_queries",
                                                       None)
+        self.autoscaling_config = config_dict.pop("autoscaling", None)
 
         if self.max_concurrent_queries is None:
             # Model serving mode: if the servable is blocking and the wait
