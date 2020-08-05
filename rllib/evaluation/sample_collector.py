@@ -103,35 +103,26 @@ class _SampleCollector(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
-    @abstractmethod
-    def add_to_forward_pass(self,
-                            episode_id: EpisodeID,
-                            agent_id: AgentID,
-                            env_id: EnvID) -> None:
-        """Registers given agent/episode combination for the next forward pass.
-
-        Args:
-            episode_id (EpisodeID): Unique id for the episode we are
-                registering for the upcoming forward pass.
-            agent_id (AgentID): Unique id for the agent we are registering
-                for the upcoming forward pass.
-            env_id (EnvID): Unique id for the (sub)-environment.
-
-        Examples:
-        """
-        raise NotImplementedError
+    #@abstractmethod
+    #def reset_inference_call(self) -> None:
+    #    """Resets all inference information (new indices will be registered).
+    #
+    #    When calling `add_init_obs` or `add_action_reward_next_obs`, the
+    #    SampleCollector object should keep track of the current
+    #    agentID/episodeID combinations that have new observations available
+    #    for action calculations. These will be batched together when producing
+    #    a next input_dict via `get_inference_input_dict`.
+    #    Calling `reset_inference_call` will reset all this information to make
+    #    room for new batched data in upcoming calls.
+    #    """
+    #    raise NotImplementedError
 
     @abstractmethod
-    def reset_forward_pass(self) -> None:
-        """Resets all forward pass information (new items can be registered).
-        """
-        raise NotImplementedError
+    def get_inference_input_dict(self, model: ModelV2) -> \
+            Dict[str, TensorType]:
+        """Returns input_dict for an inference forward pass from our data.
 
-    @abstractmethod
-    def get_input_dict(self, model: ModelV2) -> Dict[str, TensorType]:
-        """Returns an input_dict for a Model's forward pass given our data.
-
-        The input_dict can be used for either action computation or training.
+        The input_dict can then be used for action computations.
 
         Args:
             model (ModelV2): The ModelV2 object for which to generate the view
@@ -140,6 +131,15 @@ class _SampleCollector(metaclass=ABCMeta):
         Returns:
             Dict[str, TensorType]: The input_dict to be passed into the ModelV2
                 for inference/training.
+
+        Examples:
+            >>> obs, r, done, info = env.step(action)
+            >>> collector.add_action_reward_next_obs(12345, 0, "pol0", {
+            ...     "action": action, "obs": obs, "reward": r, "done": done
+            ... })
+            >>> input_dict = collector.get_inference_input_dict(policy.model)
+            >>> action = policy.compute_actions_from_input_dict(input_dict)
+            >>> # repeat
         """
         raise NotImplementedError
 
