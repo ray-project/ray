@@ -136,6 +136,9 @@ bazel() {
 }
 END
 
+  echo "DEBUG: appending func to bashrc"
   printf "%s\n" "${bazel_wrapper_func}" >> ~/.bashrc
+
+  echo "DEBUG: eval func"
   eval "${bazel_wrapper_func}"
 fi
