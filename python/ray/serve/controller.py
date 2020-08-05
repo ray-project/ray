@@ -727,6 +727,12 @@ class ServeController:
                              replica_config):
         """Register a new backend under the specified tag."""
         async with self.write_lock:
+            if backend_tag in self.backends:
+                raise ValueError(
+                    "Cannot create backend.  "
+                    "Backend '{}' is already registered.".format(
+                        backend_tag))
+
             backend_worker = create_backend_worker(
                 replica_config.func_or_class)
 
