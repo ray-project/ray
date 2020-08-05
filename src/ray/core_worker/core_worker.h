@@ -20,7 +20,6 @@
 #include "ray/common/placement_group.h"
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/actor_manager.h"
-#include "ray/core_worker/actor_reporter.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/future_resolver.h"
@@ -1025,9 +1024,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   // Tracks the currently pending tasks.
   std::shared_ptr<TaskManager> task_manager_;
-
-  // Interface for publishing actor death event for actor creation failure.
-  std::shared_ptr<ActorReporter> actor_reporter_;
 
   // Interface to submit tasks directly to other actors.
   std::shared_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;

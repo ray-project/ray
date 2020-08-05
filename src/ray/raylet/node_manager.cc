@@ -2673,69 +2673,6 @@ void NodeManager::FinishAssignedActorTask(WorkerInterface &worker, const Task &t
   }
 }
 
-void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id,
-                                                  const TaskSpecification &task_spec,
-                                                  bool resumed_from_checkpoint, int port,
-                                                  const WorkerID &worker_id) {
-  // Notify the other node managers that the actor has been created.
-  const ActorID actor_id = task_spec.ActorCreationId();
-  auto new_actor_info = CreateActorTableDataFromCreationTask(task_spec, port, worker_id);
-  new_actor_info->set_parent_id(parent_actor_id.Binary());
-  auto update_callback = [actor_id](Status status) {
-    if (!status.ok()) {
-      // Only one node at a time should succeed at creating or updating the actor.
-      RAY_LOG(FATAL) << "Failed to update state to ALIVE for actor " << actor_id;
-    }
-  };
-
-  if (resumed_from_checkpoint) {
-    // This actor was resumed from a checkpoint. In this case, we first look
-    // up the checkpoint in GCS and use it to restore the actor registration
-    // and frontier.
-    const auto checkpoint_id = checkpoint_id_to_restore_[actor_id];
-    checkpoint_id_to_restore_.erase(actor_id);
-    RAY_LOG(DEBUG) << "Looking up checkpoint " << checkpoint_id << " for actor "
-                   << actor_id;
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncGetCheckpoint(
-        checkpoint_id, actor_id,
-        [this, checkpoint_id, actor_id, new_actor_info, update_callback](
-            Status status, const boost::optional<ActorCheckpointData> &checkpoint_data) {
-          RAY_CHECK(checkpoint_data) << "Couldn't find checkpoint " << checkpoint_id
-                                     << " for actor " << actor_id << " in GCS.";
-          RAY_LOG(INFO) << "Restoring registration for actor " << actor_id
-                        << " from checkpoint " << checkpoint_id;
-          ActorRegistration actor_registration =
-              ActorRegistration(*new_actor_info, *checkpoint_data);
-          // Mark the unreleased dummy objects in the checkpoint frontier as local.
-          for (const auto &entry : actor_registration.GetDummyObjects()) {
-            HandleObjectLocal(entry.first);
-          }
-          HandleActorStateTransition(actor_id, std::move(actor_registration));
-          // The actor was created before.
-          RAY_CHECK_OK(gcs_client_->Actors().AsyncUpdate(actor_id, new_actor_info,
-                                                         update_callback));
-        }));
-  } else {
-    // The actor did not resume from a checkpoint. Immediately notify the
-    // other node managers that the actor has been created.
-    HandleActorStateTransition(actor_id, ActorRegistration(*new_actor_info));
-    if (actor_registry_.find(actor_id) != actor_registry_.end()) {
-      // The actor was created before.
-      RAY_CHECK_OK(
-          gcs_client_->Actors().AsyncUpdate(actor_id, new_actor_info, update_callback));
-    } else {
-      // The actor was never created before.
-      RAY_CHECK_OK(gcs_client_->Actors().AsyncRegister(new_actor_info, update_callback));
-    }
-  }
-  if (!resumed_from_checkpoint) {
-    // The actor was not resumed from a checkpoint. Store the
-    // initial dummy object. All future handles to the actor will
-    // depend on this object.
-    HandleObjectLocal(task_spec.ActorDummyObject());
-  }
-}
-
 void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
   // Notify the task dependency manager that this object is local.
   const auto ready_task_ids = task_dependency_manager_.HandleObjectLocal(object_id);

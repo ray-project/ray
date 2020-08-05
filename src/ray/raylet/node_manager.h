@@ -279,20 +279,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param task The actor task or actor creation task.
   /// \return Void.
   void FinishAssignedActorTask(WorkerInterface &worker, const Task &task);
-  /// Helper function for handling worker to finish its assigned actor task
-  /// or actor creation task. Gets invoked when tasks's parent actor is known.
-  ///
-  /// \param parent_actor_id The actor id corresponding to the actor which creates
-  /// the new actor.
-  /// \param task_spec Task specification of the actor creation task that created the
-  /// actor.
-  /// \param resumed_from_checkpoint If the actor was resumed from a checkpoint.
-  /// \param port Rpc server port that the actor is listening on.
-  /// \return Void.
-  void FinishAssignedActorCreationTask(const ActorID &parent_actor_id,
-                                       const TaskSpecification &task_spec,
-                                       bool resumed_from_checkpoint, int port,
-                                       const WorkerID &worker_id);
   /// Make a placement decision for placeable tasks given the resource_map
   /// provided. This will perform task state transitions and task forwarding.
   ///
