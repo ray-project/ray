@@ -393,3 +393,202 @@ class PopulationBasedTraining(FIFOScheduler):
     def debug_string(self):
         return "PopulationBasedTraining: {} checkpoints, {} perturbs".format(
             self._num_checkpoints, self._num_perturbations)
+
+
+class PopulationBasedTrainingReplay(FIFOScheduler):
+    """Replays a Population Based Training run.
+
+    Population Based Training does not return a single hyperparameter
+    configuration, but rather a schedule of configurations. For instance,
+    PBT might discover that a larger learning rate leads to good results
+    in the first training iterations, but that a smaller learning rate
+    is preferable later.
+
+    This scheduler enables replaying these parameter schedules from
+    a finished PBT run. This requires that population based training has
+    been run with ``log_config=True``, which is the default setting.
+
+    The scheduler will only accept and train a single trial. It will
+    start with the initial config of the existing trial and update the
+    config according to the schedule.
+
+    Use ``PopulationBasedTrainingReplay.config`` to pass the initial
+    config to ``tune.run()`` (see example below).
+
+    Args:
+        experiment_dir (str): The directory where the results of the
+            PBT run were stored. Usually this is a subdirectory of
+            ``~/ray_results``
+        trial_id (str): ID of the trial that should be replayed.
+
+    Example:
+
+    .. code-block:: python
+
+        # Replaying a result from ray.tune.examples.pbt_convnet_example
+        from ray import tune
+
+        from ray.tune.examples.pbt_convnet_example import PytorchTrainable
+        from ray.tune.schedulers import PopulationBasedTrainingReplay
+
+        replay = PopulationBasedTrainingReplay(
+            "~/ray_results/pbt_test/", "XXXXX_00001")
+
+        tune.run(
+            PytorchTrainable,
+            scheduler=replay,
+            config=replay.config,
+            stop={"training_iteration": 100})
+
+
+    """
+
+    def __init__(self, experiment_dir, trial_id):
+        experiment_dir = os.path.expanduser(experiment_dir)
+        if not os.path.exists(experiment_dir):
+            raise ValueError(
+                "Experiment directory not found: {}".format(experiment_dir))
+
+        self.experiment_dir = experiment_dir
+        self.trial_id = trial_id
+
+        self.experiment_tag = None
+        self.config = None
+        self.final_config = None
+
+        self._experiment_state, checkpoint = self._load_experiment_state(
+            self.experiment_dir, self.trial_id)
+
+        if not self._experiment_state:
+            raise ValueError("Trial with trial id {} not found in experiment "
+                             "directory {}".format(trial_id,
+                                                   self.experiment_dir))
+
+        # Read information from experiment state checkpoint
+        self.experiment_tag = checkpoint["experiment_tag"]
+        # `evaluated_params` contains initial config
+        self.config = checkpoint["evaluated_params"]
+        # `config` contains final config
+        self.final_config = checkpoint["config"]
+
+        # Find and read pbt policy file
+        self._policy = self._load_policy(self.experiment_dir, self.trial_id)
+        if not self._policy:
+            logger.warning(
+                "Empty PBT policy found for trial id {}. This means "
+                "the replay will only run with the initial config. "
+                "You might have specified a trial that did not exploit "
+                "other trials. Did you specify the correct trial?")
+
+        self._trial = None
+        self._current_step = 0
+        self._num_perturbations = 0
+        self._current_config = self.config
+
+        self._policy_iter = iter(self._policy)
+        self._next_policy = next(self._policy_iter, None)
+
+        # Sometimes a new config is copied at step 0
+        old_tag, new_tag, change_at, _, old_config, new_config = \
+            self._next_policy
+        if change_at == 0:
+            self.config = new_config
+            self._next_policy = next(self._policy_iter, None)
+
+    def _load_experiment_state(self, experiment_dir, trial_id):
+        # Find experiment state file that includes `trial_id`
+        for file in os.listdir(experiment_dir):
+            if not file.startswith("experiment_state") or \
+               not file.endswith(".json"):
+                continue
+            experiment_state_file = os.path.join(experiment_dir, file)
+            with open(experiment_state_file, "rt") as fp:
+                try:
+                    cand_experiment_state = json.load(fp)
+                except json.JSONDecodeError:
+                    logger.warning(
+                        "Experiment state file {} could not be decoded. "
+                        "Skipping.".format(experiment_state_file))
+                    continue
+            for checkpoint in cand_experiment_state.get("checkpoints", []):
+                if checkpoint["trial_id"] == trial_id:
+                    return cand_experiment_state, checkpoint
+        return None, None
+
+    def _load_policy(self, experiment_dir, trial_id):
+        policy = []
+        pbt_policy_file = os.path.join(experiment_dir,
+                                       "pbt_policy_{}.txt".format(trial_id))
+        if not os.path.isfile(pbt_policy_file):
+            logger.warning(
+                "No PBT policy file found for trial id {}. This means "
+                "the replay will only run with the initial config. "
+                "You might have specified a trial that did not exploit "
+                "other trials. Did you specify the correct trial?")
+        else:
+            with open(pbt_policy_file, "rt") as fp:
+                for row in fp.readlines():
+                    try:
+                        parsed_row = json.loads(row)
+                    except json.JSONDecodeError:
+                        raise ValueError(
+                            "Could not read PBT policy file: {}.".format(
+                                pbt_policy_file))
+                    policy.append(tuple(parsed_row))
+        return policy
+
+    def on_trial_add(self, trial_runner, trial):
+        if self._trial:
+            raise ValueError(
+                "More than one trial added to PBT replay run. This "
+                "means the same schedule will be trained multiple "
+                "times. Do you want to set `n_samples=1`?")
+        self._trial = trial
+
+    def on_trial_result(self, trial_runner, trial, result):
+        if TRAINING_ITERATION not in result:
+            # No time reported
+            return TrialScheduler.CONTINUE
+
+        if not self._next_policy:
+            # No more changes in the config
+            return TrialScheduler.CONTINUE
+
+        step = result[TRAINING_ITERATION]
+        self._current_step = step
+
+        old_tag, new_tag, change_at, new_step, old_config, new_config = \
+            self._next_policy
+
+        if step < change_at:
+            # Don't change the policy just yet
+            return TrialScheduler.CONTINUE
+
+        logger.info("Population Based Training replay is now at step {}. "
+                    "Configuration will be changed to {} at step {}".format(
+                        step, new_config, new_step))
+
+        checkpoint = trial_runner.trial_executor.save(
+            trial, Checkpoint.MEMORY, result=result)
+
+        new_tag = make_experiment_tag(self.experiment_tag, new_config,
+                                      new_config)
+        reset_successful = trial_runner.trial_executor.reset_trial(
+            trial, new_config, new_tag)
+
+        if reset_successful:
+            trial_runner.trial_executor.restore(trial, checkpoint, block=True)
+            self._current_step = new_step
+        else:
+            raise ValueError(
+                "Trial reset failed for Population Based Trainig replay.")
+
+        self._current_config = new_config
+        self._num_perturbations += 1
+        self._next_policy = next(self._policy_iter, None)
+
+        return TrialScheduler.CONTINUE
+
+    def debug_string(self):
+        return "PopulationBasedTraining replay: Step {}, perturb {}".format(
+            self._current_step, self._num_perturbations)
