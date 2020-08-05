@@ -33,18 +33,16 @@ void GcsRedisFailureDetector::Start() {
 
 void GcsRedisFailureDetector::DetectRedis() {
   auto redis_callback = [this](const std::shared_ptr<CallbackReply> &reply) {
-    if (reply.get() == nullptr || reply->IsNil()) {
-      RAY_LOG(INFO) << "Redis is inactive.";
+    if (reply->IsNil()) {
+      RAY_LOG(ERROR) << "Redis is inactive.";
       callback_();
-    } else {
-      RAY_LOG(INFO) << "wangtao success";
     }
   };
 
   Status status = redis_context_->RunArgvAsync({"PING"}, redis_callback);
 
   if (!status.ok()) {
-    RAY_LOG(INFO) << "Redis is disconnected.";
+    RAY_LOG(ERROR) << "Redis is disconnected.";
     callback_();
   }
 }
