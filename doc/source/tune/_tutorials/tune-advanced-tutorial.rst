@@ -80,7 +80,7 @@ During the training, we can constantly check the status of the models from conso
     Memory usage on this node: 11.6/16.0 GiB
     PopulationBasedTraining: 5 checkpoints, 4 perturbs
     Resources requested: 0/16 CPUs, 0/0 GPUs, 0.0/3.96 GiB heap, 0.0/1.37 GiB objects
-    Result logdir: /Users/kai/ray_results/pbt_test
+    Result logdir: /Users/foo/ray_results/pbt_test
     Number of trials: 4 (4 TERMINATED)
     +------------------------------+------------+-------+-----------+------------+----------+--------+------------------+
     | Trial name                   | status     | loc   |        lr |   momentum |      acc |   iter |   total time (s) |
