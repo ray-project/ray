@@ -190,12 +190,15 @@ class PrometheusServiceDiscoveryHelper:
 
     It supports file-based service discovery. Checkout
     https://prometheus.io/docs/guides/file-sd/ for more details.
+
+    Args:
+        redis_address(str): Ray's redis address.
+        redis_password(str): Ray's redis password.
     """
     def __init__(self, redis_address, redis_password):
-        """
-        
-        """
         ray.state.state._initialize_global_state(
             redis_address=redis_address, redis_password=redis_password)
         from pprint import pprint
         pprint(ray.nodes())
+
+    def start(self):

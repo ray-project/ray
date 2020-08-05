@@ -76,7 +76,8 @@ class DashboardController(BaseDashboardController):
         if Analysis is not None:
             self.tune_stats = TuneCollector(2.0)
         self.memory_table = MemoryTable([])
-        self.prometheus_service_discovery_helper = PrometheusServiceDiscoveryHelper(redis_address, redis_password)
+        self.service_discovery = PrometheusServiceDiscoveryHelper(
+            redis_address, redis_password)
 
     def _construct_raylet_info(self):
         D = self.raylet_stats.get_raylet_stats()
@@ -238,6 +239,7 @@ class DashboardController(BaseDashboardController):
     def start_collecting_metrics(self):
         self.node_stats.start()
         self.raylet_stats.start()
+        self.service_discovery.start()
         if Analysis is not None:
             self.tune_stats.start()
 
