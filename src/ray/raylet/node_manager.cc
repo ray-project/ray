@@ -32,26 +32,6 @@ namespace {
 #define RAY_CHECK_ENUM(x, y) \
   static_assert(static_cast<int>(x) == static_cast<int>(y), "protocol mismatch")
 
-/// A helper function to return the expected actor counter for a given actor
-/// and actor handle, according to the given actor registry. If a task's
-/// counter is less than the returned value, then the task is a duplicate. If
-/// the task's counter is equal to the returned value, then the task should be
-/// the next to run.
-int64_t GetExpectedTaskCounter(
-    const std::unordered_map<ray::ActorID, ray::raylet::ActorRegistration>
-        &actor_registry,
-    const ray::ActorID &actor_id, const ray::TaskID &actor_caller_id) {
-  auto actor_entry = actor_registry.find(actor_id);
-  RAY_CHECK(actor_entry != actor_registry.end());
-  const auto &frontier = actor_entry->second.GetFrontier();
-  int64_t expected_task_counter = 0;
-  auto frontier_entry = frontier.find(actor_caller_id);
-  if (frontier_entry != frontier.end()) {
-    expected_task_counter = frontier_entry->second.task_counter;
-  }
-  return expected_task_counter;
-};
-
 struct ActorStats {
   int live_actors = 0;
   int dead_actors = 0;
@@ -2028,7 +2008,7 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_typ
   // Loop over the return IDs (except the dummy ID) and store a fake object in
   // the object store.
   int64_t num_returns = spec.NumReturns();
-  if (spec.IsActorCreationTask() || spec.IsActorTask()) {
+  if (spec.IsActorCreationTask()) {
     // TODO(rkn): We subtract 1 to avoid the dummy ID. However, this leaks
     // information about the TaskSpecification implementation.
     num_returns -= 1;
@@ -2086,7 +2066,7 @@ void NodeManager::TreatTaskAsFailedIfLost(const Task &task) {
   // Loop over the return IDs (except the dummy ID) and check whether a
   // location for the return ID exists.
   int64_t num_returns = spec.NumReturns();
-  if (spec.IsActorCreationTask() || spec.IsActorTask()) {
+  if (spec.IsActorCreationTask()) {
     // TODO(rkn): We subtract 1 to avoid the dummy ID. However, this leaks
     // information about the TaskSpecification implementation.
     num_returns -= 1;
@@ -2121,6 +2101,8 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
                              bool forwarded) {
   stats::TaskCountReceived().Record(1);
   const TaskSpecification &spec = task.GetTaskSpecification();
+  // Actor tasks should be no longer submitted to raylet.
+  RAY_CHECK(!spec.IsActorTask());
   const TaskID &task_id = spec.TaskId();
   RAY_LOG(DEBUG) << "Submitting task: " << task.DebugString();
 
@@ -2143,104 +2125,17 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       return;
     }
   }
-
-  if (spec.IsActorTask()) {
-    // Check whether we know the location of the actor.
-    const auto actor_entry = actor_registry_.find(spec.ActorId());
-    bool seen = actor_entry != actor_registry_.end();
-    // If we have already seen this actor and this actor is not being restarted,
-    // its location is known.
-    bool location_known =
-        seen && actor_entry->second.GetState() != ActorTableData::RESTARTING;
-    if (location_known) {
-      if (actor_entry->second.GetState() == ActorTableData::DEAD) {
-        // If this actor is dead, either because the actor process is dead
-        // or because its residing node is dead, treat this task as failed.
-        TreatTaskAsFailed(task, ErrorType::ACTOR_DIED);
-      } else {
-        // If this actor is alive, check whether this actor is local.
-        auto node_manager_id = actor_entry->second.GetNodeManagerId();
-        if (node_manager_id == self_node_id_) {
-          // The actor is local.
-          int64_t expected_task_counter =
-              GetExpectedTaskCounter(actor_registry_, spec.ActorId(), spec.CallerId());
-          if (static_cast<int64_t>(spec.ActorCounter()) < expected_task_counter) {
-            // A task that has already been executed before has been found. The
-            // task will be treated as failed if at least one of the task's
-            // return values have been evicted, to prevent the application from
-            // hanging.
-            // TODO(swang): Clean up the task from the lineage cache? If the
-            // task is not marked as failed, then it may never get marked as
-            // ready to flush to the GCS.
-            RAY_LOG(WARNING) << "A task was resubmitted, so we are ignoring it. This "
-                             << "should only happen during reconstruction.";
-            TreatTaskAsFailedIfLost(task);
-          } else {
-            // The task has not yet been executed. Queue the task for local
-            // execution, bypassing placement.
-            EnqueuePlaceableTask(task);
-          }
-        } else {
-          // The actor is remote. Forward the task to the node manager that owns
-          // the actor.
-          // Attempt to forward the task. If this fails to forward the task,
-          // the task will be resubmit locally.
-          ForwardTaskOrResubmit(task, node_manager_id);
-        }
-      }
-    } else {
-      ObjectID actor_creation_dummy_object;
-      if (!seen) {
-        // We do not have a registered location for the object, so either the
-        // actor has not yet been created or we missed the notification for the
-        // actor creation because this node joined the cluster after the actor
-        // was already created. Look up the actor's registered location in case
-        // we missed the creation notification.
-        const ActorID &actor_id = spec.ActorId();
-        auto lookup_callback =
-            [this, actor_id](Status status, const boost::optional<ActorTableData> &data) {
-              if (data) {
-                // The actor has been created. We only need the last entry, because
-                // it represents the latest state of this actor.
-                HandleActorStateTransition(actor_id, ActorRegistration(*data));
-              }
-            };
-        RAY_CHECK_OK(gcs_client_->Actors().AsyncGet(actor_id, lookup_callback));
-        actor_creation_dummy_object = spec.ActorCreationDummyObjectId();
-      } else {
-        actor_creation_dummy_object = actor_entry->second.GetActorCreationDependency();
-      }
-
-      // Keep the task queued until we discover the actor's location.
-      // (See design_docs/task_states.rst for the state transition diagram.)
-      local_queues_.QueueTasks({task}, TaskState::WAITING_FOR_ACTOR_CREATION);
-      // The actor has not yet been created and may have failed. To make sure
-      // that the actor is eventually recreated, we maintain the invariant that
-      // if a task is in the MethodsWaitingForActorCreation queue, then it is
-      // subscribed to its respective actor creation task and that task only.
-      // Once the actor has been created and this method removed from the
-      // waiting queue, the caller must make the corresponding call to
-      // UnsubscribeGetDependencies.
-      task_dependency_manager_.SubscribeGetDependencies(
-          spec.TaskId(), {GetReferenceForActorDummyObject(actor_creation_dummy_object)});
-      // Mark the task as pending. It will be canceled once we discover the
-      // actor's location and either execute the task ourselves or forward it
-      // to another node.
-      task_dependency_manager_.TaskPending(task);
-    }
+  // This is a non-actor task. Queue the task for a placement decision or for dispatch
+  // if the task was forwarded.
+  if (forwarded) {
+    // Check for local dependencies and enqueue as waiting or ready for dispatch.
+    EnqueuePlaceableTask(task);
   } else {
-    // This is a non-actor task. Queue the task for a placement decision or for dispatch
-    // if the task was forwarded.
-    if (forwarded) {
-      // Check for local dependencies and enqueue as waiting or ready for dispatch.
-      EnqueuePlaceableTask(task);
-    } else {
-      // (See design_docs/task_states.rst for the state transition diagram.)
-      local_queues_.QueueTasks({task}, TaskState::PLACEABLE);
-      ScheduleTasks(cluster_resource_map_);
-      // TODO(atumanov): assert that !placeable.isempty() => insufficient available
-      // resources locally.
-    }
+    // (See design_docs/task_states.rst for the state transition diagram.)
+    local_queues_.QueueTasks({task}, TaskState::PLACEABLE);
+    ScheduleTasks(cluster_resource_map_);
+    // TODO(atumanov): assert that !placeable.isempty() => insufficient available
+    // resources locally.
   }
 }
 
@@ -2471,16 +2366,6 @@ void NodeManager::AssignTask(const std::shared_ptr<WorkerInterface> &worker,
                              std::vector<std::function<void()>> *post_assign_callbacks) {
   const TaskSpecification &spec = task.GetTaskSpecification();
   RAY_CHECK(post_assign_callbacks);
-  // If this is an actor task, check that the new task has the correct counter.
-  if (spec.IsActorTask()) {
-    // An actor task should only be ready to be assigned if it matches the
-    // expected task counter.
-    int64_t expected_task_counter =
-        GetExpectedTaskCounter(actor_registry_, spec.ActorId(), spec.CallerId());
-    RAY_CHECK(static_cast<int64_t>(spec.ActorCounter()) == expected_task_counter)
-        << "Expected actor counter: " << expected_task_counter << ", task "
-        << spec.TaskId() << " has: " << spec.ActorCounter();
-  }
 
   RAY_LOG(DEBUG) << "Assigning task " << spec.TaskId() << " to worker with pid "
                  << worker->GetProcess().GetId() << ", worker id: " << worker->WorkerId();
@@ -2562,7 +2447,7 @@ bool NodeManager::FinishAssignedTask(WorkerInterface &worker) {
   }
 
   const auto &spec = task.GetTaskSpecification();  //
-  if ((spec.IsActorCreationTask() || spec.IsActorTask())) {
+  if ((spec.IsActorCreationTask())) {
     // If this was an actor or actor creation task, handle the actor's new
     // state.
     FinishAssignedActorTask(worker, task);
@@ -2578,7 +2463,7 @@ bool NodeManager::FinishAssignedTask(WorkerInterface &worker) {
 
   if (!RayConfig::instance().enable_multi_tenancy()) {
     // Unset the worker's assigned job Id if this is not an actor.
-    if (!spec.IsActorCreationTask() && !spec.IsActorTask()) {
+    if (!spec.IsActorCreationTask()) {
       worker.AssignJobId(JobID::Nil());
     }
   }
@@ -2799,45 +2684,10 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
         // have the task. TaskDependencyManager::TaskPending() is assumed to be
         // idempotent.
         task_dependency_manager_.TaskPending(task);
-
-        // Actor tasks can only be executed at the actor's location, so they are
-        // retried after a timeout. All other tasks that fail to be forwarded are
-        // deemed to be placeable again.
-        if (task.GetTaskSpecification().IsActorTask()) {
-          // The task is for an actor on another node.  Create a timer to resubmit
-          // the task in a little bit. TODO(rkn): Really this should be a
-          // unique_ptr instead of a shared_ptr. However, it's a little harder to
-          // move unique_ptrs into lambdas.
-          auto retry_timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
-          auto retry_duration = boost::posix_time::milliseconds(
-              RayConfig::instance()
-                  .node_manager_forward_task_retry_timeout_milliseconds());
-          retry_timer->expires_from_now(retry_duration);
-          retry_timer->async_wait(
-              [this, task_id, retry_timer](const boost::system::error_code &error) {
-                // Timer killing will receive the boost::asio::error::operation_aborted,
-                // we only handle the timeout event.
-                RAY_CHECK(!error);
-                RAY_LOG(INFO) << "Resubmitting task " << task_id
-                              << " because ForwardTask failed.";
-                // Remove the RESUBMITTED task from the SWAP queue.
-                Task task;
-                TaskState state;
-                if (local_queues_.RemoveTask(task_id, &task, &state)) {
-                  RAY_CHECK(state == TaskState::SWAP);
-                  // Submit the task again.
-                  SubmitTask(task, Lineage());
-                }
-              });
-          // Temporarily move the RESUBMITTED task to the SWAP queue while the
-          // timer is active.
-          local_queues_.QueueTasks({task}, TaskState::SWAP);
-        } else {
-          // The task is not for an actor and may therefore be placed on another
-          // node immediately. Send it to the scheduling policy to be placed again.
-          local_queues_.QueueTasks({task}, TaskState::PLACEABLE);
-          ScheduleTasks(cluster_resource_map_);
-        }
+        // The task is not for an actor and may therefore be placed on another
+        // node immediately. Send it to the scheduling policy to be placed again.
+        local_queues_.QueueTasks({task}, TaskState::PLACEABLE);
+        ScheduleTasks(cluster_resource_map_);
       });
 }
 
@@ -2909,7 +2759,6 @@ void NodeManager::ForwardTask(
     }
 
     if (status.ok()) {
-      const auto &spec = task.GetTaskSpecification();
       // Mark as forwarded so that the task and its lineage are not
       // re-forwarded in the future to the receiving node.
       lineage_cache_.MarkTaskAsForwarded(task_id, node_id);
@@ -2917,23 +2766,6 @@ void NodeManager::ForwardTask(
       // Notify the task dependency manager that we are no longer responsible
       // for executing this task.
       task_dependency_manager_.TaskCanceled(task_id);
-      // Preemptively push any local arguments to the receiving node. For now, we
-      // only do this with actor tasks, since actor tasks must be executed by a
-      // specific process and therefore have affinity to the receiving node.
-      if (spec.IsActorTask()) {
-        // Iterate through the object's arguments. NOTE(swang): We do not include
-        // the execution dependencies here since those cannot be transferred
-        // between nodes.
-        for (size_t i = 0; i < spec.NumArgs(); ++i) {
-          if (spec.ArgByRef(i)) {
-            ObjectID argument_id = spec.ArgId(i);
-            // If the argument is local, then push it to the receiving node.
-            if (task_dependency_manager_.CheckObjectLocal(argument_id)) {
-              object_manager_.Push(argument_id, node_id);
-            }
-          }
-        }
-      }
     } else {
       on_error(status, task);
     }
