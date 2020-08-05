@@ -659,10 +659,10 @@ class ServeController:
             if route in self.routes:
                 if self.routes[route] == (endpoint, methods):
                     raise ValueError(
-                        "Route {} is already registered to endpoint {} with "
-                        "methods {}.  To set the backend for this endpoint,"
-                        " please use serve.set_traffic().".format(route, 
-                            endpoint, methods))
+                        "Route '{}' is already registered to endpoint '{}' "
+                        "with methods '{}'.  To set the backend for this "
+                        "endpoint, please use serve.set_traffic().".format(
+                            route, endpoint, methods))
                 else:
                     raise ValueError(
                         "{} Route '{}' is already registered.".format(
@@ -674,7 +674,7 @@ class ServeController:
                         err_prefix, endpoint))
 
             logger.info(
-                "Registering route {} to endpoint {} with methods {}.".format(
+                "Registering route '{}' to endpoint '{}' with methods '{}'.".format(
                     route, endpoint, methods))
 
             self.routes[route] = (endpoint, methods)
