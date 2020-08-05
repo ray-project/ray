@@ -1,6 +1,4 @@
 import abc
-import os
-import sys
 import socket
 import asyncio
 import collections
@@ -19,7 +17,6 @@ from typing import Any
 
 import aioredis
 import aiohttp.web
-import ray.new_dashboard.consts as dashboard_consts
 from aiohttp import hdrs
 from aiohttp.frozenlist import FrozenList
 from aiohttp.typedefs import PathLike

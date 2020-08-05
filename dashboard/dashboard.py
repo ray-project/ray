@@ -13,7 +13,6 @@ import logging
 import logging.handlers
 import os
 import traceback
-import uuid
 
 import ray.new_dashboard.consts as dashboard_consts
 import ray.new_dashboard.head as dashboard_head

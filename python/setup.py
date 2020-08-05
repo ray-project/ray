@@ -133,7 +133,7 @@ extras["all"] = list(set(chain.from_iterable(extras.values())))
 # the change in the matching section of requirements.txt
 install_requires = [
     "aiohttp",
-	"aiohttp_cors",  # Cross Origin Resource Sharing (CORS) support for aiohttp
+    "aiohttp_cors",  # Cross Origin Resource Sharing (CORS) support for aiohttp
     "aioredis",
     "click >= 7.0",
     "colorama",
@@ -409,7 +409,7 @@ def api_main(program, *args):
             nonlocal result
             if excinfo[1].errno != errno.ENOENT:
                 msg = excinfo[1].strerror
-                logger.error("cannot remove {}: {}" % (path, msg))
+                logger.error("cannot remove %s: %s", path, msg)
                 result = 1
 
         for subdir in CLEANABLE_SUBDIRS:

@@ -170,9 +170,8 @@ class DashboardHead:
         await self.server.start()
 
         # Write the dashboard head port to redis.
-        await self.aioredis_client.set(
-            dashboard_consts.REDIS_KEY_DASHBOARD,
-            self.ip + ":" + str(self.http_port))
+        await self.aioredis_client.set(dashboard_consts.REDIS_KEY_DASHBOARD,
+                                       self.ip + ":" + str(self.http_port))
         await self.aioredis_client.set(
             dashboard_consts.REDIS_KEY_DASHBOARD_RPC,
             self.ip + ":" + str(self.grpc_port))
