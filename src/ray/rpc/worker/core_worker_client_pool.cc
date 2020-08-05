@@ -12,20 +12,22 @@ optional<shared_ptr<CoreWorkerClientInterface>> CoreWorkerClientPool::GetByID(ra
   return it->second;
 }
 
-shared_ptr<CoreWorkerClientInterface> CoreWorkerClientPool::GetOrConnect(const Address& addr_proto) {
-  return GetOrConnect(WorkerAddress(addr_proto));
+shared_ptr<CoreWorkerClientInterface> CoreWorkerClientPool::GetOrConnect(const WorkerAddress& addr) {
+  return GetOrConnect(addr.ToProto());
 }
 
-shared_ptr<CoreWorkerClientInterface> CoreWorkerClientPool::GetOrConnect(const WorkerAddress& addr) {
-  auto existing = GetByID(addr.worker_id);
+shared_ptr<CoreWorkerClientInterface> CoreWorkerClientPool::GetOrConnect(const Address& addr_proto) {
+  RAY_CHECK(addr_proto.worker_id() != "");
+  auto id = WorkerID::FromBinary(addr_proto.worker_id());
+  auto existing = GetByID(id);
   if (existing.has_value()) {
     return existing.value();
   }
   absl::MutexLock lock(&mu_);
-  auto connection = client_factory_(addr.ToProto());
-  client_map_[addr.worker_id] = connection;
+  auto connection = client_factory_(addr_proto);
+  client_map_[id] = connection;
 
-  RAY_LOG(INFO) << "Connected to " << addr.ip_address << ":" << addr.port;
+  RAY_LOG(INFO) << "Connected to " << addr_proto.ip_address() << ":" << addr_proto.port();
   return connection;
 }
 
