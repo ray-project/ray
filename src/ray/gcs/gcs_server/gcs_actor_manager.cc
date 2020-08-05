@@ -385,10 +385,9 @@ void GcsActorManager::HandleGetActorCheckpointID(
   }
 }
 
-Status GcsActorManager::RegisterActor(
-    const ray::rpc::RegisterActorRequest &request,
-    std::function<void(std::shared_ptr<GcsActor>)> callback) {
-  RAY_CHECK(callback);
+Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &request,
+                                      RegisterActorCallback success_callback) {
+  RAY_CHECK(success_callback);
   const auto &actor_creation_task_spec = request.task_spec().actor_creation_task_spec();
   auto actor_id = ActorID::FromBinary(actor_creation_task_spec.actor_id());
 
@@ -398,7 +397,7 @@ Status GcsActorManager::RegisterActor(
     // In case of temporary network failures, workers will re-send multiple duplicate
     // requests to GCS server.
     // In this case, we can just reply.
-    callback(iter->second);
+    success_callback(iter->second);
     return Status::OK();
   }
 
@@ -406,7 +405,7 @@ Status GcsActorManager::RegisterActor(
   if (pending_register_iter != actor_to_register_callbacks_.end()) {
     // It is a duplicate message, just mark the callback as pending and invoke it after
     // the actor has been flushed to the storage.
-    pending_register_iter->second.emplace_back(std::move(callback));
+    pending_register_iter->second.emplace_back(std::move(success_callback));
     return Status::OK();
   }
 
@@ -422,9 +421,7 @@ Status GcsActorManager::RegisterActor(
     }
   }
 
-  // Mark the callback as pending and invoke it after the actor has been successfully
-  // flushed to the storage.
-  actor_to_register_callbacks_[actor_id].emplace_back(std::move(callback));
+  actor_to_register_callbacks_[actor_id].emplace_back(std::move(success_callback));
   RAY_CHECK(registered_actors_.emplace(actor->GetActorID(), actor).second);
 
   const auto &owner_address = actor->GetOwnerAddress();
@@ -444,6 +441,17 @@ Status GcsActorManager::RegisterActor(
       [this, actor](const Status &status) {
         // The backend storage is supposed to be reliable, so the status must be ok.
         RAY_CHECK_OK(status);
+        // If a creator dies before this callback is called, the actor could have been
+        // already destroyed. It is okay not to invoke a callback because we don't need
+        // to reply to the creator as it is already dead.
+        auto registered_actor_it = registered_actors_.find(actor->GetActorID());
+        if (registered_actor_it == registered_actors_.end()) {
+          // NOTE(sang): This logic assumes that the ordering of backend call is
+          // guaranteed. It is currently true because we use a single TCP socket to call
+          // the default Redis backend. If ordering is not guaranteed, we should overwrite
+          // the actor state to DEAD to avoid race condition.
+          return;
+        }
         // Invoke all callbacks for all registration requests of this actor (duplicated
         // requests are included) and remove all of them from
         // actor_to_register_callbacks_.

@@ -33,9 +33,6 @@ namespace gcs {
 using ReserveResourceClientFactoryFn =
     std::function<std::shared_ptr<ResourceReserveInterface>(const rpc::Address &address)>;
 
-using ReserveResourceCallback =
-    std::function<void(const Status &, const rpc::RequestResourceReserveReply &)>;
-
 typedef std::pair<PlacementGroupID, int64_t> BundleID;
 struct pair_hash {
   template <class T1, class T2>
@@ -109,16 +106,16 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
 
  protected:
   /// Lease resource from the specified node for the specified bundle.
-  void ReserveResourceFromNode(std::shared_ptr<BundleSpecification> bundle,
-                               std::shared_ptr<ray::rpc::GcsNodeInfo> node,
-                               ReserveResourceCallback callback);
+  void ReserveResourceFromNode(const std::shared_ptr<BundleSpecification> &bundle,
+                               const std::shared_ptr<ray::rpc::GcsNodeInfo> &node,
+                               const StatusCallback &callback);
 
   /// return resource for the specified node for the specified bundle.
   ///
   /// \param bundle A description of the bundle to return.
   /// \param node The node that the worker will be returned for.
-  void CancelResourceReserve(std::shared_ptr<BundleSpecification> bundle_spec,
-                             std::shared_ptr<ray::rpc::GcsNodeInfo> node);
+  void CancelResourceReserve(const std::shared_ptr<BundleSpecification> &bundle_spec,
+                             const std::shared_ptr<ray::rpc::GcsNodeInfo> &node);
 
   /// Get an existing lease client or connect a new one.
   std::shared_ptr<ResourceReserveInterface> GetOrConnectLeaseClient(
