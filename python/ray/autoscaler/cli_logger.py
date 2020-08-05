@@ -514,7 +514,7 @@ class _CliLogger():
         return res
 
     def prompt(self, msg: str, *args, **kwargs):
-        """Display a confirmation dialog.
+        """Prompt the user for some text input.
 
         Args:
             msg (str): The mesage to display to the user before the prompt.
@@ -522,18 +522,19 @@ class _CliLogger():
         if self.old_style:
             return
 
-        complete_str = cf.underlined(msg + ":") + " "
+        complete_str = cf.blue(cf.underlined(msg))
+        rendered_message = _format_msg(complete_str, *args, **kwargs)
+        if rendered_message and rendered_message[-1] != "\n":
+            rendered_message += " "
+        self._print(rendered_message, linefeed=False)
 
-        self._print(complete_str, linefeed=False)
-
-        res = None
+        res = ""
         try:
             ans = sys.stdin.readline()
             ans = ans.lower()
-            ans = ans.strip()
+            res = ans.strip()
         except KeyboardInterrupt:
             self.newline()
-            res = default
 
         return res
 
