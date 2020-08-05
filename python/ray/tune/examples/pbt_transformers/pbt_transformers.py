@@ -130,7 +130,8 @@ def tune_transformer(num_samples=8,
         os.mkdir(data_dir, 0o755)
 
     # Change these as needed.
-    model_name = "bert-base-uncased" if not smoke_test else "distilbert-base-uncased"
+    model_name = "bert-base-uncased" if not smoke_test \
+        else "distilbert-base-uncased"
     task_name = "rte"
 
     task_data_dir = os.path.join(data_dir, task_name.upper())

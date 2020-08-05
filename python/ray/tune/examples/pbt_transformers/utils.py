@@ -42,4 +42,5 @@ def download_data(task_name, data_dir="./data"):
             zip_ref.extractall(data_dir)
         print("Downloaded data for task {} to {}".format(task_name, data_dir))
     else:
-        print("Data already exists. Using downloaded data for task {} from {}".format(task_name, data_dir))
+        print("Data already exists. Using downloaded data for task {} from {}".
+              format(task_name, data_dir))
