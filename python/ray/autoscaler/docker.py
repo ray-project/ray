@@ -94,8 +94,10 @@ def docker_start_cmds(user, image, mount, cname, user_options):
         for port in ["6379", "8076", "4321"]
     ])
     # TODO(ilr) Move away from defaulting to /root/
-    mount_flags = " ".join(
-        ["-v {src}:{dest}".format(src=k, dest=v.replace("~/", "/root/")) for k, v in mount.items()])
+    mount_flags = " ".join([
+        "-v {src}:{dest}".format(src=k, dest=v.replace("~/", "/root/"))
+        for k, v in mount.items()
+    ])
 
     # for click, used in ray cli
     env_vars = {"LC_ALL": "C.UTF-8", "LANG": "C.UTF-8"}
