@@ -12,6 +12,10 @@ optional<shared_ptr<CoreWorkerClientInterface>> CoreWorkerClientPool::GetByID(ra
   return it->second;
 }
 
+shared_ptr<CoreWorkerClientInterface> CoreWorkerClientPool::GetOrConnect(const Address& addr_proto) {
+  return GetOrConnect(WorkerAddress(addr_proto));
+}
+
 shared_ptr<CoreWorkerClientInterface> CoreWorkerClientPool::GetOrConnect(const WorkerAddress& addr) {
   auto existing = GetByID(addr.worker_id);
   if (existing.has_value()) {

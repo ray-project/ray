@@ -30,6 +30,7 @@ namespace rpc {
 
 class CoreWorkerClientPool {
  public:
+  CoreWorkerClientPool() = delete;
   CoreWorkerClientPool(rpc::ClientCallManager& ccm):
       client_factory_(defaultClientFactory(ccm)) {};
 
@@ -38,6 +39,7 @@ class CoreWorkerClientPool {
 
   optional<shared_ptr<CoreWorkerClientInterface>> GetByID(ray::WorkerID id);
   shared_ptr<CoreWorkerClientInterface> GetOrConnect(const WorkerAddress& addr);
+  shared_ptr<CoreWorkerClientInterface> GetOrConnect(const Address& addr_proto);
   void Disconnect(ray::WorkerID id);
 
  private:
