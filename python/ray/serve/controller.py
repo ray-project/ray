@@ -795,6 +795,8 @@ class ServeController:
 
             # Remove the backend's metadata.
             del self.backends[backend_tag]
+            if backend_tag in self.autoscaling_policies:
+                del self.autoscaling_policies[backend_tag]
 
             # Add the intention to remove the backend from the router.
             self.backends_to_remove.append(backend_tag)
