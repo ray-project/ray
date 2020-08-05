@@ -96,7 +96,7 @@ class DashboardAgent(object):
                 dashboard_consts.RETRY_REDIS_CONNECTION_TIMES)
         except (socket.gaierror, ConnectionRefusedError):
             logger.error(
-                "Dashboard agent suicide, "
+                "Dashboard agent suicides, "
                 "Failed to connect to redis at %s", self.redis_address)
             sys.exit(-1)
 
