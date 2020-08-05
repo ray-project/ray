@@ -121,8 +121,11 @@ public class JobWorker implements Serializable {
    * Initialize JobWorker and data communication pipeline.
    */
   public Boolean init(JobWorkerContext workerContext) {
-    LOG.info("Initiating job worker: {}. Worker context is: {}.",
-      workerContext.getWorkerName(), workerContext);
+    // IMPORTANT: some test cases depends on this log to find workers' pid,
+    // be careful when changing this log.
+    LOG.info("Initiating job worker: {}. Worker context is: {}, pid={}.",
+      workerContext.getWorkerName(), workerContext, EnvUtil.getJvmPid());
+
     this.workerContext = workerContext;
     this.executionVertex = workerContext.getExecutionVertex();
     this.workerConfig = new StreamingWorkerConfig(executionVertex.getWorkerConfig());

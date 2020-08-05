@@ -40,4 +40,10 @@ public class LocalFileStateBackend implements StateBackend {
     File file = new File(rootPath, key);
     FileUtils.deleteQuietly(file);
   }
+
+  protected void rename(String fromKey, String toKey) throws Exception {
+    File srcFile = new File(rootPath, fromKey);
+    File dstFile = new File(rootPath, toKey);
+    FileUtils.moveFile(srcFile, dstFile);
+  }
 }

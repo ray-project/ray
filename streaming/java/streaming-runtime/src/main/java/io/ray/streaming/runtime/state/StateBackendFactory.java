@@ -2,6 +2,7 @@ package io.ray.streaming.runtime.state;
 
 import io.ray.streaming.runtime.config.StreamingGlobalConfig;
 import io.ray.streaming.runtime.config.types.StateBackendType;
+import io.ray.streaming.runtime.state.impl.AtomicFsBackend;
 import io.ray.streaming.runtime.state.impl.LocalFileStateBackend;
 import io.ray.streaming.runtime.state.impl.MemoryStateBackend;
 
@@ -17,7 +18,7 @@ public class StateBackendFactory {
         stateBackend = new MemoryStateBackend(config.stateBackendConfig);
         break;
       case LOCAL_FILE:
-        stateBackend = new LocalFileStateBackend(config.stateBackendConfig);
+        stateBackend = new AtomicFsBackend(config.stateBackendConfig);
         break;
       default:
         throw new RuntimeException("Unsupported state backend type.");
