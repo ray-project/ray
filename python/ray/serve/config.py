@@ -137,6 +137,7 @@ class ReplicaConfig:
             raise ValueError("Specifying max_restarts in "
                              "actor_init_args is not allowed.")
         else:
+            # Ray defaults to zero CPUs for placement, we default to one here.
             if "num_cpus" not in self.ray_actor_options:
                 self.ray_actor_options["num_cpus"] = 1
             num_cpus = self.ray_actor_options["num_cpus"]
