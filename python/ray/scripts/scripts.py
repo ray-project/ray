@@ -21,6 +21,9 @@ import ray.ray_constants as ray_constants
 import ray.utils
 from ray.projects.scripts import project_cli, session_cli
 
+from ray.autoscaler.cli_logger import cli_logger
+import colorful as cf
+
 logger = logging.getLogger(__name__)
 
 
@@ -370,25 +373,61 @@ def start(node_ip_address, redis_address, address, redis_port, port,
             "gcs_server_port can be only assigned when you specify --head.")
 
     if redis_address is not None:
+        if not cli_logger.old_style:
+            cli_logger.abort(
+                "{} is deprecated. Use {} instead.",
+                cf.bold("--redis-address"),
+                cf.bold("--address"))
+
         raise DeprecationWarning("The --redis-address argument is "
                                  "deprecated. Please use --address instead.")
     if redis_port is not None:
-        logger.warn("The --redis-port argument will be deprecated soon. "
-                    "Please use --port instead.")
+        cli_logger.warning(
+            "{} is being deprecated. Use {} instead.",
+            cf.bold("--redis-port"),
+            cf.bold("--port"))
+        cli_logger.old_warning(
+            logger,
+            "The --redis-port argument will be deprecated soon. "
+            "Please use --port instead.")
         if port is not None and port != redis_port:
+            if not cli_logger.old_style:
+                cli_logger.abort(
+                    "Incompatible values for {} and {}. Use just {} instead.",
+                    cf.bold("--port"), cf.bold("--redis-port"),
+                    cf.bold("--port"))
+
             raise ValueError("Cannot specify both --port and --redis-port "
                              "as port is a rename of deprecated redis-port")
     if include_webui is not None:
-        logger.warn("The --include-webui argument will be deprecated soon"
-                    "Please use --include-dashboard instead.")
+        cli_logger.warning(
+            "{} is being deprecated. Use {} instead.",
+            cf.bold("--include-webui"),
+            cf.bold("--include-dashboard"))
+        cli_logger.old_warning(
+            logger,
+            "The --include-webui argument will be deprecated soon"
+            "Please use --include-dashboard instead.")
         if include_dashboard is not None:
             include_dashboard = include_webui
 
     dashboard_host_default = "localhost"
     if webui_host != dashboard_host_default:
-        logger.warn("The --webui-host argument will be deprecated"
-                    " soon. Please use --dashboard-host instead.")
+        cli_logger.warning(
+            "{} is being deprecated. Use {} instead.",
+            cf.bold("--webui-host"),
+            cf.bold("--dashboard-host"))
+        cli_logger.old_warning(
+            logger,
+            "The --webui-host argument will be deprecated"
+            " soon. Please use --dashboard-host instead.")
         if webui_host != dashboard_host and dashboard_host != "localhost":
+            if not cli_logger.old_style:
+                cli_logger.abort(
+                    "Incompatible values for {} and {}. Use just {} instead.",
+                    cf.bold("--dashboard-host"), cf.bold("--webui-host"),
+                    cf.bold("--dashboard-host"))
+
             raise ValueError(
                 "Cannot specify both --webui-host and --dashboard-host,"
                 " please specify only the latter")
@@ -407,6 +446,9 @@ def start(node_ip_address, redis_address, address, redis_port, port,
     try:
         resources = json.loads(resources)
     except Exception:
+        if not cli_logger.old_style:
+            cli_logger.abort()
+
         raise Exception("Unable to parse the --resources argument using "
                         "json.loads. Try using a format like\n\n"
                         "    --resources='{\"CustomResource1\": 3, "

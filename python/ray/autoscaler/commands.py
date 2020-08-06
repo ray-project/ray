@@ -375,7 +375,8 @@ def kill_node(config_file, yes, hard, override_cluster_name):
         config["cluster_name"] = override_cluster_name
     config = _bootstrap_config(config)
 
-    confirm("This will kill a node in your cluster", yes)
+    cli_logger.confirm(yes, "A random node will be killed.")
+    cli_logger.old_confirm("This will kill a node in your cluster", yes)
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
@@ -383,7 +384,9 @@ def kill_node(config_file, yes, hard, override_cluster_name):
             TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER
         })
         node = random.choice(nodes)
-        logger.info("kill_node: Shutdown worker {}".format(node))
+        cli_logger.print("Shutdown " + cf.bold("{}"), node)
+        cli_logger.old_info(
+            logger, "kill_node: Shutdown worker {}", node)
         if hard:
             provider.terminate_node(node)
         else:
@@ -448,7 +451,7 @@ def warn_about_bad_start_command(start_commands):
             cf.bold("ray start"), cf.bold("--autoscaling-config"),
             cf.bold("--autoscaling-config=~/ray_bootstrap_config.yaml"),
             cf.bold("ray start"), cf.bold("head_start_ray_commands"))
-        logger.old_warning(
+        cli_logger.old_warning(
             logger, "Ray start on the head node does not have the flag"
             "--autoscaling-config set. The head node will not launch"
             "workers. Add --autoscaling-config=~/ray_bootstrap_config.yaml"
@@ -820,9 +823,13 @@ def exec_cluster(config_file: str,
                 attach_command_parts.append("--screen")
 
             attach_command = " ".join(attach_command_parts)
+            cli_logger.print(
+                "Run `{}` to check command status.",
+                cf.bold(attach_command))
+
             attach_info = "Use `{}` to check on command status.".format(
                 attach_command)
-            logger.info(attach_info)
+            cli_logger.old_info(logger, attach_info)
         return result
     finally:
         provider.cleanup()
