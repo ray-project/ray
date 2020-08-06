@@ -391,20 +391,52 @@ def setup_logger(logging_level, logging_format):
     logger.propagate = False
 
 
-def open_log(path, **kwargs):
+class Unbuffered(object):
+    """There's no "built-in" solution to programatically disabling buffering of
+    text files. Ray expects stdout/err to be text files, so creating an
+    unbuffered binary file is unacceptable.
+
+    See
+    https://mail.python.org/pipermail/tutor/2003-November/026645.html.
+    https://docs.python.org/3/library/functions.html#open
+
+    """
+
+    def __init__(self, stream):
+        self.stream = stream
+
+    def write(self, data):
+        self.stream.write(data)
+        self.stream.flush()
+
+    def writelines(self, datas):
+        self.stream.writelines(datas)
+        self.stream.flush()
+
+    def __getattr__(self, attr):
+        return getattr(self.stream, attr)
+
+
+def open_log(path, unbuffered=False, **kwargs):
     """
     Opens the log file at `path`, with the provided kwargs being given to
     `open`.
     """
+    # Disable buffering, see test_advanced_3.py::test_logging_to_driver
     kwargs.setdefault("buffering", 1)
     kwargs.setdefault("mode", "a")
     kwargs.setdefault("encoding", "utf-8")
-    return open(path, **kwargs)
+    stream = open(path, **kwargs)
+    if unbuffered:
+        return Unbuffered(stream)
+    else:
+        return stream
 
 
 def create_and_init_new_worker_log(path, worker_pid):
-    """
-    Opens a path (or creates if necessary) for a log.
+    """Opens or creates and sets up a new worker log file. Note that because we
+    expect to dup the underlying file descriptor, then fdopen it, the python
+    level metadata is not important.
 
     Args:
         path (str): The name/path of the file to be opened.
@@ -412,6 +444,7 @@ def create_and_init_new_worker_log(path, worker_pid):
 
     Returns:
         A file-like object which can be written to.
+
     """
     # TODO (Alex): We should eventually be able to replace this with
     # named-pipes.

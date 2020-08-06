@@ -338,5 +338,8 @@ RAY_CONFIG(uint32_t, max_tasks_in_flight_per_worker, 1)
 /// load reported by each raylet.
 RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)
 
+/// The timeout for synchronous GCS requests in seconds.
+RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 5)
+
 /// Whether to enable multi tenancy features.
 RAY_CONFIG(bool, enable_multi_tenancy, false)

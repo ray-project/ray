@@ -42,6 +42,9 @@ class BatchQueue:
         if self.queue.qsize() == self.max_batch_size:
             self.full_batch_event.set()
 
+    def qsize(self):
+        return self.queue.qsize()
+
     async def wait_for_batch(self):
         """Wait for batch respecting self.max_batch_size and self.timeout_s.
 
@@ -153,9 +156,9 @@ def ensure_async(func):
 class RayServeWorker:
     """Handles requests with the provided callable."""
 
-    def __init__(self, name, replica_tag, _callable,
+    def __init__(self, backend_tag, replica_tag, _callable,
                  backend_config: BackendConfig, is_function, metric_client):
-        self.name = name
+        self.backend_tag = backend_tag
         self.replica_tag = replica_tag
         self.callable = _callable
         self.is_function = is_function
@@ -183,7 +186,7 @@ class RayServeWorker:
 
         self.restart_counter.labels(replica_tag=self.replica_tag).add()
 
-        self.loop_task = asyncio.get_event_loop().create_task(self.main_loop())
+        asyncio.get_event_loop().create_task(self.main_loop())
 
     def get_runner_method(self, request_item):
         method_name = request_item.call_method
@@ -348,7 +351,8 @@ class RayServeWorker:
     async def handle_request(self, request: Union[Query, bytes]):
         if isinstance(request, bytes):
             request = Query.ray_deserialize(request)
-        logger.debug("Worker {} got request {}".format(self.name, request))
+        logger.debug("Worker {} got request {}".format(self.replica_tag,
+                                                       request))
         request.async_future = asyncio.get_event_loop().create_future()
         self.batch_queue.put(request)
         return await request.async_future
