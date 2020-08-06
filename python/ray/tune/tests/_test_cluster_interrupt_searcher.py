@@ -7,6 +7,7 @@ import json
 import os
 from ray.tune import run, Trainable
 from ray.tune.suggest.hyperopt import HyperOptSearch
+from ray.tune.suggest.suggestion import ConcurrencyLimiter
 from hyperopt import hp
 
 
@@ -18,6 +19,7 @@ class MyTrainableClass(Trainable):
         self.timestep += 1
         v = np.tanh(float(self.timestep) / self.config.get("width", 1))
         v *= self.config.get("height", 1)
+        time.sleep(0.1)
         return {"mean_loss": v}
 
     def _save(self, checkpoint_dir):
@@ -36,7 +38,7 @@ if __name__ == "__main__":
         description="PyTorch Example (FOR TEST ONLY)")
     parser.add_argument(
         "--resume", action="store_true", help="Finish quickly for testing")
-    parser.add_argument("--checkpoint-dir", help="Checkpoint path")
+    parser.add_argument("--local-dir", help="Checkpoint path")
     parser.add_argument(
         "--ray-address",
         help="Address of Ray cluster for seamless distributed execution.")
@@ -59,23 +61,21 @@ if __name__ == "__main__":
             "activation": 1  # Activation will be tanh
         }
     ]
-    config = {
-        "num_samples": 20,
-        "stop": {
-            "training_iteration": 2
-        },
-        "local_dir": "{checkpoint_dir}",
-        "name": "experiment",
-    }
     algo = HyperOptSearch(
         space,
-        max_concurrent=1,
         metric="mean_loss",
         mode="min",
         random_state_seed=5,
         points_to_evaluate=current_best_params)
+    if args.resume:
+        algo.restore_from_dir(os.path.join(args.local_dir, "experiment"))
+    algo = ConcurrencyLimiter(algo, max_concurrent=1)
     run(MyTrainableClass,
         search_alg=algo,
         global_checkpoint_period=0,
         resume=args.resume,
-        **config)
+        verbose=0,
+        num_samples=20,
+        stop={"training_iteration": 2},
+        local_dir=args.local_dir,
+        name="experiment")

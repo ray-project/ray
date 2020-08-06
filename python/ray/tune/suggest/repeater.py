@@ -164,8 +164,20 @@ class Repeater(Searcher):
                 result={self.searcher.metric: np.nanmean(scores)},
                 **kwargs)
 
-    def save(self, path):
-        self.searcher.save(path)
+    def get_state(self):
+        state = self.searcher.get_state()
+        self_state = self.__dict__.copy()
+        del self_state["searcher"]
+        state.update({"repeater_state": copy.deepcopy(self_state)})
+        return state
 
-    def restore(self, path):
-        self.searcher.restore(path)
+    def set_state(self, state):
+        self_state = state.pop("repeater_state")
+        self.__dict__.update(self_state)
+        self.searcher.set_state(state)
+
+    def save(self, checkpoint_dir):
+        raise ValueError("TODO")
+
+    def restore(self, checkpoint_dir):
+        raise ValueError("TODO")

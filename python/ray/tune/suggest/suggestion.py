@@ -276,8 +276,20 @@ class ConcurrencyLimiter(Searcher):
                 trial_id, result=result, error=error)
             self.live_trials.remove(trial_id)
 
+    def get_state(self):
+        state = self.searcher.get_state()
+        self_state = self.__dict__.copy()
+        del self_state["searcher"]
+        state["concurrency_limiter"] = copy.deepcopy(self_state)
+        return state
+
+    def set_state(self, state):
+        self_state = state.pop("concurrency_limiter")
+        self.__dict__.update(self_state)
+        self.searcher.set_state(state)
+
     def save(self, checkpoint_dir):
-        self.searcher.save(checkpoint_dir)
+        raise ValueError("TODO")
 
     def restore(self, checkpoint_dir):
-        self.searcher.restore(checkpoint_dir)
+        raise ValueError("TODO")

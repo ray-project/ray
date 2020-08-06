@@ -734,8 +734,7 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir):
         proc = subprocess.Popen([sys.executable, script] + list(args))
 
     args = [
-        "--ray-address", cluster.address, "--checkpoint-dir",
-        local_checkpoint_dir
+        "--ray-address", cluster.address, "--local-dir", dirpath
     ]
     execute_script_with_args(*args)
     # Wait until the right checkpoint is saved.
@@ -752,10 +751,9 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir):
         time.sleep(.5)
 
     if not TrialRunner.checkpoint_exists(local_checkpoint_dir):
-        raise RuntimeError("Checkpoint file didn't appear.")
-
-    if not TrialRunner.searcher_checkpoint_exists(local_checkpoint_dir):
-        raise RuntimeError("Searcher checkpoint file didn't appear.")
+        raise RuntimeError(
+            f"Checkpoint file didn't appear in {local_checkpoint_dir}. "
+            f"Current list: {os.listdir(local_checkpoint_dir)}.")
 
     ray.shutdown()
     cluster.shutdown()

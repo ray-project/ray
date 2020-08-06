@@ -186,6 +186,11 @@ class TrialRunner:
                 TrialRunner.CKPT_FILE_TMPL.format(self._session_str))
 
     @property
+    def resumed(self):
+        return self._resumed
+
+
+    @property
     def scheduler_alg(self):
         return self._scheduler_alg
 

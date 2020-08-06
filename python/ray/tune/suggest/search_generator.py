@@ -127,8 +127,8 @@ class SearchGenerator(SearchAlgorithm):
         self._total_samples = state["total_samples"]
         self._finished = state["finished"]
 
-    def save(self, checkpoint_path):
-        self.searcher.save(checkpoint_path)
+    def save_to_dir(self, dirpath):
+        self.searcher.save_to_dir(dirpath)
 
-    def restore(self, checkpoint_path):
-        self.searcher.restore(checkpoint_path)
+    def restore_from_dir(self, dirpath):
+        self.searcher.restore_from_dir(dirpath)
