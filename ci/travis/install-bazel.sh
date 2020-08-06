@@ -122,7 +122,6 @@ EOF
   fi
 fi
 
-set -x #TODO(simon): debugging, remove this later
 if [ "${TRAVIS-}" = true ]; then
   cat "$ROOT_DIR/bazel_bashrc.inc.sh" >> ~/.bashrc
   . "$ROOT_DIR/bazel_bashrc.inc.sh"
