@@ -190,9 +190,8 @@ int main(int argc, char *argv[]) {
         }
         if (python_worker_command.empty() && java_worker_command.empty() &&
             cpp_worker_command.empty()) {
-          RAY_CHECK(0) << "Python worker command or Java worker command or CPP worker "
-                          "command should be "
-                          "provided.";
+          RAY_LOG(FATAL) << "At least one of Python/Java/CPP worker command "
+                         << "should be provided";
         }
         if (!agent_command.empty()) {
           node_manager_config.agent_command = agent_command;
