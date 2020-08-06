@@ -82,9 +82,9 @@ file_mounts: {
 # List of shell commands to run to set up nodes.
 setup_commands:
     # Consider uncommenting these if you run into dpkg locking issues
-    # - sudo pkill -9 apt-get || true
-    # - sudo pkill -9 dpkg || true
-    # - sudo dpkg --configure -a
+    - sudo pkill -9 apt-get || true
+    - sudo pkill -9 dpkg || true
+    - sudo dpkg --configure -a
     # Install basics.
     - sudo apt-get update
     - sudo apt-get install -y build-essential curl unzip
@@ -96,7 +96,7 @@ setup_commands:
     - bash Anaconda3-5.0.1-Linux-x86_64.sh -b -p $HOME/anaconda3 || true
     - echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.bashrc
     # Build Ray.
-    - git clone https://github.com/ray-project/ray || true
+    - git clone --single-branch multi-instance-autoscaling https://github.com/ray-project/ray || true
     - ray/ci/travis/install-bazel.sh
     - cd ray/python/ray/dashboard/client; npm ci; npm run build
     - pip install boto3==1.4.8 cython==0.29.0 aiohttp grpcio psutil setproctitle
