@@ -99,6 +99,8 @@ YAPF_EXCLUDES=(
     '--exclude' 'python/ray/thirdparty_files/*'
 )
 
+FLAKE8_EXCLUDES="python/ray/core/generated/,streaming/python/generated,doc/source/conf.py,python/ray/cloudpickle/,python/ray/thirdparty_files/"
+
 shellcheck_scripts() {
   shellcheck "${SHELLCHECK_FLAGS[@]}" "$@"
 }
@@ -170,24 +172,23 @@ format_changed() {
     # `diff-filter=ACRM` and $MERGEBASE is to ensure we only format files that
     # exist on both branches.
     MERGEBASE="$(git merge-base upstream/master HEAD)"
-    EXCLUDE="python/ray/core/generated/,streaming/python/generated,doc/source/conf.py,python/ray/cloudpickle/,python/ray/thirdparty_files/"
 
     if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.py' &>/dev/null; then
         git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
              yapf --in-place "${YAPF_EXCLUDES[@]}" "${YAPF_FLAGS[@]}"
         if which flake8 >/dev/null; then
             git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
-                 flake8 --inline-quotes '"' --no-avoid-escape --exclude="$EXCLUDE,rllib/" --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605
-            # Ignore F821 for rllib LINTing (produces errors for type annotations using quotes (non-imported classes)).
+                 flake8 --inline-quotes '"' --no-avoid-escape --exclude="$FLAKE8_EXCLUDES,rllib/" --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605
+            # Ignore F821 for rllib flake8 checking (produces errors for type annotations using quotes (non-imported classes)).
             git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
-                 flake8 --inline-quotes '"' --no-avoid-escape --exclude="$EXCLUDE" --filename="rllib/" --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605,F821
+                 flake8 --inline-quotes '"' --no-avoid-escape --exclude="$FLAKE8_EXCLUDES" --filename="rllib/" --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605,F821
         fi
     fi
 
     if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.pyx' '*.pxd' '*.pxi' &>/dev/null; then
         if which flake8 >/dev/null; then
             git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.pyx' '*.pxd' '*.pxi' | xargs -P 5 \
-                 flake8 --inline-quotes '"' --no-avoid-escape --exclude="$EXCLUDE" --ignore=C408,E121,E123,E126,E211,E225,E226,E227,E24,E704,E999,W503,W504,W605
+                 flake8 --inline-quotes '"' --no-avoid-escape --exclude="$FLAKE8_EXCLUDES" --ignore=C408,E121,E123,E126,E211,E225,E226,E227,E24,E704,E999,W503,W504,W605
         fi
     fi
 
@@ -217,7 +218,9 @@ format_changed() {
 
 # Format all files, and print the diff to stdout for travis.
 format_all() {
-    flake8 --inline-quotes '"' --no-avoid-escape --exclude=python/ray/core/generated/,streaming/python/generated,doc/source/conf.py,python/ray/cloudpickle/,python/ray/thirdparty_files/ --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605
+    # Ignore F821 for rllib flake8 checking (produces errors for type annotations using quotes (non-imported classes)).
+    flake8 --inline-quotes '"' --no-avoid-escape --exclude="$FLAKE8_EXCLUDES,rllib/" --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605
+    flake8 --inline-quotes '"' --no-avoid-escape --exclude="$FLAKE8_EXCLUDES" --filename="rllib/" --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605,F821
 
     yapf --diff "${YAPF_FLAGS[@]}" "${YAPF_EXCLUDES[@]}" test python
 
