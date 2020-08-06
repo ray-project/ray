@@ -677,6 +677,10 @@ PlasmaError PlasmaStore::DeleteObject(ObjectID& object_id) {
   // Inform all subscribers that the object has been deleted.
   ObjectInfoT notification;
   notification.object_id = object_id.Binary();
+  object_info.owner_raylet_id = entry->owner_raylet_id.Binary();
+  object_info.owner_ip_address = entry->owner_ip_address;
+  object_info.owner_port = entry->owner_port;
+  object_info.owner_worker_id = entry->owner_worker_id.Binary();
   notification.is_deletion = true;
   PushNotification(&notification);
 
@@ -716,6 +720,10 @@ void PlasmaStore::EvictObjects(const std::vector<ObjectID>& object_ids) {
       // Inform all subscribers that the object has been deleted.
       ObjectInfoT notification;
       notification.object_id = object_id.Binary();
+      object_info.owner_raylet_id = entry->owner_raylet_id.Binary();
+      object_info.owner_ip_address = entry->owner_ip_address;
+      object_info.owner_port = entry->owner_port;
+      object_info.owner_worker_id = entry->owner_worker_id.Binary();
       notification.is_deletion = true;
       PushNotification(&notification);
     }
