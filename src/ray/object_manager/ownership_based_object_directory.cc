@@ -48,11 +48,11 @@ rpc::Address GetOwnerAddressFromObjectInfo(
 
 std::shared_ptr<rpc::CoreWorkerClient> OwnershipBasedObjectDirectory::GetClient(
     const rpc::Address &owner_address) {
-  if (owner_address.worker_id() == "") {
+  WorkerID worker_id = WorkerID::FromBinary(owner_address.worker_id());
+  if (worker_id.IsNil()) {
     // If an object does not have owner, return nullptr.
     return nullptr;
   }
-  WorkerID worker_id = WorkerID::FromBinary(owner_address.worker_id());
   auto it = worker_rpc_clients_.find(worker_id);
   if (it == worker_rpc_clients_.end()) {
     it = worker_rpc_clients_
