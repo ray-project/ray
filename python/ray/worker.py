@@ -931,7 +931,7 @@ def _set_log_file(file_name, worker_pid, old_obj, setter_func):
     # and stderr are heavily buffered resulting in seemingly lost logging
     # statements. We never want to close the stdout file descriptor, dup2 will
     # close it when necessary and we don't want python's GC to close it.
-    setter_func(open_log(fileno, closefd=False))
+    setter_func(open_log(fileno, unbuffered=True, closefd=False))
 
     return os.path.abspath(f.name)
 
@@ -1774,7 +1774,7 @@ def make_decorator(num_return_vals=None,
                    max_task_retries=None,
                    worker=None,
                    placement_group_id=None,
-                   placement_group_bundle_index=0):
+                   placement_group_bundle_index=-1):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
@@ -1864,7 +1864,8 @@ def remote(*args, **kwargs):
     * **placement_group_id**: the placement group this task belongs to,
         or None if it doesn't belong to any group.
     * **placement_group_bundle_index**: the index of the bundle
-        if the task belongs to a placement group.
+        if the task belongs to a placement group, which may be -1 to indicate
+        any available bundle.
 
     This can be done as follows:
 

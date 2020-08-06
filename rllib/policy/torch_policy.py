@@ -105,8 +105,8 @@ class TorchPolicy(Policy):
         self.model = model.to(self.device)
         # Combine view_requirements for Model and Policy.
         self.view_requirements = {
-            **self.model.get_view_requirements(),
-            **self.get_view_requirements(),
+            **self.model.inference_view_requirements(),
+            **self.training_view_requirements(),
         }
         self.exploration = self._create_exploration()
         self.unwrapped_model = model  # used to support DistributedDataParallel
@@ -126,7 +126,7 @@ class TorchPolicy(Policy):
             (get_batch_divisibility_req or 1)
 
     @override(Policy)
-    def get_view_requirements(self):
+    def training_view_requirements(self):
         if hasattr(self, "view_requirements"):
             return self.view_requirements
         return {
@@ -196,6 +196,8 @@ class TorchPolicy(Policy):
         timestep = timestep if timestep is not None else self.global_timestep
 
         with torch.no_grad():
+            # Pass lazy (torch) tensor dict to Model as `input_dict`.
+            input_dict = self._lazy_tensor_dict(input_dict)
             # Pass lazy (torch) tensor dict to Model as `input_dict`.
             input_dict = self._lazy_tensor_dict(input_dict)
             state_batches = [

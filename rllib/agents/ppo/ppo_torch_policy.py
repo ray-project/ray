@@ -223,7 +223,7 @@ def setup_mixins(policy, obs_space, action_space, config):
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
-def get_vKiew_requirements_fn(policy):
+def training_view_requirements_fn(policy):
     if hasattr(policy, "view_requirements"):
         return policy.view_requirements
     framestack = policy.config["_use_trajectory_view_api"] and \
@@ -234,7 +234,7 @@ def get_vKiew_requirements_fn(policy):
             SampleBatch.OBS, shift=[-2, -1, -0, 1] if framestack else 1
         ),
         # VF preds are needed for the loss.
-        SampleBatch.VF_PREDS: ViewRequirement(),
+        SampleBatch.VF_PREDS: ViewRequirement(shift=0),
     }
 
 
@@ -252,5 +252,5 @@ PPOTorchPolicy = build_torch_policy(
         LearningRateSchedule, EntropyCoeffSchedule, KLCoeffMixin,
         ValueNetworkMixin
     ],
-    get_view_requirements_fn=get_view_requirements_fn,
+    training_view_requirements_fn=training_view_requirements_fn,
 )

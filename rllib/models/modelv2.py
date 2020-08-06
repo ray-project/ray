@@ -246,7 +246,7 @@ class ModelV2:
             i += 1
         return self.__call__(input_dict, states, train_batch.get("seq_lens"))
 
-    def get_view_requirements(self) -> Dict[str, ViewRequirement]:
+    def inference_view_requirements(self) -> Dict[str, ViewRequirement]:
         """Returns a dict of ViewRequirements for this Model.
 
         Note: This is an experimental API method.

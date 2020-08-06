@@ -179,8 +179,8 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
         return torch.reshape(self._value_branch(self._features), [-1])
 
     @override(ModelV2)
-    def get_view_requirements(self) -> Dict[str, ViewRequirement]:
-        req = super().get_view_requirements()
+    def inference_view_requirements(self) -> Dict[str, ViewRequirement]:
+        req = super().inference_view_requirements()
         # Optional: prev-actions/rewards for forward pass.
         if self.model_config["lstm_use_prev_action_reward"]:
             req.update({
@@ -190,25 +190,3 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
                     SampleBatch.ACTIONS, space=self.action_space, shift=-1),
             })
         return req
-
-    #for i in range(2):
-    #    self._trajectory_view["state_in_{}".format(i)] = \
-    #        ViewRequirement(
-    #            "state_out_{}".format(i),
-    #            postprocessing=False,
-    #            shift=-1,
-    #            space=Box(-1.0, 1.0, shape=(self.cell_size,)))
-    #    self._trajectory_view["state_out_{}".format(i)] = \
-    #        ViewRequirement(
-    #            sampling=False,
-    #            training=False,
-    #            space=Box(-1.0, 1.0, shape=(self.cell_size,)))
-    #self._trajectory_view["advantages"] = \
-    #    ViewRequirement(sampling=False, postprocessing=False)
-    #self._trajectory_view["value_targets"] = \
-    #    ViewRequirement(sampling=False, postprocessing=False)
-    #self._trajectory_view["action_dist_inputs"] = \
-    #    ViewRequirement(sampling=False, postprocessing=False)
-    #self._trajectory_view["action_logp"] = \
-    #    ViewRequirement(sampling=False, postprocessing=False)
-

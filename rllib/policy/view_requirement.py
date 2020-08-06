@@ -13,15 +13,15 @@ class ViewRequirement:
     `_use_trajectory_view_api` in the config is set to True.
 
     Policies and ModelV2s return a Dict[str, ViewRequirement] upon calling
-    their `get_view_requirements()` methods, where the str key represents the
-    column name (C) under which the view is available in the
+    their `[train|inference]_view_requirements()` methods, where the str key
+    represents the column name (C) under which the view is available in the
     input_dict/SampleBatch and ViewRequirement specifies the actual underlying
     column names (in the original data buffer), timestep shifts, and other
     options to build the view.
 
     Examples:
         >>> # The default ViewRequirement for a Model is:
-        >>> req = [ModelV2].get_view_requirements()
+        >>> req = [ModelV2].inference_view_requirements()
         >>> print(req)
         {"obs": ViewRequirement(shift=0)}
     """
@@ -39,7 +39,7 @@ class ViewRequirement:
             space (gym.Space): The gym Space used in case we need to pad data
                 in inaccessible areas of the trajectory (t<0 or t>H).
                 Default: Simple box space, e.g. rewards.
-            shift (Union[List[int], int]): Single shift value of list of
+            shift (Union[int, List[int]]): Single shift value of list of
                 shift values to use relative to the underlying `data_col`.
                 Example: For a view column "prev_actions", you can set
                 `data_col="actions"` and `shift=-1`.
