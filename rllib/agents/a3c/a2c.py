@@ -4,10 +4,10 @@ from ray.rllib.agents.a3c.a3c import DEFAULT_CONFIG as A3C_CONFIG, \
     validate_config, get_policy_class
 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.train_ops import ComputeGradients, AverageGradients, \
     ApplyGradients, TrainOneStep
-from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.utils import merge_dicts
 
 A2C_DEFAULT_CONFIG = merge_dicts(

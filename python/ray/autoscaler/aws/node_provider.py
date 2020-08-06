@@ -200,7 +200,7 @@ class AWSNodeProvider(NodeProvider):
 
     def get_instance_type(self, node_config):
         print("Getting instance type from config:")
-        print(config)
+        print(node_config)
         print("done")
         return node_config["InstanceType"]
 

@@ -1835,11 +1835,13 @@ void NodeManager::HandleCancelResourceReserve(
   RAY_LOG(DEBUG) << "bundle return resource request " << bundle_spec.BundleId().first
                  << bundle_spec.BundleId().second;
   auto resource_set = bundle_spec.GetRequiredResources();
+  // TODO(ekl) doesn't this not return in-use resources? We need to be able to
+  // reclaim those somehow (i.e., destroy the workers allocated in the bundle).
   for (auto resource : resource_set.GetResourceMap()) {
-    std::string resource_name = FormatPlacementGroupResource(resource.first, bundle_spec);
-    local_available_resources_.CancelResourceReserve(resource_name);
+    local_available_resources_.ReturnBundleResources(bundle_spec.PlacementGroupId(),
+                                                     bundle_spec.Index(), resource.first);
   }
-  cluster_resource_map_[self_node_id_].ReturnBundleResource(
+  cluster_resource_map_[self_node_id_].ReturnBundleResources(
       bundle_spec.PlacementGroupId(), bundle_spec.Index());
   send_reply_callback(Status::OK(), nullptr, nullptr);
   // Call task dispatch to assign work to the released resources.
@@ -2010,13 +2012,13 @@ ResourceIdSet NodeManager::ScheduleBundle(
     acquired_resources =
         local_available_resources_.Acquire(bundle_spec.GetRequiredResources());
     for (auto resource : acquired_resources.AvailableResources()) {
-      std::string resource_name =
-          FormatPlacementGroupResource(resource.first, bundle_spec);
-      local_available_resources_.AddBundleResource(resource_name, resource.second);
+      local_available_resources_.AddBundleResourceIds(bundle_spec.PlacementGroupId(),
+                                                      bundle_spec.Index(), resource.first,
+                                                      resource.second);
     }
-    resource_map[self_node_id_].UpdateBundleResource(bundle_spec.PlacementGroupId(),
-                                                     bundle_spec.Index(),
-                                                     bundle_spec.GetRequiredResources());
+    resource_map[self_node_id_].TransferToBundleResources(
+        bundle_spec.PlacementGroupId(), bundle_spec.Index(),
+        bundle_spec.GetRequiredResources());
   }
   return acquired_resources;
 }
