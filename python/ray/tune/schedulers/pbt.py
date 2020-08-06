@@ -448,71 +448,30 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
         self.experiment_dir = experiment_dir
         self.trial_id = trial_id
 
-        self.experiment_tag = None
-        self.config = None
-        self.final_config = None
-
-        self._experiment_state, checkpoint = self._load_experiment_state(
-            self.experiment_dir, self.trial_id)
-
-        if not self._experiment_state:
-            raise ValueError("Trial with trial id {} not found in experiment "
-                             "directory {}".format(trial_id,
-                                                   self.experiment_dir))
-
-        # Read information from experiment state checkpoint
-        self.experiment_tag = checkpoint["experiment_tag"]
-        # `evaluated_params` contains initial config
-        self.config = checkpoint["evaluated_params"]
-        # `config` contains final config
-        self.final_config = checkpoint["config"]
-
         # Find and read pbt policy file
-        self._policy = self._load_policy(self.experiment_dir, self.trial_id)
+        initial_config, self._policy = self._load_policy(
+            self.experiment_dir, self.trial_id)
         if not self._policy:
             logger.warning(
                 "Empty PBT policy found for trial id {}. This means "
                 "the replay will only run with the initial config. "
                 "You might have specified a trial that did not exploit "
-                "other trials. Did you specify the correct trial?")
+                "other trials. Did you specify the correct trial?".format(
+                    self.trial_id))
+
+        self.experiment_tag = "replay_{}".format(self.trial_id)
+        self.config = initial_config
+        self.current_config = self.config
 
         self._trial = None
         self._current_step = 0
         self._num_perturbations = 0
-        self._current_config = self.config
 
         self._policy_iter = iter(self._policy)
         self._next_policy = next(self._policy_iter, None)
 
-        # Sometimes a new config is copied at step 0
-        old_tag, new_tag, change_at, _, old_config, new_config = \
-            self._next_policy
-        if change_at == 0:
-            self.config = new_config
-            self._next_policy = next(self._policy_iter, None)
-
-    def _load_experiment_state(self, experiment_dir, trial_id):
-        # Find experiment state file that includes `trial_id`
-        for file in os.listdir(experiment_dir):
-            if not file.startswith("experiment_state") or \
-               not file.endswith(".json"):
-                continue
-            experiment_state_file = os.path.join(experiment_dir, file)
-            with open(experiment_state_file, "rt") as fp:
-                try:
-                    cand_experiment_state = json.load(fp)
-                except json.JSONDecodeError:
-                    logger.warning(
-                        "Experiment state file {} could not be decoded. "
-                        "Skipping.".format(experiment_state_file))
-                    continue
-            for checkpoint in cand_experiment_state.get("checkpoints", []):
-                if checkpoint["trial_id"] == trial_id:
-                    return cand_experiment_state, checkpoint
-        return None, None
-
     def _load_policy(self, experiment_dir, trial_id):
-        policy = []
+        raw_policy = []
         pbt_policy_file = os.path.join(experiment_dir,
                                        "pbt_policy_{}.txt".format(trial_id))
         if not os.path.isfile(pbt_policy_file):
@@ -520,7 +479,9 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
                 "No PBT policy file found for trial id {}. This means "
                 "the replay will only run with the initial config. "
                 "You might have specified a trial that did not exploit "
-                "other trials. Did you specify the correct trial?")
+                "other trials. Did you specify the correct trial?".format(
+                    self.trial_id))
+            return {}, []
         else:
             with open(pbt_policy_file, "rt") as fp:
                 for row in fp.readlines():
@@ -530,8 +491,24 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
                         raise ValueError(
                             "Could not read PBT policy file: {}.".format(
                                 pbt_policy_file))
-                    policy.append(tuple(parsed_row))
-        return policy
+                    raw_policy.append(tuple(parsed_row))
+
+        # Loop through policy from end to start to obtain changepoints
+        policy = []
+        last_new_tag = None
+        last_old_conf = None
+        for (old_tag, new_tag, old_step, new_step, old_conf,
+             new_conf) in reversed(raw_policy):
+            if last_new_tag and old_tag != last_new_tag:
+                # Tag chain ended. This means that previous changes were
+                # overwritten by the last change and should be ignored.
+                break
+            last_new_tag = new_tag
+            last_old_conf = old_conf
+
+            policy.append((new_step, new_conf))
+
+        return last_old_conf, list(reversed(policy))
 
     def on_trial_add(self, trial_runner, trial):
         if self._trial:
@@ -540,10 +517,18 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
                 "means the same schedule will be trained multiple "
                 "times. Do you want to set `n_samples=1`?")
         self._trial = trial
-        if self._trial.config:
+        if self._trial.config and self._policy:
             logger.warning(
                 "Trial was initialized with a config, which was overwritten. "
                 "Did you start the PBT replay with a `config` parameter?")
+        elif self._trial.config and not self._policy:
+            # Only train with initial policy
+            self.config = self._trial.config
+        elif not self._trial.config and not self._policy:
+            raise ValueError(
+                "No replay policy found and trial initialized without a "
+                "valid config. Either pass a `config` argument to `tune.run()`"
+                "or consider not using PBT replay for this run.")
         self._trial.config = self.config
 
     def on_trial_result(self, trial_runner, trial, result):
@@ -558,33 +543,35 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
         step = result[TRAINING_ITERATION]
         self._current_step = step
 
-        old_tag, new_tag, change_at, new_step, old_config, new_config = \
-            self._next_policy
+        change_at, new_config = self._next_policy
 
         if step < change_at:
             # Don't change the policy just yet
             return TrialScheduler.CONTINUE
 
         logger.info("Population Based Training replay is now at step {}. "
-                    "Configuration will be changed to {} at step {}".format(
-                        step, new_config, new_step))
+                    "Configuration will be changed to {}.".format(
+                        step, new_config))
 
         checkpoint = trial_runner.trial_executor.save(
             trial, Checkpoint.MEMORY, result=result)
 
         new_tag = make_experiment_tag(self.experiment_tag, new_config,
                                       new_config)
-        reset_successful = trial_runner.trial_executor.reset_trial(
-            trial, new_config, new_tag)
+
+        trial_executor = trial_runner.trial_executor
+        reset_successful = trial_executor.reset_trial(trial, new_config,
+                                                      new_tag)
 
         if reset_successful:
-            trial_runner.trial_executor.restore(trial, checkpoint, block=True)
-            self._current_step = new_step
+            trial_executor.restore(trial, checkpoint, block=True)
         else:
-            raise ValueError(
-                "Trial reset failed for Population Based Trainig replay.")
+            trial_executor.stop_trial(trial, stop_logger=False)
+            trial.config = new_config
+            trial.experiment_tag = new_tag
+            trial_executor.start_trial(trial, checkpoint, train=False)
 
-        self._current_config = new_config
+        self.current_config = new_config
         self._num_perturbations += 1
         self._next_policy = next(self._policy_iter, None)
 
