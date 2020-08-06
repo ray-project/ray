@@ -234,11 +234,13 @@ class PopulationBasedTraining(FIFOScheduler):
         if self._time_attr not in result:
             raise TuneError("Cannot find time_attr {} in trial results. "
                             "Make sure that this attribute is returned "
-                            "in the results of your Trainable.")
+                            "in the results of your Trainable.".format(
+                                self._time_attr))
         if self._metric not in result:
-            raise TuneError("Cannot fine metric {} in trial results. "
+            raise TuneError("Cannot find metric {} in trial results. "
                             "Make sure that this attribute is returned "
-                            "in the results of your Trainable.")
+                            "in the results of your Trainable.".format(
+                                self._metric))
         time = result[self._time_attr]
         state = self._trial_state[trial]
 
