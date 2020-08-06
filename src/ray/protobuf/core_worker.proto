@@ -331,9 +331,15 @@ service CoreWorkerService {
   // to this message indicates that the raylet should unpin the object.
   rpc WaitForObjectEviction(WaitForObjectEvictionRequest)
       returns (WaitForObjectEvictionReply);
-  rpc AddObjectLocationOwner(AddObjectLocationOwnerRequest) returns (AddObjectLocationOwnerReply);
-  rpc RemoveObjectLocationOwner(RemoveObjectLocationOwnerRequest) returns (RemoveObjectLocationOwnerReply);
-  rpc GetObjectLocationsOwner(GetObjectLocationsOwnerRequest) returns (GetObjectLocationsOwnerReply);
+  // Add object location to the ownership-based object directory.
+  rpc AddObjectLocationOwner(AddObjectLocationOwnerRequest)
+      returns (AddObjectLocationOwnerReply);
+  // Remove object location from the ownership-based object directory.
+  rpc RemoveObjectLocationOwner(RemoveObjectLocationOwnerRequest)
+      returns (RemoveObjectLocationOwnerReply);
+  // Get object locations from the ownership-based object directory.
+  rpc GetObjectLocationsOwner(GetObjectLocationsOwnerRequest)
+      returns (GetObjectLocationsOwnerReply);
   // Request that the worker shut down without completing outstanding work.
   rpc KillActor(KillActorRequest) returns (KillActorReply);
   // Request that a worker cancels a task.
