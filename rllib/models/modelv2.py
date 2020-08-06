@@ -8,7 +8,7 @@ from ray.rllib.models.preprocessors import get_preprocessor, \
     RepeatedValuesPreprocessor
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.trajectory_view import ViewRequirement
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     TensorType
@@ -246,35 +246,24 @@ class ModelV2:
             i += 1
         return self.__call__(input_dict, states, train_batch.get("seq_lens"))
 
-    def get_view_requirements(
-            self, is_training: bool = False) -> Dict[str, ViewRequirement]:
-        """Returns a list of ViewRequirements for this Model (or None).
+    def inference_view_requirements(self) -> Dict[str, ViewRequirement]:
+        """Returns a dict of ViewRequirements for this Model.
 
         Note: This is an experimental API method.
 
-        A ViewRequirement object tells the caller of this Model, which
-        data at which timesteps are needed by this Model. This could be a
-        sequence of past observations, internal-states, previous rewards, or
-        other episode data/previous model outputs.
-
-        Args:
-            is_training (bool): Whether the returned requirements are for
-                training or inference (default).
+        The view requirements dict is used to generate input_dicts and
+        train batches for 1) action computations, 2) postprocessing, and 3)
+        generating training batches.
 
         Returns:
-            Dict[str, ViewRequirement]: The view requirements as a dict mapping
-                column names e.g. "obs" to config dicts containing supported
-                fields.
-                TODO: (sven) Currently only `timesteps==0` can be setup.
+            Dict[str, ViewRequirement]: The view requirements dict, mapping
+                each view key (which will be available in input_dicts) to
+                an underlying requirement (actual data, timestep shift, etc..).
         """
         # Default implementation for simple RL model:
         # Single requirement: Pass current obs as input.
         return {
-            SampleBatch.CUR_OBS: ViewRequirement(timesteps=0),
-            SampleBatch.PREV_ACTIONS: ViewRequirement(
-                SampleBatch.ACTIONS, timesteps=-1),
-            SampleBatch.PREV_REWARDS: ViewRequirement(
-                SampleBatch.REWARDS, timesteps=-1),
+            SampleBatch.OBS: ViewRequirement(shift=0),
         }
 
     def import_from_h5(self, h5_file: str) -> None:

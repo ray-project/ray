@@ -1059,6 +1059,13 @@ py_test(
     srcs = ["policy/tests/test_compute_log_likelihoods.py"]
 )
 
+py_test(
+    name = "policy/tests/test_trajectory_view_api",
+    tags = ["policy"],
+    size = "small",
+    srcs = ["policy/tests/test_trajectory_view_api.py"]
+)
+
 # --------------------------------------------------------------------
 # Utils:
 # rllib/utils/

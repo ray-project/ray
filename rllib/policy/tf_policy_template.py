@@ -271,6 +271,22 @@ def build_tf_policy(name: str,
                 return base.extra_compute_grad_fetches(self)
 
     def with_updates(**overrides):
+        """Allows creating a TFPolicy cls based on settings of another one.
+
+        Keyword Args:
+            **overrides: The settings (passed into `build_tf_policy`) that
+                should be different from the class that this method is called
+                on.
+
+        Returns:
+            type: A new TFPolicy sub-class.
+
+        Examples:
+        >> MySpecialDQNPolicyClass = DQNTFPolicy.with_updates(
+        ..    name="MySpecialDQNPolicyClass",
+        ..    loss_function=[some_new_loss_function],
+        .. )
+        """
         return build_tf_policy(**dict(original_kwargs, **overrides))
 
     def as_eager():
