@@ -284,7 +284,8 @@ class NodeUpdater:
 
                                 cli_logger.print(
                                     "{}",
-                                    cmd_to_print, _numbered=("()", i, total))
+                                    cmd_to_print,
+                                    _numbered=("()", i, total))
 
                                 self.cmd_runner.run(cmd)
                 else:
