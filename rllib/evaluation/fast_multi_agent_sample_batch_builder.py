@@ -7,8 +7,10 @@ from ray.rllib.evaluation.rollout_sample_collector import \
     RolloutSampleCollector
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import MultiAgentBatch
+from ray.rllib.utils import force_list
 from ray.rllib.utils.debug import summarize
-from ray.rllib.utils.types import AgentID, EpisodeID, PolicyID, TensorType
+from ray.rllib.utils.types import AgentID, EnvID, EpisodeID, PolicyID, \
+    TensorType
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
@@ -33,15 +35,19 @@ class _FastMultiAgentSampleBatchBuilder:
     def __init__(self,
                  policy_map: Dict[PolicyID, Policy],
                  callbacks: "DefaultCallbacks",
-                 num_agents=1000):
+                 num_agents: int = 1000,
+                 num_timesteps=None,
+                 time_major: Optional[bool] = False):
         """Initializes a _FastMultiAgentSampleBatchBuilder object.
 
         Args:
             policy_map (Dict[PolicyID,Policy]): Maps policy ids to policy
                 instances.
             callbacks (DefaultCallbacks): RLlib callbacks.
-            buffer_size (Optional[Union[int,float]]): The max number of
-                timesteps to fit into one buffer column.
+            num_agents (int): The max number of agent slots to pre-allocate
+                in the buffer.
+            num_timesteps (int): The max number of timesteps to pre-allocate
+                in the buffer.
         """
 
         self.policy_map = policy_map
@@ -53,12 +59,29 @@ class _FastMultiAgentSampleBatchBuilder:
         # Collect SampleBatches per-policy in PolicyTrajectories objects.
         self.rollout_sample_collectors = {}
         for pid, policy in policy_map.items():
-            kwargs = {}
+            # Figure out max-shifts (before and after).
+            view_reqs = policy.get_view_requirements()
+            max_shift_before = 1
+            max_shift_after = 0
+            for vr in view_reqs.values():
+                shift = force_list(vr.shift)
+                if max_shift_before > shift[0]:
+                    max_shift_before = shift[0]
+                if max_shift_after < shift[-1]:
+                    max_shift_after = shift[-1]
+            # Figure out num_timesteps and num_agents.
+            kwargs = {"time_major": time_major}
             if policy.is_recurrent():
                 kwargs["num_timesteps"] = \
                     policy.model.model_config["max_seq_len"]
+                kwargs["time_major"] = True
+            elif num_timesteps is not None:
+                kwargs["num_timesteps"] = num_timesteps
+
             self.rollout_sample_collectors[pid] = RolloutSampleCollector(
-                num_agents=self.num_agents, **kwargs)
+                num_agents=self.num_agents,
+                shift_before=-max_shift_before, shift_after=max_shift_after,
+                **kwargs)
 
         # Internal agent-to-policy map.
         self.agent_to_policy = {}
@@ -86,8 +109,13 @@ class _FastMultiAgentSampleBatchBuilder:
 
         return self.total() > 0
 
-    def add_init_obs(self, episode_id: EpisodeID, agent_id: AgentID,
-                     policy_id: PolicyID, obs: TensorType) -> None:
+    def add_init_obs(
+            self,
+            episode_id: EpisodeID,
+            agent_id: AgentID,
+            env_id: EnvID,
+            policy_id: PolicyID,
+            obs: TensorType) -> None:
         """Add the given dictionary (row) of values to this batch.
 
         Args:
@@ -106,11 +134,16 @@ class _FastMultiAgentSampleBatchBuilder:
 
         # Add initial obs to Trajectory.
         self.rollout_sample_collectors[policy_id].add_init_obs(
-            episode_id, agent_id, chunk_num=0, init_obs=obs)
+            episode_id, agent_id, env_id, chunk_num=0, init_obs=obs)
 
-    def add_action_reward_next_obs(self, episode_id: EpisodeID,
-                                   agent_id: AgentID, policy_id: PolicyID,
-                                   values: Dict[str, TensorType]) -> None:
+    def add_action_reward_next_obs(
+            self,
+            episode_id: EpisodeID,
+            agent_id: AgentID,
+            env_id: EnvID,
+            policy_id: PolicyID,
+            agent_done: bool,
+            values: Dict[str, TensorType]) -> None:
         """Add the given dictionary (row) of values to this batch.
 
         Args:
@@ -135,7 +168,7 @@ class _FastMultiAgentSampleBatchBuilder:
 
         # Add action/reward/next-obs (and other data) to Trajectory.
         self.rollout_sample_collectors[policy_id].add_action_reward_next_obs(
-            episode_id, agent_id, values)
+            episode_id, agent_id, env_id, agent_done, values)
 
     def postprocess_batches_so_far(
             self, episode: Optional[MultiAgentEpisode] = None) -> None:

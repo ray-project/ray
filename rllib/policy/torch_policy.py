@@ -198,12 +198,11 @@ class TorchPolicy(Policy):
         with torch.no_grad():
             # Pass lazy (torch) tensor dict to Model as `input_dict`.
             input_dict = self._lazy_tensor_dict(input_dict)
-            # TODO: (sven) support RNNs w/ fast sampling.
             state_batches = [
                 input_dict[k] for k in input_dict.keys() if "state_" in k[:6]
             ]
-            seq_lens = np.array(
-                [1] * len(rollout_collector.forward_pass_indices[0]))
+            seq_lens = np.array([1] * len(input_dict["obs"][0])) \
+                if state_batches else None
 
             actions, state_out, extra_fetches, logp = \
                 self._compute_action_helper(

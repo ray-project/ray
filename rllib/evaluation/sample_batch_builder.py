@@ -31,9 +31,6 @@ def to_float_array(v: List[Any]) -> np.ndarray:
 class SampleBatchBuilder:
     """Util to build a SampleBatch incrementally.
 
-    Note: This will be deprecated by _FastMultiAgentSampleBatchBuilder in the
-    future.
-
     For efficiency, SampleBatches hold values in column form (as arrays).
     However, it is useful to add data one row (dict) at a time.
     """
@@ -82,9 +79,6 @@ class SampleBatchBuilder:
 @DeveloperAPI
 class MultiAgentSampleBatchBuilder:
     """Util to build SampleBatches for each policy in a multi-agent env.
-
-    Note: This will be deprecated by _FastMultiAgentSampleBatchBuilder in the
-    future.
 
     Input data is per-agent, while output data is per-policy. There is an M:N
     mapping between agents and policies. We retain one local batch builder

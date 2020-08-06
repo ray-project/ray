@@ -784,8 +784,9 @@ def _process_observations(
                     **episode.last_pi_info_for(agent_id))
             elif _use_trajectory_view_api:
                 if last_observation is None:
-                    batch_builder.add_init_obs(episode.episode_id, agent_id,
-                                               policy_id, filtered_obs)
+                    batch_builder.add_init_obs(
+                        episode.episode_id, agent_id, env_id,
+                        policy_id, filtered_obs)
                 else:
                     rc = batch_builder.rollout_sample_collectors[policy_id]
                     eval_idx = rc.agent_key_to_forward_pass_index[(
@@ -811,11 +812,12 @@ def _process_observations(
                     for i, v in enumerate(prev_policy_outputs[policy_id][1]):
                         values_dict["state_out_{}".format(i)] = v[eval_idx]
                     batch_builder.add_action_reward_next_obs(
-                        episode.episode_id, agent_id, policy_id, values_dict)
+                        episode.episode_id, agent_id, policy_id,
+                        agent_done, values_dict)
                 if not agent_done:
-                    batch_builder.rollout_sample_collectors[
-                        policy_id].add_to_forward_pass(
-                            agent_id, episode.episode_id, env_id)
+                    #batch_builder.rollout_sample_collectors[
+                    #    policy_id].add_to_forward_pass(
+                    #        agent_id, episode.episode_id, env_id)
                     to_eval[
                         policy_id] = batch_builder.rollout_sample_collectors[
                             policy_id]
@@ -920,9 +922,9 @@ def _process_observations(
                         batch_builder.add_init_obs(episode.episode_id,
                                                    agent_id, policy_id,
                                                    filtered_obs)
-                        batch_builder.rollout_sample_collectors[
-                            policy_id].add_to_forward_pass(
-                                agent_id, episode.episode_id, env_id)
+                        #batch_builder.rollout_sample_collectors[
+                        #    policy_id].add_to_forward_pass(
+                        #        agent_id, episode.episode_id, env_id)
                         to_eval[policy_id] = \
                             batch_builder.rollout_sample_collectors[policy_id]
                     else:
@@ -1002,9 +1004,11 @@ def _do_policy_eval(
                 timestep=policy.global_timestep)
         else:
             if _use_trajectory_view_api:
+                input_dict = eval_data.get_inference(
+                    policy.model.get_view_requirements())
                 eval_results[policy_id] = \
-                    policy.compute_actions_from_trajectories(
-                        eval_data, timestep=policy.global_timestep)
+                    policy.compute_actions_from_input_dict(
+                        input_dict, timestep=policy.global_timestep)
             else:
                 rnn_in = [t.rnn_state for t in eval_data]
                 rnn_in_cols: StateBatch = [
@@ -1079,8 +1083,8 @@ def _process_policy_eval_results(
 
     # type: PolicyID, List[PolicyEvalData]
     for policy_id, eval_data in to_eval.items():
-        if _use_trajectory_view_api:
-            eval_data.reset_forward_pass()
+        #if _use_trajectory_view_api:
+        #    eval_data.reset_inference_call()
 
         actions: TensorStructType = eval_results[policy_id][0]
         actions = convert_to_numpy(actions)
