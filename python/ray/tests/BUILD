@@ -207,6 +207,13 @@ py_test(
 )
 
 py_test(
+    name = "test_resource_demand_scheduler",
+    size = "small",
+    srcs = SRCS + ["test_resource_demand_scheduler.py"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_coordinator_server",
     size = "small",
     srcs = SRCS + ["test_coordinator_server.py"],
