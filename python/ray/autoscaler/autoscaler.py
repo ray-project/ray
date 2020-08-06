@@ -265,6 +265,7 @@ class StandardAutoscaler:
             with open(self.config_path) as f:
                 new_config = yaml.safe_load(f.read())
             validate_config(new_config)
+            new_config.setdefault("cluster_synced_files", [])
             new_launch_hash = hash_launch_conf(new_config["worker_nodes"],
                                                new_config["auth"])
             (new_runtime_hash,
