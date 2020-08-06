@@ -297,11 +297,12 @@ class NodeUpdater:
                     self.log_prefix + "Ray start commands", show_status=True):
                 for cmd in self.ray_start_commands:
                     if self.node_resources:
-                        env_vars = {"RAY_OVERRIDE_RESOURCES": self.node_resources}
+                        env_vars = {
+                            "RAY_OVERRIDE_RESOURCES": self.node_resources
+                        }
                     else:
                         env_vars = {}
                     self.cmd_runner.run(cmd, environment_variables=env_vars)
-
 
     def rsync_up(self, source, target):
         cli_logger.old_info(logger, "{}Syncing {} to {}...", self.log_prefix,

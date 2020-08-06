@@ -41,6 +41,7 @@ class ProcessRunnerError(Exception):
 
         self.message_discovered = message_discovered
 
+
 def _with_environment_variables(cmd, environment_variables):
     def dict_as_one_line_yaml(d):
         items = []
@@ -48,15 +49,17 @@ def _with_environment_variables(cmd, environment_variables):
             item_str = "{}:{}".format(quote(key), quote(val))
             items.append(item_str)
 
-        return "{%s}" % ','.join(items)
+        return "{%s}" % ",".join(items)
+
     as_strings = []
     for key, val in environment_variables.items():
         if isinstance(val, dict):
             val = dict_as_one_line_yaml(val)
         s = "{}={};".format(key, quote(val))
         as_strings.append(s)
-    all_vars = ''.join(as_strings)
+    all_vars = "".join(as_strings)
     return all_vars + cmd
+
 
 def _with_interactive(cmd):
     force_interactive = ("true && source ~/.bashrc && "

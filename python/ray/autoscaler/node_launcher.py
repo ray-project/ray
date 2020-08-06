@@ -13,7 +13,14 @@ logger = logging.getLogger(__name__)
 class NodeLauncher(threading.Thread):
     """Launches nodes asynchronously in the background."""
 
-    def __init__(self, provider, queue, pending, index=None, node_resource_mapping=None, *args, **kwargs):
+    def __init__(self,
+                 provider,
+                 queue,
+                 pending,
+                 index=None,
+                 node_resource_mapping=None,
+                 *args,
+                 **kwargs):
         self.queue = queue
         self.pending = pending
         self.provider = provider
@@ -25,15 +32,16 @@ class NodeLauncher(threading.Thread):
         instance_type = self.provider.get_instance_type(node_config)
         worker_filter = {TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER}
         before = self.provider.non_terminated_nodes(tag_filters=worker_filter)
-        launch_hash = hash_launch_conf(autoscaler_config["worker_nodes"], autoscaler_config["auth"])
+        launch_hash = hash_launch_conf(autoscaler_config["worker_nodes"],
+                                       autoscaler_config["auth"])
         self.log("Launching {} nodes, type {}.".format(count, instance_type))
         node_tags = {
-            TAG_RAY_NODE_NAME: "ray-{}-worker".format(autoscaler_config["cluster_name"]),
+            TAG_RAY_NODE_NAME: "ray-{}-worker".format(
+                autoscaler_config["cluster_name"]),
             TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER,
             TAG_RAY_NODE_STATUS: STATUS_UNINITIALIZED,
             TAG_RAY_LAUNCH_CONFIG: launch_hash,
         }
-
 
         node_tags[TAG_RAY_INSTANCE_TYPE] = instance_type
         self.provider.create_node(node_config, node_tags, count)

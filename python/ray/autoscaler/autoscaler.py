@@ -98,8 +98,7 @@ class StandardAutoscaler:
                 queue=self.launch_queue,
                 index=i,
                 pending=self.pending_launches,
-                node_resource_mapping=self.node_resource_mapping
-            )
+                node_resource_mapping=self.node_resource_mapping)
             node_launcher.daemon = True
             node_launcher.start()
 
@@ -244,8 +243,8 @@ class StandardAutoscaler:
         # problems. They should at a minimum be spawned as daemon threads.
         # See https://github.com/ray-project/ray/pull/5903 for more info.
         T = []
-        for node_id, commands, ray_start, node_resources in (self.should_update(node_id)
-                                             for node_id in nodes):
+        for node_id, commands, ray_start, node_resources in (
+                self.should_update(node_id) for node_id in nodes):
             if node_id is not None:
                 T.append(
                     threading.Thread(
@@ -403,7 +402,8 @@ class StandardAutoscaler:
 
         return (node_id, init_commands, ray_commands, resources)
 
-    def spawn_updater(self, node_id, init_commands, ray_start_commands, node_resources):
+    def spawn_updater(self, node_id, init_commands, ray_start_commands,
+                      node_resources):
         updater = NodeUpdaterThread(
             node_id=node_id,
             provider_config=self.config["provider"],

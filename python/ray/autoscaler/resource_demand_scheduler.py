@@ -107,7 +107,6 @@ class ResourceDemandScheduler:
         logger.info("Instance requests: {}".format(instances))
         return instances
 
-
     def _resolve_defaults(self):
         for instance_name, instance_config in self.instance_types.items():
             instance_config.setdefault("InstanceType", instance_name)
