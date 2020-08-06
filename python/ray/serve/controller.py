@@ -20,7 +20,7 @@ import numpy as np
 
 # Used for testing purposes only. If this is set, the controller will crash
 # after writing each checkpoint with the specified probability.
-_CRASH_AFTER_CHECKPOINT_PROBABILITY = 0.0
+_CRASH_AFTER_CHECKPOINT_PROBABILITY = 0.9
 CHECKPOINT_KEY = "serve-controller-checkpoint"
 
 # Feature flag for controller resource checking. If true, controller will
@@ -658,11 +658,12 @@ class ServeController:
             err_prefix = "Cannot create endpoint."
             if route in self.routes:
                 if self.routes[route] == (endpoint, methods):
-                    raise ValueError(
-                        "Route '{}' is already registered to endpoint '{}' "
-                        "with methods '{}'.  To set the backend for this "
-                        "endpoint, please use serve.set_traffic().".format(
-                            route, endpoint, methods))
+                    return
+                    # raise ValueError(
+                    #     "Route '{}' is already registered to endpoint '{}' "
+                    #     "with methods '{}'.  To set the backend for this "
+                    #     "endpoint, please use serve.set_traffic().".format(
+                    #         route, endpoint, methods))
                 else:
                     raise ValueError(
                         "{} Route '{}' is already registered.".format(
@@ -728,9 +729,10 @@ class ServeController:
         """Register a new backend under the specified tag."""
         async with self.write_lock:
             if backend_tag in self.backends:
-                raise ValueError(
-                    "Cannot create backend.  "
-                    "Backend '{}' is already registered.".format(backend_tag))
+                return
+                # raise ValueError(
+                #     "Cannot create backend.  "
+                #     "Backend '{}' is already registered.".format(backend_tag))
 
             backend_worker = create_backend_worker(
                 replica_config.func_or_class)
