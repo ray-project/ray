@@ -741,7 +741,11 @@ class ServeController:
             self.backends[backend_tag] = BackendInfo(
                 backend_worker, backend_config, replica_config)
 
-            self._scale_replicas(backend_tag, backend_config.num_replicas)
+            try:
+                self._scale_replicas(backend_tag, backend_config.num_replicas)
+            except RayServeException as e:
+                del self.backends[backend_tag]
+                raise e
 
             # NOTE(edoakes): we must write a checkpoint before starting new
             # or pushing the updated config to avoid inconsistent state if we
