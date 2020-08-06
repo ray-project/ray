@@ -299,5 +299,15 @@ void GcsPlacementGroupManager::RetryCreatingPlacementGroup() {
                 RayConfig::instance().gcs_create_placement_group_retry_interval_ms());
 }
 
+void GcsPlacementGroupManager::OnNodeDead(const ClientID &node_id) {
+  auto bundles = gcs_placement_group_scheduler_->GetBundlesOfDeadNode(node_id);
+  for (const auto &bundle : bundles) {
+    auto &placement_group = registered_placement_groups_[bundle->first];
+    for (const auto &bundle_index : bundle->second) {
+
+    }
+  }
+}
+
 }  // namespace gcs
 }  // namespace ray

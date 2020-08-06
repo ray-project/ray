@@ -47,11 +47,19 @@ class GcsPlacementGroupSchedulerInterface {
   /// Schedule the specified placement_group.
   ///
   /// \param placement_group to be scheduled.
+  /// \param failure_callback This function is called if the schedule is failed.
+  /// \param success_callback This function is called if the schedule is successful.
   virtual void Schedule(
       std::shared_ptr<GcsPlacementGroup> placement_group,
-      std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_failure_handler,
-      std::function<void(std::shared_ptr<GcsPlacementGroup>)>
-          schedule_success_handler) = 0;
+      std::function<void(std::shared_ptr<GcsPlacementGroup>)> failure_callback,
+      std::function<void(std::shared_ptr<GcsPlacementGroup>)> success_callback) = 0;
+
+  /// Get bundles belong to the dead node.
+  ///
+  /// \param node_id ID of the dead node.
+  /// \return The bundles belong to the dead node.
+  virtual absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> GetBundlesOfDeadNode(
+      const ClientID &node_id) = 0;
 
   /// Destroy bundle resources from all nodes in the placement group.
   virtual void DestroyPlacementGroupBundleResourcesIfExists(
@@ -150,6 +158,9 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param placement_group_id The id of a placement group to mark that scheduling is
   /// cancelled.
   void MarkScheduleCancelled(const PlacementGroupID &placement_group_id) override;
+
+  void absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> GetBundlesOfDeadNode(
+      const ClientID &node_id) override;
 
  protected:
   /// Lease resource from the specified node for the specified bundle.
