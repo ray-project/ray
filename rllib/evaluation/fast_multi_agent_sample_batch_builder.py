@@ -3,11 +3,13 @@ from typing import Dict, Optional
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.evaluation.episode import MultiAgentEpisode
-from ray.rllib.evaluation.rollout_sample_collector import \
-    RolloutSampleCollector
+from ray.rllib.evaluation.per_policy_sample_collector import \
+    PerPolicySampleCollector
+from ray.rllib.evaluation.sample_collector import _SampleCollector
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils import force_list
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.types import AgentID, EnvID, EpisodeID, PolicyID, \
     TensorType
@@ -16,7 +18,7 @@ from ray.util.debug import log_once
 logger = logging.getLogger(__name__)
 
 
-class _FastMultiAgentSampleBatchBuilder:
+class _FastMultiAgentSampleBatchBuilder(_SampleCollector):
     """Builds SampleBatches for each policy (and agent) in a multi-agent env.
 
     Note: This is an experimental class only used when
@@ -78,9 +80,10 @@ class _FastMultiAgentSampleBatchBuilder:
             elif num_timesteps is not None:
                 kwargs["num_timesteps"] = num_timesteps
 
-            self.rollout_sample_collectors[pid] = RolloutSampleCollector(
+            self.rollout_sample_collectors[pid] = PerPolicySampleCollector(
                 num_agents=self.num_agents,
                 shift_before=-max_shift_before, shift_after=max_shift_after,
+                policy_id=pid,
                 **kwargs)
 
         # Internal agent-to-policy map.
@@ -89,7 +92,8 @@ class _FastMultiAgentSampleBatchBuilder:
         # Regardless of the number of agents involved in each of these steps.
         self.count = 0
 
-    def total(self) -> int:
+    @override(_SampleCollector)
+    def total_env_steps(self) -> int:
         """Returns total number of steps taken in the env (sum of all agents).
 
         Returns:
@@ -99,7 +103,8 @@ class _FastMultiAgentSampleBatchBuilder:
         return sum(a.timesteps_since_last_reset
                    for a in self.rollout_sample_collectors.values())
 
-    def has_pending_agent_data(self) -> bool:
+    @override(_SampleCollector)
+    def has_non_postprocessed_data(self) -> bool:
         """Returns whether there is pending unprocessed data.
 
         Returns:
@@ -109,6 +114,7 @@ class _FastMultiAgentSampleBatchBuilder:
 
         return self.total() > 0
 
+    @override(_SampleCollector)
     def add_init_obs(
             self,
             episode_id: EpisodeID,
@@ -136,6 +142,7 @@ class _FastMultiAgentSampleBatchBuilder:
         self.rollout_sample_collectors[policy_id].add_init_obs(
             episode_id, agent_id, env_id, chunk_num=0, init_obs=obs)
 
+    @override(_SampleCollector)
     def add_action_reward_next_obs(
             self,
             episode_id: EpisodeID,
@@ -170,7 +177,8 @@ class _FastMultiAgentSampleBatchBuilder:
         self.rollout_sample_collectors[policy_id].add_action_reward_next_obs(
             episode_id, agent_id, env_id, agent_done, values)
 
-    def postprocess_batches_so_far(
+    @override(_SampleCollector)
+    def postprocess_trajectories_so_far(
             self, episode: Optional[MultiAgentEpisode] = None) -> None:
         """Apply policy postprocessing to any unprocessed data in an episode.
 
@@ -232,6 +240,7 @@ class _FastMultiAgentSampleBatchBuilder:
                 postprocessed_batch=batch,
                 original_batches=None)  # TODO: (sven) do we really need this?
 
+    @override(_SampleCollector)
     def check_missing_dones(self, episode_id: EpisodeID) -> None:
         for pid, rc in self.rollout_sample_collectors.items():
             for agent_key, slot in rc.agent_key_to_slot.items():
@@ -253,6 +262,7 @@ class _FastMultiAgentSampleBatchBuilder:
                             "'__all__' done to True. Alternatively, set "
                             "no_done_at_end=True to allow this.")
 
+    @override(_SampleCollector)
     def get_multi_agent_batch_and_reset(self):
         """Returns the accumulated sample batches for each policy.
 
@@ -268,7 +278,7 @@ class _FastMultiAgentSampleBatchBuilder:
                 policy.
         """
 
-        self.postprocess_batches_so_far()
+        self.postprocess_trajectories_so_far()
         policy_batches = {}
         for pid, rc in self.rollout_sample_collectors.items():
             policy = self.policy_map[pid]
