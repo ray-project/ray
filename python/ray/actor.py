@@ -413,7 +413,7 @@ class ActorClass:
                 name=None,
                 detached=False,
                 placement_group_id=None,
-                placement_group_bundle_index=None):
+                placement_group_bundle_index=-1):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -441,7 +441,8 @@ class ActorClass:
             placement_group_id: the placement group this actor belongs to,
                 or None if it doesn't belong to any group.
             placement_group_bundle_index: the index of the bundle
-                if the actor belongs to a placement group.
+                if the actor belongs to a placement group, which may be -1 to
+                specify any available bundle.
 
         Returns:
             A handle to the newly created actor.
@@ -502,11 +503,6 @@ class ActorClass:
             detached = True
         else:
             detached = False
-
-        if placement_group_id is not None and placement_group_bundle_index is \
-           None:
-            raise ValueError("The placement_group_id is set."
-                             "But the bundle_index is not set.")
 
         # Set the actor's default resources if not already set. First three
         # conditions are to check that no resources were specified in the
@@ -580,8 +576,7 @@ class ActorClass:
             is_asyncio,
             placement_group_id
             if placement_group_id is not None else ray.PlacementGroupID.nil(),
-            placement_group_bundle_index
-            if placement_group_bundle_index is not None else -1,
+            placement_group_bundle_index,
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu))
 

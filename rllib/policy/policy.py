@@ -214,26 +214,27 @@ class Policy(metaclass=ABCMeta):
         return single_action, [s[0] for s in state_out], \
             {k: v[0] for k, v in info.items()}
 
-    def compute_actions_from_trajectories(
+    def compute_actions_from_input_dict(
             self,
-            trajectories: List["Trajectory"],
-            other_trajectories: Optional[Dict[AgentID, "Trajectory"]] = None,
+            input_dict: Dict[str, TensorType],
             explore: bool = None,
             timestep: Optional[int] = None,
             **kwargs) -> \
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
-        """Computes actions for the current policy based on .
+        """Computes actions from collected samples (across multiple-agents).
 
         Note: This is an experimental API method.
 
         Only used so far by the Sampler iff `_use_trajectory_view_api=True`
         (also only supported for torch).
+        Uses the currently "forward-pass-registered" samples from the collector
+        to construct the input_dict for the Model.
 
         Args:
-            trajectories (List[Trajectory]): A List of Trajectory data used
-                to create a view for the Model forward call.
-            other_trajectories (Optional[Dict[AgentID, Trajectory]]): Optional
-                dict mapping AgentIDs to Trajectory objects.
+            input_dict (Dict[str, TensorType]): An input dict mapping str
+                keys to Tensors. `input_dict` already abides to the Policy's
+                as well as the Model's view requirements and can be passed
+                to the Model as-is.
             explore (bool): Whether to pick an exploitation or exploration
                 action (default: None -> use self.config["explore"]).
             timestep (Optional[int]): The current (sampling) time step.
@@ -281,6 +282,25 @@ class Policy(metaclass=ABCMeta):
                 [BATCH_SIZE].
         """
         raise NotImplementedError
+
+    @DeveloperAPI
+    def training_view_requirements(self):
+        """Returns a dict of view requirements for operating on this Policy.
+
+        Note: This is an experimental API method.
+
+        The view requirements dict is used to generate input_dicts and
+        SampleBatches for 1) action computations, 2) postprocessing, and 3)
+        generating training batches.
+        The Policy may ask its Model(s) as well for possible additional
+        requirements (e.g. prev-action/reward in an LSTM).
+
+        Returns:
+            Dict[str, ViewRequirement]: The view requirements dict, mapping
+                each view key (which will be available in input_dicts) to
+                an underlying requirement (actual data, timestep shift, etc..).
+        """
+        return {}
 
     @DeveloperAPI
     def postprocess_trajectory(

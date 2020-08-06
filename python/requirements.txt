@@ -43,6 +43,7 @@ blist; platform_system != "Windows"
 boto3
 cython==0.29.0
 dataclasses
+dask[complete]
 feather-format
 gym
 kubernetes

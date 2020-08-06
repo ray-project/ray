@@ -239,7 +239,8 @@ class SSHOptions:
 
     def to_ssh_options_list(self, *, timeout=60):
         self.arg_dict["ConnectTimeout"] = "{}s".format(timeout)
-        return ["-i", self.ssh_key] + [
+        ssh_key_option = ["-i", self.ssh_key] if self.ssh_key else []
+        return ssh_key_option + [
             x for y in (["-o", "{}={}".format(k, v)]
                         for k, v in self.arg_dict.items()
                         if v is not None) for x in y
@@ -261,7 +262,7 @@ class SSHCommandRunner(CommandRunnerInterface):
         self.node_id = node_id
         self.use_internal_ip = use_internal_ip
         self.provider = provider
-        self.ssh_private_key = auth_config["ssh_private_key"]
+        self.ssh_private_key = auth_config.get("ssh_private_key")
         self.ssh_user = auth_config["ssh_user"]
         self.ssh_control_path = ssh_control_path
         self.ssh_ip = None
@@ -433,8 +434,12 @@ class SSHCommandRunner(CommandRunnerInterface):
         self.process_runner.check_call(command)
 
     def remote_shell_command_str(self):
-        return "ssh -o IdentitiesOnly=yes -i {} {}@{}\n".format(
-            self.ssh_private_key, self.ssh_user, self.ssh_ip)
+        if self.ssh_private_key:
+            return "ssh -o IdentitiesOnly=yes -i {} {}@{}\n".format(
+                self.ssh_private_key, self.ssh_user, self.ssh_ip)
+        else:
+            return "ssh -o IdentitiesOnly=yes {}@{}\n".format(
+                self.ssh_user, self.ssh_ip)
 
 
 class DockerCommandRunner(SSHCommandRunner):
@@ -476,14 +481,26 @@ class DockerCommandRunner(SSHCommandRunner):
             ssh_options_override=ssh_options_override)
 
     def run_rsync_up(self, source, target):
+        protected_path = target
+        if target.find("/root") == 0:
+            target = target.replace("/root", "/tmp/root")
+            self.ssh_command_runner.run(
+                f"mkdir -p {os.path.dirname(target)}", run_env="host")
         self.ssh_command_runner.run_rsync_up(source, target)
         if self._check_container_status():
             self.ssh_command_runner.run("docker cp {} {}:{}".format(
-                target, self.docker_name, self._docker_expand_user(target)))
+                target, self.docker_name,
+                self._docker_expand_user(protected_path)))
 
     def run_rsync_down(self, source, target):
+        protected_path = source
+        if source.find("/root") == 0:
+            source = source.replace("/root", "/tmp/root")
+            self.ssh_command_runner.run(
+                f"mkdir -p {os.path.dirname(source)}", run_env="host")
         self.ssh_command_runner.run("docker cp {}:{} {}".format(
-            self.docker_name, self._docker_expand_user(source), source))
+            self.docker_name, self._docker_expand_user(protected_path),
+            source))
         self.ssh_command_runner.run_rsync_down(source, target)
 
     def remote_shell_command_str(self):

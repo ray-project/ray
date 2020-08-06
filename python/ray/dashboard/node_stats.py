@@ -175,8 +175,8 @@ class NodeStats(threading.Thread):
         p.subscribe(log_channel)
         logger.info("NodeStats: subscribed to {}".format(log_channel))
 
-        error_channel = ray.gcs_utils.TablePubsub.Value("ERROR_INFO_PUBSUB")
-        p.subscribe(error_channel)
+        error_channel = ray.gcs_utils.RAY_ERROR_PUBSUB_PATTERN
+        p.psubscribe(error_channel)
         logger.info("NodeStats: subscribed to {}".format(error_channel))
 
         actor_channel = ray.gcs_utils.RAY_ACTOR_PUBSUB_PATTERN
@@ -211,9 +211,10 @@ class NodeStats(threading.Thread):
                         pid = str(data["pid"])
                         self._logs[ip][pid].extend(data["lines"])
                     elif channel == str(error_channel):
-                        gcs_entry = ray.gcs_utils.GcsEntry.FromString(data)
+                        pubsub_msg = ray.gcs_utils.PubSubMessage.FromString(
+                            data)
                         error_data = ray.gcs_utils.ErrorTableData.FromString(
-                            gcs_entry.entries[0])
+                            pubsub_msg.data)
                         message = error_data.error_message
                         message = re.sub(r"\x1b\[\d+m", "", message)
                         match = re.search(r"\(pid=(\d+), ip=(.*?)\)", message)

@@ -99,6 +99,8 @@ YAPF_EXCLUDES=(
     '--exclude' 'python/ray/thirdparty_files/*'
 )
 
+FLAKE8_EXCLUDES="python/ray/core/generated/,streaming/python/generated,doc/source/conf.py,python/ray/cloudpickle/,python/ray/thirdparty_files/"
+
 shellcheck_scripts() {
   shellcheck "${SHELLCHECK_FLAGS[@]}" "$@"
 }
@@ -176,14 +178,17 @@ format_changed() {
              yapf --in-place "${YAPF_EXCLUDES[@]}" "${YAPF_FLAGS[@]}"
         if which flake8 >/dev/null; then
             git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
-                 flake8 --inline-quotes '"' --no-avoid-escape --exclude=python/ray/core/generated/,streaming/python/generated,doc/source/conf.py,python/ray/cloudpickle/,python/ray/thirdparty_files/ --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605,F821
+                 flake8 --inline-quotes '"' --no-avoid-escape --exclude="$FLAKE8_EXCLUDES,rllib/" --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605
+            # Ignore F821 for rllib flake8 checking (produces errors for type annotations using quotes (non-imported classes)).
+            git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
+                 flake8 --inline-quotes '"' --no-avoid-escape --exclude="$FLAKE8_EXCLUDES" --filename="rllib/" --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605,F821
         fi
     fi
 
     if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.pyx' '*.pxd' '*.pxi' &>/dev/null; then
         if which flake8 >/dev/null; then
             git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.pyx' '*.pxd' '*.pxi' | xargs -P 5 \
-                 flake8 --inline-quotes '"' --no-avoid-escape --exclude=python/ray/core/generated/,streaming/python/generated,doc/source/conf.py,python/ray/cloudpickle/,python/ray/thirdparty_files/ --ignore=C408,E121,E123,E126,E211,E225,E226,E227,E24,E704,E999,W503,W504,W605
+                 flake8 --inline-quotes '"' --no-avoid-escape --exclude="$FLAKE8_EXCLUDES" --ignore=C408,E121,E123,E126,E211,E225,E226,E227,E24,E704,E999,W503,W504,W605
         fi
     fi
 
@@ -199,12 +204,12 @@ format_changed() {
             shellcheck_bazel
         fi
 
-        local shell_files
-        # shellcheck disable=SC2207
-        shell_files=($(
-          git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.sh' &&
-          git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- ':(exclude)*.*' | xargs -r git --no-pager grep -l '^#!\(/usr\)\?/bin/\(env \+\)\?\(ba\)\?sh'
-        ))
+        local shell_files non_shell_files
+        non_shell_files=($(git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- ':(exclude)*.sh'))
+        shell_files=($(git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.sh'))
+        if [ 0 -lt "${#non_shell_files[@]}" ]; then
+            shell_files+=($(git --no-pager grep -l -- '^#!\(/usr\)\?/bin/\(env \+\)\?\(ba\)\?sh' "${non_shell_files[@]}" || true))
+        fi
         if [ 0 -lt "${#shell_files[@]}" ]; then
             shellcheck_scripts "${shell_files[@]}"
         fi
@@ -213,7 +218,9 @@ format_changed() {
 
 # Format all files, and print the diff to stdout for travis.
 format_all() {
-    flake8 --inline-quotes '"' --no-avoid-escape --exclude=python/ray/core/generated/,streaming/python/generated,doc/source/conf.py,python/ray/cloudpickle/,python/ray/thirdparty_files/ --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605
+    # Ignore F821 for rllib flake8 checking (produces errors for type annotations using quotes (non-imported classes)).
+    flake8 --inline-quotes '"' --no-avoid-escape --exclude="$FLAKE8_EXCLUDES,rllib/" --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605
+    flake8 --inline-quotes '"' --no-avoid-escape --exclude="$FLAKE8_EXCLUDES" --filename="rllib/" --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605,F821
 
     yapf --diff "${YAPF_FLAGS[@]}" "${YAPF_EXCLUDES[@]}" test python
 
@@ -221,7 +228,7 @@ format_all() {
     # shellcheck disable=SC2207
     shell_files=($(
       git -C "${ROOT}" ls-files --exclude-standard HEAD -- "*.sh" &&
-      git -C "${ROOT}" --no-pager grep -l '^#!\(/usr\)\?/bin/\(env \+\)\?\(ba\)\?sh' ":(exclude)*.sh"
+      { git -C "${ROOT}" --no-pager grep -l '^#!\(/usr\)\?/bin/\(env \+\)\?\(ba\)\?sh' ":(exclude)*.sh" || true; }
     ))
     if [ 0 -lt "${#shell_files[@]}" ]; then
       shellcheck_scripts "${shell_files[@]}"

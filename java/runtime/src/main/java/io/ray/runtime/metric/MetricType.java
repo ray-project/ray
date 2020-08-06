@@ -11,6 +11,6 @@ public enum MetricType {
 
   SUM,
 
-  HISTOGRAM;
+  HISTOGRAM
 
 }

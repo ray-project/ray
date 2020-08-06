@@ -31,11 +31,9 @@ int64_t kLongTimeout = 1024 * 1024 * 1024;
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
-  ray::Status PushNormalTask(
-      std::unique_ptr<rpc::PushTaskRequest> request,
-      const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {
+  void PushNormalTask(std::unique_ptr<rpc::PushTaskRequest> request,
+                      const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {
     callbacks.push_back(callback);
-    return Status::OK();
   }
 
   bool ReplyPushTask(Status status = Status::OK(), bool exit = false) {
@@ -52,11 +50,9 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     return true;
   }
 
-  ray::Status CancelTask(
-      const rpc::CancelTaskRequest &request,
-      const rpc::ClientCallback<rpc::CancelTaskReply> &callback) override {
+  void CancelTask(const rpc::CancelTaskRequest &request,
+                  const rpc::ClientCallback<rpc::CancelTaskReply> &callback) override {
     kill_requests.push_front(request);
-    return Status::OK();
   }
 
   std::list<rpc::ClientCallback<rpc::PushTaskReply>> callbacks;
@@ -104,26 +100,22 @@ class MockRayletClient : public WorkerLeaseInterface {
     return Status::OK();
   }
 
-  ray::Status RequestWorkerLease(
+  void RequestWorkerLease(
       const ray::TaskSpecification &resource_spec,
       const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback) override {
     num_workers_requested += 1;
     callbacks.push_back(callback);
-    return Status::OK();
   }
 
-  ray::Status ReleaseUnusedWorkers(
+  void ReleaseUnusedWorkers(
       const std::vector<WorkerID> &workers_in_use,
-      const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) override {
-    return Status::NotImplemented("ReleaseUnusedWorkers is not supported.");
-  }
+      const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) override {}
 
-  ray::Status CancelWorkerLease(
+  void CancelWorkerLease(
       const TaskID &task_id,
       const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override {
     num_leases_canceled += 1;
     cancel_callbacks.push_back(callback);
-    return Status::OK();
   }
 
   // Trigger reply to RequestWorkerLease.
