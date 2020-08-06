@@ -70,7 +70,9 @@ const makeGroupedTableContents = (
   rayletInfo: RayletInfoResponse | null,
   nodeInfoFeatures: NodeInfoFeature[],
 ) => {
-  const sortedGroups = sortGroupComparator ? stableSort(nodes, sortGroupComparator) : nodes;
+  const sortedGroups = sortGroupComparator
+    ? stableSort(nodes, sortGroupComparator)
+    : nodes;
   return sortedGroups.map((node) => {
     const workerFeatureData: WorkerFeatureData[] = node.workers.map(
       (worker) => {
