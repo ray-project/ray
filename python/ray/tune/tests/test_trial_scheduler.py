@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 
 import ray
 from ray import tune
+from ray.tune import TuneError
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
                                  PopulationBasedTraining, MedianStoppingRule,
@@ -747,6 +748,30 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                     TrialScheduler.CONTINUE)
         pbt.reset_stats()
         return pbt, runner
+
+    def testMetricError(self):
+        pbt, runner = self.basicSetup()
+        trials = runner.get_trials()
+
+        self.assertEqual(pbt.last_scores(trials), [0, 50, 100, 150, 200])
+        # Should error if training_iteration not in result dict.
+        with self.assertRaises(TuneError):
+            pbt.on_trial_result(
+                runner, trials[0], result={"episode_reward_mean": 4})
+
+        pbt, runner = self.basicSetup()
+        trials = runner.get_trials()
+
+        self.assertEqual(pbt.last_scores(trials), [0, 50, 100, 150, 200])
+        # Should error if episode_reward_mean not in result dict.
+        with self.assertRaises(TuneError):
+            pbt.on_trial_result(
+                runner,
+                trials[0],
+                result={
+                    "random_metric": 10,
+                    "training_iteration": 10
+                })
 
     def testCheckpointsMostPromisingTrials(self):
         pbt, runner = self.basicSetup()

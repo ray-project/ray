@@ -231,8 +231,14 @@ class PopulationBasedTraining(FIFOScheduler):
         self._trial_state[trial] = PBTTrialState(trial)
 
     def on_trial_result(self, trial_runner, trial, result):
-        if self._time_attr not in result or self._metric not in result:
-            return TrialScheduler.CONTINUE
+        if self._time_attr not in result:
+            raise TuneError("Cannot find time_attr {} in trial results. "
+                            "Make sure that this attribute is returned "
+                            "in the results of your Trainable.")
+        if self._metric not in result:
+            raise TuneError("Cannot fine metric {} in trial results. "
+                            "Make sure that this attribute is returned "
+                            "in the results of your Trainable.")
         time = result[self._time_attr]
         state = self._trial_state[trial]
 
