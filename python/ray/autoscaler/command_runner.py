@@ -41,6 +41,22 @@ class ProcessRunnerError(Exception):
 
         self.message_discovered = message_discovered
 
+def _with_environment_variables(cmd, environment_variables):
+    def dict_as_one_line_yaml(d):
+        items = []
+        for key, val in d.items():
+            item_str = "{}:{}".format(quote(key), quote(val))
+            items.append(item_str)
+
+        return "{%s}" % ','.join(items)
+    as_strings = []
+    for key, val in environment_variables.items():
+        if isinstance(val, dict):
+            val = dict_as_one_line_yaml(val)
+        s = "{}={};".format(key, quote(val))
+        as_strings.append(s)
+    all_vars = ''.join(as_strings)
+    return all_vars + cmd
 
 def _with_interactive(cmd):
     force_interactive = ("true && source ~/.bashrc && "
@@ -59,6 +75,7 @@ class CommandRunnerInterface:
             exit_on_fail: bool = False,
             port_forward: List[Tuple[int, int]] = None,
             with_output: bool = False,
+            environment_variables: dict = None,
             **kwargs) -> str:
         """Run the given command on the cluster node and optionally get output.
 
@@ -111,6 +128,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
             exit_on_fail=False,
             port_forward=None,
             with_output=False,
+            environment_variables: dict = None,
             **kwargs):
         if cmd and port_forward:
             raise Exception(
@@ -142,6 +160,8 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                 self.node_id,
                 "--",
             ]
+            if environment_variables:
+                cmd = _with_environment_variables(cmd)
             final_cmd += _with_interactive(cmd)
             logger.info(self.log_prefix + "Running {}".format(final_cmd))
             try:
@@ -334,6 +354,7 @@ class SSHCommandRunner(CommandRunnerInterface):
             port_forward=None,
             with_output=False,
             ssh_options_override=None,
+            environment_variables: dict = None,
             **kwargs):
         ssh_options = ssh_options_override or self.ssh_options
 
@@ -363,6 +384,8 @@ class SSHCommandRunner(CommandRunnerInterface):
             "{}@{}".format(self.ssh_user, self.ssh_ip)
         ]
         if cmd:
+            if environment_variables:
+                cmd = _with_environment_variables(cmd)
             final_cmd += _with_interactive(cmd)
             cli_logger.old_info(logger, "{}Running {}", self.log_prefix,
                                 " ".join(final_cmd))
@@ -459,6 +482,7 @@ class DockerCommandRunner(SSHCommandRunner):
             with_output=False,
             run_env=True,
             ssh_options_override=None,
+            environment_variables: dict = None,
             **kwargs):
         if run_env == "auto":
             run_env = "host" if cmd.find("docker") == 0 else "docker"
@@ -466,6 +490,8 @@ class DockerCommandRunner(SSHCommandRunner):
         if run_env == "docker":
             cmd = self._docker_expand_user(cmd, any_char=True)
             cmd = " ".join(_with_interactive(cmd))
+            if environment_variables:
+                cmd = _with_environment_variables(cmd)
             cmd = with_docker_exec(
                 [cmd], container_name=self.docker_name,
                 with_interactive=True)[0]

@@ -13,10 +13,10 @@ logger = logging.getLogger(__name__)
 InstanceType = str
 
 # e.g., {"resources": ..., "max_workers": ...}.
-InstanceTypeConfigDict = str
+InstanceTypeConfigDict = dict
 
 # e.g., {"GPU": 1}.
-ResourceDict = str
+ResourceDict = dict
 
 # e.g., IP address of the node.
 NodeID = str
@@ -29,6 +29,7 @@ class ResourceDemandScheduler:
         self.provider = provider
         self.instance_types = instance_types
         self.max_workers = max_workers
+        self._resolve_defaults()
 
     def debug_string(self, nodes: List[NodeID],
                      pending_nodes: Dict[NodeID, int]) -> str:
@@ -105,6 +106,12 @@ class ResourceDemandScheduler:
             self.max_workers - len(nodes), unfulfilled)
         logger.info("Instance requests: {}".format(instances))
         return instances
+
+
+    def _resolve_defaults(self):
+        for instance_name, instance_config in self.instance_types.items():
+            instance_config.setdefault("InstanceType", instance_name)
+            instance_config.setdefault("max_workers", self.max_workers)
 
 
 def get_instances_for(

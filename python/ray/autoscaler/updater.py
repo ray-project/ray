@@ -34,6 +34,7 @@ class NodeUpdater:
                  initialization_commands,
                  setup_commands,
                  ray_start_commands,
+                 node_resources,
                  runtime_hash,
                  file_mounts_contents_hash,
                  cluster_synced_files=None,
@@ -59,6 +60,7 @@ class NodeUpdater:
         self.initialization_commands = initialization_commands
         self.setup_commands = setup_commands
         self.ray_start_commands = ray_start_commands
+        self.node_resources = node_resources
         self.runtime_hash = runtime_hash
         self.file_mounts_contents_hash = file_mounts_contents_hash
         self.cluster_synced_files = cluster_synced_files
@@ -294,7 +296,12 @@ class NodeUpdater:
             with LogTimer(
                     self.log_prefix + "Ray start commands", show_status=True):
                 for cmd in self.ray_start_commands:
-                    self.cmd_runner.run(cmd)
+                    if self.node_resources:
+                        env_vars = {"RAY_OVERRIDE_RESOURCES": self.node_resources}
+                    else:
+                        env_vars = {}
+                    self.cmd_runner.run(cmd, environment_variables=env_vars)
+
 
     def rsync_up(self, source, target):
         cli_logger.old_info(logger, "{}Syncing {} to {}...", self.log_prefix,
