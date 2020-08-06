@@ -63,7 +63,7 @@ if __name__ == "__main__":
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
 
-    ray.init(local_mode=True)
+    ray.init()
     datasets.MNIST("~/data", train=True, download=True)
 
     # __pbt_begin__
@@ -117,10 +117,9 @@ if __name__ == "__main__":
 
     best_trial = analysis.get_best_trial("mean_accuracy")
     all_checkpoints = analysis.get_trial_checkpoints_paths(best_trial, "mean_accuracy")
-    print(all_checkpoints)
     best_checkpoint_path = max(all_checkpoints, key=lambda x: x[1])
     best_model = ConvNet()
-    best_checkpoint = torch.load(best_checkpoint_path[0])
+    best_checkpoint = torch.load(os.path.join(best_checkpoint_path[0], "checkpoint"))
     best_model.load_state_dict(best_checkpoint["model_state_dict"])
     # Note that test only runs on a small random set of the test data, thus the
     # accuracy may be different from metrics shown in tuning process.
