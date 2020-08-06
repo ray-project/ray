@@ -152,8 +152,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       scheduling_policy_(local_queues_),
       reconstruction_policy_(
           io_service_,
-          [](const TaskID &task_id, const ObjectID &required_object_id) {
-            // SANG-TODO Remove it.
+          [this](const TaskID &task_id, const ObjectID &required_object_id) {
+            HandleTaskReconstruction(task_id, required_object_id);
           },
           RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
           self_node_id_, gcs_client_, object_directory_),
@@ -2511,6 +2511,69 @@ void NodeManager::FinishAssignedActorCreationTask(WorkerInterface &worker,
 
   if (task_spec.IsDetachedActor()) {
     worker.MarkDetachedActor();
+  }
+}
+
+void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
+                                           const ObjectID &required_object_id) {
+  // Get the owner's address.
+  rpc::Address owner_addr;
+  bool has_owner =
+      task_dependency_manager_.GetOwnerAddress(required_object_id, &owner_addr);
+  if (has_owner) {
+    if (!RayConfig::instance().object_pinning_enabled()) {
+      // LRU eviction is enabled. The object may still be in scope, but we
+      // weren't able to fetch the value within the timeout, so the value has
+      // most likely been evicted. Mark the object as unreachable.
+      MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {required_object_id},
+                          JobID::Nil());
+    } else {
+      RAY_LOG(DEBUG) << "Required object " << required_object_id
+                     << " fetch timed out, asking owner "
+                     << WorkerID::FromBinary(owner_addr.worker_id());
+      // The owner's address exists. Poll the owner to check if the object is
+      // still in scope. If not, mark the object as failed.
+      // TODO(swang): If the owner has died, we could also mark the object as
+      // failed as soon as we hear about the owner's failure from the GCS,
+      // avoiding the raylet's reconstruction timeout.
+      auto client = std::unique_ptr<rpc::CoreWorkerClient>(
+          new rpc::CoreWorkerClient(owner_addr, client_call_manager_));
+
+      rpc::GetObjectStatusRequest request;
+      request.set_object_id(required_object_id.Binary());
+      request.set_owner_worker_id(owner_addr.worker_id());
+      client->GetObjectStatus(request, [this, required_object_id](
+                                           Status status,
+                                           const rpc::GetObjectStatusReply &reply) {
+        if (!status.ok() || reply.status() == rpc::GetObjectStatusReply::OUT_OF_SCOPE ||
+            reply.status() == rpc::GetObjectStatusReply::FREED) {
+          // The owner is gone, or the owner replied that the object has
+          // gone out of scope (this is an edge case in the distributed ref
+          // counting protocol where a borrower dies before it can notify
+          // the owner of another borrower), or the object value has been
+          // freed. Store an error in the local plasma store so that an
+          // exception will be thrown when the worker tries to get the
+          // value.
+          MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {required_object_id},
+                              JobID::Nil());
+        }
+        // Do nothing if the owner replied that the object is available. The
+        // object manager will continue trying to fetch the object, and this
+        // handler will get triggered again if the object is still
+        // unavailable after another timeout.
+      });
+    }
+  } else {
+    RAY_LOG(WARNING)
+        << "Ray cannot get the value of ObjectIDs that are generated "
+           "randomly (ObjectID.from_random()) or out-of-band "
+           "(ObjectID.from_binary(...)) because Ray "
+           "does not know which task will create them. "
+           "If this was not how your object ID was generated, please file an "
+           "issue "
+           "at https://github.com/ray-project/ray/issues/";
+    MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {required_object_id},
+                        JobID::Nil());
   }
 }
 

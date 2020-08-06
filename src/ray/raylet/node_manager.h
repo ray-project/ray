@@ -295,6 +295,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
       std::unordered_map<ClientID, SchedulingResources> &resource_map,
       const BundleSpecification &bundle_spec);
 
+  /// Handle a task whose return value(s) must be reconstructed.
+  ///
+  /// \param task_id The relevant task ID.
+  /// \param required_object_id The object id we are reconstructing for.
+  /// \return Void.
+  void HandleTaskReconstruction(const TaskID &task_id,
+                                const ObjectID &required_object_id);
+
   /// Attempt to forward a task to a remote different node manager. If this
   /// fails, the task will be resubmit locally.
   ///
