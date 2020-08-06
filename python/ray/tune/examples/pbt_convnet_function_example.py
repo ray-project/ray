@@ -27,6 +27,9 @@ def train_convnet(config, checkpoint_dir=None):
         momentum=config.get("momentum", 0.9)
     )
 
+    for param_group in optimizer.param_groups:
+        print(config["lr"], param_group["lr"])
+
     if checkpoint_dir:
         path = os.path.join(checkpoint_dir, "checkpoint")
         checkpoint = torch.load(path)
@@ -35,10 +38,12 @@ def train_convnet(config, checkpoint_dir=None):
         step = checkpoint["step"]
 
     for param_group in optimizer.param_groups:
-        if "lr" in config:
-            param_group["lr"] = config["lr"]
-        if "momentum" in config:
-            param_group["momentum"] = config["momentum"]
+        print(config["lr"], param_group["lr"])
+    # for param_group in optimizer.param_groups:
+    #     if "lr" in config:
+    #         param_group["lr"] = config["lr"]
+    #     if "momentum" in config:
+    #         param_group["momentum"] = config["momentum"]
 
     while True:
         train(model, optimizer, train_loader)
@@ -105,9 +110,9 @@ if __name__ == "__main__":
         verbose=1,
         stop=stopper,
         export_formats=[ExportFormat.MODEL],
-        checkpoint_score_attr="mean_accuracy",
+        #checkpoint_score_attr="mean_accuracy",
         checkpoint_freq=5,
-        keep_checkpoints_num=4,
+        #keep_checkpoints_num=4,
         num_samples=4,
         config={
             "lr": tune.uniform(0.001, 1),
