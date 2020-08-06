@@ -15,7 +15,6 @@
 #include "ray/gcs/redis_gcs_client.h"
 
 #include "ray/common/ray_config.h"
-// #include "ray/gcs/accessor.h"
 #include "ray/gcs/redis_context.h"
 
 namespace ray {
