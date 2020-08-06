@@ -60,10 +60,16 @@ std::string BundleSpecification::DebugString() const {
 }
 
 std::string FormatPlacementGroupResource(const std::string &original_resource_name,
-                                         PlacementGroupID group_id,
+                                         const PlacementGroupID &group_id,
                                          int64_t bundle_index) {
-  auto str = original_resource_name + "_group_" + group_id.Hex() + "_" +
-             std::to_string(bundle_index);
+  std::string str;
+  if (bundle_index >= 0) {
+    str = original_resource_name + "_group_" + std::to_string(bundle_index) + "_" +
+          group_id.Hex();
+  } else {
+    RAY_CHECK(bundle_index == -1) << "Invalid index " << bundle_index;
+    str = original_resource_name + "_group_" + group_id.Hex();
+  }
   RAY_CHECK(GetOriginalResourceName(str) == original_resource_name) << str;
   return str;
 }
@@ -72,6 +78,12 @@ std::string FormatPlacementGroupResource(const std::string &original_resource_na
                                          const BundleSpecification &bundle_spec) {
   return FormatPlacementGroupResource(
       original_resource_name, bundle_spec.PlacementGroupId(), bundle_spec.Index());
+}
+
+bool IsBundleIndex(const std::string &resource, const PlacementGroupID &group_id,
+                   const int bundle_index) {
+  return resource.find("_group_" + std::to_string(bundle_index) + "_" + group_id.Hex()) !=
+         std::string::npos;
 }
 
 std::string GetOriginalResourceName(const std::string &resource) {

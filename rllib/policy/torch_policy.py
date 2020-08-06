@@ -11,7 +11,7 @@ from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
-from ray.rllib.policy.trajectory_view import get_trajectory_view
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
@@ -19,7 +19,7 @@ from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 from ray.rllib.utils.torch_ops import convert_to_non_torch_type, \
     convert_to_torch_tensor
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
-from ray.rllib.utils.types import AgentID, ModelGradients, ModelWeights, \
+from ray.rllib.utils.types import ModelGradients, ModelWeights, \
     TensorType, TrainerConfigDict
 
 torch, _ = try_import_torch()
@@ -103,6 +103,11 @@ class TorchPolicy(Policy):
         else:
             self.device = torch.device("cpu")
         self.model = model.to(self.device)
+        # Combine view_requirements for Model and Policy.
+        self.view_requirements = {
+            **self.model.inference_view_requirements(),
+            **self.training_view_requirements(),
+        }
         self.exploration = self._create_exploration()
         self.unwrapped_model = model  # used to support DistributedDataParallel
         self._loss = loss
@@ -116,9 +121,20 @@ class TorchPolicy(Policy):
         self.distributed_world_size = None
 
         self.max_seq_len = max_seq_len
-        self.batch_divisibility_req = \
-            get_batch_divisibility_req(self) if get_batch_divisibility_req \
-            else 1
+        self.batch_divisibility_req = get_batch_divisibility_req(self) if \
+            callable(get_batch_divisibility_req) else \
+            (get_batch_divisibility_req or 1)
+
+    @override(Policy)
+    def training_view_requirements(self):
+        if hasattr(self, "view_requirements"):
+            return self.view_requirements
+        return {
+            SampleBatch.ACTIONS: ViewRequirement(
+                space=self.action_space, shift=0),
+            SampleBatch.REWARDS: ViewRequirement(shift=0),
+            SampleBatch.DONES: ViewRequirement(shift=0),
+        }
 
     @override(Policy)
     @DeveloperAPI
@@ -168,10 +184,9 @@ class TorchPolicy(Policy):
                                               extra_fetches))
 
     @override(Policy)
-    def compute_actions_from_trajectories(
+    def compute_actions_from_input_dict(
             self,
-            trajectories: List["Trajectory"],
-            other_trajectories: Optional[Dict[AgentID, "Trajectory"]] = None,
+            input_dict: Dict[str, TensorType],
             explore: bool = None,
             timestep: Optional[int] = None,
             **kwargs) -> \
@@ -181,10 +196,8 @@ class TorchPolicy(Policy):
         timestep = timestep if timestep is not None else self.global_timestep
 
         with torch.no_grad():
-            # Create a view and pass that to Model as `input_dict`.
-            input_dict = self._lazy_tensor_dict(
-                get_trajectory_view(
-                    self.model, trajectories, is_training=False))
+            # Pass lazy (torch) tensor dict to Model as `input_dict`.
+            input_dict = self._lazy_tensor_dict(input_dict)
             # TODO: (sven) support RNNs w/ fast sampling.
             state_batches = []
             seq_lens = None

@@ -28,7 +28,7 @@ class HTTPProxy:
     # blocks forever
     """
 
-    async def fetch_config_from_controller(self, instance_name=None):
+    async def fetch_config_from_controller(self, name, instance_name=None):
         assert ray.is_initialized()
         controller = serve.api._get_controller()
 
@@ -44,7 +44,7 @@ class HTTPProxy:
             label_names=("route", ))
 
         self.router = Router()
-        await self.router.setup(instance_name)
+        await self.router.setup(name, instance_name)
 
     def set_route_table(self, route_table):
         self.route_table = route_table
@@ -173,16 +173,18 @@ class HTTPProxy:
 class HTTPProxyActor:
     async def __init__(
             self,
+            name,
             host,
             port,
             instance_name=None,
             _http_middlewares: List["starlette.middleware.Middleware"] = []):
         serve.init(name=instance_name)
+        self.app = HTTPProxy()
         self.host = host
         self.port = port
 
         self.app = HTTPProxy()
-        await self.app.fetch_config_from_controller(instance_name)
+        await self.app.fetch_config_from_controller(name, instance_name)
 
         self.wrapped_app = self.app
         for middleware in _http_middlewares:
