@@ -177,9 +177,10 @@ format_changed() {
              yapf --in-place "${YAPF_EXCLUDES[@]}" "${YAPF_FLAGS[@]}"
         if which flake8 >/dev/null; then
             git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
-                 flake8 --inline-quotes '"' --no-avoid-escape --exclude="rllib/,$EXCLUDE" --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605
+                 flake8 --inline-quotes '"' --no-avoid-escape --exclude="$EXCLUDE,rllib/" --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605
+            # Ignore F821 for rllib LINTing (produces errors for type annotations using quotes (non-imported classes)).
             git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
-                 flake8 --inline-quotes '"' --no-avoid-escape --exclude="$EXCLUDE" --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605,F821
+                 flake8 --inline-quotes '"' --no-avoid-escape --exclude="$EXCLUDE" --filename="rllib/" --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605,F821
         fi
     fi
 
