@@ -67,6 +67,7 @@ extensions = [
     'sphinx_tabs.tabs',
     'sphinx-jsonschema',
     'sphinx_gallery.gen_gallery',
+    'sphinxemoji.sphinxemoji',
     'sphinx_copybutton',
     'versionwarning.extension',
 ]

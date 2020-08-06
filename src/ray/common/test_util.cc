@@ -179,6 +179,14 @@ bool WaitForCondition(std::function<bool()> condition, int timeout_ms) {
   return false;
 }
 
+void WaitForExpectedCount(std::atomic<int> &current_count, int expected_count,
+                          int timeout_ms) {
+  auto condition = [&current_count, expected_count]() {
+    return current_count == expected_count;
+  };
+  EXPECT_TRUE(WaitForCondition(condition, timeout_ms));
+}
+
 void KillProcessBySocketName(std::string socket_name) {
   std::string pidfile_path = socket_name + ".pid";
   {

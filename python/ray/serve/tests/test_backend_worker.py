@@ -50,7 +50,7 @@ async def test_runner_wraps_error():
 
 async def test_runner_actor(serve_instance):
     q = ray.remote(Router).remote()
-    await q.setup.remote()
+    await q.setup.remote("")
 
     def echo(flask_request, i=None):
         return i
@@ -72,7 +72,7 @@ async def test_runner_actor(serve_instance):
 
 async def test_ray_serve_mixin(serve_instance):
     q = ray.remote(Router).remote()
-    await q.setup.remote()
+    await q.setup.remote("")
 
     CONSUMER_NAME = "runner-cls"
     PRODUCER_NAME = "prod-cls"
@@ -98,7 +98,7 @@ async def test_ray_serve_mixin(serve_instance):
 
 async def test_task_runner_check_context(serve_instance):
     q = ray.remote(Router).remote()
-    await q.setup.remote()
+    await q.setup.remote("")
 
     def echo(flask_request, i=None):
         # Accessing the flask_request without web context should throw.
@@ -120,7 +120,7 @@ async def test_task_runner_check_context(serve_instance):
 
 async def test_task_runner_custom_method_single(serve_instance):
     q = ray.remote(Router).remote()
-    await q.setup.remote()
+    await q.setup.remote("")
 
     class NonBatcher:
         def a(self, _):
@@ -155,7 +155,7 @@ async def test_task_runner_custom_method_single(serve_instance):
 
 async def test_task_runner_custom_method_batch(serve_instance):
     q = ray.remote(Router).remote()
-    await q.setup.remote()
+    await q.setup.remote("")
 
     @serve.accept_batch
     class Batcher:
@@ -221,7 +221,7 @@ async def test_task_runner_custom_method_batch(serve_instance):
 
 async def test_task_runner_perform_batch(serve_instance):
     q = ray.remote(Router).remote()
-    await q.setup.remote()
+    await q.setup.remote("")
 
     def batcher(*args, **kwargs):
         return [serve.context.batch_size] * serve.context.batch_size
@@ -252,7 +252,7 @@ async def test_task_runner_perform_batch(serve_instance):
 
 async def test_task_runner_perform_async(serve_instance):
     q = ray.remote(Router).remote()
-    await q.setup.remote()
+    await q.setup.remote("")
 
     @ray.remote
     class Barrier:

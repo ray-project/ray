@@ -105,8 +105,8 @@ class TorchPolicy(Policy):
         self.model = model.to(self.device)
         # Combine view_requirements for Model and Policy.
         self.view_requirements = {
-            **self.model.get_view_requirements(),
-            **self.get_view_requirements(),
+            **self.model.inference_view_requirements(),
+            **self.training_view_requirements(),
         }
         self.exploration = self._create_exploration()
         self.unwrapped_model = model  # used to support DistributedDataParallel
@@ -121,19 +121,19 @@ class TorchPolicy(Policy):
         self.distributed_world_size = None
 
         self.max_seq_len = max_seq_len
-        self.batch_divisibility_req = \
-            get_batch_divisibility_req(self) if get_batch_divisibility_req \
-            else 1
+        self.batch_divisibility_req = get_batch_divisibility_req(self) if \
+            callable(get_batch_divisibility_req) else \
+            (get_batch_divisibility_req or 1)
 
     @override(Policy)
-    def get_view_requirements(self):
+    def training_view_requirements(self):
         if hasattr(self, "view_requirements"):
             return self.view_requirements
         return {
             SampleBatch.ACTIONS: ViewRequirement(
-                space=self.action_space, sampling=False),
-            SampleBatch.REWARDS: ViewRequirement(sampling=False),
-            SampleBatch.DONES: ViewRequirement(sampling=False),
+                space=self.action_space, shift=0),
+            SampleBatch.REWARDS: ViewRequirement(shift=0),
+            SampleBatch.DONES: ViewRequirement(shift=0),
         }
 
     @override(Policy)
@@ -360,7 +360,6 @@ class TorchPolicy(Policy):
         # Call Model's custom-loss with Policy loss outputs and train_batch.
         if self.model:
             loss_out = self.model.custom_loss(loss_out, train_batch)
-        loss_out = self.exploration.get_exploration_loss(loss_out, train_batch)
 
         assert len(loss_out) == len(self._optimizers)
         # assert not any(torch.isnan(l) for l in loss_out)

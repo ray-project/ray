@@ -223,13 +223,12 @@ def setup_mixins(policy, obs_space, action_space, config):
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
-def get_view_requirements_fn(policy):
+def training_view_requirements_fn(policy):
     return {
         # Next obs are needed for PPO postprocessing.
-        SampleBatch.NEXT_OBS: ViewRequirement(
-            SampleBatch.OBS, shift=1, sampling=False, training=False),
+        SampleBatch.NEXT_OBS: ViewRequirement(SampleBatch.OBS, shift=1),
         # VF preds are needed for the loss.
-        SampleBatch.VF_PREDS: ViewRequirement(sampling=False),
+        SampleBatch.VF_PREDS: ViewRequirement(shift=0),
     }
 
 
@@ -247,5 +246,5 @@ PPOTorchPolicy = build_torch_policy(
         LearningRateSchedule, EntropyCoeffSchedule, KLCoeffMixin,
         ValueNetworkMixin
     ],
-    get_view_requirements=get_view_requirements_fn,
+    training_view_requirements_fn=training_view_requirements_fn,
 )
