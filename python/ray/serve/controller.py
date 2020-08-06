@@ -674,8 +674,8 @@ class ServeController:
                         err_prefix, endpoint))
 
             logger.info(
-                "Registering route '{}' to endpoint '{}' with methods '{}'.".format(
-                    route, endpoint, methods))
+                "Registering route '{}' to endpoint '{}' with methods '{}'.".
+                format(route, endpoint, methods))
 
             self.routes[route] = (endpoint, methods)
 
@@ -730,8 +730,7 @@ class ServeController:
             if backend_tag in self.backends:
                 raise ValueError(
                     "Cannot create backend.  "
-                    "Backend '{}' is already registered.".format(
-                        backend_tag))
+                    "Backend '{}' is already registered.".format(backend_tag))
 
             backend_worker = create_backend_worker(
                 replica_config.func_or_class)
