@@ -1369,9 +1369,6 @@ def start_raylet(redis_address,
     else:
         cpp_worker_command = []
 
-    print("cpp_worker_command:")
-    print(cpp_worker_command)
-
     # Create the command that the Raylet will use to start workers.
     start_worker_command = [
         sys.executable,
