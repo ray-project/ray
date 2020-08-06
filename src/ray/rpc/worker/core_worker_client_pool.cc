@@ -6,11 +6,6 @@ namespace rpc {
 optional<shared_ptr<CoreWorkerClientInterface>> CoreWorkerClientPool::GetByID(
     ray::WorkerID id) {
   absl::MutexLock lock(&mu_);
-  return getByIDInternal(id);
-}
-
-optional<shared_ptr<CoreWorkerClientInterface>> CoreWorkerClientPool::getByIDInternal(
-    ray::WorkerID id) {
   auto it = client_map_.find(id);
   if (it == client_map_.end()) {
     return {};
@@ -23,9 +18,9 @@ shared_ptr<CoreWorkerClientInterface> CoreWorkerClientPool::GetOrConnect(
   RAY_CHECK(addr_proto.worker_id() != "");
   absl::MutexLock lock(&mu_);
   auto id = WorkerID::FromBinary(addr_proto.worker_id());
-  auto existing_connection = getByIDInternal(id);
-  if (existing_connection.has_value()) {
-    return existing_connection.value();
+  auto it = client_map_.find(id);
+  if (it != client_map_.end()) {
+    return it->second;
   }
   auto connection = client_factory_(addr_proto);
   client_map_[id] = connection;
