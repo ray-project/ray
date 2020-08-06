@@ -321,7 +321,7 @@ def run(run_or_experiment,
 
     if not runner.resumed:
         for exp in experiments:
-            search_alg.add_configurations([experiment])
+            search_alg.add_configurations([exp])
     else:
         logger.info("TrialRunner resumed, ignoring new add_experiment.")
 

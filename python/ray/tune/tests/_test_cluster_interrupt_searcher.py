@@ -1,3 +1,5 @@
+import argparse
+
 import ray
 import numpy as np
 import time
@@ -38,6 +40,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--ray-address",
         help="Address of Ray cluster for seamless distributed execution.")
+    args = parser.parse_args()
 
     space = {
         "width": hp.uniform("width", 0, 20),

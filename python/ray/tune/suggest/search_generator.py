@@ -1,8 +1,15 @@
+import copy
+import logging
+
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list
 from ray.tune.config_parser import make_parser, create_trial_from_spec
-from ray.tune.suggest.search import SearchAlgorithm
+from ray.tune.suggest.search import SearchAlgorithm, Searcher
 from ray.tune.suggest.variant_generator import format_vars, resolve_nested_dict
+from ray.tune.trial import Trial
+from ray.tune.utils import flatten_dict, merge_dicts
+
+logger = logging.getLogger(__name__)
 
 
 def _warn_on_repeater(searcher, total_samples):
