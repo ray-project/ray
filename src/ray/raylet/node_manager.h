@@ -32,6 +32,7 @@
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/raylet/scheduling_policy.h"
 #include "ray/raylet/scheduling_queue.h"
+#include "ray/raylet/reconstruction_policy.h"
 #include "ray/raylet/task_dependency_manager.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/util/ordered_set.h"
@@ -682,6 +683,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   SchedulingQueue local_queues_;
   /// The scheduling policy in effect for this raylet.
   SchedulingPolicy scheduling_policy_;
+  /// The reconstruction policy for deciding when to re-execute a task.
+  ReconstructionPolicy reconstruction_policy_;
   /// A manager to make waiting tasks's missing object dependencies available.
   TaskDependencyManager task_dependency_manager_;
   /// A mapping from actor ID to registration information about that actor

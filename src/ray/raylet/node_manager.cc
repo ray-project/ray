@@ -150,8 +150,15 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
           /*starting_worker_timeout_callback=*/
           [this]() { this->DispatchTasks(this->local_queues_.GetReadyTasksByClass()); }),
       scheduling_policy_(local_queues_),
+      reconstruction_policy_(
+          io_service_,
+          [](const TaskID &task_id, const ObjectID &required_object_id) {
+            // SANG-TODO Remove it.
+          },
+          RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
+          self_node_id_, gcs_client_, object_directory_),
       task_dependency_manager_(
-          object_manager, io_service, self_node_id_,
+          object_manager, reconstruction_policy_, io_service, self_node_id_,
           RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
           gcs_client_),
       actor_registry_(),
@@ -908,6 +915,10 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
                  << actor_registration.GetRemainingRestarts();
 
   if (actor_registration.GetState() == ActorTableData::ALIVE) {
+    // The actor is now alive (created for the first time or restarted). We can
+    // stop listening for the actor creation task. This is needed because we use
+    // `ListenAndMaybeReconstruct` to reconstruct the actor.
+    reconstruction_policy_.Cancel(actor_registration.GetActorCreationDependency());
     // The actor's location is now known. Dequeue any methods that were
     // submitted before the actor's location was known.
     // (See design_docs/task_states.rst for the state transition diagram.)
@@ -2770,6 +2781,7 @@ std::string NodeManager::DebugString() const {
   result << "\n" << gcs_client_->DebugString();
   result << "\n" << worker_pool_.DebugString();
   result << "\n" << local_queues_.DebugString();
+  result << "\n" << reconstruction_policy_.DebugString();
   result << "\n" << task_dependency_manager_.DebugString();
   {
     absl::MutexLock guard(&plasma_object_notification_lock_);
@@ -3166,6 +3178,7 @@ void NodeManager::RecordMetrics() {
   object_manager_.RecordMetrics();
   worker_pool_.RecordMetrics();
   local_queues_.RecordMetrics();
+  reconstruction_policy_.RecordMetrics();
   task_dependency_manager_.RecordMetrics();
 
   auto statistical_data = GetActorStatisticalData(actor_registry_);

@@ -19,6 +19,7 @@
 #include "ray/common/task/task.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/object_manager/object_manager.h"
+#include "ray/raylet/reconstruction_policy.h"
 // clang-format on
 
 namespace ray {
@@ -26,6 +27,8 @@ namespace ray {
 namespace raylet {
 
 using rpc::TaskLeaseData;
+
+class ReconstructionPolicy;
 
 /// \class TaskDependencyManager
 ///
@@ -41,6 +44,7 @@ class TaskDependencyManager {
  public:
   /// Create a task dependency manager.
   TaskDependencyManager(ObjectManagerInterface &object_manager,
+                        ReconstructionPolicyInterface &reconstruction_policy,
                         boost::asio::io_service &io_service, const ClientID &client_id,
                         int64_t initial_lease_period_ms,
                         std::shared_ptr<gcs::GcsClient> gcs_client);
@@ -239,6 +243,9 @@ class TaskDependencyManager {
 
   /// The object manager, used to fetch required objects from remote nodes.
   ObjectManagerInterface &object_manager_;
+  /// The reconstruction policy, used to reconstruct required objects that no
+  /// longer exist on any live nodes.
+  ReconstructionPolicyInterface &reconstruction_policy_;
   /// The event loop, used to set timers for renewing task leases. The task
   /// leases are used to indicate which tasks are pending execution on this
   /// node and must be periodically renewed.
