@@ -64,7 +64,7 @@ class CoreWorkerClientPool {
   };
 
   /// Internal getter that assumes the lock has already been taken.
-  ClientFactoryFn getByIDInternal(ray::WorkerID id);
+  optional<shared_ptr<CoreWorkerClientInterface>> getByIDInternal(ray::WorkerID id);
 
   /// This factory function does the connection to CoreWorkerClient, and is
   /// provided by the constructor (either the default implementation, above, or a

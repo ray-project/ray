@@ -732,7 +732,7 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
   request.set_contained_in_id(contained_in_id.Binary());
   request.set_intended_worker_id(addr.worker_id.Binary());
 
-  auto conn = borrower_pool_.GetOrConnect(addr);
+  auto conn = borrower_pool_.GetOrConnect(addr.ToProto());
 
   RAY_LOG(DEBUG) << "Sending WaitForRefRemoved to borrower " << addr.ip_address << ":"
                  << addr.port << " for object " << object_id;

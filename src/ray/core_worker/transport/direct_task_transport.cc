@@ -94,7 +94,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
 
 void CoreWorkerDirectTaskSubmitter::AddWorkerLeaseClient(
     const rpc::WorkerAddress &addr, std::shared_ptr<WorkerLeaseInterface> lease_client) {
-  client_cache_.GetOrConnect(addr);
+  client_cache_.GetOrConnect(addr.ToProto());
   int64_t expiration = current_time_ms() + lease_timeout_ms_;
   LeaseEntry new_lease_entry = LeaseEntry(std::move(lease_client), expiration, 0);
   worker_to_lease_entry_.emplace(addr, new_lease_entry);
@@ -126,7 +126,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
     }
 
   } else {
-    auto &client = *client_cache_.GetOrConnect(addr);
+    auto &client = *client_cache_.GetOrConnect(addr.ToProto());
 
     while (!queue_entry->second.empty() &&
            lease_entry.tasks_in_flight_ < max_tasks_in_flight_per_worker_) {
