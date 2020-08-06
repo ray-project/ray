@@ -11,6 +11,12 @@ def test_spill_objects_manually(shutdown_only):
     # Limit our object store to 75 MiB of memory.
     ray.init(
         object_store_memory=75 * 1024 * 1024,
+        object_spilling_config={
+            "type": "filesystem",
+            "params": {
+                "directory_path": "/tmp"
+            }
+        },
         _internal_config=json.dumps({
             "object_store_full_max_retries": 0,
             "num_io_workers": 4,

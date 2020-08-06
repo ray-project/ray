@@ -192,8 +192,10 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
   for (auto &entry : state.starting_worker_processes) {
     starting_workers += entry.second;
   }
-  // TODO(suquark): Reserve one concurrency slot for IO workers.
-  if (starting_workers >= maximum_startup_concurrency_ + 1) {
+
+  // Here we consider both task workers and I/O workers.
+  if (starting_workers >=
+      maximum_startup_concurrency_ + RayConfig::instance().num_io_workers()) {
     // Workers have been started, but not registered. Force start disabled -- returning.
     RAY_LOG(DEBUG) << "Worker not started, " << starting_workers
                    << " workers of language type " << static_cast<int>(language)

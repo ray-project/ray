@@ -551,7 +551,8 @@ void NodeManager::SpillObjects(const std::vector<ObjectID> &objects_ids_to_spill
                 RAY_LOG(ERROR) << "Failed to send object spilling request: "
                                << status.ToString();
               } else {
-                RAY_CHECK(r.spilled_objects_url_size() == objects_ids.size());
+                RAY_CHECK(static_cast<size_t>(r.spilled_objects_url_size()) ==
+                          objects_ids.size());
                 for (size_t i = 0; i < objects_ids.size(); ++i) {
                   const ObjectID &object_id = objects_ids[i];
                   const std::string &object_url = r.spilled_objects_url(i);

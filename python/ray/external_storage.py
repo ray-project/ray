@@ -81,4 +81,16 @@ class FileSystemStorage(ExternalStorage):
                 self._put_object_to_store(metadata, buf_len, f, ref)
 
 
-current_storage = FileSystemStorage("/tmp")
+current_storage = None
+
+
+def init(config):
+    global current_storage
+    if not config:
+        current_storage = InMemoryStorage()
+    else:
+        storage_type = config["type"]
+        if storage_type == "filesystem":
+            current_storage = FileSystemStorage(**config["params"])
+        else:
+            raise ValueError(f"Unknown external storage type: {storage_type}")

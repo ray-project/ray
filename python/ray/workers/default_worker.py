@@ -92,11 +92,35 @@ parser.add_argument(
     required=True,
     type=int,
     help="the port of the node's metric agent.")
+parser.add_argument(
+    "--object-spilling-config",
+    required=False,
+    type=str,
+    default="",
+    help="The configuration of object spilling. Only used by I/O workers.")
 
 if __name__ == "__main__":
     args = parser.parse_args()
 
     ray.utils.setup_logger(args.logging_level, args.logging_format)
+
+    if args.worker_type == "WORKER":
+        mode = ray.WORKER_MODE
+    elif args.worker_type == "IO_WORKER":
+        mode = ray.IO_WORKER_MODE
+    else:
+        raise ValueError("Unknown worker type: " + args.worker_type)
+
+    # NOTE(suquark): We must initialize the external storage before we
+    # connect to raylet. Otherwise we may receive requests before the
+    # external storage is intialized.
+    if mode == ray.IO_WORKER_MODE:
+        from ray import external_storage
+        if args.object_spilling_config:
+            object_spilling_config = json.loads(args.object_spilling_config)
+        else:
+            object_spilling_config = {}
+        external_storage.init(object_spilling_config)
 
     internal_config = {}
     if args.config_list is not None:
@@ -133,16 +157,15 @@ if __name__ == "__main__":
         connect_only=True)
     ray.worker._global_node = node
 
-    if args.worker_type == "WORKER":
-        mode = ray.WORKER_MODE
-    elif args.worker_type == "IO_WORKER":
-        mode = ray.IO_WORKER_MODE
-    else:
-        raise ValueError("Unknown worker type: " + args.worker_type)
-
     ray.worker.connect(node, mode=mode)
     if mode == ray.WORKER_MODE:
         ray.worker.global_worker.main_loop()
     else:
+        from ray import external_storage
+        if args.object_spilling_config:
+            object_spilling_config = json.loads(args.object_spilling_config)
+        else:
+            object_spilling_config = {}
+        external_storage.init(object_spilling_config)
         while True:
             time.sleep(100000)

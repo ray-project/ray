@@ -514,7 +514,8 @@ def init(address=None,
          _internal_config=None,
          lru_evict=False,
          enable_object_reconstruction=False,
-         _metrics_export_port=None):
+         _metrics_export_port=None,
+         object_spilling_config=None):
     """
     Connect to an existing Ray cluster or start one and connect to it.
 
@@ -643,6 +644,8 @@ def init(address=None,
         _metrics_export_port(int): Port number Ray exposes system metrics
             through a Prometheus endpoint. It is currently under active
             development, and the API is subject to change.
+        object_spilling_config (str): The configuration json string for object
+            spilling I/O worker.
 
     Returns:
         Address information about the started processes.
@@ -738,7 +741,8 @@ def init(address=None,
             _internal_config=_internal_config,
             lru_evict=lru_evict,
             enable_object_reconstruction=enable_object_reconstruction,
-            metrics_export_port=_metrics_export_port)
+            metrics_export_port=_metrics_export_port,
+            object_spilling_config=object_spilling_config)
         # Start the Ray processes. We set shutdown_at_exit=False because we
         # shutdown the node in the ray.shutdown call that happens in the atexit
         # handler. We still spawn a reaper process in case the atexit handler
