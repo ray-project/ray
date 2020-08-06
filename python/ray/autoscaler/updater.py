@@ -36,7 +36,7 @@ class NodeUpdater:
                  ray_start_commands,
                  runtime_hash,
                  file_mounts_contents_hash,
-                 node_resources = None,
+                 node_resources=None,
                  cluster_synced_files=None,
                  process_runner=subprocess,
                  use_internal_ip=False,
