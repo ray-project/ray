@@ -1459,7 +1459,7 @@ py_test(
     name = "examples/batch_norm_model_ddpg_tf",
     main = "examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--run=DDPG", "--stop-iters=1"]
 )
@@ -1468,7 +1468,7 @@ py_test(
     name = "examples/batch_norm_model_ddpg_torch",
     main = "examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--torch", "--run=DDPG", "--stop-iters=1"]
 )
