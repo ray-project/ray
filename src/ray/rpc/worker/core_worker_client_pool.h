@@ -30,44 +30,51 @@ class CoreWorkerClientPool {
  public:
   CoreWorkerClientPool() = delete;
 
-  // Creates a CoreWorkerClientPool based on the low-level ClientCallManager.
+  /// Creates a CoreWorkerClientPool based on the low-level ClientCallManager.
   CoreWorkerClientPool(rpc::ClientCallManager &ccm)
       : client_factory_(defaultClientFactory(ccm)){};
 
-  // Creates a CoreWorkerClientPool by a given connection function.
+  /// Creates a CoreWorkerClientPool by a given connection function.
   CoreWorkerClientPool(ClientFactoryFn client_factory)
       : client_factory_(client_factory){};
 
-  // Returns an existing Interface if one exists, or an empty optional
-  // otherwise.
-  // Any returned pointer is borrowed, and expected to be used briefly.
+  /// Returns an existing Interface if one exists, or an empty optional
+  /// otherwise.
+  /// Any returned pointer is borrowed, and expected to be used briefly.
   optional<shared_ptr<CoreWorkerClientInterface>> GetByID(ray::WorkerID id);
 
-  // (DEPRECATED: Prefer rpc::Address) Returns an open CoreWorkerClientInterface
-  // if one exists, and connect to one if it does not.
-  shared_ptr<CoreWorkerClientInterface> GetOrConnect(const WorkerAddress &addr);
-
-  // Returns an open CoreWorkerClientInterface if one exists, and connect to one
-  // if it does not. The returned pointer is borrowed, and expected to be used
-  // briefly.
+  /// Returns an open CoreWorkerClientInterface if one exists, and connect to one
+  /// if it does not. The returned pointer is borrowed, and expected to be used
+  /// briefly.
   shared_ptr<CoreWorkerClientInterface> GetOrConnect(const Address &addr_proto);
 
-  // Removes a connection to the worker from the pool, if one exists. Since the
-  // shared pointer will no longer be retained in the pool, the connection will
-  // be open until it's no longer used, at which time it will disconnect.
+  /// Removes a connection to the worker from the pool, if one exists. Since the
+  /// shared pointer will no longer be retained in the pool, the connection will
+  /// be open until it's no longer used, at which time it will disconnect.
   void Disconnect(ray::WorkerID id);
 
  private:
+  /// Provides the default client factory function. Providing this function to the
+  /// construtor aids migration but is ultimately a thing that should be
+  /// deprecated and brought internal to the pool, so this is our bridge.
   ClientFactoryFn defaultClientFactory(rpc::ClientCallManager &ccm) const {
     return [&](const rpc::Address &addr) {
       return std::shared_ptr<rpc::CoreWorkerClient>(new rpc::CoreWorkerClient(addr, ccm));
     };
   };
 
+  /// Internal getter that assumes the lock has already been taken.
+  ClientFactoryFn getByIDInternal(ray::WorkerID id);
+
+  /// This factory function does the connection to CoreWorkerClient, and is
+  /// provided by the constructor (either the default implementation, above, or a
+  /// provided one)
   ClientFactoryFn client_factory_;
 
   absl::Mutex mu_;
 
+  /// A pool of open connections by WorkerID. Clients can reuse the connection
+  /// objects in this pool by requesting them.
   absl::flat_hash_map<ray::WorkerID, shared_ptr<CoreWorkerClientInterface>> client_map_
       GUARDED_BY(mu_);
 };
