@@ -50,6 +50,7 @@ class _FastMultiAgentSampleBatchBuilder(_SampleCollector):
                 in the buffer.
             num_timesteps (int): The max number of timesteps to pre-allocate
                 in the buffer.
+            time_major (Optional[bool]): TODO
         """
 
         self.policy_map = policy_map
@@ -62,8 +63,8 @@ class _FastMultiAgentSampleBatchBuilder(_SampleCollector):
         self.rollout_sample_collectors = {}
         for pid, policy in policy_map.items():
             # Figure out max-shifts (before and after).
-            view_reqs = policy.get_view_requirements()
-            max_shift_before = 1
+            view_reqs = policy.training_view_requirements()
+            max_shift_before = 0
             max_shift_after = 0
             for vr in view_reqs.values():
                 shift = force_list(vr.shift)
@@ -94,24 +95,23 @@ class _FastMultiAgentSampleBatchBuilder(_SampleCollector):
 
     @override(_SampleCollector)
     def total_env_steps(self) -> int:
-        """Returns total number of steps taken in the env (sum of all agents).
-
-        Returns:
-            int: The number of steps taken in total in the environment over all
-                agents.
-        """
         return sum(a.timesteps_since_last_reset
                    for a in self.rollout_sample_collectors.values())
 
+    def total(self):
+        # TODO: (sven) deprecate; use `self.total_env_steps`, instead.
+        return self.total_env_steps()
+
+    @override(_SampleCollector)
+    def get_inference_input_dict(self, policy_id: PolicyID) -> \
+            Dict[str, TensorType]:
+        policy = self.policy_map[policy_id]
+        view_reqs = policy.model.inference_view_requirements()
+        return self.rollout_sample_collectors[
+            policy_id].get_inference_input_dict(view_reqs)
+
     @override(_SampleCollector)
     def has_non_postprocessed_data(self) -> bool:
-        """Returns whether there is pending unprocessed data.
-
-        Returns:
-            bool: True if there is at least one per-agent builder (with data
-                in it).
-        """
-
         return self.total() > 0
 
     @override(_SampleCollector)
@@ -122,16 +122,6 @@ class _FastMultiAgentSampleBatchBuilder(_SampleCollector):
             env_id: EnvID,
             policy_id: PolicyID,
             obs: TensorType) -> None:
-        """Add the given dictionary (row) of values to this batch.
-
-        Args:
-            episode_id (EpisodeID): Unique id for the episode we are adding
-                values for.
-            agent_id (AgentID): Unique id for the agent we are adding
-                values for.
-            policy_id (PolicyID): Unique id for policy controlling the agent.
-            obs (TensorType): Initial observation (after env.reset()).
-        """
         # Make sure our mappings are up to date.
         if agent_id not in self.agent_to_policy:
             self.agent_to_policy[agent_id] = policy_id
@@ -151,16 +141,6 @@ class _FastMultiAgentSampleBatchBuilder(_SampleCollector):
             policy_id: PolicyID,
             agent_done: bool,
             values: Dict[str, TensorType]) -> None:
-        """Add the given dictionary (row) of values to this batch.
-
-        Args:
-            env_id (EpisodeID): Unique id for the episode we are adding values
-                for.
-            agent_id (AgentID): Unique id for the agent we are adding
-                values for.
-            policy_id (PolicyID): Unique id for policy controlling the agent.
-            values (Dict[str,TensorType]): Row of values to add for this agent.
-        """
         assert policy_id in self.rollout_sample_collectors
 
         # Make sure our mappings are up to date.
@@ -180,23 +160,13 @@ class _FastMultiAgentSampleBatchBuilder(_SampleCollector):
     @override(_SampleCollector)
     def postprocess_trajectories_so_far(
             self, episode: Optional[MultiAgentEpisode] = None) -> None:
-        """Apply policy postprocessing to any unprocessed data in an episode.
-
-        TODO: docstring
-
-        Args:
-            episode (Optional[MultiAgentEpisode]): The Episode object for which
-                to post-process data.
-        """
-
         # Loop through each per-policy collector and create a view (for each
         # agent as SampleBatch) from its buffers for post-processing
         all_agent_batches = {}
         for pid, rc in self.rollout_sample_collectors.items():
             policy = self.policy_map[pid]
-            model = policy.model
-            agent_batches = rc.get_postprocessing_sample_batches(
-                model, episode)
+            view_reqs = policy.training_view_requirements()
+            agent_batches = rc.get_postprocessing_sample_batches(episode, view_reqs)
 
             for agent_key, batch in agent_batches.items():
                 other_batches = None
@@ -264,26 +234,13 @@ class _FastMultiAgentSampleBatchBuilder(_SampleCollector):
 
     @override(_SampleCollector)
     def get_multi_agent_batch_and_reset(self):
-        """Returns the accumulated sample batches for each policy.
-
-        Any unprocessed rows will be first postprocessed with a policy
-        postprocessor. The internal state of this builder will be reset.
-
-        Args:
-            episode (Optional[MultiAgentEpisode]): The Episode object that
-                holds this MultiAgentBatchBuilder object or None.
-
-        Returns:
-            MultiAgentBatch: Returns the accumulated sample batches for each
-                policy.
-        """
-
         self.postprocess_trajectories_so_far()
         policy_batches = {}
         for pid, rc in self.rollout_sample_collectors.items():
             policy = self.policy_map[pid]
-            model = policy.model
-            policy_batches[pid] = rc.get_train_sample_batch_and_reset(model)
+            #model = policy.model
+            view_reqs = policy.training_view_requirements()
+            policy_batches[pid] = rc.get_train_sample_batch_and_reset(view_reqs)
 
         ma_batch = MultiAgentBatch.wrap_as_needed(policy_batches, self.count)
         # Reset our across-all-agents env step count.

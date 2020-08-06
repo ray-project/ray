@@ -321,7 +321,7 @@ class SampleBatch:
             key (str): The key (column name) to return.
 
         Returns:
-            TensorType]: The data under the given key.
+            TensorType: The data under the given key.
         """
         return self.data[key]
 

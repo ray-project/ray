@@ -229,6 +229,14 @@ def training_view_requirements_fn(policy):
         SampleBatch.NEXT_OBS: ViewRequirement(SampleBatch.OBS, shift=1),
         # VF preds are needed for the loss.
         SampleBatch.VF_PREDS: ViewRequirement(shift=0),
+        # Needed for postprocessing.
+        SampleBatch.ACTION_DIST_INPUTS: ViewRequirement(shift=0),
+        SampleBatch.ACTION_LOGP: ViewRequirement(shift=0),
+        # Created during postprocessing.
+        Postprocessing.ADVANTAGES: ViewRequirement(
+            shift=0, created_during_postprocessing=True),
+        Postprocessing.VALUE_TARGETS: ViewRequirement(
+            shift=0, created_during_postprocessing=True),
     }
 
 

@@ -32,7 +32,8 @@ class PerPolicySampleCollector:
         self.num_agents = num_agents or 100
         self.num_timesteps = num_timesteps
         self.time_major = time_major
-        self.shift_before = shift_before + 1
+        # `shift_before must at least be 1 for the init obs timestep.
+        self.shift_before = max(shift_before, 1)
         self.shift_after = shift_after
 
         # The offset on the agent dim to start the next SampleBatch build from.
@@ -197,7 +198,7 @@ class PerPolicySampleCollector:
     def _reset_inference_call(self):
         self.forward_pass_size = 0
 
-    def get_train_sample_batch_and_reset(self, model) -> SampleBatch:
+    def get_train_sample_batch_and_reset(self, view_reqs) -> SampleBatch:
         """Returns a SampleBatch carrying all previously added data.
 
         If a reset happens and the trajectory is not done yet, we'll keep the
@@ -205,21 +206,21 @@ class PerPolicySampleCollector:
         and only actually free the data, once the episode ends.
 
         Args:
-            model (ModelV2): The ModelV2 object for which to generate the view
-                (input_dict) the buffers.
+            #model (ModelV2): The ModelV2 object for which to generate the view
+            #    (input_dict) the buffers.
 
         Returns:
             SampleBatch: A SampleBatch containing data for training the Policy.
         """
         # Get ModelV2's view requirements.
-        view_reqs = model.get_view_requirements(is_training=True)
+        #view_reqs = model.get_view_requirements(is_training=True)
 
         # Construct the view dict.
         view = {}
         for view_col, view_req in view_reqs.items():
             # Skip columns that do not need to be included for training.
-            if not view_req.training:
-                continue
+            #if not view_req.training:
+            #    continue
             data_col = view_req.data_col or view_col
             assert data_col in self.buffers
             extra_shift = 0
@@ -295,7 +296,7 @@ class PerPolicySampleCollector:
                 for inference/training.
         """
         # Construct the view dict.
-        view = {}
+        input_dict = {}
         for view_col, view_req in view_reqs.items():
             # Create the batch of data from the different buffers.
             data_col = view_req.data_col or view_col
@@ -309,25 +310,24 @@ class PerPolicySampleCollector:
             #else:
             indices = self.forward_pass_indices
             if self.time_major:
-                view[view_col] = self.buffers[data_col][indices]
+                input_dict[view_col] = self.buffers[data_col][indices]
             else:
                 if isinstance(view_req.shift, (list, tuple)):
                     time_indices = np.array(view_req.shift) + np.array(indices[0])
-                    view[view_col] = self.buffers[data_col][
+                    input_dict[view_col] = self.buffers[data_col][
                         indices[1], time_indices]
                 else:
-                    view[view_col] = self.buffers[data_col][indices[1], indices[0]]
+                    input_dict[view_col] = self.buffers[data_col][indices[1], indices[0]]
 
         self._reset_inference_call()
 
-        return view
+        return input_dict
 
-    def get_postprocessing_sample_batches(self, model, episode):
+    def get_postprocessing_sample_batches(self, episode, view_reqs):
         # Loop through all agents and create a SampleBatch
         # (as "view"; no copying).
-        view_reqs = model.get_view_requirements(is_training=False)
 
-        # Construct the view dict.
+        # Construct the SampleBatch-dict.
         sample_batch_data = {}
 
         range_ = self.agent_slot_cursor - self.sample_batch_offset
@@ -355,8 +355,9 @@ class PerPolicySampleCollector:
             batch = sample_batch_data[agent_key]
 
             for view_col, view_req in view_reqs.items():
-                # Skip columns that do not need to be included for sampling.
-                if not view_req.postprocessing:
+                # Skip columns that will only get added through postprocessing
+                # (these may not even exist yet).
+                if view_req.created_during_postprocessing:
                     continue
 
                 data_col = view_req.data_col or view_col

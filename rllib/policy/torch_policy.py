@@ -201,7 +201,7 @@ class TorchPolicy(Policy):
             state_batches = [
                 input_dict[k] for k in input_dict.keys() if "state_" in k[:6]
             ]
-            seq_lens = np.array([1] * len(input_dict["obs"][0])) \
+            seq_lens = np.array([1] * len(input_dict["obs"])) \
                 if state_batches else None
 
             actions, state_out, extra_fetches, logp = \

@@ -238,6 +238,8 @@ def build_torch_policy(name: str,
 
         @override(TorchPolicy)
         def training_view_requirements(self):
+            if hasattr(self, "view_requirements"):
+                return self.view_requirements
             req = super().training_view_requirements()
             if callable(training_view_requirements_fn):
                 req.update(training_view_requirements_fn(self))

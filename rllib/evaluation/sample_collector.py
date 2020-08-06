@@ -104,15 +104,14 @@ class _SampleCollector(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def get_inference_input_dict(self, model: ModelV2) -> \
+    def get_inference_input_dict(self, policy_id: PolicyID) -> \
             Dict[str, TensorType]:
         """Returns input_dict for an inference forward pass from our data.
 
         The input_dict can then be used for action computations.
 
         Args:
-            model (ModelV2): The ModelV2 object for which to generate the view
-                (input_dict) from `data`.
+            policy_id (PolicyID): TODO.
 
         Returns:
             Dict[str, TensorType]: The input_dict to be passed into the ModelV2

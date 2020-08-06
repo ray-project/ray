@@ -189,4 +189,15 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
                 SampleBatch.PREV_ACTIONS: ViewRequirement(
                     SampleBatch.ACTIONS, space=self.action_space, shift=-1),
             })
+
+        for i in range(2):
+            req["state_in_{}".format(i)] = \
+                ViewRequirement(
+                    "state_out_{}".format(i),
+                    shift=-1,
+                    space=Box(-1.0, 1.0, shape=(self.cell_size,)))
+            req["state_out_{}".format(i)] = \
+                ViewRequirement(
+                    space=Box(-1.0, 1.0, shape=(self.cell_size,)))
+
         return req

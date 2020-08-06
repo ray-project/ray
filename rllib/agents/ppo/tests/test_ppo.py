@@ -107,7 +107,7 @@ class TestPPO(unittest.TestCase):
             "policies": policies,
             "policy_mapping_fn": policy_fn,
         }
-        num_iterations = 5
+        num_iterations = 1
         # Only works in torch so far.
         for _ in framework_iterator(config, frameworks="torch"):
             config["_use_trajectory_view_api"] = True
