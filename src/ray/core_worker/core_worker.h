@@ -121,6 +121,9 @@ struct CoreWorkerOptions {
   std::function<void()> terminate_asyncio_thread;
   /// Serialized representation of JobConfig.
   std::string serialized_job_config;
+  /// The port number of a metrics agent that imports metrics from core workers.
+  /// -1 means there's no such agent.
+  int metrics_agent_port;
 };
 
 /// Lifecycle management of one or more `CoreWorker` instances in a process.

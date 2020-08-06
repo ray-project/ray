@@ -141,7 +141,7 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
   // NOTE(lingxuan.zlx): We assume RayConfig is initialized before it's used.
   // RayConfig is generated in Java_io_ray_runtime_RayNativeRuntime_nativeInitialize
   // for java worker or in constructor of CoreWorker for python worker.
-  ray::stats::Init(global_tags, RayConfig::instance().metrics_agent_port());
+  ray::stats::Init(global_tags, options_.metrics_agent_port);
 }
 
 CoreWorkerProcess::~CoreWorkerProcess() {
