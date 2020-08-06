@@ -1156,8 +1156,6 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         trial_step(2, 10, 0)
         trial_step(3, 10, 0)
 
-        store = []
-
         # Playback trainable to collect configs at each step
         class Playback(Trainable):
             def setup(self, config):
@@ -1188,8 +1186,6 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         # Loop through all trials and check if PBT history is the
         # same as the playback history
         for i, trial in enumerate(trials):
-            store.clear()
-
             if i == 1:  # Did not exploit anything
                 continue
 
