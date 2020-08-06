@@ -4,7 +4,8 @@ import logging
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list
 from ray.tune.config_parser import make_parser, create_trial_from_spec
-from ray.tune.suggest.search import SearchAlgorithm, Searcher
+from ray.tune.suggest.search import SearchAlgorithm
+from ray.tune.suggest.suggestion import Searcher
 from ray.tune.suggest.variant_generator import format_vars, resolve_nested_dict
 from ray.tune.trial import Trial
 from ray.tune.utils import flatten_dict, merge_dicts
@@ -29,7 +30,7 @@ class SearchGenerator(SearchAlgorithm):
             is then used for generating new hyperparameter samples.
     """
 
-    def __init__(self, searcher, num_samples):
+    def __init__(self, searcher):
         assert issubclass(
             type(searcher),
             Searcher), ("Searcher should be subclassing Searcher.")
@@ -37,7 +38,7 @@ class SearchGenerator(SearchAlgorithm):
         self._parser = make_parser()
         self._experiment = None
         self._counter = 0  # Keeps track of number of trials created.
-        self._total_samples = num_samples  # int: total samples to evaluate.
+        self._total_samples = None  # int: total samples to evaluate.
         self._finished = False
         _warn_on_repeater(self.searcher, self._total_samples)
 
@@ -54,6 +55,7 @@ class SearchGenerator(SearchAlgorithm):
             "SearchAlgorithms can only support 1 experiment at a time.")
         self._experiment = experiment_list[0]
         experiment_spec = self._experiment.spec
+        self._total_samples = self._experiment.spec.get("num_samples", 1)
 
         if "run" not in experiment_spec:
             raise TuneError("Must specify `run` in {}".format(experiment_spec))
