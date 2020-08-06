@@ -1173,12 +1173,19 @@ Status CoreWorker::SetResource(const std::string &resource_name, const double ca
 std::unordered_map<std::string, double> AddPlacementGroupConstraint(
     const std::unordered_map<std::string, double> &resources,
     PlacementGroupID placement_group_id, int64_t bundle_index) {
+  if (bundle_index < 0) {
+    RAY_CHECK(bundle_index == -1) << "Invalid bundle index " << bundle_index;
+  }
   std::unordered_map<std::string, double> new_resources;
   if (placement_group_id != PlacementGroupID::Nil()) {
     for (auto iter = resources.begin(); iter != resources.end(); iter++) {
-      auto new_name =
-          FormatPlacementGroupResource(iter->first, placement_group_id, bundle_index);
+      auto new_name = FormatPlacementGroupResource(iter->first, placement_group_id, -1);
       new_resources[new_name] = iter->second;
+      if (bundle_index >= 0) {
+        auto index_name =
+            FormatPlacementGroupResource(iter->first, placement_group_id, bundle_index);
+        new_resources[index_name] = iter->second;
+      }
     }
     return new_resources;
   }

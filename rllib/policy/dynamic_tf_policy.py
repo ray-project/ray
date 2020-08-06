@@ -74,7 +74,8 @@ class DynamicTFPolicy(TFPolicy):
                  existing_inputs: Optional[Dict[
                      str, "tf1.placeholder"]] = None,
                  existing_model: Optional[ModelV2] = None,
-                 get_batch_divisibility_req: Optional[int] = None,
+                 get_batch_divisibility_req: Optional[Callable[
+                     [Policy], int]] = None,
                  obs_include_prev_action_reward: bool = True):
         """Initialize a dynamic TF policy.
 

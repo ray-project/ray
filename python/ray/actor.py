@@ -398,24 +398,22 @@ class ActorClass:
 
         return ActorOptionWrapper()
 
-    def _remote(
-            self,
-            args=None,
-            kwargs=None,
-            num_cpus=None,
-            num_gpus=None,
-            memory=None,
-            object_store_memory=None,
-            resources=None,
-            is_direct_call=None,
-            max_concurrency=None,
-            max_restarts=None,
-            max_task_retries=None,
-            name=None,
-            detached=False,
-            placement_group_id=None,
-            # TODO(ekl) set default to -1 once we support -1 as "any index"
-            placement_group_bundle_index=0):
+    def _remote(self,
+                args=None,
+                kwargs=None,
+                num_cpus=None,
+                num_gpus=None,
+                memory=None,
+                object_store_memory=None,
+                resources=None,
+                is_direct_call=None,
+                max_concurrency=None,
+                max_restarts=None,
+                max_task_retries=None,
+                name=None,
+                detached=False,
+                placement_group_id=None,
+                placement_group_bundle_index=-1):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -443,7 +441,8 @@ class ActorClass:
             placement_group_id: the placement group this actor belongs to,
                 or None if it doesn't belong to any group.
             placement_group_bundle_index: the index of the bundle
-                if the actor belongs to a placement group.
+                if the actor belongs to a placement group, which may be -1 to
+                specify any available bundle.
 
         Returns:
             A handle to the newly created actor.

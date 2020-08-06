@@ -206,7 +206,8 @@ class TestModules(unittest.TestCase):
 
                 # Get initial state and add a batch dimension.
                 init_state = [np.expand_dims(s, 0) for s in init_state]
-                seq_lens_init = torch.full(size=(B, ), fill_value=L)
+                seq_lens_init = torch.full(
+                    size=(B, ), fill_value=L, dtype=torch.int32)
 
                 # Torch implementation expects a formatted input_dict instead
                 # of a numpy array as input.

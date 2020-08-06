@@ -328,6 +328,9 @@ class _CliLogger():
         Print an error and throw an exception to terminate the program
         (the exception will not print a message).
         """
+        if self.old_style:
+            return
+
         if msg is not None:
             self.error(msg, *args, **kwargs)
 
