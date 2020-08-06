@@ -78,14 +78,14 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             profiling_info=json.loads(profiling_stats.profiling_stats))
 
     async def run(self, server):
-        p = self._dashboard_head.aioredis_client
-        mpsc = Receiver()
+        aioredis_client = self._dashboard_head.aioredis_client
+        receiver = Receiver()
 
         reporter_key = "{}*".format(reporter_consts.REPORTER_PREFIX)
-        await p.psubscribe(mpsc.pattern(reporter_key))
+        await aioredis_client.psubscribe(receiver.pattern(reporter_key))
         logger.info("Subscribed to {}".format(reporter_key))
 
-        async for sender, msg in mpsc.iter():
+        async for sender, msg in receiver.iter():
             try:
                 _, data = msg
                 data = json.loads(ray.utils.decode(data))

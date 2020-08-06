@@ -64,12 +64,12 @@ class DashboardAgent(object):
         agent_cls_list = dashboard_utils.get_all_modules(
             dashboard_utils.DashboardAgentModule)
         for cls in agent_cls_list:
-            logger.info("Load %s: %s",
+            logger.info("Loading %s: %s",
                         dashboard_utils.DashboardAgentModule.__name__, cls)
             c = cls(self)
             dashboard_utils.ClassMethodRouteTable.bind(c)
             modules.append(c)
-        logger.info("Load {} modules.".format(len(modules)))
+        logger.info("Loaded {} modules.".format(len(modules)))
         return modules
 
     async def run(self):
@@ -96,7 +96,7 @@ class DashboardAgent(object):
                 dashboard_consts.RETRY_REDIS_CONNECTION_TIMES)
         except (socket.gaierror, ConnectionRefusedError):
             logger.error(
-                "Dashboard agent suicides, "
+                "Dashboard agent exiting: "
                 "Failed to connect to redis at %s", self.redis_address)
             sys.exit(-1)
 

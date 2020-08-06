@@ -121,11 +121,12 @@ class DashboardHead:
         head_cls_list = dashboard_utils.get_all_modules(
             dashboard_utils.DashboardHeadModule)
         for cls in head_cls_list:
-            logger.info("Load %s: %s",
+            logger.info("Loading %s: %s",
                         dashboard_utils.DashboardHeadModule.__name__, cls)
             c = cls(self)
             dashboard_utils.ClassMethodRouteTable.bind(c)
             modules.append(c)
+        logger.info("Loaded {} modules.".format(len(modules)))
         return modules
 
     async def run(self):
@@ -137,7 +138,7 @@ class DashboardHead:
                 dashboard_consts.RETRY_REDIS_CONNECTION_TIMES)
         except (socket.gaierror, ConnectionError):
             logger.error(
-                "Dashboard head suicides, "
+                "Dashboard head exiting: "
                 "Failed to connect to redis at %s", self.redis_address)
             sys.exit(-1)
 

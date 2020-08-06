@@ -37,7 +37,7 @@ void AgentManager::HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
 
 void AgentManager::StartAgent() {
   if (options_.agent_commands.empty()) {
-    RAY_LOG(INFO) << "Not to start agent, the agent command is empty.";
+    RAY_LOG(INFO) << "Not starting agent, the agent command is empty.";
     return;
   }
 

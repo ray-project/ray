@@ -334,10 +334,10 @@ RAY_CONFIG(int, metrics_agent_port, -1)
 /// pipelining task submission.
 RAY_CONFIG(uint32_t, max_tasks_in_flight_per_worker, 1)
 
-/// Interval to restart agent after agent process exit.
+/// Interval to restart dashboard agent after the process exit.
 RAY_CONFIG(uint32_t, agent_restart_interval_ms, 1000)
 
-/// Wait timeout for agent register.
+/// Wait timeout for dashboard agent register.
 RAY_CONFIG(uint32_t, agent_register_timeout_ms, 30 * 1000)
 
 /// The maximum number of resource shapes included in the resource
