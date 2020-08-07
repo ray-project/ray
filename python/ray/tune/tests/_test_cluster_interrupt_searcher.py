@@ -67,15 +67,16 @@ if __name__ == "__main__":
         mode="min",
         random_state_seed=5,
         points_to_evaluate=current_best_params)
-    if args.resume:
-        algo.restore_from_dir(os.path.join(args.local_dir, "experiment"))
     algo = ConcurrencyLimiter(algo, max_concurrent=1)
-    run(MyTrainableClass,
+    from ray.tune import register_trainable
+    register_trainable("trainable", MyTrainableClass)
+    run("trainable",
         search_alg=algo,
         global_checkpoint_period=0,
         resume=args.resume,
         verbose=0,
         num_samples=20,
+        fail_fast=True,
         stop={"training_iteration": 2},
         local_dir=args.local_dir,
         name="experiment")

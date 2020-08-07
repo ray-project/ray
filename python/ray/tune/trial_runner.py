@@ -168,9 +168,13 @@ class TrialRunner:
                 self.resume()
                 logger.info("Resuming trial.")
                 self._resumed = True
-            except Exception:
-                logger.exception(
-                    "Runner restore failed. Restarting experiment.")
+            except Exception as e:
+                if self._verbose:
+                    logger.error(str(e))
+                logger.exception("Runner restore failed.")
+                if self._fail_fast:
+                    raise
+                logger.info("Restarting experiment.")
         else:
             logger.debug("Starting a new experiment.")
 
@@ -305,7 +309,7 @@ class TrialRunner:
         ]))
 
         self.__setstate__(runner_state["runner_data"])
-        if self._search_alg.can_restore(self._local_checkpoint_dir):
+        if self._search_alg.has_checkpoint(self._local_checkpoint_dir):
             self._search_alg.restore_from_dir(self._local_checkpoint_dir)
 
         trials = []

@@ -31,15 +31,14 @@ def _atomic_save(state, checkpoint_dir, file_name):
     with open(tmp_search_ckpt_path, "wb") as f:
         pickle.dump(state, f)
 
-    os.rename(tmp_search_ckpt_path,
-              os.path.join(checkpoint_dir, Searcher.CKPT_FILE))
+    os.rename(tmp_search_ckpt_path, os.path.join(checkpoint_dir, file_name))
 
 
 def _find_newest_ckpt(dirpath, pattern):
     """Returns path to most recently modified checkpoint."""
     full_paths = glob.glob(os.path.join(dirpath, pattern))
     if not full_paths:
-        raise RuntimeError("TODO")  # TODO
+        return
     most_recent_checkpoint = max(full_paths)
     with open(most_recent_checkpoint, "rb") as f:
         search_alg_state = pickle.load(f)
@@ -156,6 +155,10 @@ class SearchGenerator(SearchAlgorithm):
         self._total_samples = state["total_samples"]
         self._finished = state["finished"]
 
+    def has_checkpoint(self, dirpath):
+        return bool(
+            _find_newest_ckpt(dirpath, self.CKPT_FILE_TMPL.format("*")))
+
     def save_to_dir(self, dirpath, session_str):
         # save your own stuff to dir
         searcher = self.searcher
@@ -174,13 +177,17 @@ class SearchGenerator(SearchAlgorithm):
         # We save the base searcher separately for users to easily
         # separate the Optimizer.
         base_searcher.save_to_dir(dirpath, session_str)
-        _atomic_save(search_alg_state, self.CKPT_FILE_TMPL.format(session_str))
+        _atomic_save(search_alg_state, dirpath,
+                     self.CKPT_FILE_TMPL.format(session_str))
 
     def restore_from_dir(self, dirpath):
         # save restore own stuff from dir
         searcher = self.searcher
         search_alg_state = _find_newest_ckpt(dirpath,
                                              self.CKPT_FILE_TMPL.format("*"))
+        if not search_alg_state:
+            raise RuntimeError(
+                "Unable to find checkpoint in {}.".format(dirpath))
         while hasattr(searcher, "searcher"):
             searcher_name = type(searcher).__name__
             if searcher_name not in search_alg_state:
