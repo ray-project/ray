@@ -13,7 +13,7 @@ import ray
 from ray.core.generated.common_pb2 import MetricPoint
 from ray.dashboard.util import get_unused_port
 from ray.metrics_agent import (Gauge, MetricsAgent,
-                               PrometheusServiceDiscoveryFileWriter)
+                               PrometheusServiceDiscoveryWriter)
 
 
 def generate_metrics_point(name: str,
@@ -191,8 +191,10 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
     cluster = ray_start_cluster
     nodes = [cluster.add_node() for _ in range(NUM_NODES)]
     cluster.wait_for_nodes()
-    ray.init(address=cluster.address)
-    writer = PrometheusServiceDiscoveryFileWriter("/tmp/ray")
+    addr = ray.init(address=cluster.address)
+    redis_address = addr["redis_address"]
+    writer = PrometheusServiceDiscoveryWriter(
+        redis_address, ray.ray_constants.REDIS_DEFAULT_PASSWORD, "/tmp/ray")
     writer.write()
 
     def get_metrics_export_address_from_node(nodes):

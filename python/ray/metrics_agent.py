@@ -189,9 +189,25 @@ class MetricsAgent:
             self._missing_information = False
 
 
-class PrometheusServiceDiscoveryFileWriter:
-    def __init__(self, temp_dir):
+class PrometheusServiceDiscoveryWriter(threading.Thread):
+    """A class to support Prometheus service discovery.
+
+    It supports file-based service discovery. Checkout
+    https://prometheus.io/docs/guides/file-sd/ for more details.
+
+    Args:
+        redis_address(str): Ray's redis address.
+        redis_password(str): Ray's redis password.
+        temp_dir(str): Temporary directory used by
+            Ray to store logs and metadata.
+    """
+
+    def __init__(self, redis_address, redis_password, temp_dir):
+        ray.state.state._initialize_global_state(
+            redis_address=redis_address, redis_password=redis_password)
         self.temp_dir = temp_dir
+        self.default_service_discovery_flush_period = 5
+        super().__init__()
 
     def write(self):
         # Write a file based on https://prometheus.io/docs/guides/file-sd/
@@ -216,32 +232,11 @@ class PrometheusServiceDiscoveryFileWriter:
         return os.path.join(
             self.temp_dir, ray.ray_constants.PROMETHEUS_SERVICE_DISCOVERY_FILE)
 
-
-class PrometheusServiceDiscoveryThread(threading.Thread):
-    """A thread to support Prometheus service discovery.
-
-    It supports file-based service discovery. Checkout
-    https://prometheus.io/docs/guides/file-sd/ for more details.
-
-    Args:
-        redis_address(str): Ray's redis address.
-        redis_password(str): Ray's redis password.
-        temp_dir(str): Temporary directory used by
-            Ray to store logs and metadata.
-    """
-
-    def __init__(self, redis_address, redis_password, temp_dir):
-        ray.state.state._initialize_global_state(
-            redis_address=redis_address, redis_password=redis_password)
-        self.writer = PrometheusServiceDiscoveryFileWriter(temp_dir)
-        self.default_service_discovery_flush_period = 5
-        super().__init__()
-
     def run(self):
         while True:
             # This thread won't be broken by exceptions.
             try:
-                self.writer.write()
+                self.write()
             except Exception as e:
                 logger.warning("Writing a service discovery file, {},"
                                "failed."
