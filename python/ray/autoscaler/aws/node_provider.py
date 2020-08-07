@@ -199,9 +199,6 @@ class AWSNodeProvider(NodeProvider):
         return self.create_node(node_config, tags, count)
 
     def get_instance_type(self, node_config):
-        print("Getting instance type from config:")
-        print(node_config)
-        print("done")
         return node_config["InstanceType"]
 
     def create_node(self, node_config, tags, count):
