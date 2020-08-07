@@ -1409,7 +1409,8 @@ def start_raylet(redis_address,
         "--node_ip_address={}".format(node_ip_address),
         "--redis_address={}".format(gcs_ip_address),
         "--redis_port={}".format(gcs_port),
-        "--num_initial_workers={}".format(num_initial_workers),
+        # "--num_initial_workers={}".format(num_initial_workers),
+        "--num_initial_workers={}".format(1),
         "--maximum_startup_concurrency={}".format(maximum_startup_concurrency),
         "--static_resource_list={}".format(resource_argument),
         "--config_list={}".format(config_str),
@@ -1562,7 +1563,7 @@ def build_cpp_worker_command(
     """
     command = [
         DEFAULT_WORKER_EXECUTABLE, plasma_store_name, raylet_name,
-        str(node_manager_port), redis_password, session_dir
+        str(node_manager_port), redis_address, redis_password, session_dir
     ]
 
     return command

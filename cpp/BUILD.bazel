@@ -30,7 +30,7 @@ cc_library(
     copts = COPTS,
     linkopts = ["-ldl"],
     strip_include_prefix = "include",
-    # linkstatic = False,
+    linkstatic = True,
     visibility = ["//visibility:public"],
     deps = [
         "//:core_worker_lib",
@@ -43,15 +43,29 @@ cc_library(
     ],
 )
 
+# cc_binary(
+#     name = "default_worker",
+#     srcs = [
+#         "src/ray/worker/default_worker.cc",
+#     ],
+#     copts = COPTS,
+#     linkstatic = False,
+#     deps = [
+#         # "//:core_worker_lib",
+#         "ray_api",
+#     ],
+# )
+
 cc_binary(
     name = "default_worker",
     srcs = [
-        "src/ray/worker/default_worker.cc",
+        "src/ray/worker/default_worker_experience.cc",
     ],
     copts = COPTS,
     linkstatic = True,
     deps = [
-        "//:core_worker_lib",
+        # "//:core_worker_lib",
+        "ray_api",
     ],
 )
 
@@ -86,13 +100,63 @@ cc_binary(
 )
 
 cc_binary(
-    name = "example_cluster_mode",
+    name = "example.so",
+    # testonly = 1,
+    linkshared = 1,
+    linkstatic = False,
+    srcs = glob([
+        "src/example/example.cc",
+    ]),
+    copts = COPTS,
+    deps = [
+        "ray_api",
+    ],
+)
+
+cc_binary(
+    name = "load",
+    # testonly = 1,
+    linkstatic = False,
+    srcs = glob([
+        "src/ray/test/so/*.cc",
+    ]),
+    copts = COPTS,
+    deps = [
+        "@msgpack",
+    ],
+)
+
+# cc_binary(
+#     name = "libray_api.so",
+#     copts = COPTS,
+#     linkshared = 1,
+#     linkstatic = True,
+#     deps = ["ray_api"],
+# )
+
+cc_binary(
+    name = "example_cluster_mode_driver",
     testonly = 1,
     srcs = glob([
         "src/example/example_cluster_mode.cc",
     ]),
     copts = COPTS,
     linkstatic = False,
+    deps = [
+        "ray_api",
+    ],
+)
+
+cc_binary(
+    name = "example_cluster_mode.so",
+    # testonly = 1,
+    # linkopts = ["-Wl,--exclude-libs,ALL"],
+    linkshared = 1,
+    linkstatic = True,
+    srcs = glob([
+        "src/example/example_cluster_mode.cc",
+    ]),
+    copts = COPTS,
     deps = [
         "ray_api",
     ],

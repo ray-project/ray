@@ -42,14 +42,24 @@ static void StopRayNode() {
   return;
 }
 
-void ProcessHelper::RayStart(std::shared_ptr<RayConfig> config) {
+void ProcessHelper::RayStart(std::shared_ptr<RayConfig> config, CoreWorkerOptions::TaskExecutionCallback callback) {
   std::string redis_ip = config->redis_ip;
-  if (redis_ip.empty()) {
+  if (config->worker_type ==  WorkerType::DRIVER && redis_ip.empty()) {
     redis_ip = "127.0.0.1";
     StartRayNode(config->redis_port, config->redis_password);
   }
 
-  auto session_dir = GetSessionDir(redis_ip, config->redis_port, config->redis_password);
+  auto session_dir = config->session_dir.empty() ? 
+                     GetSessionDir(redis_ip, config->redis_port, config->redis_password) : 
+                     config->session_dir;
+  
+  auto store_socket = config->store_socket.empty() ?
+                      session_dir + "/sockets/plasma_store" :
+                      config->store_socket;
+  
+  auto raylet_socket = config->raylet_socket.empty() ?
+                      session_dir + "/sockets/raylet" :
+                      config->raylet_socket;
 
   gcs::GcsClientOptions gcs_options =
       gcs::GcsClientOptions(redis_ip, config->redis_port, config->redis_password);
@@ -57,12 +67,12 @@ void ProcessHelper::RayStart(std::shared_ptr<RayConfig> config) {
   CoreWorkerOptions options = {
       config->worker_type,                    // worker_type
       Language::CPP,                          // langauge
-      session_dir + "/sockets/plasma_store",  // store_socket
-      session_dir + "/sockets/raylet",        // raylet_socket
+      store_socket,                           // store_socket
+      raylet_socket,                          // raylet_socket
       JobID::FromInt(1),                      // job_id
       gcs_options,                            // gcs_options
       true,                                   // enable_logging
-      "",                                     // log_dir
+      session_dir + "/logs",                  // log_dir
       true,                                   // install_failure_signal_handler
       "127.0.0.1",                            // node_ip_address
       config->node_manager_port,              // node_manager_port
@@ -70,7 +80,7 @@ void ProcessHelper::RayStart(std::shared_ptr<RayConfig> config) {
       "cpp_worker",                           // driver_name
       "",                                     // stdout_file
       "",                                     // stderr_file
-      nullptr,                                // task_execution_callback
+      callback,                               // task_execution_callback
       nullptr,                                // check_signals
       nullptr,                                // gc_collect
       nullptr,                                // get_lang_stack

@@ -24,6 +24,14 @@ class RayConfig {
 
   int node_manager_port = 62665;
 
+  std::string lib_name = "";
+
+  std::string store_socket = "";
+
+  std::string raylet_socket = "";
+
+  std::string session_dir = "";
+
   static std::shared_ptr<RayConfig> GetInstance();
 
  private:
