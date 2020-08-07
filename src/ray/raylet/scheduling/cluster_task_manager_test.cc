@@ -76,8 +76,6 @@ class MockWorker : public WorkerInterface {
 
   void SetAllocatedInstances(
       std::shared_ptr<TaskResourceInstances> &allocated_instances) {
-    RAY_LOG(ERROR) << "@@@@@@@@@@@@@@";
-    RAY_LOG(ERROR) << "SetAllocatedInstances: " << allocated_instances->DebugString();
     allocated_instances_ = allocated_instances;
   }
 
@@ -87,7 +85,6 @@ class MockWorker : public WorkerInterface {
   }
 
   std::shared_ptr<TaskResourceInstances> GetAllocatedInstances() {
-    RAY_LOG(ERROR) << "GetAllocatedInstances: " << allocated_instances_->DebugString();
     return allocated_instances_;
   }
   std::shared_ptr<TaskResourceInstances> GetLifetimeAllocatedInstances() {
@@ -310,62 +307,62 @@ class ClusterTaskManagerTest : public ::testing::Test {
   ClusterTaskManager task_manager_;
 };
 
-// TEST_F(ClusterTaskManagerTest, BasicTest) {
-//   /*
-//     Test basic scheduler functionality:
-//     1. Queue and attempt to schedule/dispatch atest with no workers available
-//     2. A worker becomes available, dispatch again.
-//    */
-//   Task task = CreateTask({{ray::kCPU_ResourceLabel, 4}});
-//   rpc::RequestWorkerLeaseReply reply;
-//   bool callback_occurred = false;
-//   bool *callback_occurred_ptr = &callback_occurred;
-//   auto callback = [callback_occurred_ptr]() { *callback_occurred_ptr = true; };
+TEST_F(ClusterTaskManagerTest, BasicTest) {
+  /*
+    Test basic scheduler functionality:
+    1. Queue and attempt to schedule/dispatch atest with no workers available
+    2. A worker becomes available, dispatch again.
+   */
+  Task task = CreateTask({{ray::kCPU_ResourceLabel, 4}});
+  rpc::RequestWorkerLeaseReply reply;
+  bool callback_occurred = false;
+  bool *callback_occurred_ptr = &callback_occurred;
+  auto callback = [callback_occurred_ptr]() { *callback_occurred_ptr = true; };
 
-//   task_manager_.QueueTask(task, &reply, callback);
-//   task_manager_.SchedulePendingTasks();
-//   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  task_manager_.QueueTask(task, &reply, callback);
+  task_manager_.SchedulePendingTasks();
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
 
-//   ASSERT_FALSE(callback_occurred);
-//   ASSERT_EQ(leased_workers_.size(), 0);
-//   ASSERT_EQ(pool_.workers.size(), 0);
+  ASSERT_FALSE(callback_occurred);
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.workers.size(), 0);
 
-//   std::shared_ptr<MockWorker> worker =
-//       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
-//   pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
 
-//   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
 
-//   ASSERT_TRUE(callback_occurred);
-//   ASSERT_EQ(leased_workers_.size(), 1);
-//   ASSERT_EQ(pool_.workers.size(), 0);
-//   ASSERT_EQ(fulfills_dependencies_calls_, 0);
-//   ASSERT_EQ(node_info_calls_, 0);
-// }
+  ASSERT_TRUE(callback_occurred);
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(pool_.workers.size(), 0);
+  ASSERT_EQ(fulfills_dependencies_calls_, 0);
+  ASSERT_EQ(node_info_calls_, 0);
+}
 
-// TEST_F(ClusterTaskManagerTest, NoFeasibleNodeTest) {
-//   std::shared_ptr<MockWorker> worker =
-//       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
-//   pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+TEST_F(ClusterTaskManagerTest, NoFeasibleNodeTest) {
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
 
-//   Task task = CreateTask({{ray::kCPU_ResourceLabel, 999}});
-//   rpc::RequestWorkerLeaseReply reply;
+  Task task = CreateTask({{ray::kCPU_ResourceLabel, 999}});
+  rpc::RequestWorkerLeaseReply reply;
 
-//   bool callback_called = false;
-//   bool *callback_called_ptr = &callback_called;
-//   auto callback = [callback_called_ptr]() { *callback_called_ptr = true; };
+  bool callback_called = false;
+  bool *callback_called_ptr = &callback_called;
+  auto callback = [callback_called_ptr]() { *callback_called_ptr = true; };
 
-//   task_manager_.QueueTask(task, &reply, callback);
-//   task_manager_.SchedulePendingTasks();
-//   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  task_manager_.QueueTask(task, &reply, callback);
+  task_manager_.SchedulePendingTasks();
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
 
-//   ASSERT_FALSE(callback_called);
-//   ASSERT_EQ(leased_workers_.size(), 0);
-//   // Worker is unused.
-//   ASSERT_EQ(pool_.workers.size(), 1);
-//   ASSERT_EQ(fulfills_dependencies_calls_, 0);
-//   ASSERT_EQ(node_info_calls_, 0);
-// }
+  ASSERT_FALSE(callback_called);
+  ASSERT_EQ(leased_workers_.size(), 0);
+  // Worker is unused.
+  ASSERT_EQ(pool_.workers.size(), 1);
+  ASSERT_EQ(fulfills_dependencies_calls_, 0);
+  ASSERT_EQ(node_info_calls_, 0);
+}
 
 TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   /*
