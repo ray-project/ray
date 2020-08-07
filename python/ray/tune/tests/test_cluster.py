@@ -733,9 +733,7 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir):
         print(args)
         proc = subprocess.Popen([sys.executable, script] + list(args))
 
-    args = [
-        "--ray-address", cluster.address, "--local-dir", dirpath
-    ]
+    args = ["--ray-address", cluster.address, "--local-dir", dirpath]
     execute_script_with_args(*args)
     # Wait until the right checkpoint is saved.
     # The trainable returns every 0.5 seconds, so this should not miss

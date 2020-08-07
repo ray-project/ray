@@ -1,5 +1,8 @@
+import pickle
+import os
 import copy
 import logging
+import glob
 
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list
@@ -18,6 +21,31 @@ def _warn_on_repeater(searcher, total_samples):
     _warn_num_samples(searcher, total_samples)
 
 
+def _atomic_save(state, checkpoint_dir, file_name):
+    """Atomically saves the object to the checkpoint directory
+
+    This is automatically used by tune.run during a Tune job.
+    """
+    tmp_search_ckpt_path = os.path.join(checkpoint_dir,
+                                        ".tmp_search_generator_ckpt")
+    with open(tmp_search_ckpt_path, "wb") as f:
+        pickle.dump(state, f)
+
+    os.rename(tmp_search_ckpt_path,
+              os.path.join(checkpoint_dir, Searcher.CKPT_FILE))
+
+
+def _find_newest_ckpt(dirpath, pattern):
+    """Returns path to most recently modified checkpoint."""
+    full_paths = glob.glob(os.path.join(dirpath, pattern))
+    if not full_paths:
+        raise RuntimeError("TODO")  # TODO
+    most_recent_checkpoint = max(full_paths)
+    with open(most_recent_checkpoint, "rb") as f:
+        search_alg_state = pickle.load(f)
+    return search_alg_state
+
+
 class SearchGenerator(SearchAlgorithm):
     """Generates trials to be passed to the TrialRunner.
 
@@ -29,6 +57,7 @@ class SearchGenerator(SearchAlgorithm):
         searcher: Search object that subclasses the Searcher base class. This
             is then used for generating new hyperparameter samples.
     """
+    CKPT_FILE_TMPL = "search_gen_state-{}.json"
 
     def __init__(self, searcher):
         assert issubclass(
@@ -127,8 +156,43 @@ class SearchGenerator(SearchAlgorithm):
         self._total_samples = state["total_samples"]
         self._finished = state["finished"]
 
-    def save_to_dir(self, dirpath):
-        self.searcher.save_to_dir(dirpath)
+    def save_to_dir(self, dirpath, session_str):
+        # save your own stuff to dir
+        searcher = self.searcher
+        search_alg_state = self.get_state()
+        while hasattr(searcher, "searcher"):
+            searcher_name = type(searcher).__name__
+            if searcher_name in search_alg_state:
+                logger.warning(
+                    "There was a duplicate when saving {}. Restore may not work properly.".
+                    format(searcher_name))
+            else:
+                search_alg_state["name:" +
+                                 searcher_name] = searcher.get_state()
+            searcher = self.searcher.searcher
+        base_searcher = searcher
+        # We save the base searcher separately for users to easily
+        # separate the Optimizer.
+        base_searcher.save_to_dir(dirpath, session_str)
+        _atomic_save(search_alg_state, self.CKPT_FILE_TMPL.format(session_str))
 
     def restore_from_dir(self, dirpath):
-        self.searcher.restore_from_dir(dirpath)
+        # save restore own stuff from dir
+        searcher = self.searcher
+        search_alg_state = _find_newest_ckpt(dirpath,
+                                             self.CKPT_FILE_TMPL.format("*"))
+        while hasattr(searcher, "searcher"):
+            searcher_name = type(searcher).__name__
+            if searcher_name not in search_alg_state:
+                names = [
+                    key.split("name:")[1] for key in search_alg_state
+                    if key.startswith("name:")
+                ]
+                logger.warning(
+                    "{} was not found in the experiment checkpoint state when restoring. Found {}.".
+                    format(searcher_name, names))
+            searcher.set_state(search_alg_state.pop(type(searcher).__name__))
+            searcher = self.searcher.searcher
+        base_searcher = searcher
+        base_searcher.restore_from_dir(dirpath)
+        self.set_state(search_alg_state)

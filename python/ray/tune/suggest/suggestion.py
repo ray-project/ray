@@ -1,4 +1,5 @@
 import copy
+import glob
 import logging
 import os
 
@@ -49,7 +50,7 @@ class Searcher:
 
     """
     FINISHED = "FINISHED"
-    CKPT_FILE = "searcher-state.pkl"
+    CKPT_FILE_TMPL = "searcher-state-{}.pkl"
 
     def __init__(self,
                  metric="episode_reward_mean",
@@ -176,7 +177,7 @@ class Searcher:
         """
         raise NotImplementedError
 
-    def save_to_dir(self, checkpoint_dir):
+    def save_to_dir(self, checkpoint_dir, session_str="default"):
         """Automatically saves the given searcher to the checkpoint_dir.
 
         This is automatically used by tune.run during a Tune job.
@@ -191,8 +192,10 @@ class Searcher:
             success = False
 
         if success and os.path.exists(tmp_search_ckpt_path):
-            os.rename(tmp_search_ckpt_path,
-                      os.path.join(checkpoint_dir, Searcher.CKPT_FILE))
+            os.rename(
+                tmp_search_ckpt_path,
+                os.path.join(checkpoint_dir,
+                             self.CKPT_FILE_TMPL.format(session_str)))
 
     def restore_from_dir(self, checkpoint_dir):
         """Restores the state of a searcher from a given checkpoint_dir.
@@ -215,14 +218,14 @@ class Searcher:
                 os.path.join("~/my_results", self.experiment_name)
         """
 
-        checkpoint_path = os.path.join(checkpoint_dir, Searcher.CKPT_FILE)
-        if os.path.exists(checkpoint_path):
-            self.restore(checkpoint_path)
-        else:
-            raise FileNotFoundError(
-                "{filename} not found in {directory}. Unable to restore "
-                "searcher state from directory.".format(
-                    filename=Searcher.CKPT_FILE, directory=checkpoint_dir))
+        pattern = self.CKPT_FILE_TMPL.format("*")
+        full_paths = glob.glob(os.path.join(checkpoint_dir, pattern))
+        if not full_paths:
+            raise RuntimeError(
+                "Searcher unable to find checkpoint in {}".format(
+                    checkpoint_dir))  # TODO
+        most_recent_checkpoint = max(full_paths)
+        self.restore(most_recent_checkpoint)
 
     @property
     def metric(self):
@@ -287,9 +290,3 @@ class ConcurrencyLimiter(Searcher):
         self_state = state.pop("concurrency_limiter")
         self.__dict__.update(self_state)
         self.searcher.set_state(state)
-
-    def save(self, checkpoint_dir):
-        raise ValueError("TODO")
-
-    def restore(self, checkpoint_dir):
-        raise ValueError("TODO")

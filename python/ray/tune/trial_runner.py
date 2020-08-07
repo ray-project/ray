@@ -189,7 +189,6 @@ class TrialRunner:
     def resumed(self):
         return self._resumed
 
-
     @property
     def scheduler_alg(self):
         return self._scheduler_alg
@@ -279,8 +278,8 @@ class TrialRunner:
             json.dump(runner_state, f, indent=2, cls=_TuneFunctionEncoder)
 
         os.replace(tmp_file_name, self.checkpoint_file)
-
-        Searcher.save_to_dir(self._search_alg, self._local_checkpoint_dir)
+        self._search_alg.save_to_dir(
+            self._local_checkpoint_dir, session_str=self._session_str)
 
         if force:
             self._syncer.sync_up()
@@ -298,14 +297,16 @@ class TrialRunner:
         with open(newest_ckpt_path, "r") as f:
             runner_state = json.load(f, cls=_TuneFunctionDecoder)
             self.checkpoint_file = newest_ckpt_path
+
         logger.warning("".join([
             "Attempting to resume experiment from {}. ".format(
-                self._local_checkpoint_dir), "This feature is experimental, "
-            "and may not work with all search algorithms. ",
+                self._local_checkpoint_dir),
             "This will ignore any new changes to the specification."
         ]))
 
         self.__setstate__(runner_state["runner_data"])
+        if self._search_alg.can_restore(self._local_checkpoint_dir):
+            self._search_alg.restore_from_dir(self._local_checkpoint_dir)
 
         trials = []
         for trial_cp in runner_state["checkpoints"]:

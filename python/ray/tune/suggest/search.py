@@ -63,8 +63,11 @@ class SearchAlgorithm:
         """Marks the search algorithm as finished."""
         self._finished = True
 
-    def save(self, *args):
+    def has_checkpoint(self, dirpath):
+        return False
+
+    def save_to_dir(self, dirpath):
         pass
 
-    def restore(self, *args):
+    def restore(self, dirpath):
         pass
