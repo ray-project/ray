@@ -324,8 +324,8 @@ class SSHCommandRunner(CommandRunnerInterface):
         try:
             os.makedirs(self.ssh_control_path, mode=0o700, exist_ok=True)
         except OSError as e:
-            cli_logger.warning(e)  # todo: msg
-            cli_logger.old_warning(logger, e)
+            cli_logger.warning("{}", str(e))  # todo: msg
+            cli_logger.old_warning(logger, "{}", str(e))
 
     def run(self,
             cmd,
@@ -481,9 +481,8 @@ class DockerCommandRunner(SSHCommandRunner):
             ssh_options_override=ssh_options_override)
 
     def run_rsync_up(self, source, target):
-        protected_path = ""
+        protected_path = target
         if target.find("/root") == 0:
-            protected_path = target
             target = target.replace("/root", "/tmp/root")
             self.ssh_command_runner.run(
                 f"mkdir -p {os.path.dirname(target)}", run_env="host")
@@ -494,9 +493,8 @@ class DockerCommandRunner(SSHCommandRunner):
                 self._docker_expand_user(protected_path)))
 
     def run_rsync_down(self, source, target):
-        protected_path = ""
+        protected_path = source
         if source.find("/root") == 0:
-            protected_path = source
             source = source.replace("/root", "/tmp/root")
             self.ssh_command_runner.run(
                 f"mkdir -p {os.path.dirname(source)}", run_env="host")
