@@ -143,14 +143,6 @@ def test_get_instances_respects_max_limit():
     }] * 10) == [("m4.large", 2)]
 
 
-def check_node_types(mock_provider, counts):
-    assert isinstance(counts, dict)
-    counter = Counter()
-    for id, node in mock_provider.mock_nodes.items():
-        counter.inc(node.instance_type)
-    assert dict(counter) == counts
-
-
 class AutoscalingTest(unittest.TestCase):
     def setUp(self):
         NODE_PROVIDERS["mock"] = \
