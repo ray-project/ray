@@ -306,7 +306,8 @@ class GlobalState:
                 "NodeManagerPort": item.node_manager_port,
                 "ObjectManagerPort": item.object_manager_port,
                 "ObjectStoreSocketName": item.object_store_socket_name,
-                "RayletSocketName": item.raylet_socket_name
+                "RayletSocketName": item.raylet_socket_name,
+                "MetricsExportPort": item.metrics_export_port,
             }
             node_info["alive"] = node_info["Alive"]
             node_info["Resources"] = self.node_resource_table(

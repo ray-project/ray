@@ -312,10 +312,6 @@ RAY_CONFIG(bool, plasma_store_as_thread, false)
 /// changed. When the address changed, we will resubscribe again.
 RAY_CONFIG(int64_t, gcs_service_address_check_interval_milliseconds, 1000)
 
-RAY_CONFIG(bool, gcs_actor_service_enabled,
-           getenv("RAY_GCS_ACTOR_SERVICE_ENABLED") == nullptr ||
-               getenv("RAY_GCS_ACTOR_SERVICE_ENABLED") == std::string("true"))
-
 /// The batch size for metrics export.
 RAY_CONFIG(int64_t, metrics_report_batch_size, 100)
 
@@ -324,10 +320,6 @@ RAY_CONFIG(int64_t, enable_metrics_collection, true)
 
 /// Whether start the Plasma Store as a Raylet thread.
 RAY_CONFIG(bool, put_small_object_in_memory_store, false)
-
-/// Metric agent port for reporting, default -1 means no such agent will be
-/// listening.
-RAY_CONFIG(int, metrics_agent_port, -1)
 
 /// Maximum number of tasks that can be in flight between an owner and a worker for which
 /// the owner has been granted a lease. A value >1 is used when we want to enable
@@ -343,6 +335,9 @@ RAY_CONFIG(uint32_t, agent_register_timeout_ms, 30 * 1000)
 /// The maximum number of resource shapes included in the resource
 /// load reported by each raylet.
 RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)
+
+/// The timeout for synchronous GCS requests in seconds.
+RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 5)
 
 /// Whether to enable multi tenancy features.
 RAY_CONFIG(bool, enable_multi_tenancy, false)
