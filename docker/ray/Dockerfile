@@ -1,4 +1,4 @@
-FROM rayproject/base-deps
+FROM rayproject/base-deps:latest
 ARG WHEEL_PATH
 # For Click
 ENV LC_ALL=C.UTF-8
