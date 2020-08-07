@@ -5,8 +5,12 @@ set -euxo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)"
 WORKSPACE_DIR="${ROOT_DIR}/.."
 
-PY_VERSIONS=(3.6 3.7 3.8)
+PY_VERSIONS=($(python -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" python_versions "${ROOT_DIR}"/setup.py | tr -d "\r"))
 PY_SCRIPT_SUBDIR=Scripts  # 'bin' for UNIX, 'Scripts' for Windows
+
+bazel_preclean() {
+  "${WORKSPACE_DIR}"/ci/travis/bazel.py preclean "mnemonic(\"Genrule\", deps(//:*))"
+}
 
 get_python_version() {
   python -s -c "import sys; sys.stdout.write('%s.%s' % sys.version_info[:2])"
@@ -39,7 +43,7 @@ install_ray() {
 uninstall_ray() {
   pip uninstall -y ray
 
-  rm -r -f "${WORKSPACE_DIR}"/python/ray/thirdparty_files
+  python -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" clean "${ROOT_DIR}"/setup.py
 }
 
 build_wheel_windows() {
@@ -56,7 +60,7 @@ build_wheel_windows() {
   local local_dir="python/dist"
   for pyversion in "${pyversions[@]}"; do
     if [ -z "${pyversion}" ]; then continue; fi
-    "${WORKSPACE_DIR}"/ci/travis/bazel-preclean.sh
+    bazel_preclean
     git clean -q -f -f -x -d -e "${local_dir}" -e python/ray/dashboard/client
     git checkout -q -f -- .
 
@@ -82,7 +86,7 @@ build_wheel_windows() {
     )
   done
 
-  "${WORKSPACE_DIR}"/ci/travis/bazel-preclean.sh
+  bazel_preclean
   if [ 0 -eq "${ray_uninstall_status}" ]; then  # If Ray was previously installed, restore it
     install_ray
   fi

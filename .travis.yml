@@ -126,6 +126,7 @@ matrix:
         - . ./ci/travis/ci.sh build
       script:
         - . ./ci/travis/ci.sh test_wheels
+        - if [[ "$TRAVIS_PULL_REQUEST" != "false" ]]; then ./ci/keep_alive bash $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.sh; fi
         - bash ./java/build-jar-multiplatform.sh linux
         - bash ./java/build-jar-multiplatform.sh multiplatform
         #- bash ./java/build-jar-multiplatform.sh deploy
@@ -137,7 +138,7 @@ matrix:
         - RLLIB_TESTING=1 RLLIB_REGRESSION_TESTS=1
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
-        - TORCH_VERSION=1.4
+        - TORCH_VERSION=1.6
         - PYTHON=3.6
         - PYTHONWARNINGS=ignore
       install:
@@ -154,7 +155,7 @@ matrix:
         - RLLIB_TESTING=1 RLLIB_REGRESSION_TESTS_TF1X=1
         - TF_VERSION=1.14.0
         - TFP_VERSION=0.7
-        - TORCH_VERSION=1.4
+        - TORCH_VERSION=1.6
         - PYTHON=3.6
         - PYTHONWARNINGS=ignore
       install:
@@ -170,7 +171,7 @@ matrix:
         - RLLIB_TESTING=1 RLLIB_REGRESSION_TESTS_TORCH=1
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
-        - TORCH_VERSION=1.4
+        - TORCH_VERSION=1.6
         - PYTHON=3.6
         - PYTHONWARNINGS=ignore
       install:
@@ -188,7 +189,7 @@ matrix:
         - PYTHON=3.6
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
-        - TORCH_VERSION=1.4
+        - TORCH_VERSION=1.6
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init RAY_CI_RLLIB_FULL_AFFECTED
@@ -207,7 +208,7 @@ matrix:
         - PYTHON=3.6
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
-        - TORCH_VERSION=1.4
+        - TORCH_VERSION=1.6
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init RAY_CI_RLLIB_FULL_AFFECTED
@@ -226,7 +227,7 @@ matrix:
         - PYTHON=3.6
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
-        - TORCH_VERSION=1.4
+        - TORCH_VERSION=1.6
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init RAY_CI_RLLIB_FULL_AFFECTED
@@ -242,7 +243,7 @@ matrix:
         - PYTHON=3.6
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
-        - TORCH_VERSION=1.4
+        - TORCH_VERSION=1.6
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init RAY_CI_RLLIB_FULL_AFFECTED
@@ -301,7 +302,7 @@ matrix:
         - TORCH_VERSION=1.5
         - PYTHONWARNINGS=ignore
       install:
-        - . ./ci/travis/ci.sh init RAY_CI_PYTHON_AFFECTED
+        - . ./ci/travis/ci.sh init RAY_CI_PYTHON_AFFECTED,RAY_CI_TUNE_AFFECTED
       before_script:
         - . ./ci/travis/ci.sh build
       script:
@@ -411,7 +412,7 @@ deploy:
     on:
       repo: ray-project/ray
       all_branches: true
-      condition: $MULTIPLATFORM_JARS = 1 || $MAC_JARS=1
+      condition: $MULTIPLATFORM_JARS = 1 || $MAC_JARS = 1
 
   - provider: s3
     edge: true # This supposedly opts in to deploy v2.
@@ -427,11 +428,11 @@ deploy:
     on:
       repo: ray-project/ray
       branch: master
-      condition: $MULTIPLATFORM_JARS = 1 || $MAC_JARS=1
+      condition: $MULTIPLATFORM_JARS = 1 || $MAC_JARS = 1
 
   - provider: script
     edge: true # This supposedly opts in to deploy v2.
-    script: ./ci/keep_alive bash $TRAVIS_BUILD_DIR/ci/travis/build-autoscaler-images.sh || true
+    script: ./ci/keep_alive bash $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.sh
     skip_cleanup: true
     on:
       repo: ray-project/ray

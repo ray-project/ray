@@ -94,6 +94,14 @@ py_test(
 )
 
 py_test(
+    name = "test_integration_wandb",
+    size = "small",
+    srcs = ["tests/test_integration_wandb.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+)
+
+py_test(
     name = "test_logger",
     size = "small",
     srcs = ["tests/test_logger.py"],
@@ -288,6 +296,14 @@ py_test(
 )
 
 py_test(
+    name = "test_torch_trainable",
+    size = "medium",
+    srcs = ["tests/test_torch_trainable.py"],
+    tags = ["exclusive", "example", "pytorch"],
+    deps = [":tune_lib"],
+)
+
+py_test(
     name = "ddp_mnist_torch",
     size = "small",
     srcs = ["examples/ddp_mnist_torch.py"],
@@ -458,6 +474,16 @@ py_test(
 #     args = ["--smoke-test"]
 # )
 
+py_test(
+    name = "pbt_transformers",
+    size = "large",
+    srcs = ["examples/pbt_transformers/pbt_transformers.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+
 # Requires GPUs. Add smoke test?
 # py_test(
 #     name = "pbt_tune_cifar10_with_keras",
@@ -513,6 +539,15 @@ py_test(
     deps = [":tune_lib"],
     tags = ["exclusive", "example"],
     args = ["--smoke-test"]
+)
+
+py_test(
+    name = "wandb_example",
+    size = "small",
+    srcs = ["examples/wandb_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--mock-api"]
 )
 
 py_test(

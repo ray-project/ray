@@ -7,6 +7,7 @@ import ray.serve as serve
 from ray.serve.metric import PrometheusExporter
 
 # initialize ray serve system.
+ray.init(num_cpus=10)
 serve.init(metric_exporter=PrometheusExporter)
 
 

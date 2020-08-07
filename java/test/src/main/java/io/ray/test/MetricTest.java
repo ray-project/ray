@@ -17,6 +17,7 @@ import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
 
+@Test(groups = {"cluster"})
 public class MetricTest extends BaseTest {
 
   boolean doubleEqual(double value, double other) {
@@ -27,49 +28,49 @@ public class MetricTest extends BaseTest {
                                       int threadPoolSize,
                                       long shutdownWaitTimeMs) {
     MetricConfig config = MetricConfig.builder()
-      .timeIntervalMs(timeIntervalMs)
-      .threadPoolSize(threadPoolSize)
-      .shutdownWaitTimeMs(shutdownWaitTimeMs)
-      .create();
+        .timeIntervalMs(timeIntervalMs)
+        .threadPoolSize(threadPoolSize)
+        .shutdownWaitTimeMs(shutdownWaitTimeMs)
+        .create();
     Metrics.init(config);
     return config;
   }
 
   private Gauge registerGauge() {
     return Metrics.gauge()
-      .name("metric_gauge")
-      .description("gauge")
-      .unit("")
-      .tags(ImmutableMap.of("tag1", "value1"))
-      .register();
+        .name("metric_gauge")
+        .description("gauge")
+        .unit("")
+        .tags(ImmutableMap.of("tag1", "value1"))
+        .register();
   }
 
   private Count registerCount() {
     return Metrics.count()
-      .name("metric_count")
-      .description("counter")
-      .unit("1pc")
-      .tags(ImmutableMap.of("tag1", "value1", "count_tag", "default"))
-      .register();
+        .name("metric_count")
+        .description("counter")
+        .unit("1pc")
+        .tags(ImmutableMap.of("tag1", "value1", "count_tag", "default"))
+        .register();
   }
 
   private Sum registerSum() {
     return Metrics.sum()
-      .name("metric_sum")
-      .description("sum")
-      .unit("1pc")
-      .tags(ImmutableMap.of("tag1", "value1", "sum_tag", "default"))
-      .register();
+        .name("metric_sum")
+        .description("sum")
+        .unit("1pc")
+        .tags(ImmutableMap.of("tag1", "value1", "sum_tag", "default"))
+        .register();
   }
 
   private Histogram registerHistogram() {
     return Metrics.histogram()
-      .name("metric_histogram")
-      .description("histogram")
-      .unit("1pc")
-      .boundaries(ImmutableList.of(10.0, 15.0, 20.0))
-      .tags(ImmutableMap.of("tag1", "value1", "histogram_tag", "default"))
-      .register();
+        .name("metric_histogram")
+        .description("histogram")
+        .unit("1pc")
+        .boundaries(ImmutableList.of(10.0, 15.0, 20.0))
+        .tags(ImmutableMap.of("tag1", "value1", "histogram_tag", "default"))
+        .register();
   }
 
   @AfterMethod
@@ -77,9 +78,7 @@ public class MetricTest extends BaseTest {
     Metrics.shutdown();
   }
 
-  @Test
   public void testAddGauge() {
-    TestUtils.skipTestUnderSingleProcess();
     Map<TagKey, String> tags = new HashMap<>();
     tags.put(new TagKey("tag1"), "value1");
 
@@ -90,9 +89,7 @@ public class MetricTest extends BaseTest {
     gauge.unregister();
   }
 
-  @Test
   public void testAddCount() {
-    TestUtils.skipTestUnderSingleProcess();
     Map<TagKey, String> tags = new HashMap<>();
     tags.put(new TagKey("tag1"), "value1");
     tags.put(new TagKey("count_tag"), "default");
@@ -104,9 +101,7 @@ public class MetricTest extends BaseTest {
     Assert.assertTrue(doubleEqual(count.getCount(), 30.0));
   }
 
-  @Test
   public void testAddSum() {
-    TestUtils.skipTestUnderSingleProcess();
     Map<TagKey, String> tags = new HashMap<>();
     tags.put(new TagKey("tag1"), "value1");
     tags.put(new TagKey("sum_tag"), "default");
@@ -118,9 +113,7 @@ public class MetricTest extends BaseTest {
     Assert.assertTrue(doubleEqual(sum.getSum(), 30.0));
   }
 
-  @Test
   public void testAddHistogram() {
-    TestUtils.skipTestUnderSingleProcess();
     Map<TagKey, String> tags = new HashMap<>();
     tags.put(new TagKey("tag1"), "value1");
     tags.put(new TagKey("histogram_tag"), "default");
@@ -129,7 +122,7 @@ public class MetricTest extends BaseTest {
     boundaries.add(15.0);
     boundaries.add(12.0);
     Histogram histogram = new Histogram("metric_histogram", "histogram", "1pc",
-      boundaries, tags);
+        boundaries, tags);
     for (int i = 1; i <= 200; ++i) {
       histogram.update(i * 1.0d);
     }
@@ -143,9 +136,7 @@ public class MetricTest extends BaseTest {
     Assert.assertEquals(window.size(), 0);
   }
 
-  @Test
   public void testRegisterGauge() throws InterruptedException {
-    TestUtils.skipTestUnderSingleProcess();
     Gauge gauge = registerGauge();
 
     gauge.update(2.0);
@@ -154,9 +145,7 @@ public class MetricTest extends BaseTest {
     Assert.assertTrue(doubleEqual(gauge.getValue(), 5.0));
   }
 
-  @Test
   public void testRegisterCount() throws InterruptedException {
-    TestUtils.skipTestUnderSingleProcess();
     Count count = registerCount();
 
     count.inc(10.0);
@@ -167,9 +156,7 @@ public class MetricTest extends BaseTest {
     Assert.assertTrue(doubleEqual(count.getCount(), 33.0));
   }
 
-  @Test
   public void testRegisterSum() throws InterruptedException {
-    TestUtils.skipTestUnderSingleProcess();
     Sum sum = registerSum();
 
     sum.update(10.0);
@@ -180,9 +167,7 @@ public class MetricTest extends BaseTest {
     Assert.assertTrue(doubleEqual(sum.getSum(), 33.0));
   }
 
-  @Test
   public void testRegisterHistogram() throws InterruptedException {
-    TestUtils.skipTestUnderSingleProcess();
     Histogram histogram = registerHistogram();
 
     for (int i = 1; i <= 200; ++i) {
@@ -196,9 +181,7 @@ public class MetricTest extends BaseTest {
     Assert.assertTrue(doubleEqual(histogram.getValue(), 200.0d));
   }
 
-  @Test
   public void testRegisterGaugeWithConfig() throws InterruptedException {
-    TestUtils.skipTestUnderSingleProcess();
     initRayMetrics(2000L, 1, 1000L);
     Gauge gauge = registerGauge();
 
@@ -208,9 +191,7 @@ public class MetricTest extends BaseTest {
     Assert.assertTrue(doubleEqual(gauge.getValue(), 5.0));
   }
 
-  @Test
   public void testRegisterCountWithConfig() throws InterruptedException {
-    TestUtils.skipTestUnderSingleProcess();
     initRayMetrics(2000L, 1, 1000L);
     Count count = registerCount();
 
@@ -222,9 +203,7 @@ public class MetricTest extends BaseTest {
     Assert.assertTrue(doubleEqual(count.getCount(), 33.0));
   }
 
-  @Test
   public void testRegisterSumWithConfig() throws InterruptedException {
-    TestUtils.skipTestUnderSingleProcess();
     initRayMetrics(2000L, 1, 1000L);
     Sum sum = registerSum();
 
@@ -236,9 +215,7 @@ public class MetricTest extends BaseTest {
     Assert.assertTrue(doubleEqual(sum.getSum(), 33.0));
   }
 
-  @Test
   public void testRegisterHistogramWithConfig() throws InterruptedException {
-    TestUtils.skipTestUnderSingleProcess();
     initRayMetrics(2000L, 1, 1000L);
     Histogram histogram = registerHistogram();
 

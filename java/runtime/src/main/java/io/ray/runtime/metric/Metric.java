@@ -32,6 +32,7 @@ public abstract class Metric {
   // Sync metric with core worker stats for registry.
   // Metric data will be flushed into stats view data inside core worker immediately after
   // record is called.
+
   /**
    * Flush records to stats in last aggregator.
    */
@@ -51,19 +52,24 @@ public abstract class Metric {
 
   /**
    * Get the value to record and then reset.
+   *
    * @return latest updating value.
    */
   protected abstract double getAndReset();
 
-  /** Update gauge value without tags.
+  /**
+   * Update gauge value without tags.
    * Update metric info for user.
+   *
    * @param value latest value for updating
    */
   public abstract void update(double value);
 
-  /** Update gauge value with dynamic tag values.
+  /**
+   * Update gauge value with dynamic tag values.
+   *
    * @param value latest value for updating
-   * @param tags tag map
+   * @param tags  tag map
    */
   public void update(double value, Map<TagKey, String> tags) {
     update(value);

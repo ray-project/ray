@@ -291,6 +291,10 @@ def _configure_key_pair(config, compute):
                 key_found = True
                 break
 
+        # Writing the new ssh key to the filesystem fails if the ~/.ssh
+        # directory doesn't already exist.
+        os.makedirs(os.path.expanduser("~/.ssh"), exist_ok=True)
+
         # Create a key since it doesn't exist locally or in GCP
         if not key_found and not os.path.exists(private_key_path):
             logger.info("_configure_key_pair: "

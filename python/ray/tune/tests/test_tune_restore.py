@@ -13,8 +13,9 @@ import ray
 from ray import tune
 from ray.test_utils import recursive_fnmatch
 from ray.rllib import _register_all
-from ray.tune.suggest import ConcurrencyLimiter
+from ray.tune.suggest import ConcurrencyLimiter, Searcher
 from ray.tune.suggest.hyperopt import HyperOptSearch
+from ray.tune.suggest.dragonfly import DragonflySearch
 from ray.tune.suggest.bayesopt import BayesOptSearch
 from ray.tune.suggest.skopt import SkOptSearch
 from ray.tune.suggest.nevergrad import NevergradSearch
@@ -138,6 +139,7 @@ class AbstractWarmStartTest:
     def setUp(self):
         ray.init(num_cpus=1, local_mode=True)
         self.tmpdir = tempfile.mkdtemp()
+        self.experiment_name = "results"
 
     def tearDown(self):
         shutil.rmtree(self.tmpdir)
@@ -147,24 +149,43 @@ class AbstractWarmStartTest:
     def set_basic_conf(self):
         raise NotImplementedError()
 
-    def run_exp_1(self):
+    def run_part_from_scratch(self):
         np.random.seed(162)
         search_alg, cost = self.set_basic_conf()
         search_alg = ConcurrencyLimiter(search_alg, 1)
         results_exp_1 = tune.run(
-            cost, num_samples=5, search_alg=search_alg, verbose=0)
-        self.log_dir = os.path.join(self.tmpdir, "warmStartTest.pkl")
-        search_alg.save(self.log_dir)
-        return results_exp_1
+            cost,
+            num_samples=5,
+            search_alg=search_alg,
+            verbose=0,
+            name=self.experiment_name,
+            local_dir=self.tmpdir)
+        checkpoint_path = os.path.join(self.tmpdir, "warmStartTest.pkl")
+        search_alg.save(checkpoint_path)
+        return results_exp_1, np.random.get_state(), checkpoint_path
 
-    def run_exp_2(self):
+    def run_from_experiment_restore(self, random_state):
+        search_alg, cost = self.set_basic_conf()
+        search_alg = ConcurrencyLimiter(search_alg, 1)
+        search_alg.restore_from_dir(
+            os.path.join(self.tmpdir, self.experiment_name))
+        results = tune.run(
+            cost,
+            num_samples=5,
+            search_alg=search_alg,
+            verbose=0,
+            name=self.experiment_name,
+            local_dir=self.tmpdir)
+        return results
+
+    def run_explicit_restore(self, random_state, checkpoint_path):
+        np.random.set_state(random_state)
         search_alg2, cost = self.set_basic_conf()
         search_alg2 = ConcurrencyLimiter(search_alg2, 1)
-        search_alg2.restore(self.log_dir)
+        search_alg2.restore(checkpoint_path)
         return tune.run(cost, num_samples=5, search_alg=search_alg2, verbose=0)
 
-    def run_exp_3(self):
-        print("FULL RUN")
+    def run_full(self):
         np.random.seed(162)
         search_alg3, cost = self.set_basic_conf()
         search_alg3 = ConcurrencyLimiter(search_alg3, 1)
@@ -172,9 +193,19 @@ class AbstractWarmStartTest:
             cost, num_samples=10, search_alg=search_alg3, verbose=0)
 
     def testWarmStart(self):
-        results_exp_1 = self.run_exp_1()
-        results_exp_2 = self.run_exp_2()
-        results_exp_3 = self.run_exp_3()
+        results_exp_1, r_state, checkpoint_path = self.run_part_from_scratch()
+        results_exp_2 = self.run_explicit_restore(r_state, checkpoint_path)
+        results_exp_3 = self.run_full()
+        trials_1_config = [trial.config for trial in results_exp_1.trials]
+        trials_2_config = [trial.config for trial in results_exp_2.trials]
+        trials_3_config = [trial.config for trial in results_exp_3.trials]
+        self.assertEqual(trials_1_config + trials_2_config, trials_3_config)
+
+    def testRestore(self):
+        results_exp_1, r_state, checkpoint_path = self.run_part_from_scratch()
+        results_exp_2 = self.run_from_experiment_restore(r_state)
+        results_exp_3 = self.run_full()
+
         trials_1_config = [trial.config for trial in results_exp_1.trials]
         trials_2_config = [trial.config for trial in results_exp_2.trials]
         trials_3_config = [trial.config for trial in results_exp_3.trials]
@@ -216,7 +247,7 @@ class BayesoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         return search_alg, cost
 
     def testBootStrapAnalysis(self):
-        analysis = self.run_exp_3()
+        analysis = self.run_full()
         search_alg3, cost = self.set_basic_conf(analysis)
         search_alg3 = ConcurrencyLimiter(search_alg3, 1)
         tune.run(cost, num_samples=10, search_alg=search_alg3, verbose=0)
@@ -261,6 +292,50 @@ class NevergradWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         return search_alg, cost
 
 
+class DragonflyWarmSTartTest(AbstractWarmStartTest, unittest.TestCase):
+    def set_basic_conf(self):
+        from dragonfly.opt.gp_bandit import EuclideanGPBandit
+        from dragonfly.exd.experiment_caller import EuclideanFunctionCaller
+        from dragonfly import load_config
+
+        def cost(space, reporter):
+            height, width = space["point"]
+            reporter(loss=(height - 14)**2 - abs(width - 3))
+
+        domain_vars = [{
+            "name": "height",
+            "type": "float",
+            "min": -10,
+            "max": 10
+        }, {
+            "name": "width",
+            "type": "float",
+            "min": 0,
+            "max": 20
+        }]
+
+        domain_config = load_config({"domain": domain_vars})
+
+        func_caller = EuclideanFunctionCaller(
+            None, domain_config.domain.list_of_domains[0])
+        optimizer = EuclideanGPBandit(func_caller, ask_tell_mode=True)
+        search_alg = DragonflySearch(
+            optimizer,
+            metric="loss",
+            mode="min",
+            max_concurrent=1000,  # Here to avoid breaking back-compat.
+        )
+        return search_alg, cost
+
+    @unittest.skip("Skip because this doesn't seem to work.")
+    def testWarmStart(self):
+        pass
+
+    @unittest.skip("Skip because this doesn't seem to work.")
+    def testRestore(self):
+        pass
+
+
 class SigOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
         space = [
@@ -299,6 +374,11 @@ class SigOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 
         super().testWarmStart()
 
+    def testRestore(self):
+        if ("SIGOPT_KEY" not in os.environ):
+            return
+        super().testRestore()
+
 
 class ZOOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
@@ -318,6 +398,33 @@ class ZOOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             mode="min")
 
         return search_alg, cost
+
+    @unittest.skip("Skip because this seems to have leaking state.")
+    def testRestore(self):
+        pass
+
+
+class SearcherTest(unittest.TestCase):
+    class MockSearcher(Searcher):
+        def __init__(self, data):
+            self.data = data
+
+        def save(self, path):
+            with open(path, "w") as f:
+                f.write(self.data)
+
+        def restore(self, path):
+            with open(path, "r") as f:
+                self.data = f.read()
+
+    def testSaveRestoreDir(self):
+        tmpdir = tempfile.mkdtemp()
+        original_data = "hello-its-me"
+        searcher = self.MockSearcher(original_data)
+        searcher.save_to_dir(tmpdir)
+        searcher_2 = self.MockSearcher("no-its-not-me")
+        searcher_2.restore_from_dir(tmpdir)
+        assert searcher_2.data == original_data
 
 
 if __name__ == "__main__":

@@ -55,11 +55,21 @@ TEST_F(RedisStoreClientTest, AsyncGetAllAndBatchDeleteTest) {
   TestAsyncGetAllAndBatchDelete();
 }
 
+TEST_F(RedisStoreClientTest, TestAsyncDeleteWithIndex) { TestAsyncDeleteWithIndex(); }
+
+TEST_F(RedisStoreClientTest, TestAsyncBatchDeleteWithIndex) {
+  TestAsyncBatchDeleteWithIndex();
+}
+
 }  // namespace gcs
 
 }  // namespace ray
 
 int main(int argc, char **argv) {
+  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
+                                         ray::RayLog::ShutDownRayLog, argv[0],
+                                         ray::RayLogLevel::INFO,
+                                         /*log_dir=*/"");
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 4);
   ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];

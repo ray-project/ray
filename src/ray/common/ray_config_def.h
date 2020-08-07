@@ -312,10 +312,6 @@ RAY_CONFIG(bool, plasma_store_as_thread, false)
 /// changed. When the address changed, we will resubscribe again.
 RAY_CONFIG(int64_t, gcs_service_address_check_interval_milliseconds, 1000)
 
-RAY_CONFIG(bool, gcs_actor_service_enabled,
-           getenv("RAY_GCS_ACTOR_SERVICE_ENABLED") == nullptr ||
-               getenv("RAY_GCS_ACTOR_SERVICE_ENABLED") == std::string("true"))
-
 /// The batch size for metrics export.
 RAY_CONFIG(int64_t, metrics_report_batch_size, 100)
 
@@ -329,3 +325,13 @@ RAY_CONFIG(bool, put_small_object_in_memory_store, false)
 /// the owner has been granted a lease. A value >1 is used when we want to enable
 /// pipelining task submission.
 RAY_CONFIG(uint32_t, max_tasks_in_flight_per_worker, 1)
+
+/// The maximum number of resource shapes included in the resource
+/// load reported by each raylet.
+RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)
+
+/// The timeout for synchronous GCS requests in seconds.
+RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 5)
+
+/// Whether to enable multi tenancy features.
+RAY_CONFIG(bool, enable_multi_tenancy, false)

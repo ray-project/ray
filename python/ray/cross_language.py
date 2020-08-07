@@ -68,7 +68,10 @@ def java_function(class_name, function_name):
         None,  # resources,
         None,  # num_return_vals,
         None,  # max_calls,
-        None)  # max_retries)
+        None,  # max_retries
+        placement_group_id=None,
+        # TODO(ekl) set default to -1 once we support -1 as "any index"
+        placement_group_bundle_index=0)
 
 
 def java_actor_class(class_name):

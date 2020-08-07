@@ -11,9 +11,8 @@ public class MetricConfig {
   private static final int DEFAULT_THREAD_POLL_SIZE = 1;
   private static final long DEFAULT_SHUTDOWN_WAIT_TIME_MS = 3000L;
 
-  public static final MetricConfig DEFAULT_CONFIG =
-    new MetricConfig(DEFAULT_TIME_INTERVAL_MS, DEFAULT_THREAD_POLL_SIZE,
-      DEFAULT_SHUTDOWN_WAIT_TIME_MS);
+  public static final MetricConfig DEFAULT_CONFIG = new MetricConfig(DEFAULT_TIME_INTERVAL_MS,
+      DEFAULT_THREAD_POLL_SIZE, DEFAULT_SHUTDOWN_WAIT_TIME_MS);
 
   private final long timeIntervalMs;
   private final int threadPoolSize;
@@ -40,10 +39,10 @@ public class MetricConfig {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-      .add("timeIntervalMs", timeIntervalMs)
-      .add("threadPoolSize", threadPoolSize)
-      .add("shutdownWaitTimeMs", shutdownWaitTimeMs)
-      .toString();
+        .add("timeIntervalMs", timeIntervalMs)
+        .add("threadPoolSize", threadPoolSize)
+        .add("shutdownWaitTimeMs", shutdownWaitTimeMs)
+        .toString();
   }
 
   public static MetricConfigBuilder builder() {

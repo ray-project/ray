@@ -4,6 +4,9 @@ load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@bazel_common//tools/maven:pom_file.bzl", "pom_file")
 
 COPTS = ["-DRAY_USE_GLOG"] + select({
+    "//:opt": ["-DBAZEL_OPT"],
+    "//conditions:default": [],
+}) + select({
     "@bazel_tools//src/conditions:windows": [
         # TODO(mehrdadn): (How to) support dynamic linking?
         "-DRAY_STATIC",
