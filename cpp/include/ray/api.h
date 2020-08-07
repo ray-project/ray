@@ -1,13 +1,14 @@
 
 #pragma once
 
-#include <memory>
-
 #include <ray/api/generated/actor_funcs.generated.h>
 #include <ray/api/generated/create_funcs.generated.h>
 #include <ray/api/generated/funcs.generated.h>
 #include <ray/api/ray_runtime.h>
+
+#include <memory>
 #include <msgpack.hpp>
+
 #include "ray/core.h"
 namespace ray {
 namespace api {
@@ -232,13 +233,10 @@ inline ActorTaskCaller<ReturnType> Ray::CallActorInternal(FuncType &actor_func,
   return ActorTaskCaller<ReturnType>(runtime_, actor.ID(), ptr, buffer);
 }
 
-#include <ray/api/generated/exec_funcs.generated.h>
-
-#include <ray/api/generated/call_funcs_impl.generated.h>
-
-#include <ray/api/generated/create_actors_impl.generated.h>
-
 #include <ray/api/generated/call_actors_impl.generated.h>
+#include <ray/api/generated/call_funcs_impl.generated.h>
+#include <ray/api/generated/create_actors_impl.generated.h>
+#include <ray/api/generated/exec_funcs.generated.h>
 
 }  // namespace api
 }  // namespace ray

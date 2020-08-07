@@ -14,15 +14,13 @@
 
 #pragma once
 
+#include <boost/asio.hpp>
 #include <functional>
 #include <unordered_map>
 #include <unordered_set>
 
-#include <boost/asio.hpp>
-
 #include "ray/common/id.h"
 #include "ray/gcs/tables.h"
-
 #include "ray/object_manager/object_directory.h"
 
 namespace ray {

@@ -17,7 +17,6 @@ from ray.rllib.utils.numpy import fc
 from ray.rllib.utils.test_utils import check, framework_iterator, \
     check_compute_single_action
 
-
 # Fake CartPole episode of n time steps.
 FAKE_BATCH = {
     SampleBatch.CUR_OBS: np.array(

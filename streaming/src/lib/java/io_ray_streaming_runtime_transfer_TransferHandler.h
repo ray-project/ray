@@ -12,16 +12,18 @@ extern "C" {
  * Method:    createWriterClientNative
  * Signature: (J)J
  */
-JNIEXPORT jlong JNICALL Java_io_ray_streaming_runtime_transfer_TransferHandler_createWriterClientNative
-  (JNIEnv *, jobject);
+JNIEXPORT jlong JNICALL
+Java_io_ray_streaming_runtime_transfer_TransferHandler_createWriterClientNative(JNIEnv *,
+                                                                                jobject);
 
 /*
  * Class:     io_ray_streaming_runtime_transfer_TransferHandler
  * Method:    createReaderClientNative
  * Signature: (J)J
  */
-JNIEXPORT jlong JNICALL Java_io_ray_streaming_runtime_transfer_TransferHandler_createReaderClientNative
-  (JNIEnv *, jobject);
+JNIEXPORT jlong JNICALL
+Java_io_ray_streaming_runtime_transfer_TransferHandler_createReaderClientNative(JNIEnv *,
+                                                                                jobject);
 
 /*
  * Class:     io_ray_streaming_runtime_transfer_TransferHandler

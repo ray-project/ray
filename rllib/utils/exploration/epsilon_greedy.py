@@ -99,8 +99,8 @@ class EpsilonGreedy(Exploration):
             tf.random.categorical(random_valid_action_logits, 1), axis=1)
 
         chose_random = tf.random.uniform(
-            tf.stack([batch_size]),
-            minval=0, maxval=1, dtype=tf.float32) < epsilon
+            tf.stack([batch_size]), minval=0, maxval=1,
+            dtype=tf.float32) < epsilon
 
         action = tf.cond(
             pred=tf.constant(explore, dtype=tf.bool)
