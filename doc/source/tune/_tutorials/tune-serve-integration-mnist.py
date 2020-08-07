@@ -2,6 +2,10 @@
 """
 Model selection and serving with Ray Tune and Ray Serve
 =======================================================
+This tutorial will show you an end-to-end example how to train a
+model using Ray Tune on incrementally arriving data and deploy
+the model using Ray Serve.
+
 A machine learning workflow can be quite simple: You decide on
 the objective you're trying to solve, collect and annotate the
 data, and build a model to hopefully solve your problem. But
@@ -33,22 +37,46 @@ By the end of this tutorial you will be able to
    newly arriving data
 3. Automatically create and serve data backends with Ray Serve
 
-
-Roadmap
--------
+Roadmap and desired functionality
+---------------------------------
 The general idea of this example is that we simulate newly arriving
 data each day. So at day 0 we might have some initial data available
 already, but at each day, new data arrives.
 
-Our approach here is that we offer to ways to train: From scratch and
+Our approach here is that we offer two ways to train: From scratch and
 from an existing model. Maybe you would like to train and select models
 from scratch each week with all data available until then, e.g. each
-Sunday. During the other days you might want to improve your model, but
+Sunday, like this:
+
+.. code-block:: bash
+
+    # Train with all data available at day 0
+    python tune-serve-integration-mnist.py --from_scratch --day 0
+
+During the other days you might want to improve your model, but
 not train everything from scratch, saving some cluster resources.
+
+.. code-block:: bash
+
+    # Train with data arriving between day 0 and day 1
+    python tune-serve-integration-mnist.py --from_existing --day 1
+    # Train with incremental data on the other days, too
+    python tune-serve-integration-mnist.py --from_existing --day 2
+    python tune-serve-integration-mnist.py --from_existing --day 3
+    python tune-serve-integration-mnist.py --from_existing --day 4
+    python tune-serve-integration-mnist.py --from_existing --day 5
+    python tune-serve-integration-mnist.py --from_existing --day 6
+    # Retrain from scratch every 7th day:
+    python tune-serve-integration-mnist.py --from_scratch --day 7
 
 This example will support both modes. After each model selection run,
 we will tell Ray Serve to serve an updated model. We also include a
 small utility to query our served model to see if it works as it should.
+
+.. code-block::
+
+    python tune-serve-integration-mnist.py --query 6
+    Querying model with example #6. Label = 1, Response = 1, Correct = True
 
 Imports
 -------
@@ -258,7 +286,7 @@ def train_mnist(config,
 # does not have to be compatible to an existing model.
 def tune_from_scratch(num_samples=10, num_epochs=10, gpus_per_trial=0., day=0):
     data_interface = MNISTDataInterface("/tmp/mnist_data", max_days=10)
-    N = data_interface._get_day_slice(day)
+    num_examples = data_interface._get_day_slice(day)
 
     config = {
         "batch_size": tune.choice([16, 32, 64]),
@@ -303,7 +331,7 @@ def tune_from_scratch(num_samples=10, num_epochs=10, gpus_per_trial=0., day=0):
     best_trial_config = best_trial.config
     best_checkpoint = best_trial.checkpoint.value
 
-    return best_accuracy, best_trial_config, best_checkpoint, N
+    return best_accuracy, best_trial_config, best_checkpoint, num_examples
 
 
 #######################################################################
@@ -322,8 +350,8 @@ def tune_from_existing(start_model,
                        gpus_per_trial=0.,
                        day=0):
     data_interface = MNISTDataInterface("/tmp/mnist_data", max_days=10)
-    N = data_interface._get_day_slice(day) - data_interface._get_day_slice(
-        day - 1)
+    num_examples = data_interface._get_day_slice(day) - \
+                   data_interface._get_day_slice(day - 1)
 
     config = start_config.copy()
     config.update({
@@ -368,7 +396,7 @@ def tune_from_existing(start_model,
     best_trial_config = best_trial.config
     best_checkpoint = best_trial.checkpoint.value
 
-    return best_accuracy, best_trial_config, best_checkpoint, N
+    return best_accuracy, best_trial_config, best_checkpoint, num_examples
 
 
 #######################################################################
@@ -386,18 +414,18 @@ def tune_from_existing(start_model,
 # MNIST model from a checkpoint, takes an image as an input and
 # outputs our digit prediction according to our trained model:
 class MNISTBackend:
-    def __init__(self, checkpoint_dir, config, metrics):
+    def __init__(self, checkpoint_dir, config, metrics, use_gpu=False):
         self.checkpoint_dir = checkpoint_dir
         self.config = config
         self.metrics = metrics
 
-        # use_cuda = config.get("use_gpu") and torch.cuda.is_available()
-        # self.device = torch.device("cuda" if use_cuda else "cpu")
-        self.device = "cpu"
+        use_cuda = use_gpu and torch.cuda.is_available()
+        self.device = torch.device("cuda" if use_cuda else "cpu")
         model = ConvNet(layer_size=self.config["layer_size"]).to(self.device)
 
         model_state, optimizer_state = torch.load(
-            os.path.join(self.checkpoint_dir, "checkpoint"))
+            os.path.join(self.checkpoint_dir, "checkpoint"),
+            map_location=self.device)
         model.load_state_dict(model_state)
 
         self.model = model
@@ -417,14 +445,43 @@ class MNISTBackend:
 # model to this directory. We then create a new backend pointing to
 # that directory, route all the traffic on our model endpoint to this
 # backend, and then delete the old backends to free up some memory.
-def serve_new_model(model_dir, checkpoint, config, metrics, day):
+def serve_new_model(model_dir, checkpoint, config, metrics, day, gpu=False):
     print("Serving checkpoint: {}".format(checkpoint))
 
-    if not os.path.exists(model_dir):
-        try:
-            os.mkdir(model_dir, 0o755)
-        except OSError:
-            return False
+    checkpoint_path = _move_checkpoint_to_model_dir(model_dir, checkpoint,
+                                                    config, metrics)
+
+    serve.init()
+    backend_name = "mnist:day_{}".format(day)
+
+    serve.create_backend(backend_name, MNISTBackend, checkpoint_path, config,
+                         metrics, gpu)
+
+    if "mnist" not in serve.list_endpoints():
+        # First time we serve a model - create endpoint
+        serve.create_endpoint(
+            "mnist", backend=backend_name, route="/mnist", methods=["POST"])
+    else:
+        # The endpoint already exists, route all traffic to the new model
+        # Here you could also implement an incremental rollout, where only
+        # a part of the traffic is sent to the new backend and the
+        # rest is sent to the existing backends.
+        serve.set_traffic("mnist", {backend_name: 1.0})
+
+    # Delete previous existing backends
+    for existing_backend in serve.list_backends():
+        if existing_backend.startswith("mnist:day") and \
+           existing_backend != backend_name:
+            serve.delete_backend(existing_backend)
+
+    return True
+
+
+def _move_checkpoint_to_model_dir(model_dir, checkpoint, config, metrics):
+    """Move backend checkpoint to a central `model_dir` on the head node.
+    If you would like to run Serve on multiple nodes, you might want to
+    move the checkpoint to a shared storage, like Amazon S3, instead."""
+    os.makedirs(model_dir, 0o755, exist_ok=True)
 
     checkpoint_path = os.path.join(model_dir, "checkpoint")
     meta_path = os.path.join(model_dir, "meta.json")
@@ -437,27 +494,7 @@ def serve_new_model(model_dir, checkpoint, config, metrics, day):
     with open(meta_path, "wt") as fp:
         json.dump(dict(config=config, metrics=metrics), fp)
 
-    serve.init()
-    backend_name = "mnist:day_{}".format(day)
-
-    serve.create_backend(backend_name, MNISTBackend, checkpoint_path, config,
-                         metrics)
-
-    if "mnist" not in serve.list_endpoints():
-        # First time we serve a model - create endpoint
-        serve.create_endpoint(
-            "mnist", backend=backend_name, route="/mnist", methods=["POST"])
-    else:
-        # The endpoint already exists, route all traffic to the new model
-        serve.set_traffic("mnist", {backend_name: 1.0})
-
-    # Delete previous existing backends
-    for existing_backend in serve.list_backends():
-        if existing_backend.startswith("mnist:day") and \
-           existing_backend != backend_name:
-            serve.delete_backend(existing_backend)
-
-    return True
+    return checkpoint_path
 
 
 #######################################################################
@@ -533,6 +570,8 @@ if __name__ == "__main__":
 
     .. code-block:: bash
 
+        python tune-serve-integration-mnist.py --query 6
+        Querying model with example #6. Label = 1, Response = 1, Correct = T
         python tune-serve-integration-mnist.py --query 28
         Querying model with example #28. Label = 2, Response = 7, Correct = F
 
@@ -594,17 +633,19 @@ if __name__ == "__main__":
         sys.exit(0)
 
     gpus_per_trial = 0.5 if not args.smoke_test else 0.
+    serve_gpu = True if gpus_per_trial > 0 else False
     num_samples = 8 if not args.smoke_test else 1
     num_epochs = 10 if not args.smoke_test else 1
 
     if args.from_scratch:  # train everyday from scratch
         print("Start training job from scratch on day {}.".format(args.day))
-        acc, config, best_checkpoint, N = tune_from_scratch(
+        acc, config, best_checkpoint, num_examples = tune_from_scratch(
             num_samples, num_epochs, gpus_per_trial, day=args.day)
         print("Trained day {} from scratch on {} samples. "
               "Best accuracy: {:.4f}. Best config: {}".format(
-                  args.day, N, acc, config))
-        serve_new_model(model_dir, best_checkpoint, config, acc, args.day)
+                  args.day, num_examples, acc, config))
+        serve_new_model(model_dir, best_checkpoint, config, acc, args.day,
+                        serve_gpu)
 
     if args.from_existing:
         old_checkpoint, old_config, old_acc = get_current_model(model_dir)
@@ -612,7 +653,7 @@ if __name__ == "__main__":
             print("No existing model found. Train one with --from_scratch "
                   "first.")
             sys.exit(1)
-        acc, config, best_checkpoint, N = tune_from_existing(
+        acc, config, best_checkpoint, num_examples = tune_from_existing(
             old_checkpoint,
             old_config,
             num_samples,
@@ -621,8 +662,9 @@ if __name__ == "__main__":
             day=args.day)
         print("Trained day {} from existing on {} samples. "
               "Best accuracy: {:.4f}. Best config: {}".format(
-                  args.day, N, acc, config))
-        serve_new_model(model_dir, best_checkpoint, config, acc, args.day)
+                  args.day, num_examples, acc, config))
+        serve_new_model(model_dir, best_checkpoint, config, acc, args.day,
+                        serve_gpu)
 
 #######################################################################
 # That's it! We now have an end-to-end workflow to train and update a
