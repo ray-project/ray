@@ -36,16 +36,13 @@ bool ClusterTaskManager::SchedulePendingTasks() {
     std::string node_id_string =
         cluster_resource_scheduler_->GetBestSchedulableNode(request_resources, &_unused);
     if (node_id_string.empty()) {
-      RAY_LOG(ERROR) << "~~~~~~~Can't schedule";
       /// There is no node that has available resources to run the request.
       tasks_to_schedule_.push_back(work);
       continue;
     } else {
       if (node_id_string == self_node_id_.Binary()) {
-        RAY_LOG(ERROR) << "~~~~~~~~Schedule on current node";
         did_schedule = did_schedule || WaitForTaskArgsRequests(work);
       } else {
-        RAY_LOG(ERROR) << "~~~~~~~~Spill";
         // Should spill over to a different node.
         cluster_resource_scheduler_->AllocateRemoteTaskResources(node_id_string,
                                                                  request_resources);
@@ -73,16 +70,13 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(Work work) {
   if (object_ids.size() > 0) {
     bool args_ready = fulfills_dependencies_func_(task);
     if (args_ready) {
-      RAY_LOG(ERROR) << "Args ready";
       tasks_to_dispatch_.push_back(work);
     } else {
-      RAY_LOG(ERROR) << "Args not ready";
       can_dispatch = false;
       TaskID task_id = task.GetTaskSpecification().TaskId();
       waiting_tasks_[task_id] = work;
     }
   } else {
-    RAY_LOG(ERROR) << "No args";
     tasks_to_dispatch_.push_back(work);
   }
   return can_dispatch;
@@ -91,7 +85,6 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(Work work) {
 void ClusterTaskManager::DispatchScheduledTasksToWorkers(
     WorkerPoolInterface &worker_pool,
     std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers) {
-  RAY_LOG(ERROR) << "DispatchScheduledTasksToWorkers;";
   // Check every task in task_to_dispatch queue to see
   // whether it can be dispatched and ran. This avoids head-of-line
   // blocking where a task which cannot be dispatched because
@@ -105,20 +98,17 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
 
     std::shared_ptr<WorkerInterface> worker = worker_pool.PopWorker(spec);
     if (!worker) {
-      RAY_LOG(ERROR) << "No worker";
       // No worker available to schedule this task.
       // Put the task back in the dispatch queue.
       tasks_to_dispatch_.push_front(work);
       return;
     }
-    RAY_LOG(ERROR) << "Worker available";
 
     std::shared_ptr<TaskResourceInstances> allocated_instances(
         new TaskResourceInstances());
     bool schedulable = cluster_resource_scheduler_->AllocateLocalTaskResources(
         spec.GetRequiredResources().GetResourceMap(), allocated_instances);
     if (!schedulable) {
-      RAY_LOG(ERROR) << "Not schedulable";
       // Not enough resources to schedule this task.
       // Put it back at the end of the dispatch queue.
       tasks_to_dispatch_.push_back(work);
@@ -134,15 +124,11 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       // The actor belongs to this worker now.
       worker->SetLifetimeAllocatedInstances(allocated_instances);
     } else {
-      RAY_LOG(ERROR) << "Setting allocated instances: "
-                     << allocated_instances->DebugString();
       worker->SetAllocatedInstances(allocated_instances);
-      RAY_LOG(ERROR) << "Prev line finishes -------------";
     }
     worker->AssignTaskId(spec.TaskId());
     worker->AssignJobId(spec.JobId());
     worker->SetAssignedTask(task);
-    RAY_LOG(ERROR) << "Dispatched";
     Dispatch(worker, leased_workers, spec, reply, callback);
   }
 }
