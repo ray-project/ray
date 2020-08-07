@@ -62,6 +62,9 @@ void AgentManager::StartAgent() {
     // The worker failed to start. This is a fatal error.
     RAY_LOG(FATAL) << "Failed to start agent with return value " << ec << ": "
                    << ec.message();
+    RAY_UNUSED(delay_executor_([this] { StartAgent(); },
+                               RayConfig::instance().agent_restart_interval_ms()));
+    return;
   }
 
   std::thread monitor_thread([this, child]() {
@@ -69,7 +72,7 @@ void AgentManager::StartAgent() {
                   << ", register timeout "
                   << RayConfig::instance().agent_register_timeout_ms() << "ms.";
     auto timer = delay_executor_(
-        [this, child]() {
+        [this, child]() mutable {
           if (agent_pid_ != child.GetId()) {
             RAY_LOG(WARNING) << "Agent process with pid " << child.GetId()
                              << " has not registered, restart it.";
