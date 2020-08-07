@@ -728,7 +728,10 @@ class ServeController:
                              replica_config):
         """Register a new backend under the specified tag."""
         async with self.write_lock:
-            
+
+            # Ensures this method is idempotent.
+            if backend_tag in self.backends:
+                return
 
             backend_worker = create_backend_worker(
                 replica_config.func_or_class)
