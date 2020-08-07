@@ -610,8 +610,9 @@ def start(node_ip_address, redis_address, address, redis_port, port,
                         if redis_password else "")
             cli_logger.newline()
             cli_logger.print(
-                cf.underlined("If connection fails, check your firewall and "
-                              "other network configuration."))
+                cf.underlined("If connection fails, check your "
+                              "firewall settings other "
+                              "network configuration."))
             cli_logger.newline()
             cli_logger.print("To terminate the Ray runtime, run")
             cli_logger.print(cf.bold("  ray stop"))
@@ -977,9 +978,19 @@ def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
        yes, cluster_name, no_config_cache, dump_command_output, use_login_shells,
        log_old_style, log_color, verbose):
     """Create or update a Ray cluster."""
+    cli_logger.old_style = log_old_style
+    cli_logger.color_mode = log_color
+    cli_logger.verbosity = verbose
+
     if restart_only or no_restart:
+        cli_logger.doassert(
+            restart_only != no_restart,
+            "`{}` is incompatible with `{}`.",
+            cf.bold("--restart-only"),
+            cf.bold("--no-restart"))
         assert restart_only != no_restart, "Cannot set both 'restart_only' " \
             "and 'no_restart' at the same time!"
+
     if urllib.parse.urlparse(cluster_config_file).scheme in ("http", "https"):
         try:
             response = urllib.request.urlopen(cluster_config_file, timeout=5)
@@ -989,11 +1000,16 @@ def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
                 f.write(content)
             cluster_config_file = file_name
         except urllib.error.HTTPError as e:
-            logger.info("Error downloading file: ", e)
+            cli_logger.warning("{}", str(e))
+            cli_logger.warning(
+                "Could not download remote cluster configuration file.")
+            cli_logger.old_info(
+                logger,
+                "Error downloading file: ", e)
     create_or_update_cluster(cluster_config_file, min_workers, max_workers,
                              no_restart, restart_only, yes, cluster_name,
-                             no_config_cache, log_old_style, log_color,
-                             dump_command_output, use_login_shells, verbose)
+                             no_config_cache,
+                             dump_command_output, use_login_shells)
 
 
 @cli.command()
@@ -1020,24 +1036,16 @@ def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
     is_flag=True,
     default=False,
     help="Retain the minimal amount of workers specified in the config.")
-@click.option(
-    "--log-old-style/--log-new-style",
-    is_flag=True,
-    default=True,
-    help=("Use old logging."))
-@click.option(
-    "--log-color",
-    required=False,
-    type=str,
-    default="auto",
-    help=("Use color logging. "
-          "Valid values are: auto (if stdout is a tty), true, false."))
-@click.option("-v", "--verbose", count=True)
+@add_click_options(logging_options)
 def down(cluster_config_file, yes, workers_only, cluster_name,
          keep_min_workers, log_old_style, log_color, verbose):
     """Tear down a Ray cluster."""
+    cli_logger.old_style = log_old_style
+    cli_logger.color_mode = log_color
+    cli_logger.verbosity = verbose
+
     teardown_cluster(cluster_config_file, yes, workers_only, cluster_name,
-                     keep_min_workers, log_old_style, log_color, verbose)
+                     keep_min_workers)
 
 
 @cli.command()
@@ -1200,8 +1208,10 @@ def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes):
     type=str,
     help="(deprecated) Use '-- --arg1 --arg2' for script args.")
 @click.argument("script_args", nargs=-1)
+@add_click_options(logging_options)
 def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
-           port_forward, script, args, script_args):
+           port_forward, script, args, script_args,
+           log_old_style, log_color, verbose):
     """Uploads and runs a script on the specified cluster.
 
     The script is automatically synced to the following location:
@@ -1211,11 +1221,37 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
     Example:
         >>> ray submit [CLUSTER.YAML] experiment.py -- --smoke-test
     """
+    cli_logger.old_style = log_old_style
+    cli_logger.color_mode = log_color
+    cli_logger.verbosity = verbose
+
+    cli_logger.doassert(
+        not (screen and tmux),
+        "`{}` and `{}` are incompatible.",
+        cf.bold("--screen"),
+        cf.bold("--tmux"))
+    cli_logger.doassert(
+        not (script_args and args),
+        "`{0}` and `{1}` are incompatible. Use only `{1}`.\n"
+        "Example: `{2}`",
+        cf.bold("--args"),
+        cf.bold("-- <args ...>"),
+        cf.bold("ray submit script.py -- --arg=123 --flag"))
+
     assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
     assert not (script_args and args), "Use -- --arg1 --arg2 for script args."
 
     if args:
-        logger.warning(
+        cli_logger.warning(
+            "`{}` is deprecated and will be removed in the future.",
+            cf.bold("--args"))
+        cli_logger.warning(
+            "Use `{}` instead. Example: `{}`.",
+            cf.bold("-- <args ...>"),
+            cf.bold("ray submit script.py -- --arg=123 --flag"))
+        cli_logger.newline()
+        cli_logger.old_warning(
+            logger,
             "ray submit [yaml] [script.py] --args=... is deprecated and "
             "will be removed in a future version of Ray. Use "
             "`ray submit [yaml] script.py -- --arg1 --arg2` instead.")
