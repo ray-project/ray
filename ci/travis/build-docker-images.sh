@@ -17,6 +17,24 @@ docker_push() {
     fi
 }
 
+build_or_pull_base_deps() {
+    docker pull rayproject/base-deps:latest
+    age=`docker inspect -f '{{ .Created }}' rayproject/base-deps:latest`
+    tag=`date +%F_%H`
+    # Build if older than 1 week or updated in this PR
+    if [[  `date -d "$date -7 days" +%F` > `date -d "$age" +%F` || "$RAY_CI_DOCKER_AFFECTED" == "1" ]]; then
+        docker image rm rayproject/base-deps:latest
+        docker build -t rayproject/base-deps docker/base-deps
+    else
+        echo "Just pulling an image"
+    fi
+
+    docker tag rayproject/base-deps rayproject/base-deps:"$tag"
+    docker tag rayproject/base-deps rayproject/base-deps:latest
+    docker_push rayproject/base-deps:"$tag"
+    docker_push rayproject/base-deps:latest
+}
+
 # We will only build and push when we are building branch build.
 if [[ "$TRAVIS" == "true" ]]; then
 
@@ -35,7 +53,7 @@ if [[ "$TRAVIS" == "true" ]]; then
     cp "$ROOT_DIR"/python/requirements.txt "$ROOT_DIR"/docker/autoscaler/requirements.txt
     cp "$ROOT_DIR"/python/requirements_autoscaler.txt "$ROOT_DIR"/docker/autoscaler/requirements_autoscaler.txt
 
-    docker build -t rayproject/base-deps docker/base-deps
+    build_or_pull_base_deps()
 
     docker build \
         --build-arg WHEEL_PATH=".whl/$wheel" \
@@ -45,10 +63,8 @@ if [[ "$TRAVIS" == "true" ]]; then
     docker build \
         -t rayproject/autoscaler:"$commit_sha" \
         "$ROOT_DIR"/docker/autoscaler
-
-    docker tag rayproject/base-deps rayproject/base-deps:"$commit_sha" 
+ 
     docker tag rayproject/ray rayproject/ray:"$commit_sha" 
-    docker_push rayproject/base-deps:"$commit_sha"
     docker_push rayproject/ray:"$commit_sha"
     docker_push rayproject/autoscaler:"$commit_sha"
 
@@ -59,17 +75,13 @@ if [[ "$TRAVIS" == "true" ]]; then
        normalized_branch_name=$(echo "$TRAVIS_BRANCH" | sed -e "s/\//-/")
        docker tag rayproject/autoscaler:"$commit_sha" rayproject/autoscaler:"$normalized_branch_name"
        docker tag rayproject/ray:"$commit_sha" rayproject/ray:"$normalized_branch_name"
-       docker tag rayproject/base-deps:"$commit_sha" rayproject/base-deps:"$normalized_branch_name"
        docker_push rayproject/autoscaler:"$normalized_branch_name"
        docker_push rayproject/ray:"$normalized_branch_name"
-       docker_push rayproject/base-deps:"$normalized_branch_name"
     else
        docker tag rayproject/autoscaler:"$commit_sha" rayproject/autoscaler:latest
        docker tag rayproject/ray:"$commit_sha" rayproject/ray:latest
-       docker tag rayproject/base-deps:"$commit_sha" rayproject/base-deps:latest
        docker_push rayproject/autoscaler:latest
        docker_push rayproject/ray:latest
-       docker_push rayproject/base-deps:latest
     fi
 fi
 
