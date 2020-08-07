@@ -7,7 +7,8 @@ import ray.serve as serve
 from ray.serve.metric import PrometheusExporter
 
 # initialize ray serve system.
-serve.init(num_cpus=10, metric_exporter=PrometheusExporter)
+ray.init(num_cpus=10)
+serve.init(metric_exporter=PrometheusExporter)
 
 
 # a backend can be a function or class.
