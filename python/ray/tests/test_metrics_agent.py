@@ -195,7 +195,6 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
     redis_address = addr["redis_address"]
     writer = PrometheusServiceDiscoveryWriter(
         redis_address, ray.ray_constants.REDIS_DEFAULT_PASSWORD, "/tmp/ray")
-    writer.write()
 
     def get_metrics_export_address_from_node(nodes):
         return [
@@ -203,26 +202,18 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
             for node in nodes
         ]
 
-    with open(writer.get_target_file_name(), "r") as json_file:
-        # File will be in this form:
-        # https://prometheus.io/docs/guides/file-sd/
-        loaded_json_data = json.load(json_file)[0]
-        assert (set(get_metrics_export_address_from_node(nodes)) == set(
-            loaded_json_data["targets"]))
+    loaded_json_data = json.loads(writer.get_file_discovery_content())[0]
+    assert (set(get_metrics_export_address_from_node(nodes)) == set(
+        loaded_json_data["targets"]))
 
     # Let's update nodes.
     for _ in range(3):
         nodes.append(cluster.add_node())
 
-    # Flush again.
-    writer.write()
-    # Make sure service discovery file is correctly updated.
-    with open(writer.get_target_file_name(), "r") as json_file:
-        # File will be in this form:
-        # https://prometheus.io/docs/guides/file-sd/
-        loaded_json_data = json.load(json_file)[0]
-        assert (set(get_metrics_export_address_from_node(nodes)) == set(
-            loaded_json_data["targets"]))
+    # Make sure service discovery file content is correctly updated.
+    loaded_json_data = json.loads(writer.get_file_discovery_content())[0]
+    assert (set(get_metrics_export_address_from_node(nodes)) == set(
+        loaded_json_data["targets"]))
 
 
 if __name__ == "__main__":

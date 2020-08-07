@@ -209,21 +209,24 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
         self.default_service_discovery_flush_period = 5
         super().__init__()
 
-    def write(self):
-        # Write a file based on https://prometheus.io/docs/guides/file-sd/
+    def get_file_discovery_content(self):
+        """Return the content for Prometheus serivce discovery."""
         nodes = ray.nodes()
         metrics_export_addresses = [
             "{}:{}".format(node["NodeManagerAddress"],
                            node["MetricsExportPort"]) for node in nodes
         ]
-        data = [{
+        return json.dumps([{
             "labels": {
                 "job": "ray"
             },
             "targets": metrics_export_addresses
-        }]
+        }])
+
+    def write(self):
+        # Write a file based on https://prometheus.io/docs/guides/file-sd/
         with open(self.get_target_file_name(), "w") as json_file:
-            json.dump(data, json_file)
+            json_file.write(self.get_file_discovery_content())
 
     def get_target_file_name(self):
         return os.path.join(
