@@ -171,7 +171,7 @@ def create_endpoint(endpoint_name,
     if endpoint in endpoints:
         methods_old = endpoints[endpoint]["methods"]
         route_old = endpoints[endpoint]["route"]
-        if methods_old.sort() == methods.sort() and routes_old = routes:
+        if methods_old.sort() == methods.sort() and routes_old == route:
             raise ValueError(
                         "Route '{}' is already registered to endpoint '{}' "
                         "with methods '{}'.  To set the backend for this "
