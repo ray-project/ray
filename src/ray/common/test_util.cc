@@ -18,6 +18,7 @@
 #include <functional>
 
 #include "ray/common/buffer.h"
+#include "ray/common/network_util.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/test_util.h"
 #include "ray/util/filesystem.h"
@@ -47,6 +48,9 @@ int TestSetupUtil::StartUpRedisServer(const int &port) {
     }
     // Use random port (in range [2000, 7000) to avoid port conflicts between UTs.
     actual_port = rand() % 5000 + 2000;
+    while (!CheckFree(actual_port)) {
+      actual_port = rand() % 5000 + 2000;
+    }
   }
 
   std::string program = TEST_REDIS_SERVER_EXEC_PATH;
