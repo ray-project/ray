@@ -1,9 +1,9 @@
 
 #pragma once
 
-#include <memory>
 #include <dlfcn.h>
 #include <stdint.h>
+#include <memory>
 
 #include <ray/api/generated/actor_funcs.generated.h>
 #include <ray/api/generated/create_funcs.generated.h>

@@ -21,7 +21,8 @@ int main(int argc, char **argv) {
   ray::api::RayConfig::GetInstance()->run_mode = RunMode::CLUSTER;
   /// Set redis ip to connect an existing ray cluster.
   ray::api::RayConfig::GetInstance()->redis_ip = "127.0.0.1";
-  ray::api::RayConfig::GetInstance()->lib_name = "/Users/jiulong/arcos/opensource/ant/ray/bazel-bin/cpp/example_cluster_mode.so";
+  ray::api::RayConfig::GetInstance()->lib_name =
+      "/Users/jiulong/arcos/opensource/ant/ray/bazel-bin/cpp/example_cluster_mode.so";
   Ray::Init();
 
   /// put and get object
@@ -30,16 +31,16 @@ int main(int argc, char **argv) {
 
   RAY_LOG(INFO) << "Get result: " << get_result;
 
-    /// general function remote call（args passed by reference）
-  //auto r3 = Ray::Task(Return1).Remote();
+  /// general function remote call（args passed by reference）
+  // auto r3 = Ray::Task(Return1).Remote();
   auto r4 = Ray::Task(Plus1, 5).Remote();
-  //auto r5 = Ray::Task(Plus, r4, 1).Remote();
+  // auto r5 = Ray::Task(Plus, r4, 1).Remote();
 
-  //int result3 = *(r3.Get());
+  // int result3 = *(r3.Get());
   int result4 = *(r4.Get());
-  //int result5 = *(r5.Get());
+  // int result5 = *(r5.Get());
 
-  std::cout << "Ray::call with reference results: " << " " << result4 << " "
-            << std::endl;
+  std::cout << "Ray::call with reference results: "
+            << " " << result4 << " " << std::endl;
   Ray::Shutdown();
 }

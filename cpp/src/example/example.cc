@@ -28,7 +28,6 @@ class Counter {
 };
 
 int main() {
-  
   /// initialization
   Ray::Init();
 

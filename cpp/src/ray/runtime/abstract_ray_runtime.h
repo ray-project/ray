@@ -30,7 +30,8 @@ class AbstractRayRuntime : public RayRuntime {
 
   WaitResult Wait(const std::vector<ObjectID> &ids, int num_objects, int timeout_ms);
 
-  ObjectID Call(const RemoteFunctionPtrHolder &fptr, std::shared_ptr<msgpack::sbuffer> args);
+  ObjectID Call(const RemoteFunctionPtrHolder &fptr,
+                std::shared_ptr<msgpack::sbuffer> args);
 
   ActorID CreateActor(const RemoteFunctionPtrHolder &fptr,
                       std::shared_ptr<msgpack::sbuffer> args);

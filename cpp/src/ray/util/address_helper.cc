@@ -10,6 +10,7 @@ uintptr_t GetBaseAddressOfLibraryFromAddr(void *addr) {
   return (uintptr_t)info.dli_fbase;
 }
 
-uintptr_t dynamic_library_base_addr = GetBaseAddressOfLibraryFromAddr((void *)GetBaseAddressOfLibraryFromAddr);
+uintptr_t dynamic_library_base_addr =
+    GetBaseAddressOfLibraryFromAddr((void *)GetBaseAddressOfLibraryFromAddr);
 }  // namespace api
 }  // namespace ray

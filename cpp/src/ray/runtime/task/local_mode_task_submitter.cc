@@ -22,14 +22,15 @@ ObjectID LocalModeTaskSubmitter::Submit(const InvocationSpec &invocation) {
   /// Maybe some infomation of TaskSpecification are not reasonable or invalid.
   /// We will enhance this after implement the cluster mode.
   if (dynamic_library_base_addr == 0) {
-    dynamic_library_base_addr = 
+    dynamic_library_base_addr =
         GetBaseAddressOfLibraryFromAddr((void *)invocation.fptr.function_pointer);
   }
-  auto func_offset = (size_t)(invocation.fptr.function_pointer - dynamic_library_base_addr);
-  auto exec_func_offset = (size_t)(invocation.fptr.exec_function_pointer - dynamic_library_base_addr);
+  auto func_offset =
+      (size_t)(invocation.fptr.function_pointer - dynamic_library_base_addr);
+  auto exec_func_offset =
+      (size_t)(invocation.fptr.exec_function_pointer - dynamic_library_base_addr);
   auto functionDescriptor = FunctionDescriptorBuilder::BuildCpp(
-      "SingleProcess", std::to_string(func_offset),
-      std::to_string(exec_func_offset));
+      "SingleProcess", std::to_string(func_offset), std::to_string(exec_func_offset));
   rpc::Address address;
   std::unordered_map<std::string, double> required_resources;
   std::unordered_map<std::string, double> required_placement_resources;
@@ -70,7 +71,8 @@ ObjectID LocalModeTaskSubmitter::Submit(const InvocationSpec &invocation) {
     mutex = actor_contexts_.at(invocation.actor_id).get()->actor_mutex;
   }
   AbstractRayRuntime *runtime = &local_mode_ray_tuntime_;
-  if (invocation.task_type == TaskType::ACTOR_CREATION_TASK || invocation.task_type == TaskType::ACTOR_TASK) {
+  if (invocation.task_type == TaskType::ACTOR_CREATION_TASK ||
+      invocation.task_type == TaskType::ACTOR_TASK) {
     /// TODO(Guyang Song): Handle task dependencies.
     /// Execute actor task directly in the main thread because we must guarantee the actor
     /// task executed by calling order.
@@ -82,7 +84,8 @@ ObjectID LocalModeTaskSubmitter::Submit(const InvocationSpec &invocation) {
                             if (mutex) {
                               absl::MutexLock lock(mutex.get());
                             }
-                            TaskExecutor::Invoke(ts, actor, runtime, dynamic_library_base_addr);
+                            TaskExecutor::Invoke(ts, actor, runtime,
+                                                 dynamic_library_base_addr);
                           },
                           std::move(task_specification)));
   }
@@ -95,16 +98,17 @@ ObjectID LocalModeTaskSubmitter::SubmitTask(const InvocationSpec &invocation) {
 
 ActorID LocalModeTaskSubmitter::CreateActor(const InvocationSpec &invocation) {
   if (dynamic_library_base_addr == 0) {
-    dynamic_library_base_addr = 
+    dynamic_library_base_addr =
         GetBaseAddressOfLibraryFromAddr((void *)invocation.fptr.function_pointer);
   }
   ActorID id = local_mode_ray_tuntime_.GetNextActorID();
   typedef std::shared_ptr<msgpack::sbuffer> (*ExecFunction)(
       uintptr_t base_addr, size_t func_offset, std::shared_ptr<msgpack::sbuffer> args);
   ExecFunction exec_function = (ExecFunction)(invocation.fptr.exec_function_pointer);
-  auto data =
-      (*exec_function)(dynamic_library_base_addr,
-                       (size_t)(invocation.fptr.function_pointer - dynamic_library_base_addr), invocation.args);
+  auto data = (*exec_function)(
+      dynamic_library_base_addr,
+      (size_t)(invocation.fptr.function_pointer - dynamic_library_base_addr),
+      invocation.args);
   std::unique_ptr<ActorContext> actorContext(new ActorContext());
   actorContext->current_actor = data;
   absl::MutexLock lock(&actor_contexts_mutex_);

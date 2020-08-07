@@ -1,8 +1,8 @@
 
 #pragma once
 
-#include <msgpack.hpp>
 #include <ray/api/ray_runtime.h>
+#include <msgpack.hpp>
 #include "ray/core.h"
 
 namespace ray {

@@ -18,7 +18,6 @@ class NativeTaskSubmitter : public TaskSubmitter {
   ObjectID SubmitActorTask(const InvocationSpec &invocation);
 
  private:
-
   ObjectID Submit(const InvocationSpec &invocation);
 };
 }  // namespace api

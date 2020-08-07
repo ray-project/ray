@@ -13,9 +13,10 @@
 
 namespace ray {
 namespace api {
-  std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::abstract_ray_runtime_ = nullptr;
+std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::abstract_ray_runtime_ = nullptr;
 
-std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::DoInit(std::shared_ptr<RayConfig> config) {
+std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::DoInit(
+    std::shared_ptr<RayConfig> config) {
   std::shared_ptr<AbstractRayRuntime> runtime;
   if (config->run_mode == RunMode::SINGLE_PROCESS) {
     runtime = std::shared_ptr<AbstractRayRuntime>(new LocalModeRayRuntime(config));
@@ -70,8 +71,7 @@ WaitResult AbstractRayRuntime::Wait(const std::vector<ObjectID> &ids, int num_ob
   return object_store_->Wait(ids, num_objects, timeout_ms);
 }
 
-InvocationSpec BuildInvocationSpec(TaskType task_type,
-                                   std::string lib_name,
+InvocationSpec BuildInvocationSpec(TaskType task_type, std::string lib_name,
                                    const RemoteFunctionPtrHolder &fptr,
                                    std::shared_ptr<msgpack::sbuffer> args,
                                    const ActorID &actor) {
@@ -88,20 +88,23 @@ InvocationSpec BuildInvocationSpec(TaskType task_type,
 
 ObjectID AbstractRayRuntime::Call(const RemoteFunctionPtrHolder &fptr,
                                   std::shared_ptr<msgpack::sbuffer> args) {
-  auto invocation_spec = BuildInvocationSpec(TaskType::NORMAL_TASK, this->config_->lib_name, fptr, args, ActorID::Nil());
+  auto invocation_spec = BuildInvocationSpec(
+      TaskType::NORMAL_TASK, this->config_->lib_name, fptr, args, ActorID::Nil());
   return task_submitter_->SubmitTask(invocation_spec);
 }
 
 ActorID AbstractRayRuntime::CreateActor(const RemoteFunctionPtrHolder &fptr,
                                         std::shared_ptr<msgpack::sbuffer> args) {
-  auto invocation_spec = BuildInvocationSpec(TaskType::ACTOR_CREATION_TASK, this->config_->lib_name, fptr, args, ActorID::Nil());
+  auto invocation_spec = BuildInvocationSpec(
+      TaskType::ACTOR_CREATION_TASK, this->config_->lib_name, fptr, args, ActorID::Nil());
   return task_submitter_->CreateActor(invocation_spec);
 }
 
 ObjectID AbstractRayRuntime::CallActor(const RemoteFunctionPtrHolder &fptr,
                                        const ActorID &actor,
                                        std::shared_ptr<msgpack::sbuffer> args) {
-  auto invocation_spec = BuildInvocationSpec(TaskType::ACTOR_TASK, this->config_->lib_name, fptr, args, actor);
+  auto invocation_spec = BuildInvocationSpec(TaskType::ACTOR_TASK,
+                                             this->config_->lib_name, fptr, args, actor);
   return task_submitter_->SubmitActorTask(invocation_spec);
 }
 

@@ -8,12 +8,11 @@ namespace api {
 
 class ProcessHelper {
  public:
-  void RayStart(std::shared_ptr<RayConfig> config, CoreWorkerOptions::TaskExecutionCallback callback);
+  void RayStart(std::shared_ptr<RayConfig> config,
+                CoreWorkerOptions::TaskExecutionCallback callback);
   void RayStop(std::shared_ptr<RayConfig> config);
 
-  static std::shared_ptr<ProcessHelper> getInstance() {
-    return ProcessHelper_;
-  }
+  static std::shared_ptr<ProcessHelper> getInstance() { return ProcessHelper_; }
 
  private:
   static std::shared_ptr<ProcessHelper> ProcessHelper_;

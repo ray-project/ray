@@ -50,8 +50,8 @@ int main(int argc, char **argv) {
 
     int result4 = *(r4.Get());
 
-    std::cout << "Ray::call with reference results: " << " " << result4 << " "
-              << std::endl;
+    std::cout << "Ray::call with reference results: "
+              << " " << result4 << " " << std::endl;
 
     ActorHandle<Counter> actor = Ray::Actor(Counter::FactoryCreate, 1).Remote();
     auto r6 = actor.Task(&Counter::Add, 5).Remote();
@@ -78,7 +78,8 @@ int main(int argc, char **argv) {
   RAY_CHECK(pos != std::string::npos);
   config->redis_ip = redis_address.substr(0, pos);
   config->redis_port = std::stoi(redis_address.substr(pos + 1, redis_address.length()));
-  RAY_LOG(INFO) << "redis ip: " << config->redis_ip << ", redis port: " << config->redis_port;
+  RAY_LOG(INFO) << "redis ip: " << config->redis_ip
+                << ", redis port: " << config->redis_port;
   config->redis_password = std::string(std::string(argv[5]));
   config->session_dir = std::string(std::string(argv[6]));
 
