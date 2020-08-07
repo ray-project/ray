@@ -167,6 +167,18 @@ def create_endpoint(endpoint_name,
             "methods must be a list of strings, but got type {}".format(
                 type(methods)))
 
+    endpoints = list_endpoints()
+    if endpoint in endpoints:
+        methods_old = endpoints[endpoint]["methods"]
+        route_old = endpoints[endpoint]["route"]
+        if methods_old.sort() == methods.sort() and routes_old = routes:
+            raise ValueError(
+                        "Route '{}' is already registered to endpoint '{}' "
+                        "with methods '{}'.  To set the backend for this "
+                        "endpoint, please use serve.set_traffic().".format(
+                            route, endpoint, methods))
+
+
     upper_methods = []
     for method in methods:
         if not isinstance(method, str):
