@@ -234,7 +234,7 @@ class _CliLogger():
 
         For arguments, see `_format_msg`.
         """
-        self._print(_format_msg(cf.cornflowerBlue(msg), *args, **kwargs))
+        self.print(cf.cornflowerBlue(msg), *args, **kwargs)
 
         return self.indented()
 
@@ -252,7 +252,7 @@ class _CliLogger():
 
         class VerbatimErorContextManager():
             def __enter__(self):
-                cli_logger.error(cf.bold("!!! ") + msg, *args, **kwargs)
+                cli_logger.error(cf.bold("!!! ") + "{}", msg, *args, **kwargs)
 
             def __exit__(self, type, value, tb):
                 cli_logger.error(cf.bold("!!!"))
@@ -267,6 +267,9 @@ class _CliLogger():
 
         For other arguments, see `_format_msg`.
         """
+        if self.old_style:
+            return
+
         self._print(
             cf.cyan(key) + ": " + _format_msg(cf.bold(msg), *args, **kwargs))
 
@@ -299,27 +302,30 @@ class _CliLogger():
 
         For arguments, see `_format_msg`.
         """
-        self._print(_format_msg(cf.green(msg), *args, **kwargs))
+        self.print(cf.green(msg), *args, **kwargs)
 
     def warning(self, msg, *args, **kwargs):
         """Prints a formatted warning message.
 
         For arguments, see `_format_msg`.
         """
-        self._print(_format_msg(cf.yellow(msg), *args, **kwargs))
+        self.print(cf.yellow(msg), *args, **kwargs)
 
     def error(self, msg, *args, **kwargs):
         """Prints a formatted error message.
 
         For arguments, see `_format_msg`.
         """
-        self._print(_format_msg(cf.red(msg), *args, **kwargs))
+        self.print(cf.red(msg), *args, **kwargs)
 
     def print(self, msg, *args, **kwargs):
         """Prints a message.
 
         For arguments, see `_format_msg`.
         """
+        if self.old_style:
+            return
+
         self._print(_format_msg(msg, *args, **kwargs))
 
     def abort(self, msg=None, *args, **kwargs):

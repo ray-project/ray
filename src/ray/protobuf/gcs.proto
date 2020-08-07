@@ -249,6 +249,9 @@ message GcsNodeInfo {
 
   // The Hostname address of the node manager.
   string node_manager_hostname = 8;
+
+  // The port at which the node will expose metrics to.
+  int32 metrics_export_port = 9;
 }
 
 // Represents the demand for a particular resource shape.

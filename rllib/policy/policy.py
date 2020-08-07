@@ -36,7 +36,10 @@ class Policy(metaclass=ABCMeta):
     graphs and multi-GPU support.
 
     Attributes:
-        observation_space (gym.Space): Observation space of the policy.
+        observation_space (gym.Space): Observation space of the policy. For
+            complex spaces (e.g., Dict), this will be flattened version of the
+            space, and you can access the original space via
+            ``observation_space.original_space``.
         action_space (gym.Space): Action space of the policy.
         exploration (Exploration): The exploration object to use for
             computing actions, or None.

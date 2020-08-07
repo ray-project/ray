@@ -656,6 +656,19 @@ def test_ray_address_environment_variable(ray_start_cluster):
     ray.shutdown()
 
 
+def test_ray_resources_environment_variable(ray_start_cluster):
+    address = ray_start_cluster.address
+
+    os.environ["RAY_OVERRIDE_RESOURCES"] = "{\"custom1\":1, \"custom2\":2}"
+    ray.init(address=address, resources={"custom1": 3, "custom3": 3})
+
+    cluster_resources = ray.cluster_resources()
+    print(cluster_resources)
+    assert cluster_resources["custom1"] == 1
+    assert cluster_resources["custom2"] == 2
+    assert cluster_resources["custom3"] == 3
+
+
 def test_gpu_info_parsing():
     info_string = """Model:           Tesla V100-SXM2-16GB
 IRQ:             107
