@@ -25,9 +25,9 @@ done
 
 echo "git-sha: $git_sha"
 
-./run_asan_tests.sh setup || false
+./run_asan_tests.sh setup
 if [ -n "${git_sha}" ]
 then
-    git_sha="${git_sha}" ./run_asan_tests.sh recompile || false
+    git_sha="${git_sha}" ./run_asan_tests.sh recompile
 fi
-./run_asan_tests.sh run || false
+./run_asan_tests.sh run
