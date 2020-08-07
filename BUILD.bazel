@@ -129,11 +129,11 @@ cc_grpc_library(
 # worker server and client.
 cc_library(
     name = "worker_rpc",
-    hdrs = glob([
-        "src/ray/rpc/worker/*.h",
-    ]),
     srcs = glob([
       "src/ray/rpc/worker/*.cc",
+    ]),
+    hdrs = glob([
+        "src/ray/rpc/worker/*.h",
     ]),
     copts = COPTS,
     strip_include_prefix = "src",
