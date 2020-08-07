@@ -93,7 +93,7 @@ def _format_msg(msg,
         if _no_format:
             # todo: throw if given args/kwargs?
             return numbering_str + msg + tags_str
-        return numbering_str + msg.format(*args, **kwargs) + tags_str
+        return numbering_str + cf.format(msg, *args, **kwargs) + tags_str
 
     if kwargs:
         raise ValueError("We do not support printing kwargs yet.")

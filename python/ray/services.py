@@ -582,6 +582,13 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
         else:
             break
     else:
+        cli_logger.error(
+            "Unable to connect to Redis at "
+            "`{c.underlined}{}:{}{c.no_underlined}` after {} retries.",
+            redis_ip_address, redis_port,
+            num_retries)
+        cli_logger.abort("Check your firewall and network settings.")
+
         raise RuntimeError("Unable to connect to Redis. If the Redis instance "
                            "is on a different machine, check that your "
                            "firewall is configured properly.")

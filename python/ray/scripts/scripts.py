@@ -577,37 +577,41 @@ def start(node_ip_address, redis_address, address, redis_port, port,
         redis_address = node.redis_address
 
         cli_logger.newline()
-        cli_logger.success("Ray runtime started.")
+        startup_msg = "Ray runtime started."
+        cli_logger.success("-" * len(startup_msg))
+        cli_logger.success(startup_msg)
+        cli_logger.success("-" * len(startup_msg))
         cli_logger.newline()
-        cli_logger.print(
-            "To connect to this Ray runtime from another node, run")
-        cli_logger.print(
-            cf.bold("  ray start --address='{}'{}"),
-            redis_address,
-            " --redis-password='{}'".format(redis_password)
-            if redis_password else "")
-        cli_logger.newline()
-        cli_logger.print(
-            "Alternatively, use the following Python code:")
-        with cli_logger.indented():
-            with cf.with_style("monokai") as c:
-                cli_logger.print("{} ray", c.magenta("import"))
-                cli_logger.print(
-                    "ray{}init(address{}{}{})",
-                    c.magenta("."),
-                    c.magenta("="),
-                    c.yellow("'auto'"),
-                    ", redis_password{}{}".format(
+        with cli_logger.group("Next steps"):
+            cli_logger.print(
+                "To connect to this Ray runtime from another node, run")
+            cli_logger.print(
+                cf.bold("  ray start --address='{}'{}"),
+                redis_address,
+                " --redis-password='{}'".format(redis_password)
+                if redis_password else "")
+            cli_logger.newline()
+            cli_logger.print(
+                "Alternatively, use the following Python code:")
+            with cli_logger.indented():
+                with cf.with_style("monokai") as c:
+                    cli_logger.print("{} ray", c.magenta("import"))
+                    cli_logger.print(
+                        "ray{}init(address{}{}{})",
+                        c.magenta("."),
                         c.magenta("="),
-                        c.yellow("'" + redis_password + "'"))
-                    if redis_password else "")
-        cli_logger.newline()
-        cli_logger.print(
-            cf.underlined("If connection fails, check your firewall and other "
-            "network configuration."))
-        cli_logger.newline()
-        cli_logger.print("To terminate the Ray runtime, run")
-        cli_logger.print(cf.bold("  ray stop"))
+                        c.yellow("'auto'"),
+                        ", redis_password{}{}".format(
+                            c.magenta("="),
+                            c.yellow("'" + redis_password + "'"))
+                        if redis_password else "")
+            cli_logger.newline()
+            cli_logger.print(
+                cf.underlined("If connection fails, check your firewall and "
+                              "other network configuration."))
+            cli_logger.newline()
+            cli_logger.print("To terminate the Ray runtime, run")
+            cli_logger.print(cf.bold("  ray stop"))
 
         cli_logger.old_info(
             logger,
@@ -629,29 +633,62 @@ def start(node_ip_address, redis_address, address, redis_port, port,
     else:
         # Start Ray on a non-head node.
         if not (redis_port is None and port is None):
+            cli_logger.abort(
+                "`{}/{}` should not be specified without `{}`.",
+                cf.bold("--port"), cf.bold("--redist-port"),
+                cf.bold("--head"))
+
             raise Exception(
                 "If --head is not passed in, --port and --redis-port are not "
                 "allowed.")
         if redis_shard_ports is not None:
+            cli_logger.abort(
+                "`{}` should not be specified without `{}`.",
+                cf.bold("--redis-shard-ports"), cf.bold("--head"))
+
             raise Exception("If --head is not passed in, --redis-shard-ports "
                             "is not allowed.")
         if redis_address is None:
+            cli_logger.abort(
+                "`{}` is required unless starting with `{}`.",
+                cf.bold("--address"), cf.bold("--head"))
+
             raise Exception("If --head is not passed in, --address must "
                             "be provided.")
         if num_redis_shards is not None:
+            cli_logger.abort(
+                "`{}` should not be specified without `{}`.",
+                cf.bold("--num-redis-shards"), cf.bold("--head"))
+
             raise Exception("If --head is not passed in, --num-redis-shards "
                             "must not be provided.")
         if redis_max_clients is not None:
+            cli_logger.abort(
+                "`{}` should not be specified without `{}`.",
+                cf.bold("--redis-max-clients"), cf.bold("--head"))
+
             raise Exception("If --head is not passed in, --redis-max-clients "
                             "must not be provided.")
         if include_webui:
+            cli_logger.abort(
+                "`{}` should not be specified without `{}`.",
+                cf.bold("--include-web-ui"), cf.bold("--head"))
+
             raise Exception("If --head is not passed in, the --include-webui"
                             "flag is not relevant.")
         if include_dashboard:
+            cli_logger.abort(
+                "`{}` should not be specified without `{}`.",
+                cf.bold("--include-dashboard"), cf.bold("--head"))
+
             raise ValueError(
                 "If --head is not passed in, the --include-dashboard"
                 "flag is not relevant.")
         if include_java is not None:
+            cli_logger.abort(
+                "`{}` should not be specified without `{}`.",
+                cf.bold("--include-java"), cf.bold("--head"))
+
             raise ValueError("--include-java should only be set for the head "
                              "node.")
 
@@ -671,8 +708,14 @@ def start(node_ip_address, redis_address, address, redis_port, port,
         # Get the node IP address if one is not provided.
         ray_params.update_if_absent(
             node_ip_address=services.get_node_ip_address(redis_address))
-        logger.info("Using IP address {} for this node.".format(
-            ray_params.node_ip_address))
+
+        cli_logger.labeled_value(
+            "Local node IP", ray_params.node_ip_address)
+        cli_logger.old_info(
+            logger,
+            "Using IP address {} for this node.",
+            ray_params.node_ip_address)
+
         # Check that there aren't already Redis clients with the same IP
         # address connected with this Redis instance. This raises an exception
         # if the Redis server already has clients on this node.
@@ -681,21 +724,60 @@ def start(node_ip_address, redis_address, address, redis_port, port,
         ray_params.update(redis_address=redis_address)
         node = ray.node.Node(
             ray_params, head=False, shutdown_at_exit=block, spawn_reaper=block)
-        logger.info("\nStarted Ray on this node. If you wish to terminate the "
-                    "processes that have been started, run\n\n"
-                    "    ray stop")
+
+        cli_logger.newline()
+        startup_msg = "Ray runtime started."
+        cli_logger.success("-" * len(startup_msg))
+        cli_logger.success(startup_msg)
+        cli_logger.success("-" * len(startup_msg))
+        cli_logger.newline()
+        cli_logger.print("To terminate the Ray runtime, run")
+        cli_logger.print(cf.bold("  ray stop"))
+
+        cli_logger.old_info(
+            logger,
+            "\nStarted Ray on this node. If you wish to terminate the "
+            "processes that have been started, run\n\n"
+            "    ray stop")
 
     if block:
+        cli_logger.newline()
+        with cli_logger.group(cf.bold("--block")):
+            cli_logger.print(
+                "This command will now block until terminated by a signal.")
+            cli_logger.print(
+                "Runing subprocesses are monitored and a message will be "
+                "printed if any of them terminate unexpectedly.")
+
         while True:
             time.sleep(1)
             deceased = node.dead_processes()
             if len(deceased) > 0:
-                logger.error("Ray processes died unexpectedly:")
-                for process_type, process in deceased:
-                    logger.error("\t{} died with exit code {}".format(
-                        process_type, process.returncode))
+                cli_logger.newline()
+                cli_logger.error("Some Ray subprcesses exited unexpectedly:")
+                cli_logger.old_error(
+                    logger, "Ray processes died unexpectedly:")
+
+                with cli_logger.indented():
+                    for process_type, process in deceased:
+                        cli_logger.error(
+                            "{}",
+                            cf.bold(str(process_type)),
+                            _tags={
+                                "exit code": str(process.returncode)
+                            })
+                        cli_logger.old_error(
+                            logger,
+                            "\t{} died with exit code {}".format(
+                            process_type, process.returncode))
+
                 # shutdown_at_exit will handle cleanup.
-                logger.error("Killing remaining processes and exiting...")
+                cli_logger.newline()
+                cli_logger.error(
+                    "Remaining processes will be killed.")
+                cli_logger.old_error(
+                    logger,
+                    "Killing remaining processes and exiting...")
                 sys.exit(1)
 
 
