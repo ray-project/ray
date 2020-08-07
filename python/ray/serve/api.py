@@ -266,6 +266,11 @@ def create_backend(backend_tag,
             be sent to a replica of this backend without receiving a
             response.
     """
+    if backend_tag in list_backends():
+                raise ValueError(
+                    "Cannot create backend.  "
+                    "Backend '{}' is already registered.".format(backend_tag))
+
     if config is None:
         config = {}
     if not isinstance(config, dict):
