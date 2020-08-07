@@ -5,59 +5,6 @@
 
 using namespace std::placeholders;
 using namespace ray::api;
-namespace ray {
-
-namespace api {
-
-// class DefaultWorker {
-//  public:
-//   DefaultWorker(const std::string &store_socket, const std::string &raylet_socket,
-//                 int node_manager_port, const gcs::GcsClientOptions &gcs_options,
-//                 const std::string &session_dir) {
-//     CoreWorkerOptions options = {
-//         WorkerType::WORKER,     // worker_type
-//         Language::CPP,          // langauge
-//         store_socket,           // store_socket
-//         raylet_socket,          // raylet_socket
-//         JobID::FromInt(1),      // job_id
-//         gcs_options,            // gcs_options
-//         true,                   // enable_logging
-//         session_dir + "/logs",  // log_dir
-//         true,                   // install_failure_signal_handler
-//         "127.0.0.1",            // node_ip_address
-//         node_manager_port,      // node_manager_port
-//         "127.0.0.1",            // raylet_ip_address
-//         "",                     // driver_name
-//         "",                     // stdout_file
-//         "",                     // stderr_file
-//         std::bind(&DefaultWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6,
-//                   _7),  // task_execution_callback
-//         nullptr,        // check_signals
-//         nullptr,        // gc_collect
-//         nullptr,        // get_lang_stack
-//         nullptr,        // kill_main
-//         true,           // ref_counting_enabled
-//         false,          // is_local_mode
-//         1,              // num_workers
-//     };
-//     CoreWorkerProcess::Initialize(options);
-//   }
-
-//   void RunTaskExecutionLoop() { CoreWorkerProcess::RunTaskExecutionLoop(); }
-
-//  private:
-//   Status ExecuteTask(TaskType task_type, const RayFunction &ray_function,
-//                      const std::unordered_map<std::string, double> &required_resources,
-//                      const std::vector<std::shared_ptr<RayObject>> &args,
-//                      const std::vector<ObjectID> &arg_reference_ids,
-//                      const std::vector<ObjectID> &return_ids,
-//                      std::vector<std::shared_ptr<RayObject>> *results) {
-//     /// TODO(Guyang Song): Make task execution worked.
-//     return Status::TypeError("Task executor not implemented");
-//   }
-// };
-}  // namespace api
-}  // namespace ray
 
 int main(int argc, char **argv) {
   RAY_LOG(INFO) << "CPP default worker started";
@@ -82,11 +29,5 @@ int main(int argc, char **argv) {
   Ray::Init();
 
   ::ray::CoreWorkerProcess::RunTaskExecutionLoop();
-
-  // ray::gcs::GcsClientOptions gcs_options("127.0.0.1", 6379, config->redis_password);
-  // ray::api::DefaultWorker worker(config->store_socket, config->raylet_socket,
-  // config->node_manager_port,
-  //                                gcs_options, config->session_dir);
-  // worker.RunTaskExecutionLoop();
   return 0;
 }
