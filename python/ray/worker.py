@@ -408,10 +408,10 @@ def get_gpu_ids(as_str=False):
 
     if not as_str:
         from ray.util.debug import log_once
-        if log_once("ray.ge_gpu_ids.as_str"):
+        if log_once("ray.get_gpu_ids.as_str"):
             logger.warning(
                 "ray.get_gpu_ids() will return a list of strings by default"
-                " in a future version of Ray for compatibility with CUDA."
+                " in a future version of Ray for compatibility with CUDA. "
                 "To enable the forward-compatible behavior, use "
                 "`ray.get_gpu_ids(as_str=True)`.")
         assigned_ids = [int(assigned_id) for assigned_id in assigned_ids]
