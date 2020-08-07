@@ -41,6 +41,7 @@ py_test_module_list(
     "test_output.py",
     "test_placement_group.py",
     "test_reconstruction.py",
+    "test_resource_demand_scheduler.py",
     "test_reference_counting_2.py",
     "test_reference_counting.py",
     "test_stress.py",
