@@ -287,7 +287,7 @@ def get_cuda_visible_devices():
         return []
 
     # GPU identifiers are given as strings representing integers or UUIDs.
-    return [i for i in gpu_ids_str.split(",")]
+    return list(gpu_ids_str.split(","))
 
 
 last_set_gpu_ids = None
