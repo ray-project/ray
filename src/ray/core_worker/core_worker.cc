@@ -20,7 +20,6 @@
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
-#include "ray/core_worker/transport/raylet_transport.h"
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "ray/stats/stats.h"
 #include "ray/util/process.h"
@@ -286,9 +285,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     auto execute_task =
         std::bind(&CoreWorker::ExecuteTask, this, std::placeholders::_1,
                   std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
-    raylet_task_receiver_ =
-        std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
-            worker_context_.GetWorkerID(), local_raylet_client_, execute_task));
     direct_task_receiver_ =
         std::unique_ptr<CoreWorkerDirectTaskReceiver>(new CoreWorkerDirectTaskReceiver(
             worker_context_, task_execution_service_, execute_task,
@@ -378,8 +374,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       boost::asio::chrono::milliseconds(kInternalHeartbeatMillis));
   internal_timer_.async_wait(boost::bind(&CoreWorker::InternalHeartbeat, this, _1));
 
-  actor_reporter_ = std::unique_ptr<ActorReporter>(new ActorReporter(gcs_client_));
-
   plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
       options_.store_socket, local_raylet_client_, reference_counter_,
       options_.check_signals,
@@ -407,7 +401,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     });
   };
   task_manager_.reset(new TaskManager(
-      memory_store_, reference_counter_, actor_reporter_,
+      memory_store_, reference_counter_,
       [this](TaskSpecification &spec, bool delay) {
         if (delay) {
           // Retry after a delay to emulate the existing Raylet reconstruction
@@ -463,10 +457,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         new raylet::RayletClient(std::move(grpc_client)));
   };
 
-  std::shared_ptr<ActorCreatorInterface> actor_creator = nullptr;
-  if (RayConfig::instance().gcs_actor_service_enabled()) {
-    actor_creator = std::make_shared<DefaultActorCreator>(gcs_client_);
-  }
+  std::shared_ptr<ActorCreatorInterface> actor_creator =
+      std::make_shared<DefaultActorCreator>(gcs_client_);
 
   direct_actor_submitter_ = std::shared_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(client_factory, memory_store_,
@@ -477,8 +469,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           rpc_address_, local_raylet_client_, client_factory, raylet_client_factory,
           memory_store_, task_manager_, local_raylet_id,
           RayConfig::instance().worker_lease_timeout_milliseconds(),
+          std::move(actor_creator),
           RayConfig::instance().max_tasks_in_flight_per_worker(),
-          std::move(actor_creator), boost::asio::steady_timer(io_service_)));
+          boost::asio::steady_timer(io_service_)));
   future_resolver_.reset(new FutureResolver(memory_store_, client_factory, rpc_address_));
   // Unfortunately the raylet client has to be constructed after the receivers.
   if (direct_task_receiver_ != nullptr) {
@@ -1426,7 +1419,6 @@ const ActorHandle *CoreWorker::GetActorHandle(const ActorID &actor_id) const {
 
 std::pair<const ActorHandle *, Status> CoreWorker::GetNamedActorHandle(
     const std::string &name) {
-  RAY_CHECK(RayConfig::instance().gcs_actor_service_enabled());
   RAY_CHECK(!name.empty());
   if (options_.is_local_mode) {
     return GetNamedActorHandleLocalMode(name);
@@ -1783,20 +1775,6 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
   return Status::OK();
 }
 
-void CoreWorker::HandleAssignTask(const rpc::AssignTaskRequest &request,
-                                  rpc::AssignTaskReply *reply,
-                                  rpc::SendReplyCallback send_reply_callback) {
-  if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
-                           send_reply_callback)) {
-    return;
-  }
-
-  task_queue_length_ += 1;
-  task_execution_service_.post([=] {
-    raylet_task_receiver_->HandleAssignTask(request, reply, send_reply_callback);
-  });
-}
-
 void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
                                 rpc::PushTaskReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) {
@@ -1882,7 +1860,6 @@ void CoreWorker::HandleWaitForActorOutOfScope(
     const rpc::WaitForActorOutOfScopeRequest &request,
     rpc::WaitForActorOutOfScopeReply *reply, rpc::SendReplyCallback send_reply_callback) {
   // Currently WaitForActorOutOfScope is only used when GCS actor service is enabled.
-  RAY_CHECK(RayConfig::instance().gcs_actor_service_enabled());
   if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
                            send_reply_callback)) {
     return;

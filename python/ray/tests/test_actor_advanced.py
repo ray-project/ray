@@ -853,11 +853,6 @@ def test_actor_creation_task_crash(ray_start_regular):
     ray.get(ra.f.remote())
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_GCS_ACTOR_SERVICE_ENABLED") != "true",
-    reason=("This edge case is not handled when GCS actor management is off. "
-            "We won't fix this because GCS actor management "
-            "will be on by default anyway."))
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "num_cpus": 2,
