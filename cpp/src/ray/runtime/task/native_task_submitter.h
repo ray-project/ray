@@ -10,7 +10,6 @@ namespace api {
 
 class NativeTaskSubmitter : public TaskSubmitter {
  public:
-  NativeTaskSubmitter(NativeRayRuntime &native_ray_tuntime);
 
   ObjectID SubmitTask(const InvocationSpec &invocation);
 
@@ -19,7 +18,6 @@ class NativeTaskSubmitter : public TaskSubmitter {
   ObjectID SubmitActorTask(const InvocationSpec &invocation);
 
  private:
-  NativeRayRuntime &native_ray_tuntime_;
 
   ObjectID Submit(const InvocationSpec &invocation);
 };

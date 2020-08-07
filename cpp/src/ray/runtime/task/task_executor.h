@@ -42,6 +42,7 @@ class TaskExecutor {
 
  private:
   AbstractRayRuntime &abstract_ray_tuntime_;
+  static std::shared_ptr<msgpack::sbuffer> current_actor_;
 };
 }  // namespace api
 }  // namespace ray

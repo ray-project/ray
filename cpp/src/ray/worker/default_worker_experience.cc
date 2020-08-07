@@ -12,16 +12,32 @@ int Return1() { return 1; }
 int Plus1(int x) { return x + 1; }
 int Plus(int x, int y) { return x + y; }
 
+/// a class of user code
+class Counter {
+ public:
+  int count;
+
+  Counter(int init) { count = init; }
+
+  static Counter *FactoryCreate(int init) { return new Counter(init); }
+  /// non static function
+  int Add(int x) {
+    count += x;
+    return count;
+  }
+};
+
 int main(int argc, char **argv) {
   auto is_driver = std::getenv("IS_DRIVER");
   if (is_driver && memcmp(is_driver, "true", strlen(is_driver)) == 0) {
     RAY_LOG(INFO) << "Start cpp worker example";
+    RAY_CHECK(argc == 2) << "input your lib path";
 
     /// initialization to cluster mode
     ray::api::RayConfig::GetInstance()->run_mode = RunMode::CLUSTER;
     /// Set redis ip to connect an existing ray cluster.
     ray::api::RayConfig::GetInstance()->redis_ip = "127.0.0.1";
-    ray::api::RayConfig::GetInstance()->lib_name = "/Users/jiulong/arcos/opensource/ant/ray/bazel-bin/cpp/example_cluster_mode.so";
+    ray::api::RayConfig::GetInstance()->lib_name = argv[1];
     Ray::Init();
 
     /// put and get object
@@ -30,17 +46,20 @@ int main(int argc, char **argv) {
 
     RAY_LOG(INFO) << "Get result: " << get_result;
 
-      /// general function remote call（args passed by reference）
-    //auto r3 = Ray::Task(Return1).Remote();
     auto r4 = Ray::Task(Plus1, 5).Remote();
-    //auto r5 = Ray::Task(Plus, r4, 1).Remote();
 
-    //int result3 = *(r3.Get());
     int result4 = *(r4.Get());
-    //int result5 = *(r5.Get());
 
     std::cout << "Ray::call with reference results: " << " " << result4 << " "
               << std::endl;
+
+    ActorHandle<Counter> actor = Ray::Actor(Counter::FactoryCreate, 1).Remote();
+    auto r6 = actor.Task(&Counter::Add, 5).Remote();
+
+    int result6 = *(r6.Get());
+
+    std::cout << "Ray::call with actor results: " << result6 << std::endl;
+
     Ray::Shutdown();
     return 0;
   }
@@ -66,10 +85,5 @@ int main(int argc, char **argv) {
   Ray::Init();
 
   ::ray::CoreWorkerProcess::RunTaskExecutionLoop();
-
-  // ray::gcs::GcsClientOptions gcs_options("127.0.0.1", 6379, config->redis_password);
-  // ray::api::DefaultWorker worker(config->store_socket, config->raylet_socket, config->node_manager_port,
-  //                                gcs_options, config->session_dir);
-  // worker.RunTaskExecutionLoop();
   return 0;
 }

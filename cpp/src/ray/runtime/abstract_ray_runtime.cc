@@ -88,17 +88,6 @@ InvocationSpec BuildInvocationSpec(TaskType task_type,
 
 ObjectID AbstractRayRuntime::Call(const RemoteFunctionPtrHolder &fptr,
                                   std::shared_ptr<msgpack::sbuffer> args) {
-  // InvocationSpec invocationSpec;
-  // invocationSpec.task_id =
-  //     TaskID::ForFakeTask();  // TODO(Guyang Song): make it from different task
-  // invocationSpec.actor_id = ActorID::Nil();
-  // invocationSpec.args = args;
-  // auto base_addr = GetBaseAddressOfLibraryFromAcpddr((void *)fptr.function_pointer);
-  // if ()
-  // invocationSpec.func_offset =
-  //     (size_t)(fptr.function_pointer - base_addr);
-  // invocationSpec.exec_func_offset =
-  //     (size_t)(fptr.exec_function_pointer - base_addr);
   auto invocation_spec = BuildInvocationSpec(TaskType::NORMAL_TASK, this->config_->lib_name, fptr, args, ActorID::Nil());
   return task_submitter_->SubmitTask(invocation_spec);
 }
@@ -112,16 +101,6 @@ ActorID AbstractRayRuntime::CreateActor(const RemoteFunctionPtrHolder &fptr,
 ObjectID AbstractRayRuntime::CallActor(const RemoteFunctionPtrHolder &fptr,
                                        const ActorID &actor,
                                        std::shared_ptr<msgpack::sbuffer> args) {
-  // InvocationSpec invocationSpec;
-  // invocationSpec.task_id =
-  //     TaskID::ForFakeTask();  // TODO(Guyang Song): make it from different task
-  // invocationSpec.actor_id = actor;
-  // invocationSpec.args = args;
-  // auto base_addr = GetBaseAddressOfLibraryFromAddr((void *)fptr.function_pointer);
-  // invocationSpec.func_offset =
-  //     (size_t)(fptr.function_pointer - base_addr);
-  // invocationSpec.exec_func_offset =
-  //     (size_t)(fptr.exec_function_pointer - base_addr);
   auto invocation_spec = BuildInvocationSpec(TaskType::ACTOR_TASK, this->config_->lib_name, fptr, args, actor);
   return task_submitter_->SubmitActorTask(invocation_spec);
 }
