@@ -50,7 +50,7 @@ def check_no_existing_redis_clients(node_ip_address, redis_client):
             raise Exception("This Redis instance is already connected to "
                             "clients with this IP address.")
 
-logging_options = [
+logging_options_no_verbose = [
     click.option(
         "--log-old-style/--log-new-style",
         is_flag=True,
@@ -62,7 +62,10 @@ logging_options = [
         type=str,
         default="auto",
         help=("Use color logging. "
-              "Valid values are: auto (if stdout is a tty), true, false.")),
+              "Valid values are: auto (if stdout is a tty), true, false."))
+]
+
+logging_options = logging_options_no_verbose + [
     click.option("-v", "--verbose", count=True)
 ]
 
@@ -790,10 +793,16 @@ def start(node_ip_address, redis_address, address, redis_port, port,
 @click.option(
     "-v",
     "--verbose",
-    is_flag=True,
+    count=True,
     help="If set, ray prints out more information about processes to kill.")
-def stop(force, verbose):
+@add_click_options(logging_options_no_verbose)
+def stop(force, verbose, log_old_style, log_color):
     """Stop Ray processes manually on the local machine."""
+
+    cli_logger.old_style = log_old_style
+    cli_logger.color_mode = log_color
+    cli_logger.verbosity = verbose
+
     # Note that raylet needs to exit before object store, otherwise
     # it cannot exit gracefully.
     is_linux = sys.platform.startswith("linux")
@@ -827,12 +836,17 @@ def stop(force, verbose):
             process_infos.append((proc, proc.name(), proc.cmdline()))
         except psutil.Error:
             pass
+
+    total_found = 0
+    total_stopped = 0
     for keyword, filter_by_cmd in processes_to_kill:
         if filter_by_cmd and is_linux and len(keyword) > 15:
+            # getting here is an internal bug, so we do not use cli_logger
             msg = ("The filter string should not be more than {} "
                    "characters. Actual length: {}. Filter: {}").format(
                        15, len(keyword), keyword)
             raise ValueError(msg)
+
         found = []
         for candidate in process_infos:
             proc, proc_cmd, proc_args = candidate
@@ -840,11 +854,16 @@ def stop(force, verbose):
                       if filter_by_cmd else subprocess.list2cmdline(proc_args))
             if keyword in corpus:
                 found.append(candidate)
+
         for proc, proc_cmd, proc_args in found:
+            total_found += 1
+
+            proc_string = str(subprocess.list2cmdline(proc_args))
             if verbose:
                 operation = "Terminating" if force else "Killing"
-                logger.info("%s process %s: %s", operation, proc.pid,
-                            subprocess.list2cmdline(proc_args))
+                cli_logger.old_info(
+                    logger,
+                    "%s process %s: %s", operation, proc.pid, proc_string)
             try:
                 if force:
                     proc.kill()
@@ -853,10 +872,50 @@ def stop(force, verbose):
                     # We don't want CTRL_BREAK_EVENT, because that would
                     # terminate the entire process group. What to do?
                     proc.terminate()
+
+                if force:
+                    cli_logger.verbose(
+                        "Killed `{}` {} ",
+                        cf.bold(proc_string),
+                        cf.gray("(via SIGKILL)"))
+                else:
+                    cli_logger.verbose(
+                        "Send termination request to `{}` {}",
+                        cf.bold(proc_string),
+                        cf.gray("(via SIGTERM)"))
+
+                total_stopped += 1
             except psutil.NoSuchProcess:
+                cli_logger.verbose(
+                    "Attempted to stop `{}`, but process was already dead.",
+                    cf.bold(proc_string))
                 pass
             except (psutil.Error, OSError) as ex:
-                logger.error("Error: %s", ex)
+                cli_logger.error(
+                    "Could not terminate `{}` due to {}",
+                    cf.bold(proc_string),
+                    str(ex))
+                cli_logger.old_error(
+                    logger,
+                    "Error: %s", ex)
+
+    if total_found == 0:
+        cli_logger.print("Did not find any active Ray processes.")
+    else:
+        if total_stopped == total_found:
+            cli_logger.success("Stopped all {} Ray processes.", total_stopped)
+        else:
+            cli_logger.warning(
+                "Stopped only {} out of {} Ray processes. "
+                "Set `{}` to see more details.",
+                total_stopped, total_found,
+                cf.bold("-v"))
+            cli_logger.warning(
+                "Try running the command again, or use `{}`.",
+                cf.bold("--force"))
+
+    # TODO(maximsmol): we should probably block until the processes actually
+    # all died somehow
 
 
 @cli.command()
