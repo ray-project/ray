@@ -38,7 +38,7 @@ static void StopRayNode() {
   std::vector<std::string> cmdargs({"ray", "stop"});
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true).second);
-  usleep(200 * 1000);
+  usleep(1000 * 1000);
   return;
 }
 
