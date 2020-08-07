@@ -153,7 +153,7 @@ class VisionNetwork(TorchModelV2, nn.Module):
         if not self.last_layer_is_flattened:
             if self._logits:
                 conv_out = self._logits(conv_out)
-            if conv_out.shape[3] != 1 or conv_out.shape[2] != 1:
+            if conv_out.shape[2] != 1 or conv_out.shape[3] != 1:
                 raise ValueError(
                     "Given `conv_filters` ({}) do not result in a [B, {} "
                     "(`num_outputs`), 1, 1] shape (but in {})! Please adjust "

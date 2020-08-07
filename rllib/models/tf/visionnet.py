@@ -76,11 +76,11 @@ class VisionNetwork(TFModelV2):
                     data_format="channels_last",
                     name="conv_out")(last_layer)
 
-                if conv_out.shape[3] != 1 or conv_out.shape[2] != 1:
+                if conv_out.shape[1] != 1 or conv_out.shape[2] != 1:
                     raise ValueError(
-                        "Given `conv_filters` ({}) do not result in a [B, {} "
-                        "(`num_outputs`), 1, 1] shape (but in {})! Please "
-                        "adjust your Conv2D stack such that the last 2 dims "
+                        "Given `conv_filters` ({}) do not result in a [B, 1, "
+                        "1, {} (`num_outputs`)] shape (but in {})! Please "
+                        "adjust your Conv2D stack such that the dims 1 and 2 "
                         "are both 1.".format(
                             self.model_config["conv_filters"],
                             self.num_outputs, list(conv_out.shape)))
