@@ -6,7 +6,7 @@ except ImportError:
     from ray.rllib.agents.registry import get_agent_class
 from ray.tune.registry import register_env
 from ray.rllib.env import PettingZooEnv
-from pettingzoo.gamma import prison_v0
+from pettingzoo.butterfly import prison_v0
 from supersuit.aec_wrappers import normalize_obs, dtype, color_reduction
 
 from numpy import float32
@@ -26,8 +26,8 @@ if __name__ == "__main__":
     def env_creator(config):
         env = prison_v0.env(num_floors=config.get("num_floors", 4))
         env = dtype(env, dtype=float32)
-        env = color_reduction(env, dtype=float32)
-        env = normalize_obs(env, mode="R")
+        env = color_reduction(env, mode="R")
+        env = normalize_obs(env)
         return env
 
     num_cpus = 1
