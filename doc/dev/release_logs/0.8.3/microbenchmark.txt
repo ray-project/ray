@@ -1,7 +1,7 @@
-single client get calls per second 9609.58 +- 1094.38
-single client put calls per second 5244.46 +- 96.12
+single client get calls (Plasma Store) per second 9609.58 +- 1094.38
+single client put calls (Plasma Store) per second 5244.46 +- 96.12
 single client put gigabytes per second 13.5 +- 3.12
-multi client put calls per second 11147.13 +- 25.58
+multi client put calls (Plasma Store) per second 11147.13 +- 25.58
 multi client put gigabytes per second 19.08 +- 7.08
 single client tasks sync per second 1271.4 +- 14.02
 single client tasks async per second 12516.66 +- 392.73

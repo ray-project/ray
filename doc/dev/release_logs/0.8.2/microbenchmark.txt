@@ -2,10 +2,10 @@
 # seconds will be reduced. Put latency was reduced due to extra ipc call to raylet 
 # for ref counting.
 
-single client get calls per second 11743.14 +- 2062.85
-single client put calls per second 3133.08 +- 89.81
+single client get calls (Plasma Store) per second 11743.14 +- 2062.85
+single client put calls (Plasma Store) per second 3133.08 +- 89.81
 single client put gigabytes per second 10.33 +- 7.96
-multi client put calls per second 3590.16 +- 22.04
+multi client put calls (Plasma Store) per second 3590.16 +- 22.04
 multi client put gigabytes per second 23.38 +- 0.63
 single client tasks sync per second 1263.59 +- 63.16
 single client tasks async per second 13959.14 +- 393.16
