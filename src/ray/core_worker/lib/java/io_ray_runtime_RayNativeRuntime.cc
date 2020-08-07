@@ -93,7 +93,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
     JNIEnv *env, jclass, jint workerMode, jstring nodeIpAddress, jint nodeManagerPort,
     jstring driverName, jstring storeSocket, jstring rayletSocket, jbyteArray jobId,
     jobject gcsClientOptions, jint numWorkersPerProcess, jstring logDir,
-    jobject rayletConfigParameters) {
+    jobject rayletConfigParameters, jbyteArray jobConfig) {
   auto raylet_config = JavaMapToNativeMap<std::string, std::string>(
       env, rayletConfigParameters,
       [](JNIEnv *env, jobject java_key) {
@@ -198,11 +198,13 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
       RAY_LOG(INFO) << "Calling System.gc() ...";
       env->CallStaticObjectMethod(java_system_class, java_system_gc);
       last_gc_time_ms = current_time_ms();
-      RAY_LOG(INFO) << "GC finished in " << (double) (last_gc_time_ms - start) / 1000
+      RAY_LOG(INFO) << "GC finished in " << (double)(last_gc_time_ms - start) / 1000
                     << " seconds.";
     }
   };
 
+  std::string serialized_job_config =
+      (jobConfig == nullptr ? "" : JavaByteArrayToNativeString(env, jobConfig));
   ray::CoreWorkerOptions options = {
       static_cast<ray::WorkerType>(workerMode),     // worker_type
       ray::Language::JAVA,                          // langauge
@@ -228,6 +230,9 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
       true,                                          // ref_counting_enabled
       false,                                         // is_local_mode
       static_cast<int>(numWorkersPerProcess),        // num_workers
+      nullptr,                                       // terminate_asyncio_thread
+      serialized_job_config,                         // serialized_job_config
+      -1,                                            // metrics_agent_port
   };
 
   ray::CoreWorkerProcess::Initialize(options);

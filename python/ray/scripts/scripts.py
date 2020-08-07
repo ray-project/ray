@@ -347,6 +347,12 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     default=False,
     help="Specify whether object reconstruction will be used for this cluster."
 )
+@click.option(
+    "--metrics-export-port",
+    type=int,
+    default=8080,
+    help="the port to use to expose Ray metrics through a "
+    "Prometheus endpoint.")
 def start(node_ip_address, redis_address, address, redis_port, port,
           num_redis_shards, redis_max_clients, redis_password,
           redis_shard_ports, object_manager_port, node_manager_port,
@@ -357,7 +363,7 @@ def start(node_ip_address, redis_address, address, redis_port, port,
           autoscaling_config, no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
           java_worker_options, load_code_from_local, internal_config,
-          lru_evict, enable_object_reconstruction):
+          lru_evict, enable_object_reconstruction, metrics_export_port):
     """Start Ray processes manually on the local machine."""
     if gcs_server_port and not head:
         raise ValueError(
@@ -436,7 +442,8 @@ def start(node_ip_address, redis_address, address, redis_port, port,
         load_code_from_local=load_code_from_local,
         _internal_config=internal_config,
         lru_evict=lru_evict,
-        enable_object_reconstruction=enable_object_reconstruction)
+        enable_object_reconstruction=enable_object_reconstruction,
+        metrics_export_port=metrics_export_port)
     if head:
         # Start Ray on the head node.
         if redis_shard_ports is not None:
