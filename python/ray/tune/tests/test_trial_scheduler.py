@@ -1186,11 +1186,12 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         # Loop through all trials and check if PBT history is the
         # same as the playback history
         for i, trial in enumerate(trials):
-            if i == 1:  # Did not exploit anything
+            if trial.trial_id == "1":  # Did not exploit anything
                 continue
 
             replay = PopulationBasedTrainingReplay(
-                experiment_dir=tmpdir, trial_id=trial.trial_id)
+                os.path.join(tmpdir,
+                             "pbt_policy_{}.txt".format(trial.trial_id)))
             analysis = tune.run(
                 Playback,
                 scheduler=replay,
@@ -1202,7 +1203,8 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         # Trial 1 did not exploit anything and should raise an error
         with self.assertRaises(ValueError):
             replay = PopulationBasedTrainingReplay(
-                experiment_dir=tmpdir, trial_id=trials[1].trial_id)
+                os.path.join(tmpdir,
+                             "pbt_policy_{}.txt".format(trials[1].trial_id)))
             tune.run(
                 Playback,
                 scheduler=replay,

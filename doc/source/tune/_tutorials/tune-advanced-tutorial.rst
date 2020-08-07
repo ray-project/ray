@@ -122,9 +122,9 @@ A run of Population Based Training ends with fully trained models. However, some
 you might like to train the model from scratch, but use the same hyperparameter
 schedule as obtained from PBT. Ray Tune offers a replay utility for this.
 
-All you need to do is pass the experiment directory and the trial ID. The trial ID
-is the last part of the trial name, for instance if you have
-``PytorchTrainable_ba982_00000`` the trial ID would be ``ba982_00000``.
+All you need to do is pass the policy log file for the trial you want to replay.
+This is usually stored in the experiment directory, for instance
+``~/ray_results/pbt_test/pbt_policy_ba982_00000.txt``.
 
 The replay utility reads the original configuration for the trial and updates it
 each time when it was originally perturbed. You can (and should)
@@ -138,7 +138,7 @@ thus just use the same ``Trainable`` for the replay run.
     from ray.tune.schedulers import PopulationBasedTrainingReplay
 
     replay = PopulationBasedTrainingReplay(
-        "~/ray_results/pbt_test/", "ba982_00003")
+        "~/ray_results/pbt_test/pbt_policy_ba982_00003.txt")
 
     tune.run(
         PytorchTrainable,

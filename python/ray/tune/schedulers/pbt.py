@@ -413,10 +413,9 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
     config according to the schedule.
 
     Args:
-        experiment_dir (str): The directory where the results of the
-            PBT run were stored. Usually this is a subdirectory of
-            ``~/ray_results``
-        trial_id (str): ID of the trial that should be replayed.
+        policy_file (str): The PBT policy file. Usually this is
+            stored in ``~/ray_results/experiment_name/pbt_policy_xxx.txt``
+            where ``xxx`` is the trial ID.
 
     Example:
 
@@ -429,7 +428,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
         from ray.tune.schedulers import PopulationBasedTrainingReplay
 
         replay = PopulationBasedTrainingReplay(
-            "~/ray_results/pbt_test/", "XXXXX_00001")
+            "~/ray_results/pbt_test/pbt_policy_XXXXX_00001.txt")
 
         tune.run(
             PytorchTrainable,
@@ -439,27 +438,18 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
 
     """
 
-    def __init__(self, experiment_dir, trial_id):
-        experiment_dir = os.path.expanduser(experiment_dir)
-        if not os.path.exists(experiment_dir):
-            raise ValueError(
-                "Experiment directory not found: {}".format(experiment_dir))
+    def __init__(self, policy_file):
+        policy_file = os.path.expanduser(policy_file)
+        if not os.path.exists(policy_file):
+            raise ValueError("Policy file not found: {}".format(policy_file))
 
-        self.experiment_dir = experiment_dir
-        self.trial_id = trial_id
+        self.policy_file = policy_file
 
-        # Find and read pbt policy file
-        initial_config, self._policy = self._load_policy(
-            self.experiment_dir, self.trial_id)
-        if not self._policy:
-            logger.warning(
-                "Empty PBT policy found for trial id {}. This means "
-                "the replay will only run with the initial config. "
-                "You might have specified a trial that did not exploit "
-                "other trials. Did you specify the correct trial?".format(
-                    self.trial_id))
+        # Find and read pbt policy file, potentially raise error
+        initial_config, self._policy = self._load_policy(self.policy_file)
 
-        self.experiment_tag = "replay_{}".format(self.trial_id)
+        self.experiment_tag = "replay_{}".format(
+            os.path.basename(self.policy_file))
         self.config = initial_config
         self.current_config = self.config
 
@@ -470,28 +460,17 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
         self._policy_iter = iter(self._policy)
         self._next_policy = next(self._policy_iter, None)
 
-    def _load_policy(self, experiment_dir, trial_id):
+    def _load_policy(self, policy_file):
         raw_policy = []
-        pbt_policy_file = os.path.join(experiment_dir,
-                                       "pbt_policy_{}.txt".format(trial_id))
-        if not os.path.isfile(pbt_policy_file):
-            logger.warning(
-                "No PBT policy file found for trial id {}. This means "
-                "the replay will only run with the initial config. "
-                "You might have specified a trial that did not exploit "
-                "other trials. Did you specify the correct trial?".format(
-                    self.trial_id))
-            return {}, []
-        else:
-            with open(pbt_policy_file, "rt") as fp:
-                for row in fp.readlines():
-                    try:
-                        parsed_row = json.loads(row)
-                    except json.JSONDecodeError:
-                        raise ValueError(
-                            "Could not read PBT policy file: {}.".format(
-                                pbt_policy_file))
-                    raw_policy.append(tuple(parsed_row))
+        with open(policy_file, "rt") as fp:
+            for row in fp.readlines():
+                try:
+                    parsed_row = json.loads(row)
+                except json.JSONDecodeError:
+                    raise ValueError(
+                        "Could not read PBT policy file: {}.".format(
+                            policy_file)) from None
+                raw_policy.append(tuple(parsed_row))
 
         # Loop through policy from end to start to obtain changepoints
         policy = []
