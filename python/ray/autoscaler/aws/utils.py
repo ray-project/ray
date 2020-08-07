@@ -102,8 +102,8 @@ def handle_boto_error(exc, msg, *args, **kwargs):
     cli_logger.error(*generic_message_args)
     cli_logger.newline()
     with cli_logger.verbatim_error_ctx("Boto3 error:"):
-        cli_logger.verbose(vars(exc))
-        cli_logger.error(exc)
+        cli_logger.verbose("{}", str(vars(exc)))
+        cli_logger.error("{}", str(exc))
     cli_logger.abort()
 
 

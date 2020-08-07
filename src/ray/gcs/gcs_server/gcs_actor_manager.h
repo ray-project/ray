@@ -211,13 +211,14 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// Register actor asynchronously.
   ///
   /// \param request Contains the meta info to create the actor.
-  /// \param callback Will be invoked after the actor is created successfully or be
-  /// invoked immediately if the actor is already registered to `registered_actors_` and
-  /// its state is `ALIVE`.
-  /// \return Status::Invalid if this is a named actor and an actor with the specified
-  /// name already exists. The callback will not be called in this case.
+  /// \param success_callback Will be invoked after the actor is created successfully or
+  /// be invoked immediately if the actor is already registered to `registered_actors_`
+  /// and its state is `ALIVE`.
+  /// \return Status::Invalid if this is a named actor and an
+  /// actor with the specified name already exists. The callback will not be called in
+  /// this case.
   Status RegisterActor(const rpc::RegisterActorRequest &request,
-                       RegisterActorCallback callback);
+                       RegisterActorCallback success_callback);
 
   /// Create actor asynchronously.
   ///
@@ -336,6 +337,21 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// users want to kill an actor intentionally and don't want it to be reconstructed
   /// again.
   void ReconstructActor(const ActorID &actor_id, bool need_reschedule = true);
+
+  /// Remove the specified actor from `unresolved_actors_`.
+  ///
+  /// \param actor The actor to be removed.
+  void RemoveUnresolvedActor(const std::shared_ptr<GcsActor> &actor);
+
+  /// Remove the specified actor from owner.
+  ///
+  /// \param actor The actor to be removed.
+  void RemoveActorFromOwner(const std::shared_ptr<GcsActor> &actor);
+
+  /// Kill the specified actor.
+  ///
+  /// \param actor The actor to be killed.
+  void KillActor(const std::shared_ptr<GcsActor> &actor);
 
   /// Callbacks of pending `RegisterActor` requests.
   /// Maps actor ID to actor registration callbacks, which is used to filter duplicated

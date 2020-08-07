@@ -202,23 +202,22 @@ def test_logging_to_driver(shutdown_only):
     def f():
         # It's important to make sure that these print statements occur even
         # without calling sys.stdout.flush() and sys.stderr.flush().
-        for i in range(100):
-            print(i)
-            print(100 + i, file=sys.stderr)
+        for i in range(10):
+            print(i, end=" ")
+            print(100 + i, end=" ", file=sys.stderr)
 
     captured = {}
     with CaptureOutputAndError(captured):
         ray.get(f.remote())
         time.sleep(1)
 
-    output_lines = captured["out"]
-    for i in range(200):
-        assert str(i) in output_lines
+    out_lines = captured["out"]
+    err_lines = captured["err"]
+    for i in range(10):
+        assert str(i) in out_lines
 
-    # TODO(rkn): Check that no additional logs appear beyond what we expect
-    # and that there are no duplicate logs. Once we address the issue
-    # described in https://github.com/ray-project/ray/pull/5462, we should
-    # also check that nothing is logged to stderr.
+    for i in range(100, 110):
+        assert str(i) in err_lines
 
 
 def test_not_logging_to_driver(shutdown_only):
@@ -240,10 +239,8 @@ def test_not_logging_to_driver(shutdown_only):
     output_lines = captured["out"]
     assert len(output_lines) == 0
 
-    # TODO(rkn): Check that no additional logs appear beyond what we expect
-    # and that there are no duplicate logs. Once we address the issue
-    # described in https://github.com/ray-project/ray/pull/5462, we should
-    # also check that nothing is logged to stderr.
+    err_lines = captured["err"]
+    assert len(err_lines) == 0
 
 
 @pytest.mark.skipif(
@@ -354,31 +351,6 @@ def test_ray_setproctitle(ray_start_2_cpus):
     actor = UniqueName.remote()
     ray.get(actor.f.remote())
     ray.get(unique_1.remote())
-
-
-def test_duplicate_error_messages(shutdown_only):
-    ray.init(num_cpus=0)
-
-    driver_id = ray.WorkerID.nil()
-    error_data = ray.gcs_utils.construct_error_message(driver_id, "test",
-                                                       "message", 0)
-
-    # Push the same message to the GCS twice (they are the same because we
-    # do not include a timestamp).
-
-    r = ray.worker.global_worker.redis_client
-
-    r.execute_command("RAY.TABLE_APPEND",
-                      ray.gcs_utils.TablePrefix.Value("ERROR_INFO"),
-                      ray.gcs_utils.TablePubsub.Value("ERROR_INFO_PUBSUB"),
-                      driver_id.binary(), error_data)
-
-    # Before https://github.com/ray-project/ray/pull/3316 this would
-    # give an error
-    r.execute_command("RAY.TABLE_APPEND",
-                      ray.gcs_utils.TablePrefix.Value("ERROR_INFO"),
-                      ray.gcs_utils.TablePubsub.Value("ERROR_INFO_PUBSUB"),
-                      driver_id.binary(), error_data)
 
 
 @pytest.mark.skipif(
@@ -682,6 +654,19 @@ def test_ray_address_environment_variable(ray_start_cluster):
     ray.init()
     assert "CPU" in ray.state.cluster_resources()
     ray.shutdown()
+
+
+def test_ray_resources_environment_variable(ray_start_cluster):
+    address = ray_start_cluster.address
+
+    os.environ["RAY_OVERRIDE_RESOURCES"] = "{\"custom1\":1, \"custom2\":2}"
+    ray.init(address=address, resources={"custom1": 3, "custom3": 3})
+
+    cluster_resources = ray.cluster_resources()
+    print(cluster_resources)
+    assert cluster_resources["custom1"] == 1
+    assert cluster_resources["custom2"] == 2
+    assert cluster_resources["custom3"] == 3
 
 
 def test_gpu_info_parsing():

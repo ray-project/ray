@@ -81,6 +81,7 @@ class GcsPlacementGroup {
 
 using RegisterPlacementGroupCallback =
     std::function<void(std::shared_ptr<GcsPlacementGroup>)>;
+
 /// GcsPlacementGroupManager is responsible for managing the lifecycle of all placement
 /// group. This class is not thread-safe.
 /// The placementGroup will be added into queue and set the status as pending first and
@@ -114,7 +115,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// `registered_placement_groups_` and its state is `ALIVE`. The callback will not be
   /// called in this case.
   void RegisterPlacementGroup(const rpc::CreatePlacementGroupRequest &request,
-                              RegisterPlacementGroupCallback callback);
+                              EmptyCallback callback);
 
   /// Schedule placement_groups in the `pending_placement_groups_` queue.
   /// This function is exposed for testing only.
@@ -144,17 +145,9 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// Schedule another tick after a short time.
   void ScheduleTick();
 
-  /// Callbacks of placement_group registration requests that are not yet flushed.
-  /// This map is used to filter duplicated messages from a Driver/Worker caused by some
-  /// network problems.
-  ///
-  /// Since the GRPC message received by the GCS side is out of order, it can not be
-  /// determined that the last callback is the valid one. Therefore, the repeated
-  /// callbacks are recorded in the form of vector without distinction. When the operation
-  /// is successful, all callbacks will be triggered. One of them must be valid, and the
-  /// rest invalid callbacks will not have any effect even if they are called.
-  absl::flat_hash_map<PlacementGroupID, std::vector<RegisterPlacementGroupCallback>>
-      placement_group_to_register_callbacks_;
+  /// Callback of placement_group registration requests that are not yet flushed.
+  absl::flat_hash_map<PlacementGroupID, EmptyCallback>
+      placement_group_to_register_callback_;
   /// All registered placement_groups (pending placement_groups are also included).
   absl::flat_hash_map<PlacementGroupID, std::shared_ptr<GcsPlacementGroup>>
       registered_placement_groups_;

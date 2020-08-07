@@ -129,7 +129,7 @@ class TrialExecutor:
         self.start_trial(trial)
 
     def reset_trial(self, trial, new_config, new_experiment_tag):
-        """Tries to invoke `Trainable.reset_config()` to reset trial.
+        """Tries to invoke `Trainable.reset()` to reset trial.
 
         Args:
             trial (Trial): Trial to be reset.
@@ -139,7 +139,7 @@ class TrialExecutor:
                 for trial.
 
         Returns:
-            True if `reset_config` is successful else False.
+            True if `reset` is successful else False.
         """
         raise NotImplementedError
 
