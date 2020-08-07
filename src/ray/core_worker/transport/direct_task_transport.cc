@@ -21,7 +21,7 @@ namespace ray {
 Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
 
-  if (actor_creator_ && task_spec.IsActorCreationTask()) {
+  if (task_spec.IsActorCreationTask()) {
     // Synchronously register the actor to GCS server.
     // Previously, we asynchronously registered the actor after all its dependencies were
     // resolved. This caused a problem: if the owner of the actor dies before dependencies
@@ -37,7 +37,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
 
   resolver_.ResolveDependencies(task_spec, [this, task_spec]() {
     RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
-    if (actor_creator_ && task_spec.IsActorCreationTask()) {
+    if (task_spec.IsActorCreationTask()) {
       // If gcs actor management is enabled, the actor creation task will be sent to
       // gcs server directly after the in-memory dependent objects are resolved. For
       // more details please see the protocol of actor management based on gcs.

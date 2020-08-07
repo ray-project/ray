@@ -101,7 +101,6 @@ test:ci --nocache_test_results
 test:ci --spawn_strategy=local
 test:ci --test_output=errors
 test:ci --test_verbose_timeout_warnings
-test:ci --test_env=RAY_GCS_ACTOR_SERVICE_ENABLED
 
 aquery:get-toolchain --include_commandline=false
 aquery:get-toolchain --noimplicit_deps
