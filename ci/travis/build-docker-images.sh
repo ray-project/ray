@@ -19,10 +19,10 @@ docker_push() {
 
 build_or_pull_base_deps() {
     docker pull rayproject/base-deps:latest
-    age=`docker inspect -f '{{ .Created }}' rayproject/base-deps:latest`
-    tag=`date +%F_%H`
+    age=$(docker inspect -f '{{ .Created }}' rayproject/base-deps:latest)
+    tag=$(date +%F_%H)
     # Build if older than 1 week or updated in this PR
-    if [[  `date -d "$date -7 days" +%F` > `date -d "$age" +%F` || "$RAY_CI_DOCKER_AFFECTED" == "1" ]]; then
+    if [[  $(date -d "-7 days" +%F) > $(date -d "$age" +%F) || "$RAY_CI_DOCKER_AFFECTED" == "1" ]]; then
         docker image rm rayproject/base-deps:latest
         docker build -t rayproject/base-deps docker/base-deps
     else
