@@ -220,10 +220,7 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
             "labels": {
                 "job": "ray"
             },
-            "targets": [
-                metrics_export_address
-                for metrics_export_address in metrics_export_addresses
-            ]
+            "targets": metrics_export_addresses
         }]
         with open(self.get_target_file_name(), "w") as json_file:
             json.dump(data, json_file)
