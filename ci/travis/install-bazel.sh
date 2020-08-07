@@ -121,8 +121,3 @@ build --remote_upload_local_results=false
 EOF
   fi
 fi
-
-if [ "${TRAVIS-}" = true ]; then
-  cat "$ROOT_DIR/bazel_bashrc.inc.sh" >> ~/.bashrc
-  . "$ROOT_DIR/bazel_bashrc.inc.sh"
-fi
