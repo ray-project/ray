@@ -36,7 +36,7 @@ from ray.dashboard.metrics_exporter.client import Exporter
 from ray.dashboard.metrics_exporter.client import MetricsExportClient
 from ray.dashboard.node_stats import NodeStats
 from ray.dashboard.util import to_unix_time, measures_to_dict, format_resource
-from ray.metrics_agent import PrometheusServiceDiscoveryThread
+from ray.metrics_agent import PrometheusServiceDiscoveryWriter
 
 try:
     from ray.tune import Analysis
@@ -494,7 +494,7 @@ class Dashboard:
         self.dashboard_id = str(uuid.uuid4())
         self.dashboard_controller = DashboardController(
             redis_address, redis_password)
-        self.service_discovery = PrometheusServiceDiscoveryThread(
+        self.service_discovery = PrometheusServiceDiscoveryWriter(
             redis_address, redis_password, temp_dir)
 
         # Setting the environment variable RAY_DASHBOARD_DEV=1 disables some
