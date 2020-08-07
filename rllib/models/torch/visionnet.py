@@ -158,9 +158,8 @@ class VisionNetwork(TorchModelV2, nn.Module):
                     "Given `conv_filters` ({}) do not result in a [B, {} "
                     "(`num_outputs`), 1, 1] shape (but in {})! Please adjust "
                     "your Conv2D stack such that the last 2 dims are both "
-                    "1.".format(
-                        self.model_config["conv_filters"], self.num_outputs,
-                        list(conv_out.shape)))
+                    "1.".format(self.model_config["conv_filters"],
+                                self.num_outputs, list(conv_out.shape)))
             logits = conv_out.squeeze(3)
             logits = logits.squeeze(2)
 
