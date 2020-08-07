@@ -173,6 +173,15 @@ void GcsPlacementGroupManager::HandleCreatePlacementGroup(
       }));
 }
 
+void GcsPlacementGroupManager::HandleRemovePlacementGroup(
+    const rpc::RemovePlacementGroupRequest &request,
+    rpc::RemovePlacementGroupReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  // SANG-TODO Fill up the method.
+  RAY_LOG(ERROR) << "Sangbinsangbin";
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+}
+
 void GcsPlacementGroupManager::ScheduleTick() {
   reschedule_timer_.expires_from_now(boost::posix_time::milliseconds(500));
   reschedule_timer_.async_wait([this](const boost::system::error_code &error) {

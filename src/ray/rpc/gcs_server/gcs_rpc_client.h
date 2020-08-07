@@ -251,6 +251,10 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, CreatePlacementGroup,
                              placement_group_info_grpc_client_, )
 
+  /// SANG-TODO Fill it up.
+  VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, RemovePlacementGroup,
+                             placement_group_info_grpc_client_, )
+
  private:
   std::function<void(GcsServiceFailureType)> gcs_service_failure_detected_;
 

@@ -172,5 +172,23 @@ def test_placement_group_hang(ray_start_cluster):
     assert "CPU_group_" in list(resources.keys())[0], resources
 
 
+def test_remove_placement_group():
+    ray.init(num_cpus=4)
+
+    pid = ray.experimental.placement_group([{"CPU": 2}, {"CPU": 2}])
+
+    @ray.remote(num_cpus=2)
+    class A:
+        def f(self):
+            return 3
+
+    a = A.remote()
+    ray.experimental.remove_placement_group(pid)
+    #assert ray.get(a.f.remote()), timeout=5) == 3
+
+    import time
+    time.sleep(50)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

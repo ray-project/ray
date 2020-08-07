@@ -456,6 +456,10 @@ class PlacementGroupInfoGcsServiceHandler {
   virtual void HandleCreatePlacementGroup(const CreatePlacementGroupRequest &request,
                                           CreatePlacementGroupReply *reply,
                                           SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleRemovePlacementGroup(const RemovePlacementGroupRequest &request,
+                                          RemovePlacementGroupReply *reply,
+                                          SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `PlacementGroupInfoGcsService`.

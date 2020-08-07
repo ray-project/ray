@@ -169,6 +169,9 @@ service PlacementGroupInfoGcsService {
   // Create placement group via gcs service
   rpc CreatePlacementGroup(CreatePlacementGroupRequest)
       returns (CreatePlacementGroupReply);
+
+  rpc RemovePlacementGroup(RemovePlacementGroupRequest)
+      returns (RemovePlacementGroupReply);
 }
 
 message RegisterNodeRequest {
@@ -494,6 +497,14 @@ message CreatePlacementGroupRequest {
 }
 
 message CreatePlacementGroupReply {
+  GcsStatus status = 1;
+}
+
+message RemovePlacementGroupRequest {
+  bytes placement_group_id = 1;
+}
+
+message RemovePlacementGroupReply {
   GcsStatus status = 1;
 }
 

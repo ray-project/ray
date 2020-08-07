@@ -476,6 +476,9 @@ class RedisPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor {
 
   Status AsyncCreatePlacementGroup(
       const PlacementGroupSpecification &placement_group_spec) override;
+
+  Status AsyncRemovePlacementGroup(
+      const PlacementGroupID &placement_group_id) override;
 };
 
 }  // namespace gcs

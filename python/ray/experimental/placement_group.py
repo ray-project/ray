@@ -1,5 +1,9 @@
-import ray
 from typing import (List, Dict)
+
+import ray
+from ray._raylet import (
+    PlacementGroupID,
+)
 
 
 def placement_group(bundles: List[Dict[str, float]],
@@ -31,3 +35,11 @@ def placement_group(bundles: List[Dict[str, float]],
         name, bundles, strategy)
 
     return placement_group_id
+
+
+def remove_placement_group(placement_group_id: PlacementGroupID):
+    assert type(placement_group_id) == PlacementGroupID
+    worker = ray.worker.global_worker
+    worker.check_connected()
+
+    worker.core_worker.remove_placement_group(placement_group_id)

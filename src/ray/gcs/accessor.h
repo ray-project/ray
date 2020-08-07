@@ -738,6 +738,10 @@ class PlacementGroupInfoAccessor {
   virtual Status AsyncCreatePlacementGroup(
       const PlacementGroupSpecification &placement_group_spec) = 0;
 
+  /// SANG-TODO Fill the def.
+  virtual Status AsyncRemovePlacementGroup(
+      const PlacementGroupID &placement_group_id) = 0;
+
  protected:
   PlacementGroupInfoAccessor() = default;
 };

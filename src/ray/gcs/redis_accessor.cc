@@ -831,6 +831,11 @@ Status RedisPlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
   return Status::Invalid("Not implemented");
 }
 
+Status RedisPlacementGroupInfoAccessor::AsyncRemovePlacementGroup(
+    const PlacementGroupID &placement_group_id) {
+  return Status::Invalid("Not implemented");
+}
+
 }  // namespace gcs
 
 }  // namespace ray

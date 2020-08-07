@@ -616,6 +616,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const PlacementGroupCreationOptions &placement_group_creation_options,
       PlacementGroupID *placement_group_id);
 
+  /// Remove a placement group.
+  /// SANG-TODO fill the description.
+  Status RemovePlacementGroup(const PlacementGroupID &placement_group_id);
+
   /// Submit an actor task.
   ///
   /// \param[in] caller_id ID of the task submitter.
