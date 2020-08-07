@@ -47,10 +47,9 @@ int TestSetupUtil::StartUpRedisServer(const int &port) {
       srand(current_time_ms() % RAND_MAX);
     }
     // Use random port (in range [2000, 7000) to avoid port conflicts between UTs.
-    actual_port = rand() % 5000 + 2000;
-    while (!CheckFree(actual_port)) {
+    do {
       actual_port = rand() % 5000 + 2000;
-    }
+    } while (!CheckFree(actual_port));
   }
 
   std::string program = TEST_REDIS_SERVER_EXEC_PATH;
