@@ -53,7 +53,7 @@ if [[ "$TRAVIS" == "true" ]]; then
     cp "$ROOT_DIR"/python/requirements.txt "$ROOT_DIR"/docker/autoscaler/requirements.txt
     cp "$ROOT_DIR"/python/requirements_autoscaler.txt "$ROOT_DIR"/docker/autoscaler/requirements_autoscaler.txt
 
-    build_or_pull_base_deps()
+    build_or_pull_base_deps
 
     docker build \
         --build-arg WHEEL_PATH=".whl/$wheel" \
