@@ -73,7 +73,7 @@ class TestPPO(unittest.TestCase):
                     trainer.stop()
 
     def test_ppo_fast_sampling(self):
-        """Test whether a PPOTrainer runs faster with `_fast_sampling` option.
+        """Test whether PPOTrainer runs faster w/ `_use_trajectory_view_api`.
         """
         config = copy.deepcopy(ppo.DEFAULT_CONFIG)
         action_space = Discrete(2)
@@ -107,7 +107,7 @@ class TestPPO(unittest.TestCase):
             "policies": policies,
             "policy_mapping_fn": policy_fn,
         }
-        num_iterations = 1
+        num_iterations = 5
         # Only works in torch so far.
         for _ in framework_iterator(config, frameworks="torch"):
             config["_use_trajectory_view_api"] = True

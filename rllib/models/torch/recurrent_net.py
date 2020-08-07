@@ -132,6 +132,25 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
             activation_fn=None,
             initializer=torch.nn.init.xavier_uniform_)
 
+        #TEST
+        self.view_reqs = {
+            SampleBatch.OBS: ViewRequirement(shift=0),
+            SampleBatch.PREV_REWARDS: ViewRequirement(
+                SampleBatch.REWARDS, shift=-1),
+            SampleBatch.PREV_ACTIONS: ViewRequirement(
+                SampleBatch.ACTIONS, space=self.action_space, shift=-1),
+        }
+
+        for i in range(2):
+            self.view_reqs["state_in_{}".format(i)] = \
+                ViewRequirement(
+                    "state_out_{}".format(i),
+                    shift=-1,
+                    space=Box(-1.0, 1.0, shape=(self.cell_size,)))
+            self.view_reqs["state_out_{}".format(i)] = \
+                ViewRequirement(
+                    space=Box(-1.0, 1.0, shape=(self.cell_size,)))
+
     @override(RecurrentNetwork)
     def forward(self, input_dict, state, seq_lens):
         assert seq_lens is not None
@@ -180,6 +199,8 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
 
     @override(ModelV2)
     def inference_view_requirements(self) -> Dict[str, ViewRequirement]:
+        return self.view_reqs
+
         req = super().inference_view_requirements()
         # Optional: prev-actions/rewards for forward pass.
         if self.model_config["lstm_use_prev_action_reward"]:

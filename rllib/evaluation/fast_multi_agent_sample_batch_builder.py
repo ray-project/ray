@@ -112,7 +112,7 @@ class _FastMultiAgentSampleBatchBuilder(_SampleCollector):
 
     @override(_SampleCollector)
     def has_non_postprocessed_data(self) -> bool:
-        return self.total() > 0
+        return self.total_env_steps() > 0
 
     @override(_SampleCollector)
     def add_init_obs(
