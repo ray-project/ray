@@ -725,6 +725,10 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir):
     cluster = start_connected_cluster
     dirpath = str(tmpdir)
     local_checkpoint_dir = os.path.join(dirpath, "experiment")
+    from ray.tune.examples.async_hyperband_example import MyTrainableClass
+    from ray.tune import register_trainable
+    register_trainable("trainable", MyTrainableClass)
+
 
     def execute_script_with_args(*args):
         current_dir = os.path.dirname(__file__)
@@ -761,6 +765,7 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir):
 
     time.sleep(2)
 
+    register_trainable("trainable", MyTrainableClass)
     reached = False
     for i in range(50):
         if TrialRunner.checkpoint_exists(local_checkpoint_dir):
@@ -775,6 +780,10 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir):
             assert len(trials) <= 20
             if len(trials) == 20:
                 break
+            else:
+                stop_fn = runner.trial_executor.stop_trial
+                [stop_fn(t) for t in trials if t.status is not Trial.ERROR]
+                print("Stopped all trials")
         time.sleep(.5)
     assert reached is True
 

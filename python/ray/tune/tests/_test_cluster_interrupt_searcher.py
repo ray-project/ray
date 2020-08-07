@@ -6,31 +6,10 @@ import time
 import json
 import os
 from ray.tune import run, Trainable
+from ray.tune.examples.async_hyperband_example import MyTrainableClass
 from ray.tune.suggest.hyperopt import HyperOptSearch
 from ray.tune.suggest.suggestion import ConcurrencyLimiter
 from hyperopt import hp
-
-
-class MyTrainableClass(Trainable):
-    def _setup(self, config):
-        self.timestep = 0
-
-    def _train(self):
-        self.timestep += 1
-        v = np.tanh(float(self.timestep) / self.config.get("width", 1))
-        v *= self.config.get("height", 1)
-        time.sleep(0.1)
-        return {"mean_loss": v}
-
-    def _save(self, checkpoint_dir):
-        path = os.path.join(checkpoint_dir, "checkpoint")
-        with open(path, "w") as f:
-            f.write(self.timestep)
-        return path
-
-    def _restore(self, checkpoint_path):
-        with open(checkpoint_path) as f:
-            self.timestep = json.loads(f.read())["timestep"]
 
 
 if __name__ == "__main__":
@@ -63,8 +42,8 @@ if __name__ == "__main__":
     ]
     algo = HyperOptSearch(
         space,
-        metric="mean_loss",
-        mode="min",
+        metric="episode_reward_mean",
+        mode="max",
         random_state_seed=5,
         points_to_evaluate=current_best_params)
     algo = ConcurrencyLimiter(algo, max_concurrent=1)

@@ -147,13 +147,15 @@ class SearchGenerator(SearchAlgorithm):
         return {
             "counter": self._counter,
             "total_samples": self._total_samples,
-            "finished": self._finished
+            "finished": self._finished,
+            "experiment": self._experiment
         }
 
     def set_state(self, state):
         self._counter = state["counter"]
         self._total_samples = state["total_samples"]
         self._finished = state["finished"]
+        self._experiment = state["experiment"]
 
     def has_checkpoint(self, dirpath):
         return bool(
@@ -189,7 +191,7 @@ class SearchGenerator(SearchAlgorithm):
             raise RuntimeError(
                 "Unable to find checkpoint in {}.".format(dirpath))
         while hasattr(searcher, "searcher"):
-            searcher_name = type(searcher).__name__
+            searcher_name = "name:" + type(searcher).__name__
             if searcher_name not in search_alg_state:
                 names = [
                     key.split("name:")[1] for key in search_alg_state
@@ -198,8 +200,10 @@ class SearchGenerator(SearchAlgorithm):
                 logger.warning(
                     "{} was not found in the experiment checkpoint state when restoring. Found {}.".
                     format(searcher_name, names))
-            searcher.set_state(search_alg_state.pop(type(searcher).__name__))
+            searcher.set_state(search_alg_state.pop(searcher_name))
             searcher = self.searcher.searcher
         base_searcher = searcher
+
+        logger.debug(f"searching base {base_searcher}")
         base_searcher.restore_from_dir(dirpath)
         self.set_state(search_alg_state)
