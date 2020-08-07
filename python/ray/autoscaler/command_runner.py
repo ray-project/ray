@@ -324,8 +324,8 @@ class SSHCommandRunner(CommandRunnerInterface):
         try:
             os.makedirs(self.ssh_control_path, mode=0o700, exist_ok=True)
         except OSError as e:
-            cli_logger.warning(e)  # todo: msg
-            cli_logger.old_warning(logger, e)
+            cli_logger.warning("{}", str(e))  # todo: msg
+            cli_logger.old_warning(logger, "{}", str(e))
 
     def run(self,
             cmd,
