@@ -30,7 +30,7 @@ static void StartRayNode(int redis_port, std::string redis_password) {
                                     redis_password});
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true).second);
-  sleep(10);
+  sleep(30);
   return;
 }
 
