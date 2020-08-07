@@ -27,7 +27,6 @@ def to_float_array(v: List[Any]) -> np.ndarray:
 
 # TODO(sven): Remove the following class once we switch to trajectory view API.
 
-
 @PublicAPI
 class SampleBatchBuilder:
     """Util to build a SampleBatch incrementally.
@@ -76,7 +75,6 @@ class SampleBatchBuilder:
 
 
 # TODO(sven): Remove the following class once we switch to trajectory view API.
-
 
 @DeveloperAPI
 class MultiAgentSampleBatchBuilder:
