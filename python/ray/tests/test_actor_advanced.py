@@ -734,6 +734,27 @@ while actor_status["State"] != ray.gcs_utils.ActorTableData.DEAD:
 
 
 @pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "local_mode": True
+    }], indirect=True)
+def test_detached_actor_local_mode(ray_start_regular):
+    RETURN_VALUE = 3
+
+    @ray.remote
+    class Y:
+        def f(self):
+            return RETURN_VALUE
+
+    Y.options(name="test").remote()
+    y = ray.get_actor("test")
+    assert ray.get(y.f.remote()) == RETURN_VALUE
+
+    ray.kill(y)
+    with pytest.raises(ValueError):
+        ray.get_actor("test")
+
+
+@pytest.mark.parametrize(
     "ray_start_cluster", [{
         "num_cpus": 3,
         "num_nodes": 1,
