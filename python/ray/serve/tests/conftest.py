@@ -6,7 +6,7 @@ import ray
 from ray import serve
 
 if os.environ.get("RAY_SERVE_INTENTIONALLY_CRASH", False):
-    serve.controller._CRASH_AFTER_CHECKPOINT_PROBABILITY = 0.5
+    serve.controller._CRASH_AFTER_CHECKPOINT_PROBABILITY = 0.25
 
 
 @pytest.fixture(scope="session")
