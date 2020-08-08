@@ -365,11 +365,11 @@ script:
   # NO MORE TESTS BELOW, keep them above.
 
   # TODO(simon): remove testing below
-  - ./ci/get_build_info.py
-  - ls /tmp/bazel_event_logs
-  - ls /tmp/bazel_event_logs | xargs -n 1 wc
-  - ls /tmp/bazel_event_logs | xargs -n 1 head -n 2
-  - ls /tmp/bazel_event_logs | xargs -n 1 tail -n 2
+  - ./ci/travis/get_build_info.py
+  - ls /tmp/bazel_event_logs/*
+  - ls /tmp/bazel_event_logs/* | xargs -n 1 wc
+  - ls /tmp/bazel_event_logs/* | xargs -n 1 head -n 2
+  - ls /tmp/bazel_event_logs/* | xargs -n 1 tail -n 2
 
 deploy:
   - provider: s3
