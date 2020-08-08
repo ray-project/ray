@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 The only changes to the original transformers.Trainer are:
     - Report eval metrics to Tune
     - Save state using Tune's checkpoint directories
+    - Pass in extra arguments for wandb
 """
 
 
