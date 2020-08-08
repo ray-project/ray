@@ -8,7 +8,6 @@ import ray
 from ray.rllib import _register_all
 
 from ray import tune
-from ray.tune import Experiment
 from ray.tune.logger import NoopLogger
 from ray.tune.trainable import TrainableUtil
 from ray.tune.function_runner import wrap_function, FuncCheckpointUtil

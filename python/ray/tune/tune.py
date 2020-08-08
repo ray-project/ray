@@ -3,7 +3,6 @@ import logging
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list, Experiment
 from ray.tune.analysis import ExperimentAnalysis
-from ray.tune.function_runner import detect_checkpoint_function
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.suggest.suggestion import Searcher, SearchGenerator
 from ray.tune.trial import Trial
