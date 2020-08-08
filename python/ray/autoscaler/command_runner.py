@@ -484,8 +484,8 @@ class DockerCommandRunner(SSHCommandRunner):
         protected_path = target
         if target.find("/root") == 0:
             target = target.replace("/root", "/tmp/root")
-            self.ssh_command_runner.run(
-                f"mkdir -p {os.path.dirname(target)}", run_env="host")
+        self.ssh_command_runner.run(
+            f"mkdir -p {os.path.dirname(target.rstrip('/'))}", run_env="host")
         self.ssh_command_runner.run_rsync_up(source, target)
         if self._check_container_status():
             self.ssh_command_runner.run("docker cp {} {}:{}".format(
@@ -496,8 +496,8 @@ class DockerCommandRunner(SSHCommandRunner):
         protected_path = source
         if source.find("/root") == 0:
             source = source.replace("/root", "/tmp/root")
-            self.ssh_command_runner.run(
-                f"mkdir -p {os.path.dirname(source)}", run_env="host")
+        self.ssh_command_runner.run(
+            f"mkdir -p {os.path.dirname(source.rstrip('/'))}", run_env="host")
         self.ssh_command_runner.run("docker cp {}:{} {}".format(
             self.docker_name, self._docker_expand_user(protected_path),
             source))
