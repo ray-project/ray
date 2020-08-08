@@ -265,7 +265,7 @@ def run(run_or_experiment,
 
     for i, exp in enumerate(experiments):
         if not isinstance(exp, Experiment):
-            if callable(run) and detect_checkpoint_function(exp):
+            if callable(exp) and detect_checkpoint_function(exp):
                 if checkpoint_at_end:
                     raise ValueError(
                         "'checkpoint_at_end' cannot be used with a "
