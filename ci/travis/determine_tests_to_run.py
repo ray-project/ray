@@ -108,8 +108,8 @@ if __name__ == "__main__":
                 RAY_CI_STREAMING_JAVA_AFFECTED = 1
             elif changed_file.startswith("docker/"):
                 RAY_CI_DOCKER_AFFECTED = 1
-            elif changed_file.startswith(
-                    "doc/") and changed_file.endswith(".py"):
+            elif changed_file.startswith("doc/") and changed_file.endswith(
+                    ".py"):
                 RAY_CI_DOC_AFFECTED = 1
             elif any(
                     changed_file.startswith(prefix)
