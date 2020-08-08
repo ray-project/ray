@@ -14,8 +14,8 @@ from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.resources import Resources, json_to_resources, resources_to_json
 from ray.tune.suggest.repeater import Repeater
-from ray.tune.suggest.suggestion import (_MockSuggestionAlgorithm,
-                                         SearchGenerator, Searcher)
+from ray.tune.suggest._mock import _MockSuggestionAlgorithm
+from ray.tune.suggest.suggestion import SearchGenerator, Searcher
 
 
 class TrialRunnerTest3(unittest.TestCase):
