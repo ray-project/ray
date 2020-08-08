@@ -302,9 +302,9 @@ void GcsPlacementGroupManager::RetryCreatingPlacementGroup() {
 void GcsPlacementGroupManager::OnNodeDead(const ClientID &node_id) {
   auto bundles = gcs_placement_group_scheduler_->GetBundlesOfDeadNode(node_id);
   for (const auto &bundle : bundles) {
-    auto &placement_group = registered_placement_groups_[bundle->first];
-    for (const auto &bundle_index : bundle->second) {
-
+    auto &placement_group = registered_placement_groups_[bundle.first];
+    for (const auto &bundle_index : bundle.second) {
+      placement_group->GetMutablePlacementGroupTableData().mutable_bundles(bundle_index).
     }
   }
 }
