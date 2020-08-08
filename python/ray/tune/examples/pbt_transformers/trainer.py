@@ -39,10 +39,8 @@ class TuneTransformerTrainer(transformers.Trainer):
         output = self._prediction_loop(
             eval_dataloader, description="Evaluation")
         self._log(output.metrics)
-
-        tune.report(**output.metrics)
-
         self.save_state()
+        tune.report(**output.metrics)
 
         return output.metrics
 
