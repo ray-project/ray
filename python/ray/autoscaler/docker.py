@@ -104,8 +104,7 @@ def docker_start_cmds(user, image, mount, cname, user_options):
     docker_check = check_docker_running_cmd(cname) + " || "
     docker_run = [
         "docker", "run", "--rm", "--name {}".format(cname), "-d", "-it",
-        mount_flags, env_flags, user_options_str, "--net=host",
-        image, "bash"
+        mount_flags, env_flags, user_options_str, "--net=host", image, "bash"
     ]
     cmds.append(docker_check + " ".join(docker_run))
 
