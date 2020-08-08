@@ -27,23 +27,12 @@ def train_convnet(config, checkpoint_dir=None):
         momentum=config.get("momentum", 0.9)
     )
 
-    for param_group in optimizer.param_groups:
-        print(config["lr"], param_group["lr"])
-
     if checkpoint_dir:
+        print("Loading from checkpoint.")
         path = os.path.join(checkpoint_dir, "checkpoint")
         checkpoint = torch.load(path)
         model.load_state_dict(checkpoint["model_state_dict"])
-        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         step = checkpoint["step"]
-
-    for param_group in optimizer.param_groups:
-        print(config["lr"], param_group["lr"])
-    # for param_group in optimizer.param_groups:
-    #     if "lr" in config:
-    #         param_group["lr"] = config["lr"]
-    #     if "momentum" in config:
-    #         param_group["momentum"] = config["momentum"]
 
     while True:
         train(model, optimizer, train_loader)
@@ -51,10 +40,10 @@ def train_convnet(config, checkpoint_dir=None):
         if step % 5 == 0:
             with tune.checkpoint_dir(step=step) as checkpoint_dir:
                 path = os.path.join(checkpoint_dir, "checkpoint")
+                # No need to save optimizer for SGD.
                 torch.save({
                     "step": step,
                     "model_state_dict": model.state_dict(),
-                    "optimizer_state_dict": optimizer.state_dict(),
                     "mean_accuracy": acc
                 }, path)
         step += 1
@@ -110,9 +99,9 @@ if __name__ == "__main__":
         verbose=1,
         stop=stopper,
         export_formats=[ExportFormat.MODEL],
-        #checkpoint_score_attr="mean_accuracy",
+        checkpoint_score_attr="mean_accuracy",
         checkpoint_freq=5,
-        #keep_checkpoints_num=4,
+        keep_checkpoints_num=4,
         num_samples=4,
         config={
             "lr": tune.uniform(0.001, 1),
