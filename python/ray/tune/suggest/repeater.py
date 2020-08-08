@@ -175,9 +175,3 @@ class Repeater(Searcher):
         self_state = state.pop("repeater_state")
         self.__dict__.update(self_state)
         self.searcher.set_state(state)
-
-    def save(self, checkpoint_dir):
-        raise ValueError("TODO")
-
-    def restore(self, checkpoint_dir):
-        raise ValueError("TODO")

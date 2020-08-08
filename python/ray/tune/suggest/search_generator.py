@@ -68,7 +68,6 @@ class SearchGenerator(SearchAlgorithm):
         self._counter = 0  # Keeps track of number of trials created.
         self._total_samples = None  # int: total samples to evaluate.
         self._finished = False
-        _warn_on_repeater(self.searcher, self._total_samples)
 
     def add_configurations(self, experiments):
         """Registers experiment specifications.
@@ -85,6 +84,7 @@ class SearchGenerator(SearchAlgorithm):
         experiment_spec = self._experiment.spec
         self._total_samples = self._experiment.spec.get("num_samples", 1)
 
+        _warn_on_repeater(self.searcher, self._total_samples)
         if "run" not in experiment_spec:
             raise TuneError("Must specify `run` in {}".format(experiment_spec))
 
