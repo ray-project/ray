@@ -3,6 +3,7 @@ import logging
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list, Experiment
 from ray.tune.analysis import ExperimentAnalysis
+from ray.tune.function_runner import detect_checkpoint_function
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.suggest.suggestion import Searcher, SearchGenerator
 from ray.tune.trial import Trial
@@ -264,6 +265,17 @@ def run(run_or_experiment,
 
     for i, exp in enumerate(experiments):
         if not isinstance(exp, Experiment):
+            if callable(run) and detect_checkpoint_function(exp):
+                if checkpoint_at_end:
+                    raise ValueError(
+                        "'checkpoint_at_end' cannot be used with a "
+                        "checkpointable function. You can specify and register "
+                        "checkpoints within your trainable function.")
+                if checkpoint_freq:
+                    raise ValueError(
+                        "'checkpoint_freq' cannot be used with a "
+                        "checkpointable function. You can specify checkpoints "
+                        "within your trainable function.")
             run_identifier = Experiment.register_if_needed(exp)
             experiments[i] = Experiment(
                 name=name,
