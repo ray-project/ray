@@ -225,12 +225,25 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
 
     def write(self):
         # Write a file based on https://prometheus.io/docs/guides/file-sd/
-        with open(self.get_target_file_name(), "w") as json_file:
+        # Write should be atomic. Otherwise, Prometheus raises an error that
+        # json file format is invalid because it reads a file when
+        # file is re-written. Note that Prometheus still works although we
+        # have this error.
+        temp_file_name = self.get_temp_file_name()
+        with open(temp_file_name, "w") as json_file:
             json_file.write(self.get_file_discovery_content())
+        # NOTE: os.rename is atomic, so we won't have race condition reading
+        # this file.
+        os.rename(temp_file_name, self.get_target_file_name())
 
     def get_target_file_name(self):
         return os.path.join(
             self.temp_dir, ray.ray_constants.PROMETHEUS_SERVICE_DISCOVERY_FILE)
+
+    def get_temp_file_name(self):
+        return os.path.join(
+            self.temp_dir, "{}_{}".format(
+                "tmp", ray.ray_constants.PROMETHEUS_SERVICE_DISCOVERY_FILE))
 
     def run(self):
         while True:

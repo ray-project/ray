@@ -139,8 +139,8 @@ Now, modify a Prometheus config to scrape the file for service discovery.
 
     # my global config
     global:
-      scrape_interval:     2s # Set the scrape interval to every 15 seconds. Default is every 1 minute.
-      evaluation_interval: 2s # Evaluate rules every 15 seconds. The default is every 1 minute.
+      scrape_interval:     2s
+      evaluation_interval: 2s
 
     # A scrape configuration containing exactly one endpoint to scrape:
     # Here it's Prometheus itself.
