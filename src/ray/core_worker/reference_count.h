@@ -23,6 +23,7 @@
 #include "ray/common/id.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
+#include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/common.pb.h"
 
@@ -66,7 +67,7 @@ class ReferenceCounter : public ReferenceCounterInterface {
       : rpc_address_(rpc_address),
         distributed_ref_counting_enabled_(distributed_ref_counting_enabled),
         lineage_pinning_enabled_(lineage_pinning_enabled),
-        client_factory_(client_factory) {}
+        borrower_pool_(client_factory) {}
 
   ~ReferenceCounter() {}
 
@@ -647,11 +648,10 @@ class ReferenceCounter : public ReferenceCounterInterface {
   /// Factory for producing new core worker clients.
   rpc::ClientFactoryFn client_factory_;
 
-  /// Map from worker address to core worker client. The owner of an object
+  /// Pool from worker address to core worker client. The owner of an object
   /// uses this client to request a notification from borrowers once the
   /// borrower's ref count for the ID goes to 0.
-  absl::flat_hash_map<rpc::WorkerAddress, std::shared_ptr<rpc::CoreWorkerClientInterface>>
-      borrower_cache_ GUARDED_BY(mutex_);
+  rpc::CoreWorkerClientPool borrower_pool_;
 
   /// Protects access to the reference counting state.
   mutable absl::Mutex mutex_;

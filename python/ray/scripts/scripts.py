@@ -350,7 +350,7 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
 @click.option(
     "--metrics-export-port",
     type=int,
-    default=8080,
+    default=None,
     help="the port to use to expose Ray metrics through a "
     "Prometheus endpoint.")
 def start(node_ip_address, redis_address, address, redis_port, port,

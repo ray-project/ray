@@ -16,7 +16,6 @@
 #include "absl/memory/memory.h"
 #include "opencensus/stats/stats.h"
 #include "opencensus/tags/tag_key.h"
-
 #include "ray/stats/metric.h"
 #include "ray/stats/metric_exporter_client.h"
 #include "ray/util/logging.h"

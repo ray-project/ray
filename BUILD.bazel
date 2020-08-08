@@ -1,6 +1,8 @@
 # Bazel build
 # C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
 
+load("@rules_python//python:defs.bzl", "py_library")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
@@ -129,6 +131,9 @@ cc_grpc_library(
 # worker server and client.
 cc_library(
     name = "worker_rpc",
+    srcs = glob([
+        "src/ray/rpc/worker/*.cc",
+    ]),
     hdrs = glob([
         "src/ray/rpc/worker/*.h",
     ]),

@@ -836,26 +836,5 @@ def test_actor_creation_latency(ray_start_regular_shared):
         actor_create_time - start, end - start))
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "local_mode": True
-    }], indirect=True)
-def test_detached_actor_local_mode(ray_start_regular):
-    RETURN_VALUE = 3
-
-    @ray.remote
-    class Y:
-        def f(self):
-            return RETURN_VALUE
-
-    Y.options(name="test").remote()
-    y = ray.get_actor("test")
-    assert ray.get(y.f.remote()) == RETURN_VALUE
-
-    ray.kill(y)
-    with pytest.raises(ValueError):
-        ray.get_actor("test")
-
-
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
