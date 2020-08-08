@@ -424,7 +424,7 @@ def warn_about_bad_start_command(start_commands):
             cf.bold("ray start"), cf.bold("--autoscaling-config"),
             cf.bold("--autoscaling-config=~/ray_bootstrap_config.yaml"),
             cf.bold("ray start"), cf.bold("head_start_ray_commands"))
-        logger.old_warning(
+        cli_logger.old_warning(
             logger, "Ray start on the head node does not have the flag"
             "--autoscaling-config set. The head node will not launch"
             "workers. Add --autoscaling-config=~/ray_bootstrap_config.yaml"
