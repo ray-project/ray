@@ -300,10 +300,10 @@ class FunctionApiTest(unittest.TestCase):
         ray.shutdown()
         _register_all()  # re-register the evicted objects
 
-
     def testCheckpointError(self):
         def train(config, checkpoint_dir=False):
             pass
+
         with self.assertRaises(ValueError):
             tune.run(train, checkpoint_freq=1)
         with self.assertRaises(ValueError):

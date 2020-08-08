@@ -4,7 +4,6 @@ import os
 from typing import Sequence
 
 from ray.tune.error import TuneError
-from ray.tune.function_runner import detect_checkpoint_function
 from ray.tune.registry import register_trainable, get_trainable_cls
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.sample import sample_from
