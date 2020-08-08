@@ -168,15 +168,15 @@ def create_endpoint(endpoint_name,
                 type(methods)))
 
     endpoints = list_endpoints()
-    if endpoint in endpoints:
-        methods_old = endpoints[endpoint]["methods"]
-        route_old = endpoints[endpoint]["route"]
-        if methods_old.sort() == methods.sort() and routes_old == route:
+    if endpoint_name in endpoints:
+        methods_old = endpoints[endpoint_name]["methods"]
+        route_old = endpoints[endpoint_name]["route"]
+        if methods_old.sort() == methods.sort() and route_old == route:
             raise ValueError(
                         "Route '{}' is already registered to endpoint '{}' "
                         "with methods '{}'.  To set the backend for this "
                         "endpoint, please use serve.set_traffic().".format(
-                            route, endpoint, methods))
+                            route, endpoint_name, methods))
 
 
     upper_methods = []

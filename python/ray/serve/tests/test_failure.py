@@ -5,7 +5,7 @@ import time
 
 import ray
 from ray import serve
-
+from ray.serve.config import BackendConfig, ReplicaConfig
 
 def request_with_retries(endpoint, timeout=30):
     start = time.time()
@@ -207,6 +207,35 @@ def test_worker_replica_failure(serve_instance):
                 break
             except TimeoutError:
                 time.sleep(0.1)
+
+
+def test_create_backend_idempotent(serve_instance):
+    serve.init()
+    def f():
+        pass
+
+    controller = serve.api._get_controller()
+
+    replica_config = ReplicaConfig(f)
+    backend_config = BackendConfig({"num_replicas": 1})
+
+    for i in range(10):
+        controller.create_backend.remote("my_backend", backend_config,
+                                         replica_config)
+
+
+def test_create_endpoint_idempotent(serve_instance):
+    serve.init()
+    def f():
+        pass
+
+    serve.create_backend("my_backend", f)
+
+    controller = serve.api._get_controller()
+
+    for i in range(10):
+        controller.create_endpoint.remote("my_endpoint", {"my_backend": 1.0},
+                                          "my_route", ["Get"])
 
 
 if __name__ == "__main__":

@@ -657,6 +657,8 @@ class ServeController:
             # TODO(edoakes): move this to client side.
             err_prefix = "Cannot create endpoint."
             if route in self.routes:
+
+                # Ensures this method is idempotent
                 if self.routes[route] == (endpoint, methods):
                     return
                     
