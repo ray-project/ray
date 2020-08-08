@@ -36,6 +36,9 @@ MultiAgentPolicyConfigDict = Dict[PolicyID, Tuple[type, gym.Space, gym.Space,
 # Represents an environment id.
 EnvID = int
 
+# Represents an episode id.
+EpisodeID = int
+
 # A dict keyed by agent ids, e.g. {"agent-1": value}.
 MultiAgentDict = Dict[AgentID, Any]
 
@@ -51,6 +54,9 @@ EnvActionType = Any
 
 # Info dictionary returned by calling step() on gym envs. Commonly empty dict.
 EnvInfoDict = dict
+
+# Represents a File object
+FileType = Any
 
 # Represents the result dict returned by Trainer.train().
 ResultDict = dict

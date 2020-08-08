@@ -1,9 +1,8 @@
 #pragma once
 
+#include "hiredis/hiredis.h"
 #include "ray/common/test_util.h"
 #include "ray/util/filesystem.h"
-
-#include "hiredis/hiredis.h"
 
 namespace ray {
 namespace streaming {
@@ -248,6 +247,9 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
         true,                           // ref_counting_enabled
         false,                          // is_local_mode
         1,                              // num_workers
+        nullptr,                        // terminate_asyncio_thread
+        "",                             // serialized_job_config
+        -1,                             // metrics_agent_port
     };
     InitShutdownRAII core_worker_raii(CoreWorkerProcess::Initialize,
                                       CoreWorkerProcess::Shutdown, options);

@@ -37,6 +37,7 @@ REDIS_MINIMUM_MEMORY_BYTES = 10**7
 DEFAULT_PORT = 6379
 
 DEFAULT_DASHBOARD_PORT = 8265
+PROMETHEUS_SERVICE_DISCOVERY_FILE = "prom_metrics_service_discovery.json"
 # Default resource requirements for actors when no resource requirements are
 # specified.
 DEFAULT_ACTOR_METHOD_CPU_SIMPLE = 1
@@ -123,8 +124,12 @@ REMOVED_NODE_ERROR = "node_removed"
 MONITOR_DIED_ERROR = "monitor_died"
 LOG_MONITOR_DIED_ERROR = "log_monitor_died"
 REPORTER_DIED_ERROR = "reporter_died"
+DASHBOARD_AGENT_DIED_ERROR = "dashboard_agent_died"
 DASHBOARD_DIED_ERROR = "dashboard_died"
 RAYLET_CONNECTION_ERROR = "raylet_connection_error"
+
+# Used in gpu detection
+RESOURCE_CONSTRAINT_PREFIX = "GPUType:"
 
 # Abort autoscaling if more than this number of errors are encountered. This
 # is a safety feature to prevent e.g. runaway node launches.

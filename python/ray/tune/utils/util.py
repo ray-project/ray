@@ -137,6 +137,20 @@ class warn_if_slow:
                 now - self.start)
 
 
+class Tee(object):
+    def __init__(self, stream1, stream2):
+        self.stream1 = stream1
+        self.stream2 = stream2
+
+    def write(self, *args, **kwargs):
+        self.stream1.write(*args, **kwargs)
+        self.stream2.write(*args, **kwargs)
+
+    def flush(self, *args, **kwargs):
+        self.stream1.flush(*args, **kwargs)
+        self.stream2.flush(*args, **kwargs)
+
+
 def merge_dicts(d1, d2):
     """
     Args:
@@ -216,7 +230,7 @@ def flatten_dict(dt, delimiter="/"):
     return dt
 
 
-def unflattened_lookup(flat_key, lookup, delimiter="/", default=None):
+def unflattened_lookup(flat_key, lookup, delimiter="/", **kwargs):
     """
     Unflatten `flat_key` and iteratively look up in `lookup`. E.g.
     `flat_key="a/0/b"` will try to return `lookup["a"][0]["b"]`.
@@ -232,8 +246,10 @@ def unflattened_lookup(flat_key, lookup, delimiter="/", default=None):
                 base = base[int(key)]
             else:
                 raise KeyError()
-        except KeyError:
-            return default
+        except KeyError as e:
+            if "default" in kwargs:
+                return kwargs["default"]
+            raise e
     return base
 
 

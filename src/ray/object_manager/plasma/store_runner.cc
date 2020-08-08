@@ -1,12 +1,11 @@
 #include "ray/object_manager/plasma/store_runner.h"
 
-#include <fcntl.h>
-#include <stdio.h>
 #ifndef _WIN32
+#include <fcntl.h>
 #include <sys/statvfs.h>
-#endif
 #include <sys/types.h>
 #include <unistd.h>
+#endif
 
 #include "ray/object_manager/plasma/plasma_allocator.h"
 
@@ -77,10 +76,6 @@ PlasmaStoreRunner::PlasmaStoreRunner(std::string socket_name, int64_t system_mem
 }
 
 void PlasmaStoreRunner::Start() {
-#ifdef _WINSOCKAPI_
-  WSADATA wsadata;
-  WSAStartup(MAKEWORD(2, 2), &wsadata);
-#endif
    // Get external store
   std::shared_ptr<plasma::ExternalStore> external_store{nullptr};
   if (!external_store_endpoint_.empty()) {
@@ -96,40 +91,44 @@ void PlasmaStoreRunner::Start() {
   }
   RAY_LOG(DEBUG) << "starting server listening on " << socket_name_;
 
-  store_.reset(new PlasmaStore(main_service_, plasma_directory_, hugepages_enabled_,
-                               socket_name_, external_store));
-  plasma_config = store_->GetPlasmaStoreInfo();
+  {
+    absl::MutexLock lock(&store_runner_mutex_);
+    store_.reset(new PlasmaStore(main_service_, plasma_directory_, hugepages_enabled_,
+                                socket_name_, external_store));
+    plasma_config = store_->GetPlasmaStoreInfo();
 
-  // We are using a single memory-mapped file by mallocing and freeing a single
-  // large amount of space up front. According to the documentation,
-  // dlmalloc might need up to 128*sizeof(size_t) bytes for internal
-  // bookkeeping.
-  void* pointer = PlasmaAllocator::Memalign(
-      kBlockSize, PlasmaAllocator::GetFootprintLimit() - 256 * sizeof(size_t));
-  RAY_CHECK(pointer != nullptr);
-  // This will unmap the file, but the next one created will be as large
-  // as this one (this is an implementation detail of dlmalloc).
-  PlasmaAllocator::Free(
-      pointer, PlasmaAllocator::GetFootprintLimit() - 256 * sizeof(size_t));
+    // We are using a single memory-mapped file by mallocing and freeing a single
+    // large amount of space up front. According to the documentation,
+    // dlmalloc might need up to 128*sizeof(size_t) bytes for internal
+    // bookkeeping.
+    void* pointer = PlasmaAllocator::Memalign(
+        kBlockSize, PlasmaAllocator::GetFootprintLimit() - 256 * sizeof(size_t));
+    RAY_CHECK(pointer != nullptr);
+    // This will unmap the file, but the next one created will be as large
+    // as this one (this is an implementation detail of dlmalloc).
+    PlasmaAllocator::Free(
+        pointer, PlasmaAllocator::GetFootprintLimit() - 256 * sizeof(size_t));
 
-  store_->Start();
-
+    store_->Start();
+  }
   main_service_.run();
-
   Shutdown();
-#ifdef _WINSOCKAPI_
-  WSACleanup();
-#endif
 }
 
 void PlasmaStoreRunner::Stop() {
-  store_->Stop();
+  absl::MutexLock lock(&store_runner_mutex_);
+  if (store_) {
+    store_->Stop();
+  }
   main_service_.stop();
 }
 
 void PlasmaStoreRunner::Shutdown() {
-  store_->Stop();
-  store_ = nullptr;
+  absl::MutexLock lock(&store_runner_mutex_);
+  if (store_) {
+    store_->Stop();
+    store_ = nullptr;
+  }
 }
 
 std::unique_ptr<PlasmaStoreRunner> plasma_store_runner;

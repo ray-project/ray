@@ -378,9 +378,8 @@ def postprocess_nstep_and_prio(policy, batch, other_agent=None, episode=None):
             batch[SampleBatch.CUR_OBS], batch[SampleBatch.ACTIONS],
             batch[SampleBatch.REWARDS], batch[SampleBatch.NEXT_OBS],
             batch[SampleBatch.DONES], batch[PRIO_WEIGHTS])
-        new_priorities = (
-            np.abs(convert_to_numpy(td_errors)) +
-            policy.config["prioritized_replay_eps"])
+        new_priorities = (np.abs(convert_to_numpy(td_errors)) +
+                          policy.config["prioritized_replay_eps"])
         batch.data[PRIO_WEIGHTS] = new_priorities
 
     return batch
