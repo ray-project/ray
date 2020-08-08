@@ -3,9 +3,6 @@ import glob
 import logging
 import os
 
-from ray.tune.trial import Trial
-from ray.tune.utils import merge_dicts, flatten_dict
-
 logger = logging.getLogger(__name__)
 
 

@@ -1,16 +1,11 @@
 import argparse
 
-import ray
-import numpy as np
-import time
-import json
-import os
-from ray.tune import run, Trainable
+from ray.tune import run
 from ray.tune.examples.async_hyperband_example import MyTrainableClass
 from ray.tune.suggest.hyperopt import HyperOptSearch
 from ray.tune.suggest.suggestion import ConcurrencyLimiter
-from hyperopt import hp
 
+from hyperopt import hp
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(

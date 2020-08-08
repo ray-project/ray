@@ -169,8 +169,8 @@ class SearchGenerator(SearchAlgorithm):
             searcher_name = type(searcher).__name__
             if searcher_name in search_alg_state:
                 logger.warning(
-                    "There was a duplicate when saving {}. Restore may not work properly.".
-                    format(searcher_name))
+                    "There was a duplicate when saving {}. "
+                    "Restore may not work properly.".format(searcher_name))
             else:
                 search_alg_state["name:" +
                                  searcher_name] = searcher.get_state()
@@ -197,9 +197,9 @@ class SearchGenerator(SearchAlgorithm):
                     key.split("name:")[1] for key in search_alg_state
                     if key.startswith("name:")
                 ]
-                logger.warning(
-                    "{} was not found in the experiment checkpoint state when restoring. Found {}.".
-                    format(searcher_name, names))
+                logger.warning("{} was not found in the experiment checkpoint "
+                               "state when restoring. Found {}.".format(
+                                   searcher_name, names))
             searcher.set_state(search_alg_state.pop(searcher_name))
             searcher = self.searcher.searcher
         base_searcher = searcher

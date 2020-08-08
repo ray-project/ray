@@ -3,7 +3,6 @@ import logging
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list, Experiment
 from ray.tune.analysis import ExperimentAnalysis
-from ray.tune.result import STDOUT_FILE, STDERR_FILE
 from ray.tune.suggest import BasicVariantGenerator, SearchGenerator
 from ray.tune.suggest.suggestion import Searcher
 from ray.tune.trial import Trial

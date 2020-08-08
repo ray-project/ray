@@ -729,13 +729,12 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir):
     from ray.tune import register_trainable
     register_trainable("trainable", MyTrainableClass)
 
-
     def execute_script_with_args(*args):
         current_dir = os.path.dirname(__file__)
         script = os.path.join(current_dir,
                               "_test_cluster_interrupt_searcher.py")
         print(args)
-        proc = subprocess.Popen([sys.executable, script] + list(args))
+        subprocess.Popen([sys.executable, script] + list(args))
 
     args = ["--ray-address", cluster.address, "--local-dir", dirpath]
     execute_script_with_args(*args)
