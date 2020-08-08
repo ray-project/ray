@@ -66,7 +66,7 @@ class SearchAlgorithm:
     def has_checkpoint(self, dirpath):
         return False
 
-    def save_to_dir(self, dirpath):
+    def save_to_dir(self, dirpath, **kwargs):
         pass
 
     def restore(self, dirpath):
