@@ -28,7 +28,6 @@ namespace rpc {
   RPC_SERVICE_HANDLER(NodeManagerService, ReturnWorker)           \
   RPC_SERVICE_HANDLER(NodeManagerService, ReleaseUnusedWorkers)   \
   RPC_SERVICE_HANDLER(NodeManagerService, CancelWorkerLease)      \
-  RPC_SERVICE_HANDLER(NodeManagerService, ForwardTask)            \
   RPC_SERVICE_HANDLER(NodeManagerService, PinObjectIDs)           \
   RPC_SERVICE_HANDLER(NodeManagerService, GetNodeStats)           \
   RPC_SERVICE_HANDLER(NodeManagerService, GlobalGC)               \
@@ -75,10 +74,6 @@ class NodeManagerServiceHandler {
       const rpc::CancelResourceReserveRequest &request,
       rpc::CancelResourceReserveReply *reply,
       rpc::SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleForwardTask(const ForwardTaskRequest &request,
-                                 ForwardTaskReply *reply,
-                                 SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandlePinObjectIDs(const PinObjectIDsRequest &request,
                                   PinObjectIDsReply *reply,

@@ -7,6 +7,7 @@ import {
   ExpandableStyledTableCell,
   StyledTableCell,
 } from "../../../common/TableCell";
+import ExpanderRow from "./ExpanderRow";
 import MemorySummary from "./MemorySummary";
 import { MemoryTableRow } from "./MemoryTableRow";
 
@@ -32,6 +33,7 @@ type MemoryRowGroupProps = {
   summary: MemoryTableSummary;
   entries: MemoryTableEntry[];
   initialExpanded: boolean;
+  initialVisibleEntries: number;
 };
 
 const MemoryRowGroup: React.FC<MemoryRowGroupProps> = ({
@@ -39,9 +41,11 @@ const MemoryRowGroup: React.FC<MemoryRowGroupProps> = ({
   entries,
   summary,
   initialExpanded,
+  initialVisibleEntries,
 }) => {
   const classes = useMemoryRowGroupStyles();
   const [expanded, setExpanded] = useState(initialExpanded);
+  const [visibleEntries, setVisibleEntries] = useState(initialVisibleEntries);
   const toggleExpanded = () => setExpanded(!expanded);
 
   const features = [
@@ -74,7 +78,7 @@ const MemoryRowGroup: React.FC<MemoryRowGroupProps> = ({
       {expanded && (
         <React.Fragment>
           <MemorySummary initialExpanded={false} memoryTableSummary={summary} />
-          {entries.map((memoryTableEntry, index) => {
+          {entries.slice(0, visibleEntries).map((memoryTableEntry, index) => {
             return (
               <MemoryTableRow
                 memoryTableEntry={memoryTableEntry}
@@ -82,6 +86,9 @@ const MemoryRowGroup: React.FC<MemoryRowGroupProps> = ({
               />
             );
           })}
+          <ExpanderRow
+            onExpand={() => setVisibleEntries(visibleEntries + 10)}
+          />
         </React.Fragment>
       )}
     </React.Fragment>

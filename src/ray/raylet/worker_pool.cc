@@ -54,9 +54,8 @@ namespace ray {
 
 namespace raylet {
 
-/// A constructor that initializes a worker pool with num_workers workers for
-/// each language.
 WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
+                       int num_initial_python_workers_for_first_job,
                        int maximum_startup_concurrency, int min_worker_port,
                        int max_worker_port, std::shared_ptr<gcs::GcsClient> gcs_client,
                        const WorkerCommandMap &worker_commands,
@@ -66,7 +65,12 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
       maximum_startup_concurrency_(maximum_startup_concurrency),
       gcs_client_(std::move(gcs_client)),
       raylet_config_(raylet_config),
-      starting_worker_timeout_callback_(starting_worker_timeout_callback) {
+      starting_worker_timeout_callback_(starting_worker_timeout_callback),
+      first_job_registered_python_worker_count_(0),
+      first_job_driver_wait_num_python_workers_(std::min(
+          num_initial_python_workers_for_first_job, maximum_startup_concurrency)),
+      num_initial_python_workers_for_first_job_(
+          num_initial_python_workers_for_first_job) {
   RAY_CHECK(maximum_startup_concurrency > 0);
 #ifndef _WIN32
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
@@ -76,25 +80,29 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
   for (const auto &entry : worker_commands) {
     // Initialize the pool state for this language.
     auto &state = states_by_lang_[entry.first];
-    switch (entry.first) {
-    case Language::PYTHON:
-      state.num_workers_per_process =
-          RayConfig::instance().num_workers_per_process_python();
-      break;
-    case Language::JAVA:
-      state.num_workers_per_process =
-          RayConfig::instance().num_workers_per_process_java();
-      break;
-    default:
-      RAY_LOG(FATAL) << "The number of workers per process for "
-                     << Language_Name(entry.first) << " worker is not set.";
+    if (!RayConfig::instance().enable_multi_tenancy()) {
+      switch (entry.first) {
+      case Language::PYTHON:
+        state.num_workers_per_process =
+            RayConfig::instance().num_workers_per_process_python();
+        break;
+      case Language::JAVA:
+        state.num_workers_per_process =
+            RayConfig::instance().num_workers_per_process_java();
+        break;
+      default:
+        RAY_LOG(FATAL) << "The number of workers per process for "
+                       << Language_Name(entry.first) << " worker is not set.";
+      }
+      RAY_CHECK(state.num_workers_per_process > 0)
+          << "Number of workers per process of language " << Language_Name(entry.first)
+          << " must be positive.";
+      state.multiple_for_warning =
+          std::max(state.num_workers_per_process,
+                   std::max(num_workers, maximum_startup_concurrency));
+    } else {
+      state.multiple_for_warning = maximum_startup_concurrency;
     }
-    RAY_CHECK(state.num_workers_per_process > 0)
-        << "Number of workers per process of language " << Language_Name(entry.first)
-        << " must be positive.";
-    state.multiple_for_warning =
-        std::max(state.num_workers_per_process,
-                 std::max(num_workers, maximum_startup_concurrency));
     // Set worker command for this language.
     state.worker_command = entry.second;
     RAY_CHECK(!state.worker_command.empty()) << "Worker command must not be empty.";
@@ -111,16 +119,19 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
       free_ports_->push(port);
     }
   }
-  Start(num_workers);
+  if (!RayConfig::instance().enable_multi_tenancy()) {
+    Start(num_workers);
+  }
 }
 
 void WorkerPool::Start(int num_workers) {
+  RAY_CHECK(!RayConfig::instance().enable_multi_tenancy());
   for (auto &entry : states_by_lang_) {
     auto &state = entry.second;
     int num_worker_processes = static_cast<int>(
         std::ceil(static_cast<double>(num_workers) / state.num_workers_per_process));
     for (int i = 0; i < num_worker_processes; i++) {
-      StartWorkerProcess(entry.first);
+      StartWorkerProcess(entry.first, JobID::Nil());
     }
   }
 }
@@ -154,8 +165,20 @@ uint32_t WorkerPool::Size(const Language &language) const {
   }
 }
 
-Process WorkerPool::StartWorkerProcess(const Language &language,
-                                       const std::vector<std::string> &dynamic_options) {
+Process WorkerPool::StartWorkerProcess(const Language &language, const JobID &job_id,
+                                       std::vector<std::string> dynamic_options) {
+  rpc::JobConfig *job_config = nullptr;
+  if (RayConfig::instance().enable_multi_tenancy()) {
+    RAY_CHECK(!job_id.IsNil());
+    auto it = unfinished_jobs_.find(job_id);
+    if (it == unfinished_jobs_.end()) {
+      RAY_LOG(DEBUG) << "Job config of job " << job_id << " are not local yet.";
+      // Will reschedule ready tasks in `NodeManager::HandleJobStarted`.
+      return Process();
+    }
+    job_config = &it->second;
+  }
+
   auto &state = GetStateForLanguage(language);
   // If we are already starting up too many workers, then return without starting
   // more.
@@ -175,11 +198,21 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
                  << state.idle_actor.size() << " actor workers, and " << state.idle.size()
                  << " non-actor workers";
 
-  int workers_to_start;
+  int workers_to_start = 1;
   if (dynamic_options.empty()) {
-    workers_to_start = state.num_workers_per_process;
-  } else {
-    workers_to_start = 1;
+    if (!RayConfig::instance().enable_multi_tenancy()) {
+      workers_to_start = state.num_workers_per_process;
+    } else if (language == Language::JAVA) {
+      workers_to_start = job_config->num_java_workers_per_process();
+    }
+  }
+
+  if (RayConfig::instance().enable_multi_tenancy() &&
+      !job_config->jvm_options().empty()) {
+    // Note that we push the item to the front of the vector to make
+    // sure this is the freshest option than others.
+    dynamic_options.insert(dynamic_options.begin(), job_config->jvm_options().begin(),
+                           job_config->jvm_options().end());
   }
 
   // Extract pointers from the worker command to pass into execvp.
@@ -216,12 +249,17 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
           arg.append(entry.second);
           worker_command_args.push_back(arg);
         }
-        // The value of `num_workers_per_process_java` may change depends on whether
-        // dynamic options is empty, so we can't use the value in `RayConfig`. We always
-        // overwrite the value here.
-        worker_command_args.push_back(
-            "-Dray.raylet.config.num_workers_per_process_java=" +
-            std::to_string(workers_to_start));
+        if (!RayConfig::instance().enable_multi_tenancy()) {
+          // The value of `num_workers_per_process_java` may change depends on whether
+          // dynamic options is empty, so we can't use the value in `RayConfig`. We always
+          // overwrite the value here.
+          worker_command_args.push_back(
+              "-Dray.raylet.config.num_workers_per_process_java=" +
+              std::to_string(workers_to_start));
+        } else {
+          worker_command_args.push_back("-Dray.job.num-java-workers-per-process=" +
+                                        std::to_string(workers_to_start));
+        }
         break;
       default:
         RAY_LOG(FATAL)
@@ -241,7 +279,14 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
         << " placeholder is not found in worker command.";
   }
 
+  // TODO(kfstorm): Set up environment variables in a later PR.
   Process proc = StartProcess(worker_command_args);
+  if (RayConfig::instance().enable_multi_tenancy()) {
+    // If the pid is reused between processes, the old process must have exited.
+    // So it's safe to bind the pid with another job ID.
+    RAY_LOG(DEBUG) << "Worker process " << proc.GetId() << " is bound to job " << job_id;
+    state.worker_pids_to_assigned_jobs[proc.GetId()] = job_id;
+  }
   RAY_LOG(DEBUG) << "Started worker process of " << workers_to_start
                  << " worker(s) with pid " << proc.GetId();
   MonitorStartingWorkerProcess(proc, language);
@@ -327,34 +372,120 @@ void WorkerPool::MarkPortAsFree(int port) {
   }
 }
 
+void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job_config) {
+  unfinished_jobs_[job_id] = job_config;
+}
+
+void WorkerPool::HandleJobFinished(const JobID &job_id) {
+  unfinished_jobs_.erase(job_id);
+}
+
 Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
-                                  pid_t pid, int *port) {
+                                  pid_t pid,
+                                  std::function<void(int)> send_reply_callback) {
+  RAY_CHECK(worker);
+
+  // The port that this worker's gRPC server should listen on. 0 if the worker
+  // should bind on a random port.
+  int port;
+  Status status;
+
   auto &state = GetStateForLanguage(worker->GetLanguage());
   auto it = state.starting_worker_processes.find(Process::FromPid(pid));
   if (it == state.starting_worker_processes.end()) {
     RAY_LOG(WARNING) << "Received a register request from an unknown worker " << pid;
-    return Status::Invalid("Unknown worker");
-  }
-  RAY_RETURN_NOT_OK(GetNextFreePort(port));
-  RAY_LOG(DEBUG) << "Registering worker with pid " << pid << ", port: " << *port;
-  worker->SetAssignedPort(*port);
-  worker->SetProcess(it->first);
-  it->second--;
-  if (it->second == 0) {
-    state.starting_worker_processes.erase(it);
+    // Return -1 to signal to the worker that registration failed.
+    port = -1;
+    status = Status::Invalid("Unknown worker");
+  } else {
+    RAY_RETURN_NOT_OK(GetNextFreePort(&port));
+    RAY_LOG(DEBUG) << "Registering worker with pid " << pid << ", port: " << port;
+    worker->SetAssignedPort(port);
+    worker->SetProcess(it->first);
+    it->second--;
+    if (it->second == 0) {
+      state.starting_worker_processes.erase(it);
+    }
+
+    RAY_CHECK(worker->GetProcess().GetId() == pid);
+    state.registered_workers.insert(worker);
+
+    if (RayConfig::instance().enable_multi_tenancy()) {
+      auto dedicated_workers_it = state.worker_pids_to_assigned_jobs.find(pid);
+      RAY_CHECK(dedicated_workers_it != state.worker_pids_to_assigned_jobs.end());
+      auto job_id = dedicated_workers_it->second;
+      worker->AssignJobId(job_id);
+      // We don't call state.worker_pids_to_assigned_jobs.erase(job_id) here
+      // because we allow multi-workers per worker process.
+
+      // This is a workaround to finish driver registration after all initial workers are
+      // registered to Raylet if and only if Raylet is started by a Python driver and the
+      // job config is not set in `ray.init(...)`.
+      if (first_job_ == job_id && worker->GetLanguage() == Language::PYTHON) {
+        if (++first_job_registered_python_worker_count_ ==
+            first_job_driver_wait_num_python_workers_) {
+          if (first_job_send_register_client_reply_to_driver_) {
+            first_job_send_register_client_reply_to_driver_();
+            first_job_send_register_client_reply_to_driver_ = nullptr;
+          }
+        }
+      }
+    }
+
+    status = Status::OK();
   }
 
-  state.registered_workers.emplace(std::move(worker));
-  return Status::OK();
+  // Send the reply immediately for worker registrations.
+  if (send_reply_callback) {
+    send_reply_callback(port);
+  }
+  return status;
 }
 
 Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver,
-                                  int *port) {
+                                  const JobID &job_id, const rpc::JobConfig &job_config,
+                                  std::function<void(int)> send_reply_callback) {
+  int port;
   RAY_CHECK(!driver->GetAssignedTaskId().IsNil());
-  RAY_RETURN_NOT_OK(GetNextFreePort(port));
-  driver->SetAssignedPort(*port);
+  RAY_RETURN_NOT_OK(GetNextFreePort(&port));
+  driver->SetAssignedPort(port);
   auto &state = GetStateForLanguage(driver->GetLanguage());
   state.registered_drivers.insert(std::move(driver));
+  driver->AssignJobId(job_id);
+  unfinished_jobs_[job_id] = job_config;
+
+  if (send_reply_callback) {
+    // This is a workaround to start initial workers on this node if and only if Raylet is
+    // started by a Python driver and the job config is not set in `ray.init(...)`.
+    // Invoke the `send_reply_callback` later to only finish driver
+    // registration after all initial workers are registered to Raylet.
+    bool delay_callback = false;
+    // Multi-tenancy is enabled.
+    if (RayConfig().instance().enable_multi_tenancy()) {
+      // If this is the first job.
+      if (first_job_.IsNil()) {
+        first_job_ = job_id;
+        // If the number of Python workers we need to wait is positive.
+        if (num_initial_python_workers_for_first_job_ > 0) {
+          delay_callback = true;
+          // Start initial Python workers for the first job.
+          for (int i = 0; i < num_initial_python_workers_for_first_job_; i++) {
+            StartWorkerProcess(Language::PYTHON, job_id);
+          }
+        }
+      }
+    }
+
+    if (delay_callback) {
+      RAY_CHECK(!first_job_send_register_client_reply_to_driver_);
+      first_job_send_register_client_reply_to_driver_ = [send_reply_callback, port]() {
+        send_reply_callback(port);
+      };
+    } else {
+      send_reply_callback(port);
+    }
+  }
+
   return Status::OK();
 }
 
@@ -424,8 +555,8 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
     } else if (!HasPendingWorkerForTask(task_spec.GetLanguage(), task_spec.TaskId())) {
       // We are not pending a registration from a worker for this task,
       // so start a new worker process for this task.
-      proc =
-          StartWorkerProcess(task_spec.GetLanguage(), task_spec.DynamicWorkerOptions());
+      proc = StartWorkerProcess(task_spec.GetLanguage(), task_spec.JobId(),
+                                task_spec.DynamicWorkerOptions());
       if (proc.IsValid()) {
         state.dedicated_workers_to_tasks[proc] = task_spec.TaskId();
         state.tasks_to_dedicated_workers[task_spec.TaskId()] = proc;
@@ -433,13 +564,30 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
     }
   } else if (!task_spec.IsActorTask()) {
     // Code path of normal task or actor creation task without dynamic worker options.
-    if (!state.idle.empty()) {
-      worker = std::move(*state.idle.begin());
-      state.idle.erase(state.idle.begin());
+    if (!RayConfig::instance().enable_multi_tenancy()) {
+      if (!state.idle.empty()) {
+        worker = std::move(*state.idle.begin());
+        state.idle.erase(state.idle.begin());
+      } else {
+        // There are no more non-actor workers available to execute this task.
+        // Start a new worker process.
+        proc = StartWorkerProcess(task_spec.GetLanguage(), JobID::Nil());
+      }
     } else {
-      // There are no more non-actor workers available to execute this task.
-      // Start a new worker process.
-      proc = StartWorkerProcess(task_spec.GetLanguage());
+      // Find an available worker which is already assigned to this job.
+      for (auto it = state.idle.begin(); it != state.idle.end(); it++) {
+        if ((*it)->GetAssignedJobId() != task_spec.JobId()) {
+          continue;
+        }
+        worker = std::move(*it);
+        state.idle.erase(it);
+        break;
+      }
+      if (worker == nullptr) {
+        // There are no more non-actor workers available to execute this task.
+        // Start a new worker process.
+        proc = StartWorkerProcess(task_spec.GetLanguage(), task_spec.JobId());
+      }
     }
   } else {
     // Code path of actor task.
@@ -455,6 +603,9 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
     WarnAboutSize();
   }
 
+  if (RayConfig::instance().enable_multi_tenancy() && worker) {
+    RAY_CHECK(worker->GetAssignedJobId() == task_spec.JobId());
+  }
   return worker;
 }
 

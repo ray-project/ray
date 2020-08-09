@@ -20,16 +20,21 @@
 
 namespace ray {
 class GcsNodeManagerTest : public ::testing::Test {
+ public:
+  GcsNodeManagerTest() {
+    gcs_pub_sub_ = std::make_shared<GcsServerMocker::MockGcsPubSub>(redis_client_);
+  }
+
  protected:
-  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
+  std::shared_ptr<GcsServerMocker::MockGcsPubSub> gcs_pub_sub_;
+  std::shared_ptr<gcs::RedisClient> redis_client_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
 };
 
 TEST_F(GcsNodeManagerTest, TestManagement) {
   boost::asio::io_service io_service;
-  auto error_info_accessor = GcsServerMocker::MockedErrorInfoAccessor();
-  gcs::GcsNodeManager node_manager(io_service, io_service, error_info_accessor,
-                                   gcs_pub_sub_, gcs_table_storage_);
+  gcs::GcsNodeManager node_manager(io_service, io_service, gcs_pub_sub_,
+                                   gcs_table_storage_);
   // Test Add/Get/Remove functionality.
   auto node = Mocker::GenNodeInfo();
   auto node_id = ClientID::FromBinary(node->node_id());
@@ -43,9 +48,8 @@ TEST_F(GcsNodeManagerTest, TestManagement) {
 
 TEST_F(GcsNodeManagerTest, TestListener) {
   boost::asio::io_service io_service;
-  auto error_info_accessor = GcsServerMocker::MockedErrorInfoAccessor();
-  gcs::GcsNodeManager node_manager(io_service, io_service, error_info_accessor,
-                                   gcs_pub_sub_, gcs_table_storage_);
+  gcs::GcsNodeManager node_manager(io_service, io_service, gcs_pub_sub_,
+                                   gcs_table_storage_);
   // Test AddNodeAddedListener.
   int node_count = 1000;
   std::vector<std::shared_ptr<rpc::GcsNodeInfo>> added_nodes;

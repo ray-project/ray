@@ -41,12 +41,6 @@ class NodeManagerClient {
         new GrpcClient<NodeManagerService>(address, port, client_call_manager));
   };
 
-  /// Forward a task and its uncommitted lineage.
-  ///
-  /// \param[in] request The request message.
-  /// \param[in] callback The callback function that handles reply.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService, ForwardTask, grpc_client_, )
-
   /// Get current node stats.
   VOID_RPC_CLIENT_METHOD(NodeManagerService, GetNodeStats, grpc_client_, )
 

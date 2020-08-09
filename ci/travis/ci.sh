@@ -155,6 +155,7 @@ test_python() {
       -python/ray/tests:test_object_manager
       -python/ray/tests:test_projects
       -python/ray/tests:test_ray_init  # test_redis_port() seems to fail here, but pass in isolation
+      -python/ray/tests:test_resource_demand_scheduler
       -python/ray/tests:test_stress  # timeout
       -python/ray/tests:test_stress_sharded  # timeout
       -python/ray/tests:test_webui
@@ -281,12 +282,13 @@ build_wheels() {
         -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST:-false}"
         -e encrypted_1c30b31fe1ee_key="${encrypted_1c30b31fe1ee_key-}"
         -e encrypted_1c30b31fe1ee_iv="${encrypted_1c30b31fe1ee_iv-}"
+        -e TRAVIS_COMMIT="${TRAVIS_COMMIT}"
+        -e CI="${CI}"
       )
 
       # This command should be kept in sync with ray/python/README-building-wheels.md,
       # except the "${MOUNT_BAZEL_CACHE[@]}" part.
       suppress_output docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
-        -e TRAVIS_COMMIT="${TRAVIS_COMMIT}" \
         rayproject/arrow_linux_x86_64_base:python-3.8.0 /ray/python/build-wheel-manylinux1.sh
       ;;
     darwin*)
@@ -311,7 +313,7 @@ lint_readme() {
 }
 
 lint_scripts() {
-  "${ROOT_DIR}"/format.sh --all
+  FORMAT_SH_PRINT_DIFF=1 "${ROOT_DIR}"/format.sh --all
 }
 
 lint_bazel() {

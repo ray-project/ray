@@ -205,10 +205,6 @@ struct GcsServerMocker {
       lease_client_factory_ = std::move(lease_client_factory);
     }
 
-    void ResetClientFactory(rpc::ClientFactoryFn client_factory) {
-      client_factory_ = std::move(client_factory);
-    }
-
     void TryLeaseWorkerFromNodeAgain(std::shared_ptr<gcs::GcsActor> actor,
                                      std::shared_ptr<rpc::GcsNodeInfo> node) {
       DoRetryLeasingWorkerFromNode(std::move(actor), std::move(node));
@@ -367,17 +363,6 @@ struct GcsServerMocker {
     }
 
     void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
-  };
-
-  class MockedErrorInfoAccessor : public gcs::ErrorInfoAccessor {
-   public:
-    Status AsyncReportJobError(const std::shared_ptr<rpc::ErrorTableData> &data_ptr,
-                               const gcs::StatusCallback &callback) override {
-      if (callback) {
-        callback(Status::OK());
-      }
-      return Status::OK();
-    }
   };
 
   class MockGcsPubSub : public gcs::GcsPubSub {

@@ -34,8 +34,8 @@ def minimize_and_clip(optimizer, objective, var_list, clip_val=10.0):
 
     if tf.executing_eagerly():
         tape = optimizer.tape
-        grads_and_vars = list(zip(list(
-            tape.gradient(objective, var_list)), var_list))
+        grads_and_vars = list(
+            zip(list(tape.gradient(objective, var_list)), var_list))
     else:
         grads_and_vars = optimizer.compute_gradients(
             objective, var_list=var_list)
