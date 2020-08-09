@@ -22,9 +22,13 @@
 #include <boost/date_time/posix_time/posix_time_types.hpp>
 #include <boost/system/error_code.hpp>
 
+#ifndef _WIN32
+
 #include <ifaddrs.h>
 #include <netinet/in.h> 
 #include <arpa/inet.h>
+
+#endif
 
 #include "ray/common/constants.h"
 
@@ -123,6 +127,10 @@ std::string GetValidLocalIp(int port, int64_t timeout_ms);
 
 /// A helper function to get IPs from local interfaces.
 /// It also filters out docker and loopback interfaces.
+/// If running on Windows, uses boost to try to resolve hostname
+/// and don't filter candidates.
+///
+/// \return A vector with valid local IP candidates
 std::vector<boost::asio::ip::address> GetValidLocalIpCandidates();
 
 /// A helper function to test whether target rpc server is valid.

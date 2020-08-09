@@ -16,6 +16,9 @@
 
 #include "ray/util/logging.h"
 
+
+#ifndef _WIN32
+
 std::vector<boost::asio::ip::address> GetValidLocalIpCandidates() {
   struct ifaddrs *nics_info = nullptr;
   getifaddrs(&nics_info);
@@ -49,6 +52,34 @@ std::vector<boost::asio::ip::address> GetValidLocalIpCandidates() {
   return candidates;
 }
 
+#else
+
+std::vector<boost::asio::ip::address> GetValidLocalIpCandidates() {
+  boost::asio::ip::detail::endpoint primary_endpoint;
+  boost::asio::io_context io_context;
+  boost::asio::ip::tcp::resolver resolver(io_context);
+  boost::asio::ip::tcp::resolver::query query(
+      boost::asio::ip::host_name(), "",
+      boost::asio::ip::resolver_query_base::flags::v4_mapped);
+
+  boost::asio::ip::tcp::resolver::iterator iter = resolver.resolve(query);
+  boost::asio::ip::tcp::resolver::iterator end;  // End marker.
+
+  std::vector<boost::asio::ip::address> candidates;
+  for (; iter != end; iter++) {
+    boost::asio::ip::tcp::endpoint ep = iter->endpoint();
+
+    if (ep.address().is_v4() && !ep.address().is_loopback() &&
+        !ep.address().is_multicast()) {
+      candidates.push_back(ep.address());
+    }
+  }
+
+  return candidates;
+}
+
+#endif
+
 std::string GetValidLocalIp(int port, int64_t timeout_ms) {
   AsyncClient async_client;
   boost::system::error_code error_code;
@@ -71,7 +102,7 @@ std::string GetValidLocalIp(int port, int64_t timeout_ms) {
 
         for (unsigned int i = 0; i < ip_candidates.size(); ++i) {
           primary_endpoint.address(ip_candidates[i]);
-
+          
           AsyncClient client;
           if (client.Connect(primary_endpoint.address().to_string(), port, timeout_ms,
                              &is_timeout)) {
