@@ -14,11 +14,17 @@
 
 #pragma once
 
+#include <string>
+
 #include <boost/asio.hpp>
 #include <boost/asio/deadline_timer.hpp>
 #include <boost/bind.hpp>
 #include <boost/date_time/posix_time/posix_time_types.hpp>
 #include <boost/system/error_code.hpp>
+
+#include <ifaddrs.h>
+#include <netinet/in.h> 
+#include <arpa/inet.h>
 
 #include "ray/common/constants.h"
 
@@ -114,6 +120,10 @@ class AsyncClient {
 /// \param timeout_ms The maximum wait time in milliseconds.
 /// \return A valid local ip.
 std::string GetValidLocalIp(int port, int64_t timeout_ms);
+
+/// A helper function to get IPs from local interfaces.
+/// It also filters out docker and loopback interfaces.
+std::vector<boost::asio::ip::address> GetValidLocalIpCandidates();
 
 /// A helper function to test whether target rpc server is valid.
 ///

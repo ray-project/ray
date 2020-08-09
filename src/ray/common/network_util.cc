@@ -16,49 +16,75 @@
 
 #include "ray/util/logging.h"
 
+std::vector<boost::asio::ip::address> GetValidLocalIpCandidates() {
+  struct ifaddrs *nics_info = nullptr;
+  getifaddrs(&nics_info);
+
+  std::vector<std::pair<std::string, std::string>> nics_ips;
+
+  struct ifaddrs *nic_info = nullptr;
+  for (nic_info = nics_info; nic_info != nullptr; nic_info = nic_info->ifa_next) {
+
+    if (nic_info->ifa_addr->sa_family==AF_INET) {
+      void *addr = &((struct sockaddr_in *) nic_info->ifa_addr)->sin_addr;
+
+      char ip[INET_ADDRSTRLEN];
+      inet_ntop(AF_INET, addr, ip, INET_ADDRSTRLEN);
+
+      nics_ips.push_back(std::make_pair(std::string(nic_info->ifa_name), std::string(ip)));
+    }
+  }
+  freeifaddrs(nics_info);
+
+  std::vector<boost::asio::ip::address> candidates;
+  for(unsigned int i = 0; i < nics_ips.size(); ++i) {
+    boost::asio::ip::address boost_addr = boost::asio::ip::make_address(nics_ips[i].second);
+
+    if (nics_ips[i].first.find("docker") == std::string::npos
+          && !boost_addr.is_loopback()) {
+      candidates.push_back(boost_addr);
+    }
+  }
+
+  return candidates;
+}
+
 std::string GetValidLocalIp(int port, int64_t timeout_ms) {
   AsyncClient async_client;
   boost::system::error_code error_code;
   std::string address;
   bool is_timeout;
+
   if (async_client.Connect(kPublicDNSServerIp, kPublicDNSServerPort, timeout_ms,
                            &is_timeout, &error_code)) {
+    
     address = async_client.GetLocalIPAddress();
   } else {
     address = "127.0.0.1";
 
     if (is_timeout || error_code == boost::system::errc::host_unreachable) {
       boost::asio::ip::detail::endpoint primary_endpoint;
-      boost::asio::io_context io_context;
-      boost::asio::ip::tcp::resolver resolver(io_context);
-      boost::asio::ip::tcp::resolver::query query(
-          boost::asio::ip::host_name(), "",
-          boost::asio::ip::resolver_query_base::flags::v4_mapped);
-      boost::asio::ip::tcp::resolver::iterator iter = resolver.resolve(query, error_code);
-      boost::asio::ip::tcp::resolver::iterator end;  // End marker.
-      if (!error_code) {
-        while (iter != end) {
-          boost::asio::ip::tcp::endpoint ep = *iter;
-          if (ep.address().is_v4() && !ep.address().is_loopback() &&
-              !ep.address().is_multicast()) {
-            primary_endpoint.address(ep.address());
-            primary_endpoint.port(ep.port());
+      bool failed = true;
 
-            AsyncClient client;
-            if (client.Connect(primary_endpoint.address().to_string(), port, timeout_ms,
-                               &is_timeout)) {
-              break;
-            }
+      if (!error_code) {
+        std::vector<boost::asio::ip::address> ip_candidates = GetValidLocalIpCandidates();
+
+        for (unsigned int i = 0; i < ip_candidates.size(); ++i) {
+          primary_endpoint.address(ip_candidates[i]);
+
+          AsyncClient client;
+          if (client.Connect(primary_endpoint.address().to_string(), port, timeout_ms,
+                             &is_timeout)) {
+            failed = false;
+            break;
           }
-          iter++;
         }
       } else {
         RAY_LOG(WARNING) << "Failed to resolve ip address, error = "
                          << strerror(error_code.value());
-        iter = end;
       }
 
-      if (iter != end) {
+      if (!failed) {
         address = primary_endpoint.address().to_string();
       }
     }
