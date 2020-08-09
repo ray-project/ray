@@ -11,7 +11,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="PyTorch Example (FOR TEST ONLY)")
     parser.add_argument(
-        "--resume", action="store_true", help="Finish quickly for testing")
+        "--resume", action="store_true", help="Resuming from checkpoint.")
     parser.add_argument("--local-dir", help="Checkpoint path")
     parser.add_argument(
         "--ray-address",
