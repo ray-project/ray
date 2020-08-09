@@ -44,7 +44,7 @@ class _TrialGroup:
 
     def add(self, trial_id):
         assert len(self._trials) < self.max_trials
-        self._trials[trial_id] = None
+        self._trials.setdefault(trial_id, None)
 
     def full(self):
         return len(self._trials) == self.max_trials
@@ -56,7 +56,8 @@ class _TrialGroup:
         self._trials[trial_id] = score
 
     def finished_reporting(self):
-        return None not in self._trials.values()
+        return None not in self._trials.values() and len(
+            self._trials) == self.max_trials
 
     def scores(self):
         return list(self._trials.values())
@@ -101,11 +102,6 @@ class Repeater(Searcher):
         tune.run(trainable, num_samples=20, search_alg=re_search_alg)
 
     """
-
-    __slots__ = [
-        "searcher", "repeat", "_set_index", "_groups", "_trial_id_to_group",
-        "_current_group"
-    ]
 
     def __init__(self, searcher, repeat=1, set_index=True):
         self.searcher = searcher
@@ -165,13 +161,9 @@ class Repeater(Searcher):
                 **kwargs)
 
     def get_state(self):
-        state = self.searcher.get_state()
         self_state = self.__dict__.copy()
         del self_state["searcher"]
-        state.update({"repeater_state": copy.deepcopy(self_state)})
-        return state
+        return self_state
 
     def set_state(self, state):
-        self_state = state.pop("repeater_state")
-        self.__dict__.update(self_state)
-        self.searcher.set_state(state)
+        self.__dict__.update(state)

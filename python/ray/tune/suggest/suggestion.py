@@ -3,6 +3,8 @@ import glob
 import logging
 import os
 
+from ray.util.debug import log_once
+
 logger = logging.getLogger(__name__)
 
 
@@ -185,7 +187,8 @@ class Searcher:
         try:
             self.save(tmp_search_ckpt_path)
         except NotImplementedError as e:
-            logger.warning(e)
+            with log_once("suggest:save_to_dir"):
+                logger.warning("save not implemented for Searcher. Skipping save." )
             success = False
 
         if success and os.path.exists(tmp_search_ckpt_path):
@@ -261,7 +264,13 @@ class ConcurrencyLimiter(Searcher):
             metric=self.searcher.metric, mode=self.searcher.mode)
 
     def suggest(self, trial_id):
+        assert trial_id not in self.live_trials, (
+            f"Trial ID {trial_id} must be unique: already found in set.")
         if len(self.live_trials) >= self.max_concurrent:
+            logger.debug(
+                f"Not providing a suggestion for {trial_id} due to "
+                "concurrency limit: %s/%s.", len(self.live_trials),
+                self.max_concurrent)
             return
         suggestion = self.searcher.suggest(trial_id)
         if suggestion not in (None, Searcher.FINISHED):
@@ -277,13 +286,9 @@ class ConcurrencyLimiter(Searcher):
             self.live_trials.remove(trial_id)
 
     def get_state(self):
-        state = self.searcher.get_state()
-        self_state = self.__dict__.copy()
-        del self_state["searcher"]
-        state["concurrency_limiter"] = copy.deepcopy(self_state)
-        return state
+        state = self.__dict__.copy()
+        del state["searcher"]
+        return copy.deepcopy(state)
 
     def set_state(self, state):
-        self_state = state.pop("concurrency_limiter")
-        self.__dict__.update(self_state)
-        self.searcher.set_state(state)
+        self.__dict__.update(state)

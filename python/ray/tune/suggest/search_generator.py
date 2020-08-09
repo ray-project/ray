@@ -162,7 +162,6 @@ class SearchGenerator(SearchAlgorithm):
             _find_newest_ckpt(dirpath, self.CKPT_FILE_TMPL.format("*")))
 
     def save_to_dir(self, dirpath, session_str):
-        # save your own stuff to dir
         searcher = self.searcher
         search_alg_state = self.get_state()
         while hasattr(searcher, "searcher"):
@@ -174,7 +173,7 @@ class SearchGenerator(SearchAlgorithm):
             else:
                 search_alg_state["name:" +
                                  searcher_name] = searcher.get_state()
-            searcher = self.searcher.searcher
+            searcher = searcher.searcher
         base_searcher = searcher
         # We save the base searcher separately for users to easily
         # separate the Optimizer.
@@ -200,10 +199,12 @@ class SearchGenerator(SearchAlgorithm):
                 logger.warning("{} was not found in the experiment checkpoint "
                                "state when restoring. Found {}.".format(
                                    searcher_name, names))
-            searcher.set_state(search_alg_state.pop(searcher_name))
-            searcher = self.searcher.searcher
+            else:
+                searcher.set_state(search_alg_state.pop(searcher_name))
+            searcher = searcher.searcher
         base_searcher = searcher
 
         logger.debug(f"searching base {base_searcher}")
         base_searcher.restore_from_dir(dirpath)
         self.set_state(search_alg_state)
+        print("finished restoring")
