@@ -24,7 +24,7 @@ from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
     STEPS_TRAINED_COUNTER, LEARNER_INFO, LEARN_ON_BATCH_TIMER, \
-    _get_shared_metrics
+    _get_shared_metrics, _get_global_vars
 from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.utils.sgd import do_minibatch_sgd
 
@@ -119,6 +119,13 @@ def execution_plan(workers, config):
         info = do_minibatch_sgd(batch, this_worker.policy_map, this_worker,
                                 config["num_sgd_iter"],
                                 config["sgd_minibatch_size"], ["advantages"])
+
+        metrics = _get_shared_metrics()
+        metrics.counters[
+            STEPS_SAMPLED_COUNTER] += expected_batch_size * \
+            config["num_workers"]
+        this_worker.set_global_vars(_get_global_vars())
+
         return info, batch.count
 
     # Have to manually record stats since we are using "raw" rollouts mode.
