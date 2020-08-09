@@ -6,7 +6,7 @@ import io.ray.streaming.runtime.config.StreamingWorkerConfig;
 import io.ray.streaming.runtime.config.types.TransferChannelType;
 import io.ray.streaming.runtime.transfer.channel.ChannelId;
 import io.ray.streaming.runtime.transfer.channel.ChannelRecoverInfo;
-import io.ray.streaming.runtime.transfer.channel.ChannelRecoverInfo.QueueCreationStatus;
+import io.ray.streaming.runtime.transfer.channel.ChannelRecoverInfo.ChannelCreationStatus;
 import io.ray.streaming.runtime.transfer.channel.ChannelUtils;
 import io.ray.streaming.runtime.transfer.channel.OffsetInfo;
 import io.ray.streaming.runtime.transfer.message.BarrierMessage;
@@ -38,7 +38,7 @@ public class DataReader {
   private final ByteBuffer bundleData = Platform.wrapDirectBuffer(0, 0);
   private final ByteBuffer bundleMeta = ByteBuffer.allocateDirect(BundleMeta.LENGTH);
 
-  private final Map<String, QueueCreationStatus> queueCreationStatusMap = new HashMap<>();
+  private final Map<String, ChannelCreationStatus> queueCreationStatusMap = new HashMap<>();
   private Queue<ChannelMessage> buf = new LinkedList<>();
 
   {
@@ -93,7 +93,7 @@ public class DataReader {
     );
     for (int i = 0; i < inputChannels.size(); ++i) {
       queueCreationStatusMap
-          .put(inputChannels.get(i), QueueCreationStatus.fromInt(creationStatus.get(i)));
+          .put(inputChannels.get(i), ChannelCreationStatus.fromInt(creationStatus.get(i)));
     }
     LOG.info("Create DataReader succeed for worker: {}, creation status={}.",
         workerConfig.workerInternalConfig.workerName(), queueCreationStatusMap);

@@ -64,8 +64,6 @@ JNIEXPORT void JNICALL Java_io_ray_streaming_runtime_transfer_DataReader_getBund
   } else if (StreamingStatus::GetBundleTimeOut == status) {
   } else if (StreamingStatus::InitQueueFailed == status) {
     throwRuntimeException(env, "init channel failed");
-  } else if (StreamingStatus::WaitQueueTimeOut == status) {
-    throwRuntimeException(env, "wait channel object timeout");
   }
 
   if (StreamingStatus::OK != status) {

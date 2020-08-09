@@ -171,16 +171,10 @@ StreamingStatus DataWriter::Init(const std::vector<ObjectID> &queue_id_vec,
   return StreamingStatus::OK;
 }
 
-void DataWriter::BroadcastBarrier(uint64_t checkpoint_id, uint64_t barrier_id,
-                                  const uint8_t *data, uint32_t data_size) {
-  STREAMING_LOG(INFO) << "broadcast checkpoint id : " << checkpoint_id
-                      << " and global barrier id : " << barrier_id;
-  barrier_helper_.MapBarrierToCheckpoint(barrier_id, checkpoint_id);
-  BroadcastBarrier(barrier_id, data, data_size);
-}
-
 void DataWriter::BroadcastBarrier(uint64_t barrier_id, const uint8_t *data,
                                   uint32_t data_size) {
+  STREAMING_LOG(INFO) << "broadcast checkpoint id : " << barrier_id;
+  barrier_helper_.MapBarrierToCheckpoint(barrier_id, barrier_id);
 
   if (barrier_helper_.Contains(barrier_id)) {
     STREAMING_LOG(WARNING) << "replicated global barrier id => " << barrier_id;

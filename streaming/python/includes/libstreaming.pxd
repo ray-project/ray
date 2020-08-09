@@ -104,6 +104,13 @@ cdef extern from "channel.h" namespace "ray::streaming" nogil:
         shared_ptr[CRayFunction] async_function;
         shared_ptr[CRayFunction] sync_function;
 
+    cdef enum CTransferCreationStatus "ray::streaming::TransferCreationStatus":
+        FreshStarted = 0
+        PullOk = 1
+        Timeout = 2
+        DataLost = 3
+        Invalid = 999
+
 cdef extern from "queue/queue_client.h" namespace "ray::streaming" nogil:
     cdef cppclass CReaderClient "ray::streaming::ReaderClient":
         CReaderClient()
@@ -128,8 +135,8 @@ cdef extern from "data_reader.h" namespace "ray::streaming" nogil:
         CDataReader(shared_ptr[CRuntimeContext] &runtime_context)
         void Init(const c_vector[CObjectID] &input_ids,
                   const c_vector[CChannelCreationParameter] &params,
-                  const c_vector[uint64_t] &seq_ids,
                   const c_vector[uint64_t] &msg_ids,
+                  c_vector[CTransferCreationStatus] &creation_status,
                   int64_t timer_interval);
         CStreamingStatus GetBundle(const uint32_t timeout_ms,
                                    shared_ptr[CDataBundle] &message)
@@ -145,6 +152,8 @@ cdef extern from "data_writer.h" namespace "ray::streaming" nogil:
                               const c_vector[uint64_t] &queue_size_vec);
         long WriteMessageToBufferRing(
                 const CObjectID &q_id, uint8_t *data, uint32_t data_size)
+        void BroadcastBarrier(uint64_t checkpoint_id, const uint8_t *data, uint32_t data_size)
+        void GetChannelOffset(c_vector[uint64_t] &result)
         void Run()
         void Stop()
 

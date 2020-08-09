@@ -355,10 +355,6 @@ StreamingStatus DataReader::GetBundle(const uint32_t timeout_ms,
       switch (status) {
       case StreamingStatus::InitQueueFailed:
         break;
-      case StreamingStatus::WaitQueueTimeOut:
-        STREAMING_LOG(ERROR)
-            << "Wait upstream queue timeout, maybe some actors in deadlock";
-        break;
       default:
         STREAMING_LOG(INFO) << "Init reader queue in GetBundle";
       }

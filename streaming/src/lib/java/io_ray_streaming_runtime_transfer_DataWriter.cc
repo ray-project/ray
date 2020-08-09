@@ -99,12 +99,11 @@ JNIEXPORT jlongArray JNICALL Java_io_ray_streaming_runtime_transfer_DataWriter_g
 }
 
 JNIEXPORT void JNICALL Java_io_ray_streaming_runtime_transfer_DataWriter_broadcastBarrierNative
-  (JNIEnv *env, jobject thisObj, jlong ptr, jlong checkpointId, jlong barrierId, jbyteArray data) {
-  STREAMING_LOG(INFO) << "jni: broadcast barrier, cp_id=" << checkpointId
-                      << ", barrier_id=" << barrierId;
-  RawDataFromJByteArray raw_data(env, data);
+  (JNIEnv *env, jobject thisObj, jlong ptr, jlong checkpointId, jbyteArray data) {
+  STREAMING_LOG(INFO) << "jni: broadcast barrier, cp_id=" << checkpointId;
+   RawDataFromJByteArray raw_data(env, data);
   DataWriter *writer_client = reinterpret_cast<DataWriter *>(ptr);
-  writer_client->BroadcastBarrier(checkpointId, barrierId, raw_data.data,
+  writer_client->BroadcastBarrier(checkpointId, raw_data.data,
                                   raw_data.data_size);
 }
 

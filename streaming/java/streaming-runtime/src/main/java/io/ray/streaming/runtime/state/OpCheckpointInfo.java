@@ -3,6 +3,7 @@ package io.ray.streaming.runtime.state;
 import com.google.common.base.MoreObjects;
 import io.ray.streaming.runtime.transfer.channel.OffsetInfo;
 import java.io.Serializable;
+import java.util.HashMap;
 import java.util.Map;
 
 public class OpCheckpointInfo implements Serializable {
@@ -12,6 +13,9 @@ public class OpCheckpointInfo implements Serializable {
   public long checkpointId;
 
   public OpCheckpointInfo() {
+    inputPoints = new HashMap<>();
+    outputPoints = new HashMap<>();
+    checkpointId = -1;
   }
 
   public OpCheckpointInfo(

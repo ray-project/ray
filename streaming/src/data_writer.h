@@ -61,12 +61,11 @@ class DataWriter {
       StreamingMessageType message_type = StreamingMessageType::Message);
 
   /// send barrier to all channel. note there are user define data in barrier bundle
-  /// \param checkpoint_id : Its value is up to checkpoint operation. Actually it's useless but logging.
   /// \param barrier_id
   /// \param data
   /// \param data_size
   /// 
-  void BroadcastBarrier(uint64_t checkpoint_id, uint64_t barrier_id, const uint8_t *data,
+  void BroadcastBarrier(uint64_t barrier_id, const uint8_t *data,
                         uint32_t data_size);
 
   /// To relieve stress from large source/input data, we define a new function
@@ -137,13 +136,6 @@ class DataWriter {
   void NotifyConsumedItem(ProducerChannelInfo &channel_info, uint32_t offset);
 
   void FlowControlTimer();
-
-  /// end barrier to all channel
-  /// Note: there are user define data in barrier bundle
-  /// \param barrier_id
-  /// \param data
-  /// \param data_size
-  void BroadcastBarrier(uint64_t barrier_id, const uint8_t *data, uint32_t data_size);
 
   void ClearCheckpointId(ProducerChannelInfo &channel_info, uint64_t seq_id);
 

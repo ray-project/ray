@@ -141,7 +141,7 @@ public class DataWriter {
   public void broadcastBarrier(long checkpointId, ByteBuffer attach) {
     LOG.info("Broadcast barrier, cpId={}.", checkpointId);
     Preconditions.checkArgument(attach.order() == ByteOrder.nativeOrder());
-    broadcastBarrierNative(nativeWriterPtr, checkpointId, checkpointId, attach.array());
+    broadcastBarrierNative(nativeWriterPtr, checkpointId, attach.array());
   }
 
   public void clearCheckpoint(long checkpointId) {
@@ -179,7 +179,7 @@ public class DataWriter {
   private native long[] getOutputMsgIdNative(long nativeQueueProducerPtr);
 
   private native void broadcastBarrierNative(long nativeQueueProducerPtr, long checkpointId,
-                                             long barrierId, byte[] data);
+                                             byte[] data);
 
   private native void clearCheckpointNative(
       long nativeQueueProducerPtr,

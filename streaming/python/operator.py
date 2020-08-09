@@ -3,10 +3,11 @@ import importlib
 import logging
 from abc import ABC, abstractmethod
 
-from ray import streaming
 from ray.streaming import function
 from ray.streaming import message
 from ray.streaming.collector import Collector
+from ray.streaming.collector import CollectionCollector
+from ray.streaming.function import SourceFunction
 from ray.streaming.runtime import gateway_client
 
 logger = logging.getLogger(__name__)
@@ -38,6 +39,14 @@ class Operator(ABC):
 
     @abstractmethod
     def operator_type(self) -> OperatorType:
+        pass
+
+    @abstractmethod
+    def save_checkpoint(self, checkpoint_id):
+        pass
+
+    @abstractmethod
+    def load_checkpoint(self, checkpoint_id, checkpoint_obj):
         pass
 
 
@@ -90,8 +99,21 @@ class StreamOperator(Operator, ABC):
         for collector in self.collectors:
             collector.collect(record)
 
+    def save_checkpoint(self, checkpoint_id):
+        self.func.save_checkpoint(checkpoint_id)
 
-class SourceOperator(StreamOperator):
+    def load_checkpoint(self, checkpoint_id, checkpoint_obj):
+        self.func.load_checkpoint(checkpoint_id, checkpoint_obj)
+
+
+class SourceOperator(Operator, ABC):
+
+    @abstractmethod
+    def fetch(self, checkpoint_id):
+        pass
+
+
+class SourceOperatorImpl(SourceOperator, StreamOperator):
     """
     Operator to run a :class:`function.SourceFunction`
     """
@@ -104,19 +126,19 @@ class SourceOperator(StreamOperator):
             for collector in self.collectors:
                 collector.collect(message.Record(value))
 
-    def __init__(self, func):
+    def __init__(self, func: SourceFunction):
         assert isinstance(func, function.SourceFunction)
         super().__init__(func)
         self.source_context = None
 
     def open(self, collectors, runtime_context):
         super().open(collectors, runtime_context)
-        self.source_context = SourceOperator.SourceContextImpl(collectors)
+        self.source_context = SourceOperatorImpl.SourceContextImpl(collectors)
         self.func.init(runtime_context.get_parallelism(),
                        runtime_context.get_task_index())
 
-    def run(self):
-        self.func.run(self.source_context)
+    def fetch(self, checkpoint_id):
+        self.func.fetch(self.source_context, checkpoint_id)
 
     def operator_type(self):
         return OperatorType.SOURCE
@@ -147,8 +169,7 @@ class FlatMapOperator(StreamOperator, OneInputOperator):
 
     def open(self, collectors, runtime_context):
         super().open(collectors, runtime_context)
-        self.collection_collector = streaming.collector.CollectionCollector(
-            collectors)
+        self.collection_collector = CollectionCollector(collectors)
 
     def process_element(self, record):
         self.func.flat_map(record.value, self.collection_collector)
@@ -233,6 +254,7 @@ class UnionOperator(StreamOperator, OneInputOperator):
 
 class ChainedOperator(StreamOperator, ABC):
     class ForwardCollector(Collector):
+
         def __init__(self, succeeding_operator):
             self.succeeding_operator = succeeding_operator
 
@@ -247,15 +269,13 @@ class ChainedOperator(StreamOperator, ABC):
     def open(self, collectors, runtime_context):
         # Dont' call super.open() as we `open` every operator separately.
         num_operators = len(self.operators)
-        succeeding_collectors = [
-            ChainedOperator.ForwardCollector(operator)
-            for operator in self.operators[1:]
-        ]
+        succeeding_collectors = [ChainedOperator.ForwardCollector(operator)
+                                 for operator in self.operators[1:]]
         for i in range(0, num_operators - 1):
             forward_collectors = [succeeding_collectors[i]]
-            self.operators[i].open(
-                forward_collectors,
-                self.__create_runtime_context(runtime_context, i))
+            self.operators[i].open(forward_collectors,
+                                   self.__create_runtime_context(
+                                       runtime_context, i))
         self.operators[-1].open(
             collectors,
             self.__create_runtime_context(runtime_context, num_operators - 1))
@@ -286,12 +306,13 @@ class ChainedOperator(StreamOperator, ABC):
             raise Exception("Current operator type is not supported")
 
 
-class ChainedSourceOperator(ChainedOperator):
+class ChainedSourceOperator(SourceOperator, ChainedOperator):
+
     def __init__(self, operators, configs):
         super().__init__(operators, configs)
 
-    def run(self):
-        self.operators[0].run()
+    def fetch(self, checkpoint_id):
+        self.operators[0].fetch(checkpoint_id)
 
 
 class ChainedOneInputOperator(ChainedOperator):
@@ -314,9 +335,8 @@ def load_chained_operator(chained_operator_bytes: bytes):
     """Load chained operator from serialized operators and configs"""
     serialized_operators, configs = gateway_client.deserialize(
         chained_operator_bytes)
-    operators = [
-        load_operator(desc_bytes) for desc_bytes in serialized_operators
-    ]
+    operators = [load_operator(desc_bytes) for desc_bytes in
+                 serialized_operators]
     return ChainedOperator.new_chained_operator(operators, configs)
 
 
@@ -350,7 +370,7 @@ def load_operator(descriptor_operator_bytes: bytes):
 
 
 _function_to_operator = {
-    function.SourceFunction: SourceOperator,
+    function.SourceFunction: SourceOperatorImpl,
     function.MapFunction: MapOperator,
     function.FlatMapFunction: FlatMapOperator,
     function.FilterFunction: FilterOperator,

@@ -67,7 +67,7 @@ JNIEXPORT jlongArray JNICALL Java_io_ray_streaming_runtime_transfer_DataWriter_g
  * Signature: (JJJ[B)V
  */
 JNIEXPORT void JNICALL Java_io_ray_streaming_runtime_transfer_DataWriter_broadcastBarrierNative
-  (JNIEnv *, jobject, jlong, jlong, jlong, jbyteArray);
+  (JNIEnv *, jobject, jlong, jlong, jbyteArray);
 
 /*
  * Class:     io_ray_streaming_runtime_transfer_DataWriter

@@ -22,10 +22,14 @@ class Function(ABC):
     def close(self):
         pass
 
+    def save_checkpoint(self, checkpoint_id):
+        pass
+
+    def load_checkpoint(self, checkpoint_id, checkpoint_obj):
+        pass
 
 class EmptyFunction(Function):
     """Default function which does nothing"""
-
     def open(self, runtime_context):
         pass
 
@@ -58,10 +62,13 @@ class SourceFunction(Function):
         pass
 
     @abstractmethod
-    def run(self, ctx: SourceContext):
+    def fetch(self, ctx: SourceContext, checkpoint_id: int):
         """Starts the source. Implementations can use the
          :class:`SourceContext` to emit elements.
         """
+        pass
+
+    def close(self):
         pass
 
 
@@ -176,24 +183,29 @@ class CollectionSourceFunction(SourceFunction):
     def init(self, parallel, index):
         pass
 
-    def run(self, ctx: SourceContext):
+    def fetch(self, ctx: SourceContext, checkpoint_id: int):
         for v in self.values:
             ctx.collect(v)
+        self.values = []
 
 
 class LocalFileSourceFunction(SourceFunction):
     def __init__(self, filename):
         self.filename = filename
+        self.done = False
 
     def init(self, parallel, index):
         pass
 
-    def run(self, ctx: SourceContext):
+    def fetch(self, ctx: SourceContext, checkpoint_id: int):
+        if self.done:
+            return
         with open(self.filename, "r") as f:
             line = f.readline()
             while line != "":
                 ctx.collect(line[:-1])
                 line = f.readline()
+            self.done = True
 
 
 class SimpleMapFunction(MapFunction):

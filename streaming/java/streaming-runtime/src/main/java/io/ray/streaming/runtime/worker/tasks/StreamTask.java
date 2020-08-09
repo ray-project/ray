@@ -128,12 +128,9 @@ public abstract class StreamTask implements Runnable {
     }
 
     // when use memory state, if actor throw exception, will miss state
-    Map<String, OffsetInfo> inputCheckpoints = new HashMap<>();
-    Map<String, OffsetInfo> outputCheckpoints = new HashMap<>();
     if (bytes != null) {
       opCheckpointInfo = Serializer.decode(bytes);
-      inputCheckpoints = opCheckpointInfo.inputPoints;
-      outputCheckpoints = opCheckpointInfo.outputPoints;
+      processor.loadCheckpoint(opCheckpointInfo.processorCheckpoint, lastCheckpointId);
       LOG.info(
         "Stream task recover from checkpoint state, checkpoint bytes len={}, checkpointInfo={}.",
         bytes.length, opCheckpointInfo);
@@ -142,11 +139,11 @@ public abstract class StreamTask implements Runnable {
     // writer
     if (!executionVertex.getOutputEdges().isEmpty()) {
       LOG.info("Register queue writer, channels={}, outputCheckpoints={}.",
-        executionVertex.getOutputChannelIdList(), outputCheckpoints);
+        executionVertex.getOutputChannelIdList(), opCheckpointInfo.outputPoints);
       writer = new DataWriter(
         executionVertex.getOutputChannelIdList(),
         executionVertex.getOutputActorList(),
-        outputCheckpoints,
+        opCheckpointInfo.outputPoints,
         jobWorker.getWorkerConfig()
       );
     }
@@ -154,11 +151,11 @@ public abstract class StreamTask implements Runnable {
     // reader
     if (!executionVertex.getInputEdges().isEmpty()) {
       LOG.info("Register queue reader, channels={}, inputCheckpoints={}.",
-        executionVertex.getInputChannelIdList(), inputCheckpoints);
+        executionVertex.getInputChannelIdList(), opCheckpointInfo.inputPoints);
       reader = new DataReader(
         executionVertex.getInputChannelIdList(),
         executionVertex.getInputActorList(),
-        inputCheckpoints,
+        opCheckpointInfo.inputPoints,
         jobWorker.getWorkerConfig()
       );
     }

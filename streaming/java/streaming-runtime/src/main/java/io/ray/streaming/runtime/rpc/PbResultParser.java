@@ -44,9 +44,9 @@ public class PbResultParser {
     callResult.setResultCode(callResultPb.getResultCode());
     callResult.setResultMsg(callResultPb.getResultMsg());
     RemoteCall.QueueRecoverInfo qRecoverInfo = callResultPb.getResultObj();
-    Map<String, ChannelRecoverInfo.QueueCreationStatus> creationStatusMap = new HashMap<>();
+    Map<String, ChannelRecoverInfo.ChannelCreationStatus> creationStatusMap = new HashMap<>();
     qRecoverInfo.getCreationStatusMap().forEach((k, v) -> {
-      creationStatusMap.put(k, ChannelRecoverInfo.QueueCreationStatus.fromInt(v.getNumber()));
+      creationStatusMap.put(k, ChannelRecoverInfo.ChannelCreationStatus.fromInt(v.getNumber()));
     });
     callResult.setResultObj(new ChannelRecoverInfo(creationStatusMap));
     return callResult;

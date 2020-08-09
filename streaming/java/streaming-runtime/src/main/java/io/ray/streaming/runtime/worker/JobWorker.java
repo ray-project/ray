@@ -3,7 +3,6 @@ package io.ray.streaming.runtime.worker;
 import io.ray.api.Ray;
 import io.ray.streaming.runtime.barrier.Barrier;
 import io.ray.streaming.runtime.config.StreamingWorkerConfig;
-import io.ray.streaming.runtime.config.global.StateBackendConfig;
 import io.ray.streaming.runtime.config.types.TransferChannelType;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
 import io.ray.streaming.runtime.core.processor.OneInputProcessor;
@@ -18,7 +17,7 @@ import io.ray.streaming.runtime.state.StateBackend;
 import io.ray.streaming.runtime.state.StateBackendFactory;
 import io.ray.streaming.runtime.transfer.TransferHandler;
 import io.ray.streaming.runtime.transfer.channel.ChannelRecoverInfo;
-import io.ray.streaming.runtime.transfer.channel.ChannelRecoverInfo.QueueCreationStatus;
+import io.ray.streaming.runtime.transfer.channel.ChannelRecoverInfo.ChannelCreationStatus;
 import io.ray.streaming.runtime.util.CheckpointStateUtil;
 import io.ray.streaming.runtime.util.EnvUtil;
 import io.ray.streaming.runtime.util.Serializer;
@@ -27,7 +26,6 @@ import io.ray.streaming.runtime.worker.tasks.OneInputStreamTask;
 import io.ray.streaming.runtime.worker.tasks.SourceStreamTask;
 import io.ray.streaming.runtime.worker.tasks.StreamTask;
 import java.io.Serializable;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.slf4j.Logger;
@@ -141,7 +139,7 @@ public class JobWorker implements Serializable {
    * Start worker's stream tasks with specific checkpoint ID.
    *
    * @return a {@link CallResult} with {@link ChannelRecoverInfo},
-   * contains {@link QueueCreationStatus} of each input queue.
+   * contains {@link ChannelCreationStatus} of each input queue.
    */
   public CallResult<ChannelRecoverInfo> rollback(Long checkpointId, Long startRollbackTs) {
     synchronized (initialStateChangeLock) {

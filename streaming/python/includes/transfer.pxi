@@ -38,6 +38,7 @@ from ray.streaming.includes.libstreaming cimport (
     CWriterClient,
     CLocalMemoryBuffer,
     CChannelCreationParameter,
+    CTransferCreationStatus,
 )
 from ray._raylet import JavaFunctionDescriptor
 
@@ -191,7 +192,7 @@ cdef class DataWriter:
             self.writer = NULL
 
     def write(self, ObjectRef qid, const unsigned char[:] value):
-        """support zero-copy bytes, bytearray, array of unsigned char"""
+        """support zero-copy bytes, byte array, array of unsigned char"""
         cdef:
             CObjectID native_id = qid.data
             uint64_t msg_id
@@ -200,6 +201,19 @@ cdef class DataWriter:
         with nogil:
             msg_id = self.writer.WriteMessageToBufferRing(native_id, data, size)
         return msg_id
+
+    def broadcast_barrier(self, uint64_t checkpoint_id, const unsigned char[:] value):
+        cdef:
+            uint8_t *data = <uint8_t *>(&value[0])
+            uint32_t size = value.nbytes
+        with nogil:
+            self.writer.BroadcastBarrier(checkpoint_id, data, size)
+
+    def get_output_checkpoints(self):
+        cdef:
+            c_vector[uint64_t] results
+        self.writer.GetChannelOffset(results)
+        return results
 
     def stop(self):
         self.writer.Stop()
@@ -218,25 +232,22 @@ cdef class DataReader:
     @staticmethod
     def create(list py_input_queues,
                list input_creation_parameters: list[ChannelCreationParameter],
-               list py_seq_ids,
                list py_msg_ids,
                int64_t timer_interval,
-               c_bool is_recreate,
                bytes config_bytes,
                c_bool is_mock):
         cdef:
             c_vector[CObjectID] queue_id_vec = bytes_list_to_qid_vec(py_input_queues)
             c_vector[CChannelCreationParameter] initial_parameters
-            c_vector[uint64_t] seq_ids
             c_vector[uint64_t] msg_ids
+            c_vector[CTransferCreationStatus] c_creation_status
             CDataReader *c_reader
             ChannelCreationParameter parameter
             cdef const unsigned char[:] config_data
         for param in input_creation_parameters:
             parameter = param
             initial_parameters.push_back(parameter.get_parameter())
-        for py_seq_id in py_seq_ids:
-            seq_ids.push_back(<uint64_t>py_seq_id)
+
         for py_msg_id in py_msg_ids:
             msg_ids.push_back(<uint64_t>py_msg_id)
         cdef shared_ptr[CRuntimeContext] ctx = make_shared[CRuntimeContext]()
@@ -247,11 +258,19 @@ cdef class DataReader:
         if is_mock:
             ctx.get().MarkMockTest()
         c_reader = new CDataReader(ctx)
-        c_reader.Init(queue_id_vec, initial_parameters, seq_ids, msg_ids, timer_interval)
+        c_reader.Init(queue_id_vec, initial_parameters, msg_ids, c_creation_status, timer_interval)
+
+        creation_status_map = {}
+        if not c_creation_status.empty():
+            for i in range(queue_id_vec.size()):
+                k = queue_id_vec[i].Binary()
+                v = <uint64_t>c_creation_status[i]
+                creation_status_map[k] = v
+
         channel_logger.info("create native reader succeed")
         cdef DataReader reader = DataReader.__new__(DataReader)
         reader.reader = c_reader
-        return reader
+        return reader, creation_status_map
 
     def __dealloc__(self):
         if self.reader != NULL:
@@ -272,9 +291,8 @@ cdef class DataReader:
                 import ray.streaming.runtime.transfer as transfer
                 raise transfer.ChannelInterruptException("reader interrupted")
             elif <uint32_t> status == <uint32_t> libstreaming.StatusInitQueueFailed:
-                raise Exception("init channel failed")
-            elif <uint32_t> status == <uint32_t> libstreaming.StatusWaitQueueTimeOut:
-                raise Exception("wait channel object timeout")
+                import ray.streaming.runtime.transfer as transfer
+                raise transfer.ChannelInitException("init channel failed")
         cdef:
             uint32_t msg_nums
             CObjectID queue_id

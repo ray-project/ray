@@ -2,6 +2,8 @@ import logging
 import random
 from queue import Queue
 from typing import List
+from enum import Enum
+from abc import ABCMeta, abstractmethod
 
 import ray
 import ray.streaming._streaming as _streaming
@@ -264,6 +266,21 @@ class DataWriter:
         msg_id = self.writer.write(channel_id.object_qid, item)
         return msg_id
 
+    def broadcast_barrier(self, checkpoint_id: int, body: bytes):
+        """Broadcast barriers to all downstream channels
+        Args:
+            checkpoint_id: the checkpoint_id
+            body: barrier payload
+        """
+        self.writer.broadcast_barrier(checkpoint_id, body)
+
+    def get_output_checkpoints(self) -> List[int]:
+        """Get output offsets of all downstream channels
+        Returns:
+            a list contains current msg_id of each downstream channel
+        """
+        return self.writer.get_output_checkpoints()
+
     def stop(self):
         logger.info("stopping channel writer.")
         self.writer.stop()
@@ -294,18 +311,19 @@ class DataReader:
         ]
         creation_parameters = ChannelCreationParametersBuilder()
         creation_parameters.build_input_queue_parameters(from_actors)
-        py_seq_ids = [0 for _ in range(len(input_channels))]
         py_msg_ids = [0 for _ in range(len(input_channels))]
         timer_interval = int(conf.get(Config.TIMER_INTERVAL_MS, -1))
-        is_recreate = bool(conf.get(Config.IS_RECREATE, False))
         config_bytes = _to_native_conf(conf)
         self.__queue = Queue(10000)
         is_mock = conf[Config.CHANNEL_TYPE] == Config.MEMORY_CHANNEL
-        self.reader = _streaming.DataReader.create(
+        self.reader, queues_creation_status = _streaming.DataReader.create(
             py_input_channels, creation_parameters.get_parameters(),
-            py_seq_ids, py_msg_ids, timer_interval, is_recreate, config_bytes,
-            is_mock)
-        logger.info("create DataReader succeed")
+            py_msg_ids, timer_interval, config_bytes, is_mock)
+
+        self.__creation_status = {}
+        for q, status in queues_creation_status.items():
+            self.__creation_status[q] = ChannelCreationStatus(status)
+        logger.info("create DataReader succeed, creation_status={}".format(self.__creation_status))
 
     def read(self, timeout_millis):
         """Read data from channel
@@ -325,6 +343,9 @@ class DataReader:
         if self.__queue.empty():
             return None
         return self.__queue.get()
+
+    def get_channel_recover_info(self):
+        return ChannelRecoverInfo(self.__creation_status)
 
     def stop(self):
         logger.info("stopping Data Reader.")
@@ -372,3 +393,112 @@ class ChannelInitException(Exception):
 class ChannelInterruptException(Exception):
     def __init__(self, msg=None):
         self.msg = msg
+
+
+class ChannelRecoverInfo:
+    def __init__(self, queue_creation_status_map=None):
+        if queue_creation_status_map is None:
+            queue_creation_status_map = {}
+        self.__queue_creation_status_map = queue_creation_status_map
+
+    def get_creation_status(self):
+        return self.__queue_creation_status_map
+
+    def get_data_lost_queues(self):
+        data_lost_queues = set()
+        for (q, status) in self.__queue_creation_status_map.items():
+            if status == ChannelCreationStatus.DataLost:
+                data_lost_queues.add(q)
+        return data_lost_queues
+
+    def __str__(self):
+        return 'QueueRecoverInfo [dataLostQueues=%s]' \
+               % (self.get_data_lost_queues())
+
+
+class ChannelCreationStatus(Enum):
+    FreshStarted = 0
+    PullOk = 1
+    Timeout = 2
+    DataLost = 3
+
+
+class QueueItem:
+    """
+    queue item interface
+    """
+
+    __metaclass__ = ABCMeta
+
+    def __init__(self):
+        pass
+
+    @abstractmethod
+    def body(self):
+        pass
+
+    @abstractmethod
+    def release_body(self):
+        pass
+
+    @abstractmethod
+    def timestamp(self):
+        pass
+
+
+class QueueBarrier(QueueItem):
+    """
+    queue barrier interface
+    """
+
+    __metaclass__ = ABCMeta
+
+    @abstractmethod
+    def checkpoint_id(self):
+        pass
+
+    @abstractmethod
+    def get_input_checkpoints(self):
+        pass
+
+
+class QueueMessage(QueueItem):
+    """
+    queue message interface
+    """
+
+    __metaclass__ = ABCMeta
+
+    @abstractmethod
+    def queue_id(self):
+        pass
+
+
+def channel_id_str_to_bytes(channel_id_str):
+    """
+    Args:
+        channel_id_str: string representation of channel id
+
+    Returns:
+        bytes representation of channel id
+    """
+    assert type(channel_id_str) in [str, bytes]
+    if isinstance(channel_id_str, bytes):
+        return channel_id_str
+    qid_bytes = bytes.fromhex(channel_id_str)
+    assert len(qid_bytes) == CHANNEL_ID_LEN
+    return qid_bytes
+
+
+def channel_id_bytes_to_str(id_bytes):
+    """
+    Args:
+        id_bytes: bytes representation of channel id
+
+    Returns:
+        string representation of channel id
+    """
+    assert type(id_bytes) in [str, bytes]
+    if isinstance(id_bytes, str):
+        return id_bytes
+    return bytes.hex(id_bytes)
