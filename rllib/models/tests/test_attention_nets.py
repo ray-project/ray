@@ -46,21 +46,18 @@ class TestModules(unittest.TestCase):
             y_pred = model(inputs, state, seq_lens)
             loss = criterion(y_pred[0], torch.squeeze(outputs[0]))
 
-            if t % 10 == 1:
-                print(t, loss.item())
-
-            # if t == 0:
-            #     init_loss = loss.item()
+            if t == 0:
+                init_loss = loss.item()
 
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
-        # final_loss = loss.item()
+        final_loss = loss.item()
 
         # The final loss has decreased, which tests
         # that the model is learning from the training data.
-        # self.assertLess(final_loss / init_loss, 0.99)
+        self.assertLess(final_loss / init_loss, 0.75)
 
     def train_torch_layer(self, model, inputs, outputs, num_epochs=250):
         """Convenience method that trains a Torch model for num_epochs epochs
@@ -172,9 +169,9 @@ class TestModules(unittest.TestCase):
                 relative_position_embedding_torch(20, 15).numpy())
 
         # B is batch size
-        B = 32
+        B = 30
         # D_in is attention dim, L is memory_tau
-        L, D_in, D_out = 2, 16, 2
+        L, D_in, D_out = 3, 32, 5
 
         for fw, sess in framework_iterator(session=True):
 
@@ -182,30 +179,30 @@ class TestModules(unittest.TestCase):
             if fw == "torch":
                 # Create random Tensors to hold inputs and outputs
                 x = torch.randn(B, L, D_in)
-                y = torch.randn(B, L, D_out)
+                y = torch.randn(B * L, D_out)
 
-                value_labels = torch.randn(B, L, D_in)
-                memory_labels = torch.randn(B, L, D_out)
+                value_labels = torch.randn(B, L, 1)
+                memory_labels = torch.randn(B, L, D_in)
 
                 attention_net = TorchGTrXLNet(
                     observation_space=gym.spaces.Box(
                         low=float("-inf"), high=float("inf"), shape=(D_in, )),
                     action_space=gym.spaces.Discrete(D_out),
                     num_outputs=D_out,
-                    model_config={"max_seq_len": 2},
+                    model_config={"max_seq_len": 9},
                     name="TestTorchAttentionNet",
                     num_transformer_units=2,
                     attn_dim=D_in,
-                    num_heads=2,
+                    num_heads=4,
                     memory_tau=L,
                     head_dim=D_out,
-                    ff_hidden_dim=16,
+                    ff_hidden_dim=17,
                     init_gate_bias=2.0)
 
                 init_state = attention_net.get_initial_state()
 
                 # Get initial state and add a batch dimension.
-                init_state = [np.expand_dims(s, 0) for s in init_state]
+                init_state = [np.tile(s, (B, 1, 1)) for s in init_state]
                 seq_lens_init = torch.full(
                     size=(B, ), fill_value=L, dtype=torch.int32)
 
@@ -215,7 +212,7 @@ class TestModules(unittest.TestCase):
                 self.train_torch_full_model(
                     attention_net,
                     input_dict, [y, value_labels, memory_labels],
-                    num_epochs=250,
+                    num_epochs=500,
                     state=init_state,
                     seq_lens=seq_lens_init)
             # Framework is tensorflow or tensorflow-eager.
@@ -234,7 +231,7 @@ class TestModules(unittest.TestCase):
                         low=float("-inf"), high=float("inf"), shape=(D_in, )),
                     action_space=gym.spaces.Discrete(D_out),
                     num_outputs=D_out,
-                    model_config={"max_seq_len": 2},
+                    model_config={"max_seq_len": 3},
                     name="TestTFAttentionNet",
                     num_transformer_units=2,
                     attn_dim=D_in,
