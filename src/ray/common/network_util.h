@@ -122,16 +122,36 @@ class AsyncClient {
 ///
 /// \param port The port that the local ip is listening on.
 /// \param timeout_ms The maximum wait time in milliseconds.
-/// \return A valid local ip.
+/// \return a valid local ip.
 std::string GetValidLocalIp(int port, int64_t timeout_ms);
 
 /// A helper function to get IPs from local interfaces.
-/// It also filters out docker and loopback interfaces.
+/// It also filters out IPs from NICs with priority smaller than
+/// PRIORITY_TO_DELETE and sort the IPs based on its NIC priority.
 /// If running on Windows, uses boost to try to resolve hostname
 /// and don't filter candidates.
 ///
-/// \return A vector with valid local IP candidates
+/// \return a vector with valid local IP candidates that were not filtered out
 std::vector<boost::asio::ip::address> GetValidLocalIpCandidates();
+
+/// A helper tiny function to check if one string is prefix of another.
+///
+/// \param s the string to be checked.
+/// \param start the prefix will compared with 's'.
+/// \return true if 's' starts with 'start'.
+bool StartsWith(std::string s, std::string start);
+
+/// Constant which indicates the threshold of priority of NICs.
+/// NICs with priority smaller than this are not considered to be
+/// used. This is also used as the default value for NICs names that 
+/// are not mapped at GetNicPriority()
+const int PRIORITY_TO_DELETE = 50;
+
+/// Based on the prefix of the NIC name, returns a level of priority.
+/// 
+/// \param the name of the NIC to be tested.
+/// \return the priority of the NIC.
+int GetNicPriority(std::string nic_name);
 
 /// A helper function to test whether target rpc server is valid.
 ///

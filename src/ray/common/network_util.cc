@@ -16,6 +16,65 @@
 
 #include "ray/util/logging.h"
 
+typedef std::pair<std::string, std::string> NicAndIp;
+
+bool StartsWith(std::string s, std::string start) {
+  return s.find(start) == 0;
+}
+
+bool CompNicsAndIps(NicAndIp a, NicAndIp b){
+  return GetNicPriority(a.first) < GetNicPriority(b.first);
+}
+
+int GetNicPriority(std::string nic_name){
+  int priority = PRIORITY_TO_DELETE;  // smaller number, more priority
+
+  if(StartsWith(nic_name, "e")){  // eth0, enp7s0f1, ens160, en0, etc
+    priority = 1;
+  }
+  else if (StartsWith(nic_name, "w")) {  // wlp0s20f3, wlp2s0, etc
+    priority = 10;
+  }
+  else if (StartsWith(nic_name, "br")) {
+    if (nic_name[2] == '-') {
+      // Probably docker bridge
+      priority = 100;  // br-3681c4c3d645, etc
+    } else {
+      priority = 20;  // br0, etc
+    }
+  }
+  else if (StartsWith(nic_name, "ap")) {  // ap0, etc
+    // Probably Access Point
+    priority = 40;
+  }
+  else if (StartsWith(nic_name, "tun") || StartsWith(nic_name, "tap")) {  // tap0, tun0, etc
+    // Probably VPN
+    priority = 60;
+  }
+  else if (StartsWith(nic_name, "virbr")  // virbr0, etc
+      || StartsWith(nic_name, "vm")  // vmnet1, etc
+      || StartsWith(nic_name, "vbox")) {  // vboxnet1, etc
+    priority = 70;
+  }
+  else if (StartsWith(nic_name, "ppp")) {  // ppp0, etc
+    // Point to Point control: 3g, modem, etc
+    priority = 80;  
+  }
+  else if (StartsWith(nic_name, "pan")) {  // pan0, pan1, etc
+    // Bluetooth
+    priority = 90;  
+  }
+  else if (StartsWith(nic_name, "veth")) {  // veth7175b67, etc
+    // Probably docker
+    priority = 110;
+  }
+  else if (StartsWith(nic_name, "docker")) {  // docker0, etc
+    // Probably docker
+    priority = 120;
+  }
+
+  return priority;
+}
 
 #ifndef _WIN32
 
@@ -23,28 +82,33 @@ std::vector<boost::asio::ip::address> GetValidLocalIpCandidates() {
   struct ifaddrs *nics_info = nullptr;
   getifaddrs(&nics_info);
 
-  std::vector<std::pair<std::string, std::string>> nics_ips;
+  std::vector<NicAndIp> nics_and_ips;
 
   struct ifaddrs *nic_info = nullptr;
   for (nic_info = nics_info; nic_info != nullptr; nic_info = nic_info->ifa_next) {
 
-    if (nic_info->ifa_addr->sa_family==AF_INET) {
+    if (nic_info->ifa_addr->sa_family == AF_INET) {
       void *addr = &((struct sockaddr_in *) nic_info->ifa_addr)->sin_addr;
 
       char ip[INET_ADDRSTRLEN];
       inet_ntop(AF_INET, addr, ip, INET_ADDRSTRLEN);
 
-      nics_ips.push_back(std::make_pair(std::string(nic_info->ifa_name), std::string(ip)));
+      nics_and_ips.push_back(std::make_pair(std::string(nic_info->ifa_name), std::string(ip)));
     }
   }
   freeifaddrs(nics_info);
 
-  std::vector<boost::asio::ip::address> candidates;
-  for(unsigned int i = 0; i < nics_ips.size(); ++i) {
-    boost::asio::ip::address boost_addr = boost::asio::ip::make_address(nics_ips[i].second);
+  // Filter out NICs with small possibility of being desired to be used to serve
+  std::sort(nics_and_ips.begin(), nics_and_ips.end(), CompNicsAndIps);
+  while (GetNicPriority(nics_and_ips.back().first) > PRIORITY_TO_DELETE) {
+    nics_and_ips.pop_back();
+  }
 
-    if (nics_ips[i].first.find("docker") == std::string::npos
-          && !boost_addr.is_loopback()) {
+  std::vector<boost::asio::ip::address> candidates;
+  for(unsigned int i = 0; i < nics_and_ips.size(); ++i) {
+    boost::asio::ip::address boost_addr = boost::asio::ip::make_address(nics_and_ips[i].second);
+
+    if (!boost_addr.is_loopback()) {
       candidates.push_back(boost_addr);
     }
   }
