@@ -5,6 +5,8 @@ package io.ray.api.exception;
  */
 public class RayException extends RuntimeException {
 
+  public RayException() { super(); }
+
   public RayException(String message) {
     super(message);
   }

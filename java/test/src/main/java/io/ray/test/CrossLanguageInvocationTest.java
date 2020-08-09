@@ -11,6 +11,8 @@ import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyFunction;
 import io.ray.runtime.actor.NativeActorHandle;
 import io.ray.runtime.actor.NativePyActorHandle;
+import io.ray.runtime.exception.NativeRayException;
+import io.ray.runtime.generated.Common.Language;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -19,14 +21,11 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import org.apache.commons.io.FileUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(CrossLanguageInvocationTest.class);
   private static final String PYTHON_MODULE = "test_cross_language_invocation";
 
   @Override
@@ -151,7 +150,6 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
         PyFunction.of(PYTHON_MODULE, "py_func_call_java_actor", byte[].class),
         "1".getBytes()).remote();
     Assert.assertEquals(res.get(), "Counter1".getBytes());
-
   }
 
   @Test
@@ -187,6 +185,104 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
         actorHandleBytes).remote();
     Assert.assertEquals(res.get(), "3".getBytes());
   }
+
+  @Test
+  public void testRaiseExceptionFromPython() {
+    ObjectRef<Object> res = Ray.task(PyFunction.of(
+        PYTHON_MODULE, "py_func_python_raise_exception", Object.class)).remote();
+    try {
+      res.get();
+    } catch (RuntimeException ex) {
+      // ex is a Python exception(py_func_python_raise_exception) with no cause.
+      Assert.assertTrue(ex instanceof NativeRayException);
+      NativeRayException e = (NativeRayException) ex;
+      Assert.assertEquals(e.getLanguage(), Language.PYTHON);
+      // ex.cause is null.
+      Assert.assertNull(ex.getCause());
+      return;
+    }
+    Assert.fail();
+  }
+
+//  @Test
+//  public void testRaiseExceptionFromJava() {
+//    ObjectRef<Object> res = Ray.task(
+//        PyFunction.of(PYTHON_MODULE, "py_func_java_raise_exception", Object.class)).remote();
+//    try {
+//      res.get();
+//    } catch (RuntimeException ex) {
+//      // ex is a Python exception(py_func_java_raise_exception).
+//      Assert.assertTrue(ex instanceof NativeRayException);
+//      NativeRayException e = (NativeRayException) ex;
+//      Assert.assertEquals(e.getLanguage(), Language.PYTHON);
+//      // ex.cause is a Java exception(raiseException).
+//      Assert.assertTrue(e.getCause() instanceof NativeRayException);
+//      e = (NativeRayException) e.getCause();
+//      Assert.assertEquals(e.getLanguage(), Language.JAVA);
+//      Assert.assertTrue(e.getJavaException() instanceof ArithmeticException);
+//      // ex.cause.cause is null.
+//      Assert.assertNull(e.getCause());
+//      return;
+//    }
+//    Assert.fail();
+//  }
+
+  @Test
+  public void testRaiseExceptionFromNestPython() {
+    ObjectRef<Object> res = Ray.task(
+        PyFunction.of(PYTHON_MODULE, "py_func_nest_python_raise_exception", Object.class)).remote();
+    try {
+      res.get();
+    } catch (RuntimeException ex) {
+      // ex is a Python exception(py_func_nest_python_raise_exception).
+      Assert.assertTrue(ex instanceof NativeRayException);
+      NativeRayException e = (NativeRayException) ex;
+      Assert.assertEquals(e.getLanguage(), Language.PYTHON);
+      // ex.cause is a Java exception(raisePythonException).
+      Assert.assertTrue(e.getCause() instanceof NativeRayException);
+      e = (NativeRayException) e.getCause();
+      Assert.assertEquals(e.getLanguage(), Language.JAVA);
+      // ex.cause.cause is a Python exception(py_func_python_raise_exception).
+      Assert.assertTrue(e.getCause() instanceof NativeRayException);
+      e = (NativeRayException) e.getCause();
+      Assert.assertEquals(e.getLanguage(), Language.PYTHON);
+      // ex.cause.cause.cause is null.
+      Assert.assertNull(e.getCause());
+      return;
+    }
+    Assert.fail();
+  }
+
+//  @Test
+//  public void testRaiseExceptionFromNestJava() {
+//    ObjectRef<Object> res = Ray.task(
+//        PyFunction.of(PYTHON_MODULE, "py_func_nest_java_raise_exception", Object.class)).remote();
+//    try {
+//      res.get();
+//    } catch (RuntimeException ex) {
+//      // ex is a Python exception(py_func_nest_java_raise_exception).
+//      Assert.assertTrue(ex instanceof NativeRayException);
+//      NativeRayException e = (NativeRayException) ex;
+//      Assert.assertEquals(e.getLanguage(), Language.PYTHON);
+//      // ex.cause is a Java exception(raiseJavaException).
+//      Assert.assertTrue(e.getCause() instanceof NativeRayException);
+//      e = (NativeRayException) e.getCause();
+//      Assert.assertEquals(e.getLanguage(), Language.JAVA);
+//      // ex.cause.cause is a Python exception(py_func_java_raise_exception).
+//      Assert.assertTrue(e.getCause() instanceof NativeRayException);
+//      e = (NativeRayException) e.getCause();
+//      Assert.assertEquals(e.getLanguage(), Language.PYTHON);
+//      // ex.cause.cause.cause is a Java exception(raiseException).
+//      Assert.assertTrue(e.getCause() instanceof NativeRayException);
+//      e = (NativeRayException) e.getCause();
+//      Assert.assertEquals(e.getLanguage(), Language.JAVA);
+//      Assert.assertTrue(e.getJavaException() instanceof ArithmeticException);
+//      // ex.cause.cause.cause.cause is null.
+//      Assert.assertNull(e.getCause());
+//      return;
+//    }
+//    Assert.fail();
+//  }
 
   public static Object[] pack(int i, String s, double f, Object[] o) {
     // This function will be called from test_cross_language_invocation.py
@@ -225,6 +321,22 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
         "1".getBytes()).remote();
     Assert.assertEquals(res.get(), "3".getBytes());
     return (byte[]) res.get();
+  }
+
+  public static Object raiseException() {
+    return 1 / 0;
+  }
+
+  public static Object raiseJavaException() {
+    ObjectRef<Object> res = Ray.task(
+        PyFunction.of(PYTHON_MODULE, "py_func_java_raise_exception", Object.class)).remote();
+    return res.get();
+  }
+
+  public static Object raisePythonException() {
+    ObjectRef<Object> res = Ray.task(
+        PyFunction.of(PYTHON_MODULE, "py_func_python_raise_exception", Object.class)).remote();
+    return res.get();
   }
 
   public static class TestActor {

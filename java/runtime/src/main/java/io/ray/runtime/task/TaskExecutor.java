@@ -7,6 +7,7 @@ import io.ray.api.id.JobId;
 import io.ray.api.id.TaskId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.RayRuntimeInternal;
+import io.ray.runtime.exception.NativeRayException;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import io.ray.runtime.functionmanager.RayFunction;
 import io.ray.runtime.generated.Common.TaskType;
@@ -165,7 +166,7 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
         boolean isCrossLanguage = parseFunctionDescriptor(rayFunctionInfo).signature.equals("");
         if (hasReturn || isCrossLanguage) {
           returnObjects.add(ObjectSerializer
-              .serialize(new RayTaskException("Error executing task " + taskId, e)));
+              .serialize(new NativeRayException("Error executing task " + taskId, e)));
         }
       } else {
         actorContext.actorCreationException = e;
