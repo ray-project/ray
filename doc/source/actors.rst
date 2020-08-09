@@ -73,8 +73,7 @@ You can specify that an actor requires CPUs or GPUs in the decorator. While Ray 
 
 When using GPUs, Ray will automatically set the environment variable ``CUDA_VISIBLE_DEVICES`` for the actor after instantiated. The actor will have access to a list of the IDs of the GPUs
 that it is allowed to use via ``ray.get_gpu_ids()``. This is a list of strings,
-like ``[]``, or ``['1']``, or ``['2', '5', '6']``. According to [`CUDA programming guide https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#env-vars`__],
-under some circumstances, the IDs of GPUs could be given as UUID strings instead of indices.
+like ``[]``, or ``['1']``, or ``['2', '5', '6']``. Under some circumstances, the IDs of GPUs could be given as UUID strings instead of indices (see the `CUDA programming guide <https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#env-vars>`__).
 
 .. code-block:: python
 
