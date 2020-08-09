@@ -49,6 +49,12 @@ Take a look at any of the below tutorials to get started with Tune.
    :description: :doc:`Tuning PyTorch Lightning modules <tune-pytorch-lightning>`
 
 .. customgalleryitem::
+   :tooltip: Model selection and serving with Ray Tune and Ray Serve
+   :figure: /images/serve.png
+   :description: :doc:`Model selection and serving with Ray Tune and Ray Serve <tune-serve-integration-mnist>`
+
+
+.. customgalleryitem::
    :tooltip: Tuning XGBoost parameters.
    :figure: /images/xgboost_logo.png
    :description: :doc:`A guide to tuning XGBoost parameters with Tune <tune-xgboost>`
@@ -73,6 +79,7 @@ Take a look at any of the below tutorials to get started with Tune.
    tune-sklearn.rst
    tune-pytorch-cifar.rst
    tune-pytorch-lightning.rst
+   tune-serve-integration-mnist.rst
    tune-xgboost.rst
    tune-wandb.rst
 
