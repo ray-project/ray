@@ -54,3 +54,12 @@ py_test(
     tags = ["exclusive", "example"],
     args = ["--smoke-test"]
 )
+
+py_test(
+    name = "tune_serve_integration_mnist",
+    size = "medium",
+    main = "source/tune/_tutorials/tune-serve-integration-mnist.py",
+    srcs = ["source/tune/_tutorials/tune-serve-integration-mnist.py"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test", "--from_scratch", "--day 0"]
+)

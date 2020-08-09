@@ -230,6 +230,34 @@ def test_fair_queueing(shutdown_only):
     assert len(ready) == 1000, len(ready)
 
 
+def test_put_get(shutdown_only):
+    ray.init(num_cpus=0)
+
+    for i in range(100):
+        value_before = i * 10**6
+        object_ref = ray.put(value_before)
+        value_after = ray.get(object_ref)
+        assert value_before == value_after
+
+    for i in range(100):
+        value_before = i * 10**6 * 1.0
+        object_ref = ray.put(value_before)
+        value_after = ray.get(object_ref)
+        assert value_before == value_after
+
+    for i in range(100):
+        value_before = "h" * i
+        object_ref = ray.put(value_before)
+        value_after = ray.get(object_ref)
+        assert value_before == value_after
+
+    for i in range(100):
+        value_before = [1] * i
+        object_ref = ray.put(value_before)
+        value_after = ray.get(object_ref)
+        assert value_before == value_after
+
+
 def test_function_descriptor():
     python_descriptor = ray._raylet.PythonFunctionDescriptor(
         "module_name", "function_name", "class_name", "function_hash")
@@ -247,14 +275,7 @@ def test_function_descriptor():
     assert d.get(python_descriptor2) == 123
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "local_mode": True
-    }, {
-        "local_mode": False
-    }],
-    indirect=True)
-def test_nested_functions(ray_start_regular):
+def test_nested_functions(ray_start_shared_local_modes):
     # Make sure that remote functions can use other values that are defined
     # after the remote function but before the first function invocation.
     @ray.remote
@@ -303,14 +324,7 @@ def test_nested_functions(ray_start_regular):
     assert ray.get(factorial_odd.remote(5)) == 120
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "local_mode": True
-    }, {
-        "local_mode": False
-    }],
-    indirect=True)
-def test_ray_recursive_objects(ray_start_regular):
+def test_ray_recursive_objects(ray_start_shared_local_modes):
     class ClassA:
         pass
 
@@ -336,14 +350,7 @@ def test_ray_recursive_objects(ray_start_regular):
         ray.put(obj)
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "local_mode": True
-    }, {
-        "local_mode": False
-    }],
-    indirect=True)
-def test_reducer_override_no_reference_cycle(ray_start_regular):
+def test_reducer_override_no_reference_cycle(ray_start_shared_local_modes):
     # bpo-39492: reducer_override used to induce a spurious reference cycle
     # inside the Pickler object, that could prevent all serialized objects
     # from being garbage-collected without explicity invoking gc.collect.
@@ -379,14 +386,7 @@ def test_reducer_override_no_reference_cycle(ray_start_regular):
     assert new_obj() is None
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "local_mode": True
-    }, {
-        "local_mode": False
-    }],
-    indirect=True)
-def test_deserialized_from_buffer_immutable(ray_start_regular):
+def test_deserialized_from_buffer_immutable(ray_start_shared_local_modes):
     x = np.full((2, 2), 1.)
     o = ray.put(x)
     y = ray.get(o)
@@ -395,14 +395,8 @@ def test_deserialized_from_buffer_immutable(ray_start_regular):
         y[0, 0] = 9.
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "local_mode": True
-    }, {
-        "local_mode": False
-    }],
-    indirect=True)
-def test_passing_arguments_by_value_out_of_the_box(ray_start_regular):
+def test_passing_arguments_by_value_out_of_the_box(
+        ray_start_shared_local_modes):
     @ray.remote
     def f(x):
         return x
@@ -434,14 +428,8 @@ def test_passing_arguments_by_value_out_of_the_box(ray_start_regular):
     ray.get(ray.put(Foo))
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "local_mode": True
-    }, {
-        "local_mode": False
-    }],
-    indirect=True)
-def test_putting_object_that_closes_over_object_ref(ray_start_regular):
+def test_putting_object_that_closes_over_object_ref(
+        ray_start_shared_local_modes):
     # This test is here to prevent a regression of
     # https://github.com/ray-project/ray/issues/1317.
 
@@ -456,42 +444,7 @@ def test_putting_object_that_closes_over_object_ref(ray_start_regular):
     ray.put(f)
 
 
-def test_put_get(shutdown_only):
-    ray.init(num_cpus=0)
-
-    for i in range(100):
-        value_before = i * 10**6
-        object_ref = ray.put(value_before)
-        value_after = ray.get(object_ref)
-        assert value_before == value_after
-
-    for i in range(100):
-        value_before = i * 10**6 * 1.0
-        object_ref = ray.put(value_before)
-        value_after = ray.get(object_ref)
-        assert value_before == value_after
-
-    for i in range(100):
-        value_before = "h" * i
-        object_ref = ray.put(value_before)
-        value_after = ray.get(object_ref)
-        assert value_before == value_after
-
-    for i in range(100):
-        value_before = [1] * i
-        object_ref = ray.put(value_before)
-        value_after = ray.get(object_ref)
-        assert value_before == value_after
-
-
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "local_mode": True
-    }, {
-        "local_mode": False
-    }],
-    indirect=True)
-def test_custom_serializers(ray_start_regular):
+def test_custom_serializers(ray_start_shared_local_modes):
     class Foo:
         def __init__(self):
             self.x = 3
@@ -521,14 +474,7 @@ def test_custom_serializers(ray_start_regular):
     assert ray.get(f.remote()) == ((3, "string1", Bar.__name__), "string2")
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "local_mode": True
-    }, {
-        "local_mode": False
-    }],
-    indirect=True)
-def test_keyword_args(ray_start_regular):
+def test_keyword_args(ray_start_shared_local_modes):
     @ray.remote
     def keyword_fct1(a, b="hello"):
         return "{} {}".format(a, b)
@@ -613,14 +559,7 @@ def test_keyword_args(ray_start_regular):
     assert ray.get(f3.remote(4)) == 4
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "local_mode": True
-    }, {
-        "local_mode": False
-    }],
-    indirect=True)
-def test_args_starkwargs(ray_start_regular):
+def test_args_starkwargs(ray_start_shared_local_modes):
     def starkwargs(a, b, **kwargs):
         return a, b, kwargs
 
@@ -648,14 +587,7 @@ def test_args_starkwargs(ray_start_regular):
     ray.get(remote_test_function.remote(local_method, actor_method))
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "local_mode": True
-    }, {
-        "local_mode": False
-    }],
-    indirect=True)
-def test_args_named_and_star(ray_start_regular):
+def test_args_named_and_star(ray_start_shared_local_modes):
     def hello(a, x="hello", **kwargs):
         return a, x, kwargs
 
@@ -689,14 +621,7 @@ def test_args_named_and_star(ray_start_regular):
     ray.get(remote_test_function.remote(local_method, actor_method))
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "local_mode": True
-    }, {
-        "local_mode": False
-    }],
-    indirect=True)
-def test_args_stars_after(ray_start_regular):
+def test_args_stars_after(ray_start_shared_local_modes):
     def star_args_after(a="hello", b="heo", *args, **kwargs):
         return a, b, args, kwargs
 
@@ -728,7 +653,7 @@ def test_args_stars_after(ray_start_regular):
     ray.get(remote_test_function.remote(local_method, actor_method))
 
 
-def test_object_id_backward_compatibility(ray_start_regular):
+def test_object_id_backward_compatibility(ray_start_shared_local_modes):
     # We've renamed Python's `ObjectID` to `ObjectRef`, and added a type
     # alias for backward compatibility.
     # This test is to make sure legacy code can still use `ObjectID`.
@@ -743,7 +668,7 @@ def test_object_id_backward_compatibility(ray_start_regular):
     assert isinstance(object_ref, ray.ObjectRef)
 
 
-def test_nonascii_in_function_body(ray_start_regular):
+def test_nonascii_in_function_body(ray_start_shared_local_modes):
     @ray.remote
     def return_a_greek_char():
         return "φ"
@@ -752,5 +677,4 @@ def test_nonascii_in_function_body(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import pytest
     sys.exit(pytest.main(["-v", __file__]))

@@ -202,17 +202,21 @@ def test_logging_to_driver(shutdown_only):
     def f():
         # It's important to make sure that these print statements occur even
         # without calling sys.stdout.flush() and sys.stderr.flush().
-        for i in range(100):
-            print(i)
-            print(100 + i, file=sys.stderr)
+        for i in range(10):
+            print(i, end=" ")
+            print(100 + i, end=" ", file=sys.stderr)
 
     captured = {}
     with CaptureOutputAndError(captured):
         ray.get(f.remote())
         time.sleep(1)
 
+    out_lines = captured["out"]
     err_lines = captured["err"]
-    for i in range(200):
+    for i in range(10):
+        assert str(i) in out_lines
+
+    for i in range(100, 110):
         assert str(i) in err_lines
 
 
@@ -650,6 +654,19 @@ def test_ray_address_environment_variable(ray_start_cluster):
     ray.init()
     assert "CPU" in ray.state.cluster_resources()
     ray.shutdown()
+
+
+def test_ray_resources_environment_variable(ray_start_cluster):
+    address = ray_start_cluster.address
+
+    os.environ["RAY_OVERRIDE_RESOURCES"] = "{\"custom1\":1, \"custom2\":2}"
+    ray.init(address=address, resources={"custom1": 3, "custom3": 3})
+
+    cluster_resources = ray.cluster_resources()
+    print(cluster_resources)
+    assert cluster_resources["custom1"] == 1
+    assert cluster_resources["custom2"] == 2
+    assert cluster_resources["custom3"] == 3
 
 
 def test_gpu_info_parsing():

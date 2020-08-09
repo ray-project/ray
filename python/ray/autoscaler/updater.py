@@ -91,8 +91,9 @@ class NodeUpdater:
                     "Setup command `{}` failed with exit code {}. stderr:",
                     cf.bold(e.cmd), e.returncode)
             else:
-                cli_logger.verbose_error(vars(e), _no_format=True)
-                cli_logger.error(str(e))  # todo: handle this better somehow?
+                cli_logger.verbose_error("{}", str(vars(e)))
+                # todo: handle this better somehow?
+                cli_logger.error("{}", str(e))
             # todo: print stderr here
             cli_logger.error("!!!")
             cli_logger.newline()
@@ -282,7 +283,9 @@ class NodeUpdater:
                                     cmd_to_print = cf.bold(cmd)
 
                                 cli_logger.print(
-                                    cmd_to_print, _numbered=("()", i, total))
+                                    "{}",
+                                    cmd_to_print,
+                                    _numbered=("()", i, total))
 
                                 self.cmd_runner.run(cmd)
                 else:

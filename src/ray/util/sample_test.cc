@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/util/sample.h"
+
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "ray/util/sample.h"
 
 namespace ray {
 

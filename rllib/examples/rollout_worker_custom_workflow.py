@@ -44,8 +44,8 @@ class CustomPolicy(Policy):
                         episodes=None,
                         **kwargs):
         # return random actions
-        return np.array([self.action_space.sample()
-                         for _ in obs_batch]), [], {}
+        return np.array(
+            [self.action_space.sample() for _ in obs_batch]), [], {}
 
     def learn_on_batch(self, samples):
         # implement your learning code here
