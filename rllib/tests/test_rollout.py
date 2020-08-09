@@ -146,6 +146,7 @@ def learn_test_multi_agent_plus_rollout(algo):
         rllib_dir = str(Path(__file__).parent.parent.absolute())
         print("RLlib dir = {}\nexists={}".format(rllib_dir,
                                                  os.path.exists(rllib_dir)))
+
         def policy_fn(agent):
             return "pol{}".format(agent)
 
@@ -155,7 +156,9 @@ def learn_test_multi_agent_plus_rollout(algo):
         config = {
             "num_gpus": 0,
             "num_workers": 1,
-            "evaluation_config": {"explore": False},
+            "evaluation_config": {
+                "explore": False
+            },
             "framework": fw,
             "env": MultiAgentCartPole,
             "multiagent": {
@@ -168,8 +171,13 @@ def learn_test_multi_agent_plus_rollout(algo):
         }
         stop = {"episode_reward_mean": 190.0}
         tune.run(
-            algo, config=config, stop=stop, checkpoint_freq=1,
-            checkpoint_at_end=True, local_dir=tmp_dir, verbose=1)
+            algo,
+            config=config,
+            stop=stop,
+            checkpoint_freq=1,
+            checkpoint_at_end=True,
+            local_dir=tmp_dir,
+            verbose=1)
 
         # Find last checkpoint and use that for the rollout.
         checkpoint_path = os.popen("ls {}/PPO/*/checkpoint_*/"
@@ -246,6 +254,7 @@ class TestRolloutLearntPolicy(unittest.TestCase):
 
     def test_ppo_multi_agent_train_then_rollout(self):
         learn_test_multi_agent_plus_rollout("PPO")
+
 
 if __name__ == "__main__":
     import sys
