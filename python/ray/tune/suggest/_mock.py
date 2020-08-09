@@ -1,5 +1,3 @@
-import pickle
-
 from ray.tune.suggest.suggestion import Searcher, ConcurrencyLimiter
 from ray.tune.suggest.search_generator import SearchGenerator
 

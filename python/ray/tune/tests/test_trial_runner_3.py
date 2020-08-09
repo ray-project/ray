@@ -1,3 +1,4 @@
+from collections import Counter
 import os
 import pickle
 import shutil
@@ -15,7 +16,7 @@ from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.resources import Resources, json_to_resources, resources_to_json
 from ray.tune.suggest.repeater import Repeater
-from ray.tune.suggest._mock import _MockSuggestionAlgorithm, _MockSearcher
+from ray.tune.suggest._mock import _MockSuggestionAlgorithm
 from ray.tune.suggest.suggestion import Searcher, ConcurrencyLimiter
 from ray.tune.suggest.search_generator import SearchGenerator
 
@@ -267,7 +268,7 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertRaises(TuneError, runner.step)
 
     def testSearcherSaveRestore(self):
-        ray.init(num_cpus=8)#, local_mode=True)
+        ray.init(num_cpus=8, local_mode=True)
         tmpdir = tempfile.mkdtemp()
 
         def create_searcher():
@@ -289,7 +290,7 @@ class TrialRunnerTest3(unittest.TestCase):
                         pickle.dump(self.__dict__, f)
 
                 def restore(self, checkpoint_path):
-                    with open(checkpoint_path, "wb") as f:
+                    with open(checkpoint_path, "rb") as f:
                         self.__dict__.update(pickle.load(f))
 
             searcher = TestSuggestion(0)
@@ -312,25 +313,46 @@ class TrialRunnerTest3(unittest.TestCase):
             search_alg=searcher,
             local_checkpoint_dir=tmpdir,
             checkpoint_period=-1)
-        for i in range(8):
+        for i in range(6):
             runner.step()
 
-        assert len(runner.get_trials()) == 6, [t.config for t in runner.get_trials()]
+        assert len(
+            runner.get_trials()) == 6, [t.config for t in runner.get_trials()]
         runner.checkpoint()
         trials = runner.get_trials()
         [
             runner.trial_executor.stop_trial(t) for t in trials
             if t.status is not Trial.ERROR
         ]
+        del runner
         # stop_all(runner.get_trials())
 
         searcher = create_searcher()
-        runner = TrialRunner(
+        runner2 = TrialRunner(
             search_alg=searcher, local_checkpoint_dir=tmpdir, resume="LOCAL")
+        assert len(runner2.get_trials()) == 6, [
+            t.config for t in runner2.get_trials()
+        ]
 
-        for i in range(10):
-            runner.step()
-        assert len(runner.get_trials()) == 12
+        def trial_statuses():
+            return [t.status for t in runner2.get_trials()]
+
+        def num_running_trials():
+            return sum(
+                [t.status == Trial.RUNNING for t in runner2.get_trials()])
+
+        for i in range(6):
+            runner2.step()
+        assert len(set(trial_statuses())) == 1
+        assert Trial.RUNNING in trial_statuses()
+        for i in range(20):
+            runner2.step()
+            assert 1 <= num_running_trials() <= 6
+        evaluated = [
+            t.evaluated_params["test_variable"] for t in runner2.get_trials()
+        ]
+        count = Counter(evaluated)
+        assert all(v <= 3 for v in count.values())
 
     def testTrialSaveRestore(self):
         """Creates different trials to test runner.checkpoint/restore."""

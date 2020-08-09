@@ -182,7 +182,6 @@ class SearchGenerator(SearchAlgorithm):
                      self.CKPT_FILE_TMPL.format(session_str))
 
     def restore_from_dir(self, dirpath):
-        # save restore own stuff from dir
         searcher = self.searcher
         search_alg_state = _find_newest_ckpt(dirpath,
                                              self.CKPT_FILE_TMPL.format("*"))

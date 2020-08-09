@@ -186,9 +186,10 @@ class Searcher:
         success = True
         try:
             self.save(tmp_search_ckpt_path)
-        except NotImplementedError as e:
+        except NotImplementedError:
             with log_once("suggest:save_to_dir"):
-                logger.warning("save not implemented for Searcher. Skipping save." )
+                logger.warning(
+                    "save not implemented for Searcher. Skipping save.")
             success = False
 
         if success and os.path.exists(tmp_search_ckpt_path):
