@@ -18,6 +18,7 @@
 #include <functional>
 
 #include "ray/common/buffer.h"
+#include "ray/common/network_util.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/test_util.h"
 #include "ray/util/filesystem.h"
@@ -46,7 +47,9 @@ int TestSetupUtil::StartUpRedisServer(const int &port) {
       srand(current_time_ms() % RAND_MAX);
     }
     // Use random port (in range [2000, 7000) to avoid port conflicts between UTs.
-    actual_port = rand() % 5000 + 2000;
+    do {
+      actual_port = rand() % 5000 + 2000;
+    } while (!CheckFree(actual_port));
   }
 
   std::string program = TEST_REDIS_SERVER_EXEC_PATH;
@@ -177,6 +180,14 @@ bool WaitForCondition(std::function<bool()> condition, int timeout_ms) {
     }
   }
   return false;
+}
+
+void WaitForExpectedCount(std::atomic<int> &current_count, int expected_count,
+                          int timeout_ms) {
+  auto condition = [&current_count, expected_count]() {
+    return current_count == expected_count;
+  };
+  EXPECT_TRUE(WaitForCondition(condition, timeout_ms));
 }
 
 void KillProcessBySocketName(std::string socket_name) {

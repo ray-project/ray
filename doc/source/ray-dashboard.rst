@@ -52,7 +52,8 @@ Logical View
 The logical view shows you:
 
 - Created and killed actors.
-- Actor statistics such as actor status, number of executed tasks, pending tasks, and memory usage.
+- State of actors (e.g. Alive, Dead, Pending Creation). Learn more about actor states at 
+- Actor statistics such as number of executed tasks, pending tasks, and memory usage.
 - Actor hierarchy.
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/Logical-view-basic.png
@@ -246,31 +247,33 @@ Logical View (Experimental)
 
 **State**: State of an actor.
 
-- 0: Alive
-- 1: Restarting
-- 2: Dead
+- Alive
+- Restarting
+- Dead
+- Infeasible (cannot be created due to not enough available resources (e.g. CPUs, GPUs, memory) in the cluster, even at full capacity)
+- Pending Creation
+- Dependencies Unready (waiting for one or more of its arguments to be ready)
 
-**Pending**: A number of pending tasks for this actor.
+**Number of Pending Tasks**: The number of method calls for this actor that are still awaiting execution.
 
-**Excuted**: A number of executed tasks for this actor.
+**Number of Excuted Tasks**: A number of completed method calls for this actor.
 
-**NumObjectRefsInScope**: Number of object refs in scope for this actor. object refs
+**Number of ObjectRefs In Scope**: The number of object refs in scope for this actor, which correspond to objects in the Ray object store. object refs
 in scope will not be evicted unless object stores are full.
 
-**NumLocalObjects**: Number of object refs that are in this actor's local memory.
-Only big objects (>100KB) are residing in plasma object stores, and other small
+**Number of Local Objects**: Number of object refs that are in this actor's local memory.
+Only big objects (>100KB) reside in plasma object stores, and other small
 objects are staying in local memory.
 
-**UsedLocalObjectMemory**: Used memory used by local objects.
+**Used Local Object Memory**: Used memory used by local objects.
 
-**kill actor**: A button to kill an actor in a cluster. It is corresponding to ``ray.kill``.
+**kill actor**: A button to kill an actor in a cluster. It has the same effect as calling ``ray.kill`` on an actor handle.
 
-**profile for**: A button to run profiling. We currently support profiling for 10s,
-30s and 60s. It requires passwordless ``sudo``.
+**profile**: A button to run profiling. We currently support profiling for 10s,
+30s and 60s. It requires passwordless ``sudo``. The result of profiling is a py-spy html output displaying how much CPU time the actor spent in various methods. 
 
 **Infeasible Actor Creation**: Actor creation is infeasible when an actor
-requires more resources than a Ray cluster can provide. This is depicted
-as a red colored actor.
+requires more resources than a Ray cluster can provide, for example an actor that requires a GPU on a cluster that has none. The actor's state is marked "Infeasible" and highlighted in red.
 
 **Pending Actor Creation**: Actor creation is pending when there are no
 available resources for this actor because they are already taken by other

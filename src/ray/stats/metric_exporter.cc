@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <future>
-
 #include "ray/stats/metric_exporter.h"
+
+#include <future>
 
 namespace ray {
 namespace stats {

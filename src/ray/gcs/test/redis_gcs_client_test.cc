@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "gtest/gtest.h"
+#include "ray/gcs/redis_gcs_client.h"
 
+#include "gtest/gtest.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/pb_util.h"
-#include "ray/gcs/redis_gcs_client.h"
 #include "ray/gcs/tables.h"
 
 extern "C" {

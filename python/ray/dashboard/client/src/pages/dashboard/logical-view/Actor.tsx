@@ -12,6 +12,7 @@ import {
   checkProfilingStatus,
   CheckProfilingStatusResponse,
   getProfilingResultURL,
+  isFullActorInfo,
   launchKillActor,
   launchProfiling,
   RayletActorInfo,
@@ -84,7 +85,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
 
   handleProfilingClick = (duration: number) => async () => {
     const actor = this.props.actor;
-    if (actor.state !== ActorState.Invalid) {
+    if (actor.state === ActorState.Alive) {
       const profilingId = await launchProfiling(
         actor.nodeId,
         actor.pid,
@@ -117,10 +118,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
 
   killActor = () => {
     const actor = this.props.actor;
-    if (
-      actor.state === ActorState.Creating ||
-      actor.state === ActorState.Alive
-    ) {
+    if (actor.state === ActorState.Alive) {
       launchKillActor(actor.actorId, actor.ipAddress, actor.port);
     }
   };
@@ -128,83 +126,85 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
   render() {
     const { classes, actor } = this.props;
     const { expanded, profiling } = this.state;
-
-    const information =
-      actor.state !== ActorState.Invalid
-        ? [
-            {
-              label: "Resources",
-              value:
-                Object.entries(actor.usedResources).length > 0 &&
-                Object.entries(actor.usedResources)
-                  .sort((a, b) => a[0].localeCompare(b[0]))
-                  .map(
-                    ([key, value]) =>
-                      `${sum(
-                        value.resourceSlots.map((slot) => slot.allocation),
-                      )} ${key}`,
-                  )
-                  .join(", "),
-            },
-            {
-              label: "Number of pending tasks",
-              value: actor.taskQueueLength.toLocaleString(),
-              tooltip:
-                "The number of tasks that are currently pending to execute on this actor. If this number " +
-                "remains consistently high, it may indicate that this actor is a bottleneck in your application.",
-            },
-            {
-              label: "Number of executed tasks",
-              value: actor.numExecutedTasks.toLocaleString(),
-              tooltip:
-                "The number of tasks this actor has executed throughout its lifetimes.",
-            },
-            {
-              label: "Number of ObjectRefs in scope",
-              value: actor.numObjectRefsInScope.toLocaleString(),
-              tooltip:
-                "The number of ObjectRefs that this actor is keeping in scope via its internal state. " +
-                "This does not imply that the objects are in active use or colocated on the node with the actor " +
-                `currently. This can be useful for debugging memory leaks. See the docs at ${memoryDebuggingDocLink} ` +
-                "for more information.",
-            },
-            {
-              label: "Number of local objects",
-              value: actor.numLocalObjects.toLocaleString(),
-              tooltip:
-                "The number of small objects that this actor has stored in its local in-process memory store. This can be useful for " +
-                `debugging memory leaks. See the docs at ${memoryDebuggingDocLink} for more information`,
-            },
-            {
-              label: "Object store memory used (MiB)",
-              value: actor.usedObjectStoreMemory.toLocaleString(),
-              tooltip:
-                "The total amount of memory that this actor is occupying in the Ray object store. " +
-                "If this number is increasing without bounds, you might have a memory leak. See " +
-                `the docs at: ${memoryDebuggingDocLink} for more information.`,
-            },
-          ]
-        : [
-            {
-              label: "Actor ID",
-              value: actor.actorId,
-              tooltip: "",
-            },
-            {
-              label: "Required resources",
-              value:
-                Object.entries(actor.requiredResources).length > 0 &&
-                Object.entries(actor.requiredResources)
-                  .sort((a, b) => a[0].localeCompare(b[0]))
-                  .map(([key, value]) => `${value.toLocaleString()} ${key}`)
-                  .join(", "),
-              tooltip: "",
-            },
-          ];
+    const invalidStateType = isFullActorInfo(actor)
+      ? undefined
+      : actor.invalidStateType;
+    const information = isFullActorInfo(actor)
+      ? [
+          {
+            label: "Resources",
+            value:
+              Object.entries(actor.usedResources).length > 0 &&
+              Object.entries(actor.usedResources)
+                .sort((a, b) => a[0].localeCompare(b[0]))
+                .map(
+                  ([key, value]) =>
+                    `${sum(
+                      value.resourceSlots.map((slot) => slot.allocation),
+                    )} ${key}`,
+                )
+                .join(", "),
+          },
+          {
+            label: "Number of pending tasks",
+            value: actor.taskQueueLength.toLocaleString(),
+            tooltip:
+              "The number of tasks that are currently pending to execute on this actor. If this number " +
+              "remains consistently high, it may indicate that this actor is a bottleneck in your application.",
+          },
+          {
+            label: "Number of executed tasks",
+            value: actor.numExecutedTasks.toLocaleString(),
+            tooltip:
+              "The number of tasks this actor has executed throughout its lifetimes.",
+          },
+          {
+            label: "Number of ObjectRefs in scope",
+            value: actor.numObjectRefsInScope.toLocaleString(),
+            tooltip:
+              "The number of ObjectRefs that this actor is keeping in scope via its internal state. " +
+              "This does not imply that the objects are in active use or colocated on the node with the actor " +
+              `currently. This can be useful for debugging memory leaks. See the docs at ${memoryDebuggingDocLink} ` +
+              "for more information.",
+          },
+          {
+            label: "Number of local objects",
+            value: actor.numLocalObjects.toLocaleString(),
+            tooltip:
+              "The number of small objects that this actor has stored in its local in-process memory store. This can be useful for " +
+              `debugging memory leaks. See the docs at ${memoryDebuggingDocLink} for more information`,
+          },
+          {
+            label: "Object store memory used (MiB)",
+            value: actor.usedObjectStoreMemory.toLocaleString(),
+            tooltip:
+              "The total amount of memory that this actor is occupying in the Ray object store. " +
+              "If this number is increasing without bounds, you might have a memory leak. See " +
+              `the docs at: ${memoryDebuggingDocLink} for more information.`,
+          },
+        ]
+      : [
+          {
+            label: "Actor ID",
+            value: actor.actorId,
+            tooltip: "",
+          },
+          {
+            label: "Required resources",
+            value:
+              actor.requiredResources &&
+              Object.entries(actor.requiredResources).length > 0 &&
+              Object.entries(actor.requiredResources)
+                .sort((a, b) => a[0].localeCompare(b[0]))
+                .map(([key, value]) => `${value.toLocaleString()} ${key}`)
+                .join(", "),
+            tooltip: "",
+          },
+        ];
 
     // Construct the custom message from the actor.
     let actorCustomDisplay: JSX.Element[] = [];
-    if (actor.state !== ActorState.Invalid && actor.webuiDisplay) {
+    if (isFullActorInfo(actor) && actor.webuiDisplay) {
       actorCustomDisplay = Object.keys(actor.webuiDisplay)
         .sort()
         .map((key, _, __) => {
@@ -241,7 +241,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
     return (
       <div className={classes.root}>
         <Typography className={classes.title}>
-          {actor.state !== ActorState.Invalid ? (
+          {isFullActorInfo(actor) ? (
             <React.Fragment>
               Actor {actor.actorId}{" "}
               {Object.entries(actor.children).length > 0 && (
@@ -269,7 +269,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                 </React.Fragment>
               ))}
               ){" "}
-              {actor.state === 0 && (
+              {actor.state === ActorState.Alive && (
                 <span className={classes.action} onClick={this.killActor}>
                   Kill Actor
                 </span>
@@ -303,7 +303,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
           ) : actor.invalidStateType === "infeasibleActor" ? (
             <span className={classes.invalidStateTypeInfeasible}>
               {actor.actorTitle} cannot be created because the Ray cluster
-              cannot satisfy its resource requirements.)
+              cannot satisfy its resource requirements.
             </span>
           ) : (
             <span className={classes.invalidStateTypePendingActor}>
@@ -315,8 +315,9 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
           actorDetails={information}
           actorTitle={actor.actorTitle}
           actorState={actor.state}
+          invalidStateType={invalidStateType}
         />
-        {actor.state !== ActorState.Invalid && (
+        {isFullActorInfo(actor) && (
           <React.Fragment>
             {actorCustomDisplay.length > 0 && (
               <React.Fragment>{actorCustomDisplay}</React.Fragment>

@@ -55,12 +55,11 @@ def accept_batch(f):
     return f
 
 
-def init(
-        name=None,
-        http_host=DEFAULT_HTTP_HOST,
-        http_port=DEFAULT_HTTP_PORT,
-        metric_exporter=InMemoryExporter,
-):
+def init(name=None,
+         http_host=DEFAULT_HTTP_HOST,
+         http_port=DEFAULT_HTTP_PORT,
+         metric_exporter=InMemoryExporter,
+         _http_middlewares=[]):
     """Initialize or connect to a serve cluster.
 
     If serve cluster is already initialized, this function will just return.
@@ -101,12 +100,7 @@ def init(
         name=controller_name,
         max_restarts=-1,
         max_task_retries=-1,
-    ).remote(
-        name,
-        http_host,
-        http_port,
-        metric_exporter,
-    )
+    ).remote(name, http_host, http_port, metric_exporter, _http_middlewares)
 
     futures = []
     for node_id in ray.state.node_ids():
@@ -367,8 +361,10 @@ def get_handle(endpoint_name,
     if not missing_ok:
         assert endpoint_name in ray.get(controller.get_all_endpoints.remote())
 
+    # TODO(edoakes): we should choose the router on the same node.
+    routers = ray.get(controller.get_routers.remote())
     return RayServeHandle(
-        ray.get(controller.get_router.remote())[0],
+        list(routers.values())[0],
         endpoint_name,
         relative_slo_ms,
         absolute_slo_ms,
