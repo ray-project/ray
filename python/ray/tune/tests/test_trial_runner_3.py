@@ -25,6 +25,8 @@ class TrialRunnerTest3(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
         _register_all()  # re-register the evicted objects
+        if "CUDA_VISIBLE_DEVICES" in os.environ:
+            del os.environ["CUDA_VISIBLE_DEVICES"]
 
     def testStepHook(self):
         ray.init(num_cpus=4, num_gpus=2)
