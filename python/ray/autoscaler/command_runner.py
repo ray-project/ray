@@ -53,13 +53,14 @@ class CommandRunnerInterface:
 
     Command runner instances are returned by provider.get_command_runner()."""
 
-    def run(self,
+    def run(
+            self,
             cmd: str = None,
             timeout: int = 120,
             exit_on_fail: bool = False,
             port_forward: List[Tuple[int, int]] = None,
             with_output: bool = False,
-            **kwargs) -> str:
+    ) -> str:
         """Run the given command on the cluster node and optionally get output.
 
         Args:
@@ -105,13 +106,14 @@ class KubernetesCommandRunner(CommandRunnerInterface):
         self.namespace = namespace
         self.kubectl = ["kubectl", "-n", self.namespace]
 
-    def run(self,
+    def run(
+            self,
             cmd=None,
             timeout=120,
             exit_on_fail=False,
             port_forward=None,
             with_output=False,
-            **kwargs):
+    ):
         if cmd and port_forward:
             raise Exception(
                 "exec with Kubernetes can't forward ports and execute"
@@ -327,15 +329,21 @@ class SSHCommandRunner(CommandRunnerInterface):
             cli_logger.warning("{}", str(e))  # todo: msg
             cli_logger.old_warning(logger, "{}", str(e))
 
-    def run(self,
+    # WARNING: The arguments of "run" function need to be json dumpable.
+    def run(
+            self,
             cmd,
             timeout=120,
             exit_on_fail=False,
             port_forward=None,
             with_output=False,
-            ssh_options_override=None,
-            **kwargs):
-        ssh_options = ssh_options_override or self.ssh_options
+            ssh_options_override_ssh_key="",
+    ):
+
+        if ssh_options_override_ssh_key:
+            ssh_options = SSHOptions(ssh_options_override_ssh_key)
+        else:
+            ssh_options = self.ssh_options
 
         assert isinstance(
             ssh_options, SSHOptions
@@ -451,15 +459,17 @@ class DockerCommandRunner(SSHCommandRunner):
         self._check_docker_installed()
         self.shutdown = False
 
-    def run(self,
+    # WARNING: The arguments of "run" function need to be json dumpable.
+    def run(
+            self,
             cmd,
             timeout=120,
             exit_on_fail=False,
             port_forward=None,
             with_output=False,
             run_env=True,
-            ssh_options_override=None,
-            **kwargs):
+            ssh_options_override_ssh_key="",
+    ):
         if run_env == "auto":
             run_env = "host" if cmd.find("docker") == 0 else "docker"
 
@@ -478,7 +488,7 @@ class DockerCommandRunner(SSHCommandRunner):
             exit_on_fail=exit_on_fail,
             port_forward=port_forward,
             with_output=with_output,
-            ssh_options_override=ssh_options_override)
+            ssh_options_override_ssh_key=ssh_options_override_ssh_key)
 
     def run_rsync_up(self, source, target):
         protected_path = target

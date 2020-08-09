@@ -10,7 +10,7 @@ from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG, \
     TAG_RAY_FILE_MOUNTS_CONTENTS, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, STATUS_WAITING_FOR_SSH, \
     STATUS_SETTING_UP, STATUS_SYNCING_FILES
-from ray.autoscaler.command_runner import NODE_START_WAIT_S, SSHOptions
+from ray.autoscaler.command_runner import NODE_START_WAIT_S
 from ray.autoscaler.log_timer import LogTimer
 
 from ray.autoscaler.cli_logger import cli_logger
@@ -258,9 +258,8 @@ class NodeUpdater:
                             for cmd in self.initialization_commands:
                                 self.cmd_runner.run(
                                     cmd,
-                                    ssh_options_override=SSHOptions(
-                                        self.auth_config.get(
-                                            "ssh_private_key")))
+                                    ssh_options_override_ssh_key=self.
+                                    auth_config.get("ssh_private_key"))
                 else:
                     cli_logger.print(
                         "No initialization commands to run.",
