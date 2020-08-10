@@ -44,7 +44,7 @@ class stream_protocol;
 enum class CommandLineSyntax { System, POSIX, Windows };
 
 // Transfer the string to the Hex format. It can be more readable than the ANSI mode
-inline std::string StringToHex(std::string str) {
+inline std::string StringToHex(const std::string& str) {
   constexpr char hex[] = "0123456789abcdef";
   std::string result;
   for (size_t i = 0; i < str.size(); i++) {

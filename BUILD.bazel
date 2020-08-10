@@ -650,16 +650,6 @@ cc_test(
 )
 
 cc_test(
-    name = "event_test",
-    srcs = ["src/ray/util/event_test.cc"],
-    copts = COPTS,
-    deps = [
-        ":ray_util",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
     name = "direct_actor_transport_test",
     srcs = ["src/ray/core_worker/test/direct_actor_transport_test.cc"],
     copts = COPTS,
@@ -1297,7 +1287,7 @@ cc_library(
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
-        ":event_cc_proto",
+        "//src/ray/protobuf:event_cc_proto",
         ":sha256",
         "@boost//:asio",
         "@com_github_google_glog//:glog",
