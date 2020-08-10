@@ -222,8 +222,9 @@ def test_create_backend_idempotent(serve_instance):
     backend_config = BackendConfig({"num_replicas": 1})
 
     for i in range(10):
-        controller.create_backend.remote("my_backend", backend_config,
-                                         replica_config)
+        ray.get(
+            controller.create_backend.remote("my_backend", backend_config,
+                                             replica_config))
 
     assert len(ray.get(controller.get_all_backends.remote())) == 1
 
@@ -239,8 +240,9 @@ def test_create_endpoint_idempotent(serve_instance):
     controller = serve.api._get_controller()
 
     for i in range(10):
-        controller.create_endpoint.remote("my_endpoint", {"my_backend": 1.0},
-                                          "my_route", ["Get"])
+        ray.get(
+            controller.create_endpoint.remote(
+                "my_endpoint", {"my_backend": 1.0}, "my_route", ["Get"]))
 
     assert len(ray.get(controller.get_all_endpoints.remote())) == 1
 
