@@ -16,8 +16,8 @@
 
 #include <jni.h>
 
-#include "ray/core_worker/common.h"
 #include "jni_utils.h"
+#include "ray/core_worker/common.h"
 #include "ray/gcs/gcs_client/global_state_accessor.h"
 
 #ifdef __cplusplus

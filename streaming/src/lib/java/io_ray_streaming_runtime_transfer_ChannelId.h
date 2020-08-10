@@ -14,16 +14,16 @@ extern "C" {
  * Method:    createNativeId
  * Signature: (J)J
  */
-JNIEXPORT jlong JNICALL Java_io_ray_streaming_runtime_transfer_ChannelId_createNativeId
-  (JNIEnv *, jclass, jlong);
+JNIEXPORT jlong JNICALL
+Java_io_ray_streaming_runtime_transfer_ChannelId_createNativeId(JNIEnv *, jclass, jlong);
 
 /*
  * Class:     io_ray_streaming_runtime_transfer_ChannelId
  * Method:    destroyNativeId
  * Signature: (J)V
  */
-JNIEXPORT void JNICALL Java_io_ray_streaming_runtime_transfer_ChannelId_destroyNativeId
-  (JNIEnv *, jclass, jlong);
+JNIEXPORT void JNICALL
+Java_io_ray_streaming_runtime_transfer_ChannelId_destroyNativeId(JNIEnv *, jclass, jlong);
 
 #ifdef __cplusplus
 }

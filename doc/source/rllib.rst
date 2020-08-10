@@ -38,7 +38,7 @@ Then, you can try out training in the following equivalent ways:
   from ray import tune
   from ray.rllib.agents.ppo import PPOTrainer
   tune.run(PPOTrainer, config={"env": "CartPole-v0"})  # "log_level": "INFO" for verbose,
-                                                       # "framework": "tfe" for tf-eager,
+                                                       # "framework": "tfe"/"tf2" for eager,
                                                        # "framework": "torch" for PyTorch
 
 Next, we'll cover three key concepts in RLlib: Policies, Samples, and Trainers.
@@ -92,7 +92,7 @@ Policies each define a ``learn_on_batch()`` method that improves the policy give
 
 - Simple `policy gradient loss <https://github.com/ray-project/ray/blob/master/rllib/agents/pg/pg_tf_policy.py>`__
 - Simple `Q-function loss <https://github.com/ray-project/ray/blob/a1d2e1762325cd34e14dc411666d63bb15d6eaf0/rllib/agents/dqn/simple_q_policy.py#L136>`__
-- Importance-weighted `APPO surrogate loss <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/appo_policy.py>`__
+- Importance-weighted `APPO surrogate loss <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/appo_torch_policy.py>`__
 
 RLlib `Trainer classes <rllib-concepts.html#trainers>`__ coordinate the distributed workflow of running rollouts and optimizing policies. They do this by leveraging Ray `parallel iterators <iter.html>`__ to implement the desired computation pattern. The following figure shows *synchronous sampling*, the simplest of `these patterns <rllib-algorithms.html>`__:
 

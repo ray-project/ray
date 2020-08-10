@@ -1,6 +1,6 @@
-#include <sstream>
-
 #include "ray/common/task/task_execution_spec.h"
+
+#include <sstream>
 
 namespace ray {
 

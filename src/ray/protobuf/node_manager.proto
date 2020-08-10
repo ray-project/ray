@@ -89,17 +89,6 @@ message CancelWorkerLeaseReply {
   bool success = 1;
 }
 
-message ForwardTaskRequest {
-  // The ID of the task to be forwarded.
-  bytes task_id = 1;
-  // The tasks in the uncommitted lineage of the forwarded task. This
-  // should include task_id.
-  repeated Task uncommitted_tasks = 2;
-}
-
-message ForwardTaskReply {
-}
-
 message PinObjectIDsRequest {
   // Address of the owner to ask when to unpin the objects.
   Address owner_address = 1;
@@ -171,8 +160,6 @@ service NodeManagerService {
   // Cancel a pending lease request. This only returns success if the
   // lease request was not yet granted.
   rpc CancelWorkerLease(CancelWorkerLeaseRequest) returns (CancelWorkerLeaseReply);
-  // Forward a task and its uncommitted lineage to the remote node manager.
-  rpc ForwardTask(ForwardTaskRequest) returns (ForwardTaskReply);
   // Pin the provided object IDs.
   rpc PinObjectIDs(PinObjectIDsRequest) returns (PinObjectIDsReply);
   // Get the current node stats.

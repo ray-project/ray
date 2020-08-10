@@ -387,6 +387,34 @@ def test_profiling_info_endpoint(shutdown_only):
     assert profiling_stats is not None
 
 
+def test_multi_node_metrics_export_port_discovery(ray_start_cluster):
+    NUM_NODES = 3
+    cluster = ray_start_cluster
+    nodes = [cluster.add_node() for _ in range(NUM_NODES)]
+    nodes = {
+        node.address_info["metrics_export_port"]: node.address_info
+        for node in nodes
+    }
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+    node_info_list = ray.nodes()
+
+    for node_info in node_info_list:
+        metrics_export_port = node_info["MetricsExportPort"]
+        address_info = nodes[metrics_export_port]
+        assert (address_info["raylet_socket_name"] == node_info[
+            "RayletSocketName"])
+
+        # Make sure we can ping Prometheus endpoints.
+        def test_prometheus_endpoint():
+            response = requests.get(
+                "http://localhost:{}".format(metrics_export_port))
+            return response.status_code == 200
+
+        wait_until_succeeded_without_exception(
+            test_prometheus_endpoint, (requests.exceptions.ConnectionError, ))
+
+
 # This variable is used inside test_memory_dashboard.
 # It is defined as a global variable to be used across all nested test
 # functions. We use it because memory table is updated every one second,

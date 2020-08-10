@@ -27,7 +27,6 @@
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/actor_registration.h"
-#include "ray/raylet/lineage_cache.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
@@ -246,12 +245,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Handle specified task's submission to the local node manager.
   ///
   /// \param task The task being submitted.
-  /// \param uncommitted_lineage The uncommitted lineage of the task.
-  /// \param forwarded True if the task has been forwarded from a different
-  /// node manager and false if it was submitted by a local worker.
   /// \return Void.
-  void SubmitTask(const Task &task, const Lineage &uncommitted_lineage,
-                  bool forwarded = false);
+  void SubmitTask(const Task &task);
   /// Assign a task to a worker. The task is assumed to not be queued in local_queues_.
   ///
   /// \param[in] worker The worker to assign the task to.
@@ -274,25 +269,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param worker The port that the actor is listening on.
   std::shared_ptr<ActorTableData> CreateActorTableDataFromCreationTask(
       const TaskSpecification &task_spec, int port, const WorkerID &worker_id);
-  /// Handle a worker finishing an assigned actor task or actor creation task.
+  /// Handle a worker finishing an assigned actor creation task.
   /// \param worker The worker that finished the task.
   /// \param task The actor task or actor creation task.
   /// \return Void.
-  void FinishAssignedActorTask(WorkerInterface &worker, const Task &task);
-  /// Helper function for handling worker to finish its assigned actor task
-  /// or actor creation task. Gets invoked when tasks's parent actor is known.
-  ///
-  /// \param parent_actor_id The actor id corresponding to the actor which creates
-  /// the new actor.
-  /// \param task_spec Task specification of the actor creation task that created the
-  /// actor.
-  /// \param resumed_from_checkpoint If the actor was resumed from a checkpoint.
-  /// \param port Rpc server port that the actor is listening on.
-  /// \return Void.
-  void FinishAssignedActorCreationTask(const ActorID &parent_actor_id,
-                                       const TaskSpecification &task_spec,
-                                       bool resumed_from_checkpoint, int port,
-                                       const WorkerID &worker_id);
+  void FinishAssignedActorCreationTask(WorkerInterface &worker, const Task &task);
   /// Make a placement decision for placeable tasks given the resource_map
   /// provided. This will perform task state transitions and task forwarding.
   ///
@@ -321,13 +302,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void HandleTaskReconstruction(const TaskID &task_id,
                                 const ObjectID &required_object_id);
-  /// Resubmit a task for execution. This is a task that was previously already
-  /// submitted to a raylet but which must now be re-executed.
-  ///
-  /// \param task The task being resubmitted.
-  /// \param required_object_id The object id that triggered the resubmission.
-  /// \return Void.
-  void ResubmitTask(const Task &task, const ObjectID &required_object_id);
+
   /// Attempt to forward a task to a remote different node manager. If this
   /// fails, the task will be resubmit locally.
   ///
@@ -553,31 +528,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param message_data A pointer to the message data.
   void ProcessNotifyActorResumedFromCheckpoint(const uint8_t *message_data);
 
-  /// Update actor frontier when a task finishes.
-  /// If the task is an actor creation task and the actor was resumed from a checkpoint,
-  /// restore the frontier from the checkpoint. Otherwise, just extend actor frontier.
-  ///
-  /// \param task The task that just finished.
-  void UpdateActorFrontier(const Task &task);
-
   /// Process client message of SetResourceRequest
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
   /// \return Void.
   void ProcessSetResourceRequest(const std::shared_ptr<ClientConnection> &client,
                                  const uint8_t *message_data);
-
-  /// Handle the case where an actor is disconnected, determine whether this
-  /// actor needs to be restarted and then update actor table.
-  /// This function needs to be called either when actor process dies or when
-  /// a node dies.
-  ///
-  /// \param actor_id Id of this actor.
-  /// \param was_local Whether the disconnected was on this local node.
-  /// \param intentional_disconnect Wether the client was intentionally disconnected.
-  /// \return Void.
-  void HandleDisconnectedActor(const ActorID &actor_id, bool was_local,
-                               bool intentional_disconnect);
 
   /// Finish assigning a task to a worker.
   ///
@@ -630,11 +586,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &request,
                                rpc::CancelWorkerLeaseReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Handle a `ForwardTask` request.
-  void HandleForwardTask(const rpc::ForwardTaskRequest &request,
-                         rpc::ForwardTaskReply *reply,
-                         rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `PinObjectIDs` request.
   void HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
@@ -744,8 +695,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ReconstructionPolicy reconstruction_policy_;
   /// A manager to make waiting tasks's missing object dependencies available.
   TaskDependencyManager task_dependency_manager_;
-  /// The lineage cache for the GCS object and task tables.
-  LineageCache lineage_cache_;
   /// A mapping from actor ID to registration information about that actor
   /// (including which node manager owns it).
   std::unordered_map<ActorID, ActorRegistration> actor_registry_;

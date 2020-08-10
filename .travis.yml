@@ -302,7 +302,7 @@ matrix:
         - TORCH_VERSION=1.5
         - PYTHONWARNINGS=ignore
       install:
-        - . ./ci/travis/ci.sh init RAY_CI_PYTHON_AFFECTED,RAY_CI_TUNE_AFFECTED
+        - . ./ci/travis/ci.sh init RAY_CI_PYTHON_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_DOC_AFFECTED
       before_script:
         - . ./ci/travis/ci.sh build
       script:
@@ -310,7 +310,7 @@ matrix:
         - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=tf,-pytorch,-py37 doc/...
         - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=-tf,pytorch,-py37 doc/...
 
-    # Tune/SGD/Docs: Python >= 3.7 tests and examples.
+    # Tune/SGD: Python >= 3.7 tests and examples.
     - os: linux
       env:
         - PYTHON=3.7 TUNE_TESTING=1
@@ -324,7 +324,7 @@ matrix:
         - . ./ci/travis/ci.sh build
       script:
         - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=py37 python/ray/tune/...
-        # There are no python 3.7 tests for RaySGD/Docs at the moment
+        # There are no python 3.7 tests for RaySGD at the moment
         # - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=py37 python/ray/util/sgd/...
         # - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=py37 doc/...
 

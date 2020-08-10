@@ -205,10 +205,6 @@ struct GcsServerMocker {
       lease_client_factory_ = std::move(lease_client_factory);
     }
 
-    void ResetClientFactory(rpc::ClientFactoryFn client_factory) {
-      client_factory_ = std::move(client_factory);
-    }
-
     void TryLeaseWorkerFromNodeAgain(std::shared_ptr<gcs::GcsActor> actor,
                                      std::shared_ptr<rpc::GcsNodeInfo> node) {
       DoRetryLeasingWorkerFromNode(std::move(actor), std::move(node));
