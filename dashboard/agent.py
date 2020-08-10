@@ -282,8 +282,7 @@ if __name__ == "__main__":
             raylet_name=args.raylet_name)
 
         loop = asyncio.get_event_loop()
-        loop.create_task(agent.run())
-        loop.run_forever()
+        loop.run_until_complete(agent.run())
     except Exception as e:
         # Something went wrong, so push an error to all drivers.
         redis_client = ray.services.create_redis_client(
