@@ -258,6 +258,10 @@ class NodeUpdater:
                             for cmd in self.initialization_commands:
                                 self.cmd_runner.run(
                                     cmd,
+                                    # Overriding the existing SSHOptions class
+                                    # with a new SSHOptions class that uses
+                                    # this ssh_private_key as its only __init__
+                                    # argument.
                                     ssh_options_override_ssh_key=self.
                                     auth_config.get("ssh_private_key"))
                 else:
