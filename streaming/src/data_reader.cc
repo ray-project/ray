@@ -84,7 +84,7 @@ StreamingStatus DataReader::InitChannel(std::vector<TransferCreationStatus> &cre
     TransferCreationStatus status = channel->CreateTransferChannel();
     creation_status.push_back(status);
     if (TransferCreationStatus::PullOk != status) {
-      STREAMING_LOG(ERROR) << "Initialize queue failed, id=" << input_channel;
+      STREAMING_LOG(ERROR) << "Initialize queue failed, id=" << input_channel << ", status=" << static_cast<uint32_t>(status);
     }
   }
   runtime_context_->SetRuntimeStatus(RuntimeStatus::Running);

@@ -5,9 +5,9 @@ from ray.streaming import message
 
 RECORD_TYPE_ID = 0
 KEY_RECORD_TYPE_ID = 1
-CROSS_LANG_TYPE_ID = b"0"
-JAVA_TYPE_ID = b"1"
-PYTHON_TYPE_ID = b"2"
+CROSS_LANG_TYPE_ID = 0
+JAVA_TYPE_ID = 1
+PYTHON_TYPE_ID = 2
 
 
 class Serializer(ABC):
@@ -41,7 +41,7 @@ class CrossLangSerializer(Serializer):
         return msgpack.packb(fields, use_bin_type=True)
 
     def deserialize(self, data):
-        fields = msgpack.unpackb(data, raw=False, strict_map_key=False)
+        fields = msgpack.unpackb(data, raw=False)
         if fields[0] == RECORD_TYPE_ID:
             stream, value = fields[1:]
             record = message.Record(value)

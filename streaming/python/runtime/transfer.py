@@ -403,11 +403,11 @@ class DataReader:
         if self.__queue.empty():
             messages = self.reader.read(timeout_millis)
             for message in messages:
-                self._queue.put(message)
+                self.__queue.put(message)
 
-        if self._queue.empty():
+        if self.__queue.empty():
             return None
-        return self._queue.get()
+        return self.__queue.get()
 
     def get_channel_recover_info(self):
         return ChannelRecoverInfo(self.__creation_status)

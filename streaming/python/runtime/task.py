@@ -256,7 +256,7 @@ class InputStreamTask(StreamTask):
                     continue
 
                 if isinstance(item, DataMessage):
-                    msg_data = item.body()
+                    msg_data = item.body
                     type_id = msg_data[0]
                     if type_id == serialization.PYTHON_TYPE_ID:
                         msg = self.python_serializer.deserialize(msg_data[1:])
@@ -265,12 +265,12 @@ class InputStreamTask(StreamTask):
                     self.processor.process(msg)
                 elif isinstance(item, CheckpointBarrier):
                     logger.info("Got barrier:{}".format(item))
-                    logger.info("Start to do checkpoint {}.".format(item.checkpoint_id()))
+                    logger.info("Start to do checkpoint {}.".format(item.checkpoint_id))
 
                     input_points = item.get_input_checkpoints()
 
-                    self.do_checkpoint(item.checkpoint_id(), input_points)
-                    logger.info("Do checkpoint {} success.".format(item.checkpoint_id()))
+                    self.do_checkpoint(item.checkpoint_id, input_points)
+                    logger.info("Do checkpoint {} success.".format(item.checkpoint_id))
                 else:
                     raise RuntimeError("Unknown item type! item={}".format(item))
 
