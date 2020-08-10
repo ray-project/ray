@@ -60,8 +60,12 @@ class CommandRunnerInterface:
             exit_on_fail: bool = False,
             port_forward: List[Tuple[int, int]] = None,
             with_output: bool = False,
+            run_env: str = "auto",
+            ssh_options_override_ssh_key: str = "",
     ) -> str:
         """Run the given command on the cluster node and optionally get output.
+
+        WARNING: The arguments of "run" function need to be json dumpable!
 
         Args:
             cmd (str): The command to run.
@@ -70,6 +74,9 @@ class CommandRunnerInterface:
             port_forward (list): List of (local, remote) ports to forward, or
                 a single tuple.
             with_output (bool): Whether to return output.
+            run_env (str): whether to run in docker, host or auto.
+            ssh_options_override_ssh_key (str): if provided, overwrites
+                SSHOptions class with SSHOptions(ssh_options_override_ssh_key).
         """
         raise NotImplementedError
 
@@ -113,6 +120,8 @@ class KubernetesCommandRunner(CommandRunnerInterface):
             exit_on_fail=False,
             port_forward=None,
             with_output=False,
+            run_env="auto",  # Unused argument.
+            ssh_options_override_ssh_key="",  # Unused argument.
     ):
         if cmd and port_forward:
             raise Exception(
@@ -329,7 +338,6 @@ class SSHCommandRunner(CommandRunnerInterface):
             cli_logger.warning("{}", str(e))  # todo: msg
             cli_logger.old_warning(logger, "{}", str(e))
 
-    # WARNING: The arguments of "run" function need to be json dumpable.
     def run(
             self,
             cmd,
@@ -337,6 +345,7 @@ class SSHCommandRunner(CommandRunnerInterface):
             exit_on_fail=False,
             port_forward=None,
             with_output=False,
+            run_env="auto",  # Unused argument.
             ssh_options_override_ssh_key="",
     ):
 
@@ -459,7 +468,6 @@ class DockerCommandRunner(SSHCommandRunner):
         self._check_docker_installed()
         self.shutdown = False
 
-    # WARNING: The arguments of "run" function need to be json dumpable.
     def run(
             self,
             cmd,
@@ -467,7 +475,7 @@ class DockerCommandRunner(SSHCommandRunner):
             exit_on_fail=False,
             port_forward=None,
             with_output=False,
-            run_env=True,
+            run_env="auto",
             ssh_options_override_ssh_key="",
     ):
         if run_env == "auto":
@@ -494,8 +502,7 @@ class DockerCommandRunner(SSHCommandRunner):
         protected_path = target
         if target.find("/root") == 0:
             target = target.replace("/root", "/tmp/root")
-            self.ssh_command_runner.run(
-                f"mkdir -p {os.path.dirname(target)}", run_env="host")
+            self.ssh_command_runner.run(f"mkdir -p {os.path.dirname(target)}")
         self.ssh_command_runner.run_rsync_up(source, target)
         if self._check_container_status():
             self.ssh_command_runner.run("docker cp {} {}:{}".format(
@@ -506,8 +513,7 @@ class DockerCommandRunner(SSHCommandRunner):
         protected_path = source
         if source.find("/root") == 0:
             source = source.replace("/root", "/tmp/root")
-            self.ssh_command_runner.run(
-                f"mkdir -p {os.path.dirname(source)}", run_env="host")
+            self.ssh_command_runner.run(f"mkdir -p {os.path.dirname(source)}")
         self.ssh_command_runner.run("docker cp {}:{} {}".format(
             self.docker_name, self._docker_expand_user(protected_path),
             source))
