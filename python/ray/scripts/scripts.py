@@ -961,13 +961,6 @@ def stop(force, verbose, log_old_style, log_color):
     default=False,
     help="Disable the local cluster config cache.")
 @click.option(
-    "--log-color",
-    required=False,
-    type=str,
-    default="auto",
-    help=("Use color logging. "
-          "Valid values are: auto (if stdout is a tty), true, false."))
-@click.option(
     "--dump-command-output",
     is_flag=True,
     default=False,
@@ -980,10 +973,11 @@ def stop(force, verbose, log_old_style, log_color):
     help=("Ray uses login shells (bash --login -i) to run cluster commands "
           "by default. If your workflow is compatible with normal shells, "
           "this can be disabled for a better user experience."))
-@click.option("-v", "--verbose", count=True)
+@add_click_options(logging_options)
 def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
-       yes, cluster_name, no_config_cache, log_old_style, log_color,
-       dump_command_output, use_login_shells, verbose):
+       yes, cluster_name, no_config_cache,
+       dump_command_output, use_login_shells,
+       log_old_style, log_color, verbose):
     """Create or update a Ray cluster."""
     cli_logger.old_style = log_old_style
     cli_logger.color_mode = log_color
@@ -1015,13 +1009,8 @@ def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
                 "Error downloading file: ", e)
     create_or_update_cluster(cluster_config_file, min_workers, max_workers,
                              no_restart, restart_only, yes, cluster_name,
-<<<<<<< HEAD
                              no_config_cache,
                              dump_command_output, use_login_shells)
-=======
-                             no_config_cache, log_old_style, log_color,
-                             dump_command_output, use_login_shells, verbose)
->>>>>>> 0392bb7a7205bb750e12c06f4f51199aac9cbc34
 
 
 @cli.command()
