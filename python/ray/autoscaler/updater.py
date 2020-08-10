@@ -339,7 +339,8 @@ class NodeUpdater:
                             }
                         else:
                             env_vars = {}
-                        self.cmd_runner.run(cmd, environment_variables=env_vars)
+                        self.cmd_runner.run(
+                            cmd, environment_variables=env_vars)
                     except ProcessRunnerError as e:
                         if e.msg_type == "ssh_command_failed":
                             cli_logger.error("Failed.")
