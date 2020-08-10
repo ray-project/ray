@@ -50,7 +50,7 @@ def check_no_existing_redis_clients(node_ip_address, redis_client):
             raise Exception("This Redis instance is already connected to "
                             "clients with this IP address.")
 
-logging_options_no_verbose = [
+logging_options = [
     click.option(
         "--log-old-style/--log-new-style",
         is_flag=True,
