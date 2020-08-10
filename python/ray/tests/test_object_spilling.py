@@ -54,6 +54,59 @@ def test_spill_objects_manually(shutdown_only):
         assert np.array_equal(sample, arr)
 
 
+def test_spill_objects_manually_from_workers(shutdown_only):
+    # Limit our object store to 100 MiB of memory.
+    ray.init(
+        object_store_memory=100 * 1024 * 1024,
+        object_spilling_config={
+            "type": "filesystem",
+            "params": {
+                "directory_path": "/tmp"
+            }
+        },
+        _internal_config=json.dumps({
+            "object_store_full_max_retries": 0,
+            "num_io_workers": 4,
+        }))
+    
+    @ray.remote
+    def _worker():
+        arr = np.random.rand(100 * 1024)
+        ref = ray.put(arr)
+        ray.experimental.force_spill_objects([ref])
+        ray.experimental.force_restore_spilled_objects([ref])
+        assert np.array_equal(ray.get(ref), arr)
+
+    ray.get([_worker.remote() for _ in range(50)])
+
+
+def test_spill_objects_manually_with_workers(shutdown_only):
+    # Limit our object store to 75 MiB of memory.
+    ray.init(
+        object_store_memory=100 * 1024 * 1024,
+        object_spilling_config={
+            "type": "filesystem",
+            "params": {
+                "directory_path": "/tmp"
+            }
+        },
+        _internal_config=json.dumps({
+            "object_store_full_max_retries": 0,
+            "num_io_workers": 4,
+        }))
+    arrays = [np.random.rand(100 * 1024) for _ in range(50)]
+    objects = [ray.put(arr) for arr in arrays]
+
+    @ray.remote
+    def _worker(object_refs):
+        ray.experimental.force_spill_objects(object_refs)
+
+    ray.get([_worker.remote([o]) for o in objects])
+
+    for restored, arr in zip(ray.get(objects), arrays):
+        assert np.array_equal(restored, arr)
+
+
 @pytest.mark.skip(reason="have not been fully implemented")
 def test_spill_objects_automatically(shutdown_only):
     # Limit our object store to 75 MiB of memory.
