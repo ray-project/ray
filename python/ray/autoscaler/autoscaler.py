@@ -67,11 +67,11 @@ class StandardAutoscaler:
             self.instance_types = self.config["available_instance_types"]
             self.resource_demand_scheduler = ResourceDemandScheduler(
                 self.provider, self.instance_types, self.config["max_workers"])
-            self.node_resource_mapping = {}
         else:
             self.instance_types = None
             self.resource_demand_scheduler = None
-            self.node_resource_mapping = {}
+        # node_id -> logical instance name mapping
+        self.node_types = {}
 
         self.max_failures = max_failures
         self.max_launch_batch = max_launch_batch
@@ -97,8 +97,10 @@ class StandardAutoscaler:
                 provider=self.provider,
                 queue=self.launch_queue,
                 index=i,
+                node_types=self.node_types,
+                instance_types=self.instance_types,
                 pending=self.pending_launches,
-                node_resource_mapping=self.node_resource_mapping)
+            )
             node_launcher.daemon = True
             node_launcher.start()
 
@@ -135,6 +137,13 @@ class StandardAutoscaler:
                 logger.critical("StandardAutoscaler: "
                                 "Too many errors, abort.")
                 raise e
+
+
+    def _node_resources(self, node_id):
+        instance_name = self.node_types[node_id]
+        config = self.instance_types[instance_name]
+        return config["resources"]
+
 
     def _update(self):
         now = time.time()
@@ -203,8 +212,8 @@ class StandardAutoscaler:
                     nodes, self.pending_launches.breakdown(),
                     self.resource_demand_vector))
             # TODO(ekl) also enforce max launch concurrency here?
-            for instance_type, count in instances:
-                self.launch_new_node(count, instance_type=instance_type)
+            for instance_name, count in instances:
+                self.launch_new_node(count, instance_name=instance_name)
 
         # Launch additional nodes of the default type, if still needed.
         num_workers = len(nodes) + num_pending
@@ -243,13 +252,14 @@ class StandardAutoscaler:
         # problems. They should at a minimum be spawned as daemon threads.
         # See https://github.com/ray-project/ray/pull/5903 for more info.
         T = []
-        for node_id, commands, ray_start, node_resources in (
-                self.should_update(node_id) for node_id in nodes):
+        for node_id, commands, ray_start in (self.should_update(node_id)
+                                             for node_id in nodes):
+            resources = self._node_resources(node_id)
             if node_id is not None:
                 T.append(
                     threading.Thread(
                         target=self.spawn_updater,
-                        args=(node_id, commands, ray_start, node_resources)))
+                        args=(node_id, commands, ray_start, resources)))
         for t in T:
             t.start()
         for t in T:
@@ -370,7 +380,6 @@ class StandardAutoscaler:
             setup_commands=[],
             ray_start_commands=with_head_node_ip(
                 self.config["worker_start_ray_commands"]),
-            node_resources=None,
             runtime_hash=self.runtime_hash,
             file_mounts_contents_hash=self.file_mounts_contents_hash,
             process_runner=self.process_runner,
@@ -379,13 +388,14 @@ class StandardAutoscaler:
         updater.start()
         self.updaters[node_id] = updater
 
+
     def should_update(self, node_id):
         if not self.can_update(node_id):
-            return None, None, None, None  # no update
+            return None, None, None  # no update
 
         status = self.provider.node_tags(node_id).get(TAG_RAY_NODE_STATUS)
         if status == STATUS_UP_TO_DATE and self.files_up_to_date(node_id):
-            return None, None, None, None  # no update
+            return None, None, None  # no update
 
         successful_updated = self.num_successful_updates.get(node_id, 0) > 0
         if successful_updated and self.config.get("restart_only", False):
@@ -398,12 +408,9 @@ class StandardAutoscaler:
             init_commands = self.config["worker_setup_commands"]
             ray_commands = self.config["worker_start_ray_commands"]
 
-        resources = self.node_resource_mapping.get(node_id, None)
+        return (node_id, init_commands, ray_commands)
 
-        return (node_id, init_commands, ray_commands, resources)
-
-    def spawn_updater(self, node_id, init_commands, ray_start_commands,
-                      node_resources):
+    def spawn_updater(self, node_id, init_commands, ray_start_commands, resources):
         updater = NodeUpdaterThread(
             node_id=node_id,
             provider_config=self.config["provider"],
@@ -415,7 +422,7 @@ class StandardAutoscaler:
                 self.config["initialization_commands"]),
             setup_commands=with_head_node_ip(init_commands),
             ray_start_commands=with_head_node_ip(ray_start_commands),
-            node_resources=node_resources,
+            node_resources=resources,
             runtime_hash=self.runtime_hash,
             file_mounts_contents_hash=self.file_mounts_contents_hash,
             cluster_synced_files=self.config["cluster_synced_files"],
@@ -434,14 +441,13 @@ class StandardAutoscaler:
             return False
         return True
 
-    def launch_new_node(self, count, instance_config=None):
+    def launch_new_node(self, count, instance_name=None):
         logger.info(
             "StandardAutoscaler: Queue {} new nodes for launch".format(count))
-        instance_config = instance_config or self.config["worker_nodes"]
-        instance_type = self.provider.get_instance_type(instance_config)
-        self.pending_launches.inc(instance_type, count)
+        self.pending_launches.inc(instance_name, count)
         config = copy.deepcopy(self.config)
-        self.launch_queue.put((config, count, instance_config))
+        # Note: an instance type of None means a default instance type.
+        self.launch_queue.put((config, count, instance_name))
 
     def workers(self):
         return self.provider.non_terminated_nodes(
