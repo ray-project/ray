@@ -6,7 +6,8 @@ import json
 
 import ray
 from ray.rllib import _register_all
-from ray.tune.trial import Trial, Resources
+from ray.tune.trial import Trial
+from ray.tune.resources import Resources
 from ray.tune.web_server import TuneClient
 from ray.tune.trial_runner import TrialRunner
 

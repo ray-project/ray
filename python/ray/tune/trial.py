@@ -1,6 +1,5 @@
 from typing import Sequence
 
-import ray.cloudpickle as cloudpickle
 from collections import deque
 import copy
 from datetime import datetime
@@ -12,13 +11,12 @@ import time
 import tempfile
 import os
 from numbers import Number
+
+import ray.cloudpickle as cloudpickle
 from ray.tune import TuneError
 from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
 from ray.tune.durable_trainable import DurableTrainable
 from ray.tune.logger import pretty_print, UnifiedLogger
-# NOTE(rkn): We import ray.tune.registry here instead of importing the names we
-# need because there are cyclic imports that may cause specific names to not
-# have been defined yet. See https://github.com/ray-project/ray/issues/1716.
 from ray.tune.registry import get_trainable_cls, validate_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR, DONE, TRAINING_ITERATION
 from ray.tune.resources import Resources, json_to_resources, resources_to_json
@@ -127,6 +125,17 @@ class TrialInfo:
     @property
     def trial_id(self):
         return self._trial_id
+
+class TrialData:
+    def __init__(self,
+                 trainable_name,
+                 config=None,
+                 trial_id=None,
+                 evaluated_params=None,
+                 experiment_tag="",
+                 stopping_criterion=None,
+             ):
+    raise NotImplementedError
 
 
 class Trial:
