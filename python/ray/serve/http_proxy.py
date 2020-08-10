@@ -1,6 +1,7 @@
 import asyncio
 from urllib.parse import parse_qs
 import socket
+from typing import List
 
 import uvicorn
 
@@ -170,12 +171,25 @@ class HTTPProxy:
 
 @ray.remote
 class HTTPProxyActor:
-    async def __init__(self, name, host, port, instance_name=None):
+    async def __init__(
+            self,
+            name,
+            host,
+            port,
+            instance_name=None,
+            _http_middlewares: List["starlette.middleware.Middleware"] = []):
         serve.init(name=instance_name)
         self.app = HTTPProxy()
-        await self.app.fetch_config_from_controller(name, instance_name)
         self.host = host
         self.port = port
+
+        self.app = HTTPProxy()
+        await self.app.fetch_config_from_controller(name, instance_name)
+
+        self.wrapped_app = self.app
+        for middleware in _http_middlewares:
+            self.wrapped_app = middleware.cls(self.wrapped_app,
+                                              **middleware.options)
 
         # Start running the HTTP server on the event loop.
         asyncio.get_event_loop().create_task(self.run())
@@ -197,7 +211,7 @@ class HTTPProxyActor:
         # class because we want to run the server as a coroutine. The only
         # alternative is to call uvicorn.run which is blocking.
         config = uvicorn.Config(
-            self.app,
+            self.wrapped_app,
             host=self.host,
             port=self.port,
             lifespan="off",

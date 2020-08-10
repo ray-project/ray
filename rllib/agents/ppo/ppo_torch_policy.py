@@ -10,6 +10,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import EntropyCoeffSchedule, \
     LearningRateSchedule
 from ray.rllib.policy.torch_policy_template import build_torch_policy
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor, \
     explained_variance, sequence_mask
@@ -216,6 +217,15 @@ def setup_mixins(policy, obs_space, action_space, config):
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
+def training_view_requirements_fn(policy):
+    return {
+        # Next obs are needed for PPO postprocessing.
+        SampleBatch.NEXT_OBS: ViewRequirement(SampleBatch.OBS, shift=1),
+        # VF preds are needed for the loss.
+        SampleBatch.VF_PREDS: ViewRequirement(shift=0),
+    }
+
+
 PPOTorchPolicy = build_torch_policy(
     name="PPOTorchPolicy",
     get_default_config=lambda: ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG,
@@ -229,4 +239,6 @@ PPOTorchPolicy = build_torch_policy(
     mixins=[
         LearningRateSchedule, EntropyCoeffSchedule, KLCoeffMixin,
         ValueNetworkMixin
-    ])
+    ],
+    training_view_requirements_fn=training_view_requirements_fn,
+)

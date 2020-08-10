@@ -15,6 +15,9 @@
 #pragma once
 
 #include <algorithm>
+#include <boost/asio.hpp>
+#include <boost/asio/error.hpp>
+#include <boost/bind.hpp>
 #include <cstdint>
 #include <deque>
 #include <map>
