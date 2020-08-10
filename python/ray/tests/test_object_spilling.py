@@ -19,7 +19,7 @@ def test_spill_objects_manually(shutdown_only):
         },
         _internal_config=json.dumps({
             "object_store_full_max_retries": 0,
-            "num_io_workers": 4,
+            "max_io_workers": 4,
         }))
     arr = np.random.rand(1024 * 1024)  # 8 MB data
     replay_buffer = []
@@ -66,9 +66,9 @@ def test_spill_objects_manually_from_workers(shutdown_only):
         },
         _internal_config=json.dumps({
             "object_store_full_max_retries": 0,
-            "num_io_workers": 4,
+            "max_io_workers": 4,
         }))
-    
+
     @ray.remote
     def _worker():
         arr = np.random.rand(100 * 1024)
@@ -92,7 +92,7 @@ def test_spill_objects_manually_with_workers(shutdown_only):
         },
         _internal_config=json.dumps({
             "object_store_full_max_retries": 0,
-            "num_io_workers": 4,
+            "max_io_workers": 4,
         }))
     arrays = [np.random.rand(100 * 1024) for _ in range(50)]
     objects = [ray.put(arr) for arr in arrays]
@@ -113,7 +113,7 @@ def test_spill_objects_automatically(shutdown_only):
     ray.init(
         object_store_memory=75 * 1024 * 1024,
         _internal_config=json.dumps({
-            "num_io_workers": 4,
+            "max_io_workers": 4,
             "object_store_full_max_retries": 2,
             "object_store_full_initial_delay_ms": 10,
             "auto_object_spilling": True,

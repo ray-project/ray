@@ -282,6 +282,11 @@ class WorkerPool : public WorkerPoolInterface {
     std::queue<std::shared_ptr<WorkerInterface>> idle_io_workers;
     /// The queue of pending I/O tasks.
     std::queue<std::function<void(std::shared_ptr<WorkerInterface>)>> pending_io_tasks;
+    /// All I/O workers that have registered and are still connected, including both
+    /// idle and executing.
+    std::unordered_set<std::shared_ptr<WorkerInterface>> registered_io_workers;
+    /// Number of starting I/O workers.
+    int num_starting_io_workers = 0;
     /// All workers that have registered and are still connected, including both
     /// idle and executing.
     std::unordered_set<std::shared_ptr<WorkerInterface>> registered_workers;

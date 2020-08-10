@@ -11,6 +11,7 @@ class ExternalStorage(metaclass=abc.ABCMeta):
     put/get from plasma store. Also it specifies the interface for
     object spilling.
     """
+
     def _get_objects_from_store(self, object_refs):
         worker = ray.worker.global_worker
         ray_object_pairs = worker.core_worker.get_objects(
@@ -48,6 +49,7 @@ class ExternalStorage(metaclass=abc.ABCMeta):
 
 class NullStorage(ExternalStorage):
     """The class that represents an uninitialized external storage."""
+
     def spill_objects(self, object_refs):
         raise NotImplementedError("External storage is not initialized")
 
@@ -57,6 +59,7 @@ class NullStorage(ExternalStorage):
 
 class FileSystemStorage(ExternalStorage):
     """The class for filesystem-like external storage."""
+
     def __init__(self, directory_path):
         self.directory_path = directory_path
         self.prefix = "ray_spilled_object_"

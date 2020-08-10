@@ -134,10 +134,6 @@ void WorkerPool::Start(int num_workers) {
       StartWorkerProcess(entry.first, ray::rpc::WorkerType::WORKER, JobID::Nil());
     }
   }
-  for (int i = 0; i < RayConfig::instance().num_io_workers(); i++) {
-    StartWorkerProcess(ray::Language::PYTHON, ray::rpc::WorkerType::IO_WORKER,
-                       JobID::Nil());
-  }
 }
 
 WorkerPool::~WorkerPool() {
@@ -195,7 +191,7 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
 
   // Here we consider both task workers and I/O workers.
   if (starting_workers >=
-      maximum_startup_concurrency_ + RayConfig::instance().num_io_workers()) {
+      maximum_startup_concurrency_ + RayConfig::instance().max_io_workers()) {
     // Workers have been started, but not registered. Force start disabled -- returning.
     RAY_LOG(DEBUG) << "Worker not started, " << starting_workers
                    << " workers of language type " << static_cast<int>(language)
@@ -301,6 +297,9 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
                  << " worker(s) with pid " << proc.GetId();
   MonitorStartingWorkerProcess(proc, language);
   state.starting_worker_processes.emplace(proc, workers_to_start);
+  if (worker_type == rpc::WorkerType::IO_WORKER) {
+    state.num_starting_io_workers++;
+  }
   return proc;
 }
 
@@ -421,6 +420,10 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
 
     RAY_CHECK(worker->GetProcess().GetId() == pid);
     state.registered_workers.insert(worker);
+    if (worker->GetWorkerType() == rpc::WorkerType::IO_WORKER) {
+      state.registered_io_workers.insert(worker);
+      state.num_starting_io_workers--;
+    }
 
     if (RayConfig::instance().enable_multi_tenancy()) {
       auto dedicated_workers_it = state.worker_pids_to_assigned_jobs.find(pid);
@@ -540,6 +543,12 @@ void WorkerPool::PopIOWorker(
     std::function<void(std::shared_ptr<WorkerInterface>)> callback) {
   auto &state = GetStateForLanguage(Language::PYTHON);
   if (state.idle_io_workers.empty()) {
+    int total_io_worker_num =
+        state.num_starting_io_workers + state.registered_io_workers.size();
+    if (total_io_worker_num < RayConfig::instance().max_io_workers()) {
+      StartWorkerProcess(ray::Language::PYTHON, ray::rpc::WorkerType::IO_WORKER,
+                         JobID::Nil());
+    }
     state.pending_io_tasks.push(callback);
   } else {
     auto io_worker = state.idle_io_workers.front();

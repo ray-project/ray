@@ -350,5 +350,5 @@ RAY_CONFIG(bool, ownership_based_object_directory_enabled, false)
 // The interval where metrics are exported in milliseconds.
 RAY_CONFIG(uint64_t, metrics_report_interval_ms, 10000)
 
-/// The number of I/O worker that raylet starts.
-RAY_CONFIG(int, num_io_workers, 0)
+/// The maximum number of I/O worker that raylet starts.
+RAY_CONFIG(int, max_io_workers, 1)

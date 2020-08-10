@@ -353,7 +353,8 @@ service CoreWorkerService {
   // Spill objects to external storage. Caller: raylet; callee: I/O worker.
   rpc SpillObjects(SpillObjectsRequest) returns (SpillObjectsReply);
   // Restore spilled objects from external storage. Caller: raylet; callee: I/O worker.
-  rpc RestoreSpilledObjects(RestoreSpilledObjectsRequest) returns (RestoreSpilledObjectsReply);
+  rpc RestoreSpilledObjects(RestoreSpilledObjectsRequest)
+      returns (RestoreSpilledObjectsReply);
   // Notification from raylet that an object ID is available in local plasma.
   rpc PlasmaObjectReady(PlasmaObjectReadyRequest) returns (PlasmaObjectReadyReply);
 }
