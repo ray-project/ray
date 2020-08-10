@@ -62,10 +62,7 @@ logging_options_no_verbose = [
         type=str,
         default="auto",
         help=("Use color logging. "
-              "Valid values are: auto (if stdout is a tty), true, false."))
-]
-
-logging_options = logging_options_no_verbose + [
+              "Valid values are: auto (if stdout is a tty), true, false.")),
     click.option("-v", "--verbose", count=True)
 ]
 
@@ -791,12 +788,7 @@ def start(node_ip_address, redis_address, address, redis_port, port,
     "--force",
     is_flag=True,
     help="If set, ray will send SIGKILL instead of SIGTERM.")
-@click.option(
-    "-v",
-    "--verbose",
-    count=True,
-    help="If set, ray prints out more information about processes to kill.")
-@add_click_options(logging_options_no_verbose)
+@add_click_options(logging_options)
 def stop(force, verbose, log_old_style, log_color):
     """Stop Ray processes manually on the local machine."""
 

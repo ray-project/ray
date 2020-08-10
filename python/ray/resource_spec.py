@@ -251,9 +251,9 @@ class ResourceSpec(
             "Starting Ray with {} GiB memory available for workers and up to "
             "{} GiB for objects. You can adjust these settings "
             "with ray.init(memory=<bytes>, "
-            "object_store_memory=<bytes>).".format(
-                worker_ram,
-                object_ram))
+            "object_store_memory=<bytes>).",
+            worker_ram,
+            object_ram)
 
         spec = ResourceSpec(num_cpus, num_gpus, memory, object_store_memory,
                             resources, redis_max_memory)
