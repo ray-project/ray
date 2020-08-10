@@ -11,6 +11,9 @@ from libcpp.vector cimport vector as c_vector
 from libcpp.list cimport list as c_list
 from cpython cimport PyObject
 cimport cpython
+from libcpp.unordered_map cimport unordered_map as c_unordered_map
+from cython.operator cimport dereference, postincrement
+
 
 cdef inline object PyObject_to_object(PyObject* o):
     # Cast to "object" increments reference count
@@ -70,9 +73,21 @@ cdef extern from "message/message.h" namespace "ray::streaming" nogil:
     cdef CStreamingMessageType MessageTypeMessage "ray::streaming::StreamingMessageType::Message"
     cdef cppclass CStreamingMessage "ray::streaming::StreamingMessage":
         inline uint8_t *RawData() const
+        inline uint8_t *Payload() const
+        inline uint32_t PayloadSize() const
         inline uint32_t GetDataSize() const
         inline CStreamingMessageType GetMessageType() const
-        inline uint64_t GetMessageSeqId() const
+        inline uint64_t GetMessageId() const
+        @staticmethod
+        inline void GetBarrierIdFromRawData(const uint8_t *data,
+                                            CStreamingBarrierHeader *barrier_header)
+    cdef struct CStreamingBarrierHeader "ray::streaming::StreamingBarrierHeader":
+        CStreamingBarrierType barrier_type;
+        uint64_t barrier_id;
+    cdef cppclass CStreamingBarrierType "ray::streaming::StreamingBarrierType":
+        pass
+    cdef uint32_t kMessageHeaderSize;
+    cdef uint32_t kBarrierHeaderSize;
 
 cdef extern from "message/message_bundle.h" namespace "ray::streaming" nogil:
     cdef cppclass CStreamingMessageBundleType "ray::streaming::StreamingMessageBundleType":
@@ -104,12 +119,32 @@ cdef extern from "channel.h" namespace "ray::streaming" nogil:
         shared_ptr[CRayFunction] async_function;
         shared_ptr[CRayFunction] sync_function;
 
+    cdef struct CStreamingQueueInfo "ray::streaming::StreamingQueueInfo":
+        uint64_t first_seq_id;
+        uint64_t last_message_id;
+        uint64_t target_message_id;
+        uint64_t consumed_message_id;
+
+    cdef struct CConsumerChannelInfo "ray::streaming::ConsumerChannelInfo":
+        CObjectID channel_id;
+        uint64_t current_message_id;
+        uint64_t barrier_id;
+        uint64_t partial_barrier_id;
+        CStreamingQueueInfo queue_info;
+        uint64_t last_queue_item_delay;
+        uint64_t last_queue_item_latency;
+        uint64_t last_queue_target_diff;
+        uint64_t get_queue_item_times;
+        uint64_t notify_cnt;
+        CChannelCreationParameter parameter;
+
     cdef enum CTransferCreationStatus "ray::streaming::TransferCreationStatus":
         FreshStarted = 0
         PullOk = 1
         Timeout = 2
         DataLost = 3
         Invalid = 999
+
 
 cdef extern from "queue/queue_client.h" namespace "ray::streaming" nogil:
     cdef cppclass CReaderClient "ray::streaming::ReaderClient":
@@ -140,6 +175,7 @@ cdef extern from "data_reader.h" namespace "ray::streaming" nogil:
                   int64_t timer_interval);
         CStreamingStatus GetBundle(const uint32_t timeout_ms,
                                    shared_ptr[CDataBundle] &message)
+        void GetOffsetInfo(c_unordered_map[CObjectID, CConsumerChannelInfo] *&offset_map);
         void Stop()
 
 

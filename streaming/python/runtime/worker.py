@@ -18,6 +18,8 @@ from ray.streaming.runtime.remote_call import CallResult, RemoteCallMst
 from ray.streaming.runtime.state_backend import StateBackendFactory
 from ray.streaming.runtime.task import SourceStreamTask, OneInputStreamTask
 from ray.streaming.runtime.transfer import channel_bytes_to_str
+from ray.streaming.config import Config
+import ray.streaming._streaming as _streaming
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +54,7 @@ class JobWorker(object):
         self.__need_rollback = True
         try:
             # load checkpoint
-            was_reconstructed = ray._get_runtime_context().was_current_actor_reconstructed
+            was_reconstructed = ray.get_runtime_context().was_current_actor_reconstructed
 
             logger.info("Worker was reconstructed: {}".format(was_reconstructed))
             if was_reconstructed:
@@ -73,36 +75,45 @@ class JobWorker(object):
 
     def init(self, worker_context_bytes):
         logger.info("Start to init job worker")
-        # deserialize context
-        worker_context = remote_call_pb2.PythonJobWorkerContext()
-        worker_context.ParseFromString(worker_context_bytes)
-        self.worker_context = worker_context
-        self.master_actor = ActorHandle._deserialization_helper(worker_context.master_actor)
+        try :
+            # deserialize context
+            worker_context = remote_call_pb2.PythonJobWorkerContext()
+            worker_context.ParseFromString(worker_context_bytes)
+            self.worker_context = worker_context
+            self.master_actor = ActorHandle._deserialization_helper(worker_context.master_actor)
 
-        # build vertex context from pb
-        self.execution_vertex_context = ExecutionVertexContext(
-            worker_context.execution_vertex_context)
+            # build vertex context from pb
+            self.execution_vertex_context = ExecutionVertexContext(
+                worker_context.execution_vertex_context)
 
-        # save context
-        job_worker_context_key = self.__get_job_worker_context_key()
-        self.state_backend.put(job_worker_context_key, worker_context_bytes)
+            # save context
+            job_worker_context_key = self.__get_job_worker_context_key()
+            self.state_backend.put(job_worker_context_key, worker_context_bytes)
 
-        # use vertex id as task id
-        self.task_id = self.execution_vertex_context.get_task_id()
 
-        # build and get processor from operator
-        operator = self.execution_vertex_context.stream_operator
-        self.stream_processor = processor.build_processor(operator)
-        logger.info(
-            "Initializing job worker, exe_vertex_name={}, task_id: {}, operator: {}, pid={}".format(
-                self.execution_vertex_context.exe_vertex_name, self.task_id, self.stream_processor, os.getpid()))
+            # use vertex id as task id
+            self.task_id = self.execution_vertex_context.get_task_id()
+            # build and get processor from operator
+            operator = self.execution_vertex_context.stream_operator
+            self.stream_processor = processor.build_processor(operator)
+            logger.info(
+                "Initializing job worker, exe_vertex_name={}, task_id: {}, operator: {}, pid={}".format(
+                    self.execution_vertex_context.exe_vertex_name, self.task_id, self.stream_processor, os.getpid()))
 
-        # get config from vertex
-        self.config = self.execution_vertex_context.config
-        logger.info("Job worker init succeeded.")
+            # get config from vertex
+            self.config = self.execution_vertex_context.config
+
+            if self.config.get(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL):	
+                self.reader_client = _streaming.ReaderClient()	
+                self.writer_client = _streaming.WriterClient()	
+
+            logger.info("Job worker init succeeded.")
+        except Exception:
+            logger.exception("Error when init job worker.")
+            return False
         return True
 
-    def create_stream_task(self, checkpoint_id):
+    def create_stream_task(self, checkpoint_id):    
         if isinstance(self.stream_processor, processor.SourceProcessor):
             return SourceStreamTask(self.task_id, self.stream_processor, self, checkpoint_id)
         elif isinstance(self.stream_processor, processor.OneInputProcessor):
@@ -110,7 +121,7 @@ class JobWorker(object):
                                       self, checkpoint_id)
         else:
             raise Exception("Unsupported processor type: " +
-                            type(self.stream_processor))
+                            str(type(self.stream_processor)))
 
     def rollback(self, checkpoint_id_bytes):
         checkpoint_id_pb = remote_call_pb2.CheckpointId()
@@ -157,33 +168,38 @@ class JobWorker(object):
         """Called by upstream queue writer to send data message to downstream
         queue reader.
         """
-        self.task.reader.on_reader_message(*buffers)
+        if self.reader_client is None:
+            logger.info("reader_client is None, skip writer transfer")
+            return
+        self.reader_client.on_reader_message(*buffers)
 
     def on_reader_message_sync(self, buffer: bytes):
-        """Called by upstream queue writer to send control message to
-         downstream downstream queue reader.
+        """Called by upstream queue writer to send control message to downstream	
+        downstream queue reader.
         """
-        if self.task is None:
+        if self.reader_client is None:
             logger.info("task is None, skip reader transfer")
             return _NOT_READY_FLAG_
-        return self.task.reader.on_reader_message_sync(buffer)
+        result = self.reader_client.on_reader_message_sync(buffer)
+        return result.to_pybytes()
 
     def on_writer_message(self, buffer: bytes):
         """Called by downstream queue reader to send notify message to
         upstream queue writer.
         """
-        if self.task is None:
-            logger.info("task is None, skip writer transfer")
+        if self.writer_client is None:
+            logger.info("writer_client is None, skip writer transfer")
             return
-        self.task.writer.on_writer_message(buffer)
+        self.writer_client.on_writer_message(buffer)
 
     def on_writer_message_sync(self, buffer: bytes):
         """Called by downstream queue reader to send control message to
         upstream queue writer.
         """
-        if self.task is None:
+        if self.writer_client is None:
             return _NOT_READY_FLAG_
-        return self.task.writer.on_writer_message_sync(buffer)
+        result = self.writer_client.on_writer_message_sync(buffer)
+        return result.to_pybytes()
 
     def shutdown_without_reconstruction(self):
         logger.info("Python worker shutdown without reconstruction.")

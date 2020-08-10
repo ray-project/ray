@@ -30,6 +30,7 @@ def gen_streaming_java_deps():
             "com.esotericsoftware.minlog:minlog:1.2",
             "com.esotericsoftware.reflectasm:reflectasm:1.07",
             "commons-collections:commons-collections:3.2.1",
+            "com.alibaba:fastjson:1.2.50",
         ],
         repositories = [
             "https://repo1.maven.org/maven2/",

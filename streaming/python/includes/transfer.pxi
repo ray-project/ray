@@ -6,6 +6,8 @@ from libcpp.memory cimport shared_ptr, make_shared, dynamic_pointer_cast
 from libcpp.string cimport string as c_string
 from libcpp.vector cimport vector as c_vector
 from libcpp.list cimport list as c_list
+from libcpp.unordered_map cimport unordered_map as c_unordered_map
+from cython.operator cimport dereference, postincrement
 
 from ray.includes.common cimport (
     CRayFunction,
@@ -39,6 +41,9 @@ from ray.streaming.includes.libstreaming cimport (
     CLocalMemoryBuffer,
     CChannelCreationParameter,
     CTransferCreationStatus,
+    CConsumerChannelInfo,
+    CStreamingBarrierHeader,
+    kBarrierHeaderSize,
 )
 from ray._raylet import JavaFunctionDescriptor
 
@@ -284,7 +289,6 @@ cdef class DataReader:
             CStreamingStatus status
         with nogil:
             status = self.reader.GetBundle(timeout_millis, bundle)
-        cdef uint32_t bundle_type = <uint32_t>(bundle.get().meta.get().GetBundleType())
         if <uint32_t> status != <uint32_t> libstreaming.StatusOK:
             if <uint32_t> status == <uint32_t> libstreaming.StatusInterrupted:
                 # avoid cyclic import
@@ -293,13 +297,25 @@ cdef class DataReader:
             elif <uint32_t> status == <uint32_t> libstreaming.StatusInitQueueFailed:
                 import ray.streaming.runtime.transfer as transfer
                 raise transfer.ChannelInitException("init channel failed")
+            elif <uint32_t> status == <uint32_t> libstreaming.StatusGetBundleTimeOut:
+                return []
+            else:
+                raise Exception("no such status " + str(<uint32_t>status))
         cdef:
             uint32_t msg_nums
-            CObjectID queue_id
+            CObjectID queue_id = bundle.get().c_from
             c_list[shared_ptr[CStreamingMessage]] msg_list
             list msgs = []
             uint64_t timestamp
             uint64_t msg_id
+            c_unordered_map[CObjectID, CConsumerChannelInfo] *offset_map = NULL
+            shared_ptr[CStreamingMessage] barrier
+            CStreamingBarrierHeader barrier_header
+            c_unordered_map[CObjectID, CConsumerChannelInfo].iterator it
+
+        cdef uint32_t bundle_type = <uint32_t>(bundle.get().meta.get().GetBundleType())
+        # avoid cyclic import
+        from ray.streaming.runtime.transfer import DataMessage
         if bundle_type == <uint32_t> libstreaming.BundleTypeBundle:
             msg_nums = bundle.get().meta.get().GetMessageListSize()
             CStreamingMessageBundle.GetMessageListFromRawData(
@@ -311,13 +327,45 @@ cdef class DataReader:
             for msg in msg_list:
                 msg_bytes = msg.get().RawData()[:msg.get().GetDataSize()]
                 qid_bytes = queue_id.Binary()
-                msg_id = msg.get().GetMessageSeqId()
-                msgs.append((msg_bytes, msg_id, timestamp, qid_bytes))
+                msg_id = msg.get().GetMessageId()
+                msgs.append(
+                    DataMessage(msg_bytes, timestamp, msg_id, qid_bytes))
             return msgs
         elif bundle_type == <uint32_t> libstreaming.BundleTypeEmpty:
-            return []
+            timestamp = bundle.get().meta.get().GetMessageBundleTs()
+            msg_id = bundle.get().meta.get().GetLastMessageId()
+            return [DataMessage(None, timestamp, msg_id, queue_id.Binary(), True)]
+        elif bundle.get().meta.get().IsBarrier():
+            py_offset_map = {}
+            self.reader.GetOffsetInfo(offset_map)
+            it = offset_map.begin()
+            while it != offset_map.end():
+                queue_id_bytes = dereference(it).first.Binary()
+                current_message_id = dereference(it).second.current_message_id
+                py_offset_map[queue_id_bytes] = current_message_id
+                postincrement(it)
+            msg_nums = bundle.get().meta.get().GetMessageListSize()
+            CStreamingMessageBundle.GetMessageListFromRawData(
+                bundle.get().data + libstreaming.kMessageBundleHeaderSize,
+                bundle.get().data_size - libstreaming.kMessageBundleHeaderSize,
+                msg_nums,
+                msg_list)
+            timestamp = bundle.get().meta.get().GetMessageBundleTs()
+            barrier = msg_list.front()
+            msg_id = barrier.get().GetMessageId()
+            CStreamingMessage.GetBarrierIdFromRawData(barrier.get().Payload(), &barrier_header)
+            barrier_id = barrier_header.barrier_id
+            barrier_data = (barrier.get().Payload() + kBarrierHeaderSize)[
+                           :barrier.get().PayloadSize() - kBarrierHeaderSize]
+            barrier_type = <uint64_t> barrier_header.barrier_type
+            py_queue_id = queue_id.Binary()
+            from ray.streaming.runtime.transfer import CheckpointBarrier
+            return [CheckpointBarrier(
+                barrier_data, timestamp, msg_id, py_queue_id, py_offset_map,
+                barrier_id, barrier_type)]
         else:
             raise Exception("Unsupported bundle type {}".format(bundle_type))
+
 
     def stop(self):
         self.reader.Stop()

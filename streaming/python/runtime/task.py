@@ -17,8 +17,8 @@ from ray.streaming.runtime.failover import Barrier, OpCheckpointInfo
 from ray.streaming.runtime.remote_call import RemoteCallMst
 from ray.streaming.runtime.serialization import \
     PythonSerializer, CrossLangSerializer
-from ray.streaming.runtime.transfer import QueueBarrier
-from ray.streaming.runtime.transfer import QueueMessage
+from ray.streaming.runtime.transfer import CheckpointBarrier
+from ray.streaming.runtime.transfer import DataMessage
 from ray.streaming.runtime.transfer import ChannelID, DataWriter, DataReader
 from ray.streaming.runtime.transfer import ChannelRecoverInfo
 from ray.streaming.runtime.transfer import ChannelInterruptException
@@ -133,8 +133,8 @@ class StreamTask(ABC):
         if cp_bytes is not None:
             op_checkpoint_info = pickle.loads(cp_bytes)
             self.processor.load_checkpoint(self.last_checkpoint_id, op_checkpoint_info.operator_point)
-            logger.info("Stream task recover from checkpoint state, checkpoint bytes len={}, checkpointInfo={}.",
-                        cp_bytes.__len__(), op_checkpoint_info)
+            logger.info("Stream task recover from checkpoint state, checkpoint bytes len={}, checkpointInfo={}.".format(
+                        cp_bytes.__len__(), op_checkpoint_info))
 
         # writers
         collectors = []
@@ -255,7 +255,7 @@ class InputStreamTask(StreamTask):
                 if item is None:
                     continue
 
-                if isinstance(item, QueueMessage):
+                if isinstance(item, DataMessage):
                     msg_data = item.body()
                     type_id = msg_data[0]
                     if type_id == serialization.PYTHON_TYPE_ID:
@@ -263,7 +263,7 @@ class InputStreamTask(StreamTask):
                     else:
                         msg = self.cross_lang_serializer.deserialize(msg_data[1:])
                     self.processor.process(msg)
-                elif isinstance(item, QueueBarrier):
+                elif isinstance(item, CheckpointBarrier):
                     logger.info("Got barrier:{}".format(item))
                     logger.info("Start to do checkpoint {}.".format(item.checkpoint_id()))
 
@@ -272,7 +272,7 @@ class InputStreamTask(StreamTask):
                     self.do_checkpoint(item.checkpoint_id(), input_points)
                     logger.info("Do checkpoint {} success.".format(item.checkpoint_id()))
                 else:
-                    raise RuntimeError("Unknown item type!")
+                    raise RuntimeError("Unknown item type! item={}".format(item))
 
         except ChannelInterruptException:
             logger.info("queue has stopped.")

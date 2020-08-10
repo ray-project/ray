@@ -76,25 +76,25 @@ class StreamingMessage {
   /// Copy raw data from outside shared buffer.
   /// \param data raw data from user buffer
   /// \param data_size raw data size
-  /// \param seq_id message id
+  /// \param msg_id message id
   /// \param message_type
-  StreamingMessage(std::shared_ptr<uint8_t> &data, uint32_t data_size, uint64_t seq_id,
+  StreamingMessage(std::shared_ptr<uint8_t> &data, uint32_t data_size, uint64_t msg_id,
                    StreamingMessageType message_type);
 
   /// Move outsite raw data to message data.
   /// \param data raw data from user buffer
   /// \param data_size raw data size
-  /// \param seq_id message id
+  /// \param msg_id message id
   /// \param message_type
-  StreamingMessage(std::shared_ptr<uint8_t> &&data, uint32_t data_size, uint64_t seq_id,
+  StreamingMessage(std::shared_ptr<uint8_t> &&data, uint32_t data_size, uint64_t msg_id,
                    StreamingMessageType message_type);
 
   /// Copy raw data from outside buffer.
   /// \param data raw data from user buffer
   /// \param data_size raw data size
-  /// \param seq_id message id
+  /// \param msg_id message id
   /// \param message_type
-  StreamingMessage(const uint8_t *data, uint32_t data_size, uint64_t seq_id,
+  StreamingMessage(const uint8_t *data, uint32_t data_size, uint64_t msg_id,
                    StreamingMessageType message_type);
 
   StreamingMessage(const StreamingMessage &);
@@ -107,7 +107,14 @@ class StreamingMessage {
 
   inline uint32_t GetDataSize() const { return data_size_; }
   inline StreamingMessageType GetMessageType() const { return message_type_; }
-  inline uint64_t GetMessageSeqId() const { return message_id_; }
+  inline uint64_t GetMessageId() const { return message_id_; }
+
+  inline uint32_t Size() const { return data_size_; }
+
+  inline uint8_t *Payload() const { return RawData() + kMessageHeaderSize; }
+
+  inline uint32_t PayloadSize() const { return Size() - kMessageHeaderSize; }
+
   inline bool IsMessage() { return StreamingMessageType::Message == message_type_; }
   inline bool IsBarrier() { return StreamingMessageType::Barrier == message_type_; }
 

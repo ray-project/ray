@@ -145,6 +145,7 @@ define_java_module(
         "@ray_streaming_maven//:org_objenesis_objenesis",
         "@maven//:com_typesafe_config",
         "@maven//:commons_io_commons_io",
+        "@ray_streaming_maven//:com_alibaba_fastjson",
     ],
 )
 

@@ -80,7 +80,7 @@ TEST(StreamingSerializationTest, streaming_message_barrier_bundle_serialization_
     auto s_item = s_message_list.back();
     EXPECT_TRUE(s_item->ClassBytesSize() == m_item->ClassBytesSize());
     EXPECT_TRUE(s_item->GetMessageType() == m_item->GetMessageType());
-    EXPECT_TRUE(s_item->GetMessageSeqId() == m_item->GetMessageSeqId());
+    EXPECT_TRUE(s_item->GetMessageId() == m_item->GetMessageId());
     EXPECT_TRUE(s_item->GetDataSize() == m_item->GetDataSize());
     EXPECT_TRUE(
         std::memcmp(s_item->RawData(), m_item->RawData(), m_item->GetDataSize()) == 0);

@@ -1,5 +1,6 @@
 package io.ray.streaming.runtime.master.scheduler.controller;
 
+import com.alibaba.fastjson.JSON;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
@@ -52,8 +53,9 @@ public class WorkerLifecycleController {
           .setMaxRestarts(-1)
           .remote();
     } else {
+      String jsonConfig = JSON.toJSONString(executionVertex.getWorkerConfig());
       actor = Ray.actor(
-          PyActorClass.of("ray.streaming.runtime.worker", "JobWorker"))
+          PyActorClass.of("ray.streaming.runtime.worker", "JobWorker"), jsonConfig)
           .setResources(executionVertex.getResource())
           .setMaxRestarts(-1)
           .remote();

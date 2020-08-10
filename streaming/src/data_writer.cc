@@ -364,7 +364,7 @@ bool DataWriter::CollectFromRingBuffer(ProducerChannelInfo &channel_info,
     bundleType = StreamingMessageBundleType::Barrier;
   }
   bundle_ptr = std::make_shared<StreamingMessageBundle>(
-      std::move(message_list), current_time_ms(), message_list.back()->GetMessageSeqId(),
+      std::move(message_list), current_time_ms(), message_list.back()->GetMessageId(),
       bundleType, bundle_buffer_size);
 
   STREAMING_LOG(DEBUG) << "CollectFromRingBuffer done, bundle=" << *bundle_ptr;

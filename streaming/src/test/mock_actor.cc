@@ -204,7 +204,7 @@ class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
 
       recevied_message_cnt += message_list.size();
       for (auto &item : message_list) {
-        uint64_t i = item->GetMessageSeqId();
+        uint64_t i = item->GetMessageId();
 
         uint32_t buff_len = i % DEFAULT_STREAMING_MESSAGE_BUFFER_SIZE;
         if (i > MESSAGE_BOUND_SIZE) break;

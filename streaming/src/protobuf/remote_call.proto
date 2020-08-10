@@ -24,7 +24,7 @@ message ExecutionVertexContext {
     // unique id of execution vertex
     int32 execution_vertex_id = 1;
     // unique id of execution job vertex
-    int32 execution_job_vertex_Id = 2;
+    int32 execution_job_vertex_id = 2;
     // name of execution job vertex, e.g. 1-SourceOperator
     string execution_job_vertex_name = 3;
     // index of execution vertex

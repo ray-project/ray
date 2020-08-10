@@ -222,7 +222,7 @@ void DataReader::SplitBundle(std::shared_ptr<DataBundle> &message,
       message->meta->GetMessageListSize(), msg_list);
   uint64_t bundle_size = 0;
   for (auto it = msg_list.begin(); it != msg_list.end();) {
-    if ((*it)->GetMessageSeqId() > last_msg_id) {
+    if ((*it)->GetMessageId() > last_msg_id) {
       bundle_size += (*it)->ClassBytesSize();
       it++;
     } else {
@@ -230,11 +230,11 @@ void DataReader::SplitBundle(std::shared_ptr<DataBundle> &message,
     }
   }
   STREAMING_LOG(DEBUG) << "Split message, from_queue_id=" << message->from
-                       << ", start_msg_id=" << msg_list.front()->GetMessageSeqId()
-                       << ", end_msg_id=" << msg_list.back()->GetMessageSeqId();
+                       << ", start_msg_id=" << msg_list.front()->GetMessageId()
+                       << ", end_msg_id=" << msg_list.back()->GetMessageId();
   // recreate bundle
   auto cut_msg_bundle = std::make_shared<StreamingMessageBundle>(
-      msg_list, message->meta->GetMessageBundleTs(), msg_list.back()->GetMessageSeqId(),
+      msg_list, message->meta->GetMessageBundleTs(), msg_list.back()->GetMessageId(),
       StreamingMessageBundleType::Bundle, bundle_size);
   message->Realloc(cut_msg_bundle->ClassBytesSize());
   cut_msg_bundle->ToBytes(message->data);

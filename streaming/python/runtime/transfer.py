@@ -3,7 +3,7 @@ import random
 from queue import Queue
 from typing import List
 from enum import Enum
-from abc import ABCMeta, abstractmethod
+from abc import ABC, ABCMeta, abstractmethod
 
 import ray
 import ray.streaming._streaming as _streaming
@@ -98,41 +98,70 @@ def channel_bytes_to_str(id_bytes):
         return id_bytes
     return bytes.hex(id_bytes)
 
+class Message(ABC):
 
-class DataMessage:
+    @property
+    @abstractmethod
+    def body(self):
+        """Message data"""
+        pass
+
+    @property
+    @abstractmethod
+    def timestamp(self):
+        """Get timestamp when item is written by upstream DataWriter
+        """
+        pass
+
+    @property
+    @abstractmethod
+    def channel_id(self):
+        """Get string id of channel where data is coming from"""
+        pass
+
+    @property
+    @abstractmethod
+    def message_id(self):
+        """Get message id of the message"""
+        pass
+
+class DataMessage(Message):
     """
-    DataMessage represents data between upstream and downstream operator
+    DataMessage represents data between upstream and downstream operator.
     """
 
     def __init__(self,
                  body,
                  timestamp,
+                 message_id,
                  channel_id,
-                 message_id_,
                  is_empty_message=False):
         self.__body = body
         self.__timestamp = timestamp
         self.__channel_id = channel_id
-        self.__message_id = message_id_
+        self.__message_id = message_id
         self.__is_empty_message = is_empty_message
 
     def __len__(self):
         return len(self.__body)
 
+    @property
     def body(self):
-        """Message data"""
         return self.__body
 
+    @property
     def timestamp(self):
-        """Get timestamp when item is written by upstream DataWriter
-        """
         return self.__timestamp
 
+    @property
     def channel_id(self):
-        """Get string id of channel where data is coming from
-        """
         return self.__channel_id
 
+    @property
+    def message_id(self):
+        return self.__message_id
+
+    @property
     def is_empty_message(self):
         """Whether this message is an empty message.
         Upstream DataWriter will send an empty message when this is no data
@@ -140,9 +169,47 @@ class DataMessage:
         """
         return self.__is_empty_message
 
+
+class CheckpointBarrier(Message):
+    """
+    CheckpointBarrier separates the records in the data stream into the set of
+     records that goes into the current snapshot, and the records that go into
+     the next snapshot. Each barrier carries the ID of the snapshot whose
+     records it pushed in front of it.
+    """
+
+    def __init__(self, barrier_data, timestamp, message_id, channel_id,
+                 offsets, barrier_id, barrier_type):
+        self.__barrier_data = barrier_data
+        self.__timestamp = timestamp
+        self.__message_id = message_id
+        self.__channel_id = channel_id
+        self.checkpoint_id = barrier_id
+        self.offsets = offsets
+        self.barrier_type = barrier_type
+
+    @property
+    def body(self):
+        return self.__barrier_data
+
+    @property
+    def timestamp(self):
+        return self.__timestamp
+
+    @property
+    def channel_id(self):
+        return self.__channel_id
+
     @property
     def message_id(self):
         return self.__message_id
+
+    def get_input_checkpoints(self):
+        return self.offsets
+
+    def __str__(self):
+        return "Barrier(Checkpoint id : {})".format(
+            self.checkpoint_id)
 
 
 class ChannelCreationParametersBuilder:
@@ -334,15 +401,13 @@ class DataReader:
             channel item
         """
         if self.__queue.empty():
-            msgs = self.reader.read(timeout_millis)
-            for msg in msgs:
-                msg_bytes, msg_id, timestamp, qid_bytes = msg
-                data_msg = DataMessage(msg_bytes, timestamp,
-                                       channel_bytes_to_str(qid_bytes), msg_id)
-                self.__queue.put(data_msg)
-        if self.__queue.empty():
+            messages = self.reader.read(timeout_millis)
+            for message in messages:
+                self._queue.put(message)
+
+        if self._queue.empty():
             return None
-        return self.__queue.get()
+        return self._queue.get()
 
     def get_channel_recover_info(self):
         return ChannelRecoverInfo(self.__creation_status)
@@ -421,57 +486,6 @@ class ChannelCreationStatus(Enum):
     PullOk = 1
     Timeout = 2
     DataLost = 3
-
-
-class QueueItem:
-    """
-    queue item interface
-    """
-
-    __metaclass__ = ABCMeta
-
-    def __init__(self):
-        pass
-
-    @abstractmethod
-    def body(self):
-        pass
-
-    @abstractmethod
-    def release_body(self):
-        pass
-
-    @abstractmethod
-    def timestamp(self):
-        pass
-
-
-class QueueBarrier(QueueItem):
-    """
-    queue barrier interface
-    """
-
-    __metaclass__ = ABCMeta
-
-    @abstractmethod
-    def checkpoint_id(self):
-        pass
-
-    @abstractmethod
-    def get_input_checkpoints(self):
-        pass
-
-
-class QueueMessage(QueueItem):
-    """
-    queue message interface
-    """
-
-    __metaclass__ = ABCMeta
-
-    @abstractmethod
-    def queue_id(self):
-        pass
 
 
 def channel_id_str_to_bytes(channel_id_str):
