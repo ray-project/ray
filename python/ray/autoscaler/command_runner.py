@@ -26,11 +26,13 @@ HASH_MAX_LENGTH = 10
 KUBECTL_RSYNC = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "kubernetes/kubectl-rsync.sh")
 
-_config = {
-    "use_login_shells": True
-}
+_config = {"use_login_shells": True}
+
+
 def is_using_login_shells():
     return _config["use_login_shells"]
+
+
 def set_using_login_shells(val):
     """Choose between login and non-interactive shells.
 
@@ -46,6 +48,7 @@ def set_using_login_shells(val):
     and non-robust tool to work.
     """
     _config["use_login_shells"] = val
+
 
 def _with_interactive(cmd):
     force_interactive = ("true && source ~/.bashrc && "
@@ -357,8 +360,10 @@ class SSHCommandRunner(CommandRunnerInterface):
             # In the future we could update the new logic to support
             # capturing output, but it is probably not needed.
             if not cli_logger.old_style and not with_output:
-                return run_cmd_redirected(final_cmd, silent=silent,
-                            use_login_shells=is_using_login_shells())
+                return run_cmd_redirected(
+                    final_cmd,
+                    silent=silent,
+                    use_login_shells=is_using_login_shells())
             if with_output:
                 return self.process_runner.check_output(final_cmd)
             else:
@@ -424,9 +429,7 @@ class SSHCommandRunner(CommandRunnerInterface):
                 final_cmd += _with_interactive(cmd)
             else:
                 final_cmd += [cmd]
-            cli_logger.old_info(logger,
-                                "{}Running {}",
-                                self.log_prefix,
+            cli_logger.old_info(logger, "{}Running {}", self.log_prefix,
                                 " ".join(final_cmd))
         else:
             # We do this because `-o ControlMaster` causes the `-N` flag to

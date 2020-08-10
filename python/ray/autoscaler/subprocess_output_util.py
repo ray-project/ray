@@ -1,3 +1,4 @@
+import os
 import re
 import subprocess
 import tempfile
@@ -10,14 +11,19 @@ import colorful as cf
 CONN_REFUSED_PATIENCE = 30  # how long to wait for sshd to run
 
 _config = {"redirect_output": True}
+
+
 def is_output_redirected():
     return _config["_redirect_output"]
+
+
 def set_output_redirected(val):
     """Choose between logging to a temporary file and to `sys.stdout`.
 
     The default is to log to a file.
     """
     _config["_redirect_output"] = val
+
 
 class ProcessRunnerError(Exception):
     def __init__(self,
@@ -36,19 +42,19 @@ class ProcessRunnerError(Exception):
 
         self.special_case = special_case
 
+
 _ssh_output_regexes = {
     "known_host_update": re.compile(
         r"\s*Warning: Permanently added '.+' \(.+\) "
         r"to the list of known hosts.\s*"),
-    "connection_closed": re.compile(
-        r"\s*Shared connection to .+ closed.\s*"),
-    "timeout": re.compile(
-        r"\s*ssh: connect to host .+ port .+: "
-        r"Operation timed out\s*"),
+    "connection_closed": re.compile(r"\s*Shared connection to .+ closed.\s*"),
+    "timeout": re.compile(r"\s*ssh: connect to host .+ port .+: "
+                          r"Operation timed out\s*"),
     "conn_refused": re.compile(
         r"\s*ssh: connect to host .+ port .+: Connection refused\s*")
     # todo: check for other connection failures for better error messages?
 }
+
 
 def _read_subprocess_stream(f, output_file, is_stdout=False):
     """Read and process a subprocess output stream.
@@ -106,9 +112,9 @@ def _read_subprocess_stream(f, output_file, is_stdout=False):
                 # network conditions/nodes in the early stages of boot
                 # are expected to sometimes cause connection timeouts.
                 if detected_special_case is not None:
-                    raise ValueError(
-                        "Bug: ssh_timeout conflicts with another "
-                        "special codition: " + detected_special_case)
+                    raise ValueError("Bug: ssh_timeout conflicts with another "
+                                     "special codition: " +
+                                     detected_special_case)
 
                 detected_special_case = "ssh_timeout"
                 continue
@@ -142,9 +148,11 @@ def _read_subprocess_stream(f, output_file, is_stdout=False):
 
     return detected_special_case
 
-def _run_and_process_output(
-        cmd, stdout_file, stderr_file=None,
-        use_login_shells=False):
+
+def _run_and_process_output(cmd,
+                            stdout_file,
+                            stderr_file=None,
+                            use_login_shells=False):
     """Run a command and process its output for special cases.
 
     Specifically, run all command output through regex to detect
@@ -227,12 +235,12 @@ def _run_and_process_output(
         with ThreadPoolExecutor(max_workers=2) as executor:
             stdout_future = \
                 executor.submit(_read_subprocess_stream,
-                            p.stdout, stdout_file,
-                            is_stdout=True)
+                                p.stdout, stdout_file,
+                                is_stdout=True)
             stderr_future = \
                 executor.submit(_read_subprocess_stream,
-                            p.stderr, stderr_file,
-                            is_stdout=False)
+                                p.stderr, stderr_file,
+                                is_stdout=False)
             # Wait for completion.
             executor.shutdown()
 
@@ -273,6 +281,7 @@ def _run_and_process_output(
 
             return p.returncode
 
+
 def run_cmd_redirected(cmd, silent=False, use_login_shells=False):
     """Run a command and optionally redirect output to a file.
 
@@ -284,12 +293,12 @@ def run_cmd_redirected(cmd, silent=False, use_login_shells=False):
                        rsync.
     """
     if silent and cli_logger.verbosity < 1:
-        return _run_and_process_output(cmd, stdout_file=None,
-                                       use_login_shells=use_login_shells)
+        return _run_and_process_output(
+            cmd, stdout_file=None, use_login_shells=use_login_shells)
 
     if not is_output_redirected():
-        return _run_and_process_output(cmd, stdout_file=sys.stdout,
-                                       use_login_shells=use_login_shells)
+        return _run_and_process_output(
+            cmd, stdout_file=sys.stdout, use_login_shells=use_login_shells)
     else:
         tmpfile_path = os.path.join(
             tempfile.gettempdir(), "ray-up-{}-{}.txt".format(
@@ -305,9 +314,12 @@ def run_cmd_redirected(cmd, silent=False, use_login_shells=False):
                 cf.gray("Use --dump-command-output to "
                         "dump to terminal instead."))
 
-            return _run_and_process_output(cmd,
-                                           stdout_file=tmp, stderr_file=tmp,
-                                           use_login_shells=use_login_shells)
+            return _run_and_process_output(
+                cmd,
+                stdout_file=tmp,
+                stderr_file=tmp,
+                use_login_shells=use_login_shells)
+
 
 def handle_ssh_fails(e, first_conn_refused_time, retry_interval):
     """Handle SSH system failures coming from a subprocess.
@@ -333,29 +345,22 @@ def handle_ssh_fails(e, first_conn_refused_time, retry_interval):
             cli_logger.error(
                 "SSH connection was being refused "
                 "for {} seconds. Head node assumed "
-                "unreachable.",
-                cf.bold(str(CONN_REFUSED_PATIENCE)))
-            cli_logger.abort(
-                "Check the node's firewall settings "
-                "and the cloud network configuration.")
+                "unreachable.", cf.bold(str(CONN_REFUSED_PATIENCE)))
+            cli_logger.abort("Check the node's firewall settings "
+                             "and the cloud network configuration.")
 
-        cli_logger.warning(
-            "SSH connection was refused.")
-        cli_logger.warning(
-            "This might mean that the SSH daemon is "
-            "still setting up, or that "
-            "the host is inaccessable (e.g. due to "
-            "a firewall).")
+        cli_logger.warning("SSH connection was refused.")
+        cli_logger.warning("This might mean that the SSH daemon is "
+                           "still setting up, or that "
+                           "the host is inaccessable (e.g. due to "
+                           "a firewall).")
 
         return time.time()
 
-    if e.special_case in [
-            "ssh_timeout", "ssh_conn_refused"
-    ]:
-        cli_logger.print(
-            "SSH still not available, "
-            "retrying in {} seconds.",
-            cf.bold(str(retry_interval)))
+    if e.special_case in ["ssh_timeout", "ssh_conn_refused"]:
+        cli_logger.print("SSH still not available, "
+                         "retrying in {} seconds.", cf.bold(
+                             str(retry_interval)))
     else:
         raise e
 

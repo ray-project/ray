@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 READY_CHECK_INTERVAL = 5
 
+
 class NodeUpdater:
     """A process for syncing files and running init commands on a node."""
 
