@@ -400,7 +400,8 @@ class SSHCommandRunner(CommandRunnerInterface):
                     "SSH command Failed. See above for the output from the"
                     " failure.") from None
 
-    def run(self,
+    def run(
+            self,
             cmd,
             timeout=120,
             exit_on_fail=False,
