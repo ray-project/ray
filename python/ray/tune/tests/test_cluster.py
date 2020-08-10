@@ -733,7 +733,6 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir):
         current_dir = os.path.dirname(__file__)
         script = os.path.join(current_dir,
                               "_test_cluster_interrupt_searcher.py")
-        print(args)
         subprocess.Popen([sys.executable, script] + list(args))
 
     args = ["--ray-address", cluster.address, "--local-dir", dirpath]
@@ -782,7 +781,6 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir):
             else:
                 stop_fn = runner.trial_executor.stop_trial
                 [stop_fn(t) for t in trials if t.status is not Trial.ERROR]
-                print("Stopped all trials")
         time.sleep(.5)
     assert reached is True
 

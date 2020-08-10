@@ -64,10 +64,13 @@ class SearchAlgorithm:
         self._finished = True
 
     def has_checkpoint(self, dirpath):
+        """Should return False if not restoring is not implemented."""
         return False
 
     def save_to_dir(self, dirpath, **kwargs):
+        """Saves a search algorithm."""
         pass
 
-    def restore(self, dirpath):
+    def restore_from_dir(self, dirpath):
+        """Restores a search algorithm along with its wrapped state."""
         pass

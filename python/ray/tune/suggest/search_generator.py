@@ -162,6 +162,18 @@ class SearchGenerator(SearchAlgorithm):
             _find_newest_ckpt(dirpath, self.CKPT_FILE_TMPL.format("*")))
 
     def save_to_dir(self, dirpath, session_str):
+        """Saves self + searcher to dir.
+
+        Separates the "searcher" from its wrappers (concurrency, repeating).
+        This allows the user to easily restore a given searcher.
+
+        The save operation is atomic (write/swap).
+
+        Args:
+            dirpath (str): Filepath to experiment dir.
+            session_str (str): Unique identifier of the current run
+                session.
+        """
         searcher = self.searcher
         search_alg_state = self.get_state()
         while hasattr(searcher, "searcher"):
@@ -176,12 +188,14 @@ class SearchGenerator(SearchAlgorithm):
             searcher = searcher.searcher
         base_searcher = searcher
         # We save the base searcher separately for users to easily
-        # separate the Optimizer.
+        # separate the searcher.
         base_searcher.save_to_dir(dirpath, session_str)
         _atomic_save(search_alg_state, dirpath,
                      self.CKPT_FILE_TMPL.format(session_str))
 
     def restore_from_dir(self, dirpath):
+        """Restores self + searcher + search wrappers from dirpath."""
+
         searcher = self.searcher
         search_alg_state = _find_newest_ckpt(dirpath,
                                              self.CKPT_FILE_TMPL.format("*"))
@@ -206,4 +220,3 @@ class SearchGenerator(SearchAlgorithm):
         logger.debug(f"searching base {base_searcher}")
         base_searcher.restore_from_dir(dirpath)
         self.set_state(search_alg_state)
-        print("finished restoring")

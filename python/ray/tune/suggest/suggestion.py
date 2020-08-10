@@ -180,6 +180,11 @@ class Searcher:
         """Automatically saves the given searcher to the checkpoint_dir.
 
         This is automatically used by tune.run during a Tune job.
+
+        Args:
+            checkpoint_dir (str): Filepath to experiment dir.
+            session_str (str): Unique identifier of the current run
+                session.
         """
         tmp_search_ckpt_path = os.path.join(checkpoint_dir,
                                             ".tmp_searcher_ckpt")
