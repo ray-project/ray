@@ -31,6 +31,8 @@ bool ClusterTaskManager::SchedulePendingTasks() {
     auto request_resources =
         task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
     int64_t _unused;
+    // TODO (Alex): We should distinguish between infeasible tasks and a fully
+    // utilized cluster.
     std::string node_id_string =
         cluster_resource_scheduler_->GetBestSchedulableNode(request_resources, &_unused);
     if (node_id_string.empty()) {
@@ -125,7 +127,9 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       worker->SetAllocatedInstances(allocated_instances);
     }
     worker->AssignTaskId(spec.TaskId());
-    worker->AssignJobId(spec.JobId());
+    if (!RayConfig::instance().enable_multi_tenancy()) {
+      worker->AssignJobId(spec.JobId());
+    }
     worker->SetAssignedTask(task);
     Dispatch(worker, leased_workers, spec, reply, callback);
   }

@@ -7,7 +7,11 @@ import {
 } from "@material-ui/core";
 import React, { useState } from "react";
 import { connect } from "react-redux";
-import { ActorState, RayletActorInfo, RayletInfoResponse } from "../../../api";
+import {
+  isFullActorInfo,
+  RayletActorInfo,
+  RayletInfoResponse,
+} from "../../../api";
 import { filterObj } from "../../../common/util";
 import { StoreState } from "../../../store";
 import Actors from "./Actors";
@@ -29,8 +33,7 @@ const actorMatchesSearch = (
 const getNestedActorTitles = (actor: RayletActorInfo): string[] => {
   const actorTitle = actor.actorTitle;
   const titles: string[] = actorTitle ? [actorTitle] : [];
-  // state of -1 indicates an actor data record that does not have children.
-  if (actor.state === ActorState.Invalid) {
+  if (!isFullActorInfo(actor)) {
     return titles;
   }
   const children = actor["children"];

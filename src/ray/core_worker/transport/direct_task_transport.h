@@ -28,6 +28,7 @@
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
+#include "ray/rpc/worker/core_worker_client_pool.h"
 
 namespace ray {
 
@@ -54,20 +55,19 @@ class CoreWorkerDirectTaskSubmitter {
       rpc::ClientFactoryFn client_factory, LeaseClientFactoryFn lease_client_factory,
       std::shared_ptr<CoreWorkerMemoryStore> store,
       std::shared_ptr<TaskFinisherInterface> task_finisher, ClientID local_raylet_id,
-      int64_t lease_timeout_ms,
+      int64_t lease_timeout_ms, std::shared_ptr<ActorCreatorInterface> actor_creator,
       uint32_t max_tasks_in_flight_per_worker =
           RayConfig::instance().max_tasks_in_flight_per_worker(),
-      std::shared_ptr<ActorCreatorInterface> actor_creator = nullptr,
       absl::optional<boost::asio::steady_timer> cancel_timer = absl::nullopt)
       : rpc_address_(rpc_address),
         local_lease_client_(lease_client),
-        client_factory_(client_factory),
         lease_client_factory_(lease_client_factory),
         resolver_(store, task_finisher),
         task_finisher_(task_finisher),
         lease_timeout_ms_(lease_timeout_ms),
         local_raylet_id_(local_raylet_id),
         actor_creator_(std::move(actor_creator)),
+        client_cache_(client_factory),
         max_tasks_in_flight_per_worker_(max_tasks_in_flight_per_worker),
         cancel_retry_timer_(std::move(cancel_timer)) {}
 
@@ -143,9 +143,6 @@ class CoreWorkerDirectTaskSubmitter {
   absl::flat_hash_map<ClientID, std::shared_ptr<WorkerLeaseInterface>>
       remote_lease_clients_ GUARDED_BY(mu_);
 
-  /// Factory for producing new core worker clients.
-  rpc::ClientFactoryFn client_factory_;
-
   /// Factory for producing new clients to request leases from remote nodes.
   LeaseClientFactoryFn lease_client_factory_;
 
@@ -170,8 +167,7 @@ class CoreWorkerDirectTaskSubmitter {
   absl::Mutex mu_;
 
   /// Cache of gRPC clients to other workers.
-  absl::flat_hash_map<rpc::WorkerAddress, std::shared_ptr<rpc::CoreWorkerClientInterface>>
-      client_cache_ GUARDED_BY(mu_);
+  rpc::CoreWorkerClientPool client_cache_;
 
   // max_tasks_in_flight_per_worker_ limits the number of tasks that can be pipelined to a
   // worker using a single lease.

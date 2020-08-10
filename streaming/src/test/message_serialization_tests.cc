@@ -2,7 +2,6 @@
 #include <string>
 
 #include "gtest/gtest.h"
-
 #include "message/message.h"
 #include "message/message_bundle.h"
 

@@ -12,13 +12,12 @@ import ray.ray_constants as ray_constants
 import ray.test_utils
 import ray.cluster_utils
 from ray.test_utils import (
-    relevant_errors,
     wait_for_condition,
-    wait_for_errors,
     wait_for_pid_to_exit,
     generate_internal_config_map,
     get_other_nodes,
     SignalActor,
+    get_error_message,
 )
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
@@ -627,9 +626,11 @@ def test_checkpointing_on_node_failure(ray_start_cluster_2_nodes,
 
 
 @pytest.mark.skip(reason="TODO: Actor checkpointing")
-def test_checkpointing_save_exception(ray_start_regular,
+def test_checkpointing_save_exception(ray_start_regular, error_pubsub,
                                       ray_checkpointable_actor_cls):
     """Test actor can still be recovered if checkpoints fail to complete."""
+
+    p = error_pubsub
 
     @ray.remote(max_restarts=2)
     class RemoteCheckpointableActor(ray_checkpointable_actor_cls):
@@ -663,13 +664,17 @@ def test_checkpointing_save_exception(ray_start_regular,
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
 
     # Check that the checkpoint error was pushed to the driver.
-    wait_for_errors(ray_constants.CHECKPOINT_PUSH_ERROR, 1)
+    errors = get_error_message(p, 1, ray_constants.CHECKPOINT_PUSH_ERROR)
+    assert len(errors) == 1
+    assert errors[0].type == ray_constants.CHECKPOINT_PUSH_ERROR
 
 
 @pytest.mark.skip(reason="TODO: Actor checkpointing")
-def test_checkpointing_load_exception(ray_start_regular,
+def test_checkpointing_load_exception(ray_start_regular, error_pubsub,
                                       ray_checkpointable_actor_cls):
     """Test actor can still be recovered if checkpoints fail to load."""
+
+    p = error_pubsub
 
     @ray.remote(max_restarts=2)
     class RemoteCheckpointableActor(ray_checkpointable_actor_cls):
@@ -704,7 +709,9 @@ def test_checkpointing_load_exception(ray_start_regular,
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
 
     # Check that the checkpoint error was pushed to the driver.
-    wait_for_errors(ray_constants.CHECKPOINT_PUSH_ERROR, 1)
+    errors = get_error_message(p, 1, ray_constants.CHECKPOINT_PUSH_ERROR)
+    assert len(errors) == 1
+    assert errors[0].type == ray_constants.CHECKPOINT_PUSH_ERROR
 
 
 @pytest.mark.parametrize(
@@ -759,13 +766,15 @@ def test_bad_checkpointable_actor_class():
                 return True
 
 
-def test_init_exception_in_checkpointable_actor(ray_start_regular,
-                                                ray_checkpointable_actor_cls):
+def test_init_exception_in_checkpointable_actor(
+        ray_start_regular, error_pubsub, ray_checkpointable_actor_cls):
     # This test is similar to test_failure.py::test_failed_actor_init.
     # This test is used to guarantee that checkpointable actor does not
     # break the same logic.
     error_message1 = "actor constructor failed"
     error_message2 = "actor method failed"
+
+    p = error_pubsub
 
     @ray.remote
     class CheckpointableFailedActor(ray_checkpointable_actor_cls):
@@ -781,17 +790,15 @@ def test_init_exception_in_checkpointable_actor(ray_start_regular,
     a = CheckpointableFailedActor.remote()
 
     # Make sure that we get errors from a failed constructor.
-    wait_for_errors(ray_constants.TASK_PUSH_ERROR, 1)
-    errors = relevant_errors(ray_constants.TASK_PUSH_ERROR)
+    errors = get_error_message(p, 1, ray_constants.TASK_PUSH_ERROR)
     assert len(errors) == 1
-    assert error_message1 in errors[0]["message"]
+    assert error_message1 in errors[0].error_message
 
     # Make sure that we get errors from a failed method.
     a.fail_method.remote()
-    wait_for_errors(ray_constants.TASK_PUSH_ERROR, 2)
-    errors = relevant_errors(ray_constants.TASK_PUSH_ERROR)
-    assert len(errors) == 2
-    assert error_message1 in errors[1]["message"]
+    errors = get_error_message(p, 1, ray_constants.TASK_PUSH_ERROR)
+    assert len(errors) == 1
+    assert error_message1 in errors[0].error_message
 
 
 def test_decorated_method(ray_start_regular):

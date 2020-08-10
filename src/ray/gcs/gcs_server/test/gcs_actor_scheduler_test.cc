@@ -28,7 +28,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
     gcs_pub_sub_ = std::make_shared<GcsServerMocker::MockGcsPubSub>(redis_client_);
     gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client_);
     gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
-        io_service_, io_service_, error_info_accessor_, gcs_pub_sub_, gcs_table_storage_);
+        io_service_, io_service_, gcs_pub_sub_, gcs_table_storage_);
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
     gcs_actor_table_ =
         std::make_shared<GcsServerMocker::MockedGcsActorTable>(store_client_);
@@ -52,9 +52,6 @@ class GcsActorSchedulerTest : public ::testing::Test {
   boost::asio::io_service io_service_;
   std::shared_ptr<gcs::StoreClient> store_client_;
   std::shared_ptr<GcsServerMocker::MockedGcsActorTable> gcs_actor_table_;
-
-  GcsServerMocker::MockedErrorInfoAccessor error_info_accessor_;
-
   std::shared_ptr<GcsServerMocker::MockRayletClient> raylet_client_;
   std::shared_ptr<GcsServerMocker::MockWorkerClient> worker_client_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;

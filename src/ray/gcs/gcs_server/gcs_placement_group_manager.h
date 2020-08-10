@@ -81,6 +81,7 @@ class GcsPlacementGroup {
 
 using RegisterPlacementGroupCallback =
     std::function<void(std::shared_ptr<GcsPlacementGroup>)>;
+
 /// GcsPlacementGroupManager is responsible for managing the lifecycle of all placement
 /// group. This class is not thread-safe.
 /// The placementGroup will be added into queue and set the status as pending first and
@@ -114,7 +115,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// `registered_placement_groups_` and its state is `ALIVE`. The callback will not be
   /// called in this case.
   void RegisterPlacementGroup(const rpc::CreatePlacementGroupRequest &request,
-                              RegisterPlacementGroupCallback callback);
+                              EmptyCallback callback);
 
   /// Schedule placement_groups in the `pending_placement_groups_` queue.
   /// This function is exposed for testing only.
@@ -138,23 +139,20 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   ///
   /// \param placement_group The placement_group that has been created.
   void OnPlacementGroupCreationSuccess(
-      std::shared_ptr<GcsPlacementGroup> placement_group);
+      const std::shared_ptr<GcsPlacementGroup> &placement_group);
 
  private:
-  /// Schedule another tick after a short time.
-  void ScheduleTick();
+  /// Try to create placement group after a short time.
+  void RetryCreatingPlacementGroup();
 
-  /// Callbacks of placement_group registration requests that are not yet flushed.
-  /// This map is used to filter duplicated messages from a Driver/Worker caused by some
-  /// network problems.
-  ///
-  /// Since the GRPC message received by the GCS side is out of order, it can not be
-  /// determined that the last callback is the valid one. Therefore, the repeated
-  /// callbacks are recorded in the form of vector without distinction. When the operation
-  /// is successful, all callbacks will be triggered. One of them must be valid, and the
-  /// rest invalid callbacks will not have any effect even if they are called.
-  absl::flat_hash_map<PlacementGroupID, std::vector<RegisterPlacementGroupCallback>>
-      placement_group_to_register_callbacks_;
+  /// The io loop that is used to delay execution of tasks (e.g.,
+  /// execute_after).
+  boost::asio::io_context &io_context_;
+
+  /// Callback of placement_group registration requests that are not yet flushed.
+  absl::flat_hash_map<PlacementGroupID, EmptyCallback>
+      placement_group_to_register_callback_;
+
   /// All registered placement_groups (pending placement_groups are also included).
   absl::flat_hash_map<PlacementGroupID, std::shared_ptr<GcsPlacementGroup>>
       registered_placement_groups_;
@@ -168,9 +166,6 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   /// If a placement group is creating
   bool is_creating_ = false;
-
-  /// A timer that ticks every schedule failure milliseconds.
-  boost::asio::deadline_timer reschedule_timer_;
 };
 
 }  // namespace gcs

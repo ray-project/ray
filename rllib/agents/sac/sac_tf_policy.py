@@ -231,10 +231,8 @@ def sac_actor_critic_loss(policy, model, _, train_batch):
             y_true=q_t_selected_target, y_pred=q_t_selected)
     ]
     if policy.config["twin_q"]:
-        critic_loss.append(
-            0.5 * tf.keras.losses.MSE(
-                y_true=q_t_selected_target,
-                y_pred=twin_q_t_selected))
+        critic_loss.append(0.5 * tf.keras.losses.MSE(
+            y_true=q_t_selected_target, y_pred=twin_q_t_selected))
 
     # Alpha- and actor losses.
     # Note: In the papers, alpha is used directly, here we take the log.
@@ -281,25 +279,27 @@ def gradients_fn(policy, optimizer, loss):
     if policy.config["framework"] in ["tf2", "tfe"]:
         tape = optimizer.tape
         pol_weights = policy.model.policy_variables()
-        actor_grads_and_vars = list(zip(tape.gradient(
-            policy.actor_loss, pol_weights), pol_weights))
+        actor_grads_and_vars = list(
+            zip(tape.gradient(policy.actor_loss, pol_weights), pol_weights))
         q_weights = policy.model.q_variables()
         if policy.config["twin_q"]:
             half_cutoff = len(q_weights) // 2
-            grads_1 = tape.gradient(
-                policy.critic_loss[0], q_weights[:half_cutoff])
-            grads_2 = tape.gradient(
-                policy.critic_loss[1], q_weights[half_cutoff:])
+            grads_1 = tape.gradient(policy.critic_loss[0],
+                                    q_weights[:half_cutoff])
+            grads_2 = tape.gradient(policy.critic_loss[1],
+                                    q_weights[half_cutoff:])
             critic_grads_and_vars = \
                 list(zip(grads_1, q_weights[:half_cutoff])) + \
                 list(zip(grads_2, q_weights[half_cutoff:]))
         else:
-            critic_grads_and_vars = list(zip(tape.gradient(
-                policy.critic_loss[0], q_weights), q_weights))
+            critic_grads_and_vars = list(
+                zip(
+                    tape.gradient(policy.critic_loss[0], q_weights),
+                    q_weights))
 
         alpha_vars = [policy.model.log_alpha]
-        alpha_grads_and_vars = list(zip(tape.gradient(
-            policy.alpha_loss, alpha_vars), alpha_vars))
+        alpha_grads_and_vars = list(
+            zip(tape.gradient(policy.alpha_loss, alpha_vars), alpha_vars))
     # Tf1.x: Use optimizer.compute_gradients()
     else:
         actor_grads_and_vars = policy._actor_optimizer.compute_gradients(
@@ -327,12 +327,15 @@ def gradients_fn(policy, optimizer, loss):
         clip_func = tf.identity
 
     # Save grads and vars for later use in `build_apply_op`.
-    policy._actor_grads_and_vars = [
-        (clip_func(g), v) for (g, v) in actor_grads_and_vars if g is not None]
-    policy._critic_grads_and_vars = [
-        (clip_func(g), v) for (g, v) in critic_grads_and_vars if g is not None]
-    policy._alpha_grads_and_vars = [
-        (clip_func(g), v) for (g, v) in alpha_grads_and_vars if g is not None]
+    policy._actor_grads_and_vars = [(clip_func(g), v)
+                                    for (g, v) in actor_grads_and_vars
+                                    if g is not None]
+    policy._critic_grads_and_vars = [(clip_func(g), v)
+                                     for (g, v) in critic_grads_and_vars
+                                     if g is not None]
+    policy._alpha_grads_and_vars = [(clip_func(g), v)
+                                    for (g, v) in alpha_grads_and_vars
+                                    if g is not None]
 
     grads_and_vars = (
         policy._actor_grads_and_vars + policy._critic_grads_and_vars +
@@ -391,15 +394,13 @@ class ActorCriticOptimizerMixin:
             self._actor_optimizer = tf.keras.optimizers.Adam(
                 learning_rate=config["optimization"]["actor_learning_rate"])
             self._critic_optimizer = [
-                tf.keras.optimizers.Adam(
-                    learning_rate=config["optimization"][
-                        "critic_learning_rate"])
+                tf.keras.optimizers.Adam(learning_rate=config["optimization"][
+                    "critic_learning_rate"])
             ]
             if config["twin_q"]:
                 self._critic_optimizer.append(
-                    tf.keras.optimizers.Adam(
-                        learning_rate=config["optimization"][
-                            "critic_learning_rate"]))
+                    tf.keras.optimizers.Adam(learning_rate=config[
+                        "optimization"]["critic_learning_rate"]))
             self._alpha_optimizer = tf.keras.optimizers.Adam(
                 learning_rate=config["optimization"]["entropy_learning_rate"])
         else:
@@ -407,15 +408,13 @@ class ActorCriticOptimizerMixin:
             self._actor_optimizer = tf1.train.AdamOptimizer(
                 learning_rate=config["optimization"]["actor_learning_rate"])
             self._critic_optimizer = [
-                tf1.train.AdamOptimizer(
-                    learning_rate=config["optimization"][
-                        "critic_learning_rate"])
+                tf1.train.AdamOptimizer(learning_rate=config["optimization"][
+                    "critic_learning_rate"])
             ]
             if config["twin_q"]:
                 self._critic_optimizer.append(
-                    tf1.train.AdamOptimizer(
-                        learning_rate=config["optimization"][
-                            "critic_learning_rate"]))
+                    tf1.train.AdamOptimizer(learning_rate=config[
+                        "optimization"]["critic_learning_rate"]))
             self._alpha_optimizer = tf1.train.AdamOptimizer(
                 learning_rate=config["optimization"]["entropy_learning_rate"])
 

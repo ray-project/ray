@@ -26,6 +26,7 @@ class SampleBatch:
     """
 
     # Outputs from interacting with the environment
+    OBS = "obs"
     CUR_OBS = "obs"
     NEXT_OBS = "new_obs"
     ACTIONS = "actions"
@@ -40,7 +41,7 @@ class SampleBatch:
     ACTION_PROB = "action_prob"
     ACTION_LOGP = "action_logp"
 
-    # Uniquely identifies an episode
+    # Uniquely identifies an episode.
     EPS_ID = "eps_id"
 
     # Uniquely identifies a sample batch. This is important to distinguish RNN
@@ -48,10 +49,10 @@ class SampleBatch:
     # concatenated (fusing sequences across batches can be unsafe).
     UNROLL_ID = "unroll_id"
 
-    # Uniquely identifies an agent within an episode
+    # Uniquely identifies an agent within an episode.
     AGENT_INDEX = "agent_index"
 
-    # Value function predictions emitted by the behaviour policy
+    # Value function predictions emitted by the behaviour policy.
     VF_PREDS = "vf_preds"
 
     @PublicAPI
@@ -304,10 +305,9 @@ class SampleBatch:
         self.data[key] = item
 
     @DeveloperAPI
-    def compress(
-            self,
-            bulk: bool = False,
-            columns: Set[str] = frozenset(["obs", "new_obs"])) -> None:
+    def compress(self,
+                 bulk: bool = False,
+                 columns: Set[str] = frozenset(["obs", "new_obs"])) -> None:
         """Compresses the data buffers (by column) in place.
 
         Args:
@@ -326,10 +326,9 @@ class SampleBatch:
                         [pack(o) for o in self.data[key]])
 
     @DeveloperAPI
-    def decompress_if_needed(
-            self,
-            columns: Set[str] = frozenset(
-                ["obs", "new_obs"])) -> "SampleBatch":
+    def decompress_if_needed(self,
+                             columns: Set[str] = frozenset(
+                                 ["obs", "new_obs"])) -> "SampleBatch":
         """Decompresses data buffers (per column if not compressed) in place.
 
         Args:
@@ -373,8 +372,7 @@ class MultiAgentBatch:
     """
 
     @PublicAPI
-    def __init__(self,
-                 policy_batches: Dict[PolicyID, SampleBatch],
+    def __init__(self, policy_batches: Dict[PolicyID, SampleBatch],
                  env_steps: int):
         """Initialize a MultiAgentBatch object.
 
@@ -540,11 +538,9 @@ class MultiAgentBatch:
         return sum(b.size_bytes() for b in self.policy_batches.values())
 
     @DeveloperAPI
-    def compress(
-            self,
-            bulk: bool = False,
-            columns: Set[str] = frozenset(
-                ["obs", "new_obs"])) -> None:
+    def compress(self,
+                 bulk: bool = False,
+                 columns: Set[str] = frozenset(["obs", "new_obs"])) -> None:
         """Compresses each policy batch (per column) in place.
 
         Args:
@@ -557,10 +553,9 @@ class MultiAgentBatch:
             batch.compress(bulk=bulk, columns=columns)
 
     @DeveloperAPI
-    def decompress_if_needed(
-            self,
-            columns: Set[str] = frozenset(
-                ["obs", "new_obs"])) -> "MultiAgentBatch":
+    def decompress_if_needed(self,
+                             columns: Set[str] = frozenset(
+                                 ["obs", "new_obs"])) -> "MultiAgentBatch":
         """Decompresses each policy batch (per column), if already compressed.
 
         Args:
