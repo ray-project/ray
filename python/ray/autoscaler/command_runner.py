@@ -12,6 +12,9 @@ import time
 from ray.autoscaler.docker import check_docker_running_cmd, with_docker_exec
 from ray.autoscaler.log_timer import LogTimer
 
+from ray.autoscaler.subprocess_output_util import run_cmd_redirected,\
+                                                  ProcessRunnerError
+
 from ray.autoscaler.cli_logger import cli_logger
 import colorful as cf
 
@@ -23,28 +26,37 @@ HASH_MAX_LENGTH = 10
 KUBECTL_RSYNC = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "kubernetes/kubectl-rsync.sh")
 
+_config = {"use_login_shells": True}
 
-class ProcessRunnerError(Exception):
-    def __init__(self,
-                 msg,
-                 msg_type,
-                 code=None,
-                 command=None,
-                 message_discovered=None):
-        super(ProcessRunnerError, self).__init__(
-            "{} (discovered={}): type={}, code={}, command={}".format(
-                msg, message_discovered, msg_type, code, command))
 
-        self.msg_type = msg_type
-        self.code = code
-        self.command = command
+def is_using_login_shells():
+    return _config["use_login_shells"]
 
-        self.message_discovered = message_discovered
+
+def set_using_login_shells(val):
+    """Choose between login and non-interactive shells.
+
+    Non-interactive shells have the benefit of receiving less output from
+    subcommands (since progress bars and TTY control codes are not printed).
+    Sometimes this can be significant since e.g. `pip install` prints
+    hundreds of progress bar lines when downloading.
+
+    Login shells have the benefit of working very close to how a proper bash
+    session does, regarding how scripts execute and how the environment is
+    setup. This is also how all commands were ran in the past. The only reason
+    to use login shells over non-interactive shells is if you need some weird
+    and non-robust tool to work.
+
+    Args:
+        val (bool): If true, login shells will be used to run all commands.
+    """
+    _config["use_login_shells"] = val
 
 
 def _with_interactive(cmd):
     force_interactive = ("true && source ~/.bashrc && "
                          "export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && ")
+
     return ["bash", "--login", "-c", "-i", quote(force_interactive + cmd)]
 
 
@@ -327,6 +339,56 @@ class SSHCommandRunner(CommandRunnerInterface):
             cli_logger.warning("{}", str(e))  # todo: msg
             cli_logger.old_warning(logger, "{}", str(e))
 
+    def _run_helper(self,
+                    final_cmd,
+                    with_output=False,
+                    exit_on_fail=False,
+                    silent=False):
+        """Run a command that was already setup with SSH and `bash` settings.
+
+        Args:
+            cmd (List[str]):
+                Full command to run. Should include SSH options and other
+                processing that we do.
+            with_output (bool):
+                If `with_output` is `True`, command stdout and stderr
+                will be captured and returned.
+            exit_on_fail (bool):
+                If `exit_on_fail` is `True`, the process will exit
+                if the command fails (exits with a code other than 0).
+        """
+
+        try:
+            # For now, if the output is needed we just skip the new logic.
+            # In the future we could update the new logic to support
+            # capturing output, but it is probably not needed.
+            if not cli_logger.old_style and not with_output:
+                return run_cmd_redirected(
+                    final_cmd,
+                    silent=silent,
+                    use_login_shells=is_using_login_shells())
+            if with_output:
+                return self.process_runner.check_output(final_cmd)
+            else:
+                return self.process_runner.check_call(final_cmd)
+        except subprocess.CalledProcessError as e:
+            quoted_cmd = " ".join(final_cmd[:-1] + [quote(final_cmd[-1])])
+            if not cli_logger.old_style and not is_using_login_shells():
+                raise ProcessRunnerError(
+                    "Command failed",
+                    "ssh_command_failed",
+                    code=e.returncode,
+                    command=quoted_cmd)
+
+            if exit_on_fail:
+                raise click.ClickException(
+                    "Command failed: \n\n  {}\n".format(quoted_cmd)) \
+                    from None
+            else:
+                raise click.ClickException(
+                    "SSH command Failed. See above for the output from the"
+                    " failure.") from None
+
     def run(self,
             cmd,
             timeout=120,
@@ -344,7 +406,10 @@ class SSHCommandRunner(CommandRunnerInterface):
 
         self._set_ssh_ip_if_required()
 
-        ssh = ["ssh", "-tt"]
+        if is_using_login_shells():
+            ssh = ["ssh", "-tt"]
+        else:
+            ssh = ["ssh"]
 
         if port_forward:
             with cli_logger.group("Forwarding ports"):
@@ -363,7 +428,10 @@ class SSHCommandRunner(CommandRunnerInterface):
             "{}@{}".format(self.ssh_user, self.ssh_ip)
         ]
         if cmd:
-            final_cmd += _with_interactive(cmd)
+            if is_using_login_shells():
+                final_cmd += _with_interactive(cmd)
+            else:
+                final_cmd += [cmd]
             cli_logger.old_info(logger, "{}Running {}", self.log_prefix,
                                 " ".join(final_cmd))
         else:
@@ -371,42 +439,16 @@ class SSHCommandRunner(CommandRunnerInterface):
             # still create an interactive shell in some ssh versions.
             final_cmd.append(quote("while true; do sleep 86400; done"))
 
-        # todo: add a flag for this, we might
-        # wanna log commands with print sometimes
         cli_logger.verbose("Running `{}`", cf.bold(cmd))
         with cli_logger.indented():
             cli_logger.very_verbose("Full command is `{}`",
                                     cf.bold(" ".join(final_cmd)))
 
-        def start_process():
-            try:
-                if with_output:
-                    return self.process_runner.check_output(final_cmd)
-                else:
-                    self.process_runner.check_call(final_cmd)
-            except subprocess.CalledProcessError as e:
-                quoted_cmd = " ".join(final_cmd[:-1] + [quote(final_cmd[-1])])
-                if not cli_logger.old_style:
-                    raise ProcessRunnerError(
-                        "Command failed",
-                        "ssh_command_failed",
-                        code=e.returncode,
-                        command=quoted_cmd)
-
-                if exit_on_fail:
-                    raise click.ClickException(
-                        "Command failed: \n\n  {}\n".format(quoted_cmd)) \
-                        from None
-                else:
-                    raise click.ClickException(
-                        "SSH command Failed. See above for the output from the"
-                        " failure.") from None
-
         if cli_logger.verbosity > 0:
             with cli_logger.indented():
-                return start_process()
+                return self._run_helper(final_cmd, with_output, exit_on_fail)
         else:
-            return start_process()
+            return self._run_helper(final_cmd, with_output, exit_on_fail)
 
     def run_rsync_up(self, source, target):
         self._set_ssh_ip_if_required()
@@ -418,7 +460,7 @@ class SSHCommandRunner(CommandRunnerInterface):
                                               target)
         ]
         cli_logger.verbose("Running `{}`", cf.bold(" ".join(command)))
-        self.process_runner.check_call(command)
+        self._run_helper(command, silent=True)
 
     def run_rsync_down(self, source, target):
         self._set_ssh_ip_if_required()
@@ -431,7 +473,7 @@ class SSHCommandRunner(CommandRunnerInterface):
                                       source), target
         ]
         cli_logger.verbose("Running `{}`", cf.bold(" ".join(command)))
-        self.process_runner.check_call(command)
+        self._run_helper(command, silent=True)
 
     def remote_shell_command_str(self):
         if self.ssh_private_key:

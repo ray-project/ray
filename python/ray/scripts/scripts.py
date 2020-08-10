@@ -704,9 +704,23 @@ def stop(force, verbose):
     default="auto",
     help=("Use color logging. "
           "Valid values are: auto (if stdout is a tty), true, false."))
+@click.option(
+    "--dump-command-output",
+    is_flag=True,
+    default=False,
+    help=("Print command output straight to "
+          "the terminal instead of redirecting to a file."))
+@click.option(
+    "--use-login-shells/--use-normal-shells",
+    is_flag=True,
+    default=True,
+    help=("Ray uses login shells (bash --login -i) to run cluster commands "
+          "by default. If your workflow is compatible with normal shells, "
+          "this can be disabled for a better user experience."))
 @click.option("-v", "--verbose", count=True)
 def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
-       yes, cluster_name, no_config_cache, log_old_style, log_color, verbose):
+       yes, cluster_name, no_config_cache, log_old_style, log_color,
+       dump_command_output, use_login_shells, verbose):
     """Create or update a Ray cluster."""
     if restart_only or no_restart:
         assert restart_only != no_restart, "Cannot set both 'restart_only' " \
@@ -724,7 +738,7 @@ def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
     create_or_update_cluster(cluster_config_file, min_workers, max_workers,
                              no_restart, restart_only, yes, cluster_name,
                              no_config_cache, log_old_style, log_color,
-                             verbose)
+                             dump_command_output, use_login_shells, verbose)
 
 
 @cli.command()
