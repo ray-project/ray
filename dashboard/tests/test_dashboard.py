@@ -12,10 +12,32 @@ import requests
 from ray import ray_constants
 from ray.test_utils import wait_for_condition, wait_until_server_available
 import ray.new_dashboard.consts as dashboard_consts
+import ray.new_dashboard.modules
 
 os.environ["RAY_USE_NEW_DASHBOARD"] = "1"
 
 logger = logging.getLogger(__name__)
+
+
+def cleanup_test_files():
+    module_path = ray.new_dashboard.modules.__path__[0]
+    filename = os.path.join(module_path, "test_for_bad_import.py")
+    logger.info("Remove test file: %s", filename)
+    try:
+        os.remove(filename)
+    except Exception:
+        pass
+
+
+def prepare_test_files():
+    module_path = ray.new_dashboard.modules.__path__[0]
+    filename = os.path.join(module_path, "test_for_bad_import.py")
+    logger.info("Prepare test file: %s", filename)
+    with open(filename, "w") as f:
+        f.write(">>>")
+
+
+cleanup_test_files()
 
 
 @pytest.mark.parametrize(
@@ -28,6 +50,8 @@ logger = logging.getLogger(__name__)
 def test_basic(ray_start_with_dashboard):
     """Dashboard test that starts a Ray cluster with a dashboard server running,
     then hits the dashboard API and asserts that it receives sensible data."""
+    assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
+            is True)
     address_info = ray_start_with_dashboard
     address = address_info["redis_address"]
     address = address.split(":")
@@ -50,17 +74,36 @@ def test_basic(ray_start_with_dashboard):
 
     def _search_agent(processes):
         for p in processes:
-            for c in p.cmdline():
-                if "new_dashboard/agent.py" in c:
-                    return p
+            try:
+                for c in p.cmdline():
+                    if "new_dashboard/agent.py" in c:
+                        return p
+            except Exception:
+                pass
 
-    # Test agent restart after dead.
-    logger.info("Test agent restart after dead.")
+    # Test for bad imports, the agent should be restarted.
+    logger.info("Test for bad imports.")
     agent_proc = _search_agent(raylet_proc.children())
-    assert agent_proc is not None
-    agent_proc.kill()
-    agent_proc.wait()
-    assert _search_agent(raylet_proc.children()) is None
+    prepare_test_files()
+    agent_pids = set()
+    try:
+        assert agent_proc is not None
+        agent_proc.kill()
+        agent_proc.wait()
+        # The agent will be restarted for imports failure.
+        for x in range(40):
+            agent_proc = _search_agent(raylet_proc.children())
+            if agent_proc:
+                agent_pids.add(agent_proc.pid)
+            time.sleep(0.1)
+    finally:
+        cleanup_test_files()
+    assert len(agent_pids) > 1, agent_pids
+
+    agent_proc = _search_agent(raylet_proc.children())
+    if agent_proc:
+        agent_proc.kill()
+        agent_proc.wait()
 
     logger.info("Test agent register is OK.")
     wait_for_condition(lambda: _search_agent(raylet_proc.children()))
@@ -68,7 +111,7 @@ def test_basic(ray_start_with_dashboard):
     agent_proc = _search_agent(raylet_proc.children())
     agent_pid = agent_proc.pid
 
-    # Check if agent register OK.
+    # Check if agent register is OK.
     for x in range(5):
         logger.info("Check agent is alive.")
         agent_proc = _search_agent(raylet_proc.children())
