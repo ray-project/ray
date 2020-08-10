@@ -21,6 +21,8 @@ import ray.ray_constants as ray_constants
 import ray.utils
 from ray.projects.scripts import project_cli, session_cli
 
+from ray.autoscaler.command_runner import set_rsync_silent
+from ray.autoscaler.subprocess_output_util import set_output_redirected
 from ray.autoscaler.cli_logger import cli_logger
 import colorful as cf
 
@@ -1090,8 +1092,14 @@ def kill_random_node(cluster_config_file, yes, hard, cluster_name):
     required=False,
     type=str,
     help="Override the configured cluster name.")
-def monitor(cluster_config_file, lines, cluster_name):
+@add_click_options(logging_options)
+def monitor(cluster_config_file, lines, cluster_name,
+            log_new_style, log_color, verbose):
     """Tails the autoscaler logs of a Ray cluster."""
+    cli_logger.old_style = not log_new_style
+    cli_logger.color_mode = log_color
+    cli_logger.verbosity = verbose
+
     monitor_cluster(cluster_config_file, lines, cluster_name)
 
 
@@ -1121,9 +1129,15 @@ def monitor(cluster_config_file, lines, cluster_name):
     multiple=True,
     type=int,
     help="Port to forward. Use this multiple times to forward multiple ports.")
+@add_click_options(logging_options)
 def attach(cluster_config_file, start, screen, tmux, cluster_name, new,
-           port_forward):
+           port_forward,
+           log_new_style, log_color, verbose):
     """Create or attach to a SSH session to a Ray cluster."""
+    cli_logger.old_style = not log_new_style
+    cli_logger.color_mode = log_color
+    cli_logger.verbosity = verbose
+
     port_forward = [(port, port) for port in list(port_forward)]
     attach_cluster(cluster_config_file, start, screen, tmux, cluster_name, new,
                    port_forward)
@@ -1139,8 +1153,17 @@ def attach(cluster_config_file, start, screen, tmux, cluster_name, new,
     required=False,
     type=str,
     help="Override the configured cluster name.")
-def rsync_down(cluster_config_file, source, target, cluster_name):
+@add_click_options(logging_options)
+def rsync_down(cluster_config_file, source, target, cluster_name,
+               log_new_style, log_color, verbose):
     """Download specific files from a Ray cluster."""
+    cli_logger.old_style = not log_new_style
+    cli_logger.color_mode = log_color
+    cli_logger.verbosity = verbose
+
+    set_output_redirected(False)
+    set_rsync_silent(False)
+
     rsync(cluster_config_file, source, target, cluster_name, down=True)
 
 
@@ -1160,8 +1183,17 @@ def rsync_down(cluster_config_file, source, target, cluster_name):
     is_flag=True,
     required=False,
     help="Upload to all nodes (workers and head).")
-def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes):
+@add_click_options(logging_options)
+def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes,
+             log_new_style, log_color, verbose):
     """Upload specific files to a Ray cluster."""
+    cli_logger.old_style = not log_new_style
+    cli_logger.color_mode = log_color
+    cli_logger.verbosity = verbose
+
+    set_output_redirected(False)
+    set_rsync_silent(False)
+
     rsync(
         cluster_config_file,
         source,
@@ -1226,6 +1258,8 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
     cli_logger.old_style = not log_new_style
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
+
+    set_output_redirected(False)
 
     cli_logger.doassert(
         not (screen and tmux),
@@ -1325,9 +1359,17 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
     multiple=True,
     type=int,
     help="Port to forward. Use this multiple times to forward multiple ports.")
+@add_click_options(logging_options)
 def exec(cluster_config_file, cmd, run_env, screen, tmux, stop, start,
-         cluster_name, port_forward):
+         cluster_name, port_forward,
+         log_new_style, log_color, verbose):
     """Execute a command via SSH on a Ray cluster."""
+    cli_logger.old_style = not log_new_style
+    cli_logger.color_mode = log_color
+    cli_logger.verbosity = verbose
+
+    set_output_redirected(False)
+
     port_forward = [(port, port) for port in list(port_forward)]
 
     exec_cluster(
