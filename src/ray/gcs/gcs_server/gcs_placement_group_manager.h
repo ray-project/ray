@@ -70,8 +70,11 @@ class GcsPlacementGroup {
   /// Get the name of this placement_group.
   std::string GetName() const;
 
-  /// Get the bundles of this placement_group
+  /// Get the bundles of this placement_group.
   std::vector<std::shared_ptr<BundleSpecification>> GetBundles() const;
+
+  /// Get the unplaced bundles of this placement group.
+  std::vector<std::shared_ptr<BundleSpecification>> GetUnplacedBundles() const;
 
   /// Get the Strategy
   rpc::PlacementStrategy GetStrategy() const;

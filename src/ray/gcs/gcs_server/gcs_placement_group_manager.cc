@@ -48,6 +48,18 @@ std::vector<std::shared_ptr<BundleSpecification>> GcsPlacementGroup::GetBundles(
   return ret_bundles;
 }
 
+std::vector<std::shared_ptr<BundleSpecification>> GcsPlacementGroup::GetUnplacedBundles()
+    const {
+  auto bundles = placement_group_table_data_.bundles();
+  std::vector<std::shared_ptr<BundleSpecification>> unplaced_bundles;
+  for (auto &bundle : bundles) {
+    if (!bundle.is_placed()) {
+      unplaced_bundles.push_back(std::make_shared<BundleSpecification>(bundle));
+    }
+  }
+  return unplaced_bundles;
+}
+
 rpc::PlacementStrategy GcsPlacementGroup::GetStrategy() const {
   return placement_group_table_data_.strategy();
 }
@@ -301,12 +313,21 @@ void GcsPlacementGroupManager::RetryCreatingPlacementGroup() {
 
 void GcsPlacementGroupManager::OnNodeDead(const ClientID &node_id) {
   auto bundles = gcs_placement_group_scheduler_->GetBundlesOfDeadNode(node_id);
+  absl::flat_hash_set<std::shared_ptr<GcsPlacementGroup>> to_reschedule_groups;
   for (const auto &bundle : bundles) {
     auto &placement_group = registered_placement_groups_[bundle.first];
+    to_reschedule_groups.insert(placement_group);
     for (const auto &bundle_index : bundle.second) {
-      placement_group->GetMutablePlacementGroupTableData().mutable_bundles(bundle_index).
+      placement_group->GetMutablePlacementGroupTableData()
+          .mutable_bundles(bundle_index)
+          ->set_is_placed(false);
     }
   }
+
+  for (const auto &group : to_reschedule_groups) {
+    pending_placement_groups_.emplace_front(group);
+  }
+  SchedulePendingPlacementGroups();
 }
 
 }  // namespace gcs

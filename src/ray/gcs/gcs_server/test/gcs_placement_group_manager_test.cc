@@ -39,6 +39,11 @@ class MockPlacementGroupScheduler : public gcs::GcsPlacementGroupSchedulerInterf
 
   MOCK_METHOD1(MarkScheduleCancelled, void(const PlacementGroupID &placement_group_id));
 
+  absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> GetBundlesOfDeadNode(
+      const ClientID &node_id) {
+    return absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>();
+  }
+
   std::vector<std::shared_ptr<gcs::GcsPlacementGroup>> placement_groups;
 };
 
