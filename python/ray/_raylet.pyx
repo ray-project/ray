@@ -598,17 +598,18 @@ cdef c_vector[c_string] spill_objects_handler(
     with gil:
         object_refs = VectorToObjectRefs(object_ids_to_spill)
         try:
-            urls = external_storage.current_storage.spill_objects(object_refs)
+            urls = external_storage.spill_objects(object_refs)
             for url in urls:
                 return_urls.push_back(url)
         except Exception:
-            traceback_str = traceback.format_exc() + (
-                    "An unexpected internal error occurred while "
-                    "the IO worker was spilling objects.")
+            exception_str = (
+                "An unexpected internal error occurred while the IO worker "
+                "was spilling objects.")
+            logger.exception(exception_str)
             ray.utils.push_error_to_driver(
                 ray.worker.global_worker,
                 "io_worker_spill_objects_error",
-                traceback_str,
+                traceback.format_exc() + exception_str,
                 job_id=None)
         return return_urls
 
@@ -621,15 +622,16 @@ cdef void restore_spilled_objects_handler(
         for i in range(size):
             urls.append(object_urls[i])
         try:
-            external_storage.current_storage.restore_spilled_objects(urls)
+            external_storage.restore_spilled_objects(urls)
         except Exception:
-            traceback_str = traceback.format_exc() + (
-                    "An unexpected internal error occurred while "
-                    "the IO worker was restoring spilled objects.")
+            exception_str = (
+                "An unexpected internal error occurred while the IO worker "
+                "was restoring spilled objects.")
+            logger.exception(exception_str)
             ray.utils.push_error_to_driver(
                 ray.worker.global_worker,
                 "io_worker_retore_spilled_objects_error",
-                traceback_str,
+                traceback.format_exc() + exception_str,
                 job_id=None)
 
 
@@ -701,17 +703,17 @@ cdef class CoreWorker:
         self.is_local_mode = local_mode
 
         cdef CCoreWorkerOptions options = CCoreWorkerOptions()
-        if worker_type == ray.LOCAL_MODE or worker_type == ray.SCRIPT_MODE:
+        if worker_type in (ray.LOCAL_MODE, ray.SCRIPT_MODE):
             self.is_driver = True
             options.worker_type = WORKER_TYPE_DRIVER
-        else:
+        elif worker_type == ray.WORKER_MODE:
             self.is_driver = False
-            if worker_type == ray.WORKER_MODE:
-                options.worker_type = WORKER_TYPE_WORKER
-            elif worker_type == ray.IO_WORKER_MODE:
-                options.worker_type = WORKER_TYPE_IO_WORKER
-            else:
-                raise ValueError("Unknown worker type")
+            options.worker_type = WORKER_TYPE_WORKER
+        elif worker_type == ray.IO_WORKER_MODE:
+            self.is_driver = False
+            options.worker_type = WORKER_TYPE_IO_WORKER
+        else:
+            raise ValueError(f"Unknown worker type: {worker_type}")
         options.language = LANGUAGE_PYTHON
         options.store_socket = store_socket.encode("ascii")
         options.raylet_socket = raylet_socket.encode("ascii")
@@ -826,6 +828,16 @@ cdef class CoreWorker:
 
     def put_file_like_object(
             self, metadata, data_size, file_like, ObjectRef object_ref=None):
+        """Directly create a new Plasma Store object from a file like
+        object. This avoids extra memory copy.
+
+        Args:
+            metadata (bytes): The metadata of the object.
+            data_size (int): The size of the data buffer.
+            file_like: A python file object that provides the `readinto`
+                interface.
+            object_ref: The new ObjectRef.
+        """
         cdef:
             CObjectID c_object_id
             shared_ptr[CBuffer] data_buf

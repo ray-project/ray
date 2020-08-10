@@ -1,10 +1,16 @@
 import abc
-import io
 import os
+from typing import List
 import ray
 
 
 class ExternalStorage(metaclass=abc.ABCMeta):
+    """The base class for external storage.
+
+    This class provides some useful functions for zero-copy object
+    put/get from plasma store. Also it specifies the interface for
+    object spilling.
+    """
     def _get_objects_from_store(self, object_refs):
         worker = ray.worker.global_worker
         ray_object_pairs = worker.core_worker.get_objects(
@@ -21,35 +27,36 @@ class ExternalStorage(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def spill_objects(self, object_refs):
-        raise NotImplementedError
+        """Spill objects to the external storage. Objects are specified
+        by their object refs.
+
+        Args:
+            object_refs: The list of the refs of the objects to be spilled.
+        Returns:
+            A list of keys corresponding to the input object refs.
+        """
 
     @abc.abstractmethod
-    def restore_spilled_objects(self, object_refs):
-        raise NotImplementedError
+    def restore_spilled_objects(self, keys: List[bytes]):
+        """Spill objects to the external storage. Objects are specified
+        by their object refs.
+
+        Args:
+            keys: A list of bytes corresponding to the spilled objects.
+        """
 
 
-class InMemoryStorage(ExternalStorage):
-    def __init__(self):
-        self.objects_map = {}
-
+class NullStorage(ExternalStorage):
+    """The class that represents an uninitialized external storage."""
     def spill_objects(self, object_refs):
-        keys = []
-        ray_object_pairs = self._get_objects_from_store(object_refs)
-        for ref, (buf, metadata) in zip(object_refs, ray_object_pairs):
-            url = ref.hex().encode()
-            self.objects_map[url] = (buf.to_pybytes(), metadata)
-            keys.append(url)
-        return keys
+        raise NotImplementedError("External storage is not initialized")
 
     def restore_spilled_objects(self, keys):
-        for k in keys:
-            buf_bytes, metadata = self.objects_map[k]
-            ref = ray.ObjectRef(bytes.fromhex(k.decode()))
-            file_like = io.BytesIO(buf_bytes)
-            self._put_object_to_store(metadata, len(buf_bytes), file_like, ref)
+        raise NotImplementedError("External storage is not initialized")
 
 
 class FileSystemStorage(ExternalStorage):
+    """The class for filesystem-like external storage."""
     def __init__(self, directory_path):
         self.directory_path = directory_path
         self.prefix = "ray_spilled_object_"
@@ -81,16 +88,39 @@ class FileSystemStorage(ExternalStorage):
                 self._put_object_to_store(metadata, buf_len, f, ref)
 
 
-current_storage = None
+_external_storage = NullStorage()
 
 
-def init(config):
-    global current_storage
-    if not config:
-        current_storage = InMemoryStorage()
-    else:
+def setup_external_storage(config):
+    """Setup the external storage according to the config."""
+    global _external_storage
+    if config:
         storage_type = config["type"]
         if storage_type == "filesystem":
-            current_storage = FileSystemStorage(**config["params"])
+            _external_storage = FileSystemStorage(**config["params"])
         else:
             raise ValueError(f"Unknown external storage type: {storage_type}")
+    else:
+        _external_storage = NullStorage()
+
+
+def spill_objects(object_refs):
+    """Spill objects to the external storage. Objects are specified
+    by their object refs.
+
+    Args:
+        object_refs: The list of the refs of the objects to be spilled.
+    Returns:
+        A list of keys corresponding to the input object refs.
+    """
+    return _external_storage.spill_objects(object_refs)
+
+
+def restore_spilled_objects(keys: List[bytes]):
+    """Spill objects to the external storage. Objects are specified
+    by their object refs.
+
+    Args:
+        keys: A list of bytes corresponding to the spilled objects.
+    """
+    _external_storage.restore_spilled_objects(keys)

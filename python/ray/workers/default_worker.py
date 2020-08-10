@@ -120,7 +120,7 @@ if __name__ == "__main__":
             object_spilling_config = json.loads(args.object_spilling_config)
         else:
             object_spilling_config = {}
-        external_storage.init(object_spilling_config)
+        external_storage.setup_external_storage(object_spilling_config)
 
     internal_config = {}
     if args.config_list is not None:
@@ -160,12 +160,10 @@ if __name__ == "__main__":
     ray.worker.connect(node, mode=mode)
     if mode == ray.WORKER_MODE:
         ray.worker.global_worker.main_loop()
-    else:
-        from ray import external_storage
-        if args.object_spilling_config:
-            object_spilling_config = json.loads(args.object_spilling_config)
-        else:
-            object_spilling_config = {}
-        external_storage.init(object_spilling_config)
+    elif mode == ray.IO_WORKER_MODE:
+        # It is handled by another thread in the C++ core worker.
+        # We just need to keep the worker alive.
         while True:
             time.sleep(100000)
+    else:
+        raise ValueError(f"Unexcepted worker mode: {mode}")

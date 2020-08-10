@@ -1211,7 +1211,7 @@ def connect(node,
     worker.redis_client = node.create_redis_client()
 
     # Initialize some fields.
-    if mode is WORKER_MODE or mode is IO_WORKER_MODE:
+    if mode in (WORKER_MODE, IO_WORKER_MODE):
         # We should not specify the job_id if it's `WORKER_MODE`.
         assert job_id is None
         job_id = JobID.nil()
