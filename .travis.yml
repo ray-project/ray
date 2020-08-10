@@ -452,7 +452,7 @@ deploy:
     # acl: public_read # This data won't be used externally. We can always turn on public_read later.
     region: us-west-2
     local_dir: /tmp/bazel_event_logs
-    upload-dir: "bazel_events/$TRAVIS_BRANCH/$TRAVIS_COMMIT"
+    upload-dir: "bazel_events/$TRAVIS_BRANCH/$TRAVIS_COMMIT/$TRAVIS_JOB_ID"
     on:
       repo: ray-project/ray
       branch: master
