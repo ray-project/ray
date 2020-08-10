@@ -11,8 +11,7 @@ as well as indentation and other structured output.
 import sys
 import logging
 
-from typing import Any, Dict, Tuple, Union, Optional, List
-from typing_extensions import Literal
+from typing import Any, Dict, Tuple, Optional, List
 
 import click
 
@@ -24,9 +23,9 @@ colorama.init()
 
 def _format_msg(msg: str,
                 *args: Any,
-                _tags: Dict[str, Any]=None,
-                _numbered: Tuple[str, int, int]=None,
-                _no_format: bool=None,
+                _tags: Dict[str, Any] = None,
+                _numbered: Tuple[str, int, int] = None,
+                _no_format: bool = None,
                 **kwargs: Any):
     """Formats a message for printing.
 
@@ -88,8 +87,7 @@ def _format_msg(msg: str,
         numbering_str = ""
         if _numbered is not None:
             chars, i, n = _numbered
-            numbering_str = cf.gray(chars[0] +
-                                    str(i) + "/" + str(n) +
+            numbering_str = cf.gray(chars[0] + str(i) + "/" + str(n) +
                                     chars[1]) + " "
 
         if _no_format:
@@ -193,7 +191,7 @@ class _CliLogger():
         """
         self._print("")
 
-    def _print(self, msg: str, linefeed: bool=True):
+    def _print(self, msg: str, linefeed: bool = True):
         """Proxy for printing messages.
 
         Args:
@@ -347,7 +345,7 @@ class _CliLogger():
 
         self._print(_format_msg(msg, *args, **kwargs))
 
-    def abort(self, msg: Optional[str]=None, *args: Any, **kwargs: Any):
+    def abort(self, msg: Optional[str] = None, *args: Any, **kwargs: Any):
         """Prints an error and aborts execution.
 
         Print an error and throw an exception to terminate the program
@@ -375,8 +373,8 @@ class _CliLogger():
         if not val:
             self.abort(msg, *args, **kwargs)
 
-    def old_debug(self, logger: logging.Logger, msg: str,
-                  *args: Any, **kwargs: Any):
+    def old_debug(self, logger: logging.Logger, msg: str, *args: Any,
+                  **kwargs: Any):
         """Old debug logging proxy.
 
         Pass along an old debug log iff new logging is disabled.
@@ -392,8 +390,8 @@ class _CliLogger():
             logger.debug(_format_msg(msg, *args, **kwargs))
             return
 
-    def old_info(self, logger: logging.Logger, msg: str,
-                 *args: Any, **kwargs: Any):
+    def old_info(self, logger: logging.Logger, msg: str, *args: Any,
+                 **kwargs: Any):
         """Old info logging proxy.
 
         Pass along an old info log iff new logging is disabled.
@@ -409,8 +407,8 @@ class _CliLogger():
             logger.info(_format_msg(msg, *args, **kwargs))
             return
 
-    def old_warning(self, logger: logging.Logger, msg: str,
-                    *args: Any, **kwargs: Any):
+    def old_warning(self, logger: logging.Logger, msg: str, *args: Any,
+                    **kwargs: Any):
         """Old warning logging proxy.
 
         Pass along an old warning log iff new logging is disabled.
@@ -426,8 +424,8 @@ class _CliLogger():
             logger.warning(_format_msg(msg, *args, **kwargs))
             return
 
-    def old_error(self, logger: logging.Logger, msg: str,
-                  *args: Any, **kwargs: Any):
+    def old_error(self, logger: logging.Logger, msg: str, *args: Any,
+                  **kwargs: Any):
         """Old error logging proxy.
 
         Pass along an old error log iff new logging is disabled.
@@ -443,8 +441,8 @@ class _CliLogger():
             logger.error(_format_msg(msg, *args, **kwargs))
             return
 
-    def old_exception(self, logger: logging.Logger, msg: str,
-                      *args: Any, **kwargs: Any):
+    def old_exception(self, logger: logging.Logger, msg: str, *args: Any,
+                      **kwargs: Any):
         """Old exception logging proxy.
 
         Pass along an old exception log iff new logging is disabled.
@@ -460,13 +458,18 @@ class _CliLogger():
             logger.exception(_format_msg(msg, *args, **kwargs))
             return
 
-    def render_list(self, xs: List[str], separator: str=cf.reset(", ")):
+    def render_list(self, xs: List[str], separator: str = cf.reset(", ")):
         """Render a list of bolded values using a non-bolded separator.
         """
         return separator.join([str(cf.bold(x)) for x in xs])
 
-    def confirm(self, yes: bool, msg: str, *args: Any,
-                _abort: bool=False, _default: bool=False, **kwargs: Any):
+    def confirm(self,
+                yes: bool,
+                msg: str,
+                *args: Any,
+                _abort: bool = False,
+                _default: bool = False,
+                **kwargs: Any):
         """Display a confirmation dialog.
 
         Valid answers are "y/yes/true/1" and "n/no/false/0".
