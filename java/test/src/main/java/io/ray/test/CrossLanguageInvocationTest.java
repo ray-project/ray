@@ -19,7 +19,6 @@ import io.ray.runtime.generated.Common.RayException;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.lang.annotation.Native;
 import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.List;
@@ -191,47 +190,6 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
   }
 
   @Test
-  public void testRaiseExceptionFromPython() {
-    ObjectRef<Object> res = Ray.task(PyFunction.of(
-        PYTHON_MODULE, "py_func_python_raise_exception", Object.class)).remote();
-    try {
-      res.get();
-    } catch (RuntimeException ex) {
-      // ex is a Python exception(py_func_python_raise_exception) with no cause.
-      Assert.assertTrue(ex instanceof CrossLanguageException);
-      CrossLanguageException e = (CrossLanguageException) ex;
-      Assert.assertEquals(e.getLanguage(), Language.PYTHON);
-      // ex.cause is null.
-      Assert.assertNull(ex.getCause());
-      return;
-    }
-    Assert.fail();
-  }
-
-//  @Test
-//  public void testRaiseExceptionFromJava() {
-//    ObjectRef<Object> res = Ray.task(
-//        PyFunction.of(PYTHON_MODULE, "py_func_java_raise_exception", Object.class)).remote();
-//    try {
-//      res.get();
-//    } catch (RuntimeException ex) {
-//      // ex is a Python exception(py_func_java_raise_exception).
-//      Assert.assertTrue(ex instanceof NativeRayException);
-//      NativeRayException e = (NativeRayException) ex;
-//      Assert.assertEquals(e.getLanguage(), Language.PYTHON);
-//      // ex.cause is a Java exception(raiseException).
-//      Assert.assertTrue(e.getCause() instanceof NativeRayException);
-//      e = (NativeRayException) e.getCause();
-//      Assert.assertEquals(e.getLanguage(), Language.JAVA);
-//      Assert.assertTrue(e.getJavaException() instanceof ArithmeticException);
-//      // ex.cause.cause is null.
-//      Assert.assertNull(e.getCause());
-//      return;
-//    }
-//    Assert.fail();
-//  }
-
-  @Test
   public void testExceptionSerialization() {
     try {
       throw new NativeRayException("Test Exception");
@@ -249,61 +207,66 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
   }
 
   @Test
+  public void testRaiseExceptionFromPython() {
+    ObjectRef<Object> res = Ray.task(PyFunction.of(
+        PYTHON_MODULE, "py_func_python_raise_exception", Object.class)).remote();
+    try {
+      res.get();
+    } catch (RuntimeException ex) {
+      // ex is a Python exception(py_func_python_raise_exception) with no cause.
+      Assert.assertTrue(ex instanceof CrossLanguageException);
+      CrossLanguageException e = (CrossLanguageException) ex;
+      Assert.assertEquals(e.getLanguage(), Language.PYTHON);
+      // ex.cause is null.
+      Assert.assertNull(ex.getCause());
+      Assert.assertTrue(ex.getMessage().contains("ZeroDivisionError: division by zero"),
+          ex.getMessage());
+      return;
+    }
+    Assert.fail();
+  }
+
+  @Test
+  public void testRaiseExceptionFromJava() {
+    ObjectRef<Object> res = Ray.task(PyFunction.of(
+        PYTHON_MODULE, "py_func_java_raise_exception", Object.class)).remote();
+    try {
+      res.get();
+    } catch (RuntimeException ex) {
+      Assert.assertTrue(ex.getMessage().contains("java.lang.ArithmeticException: / by zero"),
+          ex.getMessage());
+      return;
+    }
+    Assert.fail();
+  }
+
+  @Test
   public void testRaiseExceptionFromNestPython() {
     ObjectRef<Object> res = Ray.task(
         PyFunction.of(PYTHON_MODULE, "py_func_nest_python_raise_exception", Object.class)).remote();
     try {
       res.get();
     } catch (RuntimeException ex) {
-      ex.printStackTrace();
-      // ex is a Python exception(py_func_nest_python_raise_exception).
-      Assert.assertTrue(ex instanceof CrossLanguageException);
-      CrossLanguageException ce = (CrossLanguageException) ex;
-      Assert.assertEquals(ce.getLanguage(), Language.PYTHON);
-      // ex.cause is a Java exception(raisePythonException).
-      Assert.assertTrue(ce.getCause() instanceof NativeRayException);
-      NativeRayException ne = (NativeRayException) ce.getCause();
-      // ex.cause.cause is a Python exception(py_func_python_raise_exception).
-      Assert.assertTrue(ne.getCause() instanceof CrossLanguageException);
-      ce = (CrossLanguageException) ne.getCause();
-      Assert.assertEquals(ce.getLanguage(), Language.PYTHON);
-      // ex.cause.cause.cause is null.
-      Assert.assertNull(ce.getCause());
+      Assert.assertTrue(ex.getMessage().contains("ZeroDivisionError: division by zero"),
+          ex.getMessage());
       return;
     }
     Assert.fail();
   }
 
-//  @Test
-//  public void testRaiseExceptionFromNestJava() {
-//    ObjectRef<Object> res = Ray.task(
-//        PyFunction.of(PYTHON_MODULE, "py_func_nest_java_raise_exception", Object.class)).remote();
-//    try {
-//      res.get();
-//    } catch (RuntimeException ex) {
-//      // ex is a Python exception(py_func_nest_java_raise_exception).
-//      Assert.assertTrue(ex instanceof NativeRayException);
-//      NativeRayException e = (NativeRayException) ex;
-//      Assert.assertEquals(e.getLanguage(), Language.PYTHON);
-//      // ex.cause is a Java exception(raiseJavaException).
-//      Assert.assertTrue(e.getCause() instanceof NativeRayException);
-//      e = (NativeRayException) e.getCause();
-//      Assert.assertEquals(e.getLanguage(), Language.JAVA);
-//      // ex.cause.cause is a Python exception(py_func_java_raise_exception).
-//      Assert.assertTrue(e.getCause() instanceof NativeRayException);
-//      e = (NativeRayException) e.getCause();
-//      Assert.assertEquals(e.getLanguage(), Language.PYTHON);
-//      // ex.cause.cause.cause is a Java exception(raiseException).
-//      Assert.assertTrue(e.getCause() instanceof NativeRayException);
-//      e = (NativeRayException) e.getCause();
-//      Assert.assertEquals(e.getLanguage(), Language.JAVA);
-//      Assert.assertTrue(e.getJavaException() instanceof ArithmeticException);
-//      // ex.cause.cause.cause.cause is null.
-//      Assert.assertNull(e.getCause());
-//      return;
-//    }
-//    Assert.fail();
-//  }
+  @Test
+  public void testRaiseExceptionFromNestJava() {
+    ObjectRef<Object> res = Ray.task(
+        PyFunction.of(PYTHON_MODULE, "py_func_nest_java_raise_exception", Object.class)).remote();
+    try {
+      res.get();
+    } catch (RuntimeException ex) {
+      Assert.assertTrue(ex.getMessage().contains("java.lang.ArithmeticException: / by zero"),
+          ex.getMessage());
+      return;
+    }
+    Assert.fail();
+  }
 
   public static Object[] pack(int i, String s, double f, Object[] o) {
     // This function will be called from test_cross_language_invocation.py
