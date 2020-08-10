@@ -55,11 +55,16 @@ logging_options = [
         "--log-old-style/--log-new-style",
         is_flag=True,
         default=True,
-        help=("Use old logging.")),
+        help=("Whether to use the old or the new CLI UX. "
+              "The new UX supports colored, formatted output and was "
+              "designed to display only the most important information for "
+              "human users. The old UX uses the standard `logging` module. "
+              "It is most suitable for writing to a file and will include "
+              "timestamps and message level (ERROR/WARNING/INFO).")),
     click.option(
         "--log-color",
         required=False,
-        type=str,
+        type=click.Choice(["auto", "false", "true"], case_sensitive=False),
         default="auto",
         help=("Use color logging. "
               "Valid values are: auto (if stdout is a tty), true, false.")),
@@ -576,6 +581,9 @@ def start(node_ip_address, redis_address, address, redis_port, port,
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block)
         redis_address = node.redis_address
 
+        # new-style CLI UX (--log-new-style)
+        # this is a noop if that flag is not set, so the old logger calls
+        # are still in place
         cli_logger.newline()
         startup_msg = "Ray runtime started."
         cli_logger.success("-" * len(startup_msg))
@@ -636,7 +644,7 @@ def start(node_ip_address, redis_address, address, redis_port, port,
         if not (redis_port is None and port is None):
             cli_logger.abort(
                 "`{}/{}` should not be specified without `{}`.",
-                cf.bold("--port"), cf.bold("--redist-port"),
+                cf.bold("--port"), cf.bold("--redis-port"),
                 cf.bold("--head"))
 
             raise Exception(
