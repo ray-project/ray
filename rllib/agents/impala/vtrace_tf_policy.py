@@ -259,13 +259,13 @@ def choose_optimizer(policy, config):
             return tf1.train.AdamOptimizer(policy.cur_lr)
     else:
         if tfv == 2:
-            return tf.keras.optimizers.RMSprop(
-                policy.cur_lr, config["decay"], config["momentum"],
-                config["epsilon"])
+            return tf.keras.optimizers.RMSprop(policy.cur_lr, config["decay"],
+                                               config["momentum"],
+                                               config["epsilon"])
         else:
-            return tf1.train.RMSPropOptimizer(
-                policy.cur_lr, config["decay"], config["momentum"],
-                config["epsilon"])
+            return tf1.train.RMSPropOptimizer(policy.cur_lr, config["decay"],
+                                              config["momentum"],
+                                              config["epsilon"])
 
 
 def clip_gradients(policy, optimizer, loss):

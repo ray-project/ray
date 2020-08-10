@@ -15,17 +15,18 @@ class VisionNetwork(TorchModelV2, nn.Module):
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
+        if not model_config.get("conv_filters"):
+            model_config["conv_filters"] = _get_filter_config(obs_space.shape)
+
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
                               model_config, name)
         nn.Module.__init__(self)
 
         activation = get_activation_fn(
-            model_config.get("conv_activation"), framework="torch")
-        filters = model_config.get("conv_filters")
-        if not filters:
-            filters = _get_filter_config(obs_space.shape)
-        no_final_linear = model_config.get("no_final_linear")
-        vf_share_layers = model_config.get("vf_share_layers")
+            self.model_config.get("conv_activation"), framework="torch")
+        filters = self.model_config["conv_filters"]
+        no_final_linear = self.model_config.get("no_final_linear")
+        vf_share_layers = self.model_config.get("vf_share_layers")
 
         # Whether the last layer is the output of a Flattened (rather than
         # a n x (1,1) Conv2D).
@@ -152,8 +153,16 @@ class VisionNetwork(TorchModelV2, nn.Module):
         if not self.last_layer_is_flattened:
             if self._logits:
                 conv_out = self._logits(conv_out)
+            if conv_out.shape[2] != 1 or conv_out.shape[3] != 1:
+                raise ValueError(
+                    "Given `conv_filters` ({}) do not result in a [B, {} "
+                    "(`num_outputs`), 1, 1] shape (but in {})! Please adjust "
+                    "your Conv2D stack such that the last 2 dims are both "
+                    "1.".format(self.model_config["conv_filters"],
+                                self.num_outputs, list(conv_out.shape)))
             logits = conv_out.squeeze(3)
             logits = logits.squeeze(2)
+
             return logits, state
         else:
             return conv_out, state

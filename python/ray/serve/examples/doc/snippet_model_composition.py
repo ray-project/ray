@@ -1,7 +1,9 @@
 from random import random
 import requests
+import ray
 from ray import serve
 
+ray.init(num_cpus=10)
 serve.init()
 
 # Our pipeline will be structured as follows:

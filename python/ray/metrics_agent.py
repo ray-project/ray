@@ -1,5 +1,9 @@
+import json
 import logging
+import os
 import threading
+import time
+import traceback
 
 from collections import defaultdict
 from typing import List
@@ -12,6 +16,8 @@ from opencensus.tags import tag_key as tag_key_module
 from opencensus.tags import tag_map as tag_map_module
 from opencensus.tags import tag_value as tag_value_module
 from opencensus.stats import view
+
+import ray
 
 from ray import prometheus_exporter
 from ray.core.generated.common_pb2 import MetricPoint
@@ -181,3 +187,73 @@ class MetricsAgent:
                 metric_name].view.measure._description = metric_description
             self._registry[metric_name].view.measure._unit = metric_units
             self._missing_information = False
+
+
+class PrometheusServiceDiscoveryWriter(threading.Thread):
+    """A class to support Prometheus service discovery.
+
+    It supports file-based service discovery. Checkout
+    https://prometheus.io/docs/guides/file-sd/ for more details.
+
+    Args:
+        redis_address(str): Ray's redis address.
+        redis_password(str): Ray's redis password.
+        temp_dir(str): Temporary directory used by
+            Ray to store logs and metadata.
+    """
+
+    def __init__(self, redis_address, redis_password, temp_dir):
+        ray.state.state._initialize_global_state(
+            redis_address=redis_address, redis_password=redis_password)
+        self.temp_dir = temp_dir
+        self.default_service_discovery_flush_period = 5
+        super().__init__()
+
+    def get_file_discovery_content(self):
+        """Return the content for Prometheus serivce discovery."""
+        nodes = ray.nodes()
+        metrics_export_addresses = [
+            "{}:{}".format(node["NodeManagerAddress"],
+                           node["MetricsExportPort"]) for node in nodes
+        ]
+        return json.dumps([{
+            "labels": {
+                "job": "ray"
+            },
+            "targets": metrics_export_addresses
+        }])
+
+    def write(self):
+        # Write a file based on https://prometheus.io/docs/guides/file-sd/
+        # Write should be atomic. Otherwise, Prometheus raises an error that
+        # json file format is invalid because it reads a file when
+        # file is re-written. Note that Prometheus still works although we
+        # have this error.
+        temp_file_name = self.get_temp_file_name()
+        with open(temp_file_name, "w") as json_file:
+            json_file.write(self.get_file_discovery_content())
+        # NOTE: os.rename is atomic, so we won't have race condition reading
+        # this file.
+        os.rename(temp_file_name, self.get_target_file_name())
+
+    def get_target_file_name(self):
+        return os.path.join(
+            self.temp_dir, ray.ray_constants.PROMETHEUS_SERVICE_DISCOVERY_FILE)
+
+    def get_temp_file_name(self):
+        return os.path.join(
+            self.temp_dir, "{}_{}".format(
+                "tmp", ray.ray_constants.PROMETHEUS_SERVICE_DISCOVERY_FILE))
+
+    def run(self):
+        while True:
+            # This thread won't be broken by exceptions.
+            try:
+                self.write()
+            except Exception as e:
+                logger.warning("Writing a service discovery file, {},"
+                               "failed."
+                               .format(self.writer.get_target_file_name()))
+                logger.warning(traceback.format_exc())
+                logger.warning("Error message: {}".format(e))
+            time.sleep(self.default_service_discovery_flush_period)

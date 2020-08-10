@@ -147,7 +147,7 @@ class ModelCatalogTest(unittest.TestCase):
         self.assertEqual(param_shape, action_space.shape)
 
         # test the class works as a distribution
-        dist_input = tf1.placeholder(tf.float32, (None,) + param_shape)
+        dist_input = tf1.placeholder(tf.float32, (None, ) + param_shape)
         model = Model()
         model.model_config = model_config
         dist = dist_cls(dist_input, model=model)
@@ -161,7 +161,7 @@ class ModelCatalogTest(unittest.TestCase):
         dist_cls, param_shape = ModelCatalog.get_action_dist(
             action_space, model_config)
         self.assertEqual(param_shape, (3, ))
-        dist_input = tf1.placeholder(tf.float32, (None,) + param_shape)
+        dist_input = tf1.placeholder(tf.float32, (None, ) + param_shape)
         model.model_config = model_config
         dist = dist_cls(dist_input, model=model)
         self.assertEqual(dist.sample().shape[1:], dist_input.shape[1:])
