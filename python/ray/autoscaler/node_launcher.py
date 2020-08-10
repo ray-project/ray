@@ -64,14 +64,14 @@ class NodeLauncher(threading.Thread):
 
     def run(self):
         while True:
-            config, count, instance_type = self.queue.get()
+            config, count, instance_name = self.queue.get()
             self.log("Got {} nodes to launch.".format(count))
             try:
-                self._launch_node(config, count, instance_type)
+                self._launch_node(config, count, instance_name)
             except Exception:
                 logger.exception("Launch failed")
             finally:
-                self.pending.dec(instance_type, count)
+                self.pending.dec(instance_name, count)
 
     def log(self, statement):
         prefix = "NodeLauncher{}:".format(self.index)
