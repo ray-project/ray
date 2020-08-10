@@ -176,6 +176,12 @@ class Searcher:
         """
         raise NotImplementedError
 
+    def get_state(self):
+        raise NotImplementedError
+
+    def set_state(self, state):
+        raise NotImplementedError
+
     def save_to_dir(self, checkpoint_dir, session_str="default"):
         """Automatically saves the given searcher to the checkpoint_dir.
 
