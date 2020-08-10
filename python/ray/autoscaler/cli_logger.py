@@ -180,7 +180,7 @@ class _CliLogger():
     def newline(self):
         """Print a line feed.
         """
-        self._print("")
+        self.print("")
 
     def _print(self, msg, linefeed=True):
         """Proxy for printing messages.

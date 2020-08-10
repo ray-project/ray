@@ -50,6 +50,29 @@ def check_no_existing_redis_clients(node_ip_address, redis_client):
             raise Exception("This Redis instance is already connected to "
                             "clients with this IP address.")
 
+logging_options = [
+    click.option(
+        "--log-old-style/--log-new-style",
+        is_flag=True,
+        default=True,
+        help=("Use old logging.")),
+    click.option(
+        "--log-color",
+        required=False,
+        type=str,
+        default="auto",
+        help=("Use color logging. "
+              "Valid values are: auto (if stdout is a tty), true, false.")),
+    click.option("-v", "--verbose", count=True)
+]
+
+def add_click_options(options):
+    def wrapper(f):
+        for option in reversed(logging_options):
+            f = option(f)
+        return f
+    return wrapper
+
 
 @click.group()
 @click.option(
@@ -356,6 +379,7 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     default=8080,
     help="the port to use to expose Ray metrics through a "
     "Prometheus endpoint.")
+@add_click_options(logging_options)
 def start(node_ip_address, redis_address, address, redis_port, port,
           num_redis_shards, redis_max_clients, redis_password,
           redis_shard_ports, object_manager_port, node_manager_port,
@@ -366,18 +390,22 @@ def start(node_ip_address, redis_address, address, redis_port, port,
           autoscaling_config, no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
           java_worker_options, load_code_from_local, internal_config,
-          lru_evict, enable_object_reconstruction, metrics_export_port):
+          lru_evict, enable_object_reconstruction, metrics_export_port,
+          log_old_style, log_color, verbose):
     """Start Ray processes manually on the local machine."""
+    cli_logger.old_style = log_old_style
+    cli_logger.color_mode = log_color
+    cli_logger.verbosity = verbose
+
     if gcs_server_port and not head:
         raise ValueError(
             "gcs_server_port can be only assigned when you specify --head.")
 
     if redis_address is not None:
-        if not cli_logger.old_style:
-            cli_logger.abort(
-                "{} is deprecated. Use {} instead.",
-                cf.bold("--redis-address"),
-                cf.bold("--address"))
+        cli_logger.abort(
+            "{} is deprecated. Use {} instead.",
+            cf.bold("--redis-address"),
+            cf.bold("--address"))
 
         raise DeprecationWarning("The --redis-address argument is "
                                  "deprecated. Please use --address instead.")
@@ -391,11 +419,10 @@ def start(node_ip_address, redis_address, address, redis_port, port,
             "The --redis-port argument will be deprecated soon. "
             "Please use --port instead.")
         if port is not None and port != redis_port:
-            if not cli_logger.old_style:
-                cli_logger.abort(
-                    "Incompatible values for {} and {}. Use just {} instead.",
-                    cf.bold("--port"), cf.bold("--redis-port"),
-                    cf.bold("--port"))
+            cli_logger.abort(
+                "Incompatible values for {} and {}. Use only {} instead.",
+                cf.bold("--port"), cf.bold("--redis-port"),
+                cf.bold("--port"))
 
             raise ValueError("Cannot specify both --port and --redis-port "
                              "as port is a rename of deprecated redis-port")
@@ -422,11 +449,10 @@ def start(node_ip_address, redis_address, address, redis_port, port,
             "The --webui-host argument will be deprecated"
             " soon. Please use --dashboard-host instead.")
         if webui_host != dashboard_host and dashboard_host != "localhost":
-            if not cli_logger.old_style:
-                cli_logger.abort(
-                    "Incompatible values for {} and {}. Use just {} instead.",
-                    cf.bold("--dashboard-host"), cf.bold("--webui-host"),
-                    cf.bold("--dashboard-host"))
+            cli_logger.abort(
+                "Incompatible values for {} and {}. Use only {} instead.",
+                cf.bold("--dashboard-host"), cf.bold("--webui-host"),
+                cf.bold("--dashboard-host"))
 
             raise ValueError(
                 "Cannot specify both --webui-host and --dashboard-host,"
@@ -446,8 +472,13 @@ def start(node_ip_address, redis_address, address, redis_port, port,
     try:
         resources = json.loads(resources)
     except Exception:
-        if not cli_logger.old_style:
-            cli_logger.abort()
+        cli_logger.error(
+            "`{}` is not a valid JSON string.", cf.bold("--resources"))
+        cli_logger.abort(
+            "Valid values look like this: `{}`",
+            cf.bold(
+                "--resources='\"CustomResource3\": 1, "
+                "\"CustomResource2\": 2}'"))
 
         raise Exception("Unable to parse the --resources argument using "
                         "json.loads. Try using a format like\n\n"
@@ -496,6 +527,17 @@ def start(node_ip_address, redis_address, address, redis_port, port,
                 num_redis_shards = len(redis_shard_ports)
             # Check that the arguments match.
             if len(redis_shard_ports) != num_redis_shards:
+                cli_logger.error(
+                    "`{}` must be a comma-separated list of ports, "
+                    "with length equal to `{}` (which defaults to {})",
+                    cf.bold("--redis-shard-ports"),
+                    cf.bold("--num-redis-shards"),
+                    cf.bold("1"))
+                cli_logger.abort("Example: `{}`",
+                    cf.bold(
+                        "--num-redis-shards 3 "
+                        "--redis_shard_ports 6380,6381,6382"))
+
                 raise Exception("If --redis-shard-ports is provided, it must "
                                 "have the form '6380,6381,6382', and the "
                                 "number of ports provided must equal "
@@ -503,6 +545,11 @@ def start(node_ip_address, redis_address, address, redis_port, port,
                                 "provided)")
 
         if redis_address is not None:
+            cli_logger.abort(
+                "`{}` starts a new Redis server, `{}` should not be set.",
+                cf.bold("--head"),
+                cf.bold("--address"))
+
             raise Exception("If --head is passed in, a Redis server will be "
                             "started, so a Redis address should not be "
                             "provided.")
@@ -510,8 +557,11 @@ def start(node_ip_address, redis_address, address, redis_port, port,
         # Get the node IP address if one is not provided.
         ray_params.update_if_absent(
             node_ip_address=services.get_node_ip_address())
-        logger.info("Using IP address {} for this node.".format(
-            ray_params.node_ip_address))
+        cli_logger.labeled_value(
+            "Local node IP", ray_params.node_ip_address)
+        cli_logger.old_info(logger,
+            "Using IP address {} for this node.",
+            ray_params.node_ip_address)
         ray_params.update_if_absent(
             redis_port=port or redis_port,
             redis_shard_ports=redis_shard_ports,
@@ -526,7 +576,41 @@ def start(node_ip_address, redis_address, address, redis_port, port,
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block)
         redis_address = node.redis_address
 
-        logger.info(
+        cli_logger.newline()
+        cli_logger.success("Ray runtime started.")
+        cli_logger.newline()
+        cli_logger.print(
+            "To connect to this Ray runtime from another node, run")
+        cli_logger.print(
+            cf.bold("  ray start --address='{}'{}"),
+            redis_address,
+            " --redis-password='{}'".format(redis_password)
+            if redis_password else "")
+        cli_logger.newline()
+        cli_logger.print(
+            "Alternatively, use the following Python code:")
+        with cli_logger.indented():
+            with cf.with_style("monokai") as c:
+                cli_logger.print("{} ray", c.magenta("import"))
+                cli_logger.print(
+                    "ray{}init(address{}{}{})",
+                    c.magenta("."),
+                    c.magenta("="),
+                    c.yellow("'auto'"),
+                    ", redis_password{}{}".format(
+                        c.magenta("="),
+                        c.yellow("'" + redis_password + "'"))
+                    if redis_password else "")
+        cli_logger.newline()
+        cli_logger.print(
+            cf.underlined("If connection fails, check your firewall and other "
+            "network configuration."))
+        cli_logger.newline()
+        cli_logger.print("To terminate the Ray runtime, run")
+        cli_logger.print(cf.bold("  ray stop"))
+
+        cli_logger.old_info(
+            logger,
             "\nStarted Ray on this node. You can add additional nodes to "
             "the cluster by calling\n\n"
             "    ray start --address='{}'{}\n\n"
@@ -735,18 +819,6 @@ def stop(force, verbose):
     default=False,
     help="Disable the local cluster config cache.")
 @click.option(
-    "--log-old-style/--log-new-style",
-    is_flag=True,
-    default=True,
-    help=("Use old logging."))
-@click.option(
-    "--log-color",
-    required=False,
-    type=str,
-    default="auto",
-    help=("Use color logging. "
-          "Valid values are: auto (if stdout is a tty), true, false."))
-@click.option(
     "--dump-command-output",
     is_flag=True,
     default=False,
@@ -759,10 +831,10 @@ def stop(force, verbose):
     help=("Ray uses login shells (bash --login -i) to run cluster commands "
           "by default. If your workflow is compatible with normal shells, "
           "this can be disabled for a better user experience."))
-@click.option("-v", "--verbose", count=True)
+@add_click_options(logging_options)
 def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
-       yes, cluster_name, no_config_cache, log_old_style, log_color,
-       dump_command_output, use_login_shells, verbose):
+       yes, cluster_name, no_config_cache, dump_command_output, use_login_shells,
+       log_old_style, log_color, verbose):
     """Create or update a Ray cluster."""
     if restart_only or no_restart:
         assert restart_only != no_restart, "Cannot set both 'restart_only' " \
