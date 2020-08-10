@@ -183,17 +183,6 @@ void GcsPlacementGroupManager::HandleRemovePlacementGroup(
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
-void GcsPlacementGroupManager::ScheduleTick() {
-  reschedule_timer_.expires_from_now(boost::posix_time::milliseconds(500));
-  reschedule_timer_.async_wait([this](const boost::system::error_code &error) {
-    if (error == boost::asio::error::operation_aborted) {
-      return;
-    } else {
-      SchedulePendingPlacementGroups();
-    }
-  });
-}
-
 void GcsPlacementGroupManager::RetryCreatingPlacementGroup() {
   execute_after(io_context_, [this] { SchedulePendingPlacementGroups(); },
                 RayConfig::instance().gcs_create_placement_group_retry_interval_ms());
