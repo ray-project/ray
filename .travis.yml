@@ -364,13 +364,6 @@ script:
   - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only python/ray/tests/...; fi
   # NO MORE TESTS BELOW, keep them above.
 
-  # TODO(simon): remove testing below
-  - ./ci/travis/get_build_info.py
-  - ls /tmp/bazel_event_logs/*
-  - ls /tmp/bazel_event_logs/* | xargs -n 1 wc
-  - ls /tmp/bazel_event_logs/* | xargs -n 1 head -n 2
-  - ls /tmp/bazel_event_logs/* | xargs -n 1 tail -n 2
-
 deploy:
   - provider: s3
     edge: true # This supposedly opts in to deploy v2.
