@@ -3,8 +3,8 @@ import logging
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list, Experiment
 from ray.tune.analysis import ExperimentAnalysis
-from ray.tune.suggest import BasicVariantGenerator
-from ray.tune.suggest.suggestion import Searcher, SearchGenerator
+from ray.tune.suggest import BasicVariantGenerator, SearchGenerator
+from ray.tune.suggest.suggestion import Searcher
 from ray.tune.trial import Trial
 from ray.tune.trainable import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
@@ -300,8 +300,11 @@ def run(run_or_experiment,
     if issubclass(type(search_alg), Searcher):
         search_alg = SearchGenerator(search_alg)
 
+    if not search_alg:
+        search_alg = BasicVariantGenerator()
+
     runner = TrialRunner(
-        search_alg=search_alg or BasicVariantGenerator(),
+        search_alg=search_alg,
         scheduler=scheduler or FIFOScheduler(),
         local_checkpoint_dir=experiments[0].checkpoint_dir,
         remote_checkpoint_dir=experiments[0].remote_checkpoint_dir,
@@ -315,8 +318,11 @@ def run(run_or_experiment,
         fail_fast=fail_fast,
         trial_executor=trial_executor)
 
-    for exp in experiments:
-        runner.add_experiment(exp)
+    if not runner.resumed:
+        for exp in experiments:
+            search_alg.add_configurations([exp])
+    else:
+        logger.info("TrialRunner resumed, ignoring new add_experiment.")
 
     if progress_reporter is None:
         if IS_NOTEBOOK:
