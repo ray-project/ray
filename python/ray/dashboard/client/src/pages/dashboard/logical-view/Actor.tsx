@@ -1,5 +1,4 @@
 import {
-  Collapse,
   createStyles,
   Theme,
   Typography,
@@ -15,11 +14,10 @@ import {
   isFullActorInfo,
   launchKillActor,
   launchProfiling,
-  RayletActorInfo,
+  ActorInfo,
 } from "../../../api";
 import { sum } from "../../../common/util";
 import ActorDetailsPane from "./ActorDetailsPane";
-import Actors from "./Actors";
 
 const memoryDebuggingDocLink =
   "https://docs.ray.io/en/latest/memory-management.html#debugging-using-ray-memory";
@@ -60,7 +58,7 @@ const styles = (theme: Theme) =>
   });
 
 type Props = {
-  actor: RayletActorInfo;
+  actor: ActorInfo;
 };
 
 type State = {
@@ -244,18 +242,6 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
           {isFullActorInfo(actor) ? (
             <React.Fragment>
               Actor {actor.actorId}{" "}
-              {Object.entries(actor.children).length > 0 && (
-                <React.Fragment>
-                  (
-                  <span
-                    className={classes.action}
-                    onClick={this.setExpanded(!expanded)}
-                  >
-                    {expanded ? "Collapse" : "Expand"}
-                  </span>
-                  )
-                </React.Fragment>
-              )}{" "}
               (Profile for
               {[10, 30, 60].map((duration) => (
                 <React.Fragment>
@@ -322,10 +308,6 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
             {actorCustomDisplay.length > 0 && (
               <React.Fragment>{actorCustomDisplay}</React.Fragment>
             )}
-
-            <Collapse in={expanded}>
-              <Actors actors={actor.children} />
-            </Collapse>
           </React.Fragment>
         )}
       </div>

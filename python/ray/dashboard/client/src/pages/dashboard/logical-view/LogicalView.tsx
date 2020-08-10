@@ -9,7 +9,7 @@ import React, { useState } from "react";
 import { connect } from "react-redux";
 import {
   isFullActorInfo,
-  RayletActorInfo,
+  ActorInfo,
   RayletInfoResponse,
 } from "../../../api";
 import { filterObj } from "../../../common/util";
@@ -17,7 +17,7 @@ import { StoreState } from "../../../store";
 import Actors from "./Actors";
 
 const actorMatchesSearch = (
-  actor: RayletActorInfo,
+  actor: ActorInfo,
   nameFilter: string,
 ): boolean => {
   // Performs a case insensitive search for the name filter string within the
@@ -30,7 +30,7 @@ const actorMatchesSearch = (
   return match !== undefined;
 };
 
-const getNestedActorTitles = (actor: RayletActorInfo): string[] => {
+const getNestedActorTitles = (actor: ActorInfo): string[] => {
   const actorTitle = actor.actorTitle;
   const titles: string[] = actorTitle ? [actorTitle] : [];
   if (!isFullActorInfo(actor)) {
@@ -64,7 +64,7 @@ const LogicalView: React.FC<LogicalViewProps> = ({ rayletInfo }) => {
   if (nameFilter !== "") {
     filteredActors = filterObj(
       filteredActors,
-      ([_, actor]: [any, RayletActorInfo]) =>
+      ([_, actor]: [any, ActorInfo]) =>
         actorMatchesSearch(actor, nameFilter),
     );
   }
