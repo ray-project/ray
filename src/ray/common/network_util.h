@@ -139,7 +139,7 @@ std::vector<boost::asio::ip::address> GetValidLocalIpCandidates();
 /// \param s the string to be checked.
 /// \param start the prefix will compared with 's'.
 /// \return true if 's' starts with 'start'.
-bool StartsWith(std::string s, std::string start);
+bool StartsWith(const std::string &str, const std::string &prefix);
 
 /// Constant which indicates the threshold of priority of NICs.
 /// NICs with priority smaller than this are not considered to be
@@ -147,11 +147,13 @@ bool StartsWith(std::string s, std::string start);
 /// are not mapped at GetNicPriority()
 const int PRIORITY_TO_DELETE = 50;
 
+enum class Priority {kVeryHigh, kHigh, kNormal, kExclude};
+
 /// Based on the prefix of the NIC name, returns a level of priority.
 /// 
 /// \param the name of the NIC to be tested.
 /// \return the priority of the NIC.
-int GetNicPriority(std::string nic_name);
+Priority GetNicPriority(const std::string &nic_name);
 
 /// A helper function to test whether target rpc server is valid.
 ///

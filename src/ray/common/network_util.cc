@@ -18,62 +18,44 @@
 
 typedef std::pair<std::string, std::string> NicAndIp;
 
-bool StartsWith(std::string s, std::string start) {
-  return s.find(start) == 0;
+std::vector<std::pair<std::string, Priority>> PrefixesAndPriority({ 
+  {"e", Priority::kVeryHigh},  // (Ethernet) Ex: eth0, enp7s0f1, ens160, en0
+  {"w", Priority::kHigh},  // (WiFi) Ex: wlp0s20f3, wlp2s0
+  {"br", Priority::kNormal},  // (Manual bridge) Ex: br0
+  {"ap", Priority::kNormal},  // (Access point) Ex: ap0
+
+  {"tun", Priority::kExclude},  // (VPN) Ex: tun0
+  {"tap", Priority::kExclude},  // (VPN) Ex: tap0
+  {"virbr", Priority::kExclude},  // (VM bridge) Ex: virbr0
+  {"vm", Priority::kExclude},  // (VM) Ex: vmnet1
+  {"vbox", Priority::kExclude}, // (VM) Ex: vboxnet1
+  {"ppp", Priority::kExclude},  // (P2P) Ex: ppp0
+  {"pan", Priority::kExclude},  // (Bluetooth) Ex: pan0
+  {"br-", Priority::kExclude},  // (Docker bridge) Ex: br-3681c4c3d645
+  {"veth", Priority::kExclude},  // (Docker virtual interface) Ex: veth7175b67
+  {"docker", Priority::kExclude},  // (Docker virtual interface) Ex: docker0
+});
+
+bool StartsWith(const std::string &str, const std::string &prefix) {
+  return str.compare(0, prefix.size(), prefix) == 0;
 }
 
-bool CompNicsAndIps(NicAndIp a, NicAndIp b){
-  return GetNicPriority(a.first) < GetNicPriority(b.first);
+bool CompNicsAndIps(const NicAndIp &left, const NicAndIp &right){
+  return GetNicPriority(left.first) < GetNicPriority(right.first);
 }
 
-int GetNicPriority(std::string nic_name){
-  int priority = PRIORITY_TO_DELETE;  // smaller number, more priority
+bool CompPrefixLen(const std::pair<std::string, Priority> &left, const std::pair<std::string, Priority> &right) {
+  return left.first.size() > right.first.size();
+}
 
-  if(StartsWith(nic_name, "e")){  // eth0, enp7s0f1, ens160, en0, etc
-    priority = 1;
-  }
-  else if (StartsWith(nic_name, "w")) {  // wlp0s20f3, wlp2s0, etc
-    priority = 10;
-  }
-  else if (StartsWith(nic_name, "br")) {
-    if (nic_name[2] == '-') {
-      // Probably docker bridge
-      priority = 100;  // br-3681c4c3d645, etc
-    } else {
-      priority = 20;  // br0, etc
+Priority GetNicPriority(const std::string &nic_name){
+  for(unsigned int i = 0; i < PrefixesAndPriority.size(); ++i) {
+    if (StartsWith(nic_name, PrefixesAndPriority[i].first)) {
+      return PrefixesAndPriority[i].second;
     }
-  }
-  else if (StartsWith(nic_name, "ap")) {  // ap0, etc
-    // Probably Access Point
-    priority = 40;
-  }
-  else if (StartsWith(nic_name, "tun") || StartsWith(nic_name, "tap")) {  // tap0, tun0, etc
-    // Probably VPN
-    priority = 60;
-  }
-  else if (StartsWith(nic_name, "virbr")  // virbr0, etc
-      || StartsWith(nic_name, "vm")  // vmnet1, etc
-      || StartsWith(nic_name, "vbox")) {  // vboxnet1, etc
-    priority = 70;
-  }
-  else if (StartsWith(nic_name, "ppp")) {  // ppp0, etc
-    // Point to Point control: 3g, modem, etc
-    priority = 80;  
-  }
-  else if (StartsWith(nic_name, "pan")) {  // pan0, pan1, etc
-    // Bluetooth
-    priority = 90;  
-  }
-  else if (StartsWith(nic_name, "veth")) {  // veth7175b67, etc
-    // Probably docker
-    priority = 110;
-  }
-  else if (StartsWith(nic_name, "docker")) {  // docker0, etc
-    // Probably docker
-    priority = 120;
-  }
+  }   
 
-  return priority;
+  return Priority::kExclude;
 }
 
 #ifndef _WIN32
@@ -98,9 +80,12 @@ std::vector<boost::asio::ip::address> GetValidLocalIpCandidates() {
   }
   freeifaddrs(nics_info);
 
+  // Bigger prefixes must be tested first in CompNicAndIps
+  std::sort(PrefixesAndPriority.begin(), PrefixesAndPriority.end(), CompPrefixLen);
+
   // Filter out NICs with small possibility of being desired to be used to serve
   std::sort(nics_and_ips.begin(), nics_and_ips.end(), CompNicsAndIps);
-  while (GetNicPriority(nics_and_ips.back().first) > PRIORITY_TO_DELETE) {
+  while (GetNicPriority(nics_and_ips.back().first) == Priority::kExclude) {
     nics_and_ips.pop_back();
   }
 
