@@ -25,7 +25,7 @@
 #ifndef _WIN32
 
 #include <ifaddrs.h>
-#include <netinet/in.h> 
+#include <netinet/in.h>
 #include <arpa/inet.h>
 
 #endif
@@ -125,36 +125,6 @@ class AsyncClient {
 /// \return a valid local ip.
 std::string GetValidLocalIp(int port, int64_t timeout_ms);
 
-/// A helper function to get IPs from local interfaces.
-/// It also filters out IPs from NICs with priority smaller than
-/// PRIORITY_TO_DELETE and sort the IPs based on its NIC priority.
-/// If running on Windows, uses boost to try to resolve hostname
-/// and don't filter candidates.
-///
-/// \return a vector with valid local IP candidates that were not filtered out
-std::vector<boost::asio::ip::address> GetValidLocalIpCandidates();
-
-/// A helper tiny function to check if one string is prefix of another.
-///
-/// \param s the string to be checked.
-/// \param start the prefix will compared with 's'.
-/// \return true if 's' starts with 'start'.
-bool StartsWith(const std::string &str, const std::string &prefix);
-
-/// Constant which indicates the threshold of priority of NICs.
-/// NICs with priority smaller than this are not considered to be
-/// used. This is also used as the default value for NICs names that 
-/// are not mapped at GetNicPriority()
-const int PRIORITY_TO_DELETE = 50;
-
-enum class Priority {kVeryHigh, kHigh, kNormal, kExclude};
-
-/// Based on the prefix of the NIC name, returns a level of priority.
-/// 
-/// \param the name of the NIC to be tested.
-/// \return the priority of the NIC.
-Priority GetNicPriority(const std::string &nic_name);
-
 /// A helper function to test whether target rpc server is valid.
 ///
 /// \param ip The ip that the target rpc server is listening on.
@@ -164,3 +134,51 @@ Priority GetNicPriority(const std::string &nic_name);
 bool Ping(const std::string &ip, int port, int64_t timeout_ms);
 
 bool CheckFree(int port);
+
+/// \namespace NetIf
+///
+/// Namespace with implementations of helper function to get valid IPs
+/// from network interfaces
+namespace NetIf {
+  /// Priority of a IPs from a given interface to be chosen to serve something
+  enum class Priority {kVeryHigh, kHigh, kNormal, kExclude};
+
+  /// To keep one IP and its interface
+  typedef std::pair<std::string, std::string> NameAndIp;
+
+  /// To keep interface names prefixes and its priorities
+  typedef std::pair<std::string, Priority> PrefixAndPriority;
+
+  /// Interface name prefix and its priority
+  extern std::vector<PrefixAndPriority> prefixes_and_priorities;
+
+  /// A helper function to get IPs from local interfaces.
+  /// It also filters out IPs from interfaces with priority Priority::kExclude
+  /// and sort the IPs based on its interfaces priority.
+  /// If running on Windows, uses boost to try to resolve hostname
+  /// and don't filter candidates.
+  ///
+  /// \return a vector with valid local IP candidates that were not filtered out
+  std::vector<boost::asio::ip::address> GetValidLocalIpCandidates();
+
+  /// Based on the prefix of the interface name, returns a level of priority.
+  ///
+  /// \param the name of the interface to be tested.
+  /// \return the priority of the interface.
+  Priority GetPriority(const std::string &if_name);
+
+  /// Helper function to be used on std::sort.
+  /// Lowest priority comes first
+  bool CompNamesAndIps(const NameAndIp &left, const NameAndIp &right);
+
+  /// Helper function to be used on std::sort.
+  /// Biggest prefix comes first
+  bool CompPrefixLen(const PrefixAndPriority &left, const PrefixAndPriority &right);
+
+  /// A helper tiny function to check if the interface name has a given prefix.
+  ///
+  /// \param s the string to be checked.
+  /// \param start the prefix will compared with 's'.
+  /// \return true if 's' starts with 'start'.
+  bool NameStartsWith(const std::string &str, const std::string &prefix);
+}
