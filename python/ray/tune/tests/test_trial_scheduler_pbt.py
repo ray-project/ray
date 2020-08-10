@@ -31,11 +31,12 @@ class MockTrainable(tune.Trainable):
         with open(checkpoint_path, "rb") as fp:
             self.a, self.b = pickle.load(fp)
 
+
 def MockTrainingFunc(config, checkpoint_dir=None):
     iter = 0
     a = config["a"]
     b = config["b"]
-    c = config["c"]
+    # c = config["c"]
 
     if checkpoint_dir:
         checkpoint_path = os.path.join(checkpoint_dir, "model.mock")
@@ -60,6 +61,7 @@ class MockParam(object):
         val = self._params[self._index % len(self._params)]
         self._index += 1
         return val
+
 
 class PopulationBasedTrainingResumeTest(unittest.TestCase):
     def testPermutationContinuation(self):
