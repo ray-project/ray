@@ -97,19 +97,16 @@ class RayEventContext final {
   }
 
  private:
-  RayEventContext()
-      : source_type_(rpc::Event_SourceType::Event_SourceType_COMMON),
-        source_hostname_(boost::asio::ip::host_name()),
-        source_pid_(getpid()) {}
+  RayEventContext() {}
 
   RayEventContext(const RayEventContext &event_context) = delete;
 
   const RayEventContext &operator=(const RayEventContext &event_context) = delete;
 
  private:
-  rpc::Event_SourceType source_type_;
-  std::string source_hostname_;
-  int32_t source_pid_;
+  rpc::Event_SourceType source_type_ = rpc::Event_SourceType::Event_SourceType_COMMON;
+  std::string source_hostname_ = boost::asio::ip::host_name();
+  int32_t source_pid_ = getpid();
   std::unordered_map<std::string, std::string> custom_fields_;
 
   static thread_local std::unique_ptr<RayEventContext> context_;
