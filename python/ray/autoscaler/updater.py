@@ -14,14 +14,14 @@ from ray.autoscaler.command_runner import NODE_START_WAIT_S, SSHOptions, \
     ProcessRunnerError
 from ray.autoscaler.log_timer import LogTimer
 
+import ray.autoscaler.subprocess_output_util as cmd_output_util
+
 from ray.autoscaler.cli_logger import cli_logger
 import colorful as cf
 
 logger = logging.getLogger(__name__)
 
 READY_CHECK_INTERVAL = 5
-CONN_REFUSED_PATIENCE = 30  # how long to wait for sshd to run
-
 
 class NodeUpdater:
     """A process for syncing files and running init commands on a node."""
@@ -187,51 +187,18 @@ class NodeUpdater:
                         cli_logger.success("Success.")
                         return True
                     except ProcessRunnerError as e:
-                        if e.msg_type == "ssh_command_failed":
-                            if e.special_case == "ssh_conn_refused":
-                                if first_conn_refused_time is not None and \
-                                    time.time() - first_conn_refused_time > \
-                                        CONN_REFUSED_PATIENCE:
-                                    cli_logger.error(
-                                        "SSH connection was being refused "
-                                        "for {} seconds. Head node assumed "
-                                        "unreachable.",
-                                        cf.bold(str(CONN_REFUSED_PATIENCE)))
-                                    cli_logger.abort(
-                                        "Check the node's firewall settings "
-                                        "and the cloud network configuration.")
-
-                                cli_logger.warning(
-                                    "SSH connection was refused.")
-                                cli_logger.warning(
-                                    "This might mean that the SSH daemon is "
-                                    "still setting up, or that "
-                                    "the host is inaccessable (e.g. due to "
-                                    "a firewall).")
-
-                                first_conn_refused_time = time.time()
-
-                            if e.special_case in [
-                                    "ssh_timeout", "ssh_conn_refused"
-                            ]:
-
-                                cli_logger.print(
-                                    "SSH still not available, "
-                                    "retrying in {} seconds.",
-                                    cf.bold(str(READY_CHECK_INTERVAL)))
-                            else:
-                                raise e
-
+                        first_conn_refused_time = \
+                            cmd_output_util.handle_ssh_fails(
+                                e, first_conn_refused_time,
+                                retry_interval=READY_CHECK_INTERVAL)
                         time.sleep(READY_CHECK_INTERVAL)
                     except Exception as e:
-                        if not cli_logger.old_style:
-                            # we used to catch literaly all exceptions,
-                            # but now we have a special exception type for
-                            # things we should handle
-                            #
-                            # so we can raise everything since it indicates
-                            # something actually went bad
-                            raise e
+                        # TODO(maximsmol): we should not be ignoring
+                        # exceptions if they get filtered properly
+                        # (new style log + non-interactive shells)
+                        #
+                        # however threading this configuration state
+                        # is a pain and I'm leaving it for later
 
                         retry_str = str(e)
                         if hasattr(e, "cmd"):
@@ -298,7 +265,6 @@ class NodeUpdater:
                 if self.initialization_commands:
                     with cli_logger.group(
                             "Running initialization commands",
-                            # todo: fix command numbering
                             _numbered=("[]", 3, 5)):
                         with LogTimer(
                                 self.log_prefix + "Initialization commands",
@@ -321,13 +287,13 @@ class NodeUpdater:
                 else:
                     cli_logger.print(
                         "No initialization commands to run.",
-                        _numbered=("[]", 3, 5))
+                        _numbered=("[]", 3, 6))
 
                 if self.setup_commands:
                     with cli_logger.group(
                             "Running setup commands",
                             # todo: fix command numbering
-                            _numbered=("[]", 4, 5)):
+                            _numbered=("[]", 4, 6)):
                         with LogTimer(
                                 self.log_prefix + "Setup commands",
                                 show_status=True):
@@ -356,7 +322,7 @@ class NodeUpdater:
                                         "Setup command failed.")
                 else:
                     cli_logger.print(
-                        "No setup commands to run.", _numbered=("[]", 4, 5))
+                        "No setup commands to run.", _numbered=("[]", 4, 6))
 
         with cli_logger.group(
                 "Starting the Ray runtime", _numbered=("[]", 6, 6)):

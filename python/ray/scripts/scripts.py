@@ -716,7 +716,7 @@ def stop(force, verbose):
     default=True,
     help=("Ray uses login shells (bash --login -i) to run cluster commands "
           "by default. If your workflow is compatible with normal shells, "
-          "this can be disabled for a strictly better user experience."))
+          "this can be disabled for a better user experience."))
 @click.option("-v", "--verbose", count=True)
 def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
        yes, cluster_name, no_config_cache, log_old_style, log_color,

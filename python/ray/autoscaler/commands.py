@@ -34,6 +34,8 @@ from ray.autoscaler.command_runner import DockerCommandRunner
 from ray.autoscaler.log_timer import LogTimer
 from ray.worker import global_worker
 
+import ray.autoscaler.subprocess_output_util as cmd_output_util
+
 from ray.autoscaler.cli_logger import cli_logger
 import colorful as cf
 
@@ -103,15 +105,15 @@ def create_or_update_cluster(
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
 
-    cmd_runner.config["use_login_shells"] = use_login_shells
-    cmd_runner.config["dump_command_output"] = dump_command_output
+    cmd_runner.set_using_login_shells(use_login_shells)
+    cmd_output_util.set_output_redirected(dump_command_output)
 
     if use_login_shells:
         cli_logger.warning(
             "Commands running under a login shell can produce more "
             "output than special processing can handle.")
         cli_logger.warning(
-            "The logs that cluster commands produce will be subpar.")
+            "Thus, the output from subcommands will be logged as is.")
         cli_logger.warning(
             "Consider using {}, {}.", cf.bold("--use-normal-shells"),
             cf.underlined("if you tested your workflow and it is compatible"))
@@ -223,7 +225,7 @@ def _bootstrap_config(config: Dict[str, Any],
                 cli_logger.warning("Loaded cached provider configuration")
             cli_logger.warning(
                 "If you experience issues with "
-                "the node provider, try re-running "
+                "the cloud provider, try re-running "
                 "the command with {}.", cf.bold("--no-config-cache"))
 
             return config_cache["config"]
@@ -668,7 +670,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             modifiers = ""
 
         if cli_logger.old_style:
-            print("To monitor auto-scaling activity, you can run:\n\n"
+            print("To monitor autoscaling activity, you can run:\n\n"
                   "  ray exec {} {}{}\n".format(config_file,
                                                 quote(monitor_str), modifiers))
             print("To open a console on the cluster:\n\n"
@@ -680,7 +682,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
 
         cli_logger.newline()
         with cli_logger.group("Useful commands"):
-            cli_logger.print("Monitor auto-sclaing with")
+            cli_logger.print("Monitor auto-scailng with")
             cli_logger.print(
                 cf.bold("  ray exec {}{} {}"), raw_config_file, modifiers,
                 quote(monitor_str))

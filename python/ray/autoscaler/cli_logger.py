@@ -282,6 +282,10 @@ class _CliLogger():
             self.print(msg, *args, **kwargs)
 
     def verbose_warning(self, msg, *args, **kwargs):
+        """Prints a formatted warning if verbosity is not 0.
+
+        For arguments, see `_format_msg`.
+        """
         if self.verbosity > 0:
             self.warning(msg, *args, **kwargs)
 
