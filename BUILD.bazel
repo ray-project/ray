@@ -1309,7 +1309,10 @@ action_listener(
 
 extra_action(
     name = "iwyu_action",
-    cmd = "$(location :iwyu_sh) $(location @com_google_protobuf//:protoc) $(location :extra_actions_base_proto) --extra_action_file=$(EXTRA_ACTION_FILE)",
+    cmd = "$(location :iwyu_sh) postbuild $(location @com_google_protobuf//:protoc) $(location :extra_actions_base_proto) --extra_action_file=$(EXTRA_ACTION_FILE) > $(output $(ACTION_ID).iwyu.txt)",
+    out_templates = [
+        "$(ACTION_ID).iwyu.txt",
+    ],
     tools = [
         ":extra_actions_base_proto",
         ":iwyu_sh",
