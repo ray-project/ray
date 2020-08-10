@@ -340,8 +340,7 @@ class TrialRunnerTest3(unittest.TestCase):
             return [t.status for t in runner2.get_trials()]
 
         def num_running_trials():
-            return sum(
-                [t.status == Trial.RUNNING for t in runner2.get_trials()])
+            return sum(t.status == Trial.RUNNING for t in runner2.get_trials())
 
         for i in range(6):
             runner2.step()
