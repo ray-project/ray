@@ -1287,8 +1287,8 @@ cc_library(
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
-        "//src/ray/protobuf:event_cc_proto",
         ":sha256",
+        "//src/ray/protobuf:event_cc_proto",
         "@boost//:asio",
         "@com_github_google_glog//:glog",
         "@com_google_absl//absl/synchronization",
