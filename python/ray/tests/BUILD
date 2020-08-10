@@ -488,3 +488,11 @@ py_test(
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
+
+py_test(
+    name = "test_typing",
+    size = "small",
+    srcs = SRCS + ["test_typing.py"] + glob(["typing_files"]),
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
