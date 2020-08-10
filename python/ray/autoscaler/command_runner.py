@@ -446,9 +446,9 @@ class SSHCommandRunner(CommandRunnerInterface):
 
         if cli_logger.verbosity > 0:
             with cli_logger.indented():
-                self._run_helper(final_cmd, with_output, exit_on_fail)
+                return self._run_helper(final_cmd, with_output, exit_on_fail)
         else:
-            self._run_helper(final_cmd, with_output, exit_on_fail)
+            return self._run_helper(final_cmd, with_output, exit_on_fail)
 
     def run_rsync_up(self, source, target):
         self._set_ssh_ip_if_required()
