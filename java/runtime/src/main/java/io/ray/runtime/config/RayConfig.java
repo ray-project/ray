@@ -223,10 +223,12 @@ public class RayConfig {
       jobResourcePath = null;
     }
 
-    boolean enableMultiTenancy = false;
+    boolean enableMultiTenancy;
     if (config.hasPath("ray.raylet.config.enable_multi_tenancy")) {
       enableMultiTenancy =
           Boolean.valueOf(config.getString("ray.raylet.config.enable_multi_tenancy"));
+    } else {
+      enableMultiTenancy = "1".equals(System.getenv("RAY_ENABLE_MULTI_TENANCY"));
     }
 
     if (!enableMultiTenancy) {
