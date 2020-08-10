@@ -80,7 +80,6 @@ class ProcessFD {
     ec = std::error_code();
     intptr_t fd;
     pid_t pid;
-
 #ifdef _WIN32
     LPTCH env_strings = GetEnvironmentStrings();
     RAY_CHECK(env_strings) << GetLastError();
@@ -100,18 +99,17 @@ class ProcessFD {
     RAY_CHECK(FreeEnvironmentStrings(env_strings)) << GetLastError();
     // Add additional environment variables
     for (const auto &item : env) {
-      for (const char &ch: item.first) {
+      for (const char &ch : item.first) {
         new_env_vector.push_back(ch);
       }
       new_env_vector.push_back('=');
-      for (const char &ch: item.second) {
+      for (const char &ch : item.second) {
         new_env_vector.push_back(ch);
       }
       new_env_vector.push_back('\0');
     }
     new_env_vector.push_back('\0');
     auto new_env_strings = new_env_vector.data();
-
 
     (void)decouple;  // Windows doesn't require anything particular for decoupling.
     std::vector<std::string> args;
@@ -134,7 +132,8 @@ class ProcessFD {
         (void)cmd.c_str();  // We'll need this to be null-terminated (but mutable) below
         TCHAR *cmdline = &*cmd.begin();
         STARTUPINFO si = {sizeof(si)};
-        if (CreateProcessA(NULL, cmdline, NULL, NULL, FALSE, 0, new_env_strings, NULL, &si, &pi)) {
+        if (CreateProcessA(NULL, cmdline, NULL, NULL, FALSE, 0, new_env_strings, NULL,
+                           &si, &pi)) {
           succeeded = true;
           break;
         }
