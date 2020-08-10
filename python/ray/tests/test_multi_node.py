@@ -8,16 +8,19 @@ import ray
 from ray.test_utils import (
     RayTestTimeoutException, check_call_ray, run_string_as_driver,
     run_string_as_driver_nonblocking, wait_for_children_of_pid,
-    wait_for_children_of_pid_to_exit, kill_process_by_name, Semaphore)
+    wait_for_children_of_pid_to_exit, kill_process_by_name, Semaphore,
+    init_error_pubsub, get_error_message)
 
 
 def test_error_isolation(call_ray_start):
     address = call_ray_start
     # Connect a driver to the Ray cluster.
     ray.init(address=address)
+    p = init_error_pubsub()
 
     # There shouldn't be any errors yet.
-    assert len(ray.errors()) == 0
+    errors = get_error_message(p, 1, 2)
+    assert len(errors) == 0
 
     error_string1 = "error_string1"
     error_string2 = "error_string2"
@@ -31,13 +34,11 @@ def test_error_isolation(call_ray_start):
         ray.get(f.remote())
 
     # Wait for the error to appear in Redis.
-    while len(ray.errors()) != 1:
-        time.sleep(0.1)
-        print("Waiting for error to appear.")
+    errors = get_error_message(p, 1)
 
     # Make sure we got the error.
-    assert len(ray.errors()) == 1
-    assert error_string1 in ray.errors()[0]["message"]
+    assert len(errors) == 1
+    assert error_string1 in errors[0].error_message
 
     # Start another driver and make sure that it does not receive this
     # error. Make the other driver throw an error, and make sure it
@@ -45,11 +46,13 @@ def test_error_isolation(call_ray_start):
     driver_script = """
 import ray
 import time
+from ray.test_utils import (init_error_pubsub, get_error_message)
 
 ray.init(address="{}")
-
+p = init_error_pubsub()
 time.sleep(1)
-assert len(ray.errors()) == 0
+errors = get_error_message(p, 1, 2)
+assert len(errors) == 0
 
 @ray.remote
 def f():
@@ -60,12 +63,10 @@ try:
 except Exception as e:
     pass
 
-while len(ray.errors()) != 1:
-    print(len(ray.errors()))
-    time.sleep(0.1)
-assert len(ray.errors()) == 1
+errors = get_error_message(p, 1)
+assert len(errors) == 1
 
-assert "{}" in ray.errors()[0]["message"]
+assert "{}" in errors[0].error_message
 
 print("success")
 """.format(address, error_string2, error_string2)
@@ -76,8 +77,9 @@ print("success")
 
     # Make sure that the other error message doesn't show up for this
     # driver.
-    assert len(ray.errors()) == 1
-    assert error_string1 in ray.errors()[0]["message"]
+    errors = get_error_message(p, 1)
+    assert len(errors) == 1
+    p.close()
 
 
 def test_remote_function_isolation(call_ray_start):

@@ -81,8 +81,8 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(Work work) {
 }
 
 void ClusterTaskManager::DispatchScheduledTasksToWorkers(
-    WorkerPool &worker_pool,
-    std::unordered_map<WorkerID, std::shared_ptr<Worker>> &leased_workers) {
+    WorkerPoolInterface &worker_pool,
+    std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers) {
   // Check every task in task_to_dispatch queue to see
   // whether it can be dispatched and ran. This avoids head-of-line
   // blocking where a task which cannot be dispatched because
@@ -94,7 +94,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
     auto spec = task.GetTaskSpecification();
     tasks_to_dispatch_.pop_front();
 
-    std::shared_ptr<Worker> worker = worker_pool.PopWorker(spec);
+    std::shared_ptr<WorkerInterface> worker = worker_pool.PopWorker(spec);
     if (!worker) {
       // No worker available to schedule this task.
       // Put the task back in the dispatch queue.
@@ -125,15 +125,17 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       worker->SetAllocatedInstances(allocated_instances);
     }
     worker->AssignTaskId(spec.TaskId());
-    worker->AssignJobId(spec.JobId());
+    if (!RayConfig::instance().enable_multi_tenancy()) {
+      worker->AssignJobId(spec.JobId());
+    }
     worker->SetAssignedTask(task);
     Dispatch(worker, leased_workers, spec, reply, callback);
   }
 }
 
 void ClusterTaskManager::QueueTask(const Task &task, rpc::RequestWorkerLeaseReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback) {
-  Work work = std::make_tuple(task, reply, send_reply_callback);
+                                   std::function<void(void)> callback) {
+  Work work = std::make_tuple(task, reply, callback);
   tasks_to_schedule_.push_back(work);
 }
 
@@ -148,10 +150,10 @@ void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> ready_ids) {
 }
 
 void ClusterTaskManager::Dispatch(
-    std::shared_ptr<Worker> worker,
-    std::unordered_map<WorkerID, std::shared_ptr<Worker>> &leased_workers_,
+    std::shared_ptr<WorkerInterface> worker,
+    std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers_,
     const TaskSpecification &task_spec, rpc::RequestWorkerLeaseReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+    std::function<void(void)> send_reply_callback) {
   reply->mutable_worker_address()->set_ip_address(worker->IpAddress());
   reply->mutable_worker_address()->set_port(worker->Port());
   reply->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());
@@ -202,16 +204,16 @@ void ClusterTaskManager::Dispatch(
       }
     }
   }
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+  send_reply_callback();
 }
 
 void ClusterTaskManager::Spillback(ClientID spillback_to, std::string address, int port,
                                    rpc::RequestWorkerLeaseReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback) {
+                                   std::function<void(void)> send_reply_callback) {
   reply->mutable_retry_at_raylet_address()->set_ip_address(address);
   reply->mutable_retry_at_raylet_address()->set_port(port);
   reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+  send_reply_callback();
 }
 
 }  // namespace raylet

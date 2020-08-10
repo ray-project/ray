@@ -101,9 +101,6 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   virtual raylet::TaskTable &raylet_task_table();
   TaskLeaseTable &task_lease_table();
   TaskReconstructionLog &task_reconstruction_log();
-  /// Implements the Errors() interface.
-  // TODO: Some API for getting the error on the driver
-  ErrorTable &error_table();
   /// Implements the Stats() interface.
   ProfileTable &profile_table();
   /// Implements the Workers() interface.
@@ -124,7 +121,6 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   std::unique_ptr<TaskLeaseTable> task_lease_table_;
   std::unique_ptr<HeartbeatTable> heartbeat_table_;
   std::unique_ptr<HeartbeatBatchTable> heartbeat_batch_table_;
-  std::unique_ptr<ErrorTable> error_table_;
   std::unique_ptr<ProfileTable> profile_table_;
   std::unique_ptr<ClientTable> client_table_;
   std::unique_ptr<ActorCheckpointTable> actor_checkpoint_table_;

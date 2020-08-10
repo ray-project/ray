@@ -52,6 +52,11 @@ LightGBM Example
 
 - `lightgbm_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/lightgbm_example.py>`__: Trains a basic LightGBM model with Tune with the function-based API and a LightGBM callback.
 
+Huggingface Transformers Example
+--------------------------------
+
+- `pbt_transformers <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/pbt_transformers/pbt_transformers.py>`__: Fine-tunes a Huggingface transformer with Tune Population Based Training.
+
 
 Contributed Examples
 --------------------

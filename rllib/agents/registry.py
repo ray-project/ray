@@ -100,6 +100,11 @@ def _import_maml():
     return maml.MAMLTrainer
 
 
+def _import_mbmpo():
+    from ray.rllib.agents import mbmpo
+    return mbmpo.MBMPOTrainer
+
+
 ALGORITHMS = {
     "SAC": _import_sac,
     "DDPG": _import_ddpg,
@@ -120,6 +125,7 @@ ALGORITHMS = {
     "DDPPO": _import_ddppo,
     "MARWIL": _import_marwil,
     "MAML": _import_maml,
+    "MBMPO": _import_mbmpo,
 }
 
 

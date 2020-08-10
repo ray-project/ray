@@ -347,6 +347,12 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     default=False,
     help="Specify whether object reconstruction will be used for this cluster."
 )
+@click.option(
+    "--metrics-export-port",
+    type=int,
+    default=None,
+    help="the port to use to expose Ray metrics through a "
+    "Prometheus endpoint.")
 def start(node_ip_address, redis_address, address, redis_port, port,
           num_redis_shards, redis_max_clients, redis_password,
           redis_shard_ports, object_manager_port, node_manager_port,
@@ -357,7 +363,7 @@ def start(node_ip_address, redis_address, address, redis_port, port,
           autoscaling_config, no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
           java_worker_options, load_code_from_local, internal_config,
-          lru_evict, enable_object_reconstruction):
+          lru_evict, enable_object_reconstruction, metrics_export_port):
     """Start Ray processes manually on the local machine."""
     if gcs_server_port and not head:
         raise ValueError(
@@ -436,7 +442,8 @@ def start(node_ip_address, redis_address, address, redis_port, port,
         load_code_from_local=load_code_from_local,
         _internal_config=internal_config,
         lru_evict=lru_evict,
-        enable_object_reconstruction=enable_object_reconstruction)
+        enable_object_reconstruction=enable_object_reconstruction,
+        metrics_export_port=metrics_export_port)
     if head:
         # Start Ray on the head node.
         if redis_shard_ports is not None:
@@ -697,9 +704,23 @@ def stop(force, verbose):
     default="auto",
     help=("Use color logging. "
           "Valid values are: auto (if stdout is a tty), true, false."))
+@click.option(
+    "--dump-command-output",
+    is_flag=True,
+    default=False,
+    help=("Print command output straight to "
+          "the terminal instead of redirecting to a file."))
+@click.option(
+    "--use-login-shells/--use-normal-shells",
+    is_flag=True,
+    default=True,
+    help=("Ray uses login shells (bash --login -i) to run cluster commands "
+          "by default. If your workflow is compatible with normal shells, "
+          "this can be disabled for a better user experience."))
 @click.option("-v", "--verbose", count=True)
 def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
-       yes, cluster_name, no_config_cache, log_old_style, log_color, verbose):
+       yes, cluster_name, no_config_cache, log_old_style, log_color,
+       dump_command_output, use_login_shells, verbose):
     """Create or update a Ray cluster."""
     if restart_only or no_restart:
         assert restart_only != no_restart, "Cannot set both 'restart_only' " \
@@ -717,7 +738,7 @@ def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
     create_or_update_cluster(cluster_config_file, min_workers, max_workers,
                              no_restart, restart_only, yes, cluster_name,
                              no_config_cache, log_old_style, log_color,
-                             verbose)
+                             dump_command_output, use_login_shells, verbose)
 
 
 @cli.command()

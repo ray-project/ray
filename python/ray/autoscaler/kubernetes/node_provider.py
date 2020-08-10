@@ -1,11 +1,12 @@
 import logging
 from uuid import uuid4
 from kubernetes.client.rest import ApiException
+
+from ray.autoscaler.command_runner import KubernetesCommandRunner
 from ray.autoscaler.kubernetes import core_api, log_prefix, extensions_beta_api
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.kubernetes.config import bootstrap_kubernetes
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME
-from ray.autoscaler.updater import KubernetesCommandRunner
 
 logger = logging.getLogger(__name__)
 

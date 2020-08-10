@@ -1059,6 +1059,13 @@ py_test(
     srcs = ["policy/tests/test_compute_log_likelihoods.py"]
 )
 
+py_test(
+    name = "policy/tests/test_trajectory_view_api",
+    tags = ["policy"],
+    size = "small",
+    srcs = ["policy/tests/test_trajectory_view_api.py"]
+)
+
 # --------------------------------------------------------------------
 # Utils:
 # rllib/utils/
@@ -1171,7 +1178,7 @@ py_test(
     name = "test_env_with_subprocess",
     main = "tests/test_env_with_subprocess.py",
     tags = ["tests_dir", "tests_dir_E"],
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_env_with_subprocess.py"]
 )
 
@@ -1296,13 +1303,27 @@ py_test(
     srcs = ["tests/test_reproducibility.py"]
 )
 
+# Test train/rollout scripts (w/o confirming rollout performance).
 py_test(
-    name = "test_rollout",
+    name = "test_rollout_no_learning",
     main = "tests/test_rollout.py",
     tags = ["tests_dir", "tests_dir_R"],
     size = "large",
     data = ["train.py", "rollout.py"],
-    srcs = ["tests/test_rollout.py"]
+    srcs = ["tests/test_rollout.py"],
+    args = ["TestRolloutSimple"]
+)
+
+# Test train/rollout scripts (and confirm `rllib rollout` performance is same
+# as the final one from the `rllib train` run).
+py_test(
+    name = "test_rollout_w_learning",
+    main = "tests/test_rollout.py",
+    tags = ["tests_dir", "tests_dir_R"],
+    size = "medium",
+    data = ["train.py", "rollout.py"],
+    srcs = ["tests/test_rollout.py"],
+    args = ["TestRolloutLearntPolicy"]
 )
 
 py_test(
@@ -1445,7 +1466,7 @@ py_test(
     name = "examples/batch_norm_model_ddpg_tf",
     main = "examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--run=DDPG", "--stop-iters=1"]
 )
@@ -1454,7 +1475,7 @@ py_test(
     name = "examples/batch_norm_model_ddpg_torch",
     main = "examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--torch", "--run=DDPG", "--stop-iters=1"]
 )

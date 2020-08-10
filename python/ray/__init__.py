@@ -69,6 +69,7 @@ from ray._raylet import (
     TaskID,
     UniqueID,
     Language,
+    PlacementGroupID,
 )  # noqa: E402
 
 _config = _Config()
@@ -76,7 +77,7 @@ _config = _Config()
 from ray.profiling import profile  # noqa: E402
 from ray.state import (jobs, nodes, actors, objects, timeline,
                        object_transfer_timeline, cluster_resources,
-                       available_resources, errors)  # noqa: E402
+                       available_resources)  # noqa: E402
 from ray.worker import (
     LOCAL_MODE,
     SCRIPT_MODE,
@@ -121,7 +122,6 @@ __all__ = [
     "object_transfer_timeline",
     "cluster_resources",
     "available_resources",
-    "errors",
     "LOCAL_MODE",
     "PYTHON_MODE",
     "SCRIPT_MODE",
@@ -170,4 +170,5 @@ __all__ += [
     "ObjectRef",
     "TaskID",
     "UniqueID",
+    "PlacementGroupID",
 ]

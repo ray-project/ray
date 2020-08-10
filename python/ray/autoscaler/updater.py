@@ -7,10 +7,14 @@ import time
 from threading import Thread
 
 from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG, \
+    TAG_RAY_FILE_MOUNTS_CONTENTS, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, STATUS_WAITING_FOR_SSH, \
     STATUS_SETTING_UP, STATUS_SYNCING_FILES
-from ray.autoscaler.command_runner import NODE_START_WAIT_S, SSHOptions
+from ray.autoscaler.command_runner import NODE_START_WAIT_S, SSHOptions, \
+    ProcessRunnerError
 from ray.autoscaler.log_timer import LogTimer
+
+import ray.autoscaler.subprocess_output_util as cmd_output_util
 
 from ray.autoscaler.cli_logger import cli_logger
 import colorful as cf
@@ -34,6 +38,8 @@ class NodeUpdater:
                  setup_commands,
                  ray_start_commands,
                  runtime_hash,
+                 file_mounts_contents_hash,
+                 cluster_synced_files=None,
                  process_runner=subprocess,
                  use_internal_ip=False,
                  docker_config=None):
@@ -57,6 +63,8 @@ class NodeUpdater:
         self.setup_commands = setup_commands
         self.ray_start_commands = ray_start_commands
         self.runtime_hash = runtime_hash
+        self.file_mounts_contents_hash = file_mounts_contents_hash
+        self.cluster_synced_files = cluster_synced_files
         self.auth_config = auth_config
 
     def run(self):
@@ -86,8 +94,9 @@ class NodeUpdater:
                     "Setup command `{}` failed with exit code {}. stderr:",
                     cf.bold(e.cmd), e.returncode)
             else:
-                cli_logger.verbose_error(vars(e), _no_format=True)
-                cli_logger.error(str(e))  # todo: handle this better somehow?
+                cli_logger.verbose_error("{}", str(vars(e)))
+                # todo: handle this better somehow?
+                cli_logger.error("{}", str(e))
             # todo: print stderr here
             cli_logger.error("!!!")
             cli_logger.newline()
@@ -97,11 +106,15 @@ class NodeUpdater:
                 return
             raise
 
-        self.provider.set_node_tags(
-            self.node_id, {
-                TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
-                TAG_RAY_RUNTIME_CONFIG: self.runtime_hash
-            })
+        tags_to_set = {
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
+            TAG_RAY_RUNTIME_CONFIG: self.runtime_hash,
+        }
+        if self.file_mounts_contents_hash is not None:
+            tags_to_set[
+                TAG_RAY_FILE_MOUNTS_CONTENTS] = self.file_mounts_contents_hash
+
+        self.provider.set_node_tags(self.node_id, tags_to_set)
         cli_logger.labeled_value("New status", STATUS_UP_TO_DATE)
 
         self.exitcode = 0
@@ -113,36 +126,56 @@ class NodeUpdater:
                 "~/ray_bootstrap_key.pem", "~/ray_bootstrap_config.yaml"
             ]
 
+        def do_sync(remote_path, local_path, allow_non_existing_paths=False):
+            if allow_non_existing_paths and not os.path.exists(local_path):
+                # Ignore missing source files. In the future we should support
+                # the --delete-missing-args command to delete files that have
+                # been removed
+                return
+
+            assert os.path.exists(local_path), local_path
+
+            if os.path.isdir(local_path):
+                if not local_path.endswith("/"):
+                    local_path += "/"
+                if not remote_path.endswith("/"):
+                    remote_path += "/"
+
+            with LogTimer(self.log_prefix +
+                          "Synced {} to {}".format(local_path, remote_path)):
+                self.cmd_runner.run("mkdir -p {}".format(
+                    os.path.dirname(remote_path)))
+                sync_cmd(local_path, remote_path)
+
+                if remote_path not in nolog_paths:
+                    # todo: timed here?
+                    cli_logger.print("{} from {}", cf.bold(remote_path),
+                                     cf.bold(local_path))
+
         # Rsync file mounts
         with cli_logger.group(
-                "Processing file mounts", _numbered=("[]", 2, 5)):
+                "Processing file mounts", _numbered=("[]", 2, 6)):
             for remote_path, local_path in self.file_mounts.items():
-                assert os.path.exists(local_path), local_path
-                if os.path.isdir(local_path):
-                    if not local_path.endswith("/"):
-                        local_path += "/"
-                    if not remote_path.endswith("/"):
-                        remote_path += "/"
+                do_sync(remote_path, local_path)
 
-                with LogTimer(self.log_prefix + "Synced {} to {}".format(
-                        local_path, remote_path)):
-                    self.cmd_runner.run("mkdir -p {}".format(
-                        os.path.dirname(remote_path)))
-                    sync_cmd(local_path, remote_path)
-
-                    if remote_path not in nolog_paths:
-                        # todo: timed here?
-                        cli_logger.print("{} from {}", cf.bold(remote_path),
-                                         cf.bold(local_path))
+        if self.cluster_synced_files:
+            with cli_logger.group(
+                    "Processing worker file mounts", _numbered=("[]", 3, 6)):
+                for path in self.cluster_synced_files:
+                    do_sync(path, path, allow_non_existing_paths=True)
+        else:
+            cli_logger.print(
+                "No worker file mounts to sync", _numbered=("[]", 3, 6))
 
     def wait_ready(self, deadline):
         with cli_logger.group(
-                "Waiting for SSH to become available", _numbered=("[]", 1, 5)):
+                "Waiting for SSH to become available", _numbered=("[]", 1, 6)):
             with LogTimer(self.log_prefix + "Got remote shell"):
                 cli_logger.old_info(logger, "{}Waiting for remote shell...",
                                     self.log_prefix)
 
                 cli_logger.print("Running `{}` as a test.", cf.bold("uptime"))
+                first_conn_refused_time = None
                 while time.time() < deadline and \
                         not self.provider.is_terminated(self.node_id):
                     try:
@@ -154,7 +187,20 @@ class NodeUpdater:
                         cli_logger.old_debug(logger, "Uptime succeeded.")
                         cli_logger.success("Success.")
                         return True
+                    except ProcessRunnerError as e:
+                        first_conn_refused_time = \
+                            cmd_output_util.handle_ssh_fails(
+                                e, first_conn_refused_time,
+                                retry_interval=READY_CHECK_INTERVAL)
+                        time.sleep(READY_CHECK_INTERVAL)
                     except Exception as e:
+                        # TODO(maximsmol): we should not be ignoring
+                        # exceptions if they get filtered properly
+                        # (new style log + non-interactive shells)
+                        #
+                        # however threading this configuration state
+                        # is a pain and I'm leaving it for later
+
                         retry_str = str(e)
                         if hasattr(e, "cmd"):
                             retry_str = "(Exit Status {}): {}".format(
@@ -182,7 +228,13 @@ class NodeUpdater:
 
         node_tags = self.provider.node_tags(self.node_id)
         logger.debug("Node tags: {}".format(str(node_tags)))
-        if node_tags.get(TAG_RAY_RUNTIME_CONFIG) == self.runtime_hash:
+
+        # runtime_hash will only change whenever the user restarts
+        # or updates their cluster with `get_or_create_head_node`
+        if node_tags.get(TAG_RAY_RUNTIME_CONFIG) == self.runtime_hash and (
+                self.file_mounts_contents_hash is None
+                or node_tags.get(TAG_RAY_FILE_MOUNTS_CONTENTS) ==
+                self.file_mounts_contents_hash):
             # todo: we lie in the confirmation message since
             # full setup might be cancelled here
             cli_logger.print(
@@ -191,6 +243,7 @@ class NodeUpdater:
             cli_logger.old_info(logger,
                                 "{}{} already up-to-date, skip to ray start",
                                 self.log_prefix, self.node_id)
+
         else:
             cli_logger.print(
                 "Updating cluster configuration.",
@@ -201,58 +254,90 @@ class NodeUpdater:
             cli_logger.labeled_value("New status", STATUS_SYNCING_FILES)
             self.sync_file_mounts(self.rsync_up)
 
-            # Run init commands
-            self.provider.set_node_tags(
-                self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SETTING_UP})
-            cli_logger.labeled_value("New status", STATUS_SETTING_UP)
+            # Only run setup commands if runtime_hash has changed because
+            # we don't want to run setup_commands every time the head node
+            # file_mounts folders have changed.
+            if node_tags.get(TAG_RAY_RUNTIME_CONFIG) != self.runtime_hash:
+                # Run init commands
+                self.provider.set_node_tags(
+                    self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SETTING_UP})
+                cli_logger.labeled_value("New status", STATUS_SETTING_UP)
 
-            if self.initialization_commands:
-                with cli_logger.group(
-                        "Running initialization commands",
-                        _numbered=("[]", 3, 5)):  # todo: fix command numbering
-                    with LogTimer(
-                            self.log_prefix + "Initialization commands",
-                            show_status=True):
+                if self.initialization_commands:
+                    with cli_logger.group(
+                            "Running initialization commands",
+                            _numbered=("[]", 3, 5)):
+                        with LogTimer(
+                                self.log_prefix + "Initialization commands",
+                                show_status=True):
+                            for cmd in self.initialization_commands:
+                                try:
+                                    self.cmd_runner.run(
+                                        cmd,
+                                        ssh_options_override=SSHOptions(
+                                            self.auth_config.get(
+                                                "ssh_private_key")))
+                                except ProcessRunnerError as e:
+                                    if e.msg_type == "ssh_command_failed":
+                                        cli_logger.error("Failed.")
+                                        cli_logger.error(
+                                            "See above for stderr.")
 
-                        for cmd in self.initialization_commands:
-                            self.cmd_runner.run(
-                                cmd,
-                                ssh_options_override=SSHOptions(
-                                    self.auth_config.get("ssh_private_key")))
-            else:
-                cli_logger.print(
-                    "No initialization commands to run.",
-                    _numbered=("[]", 3, 5))
+                                    raise click.ClickException(
+                                        "Initialization command failed.")
+                else:
+                    cli_logger.print(
+                        "No initialization commands to run.",
+                        _numbered=("[]", 3, 6))
 
-            if self.setup_commands:
-                with cli_logger.group(
-                        "Running setup commands",
-                        _numbered=("[]", 4, 5)):  # todo: fix command numbering
-                    with LogTimer(
-                            self.log_prefix + "Setup commands",
-                            show_status=True):
+                if self.setup_commands:
+                    with cli_logger.group(
+                            "Running setup commands",
+                            # todo: fix command numbering
+                            _numbered=("[]", 4, 6)):
+                        with LogTimer(
+                                self.log_prefix + "Setup commands",
+                                show_status=True):
 
-                        total = len(self.setup_commands)
-                        for i, cmd in enumerate(self.setup_commands):
-                            if cli_logger.verbosity == 0:
-                                cmd_to_print = cf.bold(cmd[:30]) + "..."
-                            else:
-                                cmd_to_print = cf.bold(cmd)
+                            total = len(self.setup_commands)
+                            for i, cmd in enumerate(self.setup_commands):
+                                if cli_logger.verbosity == 0 and len(cmd) > 30:
+                                    cmd_to_print = cf.bold(cmd[:30]) + "..."
+                                else:
+                                    cmd_to_print = cf.bold(cmd)
 
-                            cli_logger.print(
-                                cmd_to_print, _numbered=("()", i, total))
+                                cli_logger.print(
+                                    "{}",
+                                    cmd_to_print,
+                                    _numbered=("()", i, total))
 
-                            self.cmd_runner.run(cmd)
-            else:
-                cli_logger.print(
-                    "No setup commands to run.", _numbered=("[]", 4, 5))
+                                try:
+                                    self.cmd_runner.run(cmd)
+                                except ProcessRunnerError as e:
+                                    if e.msg_type == "ssh_command_failed":
+                                        cli_logger.error("Failed.")
+                                        cli_logger.error(
+                                            "See above for stderr.")
+
+                                    raise click.ClickException(
+                                        "Setup command failed.")
+                else:
+                    cli_logger.print(
+                        "No setup commands to run.", _numbered=("[]", 4, 6))
 
         with cli_logger.group(
-                "Starting the Ray runtime", _numbered=("[]", 5, 5)):
+                "Starting the Ray runtime", _numbered=("[]", 6, 6)):
             with LogTimer(
                     self.log_prefix + "Ray start commands", show_status=True):
                 for cmd in self.ray_start_commands:
-                    self.cmd_runner.run(cmd)
+                    try:
+                        self.cmd_runner.run(cmd)
+                    except ProcessRunnerError as e:
+                        if e.msg_type == "ssh_command_failed":
+                            cli_logger.error("Failed.")
+                            cli_logger.error("See above for stderr.")
+
+                        raise click.ClickException("Start command failed.")
 
     def rsync_up(self, source, target):
         cli_logger.old_info(logger, "{}Syncing {} to {}...", self.log_prefix,

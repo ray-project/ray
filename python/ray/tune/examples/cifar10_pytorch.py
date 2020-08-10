@@ -58,7 +58,7 @@ class Net(nn.Module):
 
 
 # __train_begin__
-def train_cifar(config, checkpoint=None, data_dir=None):
+def train_cifar(config, checkpoint_dir=None, data_dir=None):
     net = Net(config["l1"], config["l2"])
 
     device = "cpu"
@@ -71,8 +71,8 @@ def train_cifar(config, checkpoint=None, data_dir=None):
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(net.parameters(), lr=config["lr"], momentum=0.9)
 
-    if checkpoint:
-        print("loading checkpoint {}".format(checkpoint))
+    if checkpoint_dir:
+        checkpoint = os.path.join(checkpoint_dir, "checkpoint")
         model_state, optimizer_state = torch.load(checkpoint)
         net.load_state_dict(model_state)
         optimizer.load_state_dict(optimizer_state)
@@ -138,10 +138,10 @@ def train_cifar(config, checkpoint=None, data_dir=None):
                 val_loss += loss.cpu().numpy()
                 val_steps += 1
 
-        checkpoint_dir = tune.make_checkpoint_dir(epoch)
-        path = os.path.join(checkpoint_dir, "checkpoint")
-        torch.save((net.state_dict(), optimizer.state_dict()), path)
-        tune.save_checkpoint(path)
+        with tune.checkpoint_dir(step=epoch) as checkpoint_dir:
+            path = os.path.join(checkpoint_dir, "checkpoint")
+            torch.save(
+                (net.state_dict(), optimizer.state_dict()), path)
 
         tune.report(loss=(val_loss / val_steps), accuracy=correct / total)
     print("Finished Training")
@@ -213,7 +213,9 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
             best_trained_model = nn.DataParallel(best_trained_model)
     best_trained_model.to(device)
 
-    model_state, optimizer_state = torch.load(best_trial.checkpoint.value)
+    checkpoint_path = os.path.join(best_trial.checkpoint.value, "checkpoint")
+
+    model_state, optimizer_state = torch.load(checkpoint_path)
     best_trained_model.load_state_dict(model_state)
 
     test_acc = test_accuracy(best_trained_model, device)

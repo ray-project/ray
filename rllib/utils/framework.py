@@ -200,12 +200,20 @@ def get_variable(value,
             if isinstance(value, float) else tf.int32
             if isinstance(value, int) else None)
         return tf.compat.v1.get_variable(
-            tf_name, initializer=value, dtype=dtype, trainable=trainable,
-            **({} if shape is None else {"shape": shape})
-        )
+            tf_name,
+            initializer=value,
+            dtype=dtype,
+            trainable=trainable,
+            **({} if shape is None else {
+                "shape": shape
+            }))
     elif framework == "torch" and torch_tensor is True:
         torch, _ = try_import_torch()
         var_ = torch.from_numpy(value)
+        if dtype == torch.float32:
+            var_ = var_.float()
+        elif dtype == torch.int32:
+            var_ = var_.int()
         if device:
             var_ = var_.to(device)
         var_.requires_grad = trainable

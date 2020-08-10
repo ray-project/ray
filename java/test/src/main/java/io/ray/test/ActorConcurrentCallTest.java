@@ -9,7 +9,7 @@ import java.util.concurrent.CountDownLatch;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-@Test
+@Test(groups = {"cluster"})
 public class ActorConcurrentCallTest extends BaseTest {
 
   public static class ConcurrentActor {
@@ -27,8 +27,6 @@ public class ActorConcurrentCallTest extends BaseTest {
   }
 
   public void testConcurrentCall() {
-    TestUtils.skipTestUnderSingleProcess();
-
     ActorHandle<ConcurrentActor> actor =
         Ray.actor(ConcurrentActor::new)
             .setMaxConcurrency(3)

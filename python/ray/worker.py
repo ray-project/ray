@@ -20,6 +20,7 @@ import ray.cloudpickle as pickle
 import ray.gcs_utils
 import ray.memory_monitor as memory_monitor
 import ray.node
+import ray.job_config
 import ray.parameter
 import ray.ray_constants as ray_constants
 import ray.remote_function
@@ -486,6 +487,7 @@ def init(address=None,
          dashboard_host="localhost",
          dashboard_port=ray_constants.DEFAULT_DASHBOARD_PORT,
          job_id=None,
+         job_config=None,
          configure_logging=True,
          logging_level=logging.INFO,
          logging_format=ray_constants.LOGGER_FORMAT,
@@ -497,7 +499,8 @@ def init(address=None,
          use_pickle=True,
          _internal_config=None,
          lru_evict=False,
-         enable_object_reconstruction=False):
+         enable_object_reconstruction=False,
+         _metrics_export_port=None):
     """
     Connect to an existing Ray cluster or start one and connect to it.
 
@@ -588,6 +591,7 @@ def init(address=None,
         dashboard_port: The port to bind the dashboard server to. Defaults to
             8265.
         job_id: The ID of this job.
+        job_config (ray.job_config.JobConfig): The job configuration.
         configure_logging: True (default) if configuration of logging is
             allowed here. Otherwise, the user may want to configure it
             separately.
@@ -622,6 +626,9 @@ def init(address=None,
             created the object. Arguments to the task will be recursively
             reconstructed. If False, then ray.UnreconstructableError will be
             thrown.
+        _metrics_export_port(int): Port number Ray exposes system metrics
+            through a Prometheus endpoint. It is currently under active
+            development, and the API is subject to change.
 
     Returns:
         Address information about the started processes.
@@ -713,9 +720,11 @@ def init(address=None,
             temp_dir=temp_dir,
             load_code_from_local=load_code_from_local,
             java_worker_options=java_worker_options,
+            start_initial_python_workers_for_first_job=True,
             _internal_config=_internal_config,
             lru_evict=lru_evict,
-            enable_object_reconstruction=enable_object_reconstruction)
+            enable_object_reconstruction=enable_object_reconstruction,
+            metrics_export_port=_metrics_export_port)
         # Start the Ray processes. We set shutdown_at_exit=False because we
         # shutdown the node in the ray.shutdown call that happens in the atexit
         # handler. We still spawn a reaper process in case the atexit handler
@@ -789,7 +798,8 @@ def init(address=None,
             load_code_from_local=load_code_from_local,
             _internal_config=_internal_config,
             lru_evict=lru_evict,
-            enable_object_reconstruction=enable_object_reconstruction)
+            enable_object_reconstruction=enable_object_reconstruction,
+            metrics_export_port=_metrics_export_port)
         _global_node = ray.node.Node(
             ray_params,
             head=False,
@@ -803,7 +813,8 @@ def init(address=None,
         log_to_driver=log_to_driver,
         worker=global_worker,
         driver_object_store_memory=driver_object_store_memory,
-        job_id=job_id)
+        job_id=job_id,
+        job_config=job_config)
 
     for hook in _post_init_hooks:
         hook()
@@ -926,7 +937,7 @@ def _set_log_file(file_name, worker_pid, old_obj, setter_func):
     # and stderr are heavily buffered resulting in seemingly lost logging
     # statements. We never want to close the stdout file descriptor, dup2 will
     # close it when necessary and we don't want python's GC to close it.
-    setter_func(open_log(fileno, closefd=False))
+    setter_func(open_log(fileno, unbuffered=True, closefd=False))
 
     return os.path.abspath(f.name)
 
@@ -1009,6 +1020,8 @@ def print_logs(redis_client, threads_stopped, job_id):
                     job_id.binary()) != data["job"]:
                 continue
 
+            print_file = sys.stderr if data["is_err"] else sys.stdout
+
             def color_for(data):
                 if data["pid"] == "raylet":
                     return colorama.Fore.YELLOW
@@ -1017,14 +1030,18 @@ def print_logs(redis_client, threads_stopped, job_id):
 
             if data["ip"] == localhost:
                 for line in data["lines"]:
-                    print("{}{}(pid={}){} {}".format(
-                        colorama.Style.DIM, color_for(data), data["pid"],
-                        colorama.Style.RESET_ALL, line))
+                    print(
+                        "{}{}(pid={}){} {}".format(
+                            colorama.Style.DIM, color_for(data), data["pid"],
+                            colorama.Style.RESET_ALL, line),
+                        file=print_file)
             else:
                 for line in data["lines"]:
-                    print("{}{}(pid={}, ip={}){} {}".format(
-                        colorama.Style.DIM, color_for(data), data["pid"],
-                        data["ip"], colorama.Style.RESET_ALL, line))
+                    print(
+                        "{}{}(pid={}, ip={}){} {}".format(
+                            colorama.Style.DIM, color_for(data), data["pid"],
+                            data["ip"], colorama.Style.RESET_ALL, line),
+                        file=print_file)
 
     except (OSError, redis.exceptions.ConnectionError) as e:
         logger.error("print_logs: {}".format(e))
@@ -1089,16 +1106,11 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
 
     # Really we should just subscribe to the errors for this specific job.
     # However, currently all errors seem to be published on the same channel.
-    error_pubsub_channel = str(
-        ray.gcs_utils.TablePubsub.Value("ERROR_INFO_PUBSUB")).encode("ascii")
-    worker.error_message_pubsub_client.subscribe(error_pubsub_channel)
-    # worker.error_message_pubsub_client.psubscribe("*")
+    error_pubsub_channel = ray.gcs_utils.RAY_ERROR_PUBSUB_PATTERN
+    worker.error_message_pubsub_client.psubscribe(error_pubsub_channel)
 
     try:
         # Get the errors that occurred before the call to subscribe.
-        error_messages = ray.errors()
-        for error_message in error_messages:
-            logger.error(error_message)
 
         while True:
             # Exit if we received a signal that we should stop.
@@ -1109,10 +1121,9 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
             if msg is None:
                 threads_stopped.wait(timeout=0.01)
                 continue
-            gcs_entry = ray.gcs_utils.GcsEntry.FromString(msg["data"])
-            assert len(gcs_entry.entries) == 1
+            pubsub_msg = ray.gcs_utils.PubSubMessage.FromString(msg["data"])
             error_data = ray.gcs_utils.ErrorTableData.FromString(
-                gcs_entry.entries[0])
+                pubsub_msg.data)
             job_id = error_data.job_id
             if job_id not in [
                     worker.current_job_id.binary(),
@@ -1147,7 +1158,8 @@ def connect(node,
             log_to_driver=False,
             worker=global_worker,
             driver_object_store_memory=None,
-            job_id=None):
+            job_id=None,
+            job_config=None):
     """Connect this worker to the raylet, to Plasma, and to Redis.
 
     Args:
@@ -1160,6 +1172,7 @@ def connect(node,
         driver_object_store_memory: Limit the amount of memory the driver can
             use in the object store when creating objects.
         job_id: The ID of job. If it's None, then we will generate one.
+        job_config (ray.job_config.JobConfig): The job configuration.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -1265,22 +1278,16 @@ def connect(node,
         int(redis_port),
         node.redis_password,
     )
-
+    if job_config is None:
+        job_config = ray.job_config.JobConfig()
+    serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
         (mode == SCRIPT_MODE or mode == LOCAL_MODE),
-        node.plasma_store_socket_name,
-        node.raylet_socket_name,
-        job_id,
-        gcs_options,
-        node.get_logs_dir_path(),
-        node.node_ip_address,
-        node.node_manager_port,
-        node.raylet_ip_address,
-        (mode == LOCAL_MODE),
-        driver_name,
-        log_stdout_file_path,
-        log_stderr_file_path,
-    )
+        node.plasma_store_socket_name, node.raylet_socket_name, job_id,
+        gcs_options, node.get_logs_dir_path(), node.node_ip_address,
+        node.node_manager_port, node.raylet_ip_address, (mode == LOCAL_MODE),
+        driver_name, log_stdout_file_path, log_stderr_file_path,
+        serialized_job_config, node.metrics_agent_port)
 
     # Create an object for interfacing with the global state.
     # Note, global state should be intialized after `CoreWorker`, because it
@@ -1762,7 +1769,9 @@ def make_decorator(num_return_vals=None,
                    max_retries=None,
                    max_restarts=None,
                    max_task_retries=None,
-                   worker=None):
+                   worker=None,
+                   placement_group_id=None,
+                   placement_group_bundle_index=-1):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
@@ -1777,7 +1786,8 @@ def make_decorator(num_return_vals=None,
             return ray.remote_function.RemoteFunction(
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
                 memory, object_store_memory, resources, num_return_vals,
-                max_calls, max_retries)
+                max_calls, max_retries, placement_group_id,
+                placement_group_bundle_index)
 
         if inspect.isclass(function_or_class):
             if num_return_vals is not None:
@@ -1848,6 +1858,11 @@ def remote(*args, **kwargs):
       number of times that the remote function should be rerun when the worker
       process executing it crashes unexpectedly. The minimum valid value is 0,
       the default is 4 (default), and a value of -1 indicates infinite retries.
+    * **placement_group_id**: the placement group this task belongs to,
+        or None if it doesn't belong to any group.
+    * **placement_group_bundle_index**: the index of the bundle
+        if the task belongs to a placement group, which may be -1 to indicate
+        any available bundle.
 
     This can be done as follows:
 
@@ -1912,6 +1927,8 @@ def remote(*args, **kwargs):
             "max_restarts",
             "max_task_retries",
             "max_retries",
+            "placement_group_id",
+            "placement_group_bundle_index",
         ], error_string
 
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None

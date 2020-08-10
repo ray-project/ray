@@ -75,6 +75,7 @@ def run(run_or_experiment,
         upload_dir=None,
         trial_name_creator=None,
         loggers=None,
+        log_to_file=False,
         sync_to_cloud=None,
         sync_to_driver=None,
         checkpoint_freq=0,
@@ -143,6 +144,14 @@ def run(run_or_experiment,
         loggers (list): List of logger creators to be used with
             each Trial. If None, defaults to ray.tune.logger.DEFAULT_LOGGERS.
             See `ray/tune/logger.py`.
+        log_to_file (bool|str|Sequence): Log stdout and stderr to files in
+            Tune's trial directories. If this is `False` (default), no files
+            are written. If `true`, outputs are written to `trialdir/stdout`
+            and `trialdir/stderr`, respectively. If this is a single string,
+            this is interpreted as a file relative to the trialdir, to which
+            both streams are written. If this is a Sequence (e.g. a Tuple),
+            it has to have length 2 and the elements indicate the files to
+            which stdout and stderr are written, respectively.
         sync_to_cloud (func|str): Function for syncing the local_dir to and
             from upload_dir. If string, then it must be a string template that
             includes `{source}` and `{target}` for the syncer to run. If not
@@ -242,6 +251,8 @@ def run(run_or_experiment,
         space = {"lr": tune.uniform(0, 1), "momentum": tune.uniform(0, 1)}
         tune.run(my_trainable, config=space, stop={"training_iteration": 10})
     """
+    config = config or {}
+
     trial_executor = trial_executor or RayTrialExecutor(
         queue_trials=queue_trials,
         reuse_actors=reuse_actors,
@@ -266,6 +277,7 @@ def run(run_or_experiment,
                 sync_to_driver=sync_to_driver,
                 trial_name_creator=trial_name_creator,
                 loggers=loggers,
+                log_to_file=log_to_file,
                 checkpoint_freq=checkpoint_freq,
                 checkpoint_at_end=checkpoint_at_end,
                 sync_on_checkpoint=sync_on_checkpoint,

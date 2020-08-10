@@ -12,12 +12,12 @@ import ray.ray_constants as ray_constants
 import ray.test_utils
 import ray.cluster_utils
 from ray.test_utils import (
-    relevant_errors,
     wait_for_condition,
-    wait_for_errors,
     wait_for_pid_to_exit,
     generate_internal_config_map,
     get_other_nodes,
+    SignalActor,
+    get_error_message,
 )
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
@@ -361,14 +361,14 @@ def test_actor_restart_without_task(ray_start_regular):
 
     ray.experimental.set_resource("actor", 1)
     actor = RestartableActor.remote()
-    assert wait_for_condition(lambda: not actor_resource_available())
+    wait_for_condition(lambda: not actor_resource_available())
     # Kill the actor.
     pid = ray.get(actor.get_pid.remote())
 
     p = probe.remote()
     os.kill(pid, SIGKILL)
     ray.get(p)
-    assert wait_for_condition(lambda: not actor_resource_available())
+    wait_for_condition(lambda: not actor_resource_available())
 
 
 def test_caller_actor_restart(ray_start_regular):
@@ -626,9 +626,11 @@ def test_checkpointing_on_node_failure(ray_start_cluster_2_nodes,
 
 
 @pytest.mark.skip(reason="TODO: Actor checkpointing")
-def test_checkpointing_save_exception(ray_start_regular,
+def test_checkpointing_save_exception(ray_start_regular, error_pubsub,
                                       ray_checkpointable_actor_cls):
     """Test actor can still be recovered if checkpoints fail to complete."""
+
+    p = error_pubsub
 
     @ray.remote(max_restarts=2)
     class RemoteCheckpointableActor(ray_checkpointable_actor_cls):
@@ -662,13 +664,17 @@ def test_checkpointing_save_exception(ray_start_regular,
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
 
     # Check that the checkpoint error was pushed to the driver.
-    wait_for_errors(ray_constants.CHECKPOINT_PUSH_ERROR, 1)
+    errors = get_error_message(p, 1, ray_constants.CHECKPOINT_PUSH_ERROR)
+    assert len(errors) == 1
+    assert errors[0].type == ray_constants.CHECKPOINT_PUSH_ERROR
 
 
 @pytest.mark.skip(reason="TODO: Actor checkpointing")
-def test_checkpointing_load_exception(ray_start_regular,
+def test_checkpointing_load_exception(ray_start_regular, error_pubsub,
                                       ray_checkpointable_actor_cls):
     """Test actor can still be recovered if checkpoints fail to load."""
+
+    p = error_pubsub
 
     @ray.remote(max_restarts=2)
     class RemoteCheckpointableActor(ray_checkpointable_actor_cls):
@@ -703,7 +709,9 @@ def test_checkpointing_load_exception(ray_start_regular,
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
 
     # Check that the checkpoint error was pushed to the driver.
-    wait_for_errors(ray_constants.CHECKPOINT_PUSH_ERROR, 1)
+    errors = get_error_message(p, 1, ray_constants.CHECKPOINT_PUSH_ERROR)
+    assert len(errors) == 1
+    assert errors[0].type == ray_constants.CHECKPOINT_PUSH_ERROR
 
 
 @pytest.mark.parametrize(
@@ -758,13 +766,15 @@ def test_bad_checkpointable_actor_class():
                 return True
 
 
-def test_init_exception_in_checkpointable_actor(ray_start_regular,
-                                                ray_checkpointable_actor_cls):
+def test_init_exception_in_checkpointable_actor(
+        ray_start_regular, error_pubsub, ray_checkpointable_actor_cls):
     # This test is similar to test_failure.py::test_failed_actor_init.
     # This test is used to guarantee that checkpointable actor does not
     # break the same logic.
     error_message1 = "actor constructor failed"
     error_message2 = "actor method failed"
+
+    p = error_pubsub
 
     @ray.remote
     class CheckpointableFailedActor(ray_checkpointable_actor_cls):
@@ -780,17 +790,15 @@ def test_init_exception_in_checkpointable_actor(ray_start_regular,
     a = CheckpointableFailedActor.remote()
 
     # Make sure that we get errors from a failed constructor.
-    wait_for_errors(ray_constants.TASK_PUSH_ERROR, 1)
-    errors = relevant_errors(ray_constants.TASK_PUSH_ERROR)
+    errors = get_error_message(p, 1, ray_constants.TASK_PUSH_ERROR)
     assert len(errors) == 1
-    assert error_message1 in errors[0]["message"]
+    assert error_message1 in errors[0].error_message
 
     # Make sure that we get errors from a failed method.
     a.fail_method.remote()
-    wait_for_errors(ray_constants.TASK_PUSH_ERROR, 2)
-    errors = relevant_errors(ray_constants.TASK_PUSH_ERROR)
-    assert len(errors) == 2
-    assert error_message1 in errors[1]["message"]
+    errors = get_error_message(p, 1, ray_constants.TASK_PUSH_ERROR)
+    assert len(errors) == 1
+    assert error_message1 in errors[0].error_message
 
 
 def test_decorated_method(ray_start_regular):
@@ -868,7 +876,7 @@ def test_ray_wait_dead_actor(ray_start_cluster):
     cluster.remove_node(get_other_nodes(cluster, exclude_head=True)[-1])
     # Repeatedly submit tasks and call ray.wait until the exception for the
     # dead actor is received.
-    assert wait_for_condition(actor_dead)
+    wait_for_condition(actor_dead)
 
     # Create an actor on the local node that will call ray.wait in a loop.
     head_node_resource = "HEAD_NODE"
@@ -888,7 +896,143 @@ def test_ray_wait_dead_actor(ray_start_cluster):
     # Repeatedly call ray.wait through the local actor until the exception for
     # the dead actor is received.
     parent_actor = ParentActor.remote()
-    assert wait_for_condition(lambda: ray.get(parent_actor.wait.remote()))
+    wait_for_condition(lambda: ray.get(parent_actor.wait.remote()))
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "num_cpus": 1,
+        "num_nodes": 1,
+    }], indirect=True)
+def test_actor_owner_worker_dies_before_dependency_ready(ray_start_cluster):
+    """Test actor owner worker dies before local dependencies are resolved.
+    This test verifies the scenario where owner worker
+    has failed before actor dependencies are resolved.
+    Reference: https://github.com/ray-project/ray/pull/8045
+    """
+
+    @ray.remote
+    class Actor:
+        def __init__(self, dependency):
+            print("actor: {}".format(os.getpid()))
+            self.dependency = dependency
+
+        def f(self):
+            return self.dependency
+
+    @ray.remote
+    class Owner:
+        def get_pid(self):
+            return os.getpid()
+
+        def create_actor(self, caller_handle):
+            s = SignalActor.remote()
+            # Create an actor which depends on an object that can never be
+            # resolved.
+            actor_handle = Actor.remote(s.wait.remote())
+
+            pid = os.getpid()
+            signal_handle = SignalActor.remote()
+            caller_handle.call.remote(pid, signal_handle, actor_handle)
+            # Wait until the `Caller` start executing the remote `call` method.
+            ray.get(signal_handle.wait.remote())
+            # exit
+            os._exit(0)
+
+    @ray.remote
+    class Caller:
+        def call(self, owner_pid, signal_handle, actor_handle):
+            # Notify the `Owner` that the `Caller` is executing the remote
+            # `call` method.
+            ray.get(signal_handle.send.remote())
+            # Wait for the `Owner` to exit.
+            wait_for_pid_to_exit(owner_pid)
+            oid = actor_handle.f.remote()
+            # It will hang without location resolution protocol.
+            ray.get(oid)
+
+        def hang(self):
+            return True
+
+    owner = Owner.remote()
+    owner_pid = ray.get(owner.get_pid.remote())
+
+    caller = Caller.remote()
+    owner.create_actor.remote(caller)
+    # Wait for the `Owner` to exit.
+    wait_for_pid_to_exit(owner_pid)
+    # It will hang here if location is not properly resolved.
+    wait_for_condition(lambda: ray.get(caller.hang.remote()))
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "num_cpus": 3,
+        "num_nodes": 1,
+    }], indirect=True)
+def test_actor_owner_node_dies_before_dependency_ready(ray_start_cluster):
+    """Test actor owner node dies before local dependencies are resolved.
+    This test verifies the scenario where owner node
+    has failed before actor dependencies are resolved.
+    Reference: https://github.com/ray-project/ray/pull/8045
+    """
+
+    @ray.remote
+    class Actor:
+        def __init__(self, dependency):
+            print("actor: {}".format(os.getpid()))
+            self.dependency = dependency
+
+        def f(self):
+            return self.dependency
+
+    # Make sure it is scheduled in the second node.
+    @ray.remote(resources={"node": 1}, num_cpus=1)
+    class Owner:
+        def get_pid(self):
+            return os.getpid()
+
+        def create_actor(self, caller_handle):
+            s = SignalActor.remote()
+            # Create an actor which depends on an object that can never be
+            # resolved.
+            actor_handle = Actor.remote(s.wait.remote())
+
+            pid = os.getpid()
+            signal_handle = SignalActor.remote()
+            caller_handle.call.remote(pid, signal_handle, actor_handle)
+            # Wait until the `Caller` start executing the remote `call` method.
+            ray.get(signal_handle.wait.remote())
+
+    @ray.remote
+    class Caller:
+        def call(self, owner_pid, signal_handle, actor_handle):
+            # Notify the `Owner` that the `Caller` is executing the remote
+            # `call` method.
+            ray.get(signal_handle.send.remote())
+            # Wait for the `Owner` to exit.
+            wait_for_pid_to_exit(owner_pid)
+            oid = actor_handle.f.remote()
+            # It will hang without location resolution protocol.
+            ray.get(oid)
+
+        def hang(self):
+            return True
+
+    cluster = ray_start_cluster
+    node_to_be_broken = cluster.add_node(num_cpus=1, resources={"node": 1})
+
+    owner = Owner.remote()
+    owner_pid = ray.get(owner.get_pid.remote())
+
+    caller = Caller.remote()
+    owner.create_actor.remote(caller)
+    cluster.remove_node(node_to_be_broken)
+    # Wait for the `Owner` to exit.
+    wait_for_pid_to_exit(owner_pid)
+
+    # It will hang here if location is not properly resolved.
+    wait_for_condition(lambda: ray.get(caller.hang.remote()))
 
 
 if __name__ == "__main__":

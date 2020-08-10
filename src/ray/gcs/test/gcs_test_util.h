@@ -49,16 +49,30 @@ struct Mocker {
                                                        int max_restarts = 0,
                                                        bool detached = false,
                                                        const std::string name = "") {
-    rpc::CreateActorRequest request;
     rpc::Address owner_address;
-    if (owner_address.raylet_id().empty()) {
-      owner_address.set_raylet_id(ClientID::FromRandom().Binary());
-      owner_address.set_ip_address("1234");
-      owner_address.set_port(5678);
-      owner_address.set_worker_id(WorkerID::FromRandom().Binary());
-    }
+    owner_address.set_raylet_id(ClientID::FromRandom().Binary());
+    owner_address.set_ip_address("1234");
+    owner_address.set_port(5678);
+    owner_address.set_worker_id(WorkerID::FromRandom().Binary());
     auto actor_creation_task_spec =
         GenActorCreationTask(job_id, max_restarts, detached, name, owner_address);
+    rpc::CreateActorRequest request;
+    request.mutable_task_spec()->CopyFrom(actor_creation_task_spec.GetMessage());
+    return request;
+  }
+
+  static rpc::RegisterActorRequest GenRegisterActorRequest(const JobID &job_id,
+                                                           int max_restarts = 0,
+                                                           bool detached = false,
+                                                           const std::string name = "") {
+    rpc::Address owner_address;
+    owner_address.set_raylet_id(ClientID::FromRandom().Binary());
+    owner_address.set_ip_address("1234");
+    owner_address.set_port(5678);
+    owner_address.set_worker_id(WorkerID::FromRandom().Binary());
+    auto actor_creation_task_spec =
+        GenActorCreationTask(job_id, max_restarts, detached, name, owner_address);
+    rpc::RegisterActorRequest request;
     request.mutable_task_spec()->CopyFrom(actor_creation_task_spec.GetMessage());
     return request;
   }
@@ -113,8 +127,7 @@ struct Mocker {
     ActorID actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
     actor_table_data->set_actor_id(actor_id.Binary());
     actor_table_data->set_job_id(job_id.Binary());
-    actor_table_data->set_state(
-        rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
+    actor_table_data->set_state(rpc::ActorTableData::ALIVE);
     actor_table_data->set_max_restarts(1);
     actor_table_data->set_num_restarts(0);
     return actor_table_data;
