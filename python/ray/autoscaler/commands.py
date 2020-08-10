@@ -29,7 +29,7 @@ from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
 
 from ray.ray_constants import AUTOSCALER_RESOURCE_REQUEST_CHANNEL
 from ray.autoscaler.updater import NodeUpdaterThread
-import ray.autoscaler.command_runner as cmd_runner
+from ray.autoscaler.command_runner import set_using_login_shells
 from ray.autoscaler.command_runner import DockerCommandRunner
 from ray.autoscaler.log_timer import LogTimer
 from ray.worker import global_worker
@@ -105,7 +105,7 @@ def create_or_update_cluster(
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
 
-    cmd_runner.set_using_login_shells(use_login_shells)
+    set_using_login_shells(use_login_shells)
     cmd_output_util.set_output_redirected(dump_command_output)
 
     if use_login_shells:

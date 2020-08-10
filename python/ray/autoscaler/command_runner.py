@@ -46,6 +46,9 @@ def set_using_login_shells(val):
     setup. This is also how all commands were ran in the past. The only reason
     to use login shells over non-interactive shells is if you need some weird
     and non-robust tool to work.
+
+    Args:
+        val (bool): If true, login shells will be used to run all commands.
     """
     _config["use_login_shells"] = val
 

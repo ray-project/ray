@@ -21,6 +21,10 @@ def set_output_redirected(val):
     """Choose between logging to a temporary file and to `sys.stdout`.
 
     The default is to log to a file.
+
+    Args:
+        val (bool): If true, subprocess output will be redirected to
+                    a temporary file.
     """
     _config["_redirect_output"] = val
 
