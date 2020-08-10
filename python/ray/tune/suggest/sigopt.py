@@ -130,13 +130,13 @@ class SigOptSearch(Searcher):
                 failed=True, suggestion=self._live_trial_mapping[trial_id].id)
         del self._live_trial_mapping[trial_id]
 
-    def save(self, checkpoint_dir):
+    def save(self, checkpoint_path):
         trials_object = (self.conn, self.experiment)
-        with open(checkpoint_dir, "wb") as outputFile:
+        with open(checkpoint_path, "wb") as outputFile:
             pickle.dump(trials_object, outputFile)
 
-    def restore(self, checkpoint_dir):
-        with open(checkpoint_dir, "rb") as inputFile:
+    def restore(self, checkpoint_path):
+        with open(checkpoint_path, "rb") as inputFile:
             trials_object = pickle.load(inputFile)
         self.conn = trials_object[0]
         self.experiment = trials_object[1]

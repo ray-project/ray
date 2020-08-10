@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 
+# flake8: noqa
+# yapf: disable
+
 # __tutorial_imports_begin__
 import argparse
 import os
@@ -15,12 +18,11 @@ from ray import tune
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.utils import validate_save_restore
 from ray.tune.trial import ExportFormat
-
 # __tutorial_imports_end__
 
 
 # __trainable_begin__
-class PytorchTrainble(tune.Trainable):
+class PytorchTrainable(tune.Trainable):
     """Train a Pytorch ConvNet with Trainable and PopulationBasedTraining
        scheduler. The example reuse some of the functions in mnist_pytorch,
        and is a good demo for how to add the tuning function without
@@ -65,9 +67,8 @@ class PytorchTrainble(tune.Trainable):
 
         self.config = new_config
         return True
-
-
 # __trainable_end__
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -79,8 +80,8 @@ if __name__ == "__main__":
     datasets.MNIST("~/data", train=True, download=True)
 
     # check if PytorchTrainble will save/restore correctly before execution
-    validate_save_restore(PytorchTrainble)
-    validate_save_restore(PytorchTrainble, use_object_store=True)
+    validate_save_restore(PytorchTrainable)
+    validate_save_restore(PytorchTrainable, use_object_store=True)
 
     # __pbt_begin__
     scheduler = PopulationBasedTraining(
@@ -94,7 +95,6 @@ if __name__ == "__main__":
             # allow perturbations within this set of categorical values
             "momentum": [0.8, 0.9, 0.99],
         })
-
     # __pbt_end__
 
     # __tune_begin__
@@ -114,7 +114,7 @@ if __name__ == "__main__":
     stopper = CustomStopper()
 
     analysis = tune.run(
-        PytorchTrainble,
+        PytorchTrainable,
         name="pbt_test",
         scheduler=scheduler,
         reuse_actors=True,
@@ -134,7 +134,7 @@ if __name__ == "__main__":
     best_trial = analysis.get_best_trial("mean_accuracy")
     best_checkpoint = max(
         analysis.get_trial_checkpoints_paths(best_trial, "mean_accuracy"))
-    restored_trainable = PytorchTrainble()
+    restored_trainable = PytorchTrainable()
     restored_trainable.restore(best_checkpoint[0])
     best_model = restored_trainable.model
     # Note that test only runs on a small random set of the test data, thus the

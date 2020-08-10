@@ -139,21 +139,19 @@ class RemoteFunction:
 
         return FuncWrapper()
 
-    def _remote(
-            self,
-            args=None,
-            kwargs=None,
-            num_return_vals=None,
-            is_direct_call=None,
-            num_cpus=None,
-            num_gpus=None,
-            memory=None,
-            object_store_memory=None,
-            resources=None,
-            max_retries=None,
-            placement_group_id=None,
-            # TODO(ekl) set default to -1 once we support -1 as "any index"
-            placement_group_bundle_index=0):
+    def _remote(self,
+                args=None,
+                kwargs=None,
+                num_return_vals=None,
+                is_direct_call=None,
+                num_cpus=None,
+                num_gpus=None,
+                memory=None,
+                object_store_memory=None,
+                resources=None,
+                max_retries=None,
+                placement_group_id=None,
+                placement_group_bundle_index=-1):
         """Submit the remote function for execution."""
         worker = ray.worker.global_worker
         worker.check_connected()

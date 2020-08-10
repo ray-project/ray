@@ -23,6 +23,7 @@ tensorflow_probability
 timm
 torch>=1.5.0
 torchvision>=0.6.0
+transformers
 tune-sklearn==0.0.5
 wandb
 xgboost

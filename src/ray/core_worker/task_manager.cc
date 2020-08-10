@@ -445,12 +445,6 @@ void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,
     const auto object_id = ObjectID::ForTaskReturn(task_id, /*index=*/i + 1);
     RAY_UNUSED(in_memory_store_->Put(RayObject(error_type), object_id));
   }
-
-  if (spec.IsActorCreationTask()) {
-    // Publish actor death if actor creation task failed after
-    // a number of retries.
-    actor_reporter_->PublishTerminatedActor(spec);
-  }
 }
 
 absl::optional<TaskSpecification> TaskManager::GetTaskSpec(const TaskID &task_id) const {

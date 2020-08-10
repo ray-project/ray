@@ -405,7 +405,9 @@ class TestDDPG(unittest.TestCase):
         policy_t = sigmoid(2.0 * fc(
             relu(
                 fc(model_out_t, weights[ks[1]], weights[ks[0]], framework=fw)),
-            weights[ks[5]], weights[ks[4]], framework=fw))
+            weights[ks[5]],
+            weights[ks[4]],
+            framework=fw))
         # Get policy output for t+1 (target model).
         policy_tp1 = sigmoid(2.0 * fc(
             relu(
@@ -413,7 +415,9 @@ class TestDDPG(unittest.TestCase):
                    weights[ks[3]],
                    weights[ks[2]],
                    framework=fw)),
-            weights[ks[7]], weights[ks[6]], framework=fw))
+            weights[ks[7]],
+            weights[ks[6]],
+            framework=fw))
         # Assume no smooth target policy.
         policy_tp1_smoothed = policy_tp1
 

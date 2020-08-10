@@ -154,7 +154,7 @@ class GaussianNoise(Exploration):
                 scale = self.scale_schedule(self.last_timestep)
                 gaussian_sample = scale * torch.normal(
                     mean=torch.zeros(det_actions.size()), std=self.stddev).to(
-                    self.device)
+                        self.device)
                 action = torch.min(
                     torch.max(
                         det_actions + gaussian_sample,

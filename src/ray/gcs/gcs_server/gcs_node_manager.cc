@@ -140,11 +140,9 @@ void GcsNodeManager::NodeFailureDetector::ScheduleTick() {
 //////////////////////////////////////////////////////////////////////////////////////////
 GcsNodeManager::GcsNodeManager(boost::asio::io_service &main_io_service,
                                boost::asio::io_service &node_failure_detector_io_service,
-                               gcs::ErrorInfoAccessor &error_info_accessor,
                                std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
                                std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
-    : error_info_accessor_(error_info_accessor),
-      main_io_service_(main_io_service),
+    : main_io_service_(main_io_service),
       node_failure_detector_(new NodeFailureDetector(
           node_failure_detector_io_service, gcs_table_storage, gcs_pub_sub,
           [this](const ClientID &node_id) {
@@ -406,7 +404,8 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
                     << " has missed too many heartbeats from it.";
       auto error_data_ptr =
           gcs::CreateErrorTableData(type, error_message.str(), current_time_ms());
-      RAY_CHECK_OK(error_info_accessor_.AsyncReportJobError(error_data_ptr, nullptr));
+      RAY_CHECK_OK(gcs_pub_sub_->Publish(ERROR_INFO_CHANNEL, node_id.Hex(),
+                                         error_data_ptr->SerializeAsString(), nullptr));
     }
 
     // Notify all listeners.

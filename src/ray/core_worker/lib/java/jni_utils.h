@@ -15,6 +15,7 @@
 #pragma once
 
 #include <jni.h>
+
 #include <algorithm>
 
 #include "ray/common/buffer.h"
@@ -241,6 +242,14 @@ class JavaByteArrayBuffer : public ray::Buffer {
   jbyte *native_bytes_;
 };
 
+/// Convert a Java byte array to a C++ string.
+inline std::string JavaByteArrayToNativeString(JNIEnv *env, const jbyteArray &bytes) {
+  const auto size = env->GetArrayLength(bytes);
+  std::string str(size, 0);
+  env->GetByteArrayRegion(bytes, 0, size, reinterpret_cast<jbyte *>(&str.front()));
+  return str;
+}
+
 /// Convert a Java byte array to a C++ UniqueID.
 template <typename ID>
 inline ID JavaByteArrayToId(JNIEnv *env, const jbyteArray &bytes) {
@@ -338,8 +347,8 @@ inline jobject NativeVectorToJavaList(
       env->NewObject(java_array_list_class, java_array_list_init_with_capacity,
                      (jint)native_vector.size());
   RAY_CHECK_JAVA_EXCEPTION(env);
-  for (const auto &item : native_vector) {
-    auto element = element_converter(env, item);
+  for (auto it = native_vector.begin(); it != native_vector.end(); ++it) {
+    auto element = element_converter(env, *it);
     env->CallVoidMethod(java_list, java_list_add, element);
     RAY_CHECK_JAVA_EXCEPTION(env);
     env->DeleteLocalRef(element);

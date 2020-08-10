@@ -1,13 +1,14 @@
 
 #pragma once
 
+#include <ray/api/wait_result.h>
+
 #include <cstdint>
 #include <memory>
 #include <msgpack.hpp>
 #include <typeinfo>
 #include <vector>
 
-#include <ray/api/wait_result.h>
 #include "ray/core.h"
 
 namespace ray {
