@@ -13,7 +13,15 @@ logger = logging.getLogger(__name__)
 class NodeLauncher(threading.Thread):
     """Launches nodes asynchronously in the background."""
 
-    def __init__(self, provider, queue, pending, node_types, instance_types=None, index=None, *args, **kwargs):
+    def __init__(self,
+                 provider,
+                 queue,
+                 pending,
+                 node_types,
+                 instance_types=None,
+                 index=None,
+                 *args,
+                 **kwargs):
         self.queue = queue
         self.pending = pending
         self.provider = provider
@@ -34,8 +42,10 @@ class NodeLauncher(threading.Thread):
             TAG_RAY_LAUNCH_CONFIG: launch_hash,
         }
         if instance_name:
-            assert self.instance_types, "Instance definitions must be provided in order to scale by an instance type!"
-            instance_type = self.provider.get_instance_type(self.instance_types[instance_name])
+            assert self.instance_types, "Instance definitions must be provided" \
+                "in order to scale by an instance type!"
+            instance_type = self.provider.get_instance_type(
+                self.instance_types[instance_name])
             node_tags[TAG_RAY_INSTANCE_TYPE] = instance_type
             self.provider.create_node_of_type(node_config, node_tags,
                                               instance_type, count)

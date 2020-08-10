@@ -138,12 +138,10 @@ class StandardAutoscaler:
                                 "Too many errors, abort.")
                 raise e
 
-
     def _node_resources(self, node_id):
         instance_name = self.node_types[node_id]
         config = self.instance_types[instance_name]
         return config["resources"]
-
 
     def _update(self):
         now = time.time()
@@ -388,7 +386,6 @@ class StandardAutoscaler:
         updater.start()
         self.updaters[node_id] = updater
 
-
     def should_update(self, node_id):
         if not self.can_update(node_id):
             return None, None, None  # no update
@@ -410,7 +407,8 @@ class StandardAutoscaler:
 
         return (node_id, init_commands, ray_commands)
 
-    def spawn_updater(self, node_id, init_commands, ray_start_commands, resources):
+    def spawn_updater(self, node_id, init_commands, ray_start_commands,
+                      resources):
         updater = NodeUpdaterThread(
             node_id=node_id,
             provider_config=self.config["provider"],
