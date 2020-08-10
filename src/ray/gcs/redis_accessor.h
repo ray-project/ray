@@ -414,9 +414,6 @@ class RedisErrorInfoAccessor : public ErrorInfoAccessor {
 
   Status AsyncReportJobError(const std::shared_ptr<ErrorTableData> &data_ptr,
                              const StatusCallback &callback) override;
-
- private:
-  RedisGcsClient *client_impl_{nullptr};
 };
 
 /// \class RedisStatsInfoAccessor

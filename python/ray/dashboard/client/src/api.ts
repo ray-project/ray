@@ -146,51 +146,65 @@ export type RayletWorkerStats = {
   coreWorkerStats: RayletCoreWorkerStats;
 };
 
-export type RayletActorInfo =
-  | {
-      actorId: string;
-      actorTitle: string;
-      averageTaskExecutionSpeed: number;
-      children: RayletInfoResponse["actors"];
-      // currentTaskFuncDesc: string[];
-      ipAddress: string;
-      jobId: string;
-      nodeId: string;
-      numExecutedTasks: number;
-      numLocalObjects: number;
-      numObjectRefsInScope: number;
-      pid: number;
-      port: number;
-      state:
-        | ActorState.Creating
-        | ActorState.Alive
-        | ActorState.Restarting
-        | ActorState.Dead;
-      taskQueueLength: number;
-      timestamp: number;
-      usedObjectStoreMemory: number;
-      usedResources: { [key: string]: ResourceAllocations };
-      currentTaskDesc?: string;
-      numPendingTasks?: number;
-      webuiDisplay?: Record<string, string>;
-    }
-  | {
-      actorId: string;
-      actorTitle: string;
-      requiredResources: { [key: string]: number };
-      state: ActorState.Invalid;
-      invalidStateType?: InvalidStateType;
-    };
-
-export type InvalidStateType = "infeasibleActor" | "pendingActor";
-
 export enum ActorState {
   Invalid = -1,
-  Creating = 0,
-  Alive = 1,
-  Restarting = 2,
-  Dead = 3,
+  DependenciesUnready = 0,
+  PendingCreation = 1,
+  Alive = 2,
+  Restarting = 3,
+  Dead = 4,
 }
+
+export type RayletActorInfo = FullActorInfo | PartialActorInfo;
+
+export type FullActorInfo = {
+  actorId: string;
+  actorTitle: string;
+  averageTaskExecutionSpeed: number;
+  children: RayletInfoResponse["actors"];
+  // currentTaskFuncDesc: string[];
+  ipAddress: string;
+  jobId: string;
+  nodeId: string;
+  numExecutedTasks: number;
+  numLocalObjects: number;
+  numObjectRefsInScope: number;
+  pid: number;
+  port: number;
+  state:
+    | ActorState.Alive
+    | ActorState.Restarting
+    | ActorState.Dead
+    | ActorState.DependenciesUnready
+    | ActorState.PendingCreation;
+  taskQueueLength: number;
+  timestamp: number;
+  usedObjectStoreMemory: number;
+  usedResources: { [key: string]: ResourceAllocations };
+  currentTaskDesc?: string;
+  numPendingTasks?: number;
+  webuiDisplay?: Record<string, string>;
+};
+
+export type PartialActorInfo = {
+  actorId: string;
+  actorTitle: string;
+  requiredResources?: { [key: string]: number };
+  state: ActorState.Invalid;
+  invalidStateType?: InvalidStateType;
+};
+
+// eslint-disable-next-line
+export function isFullActorInfo(
+  rayletInfo: RayletActorInfo,
+): rayletInfo is FullActorInfo {
+  // Lint disabled because arrow functions don't play well with type guards.
+  // This function is used to determine what kind of information we have about
+  // a given actor in a response based on its state.
+  return rayletInfo.state !== ActorState.Invalid;
+}
+
+export type InvalidStateType = "infeasibleActor" | "pendingActor";
 
 export type RayletInfoResponse = {
   nodes: {

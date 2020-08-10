@@ -79,7 +79,6 @@ class WorkerInterface {
   virtual ResourceIdSet ReleaseTaskCpuResources() = 0;
   virtual void AcquireTaskCpuResources(const ResourceIdSet &cpu_resources) = 0;
 
-  virtual Status AssignTask(const Task &task, const ResourceIdSet &resource_id_set) = 0;
   virtual void DirectActorCallArgWaitComplete(int64_t tag) = 0;
 
   // Setter, geter, and clear methods  for allocated_instances_.
@@ -165,7 +164,6 @@ class Worker : public WorkerInterface {
   ResourceIdSet ReleaseTaskCpuResources();
   void AcquireTaskCpuResources(const ResourceIdSet &cpu_resources);
 
-  Status AssignTask(const Task &task, const ResourceIdSet &resource_id_set);
   void DirectActorCallArgWaitComplete(int64_t tag);
 
   // Setter, geter, and clear methods  for allocated_instances_.

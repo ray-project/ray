@@ -16,11 +16,11 @@
 
 #include <jni.h>
 
+#include "jni_utils.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker.h"
-#include "jni_utils.h"
 
 #ifdef __cplusplus
 extern "C" {

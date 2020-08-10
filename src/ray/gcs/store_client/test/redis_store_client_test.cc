@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/gcs/store_client/redis_store_client.h"
+
 #include "ray/common/test_util.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/store_client/test/store_client_test_base.h"
@@ -53,6 +54,12 @@ TEST_F(RedisStoreClientTest, AsyncPutAndDeleteWithIndexTest) {
 
 TEST_F(RedisStoreClientTest, AsyncGetAllAndBatchDeleteTest) {
   TestAsyncGetAllAndBatchDelete();
+}
+
+TEST_F(RedisStoreClientTest, TestAsyncDeleteWithIndex) { TestAsyncDeleteWithIndex(); }
+
+TEST_F(RedisStoreClientTest, TestAsyncBatchDeleteWithIndex) {
+  TestAsyncBatchDeleteWithIndex();
 }
 
 }  // namespace gcs
