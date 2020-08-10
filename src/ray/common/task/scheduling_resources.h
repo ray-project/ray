@@ -151,20 +151,25 @@ class ResourceSet {
   /// \brief Aggregate resources from the other set into this set, adding any missing
   /// resource labels to this set.
   ///
-  /// \param bundle_id: The placement group id.
+  /// This adds both the the indexed and wildcard resources (e.g., both
+  /// CPU_group_i_zzz and CPU_group_zzz).
+  ///
+  /// \param group_id: The placement group id.
   /// \param bundle_index: The index of the bundle.
   /// \param other: The other resource set to add.
   /// \return Void.
-  void AddBundleResources(const PlacementGroupID &bundle_id, const int bundle_index,
+  void AddBundleResources(const PlacementGroupID &group_id, const int bundle_index,
                           const ResourceSet &other);
 
   /// \brief Return back all the bundle resource. Changing the resource name and adding
   /// any missing resource labels to this set.
   ///
-  /// \param bundle_id: The placement group id.
-  /// \param bundle_index: The index of the bundle.
+  /// This is the inverse of AddBundleResources().
+  ///
+  /// \param group_id: The placement group id.
+  /// \param bundle_index: The bundle index to return resources for.
   /// \return Void.
-  void ReturnBundleResources(const PlacementGroupID &bundle_id, const int bundle_index);
+  void ReturnBundleResources(const PlacementGroupID &group_id, const int bundle_index);
 
   /// \brief Subtract a set of resources from the current set of resources and
   /// check that the post-subtraction result nonnegative. Assumes other
@@ -422,17 +427,28 @@ class ResourceIdSet {
   /// \param capacity capacity of the resource being added
   void AddOrUpdateResource(const std::string &resource_name, int64_t capacity);
 
-  /// \brief  Add a Bundle resource in the ResourceIdSet.
+  /// \brief Add a Bundle resource in the ResourceIdSet.
   ///
-  /// \param resource_name the name of the resource to create/update
+  /// This adds both the the indexed and wildcard resources (e.g., both
+  /// CPU_group_i_zzz and CPU_group_zzz).
+  ///
+  /// \param group_id: The placement group id.
+  /// \param bundle_index: The index of the bundle.
+  /// \param resource_name the name of the resource to create/update (e.g., "CPU").
   /// \param resource_ids resource_ids of the resource being added
-  void AddBundleResource(const std::string &resource_name, ResourceIds &resource_ids);
+  void AddBundleResourceIds(const PlacementGroupID &group_id, const int bundle_index,
+                            const std::string &resource_name, ResourceIds &resource_ids);
 
-  /// \brief  remove a Bundle resource in the ResourceIdSet.
+  /// \brief remove a Bundle resource in the ResourceIdSet.
   ///
-  /// \param resource_name the name of the resource to remove.
+  /// The bundle resources will be returned to their original resource names.
+  ///
+  /// \param group_id: The placement group id.
+  /// \param bundle_index: The index of the bundle.
+  /// \param resource_name the name of the resource to remove (e.g., "CPU").
+  void ReturnBundleResources(const PlacementGroupID &group_id, const int bundle_index,
+                             const std::string &resource_name);
 
-  void CancelResourceReserve(const std::string &resource_name);
   /// \brief Deletes a resource in the ResourceIdSet. This does not raise an exception,
   /// just deletes the resource. Tasks with acquired resources keep running.
   ///
@@ -556,15 +572,24 @@ class SchedulingResources {
 
   /// \brief Update total, available and load resources with the ResourceIds.
   /// Create if not exists.
+  ///
+  /// The resources will be transfered from their original resource names.
+  /// This includes both the the indexed and wildcard resources (e.g., both
+  /// CPU_group_i_zzz and CPU_group_zzz).
+  ///
   /// \param resource_name: Name of the resource to be modified
   /// \param resource_set: New resource_set of the resource.
-  void UpdateBundleResource(const PlacementGroupID &group, const int bundle_index,
-                            const ResourceSet &resource_set);
+  void TransferToBundleResources(const PlacementGroupID &group, const int bundle_index,
+                                 const ResourceSet &resource_set);
 
   /// \brief delete total, available and load resources with the ResourceIds.
-  /// Create if not exists.
-  /// \param resource_name: Name of the resource to be deleted
-  void ReturnBundleResource(const PlacementGroupID &group, const int bundle_index);
+  ///
+  /// The bundle resources will be returned to their original resource names.
+  /// This is the inverse of TransferToBundleResources().
+  ///
+  /// \param group_id: Placement group id to delete resources for.
+  /// \param bundle_index: The bundle index to return resources for.
+  void ReturnBundleResources(const PlacementGroupID &group_id, const int bundle_index);
 
   /// \brief Delete resource from total, available and load resources.
   ///

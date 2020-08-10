@@ -192,6 +192,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
           {
             label: "Required resources",
             value:
+              actor.requiredResources &&
               Object.entries(actor.requiredResources).length > 0 &&
               Object.entries(actor.requiredResources)
                 .sort((a, b) => a[0].localeCompare(b[0]))

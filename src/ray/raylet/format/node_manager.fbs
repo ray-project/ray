@@ -55,22 +55,6 @@ enum MessageType:int {
   NotifyDirectCallTaskBlocked,
   // Notify the current worker is unblocked. This is only used by direct task calls.
   NotifyDirectCallTaskUnblocked,
-  // A request to get the task frontier for an actor, called by the actor when
-  // saving a checkpoint.
-  GetActorFrontierRequest,
-  // The ActorFrontier response to a GetActorFrontierRequest. The raylet
-  // returns the actor's per-handle task counts and execution dependencies,
-  // which can later be used as the argument to SetActorFrontier
-  // when resuming from the checkpoint.
-  GetActorFrontierReply,
-  // A request to set the task frontier for an actor, called when resuming from
-  // a checkpoint. The raylet will update the actor's per-handle task
-  // counts and execution dependencies, discard any tasks that already executed
-  // before the checkpoint, and make any tasks on the frontier runnable by
-  // making their execution dependencies available.
-  SetActorFrontier,
-  // A node manager request to process a task forwarded from another node manager.
-  ForwardTaskRequest,
   // Wait for objects to be ready either from local or remote Plasma stores.
   WaitRequest,
   // The response message to WaitRequest; replies with the objects found and objects
@@ -180,14 +164,6 @@ table AnnounceWorkerPort {
 table RegisterNodeManagerRequest {
   // GCS ClientID of the connecting node manager.
   client_id: string;
-}
-
-table ForwardTaskRequest {
-  // The ID of the task to be forwarded.
-  task_id: string;
-  // The tasks in the uncommitted lineage of the forwarded task. This
-  // should include task_id.
-  uncommitted_tasks: [Task];
 }
 
 // Mimics the Address protobuf.

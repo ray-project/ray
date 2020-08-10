@@ -59,11 +59,13 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
     thread_io_service_->join();
   }
 
+  std::shared_ptr<MockPlacementGroupScheduler> mock_placement_group_scheduler_;
+  std::unique_ptr<gcs::GcsPlacementGroupManager> gcs_placement_group_manager_;
+
+ private:
   std::unique_ptr<std::thread> thread_io_service_;
   boost::asio::io_service io_service_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  std::shared_ptr<MockPlacementGroupScheduler> mock_placement_group_scheduler_;
-  std::unique_ptr<gcs::GcsPlacementGroupManager> gcs_placement_group_manager_;
 };
 
 TEST_F(GcsPlacementGroupManagerTest, TestBasic) {
@@ -126,6 +128,25 @@ TEST_F(GcsPlacementGroupManagerTest, TestGetPlacementGroupIDByName) {
       gcs_placement_group_manager_->GetPlacementGroupIDByName("test_name"),
       PlacementGroupID::FromBinary(
           create_placement_group_request.placement_group_spec().placement_group_id()));
+}
+
+TEST_F(GcsPlacementGroupManagerTest, TestRescheduleWhenNodeAdd) {
+  auto create_placement_group_request = Mocker::GenCreatePlacementGroupRequest();
+  std::atomic<int> finished_placement_group_count(0);
+  gcs_placement_group_manager_->RegisterPlacementGroup(
+      create_placement_group_request,
+      [&finished_placement_group_count]() { ++finished_placement_group_count; });
+  ASSERT_EQ(finished_placement_group_count, 0);
+  ASSERT_EQ(mock_placement_group_scheduler_->placement_groups.size(), 1);
+  auto placement_group = mock_placement_group_scheduler_->placement_groups.back();
+  mock_placement_group_scheduler_->placement_groups.pop_back();
+
+  // If the creation of placement group fails, it will be rescheduled after a short time.
+  gcs_placement_group_manager_->OnPlacementGroupCreationFailed(placement_group);
+  auto condition = [this]() {
+    return (int)mock_placement_group_scheduler_->placement_groups.size() == 1;
+  };
+  EXPECT_TRUE(WaitForCondition(condition, 10 * 1000));
 }
 
 }  // namespace ray

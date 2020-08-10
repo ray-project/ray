@@ -197,7 +197,8 @@ void GcsServer::InitGcsActorManager() {
   gcs_node_manager_->AddNodeAddedListener(
       [this](const std::shared_ptr<rpc::GcsNodeInfo> &) {
         // Because a new node has been added, we need to try to schedule the pending
-        // actors.
+        // placement groups and the pending actors.
+        gcs_placement_group_manager_->SchedulePendingPlacementGroups();
         gcs_actor_manager_->SchedulePendingActors();
       });
 
