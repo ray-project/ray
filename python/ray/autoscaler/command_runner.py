@@ -573,11 +573,13 @@ class DockerCommandRunner(SSHCommandRunner):
         no_exist = "not_present"
         cmd = check_docker_running_cmd(self.docker_name) + " ".join(
             ["||", "echo", quote(no_exist)])
-        output = self.ssh_command_runner.run(
-            cmd, with_output=True).decode("utf-8").strip()
-        if no_exist in output:
-            return False
-        return "true" in output.lower()
+        output = self.ssh_command_runner.run(cmd, with_output=True)
+        if output is not None:
+            output = output.decode("utf-8").strip()
+            if no_exist in output:
+                return False
+            return "true" in output.lower()
+        return False
 
     def _docker_expand_user(self, string, any_char=False):
         user_pos = string.find("~")
