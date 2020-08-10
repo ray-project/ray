@@ -734,6 +734,27 @@ while actor_status["State"] != ray.gcs_utils.ActorTableData.DEAD:
 
 
 @pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "local_mode": True
+    }], indirect=True)
+def test_detached_actor_local_mode(ray_start_regular):
+    RETURN_VALUE = 3
+
+    @ray.remote
+    class Y:
+        def f(self):
+            return RETURN_VALUE
+
+    Y.options(name="test").remote()
+    y = ray.get_actor("test")
+    assert ray.get(y.f.remote()) == RETURN_VALUE
+
+    ray.kill(y)
+    with pytest.raises(ValueError):
+        ray.get_actor("test")
+
+
+@pytest.mark.parametrize(
     "ray_start_cluster", [{
         "num_cpus": 3,
         "num_nodes": 1,
@@ -856,13 +877,16 @@ def test_actor_creation_task_crash(ray_start_regular):
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "num_cpus": 2,
-        "num_gpus": 1
-    }], indirect=True)
+        "resources": {
+            "a": 1
+        }
+    }],
+    indirect=True)
 def test_pending_actor_removed_by_owner(ray_start_regular):
     # Verify when an owner of pending actors is killed, the actor resources
     # are correctly returned.
 
-    @ray.remote(num_cpus=1, num_gpus=1)
+    @ray.remote(num_cpus=1, resources={"a": 1})
     class A:
         def __init__(self):
             self.actors = []
@@ -870,12 +894,12 @@ def test_pending_actor_removed_by_owner(ray_start_regular):
         def create_actors(self):
             self.actors = [B.remote() for _ in range(2)]
 
-    @ray.remote(num_gpus=1)
+    @ray.remote(resources={"a": 1})
     class B:
         def ping(self):
             return True
 
-    @ray.remote(num_gpus=1)
+    @ray.remote(resources={"a": 1})
     def f():
         return True
 

@@ -352,8 +352,8 @@ TEST_P(WorkerPoolTest, PopWorkersOfMultipleLanguages) {
 
 TEST_P(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
   const std::vector<std::string> java_worker_command = {
-      "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_0", "dummy_java_worker_command",
-      "RAY_WORKER_RAYLET_CONFIG_PLACEHOLDER", "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_1"};
+      "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER", "dummy_java_worker_command",
+      "RAY_WORKER_RAYLET_CONFIG_PLACEHOLDER"};
   SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}},
                      {Language::JAVA, java_worker_command}});
 
@@ -364,10 +364,9 @@ TEST_P(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
                                    task_spec.DynamicWorkerOptions());
   const auto real_command =
       worker_pool_->GetWorkerCommand(worker_pool_->LastStartedWorkerProcess());
-  ASSERT_EQ(real_command,
-            std::vector<std::string>({"test_op_0", "dummy_java_worker_command",
-                                      GetNumJavaWorkersPerProcessSystemProperty(1),
-                                      "test_op_1"}));
+  ASSERT_EQ(real_command, std::vector<std::string>(
+                              {"test_op_0", "test_op_1", "dummy_java_worker_command",
+                               GetNumJavaWorkersPerProcessSystemProperty(1)}));
 }
 
 TEST_P(WorkerPoolTest, PopWorkerMultiTenancy) {

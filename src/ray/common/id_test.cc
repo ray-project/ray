@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #include "gtest/gtest.h"
-
 #include "ray/common/common_protocol.h"
 #include "ray/common/task/task_spec.h"
 

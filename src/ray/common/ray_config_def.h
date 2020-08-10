@@ -285,6 +285,8 @@ RAY_CONFIG(int64_t, gcs_redis_heartbeat_interval_milliseconds, 100)
 RAY_CONFIG(uint32_t, gcs_lease_worker_retry_interval_ms, 200)
 /// Duration to wait between retries for creating actor in gcs server.
 RAY_CONFIG(uint32_t, gcs_create_actor_retry_interval_ms, 200)
+/// Duration to wait between retries for creating placement group in gcs server.
+RAY_CONFIG(uint32_t, gcs_create_placement_group_retry_interval_ms, 200)
 
 /// Maximum number of times to retry putting an object when the plasma store is full.
 /// Can be set to -1 to enable unlimited retries.
