@@ -32,31 +32,6 @@ class RayError(Exception):
         else:
             return CrossLanguageError(ray_exception.formatted_exception_string)
 
-    @staticmethod
-    def _strip_traceback(tb):
-        """Strip traceback stack, remove unused traceback."""
-
-        def _is_stripped(tb):
-            filename = tb.tb_frame.f_code.co_filename
-            if fnmatch(filename, "*/ray/tests/*"):
-                return False
-            return any(
-                fnmatch(filename, p) for p in ("*/ray/*.py", "*/ray/*.pyx"))
-
-        while tb:
-            if _is_stripped(tb):
-                tb = tb.tb_next
-            else:
-                tb2 = tb
-                while tb2.tb_next:
-                    if _is_stripped(tb2.tb_next):
-                        tb2.tb_next = tb2.tb_next.tb_next
-                    else:
-                        tb2 = tb2.tb_next
-                break
-
-        return tb
-
 
 class CrossLanguageError(RayError):
     """Raised from another language."""
