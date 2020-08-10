@@ -26,21 +26,12 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 
 public class NativeRayException extends RuntimeException {
-  private Language language;
-
   public NativeRayException(String message) {
     super(message);
-    this.language = Language.JAVA;
   }
 
   public NativeRayException(String message, Throwable cause) {
     super(message, cause);
-    this.language = Language.JAVA;
-  }
-
-  public NativeRayException(RayException exception) {
-    super(exception.getFormattedExceptionString());
-    this.language = exception.getLanguage();
   }
 
   public byte[] toBytes() {
@@ -50,7 +41,7 @@ public class NativeRayException extends RuntimeException {
     builder.setLanguage(Language.JAVA);
     builder.setFormattedExceptionString(formattedException);
     builder.setSerializedException(ByteString.copyFrom(Serializer.encode(this).getLeft()));
-    return builder.build().getSerializedException().toByteArray();
+    return builder.build().toByteArray();
   }
 
   public static NativeRayException fromBytes(byte[] serialized)
@@ -60,11 +51,7 @@ public class NativeRayException extends RuntimeException {
       return Serializer
           .decode(exception.getSerializedException().toByteArray(), NativeRayException.class);
     } else {
-      return new NativeRayException(exception);
+      return new CrossLanguageException(exception);
     }
-  }
-
-  public Language getLanguage() {
-    return this.language;
   }
 }

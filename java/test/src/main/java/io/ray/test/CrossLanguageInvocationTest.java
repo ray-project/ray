@@ -2,6 +2,7 @@ package io.ray.test;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
+import com.google.protobuf.InvalidProtocolBufferException;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
@@ -11,11 +12,14 @@ import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyFunction;
 import io.ray.runtime.actor.NativeActorHandle;
 import io.ray.runtime.actor.NativePyActorHandle;
+import io.ray.runtime.exception.CrossLanguageException;
 import io.ray.runtime.exception.NativeRayException;
 import io.ray.runtime.generated.Common.Language;
+import io.ray.runtime.generated.Common.RayException;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.annotation.Native;
 import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.List;
@@ -194,8 +198,8 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
       res.get();
     } catch (RuntimeException ex) {
       // ex is a Python exception(py_func_python_raise_exception) with no cause.
-      Assert.assertTrue(ex instanceof NativeRayException);
-      NativeRayException e = (NativeRayException) ex;
+      Assert.assertTrue(ex instanceof CrossLanguageException);
+      CrossLanguageException e = (CrossLanguageException) ex;
       Assert.assertEquals(e.getLanguage(), Language.PYTHON);
       // ex.cause is null.
       Assert.assertNull(ex.getCause());
@@ -228,26 +232,43 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
 //  }
 
   @Test
+  public void testExceptionSerialization() {
+    try {
+      throw new NativeRayException("Test Exception");
+    } catch (NativeRayException e) {
+      try {
+        String formattedException = org.apache.commons.lang3.exception.ExceptionUtils
+            .getStackTrace(e);
+        RayException exception = RayException.parseFrom(e.toBytes());
+        Assert.assertEquals(exception.getFormattedExceptionString(), formattedException);
+      } catch (InvalidProtocolBufferException ex) {
+        ex.printStackTrace();
+        Assert.fail();
+      }
+    }
+  }
+
+  @Test
   public void testRaiseExceptionFromNestPython() {
     ObjectRef<Object> res = Ray.task(
         PyFunction.of(PYTHON_MODULE, "py_func_nest_python_raise_exception", Object.class)).remote();
     try {
       res.get();
     } catch (RuntimeException ex) {
+      ex.printStackTrace();
       // ex is a Python exception(py_func_nest_python_raise_exception).
-      Assert.assertTrue(ex instanceof NativeRayException);
-      NativeRayException e = (NativeRayException) ex;
-      Assert.assertEquals(e.getLanguage(), Language.PYTHON);
+      Assert.assertTrue(ex instanceof CrossLanguageException);
+      CrossLanguageException ce = (CrossLanguageException) ex;
+      Assert.assertEquals(ce.getLanguage(), Language.PYTHON);
       // ex.cause is a Java exception(raisePythonException).
-      Assert.assertTrue(e.getCause() instanceof NativeRayException);
-      e = (NativeRayException) e.getCause();
-      Assert.assertEquals(e.getLanguage(), Language.JAVA);
+      Assert.assertTrue(ce.getCause() instanceof NativeRayException);
+      NativeRayException ne = (NativeRayException) ce.getCause();
       // ex.cause.cause is a Python exception(py_func_python_raise_exception).
-      Assert.assertTrue(e.getCause() instanceof NativeRayException);
-      e = (NativeRayException) e.getCause();
-      Assert.assertEquals(e.getLanguage(), Language.PYTHON);
+      Assert.assertTrue(ne.getCause() instanceof CrossLanguageException);
+      ce = (CrossLanguageException) ne.getCause();
+      Assert.assertEquals(ce.getLanguage(), Language.PYTHON);
       // ex.cause.cause.cause is null.
-      Assert.assertNull(e.getCause());
+      Assert.assertNull(ce.getCause());
       return;
     }
     Assert.fail();
