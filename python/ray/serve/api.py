@@ -173,11 +173,10 @@ def create_endpoint(endpoint_name,
         route_old = endpoints[endpoint_name]["route"]
         if methods_old.sort() == methods.sort() and route_old == route:
             raise ValueError(
-                        "Route '{}' is already registered to endpoint '{}' "
-                        "with methods '{}'.  To set the backend for this "
-                        "endpoint, please use serve.set_traffic().".format(
-                            route, endpoint_name, methods))
-
+                "Route '{}' is already registered to endpoint '{}' "
+                "with methods '{}'.  To set the backend for this "
+                "endpoint, please use serve.set_traffic().".format(
+                    route, endpoint_name, methods))
 
     upper_methods = []
     for method in methods:
@@ -279,9 +278,9 @@ def create_backend(backend_tag,
             response.
     """
     if backend_tag in list_backends():
-                raise ValueError(
-                    "Cannot create backend.  "
-                    "Backend '{}' is already registered.".format(backend_tag))
+        raise ValueError(
+            "Cannot create backend.  "
+            "Backend '{}' is already registered.".format(backend_tag))
 
     if config is None:
         config = {}

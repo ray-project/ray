@@ -7,6 +7,7 @@ import ray
 from ray import serve
 from ray.serve.config import BackendConfig, ReplicaConfig
 
+
 def request_with_retries(endpoint, timeout=30):
     start = time.time()
     while True:
@@ -211,6 +212,7 @@ def test_worker_replica_failure(serve_instance):
 
 def test_create_backend_idempotent(serve_instance):
     serve.init()
+
     def f():
         pass
 
@@ -222,12 +224,13 @@ def test_create_backend_idempotent(serve_instance):
     for i in range(10):
         controller.create_backend.remote("my_backend", backend_config,
                                          replica_config)
-    
+
     assert len(ray.get(controller.get_all_backends.remote())) == 1
 
 
 def test_create_endpoint_idempotent(serve_instance):
     serve.init()
+
     def f():
         pass
 

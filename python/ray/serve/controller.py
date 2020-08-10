@@ -20,7 +20,7 @@ import numpy as np
 
 # Used for testing purposes only. If this is set, the controller will crash
 # after writing each checkpoint with the specified probability.
-_CRASH_AFTER_CHECKPOINT_PROBABILITY = 0 # 0.9
+_CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
 CHECKPOINT_KEY = "serve-controller-checkpoint"
 
 # Feature flag for controller resource checking. If true, controller will
@@ -661,7 +661,7 @@ class ServeController:
                 # Ensures this method is idempotent
                 if self.routes[route] == (endpoint, methods):
                     return
-                    
+
                 else:
                     raise ValueError(
                         "{} Route '{}' is already registered.".format(
