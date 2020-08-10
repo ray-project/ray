@@ -77,7 +77,8 @@ class CommandRunnerInterface:
     ) -> str:
         """Run the given command on the cluster node and optionally get output.
 
-        WARNING: The arguments of "run" function need to be json dumpable!
+        WARNING: the cloudgateway needs arguments of "run" function to be json
+            dumpable to send them over HTTP requests.
 
         Args:
             cmd (str): The command to run.
@@ -86,7 +87,8 @@ class CommandRunnerInterface:
             port_forward (list): List of (local, remote) ports to forward, or
                 a single tuple.
             with_output (bool): Whether to return output.
-            run_env (str): whether to run in docker, host or auto.
+            run_env (str): Options: docker/host/auto. Used in
+                DockerCommandRunner to determine the run environment.
             ssh_options_override_ssh_key (str): if provided, overwrites
                 SSHOptions class with SSHOptions(ssh_options_override_ssh_key).
         """
