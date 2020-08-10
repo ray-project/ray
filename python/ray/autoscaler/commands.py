@@ -271,7 +271,8 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
                 port_forward=None,
                 with_output=False)
         except Exception as e:
-            cli_logger.verbose_error(e)  # todo: add better exception info
+            # todo: add better exception info
+            cli_logger.verbose_error("{}", str(e))
             cli_logger.warning(
                 "Exception occured when stopping the cluster Ray runtime "
                 "(use -v to dump teardown exceptions).")
@@ -423,7 +424,7 @@ def warn_about_bad_start_command(start_commands):
             cf.bold("ray start"), cf.bold("--autoscaling-config"),
             cf.bold("--autoscaling-config=~/ray_bootstrap_config.yaml"),
             cf.bold("ray start"), cf.bold("head_start_ray_commands"))
-        logger.old_warning(
+        cli_logger.old_warning(
             logger, "Ray start on the head node does not have the flag"
             "--autoscaling-config set. The head node will not launch"
             "workers. Add --autoscaling-config=~/ray_bootstrap_config.yaml"
@@ -558,7 +559,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             # head node won't be able to connect to workers
             remote_config["auth"].pop("ssh_proxy_command", None)
 
-            if config["provider"]["type"] != "kubernetes":
+            if "ssh_private_key" in config["auth"]:
                 remote_key_path = "~/ray_bootstrap_key.pem"
                 remote_config["auth"]["ssh_private_key"] = remote_key_path
 
@@ -578,7 +579,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
                 "~/ray_bootstrap_config.yaml": remote_config_file.name
             })
 
-            if config["provider"]["type"] != "kubernetes":
+            if "ssh_private_key" in config["auth"]:
                 config["file_mounts"].update({
                     remote_key_path: config["auth"]["ssh_private_key"],
                 })

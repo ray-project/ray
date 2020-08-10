@@ -1,12 +1,12 @@
 import asyncio
 from collections import defaultdict, namedtuple
-from itertools import groupby
 import os
 import random
 import time
 
 import ray
 import ray.cloudpickle as pickle
+from ray.serve.autoscaling_policy import BasicAutoscalingPolicy
 from ray.serve.backend_worker import create_backend_worker
 from ray.serve.constants import (ASYNC_CONCURRENCY, SERVE_PROXY_NAME,
                                  SERVE_METRIC_SINK_NAME)
@@ -15,7 +15,7 @@ from ray.serve.kv_store import RayInternalKVStore
 from ray.serve.metric.exporter import MetricExporterActor
 from ray.serve.exceptions import RayServeException
 from ray.serve.utils import (format_actor_name, get_random_letters, logger,
-                             try_schedule_resources_on_nodes)
+                             try_schedule_resources_on_nodes, get_all_node_ids)
 
 import numpy as np
 
@@ -27,6 +27,9 @@ CHECKPOINT_KEY = "serve-controller-checkpoint"
 # Feature flag for controller resource checking. If true, controller will
 # error if the desired replicas exceed current resource availability.
 _RESOURCE_CHECK_ENABLED = True
+
+# How often to call the control loop on the controller.
+CONTROL_LOOP_PERIOD_S = 1.0
 
 
 class TrafficPolicy:
@@ -88,8 +91,8 @@ class ServeController:
           requires all implementations here to be idempotent.
     """
 
-    async def __init__(self, instance_name, http_proxy_host, http_proxy_port,
-                       metric_exporter_class):
+    async def __init__(self, instance_name, http_host, http_port,
+                       metric_exporter_class, _http_middlewares):
         # Unique name of the serve instance managed by this actor. Used to
         # namespace child actors and checkpoints.
         self.instance_name = instance_name
@@ -99,6 +102,8 @@ class ServeController:
         self.routes = dict()
         # backend -> BackendInfo.
         self.backends = dict()
+        # backend -> AutoscalingPolicy
+        self.autoscaling_policies = dict()
         # backend -> replica_tags.
         self.replicas = defaultdict(list)
         # replicas that should be started if recovering from a checkpoint.
@@ -116,19 +121,26 @@ class ServeController:
         # Dictionary of backend tag to dictionaries of replica tag to worker.
         # TODO(edoakes): consider removing this and just using the names.
         self.workers = defaultdict(dict)
+        # Dictionary of backend_tag -> router_name -> most recent queue length.
+        self.backend_stats = defaultdict(lambda: defaultdict(dict))
 
         # Used to ensure that only a single state-changing operation happens
         # at any given time.
         self.write_lock = asyncio.Lock()
 
         # Cached handles to actors in the system.
-        self.routers = []
+        # node_id -> actor_handle
+        self.routers = dict()
         self.metric_exporter = None
+
+        self.http_host = http_host
+        self.http_port = http_port
+        self._http_middlewares = _http_middlewares
 
         # If starting the actor for the first time, starts up the other system
         # components. If recovering, fetches their actor handles.
-        self._get_or_start_metric_exporter(metric_exporter_class)
-        self._get_or_start_routers(http_proxy_host, http_proxy_port)
+        self._start_metric_exporter(metric_exporter_class)
+        self._start_routers_if_needed()
 
         # NOTE(edoakes): unfortunately, we can't completely recover from a
         # checkpoint in the constructor because we block while waiting for
@@ -150,46 +162,71 @@ class ServeController:
             asyncio.get_event_loop().create_task(
                 self._recover_from_checkpoint(checkpoint))
 
-    def _get_or_start_routers(self, host, port):
-        """Get the HTTP proxy belonging to this serve instance.
+        asyncio.get_event_loop().create_task(self.run_control_loop())
 
-        If the HTTP proxy does not already exist, it will be started.
+    def _start_routers_if_needed(self):
+        """Start a router on every node if it doesn't already exist."""
+        for node_id, node_resource in get_all_node_ids():
+            if node_id in self.routers:
+                continue
+
+            router_name = format_actor_name(SERVE_PROXY_NAME,
+                                            self.instance_name, node_id)
+            try:
+                router = ray.get_actor(router_name)
+            except ValueError:
+                logger.info("Starting router with name '{}' on node '{}' "
+                            "listening on '{}:{}'".format(
+                                router_name, node_id, self.http_host,
+                                self.http_port))
+                router = HTTPProxyActor.options(
+                    name=router_name,
+                    max_concurrency=ASYNC_CONCURRENCY,
+                    max_restarts=-1,
+                    max_task_retries=-1,
+                    resources={
+                        node_resource: 0.01
+                    },
+                ).remote(
+                    node_id,
+                    self.http_host,
+                    self.http_port,
+                    instance_name=self.instance_name,
+                    _http_middlewares=self._http_middlewares)
+
+            self.routers[node_id] = router
+
+    def _stop_routers_if_needed(self):
+        """Removes router actors from any nodes that no longer exist.
+
+        Returns whether or not any actors were removed (a checkpoint should
+        be taken).
         """
-        # TODO(simon): We don't handle nodes being added/removed. To do that,
-        # we should implement some sort of control loop in master actor.
-        for _, node_id_group in groupby(sorted(ray.state.node_ids())):
-            for index, node_id in enumerate(node_id_group):
-                proxy_name = format_actor_name(SERVE_PROXY_NAME,
-                                               self.instance_name)
-                proxy_name += "-{}-{}".format(node_id, index)
-                try:
-                    router = ray.get_actor(proxy_name)
-                except ValueError:
-                    logger.info(
-                        "Starting HTTP proxy with name '{}' on node '{}' "
-                        "listening on port {}".format(proxy_name, node_id,
-                                                      port))
-                    router = HTTPProxyActor.options(
-                        name=proxy_name,
-                        max_concurrency=ASYNC_CONCURRENCY,
-                        max_restarts=-1,
-                        max_task_retries=-1,
-                        resources={
-                            node_id: 0.01
-                        },
-                    ).remote(
-                        host, port, instance_name=self.instance_name)
-                self.routers.append(router)
+        checkpoint_required = False
+        all_node_ids = {node_id for node_id, _ in get_all_node_ids()}
+        to_stop = []
+        for node_id in self.routers:
+            if node_id not in all_node_ids:
+                logger.info(
+                    "Removing router on removed node '{}'.".format(node_id))
+                to_stop.append(node_id)
 
-    def get_router(self):
-        """Returns a handle to the HTTP proxy managed by this actor."""
+        for node_id in to_stop:
+            router_handle = self.routers.pop(node_id)
+            ray.kill(router_handle, no_restart=True)
+            checkpoint_required = True
+
+        return checkpoint_required
+
+    def get_routers(self):
+        """Returns a dictionary of node ID to router actor handles."""
         return self.routers
 
     def get_router_config(self):
-        """Called by the HTTP proxy on startup to fetch required state."""
+        """Called by the router on startup to fetch required state."""
         return self.routes
 
-    def _get_or_start_metric_exporter(self, metric_exporter_class):
+    def _start_metric_exporter(self, metric_exporter_class):
         """Get the metric exporter belonging to this serve instance.
 
         If the metric exporter does not already exist, it will be started.
@@ -210,11 +247,13 @@ class ServeController:
 
     def _checkpoint(self):
         """Checkpoint internal state and write it to the KV store."""
+        assert self.write_lock.locked()
         logger.debug("Writing checkpoint")
         start = time.time()
         checkpoint = pickle.dumps(
-            (self.routes, self.backends, self.traffic_policies, self.replicas,
-             self.replicas_to_start, self.replicas_to_stop,
+            (self.routes, list(
+                self.routers.keys()), self.backends, self.traffic_policies,
+             self.replicas, self.replicas_to_start, self.replicas_to_stop,
              self.backends_to_remove, self.endpoints_to_remove))
 
         self.kv_store.put(CHECKPOINT_KEY, checkpoint)
@@ -229,7 +268,7 @@ class ServeController:
 
         Performs the following operations:
             1) Deserializes the internal state from the checkpoint.
-            2) Pushes the latest configuration to the HTTP proxy and router
+            2) Pushes the latest configuration to the routers
                in case we crashed before updating them.
             3) Starts/stops any worker replicas that are pending creation or
                deletion.
@@ -245,6 +284,7 @@ class ServeController:
         # Load internal state from the checkpoint data.
         (
             self.routes,
+            router_node_ids,
             self.backends,
             self.traffic_policies,
             self.replicas,
@@ -253,6 +293,11 @@ class ServeController:
             self.backends_to_remove,
             self.endpoints_to_remove,
         ) = pickle.loads(checkpoint_bytes)
+
+        for node_id in router_node_ids:
+            router_name = format_actor_name(SERVE_PROXY_NAME,
+                                            self.instance_name, node_id)
+            self.routers[node_id] = ray.get_actor(router_name)
 
         # Fetch actor handles for all of the backend replicas in the system.
         # All of these workers are guaranteed to already exist because they
@@ -270,7 +315,7 @@ class ServeController:
         for endpoint, traffic_policy in self.traffic_policies.items():
             await asyncio.gather(*[
                 router.set_traffic.remote(endpoint, traffic_policy)
-                for router in self.routers
+                for router in self.routers.values()
             ])
 
         for backend_tag, replica_dict in self.workers.items():
@@ -278,20 +323,23 @@ class ServeController:
                 await asyncio.gather(*[
                     router.add_new_worker.remote(backend_tag, replica_tag,
                                                  worker)
-                    for router in self.routers
+                    for router in self.routers.values()
                 ])
 
         for backend, info in self.backends.items():
             await asyncio.gather(*[
                 router.set_backend_config.remote(backend, info.backend_config)
-                for router in self.routers
+                for router in self.routers.values()
             ])
             await self.broadcast_backend_config(backend)
+            if info.backend_config.autoscaling_config is not None:
+                self.autoscaling_policies[backend] = BasicAutoscalingPolicy(
+                    backend, info.backend_config.autoscaling_config)
 
-        # Push configuration state to the HTTP proxy.
+        # Push configuration state to the routers.
         await asyncio.gather(*[
             router.set_route_table.remote(self.routes)
-            for router in self.routers
+            for router in self.routers.values()
         ])
 
         # Start/stop any pending backend replicas.
@@ -306,6 +354,29 @@ class ServeController:
             "Recovered from checkpoint in {:.3f}s".format(time.time() - start))
 
         self.write_lock.release()
+
+    async def do_autoscale(self):
+        for backend in self.backends:
+            if backend not in self.autoscaling_policies:
+                continue
+
+            new_num_replicas = self.autoscaling_policies[backend].scale(
+                self.backend_stats[backend],
+                self.backends[backend].backend_config.num_replicas)
+            if new_num_replicas > 0:
+                await self.update_backend_config(
+                    backend, {"num_replicas": new_num_replicas})
+
+    async def run_control_loop(self):
+        while True:
+            await self.do_autoscale()
+            async with self.write_lock:
+                self._start_routers_if_needed()
+                checkpoint_required = self._stop_routers_if_needed()
+                if checkpoint_required:
+                    self._checkpoint()
+
+            await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
 
     def get_backend_configs(self):
         """Fetched by the router on startup."""
@@ -368,7 +439,7 @@ class ServeController:
         await asyncio.gather(*[
             router.add_new_worker.remote(backend_tag, replica_tag,
                                          worker_handle)
-            for router in self.routers
+            for router in self.routers.values()
         ])
 
     async def _start_pending_replicas(self):
@@ -409,7 +480,7 @@ class ServeController:
                 # Remove the replica from router. This call is idempotent.
                 await asyncio.gather(*[
                     router.remove_worker.remote(backend_tag, replica_tag)
-                    for router in self.routers
+                    for router in self.routers.values()
                 ])
 
                 # TODO(edoakes): this logic isn't ideal because there may be
@@ -429,7 +500,7 @@ class ServeController:
         for backend_tag in self.backends_to_remove:
             await asyncio.gather(*[
                 router.remove_backend.remote(backend_tag)
-                for router in self.routers
+                for router in self.routers.values()
             ])
         self.backends_to_remove.clear()
 
@@ -441,7 +512,7 @@ class ServeController:
         for endpoint_tag in self.endpoints_to_remove:
             await asyncio.gather(*[
                 router.remove_endpoint.remote(endpoint_tag)
-                for router in self.routers
+                for router in self.routers.values()
             ])
         self.endpoints_to_remove.clear()
 
@@ -558,7 +629,7 @@ class ServeController:
         self._checkpoint()
         await asyncio.gather(*[
             router.set_traffic.remote(endpoint_name, traffic_policy)
-            for router in self.routers
+            for router in self.routers.values()
         ])
 
     async def set_traffic(self, endpoint_name, traffic_dict):
@@ -590,14 +661,14 @@ class ServeController:
                 router.set_traffic.remote(
                     endpoint_name,
                     self.traffic_policies[endpoint_name],
-                ) for router in self.routers
+                ) for router in self.routers.values()
             ])
 
     async def create_endpoint(self, endpoint, traffic_dict, route, methods):
         """Create a new endpoint with the specified route and methods.
 
         If the route is None, this is a "headless" endpoint that will not
-        be added to the HTTP proxy (can only be accessed via a handle).
+        be exposed over HTTP and can only be accessed via a handle.
         """
         async with self.write_lock:
             # If this is a headless endpoint with no route, key the endpoint
@@ -632,7 +703,7 @@ class ServeController:
             await self._set_traffic(endpoint, traffic_dict)
             await asyncio.gather(*[
                 router.set_route_table.remote(self.routes)
-                for router in self.routers
+                for router in self.routers.values()
             ])
 
     async def delete_endpoint(self, endpoint):
@@ -662,15 +733,13 @@ class ServeController:
             self.endpoints_to_remove.append(endpoint)
 
             # NOTE(edoakes): we must write a checkpoint before pushing the
-            # updates to the HTTP proxy and router to avoid inconsistent state
-            # if we crash after pushing the update.
+            # updates to the routers to avoid inconsistent state if we crash
+            # after pushing the update.
             self._checkpoint()
 
-            # Update the HTTP proxy first to ensure no new requests for the
-            # endpoint are sent to the router.
             await asyncio.gather(*[
                 router.set_route_table.remote(self.routes)
-                for router in self.routers
+                for router in self.routers.values()
             ])
             await self._remove_pending_endpoints()
 
@@ -685,6 +754,10 @@ class ServeController:
             # and the configuration for the backends.
             self.backends[backend_tag] = BackendInfo(
                 backend_worker, backend_config, replica_config)
+            if backend_config.autoscaling_config is not None:
+                self.autoscaling_policies[
+                    backend_tag] = BasicAutoscalingPolicy(
+                        backend_tag, backend_config.autoscaling_config)
 
             self._scale_replicas(backend_tag, backend_config.num_replicas)
 
@@ -698,7 +771,7 @@ class ServeController:
             # (particularly for max-batch-size).
             await asyncio.gather(*[
                 router.set_backend_config.remote(backend_tag, backend_config)
-                for router in self.routers
+                for router in self.routers.values()
             ])
             await self.broadcast_backend_config(backend_tag)
 
@@ -724,6 +797,8 @@ class ServeController:
 
             # Remove the backend's metadata.
             del self.backends[backend_tag]
+            if backend_tag in self.autoscaling_policies:
+                del self.autoscaling_policies[backend_tag]
 
             # Add the intention to remove the backend from the router.
             self.backends_to_remove.append(backend_tag)
@@ -757,7 +832,7 @@ class ServeController:
             # (particularly for setting max_batch_size).
             await asyncio.gather(*[
                 router.set_backend_config.remote(backend_tag, backend_config)
-                for router in self.routers
+                for router in self.routers.values()
             ])
 
             await self._start_pending_replicas()
@@ -788,10 +863,15 @@ class ServeController:
     async def shutdown(self):
         """Shuts down the serve instance completely."""
         async with self.write_lock:
-            for router in self.routers:
+            for router in self.routers.values():
                 ray.kill(router, no_restart=True)
             ray.kill(self.metric_exporter, no_restart=True)
             for replica_dict in self.workers.values():
                 for replica in replica_dict.values():
                     ray.kill(replica, no_restart=True)
             self.kv_store.delete(CHECKPOINT_KEY)
+
+    async def report_queue_lengths(self, router_name, queue_lengths):
+        # TODO: remove old router stats when removing them.
+        for backend, queue_length in queue_lengths.items():
+            self.backend_stats[backend][router_name] = queue_length

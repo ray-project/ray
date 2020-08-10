@@ -72,12 +72,16 @@ class DQNTorchModel(TorchModelV2, nn.Module):
                 advantage_module.add_module(
                     "dueling_A_{}".format(i),
                     NoisyLayer(
-                        ins, n, sigma0=self.sigma0,
+                        ins,
+                        n,
+                        sigma0=self.sigma0,
                         activation=dueling_activation))
                 value_module.add_module(
                     "dueling_V_{}".format(i),
                     NoisyLayer(
-                        ins, n, sigma0=self.sigma0,
+                        ins,
+                        n,
+                        sigma0=self.sigma0,
                         activation=dueling_activation))
             else:
                 advantage_module.add_module(
@@ -88,25 +92,26 @@ class DQNTorchModel(TorchModelV2, nn.Module):
                     SlimFC(ins, n, activation_fn=dueling_activation))
                 # Add LayerNorm after each Dense.
                 if add_layer_norm:
-                    advantage_module.add_module(
-                        "LayerNorm_A_{}".format(i), nn.LayerNorm(n))
-                    value_module.add_module(
-                        "LayerNorm_V_{}".format(i), nn.LayerNorm(n))
+                    advantage_module.add_module("LayerNorm_A_{}".format(i),
+                                                nn.LayerNorm(n))
+                    value_module.add_module("LayerNorm_V_{}".format(i),
+                                            nn.LayerNorm(n))
             ins = n
 
         # Actual Advantages layer (nodes=num-actions).
         if use_noisy:
-            advantage_module.add_module("A", NoisyLayer(
-                ins,
-                self.action_space.n * self.num_atoms,
-                sigma0,
-                activation=None))
+            advantage_module.add_module(
+                "A",
+                NoisyLayer(
+                    ins,
+                    self.action_space.n * self.num_atoms,
+                    sigma0,
+                    activation=None))
         elif q_hiddens:
             advantage_module.add_module(
                 "A",
                 SlimFC(
-                    ins, action_space.n * self.num_atoms,
-                    activation_fn=None))
+                    ins, action_space.n * self.num_atoms, activation_fn=None))
 
         self.advantage_module = advantage_module
 

@@ -2,8 +2,9 @@ import atexit
 import collections
 import datetime
 import errno
-import os
+import json
 import logging
+import os
 import random
 import signal
 import socket
@@ -103,12 +104,17 @@ class Node:
                     head), "LRU Evict can only be passed into the head node."
 
         self._raylet_ip_address = raylet_ip_address
+        self.metrics_agent_port = self._get_unused_port()[0]
+        self._metrics_export_port = ray_params.metrics_export_port
+        if self._metrics_export_port is None:
+            self._metrics_export_port = self._get_unused_port()[0]
 
         ray_params.update_if_absent(
             include_log_monitor=True,
             resources={},
             temp_dir=ray.utils.get_ray_temp_dir(),
-            metrics_agent_port=self._get_unused_port()[0],
+            metrics_agent_port=self.metrics_agent_port,
+            metrics_export_port=self._metrics_export_port,
             worker_path=os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
                 "workers/default_worker.py"))
@@ -249,12 +255,33 @@ class Node:
 
     def get_resource_spec(self):
         """Resolve and return the current resource spec for the node."""
+
+        def merge_resources(env_dict, params_dict):
+            """Merge two dictionaries, picking from the second in the event of a conflict.
+            Also emit a warning on every conflict.
+            """
+            result = params_dict.copy()
+            result.update(env_dict)
+
+            for key in set(env_dict.keys()).intersection(
+                    set(params_dict.keys())):
+                logger.warning("Autoscaler is overriding your resource:"
+                               "{}: {} with {}.".format(
+                                   key, params_dict[key], env_dict[key]))
+            return result
+
+        env_resources = {}
+        env_string = os.getenv("RAY_OVERRIDE_RESOURCES")
+        if env_string:
+            env_resources = json.loads(env_string)
+
         if not self._resource_spec:
+            resources = merge_resources(env_resources,
+                                        self._ray_params.resources)
             self._resource_spec = ResourceSpec(
                 self._ray_params.num_cpus, self._ray_params.num_gpus,
                 self._ray_params.memory, self._ray_params.object_store_memory,
-                self._ray_params.resources,
-                self._ray_params.redis_max_memory).resolve(
+                resources, self._ray_params.redis_max_memory).resolve(
                     is_head=self.head, node_ip_address=self.node_ip_address)
         return self._resource_spec
 
@@ -319,6 +346,11 @@ class Node:
         return self._ray_params.node_manager_port
 
     @property
+    def metrics_export_port(self):
+        """Get the port that exposes metrics"""
+        return self._metrics_export_port
+
+    @property
     def socket(self):
         """Get the socket reserving the node manager's port"""
         try:
@@ -337,6 +369,7 @@ class Node:
             "raylet_socket_name": self._raylet_socket_name,
             "webui_url": self._webui_url,
             "session_dir": self._session_dir,
+            "metrics_export_port": self._metrics_export_port
         }
 
     def create_redis_client(self):
@@ -561,9 +594,11 @@ class Node:
         """Start the reporter."""
         stdout_file, stderr_file = self.get_log_file_handles(
             "reporter", unique=True)
+
         process_info = ray.services.start_reporter(
             self.redis_address,
             self._ray_params.metrics_agent_port,
+            self._metrics_export_port,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password,
@@ -667,6 +702,7 @@ class Node:
             self._ray_params.object_manager_port,
             self._ray_params.redis_password,
             self._ray_params.metrics_agent_port,
+            self._metrics_export_port,
             use_valgrind=use_valgrind,
             use_profiler=use_profiler,
             stdout_file=stdout_file,

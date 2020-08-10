@@ -1,4 +1,3 @@
-import os
 import sys
 
 import ray
@@ -21,9 +20,6 @@ def increase(x):
     return x + 1
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_GCS_ACTOR_SERVICE_ENABLED", "true") != "true",
-    reason=("This testcase can only be run when GCS actor management is on."))
 @pytest.mark.parametrize(
     "ray_start_regular",
     [generate_internal_config_map(num_heartbeats_timeout=20)],
@@ -47,9 +43,6 @@ def test_gcs_server_restart(ray_start_regular):
     assert result == 2
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_GCS_ACTOR_SERVICE_ENABLED", "true") != "true",
-    reason=("This testcase can only be run when GCS actor management is on."))
 @pytest.mark.parametrize(
     "ray_start_regular",
     [generate_internal_config_map(num_heartbeats_timeout=20)],
@@ -69,9 +62,6 @@ def test_gcs_server_restart_during_actor_creation(ray_start_regular):
     assert len(unready) == 0
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_GCS_ACTOR_SERVICE_ENABLED", "true") != "true",
-    reason=("This testcase can only be run when GCS actor management is on."))
 @pytest.mark.parametrize(
     "ray_start_cluster_head",
     [generate_internal_config_map(num_heartbeats_timeout=20)],

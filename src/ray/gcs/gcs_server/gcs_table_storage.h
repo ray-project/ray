@@ -84,14 +84,15 @@ class GcsTable {
   /// \param key The key that will be deleted from the table.
   /// \param callback Callback that will be called after delete finishes.
   /// \return Status
-  Status Delete(const Key &key, const StatusCallback &callback);
+  virtual Status Delete(const Key &key, const StatusCallback &callback);
 
   /// Delete a batch of data from the table asynchronously.
   ///
   /// \param keys The batch key that will be deleted from the table.
   /// \param callback Callback that will be called after delete finishes.
   /// \return Status
-  Status BatchDelete(const std::vector<Key> &keys, const StatusCallback &callback);
+  virtual Status BatchDelete(const std::vector<Key> &keys,
+                             const StatusCallback &callback);
 
  protected:
   std::string table_name_;
@@ -131,6 +132,21 @@ class GcsTableWithJobId : public GcsTable<Key, Data> {
   /// \param callback Callback that will be called after delete finishes.
   /// \return Status
   Status DeleteByJobId(const JobID &job_id, const StatusCallback &callback);
+
+  /// Delete data and index from the table asynchronously.
+  ///
+  /// \param key The key that will be deleted from the table.
+  /// \param callback Callback that will be called after delete finishes.
+  /// \return Status
+  Status Delete(const Key &key, const StatusCallback &callback) override;
+
+  /// Delete a batch of data and index from the table asynchronously.
+  ///
+  /// \param keys The batch key that will be deleted from the table.
+  /// \param callback Callback that will be called after delete finishes.
+  /// \return Status
+  Status BatchDelete(const std::vector<Key> &keys,
+                     const StatusCallback &callback) override;
 
  protected:
   virtual JobID GetJobIdFromKey(const Key &key) = 0;
