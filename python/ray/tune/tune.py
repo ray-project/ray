@@ -264,10 +264,9 @@ def run(run_or_experiment,
 
     for i, exp in enumerate(experiments):
         if not isinstance(exp, Experiment):
-            run_identifier = Experiment.register_if_needed(exp)
             experiments[i] = Experiment(
                 name=name,
-                run=run_identifier,
+                run=exp,
                 stop=stop,
                 config=config,
                 resources_per_trial=resources_per_trial,

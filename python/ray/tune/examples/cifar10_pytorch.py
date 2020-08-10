@@ -195,8 +195,7 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
         config=config,
         num_samples=num_samples,
         scheduler=scheduler,
-        progress_reporter=reporter,
-        checkpoint_at_end=True)
+        progress_reporter=reporter)
 
     best_trial = result.get_best_trial("loss", "min", "last")
     print("Best trial config: {}".format(best_trial.config))
