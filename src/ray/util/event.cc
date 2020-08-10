@@ -25,13 +25,13 @@ EventManager &EventManager::Instance() {
 
 bool EventManager::IsEmpty() { return reporter_map_.empty(); }
 
-void EventManager::Publish(rpc::Event &event) {
+void EventManager::Publish(const rpc::Event &event) {
   for (const auto &element : reporter_map_) {
     (element.second)->Report(event);
   }
 }
 
-void EventManager::AddReporter(std::shared_ptr<LogBasedEventReporter> reporter) {
+void EventManager::AddReporter(std::shared_ptr<BasedEventReporter> reporter) {
   reporter_map_.emplace(reporter->GetReporterKey(), reporter);
 }
 
@@ -50,7 +50,7 @@ RayEventContext &RayEventContext::Instance() {
 
 void RayEventContext::SetEventContext(
     rpc::Event_SourceType source_type,
-    std::unordered_map<std::string, std::string> custom_field) {
+    const std::unordered_map<std::string, std::string>& custom_field) {
   source_type_ = source_type;
   custom_field_ = custom_field;
 }
@@ -60,18 +60,18 @@ void RayEventContext::ResetEventContext() {
   custom_field_.clear();
 }
 
-void RayEventContext::SetCustomField(std::string key, std::string value) {
+void RayEventContext::SetCustomField(const std::string& key, const std::string& value) {
   custom_field_[key] = value;
 }
 
 void RayEventContext::SetCustomField(
-    std::unordered_map<std::string, std::string> custom_field) {
+    const std::unordered_map<std::string, std::string>& custom_field) {
   custom_field_ = custom_field;
 }
 ///
 /// RayEvent
 ///
-void RayEvent::ReportEvent(std::string severity, std::string label, std::string message) {
+void RayEvent::ReportEvent(const std::string& severity, const std::string& label, const std::string& message) {
   rpc::Event_Severity severity_ele =
       rpc::Event_Severity::Event_Severity_Event_Severity_INT_MIN_SENTINEL_DO_NOT_USE_;
   RAY_CHECK(rpc::Event_Severity_Parse(severity, &severity_ele));

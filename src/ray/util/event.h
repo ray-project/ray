@@ -30,60 +30,59 @@ namespace ray {
 #define RAY_EVENT(event_type, label) \
   ::ray::RayEvent(::ray::rpc::Event_Severity::Event_Severity_##event_type, label)
 
-class LogBasedEventReporter {
+// interface of event reporter
+class BasedEventReporter {
  public:
   virtual void Init() = 0;
 
-  virtual void Report(rpc::Event &event) = 0;
+  virtual void Report(const rpc::Event &event) = 0;
 
   virtual void Close() = 0;
 
   virtual std::string GetReporterKey() = 0;
-
- protected:
-  virtual std::string EventToString(rpc::Event &event) = 0;
-
- protected:
-  std::string file_name_;
-  std::string log_dir_;
 };
 
+// store the reporters, add reporters and clean reporters
 class EventManager final {
  public:
   static EventManager &Instance();
 
   bool IsEmpty();
 
-  void Publish(rpc::Event &event);
+  void Publish(const rpc::Event &event);
 
-  void AddReporter(std::shared_ptr<LogBasedEventReporter> reporter);
+  // NOTE(ruoqiu) AddReporters, ClearPeporters (along with the Pushlish function) would
+  // not be thread-safe. But we assume default initialization and shutdown are placed in
+  // the construction and destruction of a resident class, or at the beginning and end of
+  // a process.
+  void AddReporter(std::shared_ptr<BasedEventReporter> reporter);
 
   void ClearReporters();
 
  private:
-  EventManager() {}
+  EventManager() = default;
 
   EventManager(const EventManager &manager) = delete;
 
   const EventManager &operator=(const EventManager &manager) = delete;
 
  protected:
-  std::unordered_map<std::string, std::shared_ptr<LogBasedEventReporter>> reporter_map_;
+  std::unordered_map<std::string, std::shared_ptr<BasedEventReporter>> reporter_map_;
 };
 
+// store the event context. Different workers of a process in core_worker have different
+// contexts, so a singleton of thread_local needs to be maintained
 class RayEventContext final {
  public:
   static RayEventContext &Instance();
 
-  // SetEventContext should only be called once in a process, unless ResetEventContext is
-  // called.
   void SetEventContext(rpc::Event_SourceType source_type,
-                       std::unordered_map<std::string, std::string> custom_field =
+                       const std::unordered_map<std::string, std::string> &custom_field =
                            std::unordered_map<std::string, std::string>());
 
-  void SetCustomField(std::string key, std::string value);
+  void SetCustomField(const std::string &key, const std::string &value);
 
-  void SetCustomField(std::unordered_map<std::string, std::string> custom_field);
+  void SetCustomField(const std::unordered_map<std::string, std::string> &custom_field);
 
   void ResetEventContext();
 
@@ -116,9 +115,12 @@ class RayEventContext final {
   static thread_local std::unique_ptr<RayEventContext> context_;
 };
 
+// when the RayEvent is deconstructed, the context information is obtained from the
+// RayEventContext, then the Event structure is generated and pushed to the EventManager
+// for sending
 class RayEvent {
  public:
-  RayEvent(rpc::Event_Severity severity, std::string label)
+  RayEvent(rpc::Event_Severity severity, const std::string &label)
       : severity_(severity), label_(label) {}
 
   template <typename T>
@@ -127,12 +129,13 @@ class RayEvent {
     return *this;
   }
 
-  static void ReportEvent(std::string severity, std::string label, std::string message);
+  static void ReportEvent(const std::string &severity, const std::string &label,
+                          const std::string &message);
 
   ~RayEvent();
 
  private:
-  RayEvent() {}
+  RayEvent() = default;
 
   void SendMessage(const std::string &message);
 

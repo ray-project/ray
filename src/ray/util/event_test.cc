@@ -20,17 +20,15 @@
 
 namespace ray {
 
-class TestEventReporter : public LogBasedEventReporter {
+class TestEventReporter : public BasedEventReporter {
  public:
-  static std::vector<rpc::Event> event_list;
   virtual void Init() override {}
-  virtual void Report(rpc::Event &event) override { event_list.push_back(event); }
+  virtual void Report(const rpc::Event &event) override { event_list.push_back(event); }
   virtual void Close() override {}
   virtual ~TestEventReporter() {}
   virtual std::string GetReporterKey() override { return "test.event.reporter"; }
-
- protected:
-  virtual std::string EventToString(rpc::Event &event) override { return ""; }
+public:
+  static std::vector<rpc::Event> event_list;
 };
 
 std::vector<rpc::Event> TestEventReporter::event_list = std::vector<rpc::Event>();
@@ -62,12 +60,15 @@ void CheckEventDetail(rpc::Event &event, std::string job_id, std::string node_id
 }
 
 TEST(EVENT_TEST, TEST_BASIC) {
+  TestEventReporter::event_list.clear();
   ray::EventManager::Instance().ClearReporters();
 
   RAY_EVENT(WARNING, "label") << "test for empty reporters";
 
+  // If there are no reporters, it would not Publish event
+  EXPECT_EQ(TestEventReporter::event_list.size(), 0);
+
   ray::EventManager::Instance().AddReporter(std::make_shared<TestEventReporter>());
-  TestEventReporter::event_list.clear();
 
   RAY_EVENT(WARNING, "label 0") << "send message 0";
 
