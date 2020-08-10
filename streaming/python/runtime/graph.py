@@ -8,7 +8,7 @@ import ray.streaming.partition as partition
 from ray._raylet import ActorID
 from ray.actor import ActorHandle
 from ray.streaming.config import Config
-from ray.streaming.generated.remote_call_pb2 import Language
+from ray.streaming.generated.streaming_pb2 import Language
 
 logger = logging.getLogger(__name__)
 

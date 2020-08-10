@@ -14,6 +14,7 @@ VERSION_1.0 {
         *ray*TaskOptions*;
         *ray*Buffer*;
         *ray*LocalMemoryBuffer*;
+        *ray*rpc*;
         # util
         *ray*RayLog*;
         *ray*RayLogLevel*;
@@ -29,5 +30,10 @@ VERSION_1.0 {
         *init_raylet*;
         *Java*;
         *JNI_*;
+        #boost
+        *boost*;
+        *ontop_fcontext*;
+        *make_fcontext*;
+        *jump_fcontext*;
     local: *;
 };
