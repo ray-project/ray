@@ -1382,9 +1382,9 @@ void NodeManager::ProcessDisconnectClientMessage(
     local_queues_.RemoveDriverTaskId(TaskID::ComputeDriverTaskId(driver_id));
     worker_pool_.DisconnectDriver(worker);
 
-    RAY_LOG(DEBUG) << "Driver (pid=" << worker->GetProcess().GetId()
-                   << ") is disconnected. "
-                   << "job_id: " << worker->GetAssignedJobId();
+    RAY_LOG(INFO) << "Driver (pid=" << worker->GetProcess().GetId()
+                  << ") is disconnected. "
+                  << "job_id: " << worker->GetAssignedJobId();
   }
 
   client->Close();
