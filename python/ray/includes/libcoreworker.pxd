@@ -226,6 +226,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         (c_bool() nogil) kill_main
         CCoreWorkerOptions()
         (void() nogil) terminate_asyncio_thread
+        int metrics_agent_port
         c_string serialized_job_config
 
     cdef cppclass CCoreWorkerProcess "ray::CoreWorkerProcess":

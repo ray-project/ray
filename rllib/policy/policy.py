@@ -36,18 +36,18 @@ class Policy(metaclass=ABCMeta):
     graphs and multi-GPU support.
 
     Attributes:
-        observation_space (gym.Space): Observation space of the policy.
+        observation_space (gym.Space): Observation space of the policy. For
+            complex spaces (e.g., Dict), this will be flattened version of the
+            space, and you can access the original space via
+            ``observation_space.original_space``.
         action_space (gym.Space): Action space of the policy.
         exploration (Exploration): The exploration object to use for
             computing actions, or None.
     """
 
     @DeveloperAPI
-    def __init__(
-            self,
-            observation_space: gym.spaces.Space,
-            action_space: gym.spaces.Space,
-            config: TrainerConfigDict):
+    def __init__(self, observation_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space, config: TrainerConfigDict):
         """Initialize the graph.
 
         This is the standard constructor for policies. The policy
@@ -178,9 +178,9 @@ class Policy(metaclass=ABCMeta):
             episodes = [episode]
         if state is not None:
             state_batch = [
-                s.unsqueeze(0) if torch and isinstance(s, torch.Tensor) else
-                np.expand_dims(s, 0)
-                for s in state
+                s.unsqueeze(0)
+                if torch and isinstance(s, torch.Tensor) else np.expand_dims(
+                    s, 0) for s in state
             ]
 
         out = self.compute_actions(
@@ -214,26 +214,27 @@ class Policy(metaclass=ABCMeta):
         return single_action, [s[0] for s in state_out], \
             {k: v[0] for k, v in info.items()}
 
-    def compute_actions_from_trajectories(
+    def compute_actions_from_input_dict(
             self,
-            trajectories: List["Trajectory"],
-            other_trajectories: Optional[Dict[AgentID, "Trajectory"]] = None,
+            input_dict: Dict[str, TensorType],
             explore: bool = None,
             timestep: Optional[int] = None,
             **kwargs) -> \
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
-        """Computes actions for the current policy based on .
+        """Computes actions from collected samples (across multiple-agents).
 
         Note: This is an experimental API method.
 
         Only used so far by the Sampler iff `_use_trajectory_view_api=True`
         (also only supported for torch).
+        Uses the currently "forward-pass-registered" samples from the collector
+        to construct the input_dict for the Model.
 
         Args:
-            trajectories (List[Trajectory]): A List of Trajectory data used
-                to create a view for the Model forward call.
-            other_trajectories (Optional[Dict[AgentID, Trajectory]]): Optional
-                dict mapping AgentIDs to Trajectory objects.
+            input_dict (Dict[str, TensorType]): An input dict mapping str
+                keys to Tensors. `input_dict` already abides to the Policy's
+                as well as the Model's view requirements and can be passed
+                to the Model as-is.
             explore (bool): Whether to pick an exploitation or exploration
                 action (default: None -> use self.config["explore"]).
             timestep (Optional[int]): The current (sampling) time step.
@@ -257,10 +258,10 @@ class Policy(metaclass=ABCMeta):
             actions: Union[List[TensorType], TensorType],
             obs_batch: Union[List[TensorType], TensorType],
             state_batches: Optional[List[TensorType]] = None,
-            prev_action_batch: Optional[
-                Union[List[TensorType], TensorType]] = None,
-            prev_reward_batch: Optional[
-                Union[List[TensorType], TensorType]] = None) -> TensorType:
+            prev_action_batch: Optional[Union[List[TensorType],
+                                              TensorType]] = None,
+            prev_reward_batch: Optional[Union[List[
+                TensorType], TensorType]] = None) -> TensorType:
         """Computes the log-prob/likelihood for a given action and observation.
 
         Args:
@@ -283,11 +284,30 @@ class Policy(metaclass=ABCMeta):
         raise NotImplementedError
 
     @DeveloperAPI
+    def training_view_requirements(self):
+        """Returns a dict of view requirements for operating on this Policy.
+
+        Note: This is an experimental API method.
+
+        The view requirements dict is used to generate input_dicts and
+        SampleBatches for 1) action computations, 2) postprocessing, and 3)
+        generating training batches.
+        The Policy may ask its Model(s) as well for possible additional
+        requirements (e.g. prev-action/reward in an LSTM).
+
+        Returns:
+            Dict[str, ViewRequirement]: The view requirements dict, mapping
+                each view key (which will be available in input_dicts) to
+                an underlying requirement (actual data, timestep shift, etc..).
+        """
+        return {}
+
+    @DeveloperAPI
     def postprocess_trajectory(
             self,
             sample_batch: SampleBatch,
-            other_agent_batches: Optional[
-                Dict[AgentID, Tuple["Policy", SampleBatch]]] = None,
+            other_agent_batches: Optional[Dict[AgentID, Tuple[
+                "Policy", SampleBatch]]] = None,
             episode: Optional["MultiAgentEpisode"] = None) -> SampleBatch:
         """Implements algorithm-specific trajectory postprocessing.
 

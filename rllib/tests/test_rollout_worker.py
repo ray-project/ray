@@ -278,7 +278,7 @@ class TestRolloutWorker(unittest.TestCase):
 
     def test_action_clipping(self):
         from ray.rllib.examples.env.random_env import RandomEnv
-        action_space = gym.spaces.Box(-2.0, 1.0, (3,))
+        action_space = gym.spaces.Box(-2.0, 1.0, (3, ))
 
         # Clipping: True (clip between Policy's action_space.low/high),
         ev = RolloutWorker(

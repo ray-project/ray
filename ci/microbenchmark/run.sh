@@ -48,4 +48,5 @@ wget "https://s3-us-west-2.amazonaws.com/ray-wheels/$ray_branch/$commit/ray-$ray
 pip uninstall -y -q ray
 pip install -U "ray-$ray_version-cp36-cp36m-manylinux1_x86_64.whl"
 
+unset RAY_ADDRESS
 OMP_NUM_THREADS=64 ray microbenchmark

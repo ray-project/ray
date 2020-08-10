@@ -19,7 +19,6 @@
 #include <unordered_map>
 
 #include "absl/synchronization/mutex.h"
-
 #include "opencensus/stats/internal/delta_producer.h"
 #include "opencensus/stats/stats.h"
 #include "opencensus/tags/tag_key.h"

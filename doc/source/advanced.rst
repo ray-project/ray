@@ -205,23 +205,26 @@ To get information about the current nodes in your cluster, you can use ``ray.no
     print(ray.nodes())
 
     """
-    [{'ClientID': 'a9e430719685f3862ed7ba411259d4138f8afb1e',
-      'IsInsertion': True,
-      'NodeManagerAddress': '192.168.19.108',
-      'NodeManagerPort': 37428,
-      'ObjectManagerPort': 43415,
-      'ObjectStoreSocketName': '/tmp/ray/session_2019-07-28_17-03-53_955034_24883/sockets/plasma_store',
-      'RayletSocketName': '/tmp/ray/session_2019-07-28_17-03-53_955034_24883/sockets/raylet',
-      'Resources': {'CPU': 4.0},
-      'alive': True}]
+    [{'NodeID': '2691a0c1aed6f45e262b2372baf58871734332d7',
+      'Alive': True,
+      'NodeManagerAddress': '192.168.1.82',
+      'NodeManagerHostname': 'host-MBP.attlocal.net',
+      'NodeManagerPort': 58472,
+      'ObjectManagerPort': 52383,
+      'ObjectStoreSocketName': '/tmp/ray/session_2020-08-04_11-00-17_114725_17883/sockets/plasma_store',
+      'RayletSocketName': '/tmp/ray/session_2020-08-04_11-00-17_114725_17883/sockets/raylet',
+      'MetricsExportPort': 64860,
+      'alive': True,
+      'Resources': {'CPU': 16.0, 'memory': 100.0, 'object_store_memory': 34.0, 'node:192.168.1.82': 1.0}}]
     """
 
 The above information includes:
 
-  - `ClientID`: A unique identifier for the raylet.
+  - `NodeID`: A unique identifier for the raylet.
   - `alive`: Whether the node is still alive.
   - `NodeManagerAddress`: PrivateIP of the node that the raylet is on.
   - `Resources`: The total resource capacity on the node.
+  - `MetricsExportPort`: The port number at which metrics are exposed to through a `Prometheus endpoint <ray-metrics.html>`_.
 
 Resource Information
 ~~~~~~~~~~~~~~~~~~~~

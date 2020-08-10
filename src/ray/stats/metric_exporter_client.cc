@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <algorithm>
-
 #include "ray/stats/metric_exporter_client.h"
+
+#include <algorithm>
 
 namespace ray {
 namespace stats {

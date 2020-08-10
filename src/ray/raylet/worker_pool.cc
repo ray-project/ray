@@ -217,19 +217,13 @@ Process WorkerPool::StartWorkerProcess(const Language &language, const JobID &jo
 
   // Extract pointers from the worker command to pass into execvp.
   std::vector<std::string> worker_command_args;
-  size_t dynamic_option_index = 0;
   bool worker_raylet_config_placeholder_found = false;
   for (auto const &token : state.worker_command) {
-    const auto option_placeholder =
-        kWorkerDynamicOptionPlaceholderPrefix + std::to_string(dynamic_option_index);
-
-    if (token == option_placeholder) {
-      if (!dynamic_options.empty()) {
-        RAY_CHECK(dynamic_option_index < dynamic_options.size());
-        auto options = ParseCommandLine(dynamic_options[dynamic_option_index]);
+    if (token == kWorkerDynamicOptionPlaceholder) {
+      for (const auto &dynamic_option : dynamic_options) {
+        auto options = ParseCommandLine(dynamic_option);
         worker_command_args.insert(worker_command_args.end(), options.begin(),
                                    options.end());
-        ++dynamic_option_index;
       }
       continue;
     }
