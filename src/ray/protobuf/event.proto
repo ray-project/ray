@@ -38,5 +38,5 @@ message Event {
   // timestamp is the report millionseconds since 00:00, Jan 1 1970 UTC
   int64 timestamp = 8;
   // store custom key such as node_id, job_id, task_id
-  map<string, string> custom_field = 9;
+  map<string, string> custom_fields = 9;
 }

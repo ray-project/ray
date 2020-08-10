@@ -31,7 +31,7 @@ void EventManager::Publish(const rpc::Event &event) {
   }
 }
 
-void EventManager::AddReporter(std::shared_ptr<BasedEventReporter> reporter) {
+void EventManager::AddReporter(std::shared_ptr<BaseEventReporter> reporter) {
   reporter_map_.emplace(reporter->GetReporterKey(), reporter);
 }
 
@@ -50,28 +50,29 @@ RayEventContext &RayEventContext::Instance() {
 
 void RayEventContext::SetEventContext(
     rpc::Event_SourceType source_type,
-    const std::unordered_map<std::string, std::string>& custom_field) {
+    const std::unordered_map<std::string, std::string> &custom_fields) {
   source_type_ = source_type;
-  custom_field_ = custom_field;
+  custom_fields_ = custom_fields;
 }
 
 void RayEventContext::ResetEventContext() {
   source_type_ = rpc::Event_SourceType::Event_SourceType_COMMON;
-  custom_field_.clear();
+  custom_fields_.clear();
 }
 
-void RayEventContext::SetCustomField(const std::string& key, const std::string& value) {
-  custom_field_[key] = value;
+void RayEventContext::SetCustomFields(const std::string &key, const std::string &value) {
+  custom_fields_[key] = value;
 }
 
-void RayEventContext::SetCustomField(
-    const std::unordered_map<std::string, std::string>& custom_field) {
-  custom_field_ = custom_field;
+void RayEventContext::SetCustomFields(
+    const std::unordered_map<std::string, std::string> &custom_fields) {
+  custom_fields_ = custom_fields;
 }
 ///
 /// RayEvent
 ///
-void RayEvent::ReportEvent(const std::string& severity, const std::string& label, const std::string& message) {
+void RayEvent::ReportEvent(const std::string &severity, const std::string &label,
+                           const std::string &message) {
   rpc::Event_Severity severity_ele =
       rpc::Event_Severity::Event_Severity_Event_Severity_INT_MIN_SENTINEL_DO_NOT_USE_;
   RAY_CHECK(rpc::Event_Severity_Parse(severity, &severity_ele));
@@ -103,8 +104,8 @@ void RayEvent::SendMessage(const std::string &message) {
   event.set_message(message);
   event.set_timestamp(current_sys_time_us());
 
-  auto mp = RayEventContext::Instance().GetCustomField();
-  event.mutable_custom_field()->insert(mp.begin(), mp.end());
+  auto mp = RayEventContext::Instance().GetCustomFields();
+  event.mutable_custom_fields()->insert(mp.begin(), mp.end());
 
   EventManager::Instance().Publish(event);
 }

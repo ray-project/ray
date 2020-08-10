@@ -12,22 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/util/event.h"
 #include <fstream>
 #include <set>
 #include <thread>
 #include "gtest/gtest.h"
+#include "ray/util/event.h"
 
 namespace ray {
 
-class TestEventReporter : public BasedEventReporter {
+class TestEventReporter : public BaseEventReporter {
  public:
   virtual void Init() override {}
   virtual void Report(const rpc::Event &event) override { event_list.push_back(event); }
   virtual void Close() override {}
   virtual ~TestEventReporter() {}
   virtual std::string GetReporterKey() override { return "test.event.reporter"; }
-public:
+
+ public:
   static std::vector<rpc::Event> event_list;
 };
 
@@ -37,7 +38,7 @@ void CheckEventDetail(rpc::Event &event, std::string job_id, std::string node_id
                       std::string task_id, std::string source_type, std::string severity,
                       std::string label, std::string message) {
   int custom_key_num = 0;
-  auto mp = (*event.mutable_custom_field());
+  auto mp = (*event.mutable_custom_fields());
 
   if (job_id != "") {
     EXPECT_EQ(mp["job_id"], job_id);

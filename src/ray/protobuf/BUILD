@@ -121,8 +121,7 @@ cc_proto_library(
 
 proto_library(
     name = "event_proto",
-    srcs = ["src/ray/protobuf/event.proto"],
-    visibility = ["//visibility:public"],
+    srcs = ["event.proto"],
 )
 
 cc_proto_library(

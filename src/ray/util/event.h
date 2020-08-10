@@ -31,7 +31,7 @@ namespace ray {
   ::ray::RayEvent(::ray::rpc::Event_Severity::Event_Severity_##event_type, label)
 
 // interface of event reporter
-class BasedEventReporter {
+class BaseEventReporter {
  public:
   virtual void Init() = 0;
 
@@ -55,7 +55,7 @@ class EventManager final {
   // not be thread-safe. But we assume default initialization and shutdown are placed in
   // the construction and destruction of a resident class, or at the beginning and end of
   // a process.
-  void AddReporter(std::shared_ptr<BasedEventReporter> reporter);
+  void AddReporter(std::shared_ptr<BaseEventReporter> reporter);
 
   void ClearReporters();
 
@@ -67,7 +67,7 @@ class EventManager final {
   const EventManager &operator=(const EventManager &manager) = delete;
 
  protected:
-  std::unordered_map<std::string, std::shared_ptr<BasedEventReporter>> reporter_map_;
+  std::unordered_map<std::string, std::shared_ptr<BaseEventReporter>> reporter_map_;
 };
 
 // store the event context. Different workers of a process in core_worker have different
@@ -77,12 +77,12 @@ class RayEventContext final {
   static RayEventContext &Instance();
 
   void SetEventContext(rpc::Event_SourceType source_type,
-                       const std::unordered_map<std::string, std::string> &custom_field =
+                       const std::unordered_map<std::string, std::string> &custom_fields =
                            std::unordered_map<std::string, std::string>());
 
-  void SetCustomField(const std::string &key, const std::string &value);
+  void SetCustomFields(const std::string &key, const std::string &value);
 
-  void SetCustomField(const std::unordered_map<std::string, std::string> &custom_field);
+  void SetCustomFields(const std::unordered_map<std::string, std::string> &custom_fields);
 
   void ResetEventContext();
 
@@ -92,8 +92,8 @@ class RayEventContext final {
 
   inline int32_t GetSourcePid() const { return source_pid_; }
 
-  inline const std::unordered_map<std::string, std::string> &GetCustomField() const {
-    return custom_field_;
+  inline const std::unordered_map<std::string, std::string> &GetCustomFields() const {
+    return custom_fields_;
   }
 
  private:
@@ -110,7 +110,7 @@ class RayEventContext final {
   rpc::Event_SourceType source_type_;
   std::string source_hostname_;
   int32_t source_pid_;
-  std::unordered_map<std::string, std::string> custom_field_;
+  std::unordered_map<std::string, std::string> custom_fields_;
 
   static thread_local std::unique_ptr<RayEventContext> context_;
 };
