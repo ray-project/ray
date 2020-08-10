@@ -106,7 +106,7 @@ def create_or_update_cluster(
     cli_logger.verbosity = verbose
 
     set_using_login_shells(use_login_shells)
-    cmd_output_util.set_output_redirected(dump_command_output)
+    cmd_output_util.set_output_redirected(not dump_command_output)
 
     if use_login_shells:
         cli_logger.warning(

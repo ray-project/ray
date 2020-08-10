@@ -373,7 +373,7 @@ class SSHCommandRunner(CommandRunnerInterface):
                 return self.process_runner.check_call(final_cmd)
         except subprocess.CalledProcessError as e:
             quoted_cmd = " ".join(final_cmd[:-1] + [quote(final_cmd[-1])])
-            if not cli_logger.old_style:
+            if not cli_logger.old_style and not is_using_login_shells():
                 raise ProcessRunnerError(
                     "Command failed",
                     "ssh_command_failed",
