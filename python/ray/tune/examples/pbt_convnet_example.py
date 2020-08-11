@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 
+# flake8: noqa
+# yapf: disable
+
 # __tutorial_imports_begin__
 import argparse
 import os
@@ -15,7 +18,6 @@ from ray import tune
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.utils import validate_save_restore
 from ray.tune.trial import ExportFormat
-
 # __tutorial_imports_end__
 
 
@@ -65,9 +67,8 @@ class PytorchTrainable(tune.Trainable):
 
         self.config = new_config
         return True
-
-
 # __trainable_end__
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -94,7 +95,6 @@ if __name__ == "__main__":
             # allow perturbations within this set of categorical values
             "momentum": [0.8, 0.9, 0.99],
         })
-
     # __pbt_end__
 
     # __tune_begin__

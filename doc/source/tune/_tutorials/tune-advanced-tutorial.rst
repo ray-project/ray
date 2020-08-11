@@ -77,19 +77,19 @@ During the training, we can constantly check the status of the models from conso
 .. code-block:: bash
 
     == Status ==
-    Memory usage on this node: 10.4/16.0 GiB
-    PopulationBasedTraining: 4 checkpoints, 1 perturbs
-    Resources requested: 4/12 CPUs, 0/0 GPUs, 0.0/3.42 GiB heap, 0.0/1.17 GiB objects
-    Number of trials: 4 ({'RUNNING': 4})
-    Result logdir: /Users/yuhao.yang/ray_results/pbt_test
-    +--------------------------+----------+---------------------+----------+------------+--------+------------------+----------+
-    | Trial name               | status   | loc                 |       lr |   momentum |   iter |   total time (s) |      acc |
-    |--------------------------+----------+---------------------+----------+------------+--------+------------------+----------|
-    | PytorchTrainble_3b42d914 | RUNNING  | 30.57.180.224:49840 | 0.122032 |   0.302176 |     18 |          3.8689  | 0.8875   |
-    | PytorchTrainble_3b45091e | RUNNING  | 30.57.180.224:49835 | 0.505325 |   0.628559 |     18 |          3.90404 | 0.134375 |
-    | PytorchTrainble_3b454c46 | RUNNING  | 30.57.180.224:49843 | 0.490228 |   0.969013 |     17 |          3.72111 | 0.0875   |
-    | PytorchTrainble_3b458a9c | RUNNING  | 30.57.180.224:49833 | 0.961861 |   0.169701 |     13 |          2.72594 | 0.1125   |
-    +--------------------------+----------+---------------------+----------+------------+--------+------------------+----------+
+    Memory usage on this node: 11.6/16.0 GiB
+    PopulationBasedTraining: 5 checkpoints, 4 perturbs
+    Resources requested: 0/16 CPUs, 0/0 GPUs, 0.0/3.96 GiB heap, 0.0/1.37 GiB objects
+    Result logdir: /Users/foo/ray_results/pbt_test
+    Number of trials: 4 (4 TERMINATED)
+    +------------------------------+------------+-------+-----------+------------+----------+--------+------------------+
+    | Trial name                   | status     | loc   |        lr |   momentum |      acc |   iter |   total time (s) |
+    |------------------------------+------------+-------+-----------+------------+----------+--------+------------------|
+    | PytorchTrainable_ba982_00000 | TERMINATED |       | 0.0457501 |  0.99      | 0.6375   |     25 |          5.35712 |
+    | PytorchTrainable_ba982_00001 | TERMINATED |       | 0.175808  |  0.0667043 | 0.909375 |     29 |          6.18802 |
+    | PytorchTrainable_ba982_00002 | TERMINATED |       | 0.21097   |  0.99      | 0.040625 |     29 |          6.19634 |
+    | PytorchTrainable_ba982_00003 | TERMINATED |       | 0.0571876 |  0.852088  | 0.96875  |     30 |          6.37298 |
+    +------------------------------+------------+-------+-----------+------------+----------+--------+------------------+
 
 In {LOG_DIR}/{MY_EXPERIMENT_NAME}/, all mutations are logged in pbt_global.txt
 and individual policy perturbations are recorded in pbt_policy_{i}.txt. Tune logs:
@@ -113,6 +113,38 @@ Checking the accuracy:
     print('best config:', analysis.get_best_config("mean_accuracy"))
 
 .. image:: /images/tune_advanced_plot1.png
+
+.. _tune-advanced-tutorial-pbt-replay:
+
+Replaying a PBT run
+-------------------
+A run of Population Based Training ends with fully trained models. However, sometimes
+you might like to train the model from scratch, but use the same hyperparameter
+schedule as obtained from PBT. Ray Tune offers a replay utility for this.
+
+All you need to do is pass the policy log file for the trial you want to replay.
+This is usually stored in the experiment directory, for instance
+``~/ray_results/pbt_test/pbt_policy_ba982_00000.txt``.
+
+The replay utility reads the original configuration for the trial and updates it
+each time when it was originally perturbed. You can (and should)
+thus just use the same ``Trainable`` for the replay run.
+
+.. code-block:: python
+
+    from ray import tune
+
+    from ray.tune.examples.pbt_convnet_example import PytorchTrainable
+    from ray.tune.schedulers import PopulationBasedTrainingReplay
+
+    replay = PopulationBasedTrainingReplay(
+        "~/ray_results/pbt_test/pbt_policy_ba982_00003.txt")
+
+    tune.run(
+        PytorchTrainable,
+        scheduler=replay,
+        stop={"training_iteration": 100})
+
 
 DCGAN with Trainable and PBT
 ----------------------------

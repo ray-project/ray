@@ -92,7 +92,7 @@ class ServeController:
     """
 
     async def __init__(self, instance_name, http_host, http_port,
-                       metric_exporter_class):
+                       metric_exporter_class, _http_middlewares):
         # Unique name of the serve instance managed by this actor. Used to
         # namespace child actors and checkpoints.
         self.instance_name = instance_name
@@ -135,6 +135,7 @@ class ServeController:
 
         self.http_host = http_host
         self.http_port = http_port
+        self._http_middlewares = _http_middlewares
 
         # If starting the actor for the first time, starts up the other system
         # components. If recovering, fetches their actor handles.
@@ -190,7 +191,8 @@ class ServeController:
                     node_id,
                     self.http_host,
                     self.http_port,
-                    instance_name=self.instance_name)
+                    instance_name=self.instance_name,
+                    _http_middlewares=self._http_middlewares)
 
             self.routers[node_id] = router
 

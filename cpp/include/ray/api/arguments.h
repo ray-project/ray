@@ -2,6 +2,7 @@
 #pragma once
 
 #include <ray/api/serializer.h>
+
 #include <msgpack.hpp>
 
 namespace ray {

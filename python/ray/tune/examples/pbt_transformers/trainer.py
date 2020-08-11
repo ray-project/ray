@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 The only changes to the original transformers.Trainer are:
     - Report eval metrics to Tune
     - Save state using Tune's checkpoint directories
+    - Pass in extra arguments for wandb
 """
 
 
@@ -39,10 +40,8 @@ class TuneTransformerTrainer(transformers.Trainer):
         output = self._prediction_loop(
             eval_dataloader, description="Evaluation")
         self._log(output.metrics)
-
-        tune.report(**output.metrics)
-
         self.save_state()
+        tune.report(**output.metrics)
 
         return output.metrics
 

@@ -25,8 +25,9 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             assert len(view_req_model) == 1
             assert len(view_req_policy) == 6
             for key in [
-                SampleBatch.OBS, SampleBatch.ACTIONS, SampleBatch.REWARDS,
-                SampleBatch.DONES, SampleBatch.NEXT_OBS, SampleBatch.VF_PREDS
+                    SampleBatch.OBS, SampleBatch.ACTIONS, SampleBatch.REWARDS,
+                    SampleBatch.DONES, SampleBatch.NEXT_OBS,
+                    SampleBatch.VF_PREDS
             ]:
                 assert key in view_req_policy
                 # None of the view cols has a special underlying data_col,
@@ -53,9 +54,10 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             assert len(view_req_model) == 3  # obs, prev_a, prev_r
             assert len(view_req_policy) == 8
             for key in [
-                SampleBatch.OBS, SampleBatch.ACTIONS, SampleBatch.REWARDS,
-                SampleBatch.DONES, SampleBatch.NEXT_OBS, SampleBatch.VF_PREDS,
-                SampleBatch.PREV_ACTIONS, SampleBatch.PREV_REWARDS
+                    SampleBatch.OBS, SampleBatch.ACTIONS, SampleBatch.REWARDS,
+                    SampleBatch.DONES, SampleBatch.NEXT_OBS,
+                    SampleBatch.VF_PREDS, SampleBatch.PREV_ACTIONS,
+                    SampleBatch.PREV_REWARDS
             ]:
                 assert key in view_req_policy
 
@@ -65,9 +67,10 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 elif key == SampleBatch.PREV_REWARDS:
                     assert view_req_policy[key].data_col == SampleBatch.REWARDS
                     assert view_req_policy[key].shift == -1
-                elif key not in [SampleBatch.NEXT_OBS,
-                                 SampleBatch.PREV_ACTIONS,
-                                 SampleBatch.PREV_REWARDS]:
+                elif key not in [
+                        SampleBatch.NEXT_OBS, SampleBatch.PREV_ACTIONS,
+                        SampleBatch.PREV_REWARDS
+                ]:
                     assert view_req_policy[key].data_col is None
                 else:
                     assert view_req_policy[key].data_col == SampleBatch.OBS
