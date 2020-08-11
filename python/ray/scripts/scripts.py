@@ -1161,9 +1161,6 @@ def rsync_down(cluster_config_file, source, target, cluster_name,
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
 
-    set_output_redirected(False)
-    set_rsync_silent(False)
-
     rsync(cluster_config_file, source, target, cluster_name, down=True)
 
 
@@ -1190,9 +1187,6 @@ def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes,
     cli_logger.old_style = not log_new_style
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
-
-    set_output_redirected(False)
-    set_rsync_silent(False)
 
     rsync(
         cluster_config_file,

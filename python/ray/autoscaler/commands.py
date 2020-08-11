@@ -29,7 +29,8 @@ from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
 
 from ray.ray_constants import AUTOSCALER_RESOURCE_REQUEST_CHANNEL
 from ray.autoscaler.updater import NodeUpdaterThread
-from ray.autoscaler.command_runner import set_using_login_shells
+from ray.autoscaler.command_runner import set_using_login_shells, \
+                                          set_rsync_silent
 from ray.autoscaler.command_runner import DockerCommandRunner
 from ray.autoscaler.log_timer import LogTimer
 from ray.worker import global_worker
@@ -179,6 +180,7 @@ def create_or_update_cluster(
     # because it only supports aws
     if config["provider"]["type"] != "aws":
         cli_logger.old_style = True
+    cli_logger.newline()
     config = _bootstrap_config(config, no_config_cache)
     if config["provider"]["type"] != "aws":
         cli_logger.old_style = False
@@ -212,7 +214,6 @@ def _bootstrap_config(config: Dict[str, Any],
             try_reload_log_state(config_cache["config"]["provider"],
                                  config_cache.get("provider_log_info"))
 
-            cli_logger.newline()
             cli_logger.verbose_warning(
                 "Loaded cached provider configuration "
                 "from " + cf.bold("{}"), cache_key)
@@ -674,7 +675,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
 
         cli_logger.newline()
         with cli_logger.group("Useful commands"):
-            cli_logger.print("Monitor auto-scailng with")
+            cli_logger.print("Monitor autoscailng with")
             cli_logger.print(
                 cf.bold("  ray exec {}{} {}"), raw_config_file, modifiers,
                 quote(monitor_str))
@@ -869,6 +870,10 @@ def rsync(config_file: str,
         down: whether we're syncing remote -> local
         all_nodes: whether to sync worker nodes in addition to the head node
     """
+    if bool(source) != bool(target):
+        cli_logger.abort(
+            "Expected either both a source and a target, or neither.")
+
     assert bool(source) == bool(target), (
         "Must either provide both or neither source and target.")
 
@@ -914,6 +919,10 @@ def rsync(config_file: str,
                 rsync = updater.rsync_up
 
             if source and target:
+                # print rsync progress for single file rsync
+                cmd_output_util.set_output_redirected(False)
+                set_rsync_silent(False)
+
                 rsync(source, target)
             else:
                 updater.sync_file_mounts(rsync)
