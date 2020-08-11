@@ -360,6 +360,9 @@ script:
   - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only python/ray/tests/...; fi
   # NO MORE TESTS BELOW, keep them above.
 
+after_script:
+  - if [ "${TRAVIS_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi
+
 deploy:
   - provider: s3
     edge: true # This supposedly opts in to deploy v2.
@@ -425,26 +428,6 @@ deploy:
       repo: ray-project/ray
       branch: master
       condition: $MULTIPLATFORM_JARS = 1 || $MAC_JARS = 1
-
-  - provider: script
-    edge: true # This supposedly opts in to deploy v2.
-    script: ./ci/travis/get_build_info.py > /tmp/bazel_event_logs/metadata.json
-    skip_cleanup: true
-
-  # Upload bazel event logs to s3
-  - provider: s3
-    edge: true
-    access_key_id: AKIAQQPDA73RF7PSLH5N
-    secret_access_key:
-      secure: ai2YP/R3G86HuARvaMKG6tjzei5EqL/TR5pMDuT5JKjpWt4YFcvdAXcN4F2EEvKdJ+gwVEbACa37M5fJ3YMlforCrk/YiOQI15Ixjo9NhNonLp95NhCDKgKwQIgXXKBzk2ylXUm8FbLqnW6MRJyOb7ioufRLEtpy35XcYCyzqeDZgdhn9eIsP4O2W17ws3WqKvbbMFs2rTnDqlRYqDBO+dCGcaWdaKdX8VDjoCMkko7Yh8Mh1zne3KFHZvcknGTI3DggJMtaY77Fx3FfJSO2Gp7R8ARWGWTJqNkK/H0YGnlnJ84Za15qeozkvP5Ct9SvRQf0Pg96oj73IevVrs0lLjFfCkp+fC+gVYAXfMhDfXO7rVRUyXoXrsFcEBbGNGzu3awCsZIkECD0JVadsV4ypxUCmygd2+3aHgRY1+crwbnBvNmHk+qyoN82TH1FmtOP4FyvF3/OJaL0Cn9KVoeoRW3yH2SLbyE/yNDHwsADMJEFVXv4VuHctdRoAPujt+mxU8Jz0AzJd2CqUPXePriWTyRqPBDi3mOhAu0KyX+G/r7o7C+ZIUU1bTXRHtKQqFuWq9KF43H80G7EnN1Bwq1wXpGQjzGH6SdflLRC8uf2vCUeD9Xgd/E2b0wJM07PfQ0aPuKUoZfJZECuA7o+5adB7mSfVg+brF0xvl67DIp2lDE=
-    bucket: ray-travis-log
-    # acl: public_read # This data won't be used externally. We can always turn on public_read later.
-    region: us-west-2
-    local_dir: /tmp/bazel_event_logs
-    upload-dir: "bazel_events/$TRAVIS_BRANCH/$TRAVIS_COMMIT/$TRAVIS_JOB_ID"
-    on:
-      repo: ray-project/ray
-      branch: master
 
   - provider: script
     edge: true # This supposedly opts in to deploy v2.
