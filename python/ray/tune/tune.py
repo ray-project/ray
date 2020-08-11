@@ -190,7 +190,11 @@ def run(run_or_experiment,
             Ray will recover from the latest checkpoint if present.
             Setting to -1 will lead to infinite recovery retries.
             Setting to 0 will disable retries. Defaults to 3.
-        fail_fast (bool): Whether to fail upon the first error.
+        fail_fast (bool | str): Whether to fail upon the first error.
+            If fail_fast='raise' provided, Tune will automatically
+            raise the exception received by the Trainable. fail_fast='raise'
+            can easily leak resources and should be used with caution (it
+            is best used with `ray.init(local_mode=True)`).
         restore (str): Path to checkpoint. Only makes sense to set if
             running 1 trial. Defaults to None.
         search_alg (Searcher): Search algorithm for optimization.
