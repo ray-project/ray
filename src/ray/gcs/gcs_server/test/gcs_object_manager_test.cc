@@ -13,9 +13,10 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_server/gcs_object_manager.h"
-#include <ray/gcs/gcs_server/test/gcs_server_test_util.h>
-#include <ray/gcs/test/gcs_test_util.h>
+
 #include "gtest/gtest.h"
+#include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
+#include "ray/gcs/test/gcs_test_util.h"
 
 namespace ray {
 
@@ -54,7 +55,7 @@ class GcsObjectManagerTest : public ::testing::Test {
   void SetUp() override {
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
-        io_service_, error_info_accessor_, gcs_pub_sub_, gcs_table_storage_);
+        io_service_, io_service_, gcs_pub_sub_, gcs_table_storage_);
     gcs_object_manager_ = std::make_shared<MockedGcsObjectManager>(
         gcs_table_storage_, gcs_pub_sub_, *gcs_node_manager_);
     GenTestData();
@@ -82,7 +83,6 @@ class GcsObjectManagerTest : public ::testing::Test {
 
  protected:
   boost::asio::io_service io_service_;
-  GcsServerMocker::MockedErrorInfoAccessor error_info_accessor_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
   std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;

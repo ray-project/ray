@@ -1065,6 +1065,8 @@ def start_log_monitor(redis_address,
 
 
 def start_reporter(redis_address,
+                   port,
+                   metrics_export_port,
                    stdout_file=None,
                    stderr_file=None,
                    redis_password=None,
@@ -1073,6 +1075,8 @@ def start_reporter(redis_address,
 
     Args:
         redis_address (str): The address of the Redis instance.
+        port(int): The port to bind the reporter process.
+        metrics_export_port(int): The port at which metrics are exposed to.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
@@ -1085,10 +1089,9 @@ def start_reporter(redis_address,
     reporter_filepath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "reporter.py")
     command = [
-        sys.executable,
-        "-u",
-        reporter_filepath,
-        "--redis-address={}".format(redis_address),
+        sys.executable, "-u", reporter_filepath,
+        "--redis-address={}".format(redis_address), "--port={}".format(port),
+        "--metrics-export-port={}".format(metrics_export_port)
     ]
     if redis_password:
         command += ["--redis-password", redis_password]
@@ -1202,7 +1205,9 @@ def start_gcs_server(redis_address,
                      stderr_file=None,
                      redis_password=None,
                      config=None,
-                     fate_share=None):
+                     fate_share=None,
+                     gcs_server_port=None,
+                     metrics_agent_port=None):
     """Start a gcs server.
     Args:
         redis_address (str): The address that the Redis server is listening on.
@@ -1213,17 +1218,24 @@ def start_gcs_server(redis_address,
         redis_password (str): The password of the redis server.
         config (dict|None): Optional configuration that will
             override defaults in RayConfig.
+        gcs_server_port (int): Port number of the gcs server.
+        metrics_agent_port(int): The port where metrics agent is bound to.
     Returns:
         ProcessInfo for the process that was started.
     """
     gcs_ip_address, gcs_port = redis_address.split(":")
     redis_password = redis_password or ""
     config_str = ",".join(["{},{}".format(*kv) for kv in config.items()])
+    if gcs_server_port is None:
+        gcs_server_port = 0
+
     command = [
         GCS_SERVER_EXECUTABLE,
         "--redis_address={}".format(gcs_ip_address),
         "--redis_port={}".format(gcs_port),
         "--config_list={}".format(config_str),
+        "--gcs_server_port={}".format(gcs_server_port),
+        "--metrics-agent-port={}".format(metrics_agent_port),
     ]
     if redis_password:
         command += ["--redis_password={}".format(redis_password)]
@@ -1249,6 +1261,8 @@ def start_raylet(redis_address,
                  max_worker_port=None,
                  object_manager_port=None,
                  redis_password=None,
+                 metrics_agent_port=None,
+                 metrics_export_port=None,
                  use_valgrind=False,
                  use_profiler=False,
                  stdout_file=None,
@@ -1260,7 +1274,9 @@ def start_raylet(redis_address,
                  plasma_directory=None,
                  huge_pages=False,
                  fate_share=None,
-                 socket_to_use=None):
+                 socket_to_use=None,
+                 head_node=False,
+                 start_initial_python_workers_for_first_job=False):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1283,6 +1299,8 @@ def start_raylet(redis_address,
         max_worker_port (int): The highest port number that workers will bind
             on. If set, min_worker_port must also be set.
         redis_password: The password to use when connecting to Redis.
+        metrics_agent_port(int): The port where metrics agent is bound to.
+        metrics_export_port(int): The port at which metrics are exposed to.
         use_valgrind (bool): True if the raylet should be started inside
             of valgrind. If this is True, use_profiler must be False.
         use_profiler (bool): True if the raylet should be started inside
@@ -1389,7 +1407,12 @@ def start_raylet(redis_address,
         "--redis_password={}".format(redis_password or ""),
         "--temp_dir={}".format(temp_dir),
         "--session_dir={}".format(session_dir),
+        "--metrics-agent-port={}".format(metrics_agent_port),
+        "--metrics_export_port={}".format(metrics_export_port),
     ]
+    if start_initial_python_workers_for_first_job:
+        command.append("--num_initial_python_workers_for_first_job={}".format(
+            resource_spec.num_cpus))
     if config.get("plasma_store_as_thread"):
         # command related to the plasma store
         plasma_directory, object_store_memory = determine_plasma_store_config(
@@ -1402,6 +1425,8 @@ def start_raylet(redis_address,
             command.append("--huge_pages")
     if socket_to_use:
         socket_to_use.close()
+    if head_node:
+        command.append("--head_node")
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_RAYLET,
@@ -1465,7 +1490,7 @@ def build_java_worker_command(
         pairs.append(("ray.redis.password", redis_password))
 
     pairs.append(("ray.home", RAY_HOME))
-    pairs.append(("ray.log-dir", os.path.join(session_dir, "logs")))
+    pairs.append(("ray.logging.dir", os.path.join(session_dir, "logs")))
     pairs.append(("ray.session-dir", session_dir))
 
     command = ["java"] + ["-D{}={}".format(*pair) for pair in pairs]
@@ -1493,7 +1518,7 @@ def build_java_worker_command(
     # above options.
     command += options
 
-    command += ["RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_0"]
+    command += ["RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER"]
     command += ["io.ray.runtime.runner.worker.DefaultWorker"]
 
     return command

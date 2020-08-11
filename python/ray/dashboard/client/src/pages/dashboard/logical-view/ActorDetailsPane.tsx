@@ -77,18 +77,28 @@ const actorStateReprStyles = makeStyles((theme: Theme) =>
 
 const ActorStateRepr: React.FC<ActorStateReprProps> = ({ state, ist }) => {
   const classes = actorStateReprStyles();
-  const { Alive, Dead, Creating, Restarting, Invalid } = ActorState;
+  const {
+    Alive,
+    Dead,
+    PendingCreation,
+    Restarting,
+    DependenciesUnready,
+    Invalid,
+  } = ActorState;
   switch (state) {
     case Invalid:
+      console.log(ist);
       if (ist === "infeasibleActor") {
         return <div className={classes.infeasible}>Infeasible</div>;
       }
       if (ist === "pendingActor") {
-        return <div className={classes.pending}>Pending Resources</div>;
+        return <div className={classes.pending}>Pending</div>;
       }
       return <div className={classes.unknown}>Unknown</div>;
-    case Creating:
+    case PendingCreation:
       return <div className={classes.creating}>Creating</div>;
+    case DependenciesUnready:
+      return <div className={classes.creating}>Dependencies Unready</div>;
     case Alive:
       return <div className={classes.alive}>Alive</div>;
     case Restarting:

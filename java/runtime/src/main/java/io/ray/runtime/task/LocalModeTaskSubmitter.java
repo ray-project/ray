@@ -3,13 +3,17 @@ package io.ray.runtime.task;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.protobuf.ByteString;
+import io.ray.api.ActorHandle;
 import io.ray.api.BaseActorHandle;
+import io.ray.api.Ray;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.TaskId;
 import io.ray.api.id.UniqueId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
+import io.ray.api.placementgroup.PlacementGroup;
+import io.ray.api.placementgroup.PlacementStrategy;
 import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.actor.LocalModeActorHandle;
 import io.ray.runtime.context.LocalModeWorkerContext;
@@ -19,11 +23,13 @@ import io.ray.runtime.generated.Common;
 import io.ray.runtime.generated.Common.ActorCreationTaskSpec;
 import io.ray.runtime.generated.Common.ActorTaskSpec;
 import io.ray.runtime.generated.Common.Language;
+import io.ray.runtime.generated.Common.ObjectReference;
 import io.ray.runtime.generated.Common.TaskArg;
 import io.ray.runtime.generated.Common.TaskSpec;
 import io.ray.runtime.generated.Common.TaskType;
 import io.ray.runtime.object.LocalModeObjectStore;
 import io.ray.runtime.object.NativeRayObject;
+import io.ray.runtime.placementgroup.PlacementGroupImpl;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -31,6 +37,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -38,6 +45,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.stream.Collectors;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -60,11 +68,14 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   /// The thread pool to execute normal tasks.
   private final ExecutorService normalTaskExecutorService;
 
+  private final Map<ActorId, LocalModeActorHandle> actorHandles = new ConcurrentHashMap<>();
+
+  private final Map<String, ActorHandle> namedActors = new ConcurrentHashMap<>();
 
   private final Map<ActorId, TaskExecutor.ActorContext> actorContexts = new ConcurrentHashMap<>();
 
   public LocalModeTaskSubmitter(RayRuntimeInternal runtime, TaskExecutor taskExecutor,
-      LocalModeObjectStore objectStore) {
+                                LocalModeObjectStore objectStore) {
     this.runtime = runtime;
     this.taskExecutor = taskExecutor;
     this.objectStore = objectStore;
@@ -93,7 +104,8 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     Set<ObjectId> unreadyObjects = new HashSet<>();
     // Check whether task arguments are ready.
     for (TaskArg arg : taskSpec.getArgsList()) {
-      for (ByteString idByteString : arg.getObjectIdsList()) {
+      ByteString idByteString = arg.getObjectRef().getObjectId();
+      if (idByteString != ByteString.EMPTY) {
         ObjectId id = new ObjectId(idByteString.toByteArray());
         if (!objectStore.isObjectReady(id)) {
           unreadyObjects.add(id);
@@ -124,13 +136,14 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
             ByteString.copyFrom(runtime.getRayConfig().getJobId().getBytes()))
         .setTaskId(ByteString.copyFrom(taskIdBytes))
         .setFunctionDescriptor(Common.FunctionDescriptor.newBuilder()
-                .setJavaFunctionDescriptor(
-                        Common.JavaFunctionDescriptor.newBuilder()
-                        .setClassName(functionDescriptorList.get(0))
-                        .setFunctionName(functionDescriptorList.get(1))
-                        .setSignature(functionDescriptorList.get(2))))
+            .setJavaFunctionDescriptor(
+                Common.JavaFunctionDescriptor.newBuilder()
+                    .setClassName(functionDescriptorList.get(0))
+                    .setFunctionName(functionDescriptorList.get(1))
+                    .setSignature(functionDescriptorList.get(2))))
         .addAllArgs(args.stream().map(arg -> arg.id != null ? TaskArg.newBuilder()
-            .addObjectIds(ByteString.copyFrom(arg.id.getBytes())).build()
+            .setObjectRef(ObjectReference.newBuilder().setObjectId(
+                    ByteString.copyFrom(arg.id.getBytes()))).build()
             : TaskArg.newBuilder().setData(ByteString.copyFrom(arg.value.data))
             .setMetadata(arg.value.metadata != null ? ByteString
                 .copyFrom(arg.value.metadata) : ByteString.EMPTY).build())
@@ -149,8 +162,9 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   }
 
   @Override
-  public BaseActorHandle createActor(FunctionDescriptor functionDescriptor, List<FunctionArg> args,
-                                     ActorCreationOptions options) {
+  public BaseActorHandle createActor(
+      FunctionDescriptor functionDescriptor, List<FunctionArg> args,
+      ActorCreationOptions options) throws IllegalArgumentException {
     ActorId actorId = ActorId.fromRandom();
     TaskSpec taskSpec = getTaskSpecBuilder(TaskType.ACTOR_CREATION_TASK, functionDescriptor, args)
         .setNumReturns(1)
@@ -159,7 +173,17 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
             .build())
         .build();
     submitTaskSpec(taskSpec);
-    return new LocalModeActorHandle(actorId, getReturnIds(taskSpec).get(0));
+    final LocalModeActorHandle actorHandle
+        = new LocalModeActorHandle(actorId, getReturnIds(taskSpec).get(0));
+    actorHandles.put(actorId, actorHandle.copy());
+    if (StringUtils.isNotBlank(options.name)) {
+      String fullName = options.global ? options.name :
+          String.format("%s-%s", Ray.getRuntimeContext().getCurrentJobId(), options.name);
+      Preconditions.checkArgument(!namedActors.containsKey(fullName),
+          String.format("Actor of name %s exists", fullName));
+      namedActors.put(fullName, actorHandle);
+    }
+    return actorHandle;
   }
 
   @Override
@@ -186,6 +210,27 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     } else {
       return ImmutableList.of(returnIds.get(0));
     }
+  }
+
+  @Override
+  public PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
+      PlacementStrategy strategy) {
+    return new PlacementGroupImpl();
+  }
+
+  @Override
+  public BaseActorHandle getActor(ActorId actorId) {
+    return actorHandles.get(actorId).copy();
+  }
+
+  public Optional<BaseActorHandle> getActor(String name, boolean global) {
+    String fullName = global ? name :
+        String.format("%s-%s", Ray.getRuntimeContext().getCurrentJobId(), name);
+    ActorHandle actorHandle = namedActors.get(fullName);
+    if (null == actorHandle) {
+      return Optional.empty();
+    }
+    return Optional.of(actorHandle);
   }
 
   public void shutdown() {
@@ -277,8 +322,9 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
         ? ((LocalModeTaskExecutor.LocalActorContext) actorContext).getWorkerId()
         : UniqueId.randomId();
     ((LocalModeWorkerContext) runtime.getWorkerContext()).setCurrentWorkerId(workerId);
-    List<NativeRayObject> returnObjects = taskExecutor
-        .execute(getJavaFunctionDescriptor(taskSpec).toList(), args);
+    List<String> rayFunctionInfo = getJavaFunctionDescriptor(taskSpec).toList();
+    taskExecutor.checkByteBufferArguments(rayFunctionInfo);
+    List<NativeRayObject> returnObjects = taskExecutor.execute(rayFunctionInfo, args);
     if (taskSpec.getType() == TaskType.ACTOR_CREATION_TASK) {
       // Update actor context map ASAP in case objectStore.putRaw triggered the next actor task
       // on this actor.
@@ -297,7 +343,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
         // If the task is an actor task or an actor creation task,
         // put the dummy object in object store, so those tasks which depends on it
         // can be executed.
-        putObject = new NativeRayObject(new byte[]{1}, null);
+        putObject = new NativeRayObject(new byte[] {1}, null);
       } else {
         putObject = returnObjects.get(i);
       }
@@ -307,13 +353,13 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
 
   private static JavaFunctionDescriptor getJavaFunctionDescriptor(TaskSpec taskSpec) {
     Common.FunctionDescriptor functionDescriptor =
-            taskSpec.getFunctionDescriptor();
+        taskSpec.getFunctionDescriptor();
     if (functionDescriptor.getFunctionDescriptorCase() ==
-            Common.FunctionDescriptor.FunctionDescriptorCase.JAVA_FUNCTION_DESCRIPTOR) {
+        Common.FunctionDescriptor.FunctionDescriptorCase.JAVA_FUNCTION_DESCRIPTOR) {
       return new JavaFunctionDescriptor(
-              functionDescriptor.getJavaFunctionDescriptor().getClassName(),
-              functionDescriptor.getJavaFunctionDescriptor().getFunctionName(),
-              functionDescriptor.getJavaFunctionDescriptor().getSignature());
+          functionDescriptor.getJavaFunctionDescriptor().getClassName(),
+          functionDescriptor.getJavaFunctionDescriptor().getFunctionName(),
+          functionDescriptor.getJavaFunctionDescriptor().getSignature());
     } else {
       throw new RuntimeException("Can't build non java function descriptor");
     }
@@ -323,9 +369,9 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     List<FunctionArg> functionArgs = new ArrayList<>();
     for (int i = 0; i < taskSpec.getArgsCount(); i++) {
       TaskArg arg = taskSpec.getArgs(i);
-      if (arg.getObjectIdsCount() > 0) {
+      if (arg.getObjectRef().getObjectId() != ByteString.EMPTY) {
         functionArgs.add(FunctionArg
-            .passByReference(new ObjectId(arg.getObjectIds(0).toByteArray())));
+            .passByReference(new ObjectId(arg.getObjectRef().getObjectId().toByteArray())));
       } else {
         functionArgs.add(FunctionArg.passByValue(
             new NativeRayObject(arg.getData().toByteArray(), arg.getMetadata().toByteArray())));

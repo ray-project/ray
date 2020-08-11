@@ -14,18 +14,27 @@
 
 #pragma once
 
-#include <unistd.h>
-
+#include <boost/optional.hpp>
 #include <functional>
 #include <string>
-
-#include <boost/optional.hpp>
 
 #include "gtest/gtest.h"
 #include "ray/common/id.h"
 #include "ray/util/util.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
+
+static inline std::vector<rpc::ObjectReference> ObjectIdsToRefs(
+    std::vector<ObjectID> object_ids) {
+  std::vector<rpc::ObjectReference> refs;
+  for (const auto &object_id : object_ids) {
+    rpc::ObjectReference ref;
+    ref.set_object_id(object_id.Binary());
+    refs.push_back(ref);
+  }
+  return refs;
+}
 
 class Buffer;
 class RayObject;
@@ -40,6 +49,15 @@ static const int64_t SHOULD_CHECK_MESSAGE_ORDER = 123450000;
 /// \return Whether the condition is met.
 bool WaitForCondition(std::function<bool()> condition, int timeout_ms);
 
+/// Wait until the expected count is met, or timeout is reached.
+///
+/// \param[in] current_count The current count.
+/// \param[in] expected_count The expected count.
+/// \param[in] timeout_ms Timeout in milliseconds to wait for for.
+/// \return Whether the expected count is met.
+void WaitForExpectedCount(std::atomic<int> &current_count, int expected_count,
+                          int timeout_ms = 60000);
+
 /// Used to kill process whose pid is stored in `socket_name.id` file.
 void KillProcessBySocketName(std::string socket_name);
 
@@ -50,6 +68,9 @@ int KillAllExecutable(const std::string &executable_with_suffix);
 
 // A helper function to return a random task id.
 TaskID RandomTaskId();
+
+// A helper function to return a random job id.
+JobID RandomJobId();
 
 std::shared_ptr<Buffer> GenerateRandomBuffer();
 

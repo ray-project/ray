@@ -15,7 +15,6 @@
 #include "ray/rpc/grpc_server.h"
 
 #include <grpcpp/impl/service_type.h>
-#include <unistd.h>
 
 #include <boost/asio/detail/socket_holder.hpp>
 
@@ -62,7 +61,8 @@ void GrpcServer::Run() {
     if (port_ > 0) {
       break;
     }
-    usleep(RayConfig::instance().grpc_server_retry_timeout_milliseconds() * 1000);
+    std::this_thread::sleep_for(std::chrono::milliseconds(
+        RayConfig::instance().grpc_server_retry_timeout_milliseconds()));
     num_retries--;
   }
 

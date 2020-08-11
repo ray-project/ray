@@ -31,10 +31,10 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
-#include "ray/protobuf/core_worker.pb.h"
-#include "ray/protobuf/gcs.pb.h"
-#include "ray/raylet/raylet_client.h"
+#include "ray/raylet_client/raylet_client.h"
 #include "ray/util/filesystem.h"
+#include "src/ray/protobuf/core_worker.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace {
 
@@ -61,8 +61,8 @@ ActorID CreateActorHelper(std::unordered_map<std::string, double> &resources,
 
   RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                               "actor creation task", "", "", ""));
-  std::vector<TaskArg> args;
-  args.emplace_back(TaskArg::PassByValue(
+  std::vector<std::unique_ptr<TaskArg>> args;
+  args.emplace_back(new TaskArgByValue(
       std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
 
   std::string name = "";
@@ -163,6 +163,9 @@ class CoreWorkerTest : public ::testing::Test {
           true,                           // ref_counting_enabled
           false,                          // is_local_mode
           1,                              // num_workers
+          nullptr,                        // terminate_asyncio_thread
+          "",                             // serialized_job_config
+          -1,                             // metrics_agent_port
       };
       CoreWorkerProcess::Initialize(options);
     }
@@ -219,7 +222,7 @@ bool CoreWorkerTest::WaitForDirectCallActorState(const ActorID &actor_id, bool w
 
 int CoreWorkerTest::GetActorPid(const ActorID &actor_id,
                                 std::unordered_map<std::string, double> &resources) {
-  std::vector<TaskArg> args;
+  std::vector<std::unique_ptr<TaskArg>> args;
   TaskOptions options{1, resources};
   std::vector<ObjectID> return_ids;
   RayFunction func{Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
@@ -255,16 +258,17 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
       RAY_CHECK_OK(driver.Put(RayObject(buffer2, nullptr, std::vector<ObjectID>()), {},
                               &object_id));
 
-      std::vector<TaskArg> args;
-      args.emplace_back(TaskArg::PassByValue(
+      std::vector<std::unique_ptr<TaskArg>> args;
+      args.emplace_back(new TaskArgByValue(
           std::make_shared<RayObject>(buffer1, nullptr, std::vector<ObjectID>())));
-      args.emplace_back(TaskArg::PassByReference(object_id));
+      args.emplace_back(new TaskArgByReference(object_id, driver.GetRpcAddress()));
 
       RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                                   "MergeInputArgsAsOutput", "", "", ""));
       TaskOptions options;
       std::vector<ObjectID> return_ids;
-      driver.SubmitTask(func, args, options, &return_ids, /*max_retries=*/0);
+      driver.SubmitTask(func, args, options, &return_ids, /*max_retries=*/0,
+                        std::make_pair(PlacementGroupID::Nil(), -1));
 
       ASSERT_EQ(return_ids.size(), 1);
 
@@ -295,10 +299,10 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
       auto buffer2 = GenerateRandomBuffer();
 
       // Create arguments with PassByRef and PassByValue.
-      std::vector<TaskArg> args;
-      args.emplace_back(TaskArg::PassByValue(
+      std::vector<std::unique_ptr<TaskArg>> args;
+      args.emplace_back(new TaskArgByValue(
           std::make_shared<RayObject>(buffer1, nullptr, std::vector<ObjectID>())));
-      args.emplace_back(TaskArg::PassByValue(
+      args.emplace_back(new TaskArgByValue(
           std::make_shared<RayObject>(buffer2, nullptr, std::vector<ObjectID>())));
 
       TaskOptions options{1, resources};
@@ -339,9 +343,9 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
         driver.Put(RayObject(buffer1, nullptr, std::vector<ObjectID>()), {}, &object_id));
 
     // Create arguments with PassByRef and PassByValue.
-    std::vector<TaskArg> args;
-    args.emplace_back(TaskArg::PassByReference(object_id));
-    args.emplace_back(TaskArg::PassByValue(
+    std::vector<std::unique_ptr<TaskArg>> args;
+    args.emplace_back(new TaskArgByReference(object_id, driver.GetRpcAddress()));
+    args.emplace_back(new TaskArgByValue(
         std::make_shared<RayObject>(buffer2, nullptr, std::vector<ObjectID>())));
 
     TaskOptions options{1, resources};
@@ -402,8 +406,8 @@ void CoreWorkerTest::TestActorRestart(
       auto buffer1 = GenerateRandomBuffer();
 
       // Create arguments with PassByValue.
-      std::vector<TaskArg> args;
-      args.emplace_back(TaskArg::PassByValue(
+      std::vector<std::unique_ptr<TaskArg>> args;
+      args.emplace_back(new TaskArgByValue(
           std::make_shared<RayObject>(buffer1, nullptr, std::vector<ObjectID>())));
 
       TaskOptions options{1, resources};
@@ -445,8 +449,8 @@ void CoreWorkerTest::TestActorFailure(
       auto buffer1 = GenerateRandomBuffer();
 
       // Create arguments with PassByRef and PassByValue.
-      std::vector<TaskArg> args;
-      args.emplace_back(TaskArg::PassByValue(
+      std::vector<std::unique_ptr<TaskArg>> args;
+      args.emplace_back(new TaskArgByValue(
           std::make_shared<RayObject>(buffer1, nullptr, std::vector<ObjectID>())));
 
       TaskOptions options{1, resources};
@@ -496,22 +500,6 @@ class TwoNodeTest : public CoreWorkerTest {
   TwoNodeTest() : CoreWorkerTest(2) {}
 };
 
-TEST_F(ZeroNodeTest, TestTaskArg) {
-  // Test by-reference argument.
-  ObjectID id = ObjectID::FromRandom();
-  TaskArg by_ref = TaskArg::PassByReference(id);
-  ASSERT_TRUE(by_ref.IsPassedByReference());
-  ASSERT_EQ(by_ref.GetReference(), id);
-  // Test by-value argument.
-  auto buffer = GenerateRandomBuffer();
-  TaskArg by_value = TaskArg::PassByValue(
-      std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>()));
-  ASSERT_FALSE(by_value.IsPassedByReference());
-  auto data = by_value.GetValue().GetData();
-  ASSERT_TRUE(data != nullptr);
-  ASSERT_EQ(*data, *buffer);
-}
-
 // Performance batchmark for `PushTaskRequest` creation.
 TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   // Create a dummy actor handle, and then create a number of `TaskSpec`
@@ -520,8 +508,8 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
   RayFunction function(ray::Language::PYTHON,
                        ray::FunctionDescriptorBuilder::BuildPython("", "", "", ""));
-  std::vector<TaskArg> args;
-  args.emplace_back(TaskArg::PassByValue(
+  std::vector<std::unique_ptr<TaskArg>> args;
+  args.emplace_back(new TaskArgByValue(
       std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
 
   std::unordered_map<std::string, double> resources;
@@ -559,11 +547,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
                               RandomTaskId(), address, num_returns, resources, resources);
     // Set task arguments.
     for (const auto &arg : args) {
-      if (arg.IsPassedByReference()) {
-        builder.AddByRefArg(arg.GetReference());
-      } else {
-        builder.AddByValueArg(arg.GetValue());
-      }
+      builder.AddArg(*arg);
     }
 
     actor_handle.SetActorTaskSpec(builder, ObjectID::FromRandom());
@@ -593,11 +577,11 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
   RAY_LOG(INFO) << "start submitting " << num_tasks << " tasks";
   for (int i = 0; i < num_tasks; i++) {
     // Create arguments with PassByValue.
-    std::vector<TaskArg> args;
+    std::vector<std::unique_ptr<TaskArg>> args;
     int64_t array[] = {SHOULD_CHECK_MESSAGE_ORDER, i};
     auto buffer = std::make_shared<LocalMemoryBuffer>(reinterpret_cast<uint8_t *>(array),
                                                       sizeof(array));
-    args.emplace_back(TaskArg::PassByValue(
+    args.emplace_back(new TaskArgByValue(
         std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
 
     TaskOptions options{1, resources};
@@ -730,7 +714,7 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
   provider.Delete(ids_set, &plasma_object_ids);
   ASSERT_TRUE(plasma_object_ids.empty());
 
-  usleep(200 * 1000);
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
   ASSERT_TRUE(provider.Get(ids_set, 0, ctx, &results, &got_exception).IsTimedOut());
   ASSERT_TRUE(!got_exception);
   ASSERT_EQ(results.size(), 0);
@@ -745,7 +729,7 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
   }
 
   auto thread_func = [&unready_ids, &provider, &buffers]() {
-    sleep(1);
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
     for (size_t i = 0; i < unready_ids.size(); i++) {
       RAY_CHECK(provider.Put(buffers[i], unready_ids[i]));
@@ -794,14 +778,15 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
 
   uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
-  uint8_t array2[] = {10, 11, 12, 13, 14, 15};
+  const size_t array2_size = 200 * 1024;
+  uint8_t *array2 = new uint8_t[array2_size];
 
   std::vector<RayObject> buffers;
   buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1)),
                        std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1) / 2),
                        std::vector<ObjectID>());
-  buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2)),
-                       std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2) / 2),
+  buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array2, array2_size),
+                       std::make_shared<LocalMemoryBuffer>(array2, array2_size / 2),
                        std::vector<ObjectID>());
 
   std::vector<ObjectID> ids(buffers.size());
@@ -840,11 +825,13 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   // Note that Delete() calls RayletClient::FreeObjects and would not
   // wait for objects being deleted, so wait a while for plasma store
   // to process the command.
-  usleep(200 * 1000);
-  ASSERT_TRUE(core_worker.Get(ids, 0, &results).IsTimedOut());
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  ASSERT_TRUE(core_worker.Get(ids, 0, &results).ok());
+  // Since array2 has been deleted from the plasma store, the Get should
+  // return UnreconstructableError for all results.
   ASSERT_EQ(results.size(), 2);
-  ASSERT_TRUE(!results[0]);
-  ASSERT_TRUE(!results[1]);
+  ASSERT_TRUE(results[0]->IsException());
+  ASSERT_TRUE(results[1]->IsException());
 }
 
 TEST_F(SingleNodeTest, TestNormalTaskLocal) {

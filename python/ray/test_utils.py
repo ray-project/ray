@@ -1,5 +1,6 @@
 import asyncio
 import errno
+import io
 import json
 import fnmatch
 import os
@@ -7,9 +8,14 @@ import subprocess
 import sys
 import time
 import socket
+import math
+
+from contextlib import redirect_stdout, redirect_stderr
 
 import ray
 import ray.services
+import ray.utils
+from ray.scripts.scripts import main as ray_main
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
 
@@ -49,6 +55,63 @@ def _pid_alive(pid):
             raise
         alive = False
     return alive
+
+
+def check_call_module(main, argv, capture_stdout=False, capture_stderr=False):
+    # We use this function instead of calling the "ray" command to work around
+    # some deadlocks that occur when piping ray's output on Windows
+    stream = io.TextIOWrapper(io.BytesIO(), encoding=sys.stdout.encoding)
+    old_argv = sys.argv[:]
+    try:
+        sys.argv = argv[:]
+        try:
+            with redirect_stderr(stream if capture_stderr else sys.stderr):
+                with redirect_stdout(stream if capture_stdout else sys.stdout):
+                    main()
+        finally:
+            stream.flush()
+    except SystemExit as ex:
+        if ex.code:
+            output = stream.buffer.getvalue()
+            raise subprocess.CalledProcessError(ex.code, argv, output)
+    except Exception as ex:
+        output = stream.buffer.getvalue()
+        raise subprocess.CalledProcessError(1, argv, output, ex.args[0])
+    finally:
+        sys.argv = old_argv
+        if capture_stdout:
+            sys.stdout.buffer.write(stream.buffer.getvalue())
+        elif capture_stderr:
+            sys.stderr.buffer.write(stream.buffer.getvalue())
+    return stream.buffer.getvalue()
+
+
+def check_call_ray(args, capture_stdout=False, capture_stderr=False):
+    # We use this function instead of calling the "ray" command to work around
+    # some deadlocks that occur when piping ray's output on Windows
+    argv = ["ray"] + args
+    if sys.platform == "win32":
+        result = check_call_module(
+            ray_main,
+            argv,
+            capture_stdout=capture_stdout,
+            capture_stderr=capture_stderr)
+    else:
+        stdout_redir = None
+        stderr_redir = None
+        if capture_stdout:
+            stdout_redir = subprocess.PIPE
+        if capture_stderr and capture_stdout:
+            stderr_redir = subprocess.STDOUT
+        elif capture_stderr:
+            stderr_redir = subprocess.PIPE
+        proc = subprocess.Popen(argv, stdout=stdout_redir, stderr=stderr_redir)
+        (stdout, stderr) = proc.communicate()
+        if proc.returncode:
+            raise subprocess.CalledProcessError(proc.returncode, argv, stdout,
+                                                stderr)
+        result = b"".join([s for s in [stdout, stderr] if s is not None])
+    return result
 
 
 def wait_for_pid_to_exit(pid, timeout=20):
@@ -112,6 +175,7 @@ def run_string_as_driver(driver_script):
     with proc:
         output = proc.communicate(driver_script.encode("ascii"))[0]
         if proc.returncode:
+            print(ray.utils.decode(output))
             raise subprocess.CalledProcessError(proc.returncode, proc.args,
                                                 output, proc.stderr)
         out = ray.utils.decode(output)
@@ -144,44 +208,32 @@ def run_string_as_driver_nonblocking(driver_script):
     return proc
 
 
-def flat_errors():
-    errors = []
-    for job_errors in ray.errors(all_jobs=True).values():
-        errors.extend(job_errors)
-    return errors
-
-
-def relevant_errors(error_type):
-    return [error for error in flat_errors() if error["type"] == error_type]
-
-
-def wait_for_errors(error_type, num_errors, timeout=20):
+def wait_for_num_actors(num_actors, timeout=10):
     start_time = time.time()
     while time.time() - start_time < timeout:
-        if len(relevant_errors(error_type)) >= num_errors:
+        if len(ray.actors()) >= num_actors:
             return
         time.sleep(0.1)
-    raise RayTestTimeoutException("Timed out waiting for {} {} errors.".format(
-        num_errors, error_type))
+    raise RayTestTimeoutException("Timed out while waiting for global state.")
 
 
-def wait_for_condition(condition_predictor, timeout=30, retry_interval_ms=100):
-    """A helper function that waits until a condition is met.
+def wait_for_condition(condition_predictor, timeout=10, retry_interval_ms=100):
+    """Wait until a condition is met or time out with an exception.
 
     Args:
         condition_predictor: A function that predicts the condition.
         timeout: Maximum timeout in seconds.
         retry_interval_ms: Retry interval in milliseconds.
 
-    Return:
-        Whether the condition is met within the timeout.
+    Raises:
+        RuntimeError: If the condition is not met before the timeout expires.
     """
     start = time.time()
     while time.time() - start <= timeout:
         if condition_predictor():
-            return True
+            return
         time.sleep(retry_interval_ms / 1000.0)
-    return False
+    raise RuntimeError("The condition wasn't met before the timeout expired.")
 
 
 def wait_until_succeeded_without_exception(func,
@@ -268,6 +320,22 @@ class Semaphore:
         return self._sema.locked()
 
 
+def dicts_equal(dict1, dict2, abs_tol=1e-4):
+    """Compares to dicts whose values may be floating point numbers."""
+
+    if dict1.keys() != dict2.keys():
+        return False
+
+    for k, v in dict1.items():
+        if isinstance(v, float) and \
+           isinstance(dict2[k], float) and \
+           math.isclose(v, dict2[k], abs_tol=abs_tol):
+            continue
+        if v != dict2[k]:
+            return False
+    return True
+
+
 @ray.remote
 def _put(obj):
     return obj
@@ -315,3 +383,31 @@ def get_other_nodes(cluster, exclude_head=False):
 def get_non_head_nodes(cluster):
     """Get all non-head nodes."""
     return list(filter(lambda x: x.head is False, cluster.list_all_nodes()))
+
+
+def init_error_pubsub():
+    """Initialize redis error info pub/sub"""
+    p = ray.worker.global_worker.redis_client.pubsub(
+        ignore_subscribe_messages=True)
+    error_pubsub_channel = ray.gcs_utils.RAY_ERROR_PUBSUB_PATTERN
+    p.psubscribe(error_pubsub_channel)
+    return p
+
+
+def get_error_message(pub_sub, num, error_type=None, timeout=5):
+    """Get errors through pub/sub."""
+    start_time = time.time()
+    msgs = []
+    while time.time() - start_time < timeout and len(msgs) < num:
+        msg = pub_sub.get_message()
+        if msg is None:
+            time.sleep(0.01)
+            continue
+        pubsub_msg = ray.gcs_utils.PubSubMessage.FromString(msg["data"])
+        error_data = ray.gcs_utils.ErrorTableData.FromString(pubsub_msg.data)
+        if error_type is None or error_type == error_data.type:
+            msgs.append(error_data)
+        else:
+            time.sleep(0.01)
+
+    return msgs

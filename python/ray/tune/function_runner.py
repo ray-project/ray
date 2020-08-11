@@ -1,11 +1,11 @@
 import logging
 import os
-import io
 import time
 import inspect
 import shutil
 import threading
 import traceback
+import uuid
 
 from six.moves import queue
 
@@ -22,6 +22,84 @@ RESULT_FETCH_TIMEOUT = 0.2
 
 ERROR_REPORT_TIMEOUT = 10
 ERROR_FETCH_TIMEOUT = 1
+
+NULL_MARKER = ".null_marker"
+TEMP_MARKER = ".temp_marker"
+
+
+class FuncCheckpointUtil:
+    """Utility class holding various function-checkpointing mechanisms.
+
+    The two special modes are "null" and "temporary" checkpoints.
+
+    *Null Checkpoints*
+    -------------------
+
+    Null checkpoints are generated when a trial is being saved
+    but a checkpoint has not been created. In this case,
+    a marker is set, indicating that the checkpoint is null.
+
+    When restoring from an null checkpoint, the FunctionRunner
+    will detect this and *not* restore from any checkpoint at all.
+
+    *Temporary Checkpoints*
+    -----------------------
+
+    Temporary checkpoints are generated when a trial is being
+    restored from a prior in-memory checkpoint. In this case, a marker
+    will be set indicating that a checkpoint is temporary.
+
+    Upon termination of the trial, temporary checkpoints
+    will be removed. We cannot remove them any earlier because
+    the loading of checkpoints is non-deterministic.
+
+    If "save" is called on a trial whose most recent checkpoint
+    is temporary, "create_perm_checkpoint" will be called. This
+    copies the temporary checkpoint to a permanent checkpoint directory.
+    """
+
+    @staticmethod
+    def mk_null_checkpoint_dir(logdir):
+        """Indicate that the given checkpoint doesn't have state."""
+        checkpoint_dir = TrainableUtil.make_checkpoint_dir(
+            logdir, index=-1, override=True)
+        open(os.path.join(checkpoint_dir, NULL_MARKER), "a").close()
+        return checkpoint_dir
+
+    @staticmethod
+    def mk_temp_checkpoint_dir(logdir):
+        """Indicate that the checkpoint is only for restoration."""
+        temporary_checkpoint_dir = TrainableUtil.make_checkpoint_dir(
+            logdir, index="tmp" + uuid.uuid4().hex[:6], override=True)
+        open(os.path.join(temporary_checkpoint_dir, TEMP_MARKER), "a").close()
+        return temporary_checkpoint_dir
+
+    @staticmethod
+    def is_temp_checkpoint_dir(checkpoint_dir):
+        """Checks for the temp checkpoint marker."""
+        return os.path.exists(os.path.join(checkpoint_dir, TEMP_MARKER))
+
+    @staticmethod
+    def is_null_checkpoint(checkpoint_dir):
+        """Checks for the empty checkpoint marker."""
+        return os.path.exists(os.path.join(checkpoint_dir, NULL_MARKER))
+
+    @staticmethod
+    def create_perm_checkpoint(checkpoint_dir, logdir, step):
+        """Copies temporary checkpoint to a permanent checkpoint directory."""
+        checkpoint_dir = os.path.abspath(checkpoint_dir)
+        temporary_marker = os.path.join(checkpoint_dir, TEMP_MARKER)
+        assert os.path.exists(temporary_marker), (
+            "Should not be calling this method on a permanent checkpoint.")
+        os.remove(temporary_marker)
+        perm_checkpoint_dir = TrainableUtil.make_checkpoint_dir(
+            logdir, index=step, override=True)
+        shutil.rmtree(perm_checkpoint_dir)
+
+        shutil.copytree(checkpoint_dir, perm_checkpoint_dir)
+        assert not os.path.exists(
+            os.path.join(perm_checkpoint_dir, TEMP_MARKER))
+        return perm_checkpoint_dir
 
 
 class StatusReporter:
@@ -45,7 +123,7 @@ class StatusReporter:
         self._trial_name = trial_name
         self._trial_id = trial_id
         self._logdir = logdir
-        self._last_checkpoint = {}
+        self._last_checkpoint = None
         self._fresh_checkpoint = False
 
     def __call__(self, **kwargs):
@@ -84,12 +162,18 @@ class StatusReporter:
         # resume training.
         self._continue_semaphore.acquire()
 
-    def make_checkpoint_dir(self, step=None):
+    def make_checkpoint_dir(self, step):
         checkpoint_dir = TrainableUtil.make_checkpoint_dir(
             self.logdir, index=step)
+        logger.debug("Making checkpoint dir at %s", checkpoint_dir)
         return checkpoint_dir
 
-    def save_checkpoint(self, checkpoint):
+    def set_checkpoint(self, checkpoint, is_new=True):
+        """Sets the checkpoint to be returned upon get_checkpoint.
+
+        If this is a "new" checkpoint, it will notify Tune
+        (via has_new_checkpoint). Otherwise, it will NOT notify Tune.
+        """
         if isinstance(checkpoint, str):
             try:
                 TrainableUtil.find_checkpoint_dir(checkpoint)
@@ -98,7 +182,8 @@ class StatusReporter:
                              "make_checkpoint_dir.")
                 raise
         self._last_checkpoint = checkpoint
-        self._fresh_checkpoint = True
+        if is_new:
+            self._fresh_checkpoint = True
 
     def has_new_checkpoint(self):
         return self._fresh_checkpoint
@@ -189,7 +274,7 @@ class FunctionRunner(Trainable):
         session.init(self._status_reporter)
         self._runner = None
         self._restore_tmpdir = None
-        self.default_checkpoint_dir = None
+        self.temp_checkpoint_dir = None
 
     def _trainable_func(self):
         """Subclasses can override this to set the trainable func."""
@@ -279,10 +364,8 @@ class FunctionRunner(Trainable):
             result[SHOULD_CHECKPOINT] = True
         return result
 
-    def create_default_checkpoint_dir(self):
-        self.default_checkpoint_dir = TrainableUtil.make_checkpoint_dir(
-            self.logdir, index="default")
-        return self.default_checkpoint_dir
+    def execute(self, fn):
+        return fn(self)
 
     def save(self, checkpoint_path=None):
         if checkpoint_path:
@@ -294,40 +377,58 @@ class FunctionRunner(Trainable):
 
         if not checkpoint:
             state.update(iteration=0, timesteps_total=0, episodes_total=0)
-            parent_dir = self.create_default_checkpoint_dir()
+            # We drop a marker here to indicate that the checkpoint is empty
+            checkpoint = FuncCheckpointUtil.mk_null_checkpoint_dir(self.logdir)
+            parent_dir = checkpoint
         elif isinstance(checkpoint, dict):
             parent_dir = TrainableUtil.make_checkpoint_dir(
                 self.logdir, index=self.training_iteration)
-        else:
+        elif isinstance(checkpoint, str):
             parent_dir = TrainableUtil.find_checkpoint_dir(checkpoint)
+            # When the trainable is restored, a temporary checkpoint
+            # is created. However, when saved, it should become permanent.
+            # Ideally, there are no save calls upon a temporary
+            # checkpoint, but certain schedulers might.
+            if FuncCheckpointUtil.is_temp_checkpoint_dir(parent_dir):
+                relative_path = os.path.relpath(checkpoint, parent_dir)
+                parent_dir = FuncCheckpointUtil.create_perm_checkpoint(
+                    checkpoint_dir=parent_dir,
+                    logdir=self.logdir,
+                    step=self.training_iteration)
+                checkpoint = os.path.abspath(
+                    os.path.join(parent_dir, relative_path))
+        else:
+            raise ValueError("Provided checkpoint was expected to have "
+                             "type (str, dict). Got {}.".format(
+                                 type(checkpoint)))
+
         checkpoint_path = TrainableUtil.process_checkpoint(
             checkpoint, parent_dir, state)
         return checkpoint_path
 
     def save_to_object(self):
         checkpoint_path = self.save()
-        data_dict = TrainableUtil.pickle_checkpoint(checkpoint_path)
-        out = io.BytesIO()
-        if len(data_dict) > 10e6:  # getting pretty large
-            logger.info("Checkpoint size is {} bytes".format(len(data_dict)))
-        out.write(data_dict)
-        return out.getvalue()
+        obj = TrainableUtil.checkpoint_to_object(checkpoint_path)
+        return obj
 
     def load_checkpoint(self, checkpoint):
         # This should be removed once Trainables are refactored.
         if "tune_checkpoint_path" in checkpoint:
             del checkpoint["tune_checkpoint_path"]
-        self._status_reporter.save_checkpoint(checkpoint)
+        # If there does not exist a checkpoint, we will not restore
+        # from it and will remove the marker.
+        if FuncCheckpointUtil.is_null_checkpoint(checkpoint):
+            return
+        # By informing that this checkpoint is not new,
+        # we will not return the checkpoint path
+        # as a new checkpoint.
+        self._status_reporter.set_checkpoint(checkpoint, is_new=False)
 
     def restore_from_object(self, obj):
-        if self.default_checkpoint_dir is not None and os.exists(
-                self.default_checkpoint_dir):
-            shutil.rmtree(self.default_checkpoint_dir)
-            logger.debug("Clearing default checkpoint: %s",
-                         self.default_checkpoint_dir)
-
-        checkpoint_dir = self.create_default_checkpoint_dir()
-        checkpoint_path = TrainableUtil.create_from_pickle(obj, checkpoint_dir)
+        self.temp_checkpoint_dir = (FuncCheckpointUtil.mk_temp_checkpoint_dir(
+            self.logdir))
+        checkpoint_path = TrainableUtil.create_from_pickle(
+            obj, self.temp_checkpoint_dir)
         self.restore(checkpoint_path)
 
     def cleanup(self):
@@ -341,6 +442,12 @@ class FunctionRunner(Trainable):
         self._report_thread_runner_error()
         session.shutdown()
 
+        if self.temp_checkpoint_dir is not None and os.path.exists(
+                self.temp_checkpoint_dir):
+            shutil.rmtree(self.temp_checkpoint_dir)
+            logger.debug("Clearing temporary checkpoint: %s",
+                         self.temp_checkpoint_dir)
+
     def _report_thread_runner_error(self, block=False):
         try:
             err_tb_str = self._error_queue.get(
@@ -351,35 +458,55 @@ class FunctionRunner(Trainable):
             pass
 
 
-def detect_checkpoint_function(train_func):
-    func_args = inspect.getfullargspec(train_func).args
-    use_checkpoint = "checkpoint" in func_args
-    return use_checkpoint
+def detect_checkpoint_function(train_func, abort=False):
+    """Use checkpointing if any arg has "checkpoint_dir" and args = 2"""
+    argspec = inspect.getfullargspec(train_func)
+    func_args = argspec.args
+    func_kwargs = argspec.kwonlyargs
+    validated = len(func_args) == 2 and any("checkpoint_dir" in arg
+                                            for arg in func_args)
+    validated = validated or (len(func_args) == 1) and any(
+        "checkpoint_dir" in arg for arg in func_kwargs)
+    if abort and not validated:
+        raise ValueError(
+            "Provided training function must have 2 args "
+            "in the signature, and the latter arg must "
+            "contain `checkpoint_dir`. For example: "
+            "`func(config, checkpoint_dir=None)`. Got {}".format(func_args))
+    return validated
 
 
 def wrap_function(train_func):
-    class ImplicitFunc(FunctionRunner):
-        def _trainable_func(self, config, reporter, checkpoint):
+    if hasattr(train_func, "__mixins__"):
+        inherit_from = train_func.__mixins__ + (FunctionRunner, )
+    else:
+        inherit_from = (FunctionRunner, )
+
+    class ImplicitFunc(*inherit_from):
+        _name = train_func.__name__ if hasattr(train_func, "__name__") \
+            else "func"
+
+        def _trainable_func(self, config, reporter, checkpoint_dir):
             func_args = inspect.getfullargspec(train_func).args
             if len(func_args) > 1:  # more arguments than just the config
                 if "reporter" not in func_args and (
-                        "checkpoint" not in func_args):
+                        not detect_checkpoint_function(train_func)):
                     raise ValueError(
                         "Unknown argument found in the Trainable function. "
                         "Arguments other than the 'config' arg must be one "
-                        "of ['reporter', 'checkpoint']. Found: {}".format(
+                        "of ['reporter', 'checkpoint_dir']. Found: {}".format(
                             func_args))
             use_reporter = "reporter" in func_args
-            use_checkpoint = "checkpoint" in func_args
+            use_checkpoint = detect_checkpoint_function(train_func)
             if not use_checkpoint and not use_reporter:
                 logger.warning(
                     "Function checkpointing is disabled. This may result in "
                     "unexpected behavior when using checkpointing features or "
                     "certain schedulers. To enable, set the train function "
-                    "arguments to be `func(config, checkpoint)`.")
+                    "arguments to be `func(config, checkpoint_dir=None)`.")
                 output = train_func(config)
             elif use_checkpoint:
-                output = train_func(config, checkpoint=checkpoint)
+                output = train_func(config, checkpoint_dir=checkpoint_dir)
             else:
                 output = train_func(config, reporter)
 

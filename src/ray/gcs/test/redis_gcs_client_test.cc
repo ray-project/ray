@@ -12,18 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/gcs/redis_gcs_client.h"
+
 #include "gtest/gtest.h"
-
-// TODO(pcm): get rid of this and replace with the type safe plasma event loop
-extern "C" {
-#include "hiredis/hiredis.h"
-}
-
 #include "ray/common/ray_config.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/pb_util.h"
-#include "ray/gcs/redis_gcs_client.h"
 #include "ray/gcs/tables.h"
+
+extern "C" {
+#include "hiredis/hiredis.h"
+}
 
 namespace ray {
 
@@ -1493,6 +1492,10 @@ TEST_F(TestGcsWithAsio, TestHashTable) {
 }  // namespace ray
 
 int main(int argc, char **argv) {
+  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
+                                         ray::RayLog::ShutDownRayLog, argv[0],
+                                         ray::RayLogLevel::INFO,
+                                         /*log_dir=*/"");
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 4);
   ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];

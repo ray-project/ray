@@ -6,7 +6,7 @@ from ray.rllib.utils.framework import get_activation_fn, get_variable, \
 tf1, tf, tfv = try_import_tf()
 
 
-class NoisyLayer(tf.keras.layers.Layer):
+class NoisyLayer(tf.keras.layers.Layer if tf else object):
     """A Layer that adds learnable Noise
     a common dense layer: y = w^{T}x + b
     a noisy layer: y = (w + \\epsilon_w*\\sigma_w)^{T}x +
@@ -16,11 +16,7 @@ class NoisyLayer(tf.keras.layers.Layer):
     vanish along the training procedure
     """
 
-    def __init__(self,
-                 prefix,
-                 out_size,
-                 sigma0,
-                 activation="relu"):
+    def __init__(self, prefix, out_size, sigma0, activation="relu"):
         """Initializes a NoisyLayer object.
 
         Args:
@@ -53,8 +49,7 @@ class NoisyLayer(tf.keras.layers.Layer):
             trainable=True,
             tf_name=self.prefix + "_sigma_w",
             shape=[in_size, self.out_size],
-            dtype=tf.float32
-        )
+            dtype=tf.float32)
 
         self.sigma_b = get_variable(
             value=tf.keras.initializers.Constant(

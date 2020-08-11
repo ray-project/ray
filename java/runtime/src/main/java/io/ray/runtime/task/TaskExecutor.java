@@ -13,6 +13,7 @@ import io.ray.runtime.generated.Common.TaskType;
 import io.ray.runtime.object.NativeRayObject;
 import io.ray.runtime.object.ObjectSerializer;
 import java.lang.reflect.InvocationTargetException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
@@ -29,6 +30,8 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
   protected final RayRuntimeInternal runtime;
 
   private final ConcurrentHashMap<UniqueId, T> actorContextMap = new ConcurrentHashMap<>();
+
+  private final ThreadLocal<RayFunction> localRayFunction = new ThreadLocal<>();
 
   static class ActorContext {
 
@@ -61,10 +64,34 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
     this.actorContextMap.put(runtime.getWorkerContext().getCurrentWorkerId(), actorContext);
   }
 
-  protected List<NativeRayObject> execute(List<String> rayFunctionInfo,
-      List<NativeRayObject> argsBytes) {
-    runtime.setIsContextSet(true);
+  private RayFunction getRayFunction(List<String> rayFunctionInfo) {
     JobId jobId = runtime.getWorkerContext().getCurrentJobId();
+    JavaFunctionDescriptor functionDescriptor = parseFunctionDescriptor(rayFunctionInfo);
+    return runtime.getFunctionManager().getFunction(jobId, functionDescriptor);
+  }
+
+  /**
+   * The return value indicates which parameters are ByteBuffer.
+   */
+  protected boolean[] checkByteBufferArguments(List<String> rayFunctionInfo) {
+    localRayFunction.set(null);
+    try {
+      localRayFunction.set(getRayFunction(rayFunctionInfo));
+    } catch (Throwable e) {
+      // Ignore the exception.
+      return null;
+    }
+    Class<?>[] types = localRayFunction.get().executable.getParameterTypes();
+    boolean[] results = new boolean[types.length];
+    for (int i = 0; i < types.length; i++) {
+      results[i] = types[i] == ByteBuffer.class;
+    }
+    return results;
+  }
+
+  protected List<NativeRayObject> execute(List<String> rayFunctionInfo,
+                                          List<Object> argsBytes) {
+    runtime.setIsContextSet(true);
     TaskType taskType = runtime.getWorkerContext().getCurrentTaskType();
     TaskId taskId = runtime.getWorkerContext().getCurrentTaskId();
     LOGGER.debug("Executing task {}", taskId);
@@ -80,11 +107,14 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
 
     List<NativeRayObject> returnObjects = new ArrayList<>();
     ClassLoader oldLoader = Thread.currentThread().getContextClassLoader();
-    JavaFunctionDescriptor functionDescriptor = parseFunctionDescriptor(rayFunctionInfo);
-    RayFunction rayFunction = null;
+    RayFunction rayFunction = localRayFunction.get();
     try {
       // Find the executable object.
-      rayFunction = runtime.getFunctionManager().getFunction(jobId, functionDescriptor);
+      if (rayFunction == null) {
+        // Failed to get RayFunction in checkByteBufferArguments. Redo here to throw
+        // the exception again.
+        rayFunction = getRayFunction(rayFunctionInfo);
+      }
       Thread.currentThread().setContextClassLoader(rayFunction.classLoader);
       runtime.getWorkerContext().setCurrentClassLoader(rayFunction.classLoader);
 
@@ -132,7 +162,7 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
       LOGGER.error("Error executing task " + taskId, e);
       if (taskType != TaskType.ACTOR_CREATION_TASK) {
         boolean hasReturn = rayFunction != null && rayFunction.hasReturn();
-        boolean isCrossLanguage = functionDescriptor.signature.equals("");
+        boolean isCrossLanguage = parseFunctionDescriptor(rayFunctionInfo).signature.equals("");
         if (hasReturn || isCrossLanguage) {
           returnObjects.add(ObjectSerializer
               .serialize(new RayTaskException("Error executing task " + taskId, e)));

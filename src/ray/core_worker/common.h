@@ -19,12 +19,13 @@
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/raylet/raylet_client.h"
+#include "ray/raylet_client/raylet_client.h"
 #include "ray/util/util.h"
 
 namespace ray {
 
 using WorkerType = rpc::WorkerType;
+using PlacementOptions = std::pair<PlacementGroupID, int64_t>;
 
 // Return a string representation of the worker type.
 std::string WorkerTypeString(WorkerType type);
@@ -50,51 +51,6 @@ class RayFunction {
   ray::FunctionDescriptor function_descriptor_;
 };
 
-/// Argument of a task.
-class TaskArg {
- public:
-  /// Create a pass-by-reference task argument.
-  ///
-  /// \param[in] object_id Id of the argument.
-  /// \return The task argument.
-  static TaskArg PassByReference(const ObjectID &object_id) {
-    return TaskArg(std::make_shared<ObjectID>(object_id), nullptr);
-  }
-
-  /// Create a pass-by-value task argument.
-  ///
-  /// \param[in] value Value of the argument.
-  /// \return The task argument.
-  static TaskArg PassByValue(const std::shared_ptr<RayObject> &value) {
-    RAY_CHECK(value) << "Value can't be null.";
-    return TaskArg(nullptr, value);
-  }
-
-  /// Return true if this argument is passed by reference, false if passed by value.
-  bool IsPassedByReference() const { return id_ != nullptr; }
-
-  /// Get the reference object ID.
-  const ObjectID &GetReference() const {
-    RAY_CHECK(id_ != nullptr) << "This argument isn't passed by reference.";
-    return *id_;
-  }
-
-  /// Get the value.
-  const RayObject &GetValue() const {
-    RAY_CHECK(value_ != nullptr) << "This argument isn't passed by value.";
-    return *value_;
-  }
-
- private:
-  TaskArg(const std::shared_ptr<ObjectID> id, const std::shared_ptr<RayObject> value)
-      : id_(id), value_(value) {}
-
-  /// Id of the argument if passed by reference, otherwise nullptr.
-  const std::shared_ptr<ObjectID> id_;
-  /// Value of the argument if passed by value, otherwise nullptr.
-  const std::shared_ptr<RayObject> value_;
-};
-
 /// Options for all tasks (actor and non-actor) except for actor creation.
 struct TaskOptions {
   TaskOptions() {}
@@ -110,12 +66,13 @@ struct TaskOptions {
 /// Options for actor creation tasks.
 struct ActorCreationOptions {
   ActorCreationOptions() {}
-  ActorCreationOptions(int64_t max_restarts, int64_t max_task_retries,
-                       int max_concurrency,
-                       const std::unordered_map<std::string, double> &resources,
-                       const std::unordered_map<std::string, double> &placement_resources,
-                       const std::vector<std::string> &dynamic_worker_options,
-                       bool is_detached, std::string &name, bool is_asyncio)
+  ActorCreationOptions(
+      int64_t max_restarts, int64_t max_task_retries, int max_concurrency,
+      const std::unordered_map<std::string, double> &resources,
+      const std::unordered_map<std::string, double> &placement_resources,
+      const std::vector<std::string> &dynamic_worker_options, bool is_detached,
+      std::string &name, bool is_asyncio,
+      PlacementOptions placement_options = std::make_pair(PlacementGroupID::Nil(), -1))
       : max_restarts(max_restarts),
         max_task_retries(max_task_retries),
         max_concurrency(max_concurrency),
@@ -124,7 +81,8 @@ struct ActorCreationOptions {
         dynamic_worker_options(dynamic_worker_options),
         is_detached(is_detached),
         name(name),
-        is_asyncio(is_asyncio){};
+        is_asyncio(is_asyncio),
+        placement_options(placement_options){};
 
   /// Maximum number of times that the actor should be restarted if it dies
   /// unexpectedly. A value of -1 indicates infinite restarts. If it's 0, the
@@ -152,6 +110,26 @@ struct ActorCreationOptions {
   const std::string name;
   /// Whether to use async mode of direct actor call.
   const bool is_asyncio = false;
+  /// The placement_options include placement_group_id and bundle_index.
+  /// If the actor doesn't belong to a placement group, the placement_group_id will be
+  /// nil, and the bundle_index will be -1.
+  PlacementOptions placement_options;
+};
+
+using PlacementStrategy = rpc::PlacementStrategy;
+
+struct PlacementGroupCreationOptions {
+  PlacementGroupCreationOptions(
+      std::string name, PlacementStrategy strategy,
+      std::vector<std::unordered_map<std::string, double>> bundles)
+      : name(std::move(name)), strategy(strategy), bundles(std::move(bundles)) {}
+
+  /// The name of the placement group.
+  const std::string name;
+  /// The strategy to place the bundle in Placement Group.
+  const PlacementStrategy strategy = rpc::PACK;
+  /// The resource bundles in this placement group.
+  const std::vector<std::unordered_map<std::string, double>> bundles;
 };
 
 }  // namespace ray

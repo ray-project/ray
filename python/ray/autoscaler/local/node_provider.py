@@ -6,8 +6,12 @@ import socket
 import logging
 
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, NODE_TYPE_WORKER, \
-    NODE_TYPE_HEAD
+from ray.autoscaler.local.config import bootstrap_local
+from ray.autoscaler.tags import (
+    TAG_RAY_NODE_TYPE,
+    NODE_TYPE_WORKER,
+    NODE_TYPE_HEAD,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +48,8 @@ class ClusterState:
                             "state": "terminated",
                         }
                     else:
-                        assert workers[worker_ip]["tags"][
-                            TAG_RAY_NODE_TYPE] == NODE_TYPE_WORKER
+                        assert (workers[worker_ip]["tags"][TAG_RAY_NODE_TYPE]
+                                == NODE_TYPE_WORKER)
                 if provider_config["head_ip"] not in workers:
                     workers[provider_config["head_ip"]] = {
                         "tags": {
@@ -54,8 +58,16 @@ class ClusterState:
                         "state": "terminated",
                     }
                 else:
-                    assert workers[provider_config["head_ip"]]["tags"][
-                        TAG_RAY_NODE_TYPE] == NODE_TYPE_HEAD
+                    assert (workers[provider_config["head_ip"]]["tags"][
+                        TAG_RAY_NODE_TYPE] == NODE_TYPE_HEAD)
+                # Relevant when a user reduces the number of workers
+                # without changing the headnode.
+                list_of_node_ips = list(provider_config["worker_ips"])
+                list_of_node_ips.append(provider_config["head_ip"])
+                for worker_ip in list(workers):
+                    if worker_ip not in list_of_node_ips:
+                        del workers[worker_ip]
+
                 assert len(workers) == len(provider_config["worker_ips"]) + 1
                 with open(self.save_path, "w") as f:
                     logger.debug("ClusterState: "
@@ -82,17 +94,82 @@ class ClusterState:
                     f.write(json.dumps(workers))
 
 
+class OnPremCoordinatorState(ClusterState):
+    """Generates & updates the state file of CoordinatorSenderNodeProvider.
+
+    Unlike ClusterState, which generates a cluster specific file with
+    predefined head and worker ips, OnPremCoordinatorState overwrites
+    ClusterState's __init__ function to generate and manage a unified
+    file of the status of all the nodes for multiple clusters.
+    """
+
+    def __init__(self, lock_path, save_path, list_of_node_ips):
+        self.lock = RLock()
+        self.file_lock = FileLock(lock_path)
+        self.save_path = save_path
+
+        with self.lock:
+            with self.file_lock:
+                if os.path.exists(self.save_path):
+                    nodes = json.loads(open(self.save_path).read())
+                else:
+                    nodes = {}
+                logger.info(
+                    "OnPremCoordinatorState: "
+                    "Loaded on prem coordinator state: {}".format(nodes))
+
+                # Filter removed node ips.
+                for node_ip in list(nodes):
+                    if node_ip not in list_of_node_ips:
+                        del nodes[node_ip]
+
+                for node_ip in list_of_node_ips:
+                    if node_ip not in nodes:
+                        nodes[node_ip] = {
+                            "tags": {},
+                            "state": "terminated",
+                        }
+                assert len(nodes) == len(list_of_node_ips)
+                with open(self.save_path, "w") as f:
+                    logger.info(
+                        "OnPremCoordinatorState: "
+                        "Writing on prem coordinator state: {}".format(nodes))
+                    f.write(json.dumps(nodes))
+
+
 class LocalNodeProvider(NodeProvider):
     """NodeProvider for private/local clusters.
 
     `node_id` is overloaded to also be `node_ip` in this class.
+
+    When `cluster_name` is provided, it manages a single cluster in a cluster
+    specific state file. But when `cluster_name` is None, it manages multiple
+    clusters in a unified state file that requires each node to be tagged with
+    TAG_RAY_CLUSTER_NAME in create and non_terminated_nodes function calls to
+    associate each node with the right cluster.
+
+    The current use case of managing multiple clusters is by
+    OnPremCoordinatorServer which receives node provider HTTP requests
+    from CoordinatorSenderNodeProvider and uses LocalNodeProvider to get
+    the responses.
     """
 
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
-        self.state = ClusterState("/tmp/cluster-{}.lock".format(cluster_name),
-                                  "/tmp/cluster-{}.state".format(cluster_name),
-                                  provider_config)
+
+        if cluster_name:
+            self.state = ClusterState(
+                "/tmp/cluster-{}.lock".format(cluster_name),
+                "/tmp/cluster-{}.state".format(cluster_name),
+                provider_config,
+            )
+            self.use_coordinator = False
+        else:
+            # LocalNodeProvider with a coordinator server.
+            self.state = OnPremCoordinatorState(
+                "/tmp/coordinator.lock", "/tmp/coordinator.state",
+                provider_config["list_of_node_ips"])
+            self.use_coordinator = True
 
     def non_terminated_nodes(self, tag_filters):
         workers = self.state.get()
@@ -131,19 +208,27 @@ class LocalNodeProvider(NodeProvider):
             self.state.put(node_id, info)
 
     def create_node(self, node_config, tags, count):
+        """Creates min(count, currently available) nodes."""
         node_type = tags[TAG_RAY_NODE_TYPE]
         with self.state.file_lock:
             workers = self.state.get()
             for node_id, info in workers.items():
                 if (info["state"] == "terminated"
-                        and info["tags"][TAG_RAY_NODE_TYPE] == node_type):
+                        and (self.use_coordinator
+                             or info["tags"][TAG_RAY_NODE_TYPE] == node_type)):
                     info["tags"] = tags
                     info["state"] = "running"
                     self.state.put(node_id, info)
-                    return
+                    count = count - 1
+                    if count == 0:
+                        return
 
     def terminate_node(self, node_id):
         workers = self.state.get()
         info = workers[node_id]
         info["state"] = "terminated"
         self.state.put(node_id, info)
+
+    @staticmethod
+    def bootstrap_config(cluster_config):
+        return bootstrap_local(cluster_config)

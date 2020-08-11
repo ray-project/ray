@@ -3,17 +3,19 @@ import copy
 from collections import defaultdict, deque
 import time
 from typing import DefaultDict, List
+import pickle
 
 import blist
 
-import ray.cloudpickle as pickle
 from ray.exceptions import RayTaskError
 
 import ray
 from ray import serve
 from ray.serve.metric import MetricClient
-from ray.serve.policy import RandomEndpointPolicy
+from ray.serve.endpoint_policy import RandomEndpointPolicy
 from ray.serve.utils import logger, chain_future
+
+REPORT_QUEUE_LENGTH_PERIOD_S = 1.0
 
 
 class Query:
@@ -50,7 +52,7 @@ class Query:
         # worker without removing async_future.
         clone = copy.copy(self).__dict__
         clone.pop("async_future")
-        return pickle.dumps(clone, protocol=5)
+        return pickle.dumps(clone)
 
     @staticmethod
     def ray_deserialize(value):
@@ -87,7 +89,7 @@ def _make_future_unwrapper(client_futures: List[asyncio.Future],
 class Router:
     """A router that routes request to available workers."""
 
-    async def __init__(self, instance_name=None):
+    async def setup(self, name, instance_name=None):
         # Note: Several queues are used in the router
         # - When a request come in, it's placed inside its corresponding
         #   endpoint_queue.
@@ -97,6 +99,8 @@ class Router:
         # - The worker_queue is used to collect idle actor handle. These
         #   handles are dequed during the second stage of flush operation,
         #   which assign queries in buffer_queue to actor handle.
+
+        self.name = name
 
         # -- Queues -- #
 
@@ -117,8 +121,8 @@ class Router:
         self.backend_info = dict()
         # replica tag -> worker_handle
         self.replicas = dict()
-        # replica_tag -> concurrent queries counter
-        self.queries_counter = defaultdict(lambda: 0)
+        # backend_name -> replica_tag -> concurrent queries counter
+        self.queries_counter = defaultdict(lambda: defaultdict(int))
 
         # -- Synchronization -- #
 
@@ -133,27 +137,29 @@ class Router:
 
         # -- State Restoration -- #
         # Fetch the worker handles, traffic policies, and backend configs from
-        # the master actor. We use a "pull-based" approach instead of pushing
-        # them from the master so that the router can transparently recover
+        # the controller. We use a "pull-based" approach instead of pushing
+        # them from the controller so that the router can transparently recover
         # from failure.
         serve.init(name=instance_name)
-        master_actor = serve.api._get_master_actor()
+        self.controller = serve.api._get_controller()
 
-        traffic_policies = ray.get(master_actor.get_traffic_policies.remote())
+        traffic_policies = ray.get(
+            self.controller.get_traffic_policies.remote())
         for endpoint, traffic_policy in traffic_policies.items():
             await self.set_traffic(endpoint, traffic_policy)
 
-        backend_dict = ray.get(master_actor.get_all_worker_handles.remote())
+        backend_dict = ray.get(self.controller.get_all_worker_handles.remote())
         for backend_tag, replica_dict in backend_dict.items():
             for replica_tag, worker in replica_dict.items():
                 await self.add_new_worker(backend_tag, replica_tag, worker)
 
-        backend_configs = ray.get(master_actor.get_backend_configs.remote())
+        backend_configs = ray.get(self.controller.get_backend_configs.remote())
         for backend, backend_config in backend_configs.items():
             await self.set_backend_config(backend, backend_config)
 
         # -- Metric Registration -- #
-        [metric_exporter] = ray.get(master_actor.get_metric_exporter.remote())
+        [metric_exporter] = ray.get(
+            self.controller.get_metric_exporter.remote())
         self.metric_client = MetricClient(metric_exporter)
         self.num_router_requests = self.metric_client.new_counter(
             "num_router_requests",
@@ -170,8 +176,7 @@ class Router:
                          "from backend."),
             label_names=("backend", ))
 
-    def is_ready(self):
-        return True
+        asyncio.get_event_loop().create_task(self.report_queue_lengths())
 
     async def enqueue_request(self, request_meta, *request_args,
                               **request_kwargs):
@@ -198,8 +203,6 @@ class Router:
             self.endpoint_queues[endpoint].appendleft(query)
             self.flush_endpoint_queue(endpoint)
 
-        # Note: a future change can be to directly return the ObjectID from
-        # replica task submission
         try:
             result = await query.async_future
         except RayTaskError as e:
@@ -318,17 +321,18 @@ class Router:
         start = time.time()
         worker = self.replicas[backend_replica_tag]
         try:
+            object_ref = worker.handle_request.remote(req.ray_serialize())
             if req.is_shadow_query:
                 # No need to actually get the result, but we do need to wait
                 # until the call completes to mark the worker idle.
-                asyncio.wait([worker.handle_request.remote(req)])
+                await asyncio.wait([object_ref])
                 result = ""
             else:
-                result = await worker.handle_request.remote(req)
+                result = await object_ref
         except RayTaskError as error:
             self.num_error_backend_request.labels(backend=backend).add()
             result = error
-        self.queries_counter[backend_replica_tag] -= 1
+        self.queries_counter[backend][backend_replica_tag] -= 1
         await self.mark_worker_idle(backend, backend_replica_tag)
         logger.debug("Got result in {:.2f}s".format(time.time() - start))
         return result
@@ -351,7 +355,7 @@ class Router:
             max_queries = 1
             if backend in self.backend_info:
                 max_queries = self.backend_info[backend].max_concurrent_queries
-            curr_queries = self.queries_counter[backend_replica_tag]
+            curr_queries = self.queries_counter[backend][backend_replica_tag]
             if curr_queries >= max_queries:
                 # Put the worker back to the queue.
                 worker_queue.appendleft(backend_replica_tag)
@@ -363,7 +367,7 @@ class Router:
                 continue
 
             request = buffer_queue.pop(0)
-            self.queries_counter[backend_replica_tag] += 1
+            self.queries_counter[backend][backend_replica_tag] += 1
             future = asyncio.get_event_loop().create_task(
                 self._do_query(backend, backend_replica_tag, request))
 
@@ -372,3 +376,12 @@ class Router:
                 chain_future(future, request.async_future)
 
             worker_queue.appendleft(backend_replica_tag)
+
+    async def report_queue_lengths(self):
+        while True:
+            self.controller.report_queue_lengths.remote(
+                self.name, {
+                    backend: len(q)
+                    for backend, q in self.backend_queues.items()
+                })
+            await asyncio.sleep(REPORT_QUEUE_LENGTH_PERIOD_S)

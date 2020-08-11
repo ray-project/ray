@@ -1,12 +1,12 @@
 import os
 import shutil
-import subprocess
 import sys
 import time
 
 import pytest
 import ray
 from ray.cluster_utils import Cluster
+from ray.test_utils import check_call_ray
 
 
 def unix_socket_create_path(name):
@@ -73,8 +73,8 @@ def test_tempdir(shutdown_only):
 
 def test_tempdir_commandline():
     shutil.rmtree(ray.utils.get_ray_temp_dir(), ignore_errors=True)
-    subprocess.check_call([
-        "ray", "start", "--head", "--temp-dir=" + os.path.join(
+    check_call_ray([
+        "start", "--head", "--temp-dir=" + os.path.join(
             ray.utils.get_user_temp_dir(), "i_am_a_temp_dir2")
     ])
     assert os.path.exists(
@@ -82,7 +82,7 @@ def test_tempdir_commandline():
                      "i_am_a_temp_dir2")), "Specified temp dir not found."
     assert not os.path.exists(
         ray.utils.get_ray_temp_dir()), "Default temp dir should not exist."
-    subprocess.check_call(["ray", "stop"])
+    check_call_ray(["stop"])
     shutil.rmtree(
         os.path.join(ray.utils.get_user_temp_dir(), "i_am_a_temp_dir2"),
         ignore_errors=True)
@@ -188,11 +188,11 @@ def test_tempdir_privilege(shutdown_only):
 
 def test_session_dir_uniqueness():
     session_dirs = set()
-    for _ in range(3):
+    for i in range(2):
         ray.init(num_cpus=1)
         session_dirs.add(ray.worker._global_node.get_session_dir_path)
         ray.shutdown()
-    assert len(session_dirs) == 3
+    assert len(session_dirs) == 2
 
 
 if __name__ == "__main__":

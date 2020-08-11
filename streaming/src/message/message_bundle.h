@@ -2,9 +2,11 @@
 
 #include <ctime>
 #include <list>
+#include <memory>
 #include <numeric>
+#include <string>
 
-#include "message.h"
+#include "message/message.h"
 
 namespace ray {
 namespace streaming {

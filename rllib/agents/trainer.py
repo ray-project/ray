@@ -44,7 +44,7 @@ MAX_WORKER_FAILURE_RETRIES = 3
 
 # yapf: disable
 # __sphinx_doc_begin__
-COMMON_CONFIG = {
+COMMON_CONFIG: TrainerConfigDict = {
     # === Settings for Rollout Worker processes ===
     # Number of rollout worker actors to create for parallel sampling. Setting
     # this to 0 will force rollouts to be done in the trainer actor.
@@ -112,12 +112,16 @@ COMMON_CONFIG = {
     "env": None,
     # Unsquash actions to the upper and lower bounds of env's action space
     "normalize_actions": False,
-    # Whether to clip rewards prior to experience postprocessing. Setting to
-    # None means clip for Atari only.
+    # Whether to clip rewards during Policy's postprocessing.
+    # None (default): Clip for Atari only (r=sign(r)).
+    # True: r=sign(r): Fixed rewards -1.0, 1.0, or 0.0.
+    # False: Never clip.
+    # [float value]: Clip at -value and + value.
+    # Tuple[value1, value2]: Clip at value1 and value2.
     "clip_rewards": None,
-    # Whether to np.clip() actions to the action space low/high range spec.
+    # Whether to clip actions to the action space's low/high range spec.
     "clip_actions": True,
-    # Whether to use rllib or deepmind preprocessors by default
+    # Whether to use "rllib" or "deepmind" preprocessors by default
     "preprocessor_pref": "deepmind",
     # The default learning rate.
     "lr": 0.0001,
@@ -213,6 +217,13 @@ COMMON_CONFIG = {
     # Use a background thread for sampling (slightly off-policy, usually not
     # advisable to turn on unless your env specifically requires it).
     "sample_async": False,
+
+    # Experimental flag to speed up sampling and use "trajectory views" as
+    # generic ModelV2 `input_dicts` that can be requested by the model to
+    # contain different information on the ongoing episode.
+    # NOTE: Only supported for PyTorch so far.
+    "_use_trajectory_view_api": False,
+
     # Element-wise observation filter, either "NoFilter" or "MeanStdFilter".
     "observation_filter": "NoFilter",
     # Whether to synchronize the statistics of remote filters.
@@ -582,7 +593,9 @@ class Trainer(Trainable):
             self.config.pop("eager")
 
         # Enable eager/tracing support.
-        if tf1 and self.config["framework"] == "tfe":
+        if tf1 and self.config["framework"] in ["tf2", "tfe"]:
+            if self.config["framework"] == "tf2" and tfv < 2:
+                raise ValueError("`framework`=tf2, but tf-version is < 2.0!")
             if not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
             logger.info("Executing eagerly, with eager_tracing={}".format(
@@ -1055,6 +1068,11 @@ class Trainer(Trainable):
 
     @staticmethod
     def _validate_config(config: PartialTrainerConfigDict):
+        if config.get("_use_trajectory_view_api") and \
+                config.get("framework") != "torch":
+            raise ValueError(
+                "`_use_trajectory_view_api` only supported for PyTorch so "
+                "far!")
         if "policy_graphs" in config["multiagent"]:
             deprecation_warning("policy_graphs", "policies")
             # Backwards compatibility.
@@ -1088,14 +1106,14 @@ class Trainer(Trainable):
         logger.info("Health checking all workers...")
         checks = []
         for ev in workers.remote_workers():
-            _, obj_id = ev.sample_with_count.remote()
-            checks.append(obj_id)
+            _, obj_ref = ev.sample_with_count.remote()
+            checks.append(obj_ref)
 
         healthy_workers = []
-        for i, obj_id in enumerate(checks):
+        for i, obj_ref in enumerate(checks):
             w = workers.remote_workers()[i]
             try:
-                ray.get(obj_id)
+                ray.get(obj_ref)
                 healthy_workers.append(w)
                 logger.info("Worker {} looks healthy".format(i + 1))
             except RayError:

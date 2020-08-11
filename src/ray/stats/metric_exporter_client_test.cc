@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
+#include "ray/stats/metric_exporter_client.h"
 
 #include <chrono>
 #include <iostream>
@@ -21,28 +20,35 @@
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
+#include "opencensus/stats/internal/delta_producer.h"
+#include "opencensus/stats/internal/stats_exporter_impl.h"
 #include "ray/stats/metric_exporter.h"
-#include "ray/stats/metric_exporter_client.h"
 #include "ray/stats/stats.h"
 
 namespace ray {
 using namespace stats;
 
 const size_t kMockReportBatchSize = 10;
+const int MetricsAgentPort = 10054;
 
 class MockExporterClient1 : public MetricExporterDecorator {
  public:
   MockExporterClient1(std::shared_ptr<MetricExporterClient> exporter)
-      : MetricExporterDecorator(exporter) {
-    client1_count = 0;
-    lastest_hist_min = 0.0;
-    lastest_hist_mean = 0.0;
-    lastest_hist_max = 0.0;
-  }
+      : MetricExporterDecorator(exporter),
+        client1_count(0),
+        client1_value(0),
+        lastest_hist_min(0.0),
+        lastest_hist_mean(0.0),
+        lastest_hist_max(0.0) {}
 
   void ReportMetrics(const std::vector<MetricPoint> &points) override {
+    if (points.empty()) {
+      return;
+    }
     MetricExporterDecorator::ReportMetrics(points);
-    client1_count += points.size();
+    client1_count++;
     client1_value = points.back().value;
     RAY_LOG(DEBUG) << "Client 1 " << client1_count << " last metric "
                    << points.back().metric_name << ", value " << points.back().value;
@@ -50,13 +56,11 @@ class MockExporterClient1 : public MetricExporterDecorator {
     // Point size must be less than or equal to report batch size.
     ASSERT_GE(kMockReportBatchSize, points.size());
   }
-
-  static int GetCount() { return client1_count; }
-  static void ResetCount() { client1_count = 0; }
-  static int GetValue() { return client1_value; }
-  static double GetLastestHistMin() { return lastest_hist_min; }
-  static double GetLastestHistMean() { return lastest_hist_mean; }
-  static double GetLastestHistMax() { return lastest_hist_max; }
+  int GetCount() { return client1_count; }
+  int GetValue() { return client1_value; }
+  double GetLastestHistMin() { return lastest_hist_min; }
+  double GetLastestHistMean() { return lastest_hist_mean; }
+  double GetLastestHistMax() { return lastest_hist_max; }
 
  private:
   void RecordLastHistData(const std::vector<MetricPoint> &points) {
@@ -74,106 +78,108 @@ class MockExporterClient1 : public MetricExporterDecorator {
   }
 
  private:
-  static int client1_count;
-  static int client1_value;
-  static double lastest_hist_min;
-  static double lastest_hist_mean;
-  static double lastest_hist_max;
+  int client1_count;
+  int client1_value;
+  double lastest_hist_min;
+  double lastest_hist_mean;
+  double lastest_hist_max;
 };
 
 class MockExporterClient2 : public MetricExporterDecorator {
  public:
   MockExporterClient2(std::shared_ptr<MetricExporterClient> exporter)
-      : MetricExporterDecorator(exporter) {
-    client2_count = 0;
-  }
+      : MetricExporterDecorator(exporter), client2_count(0), client2_value(0) {}
   void ReportMetrics(const std::vector<MetricPoint> &points) override {
+    if (points.empty()) {
+      return;
+    }
     MetricExporterDecorator::ReportMetrics(points);
-    client2_count += points.size();
+    client2_count++;
     RAY_LOG(DEBUG) << "Client 2 " << client2_count << " last metric "
                    << points.back().metric_name << ", value " << points.back().value;
     client2_value = points.back().value;
   }
-  static int GetCount() { return client2_count; }
-  static void ResetCount() { client2_count = 0; }
-  static int GetValue() { return client2_value; }
+  int GetCount() { return client2_count; }
+  int GetValue() { return client2_value; }
 
  private:
-  static int client2_count;
-  static int client2_value;
+  int client2_count;
+  int client2_value;
 };
+
+/// Default report flush interval is 500ms, so we may wait a while for data
+/// exporting.
+uint32_t kReportFlushInterval = 500;
 
 class MetricExporterClientTest : public ::testing::Test {
  public:
-  void SetUp() {
+  virtual void SetUp() override {
     const stats::TagsType global_tags = {{stats::LanguageKey, "CPP"},
                                          {stats::WorkerPidKey, "1000"}};
-    ray::stats::Init("127.0.0.1:8888", global_tags, false);
-    std::shared_ptr<MetricExporterClient> exporter(new stats::StdoutExporterClient());
-    std::shared_ptr<MetricExporterClient> mock1(new MockExporterClient1(exporter));
-    std::shared_ptr<MetricExporterClient> mock2(new MockExporterClient2(mock1));
-    MetricExporter::Register(mock2, kMockReportBatchSize);
+    absl::Duration report_interval = absl::Milliseconds(kReportFlushInterval);
+    absl::Duration harvest_interval = absl::Milliseconds(kReportFlushInterval / 2);
+    ray::stats::StatsConfig::instance().SetReportInterval(report_interval);
+    ray::stats::StatsConfig::instance().SetHarvestInterval(harvest_interval);
+
+    exporter.reset(new stats::StdoutExporterClient());
+    mock1.reset(new MockExporterClient1(exporter));
+    mock2.reset(new MockExporterClient2(mock1));
+    ray::stats::Init(global_tags, MetricsAgentPort, mock2, kMockReportBatchSize);
   }
 
-  void Shutdown() {
-    MockExporterClient1::ResetCount();
-    MockExporterClient2::ResetCount();
-  }
+  virtual void TearDown() override { Shutdown(); }
+
+  void Shutdown() { ray::stats::Shutdown(); }
+
+ protected:
+  std::shared_ptr<MetricExporterClient> exporter;
+  std::shared_ptr<MockExporterClient1> mock1;
+  std::shared_ptr<MockExporterClient2> mock2;
 };
-
-int MockExporterClient1::client1_count;
-double MockExporterClient1::lastest_hist_min;
-double MockExporterClient1::lastest_hist_mean;
-double MockExporterClient1::lastest_hist_max;
-int MockExporterClient2::client2_count;
-int MockExporterClient1::client1_value;
-int MockExporterClient2::client2_value;
-
-/// Default report flush interval is 10s, so we may wait a while for data
-/// exporting.
-uint32_t kReportFlushInterval = 10000;
 
 bool DoubleEqualTo(double value, double compared_value) {
   return value >= compared_value - 1e-5 && value <= compared_value + 1e-5;
 }
 
 TEST_F(MetricExporterClientTest, decorator_test) {
-  // Export client should emit at least once in 10 seconds.
+  // Export client should emit at least once in report flush interval.
   for (size_t i = 0; i < 100; ++i) {
     stats::CurrentWorker().Record(i + 1);
   }
-  std::this_thread::sleep_for(std::chrono::milliseconds(kReportFlushInterval + 200));
-  ASSERT_GE(100, MockExporterClient1::GetValue());
-  ASSERT_GE(100, MockExporterClient2::GetValue());
-  ASSERT_EQ(1, MockExporterClient1::GetCount());
-  ASSERT_EQ(1, MockExporterClient2::GetCount());
+  opencensus::stats::DeltaProducer::Get()->Flush();
+  opencensus::stats::StatsExporterImpl::Get()->Export();
+  ASSERT_GE(100, mock1->GetValue());
+  ASSERT_EQ(1, mock1->GetCount());
+  ASSERT_GE(100, mock2->GetValue());
+  ASSERT_EQ(1, mock2->GetCount());
 }
 
 TEST_F(MetricExporterClientTest, exporter_client_caculation_test) {
   const stats::TagKeyType tag1 = stats::TagKeyType::Register("k1");
   const stats::TagKeyType tag2 = stats::TagKeyType::Register("k2");
-  stats::Count random_counter("ray.random.counter", "", "", {tag1, tag2});
-  stats::Gauge random_gauge("ray.random.gauge", "", "", {tag1, tag2});
-  stats::Sum random_sum("ray.random.sum", "", "", {tag1, tag2});
+  static stats::Count random_counter("ray.random.counter", "", "", {tag1, tag2});
+  static stats::Gauge random_gauge("ray.random.gauge", "", "", {tag1, tag2});
+  static stats::Sum random_sum("ray.random.sum", "", "", {tag1, tag2});
 
   std::vector<double> hist_vector;
   for (int i = 0; i < 50; i++) {
     hist_vector.push_back((double)(i * 10.0));
   }
-  stats::Histogram random_hist("ray.random.hist", "", "", hist_vector, {tag1, tag2});
+  static stats::Histogram random_hist("ray.random.hist", "", "", hist_vector,
+                                      {tag1, tag2});
   for (size_t i = 0; i < 500; ++i) {
     random_counter.Record(i, {{tag1, std::to_string(i)}, {tag2, std::to_string(i * 2)}});
     random_gauge.Record(i, {{tag1, std::to_string(i)}, {tag2, std::to_string(i * 2)}});
     random_sum.Record(i, {{tag1, std::to_string(i)}, {tag2, std::to_string(i * 2)}});
     random_hist.Record(i, {{tag1, std::to_string(i)}, {tag2, std::to_string(i * 2)}});
   }
-  std::this_thread::sleep_for(std::chrono::milliseconds(kReportFlushInterval + 200));
-  RAY_LOG(INFO) << "Min " << MockExporterClient1::GetLastestHistMin() << ", mean "
-                << MockExporterClient1::GetLastestHistMean() << ", max "
-                << MockExporterClient1::GetLastestHistMax();
-  ASSERT_TRUE(DoubleEqualTo(MockExporterClient1::GetLastestHistMin(), 0.0));
-  ASSERT_TRUE(DoubleEqualTo(MockExporterClient1::GetLastestHistMean(), 249.5));
-  ASSERT_TRUE(DoubleEqualTo(MockExporterClient1::GetLastestHistMax(), 499.0));
+  opencensus::stats::DeltaProducer::Get()->Flush();
+  opencensus::stats::StatsExporterImpl::Get()->Export();
+  RAY_LOG(INFO) << "Min " << mock1->GetLastestHistMin() << ", mean "
+                << mock1->GetLastestHistMean() << ", max " << mock1->GetLastestHistMax();
+  ASSERT_TRUE(DoubleEqualTo(mock1->GetLastestHistMin(), 0.0));
+  ASSERT_TRUE(DoubleEqualTo(mock1->GetLastestHistMean(), 249.5));
+  ASSERT_TRUE(DoubleEqualTo(mock1->GetLastestHistMax(), 499.0));
 }
 
 }  // namespace ray

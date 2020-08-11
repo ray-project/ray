@@ -2,12 +2,9 @@
 import glob
 import logging
 import os
-import shutil
 import json
 import sys
 import socket
-import subprocess
-import tempfile
 import time
 
 import numpy as np
@@ -18,9 +15,11 @@ import ray
 import ray.ray_constants as ray_constants
 import ray.cluster_utils
 import ray.test_utils
+from ray import resource_spec
 import setproctitle
 
-from ray.test_utils import RayTestTimeoutException
+from ray.test_utils import (check_call_ray, RayTestTimeoutException,
+                            wait_for_num_actors)
 
 logger = logging.getLogger(__name__)
 
@@ -85,15 +84,6 @@ def test_load_balancing_with_dependencies(ray_start_cluster):
     attempt_to_load_balance(f, [x], 100, num_nodes, 25)
 
 
-def wait_for_num_actors(num_actors, timeout=10):
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        if len(ray.actors()) >= num_actors:
-            return
-        time.sleep(0.1)
-    raise RayTestTimeoutException("Timed out while waiting for global state.")
-
-
 def wait_for_num_objects(num_objects, timeout=10):
     start_time = time.time()
     while time.time() - start_time < timeout:
@@ -128,7 +118,7 @@ def test_global_state_api(shutdown_only):
 
     # A driver/worker creates a temporary object during startup. Although the
     # temporary object is freed immediately, in a rare case, we can still find
-    # the object ID in GCS because Raylet removes the object ID from GCS
+    # the object ref in GCS because Raylet removes the object ref from GCS
     # asynchronously.
     # Because we can't control when workers create the temporary objects, so
     # We can't assert that `ray.objects()` returns an empty dict. Here we just
@@ -212,23 +202,22 @@ def test_logging_to_driver(shutdown_only):
     def f():
         # It's important to make sure that these print statements occur even
         # without calling sys.stdout.flush() and sys.stderr.flush().
-        for i in range(100):
-            print(i)
-            print(100 + i, file=sys.stderr)
+        for i in range(10):
+            print(i, end=" ")
+            print(100 + i, end=" ", file=sys.stderr)
 
     captured = {}
     with CaptureOutputAndError(captured):
         ray.get(f.remote())
         time.sleep(1)
 
-    output_lines = captured["out"]
-    for i in range(200):
-        assert str(i) in output_lines
+    out_lines = captured["out"]
+    err_lines = captured["err"]
+    for i in range(10):
+        assert str(i) in out_lines
 
-    # TODO(rkn): Check that no additional logs appear beyond what we expect
-    # and that there are no duplicate logs. Once we address the issue
-    # described in https://github.com/ray-project/ray/pull/5462, we should
-    # also check that nothing is logged to stderr.
+    for i in range(100, 110):
+        assert str(i) in err_lines
 
 
 def test_not_logging_to_driver(shutdown_only):
@@ -250,10 +239,8 @@ def test_not_logging_to_driver(shutdown_only):
     output_lines = captured["out"]
     assert len(output_lines) == 0
 
-    # TODO(rkn): Check that no additional logs appear beyond what we expect
-    # and that there are no duplicate logs. Once we address the issue
-    # described in https://github.com/ray-project/ray/pull/5462, we should
-    # also check that nothing is logged to stderr.
+    err_lines = captured["err"]
+    assert len(err_lines) == 0
 
 
 @pytest.mark.skipif(
@@ -290,22 +277,22 @@ def test_specific_job_id():
     ray.shutdown()
 
 
-def test_object_id_properties():
+def test_object_ref_properties():
     id_bytes = b"00112233445566778899"
-    object_id = ray.ObjectID(id_bytes)
-    assert object_id.binary() == id_bytes
-    object_id = ray.ObjectID.nil()
-    assert object_id.is_nil()
+    object_ref = ray.ObjectRef(id_bytes)
+    assert object_ref.binary() == id_bytes
+    object_ref = ray.ObjectRef.nil()
+    assert object_ref.is_nil()
     with pytest.raises(ValueError, match=r".*needs to have length 20.*"):
-        ray.ObjectID(id_bytes + b"1234")
+        ray.ObjectRef(id_bytes + b"1234")
     with pytest.raises(ValueError, match=r".*needs to have length 20.*"):
-        ray.ObjectID(b"0123456789")
-    object_id = ray.ObjectID.from_random()
-    assert not object_id.is_nil()
-    assert object_id.binary() != id_bytes
-    id_dumps = pickle.dumps(object_id)
+        ray.ObjectRef(b"0123456789")
+    object_ref = ray.ObjectRef.from_random()
+    assert not object_ref.is_nil()
+    assert object_ref.binary() != id_bytes
+    id_dumps = pickle.dumps(object_ref)
     id_from_dumps = pickle.loads(id_dumps)
-    assert id_from_dumps == object_id
+    assert id_from_dumps == object_ref
 
 
 @pytest.fixture
@@ -366,31 +353,6 @@ def test_ray_setproctitle(ray_start_2_cpus):
     ray.get(unique_1.remote())
 
 
-def test_duplicate_error_messages(shutdown_only):
-    ray.init(num_cpus=0)
-
-    driver_id = ray.WorkerID.nil()
-    error_data = ray.gcs_utils.construct_error_message(driver_id, "test",
-                                                       "message", 0)
-
-    # Push the same message to the GCS twice (they are the same because we
-    # do not include a timestamp).
-
-    r = ray.worker.global_worker.redis_client
-
-    r.execute_command("RAY.TABLE_APPEND",
-                      ray.gcs_utils.TablePrefix.Value("ERROR_INFO"),
-                      ray.gcs_utils.TablePubsub.Value("ERROR_INFO_PUBSUB"),
-                      driver_id.binary(), error_data)
-
-    # Before https://github.com/ray-project/ray/pull/3316 this would
-    # give an error
-    r.execute_command("RAY.TABLE_APPEND",
-                      ray.gcs_utils.TablePrefix.Value("ERROR_INFO"),
-                      ray.gcs_utils.TablePubsub.Value("ERROR_INFO_PUBSUB"),
-                      driver_id.binary(), error_data)
-
-
 @pytest.mark.skipif(
     os.getenv("TRAVIS") is None,
     reason="This test should only be run on Travis.")
@@ -413,7 +375,8 @@ def test_ray_stack(ray_start_2_cpus):
     start_time = time.time()
     while time.time() - start_time < 30:
         # Attempt to parse the "ray stack" call.
-        output = ray.utils.decode(subprocess.check_output(["ray", "stack"]))
+        output = ray.utils.decode(
+            check_call_ray(["stack"], capture_stdout=True))
         if ("unique_name_1" in output and "unique_name_2" in output
                 and "unique_name_3" in output):
             success = True
@@ -424,31 +387,21 @@ def test_ray_stack(ray_start_2_cpus):
                         "'ray stack'")
 
 
-def test_pandas_parquet_serialization():
-    # Only test this if pandas is installed
-    pytest.importorskip("pandas")
-
-    import pandas as pd
-    import pyarrow as pa
-    import pyarrow.parquet as pq
-
-    tempdir = tempfile.mkdtemp()
-    filename = os.path.join(tempdir, "parquet-test")
-    pd.DataFrame({"col1": [0, 1], "col2": [0, 1]}).to_parquet(filename)
-    with open(os.path.join(tempdir, "parquet-compression"), "wb") as f:
-        table = pa.Table.from_arrays([pa.array([1, 2, 3])], ["hello"])
-        pq.write_table(table, f, compression="lz4")
-    # Clean up
-    shutil.rmtree(tempdir)
-
-
 def test_socket_dir_not_existing(shutdown_only):
-    random_name = ray.ObjectID.from_random().hex()
-    temp_raylet_socket_dir = os.path.join(ray.utils.get_ray_temp_dir(),
-                                          "tests", random_name)
-    temp_raylet_socket_name = os.path.join(temp_raylet_socket_dir,
-                                           "raylet_socket")
-    ray.init(num_cpus=1, raylet_socket_name=temp_raylet_socket_name)
+    if sys.platform != "win32":
+        random_name = ray.ObjectRef.from_random().hex()
+        temp_raylet_socket_dir = os.path.join(ray.utils.get_ray_temp_dir(),
+                                              "tests", random_name)
+        temp_raylet_socket_name = os.path.join(temp_raylet_socket_dir,
+                                               "raylet_socket")
+        ray.init(num_cpus=2, raylet_socket_name=temp_raylet_socket_name)
+
+        @ray.remote
+        def foo(x):
+            time.sleep(1)
+            return 2 * x
+
+        ray.get([foo.remote(i) for i in range(2)])
 
 
 def test_raylet_is_robust_to_random_messages(ray_start_regular):
@@ -493,25 +446,26 @@ def test_shutdown_disconnect_global_state():
 @pytest.mark.parametrize(
     "ray_start_object_store_memory", [150 * 1024 * 1024], indirect=True)
 def test_put_pins_object(ray_start_object_store_memory):
-    x_id = ray.put("HI")
+    obj = np.ones(200 * 1024, dtype=np.uint8)
+    x_id = ray.put(obj)
     x_binary = x_id.binary()
-    assert ray.get(ray.ObjectID(x_binary)) == "HI"
+    assert (ray.get(ray.ObjectRef(x_binary)) == obj).all()
 
     # x cannot be evicted since x_id pins it
     for _ in range(10):
         ray.put(np.zeros(10 * 1024 * 1024))
-    assert ray.get(x_id) == "HI"
-    assert ray.get(ray.ObjectID(x_binary)) == "HI"
+    assert (ray.get(x_id) == obj).all()
+    assert (ray.get(ray.ObjectRef(x_binary)) == obj).all()
 
     # now it can be evicted since x_id pins it but x_binary does not
     del x_id
     for _ in range(10):
         ray.put(np.zeros(10 * 1024 * 1024))
     assert not ray.worker.global_worker.core_worker.object_exists(
-        ray.ObjectID(x_binary))
+        ray.ObjectRef(x_binary))
 
     # weakref put
-    y_id = ray.put("HI", weakref=True)
+    y_id = ray.put(obj, weakref=True)
     for _ in range(10):
         ray.put(np.zeros(10 * 1024 * 1024))
     with pytest.raises(ray.exceptions.UnreconstructableError):
@@ -538,7 +492,7 @@ def test_decorated_function(ray_start_regular):
 
 
 def test_get_postprocess(ray_start_regular):
-    def get_postprocessor(object_ids, values):
+    def get_postprocessor(object_refs, values):
         return [value for value in values if value > 0]
 
     ray.worker.global_worker._post_get_hooks.append(get_postprocessor)
@@ -665,10 +619,10 @@ def test_lease_request_leak(shutdown_only):
     # from the raylet.
     tasks = []
     for _ in range(10):
-        oid = ray.put(1)
+        obj_ref = ray.put(1)
         for _ in range(2):
-            tasks.append(f.remote(oid))
-        del oid
+            tasks.append(f.remote(obj_ref))
+        del obj_ref
     ray.get(tasks)
 
     time.sleep(
@@ -700,6 +654,57 @@ def test_ray_address_environment_variable(ray_start_cluster):
     ray.init()
     assert "CPU" in ray.state.cluster_resources()
     ray.shutdown()
+
+
+def test_ray_resources_environment_variable(ray_start_cluster):
+    address = ray_start_cluster.address
+
+    os.environ["RAY_OVERRIDE_RESOURCES"] = "{\"custom1\":1, \"custom2\":2}"
+    ray.init(address=address, resources={"custom1": 3, "custom3": 3})
+
+    cluster_resources = ray.cluster_resources()
+    print(cluster_resources)
+    assert cluster_resources["custom1"] == 1
+    assert cluster_resources["custom2"] == 2
+    assert cluster_resources["custom3"] == 3
+
+
+def test_gpu_info_parsing():
+    info_string = """Model:           Tesla V100-SXM2-16GB
+IRQ:             107
+GPU UUID:        GPU-8eaaebb8-bb64-8489-fda2-62256e821983
+Video BIOS:      88.00.4f.00.09
+Bus Type:        PCIe
+DMA Size:        47 bits
+DMA Mask:        0x7fffffffffff
+Bus Location:    0000:00:1e.0
+Device Minor:    0
+Blacklisted:     No
+    """
+    constraints_dict = resource_spec._constraints_from_gpu_info(info_string)
+    expected_dict = {
+        "{}V100".format(ray_constants.RESOURCE_CONSTRAINT_PREFIX): 1
+    }
+    assert constraints_dict == expected_dict
+
+    info_string = """Model:           Tesla T4
+IRQ:             10
+GPU UUID:        GPU-415fe7a8-f784-6e3d-a958-92ecffacafe2
+Video BIOS:      90.04.84.00.06
+Bus Type:        PCIe
+DMA Size:        47 bits
+DMA Mask:        0x7fffffffffff
+Bus Location:    0000:00:1b.0
+Device Minor:    0
+Blacklisted:     No
+    """
+    constraints_dict = resource_spec._constraints_from_gpu_info(info_string)
+    expected_dict = {
+        "{}T4".format(ray_constants.RESOURCE_CONSTRAINT_PREFIX): 1
+    }
+    assert constraints_dict == expected_dict
+
+    assert resource_spec._constraints_from_gpu_info(None) == {}
 
 
 if __name__ == "__main__":

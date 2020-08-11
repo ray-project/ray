@@ -192,6 +192,10 @@ RAY_CONFIG(size_t, raylet_max_active_object_ids, 0)
 /// the worker SIGKILL.
 RAY_CONFIG(int64_t, kill_worker_timeout_milliseconds, 100)
 
+/// The duration that we wait after the worekr is launched before the
+/// starting_worker_timeout_callback() is called.
+RAY_CONFIG(int64_t, worker_register_timeout_seconds, 30)
+
 /// This is a timeout used to cause failures in the plasma manager and raylet
 /// when certain event loop handlers take too long.
 RAY_CONFIG(int64_t, max_time_for_handler_milliseconds, 1000)
@@ -281,6 +285,8 @@ RAY_CONFIG(int64_t, gcs_redis_heartbeat_interval_milliseconds, 100)
 RAY_CONFIG(uint32_t, gcs_lease_worker_retry_interval_ms, 200)
 /// Duration to wait between retries for creating actor in gcs server.
 RAY_CONFIG(uint32_t, gcs_create_actor_retry_interval_ms, 200)
+/// Duration to wait between retries for creating placement group in gcs server.
+RAY_CONFIG(uint32_t, gcs_create_placement_group_retry_interval_ms, 200)
 
 /// Maximum number of times to retry putting an object when the plasma store is full.
 /// Can be set to -1 to enable unlimited retries.
@@ -308,6 +314,26 @@ RAY_CONFIG(bool, plasma_store_as_thread, false)
 /// changed. When the address changed, we will resubscribe again.
 RAY_CONFIG(int64_t, gcs_service_address_check_interval_milliseconds, 1000)
 
-RAY_CONFIG(bool, gcs_actor_service_enabled,
-           getenv("RAY_GCS_ACTOR_SERVICE_ENABLED") != nullptr &&
-               getenv("RAY_GCS_ACTOR_SERVICE_ENABLED") == std::string("true"))
+/// The batch size for metrics export.
+RAY_CONFIG(int64_t, metrics_report_batch_size, 100)
+
+/// Whether or not we enable metrics collection.
+RAY_CONFIG(int64_t, enable_metrics_collection, true)
+
+/// Whether start the Plasma Store as a Raylet thread.
+RAY_CONFIG(bool, put_small_object_in_memory_store, false)
+
+/// Maximum number of tasks that can be in flight between an owner and a worker for which
+/// the owner has been granted a lease. A value >1 is used when we want to enable
+/// pipelining task submission.
+RAY_CONFIG(uint32_t, max_tasks_in_flight_per_worker, 1)
+
+/// The maximum number of resource shapes included in the resource
+/// load reported by each raylet.
+RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)
+
+/// The timeout for synchronous GCS requests in seconds.
+RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 5)
+
+/// Whether to enable multi tenancy features.
+RAY_CONFIG(bool, enable_multi_tenancy, false)

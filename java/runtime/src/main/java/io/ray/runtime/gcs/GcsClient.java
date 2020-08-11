@@ -68,19 +68,12 @@ public class GcsClient {
       final UniqueId nodeId = UniqueId
           .fromByteBuffer(data.getNodeId().asReadOnlyByteBuffer());
 
-      if (data.getState() == GcsNodeInfo.GcsNodeState.ALIVE) {
-        //Code path of node insertion.
-        NodeInfo nodeInfo = new NodeInfo(
-            nodeId, data.getNodeManagerAddress(),
-            data.getNodeManagerHostname(),
-            true, new HashMap<>());
-        nodes.put(nodeId, nodeInfo);
-      } else {
-        // Code path of node deletion.
-        NodeInfo nodeInfo = new NodeInfo(nodeId, nodes.get(nodeId).nodeAddress,
-            nodes.get(nodeId).nodeHostname, false, new HashMap<>());
-        nodes.put(nodeId, nodeInfo);
-      }
+      // NOTE(lingxuan.zlx): we assume no duplicated node id in fetched node list
+      // and it's only one final state for each node in recorded table.
+      NodeInfo nodeInfo = new NodeInfo(
+          nodeId, data.getNodeManagerAddress(), data.getNodeManagerHostname(),
+          data.getState() == GcsNodeInfo.GcsNodeState.ALIVE, new HashMap<>());
+      nodes.put(nodeId, nodeInfo);
     }
 
     // Fill resources.
@@ -91,6 +84,17 @@ public class GcsClient {
     }
 
     return new ArrayList<>(nodes.values());
+  }
+
+  public Map<String, String> getInternalConfig() {
+    Gcs.StoredConfig storedConfig;
+    byte[] conf = globalStateAccessor.getInternalConfig();
+    try {
+      storedConfig = Gcs.StoredConfig.parseFrom(conf);
+    } catch (InvalidProtocolBufferException e) {
+      throw new RuntimeException("Received invalid internal config protobuf from GCS.");
+    }
+    return storedConfig.getConfigMap();
   }
 
   private Map<String, Double> getResourcesForClient(UniqueId clientId) {

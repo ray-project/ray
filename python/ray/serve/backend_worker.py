@@ -5,6 +5,7 @@ from collections.abc import Iterable
 from collections import defaultdict
 from itertools import groupby
 from operator import attrgetter
+from typing import Union
 import time
 
 import ray
@@ -40,6 +41,9 @@ class BatchQueue:
         # in wait_for_batch.
         if self.queue.qsize() == self.max_batch_size:
             self.full_batch_event.set()
+
+    def qsize(self):
+        return self.queue.qsize()
 
     async def wait_for_batch(self):
         """Wait for batch respecting self.max_batch_size and self.timeout_s.
@@ -109,8 +113,9 @@ def create_backend_worker(func_or_class):
             else:
                 _callable = func_or_class(*init_args)
 
-            master = serve.api._get_master_actor()
-            [metric_exporter] = ray.get(master.get_metric_exporter.remote())
+            controller = serve.api._get_controller()
+            [metric_exporter] = ray.get(
+                controller.get_metric_exporter.remote())
             metric_client = MetricClient(
                 metric_exporter, default_labels={"backend": backend_tag})
             self.backend = RayServeWorker(backend_tag, replica_tag, _callable,
@@ -151,9 +156,9 @@ def ensure_async(func):
 class RayServeWorker:
     """Handles requests with the provided callable."""
 
-    def __init__(self, name, replica_tag, _callable,
+    def __init__(self, backend_tag, replica_tag, _callable,
                  backend_config: BackendConfig, is_function, metric_client):
-        self.name = name
+        self.backend_tag = backend_tag
         self.replica_tag = replica_tag
         self.callable = _callable
         self.is_function = is_function
@@ -181,7 +186,7 @@ class RayServeWorker:
 
         self.restart_counter.labels(replica_tag=self.replica_tag).add()
 
-        self.loop_task = asyncio.get_event_loop().create_task(self.main_loop())
+        asyncio.get_event_loop().create_task(self.main_loop())
 
     def get_runner_method(self, request_item):
         method_name = request_item.call_method
@@ -343,9 +348,11 @@ class RayServeWorker:
         self.batch_queue.set_config(self.config.max_batch_size or 1,
                                     self.config.batch_wait_timeout)
 
-    async def handle_request(self, request: Query):
-        assert not isinstance(request, list)
-        logger.debug("Worker {} got request {}".format(self.name, request))
+    async def handle_request(self, request: Union[Query, bytes]):
+        if isinstance(request, bytes):
+            request = Query.ray_deserialize(request)
+        logger.debug("Worker {} got request {}".format(self.replica_tag,
+                                                       request))
         request.async_future = asyncio.get_event_loop().create_future()
         self.batch_queue.put(request)
         return await request.async_future

@@ -24,6 +24,16 @@
 ///
 /// You can follow these examples to define your metrics.
 
+///
+/// Common
+///
+static Histogram RedisLatency("redis_latency", "The latency of a Redis operation.", "us",
+                              {100, 200, 300, 400, 500, 600, 700, 800, 900, 1000},
+                              {CustomKey});
+
+///
+/// Raylet Metrics
+///
 static Gauge CurrentWorker("current_worker",
                            "This metric is used for reporting states of workers."
                            "Through this, we can see the worker's state on dashboard.",
@@ -35,10 +45,6 @@ static Gauge CurrentDriver("current_driver",
 
 static Count TaskCountReceived("task_count_received",
                                "Number of tasks received by raylet.", "pcs", {});
-
-static Histogram RedisLatency("redis_latency", "The latency of a Redis operation.", "us",
-                              {100, 200, 300, 400, 500, 600, 700, 800, 900, 1000},
-                              {CustomKey});
 
 static Gauge LocalAvailableResource("local_available_resource",
                                     "The available resources on this node.", "pcs",
@@ -54,10 +60,6 @@ static Gauge ActorStats("actor_stats", "Stat metrics of the actors in raylet.", 
 static Gauge ObjectManagerStats("object_manager_stats",
                                 "Stat the metric values of object in raylet", "pcs",
                                 {ValueTypeKey});
-
-static Gauge LineageCacheStats("lineage_cache_stats",
-                               "Stats the metric values of lineage cache.", "pcs",
-                               {ValueTypeKey});
 
 static Gauge TaskDependencyManagerStats("task_dependency_manager_stats",
                                         "Stat the metric values of task dependency.",

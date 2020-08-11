@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "stats_handler_impl.h"
+#include "ray/gcs/gcs_server/stats_handler_impl.h"
 
 namespace ray {
 namespace rpc {

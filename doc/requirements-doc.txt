@@ -1,5 +1,6 @@
 click
 colorama
+colorful
 filelock
 flask
 flatbuffers
@@ -17,10 +18,14 @@ redis
 sphinx==3.0.4
 sphinx-click
 sphinx-copybutton
+sphinxemoji
 sphinx-gallery
 sphinx-jsonschema
+sphinx-tabs
 sphinx-version-warning
 sphinx_rtd_theme
 tabulate
 uvicorn
 werkzeug
+tune-sklearn==0.0.5
+scikit-optimize

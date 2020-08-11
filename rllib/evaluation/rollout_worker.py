@@ -9,9 +9,6 @@ from typing import Callable, Any, List, Dict, Tuple, Union, Optional, \
     TYPE_CHECKING, TypeVar
 
 import ray
-from ray.util.debug import log_once, disable_log_once_globally, \
-    enable_periodic_logging
-from ray.util.iter import ParallelIteratorWorker
 from ray.rllib.env.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
@@ -21,17 +18,17 @@ from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
 from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
-from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
-from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.tf_policy import TFPolicy
-from ray.rllib.policy.torch_policy import TorchPolicy
+from ray.rllib.models import ModelCatalog
+from ray.rllib.models.preprocessors import NoPreprocessor, Preprocessor
 from ray.rllib.offline import NoopOutput, IOContext, OutputWriter, InputReader
 from ray.rllib.offline.off_policy_estimator import OffPolicyEstimator, \
     OffPolicyEstimate
 from ray.rllib.offline.is_estimator import ImportanceSamplingEstimator
 from ray.rllib.offline.wis_estimator import WeightedImportanceSamplingEstimator
-from ray.rllib.models import ModelCatalog
-from ray.rllib.models.preprocessors import NoPreprocessor, Preprocessor
+from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
+from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.tf_policy import TFPolicy
+from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.debug import summarize
@@ -42,6 +39,9 @@ from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.types import EnvType, AgentID, PolicyID, EnvConfigDict, \
     ModelConfigDict, TrainerConfigDict, SampleBatchType, ModelWeights, \
     ModelGradients, MultiAgentPolicyConfigDict
+from ray.util.debug import log_once, disable_log_once_globally, \
+    enable_periodic_logging
+from ray.util.iter import ParallelIteratorWorker
 
 if TYPE_CHECKING:
     from ray.rllib.agents.callbacks import DefaultCallbacks
@@ -283,7 +283,7 @@ class RolloutWorker(ParallelIteratorWorker):
         ParallelIteratorWorker.__init__(self, gen_rollouts, False)
 
         policy_config: TrainerConfigDict = policy_config or {}
-        if (tf1 and policy_config.get("framework") == "tfe"
+        if (tf1 and policy_config.get("framework") in ["tf2", "tfe"]
                 and not policy_config.get("no_eager_on_workers")
                 # This eager check is necessary for certain all-framework tests
                 # that use tf's eager_mode() context generator.
@@ -299,6 +299,7 @@ class RolloutWorker(ParallelIteratorWorker):
             enable_periodic_logging()
 
         env_context = EnvContext(env_config or {}, worker_index)
+        self.env_context = env_context
         self.policy_config: TrainerConfigDict = policy_config
         if callbacks:
             self.callbacks: "DefaultCallbacks" = callbacks()
@@ -334,6 +335,8 @@ class RolloutWorker(ParallelIteratorWorker):
             # Deepmind wrappers already handle all preprocessing
             self.preprocessing_enabled = False
 
+            # If clip_rewards not explicitly set to False, switch it
+            # on here (clip between -1.0 and 1.0).
             if clip_rewards is None:
                 clip_rewards = True
 
@@ -360,7 +363,11 @@ class RolloutWorker(ParallelIteratorWorker):
             return wrap(
                 env_creator(
                     env_context.copy_with_overrides(
-                        vector_index=vector_index, remote=remote_worker_envs)))
+                        worker_index=worker_index,
+                        vector_index=vector_index,
+                        remote=remote_worker_envs)))
+
+        self.make_env_fn = make_env
 
         self.tf_sess = None
         policy_dict = _validate_and_canonicalize(policy, self.env)
@@ -399,21 +406,27 @@ class RolloutWorker(ParallelIteratorWorker):
                         tf1.set_random_seed(seed)
                     self.policy_map, self.preprocessors = \
                         self._build_policy_map(policy_dict, policy_config)
-            if (ray.is_initialized()
-                    and ray.worker._mode() != ray.worker.LOCAL_MODE):
-                if not ray.get_gpu_ids():
-                    logger.debug(
-                        "Creating policy evaluation worker {}".format(
-                            worker_index) +
-                        " on CPU (please ignore any CUDA init errors)")
-                elif not tf1.test.is_gpu_available():
-                    raise RuntimeError(
-                        "GPUs were assigned to this worker by Ray, but "
-                        "TensorFlow reports GPU acceleration is disabled. "
-                        "This could be due to a bad CUDA or TF installation.")
         else:
             self.policy_map, self.preprocessors = self._build_policy_map(
                 policy_dict, policy_config)
+
+        if (ray.is_initialized()
+                and ray.worker._mode() != ray.worker.LOCAL_MODE):
+            # Check available number of GPUs
+            if not ray.get_gpu_ids():
+                logger.debug("Creating policy evaluation worker {}".format(
+                    worker_index) +
+                             " on CPU (please ignore any CUDA init errors)")
+            elif (policy_config["framework"] in ["tf2", "tf", "tfe"] and
+                  not tf.config.experimental.list_physical_devices("GPU")) or \
+                    (policy_config["framework"] == "torch" and
+                     not torch.cuda.is_available()):
+                raise RuntimeError(
+                    "GPUs were assigned to this worker by Ray, but "
+                    "your DL framework ({}) reports GPU acceleration is "
+                    "disabled. This could be due to a bad CUDA- or {} "
+                    "installation.".format(policy_config["framework"],
+                                           policy_config["framework"]))
 
         self.multiagent: bool = set(
             self.policy_map.keys()) != {DEFAULT_POLICY_ID}
@@ -435,14 +448,19 @@ class RolloutWorker(ParallelIteratorWorker):
         if self.worker_index == 0:
             logger.info("Built filter map: {}".format(self.filters))
 
-        # Always use vector env for consistency even if num_envs = 1.
-        self.async_env: BaseEnv = BaseEnv.to_base_env(
-            self.env,
-            make_env=make_env,
-            num_envs=num_envs,
-            remote_envs=remote_worker_envs,
-            remote_env_batch_wait_ms=remote_env_batch_wait_ms)
         self.num_envs: int = num_envs
+
+        if "custom_vector_env" in policy_config:
+            custom_vec_wrapper = policy_config["custom_vector_env"]
+            self.async_env = custom_vec_wrapper(self.env)
+        else:
+            # Always use vector env for consistency even if num_envs = 1.
+            self.async_env: BaseEnv = BaseEnv.to_base_env(
+                self.env,
+                make_env=make_env,
+                num_envs=num_envs,
+                remote_envs=remote_worker_envs,
+                remote_env_batch_wait_ms=remote_env_batch_wait_ms)
 
         # `truncate_episodes`: Allow a batch to contain more than one episode
         # (fragments) and always make the batch `rollout_fragment_length`
@@ -496,7 +514,9 @@ class RolloutWorker(ParallelIteratorWorker):
                 blackhole_outputs="simulation" in input_evaluation,
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
-                observation_fn=observation_fn)
+                observation_fn=observation_fn,
+                _use_trajectory_view_api=policy_config.get(
+                    "_use_trajectory_view_api", False))
             # Start the Sampler thread.
             self.sampler.start()
         else:
@@ -516,7 +536,9 @@ class RolloutWorker(ParallelIteratorWorker):
                 clip_actions=clip_actions,
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
-                observation_fn=observation_fn)
+                observation_fn=observation_fn,
+                _use_trajectory_view_api=policy_config.get(
+                    "_use_trajectory_view_api", False))
 
         self.input_reader: InputReader = input_creator(self.io_context)
         self.output_writer: OutputWriter = output_creator(self.io_context)
@@ -561,7 +583,8 @@ class RolloutWorker(ParallelIteratorWorker):
             batch = self.input_reader.next()
             steps_so_far += batch.count
             batches.append(batch)
-        batch = batches[0].concat_samples(batches)
+        batch = batches[0].concat_samples(batches) if len(batches) > 1 else \
+            batches[0]
 
         self.callbacks.on_sample_end(worker=self, samples=batch)
 
@@ -806,20 +829,25 @@ class RolloutWorker(ParallelIteratorWorker):
     @DeveloperAPI
     def for_policy(self,
                    func: Callable[[Policy], T],
-                   policy_id: Optional[PolicyID] = DEFAULT_POLICY_ID) -> T:
+                   policy_id: Optional[PolicyID] = DEFAULT_POLICY_ID,
+                   **kwargs) -> T:
         """Apply the given function to the specified policy."""
 
-        return func(self.policy_map[policy_id])
+        return func(self.policy_map[policy_id], **kwargs)
 
     @DeveloperAPI
-    def foreach_policy(self, func: Callable[[Policy, PolicyID], T]) -> List[T]:
+    def foreach_policy(self, func: Callable[[Policy, PolicyID], T],
+                       **kwargs) -> List[T]:
         """Apply the given function to each (policy, policy_id) tuple."""
 
-        return [func(policy, pid) for pid, policy in self.policy_map.items()]
+        return [
+            func(policy, pid, **kwargs)
+            for pid, policy in self.policy_map.items()
+        ]
 
     @DeveloperAPI
-    def foreach_trainable_policy(
-            self, func: Callable[[Policy, PolicyID], T]) -> List[T]:
+    def foreach_trainable_policy(self, func: Callable[[Policy, PolicyID], T],
+                                 **kwargs) -> List[T]:
         """
         Applies the given function to each (policy, policy_id) tuple, which
         can be found in `self.policies_to_train`.
@@ -833,7 +861,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 `func([policy], [ID])`-calls.
         """
         return [
-            func(policy, pid) for pid, policy in self.policy_map.items()
+            func(policy, pid, **kwargs)
+            for pid, policy in self.policy_map.items()
             if pid in self.policies_to_train
         ]
 
@@ -959,7 +988,7 @@ class RolloutWorker(ParallelIteratorWorker):
             if tf1 and tf1.executing_eagerly():
                 if hasattr(cls, "as_eager"):
                     cls = cls.as_eager()
-                    if policy_config["eager_tracing"]:
+                    if policy_config.get("eager_tracing"):
                         cls = cls.with_tracing()
                 elif not issubclass(cls, TFPolicy):
                     pass  # could be some other type of policy

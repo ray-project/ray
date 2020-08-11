@@ -17,11 +17,9 @@
 #include <memory>
 #include <unordered_map>
 
-#include "opencensus/exporters/stats/prometheus/prometheus_exporter.h"
 #include "opencensus/stats/stats.h"
+#include "opencensus/stats/stats_exporter.h"
 #include "opencensus/tags/tag_key.h"
-#include "prometheus/exposer.h"
-
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -29,19 +27,43 @@ namespace ray {
 namespace stats {
 
 /// Include tag_defs.h to define tag items
-#include "tag_defs.h"
+#include "ray/stats/tag_defs.h"
 
+/// StatsConfig per process.
+/// Note that this is not thread-safe. Don't modify its internal values
+/// outside stats::Init() or stats::Shutdown() method.
 class StatsConfig final {
  public:
   static StatsConfig &instance();
 
-  void SetGlobalTags(const TagsType &global_tags);
-
+  /// Get the current global tags.
   const TagsType &GetGlobalTags() const;
 
-  void SetIsDisableStats(bool disable_stats);
-
+  /// Get whether or not stats are enabled.
   bool IsStatsDisabled() const;
+
+  const absl::Duration &GetReportInterval() const;
+
+  const absl::Duration &GetHarvestInterval() const;
+
+  bool IsInitialized() const;
+
+  ///
+  /// Functions that should be used only inside stats::Init()
+  /// NOTE: StatsConfig is not thread-safe. If you use these functions
+  /// in multi threaded environment, it can cause problems.
+  ///
+
+  /// Set the stats have been initialized.
+  void SetIsInitialized(bool initialized);
+  /// Set the interval where metrics are harvetsed.
+  void SetHarvestInterval(const absl::Duration interval);
+  /// Set the interval where metrics are reported to data sinks.
+  void SetReportInterval(const absl::Duration interval);
+  /// Set if the stats are enabled in this process.
+  void SetIsDisableStats(bool disable_stats);
+  /// Set the global tags that will be appended to all metrics in this process.
+  void SetGlobalTags(const TagsType &global_tags);
 
  private:
   StatsConfig() = default;
@@ -51,7 +73,17 @@ class StatsConfig final {
 
  private:
   TagsType global_tags_;
+  /// If true, don't collect metrics in this process.
   bool is_stats_disabled_ = true;
+  // Regular reporting interval for all reporters.
+  absl::Duration report_interval_ = absl::Seconds(10);
+  // Time interval for periodic aggregation.
+  // Exporter may capture empty collection if harvest interval is longer than
+  // report interval. So harvest interval is suggusted to be half of report
+  // interval.
+  absl::Duration harvest_interval_ = absl::Seconds(5);
+  // Whether or not if the stats has been initialized.
+  bool is_initialized_ = false;
 };
 
 /// A thin wrapper that wraps the `opencensus::tag::measure` for using it simply.
@@ -59,13 +91,13 @@ class Metric {
  public:
   Metric(const std::string &name, const std::string &description, const std::string &unit,
          const std::vector<opencensus::tags::TagKey> &tag_keys = {})
-      : measure_(nullptr),
-        name_(name),
+      : name_(name),
         description_(description),
         unit_(unit),
-        tag_keys_(tag_keys){};
+        tag_keys_(tag_keys),
+        measure_(nullptr) {}
 
-  virtual ~Metric() = default;
+  virtual ~Metric() { opencensus::stats::StatsExporter::RemoveView(name_); }
 
   Metric &operator()() { return *this; }
 
@@ -73,13 +105,19 @@ class Metric {
   std::string GetName() const { return name_; }
 
   /// Record the value for this metric.
-  void Record(double value) { Record(value, {}); }
+  void Record(double value) { Record(value, TagsType{}); }
 
   /// Record the value for this metric.
   ///
   /// \param value The value that we record.
   /// \param tags The tag values that we want to record for this metric record.
   void Record(double value, const TagsType &tags);
+
+  /// Record the value for this metric.
+  ///
+  /// \param value The value that we record.
+  /// \param tags The map tag values that we want to record for this metric record.
+  void Record(double value, std::unordered_map<std::string, std::string> &tags);
 
  protected:
   virtual void RegisterView() = 0;
@@ -147,7 +185,9 @@ struct MetricPoint {
   int64_t timestamp;
   double value;
   std::unordered_map<std::string, std::string> tags;
+  const opencensus::stats::MeasureDescriptor &measure_descriptor;
 };
+
 }  // namespace stats
 
 }  // namespace ray

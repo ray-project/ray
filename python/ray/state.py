@@ -131,7 +131,7 @@ class GlobalState:
         """Execute a Redis command on the appropriate Redis shard based on key.
 
         Args:
-            key: The object ID or the task ID that the query is about.
+            key: The object ref or the task ID that the query is about.
             args: The command to run.
 
         Returns:
@@ -155,11 +155,11 @@ class GlobalState:
             result.extend(list(client.scan_iter(match=pattern)))
         return result
 
-    def object_table(self, object_id=None):
-        """Fetch and parse the object table info for one or more object IDs.
+    def object_table(self, object_ref=None):
+        """Fetch and parse the object table info for one or more object refs.
 
         Args:
-            object_id: An object ID to fetch information about. If this is
+            object_ref: An object ref to fetch information about. If this is
                 None, then the entire object table is fetched.
 
         Returns:
@@ -167,9 +167,10 @@ class GlobalState:
         """
         self._check_connected()
 
-        if object_id is not None:
-            object_id = ray.ObjectID(hex_to_binary(object_id))
-            object_info = self.global_state_accessor.get_object_info(object_id)
+        if object_ref is not None:
+            object_ref = ray.ObjectRef(hex_to_binary(object_ref))
+            object_info = self.global_state_accessor.get_object_info(
+                object_ref)
             if object_info is None:
                 return {}
             else:
@@ -196,7 +197,7 @@ class GlobalState:
             locations.append(ray.utils.binary_to_hex(location.manager))
 
         object_info = {
-            "ObjectID": ray.utils.binary_to_hex(
+            "ObjectRef": ray.utils.binary_to_hex(
                 object_location_info.object_id),
             "Locations": locations,
         }
@@ -245,11 +246,14 @@ class GlobalState:
             "JobID": binary_to_hex(actor_table_data.job_id),
             "Address": {
                 "IPAddress": actor_table_data.address.ip_address,
-                "Port": actor_table_data.address.port
+                "Port": actor_table_data.address.port,
+                "NodeID": binary_to_hex(actor_table_data.address.raylet_id),
             },
             "OwnerAddress": {
                 "IPAddress": actor_table_data.owner_address.ip_address,
-                "Port": actor_table_data.owner_address.port
+                "Port": actor_table_data.owner_address.port,
+                "NodeID": binary_to_hex(
+                    actor_table_data.owner_address.raylet_id),
             },
             "State": actor_table_data.state,
             "Timestamp": actor_table_data.timestamp,
@@ -302,7 +306,8 @@ class GlobalState:
                 "NodeManagerPort": item.node_manager_port,
                 "ObjectManagerPort": item.object_manager_port,
                 "ObjectStoreSocketName": item.object_store_socket_name,
-                "RayletSocketName": item.raylet_socket_name
+                "RayletSocketName": item.raylet_socket_name,
+                "MetricsExportPort": item.metrics_export_port,
             }
             node_info["alive"] = node_info["Alive"]
             node_info["Resources"] = self.node_resource_table(
@@ -538,21 +543,21 @@ class GlobalState:
 
             for event in items:
                 if event["event_type"] == "transfer_send":
-                    object_id, remote_node_id, _, _ = event["extra_data"]
+                    object_ref, remote_node_id, _, _ = event["extra_data"]
 
                 elif event["event_type"] == "transfer_receive":
-                    object_id, remote_node_id, _, _ = event["extra_data"]
+                    object_ref, remote_node_id, _, _ = event["extra_data"]
 
                 elif event["event_type"] == "receive_pull_request":
-                    object_id, remote_node_id = event["extra_data"]
+                    object_ref, remote_node_id = event["extra_data"]
 
                 else:
                     assert False, "This should be unreachable."
 
                 # Choose a color by reading the first couple of hex digits of
-                # the object ID as an integer and turning that into a color.
-                object_id_int = int(object_id[:2], 16)
-                color = self._chrome_tracing_colors[object_id_int % len(
+                # the object ref as an integer and turning that into a color.
+                object_ref_int = int(object_ref[:2], 16)
+                color = self._chrome_tracing_colors[object_ref_int % len(
                     self._chrome_tracing_colors)]
 
                 new_event = {
@@ -760,67 +765,6 @@ class GlobalState:
             total_available_resources[k] = format_resource(k, v, use_float=True)
         return dict(total_available_resources)
 
-    def _error_messages(self, job_id):
-        """Get the error messages for a specific driver.
-
-        Args:
-            job_id: The ID of the job to get the errors for.
-
-        Returns:
-            A list of the error messages for this driver.
-        """
-        assert isinstance(job_id, ray.JobID)
-        message = self.redis_client.execute_command(
-            "RAY.TABLE_LOOKUP", gcs_utils.TablePrefix.Value("ERROR_INFO"), "",
-            job_id.binary())
-
-        # If there are no errors, return early.
-        if message is None:
-            return []
-
-        gcs_entries = gcs_utils.GcsEntry.FromString(message)
-        error_messages = []
-        for entry in gcs_entries.entries:
-            error_data = gcs_utils.ErrorTableData.FromString(entry)
-            assert job_id.binary() == error_data.job_id
-            error_message = {
-                "type": error_data.type,
-                "message": error_data.error_message,
-                "timestamp": error_data.timestamp,
-            }
-            error_messages.append(error_message)
-        return error_messages
-
-    def error_messages(self, job_id=None):
-        """Get the error messages for all drivers or a specific driver.
-
-        Args:
-            job_id: The specific job to get the errors for. If this is
-                None, then this method retrieves the errors for all jobs.
-
-        Returns:
-            A list of the error messages for the specified driver if one was
-                given, or a dictionary mapping from job ID to a list of error
-                messages for that driver otherwise.
-        """
-        self._check_connected()
-
-        if job_id is not None:
-            assert isinstance(job_id, ray.JobID)
-            return self._error_messages(job_id)
-
-        error_table_keys = self.redis_client.keys(
-            gcs_utils.TablePrefix_ERROR_INFO_string + "*")
-        job_ids = [
-            key[len(gcs_utils.TablePrefix_ERROR_INFO_string):]
-            for key in error_table_keys
-        ]
-
-        return {
-            binary_to_hex(job_id): self._error_messages(ray.JobID(job_id))
-            for job_id in job_ids
-        }
-
     def actor_checkpoint_info(self, actor_id):
         """Get checkpoint info for the given actor id.
          Args:
@@ -925,17 +869,17 @@ def actors(actor_id=None):
     return state.actor_table(actor_id=actor_id)
 
 
-def objects(object_id=None):
-    """Fetch and parse the object table info for one or more object IDs.
+def objects(object_ref=None):
+    """Fetch and parse the object table info for one or more object refs.
 
     Args:
-        object_id: An object ID to fetch information about. If this is None,
+        object_ref: An object ref to fetch information about. If this is None,
             then the entire object table is fetched.
 
     Returns:
         Information from the object table.
     """
-    return state.object_table(object_id=object_id)
+    return state.object_table(object_ref=object_ref)
 
 
 def timeline(filename=None):
@@ -1001,24 +945,3 @@ def available_resources():
             resource in the cluster.
     """
     return state.available_resources()
-
-
-def errors(all_jobs=False):
-    """Get error messages from the cluster.
-
-    Args:
-        all_jobs: False if we should only include error messages for this
-            specific job, or True if we should include error messages for all
-            jobs.
-
-    Returns:
-        Error messages pushed from the cluster. This will be a single list if
-            all_jobs is False, or a dictionary mapping from job ID to a list of
-            error messages for that job if all_jobs is True.
-    """
-    if not all_jobs:
-        worker = ray.worker.global_worker
-        error_messages = state.error_messages(job_id=worker.current_job_id)
-    else:
-        error_messages = state.error_messages(job_id=None)
-    return error_messages

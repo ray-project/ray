@@ -13,23 +13,19 @@ MACPYTHON_URL=https://www.python.org/ftp/python
 MACPYTHON_PY_PREFIX=/Library/Frameworks/Python.framework/Versions
 DOWNLOAD_DIR=python_downloads
 
-PY_VERSIONS=("3.5.3"
-             "3.6.1"
+PY_VERSIONS=("3.6.1"
              "3.7.0"
              "3.8.2")
-PY_INSTS=("python-3.5.3-macosx10.6.pkg"
-          "python-3.6.1-macosx10.6.pkg"
+PY_INSTS=("python-3.6.1-macosx10.6.pkg"
           "python-3.7.0-macosx10.6.pkg"
           "python-3.8.2-macosx10.9.pkg")
-PY_MMS=("3.5"
-        "3.6"
+PY_MMS=("3.6"
         "3.7"
         "3.8")
 
 # The minimum supported numpy version is 1.14, see
 # https://issues.apache.org/jira/browse/ARROW-3141
 NUMPY_VERSIONS=("1.14.5"
-                "1.14.5"
                 "1.14.5"
                 "1.14.5")
 
@@ -39,7 +35,7 @@ mkdir -p $DOWNLOAD_DIR
 mkdir -p .whl
 
 # Use the latest version of Node.js in order to build the dashboard.
-source $HOME/.nvm/nvm.sh
+source "$HOME"/.nvm/nvm.sh
 nvm use node
 
 # Build the dashboard so its static assets can be included in the wheel.
@@ -61,11 +57,11 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
 
   # Install Python.
   INST_PATH=python_downloads/$PY_INST
-  curl $MACPYTHON_URL/$PY_VERSION/$PY_INST > $INST_PATH
-  sudo installer -pkg $INST_PATH -target /
+  curl $MACPYTHON_URL/"$PY_VERSION"/"$PY_INST" > "$INST_PATH"
+  sudo installer -pkg "$INST_PATH" -target /
 
   PYTHON_EXE=$MACPYTHON_PY_PREFIX/$PY_MM/bin/python$PY_MM
-  PIP_CMD="$(dirname $PYTHON_EXE)/pip$PY_MM"
+  PIP_CMD="$(dirname "$PYTHON_EXE")/pip$PY_MM"
 
   pushd /tmp
     # Install latest version of pip to avoid brownouts.
@@ -80,7 +76,7 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
     $PIP_CMD install -q setuptools_scm==3.1.0
     # Fix the numpy version because this will be the oldest numpy version we can
     # support.
-    $PIP_CMD install -q numpy==$NUMPY_VERSION cython==0.29.15
+    $PIP_CMD install -q numpy=="$NUMPY_VERSION" cython==0.29.15
     # Install wheel to avoid the error "invalid command 'bdist_wheel'".
     $PIP_CMD install -q wheel
     # Set the commit SHA in __init__.py.

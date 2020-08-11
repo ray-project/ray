@@ -168,9 +168,13 @@ class TrialRunner:
                 self.resume()
                 logger.info("Resuming trial.")
                 self._resumed = True
-            except Exception:
-                logger.exception(
-                    "Runner restore failed. Restarting experiment.")
+            except Exception as e:
+                if self._verbose:
+                    logger.error(str(e))
+                logger.exception("Runner restore failed.")
+                if self._fail_fast:
+                    raise
+                logger.info("Restarting experiment.")
         else:
             logger.debug("Starting a new experiment.")
 
@@ -184,6 +188,10 @@ class TrialRunner:
             self.checkpoint_file = os.path.join(
                 self._local_checkpoint_dir,
                 TrialRunner.CKPT_FILE_TMPL.format(self._session_str))
+
+    @property
+    def resumed(self):
+        return self._resumed
 
     @property
     def scheduler_alg(self):
@@ -240,17 +248,14 @@ class TrialRunner:
             (fname.startswith("experiment_state") and fname.endswith(".json"))
             for fname in os.listdir(directory))
 
-    def add_experiment(self, experiment):
-        if not self._resumed:
-            self._search_alg.add_configurations([experiment])
-        else:
-            logger.info("TrialRunner resumed, ignoring new add_experiment.")
-
     def checkpoint(self, force=False):
         """Saves execution state to `self._local_checkpoint_dir`.
 
         Overwrites the current session checkpoint, which starts when self
         is instantiated. Throttle depends on self._checkpoint_period.
+
+        Also automatically saves the search algorithm to the local
+        checkpoint dir.
 
         Args:
             force (bool): Forces a checkpoint despite checkpoint_period.
@@ -277,6 +282,9 @@ class TrialRunner:
             json.dump(runner_state, f, indent=2, cls=_TuneFunctionEncoder)
 
         os.replace(tmp_file_name, self.checkpoint_file)
+        self._search_alg.save_to_dir(
+            self._local_checkpoint_dir, session_str=self._session_str)
+
         if force:
             self._syncer.sync_up()
         else:
@@ -293,14 +301,16 @@ class TrialRunner:
         with open(newest_ckpt_path, "r") as f:
             runner_state = json.load(f, cls=_TuneFunctionDecoder)
             self.checkpoint_file = newest_ckpt_path
+
         logger.warning("".join([
             "Attempting to resume experiment from {}. ".format(
-                self._local_checkpoint_dir), "This feature is experimental, "
-            "and may not work with all search algorithms. ",
+                self._local_checkpoint_dir),
             "This will ignore any new changes to the specification."
         ]))
 
         self.__setstate__(runner_state["runner_data"])
+        if self._search_alg.has_checkpoint(self._local_checkpoint_dir):
+            self._search_alg.restore_from_dir(self._local_checkpoint_dir)
 
         trials = []
         for trial_cp in runner_state["checkpoints"]:

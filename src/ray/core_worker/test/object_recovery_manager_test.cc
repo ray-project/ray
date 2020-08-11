@@ -20,7 +20,7 @@
 #include "ray/common/test_util.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/transport/direct_task_transport.h"
-#include "ray/raylet/raylet_client.h"
+#include "ray/raylet_client/raylet_client.h"
 
 namespace ray {
 
@@ -55,12 +55,11 @@ class MockTaskResubmitter : public TaskResubmissionInterface {
 
 class MockRayletClient : public PinObjectsInterface {
  public:
-  ray::Status PinObjectIDs(
+  void PinObjectIDs(
       const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
       const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override {
     RAY_LOG(INFO) << "PinObjectIDs " << object_ids.size();
     callbacks.push_back(callback);
-    return Status::OK();
   }
 
   size_t Flush() {

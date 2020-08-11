@@ -107,12 +107,14 @@ class TrainTFMultiGPU:
                  train_batch_size: int,
                  shuffle_sequences: bool,
                  policies: List[PolicyID] = frozenset([]),
-                 _fake_gpus: bool = False):
+                 _fake_gpus: bool = False,
+                 framework: str = "tf"):
         self.workers = workers
         self.policies = policies or workers.local_worker().policies_to_train
         self.num_sgd_iter = num_sgd_iter
         self.sgd_minibatch_size = sgd_minibatch_size
         self.shuffle_sequences = shuffle_sequences
+        self.framework = framework
 
         # Collect actual devices to use.
         if not num_gpus:

@@ -1,3 +1,5 @@
+from typing import Sequence
+
 import ray.cloudpickle as cloudpickle
 from collections import deque
 import copy
@@ -175,6 +177,7 @@ class Trial:
                  restore_path=None,
                  trial_name_creator=None,
                  loggers=None,
+                 log_to_file=None,
                  sync_to_driver_fn=None,
                  max_failures=0):
         """Initialize a new trial.
@@ -208,6 +211,13 @@ class Trial:
         self.resources = resources or Resources(cpu=1, gpu=0)
         self.stopping_criterion = stopping_criterion or {}
         self.loggers = loggers
+
+        self.log_to_file = log_to_file
+        # Make sure `stdout_file, stderr_file = Trial.log_to_file` works
+        if not self.log_to_file or not isinstance(self.log_to_file, Sequence) \
+           or not len(self.log_to_file) == 2:
+            self.log_to_file = (None, None)
+
         self.sync_to_driver_fn = sync_to_driver_fn
         self.verbose = True
         self.max_failures = max_failures

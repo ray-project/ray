@@ -3,6 +3,7 @@ from collections import namedtuple
 import logging
 import multiprocessing
 import os
+import re
 import subprocess
 import sys
 
@@ -165,6 +166,13 @@ class ResourceSpec(
             if gpu_ids is not None:
                 num_gpus = min(num_gpus, len(gpu_ids))
 
+        try:
+            info_string = _get_gpu_info_string()
+            gpu_types = _constraints_from_gpu_info(info_string)
+            resources.update(gpu_types)
+        except Exception:
+            logger.exception("Could not parse gpu information.")
+
         # Choose a default object store size.
         system_memory = ray.utils.get_system_memory()
         avail_memory = ray.utils.estimate_available_memory()
@@ -251,3 +259,66 @@ def _autodetect_num_gpus():
         lines = subprocess.check_output(cmdargs).splitlines()[1:]
         result = len([l.rstrip() for l in lines if l.startswith(b"NVIDIA")])
     return result
+
+
+def _constraints_from_gpu_info(info_str):
+    """Parse the contents of a /proc/driver/nvidia/gpus/*/information to get the
+gpu model type.
+
+    Args:
+        info_str (str): The contents of the file.
+
+    Returns:
+        (str) The full model name.
+    """
+    if info_str is None:
+        return {}
+    lines = info_str.split("\n")
+    full_model_name = None
+    for line in lines:
+        split = line.split(":")
+        if len(split) != 2:
+            continue
+        k, v = split
+        if k.strip() == "Model":
+            full_model_name = v.strip()
+            break
+    pretty_name = _pretty_gpu_name(full_model_name)
+    if pretty_name:
+        constraint_name = "{}{}".format(
+            ray_constants.RESOURCE_CONSTRAINT_PREFIX, pretty_name)
+        return {constraint_name: 1}
+    return {}
+
+
+def _get_gpu_info_string():
+    """Get the gpu type for this machine.
+
+    TODO(Alex): All the caveats of _autodetect_num_gpus and we assume only one
+    gpu type.
+
+    Returns:
+        (str) The gpu's model name.
+    """
+    if sys.platform.startswith("linux"):
+        proc_gpus_path = "/proc/driver/nvidia/gpus"
+        if os.path.isdir(proc_gpus_path):
+            gpu_dirs = os.listdir(proc_gpus_path)
+            if len(gpu_dirs) > 0:
+                gpu_info_path = "{}/{}/information".format(
+                    proc_gpus_path, gpu_dirs[0])
+                info_str = open(gpu_info_path).read()
+                return info_str
+    return None
+
+
+# TODO(Alex): This pattern may not work for non NVIDIA Tesla GPUs (which have
+# the form "Tesla V100-SXM2-16GB" or "Tesla K80").
+GPU_NAME_PATTERN = re.compile("\w+\s+([A-Z0-9]+)")
+
+
+def _pretty_gpu_name(name):
+    if name is None:
+        return None
+    match = GPU_NAME_PATTERN.match(name)
+    return match.group(1) if match else None

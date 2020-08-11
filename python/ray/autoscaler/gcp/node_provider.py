@@ -4,9 +4,10 @@ import time
 import logging
 
 from ray.autoscaler.node_provider import NodeProvider
+from ray.autoscaler.gcp.config import bootstrap_gcp
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 from ray.autoscaler.gcp.config import MAX_POLLS, POLL_INTERVAL, \
-        fetch_gcp_credentials_from_provider_config, _create_compute
+        construct_clients_from_provider_config
 
 logger = logging.getLogger(__name__)
 
@@ -42,10 +43,8 @@ class GCPNodeProvider(NodeProvider):
         NodeProvider.__init__(self, provider_config, cluster_name)
 
         self.lock = RLock()
-        gcp_credentials = fetch_gcp_credentials_from_provider_config(
+        _, _, self.compute = construct_clients_from_provider_config(
             provider_config)
-
-        self.compute = _create_compute(gcp_credentials)
 
         # Cache of node objects from the last nodes() call. This avoids
         # excessive DescribeInstances requests.
@@ -240,3 +239,7 @@ class GCPNodeProvider(NodeProvider):
             return self.cached_nodes[node_id]
 
         return self._get_node(node_id)
+
+    @staticmethod
+    def bootstrap_config(cluster_config):
+        return bootstrap_gcp(cluster_config)

@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/gcs/pubsub/gcs_pub_sub.h"
+
 #include <memory>
 
 #include "gtest/gtest.h"
 #include "ray/common/test_util.h"
-#include "ray/gcs/pubsub/gcs_pub_sub.h"
 
 namespace ray {
 
@@ -42,11 +43,11 @@ class GcsPubSubTest : public ::testing::Test {
   }
 
   virtual void TearDown() override {
-    pub_sub_.reset();
     client_->Disconnect();
     io_service_.stop();
     thread_io_service_->join();
     thread_io_service_.reset();
+    pub_sub_.reset();
 
     // Note: If we immediately reset client_ after io_service_ stop, because client_ still
     // has thread executing logic, such as unsubscribe's callback, the problem of heap
@@ -57,8 +58,9 @@ class GcsPubSubTest : public ::testing::Test {
   void Subscribe(const std::string &channel, const std::string &id,
                  std::vector<std::string> &result) {
     std::promise<bool> promise;
-    auto done = [&promise](Status status) { promise.set_value(status.ok()); };
-    auto subscribe = [&result](const std::string &id, const std::string &data) {
+    auto done = [&promise](const Status &status) { promise.set_value(status.ok()); };
+    auto subscribe = [this, &result](const std::string &id, const std::string &data) {
+      absl::MutexLock lock(&vector_mutex_);
       result.push_back(data);
     };
     RAY_CHECK_OK((pub_sub_->Subscribe(channel, id, subscribe, done)));
@@ -68,8 +70,9 @@ class GcsPubSubTest : public ::testing::Test {
   void SubscribeAll(const std::string &channel,
                     std::vector<std::pair<std::string, std::string>> &result) {
     std::promise<bool> promise;
-    auto done = [&promise](Status status) { promise.set_value(status.ok()); };
-    auto subscribe = [&result](const std::string &id, const std::string &data) {
+    auto done = [&promise](const Status &status) { promise.set_value(status.ok()); };
+    auto subscribe = [this, &result](const std::string &id, const std::string &data) {
+      absl::MutexLock lock(&vector_mutex_);
       result.push_back(std::make_pair(id, data));
     };
     RAY_CHECK_OK((pub_sub_->SubscribeAll(channel, subscribe, done)));
@@ -83,7 +86,7 @@ class GcsPubSubTest : public ::testing::Test {
   bool Publish(const std::string &channel, const std::string &id,
                const std::string &data) {
     std::promise<bool> promise;
-    auto done = [&promise](Status status) { promise.set_value(status.ok()); };
+    auto done = [&promise](const Status &status) { promise.set_value(status.ok()); };
     RAY_CHECK_OK((pub_sub_->Publish(channel, id, data, done)));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
@@ -95,7 +98,8 @@ class GcsPubSubTest : public ::testing::Test {
 
   template <typename Data>
   void WaitPendingDone(const std::vector<Data> &data, int expected_count) {
-    auto condition = [&data, expected_count]() {
+    auto condition = [this, &data, expected_count]() {
+      absl::MutexLock lock(&vector_mutex_);
       RAY_CHECK((int)data.size() <= expected_count)
           << "Expected " << expected_count << " data " << data.size();
       return (int)data.size() == expected_count;
@@ -106,6 +110,7 @@ class GcsPubSubTest : public ::testing::Test {
   std::shared_ptr<gcs::RedisClient> client_;
   const std::chrono::milliseconds timeout_ms_{60000};
   std::shared_ptr<gcs::GcsPubSub> pub_sub_;
+  absl::Mutex vector_mutex_;
 
  private:
   boost::asio::io_service io_service_;
@@ -126,7 +131,7 @@ TEST_F(GcsPubSubTest, TestPubSubApi) {
   WaitPendingDone(all_result, 1);
   Unsubscribe(channel, id);
   Publish(channel, id, data);
-  usleep(100 * 1000);
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
   EXPECT_EQ(result.size(), 1);
 
   Subscribe(channel, id, result);
@@ -177,7 +182,7 @@ TEST_F(GcsPubSubTest, TestMultithreading) {
                                                const std::string &data) {
             ++(*sub_message_count);
           };
-          auto on_done = [sub_finished_count](Status status) {
+          auto on_done = [sub_finished_count](const Status &status) {
             RAY_CHECK_OK(status);
             ++(*sub_finished_count);
           };
@@ -225,8 +230,9 @@ TEST_F(GcsPubSubTest, TestPubSubWithTableData) {
     auto done = [&promise](const Status &status) { promise.set_value(status.ok()); };
     auto subscribe = [this, channel, &result](const std::string &id,
                                               const std::string &data) {
-      result.push_back(data);
       RAY_CHECK_OK(pub_sub_->Unsubscribe(channel, id));
+      absl::MutexLock lock(&vector_mutex_);
+      result.push_back(data);
     };
     RAY_CHECK_OK((pub_sub_->Subscribe(channel, object_id.Hex(), subscribe, done)));
     WaitReady(promise.get_future(), timeout_ms_);

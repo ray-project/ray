@@ -325,6 +325,11 @@ void ReferenceCounter::RemoveSubmittedTaskReferences(
 bool ReferenceCounter::GetOwner(const ObjectID &object_id,
                                 rpc::Address *owner_address) const {
   absl::MutexLock lock(&mutex_);
+  return GetOwnerInternal(object_id, owner_address);
+}
+
+bool ReferenceCounter::GetOwnerInternal(const ObjectID &object_id,
+                                        rpc::Address *owner_address) const {
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     return false;
@@ -338,24 +343,57 @@ bool ReferenceCounter::GetOwner(const ObjectID &object_id,
   }
 }
 
-void ReferenceCounter::DeleteReferences(const std::vector<ObjectID> &object_ids) {
+std::vector<rpc::Address> ReferenceCounter::GetOwnerAddresses(
+    const std::vector<ObjectID> object_ids) const {
+  absl::MutexLock lock(&mutex_);
+  std::vector<rpc::Address> owner_addresses;
+  for (const auto &object_id : object_ids) {
+    rpc::Address owner_addr;
+    bool has_owner = GetOwnerInternal(object_id, &owner_addr);
+    if (!has_owner) {
+      RAY_LOG(WARNING)
+          << " Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
+             "(ObjectID.from_binary(...)) cannot be passed to ray.get(), ray.wait(), or "
+             "as "
+             "a task argument because Ray does not know which task will create them. "
+             "If this was not how your object ID was generated, please file an issue "
+             "at https://github.com/ray-project/ray/issues/";
+      // TODO(swang): Java does not seem to keep the ref count properly, so the
+      // entry may get deleted.
+      owner_addresses.push_back(rpc::Address());
+    } else {
+      owner_addresses.push_back(owner_addr);
+    }
+  }
+  return owner_addresses;
+}
+
+bool ReferenceCounter::IsPlasmaObjectFreed(const ObjectID &object_id) const {
+  absl::MutexLock lock(&mutex_);
+  return freed_objects_.find(object_id) != freed_objects_.end();
+}
+
+void ReferenceCounter::FreePlasmaObjects(const std::vector<ObjectID> &object_ids) {
   absl::MutexLock lock(&mutex_);
   for (const ObjectID &object_id : object_ids) {
     auto it = object_id_refs_.find(object_id);
     if (it == object_id_refs_.end()) {
-      return;
+      RAY_LOG(WARNING) << "Tried to free an object " << object_id
+                       << " that is already out of scope";
+      continue;
     }
-    it->second.local_ref_count = 0;
-    it->second.submitted_task_ref_count = 0;
-    if (distributed_ref_counting_enabled_ &&
-        !it->second.OutOfScope(lineage_pinning_enabled_)) {
-      RAY_LOG(ERROR)
-          << "ray.internal.free does not currently work for objects that are still in "
-             "scope when distributed reference "
-             "counting is enabled. Try disabling ref counting by passing "
-             "distributed_ref_counting_enabled: 0 in the ray.init internal config.";
+    // The object is still in scope. It will be removed from this set
+    // once its Reference has been deleted.
+    freed_objects_.insert(object_id);
+    if (!it->second.owned_by_us) {
+      RAY_LOG(WARNING)
+          << "Tried to free an object " << object_id
+          << " that we did not create. The object value may not be released.";
+      continue;
     }
-    DeleteReferenceInternal(it, nullptr);
+    // Free only the plasma value. We must keep the reference around so that we
+    // have the ownership information.
+    ReleasePlasmaObject(it);
   }
 }
 
@@ -408,12 +446,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
 
   // Perform the deletion.
   if (should_delete_value) {
-    if (it->second.on_delete) {
-      RAY_LOG(DEBUG) << "Calling on_delete for object " << id;
-      it->second.on_delete(id);
-      it->second.on_delete = nullptr;
-      it->second.pinned_at_raylet_id.reset();
-    }
+    ReleasePlasmaObject(it);
     if (deleted) {
       deleted->push_back(id);
     }
@@ -428,9 +461,19 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
       ReleaseLineageReferencesInternal(ids_to_release);
     }
 
+    freed_objects_.erase(id);
     object_id_refs_.erase(it);
     ShutdownIfNeeded();
   }
+}
+
+void ReferenceCounter::ReleasePlasmaObject(ReferenceTable::iterator it) {
+  if (it->second.on_delete) {
+    RAY_LOG(DEBUG) << "Calling on_delete for object " << it->first;
+    it->second.on_delete(it->first);
+    it->second.on_delete = nullptr;
+  }
+  it->second.pinned_at_raylet_id.reset();
 }
 
 bool ReferenceCounter::SetDeleteCallback(
@@ -444,9 +487,18 @@ bool ReferenceCounter::SetDeleteCallback(
     // The object has already gone out of scope but cannot be deleted yet. Do
     // not set the deletion callback because it may never get called.
     return false;
+  } else if (freed_objects_.count(object_id) > 0) {
+    // The object has been freed by the language frontend, so it
+    // should be deleted immediately.
+    return false;
   }
 
-  RAY_CHECK(!it->second.on_delete) << object_id;
+  // NOTE: In two cases, `GcsActorManager` will send `WaitForActorOutOfScope` request more
+  // than once, causing the delete callback to be set repeatedly.
+  // 1.If actors have not been registered successfully before GCS restarts, gcs client
+  // will resend the registration request after GCS restarts.
+  // 2.After GCS restarts, GCS will send `WaitForActorOutOfScope` request to owned actors
+  // again.
   it->second.on_delete = callback;
   return true;
 }
@@ -455,16 +507,11 @@ std::vector<ObjectID> ReferenceCounter::ResetObjectsOnRemovedNode(
     const ClientID &raylet_id) {
   absl::MutexLock lock(&mutex_);
   std::vector<ObjectID> lost_objects;
-  for (auto &it : object_id_refs_) {
-    const auto &object_id = it.first;
-    auto &ref = it.second;
-    if (ref.pinned_at_raylet_id.value_or(ClientID::Nil()) == raylet_id) {
+  for (auto it = object_id_refs_.begin(); it != object_id_refs_.end(); it++) {
+    const auto &object_id = it->first;
+    if (it->second.pinned_at_raylet_id.value_or(ClientID::Nil()) == raylet_id) {
       lost_objects.push_back(object_id);
-      ref.pinned_at_raylet_id.reset();
-      if (ref.on_delete) {
-        ref.on_delete(object_id);
-        ref.on_delete = nullptr;
-      }
+      ReleasePlasmaObject(it);
     }
   }
   return lost_objects;
@@ -475,6 +522,11 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it != object_id_refs_.end()) {
+    if (freed_objects_.count(object_id) > 0) {
+      // The object has been freed by the language frontend.
+      return;
+    }
+
     // The object is still in scope. Track the raylet location until the object
     // has gone out of scope or the raylet fails, whichever happens first.
     RAY_CHECK(!it->second.pinned_at_raylet_id.has_value());
@@ -680,17 +732,13 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
   request.set_contained_in_id(contained_in_id.Binary());
   request.set_intended_worker_id(addr.worker_id.Binary());
 
-  auto it = borrower_cache_.find(addr);
-  if (it == borrower_cache_.end()) {
-    RAY_CHECK(client_factory_ != nullptr);
-    it = borrower_cache_.emplace(addr, client_factory_(addr.ToProto())).first;
-  }
+  auto conn = borrower_pool_.GetOrConnect(addr.ToProto());
 
   RAY_LOG(DEBUG) << "Sending WaitForRefRemoved to borrower " << addr.ip_address << ":"
                  << addr.port << " for object " << object_id;
   // Send the borrower a message about this object. The borrower responds once
   // it is no longer using the object ID.
-  RAY_CHECK_OK(it->second->WaitForRefRemoved(
+  conn->WaitForRefRemoved(
       request, [this, object_id, addr](const Status &status,
                                        const rpc::WaitForRefRemovedReply &reply) {
         RAY_LOG(DEBUG) << "Received reply from borrower " << addr.ip_address << ":"
@@ -707,7 +755,7 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
         RAY_CHECK(it != object_id_refs_.end());
         RAY_CHECK(it->second.borrowers.erase(addr));
         DeleteReferenceInternal(it, nullptr);
-      }));
+      });
 }
 
 void ReferenceCounter::AddNestedObjectIds(const ObjectID &object_id,

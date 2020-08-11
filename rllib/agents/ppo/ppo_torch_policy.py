@@ -10,6 +10,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import EntropyCoeffSchedule, \
     LearningRateSchedule
 from ray.rllib.policy.torch_policy_template import build_torch_policy
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor, \
     explained_variance, sequence_mask
@@ -70,7 +71,7 @@ class PPOLoss:
             num_valid = torch.sum(valid_mask)
 
             def reduce_mean_valid(t):
-                return torch.sum(t * valid_mask) / num_valid
+                return torch.sum(t[valid_mask]) / num_valid
 
         else:
 
@@ -112,7 +113,7 @@ class PPOLoss:
 
 
 def ppo_surrogate_loss(policy, model, dist_class, train_batch):
-    logits, state = model.from_batch(train_batch)
+    logits, state = model.from_batch(train_batch, is_training=True)
     action_dist = dist_class(logits, model)
 
     mask = None
@@ -188,14 +189,16 @@ class ValueNetworkMixin:
             def value(ob, prev_action, prev_reward, *state):
                 model_out, _ = self.model({
                     SampleBatch.CUR_OBS: convert_to_torch_tensor(
-                        np.asarray([ob])),
+                        np.asarray([ob]), self.device),
                     SampleBatch.PREV_ACTIONS: convert_to_torch_tensor(
-                        np.asarray([prev_action])),
+                        np.asarray([prev_action]), self.device),
                     SampleBatch.PREV_REWARDS: convert_to_torch_tensor(
-                        np.asarray([prev_reward])),
+                        np.asarray([prev_reward]), self.device),
                     "is_training": False,
-                }, [convert_to_torch_tensor(np.asarray([s])) for s in state],
-                    convert_to_torch_tensor(np.asarray([1])))
+                }, [
+                    convert_to_torch_tensor(np.asarray([s]), self.device)
+                    for s in state
+                ], convert_to_torch_tensor(np.asarray([1]), self.device))
                 return self.model.value_function()[0]
 
         else:
@@ -214,6 +217,15 @@ def setup_mixins(policy, obs_space, action_space, config):
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
+def training_view_requirements_fn(policy):
+    return {
+        # Next obs are needed for PPO postprocessing.
+        SampleBatch.NEXT_OBS: ViewRequirement(SampleBatch.OBS, shift=1),
+        # VF preds are needed for the loss.
+        SampleBatch.VF_PREDS: ViewRequirement(shift=0),
+    }
+
+
 PPOTorchPolicy = build_torch_policy(
     name="PPOTorchPolicy",
     get_default_config=lambda: ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG,
@@ -227,4 +239,6 @@ PPOTorchPolicy = build_torch_policy(
     mixins=[
         LearningRateSchedule, EntropyCoeffSchedule, KLCoeffMixin,
         ValueNetworkMixin
-    ])
+    ],
+    training_view_requirements_fn=training_view_requirements_fn,
+)

@@ -194,7 +194,7 @@ public class RunManager {
         startGcs();
       }
       startObjectStore();
-      startRaylet();
+      startRaylet(isHead);
       LOGGER.info("All processes started @ {}.", rayConfig.nodeIp);
     } catch (Exception e) {
       // Clean up started processes.
@@ -219,7 +219,9 @@ public class RunManager {
       // Register the number of Redis shards in the primary shard, so that clients
       // know how many redis shards to expect under RedisShards.
       client.set("NumRedisShards", Integer.toString(rayConfig.numberRedisShards));
-
+      // Set session dir for this cluster, so that the drivers which connected to this
+      // cluster will fetch this session dir as its self's session dir.
+      client.set("session_dir", rayConfig.getSessionDir());
       // start redis shards
       for (int i = 0; i < rayConfig.numberRedisShards; i++) {
         String shard = startRedisInstance(rayConfig.nodeIp,
@@ -235,7 +237,7 @@ public class RunManager {
     }
 
     // See `src/ray/gcs/gcs_server/gcs_server_main.cc` for the meaning of each parameter.
-    final File gcsServerFile = BinaryFileUtil.getFile(
+    final File gcsServerFile = BinaryFileUtil.getNativeFile(
         rayConfig.sessionDir, BinaryFileUtil.GCS_SERVER_BINARY_NAME);
     Preconditions.checkState(gcsServerFile.setExecutable(true));
     List<String> command = ImmutableList.of(
@@ -252,8 +254,8 @@ public class RunManager {
   }
 
   private String startRedisInstance(String ip, int port, String password, Integer shard) {
-    final File redisServerFile = BinaryFileUtil.getFile(
-        rayConfig.sessionDir, BinaryFileUtil.REDIS_SERVER_BINARY_PATH);
+    final File redisServerFile = BinaryFileUtil.getNativeFile(
+        rayConfig.sessionDir, BinaryFileUtil.REDIS_SERVER_BINARY_NAME);
     Preconditions.checkState(redisServerFile.setExecutable(true));
     List<String> command = Lists.newArrayList(
         // The redis-server executable file.
@@ -266,7 +268,7 @@ public class RunManager {
         "warning",
         "--loadmodule",
         // The redis module file.
-        BinaryFileUtil.getFile(
+        BinaryFileUtil.getNativeFile(
             rayConfig.sessionDir, BinaryFileUtil.REDIS_MODULE_LIBRARY_NAME).getAbsolutePath()
     );
 
@@ -292,7 +294,7 @@ public class RunManager {
     return ip + ":" + port;
   }
 
-  private void startRaylet() throws IOException {
+  private void startRaylet(boolean isHead) throws IOException {
     int hardwareConcurrency = Runtime.getRuntime().availableProcessors();
     int maximumStartupConcurrency = Math.max(1,
         Math.min(rayConfig.resources.getOrDefault("CPU", 0.0).intValue(), hardwareConcurrency));
@@ -303,7 +305,7 @@ public class RunManager {
     }
 
     // See `src/ray/raylet/main.cc` for the meaning of each parameter.
-    final File rayletFile = BinaryFileUtil.getFile(
+    final File rayletFile = BinaryFileUtil.getNativeFile(
         rayConfig.sessionDir, BinaryFileUtil.RAYLET_BINARY_NAME);
     Preconditions.checkState(rayletFile.setExecutable(true));
     List<String> command = ImmutableList.of(
@@ -325,7 +327,8 @@ public class RunManager {
             .collect(Collectors.joining(","))),
         String.format("--python_worker_command=%s", buildPythonWorkerCommand()),
         String.format("--java_worker_command=%s", buildWorkerCommand()),
-        String.format("--redis_password=%s", redisPasswordOption)
+        String.format("--redis_password=%s", redisPasswordOption),
+        isHead ? "--head_node" : ""
     );
 
     startProcess(command, null, "raylet");
@@ -360,7 +363,7 @@ public class RunManager {
     cmd.addAll(rayConfig.jvmParameters);
 
     // jvm options
-    cmd.add("RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_0");
+    cmd.add("RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER");
 
     // Main class
     cmd.add(WORKER_CLASS);
@@ -370,7 +373,7 @@ public class RunManager {
   }
 
   private void startObjectStore() {
-    final File objectStoreFile = BinaryFileUtil.getFile(
+    final File objectStoreFile = BinaryFileUtil.getNativeFile(
         rayConfig.sessionDir, BinaryFileUtil.PLASMA_STORE_SERVER_BINARY_NAME);
     Preconditions.checkState(objectStoreFile.setExecutable(true));
     List<String> command = ImmutableList.of(

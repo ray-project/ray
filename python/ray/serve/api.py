@@ -2,34 +2,32 @@ from functools import wraps
 
 import ray
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
-                                 SERVE_MASTER_NAME, HTTP_PROXY_TIMEOUT)
-from ray.serve.master import ServeMaster
+                                 SERVE_CONTROLLER_NAME, HTTP_PROXY_TIMEOUT)
+from ray.serve.controller import ServeController
 from ray.serve.handle import RayServeHandle
 from ray.serve.utils import (block_until_http_ready, format_actor_name)
 from ray.serve.exceptions import RayServeException
 from ray.serve.config import BackendConfig, ReplicaConfig
-from ray.serve.router import Query
-from ray.serve.request_params import RequestMetadata
 from ray.serve.metric import InMemoryExporter
 
-master_actor = None
+controller = None
 
 
-def _get_master_actor():
+def _get_controller():
     """Used for internal purpose because using just import serve.global_state
     will always reference the original None object.
     """
-    global master_actor
-    if master_actor is None:
+    global controller
+    if controller is None:
         raise RayServeException("Please run serve.init to initialize or "
                                 "connect to existing ray serve cluster.")
-    return master_actor
+    return controller
 
 
 def _ensure_connected(f):
     @wraps(f)
     def check(*args, **kwargs):
-        _get_master_actor()
+        _get_controller()
         return f(*args, **kwargs)
 
     return check
@@ -60,7 +58,8 @@ def accept_batch(f):
 def init(name=None,
          http_host=DEFAULT_HTTP_HOST,
          http_port=DEFAULT_HTTP_PORT,
-         metric_exporter=InMemoryExporter):
+         metric_exporter=InMemoryExporter,
+         _http_middlewares=[]):
     """Initialize or connect to a serve cluster.
 
     If serve cluster is already initialized, this function will just return.
@@ -73,11 +72,12 @@ def init(name=None,
         name (str): A unique name for this serve instance. This allows
             multiple serve instances to run on the same ray cluster. Must be
             specified in all subsequent serve.init() calls.
-        http_host (str): Host for HTTP server. Default to "0.0.0.0".
-        http_port (int): Port for HTTP server. Default to 8000.
+        http_host (str): Host for HTTP servers. Default to "0.0.0.0". Serve
+            starts one HTTP server per node in the Ray cluster.
+        http_port (int, List[int]): Port for HTTP server. Default to 8000.
         metric_exporter(ExporterInterface): The class aggregates metrics from
             all RayServe actors and optionally export them to external
-            services. RayServe has two options built in: InMemoryExporter and
+            services. Ray Serve has two options built in: InMemoryExporter and
             PrometheusExporter
     """
     if name is not None and not isinstance(name, str):
@@ -87,35 +87,31 @@ def init(name=None,
     if not ray.is_initialized():
         ray.init()
 
-    # Try to get serve master actor if it exists
-    global master_actor
-    master_actor_name = format_actor_name(SERVE_MASTER_NAME, name)
+    # Try to get serve controller if it exists
+    global controller
+    controller_name = format_actor_name(SERVE_CONTROLLER_NAME, name)
     try:
-        master_actor = ray.get_actor(master_actor_name)
+        controller = ray.get_actor(controller_name)
         return
     except ValueError:
         pass
 
-    # Register serialization context once
-    ray.register_custom_serializer(Query, Query.ray_serialize,
-                                   Query.ray_deserialize)
-    ray.register_custom_serializer(RequestMetadata,
-                                   RequestMetadata.ray_serialize,
-                                   RequestMetadata.ray_deserialize)
-
-    # TODO(edoakes): for now, always start the HTTP proxy on the node that
-    # serve.init() was run on. We should consider making this configurable
-    # in the future.
-    http_node_id = ray.state.current_node_id()
-    master_actor = ServeMaster.options(
-        name=master_actor_name,
+    controller = ServeController.options(
+        name=controller_name,
         max_restarts=-1,
         max_task_retries=-1,
-    ).remote(name, http_node_id, http_host, http_port, metric_exporter)
+    ).remote(name, http_host, http_port, metric_exporter, _http_middlewares)
 
-    block_until_http_ready(
-        "http://{}:{}/-/routes".format(http_host, http_port),
-        timeout=HTTP_PROXY_TIMEOUT)
+    futures = []
+    for node_id in ray.state.node_ids():
+        future = block_until_http_ready.options(
+            num_cpus=0, resources={
+                node_id: 0.01
+            }).remote(
+                "http://{}:{}/-/routes".format(http_host, http_port),
+                timeout=HTTP_PROXY_TIMEOUT)
+        futures.append(future)
+    ray.get(futures)
 
 
 @_ensure_connected
@@ -125,12 +121,13 @@ def shutdown():
     Shuts down all processes and deletes all state associated with the Serve
     instance that's currently connected to (via serve.init).
     """
-    global master_actor
-    ray.get(master_actor.shutdown.remote())
-    ray.kill(master_actor, no_restart=True)
-    master_actor = None
+    global controller
+    ray.get(controller.shutdown.remote())
+    ray.kill(controller, no_restart=True)
+    controller = None
 
 
+@_ensure_connected
 def create_endpoint(endpoint_name,
                     *,
                     backend=None,
@@ -172,8 +169,8 @@ def create_endpoint(endpoint_name,
         upper_methods.append(method.upper())
 
     ray.get(
-        master_actor.create_endpoint.remote(endpoint_name, {backend: 1.0},
-                                            route, upper_methods))
+        controller.create_endpoint.remote(endpoint_name, {backend: 1.0}, route,
+                                          upper_methods))
 
 
 @_ensure_connected
@@ -182,7 +179,7 @@ def delete_endpoint(endpoint):
 
     Does not delete any associated backends.
     """
-    ray.get(master_actor.delete_endpoint.remote(endpoint))
+    ray.get(controller.delete_endpoint.remote(endpoint))
 
 
 @_ensure_connected
@@ -192,7 +189,7 @@ def list_endpoints():
     The dictionary keys are endpoint names and values are dictionaries
     of the form: {"methods": List[str], "traffic": Dict[str, float]}.
     """
-    return ray.get(master_actor.get_all_endpoints.remote())
+    return ray.get(controller.get_all_endpoints.remote())
 
 
 @_ensure_connected
@@ -205,21 +202,21 @@ def update_backend_config(backend_tag, config_options):
         backend_tag(str): A registered backend.
         config_options(dict): Backend config options to update.
             Supported options:
-                - "num_replicas": number of worker processes to start up that \
-                        will handle requests to this backend.
-                - "max_batch_size": the maximum number of requests that will \
-                        be processed in one batch by this backend.
-                - "batch_wait_timeout": time in seconds that backend replicas \
-                        will wait for a full batch of requests before \
-                        processing a partial batch.
-                - "max_concurrent_queries": the maximum number of queries \
-                        that will be sent to a replica of this backend \
-                        without receiving a response.
+            - "num_replicas": number of worker processes to start up that
+            will handle requests to this backend.
+            - "max_batch_size": the maximum number of requests that will
+            be processed in one batch by this backend.
+            - "batch_wait_timeout": time in seconds that backend replicas
+            will wait for a full batch of requests before
+            processing a partial batch.
+            - "max_concurrent_queries": the maximum number of queries
+            that will be sent to a replica of this backend
+            without receiving a response.
     """
     if not isinstance(config_options, dict):
         raise ValueError("config_options must be a dictionary.")
     ray.get(
-        master_actor.update_backend_config.remote(backend_tag, config_options))
+        controller.update_backend_config.remote(backend_tag, config_options))
 
 
 @_ensure_connected
@@ -229,7 +226,7 @@ def get_backend_config(backend_tag):
     Args:
         backend_tag(str): A registered backend.
     """
-    return ray.get(master_actor.get_backend_config.remote(backend_tag))
+    return ray.get(controller.get_backend_config.remote(backend_tag))
 
 
 @_ensure_connected
@@ -252,16 +249,16 @@ def create_backend(backend_tag,
             @ray.remote decorator for the backend actor.
         config (optional): configuration options for this backend.
             Supported options:
-                - "num_replicas": number of worker processes to start up that \
-                        will handle requests to this backend.
-                - "max_batch_size": the maximum number of requests that will \
-                        be processed in one batch by this backend.
-                - "batch_wait_timeout": time in seconds that backend replicas \
-                        will wait for a full batch of requests before \
-                        processing a partial batch.
-                - "max_concurrent_queries": the maximum number of queries \
-                        that will be sent to a replica of this backend \
-                        without receiving a response.
+            - "num_replicas": number of worker processes to start up that will
+            handle requests to this backend.
+            - "max_batch_size": the maximum number of requests that will
+            be processed in one batch by this backend.
+            - "batch_wait_timeout": time in seconds that backend replicas
+            will wait for a full batch of requests before processing a
+            partial batch.
+            - "max_concurrent_queries": the maximum number of queries that will
+            be sent to a replica of this backend without receiving a
+            response.
     """
     if config is None:
         config = {}
@@ -274,8 +271,8 @@ def create_backend(backend_tag,
                                    replica_config.is_blocking)
 
     ray.get(
-        master_actor.create_backend.remote(backend_tag, backend_config,
-                                           replica_config))
+        controller.create_backend.remote(backend_tag, backend_config,
+                                         replica_config))
 
 
 @_ensure_connected
@@ -284,7 +281,7 @@ def list_backends():
 
     Dictionary maps backend tags to backend configs.
     """
-    return ray.get(master_actor.get_all_backends.remote())
+    return ray.get(controller.get_all_backends.remote())
 
 
 @_ensure_connected
@@ -293,7 +290,7 @@ def delete_backend(backend_tag):
 
     The backend must not currently be used by any endpoints.
     """
-    ray.get(master_actor.delete_backend.remote(backend_tag))
+    ray.get(controller.delete_backend.remote(backend_tag))
 
 
 @_ensure_connected
@@ -313,8 +310,8 @@ def set_traffic(endpoint_name, traffic_policy_dictionary):
             to their traffic weights. The weights must sum to 1.
     """
     ray.get(
-        master_actor.set_traffic.remote(endpoint_name,
-                                        traffic_policy_dictionary))
+        controller.set_traffic.remote(endpoint_name,
+                                      traffic_policy_dictionary))
 
 
 @_ensure_connected
@@ -338,8 +335,8 @@ def shadow_traffic(endpoint_name, backend_tag, proportion):
         raise TypeError("proportion must be a float from 0 to 1.")
 
     ray.get(
-        master_actor.shadow_traffic.remote(endpoint_name, backend_tag,
-                                           proportion))
+        controller.shadow_traffic.remote(endpoint_name, backend_tag,
+                                         proportion))
 
 
 @_ensure_connected
@@ -362,11 +359,12 @@ def get_handle(endpoint_name,
         RayServeHandle
     """
     if not missing_ok:
-        assert endpoint_name in ray.get(
-            master_actor.get_all_endpoints.remote())
+        assert endpoint_name in ray.get(controller.get_all_endpoints.remote())
 
+    # TODO(edoakes): we should choose the router on the same node.
+    routers = ray.get(controller.get_routers.remote())
     return RayServeHandle(
-        ray.get(master_actor.get_router.remote())[0],
+        list(routers.values())[0],
         endpoint_name,
         relative_slo_ms,
         absolute_slo_ms,
@@ -396,5 +394,5 @@ def stat():
             For PrometheusExporter, it returns the metrics in prometheus format
             in plain text.
     """
-    [metric_exporter] = ray.get(master_actor.get_metric_exporter.remote())
+    [metric_exporter] = ray.get(controller.get_metric_exporter.remote())
     return ray.get(metric_exporter.inspect_metrics.remote())

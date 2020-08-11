@@ -1,11 +1,13 @@
 
+#include "local_mode_task_submitter.h"
+
+#include <ray/api/ray_exception.h>
+
 #include <boost/asio/post.hpp>
 #include <memory>
 
-#include <ray/api/ray_exception.h>
 #include "../../util/address_helper.h"
 #include "../abstract_ray_runtime.h"
-#include "local_mode_task_submitter.h"
 
 namespace ray {
 namespace api {
@@ -50,7 +52,9 @@ ObjectID LocalModeTaskSubmitter::Submit(const InvocationSpec &invocation, TaskTy
       reinterpret_cast<uint8_t *>(invocation.args->data()), invocation.args->size(),
       true);
   /// TODO(Guyang Song): Use both 'AddByRefArg' and 'AddByValueArg' to distinguish
-  builder.AddByValueArg(::ray::RayObject(buffer, nullptr, std::vector<ObjectID>()));
+  auto arg = TaskArgByValue(
+      std::make_shared<::ray::RayObject>(buffer, nullptr, std::vector<ObjectID>()));
+  builder.AddArg(arg);
   auto task_specification = builder.Build();
   ObjectID return_object_id = task_specification.ReturnId(0);
 
