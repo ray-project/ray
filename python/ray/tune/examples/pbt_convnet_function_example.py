@@ -17,7 +17,7 @@ from ray.tune.trial import ExportFormat
 
 # __tutorial_imports_end__
 
-
+# __train_begin__
 def train_convnet(config, checkpoint_dir=None):
     step = 0
     train_loader, test_loader = get_data_loaders()
@@ -47,7 +47,8 @@ def train_convnet(config, checkpoint_dir=None):
                     "mean_accuracy": acc
                 }, path)
         step += 1
-        tune.report(mean_accuracy=acc, )
+        tune.report(mean_accuracy=acc)
+# __train_end__
 
 
 if __name__ == "__main__":
