@@ -448,7 +448,7 @@ init() {
   configure_system
 
   # shellcheck disable=SC2031
-  keep_alive "${ROOT_DIR}"/install-dependencies.sh  # Script is sourced to propagate up environment changes
+  . "${ROOT_DIR}"/install-dependencies.sh  # Script is sourced to propagate up environment changes
 }
 
 build() {

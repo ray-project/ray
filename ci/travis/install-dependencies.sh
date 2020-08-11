@@ -258,6 +258,7 @@ install_dependencies() {
     # Try n times; we often encounter OpenSSL.SSL.WantReadError (or others)
     # that break the entire CI job: Simply retry installation in this case
     # after n seconds.
+    pip install -r "${WORKSPACE_DIR}"/python/requirements.txt
     local status="0";
     local errmsg="";
     for _ in {1..3}; do
