@@ -186,8 +186,6 @@ def test_cuda_visible_devices(ray_start_cluster):
     ray.init(address=cluster.address)
 
     g1 = ray.experimental.placement_group([{"CPU": 1, "GPU": 1}])
-    # This will start out infeasible. The placement group will then be created
-    # and it transitions to feasible.
     o1 = f.options(placement_group_id=g1).remote()
 
     devices = ray.get(o1)
