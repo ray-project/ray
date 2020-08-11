@@ -15,14 +15,12 @@
 #ifndef RAY_OBJECT_STORE_NOTIFICATION_MANAGER_H
 #define RAY_OBJECT_STORE_NOTIFICATION_MANAGER_H
 
+#include <boost/asio.hpp>
 #include <iostream>
 #include <memory>
 #include <vector>
 
-#include <boost/asio.hpp>
-
 #include "absl/synchronization/mutex.h"
-
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/format/object_manager_generated.h"

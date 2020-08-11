@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/gcs/pubsub/gcs_pub_sub.h"
+
 #include <memory>
 
 #include "gtest/gtest.h"
 #include "ray/common/test_util.h"
-#include "ray/gcs/pubsub/gcs_pub_sub.h"
 
 namespace ray {
 

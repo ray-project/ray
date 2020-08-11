@@ -23,7 +23,7 @@ from ray.tune.logger import Logger
 from ray.tune.experiment import Experiment
 from ray.tune.resources import Resources
 from ray.tune.suggest import grid_search
-from ray.tune.suggest.suggestion import _MockSuggestionAlgorithm
+from ray.tune.suggest._mock import _MockSuggestionAlgorithm
 from ray.tune.utils import (flatten_dict, get_pinned_object,
                             pin_in_object_store)
 from ray.tune.utils.mock import mock_storage_client, MOCK_REMOTE_DIR

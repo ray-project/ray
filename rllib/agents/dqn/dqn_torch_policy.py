@@ -212,8 +212,8 @@ def build_q_losses(policy, model, _, train_batch):
         is_training=True)
 
     # Q scores for actions which we know were selected in the given state.
-    one_hot_selection = F.one_hot(
-        train_batch[SampleBatch.ACTIONS], policy.action_space.n)
+    one_hot_selection = F.one_hot(train_batch[SampleBatch.ACTIONS],
+                                  policy.action_space.n)
     q_t_selected = torch.sum(
         torch.where(q_t > -float("inf"), q_t, torch.tensor(0.0)) *
         one_hot_selection, 1)
@@ -230,8 +230,8 @@ def build_q_losses(policy, model, _, train_batch):
                 explore=False,
                 is_training=True)
         q_tp1_best_using_online_net = torch.argmax(q_tp1_using_online_net, 1)
-        q_tp1_best_one_hot_selection = F.one_hot(
-            q_tp1_best_using_online_net, policy.action_space.n)
+        q_tp1_best_one_hot_selection = F.one_hot(q_tp1_best_using_online_net,
+                                                 policy.action_space.n)
         q_tp1_best = torch.sum(
             torch.where(q_tp1 > -float("inf"), q_tp1, torch.tensor(0.0)) *
             q_tp1_best_one_hot_selection, 1)
@@ -250,8 +250,8 @@ def build_q_losses(policy, model, _, train_batch):
         q_t_selected, q_logits_t_selected, q_tp1_best, q_probs_tp1_best,
         train_batch[PRIO_WEIGHTS], train_batch[SampleBatch.REWARDS],
         train_batch[SampleBatch.DONES].float(), config["gamma"],
-        config["n_step"], config["num_atoms"],
-        config["v_min"], config["v_max"])
+        config["n_step"], config["num_atoms"], config["v_min"],
+        config["v_max"])
 
     return policy.q_loss.loss
 

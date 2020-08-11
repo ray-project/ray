@@ -58,6 +58,18 @@ def validate_config(config: Dict[str, Any]) -> None:
     except jsonschema.ValidationError as e:
         raise jsonschema.ValidationError(message=e.message) from None
 
+    # Detect out of date defaults. This happens when the autoscaler that filled
+    # out the default values is older than the version of the autoscaler that
+    # is running on the cluster.
+    if "cluster_synced_files" not in config:
+        raise RuntimeError(
+            "Missing 'cluster_synced_files' field in the cluster "
+            "configuration. This is likely due to the Ray version running "
+            "in the cluster {ray_version} is greater than the Ray version "
+            "running on your laptop. Please try updating Ray on your local "
+            "machine and make sure the versions match.".format(
+                ray_version=ray.__version__))
+
 
 def prepare_config(config):
     with_defaults = fillout_defaults(config)

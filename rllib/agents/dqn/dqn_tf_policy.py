@@ -231,8 +231,8 @@ def build_q_losses(policy, model, _, train_batch):
                 train_batch[SampleBatch.NEXT_OBS],
                 explore=False)
         q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
-        q_tp1_best_one_hot_selection = tf.one_hot(
-            q_tp1_best_using_online_net, policy.action_space.n)
+        q_tp1_best_one_hot_selection = tf.one_hot(q_tp1_best_using_online_net,
+                                                  policy.action_space.n)
         q_tp1_best = tf.reduce_sum(q_tp1 * q_tp1_best_one_hot_selection, 1)
         q_dist_tp1_best = tf.reduce_sum(
             q_dist_tp1 * tf.expand_dims(q_tp1_best_one_hot_selection, -1), 1)
@@ -246,9 +246,9 @@ def build_q_losses(policy, model, _, train_batch):
     policy.q_loss = QLoss(
         q_t_selected, q_logits_t_selected, q_tp1_best, q_dist_tp1_best,
         train_batch[PRIO_WEIGHTS], train_batch[SampleBatch.REWARDS],
-        tf.cast(train_batch[SampleBatch.DONES], tf.float32), config["gamma"],
-        config["n_step"], config["num_atoms"],
-        config["v_min"], config["v_max"])
+        tf.cast(train_batch[SampleBatch.DONES],
+                tf.float32), config["gamma"], config["n_step"],
+        config["num_atoms"], config["v_min"], config["v_max"])
 
     return policy.q_loss.loss
 
@@ -378,9 +378,8 @@ def postprocess_nstep_and_prio(policy, batch, other_agent=None, episode=None):
             batch[SampleBatch.CUR_OBS], batch[SampleBatch.ACTIONS],
             batch[SampleBatch.REWARDS], batch[SampleBatch.NEXT_OBS],
             batch[SampleBatch.DONES], batch[PRIO_WEIGHTS])
-        new_priorities = (
-            np.abs(convert_to_numpy(td_errors)) +
-            policy.config["prioritized_replay_eps"])
+        new_priorities = (np.abs(convert_to_numpy(td_errors)) +
+                          policy.config["prioritized_replay_eps"])
         batch.data[PRIO_WEIGHTS] = new_priorities
 
     return batch
