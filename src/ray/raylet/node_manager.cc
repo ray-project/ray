@@ -467,6 +467,9 @@ void NodeManager::Heartbeat() {
   ray::Status status = gcs_client_->Nodes().AsyncReportHeartbeat(heartbeat_data,
                                                                  /*done*/ nullptr);
   RAY_CHECK_OK_PREPEND(status, "Heartbeat failed");
+  if (light_heartbeat_enabled_ && !status.ok()) {
+    last_heartbeat_resources_ = SchedulingResources();
+  }
 
   if (debug_dump_period_ > 0 &&
       static_cast<int64_t>(now_ms - last_debug_dump_at_ms_) > debug_dump_period_) {
