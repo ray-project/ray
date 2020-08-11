@@ -176,8 +176,8 @@ namespace NetIf {
     return left.first.size() > right.first.size();
   }
 
-  bool NameStartsWith(const std::string &str, const std::string &prefix) {
-    return str.compare(0, prefix.size(), prefix) == 0;
+  bool NameStartsWith(const std::string &name, const std::string &prefix) {
+    return name.compare(0, prefix.size(), prefix) == 0;
   }
 }
 

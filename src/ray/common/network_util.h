@@ -163,22 +163,22 @@ namespace NetIf {
 
   /// Based on the prefix of the interface name, returns a level of priority.
   ///
-  /// \param the name of the interface to be tested.
+  /// \param if_name the name of the interface to be tested.
   /// \return the priority of the interface.
   Priority GetPriority(const std::string &if_name);
 
-  /// Helper function to be used on std::sort.
+  /// Helper function to be used with std::sort.
   /// Lowest priority comes first
   bool CompNamesAndIps(const NameAndIp &left, const NameAndIp &right);
 
-  /// Helper function to be used on std::sort.
+  /// Helper function to be used with std::sort.
   /// Biggest prefix comes first
   bool CompPrefixLen(const PrefixAndPriority &left, const PrefixAndPriority &right);
 
   /// A helper tiny function to check if the interface name has a given prefix.
   ///
-  /// \param s the string to be checked.
-  /// \param start the prefix will compared with 's'.
-  /// \return true if 's' starts with 'start'.
-  bool NameStartsWith(const std::string &str, const std::string &prefix);
+  /// \param name the interface name to be checked.
+  /// \param prefix the prefix that will be looked in 'name'.
+  /// \return true if 'name' starts with 'prefix'.
+  bool NameStartsWith(const std::string &name, const std::string &prefix);
 }
