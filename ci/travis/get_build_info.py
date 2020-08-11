@@ -21,7 +21,7 @@ def get_build_env():
         "TRAVIS_BRANCH", "TRAVIS_BUILD_ID", "TRAVIS_BUILD_NUMBER",
         "TRAVIS_BUILD_WEB_URL", "TRAVIS_COMMIT", "TRAVIS_COMMIT_MESSAGE",
         "TRAVIS_DIST", "TRAVIS_JOB_ID", "TRAVIS_JOB_NUMBER",
-        "TRAVIS_JOB_WEB_URL", "TRAVIS_OS_NAME"
+        "TRAVIS_JOB_WEB_URL", "TRAVIS_OS_NAME", "TRAVIS_TEST_RESULT"
     ]
     return {key: os.environ.get(key) for key in keys}
 
