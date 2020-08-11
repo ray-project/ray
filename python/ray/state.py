@@ -688,7 +688,7 @@ class GlobalState:
                 for key, value in client["Resources"].items():
                     resources[key] += value
         for k, v in resources.items():
-            resources[k] = format_resource(k, v)
+            resources[k] = format_resource(k, v, use_float=True)
         return dict(resources)
 
     def _live_client_ids(self):
@@ -757,7 +757,7 @@ class GlobalState:
         subscribe_client.close()
 
         for k, v in total_available_resources.items():
-            total_available_resources[k] = format_resource(k, v)
+            total_available_resources[k] = format_resource(k, v, use_float=True)
         return dict(total_available_resources)
 
     def _error_messages(self, job_id):

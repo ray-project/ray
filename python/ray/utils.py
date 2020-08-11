@@ -373,10 +373,10 @@ def resources_from_resource_arguments(
     return resources
 
 
-def format_resource(resource_name, quantity):
+def format_resource(resource_name, quantity, use_float=False):
     if resource_name in ["object_store_memory", "memory"]:
-        return "{} GiB".format(
-            round(ray_constants.from_memory_units(quantity) / (1024**3), 2))
+        value = round(ray_constants.from_memory_units(quantity) / (1024**3), 2)
+        return value if use_float else "{} GiB".format(value) 
     if isinstance(quantity, float) and quantity.is_integer():
         quantity = int(quantity)
     return round(quantity, 2)
