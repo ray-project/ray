@@ -218,7 +218,7 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
 
 
 def test_metrics_export_end_to_end(ray_start_cluster):
-    NUM_NODES = 5
+    NUM_NODES = 2
     cluster = ray_start_cluster
     # Add a head node.
     cluster.add_node(
@@ -230,22 +230,21 @@ def test_metrics_export_end_to_end(ray_start_cluster):
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
+    # Generate some metrics around actor & tasks.
     @ray.remote
     def f():
         return 3
-
-    ray.get([f.remote() for _ in range(30)])
 
     @ray.remote
     class A:
         def ping(self):
             return 3
 
+    ray.get([f.remote() for _ in range(30)])
     a = A.remote()
     ray.get(a.ping.remote())
 
     node_info_list = ray.nodes()
-
     prom_addresses = []
     for node_info in node_info_list:
         metrics_export_port = node_info["MetricsExportPort"]
@@ -256,9 +255,8 @@ def test_metrics_export_end_to_end(ray_start_cluster):
     def test_prometheus_endpoint():
         components_dict = defaultdict(set)
         # TODO(sang): Add a core worker & gcs_server after adding metrics.
-        COMPONENTS_CANDIDATES = set(["raylet"])
+        COMPONENTS_CANDIDATES = {"raylet"}
         for address in prom_addresses:
-            # TODO(sang): Add core worker.
             try:
                 response = requests.get(
                     "http://localhost:{}".format(metrics_export_port))
@@ -272,10 +270,8 @@ def test_metrics_export_end_to_end(ray_start_cluster):
                             components_dict[address].add(
                                 sample.labels["Component"])
 
-        return all([
-            components == COMPONENTS_CANDIDATES
-            for components in components_dict.values()
-        ])
+        return all(components == COMPONENTS_CANDIDATES
+                   for components in components_dict.values())
 
     wait_for_condition(test_prometheus_endpoint, timeout=5)
     ray.shutdown()

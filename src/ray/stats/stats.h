@@ -93,7 +93,9 @@ static inline void Init(const TagsType &global_tags, const int metrics_agent_por
   StatsConfig::instance().SetReportInterval(
       absl::Seconds(RayConfig::instance().metrics_report_interval_seconds()));
   StatsConfig::instance().SetHarvestInterval(
-      absl::Seconds(RayConfig::instance().metrics_report_interval_seconds() / 2));
+      absl::Seconds(std::max(
+        RayConfig::instance().metrics_report_interval_seconds() / 2,
+        1));
 
   MetricExporter::Register(exporter, metrics_report_batch_size);
   opencensus::stats::StatsExporter::SetInterval(
