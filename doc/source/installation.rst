@@ -22,7 +22,7 @@ You can install the latest stable version of Ray as follows.
 Latest Snapshots (Nightlies)
 ----------------------------
 
-You can install a nightly version of Ray via the following command:
+You can install the latest Ray wheels via the following command:
 
 .. code-block:: bash
 
@@ -34,7 +34,7 @@ You can install a nightly version of Ray via the following command:
   # `pip install ray[<library>]` *WITHOUT UPGRADING (via -U)*
   # to update dependencies.
 
-Here are the links to the latest wheels (which are built for each commit on the
+Alternatively, here are the links to the latest wheels (which are built for each commit on the
 master branch). To install these wheels, use the following ``pip`` command and wheels
 instead of the ones above:
 

@@ -1495,7 +1495,12 @@ def globalgc(address):
     is_flag=True,
     help="Identifies the wheel but does not execute the installation.")
 def install_nightly(verbose, dryrun):
-    """Install nightly Ray."""
+    """Install the latest wheels for Ray.
+
+    This uses the same python environment as the one that Ray is currently
+    installed in. Make sure that there is no Ray processes on this
+    machine (ray stop) when running this command.
+    """
     raydir = os.path.abspath(os.path.dirname(ray.__file__))
     all_wheels_path = os.path.join(raydir, "nightly-wheels.yaml")
 
@@ -1529,8 +1534,9 @@ def install_nightly(verbose, dryrun):
     if dryrun:
         print(f"Found wheel: {matching_wheel}")
     else:
-        subprocess.check_call(
-            [sys.executable, "-m", "pip", "install", "-U", matching_wheel])
+        cmd = [sys.executable, "-m", "pip", "install", "-U", matching_wheel]
+        print(f"Running: {' '.join(cmd)}.")
+        subprocess.check_call(cmd)
 
 
 def add_command_alias(command, name, hidden):
