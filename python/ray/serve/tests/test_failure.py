@@ -214,7 +214,7 @@ def test_create_backend_idempotent(serve_instance):
     serve.init()
 
     def f():
-        pass
+        return "hello"
 
     controller = serve.api._get_controller()
 
@@ -227,13 +227,17 @@ def test_create_backend_idempotent(serve_instance):
                                              replica_config))
 
     assert len(ray.get(controller.get_all_backends.remote())) == 1
+    serve.create_endpoint(
+        "my_endpoint", backend="my_backend", route="/my_route")
+
+    assert requests.get("http://127.0.0.1:8000/my_route").text == "hello"
 
 
 def test_create_endpoint_idempotent(serve_instance):
     serve.init()
 
     def f():
-        pass
+        return "hello"
 
     serve.create_backend("my_backend", f)
 
@@ -242,9 +246,12 @@ def test_create_endpoint_idempotent(serve_instance):
     for i in range(10):
         ray.get(
             controller.create_endpoint.remote(
-                "my_endpoint", {"my_backend": 1.0}, "my_route", ["Get"]))
+                "my_endpoint", {"my_backend": 1.0}, "/my_route", ["GET"]))
 
     assert len(ray.get(controller.get_all_endpoints.remote())) == 1
+    assert requests.get("http://127.0.0.1:8000/my_route").text == "hello"
+    resp = requests.get("http://127.0.0.1:8000/-/routes", timeout=0.5).json()
+    assert resp == {"/my_route": ["my_endpoint", ["GET"]]}
 
 
 if __name__ == "__main__":
