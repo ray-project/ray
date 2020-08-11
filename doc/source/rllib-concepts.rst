@@ -218,7 +218,7 @@ The trainer's `execution plan <#execution-plans>`__ defines the distributed trai
 
 .. code-block:: python
 
-    def execution_plan(workers: List[RolloutWorker], config: TrainerConfigDict):
+    def execution_plan(workers: WorkerSet, config: TrainerConfigDict):
         rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
         # Collect large batches of relevant experiences & standardize.
@@ -596,11 +596,11 @@ of a sequence of repeating steps, or *dataflow*, of:
  2. ``ConcatBatches``: The experiences are concatenated into one batch for training.
  3. ``TrainOneStep``: Take a gradient step with respect to the policy loss, and update the worker weights.
 
-In code, this dataflow can be expressed as the following execution plan:
+In code, this dataflow can be expressed as the following execution plan, which is a simple function that can be passed to ``build_trainer`` to define a new algorithm. It takes in a ``WorkerSet`` and config, and returns an iterator over training results:
 
 .. code-block:: python
 
-    def execution_plan(workers: List[RolloutWorker], config: TrainerConfigDict):
+    def execution_plan(workers: WorkerSet, config: TrainerConfigDict):
         # type: LocalIterator[SampleBatchType]
         rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
@@ -614,7 +614,12 @@ In code, this dataflow can be expressed as the following execution plan:
         return StandardMetricsReporting(train_op, workers, config)
 
 
-As you can see, each step returns an *iterator* over objects. These iterators represent the infinite stream of data items that can be produced from the dataflow. Each operator (e.g., ``ConcatBatches``, ``TrainOneStep``), executes an operation over each item and returns a transformed item (e.g., concatenated batches, learner stats from training). Finally, some operators such as TrainOneStep have the *side-effect* of updating the rollout worker weights (that's why ``TrainOneStep`` takes the list of worker actors ``workers`` as an argument).
+As you can see, each step returns an *iterator* over objects (if you're unfamiliar with distributed iterators, see Ray's `parallel iterators documentation <iter.html>`__). The reason it is a ``LocalIterator`` is that, though it is based on a parallel computation, the iterator has been turned into one that can be consumed locally in sequence by the program. A couple other points to note:
+
+ - The reason the plan returns an iterator over training results, is that ``trainer.train()`` is pulling results from this iterator to return as the result of the train call.
+ - The rollout workers have been already created ahead of time in the ``WorkerSet``, so the execution plan function is only defining a sequence of operations over the results of the rollouts.
+
+These iterators represent the infinite stream of data items that can be produced from the dataflow. Each operator (e.g., ``ConcatBatches``, ``TrainOneStep``), executes an operation over each item and returns a transformed item (e.g., concatenated batches, learner stats from training). Finally, some operators such as TrainOneStep have the *side-effect* of updating the rollout worker weights (that's why ``TrainOneStep`` takes the list of worker actors ``workers`` as an argument).
 
 Understanding and Debugging Execution Plans
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -647,7 +652,7 @@ It is important to understand that the iterators of an execution plan are evalua
 Execution Plan Concepts
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-RLlib provides a library of operators `(GitHub link) <https://github.com/ray-project/ray/tree/master/rllib/execution>`__ that can be used in execution plans. You can of course write your own operators (which are just normal Python functions). A few categories of operators are summarized below:
+RLlib provides a library of operators `(GitHub link) <https://github.com/ray-project/ray/tree/master/rllib/execution>`__ that can be used in execution plans. You can of course write your own operators (which are just normal Python functions). As a reminder, operators are simply functions (or stateful function objects) that can be chained on the iterator (e.g., the ``debug_print`` operator above). A few categories of operators are summarized below:
 
 **Rollout ops** (`rollout_ops.py <https://github.com/ray-project/ray/blob/master/rllib/execution/rollout_ops.py>`__): These are functions for generating and working with experiences, including ``ParallelRollouts`` (for generating experiences synchronously or asynchronously), ``ConcatBatches`` (for combining batches together), ``SelectExperiences`` (for selecting relevant experiences in a multi-agent setting), and ``AsyncGradients`` (for computing gradients over new experiences on the fly, asynchronously, as in A3C).
 
@@ -665,11 +670,11 @@ RLlib provides a library of operators `(GitHub link) <https://github.com/ray-pro
 Example: Asynchrony
 ~~~~~~~~~~~~~~~~~~~~
 
-Suppose we wanted to make the above A2C example asynchronous (i.e., A3C). We would switch the synchronous ``ParallelRollouts`` operator with ``AsyncGradients``, and use ``ApplyGradients`` to apply gradient updates as fast as they are collected:
+Suppose we wanted to make the above A2C example asynchronous (i.e., A3C). We would switch the synchronous ``ParallelRollouts`` operator with ``AsyncGradients``, and use ``ApplyGradients`` to apply gradient updates as fast as they are collected. The ``AsyncGradients`` operator is going to execute rollouts in parallel, compute the policy gradient over the new batches (of size ``rollout_fragment_length``) on the remote workers, and then return a stream of the computed gradients:
 
 .. code-block:: python
 
-    def execution_plan(workers: List[RolloutWorker], config: TrainerConfigDict):
+    def execution_plan(workers: WorkerSet, config: TrainerConfigDict):
         # type: LocalIterator[(ModelGradients, int)]
         grads = AsyncGradients(workers)
 
@@ -688,7 +693,7 @@ Let's try adding a replay buffer to A2C. This can be done as follows by insertin
 
 .. code-block:: python
 
-    def execution_plan(workers: List[RolloutWorker], config: TrainerConfigDict):
+    def execution_plan(workers: WorkerSet, config: TrainerConfigDict):
         # Construct a replay buffer.
         replay_buffer = LocalReplayBuffer(...)
 
@@ -707,7 +712,8 @@ Let's try adding a replay buffer to A2C. This can be done as follows by insertin
         # type: LocalIterator[ResultDict]
         return StandardMetricsReporting(train_op, workers, config)
 
-See also the `DQN implementation of replay <https://github.com/ray-project/ray/blob/master/rllib/agents/dqn/dqn.py>`__ for a complete example including the implementation of options such as *training intensity*.
+
+Note that here we set ``output_indexes=[1]`` for the ``Concurrently`` operator, which makes it only return results from the replay op. See also the `DQN implementation of replay <https://github.com/ray-project/ray/blob/master/rllib/agents/dqn/dqn.py>`__ for a complete example including the implementation of options such as *training intensity*.
 
 
 Example: Multi-agent
