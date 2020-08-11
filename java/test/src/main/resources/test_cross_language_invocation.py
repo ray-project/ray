@@ -89,9 +89,9 @@ def py_func_python_raise_exception():
 
 
 @ray.remote
-def py_func_java_raise_exception():
+def py_func_java_throw_exception():
     f = ray.java_function("io.ray.test.CrossLanguageInvocationTest",
-                          "raiseException")
+                          "throwException")
     r = f.remote()
     return ray.get(r)
 
@@ -105,7 +105,7 @@ def py_func_nest_python_raise_exception():
 
 
 @ray.remote
-def py_func_nest_java_raise_exception():
+def py_func_nest_java_throw_exception():
     f = ray.java_function("io.ray.test.CrossLanguageInvocationTest",
                           "raiseJavaException")
     r = f.remote()

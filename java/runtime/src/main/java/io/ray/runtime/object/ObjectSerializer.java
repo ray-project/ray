@@ -71,6 +71,9 @@ public class ObjectSerializer {
       } else if (Arrays.equals(meta, UNRECONSTRUCTABLE_EXCEPTION_META)) {
         return new UnreconstructableException(objectId);
       } else if (Arrays.equals(meta, TASK_EXECUTION_EXCEPTION_META)) {
+        // data is MessagePack serialized bytes
+        // serialized is protobuf serialized bytes
+        // Only OBJECT_METADATA_TYPE_RAW is raw bytes, any other type is the MessagePack serialized bytes.
         byte[] serialized = Serializer.decode(data, byte[].class);
         try {
           return RayTaskException.fromBytes(serialized);
@@ -117,6 +120,9 @@ public class ObjectSerializer {
     } else if (object instanceof RayTaskException) {
       RayTaskException taskException = (RayTaskException) object;
       byte[] serializedBytes = Serializer.encode(taskException.toBytes()).getLeft();
+      // serializedBytes is MessagePack serialized bytes
+      // taskException.toBytes() is protobuf serialized bytes
+      // Only OBJECT_METADATA_TYPE_RAW is raw bytes, any other type is the MessagePack serialized bytes.
       return new NativeRayObject(serializedBytes, TASK_EXECUTION_EXCEPTION_META);
     } else {
       try {

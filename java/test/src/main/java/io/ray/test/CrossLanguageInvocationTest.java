@@ -189,20 +189,15 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
   }
 
   @Test
-  public void testExceptionSerialization() {
+  public void testExceptionSerialization() throws InvalidProtocolBufferException {
     try {
       throw new RayException("Test Exception");
     } catch (RayException e) {
-      try {
-        String formattedException = org.apache.commons.lang3.exception.ExceptionUtils
-            .getStackTrace(e);
-        io.ray.runtime.generated.Common.RayException exception = io.ray.runtime.generated.Common.RayException
-            .parseFrom(e.toBytes());
-        Assert.assertEquals(exception.getFormattedExceptionString(), formattedException);
-      } catch (InvalidProtocolBufferException ex) {
-        ex.printStackTrace();
-        Assert.fail();
-      }
+      String formattedException = org.apache.commons.lang3.exception.ExceptionUtils
+          .getStackTrace(e);
+      io.ray.runtime.generated.Common.RayException exception = io.ray.runtime.generated.Common.RayException
+          .parseFrom(e.toBytes());
+      Assert.assertEquals(exception.getFormattedExceptionString(), formattedException);
     }
   }
 
@@ -227,14 +222,17 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
   }
 
   @Test
-  public void testRaiseExceptionFromJava() {
+  public void testThrowExceptionFromJava() {
     ObjectRef<Object> res = Ray.task(PyFunction.of(
-        PYTHON_MODULE, "py_func_java_raise_exception", Object.class)).remote();
+        PYTHON_MODULE, "py_func_java_throw_exception", Object.class)).remote();
     try {
       res.get();
     } catch (RuntimeException ex) {
-      Assert.assertTrue(ex.getMessage().contains("java.lang.ArithmeticException: / by zero"),
-          ex.getMessage());
+      final String message = ex.getMessage();
+      Assert.assertTrue(message.contains("py_func_java_throw_exception"), message);
+      Assert.assertTrue(message.contains("io.ray.test.CrossLanguageInvocationTest.throwException"),
+          message);
+      Assert.assertTrue(message.contains("java.lang.ArithmeticException: / by zero"), message);
       return;
     }
     Assert.fail();
@@ -247,22 +245,29 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
     try {
       res.get();
     } catch (RuntimeException ex) {
-      Assert.assertTrue(ex.getMessage().contains("ZeroDivisionError: division by zero"),
-          ex.getMessage());
+      final String message = ex.getMessage();
+      Assert.assertTrue(message.contains("py_func_nest_python_raise_exception"), message);
+      Assert.assertTrue(message.contains("io.ray.runtime.task.TaskExecutor.execute"), message);
+      Assert.assertTrue(message.contains("py_func_python_raise_exception"), message);
+      Assert.assertTrue(message.contains("ZeroDivisionError: division by zero"), message);
       return;
     }
     Assert.fail();
   }
 
   @Test
-  public void testRaiseExceptionFromNestJava() {
+  public void testThrowExceptionFromNestJava() {
     ObjectRef<Object> res = Ray.task(
-        PyFunction.of(PYTHON_MODULE, "py_func_nest_java_raise_exception", Object.class)).remote();
+        PyFunction.of(PYTHON_MODULE, "py_func_nest_java_throw_exception", Object.class)).remote();
     try {
       res.get();
     } catch (RuntimeException ex) {
-      Assert.assertTrue(ex.getMessage().contains("java.lang.ArithmeticException: / by zero"),
-          ex.getMessage());
+      final String message = ex.getMessage();
+      Assert.assertTrue(message.contains("py_func_nest_java_throw_exception"), message);
+      Assert.assertEquals(org.apache.commons.lang3.StringUtils
+          .countMatches(message, "io.ray.runtime.exception.RayTaskException"), 2);
+      Assert.assertTrue(message.contains("py_func_java_throw_exception"), message);
+      Assert.assertTrue(message.contains("java.lang.ArithmeticException: / by zero"), message);
       return;
     }
     Assert.fail();
@@ -307,13 +312,13 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
     return (byte[]) res.get();
   }
 
-  public static Object raiseException() {
+  public static Object throwException() {
     return 1 / 0;
   }
 
   public static Object raiseJavaException() {
     ObjectRef<Object> res = Ray.task(
-        PyFunction.of(PYTHON_MODULE, "py_func_java_raise_exception", Object.class)).remote();
+        PyFunction.of(PYTHON_MODULE, "py_func_java_throw_exception", Object.class)).remote();
     return res.get();
   }
 
