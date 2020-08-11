@@ -858,16 +858,6 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
   }
   actor->UpdateState(rpc::ActorTableData::ALIVE);
   auto actor_table_data = actor->GetActorTableData();
-  // Invoke all callbacks for all registration requests of this actor (duplicated
-  // requests are included) and remove all of them from
-  // actor_to_create_callbacks_.
-  auto iter = actor_to_create_callbacks_.find(actor_id);
-  if (iter != actor_to_create_callbacks_.end()) {
-    for (auto &callback : iter->second) {
-      callback(actor);
-    }
-    actor_to_create_callbacks_.erase(iter);
-  }
 
   // We should register the entry to the in-memory index before flushing them to
   // GCS because otherwise, there could be timing problems due to asynchronous Put.
@@ -878,10 +868,21 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
   RAY_CHECK(created_actors_[node_id].emplace(worker_id, actor_id).second);
   // The backend storage is reliable in the future, so the status must be ok.
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
-      actor_id, actor_table_data, [this, actor_id, actor_table_data](Status status) {
+      actor_id, actor_table_data,
+      [this, actor_id, actor_table_data, actor](Status status) {
         RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
                                            actor_table_data.SerializeAsString(),
                                            nullptr));
+        // Invoke all callbacks for all registration requests of this actor (duplicated
+        // requests are included) and remove all of them from
+        // actor_to_create_callbacks_.
+        auto iter = actor_to_create_callbacks_.find(actor_id);
+        if (iter != actor_to_create_callbacks_.end()) {
+          for (auto &callback : iter->second) {
+            callback(actor);
+          }
+          actor_to_create_callbacks_.erase(iter);
+        }
       }));
 }
 
