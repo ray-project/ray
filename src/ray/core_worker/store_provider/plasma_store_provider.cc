@@ -56,12 +56,13 @@ Status CoreWorkerPlasmaStoreProvider::SetClientOptions(std::string name,
 
 Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
                                           const ObjectID &object_id,
+                                          const rpc::Address &owner_address,
                                           bool *object_exists) {
   RAY_CHECK(!object.IsInPlasmaError()) << object_id;
   std::shared_ptr<Buffer> data;
   RAY_RETURN_NOT_OK(Create(object.GetMetadata(),
                            object.HasData() ? object.GetData()->Size() : 0, object_id,
-                           &data));
+                           owner_address, &data));
   // data could be a nullptr if the ObjectID already existed, but this does
   // not throw an error.
   if (data != nullptr) {
@@ -81,6 +82,7 @@ Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
 Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &metadata,
                                              const size_t data_size,
                                              const ObjectID &object_id,
+                                             const rpc::Address &owner_address,
                                              std::shared_ptr<Buffer> *data) {
   int32_t retries = 0;
   int32_t max_retries = RayConfig::instance().object_store_full_max_retries();
@@ -95,7 +97,7 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
     std::shared_ptr<arrow::Buffer> arrow_buffer;
     {
       std::lock_guard<std::mutex> guard(store_client_mutex_);
-      plasma_status = store_client_.Create(object_id, data_size,
+      plasma_status = store_client_.Create(object_id, owner_address, data_size,
                                            metadata ? metadata->Data() : nullptr,
                                            metadata ? metadata->Size() : 0, &arrow_buffer,
                                            /*device_num=*/0, evict_if_full);
@@ -423,7 +425,7 @@ void CoreWorkerPlasmaStoreProvider::WarnIfAttemptedTooManyTimes(
 Status CoreWorkerPlasmaStoreProvider::WarmupStore() {
   ObjectID object_id = ObjectID::FromRandom();
   std::shared_ptr<Buffer> data;
-  RAY_RETURN_NOT_OK(Create(nullptr, 8, object_id, &data));
+  RAY_RETURN_NOT_OK(Create(nullptr, 8, object_id, rpc::Address(), &data));
   RAY_RETURN_NOT_OK(Seal(object_id));
   RAY_RETURN_NOT_OK(Release(object_id));
   RAY_RETURN_NOT_OK(Delete({object_id}, false, false));

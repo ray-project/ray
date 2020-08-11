@@ -357,6 +357,27 @@ class ReferenceCounter : public ReferenceCounterInterface {
       const absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> pinned_objects,
       rpc::CoreWorkerStats *stats) const LOCKS_EXCLUDED(mutex_);
 
+  /// Add location to the location table of the given object.
+  ///
+  /// \param[in] object_id The object to update.
+  /// \param[in] node_id The node to be added to the location table.
+  void AddObjectLocation(const ObjectID &object_id, const ClientID &node_id)
+      LOCKS_EXCLUDED(mutex_);
+
+  /// Remove location from the location table of the given object.
+  ///
+  /// \param[in] object_id The object to update.
+  /// \param[in] node_id The node to be removed from the location table.
+  void RemoveObjectLocation(const ObjectID &object_id, const ClientID &node_id)
+      LOCKS_EXCLUDED(mutex_);
+
+  /// Get the locations from the location table of the given object.
+  ///
+  /// \param[in] object_id The object to get locations for.
+  /// \return The nodes that have the object.
+  std::unordered_set<ClientID> GetObjectLocations(const ObjectID &object_id)
+      LOCKS_EXCLUDED(mutex_);
+
  private:
   struct Reference {
     /// Constructor for a reference whose origin is unknown.
@@ -658,6 +679,14 @@ class ReferenceCounter : public ReferenceCounterInterface {
 
   /// Holds all reference counts and dependency information for tracked ObjectIDs.
   ReferenceTable object_id_refs_ GUARDED_BY(mutex_);
+
+  using LocationTable = absl::flat_hash_map<ObjectID, absl::flat_hash_set<ClientID>>;
+
+  /// Holds the client information for the owned objects. This table is seperate from
+  /// the reference table because we add object reference after putting object into the
+  /// plasma store and add the location to the object directory. Therefore we will receive
+  /// object location information before the reference is created.
+  LocationTable object_id_locations_ GUARDED_BY(mutex_);
 
   /// Objects whose values have been freed by the language frontend.
   /// The values in plasma will not be pinned. An object ID is
