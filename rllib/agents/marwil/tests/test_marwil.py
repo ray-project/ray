@@ -28,8 +28,8 @@ class TestMARWIL(unittest.TestCase):
         rllib_dir = Path(__file__).parent.parent.parent.parent
         print("rllib dir={}".format(rllib_dir))
         data_file = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
-        print("data_file={} exists={}".format(
-            data_file, os.path.isfile(data_file)))
+        print("data_file={} exists={}".format(data_file,
+                                              os.path.isfile(data_file)))
 
         config = marwil.DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.

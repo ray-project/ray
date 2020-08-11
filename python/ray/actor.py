@@ -9,7 +9,7 @@ import ray._raylet
 import ray.signature as signature
 import ray.worker
 from ray import ActorClassID, Language
-from ray._raylet import PythonFunctionDescriptor, gcs_actor_service_enabled
+from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language
 
 logger = logging.getLogger(__name__)
@@ -398,24 +398,22 @@ class ActorClass:
 
         return ActorOptionWrapper()
 
-    def _remote(
-            self,
-            args=None,
-            kwargs=None,
-            num_cpus=None,
-            num_gpus=None,
-            memory=None,
-            object_store_memory=None,
-            resources=None,
-            is_direct_call=None,
-            max_concurrency=None,
-            max_restarts=None,
-            max_task_retries=None,
-            name=None,
-            detached=False,
-            placement_group_id=None,
-            # TODO(ekl) set default to -1 once we support -1 as "any index"
-            placement_group_bundle_index=0):
+    def _remote(self,
+                args=None,
+                kwargs=None,
+                num_cpus=None,
+                num_gpus=None,
+                memory=None,
+                object_store_memory=None,
+                resources=None,
+                is_direct_call=None,
+                max_concurrency=None,
+                max_restarts=None,
+                max_task_retries=None,
+                name=None,
+                detached=False,
+                placement_group_id=None,
+                placement_group_bundle_index=-1):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -443,7 +441,8 @@ class ActorClass:
             placement_group_id: the placement group this actor belongs to,
                 or None if it doesn't belong to any group.
             placement_group_bundle_index: the index of the bundle
-                if the actor belongs to a placement group.
+                if the actor belongs to a placement group, which may be -1 to
+                specify any available bundle.
 
         Returns:
             A handle to the newly created actor.
@@ -591,9 +590,6 @@ class ActorClass:
             meta.actor_creation_function_descriptor,
             worker.current_session_and_job,
             original_handle=True)
-
-        if name is not None and not gcs_actor_service_enabled():
-            ray.util.named_actors._register_actor(name, actor_handle)
 
         return actor_handle
 

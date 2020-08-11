@@ -55,24 +55,6 @@ message ActorHandle {
   int64 max_task_retries = 9;
 }
 
-message AssignTaskRequest {
-  // The ID of the worker this message is intended for. This is used to
-  // ensure that workers don't try to execute tasks assigned to workers
-  // that used to be bound to the same port.
-  bytes intended_worker_id = 1;
-
-  // The task to be pushed.
-  Task task = 2;
-
-  // A list of the resources reserved for this worker.
-  // TODO(zhijunfu): `resource_ids` is represented as
-  // flatbutters-serialized bytes, will be moved to protobuf later.
-  bytes resource_ids = 3;
-}
-
-message AssignTaskReply {
-}
-
 message ReturnObject {
   // Object ID.
   bytes object_id = 1;
@@ -286,8 +268,6 @@ message PlasmaObjectReadyReply {
 }
 
 service CoreWorkerService {
-  // Push a task to a worker from the raylet.
-  rpc AssignTask(AssignTaskRequest) returns (AssignTaskReply);
   // Push a task directly to this worker from another.
   rpc PushTask(PushTaskRequest) returns (PushTaskReply);
   // Reply from raylet that wait for direct actor call args has completed.

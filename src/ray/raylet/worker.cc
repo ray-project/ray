@@ -106,7 +106,20 @@ const std::unordered_set<TaskID> &Worker::GetBlockedTaskIds() const {
   return blocked_task_ids_;
 }
 
-void Worker::AssignJobId(const JobID &job_id) { assigned_job_id_ = job_id; }
+void Worker::AssignJobId(const JobID &job_id) {
+  if (!RayConfig::instance().enable_multi_tenancy()) {
+    assigned_job_id_ = job_id;
+  } else {
+    if (!assigned_job_id_.IsNil()) {
+      RAY_CHECK(assigned_job_id_ == job_id)
+          << "The worker " << worker_id_ << " is already assigned to job "
+          << assigned_job_id_ << ". It cannot be reassigned to job " << job_id;
+    } else {
+      assigned_job_id_ = job_id;
+      RAY_LOG(INFO) << "Assigned worker " << worker_id_ << " to job " << job_id;
+    }
+  }
+}
 
 const JobID &Worker::GetAssignedJobId() const { return assigned_job_id_; }
 
@@ -159,27 +172,6 @@ void Worker::AcquireTaskCpuResources(const ResourceIdSet &cpu_resources) {
   // The "release" terminology is a bit confusing here. The resources are being
   // given back to the worker and so "released" by the caller.
   task_resource_ids_.Release(cpu_resources);
-}
-
-Status Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set) {
-  RAY_CHECK(port_ > 0);
-  rpc::AssignTaskRequest request;
-  request.set_intended_worker_id(worker_id_.Binary());
-  request.mutable_task()->mutable_task_spec()->CopyFrom(
-      task.GetTaskSpecification().GetMessage());
-  request.mutable_task()->mutable_task_execution_spec()->CopyFrom(
-      task.GetTaskExecutionSpec().GetMessage());
-  request.set_resource_ids(resource_id_set.Serialize());
-
-  rpc_client_->AssignTask(request, [](Status status, const rpc::AssignTaskReply &reply) {
-    if (!status.ok()) {
-      RAY_LOG(DEBUG) << "Worker failed to finish executing task: " << status.ToString();
-    }
-    // Worker has finished this task. There's nothing to do here
-    // and assigning new task will be done when raylet receives
-    // `TaskDone` message.
-  });
-  return Status::OK();
 }
 
 void Worker::DirectActorCallArgWaitComplete(int64_t tag) {

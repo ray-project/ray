@@ -1,7 +1,7 @@
 
 #include <ray/api.h>
-
 #include <ray/api/ray_config.h>
+
 #include "runtime/abstract_ray_runtime.h"
 
 namespace ray {

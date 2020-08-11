@@ -49,6 +49,15 @@ static const int64_t SHOULD_CHECK_MESSAGE_ORDER = 123450000;
 /// \return Whether the condition is met.
 bool WaitForCondition(std::function<bool()> condition, int timeout_ms);
 
+/// Wait until the expected count is met, or timeout is reached.
+///
+/// \param[in] current_count The current count.
+/// \param[in] expected_count The expected count.
+/// \param[in] timeout_ms Timeout in milliseconds to wait for for.
+/// \return Whether the expected count is met.
+void WaitForExpectedCount(std::atomic<int> &current_count, int expected_count,
+                          int timeout_ms = 60000);
+
 /// Used to kill process whose pid is stored in `socket_name.id` file.
 void KillProcessBySocketName(std::string socket_name);
 

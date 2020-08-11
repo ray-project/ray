@@ -12,21 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/raylet/reconstruction_policy.h"
+
+#include <boost/asio.hpp>
 #include <list>
 
 #include "absl/time/clock.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-
-#include <boost/asio.hpp>
-
 #include "ray/gcs/callback.h"
-
-#include "ray/raylet/format/node_manager_generated.h"
-#include "ray/raylet/reconstruction_policy.h"
-
 #include "ray/gcs/test/mock_accessor_test.h"
 #include "ray/object_manager/object_directory.h"
+#include "ray/raylet/format/node_manager_generated.h"
+#include "ray/raylet/reconstruction_policy.h"
 
 namespace ray {
 

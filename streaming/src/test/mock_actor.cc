@@ -318,6 +318,9 @@ class StreamingWorker {
         true,           // ref_counting_enabled
         false,          // is_local_mode
         1,              // num_workers
+        nullptr,        // terminate_asyncio_thread
+        "",             // serialized_job_config
+        -1,             // metrics_agent_port
     };
     CoreWorkerProcess::Initialize(options);
 
