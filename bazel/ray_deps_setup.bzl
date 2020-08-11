@@ -264,3 +264,15 @@ def ray_deps_setup():
             "//thirdparty/patches:msgpack-windows-iovec.patch",
         ],
     )
+
+    auto_http_archive(
+        name = "mypy_protobuf",
+        url = "https://github.com/simon-mo/mypy-protobuf/archive/7e41f194c601c0958ec61dd55499780bf57af58c.tar.gz",
+        sha256 = "6211021ceeac28d207d0a63cc0c9f8b6601085b7f82542d91850d10d70172a8c"
+    )
+
+    auto_http_archive(
+        name = "rules_python",
+        url = "https://github.com/bazelbuild/rules_python/releases/download/0.0.2/rules_python-0.0.2.tar.gz",
+        sha256 = "b5668cde8bb6e3515057ef465a35ad712214962f0b3a314e551204266c7be90c"
+    )

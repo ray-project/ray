@@ -3,6 +3,7 @@ package(default_visibility = ["//visibility:public"])
 load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_proto_library", "cc_test")
 load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
+load("@mypy_protobuf//:plugin.bzl", "mypy_proto_compile")
 
 proto_library(
     name = "common_proto",
@@ -18,6 +19,11 @@ cc_proto_library(
 python_grpc_compile(
     name = "common_py_proto",
     deps = [":common_proto"],
+)
+
+mypy_proto_compile(
+    name = "common_mypy_proto",
+    deps = [":common_proto"]
 )
 
 proto_library(
@@ -37,6 +43,11 @@ python_grpc_compile(
     deps = [":gcs_proto"],
 )
 
+mypy_proto_compile(
+    name = "gcs_mypy_proto",
+    deps = [":gcs_proto"]
+)
+
 proto_library(
     name = "node_manager_proto",
     srcs = ["node_manager.proto"],
@@ -53,6 +64,11 @@ python_grpc_compile(
     deps = [":node_manager_proto"],
 )
 
+mypy_proto_compile(
+    name = "node_manager_mypy_proto",
+    deps = [":node_manager_proto"]
+)
+
 proto_library(
     name = "reporter_proto",
     srcs = ["reporter.proto"],
@@ -67,6 +83,11 @@ cc_proto_library(
 python_grpc_compile(
     name = "reporter_py_proto",
     deps = [":reporter_proto"],
+)
+
+mypy_proto_compile(
+    name = "reporter_mypy_proto",
+    deps = [":reporter_proto"]
 )
 
 proto_library(
@@ -102,6 +123,11 @@ proto_library(
 python_grpc_compile(
     name = "core_worker_py_proto",
     deps = [":core_worker_proto"],
+)
+
+mypy_proto_compile(
+    name = "core_worker_mypy_proto",
+    deps = [":core_worker_proto"]
 )
 
 cc_proto_library(

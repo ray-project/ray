@@ -14,3 +14,8 @@ ray_deps_build_all()
 load("@com_github_grpc_grpc//bazel:grpc_extra_deps.bzl", "grpc_extra_deps")
 
 grpc_extra_deps()
+
+
+load("@mypy_protobuf_dep//:requirements.bzl", "pip_install")
+
+pip_install()
