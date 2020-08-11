@@ -186,14 +186,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     void HandleHeartbeat(const ClientID &node_id,
                          const rpc::HeartbeatTableData &heartbeat_data);
 
-    /// Add listener to monitor the heartbeat of nodes.
-    ///
-    /// \param listener The handler which process the add of nodes.
-    void AddHeartbeatListener(
-        std::function<void(const rpc::HeartbeatTableData &heartbeat_data)> listener) {
-      heartbeat_listener_ = std::move(listener);
-    }
-
    protected:
     /// A periodic timer that fires on every heartbeat period. Raylets that have
     /// not sent a heartbeat within the last num_heartbeats_timeout ticks will be
@@ -230,9 +222,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
     /// Is the detect started.
     bool is_started_ = false;
-    /// Listener which monitor the heartbeat of nodes.
-    std::function<void(const rpc::HeartbeatTableData &heartbeat_data)>
-        heartbeat_listener_;
   };
 
  private:
