@@ -27,9 +27,16 @@
 namespace ray {
 namespace gcs {
 
+/// Node resource information.
 class GcsNodeResource {
  public:
-  absl::flat_hash_map << std::string, double > resources_available;
+  explicit GcsNodeResource(std::unordered_map<std::string, double> resources_available)
+      : resources_available_(std::move(resources_available)) {}
+
+  bool IsSubset(const std::unordered_map<std::string, double> &request_resources) const;
+
+  /// Dynamic resource capacity.
+  std::unordered_map<std::string, double> resources_available_;
 };
 
 /// GcsNodeManager is responsible for managing and monitoring nodes as well as handing
@@ -148,6 +155,14 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// Start node failure detector.
   void StartNodeFailureDetector();
 
+  // Update node realtime resources.
+  void UpdateNodeRealtimeResources(const ClientID &node_id,
+                                   const rpc::HeartbeatTableData &heartbeat);
+
+  /// Get cluster realtime resources.
+  const absl::flat_hash_map<ClientID, std::shared_ptr<GcsNodeResource>>
+      &GetClusterRealtimeResources() const;
+
  protected:
   class NodeFailureDetector {
    public:
@@ -182,14 +197,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     /// \param heartbeat_data The heartbeat sent by the client.
     void HandleHeartbeat(const ClientID &node_id,
                          const rpc::HeartbeatTableData &heartbeat_data);
-
-    /// Add listener to monitor the heartbeat of nodes.
-    ///
-    /// \param listener The handler which process the add of nodes.
-    void AddHeartbeatListener(
-        std::function<void(const rpc::HeartbeatTableData &heartbeat_data)> listener) {
-      heartbeat_listener_ = std::move(listener);
-    }
 
    protected:
     /// A periodic timer that fires on every heartbeat period. Raylets that have
@@ -227,9 +234,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
     /// Is the detect started.
     bool is_started_ = false;
-    /// Listener which monitor the heartbeat of nodes.
-    std::function<void(const rpc::HeartbeatTableData &heartbeat_data)>
-        heartbeat_listener_;
   };
 
  private:
@@ -255,6 +259,9 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
   /// Storage for GCS tables.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  /// Cluster realtime resources.
+  absl::flat_hash_map<ClientID, std::shared_ptr<GcsNodeResource>>
+      cluster_realtime_resources_;
 };
 
 }  // namespace gcs
