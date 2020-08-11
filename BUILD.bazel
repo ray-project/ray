@@ -826,6 +826,19 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "mock_accessor_lib",
+    hdrs = [
+        "src/ray/gcs/test/mock_accessor_test.h"
+    ],
+    copts = COPTS,
+    strip_include_prefix = "src",
+    deps = [
+        ":gcs",
+        "@com_google_absl//absl/container:flat_hash_map"
+    ]
+)
+
 cc_test(
     name = "actor_manager_test",
     srcs = ["src/ray/core_worker/test/actor_manager_test.cc"],
@@ -833,6 +846,7 @@ cc_test(
     deps = [
         ":core_worker_lib",
         "@com_google_googletest//:gtest_main",
+        ":mock_accessor_lib",
     ],
 )
 
@@ -868,6 +882,7 @@ cc_test(
         ":node_manager_fbs",
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
+        ":mock_accessor_lib",
     ],
 )
 
@@ -887,6 +902,7 @@ cc_test(
         ":object_manager",
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
+        ":mock_accessor_lib",
     ],
 )
 
@@ -970,6 +986,7 @@ cc_test(
     deps = [
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
+        ":mock_accessor_lib",
     ],
 )
 
@@ -1349,6 +1366,7 @@ cc_binary(
     copts = COPTS,
     deps = [
         ":object_manager",
+        ":mock_accessor_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1360,6 +1378,7 @@ cc_binary(
     copts = COPTS,
     deps = [
         ":object_manager",
+        ":mock_accessor_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1632,6 +1651,7 @@ cc_test(
         ":gcs",
         ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
+        ":mock_accessor_lib",
     ],
 )
 

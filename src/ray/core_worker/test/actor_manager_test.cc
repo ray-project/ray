@@ -22,117 +22,17 @@
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/gcs/redis_gcs_client.h"
+#include "ray/gcs/test/mock_accessor_test.h"
 
 namespace ray {
 
 using ::testing::_;
 
-class MockActorInfoAccessor : public gcs::ActorInfoAccessor {
- public:
-  MockActorInfoAccessor(gcs::RedisGcsClient *client) {}
-
-  ~MockActorInfoAccessor() {}
-
-  ray::Status AsyncSubscribe(
-      const ActorID &actor_id,
-      const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-      const gcs::StatusCallback &done) override {
-    auto callback_entry = std::make_pair(actor_id, subscribe);
-    callback_map_.emplace(actor_id, subscribe);
-    return Status::OK();
-  }
-
-  bool ActorStateNotificationPublished(const ActorID &actor_id,
-                                       const gcs::ActorTableData &actor_data) {
-    auto it = callback_map_.find(actor_id);
-    if (it == callback_map_.end()) return false;
-    auto actor_state_notification_callback = it->second;
-    actor_state_notification_callback(actor_id, actor_data);
-    return true;
-  }
-
-  bool CheckSubscriptionRequested(const ActorID &actor_id) {
-    return callback_map_.find(actor_id) != callback_map_.end();
-  }
-
-  Status GetAll(std::vector<rpc::ActorTableData> *actor_table_data_list) override {
-    return Status::OK();
-  }
-
-  Status AsyncGet(
-      const ActorID &actor_id,
-      const gcs::OptionalItemCallback<rpc::ActorTableData> &callback) override {
-    return Status::OK();
-  }
-
-  Status AsyncGetAll(
-      const gcs::MultiItemCallback<rpc::ActorTableData> &callback) override {
-    return Status::OK();
-  }
-
-  Status AsyncGetByName(
-      const std::string &name,
-      const gcs::OptionalItemCallback<rpc::ActorTableData> &callback) override {
-    return Status::OK();
-  }
-
-  Status AsyncRegisterActor(const TaskSpecification &task_spec,
-                            const gcs::StatusCallback &callback) override {
-    return Status::OK();
-  }
-
-  Status AsyncCreateActor(const TaskSpecification &task_spec,
-                          const gcs::StatusCallback &callback) override {
-    return Status::OK();
-  }
-
-  Status AsyncRegister(const std::shared_ptr<rpc::ActorTableData> &data_ptr,
-                       const gcs::StatusCallback &callback) override {
-    return Status::OK();
-  }
-
-  Status AsyncUpdate(const ActorID &actor_id,
-                     const std::shared_ptr<rpc::ActorTableData> &data_ptr,
-                     const gcs::StatusCallback &callback) override {
-    return Status::OK();
-  }
-
-  Status AsyncSubscribeAll(
-      const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-      const gcs::StatusCallback &done) override {
-    return Status::OK();
-  }
-
-  Status AsyncUnsubscribe(const ActorID &actor_id) override { return Status::OK(); }
-
-  Status AsyncAddCheckpoint(const std::shared_ptr<rpc::ActorCheckpointData> &data_ptr,
-                            const gcs::StatusCallback &callback) override {
-    return Status::OK();
-  }
-
-  Status AsyncGetCheckpoint(
-      const ActorCheckpointID &checkpoint_id, const ActorID &actor_id,
-      const gcs::OptionalItemCallback<rpc::ActorCheckpointData> &callback) override {
-    return Status::OK();
-  }
-
-  Status AsyncGetCheckpointID(
-      const ActorID &actor_id,
-      const gcs::OptionalItemCallback<rpc::ActorCheckpointIdData> &callback) override {
-    return Status::OK();
-  }
-
-  void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
-
-  absl::flat_hash_map<ActorID, gcs::SubscribeCallback<ActorID, rpc::ActorTableData>>
-      callback_map_;
-};
-
 class MockGcsClient : public gcs::RedisGcsClient {
  public:
   MockGcsClient(const gcs::GcsClientOptions &options) : gcs::RedisGcsClient(options) {}
 
-  void Init(MockActorInfoAccessor *actor_accesor_mock) {
+  void Init(gcs::MockActorInfoAccessor *actor_accesor_mock) {
     actor_accessor_.reset(actor_accesor_mock);
   }
 
@@ -183,7 +83,7 @@ class ActorManagerTest : public ::testing::Test {
   ActorManagerTest()
       : options_("", 1, ""),
         gcs_client_mock_(new MockGcsClient(options_)),
-        actor_info_accessor_(new MockActorInfoAccessor(gcs_client_mock_.get())),
+        actor_info_accessor_(new gcs::MockActorInfoAccessor()),
         direct_actor_submitter_(new MockDirectActorSubmitter()),
         reference_counter_(new MockReferenceCounter()) {
     gcs_client_mock_->Init(actor_info_accessor_);
@@ -219,7 +119,7 @@ class ActorManagerTest : public ::testing::Test {
 
   gcs::GcsClientOptions options_;
   std::shared_ptr<MockGcsClient> gcs_client_mock_;
-  MockActorInfoAccessor *actor_info_accessor_;
+  gcs::MockActorInfoAccessor *actor_info_accessor_;
   std::shared_ptr<MockDirectActorSubmitter> direct_actor_submitter_;
   std::shared_ptr<MockReferenceCounter> reference_counter_;
   std::shared_ptr<ActorManager> actor_manager_;
