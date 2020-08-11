@@ -123,44 +123,60 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             config["model"]["_time_major"] = True
             trainer = ppo.PPOTrainer(config=config, env="ma_env")
             learn_time_w = 0.0
-            env_time_w = 0.0
+            sampler_perf = {}
             start = time.time()
             for i in range(num_iterations):
-                results = trainer.train()
-                env_time_w += results["sampler_perf"]["total_env_wait_s"]
-                learn_time_w += results["timers"]["learn_time_ms"]
-            duration_w = time.time() - start - env_time_w
-            preprocessing_w = results["sampler_perf"]["mean_processing_ms"]
-            inference_w = results["sampler_perf"]["mean_inference_ms"]
-            print("w/ _fast_sampling: Duration (no Env): {}s "
-                  "last-sampler-perf.={} learn-time/iter={}ms".format(
-                duration_w, results["sampler_perf"],
-                learn_time_w / num_iterations))
+                out = trainer.train()
+                sampler_perf_ = out["sampler_perf"]
+                sampler_perf = {
+                    k: sampler_perf.get(k, 0.0) + sampler_perf_[k] for
+                    k, v in sampler_perf_.items()}
+                learn_time_w += out["timers"]["learn_time_ms"] / 1000
+            sampler_perf = {
+                k: sampler_perf[k] / (num_iterations if "mean_" in k else 1)
+                for k, v in sampler_perf.items()}
+            duration_w = time.time() - start - sampler_perf["total_env_wait_s"]
+            get_ma_train_batch_w = sampler_perf["total_get_ma_train_batch_s"]
+            postproc_traj_so_far_w = \
+                sampler_perf["total_postprocess_trajectories_so_far_s"]
+            print("w/ traj-view API: Duration (no Env): {}s "
+                  "sampler-perf.={} learn-time/iter={}s".format(
+                duration_w, sampler_perf, learn_time_w / num_iterations))
             trainer.stop()
 
             config["_use_trajectory_view_api"] = False
             config["model"]["_time_major"] = False
             trainer = ppo.PPOTrainer(config=config, env="ma_env")
             learn_time_wo = 0.0
-            env_time_wo = 0.0
+            sampler_perf = {}
             start = time.time()
             for i in range(num_iterations):
-                results = trainer.train()
-                env_time_wo += results["sampler_perf"]["total_env_wait_s"]
-                learn_time_wo += results["timers"]["learn_time_ms"]
-            duration_wo = time.time() - start - env_time_wo
-            preprocessing_wo = results["sampler_perf"]["mean_processing_ms"]
-            inference_wo = results["sampler_perf"]["mean_inference_ms"]
-            print("w/o _fast_sampling: Duration (no Env): {}s "
-                  "last-sampler-perf.={} learn-time/iter={}ms".format(
-                duration_wo, results["sampler_perf"],
-                learn_time_wo / num_iterations))
+                out = trainer.train()
+                sampler_perf_ = out["sampler_perf"]
+                sampler_perf = {
+                    k: sampler_perf.get(k, 0.0) + sampler_perf_[k] for
+                    k, v in sampler_perf_.items()}
+                learn_time_wo += out["timers"]["learn_time_ms"] / 1000
+            sampler_perf = {
+                k: sampler_perf[k] / (num_iterations if "mean_" in k else 1)
+                for k, v in sampler_perf.items()}
+            duration_wo = time.time() - start - \
+                          sampler_perf["total_env_wait_s"]
+            get_ma_train_batch_wo = sampler_perf["total_get_ma_train_batch_s"]
+            postproc_traj_so_far_wo = \
+                sampler_perf["total_postprocess_trajectories_so_far_s"]
+            print("w/o traj-view API: Duration (no Env): {}s "
+                  "sampler-perf.={} learn-time/iter={}s".format(
+                duration_wo, sampler_perf, learn_time_wo / num_iterations))
             trainer.stop()
 
-            # Assert `_fasts_sampling` is faster across all affected metrics.
-            self.assertLess(duration_w, duration_wo)
-            self.assertLess(preprocessing_w, preprocessing_wo)
-            self.assertLess(inference_w, inference_wo)
+            # Assert `_fasts_sampling` is much(!) faster across important
+            # metrics.
+            self.assertLess(duration_w, duration_wo * 0.6)
+            self.assertLess(learn_time_w, learn_time_wo * 0.5)
+            self.assertLess(get_ma_train_batch_w, get_ma_train_batch_wo * 0.6)
+            self.assertLess(
+                postproc_traj_so_far_w, postproc_traj_so_far_wo * 0.3)
 
             ## Check learning success.
             #print("w/ _fast_sampling: reward={}".format(
