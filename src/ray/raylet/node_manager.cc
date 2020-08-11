@@ -1232,7 +1232,8 @@ void NodeManager::ProcessAnnounceWorkerPortMessage(
 }
 
 void NodeManager::HandleWorkerAvailable(const std::shared_ptr<ClientConnection> &client) {
-  RAY_LOG(INFO) << "HandleWorkerAvailable\n" << this->cluster_task_manager_->DebugString();
+  RAY_LOG(INFO) << "HandleWorkerAvailable\n"
+                << this->cluster_task_manager_->DebugString();
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   HandleWorkerAvailable(worker);
 }
@@ -1594,7 +1595,8 @@ void NodeManager::ScheduleAndDispatch() {
 void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest &request,
                                            rpc::RequestWorkerLeaseReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO) << "HandleRequestWorkerLease\n" << this->cluster_task_manager_->DebugString();
+  RAY_LOG(INFO) << "HandleRequestWorkerLease\n"
+                << this->cluster_task_manager_->DebugString();
   rpc::Task task_message;
   task_message.mutable_task_spec()->CopyFrom(request.resource_spec());
   Task task(task_message);
@@ -1804,8 +1806,7 @@ void NodeManager::HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &r
       //    for returning the lease, not cancelling it.
     }
   } else {
-    canceled =
-        local_queues_.RemoveTask(task_id, &removed_task, &removed_task_state);
+    canceled = local_queues_.RemoveTask(task_id, &removed_task, &removed_task_state);
     if (!canceled) {
       // We do not have the task. This could be because we haven't received the
       // lease request yet, or because we already granted the lease request and

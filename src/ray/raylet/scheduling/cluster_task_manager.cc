@@ -164,7 +164,6 @@ void ClusterTaskManager::TaskFinished(const TaskID &task_id) {
 }
 
 bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
-
   for (auto iter = tasks_to_schedule_.begin(); iter != tasks_to_schedule_.end(); iter++) {
     if (std::get<0>(*iter).GetTaskSpecification().TaskId() == task_id) {
       tasks_to_schedule_.erase(iter);
@@ -191,14 +190,14 @@ bool ClusterTaskManager::IsRunning(const TaskID &task_id) const {
   return running_tasks_.find(task_id) != running_tasks_.end();
 }
 
-
 std::string ClusterTaskManager::DebugString() {
   std::stringstream buffer;
   buffer << "========== Node: " << self_node_id_ << " =================\n";
   buffer << "Schedule queue length: " << tasks_to_schedule_.size() << "\n";
   buffer << "Dispatch queue length: " << tasks_to_dispatch_.size() << "\n";
   buffer << "Waiting tasks size: " << waiting_tasks_.size() << "\n";
-  buffer << "cluster_resource_scheduler state: " << cluster_resource_scheduler_->DebugString() << "\n";
+  buffer << "cluster_resource_scheduler state: "
+         << cluster_resource_scheduler_->DebugString() << "\n";
   buffer << "==================================================";
   return buffer.str();
 }

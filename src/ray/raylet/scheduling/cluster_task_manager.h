@@ -83,7 +83,6 @@ class ClusterTaskManager {
   /// \param readyIds: The tasks which are now ready to be dispatched.
   void TasksUnblocked(const std::vector<TaskID> ready_ids);
 
-
   /// (Step 5) Call once a task finishes.
   ///
   /// \param task_id: The id of the task that is finished.
@@ -117,7 +116,6 @@ class ClusterTaskManager {
   absl::flat_hash_map<TaskID, Work> waiting_tasks_;
   /// Tasks which are currently running.
   absl::flat_hash_set<TaskID> running_tasks_;
-
 
   /// Determine whether a task should be immediately dispatched,
   /// or placed on a wait queue.
