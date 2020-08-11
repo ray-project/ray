@@ -119,3 +119,12 @@ cc_proto_library(
     deps = ["serialization_proto"],
 )
 
+proto_library(
+    name = "event_proto",
+    srcs = ["event.proto"],
+)
+
+cc_proto_library(
+    name = "event_cc_proto",
+    deps = [":event_proto"],
+)

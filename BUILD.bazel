@@ -805,6 +805,16 @@ cc_test(
 )
 
 cc_test(
+    name = "event_test",
+    srcs = ["src/ray/util/event_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":ray_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "filesystem_test",
     srcs = ["src/ray/util/filesystem_test.cc"],
     copts = COPTS,
@@ -1278,6 +1288,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":sha256",
+        "//src/ray/protobuf:event_cc_proto",
         "@boost//:asio",
         "@com_github_google_glog//:glog",
         "@com_google_absl//absl/synchronization",
