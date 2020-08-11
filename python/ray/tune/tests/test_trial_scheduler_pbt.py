@@ -125,8 +125,6 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             fail_fast=True,
             num_samples=20,
             global_checkpoint_period=1,
-            checkpoint_freq=1,
-            checkpoint_at_end=True,
             keep_checkpoints_num=1,
             checkpoint_score_attr="min-training_iteration",
             scheduler=scheduler,

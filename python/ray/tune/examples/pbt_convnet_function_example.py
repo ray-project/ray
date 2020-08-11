@@ -98,7 +98,6 @@ if __name__ == "__main__":
         stop=stopper,
         export_formats=[ExportFormat.MODEL],
         checkpoint_score_attr="mean_accuracy",
-        checkpoint_freq=5,
         keep_checkpoints_num=4,
         num_samples=4,
         config={
