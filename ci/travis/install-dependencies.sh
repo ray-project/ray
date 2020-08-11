@@ -203,11 +203,10 @@ install_pip() {
 
     # If we're in a CI environment, do some configuration
     if [ "${CI-}" = true ]; then
-      echo "Skipping pip config"
-      #"${python}" -W ignore -m pip config -q --user set global.disable-pip-version-check True
-      #"${python}" -W ignore -m pip config -q --user set global.no-color True
-      #"${python}" -W ignore -m pip config -q --user set global.progress_bar off
-      #"${python}" -W ignore -m pip config -q --user set global.quiet True
+      "${python}" -W ignore -m pip config -q --user set global.disable-pip-version-check True
+      "${python}" -W ignore -m pip config -q --user set global.no-color True
+      "${python}" -W ignore -m pip config -q --user set global.progress_bar off
+      "${python}" -W ignore -m pip config -q --user set global.quiet True
     fi
   fi
 }
@@ -259,7 +258,6 @@ install_dependencies() {
     # Try n times; we often encounter OpenSSL.SSL.WantReadError (or others)
     # that break the entire CI job: Simply retry installation in this case
     # after n seconds.
-    pip install -r "${WORKSPACE_DIR}"/python/requirements.txt
     local status="0";
     local errmsg="";
     for _ in {1..3}; do
