@@ -1075,11 +1075,24 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         shutil.rmtree(tmpdir)
 
     def testReplay(self):
+        # Returns unique increasing parameter mutations
+        class _Counter:
+            def __init__(self, start=0):
+                self.count = start - 1
+
+            def __call__(self, *args, **kwargs):
+                self.count += 1
+                return self.count
+
         pbt, runner = self.basicSetup(
             num_trials=4,
             perturbation_interval=5,
             log_config=True,
-            step_once=False)
+            step_once=False,
+            hyperparam_mutations={
+                "float_factor": lambda: 100.0,
+                "int_factor": _Counter(1000)
+            })
         trials = runner.get_trials()
         tmpdir = tempfile.mkdtemp()
 
