@@ -1496,15 +1496,17 @@ def globalgc(address):
     help="Identifies the wheel but does not execute the installation.")
 def install_nightly(verbose, dryrun):
     """Install nightly Ray."""
-    raydir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
+    raydir = os.path.abspath(os.path.dirname(ray.__file__))
     all_wheels_path = os.path.join(raydir, "nightly-wheels.yaml")
 
     wheels = None
     if os.path.exists(all_wheels_path):
         with open(all_wheels_path) as f:
             wheels = yaml.safe_load(f)
+
     if not wheels:
         raise click.ClickException(f"Wheels not found in '{all_wheels_path}'!")
+
     platform = sys.platform
     py_version = "{0}.{1}".format(*sys.version_info[:2])
 
