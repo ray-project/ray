@@ -432,7 +432,7 @@ deploy:
 
   - provider: script
     edge: true # This supposedly opts in to deploy v2.
-    script: ./ci/get_build_info.py > /tmp/bazel_event_logs/metadata.json
+    script: ./ci/travis/get_build_info.py > /tmp/bazel_event_logs/metadata.json
     skip_cleanup: true
 
   # Upload bazel event logs to s3
