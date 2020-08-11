@@ -194,7 +194,6 @@ class TrialState:
         return self.metrics.get(metric)
 
 
-
 class Trial:
     """A trial object holds the state for one model training run.
 
