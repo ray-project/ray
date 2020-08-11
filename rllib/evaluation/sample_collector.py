@@ -60,12 +60,9 @@ class _SampleCollector(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def add_action_reward_next_obs(
-            self,
-            episode_id: EpisodeID,
-            agent_id: AgentID,
-            policy_id: PolicyID,
-            values: Dict[str, TensorType]) -> None:
+    def add_action_reward_next_obs(self, episode_id: EpisodeID,
+                                   agent_id: AgentID, policy_id: PolicyID,
+                                   values: Dict[str, TensorType]) -> None:
         """Add the given dictionary (row) of values to this collector.
 
         The incoming data (`values`) must include action, reward, done, and

@@ -59,6 +59,7 @@ class TDModel(nn.Module):
 
 
 if torch:
+
     class TDDataset(torch.utils.data.Dataset):
         def __init__(self, dataset: SampleBatchType, norms):
             self.count = dataset.count

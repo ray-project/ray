@@ -4,6 +4,7 @@ import time
 import os
 import pytest
 import shutil
+import subprocess
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -709,6 +710,80 @@ tune.run(
         raise_on_failed_trial=False)
     assert all(t.status == Trial.TERMINATED for t in trials2)
     assert {t.trial_id for t in trials2} == {t.trial_id for t in trials}
+    ray.shutdown()
+    cluster.shutdown()
+
+
+def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir):
+    """Tests restoration of HyperOptSearch experiment on cluster shutdown
+    with actual interrupt.
+
+    Restoration should restore both state of trials
+    and previous search algorithm (HyperOptSearch) state.
+    This is an end-to-end test.
+    """
+    cluster = start_connected_cluster
+    dirpath = str(tmpdir)
+    local_checkpoint_dir = os.path.join(dirpath, "experiment")
+    from ray.tune.examples.async_hyperband_example import MyTrainableClass
+    from ray.tune import register_trainable
+    register_trainable("trainable", MyTrainableClass)
+
+    def execute_script_with_args(*args):
+        current_dir = os.path.dirname(__file__)
+        script = os.path.join(current_dir,
+                              "_test_cluster_interrupt_searcher.py")
+        subprocess.Popen([sys.executable, script] + list(args))
+
+    args = ["--ray-address", cluster.address, "--local-dir", dirpath]
+    execute_script_with_args(*args)
+    # Wait until the right checkpoint is saved.
+    # The trainable returns every 0.5 seconds, so this should not miss
+    # the checkpoint.
+    for i in range(50):
+        if TrialRunner.checkpoint_exists(local_checkpoint_dir):
+            # Inspect the internal trialrunner
+            runner = TrialRunner(
+                resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir)
+            trials = runner.get_trials()
+            if trials and len(trials) >= 10:
+                break
+        time.sleep(.5)
+
+    if not TrialRunner.checkpoint_exists(local_checkpoint_dir):
+        raise RuntimeError(
+            f"Checkpoint file didn't appear in {local_checkpoint_dir}. "
+            f"Current list: {os.listdir(local_checkpoint_dir)}.")
+
+    ray.shutdown()
+    cluster.shutdown()
+
+    cluster = _start_new_cluster()
+    execute_script_with_args(*(args + ["--resume"]))
+
+    time.sleep(2)
+
+    register_trainable("trainable", MyTrainableClass)
+    reached = False
+    for i in range(50):
+        if TrialRunner.checkpoint_exists(local_checkpoint_dir):
+            # Inspect the internal trialrunner
+            runner = TrialRunner(
+                resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir)
+            trials = runner.get_trials()
+            if len(trials) == 0:
+                continue  # nonblocking script hasn't resumed yet, wait
+            reached = True
+            assert len(trials) >= 10
+            assert len(trials) <= 20
+            if len(trials) == 20:
+                break
+            else:
+                stop_fn = runner.trial_executor.stop_trial
+                [stop_fn(t) for t in trials if t.status is not Trial.ERROR]
+        time.sleep(.5)
+    assert reached is True
+
     ray.shutdown()
     cluster.shutdown()
 

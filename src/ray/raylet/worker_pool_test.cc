@@ -48,7 +48,8 @@ class WorkerPoolMock : public WorkerPool {
 
   using WorkerPool::StartWorkerProcess;  // we need this to be public for testing
 
-  Process StartProcess(const std::vector<std::string> &worker_command_args) override {
+  Process StartProcess(const std::vector<std::string> &worker_command_args,
+                       const std::map<std::string, std::string> &env) override {
     // Use a bogus process ID that won't conflict with those in the system
     pid_t pid = static_cast<pid_t>(PID_MAX_LIMIT + 1 + worker_commands_by_proc_.size());
     last_worker_process_ = Process::FromPid(pid);
@@ -352,8 +353,8 @@ TEST_P(WorkerPoolTest, PopWorkersOfMultipleLanguages) {
 
 TEST_P(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
   const std::vector<std::string> java_worker_command = {
-      "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_0", "dummy_java_worker_command",
-      "RAY_WORKER_RAYLET_CONFIG_PLACEHOLDER", "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_1"};
+      "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER", "dummy_java_worker_command",
+      "RAY_WORKER_RAYLET_CONFIG_PLACEHOLDER"};
   SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}},
                      {Language::JAVA, java_worker_command}});
 
@@ -364,10 +365,9 @@ TEST_P(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
                                    task_spec.DynamicWorkerOptions());
   const auto real_command =
       worker_pool_->GetWorkerCommand(worker_pool_->LastStartedWorkerProcess());
-  ASSERT_EQ(real_command,
-            std::vector<std::string>({"test_op_0", "dummy_java_worker_command",
-                                      GetNumJavaWorkersPerProcessSystemProperty(1),
-                                      "test_op_1"}));
+  ASSERT_EQ(real_command, std::vector<std::string>(
+                              {"test_op_0", "test_op_1", "dummy_java_worker_command",
+                               GetNumJavaWorkersPerProcessSystemProperty(1)}));
 }
 
 TEST_P(WorkerPoolTest, PopWorkerMultiTenancy) {

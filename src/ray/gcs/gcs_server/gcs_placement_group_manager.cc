@@ -16,6 +16,7 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/gcs/pb_util.h"
+#include "ray/util/asio_util.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -61,9 +62,9 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
     boost::asio::io_context &io_context,
     std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
-    : gcs_placement_group_scheduler_(std::move(scheduler)),
-      gcs_table_storage_(std::move(gcs_table_storage)),
-      reschedule_timer_(io_context) {}
+    : io_context_(io_context),
+      gcs_placement_group_scheduler_(std::move(scheduler)),
+      gcs_table_storage_(std::move(gcs_table_storage)) {}
 
 void GcsPlacementGroupManager::RegisterPlacementGroup(
     const ray::rpc::CreatePlacementGroupRequest &request, EmptyCallback callback) {
@@ -105,11 +106,11 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
   // registered.
   pending_placement_groups_.emplace_back(std::move(placement_group));
   is_creating_ = false;
-  ScheduleTick();
+  RetryCreatingPlacementGroup();
 }
 
 void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
-    std::shared_ptr<GcsPlacementGroup> placement_group) {
+    const std::shared_ptr<GcsPlacementGroup> &placement_group) {
   RAY_LOG(INFO) << "Successfully created placement group " << placement_group->GetName();
   placement_group->UpdateState(rpc::PlacementGroupTableData::ALIVE);
   auto placement_group_id = placement_group->GetPlacementGroupID();
@@ -173,15 +174,9 @@ void GcsPlacementGroupManager::HandleCreatePlacementGroup(
       }));
 }
 
-void GcsPlacementGroupManager::ScheduleTick() {
-  reschedule_timer_.expires_from_now(boost::posix_time::milliseconds(500));
-  reschedule_timer_.async_wait([this](const boost::system::error_code &error) {
-    if (error == boost::asio::error::operation_aborted) {
-      return;
-    } else {
-      SchedulePendingPlacementGroups();
-    }
-  });
+void GcsPlacementGroupManager::RetryCreatingPlacementGroup() {
+  execute_after(io_context_, [this] { SchedulePendingPlacementGroups(); },
+                RayConfig::instance().gcs_create_placement_group_retry_interval_ms());
 }
 
 }  // namespace gcs

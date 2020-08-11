@@ -280,14 +280,14 @@ class QMixTorchPolicy(Policy):
             masked_q_values = q_values.clone()
             masked_q_values[avail == 0.0] = -float("inf")
             masked_q_values_folded = torch.reshape(
-                masked_q_values,
-                [-1] + list(masked_q_values.shape)[2:])
+                masked_q_values, [-1] + list(masked_q_values.shape)[2:])
             actions, _ = self.exploration.get_exploration_action(
                 action_distribution=TorchCategorical(masked_q_values_folded),
                 timestep=timestep,
                 explore=explore)
             actions = torch.reshape(
-                actions, list(masked_q_values.shape)[:-1]).cpu().numpy()
+                actions,
+                list(masked_q_values.shape)[:-1]).cpu().numpy()
             hiddens = [s.cpu().numpy() for s in hiddens]
 
         return tuple(actions.transpose([1, 0])), hiddens, {}

@@ -376,26 +376,26 @@ class AsyncSampler(threading.Thread, SamplerInput):
         return extra
 
 
-def _env_runner(worker: "RolloutWorker",
-                base_env: BaseEnv,
-                extra_batch_callback: Callable[[SampleBatchType], None],
-                policies: Dict[PolicyID, Policy],
-                policy_mapping_fn: Callable[[AgentID], PolicyID],
-                rollout_fragment_length: int,
-                horizon: int,
-                preprocessors: Dict[PolicyID, Preprocessor],
-                obs_filters: Dict[PolicyID, Filter],
-                clip_rewards: bool,
-                clip_actions: bool,
-                pack_multiple_episodes_in_batch: bool,
-                callbacks: "DefaultCallbacks",
-                tf_sess: Optional["tf.Session"],
-                perf_stats: _PerfStats,
-                soft_horizon: bool,
-                no_done_at_end: bool,
-                observation_fn: "ObservationFunction",
-                _use_trajectory_view_api: bool = False
-                ) -> Iterable[SampleBatchType]:
+def _env_runner(
+        worker: "RolloutWorker",
+        base_env: BaseEnv,
+        extra_batch_callback: Callable[[SampleBatchType], None],
+        policies: Dict[PolicyID, Policy],
+        policy_mapping_fn: Callable[[AgentID], PolicyID],
+        rollout_fragment_length: int,
+        horizon: int,
+        preprocessors: Dict[PolicyID, Preprocessor],
+        obs_filters: Dict[PolicyID, Filter],
+        clip_rewards: bool,
+        clip_actions: bool,
+        pack_multiple_episodes_in_batch: bool,
+        callbacks: "DefaultCallbacks",
+        tf_sess: Optional["tf.Session"],
+        perf_stats: _PerfStats,
+        soft_horizon: bool,
+        no_done_at_end: bool,
+        observation_fn: "ObservationFunction",
+        _use_trajectory_view_api: bool = False) -> Iterable[SampleBatchType]:
     """This implements the common experience collection logic.
 
     Args:

@@ -258,10 +258,10 @@ class Policy(metaclass=ABCMeta):
             actions: Union[List[TensorType], TensorType],
             obs_batch: Union[List[TensorType], TensorType],
             state_batches: Optional[List[TensorType]] = None,
-            prev_action_batch: Optional[
-                Union[List[TensorType], TensorType]] = None,
-            prev_reward_batch: Optional[
-                Union[List[TensorType], TensorType]] = None) -> TensorType:
+            prev_action_batch: Optional[Union[List[TensorType],
+                                              TensorType]] = None,
+            prev_reward_batch: Optional[Union[List[
+                TensorType], TensorType]] = None) -> TensorType:
         """Computes the log-prob/likelihood for a given action and observation.
 
         Args:
@@ -306,8 +306,8 @@ class Policy(metaclass=ABCMeta):
     def postprocess_trajectory(
             self,
             sample_batch: SampleBatch,
-            other_agent_batches: Optional[
-                Dict[AgentID, Tuple["Policy", SampleBatch]]] = None,
+            other_agent_batches: Optional[Dict[AgentID, Tuple[
+                "Policy", SampleBatch]]] = None,
             episode: Optional["MultiAgentEpisode"] = None) -> SampleBatch:
         """Implements algorithm-specific trajectory postprocessing.
 

@@ -19,62 +19,51 @@ torch, _ = try_import_torch()
 
 
 @DeveloperAPI
-def build_torch_policy(name: str,
-                       *,
-                       loss_fn: Callable[
-                           [Policy, ModelV2, type, SampleBatch], TensorType],
-                       get_default_config: Optional[Callable[
-                           [], TrainerConfigDict]] = None,
-                       stats_fn: Optional[Callable[
-                           [Policy, SampleBatch],
-                           Dict[str, TensorType]]] = None,
-                       postprocess_fn: Optional[Callable[
-                            [Policy, SampleBatch, List[SampleBatch],
-                             "MultiAgentEpisode"], None]] = None,
-                       extra_action_out_fn: Optional[Callable[
-                           [Policy, Dict[str, TensorType], List[TensorType],
-                            ModelV2, TorchDistributionWrapper],
-                           Dict[str, TensorType]]] = None,
-                       extra_grad_process_fn: Optional[Callable[
-                           [Policy, "torch.optim.Optimizer", TensorType],
-                           Dict[str, TensorType]]] = None,
-                       # TODO: (sven) Replace "fetches" with "process".
-                       extra_learn_fetches_fn: Optional[Callable[
-                           [Policy], Dict[str, TensorType]]] = None,
-                       optimizer_fn: Optional[Callable[
-                           [Policy, TrainerConfigDict],
-                           "torch.optim.Optimizer"]] = None,
-                       validate_spaces: Optional[Callable[
-                           [Policy, gym.Space, gym.Space, TrainerConfigDict],
-                           None]] = None,
-                       before_init: Optional[Callable[
-                           [Policy, gym.Space, gym.Space, TrainerConfigDict],
-                           None]] = None,
-                       after_init: Optional[Callable[
-                           [Policy, gym.Space, gym.Space, TrainerConfigDict],
-                           None]] = None,
-                       action_sampler_fn: Optional[Callable[
-                           [TensorType, List[TensorType]], Tuple[
-                               TensorType, TensorType]]] = None,
-                       action_distribution_fn: Optional[Callable[
-                           [Policy, ModelV2, TensorType, TensorType,
-                            TensorType],
-                           Tuple[TensorType, type, List[TensorType]]]] = None,
-                       make_model: Optional[Callable[
-                           [Policy, gym.spaces.Space, gym.spaces.Space,
-                            TrainerConfigDict], ModelV2]] = None,
-                       make_model_and_action_dist: Optional[Callable[
-                           [Policy, gym.spaces.Space, gym.spaces.Space,
-                            TrainerConfigDict],
-                           Tuple[ModelV2, TorchDistributionWrapper]]] = None,
-                       apply_gradients_fn: Optional[Callable[
-                           [Policy, "torch.optim.Optimizer"], None]] = None,
-                       mixins: Optional[List[type]] = None,
-                       training_view_requirements_fn: Optional[Callable[
-                           [], Dict[str, ViewRequirement]]] = None,
-                       get_batch_divisibility_req: Optional[Callable[
-                           [Policy], int]] = None
-                       ):
+def build_torch_policy(
+        name: str,
+        *,
+        loss_fn: Callable[[Policy, ModelV2, type, SampleBatch], TensorType],
+        get_default_config: Optional[Callable[[], TrainerConfigDict]] = None,
+        stats_fn: Optional[Callable[[Policy, SampleBatch], Dict[
+            str, TensorType]]] = None,
+        postprocess_fn: Optional[Callable[[
+            Policy, SampleBatch, List[SampleBatch], "MultiAgentEpisode"
+        ], None]] = None,
+        extra_action_out_fn: Optional[Callable[[
+            Policy, Dict[str, TensorType], List[TensorType], ModelV2,
+            TorchDistributionWrapper
+        ], Dict[str, TensorType]]] = None,
+        extra_grad_process_fn: Optional[Callable[[
+            Policy, "torch.optim.Optimizer", TensorType
+        ], Dict[str, TensorType]]] = None,
+        # TODO: (sven) Replace "fetches" with "process".
+        extra_learn_fetches_fn: Optional[Callable[[Policy], Dict[
+            str, TensorType]]] = None,
+        optimizer_fn: Optional[Callable[[Policy, TrainerConfigDict],
+                                        "torch.optim.Optimizer"]] = None,
+        validate_spaces: Optional[Callable[
+            [Policy, gym.Space, gym.Space, TrainerConfigDict], None]] = None,
+        before_init: Optional[Callable[
+            [Policy, gym.Space, gym.Space, TrainerConfigDict], None]] = None,
+        after_init: Optional[Callable[
+            [Policy, gym.Space, gym.Space, TrainerConfigDict], None]] = None,
+        action_sampler_fn: Optional[Callable[[TensorType, List[
+            TensorType]], Tuple[TensorType, TensorType]]] = None,
+        action_distribution_fn: Optional[Callable[[
+            Policy, ModelV2, TensorType, TensorType, TensorType
+        ], Tuple[TensorType, type, List[TensorType]]]] = None,
+        make_model: Optional[Callable[[
+            Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict
+        ], ModelV2]] = None,
+        make_model_and_action_dist: Optional[Callable[[
+            Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict
+        ], Tuple[ModelV2, TorchDistributionWrapper]]] = None,
+        apply_gradients_fn: Optional[Callable[
+            [Policy, "torch.optim.Optimizer"], None]] = None,
+        mixins: Optional[List[type]] = None,
+        training_view_requirements_fn: Optional[Callable[[], Dict[
+            str, ViewRequirement]]] = None,
+        get_batch_divisibility_req: Optional[Callable[[Policy], int]] = None):
     """Helper function for creating a torch policy class at runtime.
 
     Args:

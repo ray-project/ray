@@ -4,7 +4,6 @@
 #include <sstream>
 
 #include "absl/container/flat_hash_map.h"
-
 #include "ray/common/bundle_spec.h"
 #include "ray/util/logging.h"
 

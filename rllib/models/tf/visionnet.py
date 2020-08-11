@@ -81,9 +81,9 @@ class VisionNetwork(TFModelV2):
                         "Given `conv_filters` ({}) do not result in a [B, 1, "
                         "1, {} (`num_outputs`)] shape (but in {})! Please "
                         "adjust your Conv2D stack such that the dims 1 and 2 "
-                        "are both 1.".format(
-                            self.model_config["conv_filters"],
-                            self.num_outputs, list(conv_out.shape)))
+                        "are both 1.".format(self.model_config["conv_filters"],
+                                             self.num_outputs,
+                                             list(conv_out.shape)))
 
             # num_outputs not known -> Flatten, then set self.num_outputs
             # to the resulting number of nodes.

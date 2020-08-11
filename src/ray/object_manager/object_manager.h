@@ -15,6 +15,9 @@
 #pragma once
 
 #include <algorithm>
+#include <boost/asio.hpp>
+#include <boost/asio/error.hpp>
+#include <boost/bind.hpp>
 #include <cstdint>
 #include <deque>
 #include <map>
@@ -22,10 +25,6 @@
 #include <mutex>
 #include <random>
 #include <thread>
-
-#include <boost/asio.hpp>
-#include <boost/asio/error.hpp>
-#include <boost/bind.hpp>
 
 #include "absl/time/clock.h"
 #include "ray/common/id.h"
