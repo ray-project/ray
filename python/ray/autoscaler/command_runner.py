@@ -78,14 +78,20 @@ class CommandRunnerInterface:
 
     Command runner instances are returned by provider.get_command_runner()."""
 
-    def run(self,
+    def run(
+            self,
             cmd: str = None,
             timeout: int = 120,
             exit_on_fail: bool = False,
             port_forward: List[Tuple[int, int]] = None,
             with_output: bool = False,
-            **kwargs) -> str:
+            run_env: str = "auto",
+            ssh_options_override_ssh_key: str = "",
+    ) -> str:
         """Run the given command on the cluster node and optionally get output.
+
+        WARNING: the cloudgateway needs arguments of "run" function to be json
+            dumpable to send them over HTTP requests.
 
         Args:
             cmd (str): The command to run.
@@ -94,6 +100,10 @@ class CommandRunnerInterface:
             port_forward (list): List of (local, remote) ports to forward, or
                 a single tuple.
             with_output (bool): Whether to return output.
+            run_env (str): Options: docker/host/auto. Used in
+                DockerCommandRunner to determine the run environment.
+            ssh_options_override_ssh_key (str): if provided, overwrites
+                SSHOptions class with SSHOptions(ssh_options_override_ssh_key).
         """
         raise NotImplementedError
 
@@ -130,13 +140,16 @@ class KubernetesCommandRunner(CommandRunnerInterface):
         self.namespace = namespace
         self.kubectl = ["kubectl", "-n", self.namespace]
 
-    def run(self,
+    def run(
+            self,
             cmd=None,
             timeout=120,
             exit_on_fail=False,
             port_forward=None,
             with_output=False,
-            **kwargs):
+            run_env="auto",  # Unused argument.
+            ssh_options_override_ssh_key="",  # Unused argument.
+    ):
         if cmd and port_forward:
             raise Exception(
                 "exec with Kubernetes can't forward ports and execute"
@@ -402,15 +415,21 @@ class SSHCommandRunner(CommandRunnerInterface):
                     "SSH command Failed. See above for the output from the"
                     " failure.") from None
 
-    def run(self,
+    def run(
+            self,
             cmd,
             timeout=120,
             exit_on_fail=False,
             port_forward=None,
             with_output=False,
-            ssh_options_override=None,
-            **kwargs):
-        ssh_options = ssh_options_override or self.ssh_options
+            run_env="auto",  # Unused argument.
+            ssh_options_override_ssh_key="",
+    ):
+
+        if ssh_options_override_ssh_key:
+            ssh_options = SSHOptions(ssh_options_override_ssh_key)
+        else:
+            ssh_options = self.ssh_options
 
         assert isinstance(
             ssh_options, SSHOptions
@@ -506,15 +525,16 @@ class DockerCommandRunner(SSHCommandRunner):
         self._check_docker_installed()
         self.shutdown = False
 
-    def run(self,
+    def run(
+            self,
             cmd,
             timeout=120,
             exit_on_fail=False,
             port_forward=None,
             with_output=False,
-            run_env=True,
-            ssh_options_override=None,
-            **kwargs):
+            run_env="auto",
+            ssh_options_override_ssh_key="",
+    ):
         if run_env == "auto":
             run_env = "host" if cmd.find("docker") == 0 else "docker"
 
@@ -533,14 +553,14 @@ class DockerCommandRunner(SSHCommandRunner):
             exit_on_fail=exit_on_fail,
             port_forward=port_forward,
             with_output=with_output,
-            ssh_options_override=ssh_options_override)
+            ssh_options_override_ssh_key=ssh_options_override_ssh_key)
 
     def run_rsync_up(self, source, target):
         protected_path = target
         if target.find("/root") == 0:
             target = target.replace("/root", "/tmp/root")
         self.ssh_command_runner.run(
-            f"mkdir -p {os.path.dirname(target.rstrip('/'))}", run_env="host")
+            f"mkdir -p {os.path.dirname(target.rstrip('/'))}")
         self.ssh_command_runner.run_rsync_up(source, target)
         if self._check_container_status():
             self.ssh_command_runner.run("docker cp {} {}:{}".format(
@@ -552,7 +572,7 @@ class DockerCommandRunner(SSHCommandRunner):
         if source.find("/root") == 0:
             source = source.replace("/root", "/tmp/root")
         self.ssh_command_runner.run(
-            f"mkdir -p {os.path.dirname(source.rstrip('/'))}", run_env="host")
+            f"mkdir -p {os.path.dirname(source.rstrip('/'))}")
         self.ssh_command_runner.run("docker cp {}:{} {}".format(
             self.docker_name, self._docker_expand_user(protected_path),
             source))

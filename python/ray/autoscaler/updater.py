@@ -10,8 +10,7 @@ from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG, \
     TAG_RAY_FILE_MOUNTS_CONTENTS, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, STATUS_WAITING_FOR_SSH, \
     STATUS_SETTING_UP, STATUS_SYNCING_FILES
-from ray.autoscaler.command_runner import NODE_START_WAIT_S, SSHOptions, \
-    ProcessRunnerError
+from ray.autoscaler.command_runner import NODE_START_WAIT_S, ProcessRunnerError
 from ray.autoscaler.log_timer import LogTimer
 
 import ray.autoscaler.subprocess_output_util as cmd_output_util
@@ -279,11 +278,14 @@ class NodeUpdater:
                                 show_status=True):
                             for cmd in self.initialization_commands:
                                 try:
+                                    # Overriding the existing SSHOptions class
+                                    # with a new SSHOptions class that uses
+                                    # this ssh_private_key as its only __init__
+                                    # argument.
                                     self.cmd_runner.run(
                                         cmd,
-                                        ssh_options_override=SSHOptions(
-                                            self.auth_config.get(
-                                                "ssh_private_key")))
+                                        ssh_options_override_ssh_key=self.
+                                        auth_config.get("ssh_private_key"))
                                 except ProcessRunnerError as e:
                                     if e.msg_type == "ssh_command_failed":
                                         cli_logger.error("Failed.")
