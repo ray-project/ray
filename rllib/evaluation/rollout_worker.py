@@ -137,7 +137,8 @@ class RolloutWorker(ParallelIteratorWorker):
                      gym.Space, gym.Space, PartialTrainerConfigDict]]],
                  policy_mapping_fn: Callable[[AgentID], PolicyID] = None,
                  policies_to_train: Optional[List[PolicyID]] = None,
-                 tf_session_creator: Optional[Callable[[], Any]] = None,
+                 tf_session_creator: Optional[Callable[
+                     [], "tf1.Session"]] = None,
                  rollout_fragment_length: int = 100,
                  batch_mode: str = "truncate_episodes",
                  episode_horizon: int = None,
@@ -188,9 +189,9 @@ class RolloutWorker(ParallelIteratorWorker):
                 bind that agent to a policy for the duration of the episode.
             policies_to_train (Optional[List[PolicyID]]): Optional list of
                 policies to train, or None for all policies.
-            tf_session_creator (Optional[Callable[[], Any]]): A function that
-                returns a TF session. This is optional and only useful with
-                TFPolicy.
+            tf_session_creator (Optional[Callable[[], tf1.Session]]): A
+                function that returns a TF session. This is optional and only
+                useful with TFPolicy.
             rollout_fragment_length (int): The target number of env transitions
                 to include in each sample batch returned from this worker.
             batch_mode (str): One of the following batch modes:

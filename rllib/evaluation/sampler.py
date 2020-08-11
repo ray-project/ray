@@ -62,42 +62,41 @@ class _PerfStats:
         self.postprocess_trajectories_so_far = 0.0
 
     def get(self):
+        # Mean multiplicator (1000 = ms -> sec).
         factor = 1000 / self.iters
         return {
             # Waiting for environment (during poll).
+            "total_env_wait_s": self.env_wait_time,
             "mean_env_wait_ms": self.env_wait_time * factor,
             # Raw observation preprocessing.
-            "mean_pre_processing_ms":
-                self.pre_processing_time * factor,
+            "total_pre_processing_s": self.pre_processing_time,
+            "mean_pre_processing_ms": self.pre_processing_time * factor,
+            # Time spent storing/copying env/model data in the buffer.
+            "total_storing_samples_in_buffer_s":
+                self.storing_samples_in_buffer,
             "mean_storing_samples_in_buffer_ms":
                 self.storing_samples_in_buffer * factor,
-            "mean_get_ma_train_batch_ms":
-                self.get_ma_train_batch * factor,
+            # Time spent during calls to get a ready train_batch.
+            "total_get_ma_train_batch_s": self.get_ma_train_batch,
+            "mean_get_ma_train_batch_ms": self.get_ma_train_batch * factor,
+            # Time spent during calls to "postprocess trajectories so far"
+            # methods.
+            "total_postprocess_trajectories_so_far_s":
+                self.postprocess_trajectories_so_far,
             "mean_postprocess_trajectories_so_far_ms":
                 self.postprocess_trajectories_so_far * factor,
             # Computing actions through policy.
+            "total_inference_ms": self.inference_time,
             "mean_inference_ms": self.inference_time * factor,
             # Processing actions (to be sent to env, e.g. clipping).
-            "mean_action_processing_ms":
-                self.action_processing_time * factor,
-            # Legacy: processing = obs pre-processing + action processing
+            "total_action_processing_s": self.action_processing_time,
+            "mean_action_processing_ms": self.action_processing_time * factor,
+            # Legacy: "processing" = obs pre-processing + action processing.
+            "total_processing_s":
+                (self.action_processing_time + self.pre_processing_time),
             "mean_processing_ms":
                 (self.action_processing_time + self.pre_processing_time) *
                 factor,
-            #TEST
-            "total_env_wait_s": self.env_wait_time,
-            "total_pre_processing_s": self.pre_processing_time,
-            "total_storing_samples_in_buffer_s":
-                self.storing_samples_in_buffer,
-            "total_get_ma_train_batch_s":
-                self.get_ma_train_batch,
-            "total_postprocess_trajectories_so_far_s":
-                self.postprocess_trajectories_so_far,
-            "total_inference_ms": self.inference_time,
-            "total_action_processing_s":
-                self.action_processing_time,
-            "total_processing_s":
-                (self.action_processing_time + self.pre_processing_time),
         }
 
 

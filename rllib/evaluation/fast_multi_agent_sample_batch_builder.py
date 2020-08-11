@@ -4,7 +4,7 @@ from typing import Dict, Optional
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.evaluation.per_policy_sample_collector import \
-    PerPolicySampleCollector
+    _PerPolicySampleCollector
 from ray.rllib.evaluation.sample_collector import _SampleCollector
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import MultiAgentBatch
@@ -81,7 +81,7 @@ class _FastMultiAgentSampleBatchBuilder(_SampleCollector):
             elif num_timesteps is not None:
                 kwargs["num_timesteps"] = num_timesteps
 
-            self.rollout_sample_collectors[pid] = PerPolicySampleCollector(
+            self.rollout_sample_collectors[pid] = _PerPolicySampleCollector(
                 num_agents=self.num_agents,
                 shift_before=-max_shift_before, shift_after=max_shift_after,
                 policy_id=pid,

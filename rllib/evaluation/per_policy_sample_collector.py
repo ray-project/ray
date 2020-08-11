@@ -3,7 +3,6 @@ import numpy as np
 from typing import Dict, Optional
 
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.types import AgentID, EnvID, EpisodeID, TensorType
 
@@ -13,7 +12,7 @@ torch, _ = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-class PerPolicySampleCollector:
+class _PerPolicySampleCollector:
     """
     """
 

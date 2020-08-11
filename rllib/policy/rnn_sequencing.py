@@ -110,17 +110,19 @@ def pad_batch_to_sequences_of_same_size(batch,
 
 @DeveloperAPI
 def add_time_dimension(padded_inputs,
-                       seq_lens,
+                       *,
+                       max_seq_len,
                        framework="tf",
                        time_major=False):
+    #TODO: docstring
     """Adds a time dimension to padded inputs.
 
     Arguments:
         padded_inputs (Tensor): a padded batch of sequences. That is,
             for seq_lens=[1, 2, 2], then inputs=[A, *, B, B, C, C], where
             A, B, C are sequence elements and * denotes padding.
-        seq_lens (Tensor): the sequence lengths within the input batch,
-            suitable for passing to tf.nn.dynamic_rnn().
+        #seq_lens (Tensor): the sequence lengths within the input batch,
+        #    suitable for passing to tf.nn.dynamic_rnn().
 
     Returns:
         Reshaped tensor of shape [NUM_SEQUENCES, MAX_SEQ_LEN, ...].
@@ -132,7 +134,7 @@ def add_time_dimension(padded_inputs,
     if framework == "tf":
         assert time_major is False, "time-major not supported yet for tf!"
         padded_batch_size = tf.shape(padded_inputs)[0]
-        max_seq_len = padded_batch_size // tf.shape(seq_lens)[0]
+        #max_seq_len = padded_batch_size // tf.shape(seq_lens)[0]
 
         # Dynamically reshape the padded batch to introduce a time dimension.
         new_batch_size = padded_batch_size // max_seq_len
@@ -142,7 +144,7 @@ def add_time_dimension(padded_inputs,
     else:
         assert framework == "torch", "`framework` must be either tf or torch!"
         padded_batch_size = padded_inputs.shape[0]
-        max_seq_len = padded_batch_size // seq_lens.shape[0]
+        #max_seq_len = max_seq_len or padded_batch_size // seq_lens.shape[0]
 
         # Dynamically reshape the padded batch to introduce a time dimension.
         new_batch_size = padded_batch_size // max_seq_len

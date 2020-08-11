@@ -64,16 +64,20 @@ class RecurrentNetwork(TorchModelV2):
         """Adds time dimension to batch before sending inputs to forward_rnn().
 
         You should implement forward_rnn() in your subclass."""
+        flat_inputs = input_dict["obs_flat"].float()
         if isinstance(seq_lens, np.ndarray):
             seq_lens = torch.Tensor(seq_lens).int()
+        max_seq_len = flat_inputs.shape[0] // seq_lens.shape[0]
+        time_major = self.model_config.get("_time_major", False)
         inputs = add_time_dimension(
-            input_dict["obs_flat"].float(),
-            seq_lens,
+            flat_inputs,
+            max_seq_len=max_seq_len,
             framework="torch",
-            time_major=self.model_config.get("_time_major", False),
+            time_major=time_major,
         )
         output, new_state = self.forward_rnn(inputs, state, seq_lens)
-        return torch.reshape(output, [-1, self.num_outputs]), new_state
+        output = torch.reshape(output, [-1, self.num_outputs])
+        return output, new_state
 
     def forward_rnn(self, inputs, state, seq_lens):
         """Call the model with the given input tensors and state.
@@ -175,10 +179,24 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
 
     @override(RecurrentNetwork)
     def forward_rnn(self, inputs, state, seq_lens):
+        # Don't show paddings to RNN.
+        # TODO: (sven) For now, only allow, iff time_major=True to not break
+        #  anything retrospectively (time_major not supported previously).
+        max_seq_len = inputs.shape[0]
+        time_major = self.model_config["_time_major"]
+        if time_major and max_seq_len > 1:
+            inputs = torch.nn.utils.rnn.pack_padded_sequence(
+                inputs, seq_lens,
+                batch_first=not time_major, enforce_sorted=False)
         self._features, [h, c] = self.lstm(
             inputs,
             [torch.unsqueeze(state[0], 0),
              torch.unsqueeze(state[1], 0)])
+        # Re-apply paddings.
+        if time_major and max_seq_len > 1:
+            self._features, _ = torch.nn.utils.rnn.pad_packed_sequence(
+                self._features,
+                batch_first=not time_major)
         model_out = self._logits_branch(self._features)
         return model_out, [torch.squeeze(h, 0), torch.squeeze(c, 0)]
 

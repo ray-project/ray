@@ -13,7 +13,8 @@ from ray.rllib.utils.test_utils import framework_iterator
 class TestTrajectoryViewAPI(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        #TODO remove local-mode
+        ray.init(local_mode=True)
 
     @classmethod
     def tearDownClass(cls) -> None:
