@@ -1,13 +1,12 @@
 package io.ray.runtime.exception;
 
 import io.ray.runtime.generated.Common.Language;
-import io.ray.runtime.generated.Common.RayException;
 
-public class CrossLanguageException extends NativeRayException {
+public class CrossLanguageException extends RayException {
 
   private Language language;
 
-  public CrossLanguageException(RayException exception) {
+  public CrossLanguageException(io.ray.runtime.generated.Common.RayException exception) {
     super(exception.getFormattedExceptionString());
     this.language = exception.getLanguage();
   }

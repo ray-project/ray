@@ -5,7 +5,7 @@ import io.ray.api.exception.RayActorException;
 import io.ray.api.exception.RayWorkerException;
 import io.ray.api.exception.UnreconstructableException;
 import io.ray.api.id.ObjectId;
-import io.ray.runtime.exception.NativeRayException;
+import io.ray.runtime.exception.RayTaskException;
 import io.ray.runtime.generated.Common.ErrorType;
 import io.ray.runtime.serializer.Serializer;
 import java.nio.ByteBuffer;
@@ -73,10 +73,10 @@ public class ObjectSerializer {
       } else if (Arrays.equals(meta, TASK_EXECUTION_EXCEPTION_META)) {
         byte[] serialized = Serializer.decode(data, byte[].class);
         try {
-          return NativeRayException.fromBytes(serialized);
+          return RayTaskException.fromBytes(serialized);
         } catch (InvalidProtocolBufferException e) {
           throw new IllegalArgumentException(
-              "Can't deserialize NativeRayException object: " + objectId
+              "Can't deserialize RayTaskException object: " + objectId
                   .toString());
         }
       } else if (Arrays.equals(meta, OBJECT_METADATA_TYPE_PYTHON)) {
@@ -114,8 +114,8 @@ public class ObjectSerializer {
         buffer.get(bytes);
       }
       return new NativeRayObject(bytes, OBJECT_METADATA_TYPE_RAW);
-    } else if (object instanceof NativeRayException) {
-      NativeRayException taskException = (NativeRayException) object;
+    } else if (object instanceof RayTaskException) {
+      RayTaskException taskException = (RayTaskException) object;
       byte[] serializedBytes = Serializer.encode(taskException.toBytes()).getLeft();
       return new NativeRayObject(serializedBytes, TASK_EXECUTION_EXCEPTION_META);
     } else {

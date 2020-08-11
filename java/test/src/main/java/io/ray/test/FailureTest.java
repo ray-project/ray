@@ -4,10 +4,9 @@ import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.exception.RayActorException;
-import io.ray.api.exception.RayException;
-import io.ray.api.exception.RayTaskException;
 import io.ray.api.exception.RayWorkerException;
 import io.ray.api.function.RayFunc0;
+import io.ray.runtime.exception.RayTaskException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
@@ -138,7 +137,7 @@ public class FailureTest extends BaseTest {
       try {
         Ray.get(Arrays.asList(obj1, obj2));
         Assert.fail("Should throw RayException.");
-      } catch (RayException e) {
+      } catch (io.ray.api.exception.RayException e) {
         Instant end = Instant.now();
         long duration = Duration.between(start, end).toMillis();
         Assert.assertTrue(duration < 5000, "Should fail quickly. " +

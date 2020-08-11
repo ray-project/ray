@@ -3,11 +3,10 @@ package io.ray.runtime.object;
 import com.google.common.base.Preconditions;
 import io.ray.api.ObjectRef;
 import io.ray.api.WaitResult;
-import io.ray.api.exception.RayException;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.context.WorkerContext;
-import io.ray.runtime.exception.NativeRayException;
+import io.ray.runtime.exception.RayException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -100,12 +99,12 @@ public abstract class ObjectStore {
         object = ObjectSerializer
             .deserialize(dataAndMeta, ids.get(i), elementType);
       }
-      if (object instanceof RayException) {
+      if (object instanceof io.ray.api.exception.RayException) {
         // If the object is a `RayException`, it means that an error occurred during task
         // execution.
+        throw (io.ray.api.exception.RayException) object;
+      } else if (object instanceof RayException) {
         throw (RayException) object;
-      } else if (object instanceof NativeRayException) {
-        throw (NativeRayException) object;
       }
       results.add((T) object);
     }

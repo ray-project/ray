@@ -13,9 +13,8 @@ import io.ray.api.function.PyFunction;
 import io.ray.runtime.actor.NativeActorHandle;
 import io.ray.runtime.actor.NativePyActorHandle;
 import io.ray.runtime.exception.CrossLanguageException;
-import io.ray.runtime.exception.NativeRayException;
+import io.ray.runtime.exception.RayException;
 import io.ray.runtime.generated.Common.Language;
-import io.ray.runtime.generated.Common.RayException;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -192,12 +191,13 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
   @Test
   public void testExceptionSerialization() {
     try {
-      throw new NativeRayException("Test Exception");
-    } catch (NativeRayException e) {
+      throw new RayException("Test Exception");
+    } catch (RayException e) {
       try {
         String formattedException = org.apache.commons.lang3.exception.ExceptionUtils
             .getStackTrace(e);
-        RayException exception = RayException.parseFrom(e.toBytes());
+        io.ray.runtime.generated.Common.RayException exception = io.ray.runtime.generated.Common.RayException
+            .parseFrom(e.toBytes());
         Assert.assertEquals(exception.getFormattedExceptionString(), formattedException);
       } catch (InvalidProtocolBufferException ex) {
         ex.printStackTrace();
