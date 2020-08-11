@@ -26,7 +26,20 @@ HASH_MAX_LENGTH = 10
 KUBECTL_RSYNC = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "kubernetes/kubectl-rsync.sh")
 
-_config = {"use_login_shells": True}
+_config = {"use_login_shells": True, "silent_rsync": True}
+
+
+def is_rsync_silent():
+    return _config["silent_rsync"]
+
+
+def set_rsync_silent(val):
+    """Choose whether to silence rsync output.
+
+    Most commands will want to list rsync'd files themselves rather than
+    print the default rsync spew.
+    """
+    _config["silent_rsync"] = val
 
 
 def is_using_login_shells():
@@ -460,7 +473,7 @@ class SSHCommandRunner(CommandRunnerInterface):
                                               target)
         ]
         cli_logger.verbose("Running `{}`", cf.bold(" ".join(command)))
-        self._run_helper(command, silent=True)
+        self._run_helper(command, silent=is_rsync_silent())
 
     def run_rsync_down(self, source, target):
         self._set_ssh_ip_if_required()
@@ -473,7 +486,7 @@ class SSHCommandRunner(CommandRunnerInterface):
                                       source), target
         ]
         cli_logger.verbose("Running `{}`", cf.bold(" ".join(command)))
-        self._run_helper(command, silent=True)
+        self._run_helper(command, silent=is_rsync_silent())
 
     def remote_shell_command_str(self):
         if self.ssh_private_key:

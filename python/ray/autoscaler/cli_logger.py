@@ -9,6 +9,9 @@ as well as indentation and other structured output.
 """
 
 import sys
+import logging
+import inspect
+import os
 
 import click
 
@@ -16,6 +19,60 @@ import colorama
 from colorful.core import ColorfulString
 import colorful as cf
 colorama.init()
+
+
+def _patched_makeRecord(self,
+                        name,
+                        level,
+                        fn,
+                        lno,
+                        msg,
+                        args,
+                        exc_info,
+                        func=None,
+                        extra=None,
+                        sinfo=None):
+    """Monkey-patched version of logging.Logger.makeRecord
+    We have to patch default loggers so they use the proper frame for
+    line numbers and function names (otherwise everything shows up as
+    e.g. cli_logger:info() instead of as where it was called from).
+
+    In Python 3.8 we could just use stacklevel=2, but we have to support
+    Python 3.6 and 3.7 as well.
+
+    The solution is this Python magic superhack.
+
+    The default makeRecord will deliberately check that we don't override
+    any existing property on the LogRecord using `extra`,
+    so we remove that check.
+
+    This patched version is otherwise identical to the one in the standard
+    library.
+    """
+    rv = logging.LogRecord(name, level, fn, lno, msg, args, exc_info, func,
+                           sinfo)
+    if extra is not None:
+        rv.__dict__.update(extra)
+    return rv
+
+
+logging.Logger.makeRecord = _patched_makeRecord
+
+
+def _parent_frame_info():
+    """Get the info from the caller frame.
+
+    Used to override the logging function and line number with the correct
+    ones. See the comment on _patched_makeRecord for more info.
+    """
+
+    frame = inspect.currentframe()
+    # we are also in a function, so must go 2 levels up
+    caller = frame.f_back.f_back
+    return {
+        "lineno": caller.f_lineno,
+        "filename": os.path.basename(caller.f_code.co_filename),
+    }
 
 
 def _format_msg(msg,
@@ -93,7 +150,7 @@ def _format_msg(msg,
         if _no_format:
             # todo: throw if given args/kwargs?
             return numbering_str + msg + tags_str
-        return numbering_str + msg.format(*args, **kwargs) + tags_str
+        return numbering_str + cf.format(msg, *args, **kwargs) + tags_str
 
     if kwargs:
         raise ValueError("We do not support printing kwargs yet.")
@@ -180,7 +237,7 @@ class _CliLogger():
     def newline(self):
         """Print a line feed.
         """
-        self._print("")
+        self.print("")
 
     def _print(self, msg, linefeed=True):
         """Proxy for printing messages.
@@ -377,7 +434,8 @@ class _CliLogger():
         For other arguments, see `_format_msg`.
         """
         if self.old_style:
-            logger.debug(_format_msg(msg, *args, **kwargs))
+            logger.debug(
+                _format_msg(msg, *args, **kwargs), extra=_parent_frame_info())
             return
 
     def old_info(self, logger, msg, *args, **kwargs):
@@ -393,7 +451,8 @@ class _CliLogger():
         For other arguments, see `_format_msg`.
         """
         if self.old_style:
-            logger.info(_format_msg(msg, *args, **kwargs))
+            logger.info(
+                _format_msg(msg, *args, **kwargs), extra=_parent_frame_info())
             return
 
     def old_warning(self, logger, msg, *args, **kwargs):
@@ -409,7 +468,8 @@ class _CliLogger():
         For other arguments, see `_format_msg`.
         """
         if self.old_style:
-            logger.warning(_format_msg(msg, *args, **kwargs))
+            logger.warning(
+                _format_msg(msg, *args, **kwargs), extra=_parent_frame_info())
             return
 
     def old_error(self, logger, msg, *args, **kwargs):
@@ -425,7 +485,8 @@ class _CliLogger():
         For other arguments, see `_format_msg`.
         """
         if self.old_style:
-            logger.error(_format_msg(msg, *args, **kwargs))
+            logger.error(
+                _format_msg(msg, *args, **kwargs), extra=_parent_frame_info())
             return
 
     def old_exception(self, logger, msg, *args, **kwargs):
@@ -441,7 +502,8 @@ class _CliLogger():
         For other arguments, see `_format_msg`.
         """
         if self.old_style:
-            logger.exception(_format_msg(msg, *args, **kwargs))
+            logger.exception(
+                _format_msg(msg, *args, **kwargs), extra=_parent_frame_info())
             return
 
     def render_list(self, xs, separator=cf.reset(", ")):
