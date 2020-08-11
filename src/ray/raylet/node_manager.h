@@ -741,6 +741,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// dispatching tasks.
   std::shared_ptr<ClusterResourceScheduler> new_resource_scheduler_;
   std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
+  mutable absl::Mutex new_scheduler_mutex_;
 
   /// Cache of gRPC clients to workers (not necessarily running on this node).
   /// Also includes the number of inflight requests to each worker - when this

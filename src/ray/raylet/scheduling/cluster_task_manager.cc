@@ -40,7 +40,9 @@ bool ClusterTaskManager::SchedulePendingTasks() {
     } else {
       if (node_id_string == self_node_id_.Binary()) {
         did_schedule = did_schedule || WaitForTaskArgsRequests(work);
+        RAY_LOG(INFO) << "Placed on dispatch queue";
       } else {
+        RAY_LOG(INFO) << "Spilling";
         // Should spill over to a different node.
         cluster_resource_scheduler_->AllocateRemoteTaskResources(node_id_string,
                                                                  request_resources);
@@ -149,17 +151,75 @@ void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> ready_ids) {
   }
 }
 
+void ClusterTaskManager::TaskFinished(const TaskID &task_id) {
+  auto iter = running_tasks_.find(task_id);
+  if (iter != running_tasks_.end()) {
+    running_tasks_.erase(iter);
+  } else {
+    // This shouldn't happen (unless the worker resends a ReturnWorker request?).
+    RAY_LOG(DEBUG) << "Received TaskDone for unknown task.";
+  }
+}
+
+bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
+
+  for (auto iter = tasks_to_schedule_.begin(); iter != tasks_to_schedule_.end(); iter++) {
+    if (std::get<0>(*iter).GetTaskSpecification().TaskId() == task_id) {
+      tasks_to_schedule_.erase(iter);
+      return true;
+    }
+  }
+  for (auto iter = tasks_to_dispatch_.begin(); iter != tasks_to_dispatch_.end(); iter++) {
+    if (std::get<0>(*iter).GetTaskSpecification().TaskId() == task_id) {
+      tasks_to_dispatch_.erase(iter);
+      return true;
+    }
+  }
+
+  auto iter = waiting_tasks_.find(task_id);
+  if (iter != waiting_tasks_.end()) {
+    waiting_tasks_.erase(iter);
+    return true;
+  }
+
+  return false;
+}
+
+bool ClusterTaskManager::IsRunning(const TaskID &task_id) const {
+  return running_tasks_.find(task_id) != running_tasks_.end();
+}
+
+
+std::string ClusterTaskManager::DebugString() {
+  std::stringstream buffer;
+  buffer << "========== Node: " << self_node_id_ << " =================\n";
+  buffer << "Schedule queue length: " << tasks_to_schedule_.size() << "\n";
+  buffer << "Dispatch queue length: " << tasks_to_dispatch_.size() << "\n";
+  buffer << "Waiting tasks size: " << waiting_tasks_.size() << "\n";
+  buffer << "cluster_resource_scheduler state: " << cluster_resource_scheduler_->DebugString() << "\n";
+  buffer << "==================================================";
+  return buffer.str();
+}
+
 void ClusterTaskManager::Dispatch(
     std::shared_ptr<WorkerInterface> worker,
-    std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers_,
+    std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
     const TaskSpecification &task_spec, rpc::RequestWorkerLeaseReply *reply,
     std::function<void(void)> send_reply_callback) {
+  RAY_LOG(INFO) << "Dispatch!";
+
+  // Pass the contact info of the worker to use.
   reply->mutable_worker_address()->set_ip_address(worker->IpAddress());
   reply->mutable_worker_address()->set_port(worker->Port());
   reply->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());
   reply->mutable_worker_address()->set_raylet_id(self_node_id_.Binary());
-  RAY_CHECK(leased_workers_.find(worker->WorkerId()) == leased_workers_.end());
-  leased_workers_[worker->WorkerId()] = worker;
+
+  // Do some internal bookkeeping.
+  RAY_CHECK(leased_workers.find(worker->WorkerId()) == leased_workers.end());
+  leased_workers[worker->WorkerId()] = worker;
+  running_tasks_.insert(task_spec.TaskId());
+
+  // Update our internal view of the cluster state.
   std::shared_ptr<TaskResourceInstances> allocated_resources;
   if (task_spec.IsActorCreationTask()) {
     allocated_resources = worker->GetLifetimeAllocatedInstances();
@@ -204,12 +264,15 @@ void ClusterTaskManager::Dispatch(
       }
     }
   }
+
+  // Send the result back.
   send_reply_callback();
 }
 
 void ClusterTaskManager::Spillback(ClientID spillback_to, std::string address, int port,
                                    rpc::RequestWorkerLeaseReply *reply,
                                    std::function<void(void)> send_reply_callback) {
+  RAY_LOG(INFO) << "Spillback!";
   reply->mutable_retry_at_raylet_address()->set_ip_address(address);
   reply->mutable_retry_at_raylet_address()->set_port(port);
   reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());

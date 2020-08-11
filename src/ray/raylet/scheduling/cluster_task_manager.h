@@ -1,5 +1,8 @@
 #pragma once
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
@@ -29,9 +32,10 @@ typedef std::function<boost::optional<rpc::GcsNodeInfo>(const ClientID &node_id)
 /// 3. If a task has unresolved dependencies, set it aside to wait for
 ///    dependencies to be resolved.
 /// 4. When a task is ready to be dispatched, ensure that the local node is
-///    still capable of running the task.
+///    still capable of running the task, then dispatch it.
 ///     * Step 4 should be run any time there is a new task to dispatch *or*
 ///       there is a new worker which can dispatch the tasks.
+/// 5. When a worker finshes executing its task(s) it will be returned.
 class ClusterTaskManager {
  public:
   /// fullfills_dependencies_func Should return if all dependencies are
@@ -79,6 +83,25 @@ class ClusterTaskManager {
   /// \param readyIds: The tasks which are now ready to be dispatched.
   void TasksUnblocked(const std::vector<TaskID> ready_ids);
 
+
+  /// (Step 5) Call once a task finishes.
+  ///
+  /// \param task_id: The id of the task that is finished.
+  void TaskFinished(const TaskID &task_id);
+
+  /// Attempt to cancel an already queued task.
+  /// Note: This function will return false if the task is already running.
+  ///
+  /// \param task_id: The id of the task to remove.
+  ///
+  /// \return True if task was successfully removed.
+  bool CancelTask(const TaskID &task_id);
+
+  /// Check if a task is currently running.
+  bool IsRunning(const TaskID &task_id) const;
+
+  std::string DebugString();
+
  private:
   const ClientID &self_node_id_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
@@ -92,6 +115,9 @@ class ClusterTaskManager {
   std::deque<Work> tasks_to_dispatch_;
   /// Tasks waiting for arguments to be transferred locally.
   absl::flat_hash_map<TaskID, Work> waiting_tasks_;
+  /// Tasks which are currently running.
+  absl::flat_hash_set<TaskID> running_tasks_;
+
 
   /// Determine whether a task should be immediately dispatched,
   /// or placed on a wait queue.
