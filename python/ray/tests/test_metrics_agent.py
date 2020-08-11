@@ -221,8 +221,10 @@ def test_metrics_export_end_to_end(ray_start_cluster):
     NUM_NODES = 5
     cluster = ray_start_cluster
     # Add a head node.
-    cluster.add_node(_internal_config=json.dumps({
-        "metrics_report_interval_seconds": 1}))
+    cluster.add_node(
+        _internal_config=json.dumps({
+            "metrics_report_interval_seconds": 1
+        }))
     # Add worker nodes.
     [cluster.add_node() for _ in range(NUM_NODES - 1)]
     cluster.wait_for_nodes()
@@ -270,11 +272,14 @@ def test_metrics_export_end_to_end(ray_start_cluster):
                             components_dict[address].add(
                                 sample.labels["Component"])
 
-        return all([components == COMPONENTS_CANDIDATES
-                for components in components_dict.values()])
+        return all([
+            components == COMPONENTS_CANDIDATES
+            for components in components_dict.values()
+        ])
 
     wait_for_condition(test_prometheus_endpoint, timeout=5)
     ray.shutdown()
+
 
 if __name__ == "__main__":
     import sys
