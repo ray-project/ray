@@ -119,7 +119,10 @@ class NodeUpdater:
 
         self.exitcode = 0
 
-    def sync_file_mounts(self, sync_cmd):
+    def sync_file_mounts(self, sync_cmd, step_numbers=(0, 2)):
+        # step_numbers is (# of previous steps, total steps)
+        previous_steps, total_steps = step_numbers
+
         nolog_paths = []
         if cli_logger.verbosity == 0:
             nolog_paths = [
@@ -154,18 +157,21 @@ class NodeUpdater:
 
         # Rsync file mounts
         with cli_logger.group(
-                "Processing file mounts", _numbered=("[]", 2, 6)):
+                "Processing file mounts",
+                _numbered=("[]", previous_steps + 1, total_steps)):
             for remote_path, local_path in self.file_mounts.items():
                 do_sync(remote_path, local_path)
 
         if self.cluster_synced_files:
             with cli_logger.group(
-                    "Processing worker file mounts", _numbered=("[]", 3, 6)):
+                    "Processing worker file mounts",
+                    _numbered=("[]", previous_steps + 2, total_steps)):
                 for path in self.cluster_synced_files:
                     do_sync(path, path, allow_non_existing_paths=True)
         else:
             cli_logger.print(
-                "No worker file mounts to sync", _numbered=("[]", 3, 6))
+                "No worker file mounts to sync",
+                _numbered=("[]", previous_steps + 2, total_steps))
 
     def wait_ready(self, deadline):
         with cli_logger.group(
@@ -239,7 +245,8 @@ class NodeUpdater:
             # full setup might be cancelled here
             cli_logger.print(
                 "Configuration already up to date, "
-                "skipping file mounts, initalization and setup commands.")
+                "skipping file mounts, initalization and setup commands.",
+                _numbered=("[]", "2-5", 6))
             cli_logger.old_info(logger,
                                 "{}{} already up-to-date, skip to ray start",
                                 self.log_prefix, self.node_id)
@@ -252,7 +259,7 @@ class NodeUpdater:
             self.provider.set_node_tags(
                 self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SYNCING_FILES})
             cli_logger.labeled_value("New status", STATUS_SYNCING_FILES)
-            self.sync_file_mounts(self.rsync_up)
+            self.sync_file_mounts(self.rsync_up, step_numbers=(2, 6))
 
             # Only run setup commands if runtime_hash has changed because
             # we don't want to run setup_commands every time the head node
@@ -331,7 +338,9 @@ class NodeUpdater:
                     self.log_prefix + "Ray start commands", show_status=True):
                 for cmd in self.ray_start_commands:
                     try:
+                        cmd_output_util.set_output_redirected(False)
                         self.cmd_runner.run(cmd)
+                        cmd_output_util.set_output_redirected(True)
                     except ProcessRunnerError as e:
                         if e.msg_type == "ssh_command_failed":
                             cli_logger.error("Failed.")
