@@ -106,18 +106,32 @@ StreamingStatus DataReader::InitChannelMerger(uint32_t timeout_ms) {
   // pushed.
   if (!unready_queue_ids_.empty() && last_fetched_queue_item_) {
     STREAMING_LOG(INFO) << "pop old item from=" << last_fetched_queue_item_->from;
-    RETURN_IF_NOT_OK(StashNextMessage(last_fetched_queue_item_, timeout_ms))
+    RETURN_IF_NOT_OK(StashNextMessageAndPop(last_fetched_queue_item_, timeout_ms))
     last_fetched_queue_item_.reset();
   }
   // Create initial heap for priority queue.
+  std::vector<ObjectID> unready_queue_ids_stashed;
   for (auto &input_queue : unready_queue_ids_) {
     std::shared_ptr<DataBundle> msg = std::make_shared<DataBundle>();
-    RETURN_IF_NOT_OK(GetMessageFromChannel(channel_info_map_[input_queue], msg, timeout_ms, timeout_ms))
+    auto status = GetMessageFromChannel(channel_info_map_[input_queue], msg, timeout_ms, timeout_ms);
+    if (StreamingStatus::OK != status) {
+      STREAMING_LOG(INFO)
+          << "[Reader] initializing merge, get message from channel timeout, "
+          << input_queue << ", status => " << static_cast<uint32_t>(status);
+      unready_queue_ids_stashed.push_back(input_queue);
+      continue;
+    }
     channel_info_map_[msg->from].current_message_id = msg->meta->GetLastMessageId();
     reader_merger_->push(msg);
   }
-  STREAMING_LOG(INFO) << "[Reader] Initializing merger done.";
-  return StreamingStatus::OK;
+  if (unready_queue_ids_stashed.empty()) {
+    STREAMING_LOG(INFO) << "[Reader] Initializing merger done.";
+    return StreamingStatus::OK;
+  } else {
+    STREAMING_LOG(INFO) << "[Reader] Initializing merger unfinished.";
+    unready_queue_ids_ = unready_queue_ids_stashed;
+    return StreamingStatus::GetBundleTimeOut;
+  }
 }
 
 StreamingStatus DataReader::GetMessageFromChannel(
@@ -218,7 +232,7 @@ void DataReader::SplitBundle(std::shared_ptr<DataBundle> &message,
                              uint64_t last_msg_id) {
   std::list<StreamingMessagePtr> msg_list;
   StreamingMessageBundle::GetMessageListFromRawData(
-      message->data, message->data_size,
+      message->data + kMessageBundleHeaderSize, message->data_size - kMessageBundleHeaderSize,
       message->meta->GetMessageListSize(), msg_list);
   uint64_t bundle_size = 0;
   for (auto it = msg_list.begin(); it != msg_list.end();) {
@@ -241,35 +255,40 @@ void DataReader::SplitBundle(std::shared_ptr<DataBundle> &message,
   message->meta = StreamingMessageBundleMeta::FromBytes(message->data);
 }
 
-StreamingStatus DataReader::StashNextMessage(std::shared_ptr<DataBundle> &message, uint32_t timeout_ms) {
-  // Push new message into priority queue and record the channel metrics in
-  // channel info.
+StreamingStatus DataReader::StashNextMessageAndPop(std::shared_ptr<DataBundle> &message, uint32_t timeout_ms) {
+  STREAMING_LOG(DEBUG) << "StashNextMessageAndPop, timeout_ms=" << timeout_ms;
+
+  // get the first message
+  message = reader_merger_->top();
+  STREAMING_LOG(DEBUG) << "Messages to be poped=" << *message << ", merger size=" << reader_merger_->size();
+
+  // then stash next message from its from queue.
   std::shared_ptr<DataBundle> new_msg = std::make_shared<DataBundle>();
   auto &channel_info = channel_info_map_[message->from];
-  reader_merger_->pop();
-  new_msg->last_barrier_id = channel_info.barrier_id;
-  int64_t cur_time = current_time_ms();
   RETURN_IF_NOT_OK(GetMessageFromChannel(channel_info, new_msg, timeout_ms, timeout_ms))
+  new_msg->last_barrier_id = channel_info.barrier_id;
   reader_merger_->push(new_msg);
+  STREAMING_LOG(DEBUG) << "New message pushed=" << *new_msg << ", merger size=" << reader_merger_->size();
+
+  // pop message
+  reader_merger_->pop();
+  STREAMING_LOG(DEBUG) << "Message poped, msg=" << *message;
+
+  // record some metrics
   channel_info.last_queue_item_delay =
       new_msg->meta->GetMessageBundleTs() - message->meta->GetMessageBundleTs();
-  channel_info.last_queue_item_latency = current_time_ms() - cur_time;
+  channel_info.last_queue_item_latency = current_time_ms() - current_time_ms();
   return StreamingStatus::OK;
 }
 
 StreamingStatus DataReader::GetMergedMessageBundle(std::shared_ptr<DataBundle> &message,
                                                    bool &is_valid_break, uint32_t timeout_ms) {
-  int64_t cur_time = current_time_ms();
-  if (last_fetched_queue_item_) {
-    RETURN_IF_NOT_OK(StashNextMessage(last_fetched_queue_item_, timeout_ms))
-  }
-  message = reader_merger_->top();
-  last_fetched_queue_item_ = message;
-  auto &offset_info = channel_info_map_[message->from];
+  RETURN_IF_NOT_OK(StashNextMessageAndPop(message, timeout_ms))
 
+  auto &offset_info = channel_info_map_[message->from];
   uint64_t cur_queue_previous_msg_id = offset_info.current_message_id;
   STREAMING_LOG(DEBUG) << "[Reader] [Bundle]" << *message << ", cur_queue_previous_msg_id=" << cur_queue_previous_msg_id;
-
+  int64_t cur_time = current_time_ms();
   if (message->meta->IsBundle()) {
     last_message_ts_ = cur_time;
     is_valid_break = true;
@@ -288,6 +307,7 @@ StreamingStatus DataReader::GetMergedMessageBundle(std::shared_ptr<DataBundle> &
 
   STREAMING_LOG(DEBUG) << "[Reader] [Bundle] Get merged message bundle="
    << *message << ", is_valid_break=" << is_valid_break;
+  last_fetched_queue_item_ = message;
   return StreamingStatus::OK;
 }
 
@@ -328,6 +348,7 @@ bool DataReader::BarrierAlign(std::shared_ptr<DataBundle> &message) {
 
 StreamingStatus DataReader::GetBundle(const uint32_t timeout_ms,
                                       std::shared_ptr<DataBundle> &message) {
+  STREAMING_LOG(DEBUG) << "GetBundle, timeout_ms=" << timeout_ms;
   // Notify upstream that last fetched item has been consumed.
   if (last_fetched_queue_item_) {
     NotifyConsumed(last_fetched_queue_item_);

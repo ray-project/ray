@@ -135,7 +135,7 @@ class DataReader {
   /// in merged queue.
   StreamingStatus InitChannelMerger(uint32_t timeout_ms);
 
-  StreamingStatus StashNextMessage(std::shared_ptr<DataBundle> &message, uint32_t timeout_ms);
+  StreamingStatus StashNextMessageAndPop(std::shared_ptr<DataBundle> &message, uint32_t timeout_ms);
 
   StreamingStatus GetMessageFromChannel(ConsumerChannelInfo &channel_info,
                                         std::shared_ptr<DataBundle> &message,

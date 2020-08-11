@@ -10,30 +10,30 @@
 namespace ray {
 namespace streaming {
 
-StreamingMessage::StreamingMessage(std::shared_ptr<uint8_t> &data, uint32_t data_size,
+StreamingMessage::StreamingMessage(std::shared_ptr<uint8_t> &payload_data, uint32_t payload_data_size,
                                    uint64_t msg_id, StreamingMessageType message_type)
-    : message_data_(data),
-      data_size_(data_size),
+    : payload_data_(payload_data),
+      payload_data_size_(payload_data_size),
       message_type_(message_type),
       message_id_(msg_id) {}
 
-StreamingMessage::StreamingMessage(std::shared_ptr<uint8_t> &&data, uint32_t data_size,
+StreamingMessage::StreamingMessage(std::shared_ptr<uint8_t> &&payload_data, uint32_t payload_data_size,
                                    uint64_t msg_id, StreamingMessageType message_type)
-    : message_data_(data),
-      data_size_(data_size),
+    : payload_data_(payload_data),
+      payload_data_size_(payload_data_size),
       message_type_(message_type),
       message_id_(msg_id) {}
 
-StreamingMessage::StreamingMessage(const uint8_t *data, uint32_t data_size,
+StreamingMessage::StreamingMessage(const uint8_t *payload_data, uint32_t payload_data_size,
                                    uint64_t msg_id, StreamingMessageType message_type)
-    : data_size_(data_size), message_type_(message_type), message_id_(msg_id) {
-  message_data_.reset(new uint8_t[data_size], std::default_delete<uint8_t[]>());
-  std::memcpy(message_data_.get(), data, data_size_);
+    : payload_data_size_(payload_data_size), message_type_(message_type), message_id_(msg_id) {
+  payload_data_.reset(new uint8_t[payload_data_size], std::default_delete<uint8_t[]>());
+  std::memcpy(payload_data_.get(), payload_data, payload_data_size);
 }
 
 StreamingMessage::StreamingMessage(const StreamingMessage &msg) {
-  data_size_ = msg.data_size_;
-  message_data_ = msg.message_data_;
+  payload_data_size_ = msg.payload_data_size_;
+  payload_data_ = msg.payload_data_;
   message_id_ = msg.message_id_;
   message_type_ = msg.message_type_;
 }
@@ -59,9 +59,9 @@ StreamingMessagePtr StreamingMessage::FromBytes(const uint8_t *bytes,
 
 void StreamingMessage::ToBytes(uint8_t *serlizable_data) {
   uint32_t byte_offset = 0;
-  std::memcpy(serlizable_data + byte_offset, reinterpret_cast<char *>(&data_size_),
-              sizeof(data_size_));
-  byte_offset += sizeof(data_size_);
+  std::memcpy(serlizable_data + byte_offset, reinterpret_cast<char *>(&payload_data_size_),
+              sizeof(payload_data_size_));
+  byte_offset += sizeof(payload_data_size_);
 
   std::memcpy(serlizable_data + byte_offset, reinterpret_cast<char *>(&message_id_),
               sizeof(message_id_));
@@ -72,26 +72,26 @@ void StreamingMessage::ToBytes(uint8_t *serlizable_data) {
   byte_offset += sizeof(message_type_);
 
   std::memcpy(serlizable_data + byte_offset,
-              reinterpret_cast<char *>(message_data_.get()), data_size_);
+              reinterpret_cast<char *>(payload_data_.get()), payload_data_size_);
 
-  byte_offset += data_size_;
+  byte_offset += payload_data_size_;
 
   STREAMING_CHECK(byte_offset == this->ClassBytesSize());
 }
 
 bool StreamingMessage::operator==(const StreamingMessage &message) const {
-  return GetDataSize() == message.GetDataSize() &&
+  return PayloadSize() == message.PayloadSize() &&
          GetMessageId() == message.GetMessageId() &&
          GetMessageType() == message.GetMessageType() &&
-         !std::memcmp(RawData(), message.RawData(), data_size_);
+         !std::memcmp(Payload(), message.Payload(), PayloadSize());
 }
 
 std::ostream &operator<<(std::ostream &os, const StreamingMessage &message) {
   os << "{"
      << " message_type_: " << static_cast<int>(message.GetMessageType())
      << " message_id_: " << message.GetMessageId()
-     << " data_size_: " << message.data_size_
-     << " message_data_: " << (void*) message.message_data_.get()
+     << " payload_data_size_: " << message.payload_data_size_
+     << " payload_data_: " << (void*) message.payload_data_.get()
      << "}";
   return os;
 }

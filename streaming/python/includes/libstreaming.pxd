@@ -190,6 +190,7 @@ cdef extern from "data_writer.h" namespace "ray::streaming" nogil:
                 const CObjectID &q_id, uint8_t *data, uint32_t data_size)
         void BroadcastBarrier(uint64_t checkpoint_id, const uint8_t *data, uint32_t data_size)
         void GetChannelOffset(c_vector[uint64_t] &result)
+        void ClearCheckpoint(uint64_t checkpoint_id)
         void Run()
         void Stop()
 

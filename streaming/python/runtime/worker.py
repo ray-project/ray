@@ -52,6 +52,8 @@ class JobWorker(object):
         self.__is_recreate: bool = False
         self.__state = WorkerState()
         self.__need_rollback = True
+        self.reader_client = None
+        self.writer_client = None
         try:
             # load checkpoint
             was_reconstructed = ray.get_runtime_context().was_current_actor_reconstructed

@@ -15,7 +15,7 @@ from ray._raylet import PythonFunctionDescriptor
 from ray._raylet import Language
 
 CHANNEL_ID_LEN = 20
-
+logger = logging.getLogger(__name__)
 
 class ChannelID:
     """
@@ -287,9 +287,6 @@ class ChannelCreationParametersBuilder:
             _python_reader_sync_function_descriptor = sync_function
 
 
-logger = logging.getLogger(__name__)
-
-
 class DataWriter:
     """Data Writer is a wrapper of streaming c++ DataWriter, which sends data
      to downstream workers
@@ -347,6 +344,12 @@ class DataWriter:
             a list contains current msg_id of each downstream channel
         """
         return self.writer.get_output_checkpoints()
+
+    def clear_checkpoint(self, checkpoint_id):
+        logger.info("producer start to clear checkpoint, checkpoint_id={}"
+                    .format(checkpoint_id))
+        self.writer.clear_checkpoint(checkpoint_id)
+
 
     def stop(self):
         logger.info("stopping channel writer.")

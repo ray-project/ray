@@ -220,6 +220,12 @@ cdef class DataWriter:
         self.writer.GetChannelOffset(results)
         return results
 
+    def clear_checkpoint(self, checkpoint_id):
+        cdef:
+            uint64_t c_checkpoint_id = checkpoint_id
+        with nogil:
+            self.writer.ClearCheckpoint(c_checkpoint_id)
+
     def stop(self):
         self.writer.Stop()
         channel_logger.info("stopped DataWriter")
@@ -325,7 +331,7 @@ cdef class DataReader:
                 msg_list)
             timestamp = bundle.get().meta.get().GetMessageBundleTs()
             for msg in msg_list:
-                msg_bytes = msg.get().RawData()[:msg.get().GetDataSize()]
+                msg_bytes = msg.get().Payload()[:msg.get().PayloadSize()]
                 qid_bytes = queue_id.Binary()
                 msg_id = msg.get().GetMessageId()
                 msgs.append(

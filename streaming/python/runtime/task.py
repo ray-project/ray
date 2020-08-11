@@ -88,9 +88,7 @@ class StreamTask(ABC):
         self.worker.state_backend.remove(cp_key)
 
     def clear_expired_queue_msg(self, checkpoint_id):
-        # get operator checkpoint
-        if self.reader is not None:
-            self.reader.clear_checkpoint(checkpoint_id)
+        # clear operator checkpoint
         if self.writer is not None:
             self.writer.clear_checkpoint(checkpoint_id)
 
