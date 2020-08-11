@@ -17,6 +17,7 @@ from ray.tune.trial import ExportFormat
 
 # __tutorial_imports_end__
 
+
 # __train_begin__
 def train_convnet(config, checkpoint_dir=None):
     step = 0
@@ -48,8 +49,9 @@ def train_convnet(config, checkpoint_dir=None):
                 }, path)
         step += 1
         tune.report(mean_accuracy=acc)
-# __train_end__
 
+
+# __train_end__
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
