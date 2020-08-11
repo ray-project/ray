@@ -20,6 +20,8 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         ray.shutdown()
 
     def test_plain(self):
+        """Tests, whether Model and Policy return the correct ViewRequirements.
+        """
         config = ppo.DEFAULT_CONFIG.copy()
         for _ in framework_iterator(config, frameworks="torch"):
             trainer = ppo.PPOTrainer(config, env="CartPole-v0")
@@ -44,6 +46,8 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             trainer.stop()
 
     def test_lstm_prev_actions_and_rewards(self):
+        """Tests, whether Policy/Model return correct LSTM ViewRequirements.
+        """
         config = ppo.DEFAULT_CONFIG.copy()
         config["model"] = config["model"].copy()
         # Activate LSTM + prev-action + rewards.
@@ -81,7 +85,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                     assert view_req_policy[key].shift == 1
             trainer.stop()
 
-    def test_trajectory_view_api_performance(self):
+    def test_lstm_performance(self):
         """Test whether PPOTrainer runs faster w/ `_use_trajectory_view_api`.
         """
         config = copy.deepcopy(ppo.DEFAULT_CONFIG)
