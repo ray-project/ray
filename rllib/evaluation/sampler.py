@@ -54,14 +54,50 @@ class _PerfStats:
     def __init__(self):
         self.iters = 0
         self.env_wait_time = 0.0
-        self.processing_time = 0.0
+        self.pre_processing_time = 0.0
+        self.storing_samples_in_buffer = 0.0
         self.inference_time = 0.0
+        self.action_processing_time = 0.0
+        self.get_ma_train_batch = 0.0
+        self.postprocess_trajectories_so_far = 0.0
 
     def get(self):
+        factor = 1000 / self.iters
         return {
-            "mean_env_wait_ms": self.env_wait_time * 1000 / self.iters,
-            "mean_processing_ms": self.processing_time * 1000 / self.iters,
-            "mean_inference_ms": self.inference_time * 1000 / self.iters
+            # Waiting for environment (during poll).
+            "mean_env_wait_ms": self.env_wait_time * factor,
+            # Raw observation preprocessing.
+            "mean_pre_processing_ms":
+                self.pre_processing_time * factor,
+            "mean_storing_samples_in_buffer_ms":
+                self.storing_samples_in_buffer * factor,
+            "mean_get_ma_train_batch_ms":
+                self.get_ma_train_batch * factor,
+            "mean_postprocess_trajectories_so_far_ms":
+                self.postprocess_trajectories_so_far * factor,
+            # Computing actions through policy.
+            "mean_inference_ms": self.inference_time * factor,
+            # Processing actions (to be sent to env, e.g. clipping).
+            "mean_action_processing_ms":
+                self.action_processing_time * factor,
+            # Legacy: processing = obs pre-processing + action processing
+            "mean_processing_ms":
+                (self.action_processing_time + self.pre_processing_time) *
+                factor,
+            #TEST
+            "total_env_wait_s": self.env_wait_time,
+            "total_pre_processing_s": self.pre_processing_time,
+            "total_storing_samples_in_buffer_s":
+                self.storing_samples_in_buffer,
+            "total_get_ma_train_batch_s":
+                self.get_ma_train_batch,
+            "total_postprocess_trajectories_so_far_s":
+                self.postprocess_trajectories_so_far,
+            "total_inference_ms": self.inference_time,
+            "total_action_processing_s":
+                self.action_processing_time,
+            "total_processing_s":
+                (self.action_processing_time + self.pre_processing_time),
         }
 
 
@@ -509,12 +545,12 @@ def _env_runner(
 
     while True:
         perf_stats.iters += 1
-        t0 = time.time()
+        t = time.time()
         # Get observations from all ready agents.
         # type: MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, ...
         unfiltered_obs, rewards, dones, infos, off_policy_actions = \
             base_env.poll()
-        perf_stats.env_wait_time += time.time() - t0
+        perf_stats.env_wait_time += time.time() - t
 
         if log_once("env_returns"):
             logger.info("Raw obs from env: {}".format(
@@ -522,7 +558,7 @@ def _env_runner(
             logger.info("Info return from env: {}".format(summarize(infos)))
 
         # Process observations and prepare for policy evaluation.
-        t1 = time.time()
+        t = time.time()
         # type: Set[EnvID], Dict[PolicyID, List[PolicyEvalData]],
         #       List[Union[RolloutMetrics, SampleBatchType]]
         active_envs, to_eval, outputs = _process_observations(
@@ -546,8 +582,10 @@ def _env_runner(
             soft_horizon=soft_horizon,
             no_done_at_end=no_done_at_end,
             observation_fn=observation_fn,
-            _use_trajectory_view_api=_use_trajectory_view_api)
-        perf_stats.processing_time += time.time() - t1
+            _use_trajectory_view_api=_use_trajectory_view_api,
+            perf_stats=perf_stats
+        )
+        perf_stats.pre_processing_time += time.time() - t
         for o in outputs:
             yield o
 
@@ -565,7 +603,7 @@ def _env_runner(
         perf_stats.inference_time += time.time() - t2
 
         # Process results and update episode state.
-        t3 = time.time()
+        t = time.time()
         actions_to_send: Dict[EnvID, Dict[AgentID, EnvActionType]] = \
             _process_policy_eval_results(
                 to_eval=to_eval,
@@ -578,13 +616,13 @@ def _env_runner(
                 _use_trajectory_view_api=_use_trajectory_view_api,
                 _sample_collector=_fast_sample_batch_builder,
             )
-        perf_stats.processing_time += time.time() - t3
+        perf_stats.action_processing_time += time.time() - t
 
         # Return computed actions to ready envs. We also send to envs that have
         # taken off-policy actions; those envs are free to ignore the action.
-        t4 = time.time()
+        t = time.time()
         base_env.send_actions(actions_to_send)
-        perf_stats.env_wait_time += time.time() - t4
+        perf_stats.env_wait_time += time.time() - t
 
 
 def _process_observations(
@@ -610,7 +648,8 @@ def _process_observations(
         soft_horizon: bool,
         no_done_at_end: bool,
         observation_fn: "ObservationFunction",
-        _use_trajectory_view_api: bool = False
+        _use_trajectory_view_api: bool = False,
+        perf_stats: _PerfStats,
 ) -> Tuple[Set[EnvID], Dict[PolicyID, List[PolicyEvalData]], List[Union[
         RolloutMetrics, SampleBatchType]]]:
     """Record new data from the environment and prepare for policy evaluation.
@@ -755,6 +794,7 @@ def _process_observations(
             agent_done = bool(all_agents_done or dones[env_id].get(agent_id))
             if not agent_done:
                 if not _use_trajectory_view_api:
+
                     item = PolicyEvalData(env_id, agent_id, filtered_obs,
                                           infos[env_id].get(agent_id, {}),
                                           episode.rnn_state_for(agent_id),
@@ -772,6 +812,7 @@ def _process_observations(
             if (not _use_trajectory_view_api and last_observation is not None
                     and infos[env_id].get(agent_id, {}).get(
                         "training_enabled", True)):
+                t = time.time()
                 batch_builder.add_values(
                     agent_id,
                     policy_id,
@@ -789,7 +830,9 @@ def _process_observations(
                     infos=infos[env_id].get(agent_id, {}),
                     new_obs=filtered_obs,
                     **episode.last_pi_info_for(agent_id))
+                perf_stats.storing_samples_in_buffer += time.time() - t
             elif _use_trajectory_view_api:
+                t = time.time()
                 if last_observation is None:
                     batch_builder.add_init_obs(
                         episode.episode_id, agent_id, env_id,
@@ -821,13 +864,10 @@ def _process_observations(
                     batch_builder.add_action_reward_next_obs(
                         episode.episode_id, agent_id, env_id, policy_id,
                         agent_done, values_dict)
+                perf_stats.storing_samples_in_buffer += time.time() - t
+
                 if not agent_done:
-                    #batch_builder.rollout_sample_collectors[
-                    #    policy_id].add_to_forward_pass(
-                    #        agent_id, episode.episode_id, env_id)
                     to_eval.add(policy_id)
-                        #policy_id] = batch_builder.rollout_sample_collectors[
-                        #    policy_id]
 
         # Invoke the step callback after the step is logged to the episode
         callbacks.on_episode_step(
@@ -857,11 +897,15 @@ def _process_observations(
                 #  SampleBatchBuilder
                 #  to be able to still reference into it
                 #  should a model require this.
+                t = time.time()
                 outputs.append(
                     batch_builder.get_multi_agent_batch_and_reset())
+                perf_stats.get_ma_train_batch += time.time() - t
             # Make sure postprocessor stays within one episode.
             elif all_agents_done:
+                t = time.time()
                 batch_builder.postprocess_trajectories_so_far(episode)
+                perf_stats.postprocess_trajectories_so_far += time.time() - t
 
         else:
             if batch_builder.has_pending_agent_data():
@@ -875,10 +919,14 @@ def _process_observations(
             # and add it to "outputs".
             if (all_agents_done and not pack_multiple_episodes_in_batch) or \
                     batch_builder.count >= rollout_fragment_length:
+                t = time.time()
                 outputs.append(batch_builder.build_and_reset(episode))
+                perf_stats.get_ma_train_batch += time.time() - t
             # Make sure postprocessor stays within one episode.
             elif all_agents_done:
+                t = time.time()
                 batch_builder.postprocess_batch_so_far(episode)
+                perf_stats.postprocess_trajectories_so_far += time.time() - t
 
         # Episode is done.
         if all_agents_done:
@@ -1197,20 +1245,21 @@ def _to_column_format(rnn_state_rows: List[List[Any]]) -> StateBatch:
     return [[row[i] for row in rnn_state_rows] for i in range(num_cols)]
 
 
-def _get_or_raise(mapping: Dict[PolicyID, Policy],
-                  policy_id: PolicyID) -> Policy:
-    """Returns a Policy object under key `policy_id` in `mapping`.
+def _get_or_raise(mapping: Dict[PolicyID, Union[Policy, Preprocessor, Filter]],
+                  policy_id: PolicyID) -> Union[Policy, Preprocessor, Filter]:
+    """Returns an object under key `policy_id` in `mapping`.
 
     Args:
-        mapping (dict): The mapping dict from policy id (str) to
-            actual Policy object.
+        mapping (Dict[PolicyID, Union[Policy, Preprocessor, Filter]]): The
+            mapping dict from policy id (str) to actual object (Policy,
+            Preprocessor, etc.).
         policy_id (str): The policy ID to lookup.
 
     Returns:
-        Policy: The found Policy object.
+        Union[Policy, Preprocessor, Filter]: The found object.
 
     Throws:
-        ValueError: If `policy_id` cannot be found.
+        ValueError: If `policy_id` cannot be found in `mapping`.
     """
     if policy_id not in mapping:
         raise ValueError(

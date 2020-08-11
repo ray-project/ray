@@ -5,6 +5,7 @@ import unittest
 
 import ray
 import ray.rllib.agents.ppo as ppo
+from ray.rllib.examples.env.multi_agent import MultiAgentStatelessCartPole
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import framework_iterator
 
@@ -80,7 +81,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                     assert view_req_policy[key].shift == 1
             trainer.stop()
 
-    def test_ppo_trajectory_view_api_performance(self):
+    def test_trajectory_view_api_performance(self):
         """Test whether PPOTrainer runs faster w/ `_use_trajectory_view_api`.
         """
         config = copy.deepcopy(ppo.DEFAULT_CONFIG)
@@ -92,14 +93,14 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         from ray.tune import register_env
         register_env("ma_env", lambda c: RandomMultiAgentEnv({
             "num_agents": 2,
-            "p_done": 0.02,
+            "p_done": 0.01,
             "action_space": action_space,
             "observation_space": obs_space
         }))
 
-        config["num_workers"] = 0
-        config["num_envs_per_worker"] = 2
-        config["num_sgd_iter"] = 4
+        config["num_workers"] = 2
+        config["num_envs_per_worker"] = 4
+        config["num_sgd_iter"] = 8
         config["model"]["use_lstm"] = True
         config["model"]["lstm_use_prev_action_reward"] = True
         config["model"]["max_seq_len"] = 100
@@ -115,41 +116,45 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             "policies": policies,
             "policy_mapping_fn": policy_fn,
         }
-        num_iterations = 5
+        num_iterations = 4
         # Only works in torch so far.
         for _ in framework_iterator(config, frameworks="torch"):
             config["_use_trajectory_view_api"] = True
             config["model"]["_time_major"] = True
             trainer = ppo.PPOTrainer(config=config, env="ma_env")
             learn_time_w = 0.0
+            env_time_w = 0.0
             start = time.time()
             for i in range(num_iterations):
                 results = trainer.train()
+                env_time_w += results["sampler_perf"]["total_env_wait_s"]
                 learn_time_w += results["timers"]["learn_time_ms"]
-            duration_w = time.time() - start
+            duration_w = time.time() - start - env_time_w
             preprocessing_w = results["sampler_perf"]["mean_processing_ms"]
             inference_w = results["sampler_perf"]["mean_inference_ms"]
-            print("w/ _fast_sampling: Duration: {}s mean-preprocessing={}ms "
-                  "mean-inference={}ms learn-time/iter={}ms".format(
-                      duration_w, preprocessing_w, inference_w,
-                      learn_time_w / num_iterations))
+            print("w/ _fast_sampling: Duration (no Env): {}s "
+                  "last-sampler-perf.={} learn-time/iter={}ms".format(
+                duration_w, results["sampler_perf"],
+                learn_time_w / num_iterations))
             trainer.stop()
 
             config["_use_trajectory_view_api"] = False
             config["model"]["_time_major"] = False
             trainer = ppo.PPOTrainer(config=config, env="ma_env")
             learn_time_wo = 0.0
+            env_time_wo = 0.0
             start = time.time()
             for i in range(num_iterations):
                 results = trainer.train()
+                env_time_wo += results["sampler_perf"]["total_env_wait_s"]
                 learn_time_wo += results["timers"]["learn_time_ms"]
-            duration_wo = time.time() - start
+            duration_wo = time.time() - start - env_time_wo
             preprocessing_wo = results["sampler_perf"]["mean_processing_ms"]
             inference_wo = results["sampler_perf"]["mean_inference_ms"]
-            print("w/o _fast_sampling: Duration: {}s mean-preprocessing={}ms "
-                  "mean-inference={}ms learn-time/iter={}ms".format(
-                      duration_wo, preprocessing_wo, inference_wo,
-                      learn_time_wo / num_iterations))
+            print("w/o _fast_sampling: Duration (no Env): {}s "
+                  "last-sampler-perf.={} learn-time/iter={}ms".format(
+                duration_wo, results["sampler_perf"],
+                learn_time_wo / num_iterations))
             trainer.stop()
 
             # Assert `_fasts_sampling` is faster across all affected metrics.
