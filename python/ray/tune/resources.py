@@ -170,6 +170,10 @@ class Resources(
     def to_json(self):
         return resources_to_json(self)
 
+    @classmethod
+    def from_json(cls, data):
+        return json_to_resources(data)
+
 
 def json_to_resources(data):
     if data is None or data == "null":

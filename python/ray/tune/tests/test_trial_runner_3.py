@@ -14,7 +14,7 @@ from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.experiment import Experiment
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
-from ray.tune.resources import Resources, json_to_resources, resources_to_json
+from ray.tune.resources import Resources
 from ray.tune.suggest.repeater import Repeater
 from ray.tune.suggest._mock import _MockSuggestionAlgorithm
 from ray.tune.suggest.suggestion import Searcher, ConcurrencyLimiter
@@ -739,8 +739,8 @@ class ResourcesTest(unittest.TestCase):
 
     def testSerialization(self):
         original = Resources(1, 0, 0, 1, custom_resources={"a": 1, "b": 2})
-        jsoned = resources_to_json(original)
-        new_resource = json_to_resources(jsoned)
+        jsoned = original.to_resources()
+        new_resource = Resources.from_json(jsoned)
         self.assertEquals(original, new_resource)
 
 

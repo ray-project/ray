@@ -2,6 +2,7 @@ from typing import Sequence
 
 from collections import deque
 import copy
+from dataclasses import dataclass
 from datetime import datetime
 import logging
 import platform
@@ -19,7 +20,7 @@ from ray.tune.durable_trainable import DurableTrainable
 from ray.tune.logger import pretty_print, UnifiedLogger
 from ray.tune.registry import get_trainable_cls, validate_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR, DONE, TRAINING_ITERATION
-from ray.tune.resources import Resources, json_to_resources, resources_to_json
+from ray.tune.resources import Resources
 from ray.tune.trainable import TrainableUtil
 from ray.tune.utils import flatten_dict
 from ray.utils import binary_to_hex, hex_to_binary
@@ -126,16 +127,72 @@ class TrialInfo:
     def trial_id(self):
         return self._trial_id
 
-class TrialData:
+@dataclass
+class TrialState:
+    # TODO: convert this into a dataclass.
+
     def __init__(self,
-                 trainable_name,
-                 config=None,
-                 trial_id=None,
-                 evaluated_params=None,
+                 # trainable_name,
+                 trial_id,
+                 config,
+                 evaluated_params,
+                 logdir,
                  experiment_tag="",
                  stopping_criterion=None,
-             ):
-    raise NotImplementedError
+                 restore_path=None,
+                 trial_name=None,
+                 checkpoints=None,
+                 error_file=None,
+                 status=None,
+                 metrics=None,
+                 metrics_n_steps=None,
+                 last_result=None,
+                 last_update_time=None,
+                 resources=None
+                 ):
+        self.trainable_name = trainable_name
+        self.config = config
+        self.trial_id = trial_id
+        self.evaluated_params = evaluated_params
+        self.logdir = logdir
+        self.experiment_tag = experiment_tag
+        self.stopping_criterion = stopping_criterion
+        self.restore_path = restore_path
+        self.trial_name = trial_name
+        self.checkpoints = checkpoints
+        self.error_file = error_file
+        self.metrics = metrics
+        self.last_result = last_result
+        self.last_update_time = last_update_time
+        self.resources = resources
+
+    @classmethod
+    def from_trial(cls, trial):
+        return TrialState(
+            trainable_name=trial.trainable_name,
+            config=trial.config,
+            trial_id=trial.trial_id,
+            evaluated_params=trial.evaluated_params,
+            experiment_tag=trial.experiment_tag,
+            stopping_criterion=trial.stopping_criterion,
+            restore_path=trial.restore_path,
+            trial_name=str(trial),
+            checkpoints=trial.checkpoints,
+            error_file=trial.error_file,
+            status=trial.status,
+            metrics=trial.metric_analysis,
+            metric_n_steps=trial.metric_n_steps,
+            last_result=trial.last_result,
+            last_update_time=trial.last_update_time,
+            resources=trial.resources
+        )
+
+    def to_json(self):
+        return copy.deepcopy(self.__dict__)
+
+    def score(self, metric):
+        return self.metrics.get(metric)
+
 
 
 class Trial:
@@ -156,7 +213,7 @@ class Trial:
         evaluated_params (dict): Evaluated parameters by search algorithm,
         experiment_tag (str): Identifying trial name to show in the console.
         resources (Resources): Amount of resources that this trial will use.
-        status (str): One of PENDING, RUNNING, PAUSED, TERMINATED, ERROR/
+        status (str): One of PENDING, RUNNING, PAUSED, TERMINATED, ERROR.
         error_file (str): Path to the errors that this trial has raised.
 
     """
@@ -578,11 +635,13 @@ class Trial:
 
         Sets RUNNING trials to PENDING, and flushes the result logger.
         Note this can only occur if the trial holds a PERSISTENT checkpoint.
+
+        TODO: change this into simply returning a TrialState.
         """
         assert self.checkpoint.storage == Checkpoint.PERSISTENT, (
             "Checkpoint must not be in-memory.")
         state = self.__dict__.copy()
-        state["resources"] = resources_to_json(self.resources)
+        state["resources"] = self.resources.to_json()
 
         for key in self._nonjson_fields:
             state[key] = binary_to_hex(cloudpickle.dumps(state.get(key)))
@@ -601,7 +660,7 @@ class Trial:
 
     def __setstate__(self, state):
         logger_started = state.pop("__logger_started__")
-        state["resources"] = json_to_resources(state["resources"])
+        state["resources"] = Resources.from_json(state["resources"])
 
         if state["status"] == Trial.RUNNING:
             state["status"] = Trial.PENDING

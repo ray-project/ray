@@ -9,7 +9,7 @@ import ray
 from ray.cluster_utils import Cluster
 from ray.tune.config_parser import make_parser
 from ray.tune.result import DEFAULT_RESULTS_DIR
-from ray.tune.resources import resources_to_json
+from ray.tune.resources import Resources
 from ray.tune.tune import _make_scheduler, run_experiments
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
@@ -155,7 +155,9 @@ def run(args, parser):
                 "local_dir": args.local_dir,
                 "resources_per_trial": (
                     args.resources_per_trial and
-                    resources_to_json(args.resources_per_trial)),
+                    isinstance(args.resources_per_trial, Resources),
+                    args.resources_per_trial.to_json()
+                ),
                 "stop": args.stop,
                 "config": dict(args.config, env=args.env),
                 "restore": args.restore,

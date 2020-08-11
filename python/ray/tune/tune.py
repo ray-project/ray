@@ -375,6 +375,7 @@ def run(run_or_experiment,
             logger.error("Trials did not complete: %s", incomplete_trials)
 
     trials = runner.get_trials()
+    trials = [TrialData.from_trial(t) for t in trials]
     if return_trials:
         return trials
     return ExperimentAnalysis(runner.checkpoint_file, trials=trials)
