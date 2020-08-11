@@ -182,7 +182,7 @@ def test_remove_placement_group():
         def f(self):
             return 3
 
-    a = A.remote()
+    # a = A.remote()
     ray.experimental.remove_placement_group(pid)
     #assert ray.get(a.f.remote()), timeout=5) == 3
 

@@ -1304,8 +1304,9 @@ Status CoreWorker::CreatePlacementGroup(
 }
 
 Status CoreWorker::RemovePlacementGroup(const PlacementGroupID &placement_group_id) {
-  RAY_LOG(DEBUG) << "Remove a placement group of id, " << placement_group_id;
+  RAY_LOG(ERROR) << "Remove a placement group of id, " << placement_group_id;
   RAY_CHECK_OK(gcs_client_->PlacementGroups().AsyncRemovePlacementGroup(placement_group_id));
+  RAY_LOG(ERROR) << "sangbin result returned";
   return Status::OK();
 }
 
