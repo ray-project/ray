@@ -103,6 +103,7 @@ TEST_F(GcsNodeManagerTest, TestGetClusterRealtimeResources) {
   ASSERT_TRUE(node_resources[node_id]->IsSubset(request_resources));
   request_resources["CPU"] = 10.1;
   ASSERT_FALSE(node_resources[node_id]->IsSubset(request_resources));
+  request_resources.clear();
   request_resources["GPU"] = 1;
   ASSERT_FALSE(node_resources[node_id]->IsSubset(request_resources));
 }
