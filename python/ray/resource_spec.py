@@ -223,8 +223,8 @@ class ResourceSpec(
                         round(memory / 1e9, 2),
                         int(100 * (memory / system_memory))))
 
-        rounded_memory = ray_constants.round_to_memory_units(memory,
-                                                             round_up=False)
+        rounded_memory = ray_constants.round_to_memory_units(
+            memory, round_up=False)
         worker_ram = round(rounded_memory / (1024**3), 2)
         object_ram = round(object_store_memory / (1024**3), 2)
 
@@ -232,28 +232,22 @@ class ResourceSpec(
         # good grasp on when this will get called
         # (you have to study node.py to make a guess)
         with cli_logger.group("Available RAM"):
-            cli_logger.labeled_value(
-                "Workers", "{} GiB", str(worker_ram))
-            cli_logger.labeled_value(
-                "Objects", "{} GiB", str(object_ram))
+            cli_logger.labeled_value("Workers", "{} GiB", str(worker_ram))
+            cli_logger.labeled_value("Objects", "{} GiB", str(object_ram))
             cli_logger.newline()
             cli_logger.print("To adjust these values, use")
             with cf.with_style("monokai") as c:
                 cli_logger.print(
                     "  ray{0}init(memory{1}{2}, "
-                    "object_store_memory{1}{2})",
-                    c.magenta("."),
-                    c.magenta("="),
-                    c.purple("<bytes>"))
+                    "object_store_memory{1}{2})", c.magenta("."),
+                    c.magenta("="), c.purple("<bytes>"))
 
         cli_logger.old_info(
             logger,
             "Starting Ray with {} GiB memory available for workers and up to "
             "{} GiB for objects. You can adjust these settings "
             "with ray.init(memory=<bytes>, "
-            "object_store_memory=<bytes>).",
-            worker_ram,
-            object_ram)
+            "object_store_memory=<bytes>).", worker_ram, object_ram)
 
         spec = ResourceSpec(num_cpus, num_gpus, memory, object_store_memory,
                             resources, redis_max_memory)

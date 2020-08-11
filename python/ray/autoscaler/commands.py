@@ -98,8 +98,8 @@ def create_or_update_cluster(
         config_file: str, override_min_workers: Optional[int],
         override_max_workers: Optional[int], no_restart: bool,
         restart_only: bool, yes: bool, override_cluster_name: Optional[str],
-        no_config_cache: bool,
-        dump_command_output: bool, use_login_shells: bool) -> None:
+        no_config_cache: bool, dump_command_output: bool,
+        use_login_shells: bool) -> None:
     """Create or updates an autoscaling Ray cluster from a config json."""
     set_using_login_shells(use_login_shells)
     cmd_output_util.set_output_redirected(not dump_command_output)
@@ -375,8 +375,7 @@ def kill_node(config_file, yes, hard, override_cluster_name):
         })
         node = random.choice(nodes)
         cli_logger.print("Shutdown " + cf.bold("{}"), node)
-        cli_logger.old_info(
-            logger, "kill_node: Shutdown worker {}", node)
+        cli_logger.old_info(logger, "kill_node: Shutdown worker {}", node)
         if hard:
             provider.terminate_node(node)
         else:
@@ -813,9 +812,8 @@ def exec_cluster(config_file: str,
                 attach_command_parts.append("--screen")
 
             attach_command = " ".join(attach_command_parts)
-            cli_logger.print(
-                "Run `{}` to check command status.",
-                cf.bold(attach_command))
+            cli_logger.print("Run `{}` to check command status.",
+                             cf.bold(attach_command))
 
             attach_info = "Use `{}` to check on command status.".format(
                 attach_command)

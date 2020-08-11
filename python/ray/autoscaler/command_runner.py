@@ -26,14 +26,12 @@ HASH_MAX_LENGTH = 10
 KUBECTL_RSYNC = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "kubernetes/kubectl-rsync.sh")
 
-_config = {
-    "use_login_shells": True,
-    "silent_rsync": True
-}
+_config = {"use_login_shells": True, "silent_rsync": True}
 
 
 def is_rsync_silent():
     return _config["silent_rsync"]
+
 
 def set_rsync_silent(val):
     """Choose whether to silence rsync output.
@@ -46,6 +44,7 @@ def set_rsync_silent(val):
 
 def is_using_login_shells():
     return _config["use_login_shells"]
+
 
 def set_using_login_shells(val):
     """Choose between login and non-interactive shells.

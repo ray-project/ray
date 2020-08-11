@@ -158,20 +158,20 @@ class NodeUpdater:
         # Rsync file mounts
         with cli_logger.group(
                 "Processing file mounts",
-                _numbered=("[]", previous_steps+1, total_steps)):
+                _numbered=("[]", previous_steps + 1, total_steps)):
             for remote_path, local_path in self.file_mounts.items():
                 do_sync(remote_path, local_path)
 
         if self.cluster_synced_files:
             with cli_logger.group(
                     "Processing worker file mounts",
-                    _numbered=("[]", previous_steps+2, total_steps)):
+                    _numbered=("[]", previous_steps + 2, total_steps)):
                 for path in self.cluster_synced_files:
                     do_sync(path, path, allow_non_existing_paths=True)
         else:
             cli_logger.print(
                 "No worker file mounts to sync",
-                _numbered=("[]", previous_steps+2, total_steps))
+                _numbered=("[]", previous_steps + 2, total_steps))
 
     def wait_ready(self, deadline):
         with cli_logger.group(

@@ -21,7 +21,6 @@ import ray.ray_constants as ray_constants
 import ray.utils
 from ray.projects.scripts import project_cli, session_cli
 
-from ray.autoscaler.command_runner import set_rsync_silent
 from ray.autoscaler.subprocess_output_util import set_output_redirected
 from ray.autoscaler.cli_logger import cli_logger
 import colorful as cf
@@ -52,6 +51,7 @@ def check_no_existing_redis_clients(node_ip_address, redis_client):
             raise Exception("This Redis instance is already connected to "
                             "clients with this IP address.")
 
+
 logging_options = [
     click.option(
         "--log-new-style/--log-old-style",
@@ -74,11 +74,13 @@ logging_options = [
     click.option("-v", "--verbose", count=True)
 ]
 
+
 def add_click_options(options):
     def wrapper(f):
         for option in reversed(logging_options):
             f = option(f)
         return f
+
     return wrapper
 
 
@@ -410,51 +412,41 @@ def start(node_ip_address, redis_address, address, redis_port, port,
             "gcs_server_port can be only assigned when you specify --head.")
 
     if redis_address is not None:
-        cli_logger.abort(
-            "{} is deprecated. Use {} instead.",
-            cf.bold("--redis-address"),
-            cf.bold("--address"))
+        cli_logger.abort("{} is deprecated. Use {} instead.",
+                         cf.bold("--redis-address"), cf.bold("--address"))
 
         raise DeprecationWarning("The --redis-address argument is "
                                  "deprecated. Please use --address instead.")
     if redis_port is not None:
-        cli_logger.warning(
-            "{} is being deprecated. Use {} instead.",
-            cf.bold("--redis-port"),
-            cf.bold("--port"))
+        cli_logger.warning("{} is being deprecated. Use {} instead.",
+                           cf.bold("--redis-port"), cf.bold("--port"))
         cli_logger.old_warning(
-            logger,
-            "The --redis-port argument will be deprecated soon. "
+            logger, "The --redis-port argument will be deprecated soon. "
             "Please use --port instead.")
         if port is not None and port != redis_port:
             cli_logger.abort(
                 "Incompatible values for {} and {}. Use only {} instead.",
-                cf.bold("--port"), cf.bold("--redis-port"),
-                cf.bold("--port"))
+                cf.bold("--port"), cf.bold("--redis-port"), cf.bold("--port"))
 
             raise ValueError("Cannot specify both --port and --redis-port "
                              "as port is a rename of deprecated redis-port")
     if include_webui is not None:
-        cli_logger.warning(
-            "{} is being deprecated. Use {} instead.",
-            cf.bold("--include-webui"),
-            cf.bold("--include-dashboard"))
+        cli_logger.warning("{} is being deprecated. Use {} instead.",
+                           cf.bold("--include-webui"),
+                           cf.bold("--include-dashboard"))
         cli_logger.old_warning(
-            logger,
-            "The --include-webui argument will be deprecated soon"
+            logger, "The --include-webui argument will be deprecated soon"
             "Please use --include-dashboard instead.")
         if include_dashboard is not None:
             include_dashboard = include_webui
 
     dashboard_host_default = "localhost"
     if webui_host != dashboard_host_default:
-        cli_logger.warning(
-            "{} is being deprecated. Use {} instead.",
-            cf.bold("--webui-host"),
-            cf.bold("--dashboard-host"))
+        cli_logger.warning("{} is being deprecated. Use {} instead.",
+                           cf.bold("--webui-host"),
+                           cf.bold("--dashboard-host"))
         cli_logger.old_warning(
-            logger,
-            "The --webui-host argument will be deprecated"
+            logger, "The --webui-host argument will be deprecated"
             " soon. Please use --dashboard-host instead.")
         if webui_host != dashboard_host and dashboard_host != "localhost":
             cli_logger.abort(
@@ -480,13 +472,12 @@ def start(node_ip_address, redis_address, address, redis_port, port,
     try:
         resources = json.loads(resources)
     except Exception:
-        cli_logger.error(
-            "`{}` is not a valid JSON string.", cf.bold("--resources"))
+        cli_logger.error("`{}` is not a valid JSON string.",
+                         cf.bold("--resources"))
         cli_logger.abort(
             "Valid values look like this: `{}`",
-            cf.bold(
-                "--resources='\"CustomResource3\": 1, "
-                "\"CustomResource2\": 2}'"))
+            cf.bold("--resources='\"CustomResource3\": 1, "
+                    "\"CustomResource2\": 2}'"))
 
         raise Exception("Unable to parse the --resources argument using "
                         "json.loads. Try using a format like\n\n"
@@ -539,12 +530,11 @@ def start(node_ip_address, redis_address, address, redis_port, port,
                     "`{}` must be a comma-separated list of ports, "
                     "with length equal to `{}` (which defaults to {})",
                     cf.bold("--redis-shard-ports"),
-                    cf.bold("--num-redis-shards"),
-                    cf.bold("1"))
-                cli_logger.abort("Example: `{}`",
-                    cf.bold(
-                        "--num-redis-shards 3 "
-                        "--redis_shard_ports 6380,6381,6382"))
+                    cf.bold("--num-redis-shards"), cf.bold("1"))
+                cli_logger.abort(
+                    "Example: `{}`",
+                    cf.bold("--num-redis-shards 3 "
+                            "--redis_shard_ports 6380,6381,6382"))
 
                 raise Exception("If --redis-shard-ports is provided, it must "
                                 "have the form '6380,6381,6382', and the "
@@ -555,8 +545,7 @@ def start(node_ip_address, redis_address, address, redis_port, port,
         if redis_address is not None:
             cli_logger.abort(
                 "`{}` starts a new Redis server, `{}` should not be set.",
-                cf.bold("--head"),
-                cf.bold("--address"))
+                cf.bold("--head"), cf.bold("--address"))
 
             raise Exception("If --head is passed in, a Redis server will be "
                             "started, so a Redis address should not be "
@@ -565,11 +554,9 @@ def start(node_ip_address, redis_address, address, redis_port, port,
         # Get the node IP address if one is not provided.
         ray_params.update_if_absent(
             node_ip_address=services.get_node_ip_address())
-        cli_logger.labeled_value(
-            "Local node IP", ray_params.node_ip_address)
-        cli_logger.old_info(logger,
-            "Using IP address {} for this node.",
-            ray_params.node_ip_address)
+        cli_logger.labeled_value("Local node IP", ray_params.node_ip_address)
+        cli_logger.old_info(logger, "Using IP address {} for this node.",
+                            ray_params.node_ip_address)
         ray_params.update_if_absent(
             redis_port=port or redis_port,
             redis_shard_ports=redis_shard_ports,
@@ -597,21 +584,17 @@ def start(node_ip_address, redis_address, address, redis_port, port,
             cli_logger.print(
                 "To connect to this Ray runtime from another node, run")
             cli_logger.print(
-                cf.bold("  ray start --address='{}'{}"),
-                redis_address,
+                cf.bold("  ray start --address='{}'{}"), redis_address,
                 " --redis-password='{}'".format(redis_password)
                 if redis_password else "")
             cli_logger.newline()
-            cli_logger.print(
-                "Alternatively, use the following Python code:")
+            cli_logger.print("Alternatively, use the following Python code:")
             with cli_logger.indented():
                 with cf.with_style("monokai") as c:
                     cli_logger.print("{} ray", c.magenta("import"))
                     cli_logger.print(
-                        "ray{}init(address{}{}{})",
-                        c.magenta("."),
-                        c.magenta("="),
-                        c.yellow("'auto'"),
+                        "ray{}init(address{}{}{})", c.magenta("."),
+                        c.magenta("="), c.yellow("'auto'"),
                         ", redis_password{}{}".format(
                             c.magenta("="),
                             c.yellow("'" + redis_password + "'"))
@@ -645,61 +628,53 @@ def start(node_ip_address, redis_address, address, redis_port, port,
     else:
         # Start Ray on a non-head node.
         if not (redis_port is None and port is None):
-            cli_logger.abort(
-                "`{}/{}` should not be specified without `{}`.",
-                cf.bold("--port"), cf.bold("--redis-port"),
-                cf.bold("--head"))
+            cli_logger.abort("`{}/{}` should not be specified without `{}`.",
+                             cf.bold("--port"), cf.bold("--redis-port"),
+                             cf.bold("--head"))
 
             raise Exception(
                 "If --head is not passed in, --port and --redis-port are not "
                 "allowed.")
         if redis_shard_ports is not None:
-            cli_logger.abort(
-                "`{}` should not be specified without `{}`.",
-                cf.bold("--redis-shard-ports"), cf.bold("--head"))
+            cli_logger.abort("`{}` should not be specified without `{}`.",
+                             cf.bold("--redis-shard-ports"), cf.bold("--head"))
 
             raise Exception("If --head is not passed in, --redis-shard-ports "
                             "is not allowed.")
         if redis_address is None:
-            cli_logger.abort(
-                "`{}` is required unless starting with `{}`.",
-                cf.bold("--address"), cf.bold("--head"))
+            cli_logger.abort("`{}` is required unless starting with `{}`.",
+                             cf.bold("--address"), cf.bold("--head"))
 
             raise Exception("If --head is not passed in, --address must "
                             "be provided.")
         if num_redis_shards is not None:
-            cli_logger.abort(
-                "`{}` should not be specified without `{}`.",
-                cf.bold("--num-redis-shards"), cf.bold("--head"))
+            cli_logger.abort("`{}` should not be specified without `{}`.",
+                             cf.bold("--num-redis-shards"), cf.bold("--head"))
 
             raise Exception("If --head is not passed in, --num-redis-shards "
                             "must not be provided.")
         if redis_max_clients is not None:
-            cli_logger.abort(
-                "`{}` should not be specified without `{}`.",
-                cf.bold("--redis-max-clients"), cf.bold("--head"))
+            cli_logger.abort("`{}` should not be specified without `{}`.",
+                             cf.bold("--redis-max-clients"), cf.bold("--head"))
 
             raise Exception("If --head is not passed in, --redis-max-clients "
                             "must not be provided.")
         if include_webui:
-            cli_logger.abort(
-                "`{}` should not be specified without `{}`.",
-                cf.bold("--include-web-ui"), cf.bold("--head"))
+            cli_logger.abort("`{}` should not be specified without `{}`.",
+                             cf.bold("--include-web-ui"), cf.bold("--head"))
 
             raise Exception("If --head is not passed in, the --include-webui"
                             "flag is not relevant.")
         if include_dashboard:
-            cli_logger.abort(
-                "`{}` should not be specified without `{}`.",
-                cf.bold("--include-dashboard"), cf.bold("--head"))
+            cli_logger.abort("`{}` should not be specified without `{}`.",
+                             cf.bold("--include-dashboard"), cf.bold("--head"))
 
             raise ValueError(
                 "If --head is not passed in, the --include-dashboard"
                 "flag is not relevant.")
         if include_java is not None:
-            cli_logger.abort(
-                "`{}` should not be specified without `{}`.",
-                cf.bold("--include-java"), cf.bold("--head"))
+            cli_logger.abort("`{}` should not be specified without `{}`.",
+                             cf.bold("--include-java"), cf.bold("--head"))
 
             raise ValueError("--include-java should only be set for the head "
                              "node.")
@@ -721,12 +696,9 @@ def start(node_ip_address, redis_address, address, redis_port, port,
         ray_params.update_if_absent(
             node_ip_address=services.get_node_ip_address(redis_address))
 
-        cli_logger.labeled_value(
-            "Local node IP", ray_params.node_ip_address)
-        cli_logger.old_info(
-            logger,
-            "Using IP address {} for this node.",
-            ray_params.node_ip_address)
+        cli_logger.labeled_value("Local node IP", ray_params.node_ip_address)
+        cli_logger.old_info(logger, "Using IP address {} for this node.",
+                            ray_params.node_ip_address)
 
         # Check that there aren't already Redis clients with the same IP
         # address connected with this Redis instance. This raises an exception
@@ -747,8 +719,7 @@ def start(node_ip_address, redis_address, address, redis_port, port,
         cli_logger.print(cf.bold("  ray stop"))
 
         cli_logger.old_info(
-            logger,
-            "\nStarted Ray on this node. If you wish to terminate the "
+            logger, "\nStarted Ray on this node. If you wish to terminate the "
             "processes that have been started, run\n\n"
             "    ray stop")
 
@@ -767,29 +738,24 @@ def start(node_ip_address, redis_address, address, redis_port, port,
             if len(deceased) > 0:
                 cli_logger.newline()
                 cli_logger.error("Some Ray subprcesses exited unexpectedly:")
-                cli_logger.old_error(
-                    logger, "Ray processes died unexpectedly:")
+                cli_logger.old_error(logger,
+                                     "Ray processes died unexpectedly:")
 
                 with cli_logger.indented():
                     for process_type, process in deceased:
                         cli_logger.error(
                             "{}",
                             cf.bold(str(process_type)),
-                            _tags={
-                                "exit code": str(process.returncode)
-                            })
+                            _tags={"exit code": str(process.returncode)})
                         cli_logger.old_error(
-                            logger,
-                            "\t{} died with exit code {}".format(
-                            process_type, process.returncode))
+                            logger, "\t{} died with exit code {}".format(
+                                process_type, process.returncode))
 
                 # shutdown_at_exit will handle cleanup.
                 cli_logger.newline()
-                cli_logger.error(
-                    "Remaining processes will be killed.")
+                cli_logger.error("Remaining processes will be killed.")
                 cli_logger.old_error(
-                    logger,
-                    "Killing remaining processes and exiting...")
+                    logger, "Killing remaining processes and exiting...")
                 sys.exit(1)
 
 
@@ -865,9 +831,8 @@ def stop(force, verbose, log_new_style, log_color):
             proc_string = str(subprocess.list2cmdline(proc_args))
             if verbose:
                 operation = "Terminating" if force else "Killing"
-                cli_logger.old_info(
-                    logger,
-                    "%s process %s: %s", operation, proc.pid, proc_string)
+                cli_logger.old_info(logger, "%s process %s: %s", operation,
+                                    proc.pid, proc_string)
             try:
                 if force:
                     proc.kill()
@@ -878,15 +843,12 @@ def stop(force, verbose, log_new_style, log_color):
                     proc.terminate()
 
                 if force:
-                    cli_logger.verbose(
-                        "Killed `{}` {} ",
-                        cf.bold(proc_string),
-                        cf.gray("(via SIGKILL)"))
+                    cli_logger.verbose("Killed `{}` {} ", cf.bold(proc_string),
+                                       cf.gray("(via SIGKILL)"))
                 else:
-                    cli_logger.verbose(
-                        "Send termination request to `{}` {}",
-                        cf.bold(proc_string),
-                        cf.gray("(via SIGTERM)"))
+                    cli_logger.verbose("Send termination request to `{}` {}",
+                                       cf.bold(proc_string),
+                                       cf.gray("(via SIGTERM)"))
 
                 total_stopped += 1
             except psutil.NoSuchProcess:
@@ -895,13 +857,9 @@ def stop(force, verbose, log_new_style, log_color):
                     cf.bold(proc_string))
                 pass
             except (psutil.Error, OSError) as ex:
-                cli_logger.error(
-                    "Could not terminate `{}` due to {}",
-                    cf.bold(proc_string),
-                    str(ex))
-                cli_logger.old_error(
-                    logger,
-                    "Error: %s", ex)
+                cli_logger.error("Could not terminate `{}` due to {}",
+                                 cf.bold(proc_string), str(ex))
+                cli_logger.old_error(logger, "Error: %s", ex)
 
     if total_found == 0:
         cli_logger.print("Did not find any active Ray processes.")
@@ -911,12 +869,10 @@ def stop(force, verbose, log_new_style, log_color):
         else:
             cli_logger.warning(
                 "Stopped only {} out of {} Ray processes. "
-                "Set `{}` to see more details.",
-                total_stopped, total_found,
+                "Set `{}` to see more details.", total_stopped, total_found,
                 cf.bold("-v"))
-            cli_logger.warning(
-                "Try running the command again, or use `{}`.",
-                cf.bold("--force"))
+            cli_logger.warning("Try running the command again, or use `{}`.",
+                               cf.bold("--force"))
 
     # TODO(maximsmol): we should probably block until the processes actually
     # all died somehow
@@ -978,20 +934,17 @@ def stop(force, verbose, log_new_style, log_color):
           "this can be disabled for a better user experience."))
 @add_click_options(logging_options)
 def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
-       yes, cluster_name, no_config_cache,
-       dump_command_output, use_login_shells,
-       log_new_style, log_color, verbose):
+       yes, cluster_name, no_config_cache, dump_command_output,
+       use_login_shells, log_new_style, log_color, verbose):
     """Create or update a Ray cluster."""
     cli_logger.old_style = not log_new_style
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
 
     if restart_only or no_restart:
-        cli_logger.doassert(
-            restart_only != no_restart,
-            "`{}` is incompatible with `{}`.",
-            cf.bold("--restart-only"),
-            cf.bold("--no-restart"))
+        cli_logger.doassert(restart_only != no_restart,
+                            "`{}` is incompatible with `{}`.",
+                            cf.bold("--restart-only"), cf.bold("--no-restart"))
         assert restart_only != no_restart, "Cannot set both 'restart_only' " \
             "and 'no_restart' at the same time!"
 
@@ -1007,13 +960,11 @@ def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
             cli_logger.warning("{}", str(e))
             cli_logger.warning(
                 "Could not download remote cluster configuration file.")
-            cli_logger.old_info(
-                logger,
-                "Error downloading file: ", e)
+            cli_logger.old_info(logger, "Error downloading file: ", e)
     create_or_update_cluster(cluster_config_file, min_workers, max_workers,
                              no_restart, restart_only, yes, cluster_name,
-                             no_config_cache,
-                             dump_command_output, use_login_shells)
+                             no_config_cache, dump_command_output,
+                             use_login_shells)
 
 
 @cli.command()
@@ -1093,8 +1044,8 @@ def kill_random_node(cluster_config_file, yes, hard, cluster_name):
     type=str,
     help="Override the configured cluster name.")
 @add_click_options(logging_options)
-def monitor(cluster_config_file, lines, cluster_name,
-            log_new_style, log_color, verbose):
+def monitor(cluster_config_file, lines, cluster_name, log_new_style, log_color,
+            verbose):
     """Tails the autoscaler logs of a Ray cluster."""
     cli_logger.old_style = not log_new_style
     cli_logger.color_mode = log_color
@@ -1131,8 +1082,7 @@ def monitor(cluster_config_file, lines, cluster_name,
     help="Port to forward. Use this multiple times to forward multiple ports.")
 @add_click_options(logging_options)
 def attach(cluster_config_file, start, screen, tmux, cluster_name, new,
-           port_forward,
-           log_new_style, log_color, verbose):
+           port_forward, log_new_style, log_color, verbose):
     """Create or attach to a SSH session to a Ray cluster."""
     cli_logger.old_style = not log_new_style
     cli_logger.color_mode = log_color
@@ -1238,8 +1188,8 @@ def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes,
 @click.argument("script_args", nargs=-1)
 @add_click_options(logging_options)
 def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
-           port_forward, script, args, script_args,
-           log_new_style, log_color, verbose):
+           port_forward, script, args, script_args, log_new_style, log_color,
+           verbose):
     """Uploads and runs a script on the specified cluster.
 
     The script is automatically synced to the following location:
@@ -1255,17 +1205,13 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
 
     set_output_redirected(False)
 
-    cli_logger.doassert(
-        not (screen and tmux),
-        "`{}` and `{}` are incompatible.",
-        cf.bold("--screen"),
-        cf.bold("--tmux"))
+    cli_logger.doassert(not (screen and tmux),
+                        "`{}` and `{}` are incompatible.", cf.bold("--screen"),
+                        cf.bold("--tmux"))
     cli_logger.doassert(
         not (script_args and args),
         "`{0}` and `{1}` are incompatible. Use only `{1}`.\n"
-        "Example: `{2}`",
-        cf.bold("--args"),
-        cf.bold("-- <args ...>"),
+        "Example: `{2}`", cf.bold("--args"), cf.bold("-- <args ...>"),
         cf.bold("ray submit script.py -- --arg=123 --flag"))
 
     assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
@@ -1275,10 +1221,9 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
         cli_logger.warning(
             "`{}` is deprecated and will be removed in the future.",
             cf.bold("--args"))
-        cli_logger.warning(
-            "Use `{}` instead. Example: `{}`.",
-            cf.bold("-- <args ...>"),
-            cf.bold("ray submit script.py -- --arg=123 --flag"))
+        cli_logger.warning("Use `{}` instead. Example: `{}`.",
+                           cf.bold("-- <args ...>"),
+                           cf.bold("ray submit script.py -- --arg=123 --flag"))
         cli_logger.newline()
         cli_logger.old_warning(
             logger,
@@ -1355,8 +1300,7 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
     help="Port to forward. Use this multiple times to forward multiple ports.")
 @add_click_options(logging_options)
 def exec(cluster_config_file, cmd, run_env, screen, tmux, stop, start,
-         cluster_name, port_forward,
-         log_new_style, log_color, verbose):
+         cluster_name, port_forward, log_new_style, log_color, verbose):
     """Execute a command via SSH on a Ray cluster."""
     cli_logger.old_style = not log_new_style
     cli_logger.color_mode = log_color
