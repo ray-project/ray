@@ -74,9 +74,7 @@ class PPOLoss:
                 return torch.sum(t[valid_mask]) / num_valid
 
         else:
-
-            def reduce_mean_valid(t):
-                return torch.mean(t)
+            reduce_mean_valid = torch.mean
 
         prev_dist = dist_class(prev_logits, model)
         # Make loss functions.
@@ -118,10 +116,7 @@ def ppo_surrogate_loss(policy, model, dist_class, train_batch):
 
     mask = None
     if state:
-        if policy.config["_use_trajectory_view_api"]:
-            max_seq_len = model.model_config["max_seq_len"]
-        else:
-            max_seq_len = torch.max(train_batch["seq_lens"])
+        max_seq_len = torch.max(train_batch["seq_lens"])
         mask = sequence_mask(
             train_batch["seq_lens"],
             max_seq_len,

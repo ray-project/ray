@@ -62,6 +62,9 @@ class SampleBatch:
         # Possible seq_lens (TxB or BxT) setup.
         self.time_major = kwargs.pop("_time_major", None)
         self.seq_lens = kwargs.pop("_seq_lens", None)
+        self.max_seq_len = None
+        if self.seq_lens is not None and len(self.seq_lens) > 0:
+            self.max_seq_len = max(self.seq_lens)
 
         # The actual data, accessible by column name (str).
         self.data = dict(*args, **kwargs)

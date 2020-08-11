@@ -342,8 +342,13 @@ class TorchPolicy(Policy):
                         postprocessed_batch[col] = postprocessed_batch[col][t]
                     # Flatten all other data.
                     else:
+                        # Cut time-dim at `max_seq_len`.
+                        if postprocessed_batch.time_major:
+                            postprocessed_batch[col] = \
+                                postprocessed_batch[col][
+                                :postprocessed_batch.max_seq_len]
                         postprocessed_batch[col] = postprocessed_batch[
-                            col].reshape((-1, ) +
+                            col].reshape((-1,) +
                                          postprocessed_batch[col].shape[2:])
         else:
             # Get batch ready for RNNs, if applicable.
