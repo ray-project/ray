@@ -353,7 +353,7 @@ cdef execute_task(
         CFiberEvent task_done_event
 
     # Automatically restrict the GPUs available to this task.
-    ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
+    ray.utils.set_cuda_visible_devices(ray.get_gpu_ids(as_str=True))
 
     function_descriptor = CFunctionDescriptorToPython(
         ray_function.GetFunctionDescriptor())
@@ -761,8 +761,9 @@ cdef class CoreWorker:
             c_object_id[0] = object_ref.native()
             with nogil:
                 check_status(CCoreWorkerProcess.GetCoreWorker().Create(
-                            metadata, data_size,
-                            c_object_id[0], data))
+                            metadata, data_size, c_object_id[0],
+                            CCoreWorkerProcess.GetCoreWorker().GetRpcAddress(),
+                            data))
 
         # If data is nullptr, that means the ObjectRef already existed,
         # which we ignore.

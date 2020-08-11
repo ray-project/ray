@@ -19,6 +19,9 @@ import ray
 import ray.ray_constants as ray_constants
 import psutil
 
+from ray.autoscaler.cli_logger import cli_logger
+import colorful as cf
+
 resource = None
 if sys.platform != "win32":
     import resource
@@ -579,6 +582,12 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
         else:
             break
     else:
+        cli_logger.error(
+            "Unable to connect to Redis at "
+            "`{c.underlined}{}:{}{c.no_underlined}` after {} retries.",
+            redis_ip_address, redis_port, num_retries)
+        cli_logger.abort("Check your firewall and network settings.")
+
         raise RuntimeError("Unable to connect to Redis. If the Redis instance "
                            "is on a different machine, check that your "
                            "firewall is configured properly.")
@@ -1191,9 +1200,13 @@ def start_dashboard(require_dashboard,
 
         dashboard_url = "{}:{}".format(
             host if host != "0.0.0.0" else get_node_ip_address(), port)
-        logger.info("View the Ray dashboard at {}{}{}{}{}".format(
-            colorama.Style.BRIGHT, colorama.Fore.GREEN, dashboard_url,
-            colorama.Fore.RESET, colorama.Style.NORMAL))
+
+        cli_logger.labeled_value("Dashboard URL", cf.underlined("http://{}"),
+                                 dashboard_url)
+        cli_logger.old_info(logger, "View the Ray dashboard at {}{}{}{}{}",
+                            colorama.Style.BRIGHT, colorama.Fore.GREEN,
+                            dashboard_url, colorama.Fore.RESET,
+                            colorama.Style.NORMAL)
 
         return dashboard_url, process_info
     else:
