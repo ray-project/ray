@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/util/sample.h"
+
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "ray/util/sample.h"
 
 namespace ray {
 
@@ -60,7 +61,7 @@ TEST_F(RandomSampleTest, TestLargerThanSampleSize) {
 }
 
 TEST_F(RandomSampleTest, TestEqualOccurrenceChance) {
-  int trials = 100000;
+  int trials = 1000000;
   std::vector<int> occurrences(test_vector->size(), 0);
   for (int i = 0; i < trials; i++) {
     random_sample(test_vector->begin(), test_vector->end(), test_vector->size() / 2,

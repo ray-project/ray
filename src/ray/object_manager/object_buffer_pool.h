@@ -14,14 +14,13 @@
 
 #pragma once
 
+#include <boost/asio.hpp>
+#include <boost/asio/error.hpp>
+#include <boost/bind.hpp>
 #include <list>
 #include <memory>
 #include <mutex>
 #include <vector>
-
-#include <boost/asio.hpp>
-#include <boost/asio/error.hpp>
-#include <boost/bind.hpp>
 
 #include "ray/common/id.h"
 #include "ray/common/status.h"

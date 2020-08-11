@@ -15,6 +15,7 @@
 #pragma once
 
 #include <jni.h>
+
 #include <algorithm>
 
 #include "ray/common/buffer.h"
@@ -346,7 +347,7 @@ inline jobject NativeVectorToJavaList(
       env->NewObject(java_array_list_class, java_array_list_init_with_capacity,
                      (jint)native_vector.size());
   RAY_CHECK_JAVA_EXCEPTION(env);
-  for (auto it = native_vector.begin(); it != native_vector.end(); ++it){
+  for (auto it = native_vector.begin(); it != native_vector.end(); ++it) {
     auto element = element_converter(env, *it);
     env->CallVoidMethod(java_list, java_list_add, element);
     RAY_CHECK_JAVA_EXCEPTION(env);

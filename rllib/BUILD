@@ -1320,7 +1320,7 @@ py_test(
     name = "test_rollout_w_learning",
     main = "tests/test_rollout.py",
     tags = ["tests_dir", "tests_dir_R"],
-    size = "medium",
+    size = "large",
     data = ["train.py", "rollout.py"],
     srcs = ["tests/test_rollout.py"],
     args = ["TestRolloutLearntPolicy"]
