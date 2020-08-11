@@ -672,9 +672,7 @@ PlasmaError PlasmaStore::DeleteObject(ObjectID& object_id) {
     return PlasmaError::ObjectInUse;
   }
 
-  eviction_policy_.RemoveObject(object_id);
-  EraseFromObjectTable(object_id);
-  // Inform all subscribers that the object has been deleted.
+  // Prepare the notification before deleting the object.
   ObjectInfoT notification;
   notification.object_id = object_id.Binary();
   notification.owner_raylet_id = entry->owner_raylet_id.Binary();
@@ -682,8 +680,11 @@ PlasmaError PlasmaStore::DeleteObject(ObjectID& object_id) {
   notification.owner_port = entry->owner_port;
   notification.owner_worker_id = entry->owner_worker_id.Binary();
   notification.is_deletion = true;
-  PushNotification(&notification);
 
+  eviction_policy_.RemoveObject(object_id);
+  EraseFromObjectTable(object_id);
+  // Inform all subscribers that the object has been deleted.
+  PushNotification(&notification);
   return PlasmaError::OK;
 }
 
@@ -714,10 +715,7 @@ void PlasmaStore::EvictObjects(const std::vector<ObjectID>& object_ids) {
           entry->pointer, entry->data_size + entry->metadata_size));
       evicted_entries.push_back(entry);
     } else {
-      // If there is no backing external store, just erase the object entry
-      // and send a deletion notification.
-      EraseFromObjectTable(object_id);
-      // Inform all subscribers that the object has been deleted.
+      // Prepare the notification before deleting the object.
       ObjectInfoT notification;
       notification.object_id = object_id.Binary();
       notification.owner_raylet_id = entry->owner_raylet_id.Binary();
@@ -725,6 +723,10 @@ void PlasmaStore::EvictObjects(const std::vector<ObjectID>& object_ids) {
       notification.owner_port = entry->owner_port;
       notification.owner_worker_id = entry->owner_worker_id.Binary();
       notification.is_deletion = true;
+      // If there is no backing external store, just erase the object entry
+      // and send a deletion notification.
+      EraseFromObjectTable(object_id);
+      // Inform all subscribers that the object has been deleted.
       PushNotification(&notification);
     }
   }
