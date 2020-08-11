@@ -203,6 +203,7 @@ install_pip() {
 
     # If we're in a CI environment, do some configuration
     if [ "${CI-}" = true ]; then
+      echo "Skipping pip config"
       #"${python}" -W ignore -m pip config -q --user set global.disable-pip-version-check True
       #"${python}" -W ignore -m pip config -q --user set global.no-color True
       #"${python}" -W ignore -m pip config -q --user set global.progress_bar off
