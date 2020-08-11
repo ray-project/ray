@@ -80,6 +80,11 @@ parser.add_argument(
     default=False,
     action="store_true",
     help="True if cloudpickle should be used for serialization.")
+parser.add_argument(
+    "--metrics-agent-port",
+    required=True,
+    type=int,
+    help="the port of the node's metric agent.")
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -109,6 +114,7 @@ if __name__ == "__main__":
         raylet_socket_name=args.raylet_name,
         temp_dir=args.temp_dir,
         load_code_from_local=args.load_code_from_local,
+        metrics_agent_port=args.metrics_agent_port,
         _internal_config=json.dumps(internal_config),
     )
 

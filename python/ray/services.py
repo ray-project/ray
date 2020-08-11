@@ -1358,8 +1358,7 @@ def start_raylet(redis_address,
 
     # Create the command that the Raylet will use to start workers.
     start_worker_command = [
-        sys.executable,
-        worker_path,
+        sys.executable, worker_path,
         "--node-ip-address={}".format(node_ip_address),
         "--node-manager-port={}".format(node_manager_port),
         "--object-store-name={}".format(plasma_store_name),
@@ -1367,6 +1366,7 @@ def start_raylet(redis_address,
         "--redis-address={}".format(redis_address),
         "--config-list={}".format(config_str),
         "--temp-dir={}".format(temp_dir),
+        f"--metrics-agent-port={metrics_agent_port}"
     ]
     if redis_password:
         start_worker_command += ["--redis-password={}".format(redis_password)]
