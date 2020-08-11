@@ -223,7 +223,7 @@ def test_metrics_export_end_to_end(ray_start_cluster):
     # Add a head node.
     cluster.add_node(
         _internal_config=json.dumps({
-            "metrics_report_interval_seconds": 1
+            "metrics_report_interval_ms": 1000
         }))
     # Add worker nodes.
     [cluster.add_node() for _ in range(NUM_NODES - 1)]

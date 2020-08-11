@@ -91,4 +91,4 @@ cdef extern from "ray/common/ray_config.h" nogil:
 
         uint32_t max_tasks_in_flight_per_worker() const
 
-        uint64_t metrics_report_interval_seconds() const
+        uint64_t metrics_report_interval_ms() const
