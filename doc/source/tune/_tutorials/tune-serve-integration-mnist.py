@@ -322,7 +322,6 @@ def tune_from_scratch(num_samples=10, num_epochs=10, gpus_per_trial=0., day=0):
         num_samples=num_samples,
         scheduler=scheduler,
         progress_reporter=reporter,
-        checkpoint_at_end=True,
         verbose=0,
         name="tune_serve_mnist_fromscratch")
 
@@ -387,7 +386,6 @@ def tune_from_existing(start_model,
         num_samples=num_samples,
         scheduler=scheduler,
         progress_reporter=reporter,
-        checkpoint_at_end=True,
         verbose=0,
         name="tune_serve_mnist_fromsexisting")
 
