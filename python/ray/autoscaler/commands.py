@@ -675,7 +675,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
 
         cli_logger.newline()
         with cli_logger.group("Useful commands"):
-            cli_logger.print("Monitor autoscailng with")
+            cli_logger.print("Monitor autoscaling with")
             cli_logger.print(
                 cf.bold("  ray exec {}{} {}"), raw_config_file, modifiers,
                 quote(monitor_str))
