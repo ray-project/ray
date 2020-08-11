@@ -89,6 +89,12 @@ static inline void Init(const TagsType &global_tags, const int metrics_agent_por
     exporter = exporter_to_use;
   }
 
+  // Set interval.
+  StatsConfig::instance().SetReportInterval(
+      absl::Seconds(RayConfig::instance().metrics_report_interval_seconds()));
+  StatsConfig::instance().SetHarvestInterval(
+      absl::Seconds(RayConfig::instance().metrics_report_interval_seconds() / 2));
+
   MetricExporter::Register(exporter, metrics_report_batch_size);
   opencensus::stats::StatsExporter::SetInterval(
       StatsConfig::instance().GetReportInterval());
@@ -101,7 +107,6 @@ static inline void Init(const TagsType &global_tags, const int metrics_agent_por
 /// Shutdown the initialized stats library.
 /// This cleans up various threads and metadata for stats library.
 static inline void Shutdown() {
-  // TODO(sang): Harvest thread is not currently cleaned up.
   absl::MutexLock lock(&stats_mutex);
   if (!StatsConfig::instance().IsInitialized()) {
     // Return if stats had never been initialized.

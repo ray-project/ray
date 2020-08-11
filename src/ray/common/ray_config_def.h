@@ -337,3 +337,6 @@ RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 5)
 
 /// Whether to enable multi tenancy features.
 RAY_CONFIG(bool, enable_multi_tenancy, false)
+
+// The interval where metrics are exported in seconds.
+RAY_CONFIG(int64_t, metrics_report_interval_seconds, 10)
