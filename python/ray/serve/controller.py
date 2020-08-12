@@ -753,7 +753,7 @@ class ServeController:
 
             # Ensures this method is idempotent.
             if backend_tag in self.backends:
-                if self.backends[backend_tag] = BackendInfo(
+                if self.backends[backend_tag] == BackendInfo(
                     backend_worker, backend_config, replica_config):
                     return
 
