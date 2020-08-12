@@ -194,7 +194,7 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   Status AsyncReportHeartbeat(const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
                               const StatusCallback &callback) override;
 
-  void AsyncReReportHeartbeat(bool is_pubsub_server_restarted) override;
+  void AsyncReReportHeartbeat() override;
 
   Status AsyncSubscribeHeartbeat(
       const SubscribeCallback<ClientID, rpc::HeartbeatTableData> &subscribe,

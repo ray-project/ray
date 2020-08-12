@@ -660,7 +660,7 @@ Status RedisNodeInfoAccessor::AsyncReportHeartbeat(
   return heartbeat_table.Add(JobID::Nil(), node_id, data_ptr, on_done);
 }
 
-void RedisNodeInfoAccessor::AsyncReReportHeartbeat(bool is_pubsub_server_restarted) {}
+void RedisNodeInfoAccessor::AsyncReReportHeartbeat() {}
 
 Status RedisNodeInfoAccessor::AsyncSubscribeHeartbeat(
     const SubscribeCallback<ClientID, HeartbeatTableData> &subscribe,

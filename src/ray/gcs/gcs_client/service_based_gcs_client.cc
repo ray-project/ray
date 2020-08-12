@@ -61,7 +61,7 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
     object_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
     worker_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
 
-    node_accessor_->AsyncReReportHeartbeat(is_pubsub_server_restarted);
+    node_accessor_->AsyncReReportHeartbeat();
   };
 
   // Connect to gcs service.

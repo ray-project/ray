@@ -552,10 +552,7 @@ class NodeInfoAccessor {
       const StatusCallback &callback) = 0;
 
   /// Resend heartbeat when GCS restarts from a failure.
-  ///
-  /// \param is_pubsub_server_restarted If the pubsub server restarts. Only invoke this
-  /// when it's false.
-  virtual void AsyncReReportHeartbeat(bool is_pubsub_server_restarted) = 0;
+  virtual void AsyncReReportHeartbeat() = 0;
 
   /// Subscribe to the heartbeat of each node from GCS.
   ///

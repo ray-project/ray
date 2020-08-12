@@ -721,9 +721,8 @@ Status ServiceBasedNodeInfoAccessor::AsyncReportHeartbeat(
   return Status::OK();
 }
 
-void ServiceBasedNodeInfoAccessor::AsyncReReportHeartbeat(
-    bool is_pubsub_server_restarted) {
-  if (!is_pubsub_server_restarted && cached_heartbeat_.has_heartbeat()) {
+void ServiceBasedNodeInfoAccessor::AsyncReReportHeartbeat() {
+  if (cached_heartbeat_.has_heartbeat()) {
     RAY_LOG(INFO) << "Rereport heartbeat.";
     client_impl_->GetGcsRpcClient().ReportHeartbeat(
         cached_heartbeat_,
