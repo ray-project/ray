@@ -148,7 +148,7 @@ install_requires = [
     "jsonschema",
     "msgpack >= 1.0.0, < 2.0.0",
     "numpy >= 1.16",
-    "protobuf >= 3.8.0",
+    "protobuf==3.8.0",
     "py-spy >= 0.2.0",
     "pyyaml",
     "requests",
