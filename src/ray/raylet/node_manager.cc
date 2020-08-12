@@ -1406,7 +1406,7 @@ void NodeManager::ProcessFetchOrReconstructMessage(
       // dependencies to the task dependency manager.
       if (!task_dependency_manager_.CheckObjectLocal(object_id)) {
         // Fetch the object if it's not already local.
-        RAY_CHECK_OK(object_manager_.Pull(object_id));
+        RAY_CHECK_OK(object_manager_.Pull(object_id, ref.owner_address()));
       }
     }
   } else {
@@ -1428,6 +1428,12 @@ void NodeManager::ProcessWaitRequestMessage(
   int64_t wait_ms = message->timeout();
   uint64_t num_required_objects = static_cast<uint64_t>(message->num_ready_objects());
   bool wait_local = message->wait_local();
+  const auto refs =
+      FlatbufferToObjectReference(*message->object_ids(), *message->owner_addresses());
+  std::unordered_map<ObjectID, rpc::Address> owner_addresses;
+  for (const auto &ref : refs) {
+    owner_addresses.emplace(ObjectID::FromBinary(ref.object_id()), ref.owner_address());
+  }
 
   bool resolve_objects = false;
   for (auto const &object_id : object_ids) {
@@ -1444,14 +1450,12 @@ void NodeManager::ProcessWaitRequestMessage(
     // already local. Missing objects will be pulled from remote node managers.
     // If an object's owner dies, an error will be stored as the object's
     // value.
-    const auto refs =
-        FlatbufferToObjectReference(*message->object_ids(), *message->owner_addresses());
     AsyncResolveObjects(client, refs, current_task_id, /*ray_get=*/false,
                         /*mark_worker_blocked*/ was_blocked);
   }
 
   ray::Status status = object_manager_.Wait(
-      object_ids, wait_ms, num_required_objects, wait_local,
+      object_ids, owner_addresses, wait_ms, num_required_objects, wait_local,
       [this, resolve_objects, was_blocked, client, current_task_id](
           std::vector<ObjectID> found, std::vector<ObjectID> remaining) {
         // Write the data.
@@ -1487,6 +1491,10 @@ void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
   // managers or store an error if the objects have failed.
   const auto refs =
       FlatbufferToObjectReference(*message->object_ids(), *message->owner_addresses());
+  std::unordered_map<ObjectID, rpc::Address> owner_addresses;
+  for (const auto &ref : refs) {
+    owner_addresses.emplace(ObjectID::FromBinary(ref.object_id()), ref.owner_address());
+  }
   AsyncResolveObjects(client, refs, TaskID::Nil(), /*ray_get=*/false,
                       /*mark_worker_blocked*/ false);
   // Reply to the client once a location has been found for all arguments.
@@ -1494,7 +1502,7 @@ void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
   // has been found, so the object may still be on a remote node when the
   // client receives the reply.
   ray::Status status = object_manager_.Wait(
-      object_ids, -1, object_ids.size(), false,
+      object_ids, owner_addresses, -1, object_ids.size(), false,
       [this, client, tag](std::vector<ObjectID> found, std::vector<ObjectID> remaining) {
         RAY_CHECK(remaining.empty());
         std::shared_ptr<WorkerInterface> worker =
@@ -1992,9 +2000,12 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_typ
     num_returns -= 1;
   }
   // Determine which IDs should be marked as failed.
-  std::vector<ObjectID> objects_to_fail;
+  std::vector<rpc::ObjectReference> objects_to_fail;
   for (int64_t i = 0; i < num_returns; i++) {
-    objects_to_fail.push_back(spec.ReturnId(i));
+    rpc::ObjectReference ref;
+    ref.set_object_id(spec.ReturnId(i).Binary());
+    ref.mutable_owner_address()->CopyFrom(spec.CallerAddress());
+    objects_to_fail.push_back(ref);
   }
   const JobID job_id = task.GetTaskSpecification().JobId();
   MarkObjectsAsFailed(error_type, objects_to_fail, job_id);
@@ -2007,14 +2018,15 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_typ
   task_dependency_manager_.UnsubscribeGetDependencies(spec.TaskId());
 }
 
-void NodeManager::MarkObjectsAsFailed(const ErrorType &error_type,
-                                      const std::vector<ObjectID> objects_to_fail,
-                                      const JobID &job_id) {
+void NodeManager::MarkObjectsAsFailed(
+    const ErrorType &error_type, const std::vector<rpc::ObjectReference> objects_to_fail,
+    const JobID &job_id) {
   const std::string meta = std::to_string(static_cast<int>(error_type));
-  for (const auto &object_id : objects_to_fail) {
+  for (const auto &ref : objects_to_fail) {
+    ObjectID object_id = ObjectID::FromBinary(ref.object_id());
     std::shared_ptr<arrow::Buffer> data;
     Status status;
-    status = store_client_.Create(object_id, 0,
+    status = store_client_.Create(object_id, ref.owner_address(), 0,
                                   reinterpret_cast<const uint8_t *>(meta.c_str()),
                                   meta.length(), &data);
     if (status.ok()) {
@@ -2057,9 +2069,10 @@ void NodeManager::TreatTaskAsFailedIfLost(const Task &task) {
     const ObjectID object_id = spec.ReturnId(i);
     // Lookup the return value's locations.
     RAY_CHECK_OK(object_directory_->LookupLocations(
-        object_id, [this, task_marked_as_failed, task](
-                       const ray::ObjectID &object_id,
-                       const std::unordered_set<ray::ClientID> &clients) {
+        object_id, spec.CallerAddress(),
+        [this, task_marked_as_failed, task](
+            const ray::ObjectID &object_id,
+            const std::unordered_set<ray::ClientID> &clients) {
           if (!*task_marked_as_failed) {
             // Only process the object locations if we haven't already marked the
             // task as failed.
@@ -2527,8 +2540,10 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
       // LRU eviction is enabled. The object may still be in scope, but we
       // weren't able to fetch the value within the timeout, so the value has
       // most likely been evicted. Mark the object as unreachable.
-      MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {required_object_id},
-                          JobID::Nil());
+      rpc::ObjectReference ref;
+      ref.set_object_id(required_object_id.Binary());
+      ref.mutable_owner_address()->CopyFrom(owner_addr);
+      MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {ref}, JobID::Nil());
     } else {
       RAY_LOG(DEBUG) << "Required object " << required_object_id
                      << " fetch timed out, asking owner "
@@ -2544,7 +2559,7 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
       rpc::GetObjectStatusRequest request;
       request.set_object_id(required_object_id.Binary());
       request.set_owner_worker_id(owner_addr.worker_id());
-      client->GetObjectStatus(request, [this, required_object_id](
+      client->GetObjectStatus(request, [this, required_object_id, owner_addr](
                                            Status status,
                                            const rpc::GetObjectStatusReply &reply) {
         if (!status.ok() || reply.status() == rpc::GetObjectStatusReply::OUT_OF_SCOPE ||
@@ -2556,8 +2571,10 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
           // freed. Store an error in the local plasma store so that an
           // exception will be thrown when the worker tries to get the
           // value.
-          MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {required_object_id},
-                              JobID::Nil());
+          rpc::ObjectReference ref;
+          ref.set_object_id(required_object_id.Binary());
+          ref.mutable_owner_address()->CopyFrom(owner_addr);
+          MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {ref}, JobID::Nil());
         }
         // Do nothing if the owner replied that the object is available. The
         // object manager will continue trying to fetch the object, and this
@@ -2574,8 +2591,9 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
            "If this was not how your object ID was generated, please file an "
            "issue "
            "at https://github.com/ray-project/ray/issues/";
-    MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {required_object_id},
-                        JobID::Nil());
+    rpc::ObjectReference ref;
+    ref.set_object_id(required_object_id.Binary());
+    MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {ref}, JobID::Nil());
   }
 }
 
