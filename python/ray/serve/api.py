@@ -273,7 +273,7 @@ def create_backend(backend_tag,
     """
     if backend_tag in list_backends():
         raise ValueError(
-            "Cannot create backend.  "
+            "Cannot create backend. "
             "Backend '{}' is already registered.".format(backend_tag))
 
     if config is None:
