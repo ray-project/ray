@@ -213,10 +213,9 @@ Here is an example of how to construct a dueling layer head (for DQN) on top of 
 
 .. code-block:: python
 
-    class DuelingQModel(TorchModelV2, nn.Module):
+    class DuelingQModel(TorchModelV2):
         """A simple, hard-coded dueling head model."""
         def __init__(obs_space, action_space, num_outputs, model_config, name):
-            nn.Module.__init__()
             # Pass num_outputs=None into super constructor (so that no action/
             # logits output layer is built).
             # Alternatively, you can pass in num_outputs=[last layer size of
