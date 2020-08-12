@@ -4,8 +4,6 @@ import pickle
 from ray.tune.result import TRAINING_ITERATION
 
 try:
-    hyperopt_logger = logging.getLogger("hyperopt")
-    hyperopt_logger.setLevel(logging.WARNING)
     import optuna as ot
 except ImportError:
     ot = None
@@ -71,6 +69,8 @@ class OptunaSearch(Searcher):
             space,
             metric="loss",
             mode="min")
+
+    .. versionadded:: 0.8.8
 
     """
 
