@@ -319,6 +319,31 @@ class Trial:
             prefix="{}_{}".format(identifier[:MAX_LEN_IDENTIFIER], date_str()),
             dir=local_dir)
 
+    def reset(self):
+        return Trial(
+            self.trainable_name,
+            config=self.config,
+            trial_id=None,
+            local_dir=self.local_dir,
+            evaluated_params=self.evaluated_params,
+            experiment_tag=self.experiment_tag,
+            resources=self.resources,
+            stopping_criterion=self.stopping_criterion,
+            remote_checkpoint_dir=self.remote_checkpoint_dir,
+            checkpoint_freq=self.checkpoint_freq,
+            checkpoint_at_end=self.checkpoint_at_end,
+            sync_on_checkpoint=self.sync_on_checkpoint,
+            keep_checkpoints_num=self.keep_checkpoints_num,
+            checkpoint_score_attr=self.checkpoint_score_attr,
+            export_formats=self.export_formats,
+            restore_path=self.restore_path,
+            trial_name_creator=self.trial_name_creator,
+            loggers=self.loggers,
+            log_to_file=self.log_to_file,
+            sync_to_driver_fn=self.sync_to_driver_fn,
+            max_failures=self.max_failures,
+        )
+
     def init_logger(self):
         """Init logger."""
         if not self.result_logger:
