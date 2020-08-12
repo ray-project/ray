@@ -7,6 +7,7 @@ from shlex import quote
 
 from ray import ray_constants
 from ray import services
+from ray.util.debug import log_once
 from ray.tune.cluster_info import get_ssh_key, get_ssh_user
 from ray.tune.sync_client import (CommandBasedClient, get_sync_client,
                                   get_cloud_sync_client, NOOP)
@@ -43,7 +44,8 @@ def log_sync_template(options=""):
         unavailable.
     """
     if not distutils.spawn.find_executable("rsync"):
-        logger.error("Log sync requires rsync to be installed.")
+        if log_once("tune:rsync"):
+            logger.error("Log sync requires rsync to be installed.")
         return None
     global _log_sync_warned
     ssh_key = get_ssh_key()
