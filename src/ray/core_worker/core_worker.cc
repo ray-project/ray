@@ -735,7 +735,10 @@ CoreWorker::GetAllReferenceCounts() const {
 
 void CoreWorker::PutObjectIntoPlasma(const RayObject &object, const ObjectID &object_id) {
   bool object_exists;
-  RAY_CHECK_OK(plasma_store_provider_->Put(object, object_id, &object_exists));
+  // This call will only be used by PromoteObjectToPlasma, which means that the
+  // object will always owned by us.
+  RAY_CHECK_OK(plasma_store_provider_->Put(
+      object, object_id, /* owner_address = */ rpc_address_, &object_exists));
   if (!object_exists) {
     // Tell the raylet to pin the object **after** it is created.
     RAY_LOG(DEBUG) << "Pinning put object " << object_id;
@@ -826,7 +829,8 @@ Status CoreWorker::Put(const RayObject &object,
     RAY_CHECK(memory_store_->Put(object, object_id));
     return Status::OK();
   }
-  RAY_RETURN_NOT_OK(plasma_store_provider_->Put(object, object_id, &object_exists));
+  RAY_RETURN_NOT_OK(plasma_store_provider_->Put(
+      object, object_id, /* owner_address = */ rpc_address_, &object_exists));
   if (!object_exists) {
     if (pin_object) {
       // Tell the raylet to pin the object **after** it is created.
@@ -860,8 +864,8 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
            RayConfig::instance().max_direct_call_object_size())) {
     *data = std::make_shared<LocalMemoryBuffer>(data_size);
   } else {
-    RAY_RETURN_NOT_OK(
-        plasma_store_provider_->Create(metadata, data_size, *object_id, data));
+    RAY_RETURN_NOT_OK(plasma_store_provider_->Create(
+        metadata, data_size, *object_id, /* owner_address = */ rpc_address_, data));
   }
   // Only add the object to the reference counter if it didn't already exist.
   if (data) {
@@ -874,12 +878,14 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
 }
 
 Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
-                          const ObjectID &object_id, std::shared_ptr<Buffer> *data) {
+                          const ObjectID &object_id, const rpc::Address &owner_address,
+                          std::shared_ptr<Buffer> *data) {
   if (options_.is_local_mode) {
     return Status::NotImplemented(
         "Creating an object with a pre-existing ObjectID is not supported in local mode");
   } else {
-    return plasma_store_provider_->Create(metadata, data_size, object_id, data);
+    return plasma_store_provider_->Create(metadata, data_size, object_id, owner_address,
+                                          data);
   }
 }
 
@@ -1526,8 +1532,8 @@ Status CoreWorker::AllocateReturnObjects(
               RayConfig::instance().max_direct_call_object_size()) {
         data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
       } else {
-        RAY_RETURN_NOT_OK(
-            Create(metadatas[i], data_sizes[i], object_ids[i], &data_buffer));
+        RAY_RETURN_NOT_OK(Create(metadatas[i], data_sizes[i], object_ids[i],
+                                 owner_address, &data_buffer));
         object_already_exists = !data_buffer;
       }
     }
@@ -1901,6 +1907,47 @@ void CoreWorker::HandleWaitForObjectEviction(
     RAY_LOG(DEBUG) << "ObjectID reference already gone for " << object_id;
     respond(object_id);
   }
+}
+
+void CoreWorker::HandleAddObjectLocationOwner(
+    const rpc::AddObjectLocationOwnerRequest &request,
+    rpc::AddObjectLocationOwnerReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
+                           send_reply_callback)) {
+    return;
+  }
+  reference_counter_->AddObjectLocation(ObjectID::FromBinary(request.object_id()),
+                                        ClientID::FromBinary(request.client_id()));
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void CoreWorker::HandleRemoveObjectLocationOwner(
+    const rpc::RemoveObjectLocationOwnerRequest &request,
+    rpc::RemoveObjectLocationOwnerReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
+                           send_reply_callback)) {
+    return;
+  }
+  reference_counter_->RemoveObjectLocation(ObjectID::FromBinary(request.object_id()),
+                                           ClientID::FromBinary(request.client_id()));
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void CoreWorker::HandleGetObjectLocationsOwner(
+    const rpc::GetObjectLocationsOwnerRequest &request,
+    rpc::GetObjectLocationsOwnerReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
+                           send_reply_callback)) {
+    return;
+  }
+  std::unordered_set<ClientID> client_ids =
+      reference_counter_->GetObjectLocations(ObjectID::FromBinary(request.object_id()));
+  for (const auto &client_id : client_ids) {
+    reply->add_client_ids(client_id.Binary());
+  }
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void CoreWorker::HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &request,
