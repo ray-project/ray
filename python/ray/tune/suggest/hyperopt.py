@@ -212,13 +212,26 @@ class HyperOptSearch(Searcher):
             t for t in self._hpopt_trials.trials if t["tid"] == hyperopt_tid
         ][0]
 
+    def get_state(self):
+        return {
+            "hyperopt_trials": self._hpopt_trials,
+            "rstate": self.rstate.get_state()
+        }
+
+    def set_state(self, state):
+        self._hpopt_trials = state["hyperopt_trials"]
+        self.rstate.set_state(state["rstate"])
+
     def save(self, checkpoint_path):
-        trials_object = (self._hpopt_trials, self.rstate.get_state())
         with open(checkpoint_path, "wb") as outputFile:
-            pickle.dump(trials_object, outputFile)
+            pickle.dump(self.get_state(), outputFile)
 
     def restore(self, checkpoint_path):
         with open(checkpoint_path, "rb") as inputFile:
             trials_object = pickle.load(inputFile)
-        self._hpopt_trials = trials_object[0]
-        self.rstate.set_state(trials_object[1])
+
+        if isinstance(trials_object, tuple):
+            self._hpopt_trials = trials_object[0]
+            self.rstate.set_state(trials_object[1])
+        else:
+            self.set_state(trials_object)

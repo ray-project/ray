@@ -1,5 +1,6 @@
 # coding: utf-8
 import json
+import os
 import sys
 
 import grpc
@@ -110,6 +111,24 @@ ray.shutdown()
                         ("Worker process with PID {} is shared" +
                          " by multiple drivers.").format(worker_pid))
                     all_worker_pids.add(worker_pid)
+
+
+def test_worker_env(shutdown_only):
+    ray.init(
+        job_config=ray.job_config.JobConfig(worker_env={
+            "foo1": "bar1",
+            "foo2": "bar2"
+        }),
+        _internal_config=json.dumps({
+            "enable_multi_tenancy": True
+        }))
+
+    @ray.remote
+    def get_env(key):
+        return os.environ.get(key)
+
+    assert ray.get(get_env.remote("foo1")) == "bar1"
+    assert ray.get(get_env.remote("foo2")) == "bar2"
 
 
 if __name__ == "__main__":

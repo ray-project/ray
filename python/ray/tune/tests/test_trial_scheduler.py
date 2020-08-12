@@ -10,12 +10,13 @@ from unittest.mock import MagicMock
 
 import ray
 from ray import tune
+from ray.tune import Trainable
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
                                  PopulationBasedTraining, MedianStoppingRule,
                                  TrialScheduler, HyperBandForBOHB)
 
-from ray.tune.schedulers.pbt import explore
+from ray.tune.schedulers.pbt import explore, PopulationBasedTrainingReplay
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.resources import Resources
@@ -710,6 +711,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         _register_all()  # re-register the evicted objects
 
     def basicSetup(self,
+                   num_trials=5,
                    resample_prob=0.0,
                    explore=None,
                    perturbation_interval=10,
@@ -731,7 +733,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             custom_explore_fn=explore,
             log_config=log_config)
         runner = _MockTrialRunner(pbt)
-        for i in range(5):
+        for i in range(num_trials):
             trial_hyperparams = hyperparams or {
                 "float_factor": 2.0,
                 "const_factor": 3,
@@ -1070,6 +1072,157 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             raw_policy = open(os.path.join(tmpdir, log_file), "r").readlines()
             for line in raw_policy:
                 check_policy(json.loads(line))
+        shutil.rmtree(tmpdir)
+
+    def testReplay(self):
+        # Returns unique increasing parameter mutations
+        class _Counter:
+            def __init__(self, start=0):
+                self.count = start - 1
+
+            def __call__(self, *args, **kwargs):
+                self.count += 1
+                return self.count
+
+        pbt, runner = self.basicSetup(
+            num_trials=4,
+            perturbation_interval=5,
+            log_config=True,
+            step_once=False,
+            hyperparam_mutations={
+                "float_factor": lambda: 100.0,
+                "int_factor": _Counter(1000)
+            })
+        trials = runner.get_trials()
+        tmpdir = tempfile.mkdtemp()
+
+        # Internal trial state to collect the real PBT history
+        class _TrialState:
+            def __init__(self, config):
+                self.step = 0
+                self.config = config
+                self.history = []
+
+            def forward(self, t):
+                while self.step < t:
+                    self.history.append(self.config)
+                    self.step += 1
+
+        trial_state = []
+        for i, trial in enumerate(trials):
+            trial.local_dir = tmpdir
+            trial.last_result = {TRAINING_ITERATION: 0}
+            trial_state.append(_TrialState(trial.config))
+
+        # Helper function to simulate stepping trial k a number of steps,
+        # and reporting a score at the end
+        def trial_step(k, steps, score):
+            res = result(trial_state[k].step + steps, score)
+
+            trials[k].last_result = res
+            trial_state[k].forward(res[TRAINING_ITERATION])
+
+            old_config = trials[k].config
+            pbt.on_trial_result(runner, trials[k], res)
+            new_config = trials[k].config
+            trial_state[k].config = new_config.copy()
+
+            if old_config != new_config:
+                # Copy history from source trial
+                source = -1
+                for m, cand in enumerate(trials):
+                    if cand.trainable_name == trials[k].restored_checkpoint:
+                        source = m
+                        break
+                assert source >= 0
+                trial_state[k].history = trial_state[source].history.copy()
+                trial_state[k].step = trial_state[source].step
+
+        # Initial steps
+        trial_step(0, 10, 0)
+        trial_step(1, 11, 10)
+        trial_step(2, 12, 0)
+        trial_step(3, 13, 0)
+
+        # Next block
+        trial_step(0, 10, -10)  # 0 <-- 1, new_t=11
+        trial_step(2, 8, -20)  # 2 <-- 1, new_t=11
+        trial_step(3, 9, 0)
+        trial_step(1, 7, 0)
+
+        # Next block
+        trial_step(1, 12, 0)
+        trial_step(2, 13, 0)
+        trial_step(3, 14, 10)
+        trial_step(0, 11, 0)  # 0 <-- 3, new_t=13+9+14=36
+
+        # Next block
+        trial_step(0, 6, 20)
+        trial_step(3, 9, -40)  # 3 <-- 0, new_t=42
+        trial_step(2, 8, -50)  # 2 <-- 0, new_t=42
+        trial_step(1, 7, 30)
+        trial_step(2, 8, -60)  # 2 <-- 1, new_t=37
+
+        # Next block
+        trial_step(0, 10, 0)
+        trial_step(1, 10, 0)
+        trial_step(2, 10, 0)
+        trial_step(3, 10, 0)
+
+        # Playback trainable to collect configs at each step
+        class Playback(Trainable):
+            def setup(self, config):
+                self.config = config
+                self.replayed = []
+                self.iter = 0
+
+            def step(self):
+                self.iter += 1
+                self.replayed.append(self.config)
+                return {
+                    "reward": 0,
+                    "done": False,
+                    "replayed": self.replayed,
+                    TRAINING_ITERATION: self.iter
+                }
+
+            def reset_config(self, new_config):
+                self.config = new_config
+                return True
+
+            def save_checkpoint(self, tmp_checkpoint_dir):
+                return tmp_checkpoint_dir
+
+            def load_checkpoint(self, checkpoint):
+                pass
+
+        # Loop through all trials and check if PBT history is the
+        # same as the playback history
+        for i, trial in enumerate(trials):
+            if trial.trial_id == "1":  # Did not exploit anything
+                continue
+
+            replay = PopulationBasedTrainingReplay(
+                os.path.join(tmpdir,
+                             "pbt_policy_{}.txt".format(trial.trial_id)))
+            analysis = tune.run(
+                Playback,
+                scheduler=replay,
+                stop={TRAINING_ITERATION: trial_state[i].step})
+
+            replayed = analysis.trials[0].last_result["replayed"]
+            self.assertSequenceEqual(trial_state[i].history, replayed)
+
+        # Trial 1 did not exploit anything and should raise an error
+        with self.assertRaises(ValueError):
+            replay = PopulationBasedTrainingReplay(
+                os.path.join(tmpdir,
+                             "pbt_policy_{}.txt".format(trials[1].trial_id)))
+            tune.run(
+                Playback,
+                scheduler=replay,
+                stop={TRAINING_ITERATION: trial_state[1].step})
+
         shutil.rmtree(tmpdir)
 
     def testPostprocessingHook(self):

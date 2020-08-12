@@ -41,11 +41,13 @@ py_test_module_list(
     "test_output.py",
     "test_placement_group.py",
     "test_reconstruction.py",
+    "test_resource_demand_scheduler.py",
     "test_reference_counting_2.py",
     "test_reference_counting.py",
     "test_stress.py",
     "test_stress_sharded.py",
     "test_unreconstructable_errors.py",
+    "test_tensorflow.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -77,7 +79,6 @@ py_test_module_list(
     "test_ray_init.py",
     "test_serialization.py",
     "test_tempfile.py",
-    "test_tensorflow.py",
     "test_webui.py",
   ],
   size = "small",
@@ -98,7 +99,7 @@ py_test_module_list(
   deps = ["//:ray_lib"],
 )
 
-# TODO(barakmich): aws/ might want its own buildfile, or 
+# TODO(barakmich): aws/ might want its own buildfile, or
 #    py_test_module_list should support subdirectories.
 py_test(
     name = "test_autoscaler_aws",
@@ -107,3 +108,12 @@ py_test(
     deps = ["//:ray_lib"],
 )
 
+# Note(simon): typing tests are not included in module list
+#    because they requires globs and it might be refactored in the future.
+py_test(
+    name = "test_typing",
+    size = "small",
+    srcs = SRCS + ["test_typing.py"] + glob(["typing_files"]),
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
