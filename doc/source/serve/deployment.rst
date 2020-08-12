@@ -279,7 +279,7 @@ To learn more, in general, about Ray Clusters see :ref:`cluster-index`.
 
 
 Deploying Multiple Serve Instances on a Single Ray Cluster
----------------------------------------------------------
+----------------------------------------------------------
 
 You can run multiple serve instances on the same Ray cluster by providing a ``name`` in :mod:`serve.init() <ray.serve.init>`.
 
