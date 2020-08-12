@@ -373,13 +373,17 @@ class Worker:
         sys.exit(0)
 
 
-def get_gpu_ids():
+def get_gpu_ids(as_str=False):
     """Get the IDs of the GPUs that are available to the worker.
 
     If the CUDA_VISIBLE_DEVICES environment variable was set when the worker
     started up, then the IDs returned by this method will be a subset of the
     IDs in CUDA_VISIBLE_DEVICES. If not, the IDs will fall in the range
     [0, NUM_GPUS - 1], where NUM_GPUS is the number of GPUs that the node has.
+
+    Args:
+        as_str (Boolean): If true, return gpu ids in string format. By default,
+            it is False. This will change to default to True in the future.
 
     Returns:
         A list of GPU IDs.
@@ -400,7 +404,17 @@ def get_gpu_ids():
         # Give all GPUs in local_mode.
         if global_worker.mode == LOCAL_MODE:
             max_gpus = global_worker.node.get_resource_spec().num_gpus
-            return global_worker.original_gpu_ids[:max_gpus]
+            assigned_ids = global_worker.original_gpu_ids[:max_gpus]
+
+    if not as_str:
+        from ray.util.debug import log_once
+        if log_once("ray.get_gpu_ids.as_str"):
+            logger.warning(
+                "ray.get_gpu_ids() will return a list of strings by default"
+                " in a future version of Ray for compatibility with CUDA. "
+                "To enable the forward-compatible behavior, use "
+                "`ray.get_gpu_ids(as_str=True)`.")
+        assigned_ids = [int(assigned_id) for assigned_id in assigned_ids]
 
     return assigned_ids
 
