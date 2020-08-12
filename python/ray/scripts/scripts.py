@@ -1510,7 +1510,10 @@ def install_nightly(verbose, dryrun):
             wheels = yaml.safe_load(f)
 
     if not wheels:
-        raise click.ClickException(f"Wheels not found in '{all_wheels_path}'!")
+        raise click.ClickException(
+            f"Wheels not found in '{all_wheels_path}'! "
+            "Please visit https://docs.ray.io/en/master/installation.html to "
+            "obtain the latest wheels.")
 
     platform = sys.platform
     py_version = "{0}.{1}".format(*sys.version_info[:2])
