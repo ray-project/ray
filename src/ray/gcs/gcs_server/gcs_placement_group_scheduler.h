@@ -76,6 +76,9 @@ class GcsScheduleStrategy {
 
 class GcsPackStrategy : public GcsScheduleStrategy {
  public:
+  GcsPackStrategy()
+      : gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
+
   ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
                        const std::unique_ptr<ScheduleContext> &context) override;
 };
