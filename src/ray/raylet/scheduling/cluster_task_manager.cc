@@ -190,20 +190,14 @@ bool ClusterTaskManager::IsRunning(const TaskID &task_id) const {
 
 std::string ClusterTaskManager::DebugString() {
   std::stringstream buffer;
-  // buffer << "========== Node: " << self_node_id_ << " =================\n";
-  // buffer << "Schedule queue length: " << tasks_to_schedule_.size() << "\n";
-  // buffer << "Dispatch queue length: " << tasks_to_dispatch_.size() << "\n";
-  // buffer << "Waiting tasks size: " << waiting_tasks_.size() << "\n";
-  // buffer << "Running tasks size: " << running_tasks_.size() << "\n";
-  // buffer << "cluster_resource_scheduler state: "
-  //        << cluster_resource_scheduler_->DebugString() << "\n";
-  // buffer << "==================================================";
-  buffer << "ClusterTaskManager [";
-  buffer << tasks_to_schedule_.size() << "\t";
-  buffer << tasks_to_dispatch_.size() << "\t";
-  buffer << waiting_tasks_.size() << "\t";
-  buffer << running_tasks_.size();
-  buffer << "]";
+  buffer << "========== Node: " << self_node_id_ << " =================\n";
+  buffer << "Schedule queue length: " << tasks_to_schedule_.size() << "\n";
+  buffer << "Dispatch queue length: " << tasks_to_dispatch_.size() << "\n";
+  buffer << "Waiting tasks size: " << waiting_tasks_.size() << "\n";
+  buffer << "Running tasks size: " << running_tasks_.size() << "\n";
+  buffer << "cluster_resource_scheduler state: "
+         << cluster_resource_scheduler_->DebugString() << "\n";
+  buffer << "==================================================";
   return buffer.str();
 }
 
