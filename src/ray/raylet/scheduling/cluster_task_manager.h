@@ -114,7 +114,7 @@ class ClusterTaskManager {
   std::deque<Work> tasks_to_dispatch_;
   /// Tasks waiting for arguments to be transferred locally.
   absl::flat_hash_map<TaskID, Work> waiting_tasks_;
-  /// Tasks which are currently running.
+  /// Tasks that are currently running.
   absl::flat_hash_set<TaskID> running_tasks_;
 
   /// Determine whether a task should be immediately dispatched,
