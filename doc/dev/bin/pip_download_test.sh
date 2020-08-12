@@ -3,6 +3,10 @@
 # This script automatically download ray and run the sanity check (sanity_check.py)
 # in various Python version. This script requires conda command to exist.
 
+unset RAY_ADDRESS
+export RAY_HASH=$RAY_HASH
+export RAY_VERSION=$RAY_VERSION
+
 if [[ -z "$RAY_HASH" ]]; then
     echo "RAY_HASH env var should be provided"
     exit 1
@@ -27,7 +31,7 @@ pip install --upgrade pip
 # This is required to use conda activate
 source "$(conda info --base)/etc/profile.d/conda.sh"
 
-for PYTHON_VERSION in "3.5" "3.6" "3.7" "3.8" 
+for PYTHON_VERSION in "3.6" "3.7" "3.8" 
 do
     env_name="${RAY_VERSION}-${PYTHON_VERSION}-env"
     conda create -y -n "${env_name}" python=${PYTHON_VERSION}
@@ -41,7 +45,12 @@ do
     printf "\n\n\n"
 
     pip install redis==3.3.2
-    pip install msgpack==0.6.2
+    pip install msgpack==1.0.0
+    pip install aioredis
+    pip install colorful
+    pip install prometheus-client==0.7.1
+    pip install opencensus
+    pip install gpustat
     pip install ray
     pip uninstall -y ray
     pip install --index-url https://test.pypi.org/simple/ ray
