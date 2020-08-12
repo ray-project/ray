@@ -71,19 +71,19 @@ class GcsScheduleStrategy {
   virtual ~GcsScheduleStrategy() {}
   virtual ScheduleMap Schedule(
       std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
-      const std::shared_ptr<ScheduleContext> &context) = 0;
+      const std::unique_ptr<ScheduleContext> &context) = 0;
 };
 
 class GcsPackStrategy : public GcsScheduleStrategy {
  public:
   ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
-                       const std::shared_ptr<ScheduleContext> &context) override;
+                       const std::unique_ptr<ScheduleContext> &context) override;
 };
 
 class GcsSpreadStrategy : public GcsScheduleStrategy {
  public:
   ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
-                       const std::shared_ptr<ScheduleContext> &context) override;
+                       const std::unique_ptr<ScheduleContext> &context) override;
 };
 
 /// GcsPlacementGroupScheduler is responsible for scheduling placement_groups registered
@@ -134,7 +134,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       const rpc::Address &raylet_address);
 
   /// Generate schedule conetext.
-  std::shared_ptr<ScheduleContext> GetScheduleContext();
+  std::unique_ptr<ScheduleContext> GetScheduleContext();
 
   /// A timer that ticks every cancel resource failure milliseconds.
   boost::asio::deadline_timer return_timer_;

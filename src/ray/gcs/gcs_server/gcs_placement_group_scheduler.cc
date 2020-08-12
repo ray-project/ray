@@ -40,7 +40,7 @@ GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
 /// it in the next pr.
 ScheduleMap GcsPackStrategy::Schedule(
     std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
-    const std::shared_ptr<ScheduleContext> &context) {
+    const std::unique_ptr<ScheduleContext> &context) {
   // Aggregate required resources.
   std::unordered_map<std::string, double> required_resources;
   for (const auto &bundle : bundles) {
@@ -81,7 +81,7 @@ ScheduleMap GcsPackStrategy::Schedule(
 /// and don't care the real resource.
 ScheduleMap GcsSpreadStrategy::Schedule(
     std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
-    const std::shared_ptr<ScheduleContext> &context) {
+    const std::unique_ptr<ScheduleContext> &context) {
   ScheduleMap schedule_map;
   auto &alive_nodes = context->node_manager_.GetClusterRealtimeResources();
   auto iter = alive_nodes.begin();
@@ -238,7 +238,7 @@ GcsPlacementGroupScheduler::GetOrConnectLeaseClient(const rpc::Address &raylet_a
   return iter->second;
 }
 
-std::shared_ptr<ScheduleContext> GcsPlacementGroupScheduler::GetScheduleContext() {
+std::unique_ptr<ScheduleContext> GcsPlacementGroupScheduler::GetScheduleContext() {
   // TODO(ffbin): We will add listener to the GCS node manager to handle node deletion.
   auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
   for (const auto &iter : alive_nodes) {
@@ -252,7 +252,7 @@ std::shared_ptr<ScheduleContext> GcsPlacementGroupScheduler::GetScheduleContext(
   for (const auto &iter : node_to_leased_bundles_) {
     node_to_bundles->emplace(iter.first, iter.second.size());
   }
-  return std::make_shared<ScheduleContext>(node_to_bundles, gcs_node_manager_);
+  return std::unique_ptr<ScheduleContext>(new ScheduleContext(node_to_bundles, gcs_node_manager_));
 }
 
 }  // namespace gcs
