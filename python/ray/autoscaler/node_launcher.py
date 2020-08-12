@@ -13,7 +13,14 @@ logger = logging.getLogger(__name__)
 class NodeLauncher(threading.Thread):
     """Launches nodes asynchronously in the background."""
 
-    def __init__(self, provider, queue, pending, instance_types=None, index=None, *args, **kwargs):
+    def __init__(self,
+                 provider,
+                 queue,
+                 pending,
+                 instance_types=None,
+                 index=None,
+                 *args,
+                 **kwargs):
         self.queue = queue
         self.pending = pending
         self.provider = provider

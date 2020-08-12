@@ -14,7 +14,7 @@ from ray.experimental.internal_kv import _internal_kv_put, \
 from ray.autoscaler.node_provider import get_node_provider
 from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
                                  TAG_RAY_FILE_MOUNTS_CONTENTS,
-                                 TAG_RAY_NODE_STATUS, TAG_RAY_NODE_TYPE,
+                                 TAG_RAY_NODE_STATUS, TAG_RAY_NODE_TYPE, TAG_RAY_INSTANCE_TYPE,
                                  STATUS_UP_TO_DATE, NODE_TYPE_WORKER)
 from ray.autoscaler.updater import NodeUpdaterThread
 from ray.autoscaler.node_launcher import NodeLauncher
@@ -96,7 +96,7 @@ class StandardAutoscaler:
                 queue=self.launch_queue,
                 index=i,
                 pending=self.pending_launches,
-                instance_types=instance_types,
+                instance_types=self.instance_types,
             )
             node_launcher.daemon = True
             node_launcher.start()
@@ -245,7 +245,7 @@ class StandardAutoscaler:
         for node_id, commands, ray_start in (self.should_update(node_id)
                                              for node_id in nodes):
             if node_id is not None:
-                resources = _node_resources(node_id)
+                resources = self._node_resources(node_id)
                 T.append(
                     threading.Thread(
                         target=self.spawn_updater,
@@ -259,11 +259,9 @@ class StandardAutoscaler:
         for node_id in nodes:
             self.recover_if_needed(node_id, now)
 
-
     def _node_resources(self, node_id):
         instance_type = self.provider.node_tags(node_id)[TAG_RAY_INSTANCE_TYPE]
         return self.instance_types[instance_type]["resources"]
-
 
     def reload_config(self, errors_fatal=False):
         sync_continuously = False
@@ -405,7 +403,8 @@ class StandardAutoscaler:
 
         return (node_id, init_commands, ray_commands)
 
-    def spawn_updater(self, node_id, init_commands, ray_start_commands, node_resources):
+    def spawn_updater(self, node_id, init_commands, ray_start_commands,
+                      node_resources):
         updater = NodeUpdaterThread(
             node_id=node_id,
             provider_config=self.config["provider"],
@@ -423,8 +422,7 @@ class StandardAutoscaler:
             process_runner=self.process_runner,
             use_internal_ip=True,
             docker_config=self.config.get("docker"),
-            node_resources=node_resources
-        )
+            node_resources=node_resources)
         updater.start()
         self.updaters[node_id] = updater
 
