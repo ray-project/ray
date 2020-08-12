@@ -133,7 +133,7 @@ if __name__ == "__main__":
 
     best_trial = analysis.get_best_trial("mean_accuracy")
     best_checkpoint = max(
-        analysis.get_trial_checkpoints_paths(best_trial, "mean_accuracy"))
+        analysis.get_trial_checkpoints_paths(best_trial, "mean_accuracy"), lambda x:x[1])
     restored_trainable = PytorchTrainable()
     restored_trainable.restore(best_checkpoint[0])
     best_model = restored_trainable.model
