@@ -22,7 +22,7 @@ from ray.tune.registry import get_trainable_cls, validate_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR, DONE, TRAINING_ITERATION
 from ray.tune.resources import Resources
 from ray.tune.trainable import TrainableUtil
-from ray.tune.utils import flatten_dict
+from ray.tune.utils import flatten_dict, generate_id
 from ray.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
@@ -115,6 +115,8 @@ class TrialInfo:
         trial_id (str): trial_id of the trial
     """
 
+    # TODO (rliaw): deprecate this.
+
     def __init__(self, trial):
         self._trial_name = str(trial)
         self._trial_id = trial.trial_id
@@ -126,6 +128,7 @@ class TrialInfo:
     @property
     def trial_id(self):
         return self._trial_id
+
 
 @dataclass
 class TrialState:
@@ -190,9 +193,6 @@ class TrialState:
     def to_json(self):
         return copy.deepcopy(self.__dict__)
 
-    def score(self, metric):
-        return self.metrics.get(metric)
-
 
 class Trial:
     """A trial object holds the state for one model training run.
@@ -253,7 +253,7 @@ class Trial:
         validate_trainable(trainable_name)
         # Trial config
         self.trainable_name = trainable_name
-        self.trial_id = Trial.generate_id() if trial_id is None else trial_id
+        self.trial_id = generate_id() if trial_id is None else trial_id
         self.config = config or {}
         self.local_dir = local_dir  # This remains unexpanded for syncing.
 
@@ -363,10 +363,6 @@ class Trial:
         if checkpoint.value is None:
             checkpoint = Checkpoint(Checkpoint.PERSISTENT, self.restore_path)
         return checkpoint
-
-    @classmethod
-    def generate_id(cls):
-        return str(uuid.uuid1().hex)[:8]
 
     @property
     def remote_checkpoint_dir(self):
@@ -628,6 +624,12 @@ class Trial:
         if include_trial_id:
             identifier += "_" + self.trial_id
         return identifier.replace("/", "_")
+
+    def get_state(self):
+        return TrialState.from_trial(self)
+
+    def set_state(state):
+        self.__dict__.update(state.to_json())
 
     def __getstate__(self):
         """Memento generator for Trial.

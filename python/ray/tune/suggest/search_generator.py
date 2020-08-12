@@ -10,8 +10,7 @@ from ray.tune.config_parser import make_parser, create_trial_from_spec
 from ray.tune.suggest.search import SearchAlgorithm
 from ray.tune.suggest.suggestion import Searcher
 from ray.tune.suggest.variant_generator import format_vars, resolve_nested_dict
-from ray.tune.trial import Trial
-from ray.tune.utils import flatten_dict, merge_dicts
+from ray.tune.utils import flatten_dict, merge_dicts, generate_id
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +104,7 @@ class SearchGenerator(SearchAlgorithm):
 
     def create_trial_if_possible(self, experiment_spec, output_path):
         logger.debug("creating trial")
-        trial_id = Trial.generate_id()
+        trial_id = generate_id()
         suggested_config = self.searcher.suggest(trial_id)
         if suggested_config == Searcher.FINISHED:
             self._finished = True

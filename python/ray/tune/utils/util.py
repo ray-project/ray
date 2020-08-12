@@ -269,6 +269,10 @@ def _from_pinnable(obj):
     return obj[0]
 
 
+def generate_id():
+    return str(uuid.uuid1().hex)[:8]
+
+
 def validate_save_restore(trainable_cls,
                           config=None,
                           num_gpus=0,
