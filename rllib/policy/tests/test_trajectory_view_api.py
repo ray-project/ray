@@ -5,7 +5,7 @@ import unittest
 
 import ray
 import ray.rllib.agents.ppo as ppo
-from ray.rllib.examples.env.multi_agent import MultiAgentStatelessCartPole
+from ray.rllib.examples.env.debug_counter_env import MultiAgentDebugCounterEnv
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import framework_iterator
 
@@ -20,7 +20,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def test_plain(self):
+    def test_traj_view_normal_case(self):
         """Tests, whether Model and Policy return the correct ViewRequirements.
         """
         config = ppo.DEFAULT_CONFIG.copy()
@@ -46,7 +46,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                     assert view_req_policy[key].shift == 1
             trainer.stop()
 
-    def test_lstm_prev_actions_and_rewards(self):
+    def test_traj_view_lstm_prev_actions_and_rewards(self):
         """Tests, whether Policy/Model return correct LSTM ViewRequirements.
         """
         config = ppo.DEFAULT_CONFIG.copy()
@@ -86,7 +86,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                     assert view_req_policy[key].shift == 1
             trainer.stop()
 
-    def test_lstm_performance(self):
+    def test_traj_view_lstm_performance(self):
         """Test whether PPOTrainer runs faster w/ `_use_trajectory_view_api`.
         """
         config = copy.deepcopy(ppo.DEFAULT_CONFIG)
@@ -187,6 +187,10 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             #print("w/ _fast_sampling: reward={}".format(
             #    results["episode_reward_mean"]))
             #self.assertGreater(results["episode_reward_mean"], 80.0)
+
+    def test_traj_view_lstm_functionality(self):
+
+        pass
 
 
 if __name__ == "__main__":

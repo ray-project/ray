@@ -203,6 +203,11 @@ class SyncSampler(SamplerInput):
         self.obs_filters = obs_filters
         self.extra_batches = queue.Queue()
         self.perf_stats = _PerfStats()
+        self.sample_collector = None
+        if _use_trajectory_view_api:
+            self.sample_collector = _FastMultiAgentSampleBatchBuilder(
+                policies, callbacks)
+
         # Create the rollout generator to use for calls to `get_data()`.
         self.rollout_provider = _env_runner(
             worker, self.base_env, self.extra_batches.put, self.policies,
@@ -210,7 +215,7 @@ class SyncSampler(SamplerInput):
             self.preprocessors, self.obs_filters, clip_rewards, clip_actions,
             pack_multiple_episodes_in_batch, callbacks, tf_sess,
             self.perf_stats, soft_horizon, no_done_at_end, observation_fn,
-            _use_trajectory_view_api)
+            _use_trajectory_view_api, self.sample_collector)
         self.metrics_queue = queue.Queue()
 
     @override(SamplerInput)
@@ -342,6 +347,10 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self.shutdown = False
         self.observation_fn = observation_fn
         self._use_trajectory_view_api = _use_trajectory_view_api
+        self.sample_collector = None
+        if _use_trajectory_view_api:
+            self.sample_collector = _FastMultiAgentSampleBatchBuilder(
+                policies, callbacks)
 
     @override(threading.Thread)
     def run(self):
@@ -430,7 +439,9 @@ def _env_runner(
         soft_horizon: bool,
         no_done_at_end: bool,
         observation_fn: "ObservationFunction",
-        _use_trajectory_view_api: bool = False) -> Iterable[SampleBatchType]:
+        _use_trajectory_view_api: bool = False,
+        _sample_collector: Optional[SampleCollector] = None,
+) -> Iterable[SampleBatchType]:
     """This implements the common experience collection logic.
 
     Args:
@@ -505,11 +516,6 @@ def _env_runner(
     # Pool of batch builders, which can be shared across episodes to pack
     # trajectory data.
     batch_builder_pool: List[MultiAgentSampleBatchBuilder] = []
-
-    # Only one builder per sampler (all samples are collected in a per-policy
-    # fashion).
-    _fast_sample_batch_builder = _FastMultiAgentSampleBatchBuilder(
-        policies, callbacks)
 
     def get_batch_builder():
         if batch_builder_pool:
