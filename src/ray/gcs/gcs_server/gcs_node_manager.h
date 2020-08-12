@@ -33,7 +33,7 @@ class GcsNodeResource {
   explicit GcsNodeResource(std::unordered_map<std::string, double> resources_available)
       : resources_available_(std::move(resources_available)) {}
 
-  bool IsSubset(const std::unordered_map<std::string, double> &request_resources) const;
+  bool IsSubset(const std::unordered_map<std::string, double> &required_resources) const;
 
   /// Dynamic resource capacity.
   std::unordered_map<std::string, double> resources_available_;

@@ -56,11 +56,9 @@ class GcsPlacementGroupSchedulerInterface {
 
 class ScheduleContext {
  public:
-  ScheduleContext(const absl::flat_hash_map<int64_t, ClientID> &bundle_locations)
-      : bundle_locations_(bundle_locations) {}
+  ScheduleContext(const GcsNodeManager &node_manager) : node_manager_(node_manager) {}
 
-  // Distribution of bundles in nodes. Key is bundle index, value is node id.
-  const absl::flat_hash_map<int64_t, ClientID> &bundle_locations_;
+  const GcsNodeManager &node_manager_;
 };
 
 class GcsScheduleStrategy {
@@ -73,8 +71,15 @@ class GcsScheduleStrategy {
 
 class GcsPackStrategy : public GcsScheduleStrategy {
  public:
+  GcsPackStrategy()
+      : gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
+
   ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
                        const std::shared_ptr<ScheduleContext> &context) override;
+
+ private:
+  /// Internally maintained random number generator.
+  std::mt19937_64 gen_;
 };
 
 class GcsSpreadStrategy : public GcsScheduleStrategy {
@@ -130,8 +135,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       const rpc::Address &raylet_address);
 
   /// Generate schedule conetext.
-  std::shared_ptr<ScheduleContext> GetScheduleContext(
-      const PlacementGroupID &placement_group_id);
+  std::shared_ptr<ScheduleContext> GetScheduleContext();
 
   /// A timer that ticks every cancel resource failure milliseconds.
   boost::asio::deadline_timer return_timer_;
@@ -150,13 +154,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// until we receive a reply or the node is removed.
   absl::flat_hash_map<ClientID, absl::flat_hash_set<BundleID>>
       node_to_bundles_when_leasing_;
-
-  /// Map from node ID to the set of bundles. This is needed so that we can reschedule
-  /// bundles when a node is dead.
-  absl::flat_hash_map<ClientID, std::vector<std::shared_ptr<BundleSpecification>>>
-      node_to_leased_bundles_;
-  absl::flat_hash_map<PlacementGroupID, absl::flat_hash_map<int64_t, ClientID>>
-      placement_group_bundle_locations_;
 
   /// A vector to store all the schedule strategy.
   std::vector<std::shared_ptr<GcsScheduleStrategy>> scheduler_strategies_;

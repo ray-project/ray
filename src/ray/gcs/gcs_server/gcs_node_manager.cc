@@ -22,10 +22,10 @@ namespace ray {
 namespace gcs {
 
 bool GcsNodeResource::IsSubset(
-    const std::unordered_map<std::string, double> &request_resources) const {
-  for (const auto &request_resource : request_resources) {
-    auto iter = resources_available_.find(request_resource.first);
-    if (iter == resources_available_.end() || iter->second < request_resource.second) {
+    const std::unordered_map<std::string, double> &required_resources) const {
+  for (const auto &required_resource : required_resources) {
+    auto iter = resources_available_.find(required_resource.first);
+    if (iter == resources_available_.end() || iter->second < required_resource.second) {
       return false;
     }
   }

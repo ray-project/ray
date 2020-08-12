@@ -64,6 +64,14 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
   }
 
+  void AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
+    gcs_node_manager_->AddNode(node);
+    rpc::HeartbeatTableData heartbeat;
+    (*heartbeat.mutable_resources_available())["CPU"] = 10;
+    gcs_node_manager_->UpdateNodeRealtimeResources(ClientID::FromBinary(node->node_id()),
+                                                   heartbeat);
+  }
+
  protected:
   const std::chrono::milliseconds timeout_ms_{6000};
   absl::Mutex vector_mutex_;
@@ -109,7 +117,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestScheduleFailedWithZeroNode) {
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestSchedulePlacementGroupSuccess) {
   auto node = Mocker::GenNodeInfo();
-  gcs_node_manager_->AddNode(node);
+  AddNode(node);
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto create_placement_group_request = Mocker::GenCreatePlacementGroupRequest();
@@ -140,7 +148,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestSchedulePlacementGroupSuccess) {
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestSchedulePlacementGroupFailed) {
   auto node = Mocker::GenNodeInfo();
-  gcs_node_manager_->AddNode(node);
+  AddNode(node);
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto create_placement_group_request = Mocker::GenCreatePlacementGroupRequest();
@@ -173,7 +181,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestSchedulePlacementGroupFailed) {
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestSchedulePlacementGroupReturnResource) {
   auto node = Mocker::GenNodeInfo();
-  gcs_node_manager_->AddNode(node);
+  AddNode(node);
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto create_placement_group_request = Mocker::GenCreatePlacementGroupRequest();
@@ -207,8 +215,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestSchedulePlacementGroupReturnResource)
 }
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestScheduleWithPackStrategy) {
-  gcs_node_manager_->AddNode(Mocker::GenNodeInfo(0));
-  gcs_node_manager_->AddNode(Mocker::GenNodeInfo(1));
+  AddNode(Mocker::GenNodeInfo(0));
+  AddNode(Mocker::GenNodeInfo(1));
   ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
