@@ -71,9 +71,8 @@ public class ObjectSerializer {
       } else if (Arrays.equals(meta, UNRECONSTRUCTABLE_EXCEPTION_META)) {
         return new UnreconstructableException(objectId);
       } else if (Arrays.equals(meta, TASK_EXECUTION_EXCEPTION_META)) {
-        // data is MessagePack serialized bytes
-        // serialized is protobuf serialized bytes
-        // Only OBJECT_METADATA_TYPE_RAW is raw bytes, any other type is the MessagePack serialized bytes.
+        // Serialization logic of task execution exception: an instance of `io.ray.runtime.exception.RayTaskException` -> a `RayException` protobuf message -> protobuf-serialized bytes -> MessagePack-serialized bytes.
+        // So here the `data` variable is MessagePack-serialized bytes, and the `serialized` variable is protobuf-serialized bytes. They are not the same.
         byte[] serialized = Serializer.decode(data, byte[].class);
         try {
           return RayTaskException.fromBytes(serialized);
