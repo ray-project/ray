@@ -63,6 +63,8 @@ ScheduleMap GcsStrictPackStrategy::Schedule(
       [](const std::pair<int64_t, ClientID> &left,
          const std::pair<int64_t, ClientID> &right) { return left.first < right.first; });
 
+  std::uniform_int_distribution<int> distribution(0, candidate_nodes.size() - 1);
+  int node_index = distribution(gen_);
   for (auto &bundle : bundles) {
     schedule_map[bundle->BundleId()] = candidate_nodes.front().second;
   }
@@ -101,8 +103,8 @@ ScheduleMap GcsSpreadStrategy::Schedule(
   auto &alive_nodes = context->node_manager_.GetClusterRealtimeResources();
   auto iter = alive_nodes.begin();
   size_t index = 0;
-  size_t alive_nodes_size = alive_nodes->size();
-  for (; iter != alive_nodes->end(); iter++, index++) {
+  size_t alive_nodes_size = alive_nodes.size();
+  for (; iter != alive_nodes.end(); iter++, index++) {
     for (size_t base = 0;; base++) {
       if (index + base * alive_nodes_size >= bundles.size()) {
         break;
