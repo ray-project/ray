@@ -38,7 +38,7 @@ class OptunaSearch(Searcher):
     hyperparameter suggestions.
 
     Please note that this wrapper does not support define-by-run, so the
-    serach space will be configured before running the optimization. You will
+    search space will be configured before running the optimization. You will
     also need to use a Tune trainable (e.g. using the function API) with
     this wrapper.
 
