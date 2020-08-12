@@ -182,22 +182,22 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
         #  anything retrospectively (time_major not supported previously).
         max_seq_len = inputs.shape[0]
         time_major = self.model_config["_time_major"]
-        #if time_major and max_seq_len > 1:
-            #try:
-            #    inputs = torch.nn.utils.rnn.pack_padded_sequence(
-            #        inputs, seq_lens,
-            #        batch_first=not time_major, enforce_sorted=False)
-            #except Exception as e:
-            #    print()
+        if time_major and max_seq_len > 1:
+            try:
+                inputs = torch.nn.utils.rnn.pack_padded_sequence(
+                    inputs, seq_lens,
+                    batch_first=not time_major, enforce_sorted=False)
+            except Exception as e:
+                print()
         self._features, [h, c] = self.lstm(
             inputs,
             [torch.unsqueeze(state[0], 0),
              torch.unsqueeze(state[1], 0)])
         # Re-apply paddings.
-        #if time_major and max_seq_len > 1:
-        #    self._features, _ = torch.nn.utils.rnn.pad_packed_sequence(
-        #        self._features,
-        #        batch_first=not time_major)
+        if time_major and max_seq_len > 1:
+            self._features, _ = torch.nn.utils.rnn.pad_packed_sequence(
+                self._features,
+                batch_first=not time_major)
         model_out = self._logits_branch(self._features)
         return model_out, [torch.squeeze(h, 0), torch.squeeze(c, 0)]
 

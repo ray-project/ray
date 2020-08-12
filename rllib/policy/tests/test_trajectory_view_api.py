@@ -6,6 +6,9 @@ import unittest
 import ray
 import ray.rllib.agents.ppo as ppo
 from ray.rllib.examples.env.debug_counter_env import MultiAgentDebugCounterEnv
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.rllib.examples.policy.episode_env_aware_policy import \
+    EpisodeEnvAwareCallback, EpisodeEnvAwarePolicy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import framework_iterator
 
@@ -189,8 +192,41 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             #self.assertGreater(results["episode_reward_mean"], 80.0)
 
     def test_traj_view_lstm_functionality(self):
+        action_space = Box(-float("inf"), float("inf"), shape=(2,))
+        obs_space = Box(float("-inf"), float("inf"), (4, ))
+        policies = {
+            "pol0": (EpisodeEnvAwarePolicy, obs_space, action_space, {}),
+        }
 
-        pass
+        def policy_fn(agent_id):
+            return "pol0"
+
+        rollout_worker = RolloutWorker(
+            env_creator=lambda _: MultiAgentDebugCounterEnv({"num_agents": 4}),
+            policy_config={
+                "multiagent": {
+                    "policies": policies,
+                    "policy_mapping_fn": policy_fn,
+                },
+                "_use_trajectory_view_api": True,
+                "model": {
+                    "use_lstm": True,
+                    "_time_major": True,
+                    "max_seq_len": 50,
+                },
+            },
+            callbacks=EpisodeEnvAwareCallback,
+            policy=policies,
+            policy_mapping_fn=policy_fn,
+            num_envs=1,
+        )
+        result = rollout_worker.sample()
+        print(result)
+        #TODO: finish this test case: check, whether everything in buffer makes sense:
+        # - obs -> next_obs shift (prev_actions/rewards shifts)
+        # - seq_lens make sense (match ts)
+        # - all cursors in sample collector make sense
+        # - sample as long as there is a rollover in the buffer, then check again
 
 
 if __name__ == "__main__":

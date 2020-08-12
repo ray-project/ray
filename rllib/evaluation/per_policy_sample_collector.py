@@ -4,7 +4,8 @@ from typing import Dict, Optional
 
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.types import AgentID, EnvID, EpisodeID, TensorType
+from ray.rllib.utils.types import AgentID, EnvID, EpisodeID, PolicyID, \
+    TensorType
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -20,12 +21,13 @@ class _PerPolicySampleCollector:
                  num_agents: Optional[int] = None,
                  num_timesteps: Optional[int] = None,
                  time_major: bool = True,
-                 shift_before=0,
-                 shift_after=0,
-                 policy_id=None):
-        """Initializes a ... object.
+                 shift_before: int = 0,
+                 shift_after: int = 0,
+                 policy_id: Optional[PolicyID] = None):
+        """Initializes a _PerPolicySampleCollector object.
 
         Args:
+
         """
         self.policy_id = policy_id
         self.num_agents = num_agents or 100
@@ -38,6 +40,7 @@ class _PerPolicySampleCollector:
         # The offset on the agent dim to start the next SampleBatch build from.
         self.sample_batch_offset = 0
 
+        # The actual underlying data-buffers.
         self.buffers = {}
         self.postprocessed_agents = [False] * self.num_agents
 
@@ -211,8 +214,20 @@ class _PerPolicySampleCollector:
         Returns:
             SampleBatch: A SampleBatch containing data for training the Policy.
         """
-        # Get ModelV2's view requirements.
-        #view_reqs = model.get_view_requirements(is_training=True)
+        t_start = self.shift_before
+        t_end = t_start + self.num_timesteps
+
+        # The agent_slot cursor that points to the newest agent-slot that
+        # actually already has at least 1 timestep of data (thus it excludes
+        # just-rolled over chunks (which only have the initial obs in them)).
+        valid_agent_cursor = self.agent_slot_cursor
+        if valid_agent_cursor <= 0:
+            valid_agent_cursor = self.num_agents
+        while self.agent_key_to_timestep[self.slot_to_agent_key[valid_agent_cursor - 1]] <= \
+                self.shift_before:
+            valid_agent_cursor -= 1
+            if valid_agent_cursor <= 0:
+                valid_agent_cursor = self.num_agents
 
         # Construct the view dict.
         view = {}
@@ -222,18 +237,15 @@ class _PerPolicySampleCollector:
             #    continue
             data_col = view_req.data_col or view_col
             assert data_col in self.buffers
-            extra_shift = 0
             # For OBS, indices must be shifted by -1.
-            if data_col == SampleBatch.OBS:
-                extra_shift = -1
-            t_start = self.shift_before + extra_shift
-            t_end = t_start + self.num_timesteps
+            extra_shift = 0 if data_col != SampleBatch.OBS else -1
             # If agent_slot has been rolled-over to beginning, we have to copy
             # here.
-            if self.agent_slot_cursor < self.sample_batch_offset:
-                time_slice = self.buffers[data_col][t_start:t_end]
+            if valid_agent_cursor < self.sample_batch_offset:
+                time_slice = self.buffers[data_col][
+                             t_start + extra_shift:t_end + extra_shift]
                 one_ = time_slice[:, self.sample_batch_offset:]
-                two_ = time_slice[:, :self.agent_slot_cursor]
+                two_ = time_slice[:, :valid_agent_cursor]
                 if torch and isinstance(time_slice, torch.Tensor):
                     view[view_col] = torch.cat([one_, two_], dim=1)
                 else:
@@ -241,13 +253,12 @@ class _PerPolicySampleCollector:
             else:
                 view[view_col] = \
                     self.buffers[data_col][
-                    t_start:t_end,
-                    self.sample_batch_offset:self.agent_slot_cursor]
+                    t_start + extra_shift:t_end + extra_shift,
+                    self.sample_batch_offset:valid_agent_cursor]
 
-        seq_lens = [
-            self.agent_key_to_timestep[k] - 1 for k in self.slot_to_agent_key
-            if k is not None
-        ]
+        seq_lens = [self.agent_key_to_timestep[k] - self.shift_before
+                    for k in self.slot_to_agent_key if k is not None and
+                    self.agent_key_to_timestep[k] > self.shift_before]
         batch = SampleBatch(
             view, _seq_lens=np.array(seq_lens), _time_major=True)
 

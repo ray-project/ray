@@ -1,7 +1,6 @@
 import gym
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.rllib.examples.env.debug_counter_env import MultiagentDebugCounterEnv
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 from ray.rllib.tests.test_rollout_worker import MockEnv, MockEnv2
 

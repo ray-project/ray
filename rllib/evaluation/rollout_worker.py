@@ -6,7 +6,7 @@ import pickle
 import platform
 import os
 from typing import Callable, Any, List, Dict, Tuple, Union, Optional, \
-    TYPE_CHECKING, TypeVar
+    TYPE_CHECKING, Type, TypeVar
 
 import ray
 from ray.rllib.env.atari_wrappers import wrap_deepmind, is_atari
@@ -158,7 +158,7 @@ class RolloutWorker(ParallelIteratorWorker):
                  monitor_path: str = None,
                  log_dir: str = None,
                  log_level: str = None,
-                 callbacks: "DefaultCallbacks" = None,
+                 callbacks: Type["DefaultCallbacks"] = None,
                  input_creator: Callable[[
                      IOContext
                  ], InputReader] = lambda ioctx: ioctx.default_sampler_input(),

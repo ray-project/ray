@@ -76,7 +76,7 @@ class _FastMultiAgentSampleBatchBuilder(_SampleCollector):
             kwargs = {"time_major": time_major}
             if policy.is_recurrent():
                 kwargs["num_timesteps"] = \
-                    policy.model.model_config["max_seq_len"]
+                    policy.config["model"]["max_seq_len"]
                 kwargs["time_major"] = True
             elif num_timesteps is not None:
                 kwargs["num_timesteps"] = num_timesteps

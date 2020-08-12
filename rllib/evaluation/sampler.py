@@ -15,6 +15,7 @@ from ray.rllib.evaluation.fast_multi_agent_sample_batch_builder import \
 from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
 from ray.rllib.evaluation.sample_batch_builder import \
     MultiAgentSampleBatchBuilder
+from ray.rllib.evaluation.sample_collector import _SampleCollector
 from ray.rllib.policy.policy import clip_action, Policy
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.models.preprocessors import Preprocessor
@@ -440,7 +441,7 @@ def _env_runner(
         no_done_at_end: bool,
         observation_fn: "ObservationFunction",
         _use_trajectory_view_api: bool = False,
-        _sample_collector: Optional[SampleCollector] = None,
+        _sample_collector: Optional[_SampleCollector] = None,
 ) -> Iterable[SampleBatchType]:
     """This implements the common experience collection logic.
 
@@ -479,6 +480,8 @@ def _env_runner(
         _use_trajectory_view_api (bool): Whether to use the (experimental)
             `_use_trajectory_view_api` to make generic trajectory views
             available to Models. Default: False.
+        _sample_collector (Optional[_SampleCollector]): An optional
+            _SampleCollector object to use
 
     Yields:
         rollout (SampleBatch): Object containing state, action, reward,
@@ -573,7 +576,6 @@ def _env_runner(
             batch_builder_pool=batch_builder_pool,
             active_episodes=active_episodes,
             prev_policy_outputs=eval_results,
-            _fast_batch_builder=_fast_sample_batch_builder,
             unfiltered_obs=unfiltered_obs,
             rewards=rewards,
             dones=dones,
@@ -587,8 +589,9 @@ def _env_runner(
             soft_horizon=soft_horizon,
             no_done_at_end=no_done_at_end,
             observation_fn=observation_fn,
+            perf_stats=perf_stats,
             _use_trajectory_view_api=_use_trajectory_view_api,
-            perf_stats=perf_stats
+            _sample_collector=_sample_collector,
         )
         perf_stats.pre_processing_time += time.time() - t
         for o in outputs:
@@ -603,7 +606,7 @@ def _env_runner(
             active_episodes=active_episodes,
             tf_sess=tf_sess,
             _use_trajectory_view_api=_use_trajectory_view_api,
-            _sample_collector=_fast_sample_batch_builder,
+            _sample_collector=_sample_collector,
         )
         perf_stats.inference_time += time.time() - t2
 
@@ -619,7 +622,7 @@ def _env_runner(
                 policies=policies,
                 clip_actions=clip_actions,
                 _use_trajectory_view_api=_use_trajectory_view_api,
-                _sample_collector=_fast_sample_batch_builder,
+                _sample_collector=_sample_collector,
             )
         perf_stats.action_processing_time += time.time() - t
 
@@ -639,7 +642,6 @@ def _process_observations(
         active_episodes: Dict[str, MultiAgentEpisode],
         prev_policy_outputs: Dict[PolicyID, Tuple[TensorStructType, StateBatch,
                                                   dict]],
-        _fast_batch_builder=None,
         unfiltered_obs: Dict[EnvID, Dict[AgentID, EnvObsType]],
         rewards: Dict[EnvID, Dict[AgentID, float]],
         dones: Dict[EnvID, Dict[AgentID, bool]],
@@ -653,8 +655,9 @@ def _process_observations(
         soft_horizon: bool,
         no_done_at_end: bool,
         observation_fn: "ObservationFunction",
-        _use_trajectory_view_api: bool = False,
         perf_stats: _PerfStats,
+        _use_trajectory_view_api: bool = False,
+        _sample_collector=None,
 ) -> Tuple[Set[EnvID], Dict[PolicyID, List[PolicyEvalData]], List[Union[
         RolloutMetrics, SampleBatchType]]]:
     """Record new data from the environment and prepare for policy evaluation.
@@ -724,7 +727,7 @@ def _process_observations(
         is_new_episode: bool = env_id not in active_episodes
         episode: MultiAgentEpisode = active_episodes[env_id]
         batch_builder = episode.batch_builder if not _use_trajectory_view_api \
-            else _fast_batch_builder
+            else _sample_collector
         if not is_new_episode:
             episode.length += 1
             batch_builder.count += 1
