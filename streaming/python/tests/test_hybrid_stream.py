@@ -1,8 +1,10 @@
 import json
+import os
+import subprocess
+
 import ray
 from ray.streaming import StreamingContext
-import subprocess
-import os
+from ray.test_utils import wait_for_condition
 
 
 def map_func1(x):
@@ -45,6 +47,7 @@ def test_hybrid_stream():
         print("HybridStreamTest", x)
         with open(sink_file, "a") as f:
             f.write(str(x))
+            f.flush()
 
     ctx = StreamingContext.Builder().build()
     ctx.from_values("a", "b", "c") \
@@ -54,23 +57,22 @@ def test_hybrid_stream():
         .as_python_stream() \
         .sink(sink_func)
     ctx.submit("HybridStreamTest")
-    import time
-    slept_time = 0
-    while True:
+
+    def check_succeed():
         if os.path.exists(sink_file):
-            time.sleep(3)
+            import time
+            time.sleep(3)  # Wait all data be written
             with open(sink_file, "r") as f:
                 result = f.read()
                 assert "a" in result
                 assert "b" not in result
                 assert "c" in result
             print("Execution succeed")
-            break
-        if slept_time >= 60:
-            raise Exception("Execution not finished")
-        slept_time = slept_time + 1
-        print("Wait finish...")
-        time.sleep(1)
+            return True
+        return False
+
+    wait_for_condition(check_succeed, timeout=60, retry_interval_ms=1000)
+    print("Execution succeed")
     ray.shutdown()
 
 
