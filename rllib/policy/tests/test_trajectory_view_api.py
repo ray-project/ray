@@ -127,6 +127,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         num_iterations = 4
         # Only works in torch so far.
         for _ in framework_iterator(config, frameworks="torch"):
+            print("w/ API")
             config["_use_trajectory_view_api"] = True
             config["model"]["_time_major"] = True
             trainer = ppo.PPOTrainer(config=config, env="ma_env")
@@ -139,7 +140,9 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 sampler_perf = {
                     k: sampler_perf.get(k, 0.0) + sampler_perf_[k] for
                     k, v in sampler_perf_.items()}
-                learn_time_w += out["timers"]["learn_time_ms"] / 1000
+                delta = out["timers"]["learn_time_ms"] / 1000
+                learn_time_w += delta
+                print("{}={}s".format(i, delta))
             sampler_perf = {
                 k: sampler_perf[k] / (num_iterations if "mean_" in k else 1)
                 for k, v in sampler_perf.items()}
@@ -152,6 +155,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 duration_w, sampler_perf, learn_time_w / num_iterations))
             trainer.stop()
 
+            print("w/o API")
             config["_use_trajectory_view_api"] = False
             config["model"]["_time_major"] = False
             trainer = ppo.PPOTrainer(config=config, env="ma_env")
@@ -164,7 +168,9 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 sampler_perf = {
                     k: sampler_perf.get(k, 0.0) + sampler_perf_[k] for
                     k, v in sampler_perf_.items()}
-                learn_time_wo += out["timers"]["learn_time_ms"] / 1000
+                delta = out["timers"]["learn_time_ms"] / 1000
+                learn_time_wo += delta
+                print("{}={}s".format(i, delta))
             sampler_perf = {
                 k: sampler_perf[k] / (num_iterations if "mean_" in k else 1)
                 for k, v in sampler_perf.items()}
