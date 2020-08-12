@@ -63,8 +63,6 @@ ScheduleMap GcsStrictPackStrategy::Schedule(
       [](const std::pair<int64_t, ClientID> &left,
          const std::pair<int64_t, ClientID> &right) { return left.first < right.first; });
 
-  std::uniform_int_distribution<int> distribution(0, candidate_nodes.size() - 1);
-  int node_index = distribution(gen_);
   for (auto &bundle : bundles) {
     schedule_map[bundle->BundleId()] = candidate_nodes.front().second;
   }
