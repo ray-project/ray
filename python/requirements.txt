@@ -19,9 +19,7 @@ msgpack >= 1.0.0, < 2.0.0
 numpy >= 1.16
 opencensus
 prometheus_client >= 0.7.1
-# Keep version in sync with cpp/java protobuf version
-# See https://blog.bazel.build/2017/02/27/protocol-buffers.html
-protobuf==3.8.0
+protobuf >= 3.8.0
 py-spy >= 0.2.0
 pyyaml
 redis >= 3.3.2, < 3.5.0
@@ -33,7 +31,7 @@ dm_tree
 flask
 gym[atari]
 lz4
-opencv-python-headless==4.3.0.36
+opencv-python-headless
 pandas==1.0.5
 scipy==1.4.1
 tabulate
