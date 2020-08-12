@@ -235,12 +235,7 @@ std::shared_ptr<ScheduleContext> GcsPlacementGroupScheduler::GetScheduleContext(
     }
   }
 
-  auto node_to_bundles = std::make_shared<absl::flat_hash_map<ClientID, int64_t>>();
-  for (const auto &iter : node_to_leased_bundles_) {
-    node_to_bundles->emplace(iter.first, iter.second.size());
-  }
-  return std::make_shared<ScheduleContext>(
-      node_to_bundles, placement_group_bundle_locations_[placement_group_id]);
+  return std::make_shared<ScheduleContext>(placement_group_bundle_locations_[placement_group_id]);
 }
 
 }  // namespace gcs

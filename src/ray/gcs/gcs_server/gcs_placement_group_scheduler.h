@@ -56,13 +56,9 @@ class GcsPlacementGroupSchedulerInterface {
 
 class ScheduleContext {
  public:
-  ScheduleContext(std::shared_ptr<absl::flat_hash_map<ClientID, int64_t>> node_to_bundles,
-                  const absl::flat_hash_map<int64_t, ClientID> &bundle_locations)
-      : node_to_bundles_(std::move(node_to_bundles)),
-        bundle_locations_(bundle_locations) {}
+  ScheduleContext(const absl::flat_hash_map<int64_t, ClientID> &bundle_locations)
+      : bundle_locations_(bundle_locations) {}
 
-  // Key is node id, value is the number of bundles on the node.
-  std::shared_ptr<absl::flat_hash_map<ClientID, int64_t>> node_to_bundles_;
   // Distribution of bundles in nodes. Key is bundle index, value is node id.
   const absl::flat_hash_map<int64_t, ClientID> &bundle_locations_;
 };
