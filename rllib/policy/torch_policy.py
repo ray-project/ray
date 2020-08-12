@@ -104,10 +104,16 @@ class TorchPolicy(Policy):
             self.device = torch.device("cpu")
         self.model = model.to(self.device)
         # Combine view_requirements for Model and Policy.
-        self.view_requirements = {
-            **self.model.inference_view_requirements(),
-            **self.training_view_requirements(),
-        }
+        self.training_view_requirements = dict(**{
+            SampleBatch.ACTIONS: ViewRequirement(
+                space=self.action_space, shift=0),
+            SampleBatch.REWARDS: ViewRequirement(shift=0),
+            SampleBatch.DONES: ViewRequirement(shift=0),
+        }, **self.model.inference_view_requirements)
+        #{
+        #    **self.model.inference_view_requirements(),
+        #    **self.training_view_requirements(),
+        #}
         self.exploration = self._create_exploration()
         self.unwrapped_model = model  # used to support DistributedDataParallel
         self._loss = loss
@@ -125,16 +131,11 @@ class TorchPolicy(Policy):
             callable(get_batch_divisibility_req) else \
             (get_batch_divisibility_req or 1)
 
-    @override(Policy)
-    def training_view_requirements(self):
-        if hasattr(self, "view_requirements"):
-            return self.view_requirements
-        return {
-            SampleBatch.ACTIONS: ViewRequirement(
-                space=self.action_space, shift=0),
-            SampleBatch.REWARDS: ViewRequirement(shift=0),
-            SampleBatch.DONES: ViewRequirement(shift=0),
-        }
+    #@override(Policy)
+    #def training_view_requirements(self):
+    #    if hasattr(self, "view_requirements"):
+    #        return self.view_requirements
+    #    return
 
     @override(Policy)
     @DeveloperAPI

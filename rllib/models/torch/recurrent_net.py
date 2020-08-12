@@ -136,22 +136,20 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
             activation_fn=None,
             initializer=torch.nn.init.xavier_uniform_)
 
-        #TEST
-        self.view_reqs = {
+        self.inference_view_requirements.update(dict(**{
             SampleBatch.OBS: ViewRequirement(shift=0),
             SampleBatch.PREV_REWARDS: ViewRequirement(
                 SampleBatch.REWARDS, shift=-1),
             SampleBatch.PREV_ACTIONS: ViewRequirement(
                 SampleBatch.ACTIONS, space=self.action_space, shift=-1),
-        }
-
+        }))
         for i in range(2):
-            self.view_reqs["state_in_{}".format(i)] = \
+            self.inference_view_requirements["state_in_{}".format(i)] = \
                 ViewRequirement(
                     "state_out_{}".format(i),
                     shift=-1,
                     space=Box(-1.0, 1.0, shape=(self.cell_size,)))
-            self.view_reqs["state_out_{}".format(i)] = \
+            self.inference_view_requirements["state_out_{}".format(i)] = \
                 ViewRequirement(
                     space=Box(-1.0, 1.0, shape=(self.cell_size,)))
 
@@ -184,19 +182,22 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
         #  anything retrospectively (time_major not supported previously).
         max_seq_len = inputs.shape[0]
         time_major = self.model_config["_time_major"]
-        if time_major and max_seq_len > 1:
-            inputs = torch.nn.utils.rnn.pack_padded_sequence(
-                inputs, seq_lens,
-                batch_first=not time_major, enforce_sorted=False)
+        #if time_major and max_seq_len > 1:
+            #try:
+            #    inputs = torch.nn.utils.rnn.pack_padded_sequence(
+            #        inputs, seq_lens,
+            #        batch_first=not time_major, enforce_sorted=False)
+            #except Exception as e:
+            #    print()
         self._features, [h, c] = self.lstm(
             inputs,
             [torch.unsqueeze(state[0], 0),
              torch.unsqueeze(state[1], 0)])
         # Re-apply paddings.
-        if time_major and max_seq_len > 1:
-            self._features, _ = torch.nn.utils.rnn.pad_packed_sequence(
-                self._features,
-                batch_first=not time_major)
+        #if time_major and max_seq_len > 1:
+        #    self._features, _ = torch.nn.utils.rnn.pad_packed_sequence(
+        #        self._features,
+        #        batch_first=not time_major)
         model_out = self._logits_branch(self._features)
         return model_out, [torch.squeeze(h, 0), torch.squeeze(c, 0)]
 
@@ -215,28 +216,28 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
         assert self._features is not None, "must call forward() first"
         return torch.reshape(self._value_branch(self._features), [-1])
 
-    @override(ModelV2)
-    def inference_view_requirements(self) -> Dict[str, ViewRequirement]:
-        return self.view_reqs
+    #@override(ModelV2)
+    #def inference_view_requirements(self) -> Dict[str, ViewRequirement]:
+    #    return self.view_reqs
 
-        req = super().inference_view_requirements()
-        # Optional: prev-actions/rewards for forward pass.
-        if self.model_config["lstm_use_prev_action_reward"]:
-            req.update({
-                SampleBatch.PREV_REWARDS: ViewRequirement(
-                    SampleBatch.REWARDS, shift=-1),
-                SampleBatch.PREV_ACTIONS: ViewRequirement(
-                    SampleBatch.ACTIONS, space=self.action_space, shift=-1),
-            })
+    #    req = super().inference_view_requirements()
+    #    # Optional: prev-actions/rewards for forward pass.
+    #    if self.model_config["lstm_use_prev_action_reward"]:
+    #        req.update({
+    #            SampleBatch.PREV_REWARDS: ViewRequirement(
+    #                SampleBatch.REWARDS, shift=-1),
+    #            SampleBatch.PREV_ACTIONS: ViewRequirement(
+    #                SampleBatch.ACTIONS, space=self.action_space, shift=-1),
+    #        })
 
-        for i in range(2):
-            req["state_in_{}".format(i)] = \
-                ViewRequirement(
-                    "state_out_{}".format(i),
-                    shift=-1,
-                    space=Box(-1.0, 1.0, shape=(self.cell_size,)))
-            req["state_out_{}".format(i)] = \
-                ViewRequirement(
-                    space=Box(-1.0, 1.0, shape=(self.cell_size,)))
-
-        return req
+    #    for i in range(2):
+    #        req["state_in_{}".format(i)] = \
+    #            ViewRequirement(
+    #                "state_out_{}".format(i),
+    #                shift=-1,
+    #                space=Box(-1.0, 1.0, shape=(self.cell_size,)))
+    #        req["state_out_{}".format(i)] = \
+    #            ViewRequirement(
+    #                space=Box(-1.0, 1.0, shape=(self.cell_size,)))
+    #
+    #    return req

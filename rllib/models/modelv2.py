@@ -58,6 +58,9 @@ class ModelV2:
         self.name: str = name or "default_model"
         self.framework: str = framework
         self._last_output = None
+        self.inference_view_requirements = {
+            SampleBatch.OBS: ViewRequirement(shift=0),
+        }
 
     @PublicAPI
     def get_initial_state(self) -> List[np.ndarray]:
@@ -246,8 +249,8 @@ class ModelV2:
             i += 1
         return self.__call__(input_dict, states, train_batch.get("seq_lens"))
 
-    def inference_view_requirements(self) -> Dict[str, ViewRequirement]:
-        """Returns a dict of ViewRequirements for this Model.
+    """def inference_view_requirements(self) -> Dict[str, ViewRequirement]:
+        ""Returns a dict of ViewRequirements for this Model.
 
         Note: This is an experimental API method.
 
@@ -259,12 +262,13 @@ class ModelV2:
             Dict[str, ViewRequirement]: The view requirements dict, mapping
                 each view key (which will be available in input_dicts) to
                 an underlying requirement (actual data, timestep shift, etc..).
-        """
+        ""
         # Default implementation for simple RL model:
         # Single requirement: Pass current obs as input.
         return {
             SampleBatch.OBS: ViewRequirement(shift=0),
         }
+    """
 
     def import_from_h5(self, h5_file: str) -> None:
         """Imports weights from an h5 file.

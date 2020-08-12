@@ -63,7 +63,7 @@ class _FastMultiAgentSampleBatchBuilder(_SampleCollector):
         self.rollout_sample_collectors = {}
         for pid, policy in policy_map.items():
             # Figure out max-shifts (before and after).
-            view_reqs = policy.training_view_requirements()
+            view_reqs = policy.training_view_requirements
             max_shift_before = 0
             max_shift_after = 0
             for vr in view_reqs.values():
@@ -106,7 +106,7 @@ class _FastMultiAgentSampleBatchBuilder(_SampleCollector):
     def get_inference_input_dict(self, policy_id: PolicyID) -> \
             Dict[str, TensorType]:
         policy = self.policy_map[policy_id]
-        view_reqs = policy.model.inference_view_requirements()
+        view_reqs = policy.model.inference_view_requirements
         return self.rollout_sample_collectors[
             policy_id].get_inference_input_dict(view_reqs)
 
@@ -165,7 +165,7 @@ class _FastMultiAgentSampleBatchBuilder(_SampleCollector):
         all_agent_batches = {}
         for pid, rc in self.rollout_sample_collectors.items():
             policy = self.policy_map[pid]
-            view_reqs = policy.training_view_requirements()
+            view_reqs = policy.training_view_requirements
             agent_batches = rc.get_postprocessing_sample_batches(episode, view_reqs)
 
             for agent_key, batch in agent_batches.items():
@@ -239,7 +239,7 @@ class _FastMultiAgentSampleBatchBuilder(_SampleCollector):
         for pid, rc in self.rollout_sample_collectors.items():
             policy = self.policy_map[pid]
             #model = policy.model
-            view_reqs = policy.training_view_requirements()
+            view_reqs = policy.training_view_requirements
             policy_batches[pid] = rc.get_train_sample_batch_and_reset(view_reqs)
 
         ma_batch = MultiAgentBatch.wrap_as_needed(policy_batches, self.count)
