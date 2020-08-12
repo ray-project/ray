@@ -58,7 +58,7 @@ class TrialExecutor:
             return
         try:
             logger.debug("Trial %s: Saving trial metadata.", trial)
-            self._cached_trial_state[trial.trial_id] = trial.__getstate__()
+            self._cached_trial_state[trial.trial_id] = trial.get_state()
         except Exception:
             logger.exception("Trial %s: Error checkpointing trial metadata.",
                              trial)
