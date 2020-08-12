@@ -41,10 +41,8 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       continue;
     } else {
       if (node_id_string == self_node_id_.Binary()) {
-        did_schedule = did_schedule || WaitForTaskArgsRequests(work);
-        RAY_LOG(INFO) << "Placed on dispatch queue";
+        did_schedule = WaitForTaskArgsRequests(work) || did_schedule;
       } else {
-        RAY_LOG(INFO) << "Spilling";
         // Should spill over to a different node.
         cluster_resource_scheduler_->AllocateRemoteTaskResources(node_id_string,
                                                                  request_resources);
@@ -192,13 +190,20 @@ bool ClusterTaskManager::IsRunning(const TaskID &task_id) const {
 
 std::string ClusterTaskManager::DebugString() {
   std::stringstream buffer;
-  buffer << "========== Node: " << self_node_id_ << " =================\n";
-  buffer << "Schedule queue length: " << tasks_to_schedule_.size() << "\n";
-  buffer << "Dispatch queue length: " << tasks_to_dispatch_.size() << "\n";
-  buffer << "Waiting tasks size: " << waiting_tasks_.size() << "\n";
-  buffer << "cluster_resource_scheduler state: "
-         << cluster_resource_scheduler_->DebugString() << "\n";
-  buffer << "==================================================";
+  // buffer << "========== Node: " << self_node_id_ << " =================\n";
+  // buffer << "Schedule queue length: " << tasks_to_schedule_.size() << "\n";
+  // buffer << "Dispatch queue length: " << tasks_to_dispatch_.size() << "\n";
+  // buffer << "Waiting tasks size: " << waiting_tasks_.size() << "\n";
+  // buffer << "Running tasks size: " << running_tasks_.size() << "\n";
+  // buffer << "cluster_resource_scheduler state: "
+  //        << cluster_resource_scheduler_->DebugString() << "\n";
+  // buffer << "==================================================";
+  buffer << "ClusterTaskManager [";
+  buffer << tasks_to_schedule_.size() << "\t";
+  buffer << tasks_to_dispatch_.size() << "\t";
+  buffer << waiting_tasks_.size() << "\t";
+  buffer << running_tasks_.size();
+  buffer << "]";
   return buffer.str();
 }
 
@@ -207,7 +212,6 @@ void ClusterTaskManager::Dispatch(
     std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
     const TaskSpecification &task_spec, rpc::RequestWorkerLeaseReply *reply,
     std::function<void(void)> send_reply_callback) {
-  RAY_LOG(INFO) << "Dispatch!";
 
   // Pass the contact info of the worker to use.
   reply->mutable_worker_address()->set_ip_address(worker->IpAddress());
@@ -273,7 +277,6 @@ void ClusterTaskManager::Dispatch(
 void ClusterTaskManager::Spillback(ClientID spillback_to, std::string address, int port,
                                    rpc::RequestWorkerLeaseReply *reply,
                                    std::function<void(void)> send_reply_callback) {
-  RAY_LOG(INFO) << "Spillback!";
   reply->mutable_retry_at_raylet_address()->set_ip_address(address);
   reply->mutable_retry_at_raylet_address()->set_port(port);
   reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());

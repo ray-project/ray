@@ -1232,8 +1232,6 @@ void NodeManager::ProcessAnnounceWorkerPortMessage(
 }
 
 void NodeManager::HandleWorkerAvailable(const std::shared_ptr<ClientConnection> &client) {
-  RAY_LOG(INFO) << "HandleWorkerAvailable\n"
-                << this->cluster_task_manager_->DebugString();
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   HandleWorkerAvailable(worker);
 }
@@ -1587,7 +1585,6 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
 
 void NodeManager::ScheduleAndDispatch() {
   RAY_CHECK(new_scheduler_enabled_);
-  absl::MutexLock guard(&new_scheduler_mutex_);
   cluster_task_manager_->SchedulePendingTasks();
   cluster_task_manager_->DispatchScheduledTasksToWorkers(worker_pool_, leased_workers_);
 }
@@ -1595,8 +1592,6 @@ void NodeManager::ScheduleAndDispatch() {
 void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest &request,
                                            rpc::RequestWorkerLeaseReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO) << "HandleRequestWorkerLease\n"
-                << this->cluster_task_manager_->DebugString();
   rpc::Task task_message;
   task_message.mutable_task_spec()->CopyFrom(request.resource_spec());
   Task task(task_message);
@@ -1726,6 +1721,7 @@ void NodeManager::HandleCancelResourceReserve(
 void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
                                      rpc::ReturnWorkerReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(INFO) << "Worker Returned";
   // Read the resource spec submitted by the client.
   auto worker_id = WorkerID::FromBinary(request.worker_id());
   std::shared_ptr<WorkerInterface> worker = leased_workers_[worker_id];
@@ -1786,7 +1782,6 @@ void NodeManager::HandleReleaseUnusedWorkers(
 void NodeManager::HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &request,
                                           rpc::CancelWorkerLeaseReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO) << "HandleCancelWorkerLease";
   const TaskID task_id = TaskID::FromBinary(request.task_id());
   Task removed_task;
   TaskState removed_task_state;
@@ -1795,7 +1790,6 @@ void NodeManager::HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &r
     canceled = cluster_task_manager_->CancelTask(task_id);
     if (canceled) {
       // We have not yet granted the worker lease. Cancel it now.
-      removed_task.OnCancellation()();
       task_dependency_manager_.TaskCanceled(task_id);
       task_dependency_manager_.UnsubscribeGetDependencies(task_id);
     } else {
@@ -1811,9 +1805,6 @@ void NodeManager::HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &r
       // We do not have the task. This could be because we haven't received the
       // lease request yet, or because we already granted the lease request and
       // it has already been returned.
-
-      // TODO (Alex): @swang pls verify if that we can delete this before merging.
-      canceled = cluster_task_manager_->IsRunning(task_id);
     } else {
       if (removed_task.OnDispatch()) {
         // We have not yet granted the worker lease. Cancel it now.
@@ -1833,7 +1824,6 @@ void NodeManager::HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &r
   // the client that requested the lease.
   reply->set_success(canceled);
   send_reply_callback(Status::OK(), nullptr, nullptr);
-  RAY_LOG(INFO) << "Done cancelling";
 }
 
 void NodeManager::ProcessSetResourceRequest(
