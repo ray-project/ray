@@ -34,9 +34,11 @@ class RayError(Exception):
 
 class CrossLanguageError(RayError):
     """Raised from another language."""
+
     def __init__(self, ray_exception):
-        super().__init__("An exception from {}:\n{}".format(
-            Language.Name(ray_exception.language), ray_exception.formatted_exception_string))
+        super().__init__("An exception raised from {}:\n{}".format(
+            Language.Name(ray_exception.language),
+            ray_exception.formatted_exception_string))
 
 
 class RayConnectionError(RayError):
