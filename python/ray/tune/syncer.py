@@ -44,7 +44,7 @@ def log_sync_template(options=""):
         unavailable.
     """
     if not distutils.spawn.find_executable("rsync"):
-        with log_once("tune:rsync"):
+        if log_once("tune:rsync"):
             logger.error("Log sync requires rsync to be installed.")
         return None
     global _log_sync_warned
