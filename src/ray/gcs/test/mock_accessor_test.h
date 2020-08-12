@@ -15,7 +15,6 @@
 #pragma once
 
 #include "absl/container/flat_hash_map.h"
-#include "ray/common/ray_config.h"
 #include "ray/gcs/accessor.h"
 #include "ray/gcs/subscription_executor.h"
 
@@ -84,36 +83,15 @@ class MockActorInfoAccessor : public ActorInfoAccessor {
 
   Status AsyncRegister(const std::shared_ptr<rpc::ActorTableData> &data_ptr,
                        const StatusCallback &callback) override {
-    if (RayConfig::instance().gcs_actor_service_enabled()) {
-      auto on_register_done = [callback](RedisGcsClient *client, const ActorID &actor_id,
-                                         const ActorTableData &data) {
-        if (callback != nullptr) {
-          callback(Status::OK());
-        }
-      };
-      ActorID actor_id = ActorID::FromBinary(data_ptr->actor_id());
-      return client_impl_->actor_table().Add(JobID::Nil(), actor_id, data_ptr,
-                                             on_register_done);
-    } else {
-      auto on_success = [callback](RedisGcsClient *client, const ActorID &actor_id,
-                                   const ActorTableData &data) {
-        if (callback != nullptr) {
-          callback(Status::OK());
-        }
-      };
-
-      auto on_failure = [callback](RedisGcsClient *client, const ActorID &actor_id,
-                                   const ActorTableData &data) {
-        if (callback != nullptr) {
-          callback(Status::Invalid("Adding actor failed."));
-        }
-      };
-
-      ActorID actor_id = ActorID::FromBinary(data_ptr->actor_id());
-      return client_impl_->log_based_actor_table().AppendAt(
-          actor_id.JobId(), actor_id, data_ptr, on_success, on_failure,
-          /*log_length*/ 0);
-    }
+    auto on_register_done = [callback](RedisGcsClient *client, const ActorID &actor_id,
+                                       const ActorTableData &data) {
+      if (callback != nullptr) {
+        callback(Status::OK());
+      }
+    };
+    ActorID actor_id = ActorID::FromBinary(data_ptr->actor_id());
+    return client_impl_->actor_table().Add(JobID::Nil(), actor_id, data_ptr,
+                                           on_register_done);
   }
 
   Status AsyncUpdate(const ActorID &actor_id,
@@ -293,9 +271,8 @@ class MockObjectAccessor : public ObjectInfoAccessor {
   MockObjectAccessor(RedisGcsClient *client)
       : client_impl_(client), object_sub_executor_(client_impl_->object_table()) {}
 
-  Status AsyncGetLocations(
-      const ObjectID &object_id,
-      const MultiItemCallback<ObjectTableData> &callback) override {
+  Status AsyncGetLocations(const ObjectID &object_id,
+                           const MultiItemCallback<ObjectTableData> &callback) override {
     RAY_CHECK(callback != nullptr);
     auto on_done = [callback](RedisGcsClient *client, const ObjectID &object_id,
                               const std::vector<ObjectTableData> &data) {
@@ -321,8 +298,7 @@ class MockObjectAccessor : public ObjectInfoAccessor {
                            const ObjectTableData &data) { callback(Status::OK()); };
     }
 
-    std::shared_ptr<ObjectTableData> data_ptr =
-        std::make_shared<ObjectTableData>();
+    std::shared_ptr<ObjectTableData> data_ptr = std::make_shared<ObjectTableData>();
     data_ptr->set_manager(node_id.Binary());
 
     ObjectTable &object_table = client_impl_->object_table();
@@ -353,8 +329,7 @@ class MockObjectAccessor : public ObjectInfoAccessor {
   RedisGcsClient *client_impl_{nullptr};
   ClientID subscribe_id_{ClientID::FromRandom()};
 
-  typedef SubscriptionExecutor<ObjectID, ObjectChangeNotification,
-                                    ObjectTable>
+  typedef SubscriptionExecutor<ObjectID, ObjectChangeNotification, ObjectTable>
       ObjectSubscriptionExecutor;
   ObjectSubscriptionExecutor object_sub_executor_;
 };
@@ -443,9 +418,8 @@ class MockTaskInfoAccessor : public TaskInfoAccessor {
 
   const int NumTaskAdds() const { return num_task_adds_; }
 
-  Status AsyncGet(
-      const TaskID &task_id,
-      const OptionalItemCallback<rpc::TaskTableData> &callback) override {
+  Status AsyncGet(const TaskID &task_id,
+                  const OptionalItemCallback<rpc::TaskTableData> &callback) override {
     return Status::OK();
   }
 
