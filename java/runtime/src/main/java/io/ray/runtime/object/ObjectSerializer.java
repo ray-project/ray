@@ -1,9 +1,9 @@
 package io.ray.runtime.object;
 
 import com.google.protobuf.InvalidProtocolBufferException;
-import io.ray.api.exception.RayActorException;
-import io.ray.api.exception.RayWorkerException;
-import io.ray.api.exception.UnreconstructableException;
+import io.ray.runtime.exception.RayActorException;
+import io.ray.runtime.exception.RayWorkerException;
+import io.ray.runtime.exception.UnreconstructableException;
 import io.ray.api.id.ObjectId;
 import io.ray.runtime.exception.RayTaskException;
 import io.ray.runtime.generated.Common.ErrorType;

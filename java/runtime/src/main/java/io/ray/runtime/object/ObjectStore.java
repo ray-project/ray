@@ -99,11 +99,9 @@ public abstract class ObjectStore {
         object = ObjectSerializer
             .deserialize(dataAndMeta, ids.get(i), elementType);
       }
-      if (object instanceof io.ray.api.exception.RayException) {
+      if (object instanceof RayException) {
         // If the object is a `RayException`, it means that an error occurred during task
         // execution.
-        throw (io.ray.api.exception.RayException) object;
-      } else if (object instanceof RayException) {
         throw (RayException) object;
       }
       results.add((T) object);
