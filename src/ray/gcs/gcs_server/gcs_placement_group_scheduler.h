@@ -56,7 +56,12 @@ class GcsPlacementGroupSchedulerInterface {
 
 class ScheduleContext {
  public:
-  ScheduleContext(const GcsNodeManager &node_manager) : node_manager_(node_manager) {}
+  ScheduleContext(std::shared_ptr<absl::flat_hash_map<ClientID, int64_t>> node_to_bundles,
+                  const GcsNodeManager &node_manager)
+      : node_to_bundles_(std::move(node_to_bundles)), node_manager_(node_manager) {}
+
+  // Key is node id, value is the number of bundles on the node.
+  std::shared_ptr<absl::flat_hash_map<ClientID, int64_t>> node_to_bundles_;
 
   const GcsNodeManager &node_manager_;
 };
@@ -71,15 +76,8 @@ class GcsScheduleStrategy {
 
 class GcsPackStrategy : public GcsScheduleStrategy {
  public:
-  GcsPackStrategy()
-      : gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
-
   ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
                        const std::shared_ptr<ScheduleContext> &context) override;
-
- private:
-  /// Internally maintained random number generator.
-  std::mt19937_64 gen_;
 };
 
 class GcsSpreadStrategy : public GcsScheduleStrategy {
@@ -111,11 +109,12 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// schedule all bundle by calling ReserveResourceFromNode().
   ///
   /// \param placement_group to be scheduled.
+  /// \param failure_callback This function is called if the schedule is failed.
+  /// \param success_callback This function is called if the schedule is successful.
   void Schedule(
       std::shared_ptr<GcsPlacementGroup> placement_group,
-      std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_failure_handler,
-      std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_success_handler)
-      override;
+      std::function<void(std::shared_ptr<GcsPlacementGroup>)> failure_handler,
+      std::function<void(std::shared_ptr<GcsPlacementGroup>)> success_handler) override;
 
  protected:
   /// Lease resource from the specified node for the specified bundle.
@@ -154,6 +153,11 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// until we receive a reply or the node is removed.
   absl::flat_hash_map<ClientID, absl::flat_hash_set<BundleID>>
       node_to_bundles_when_leasing_;
+
+  /// Map from node ID to the set of bundles. This is needed so that we can reschedule
+  /// bundles when a node is dead.
+  absl::flat_hash_map<ClientID, std::vector<std::shared_ptr<BundleSpecification>>>
+      node_to_leased_bundles_;
 
   /// A vector to store all the schedule strategy.
   std::vector<std::shared_ptr<GcsScheduleStrategy>> scheduler_strategies_;
