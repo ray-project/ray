@@ -98,12 +98,23 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
   std::unordered_map<ObjectID, std::unordered_set<ClientID>> locations_;
 };
 
+class MockNodeInfoAccessor2 : public gcs::MockNodeInfoAccessor {
+ public:
+  MockNodeInfoAccessor2() {}
+
+  MockNodeInfoAccessor2(gcs::RedisGcsClient *client) : MockNodeInfoAccessor(client) {}
+
+  MockNodeInfoAccessor2(const ClientID &node_id) : MockNodeInfoAccessor(node_id) {}
+
+  bool IsRemoved(const ClientID &node_id) const override { return false; }
+};
+
 class MockGcs : public gcs::RedisGcsClient {
  public:
   MockGcs() : gcs::RedisGcsClient(gcs::GcsClientOptions("", 0, "")){};
 
   void Init(gcs::MockTaskInfoAccessor *task_accessor,
-            gcs::MockNodeInfoAccessor *node_accessor) {
+            MockNodeInfoAccessor2 *node_accessor) {
     task_accessor_.reset(task_accessor);
     node_accessor_.reset(node_accessor);
   }
@@ -115,7 +126,7 @@ class ReconstructionPolicyTest : public ::testing::Test {
       : io_service_(),
         mock_gcs_(new MockGcs()),
         task_accessor_(new gcs::MockTaskInfoAccessor()),
-        node_accessor_(new gcs::MockNodeInfoAccessor()),
+        node_accessor_(new MockNodeInfoAccessor2()),
         mock_object_directory_(std::make_shared<MockObjectDirectory>()),
         reconstruction_timeout_ms_(50),
         reconstruction_policy_(std::make_shared<ReconstructionPolicy>(
@@ -187,7 +198,7 @@ class ReconstructionPolicyTest : public ::testing::Test {
   boost::asio::io_service io_service_;
   std::shared_ptr<MockGcs> mock_gcs_;
   gcs::MockTaskInfoAccessor *task_accessor_;
-  gcs::MockNodeInfoAccessor *node_accessor_;
+  MockNodeInfoAccessor2 *node_accessor_;
   gcs::SubscribeCallback<TaskID, boost::optional<TaskLeaseData>> subscribe_callback_;
   std::shared_ptr<MockObjectDirectory> mock_object_directory_;
   uint64_t reconstruction_timeout_ms_;
