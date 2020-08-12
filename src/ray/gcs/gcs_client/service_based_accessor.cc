@@ -710,6 +710,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncReportHeartbeat(
     const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
     const StatusCallback &callback) {
   rpc::ReportHeartbeatRequest request;
+  cached_heartbeat_.mutable_heartbeat()->CopyFrom(*data_ptr);
   request.mutable_heartbeat()->CopyFrom(*data_ptr);
   client_impl_->GetGcsRpcClient().ReportHeartbeat(
       request, [callback](const Status &status, const rpc::ReportHeartbeatReply &reply) {
@@ -718,6 +719,16 @@ Status ServiceBasedNodeInfoAccessor::AsyncReportHeartbeat(
         }
       });
   return Status::OK();
+}
+
+void ServiceBasedNodeInfoAccessor::AsyncReReportHeartbeat(
+    bool is_pubsub_server_restarted) {
+  if (!is_pubsub_server_restarted && cached_heartbeat_.has_heartbeat()) {
+    RAY_LOG(INFO) << "Rereport heartbeat.";
+    client_impl_->GetGcsRpcClient().ReportHeartbeat(
+        cached_heartbeat_,
+        [](const Status &status, const rpc::ReportHeartbeatReply &reply) {});
+  }
 }
 
 Status ServiceBasedNodeInfoAccessor::AsyncSubscribeHeartbeat(

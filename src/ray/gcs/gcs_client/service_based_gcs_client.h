@@ -70,7 +70,7 @@ class RAY_EXPORT ServiceBasedGcsClient : public GcsClient {
   // A timer used to check if gcs server address changed.
   std::unique_ptr<boost::asio::deadline_timer> detect_timer_;
   std::function<bool(std::pair<std::string, int> *)> get_server_address_func_;
-  std::function<void(bool)> resubscribe_func_;
+  std::function<void(bool)> restart_functions_;
   std::pair<std::string, int> current_gcs_server_address_;
 };
 
