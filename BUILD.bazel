@@ -246,6 +246,7 @@ cc_library(
         ":plasma_fbs",
         ":ray_common",
         ":ray_util",
+        "//src/ray/protobuf:common_cc_proto",
         "@arrow",
         "@com_github_google_glog//:glog",
         "@msgpack",
@@ -1242,6 +1243,7 @@ cc_library(
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
+        ":core_worker_lib",
         ":gcs",
         ":object_manager_fbs",
         ":object_manager_rpc",
@@ -1260,6 +1262,7 @@ cc_binary(
     deps = [
         ":object_manager",
         ":mock_accessor_lib",
+        "//src/ray/protobuf:common_cc_proto",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1272,6 +1275,7 @@ cc_binary(
     deps = [
         ":object_manager",
         ":mock_accessor_lib",
+        "//src/ray/protobuf:common_cc_proto",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -153,8 +153,9 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
 
   Status SetClientOptions(const std::string& client_name, int64_t output_memory_quota);
 
-  Status Create(const ObjectID& object_id, int64_t data_size, const uint8_t* metadata,
-                int64_t metadata_size, std::shared_ptr<Buffer>* data, int device_num = 0,
+  Status Create(const ObjectID& object_id, const ray::rpc::Address& owner_address,
+                int64_t data_size, const uint8_t* metadata, int64_t metadata_size,
+                std::shared_ptr<Buffer>* data, int device_num = 0,
                 bool evict_if_full = true);
 
   Status Get(const std::vector<ObjectID>& object_ids, int64_t timeout_ms,
@@ -305,15 +306,15 @@ void PlasmaClient::Impl::IncrementObjectCount(const ObjectID& object_id,
   object_entry->count += 1;
 }
 
-Status PlasmaClient::Impl::Create(const ObjectID& object_id, int64_t data_size,
-                                  const uint8_t* metadata, int64_t metadata_size,
+Status PlasmaClient::Impl::Create(const ObjectID& object_id, const ray::rpc::Address& owner_address,
+                                  int64_t data_size, const uint8_t* metadata, int64_t metadata_size,
                                   std::shared_ptr<Buffer>* data, int device_num,
                                   bool evict_if_full) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
 
   RAY_LOG(DEBUG) << "called plasma_create on conn " << store_conn_ << " with size "
                    << data_size << " and metadata size " << metadata_size;
-  RAY_RETURN_NOT_OK(SendCreateRequest(store_conn_, object_id, evict_if_full, data_size,
+  RAY_RETURN_NOT_OK(SendCreateRequest(store_conn_, object_id, owner_address, evict_if_full, data_size,
                                   metadata_size, device_num));
   std::vector<uint8_t> buffer;
   RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaCreateReply, &buffer));
@@ -789,11 +790,11 @@ Status PlasmaClient::SetClientOptions(const std::string& client_name,
   return impl_->SetClientOptions(client_name, output_memory_quota);
 }
 
-Status PlasmaClient::Create(const ObjectID& object_id, int64_t data_size,
+Status PlasmaClient::Create(const ObjectID& object_id, const ray::rpc::Address& owner_address, int64_t data_size,
                             const uint8_t* metadata, int64_t metadata_size,
                             std::shared_ptr<Buffer>* data, int device_num,
                             bool evict_if_full) {
-  return impl_->Create(object_id, data_size, metadata, metadata_size, data, device_num,
+  return impl_->Create(object_id, owner_address, data_size, metadata, metadata_size, data, device_num,
                        evict_if_full);
 }
 

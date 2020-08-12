@@ -337,3 +337,6 @@ RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 5)
 
 /// Whether to enable multi tenancy features.
 RAY_CONFIG(bool, enable_multi_tenancy, false)
+
+/// Whether start the Plasma Store as a Raylet thread.
+RAY_CONFIG(bool, ownership_based_object_directory_enabled, false)
