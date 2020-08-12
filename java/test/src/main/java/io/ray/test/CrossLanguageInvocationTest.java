@@ -316,7 +316,7 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
     return 1 / 0;
   }
 
-  public static Object raiseJavaException() {
+  public static Object throwJavaException() {
     ObjectRef<Object> res = Ray.task(
         PyFunction.of(PYTHON_MODULE, "py_func_java_throw_exception", Object.class)).remote();
     return res.get();

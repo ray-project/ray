@@ -137,7 +137,7 @@ public class FailureTest extends BaseTest {
       try {
         Ray.get(Arrays.asList(obj1, obj2));
         Assert.fail("Should throw RayException.");
-      } catch (io.ray.api.exception.RayException e) {
+      } catch (RuntimeException e) {
         Instant end = Instant.now();
         long duration = Duration.between(start, end).toMillis();
         Assert.assertTrue(duration < 5000, "Should fail quickly. " +
