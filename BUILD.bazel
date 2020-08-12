@@ -713,14 +713,14 @@ cc_test(
 cc_library(
     name = "mock_accessor_lib",
     hdrs = [
-        "src/ray/gcs/test/mock_accessor_test.h"
+        "src/ray/gcs/test/mock_accessor_test.h",
     ],
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
         ":gcs",
-        "@com_google_absl//absl/container:flat_hash_map"
-    ]
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
 )
 
 cc_test(
@@ -729,8 +729,8 @@ cc_test(
     copts = COPTS,
     deps = [
         ":core_worker_lib",
-        "@com_google_googletest//:gtest_main",
         ":mock_accessor_lib",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -770,11 +770,11 @@ cc_test(
         ],
     }),
     deps = [
+        ":mock_accessor_lib",
         ":node_manager_fbs",
         ":object_manager",
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
-        ":mock_accessor_lib",
     ],
 )
 
@@ -866,9 +866,9 @@ cc_test(
     srcs = ["src/ray/raylet/task_dependency_manager_test.cc"],
     copts = COPTS,
     deps = [
+        ":mock_accessor_lib",
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
-        ":mock_accessor_lib",
     ],
 )
 
@@ -1539,8 +1539,8 @@ cc_test(
     deps = [
         ":gcs",
         ":gcs_test_util_lib",
-        "@com_google_googletest//:gtest_main",
         ":mock_accessor_lib",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
