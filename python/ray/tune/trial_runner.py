@@ -104,7 +104,10 @@ class TrialRunner:
         resume (str|False): see `tune.py:run`.
         sync_to_cloud (func|str): See `tune.py:run`.
         server_port (int): Port number for launching TuneServer.
-        fail_fast (bool): Finishes as soon as a trial fails if True.
+        fail_fast (bool | str): Finishes as soon as a trial fails if True.
+            If fail_fast='raise' provided, Tune will automatically
+            raise the exception received by the Trainable. fail_fast='raise'
+            can easily leak resources and should be used with caution.
         verbose (bool): Flag for verbosity. If False, trial results
             will not be output.
         checkpoint_period (int): Trial runner checkpoint periodicity in
@@ -114,6 +117,7 @@ class TrialRunner:
 
     CKPT_FILE_TMPL = "experiment_state-{}.json"
     VALID_RESUME_TYPES = [True, "LOCAL", "REMOTE", "PROMPT"]
+    RAISE = "RAISE"
 
     def __init__(self,
                  search_alg=None,
@@ -141,6 +145,18 @@ class TrialRunner:
         self._iteration = 0
         self._has_errored = False
         self._fail_fast = fail_fast
+        if isinstance(self._fail_fast, str):
+            self._fail_fast = self._fail_fast.upper()
+            if self._fail_fast == TrialRunner.RAISE:
+                logger.warning(
+                    "fail_fast='raise' detected. Be careful when using this "
+                    "mode as resources (such as Ray processes, "
+                    "file descriptors, and temporary files) may not be "
+                    "cleaned up properly. To use "
+                    "a safer mode, use fail_fast=True.")
+            else:
+                raise ValueError("fail_fast must be one of {bool, RAISE}. "
+                                 f"Got {self._fail_fast}.")
         self._verbose = verbose
 
         self._server = None
@@ -531,6 +547,8 @@ class TrialRunner:
                 self._execute_action(trial, decision)
         except Exception:
             logger.exception("Trial %s: Error processing event.", trial)
+            if self._fail_fast == TrialRunner.RAISE:
+                raise
             self._process_trial_failure(trial, traceback.format_exc())
 
     def _process_trial_save(self, trial):
@@ -548,6 +566,8 @@ class TrialRunner:
             checkpoint_value = self.trial_executor.fetch_result(trial)
         except Exception:
             logger.exception("Trial %s: Error processing result.", trial)
+            if self._fail_fast == TrialRunner.RAISE:
+                raise
             self._process_trial_failure(trial, traceback.format_exc())
 
         if checkpoint_value:
@@ -558,6 +578,8 @@ class TrialRunner:
             except Exception:
                 logger.exception("Trial %s: Error handling checkpoint %s",
                                  trial, checkpoint_value)
+                if self._fail_fast == TrialRunner.RAISE:
+                    raise
 
         trial.saving_to = None
         decision = self._cached_trial_decisions.pop(trial.trial_id, None)
@@ -579,6 +601,8 @@ class TrialRunner:
             self.trial_executor.continue_training(trial)
         except Exception:
             logger.exception("Trial %s: Error processing restore.", trial)
+            if self._fail_fast == TrialRunner.RAISE:
+                raise
             self._process_trial_failure(trial, traceback.format_exc())
 
     def _process_trial_failure(self, trial, error_msg):

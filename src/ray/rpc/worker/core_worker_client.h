@@ -142,6 +142,18 @@ class CoreWorkerClientInterface {
       const WaitForObjectEvictionRequest &request,
       const ClientCallback<WaitForObjectEvictionReply> &callback) {}
 
+  virtual void AddObjectLocationOwner(
+      const AddObjectLocationOwnerRequest &request,
+      const ClientCallback<AddObjectLocationOwnerReply> &callback) {}
+
+  virtual void RemoveObjectLocationOwner(
+      const RemoveObjectLocationOwnerRequest &request,
+      const ClientCallback<RemoveObjectLocationOwnerReply> &callback) {}
+
+  virtual void GetObjectLocationsOwner(
+      const GetObjectLocationsOwnerRequest &request,
+      const ClientCallback<GetObjectLocationsOwnerReply> &callback) {}
+
   /// Tell this actor to exit immediately.
   virtual void KillActor(const KillActorRequest &request,
                          const ClientCallback<KillActorReply> &callback) {}
@@ -203,6 +215,15 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
                          override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, WaitForObjectEviction, grpc_client_, override)
+
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, AddObjectLocationOwner, grpc_client_,
+                         override)
+
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, RemoveObjectLocationOwner, grpc_client_,
+                         override)
+
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, GetObjectLocationsOwner, grpc_client_,
+                         override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, GetCoreWorkerStats, grpc_client_, override)
 

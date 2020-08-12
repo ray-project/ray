@@ -9,6 +9,11 @@ as well as indentation and other structured output.
 """
 
 import sys
+import logging
+import inspect
+import os
+
+from typing import Any, Dict, Tuple, Optional, List
 
 import click
 
@@ -18,12 +23,66 @@ import colorful as cf
 colorama.init()
 
 
-def _format_msg(msg,
-                *args,
-                _tags=None,
-                _numbered=None,
-                _no_format=None,
-                **kwargs):
+def _patched_makeRecord(self,
+                        name,
+                        level,
+                        fn,
+                        lno,
+                        msg,
+                        args,
+                        exc_info,
+                        func=None,
+                        extra=None,
+                        sinfo=None):
+    """Monkey-patched version of logging.Logger.makeRecord
+    We have to patch default loggers so they use the proper frame for
+    line numbers and function names (otherwise everything shows up as
+    e.g. cli_logger:info() instead of as where it was called from).
+
+    In Python 3.8 we could just use stacklevel=2, but we have to support
+    Python 3.6 and 3.7 as well.
+
+    The solution is this Python magic superhack.
+
+    The default makeRecord will deliberately check that we don't override
+    any existing property on the LogRecord using `extra`,
+    so we remove that check.
+
+    This patched version is otherwise identical to the one in the standard
+    library.
+    """
+    rv = logging.LogRecord(name, level, fn, lno, msg, args, exc_info, func,
+                           sinfo)
+    if extra is not None:
+        rv.__dict__.update(extra)
+    return rv
+
+
+logging.Logger.makeRecord = _patched_makeRecord
+
+
+def _parent_frame_info():
+    """Get the info from the caller frame.
+
+    Used to override the logging function and line number with the correct
+    ones. See the comment on _patched_makeRecord for more info.
+    """
+
+    frame = inspect.currentframe()
+    # we are also in a function, so must go 2 levels up
+    caller = frame.f_back.f_back
+    return {
+        "lineno": caller.f_lineno,
+        "filename": os.path.basename(caller.f_code.co_filename),
+    }
+
+
+def _format_msg(msg: str,
+                *args: Any,
+                _tags: Dict[str, Any] = None,
+                _numbered: Tuple[str, int, int] = None,
+                _no_format: bool = None,
+                **kwargs: Any):
     """Formats a message for printing.
 
     Renders `msg` using the built-in `str.format` and the passed-in
@@ -84,16 +143,13 @@ def _format_msg(msg,
         numbering_str = ""
         if _numbered is not None:
             chars, i, n = _numbered
-
-            i = str(i)
-            n = str(n)
-
-            numbering_str = cf.gray(chars[0] + i + "/" + n + chars[1]) + " "
+            numbering_str = cf.gray(chars[0] + str(i) + "/" + str(n) +
+                                    chars[1]) + " "
 
         if _no_format:
             # todo: throw if given args/kwargs?
             return numbering_str + msg + tags_str
-        return numbering_str + msg.format(*args, **kwargs) + tags_str
+        return numbering_str + cf.format(msg, *args, **kwargs) + tags_str
 
     if kwargs:
         raise ValueError("We do not support printing kwargs yet.")
@@ -138,6 +194,15 @@ class _CliLogger():
 
             ! Currently unused.
     """
+    strip: bool
+    old_style: bool
+    color_mode: str
+    # color_mode: Union[Literal["auto"], Literal["false"], Literal["true"]]
+    indent_level: int
+    verbosity: int
+
+    dump_command_output: bool
+    _autodetected_cf_colormode: int
 
     def __init__(self):
         self.strip = False
@@ -180,9 +245,9 @@ class _CliLogger():
     def newline(self):
         """Print a line feed.
         """
-        self._print("")
+        self.print("")
 
-    def _print(self, msg, linefeed=True):
+    def _print(self, msg: str, linefeed: bool = True):
         """Proxy for printing messages.
 
         Args:
@@ -218,7 +283,7 @@ class _CliLogger():
 
         return IndentedContextManager()
 
-    def timed(self, msg, *args, **kwargs):
+    def timed(self, msg: str, *args: Any, **kwargs: Any):
         """
         TODO: Unimplemented special type of output grouping that displays
               a timer for its execution. The method was not removed so we
@@ -229,7 +294,7 @@ class _CliLogger():
         """
         return self.group(msg, *args, **kwargs)
 
-    def group(self, msg, *args, **kwargs):
+    def group(self, msg: str, *args: Any, **kwargs: Any):
         """Print a group title in a special color and start an indented block.
 
         For arguments, see `_format_msg`.
@@ -238,7 +303,7 @@ class _CliLogger():
 
         return self.indented()
 
-    def verbatim_error_ctx(self, msg, *args, **kwargs):
+    def verbatim_error_ctx(self, msg: str, *args: Any, **kwargs: Any):
         """Context manager for printing multi-line error messages.
 
         Displays a start sequence "!!! {optional message}"
@@ -259,7 +324,7 @@ class _CliLogger():
 
         return VerbatimErorContextManager()
 
-    def labeled_value(self, key, msg, *args, **kwargs):
+    def labeled_value(self, key: str, msg: str, *args: Any, **kwargs: Any):
         """Displays a key-value pair with special formatting.
 
         Args:
@@ -273,7 +338,7 @@ class _CliLogger():
         self._print(
             cf.cyan(key) + ": " + _format_msg(cf.bold(msg), *args, **kwargs))
 
-    def verbose(self, msg, *args, **kwargs):
+    def verbose(self, msg: str, *args: Any, **kwargs: Any):
         """Prints a message if verbosity is not 0.
 
         For arguments, see `_format_msg`.
@@ -289,7 +354,7 @@ class _CliLogger():
         if self.verbosity > 0:
             self.warning(msg, *args, **kwargs)
 
-    def verbose_error(self, msg, *args, **kwargs):
+    def verbose_error(self, msg: str, *args: Any, **kwargs: Any):
         """Logs an error if verbosity is not 0.
 
         For arguments, see `_format_msg`.
@@ -297,7 +362,7 @@ class _CliLogger():
         if self.verbosity > 0:
             self.error(msg, *args, **kwargs)
 
-    def very_verbose(self, msg, *args, **kwargs):
+    def very_verbose(self, msg: str, *args: Any, **kwargs: Any):
         """Prints if verbosity is > 1.
 
         For arguments, see `_format_msg`.
@@ -305,28 +370,28 @@ class _CliLogger():
         if self.verbosity > 1:
             self.print(msg, *args, **kwargs)
 
-    def success(self, msg, *args, **kwargs):
+    def success(self, msg: str, *args: Any, **kwargs: Any):
         """Prints a formatted success message.
 
         For arguments, see `_format_msg`.
         """
         self.print(cf.green(msg), *args, **kwargs)
 
-    def warning(self, msg, *args, **kwargs):
+    def warning(self, msg: str, *args: Any, **kwargs: Any):
         """Prints a formatted warning message.
 
         For arguments, see `_format_msg`.
         """
         self.print(cf.yellow(msg), *args, **kwargs)
 
-    def error(self, msg, *args, **kwargs):
+    def error(self, msg: str, *args: Any, **kwargs: Any):
         """Prints a formatted error message.
 
         For arguments, see `_format_msg`.
         """
         self.print(cf.red(msg), *args, **kwargs)
 
-    def print(self, msg, *args, **kwargs):
+    def print(self, msg: str, *args: Any, **kwargs: Any):
         """Prints a message.
 
         For arguments, see `_format_msg`.
@@ -336,7 +401,7 @@ class _CliLogger():
 
         self._print(_format_msg(msg, *args, **kwargs))
 
-    def abort(self, msg=None, *args, **kwargs):
+    def abort(self, msg: Optional[str] = None, *args: Any, **kwargs: Any):
         """Prints an error and aborts execution.
 
         Print an error and throw an exception to terminate the program
@@ -350,7 +415,7 @@ class _CliLogger():
 
         raise SilentClickException("Exiting due to cli_logger.abort()")
 
-    def doassert(self, val, msg, *args, **kwargs):
+    def doassert(self, val: bool, msg: str, *args: Any, **kwargs: Any):
         """Handle assertion without throwing a scary exception.
 
         Args:
@@ -364,7 +429,8 @@ class _CliLogger():
         if not val:
             self.abort(msg, *args, **kwargs)
 
-    def old_debug(self, logger, msg, *args, **kwargs):
+    def old_debug(self, logger: logging.Logger, msg: str, *args: Any,
+                  **kwargs: Any):
         """Old debug logging proxy.
 
         Pass along an old debug log iff new logging is disabled.
@@ -377,10 +443,12 @@ class _CliLogger():
         For other arguments, see `_format_msg`.
         """
         if self.old_style:
-            logger.debug(_format_msg(msg, *args, **kwargs))
+            logger.debug(
+                _format_msg(msg, *args, **kwargs), extra=_parent_frame_info())
             return
 
-    def old_info(self, logger, msg, *args, **kwargs):
+    def old_info(self, logger: logging.Logger, msg: str, *args: Any,
+                 **kwargs: Any):
         """Old info logging proxy.
 
         Pass along an old info log iff new logging is disabled.
@@ -393,10 +461,12 @@ class _CliLogger():
         For other arguments, see `_format_msg`.
         """
         if self.old_style:
-            logger.info(_format_msg(msg, *args, **kwargs))
+            logger.info(
+                _format_msg(msg, *args, **kwargs), extra=_parent_frame_info())
             return
 
-    def old_warning(self, logger, msg, *args, **kwargs):
+    def old_warning(self, logger: logging.Logger, msg: str, *args: Any,
+                    **kwargs: Any):
         """Old warning logging proxy.
 
         Pass along an old warning log iff new logging is disabled.
@@ -409,10 +479,12 @@ class _CliLogger():
         For other arguments, see `_format_msg`.
         """
         if self.old_style:
-            logger.warning(_format_msg(msg, *args, **kwargs))
+            logger.warning(
+                _format_msg(msg, *args, **kwargs), extra=_parent_frame_info())
             return
 
-    def old_error(self, logger, msg, *args, **kwargs):
+    def old_error(self, logger: logging.Logger, msg: str, *args: Any,
+                  **kwargs: Any):
         """Old error logging proxy.
 
         Pass along an old error log iff new logging is disabled.
@@ -425,10 +497,12 @@ class _CliLogger():
         For other arguments, see `_format_msg`.
         """
         if self.old_style:
-            logger.error(_format_msg(msg, *args, **kwargs))
+            logger.error(
+                _format_msg(msg, *args, **kwargs), extra=_parent_frame_info())
             return
 
-    def old_exception(self, logger, msg, *args, **kwargs):
+    def old_exception(self, logger: logging.Logger, msg: str, *args: Any,
+                      **kwargs: Any):
         """Old exception logging proxy.
 
         Pass along an old exception log iff new logging is disabled.
@@ -441,15 +515,22 @@ class _CliLogger():
         For other arguments, see `_format_msg`.
         """
         if self.old_style:
-            logger.exception(_format_msg(msg, *args, **kwargs))
+            logger.exception(
+                _format_msg(msg, *args, **kwargs), extra=_parent_frame_info())
             return
 
-    def render_list(self, xs, separator=cf.reset(", ")):
+    def render_list(self, xs: List[str], separator: str = cf.reset(", ")):
         """Render a list of bolded values using a non-bolded separator.
         """
         return separator.join([str(cf.bold(x)) for x in xs])
 
-    def confirm(self, yes, msg, *args, _abort=False, _default=False, **kwargs):
+    def confirm(self,
+                yes: bool,
+                msg: str,
+                *args: Any,
+                _abort: bool = False,
+                _default: bool = False,
+                **kwargs: Any):
         """Display a confirmation dialog.
 
         Valid answers are "y/yes/true/1" and "n/no/false/0".
@@ -530,7 +611,7 @@ class _CliLogger():
 
         return res
 
-    def old_confirm(self, msg, yes):
+    def old_confirm(self, msg: str, yes: bool):
         """Old confirm dialog proxy.
 
         Let `click` display a confirm dialog iff new logging is disabled.
@@ -551,7 +632,7 @@ class SilentClickException(click.ClickException):
     colors and other formatting.
     """
 
-    def __init__(self, message):
+    def __init__(self, message: str):
         super(SilentClickException, self).__init__(message)
 
     def show(self, file=None):

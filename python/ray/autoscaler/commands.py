@@ -29,7 +29,8 @@ from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
 
 from ray.ray_constants import AUTOSCALER_RESOURCE_REQUEST_CHANNEL
 from ray.autoscaler.updater import NodeUpdaterThread
-from ray.autoscaler.command_runner import set_using_login_shells
+from ray.autoscaler.command_runner import set_using_login_shells, \
+                                          set_rsync_silent
 from ray.autoscaler.command_runner import DockerCommandRunner
 from ray.autoscaler.log_timer import LogTimer
 from ray.worker import global_worker
@@ -97,14 +98,9 @@ def create_or_update_cluster(
         config_file: str, override_min_workers: Optional[int],
         override_max_workers: Optional[int], no_restart: bool,
         restart_only: bool, yes: bool, override_cluster_name: Optional[str],
-        no_config_cache: bool, log_old_style: bool, log_color: str,
-        dump_command_output: bool, use_login_shells: bool,
-        verbose: int) -> None:
+        no_config_cache: bool, dump_command_output: bool,
+        use_login_shells: bool) -> None:
     """Create or updates an autoscaling Ray cluster from a config json."""
-    cli_logger.old_style = log_old_style
-    cli_logger.color_mode = log_color
-    cli_logger.verbosity = verbose
-
     set_using_login_shells(use_login_shells)
     cmd_output_util.set_output_redirected(not dump_command_output)
 
@@ -184,6 +180,7 @@ def create_or_update_cluster(
     # because it only supports aws
     if config["provider"]["type"] != "aws":
         cli_logger.old_style = True
+    cli_logger.newline()
     config = _bootstrap_config(config, no_config_cache)
     if config["provider"]["type"] != "aws":
         cli_logger.old_style = False
@@ -217,7 +214,6 @@ def _bootstrap_config(config: Dict[str, Any],
             try_reload_log_state(config_cache["config"]["provider"],
                                  config_cache.get("provider_log_info"))
 
-            cli_logger.newline()
             cli_logger.verbose_warning(
                 "Loaded cached provider configuration "
                 "from " + cf.bold("{}"), cache_key)
@@ -264,14 +260,8 @@ def _bootstrap_config(config: Dict[str, Any],
 
 def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
                      override_cluster_name: Optional[str],
-                     keep_min_workers: bool, log_old_style: bool,
-                     log_color: str, verbose: int):
+                     keep_min_workers: bool):
     """Destroys all nodes of a Ray cluster described by a config json."""
-    cli_logger.old_style = log_old_style
-    cli_logger.color_mode = log_color
-    cli_logger.verbosity = verbose
-    cli_logger.dump_command_output = verbose == 3  # todo: add a separate flag?
-
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
@@ -375,7 +365,8 @@ def kill_node(config_file, yes, hard, override_cluster_name):
         config["cluster_name"] = override_cluster_name
     config = _bootstrap_config(config)
 
-    confirm("This will kill a node in your cluster", yes)
+    cli_logger.confirm(yes, "A random node will be killed.")
+    cli_logger.old_confirm("This will kill a node in your cluster", yes)
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
@@ -383,7 +374,8 @@ def kill_node(config_file, yes, hard, override_cluster_name):
             TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER
         })
         node = random.choice(nodes)
-        logger.info("kill_node: Shutdown worker {}".format(node))
+        cli_logger.print("Shutdown " + cf.bold("{}"), node)
+        cli_logger.old_info(logger, "kill_node: Shutdown worker {}", node)
         if hard:
             provider.terminate_node(node)
         else:
@@ -682,7 +674,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
 
         cli_logger.newline()
         with cli_logger.group("Useful commands"):
-            cli_logger.print("Monitor auto-scailng with")
+            cli_logger.print("Monitor autoscaling with")
             cli_logger.print(
                 cf.bold("  ray exec {}{} {}"), raw_config_file, modifiers,
                 quote(monitor_str))
@@ -820,9 +812,12 @@ def exec_cluster(config_file: str,
                 attach_command_parts.append("--screen")
 
             attach_command = " ".join(attach_command_parts)
+            cli_logger.print("Run `{}` to check command status.",
+                             cf.bold(attach_command))
+
             attach_info = "Use `{}` to check on command status.".format(
                 attach_command)
-            logger.info(attach_info)
+            cli_logger.old_info(logger, attach_info)
         return result
     finally:
         provider.cleanup()
@@ -873,6 +868,10 @@ def rsync(config_file: str,
         down: whether we're syncing remote -> local
         all_nodes: whether to sync worker nodes in addition to the head node
     """
+    if bool(source) != bool(target):
+        cli_logger.abort(
+            "Expected either both a source and a target, or neither.")
+
     assert bool(source) == bool(target), (
         "Must either provide both or neither source and target.")
 
@@ -918,6 +917,10 @@ def rsync(config_file: str,
                 rsync = updater.rsync_up
 
             if source and target:
+                # print rsync progress for single file rsync
+                cmd_output_util.set_output_redirected(False)
+                set_rsync_silent(False)
+
                 rsync(source, target)
             else:
                 updater.sync_file_mounts(rsync)
