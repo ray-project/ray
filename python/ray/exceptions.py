@@ -1,12 +1,11 @@
 import os
-from fnmatch import fnmatch
 from traceback import format_exception
 
 import colorama
 
 import ray
 import ray.cloudpickle as pickle
-from ray.core.generated.common_pb2 import RayException
+from ray.core.generated.common_pb2 import RayException, Language
 import setproctitle
 
 
@@ -30,11 +29,14 @@ class RayError(Exception):
         if ray_exception.language == ray.Language.PYTHON.value():
             return pickle.loads(ray_exception.serialized_exception)
         else:
-            return CrossLanguageError(ray_exception.formatted_exception_string)
+            return CrossLanguageError(ray_exception)
 
 
 class CrossLanguageError(RayError):
     """Raised from another language."""
+    def __init__(self, ray_exception):
+        super().__init__("An exception from {}:\n{}".format(
+            Language.Name(ray_exception.language), ray_exception.formatted_exception_string))
 
 
 class RayConnectionError(RayError):

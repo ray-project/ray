@@ -7,7 +7,8 @@ public class CrossLanguageException extends RayException {
   private Language language;
 
   public CrossLanguageException(io.ray.runtime.generated.Common.RayException exception) {
-    super(exception.getFormattedExceptionString());
+    super(String.format("An exception from %s:\n%s", exception.getLanguage().name(),
+        exception.getFormattedExceptionString()));
     this.language = exception.getLanguage();
   }
 
