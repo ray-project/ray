@@ -2,8 +2,7 @@ from typing import (List, Dict)
 
 import ray
 from ray._raylet import (
-    PlacementGroupID,
-)
+    PlacementGroupID, )
 
 
 def placement_group(bundles: List[Dict[str, float]],

@@ -984,7 +984,8 @@ cdef class CoreWorker:
 
     def remove_placement_group(self, PlacementGroupID placement_group_id):
         cdef:
-            CPlacementGroupID c_placement_group_id = placement_group_id.native()
+            CPlacementGroupID c_placement_group_id = \
+                placement_group_id.native()
         with nogil:
             check_status(
                 CCoreWorkerProcess.GetCoreWorker().

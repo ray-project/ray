@@ -8,6 +8,7 @@ import sys
 import ray
 import ray.test_utils
 import ray.cluster_utils
+from ray._raylet import PlacementGroupID
 
 
 def test_placement_group_pack(ray_start_cluster):
@@ -174,7 +175,7 @@ def test_placement_group_hang(ray_start_cluster):
 
 def test_remove_placement_group():
     ray.init(num_cpus=4)
-
+    ray.experimental.remove_placement_group(PlacementGroupID.from_random())
     pid = ray.experimental.placement_group([{"CPU": 2}, {"CPU": 2}])
 
     @ray.remote(num_cpus=2)
@@ -184,7 +185,7 @@ def test_remove_placement_group():
 
     # a = A.remote()
     ray.experimental.remove_placement_group(pid)
-    #assert ray.get(a.f.remote()), timeout=5) == 3
+    # assert ray.get(a.f.remote()), timeout=5) == 3
 
     import time
     time.sleep(50)

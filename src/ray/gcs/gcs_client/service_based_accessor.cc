@@ -1452,22 +1452,17 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
 }
 
 Status ServiceBasedPlacementGroupInfoAccessor::AsyncRemovePlacementGroup(
-    const ray::PlacementGroupID &placement_group_id) {
+    const ray::PlacementGroupID &placement_group_id, const StatusCallback &callback) {
   rpc::RemovePlacementGroupRequest request;
   request.set_placement_group_id(placement_group_id.Binary());
   RAY_LOG(ERROR) << "sangin service request going on";
   client_impl_->GetGcsRpcClient().RemovePlacementGroup(
-      request, [placement_group_id](const Status &,
-                                    const rpc::RemovePlacementGroupReply &reply) {
-        RAY_LOG(ERROR) << "Callback came back";
+      request, [callback](const Status &, const rpc::RemovePlacementGroupReply &reply) {
         auto status =
             reply.status().code() == (int)StatusCode::OK
                 ? Status()
                 : Status(StatusCode(reply.status().code()), reply.status().message());
-        if (status.ok()) {
-          RAY_LOG(ERROR) << "Finished removing placement group. placement group id = "
-                         << placement_group_id;
-        }
+        callback(status);
       });
   return Status::OK();
 }

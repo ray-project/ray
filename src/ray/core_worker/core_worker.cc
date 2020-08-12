@@ -1305,8 +1305,16 @@ Status CoreWorker::CreatePlacementGroup(
 
 Status CoreWorker::RemovePlacementGroup(const PlacementGroupID &placement_group_id) {
   RAY_LOG(ERROR) << "Remove a placement group of id, " << placement_group_id;
-  RAY_CHECK_OK(gcs_client_->PlacementGroups().AsyncRemovePlacementGroup(placement_group_id));
-  RAY_LOG(ERROR) << "sangbin result returned";
+  RAY_UNUSED(gcs_client_->PlacementGroups().AsyncRemovePlacementGroup(
+      placement_group_id, [placement_group_id](Status status) {
+        if (status.ok()) {
+          RAY_LOG(ERROR) << "Finished removing placement group. placement group id = "
+                         << placement_group_id;
+        } else {
+          RAY_LOG(ERROR) << "Removing placement group failed with an error "
+                         << status.ToString();
+        }
+      }));
   return Status::OK();
 }
 

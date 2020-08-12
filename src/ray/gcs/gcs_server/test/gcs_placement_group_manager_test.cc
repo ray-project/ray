@@ -81,7 +81,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestBasic) {
 
   gcs_placement_group_manager_->OnPlacementGroupCreationSuccess(placement_group);
   WaitForExpectedCount(finished_placement_group_count, 1);
-  ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::ALIVE);
+  ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::CREATED);
 }
 
 TEST_F(GcsPlacementGroupManagerTest, TestSchedulingFailed) {
@@ -102,10 +102,10 @@ TEST_F(GcsPlacementGroupManagerTest, TestSchedulingFailed) {
   mock_placement_group_scheduler_->placement_groups.clear();
   ASSERT_EQ(finished_placement_group_count, 0);
 
-  // Check that the placement_group is in state `ALIVE`.
+  // Check that the placement_group is in state `CREATED`.
   gcs_placement_group_manager_->OnPlacementGroupCreationSuccess(placement_group);
   WaitForExpectedCount(finished_placement_group_count, 1);
-  ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::ALIVE);
+  ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::CREATED);
 }
 
 TEST_F(GcsPlacementGroupManagerTest, TestGetPlacementGroupIDByName) {
@@ -123,7 +123,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestGetPlacementGroupIDByName) {
 
   gcs_placement_group_manager_->OnPlacementGroupCreationSuccess(placement_group);
   WaitForExpectedCount(finished_placement_group_count, 1);
-  ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::ALIVE);
+  ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::CREATED);
   ASSERT_EQ(
       gcs_placement_group_manager_->GetPlacementGroupIDByName("test_name"),
       PlacementGroupID::FromBinary(
@@ -148,6 +148,14 @@ TEST_F(GcsPlacementGroupManagerTest, TestRescheduleWhenNodeAdd) {
   };
   EXPECT_TRUE(WaitForCondition(condition, 10 * 1000));
 }
+
+TEST_F(GcsPlacementGroupManagerTest, TestRemovingPendingPlacementGroup) {}
+
+TEST_F(GcsPlacementGroupManagerTest, TestRemovingLeasingPlacementGroup) {}
+
+TEST_F(GcsPlacementGroupManagerTest, TestRemovingCreatedPlacementGroup) {}
+
+TEST_F(GcsPlacementGroupManagerTest, TestRemovingAlreadyDeadPlacementGroup) {}
 
 }  // namespace ray
 
