@@ -212,7 +212,6 @@ void ClusterTaskManager::Dispatch(
     std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
     const TaskSpecification &task_spec, rpc::RequestWorkerLeaseReply *reply,
     std::function<void(void)> send_reply_callback) {
-
   // Pass the contact info of the worker to use.
   reply->mutable_worker_address()->set_ip_address(worker->IpAddress());
   reply->mutable_worker_address()->set_port(worker->Port());
