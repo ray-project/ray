@@ -28,9 +28,11 @@ class TestHead(dashboard_utils.DashboardHeadModule):
     async def dump(self, req) -> aiohttp.web.Response:
         key = req.query.get("key")
         if key is None:
-            all_data = dict((k, dict(v))
-                            for k, v in DataSource.__dict__.items()
-                            if not k.startswith("_"))
+            all_data = {
+                k: dict(v)
+                for k, v in DataSource.__dict__.items()
+                if not k.startswith("_")
+            }
             return await dashboard_utils.rest_response(
                 success=True,
                 message="Fetch all data from datacenter success.",
