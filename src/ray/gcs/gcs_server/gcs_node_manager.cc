@@ -21,6 +21,18 @@
 namespace ray {
 namespace gcs {
 
+bool GcsNodeResource::IsSubset(
+    const std::unordered_map<std::string, double> &request_resources) const {
+  for (const auto &request_resource : request_resources) {
+    auto iter = resources_available_.find(request_resource.first);
+    if (iter == resources_available_.end() || iter->second < request_resource.second) {
+      return false;
+    }
+  }
+  return true;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
 GcsNodeManager::NodeFailureDetector::NodeFailureDetector(
     boost::asio::io_service &io_service,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
@@ -231,6 +243,10 @@ void GcsNodeManager::HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &re
   ClientID node_id = ClientID::FromBinary(request.heartbeat().client_id());
   auto heartbeat_data = std::make_shared<rpc::HeartbeatTableData>();
   heartbeat_data->CopyFrom(request.heartbeat());
+
+  // Update node realtime resources.
+  UpdateNodeRealtimeResources(node_id, *heartbeat_data);
+
   // Note: To avoid heartbeats being delayed by main thread, make sure heartbeat is always
   // handled by its own IO service.
   node_failure_detector_service_.post([this, node_id, heartbeat_data] {
@@ -449,6 +465,23 @@ void GcsNodeManager::StartNodeFailureDetector() {
   // Note: To avoid heartbeats being delayed by main thread, make sure detector start is
   // always handled by its own IO service.
   node_failure_detector_service_.post([this] { node_failure_detector_->Start(); });
+}
+
+void GcsNodeManager::UpdateNodeRealtimeResources(
+    const ClientID &node_id, const rpc::HeartbeatTableData &heartbeat) {
+  auto resources_available = MapFromProtobuf(heartbeat.resources_available());
+  auto iter = cluster_realtime_resources_.find(node_id);
+  if (iter != cluster_realtime_resources_.end()) {
+    iter->second->resources_available_ = resources_available;
+  } else {
+    cluster_realtime_resources_[node_id] =
+        std::make_shared<GcsNodeResource>(resources_available);
+  }
+}
+
+const absl::flat_hash_map<ClientID, std::shared_ptr<GcsNodeResource>>
+    &GcsNodeManager::GetClusterRealtimeResources() const {
+  return cluster_realtime_resources_;
 }
 
 }  // namespace gcs
