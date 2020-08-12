@@ -252,28 +252,42 @@ def test_metrics_export_end_to_end(ray_start_cluster):
         prom_addresses.append(f"{addr}:{metrics_export_port}")
 
     # Make sure we can ping Prometheus endpoints.
-    def test_prometheus_endpoint():
-        components_dict = defaultdict(set)
+    def get_component_information(prom_addresses):
         # TODO(sang): Add a core worker & gcs_server after adding metrics.
-        COMPONENTS_CANDIDATES = {"raylet"}
+        components_dict = {}
         for address in prom_addresses:
+            if address not in components_dict:
+                components_dict[address] = set()
             try:
                 response = requests.get(
                     "http://localhost:{}".format(metrics_export_port))
             except requests.exceptions.ConnectionError:
-                return False
+                return components_dict
 
             for line in response.text.split("\n"):
                 for family in text_string_to_metric_families(line):
                     for sample in family.samples:
+                        # print(sample)
                         if "Component" in sample.labels:
                             components_dict[address].add(
                                 sample.labels["Component"])
+        return components_dict
 
-        return all(components == COMPONENTS_CANDIDATES
-                   for components in components_dict.values())
+    def test_prometheus_endpoint():
+        # TODO(sang): Add a core worker & gcs_server after adding metrics.
+        components_dict = get_component_information(prom_addresses)
+        COMPONENTS_CANDIDATES = {"raylet"}
+        return all(
+            COMPONENTS_CANDIDATES.issubset(components)
+            for components in components_dict.values())
 
-    wait_for_condition(test_prometheus_endpoint, timeout=5)
+    try:
+        wait_for_condition(test_prometheus_endpoint, timeout=3)
+    except RuntimeError:
+        # This is for debugging when test failed.
+        print(get_component_information(prom_addresses))
+        raise RuntimeError("All components were not visible to "
+                           "prometheus endpoints on time.")
     ray.shutdown()
 
 
