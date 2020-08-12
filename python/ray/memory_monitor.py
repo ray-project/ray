@@ -109,9 +109,7 @@ class MemoryMonitor:
 
             self.last_checked = time.time()
             total_gb = psutil.virtual_memory().total / (1024**3)
-            psutil_mem = psutil.virtual_memory()
-            used_gb = total_gb - (psutil_mem.available + psutil_mem.cached) / (
-                1024**3)
+            used_gb = total_gb - psutil.virtual_memory().available / (1024**3)
             if self.cgroup_memory_limit_gb < total_gb:
                 total_gb = self.cgroup_memory_limit_gb
                 with open("/sys/fs/cgroup/memory/memory.usage_in_bytes",
