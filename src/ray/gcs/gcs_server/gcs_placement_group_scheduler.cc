@@ -42,19 +42,20 @@ ScheduleMap GcsPackStrategy::Schedule(
     std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
     const std::unique_ptr<ScheduleContext> &context) {
   // Aggregate required resources.
-  std::unordered_map<std::string, double> required_resources;
+  std::unordered_map<std::string, double> bundle_resources;
   for (const auto &bundle : bundles) {
     const auto &resources = bundle->GetRequiredResources().GetResourceMap();
     for (const auto &iter : resources) {
-      required_resources[iter.first] += iter.second;
+      bundle_resources[iter.first] += iter.second;
     }
   }
+  ResourceSet required_resources(bundle_resources);
 
   // Filter candidate nodes.
   const auto &alive_nodes = context->node_manager_.GetClusterRealtimeResources();
   std::vector<std::pair<int64_t, ClientID>> candidate_nodes;
   for (auto &node : alive_nodes) {
-    if (node.second->IsSubset(required_resources)) {
+    if (required_resources.IsSubset(*node.second)) {
       candidate_nodes.emplace_back((*context->node_to_bundles_)[node.first], node.first);
     }
   }
@@ -252,7 +253,8 @@ std::unique_ptr<ScheduleContext> GcsPlacementGroupScheduler::GetScheduleContext(
   for (const auto &iter : node_to_leased_bundles_) {
     node_to_bundles->emplace(iter.first, iter.second.size());
   }
-  return std::unique_ptr<ScheduleContext>(new ScheduleContext(node_to_bundles, gcs_node_manager_));
+  return std::unique_ptr<ScheduleContext>(
+      new ScheduleContext(node_to_bundles, gcs_node_manager_));
 }
 
 }  // namespace gcs
