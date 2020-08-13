@@ -46,6 +46,7 @@ ScheduleMap GcsPackStrategy::Schedule(
   for (const auto &bundle : bundles) {
     required_resources.AddResources(bundle->GetRequiredResources());
   }
+  ResourceSet required_resources(bundle_resources);
 
   // Filter candidate nodes.
   const auto &alive_nodes = context->node_manager_.GetClusterRealtimeResources();
