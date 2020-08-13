@@ -19,6 +19,7 @@ from ray.tune.suggest.dragonfly import DragonflySearch
 from ray.tune.suggest.bayesopt import BayesOptSearch
 from ray.tune.suggest.skopt import SkOptSearch
 from ray.tune.suggest.nevergrad import NevergradSearch
+from ray.tune.suggest.optuna import OptunaSearch, param as ot_param
 from ray.tune.suggest.sigopt import SigOptSearch
 from ray.tune.suggest.zoopt import ZOOptSearch
 from ray.tune.utils import validate_save_restore
@@ -292,7 +293,23 @@ class NevergradWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         return search_alg, cost
 
 
-class DragonflyWarmSTartTest(AbstractWarmStartTest, unittest.TestCase):
+class OptunaWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
+    def set_basic_conf(self):
+        from optuna.samplers import TPESampler
+        space = [
+            ot_param.suggest_uniform("width", 0, 20),
+            ot_param.suggest_uniform("height", -100, 100)
+        ]
+
+        def cost(space, reporter):
+            reporter(loss=(space["height"] - 14)**2 - abs(space["width"] - 3))
+
+        search_alg = OptunaSearch(
+            space, sampler=TPESampler(seed=10), metric="loss", mode="min")
+        return search_alg, cost
+
+
+class DragonflyWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
         from dragonfly.opt.gp_bandit import EuclideanGPBandit
         from dragonfly.exd.experiment_caller import EuclideanFunctionCaller
