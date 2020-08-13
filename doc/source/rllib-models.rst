@@ -156,12 +156,6 @@ You can check out the `rnn_model.py <https://github.com/ray-project/ray/blob/mas
     .. automethod:: forward_rnn
     .. automethod:: get_initial_state
 
-.. autoclass:: ray.rllib.models.torch.recurrent_net.RecurrentNetwork
-
-    .. automethod:: __init__
-    .. automethod:: forward_rnn
-    .. automethod:: get_initial_state
-
 Batch Normalization
 ~~~~~~~~~~~~~~~~~~~
 
