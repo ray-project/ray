@@ -217,16 +217,20 @@ class Monitor:
         This function loops forever, checking for messages about dead database
         clients and cleaning up state accordingly.
         """
+        print("intialize raylet id -> ip map")
         # Initialize the mapping from raylet client ID to IP address.
         self.update_raylet_map()
+        print("done")
 
         # Initialize the subscription channel.
         self.psubscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_PATTERN)
         self.psubscribe(ray.gcs_utils.XRAY_JOB_PATTERN)
 
         if self.autoscaler:
+            print("subscribing to channel")
             self.subscribe(
                 ray.ray_constants.AUTOSCALER_RESOURCE_REQUEST_CHANNEL)
+            print("done")
 
         # TODO(rkn): If there were any dead clients at startup, we should clean
         # up the associated state in the state tables.
@@ -283,6 +287,7 @@ class Monitor:
 
     def run(self):
         try:
+            print("Calling _run")
             self._run()
         except Exception:
             logger.exception("Error in monitor loop")
