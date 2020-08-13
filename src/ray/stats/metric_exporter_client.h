@@ -16,6 +16,7 @@
 
 #include <boost/asio.hpp>
 
+#include "opencensus/stats/stats.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/metrics_agent_client.h"
 #include "ray/stats/metric.h"
@@ -26,6 +27,12 @@ namespace stats {
 class MetricExporterClient {
  public:
   virtual void ReportMetrics(const std::vector<MetricPoint> &points) = 0;
+  virtual void ReportMetrics(
+      const std::vector<std::pair<opencensus::stats::ViewDescriptor,
+                                  opencensus::stats::ViewData>> &data){
+      // Unimplemented
+  };
+
   virtual ~MetricExporterClient() = default;
 };
 
@@ -43,8 +50,8 @@ class StdoutExporterClient : public MetricExporterClient {
 /// std::shared_ptr<MetricExporterClient> exporter(new StdoutExporterClient());
 /// std::shared_ptr<MetricExporterClient> dashboard_exporter_client(
 ///         new DashboardExporterCLient(exporter, gcs_rpc_client));
-///  Both dahsboard client and std logging will emit when
-//  dahsboard_exporter_client->ReportMetrics(points) is called.
+/// Both dahsboard client and std logging will emit when
+/// dahsboard_exporter_client->ReportMetrics(points) is called.
 /// Actually, opentsdb exporter can be added like above mentioned style.
 class MetricExporterDecorator : public MetricExporterClient {
  public:
@@ -63,6 +70,10 @@ class MetricsAgentExporter : public MetricExporterDecorator {
   ~MetricsAgentExporter() {}
 
   void ReportMetrics(const std::vector<MetricPoint> &points) override;
+
+  void ReportMetrics(
+      const std::vector<std::pair<opencensus::stats::ViewDescriptor,
+                                  opencensus::stats::ViewData>> &data) override;
 
  private:
   /// Client to call a metrics agent gRPC server.

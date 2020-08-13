@@ -15,12 +15,15 @@ from opencensus.stats import stats as stats_module
 from opencensus.tags import tag_key as tag_key_module
 from opencensus.tags import tag_map as tag_map_module
 from opencensus.tags import tag_value as tag_value_module
-from opencensus.stats import view
+from opencensus.stats.view import View
+from opencensus.stats.aggregation_data import CountAggregationData, DistributionAggregationData, LastValueAggregationData
+from opencensus.metrics.export.value import ValueDouble
 
 import ray
 
 from ray import prometheus_exporter
 from ray.core.generated.common_pb2 import MetricPoint
+from ray.core.generated.metrics_pb2 import Metric
 
 logger = logging.getLogger(__name__)
 
@@ -28,12 +31,12 @@ logger = logging.getLogger(__name__)
 # We don't need counter, histogram, or sum because reporter just needs to
 # collect momental values (gauge) that are already counted or sampled
 # (histogram for example), or summed inside cpp processes.
-class Gauge(view.View):
+class Gauge(View):
     def __init__(self, name, description, unit,
                  tags: List[tag_key_module.TagKey]):
         self._measure = measure_module.MeasureInt(name, description, unit)
-        self._view = view.View(name, description, tags, self.measure,
-                               aggregation.LastValueAggregation())
+        self._view = View(name, description, tags, self.measure,
+                          aggregation.LastValueAggregation())
 
     @property
     def measure(self):
@@ -107,12 +110,74 @@ class MetricsAgent:
         return self._registry
 
     def record_metrics_points(self, metrics_points: List[MetricPoint]):
+        return False
         with self._lock:
             measurement_map = self.stats_recorder.new_measurement_map()
             for metric_point in metrics_points:
                 self._register_if_needed(metric_point)
                 self._record(metric_point, measurement_map)
             return self._missing_information
+
+    def record_metric_points_from_protobuf(self, metrics: List[Metric]):
+        # return False
+
+        view_data_changed = []
+        for metric in metrics:
+            descriptor = metric.metric_descriptor
+            timeseries = metric.timeseries
+
+            columns = [label_key.key for label_key in descriptor.label_keys]
+            start_time = timeseries[0].start_timestamp.seconds
+
+            measure = measure_module.BaseMeasure(
+                descriptor.name, descriptor.description, descriptor.unit)
+            view = self.view_manager.measure_to_view_map.get_view(
+                descriptor.name, None)
+            if not view:
+                view = View(
+                    descriptor.name,
+                    descriptor.description,
+                    columns,
+                    measure,
+                    aggregation=None)
+                self.view_manager.measure_to_view_map.register_view(
+                    view, start_time)
+            view_data = self.view_manager.measure_to_view_map._measure_to_view_data_list_map[
+                measure.name][-1]
+
+            view_data_changed.append(view_data)
+
+            for series in timeseries:
+                tag_vals = tuple([val.value for val in series.label_values])
+                for point in series.points:
+                    harvest_time = point.timestamp.seconds
+
+                    data = None
+
+                    if point.HasField("int64_value"):
+                        data = CountAggregationData(point.int64_value)
+                    elif point.HasField("double_value"):
+                        data = LastValueAggregationData(
+                            ValueDouble, point.double_value)
+                    elif point.HasField("distribution_value"):
+                        dist_value = point.distribution_value
+                        counts_per_bucket = [
+                            bucket.count for bucket in dist_value.buckets
+                        ]
+                        bucket_bounds = dist_value.bucket_options.explicit.bounds
+                        data = DistributionAggregationData(
+                            dist_value.sum / dist_value.count,
+                            dist_value.count,
+                            dist_value.sum_of_squared_deviation,
+                            counts_per_bucket, bucket_bounds)
+                    else:
+                        raise ValueError("Summary is not supported")
+
+                    view_data.tag_value_aggregation_data_map[tag_vals] = data
+                    # print(
+                    #     f"updated view_data's agg map {view_data.tag_value_aggregation_data_map}"
+                    # )
+        self.view_manager.measure_to_view_map.export(view_data_changed)
 
     def _record(self, metric_point: MetricPoint,
                 measurement_map: MeasurementMap):

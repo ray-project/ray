@@ -76,6 +76,16 @@ class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
         return reporter_pb2.ReportMetricsReply(
             metrcs_description_required=metrcs_description_required)
 
+    def ReportOCMetrics(self, request, context):
+        try:
+            self.metrics_agent.record_metric_points_from_protobuf(
+                request.metrics)
+        except Exception as e:
+            logger.error(e)
+            logger.error(traceback.format_exc())
+
+        return reporter_pb2.ReportOCMetricsReply()
+
 
 def recursive_asdict(o):
     if isinstance(o, tuple) and hasattr(o, "_asdict"):

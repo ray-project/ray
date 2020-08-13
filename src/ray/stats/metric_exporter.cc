@@ -78,6 +78,7 @@ void MetricExporter::ExportToPoints(
 void MetricExporter::ExportViewData(
     const std::vector<std::pair<opencensus::stats::ViewDescriptor,
                                 opencensus::stats::ViewData>> &data) {
+  metric_exporter_client_->ReportMetrics(data);
   std::vector<MetricPoint> points;
   // NOTE(lingxuan.zlx): There is no sampling in view data, so all raw metric
   // data will be processed.
