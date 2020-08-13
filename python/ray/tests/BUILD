@@ -99,7 +99,7 @@ py_test_module_list(
   deps = ["//:ray_lib"],
 )
 
-# TODO(barakmich): aws/ might want its own buildfile, or 
+# TODO(barakmich): aws/ might want its own buildfile, or
 #    py_test_module_list should support subdirectories.
 py_test(
     name = "test_autoscaler_aws",
@@ -108,3 +108,12 @@ py_test(
     deps = ["//:ray_lib"],
 )
 
+# Note(simon): typing tests are not included in module list
+#    because they requires globs and it might be refactored in the future.
+py_test(
+    name = "test_typing",
+    size = "small",
+    srcs = SRCS + ["test_typing.py"] + glob(["typing_files"]),
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)

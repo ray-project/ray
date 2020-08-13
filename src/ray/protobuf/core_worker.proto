@@ -161,6 +161,33 @@ message WaitForObjectEvictionRequest {
 message WaitForObjectEvictionReply {
 }
 
+message AddObjectLocationOwnerRequest {
+  bytes intended_worker_id = 1;
+  bytes object_id = 2;
+  bytes client_id = 3;
+}
+
+message AddObjectLocationOwnerReply {
+}
+
+message RemoveObjectLocationOwnerRequest {
+  bytes intended_worker_id = 1;
+  bytes object_id = 2;
+  bytes client_id = 3;
+}
+
+message RemoveObjectLocationOwnerReply {
+}
+
+message GetObjectLocationsOwnerRequest {
+  bytes intended_worker_id = 1;
+  bytes object_id = 2;
+}
+
+message GetObjectLocationsOwnerReply {
+  repeated bytes client_ids = 1;
+}
+
 message KillActorRequest {
   // ID of the actor that is intended to be killed.
   bytes intended_actor_id = 1;
@@ -284,6 +311,15 @@ service CoreWorkerService {
   // to this message indicates that the raylet should unpin the object.
   rpc WaitForObjectEviction(WaitForObjectEvictionRequest)
       returns (WaitForObjectEvictionReply);
+  // Add object location to the ownership-based object directory.
+  rpc AddObjectLocationOwner(AddObjectLocationOwnerRequest)
+      returns (AddObjectLocationOwnerReply);
+  // Remove object location from the ownership-based object directory.
+  rpc RemoveObjectLocationOwner(RemoveObjectLocationOwnerRequest)
+      returns (RemoveObjectLocationOwnerReply);
+  // Get object locations from the ownership-based object directory.
+  rpc GetObjectLocationsOwner(GetObjectLocationsOwnerRequest)
+      returns (GetObjectLocationsOwnerReply);
   // Request that the worker shut down without completing outstanding work.
   rpc KillActor(KillActorRequest) returns (KillActorReply);
   // Request that a worker cancels a task.

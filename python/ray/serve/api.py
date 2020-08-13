@@ -161,6 +161,17 @@ def create_endpoint(endpoint_name,
             "methods must be a list of strings, but got type {}".format(
                 type(methods)))
 
+    endpoints = list_endpoints()
+    if endpoint_name in endpoints:
+        methods_old = endpoints[endpoint_name]["methods"]
+        route_old = endpoints[endpoint_name]["route"]
+        if methods_old.sort() == methods.sort() and route_old == route:
+            raise ValueError(
+                "Route '{}' is already registered to endpoint '{}' "
+                "with methods '{}'.  To set the backend for this "
+                "endpoint, please use serve.set_traffic().".format(
+                    route, endpoint_name, methods))
+
     upper_methods = []
     for method in methods:
         if not isinstance(method, str):
@@ -260,6 +271,11 @@ def create_backend(backend_tag,
             be sent to a replica of this backend without receiving a
             response.
     """
+    if backend_tag in list_backends():
+        raise ValueError(
+            "Cannot create backend. "
+            "Backend '{}' is already registered.".format(backend_tag))
+
     if config is None:
         config = {}
     if not isinstance(config, dict):
