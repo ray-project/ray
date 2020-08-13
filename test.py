@@ -7,8 +7,7 @@ def spin():
     while True:
         pass
 
-
-ray.init()
+ray.init(address="auto")
 
 refs = [spin.remote() for _ in range(20)]
 
