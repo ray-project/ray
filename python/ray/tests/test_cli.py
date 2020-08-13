@@ -7,6 +7,9 @@ Some instructions on writing CLI tests:
    change run to run.
 3. Look at test_ray_up for an example of how to mock AWS, commands,
    and autoscaler config.
+4. Print your outputs!!!! Tests are impossible to debug if they fail
+   and you did not print anything. Since command output is captured by click,
+   MAKE SURE YOU print(result.output) when tests fail!!!
 
 WARNING: IF YOU MOCK AWS, DON'T FORGET THE AWS_CREDENTIALS FIXTURE.
          THIS IS REQUIRED SO BOTO3 DOES NOT ACCESS THE ACTUAL AWS SERVERS.
@@ -16,6 +19,7 @@ import sys
 import re
 import yaml
 import os
+import pathlib
 
 import pytest
 
@@ -28,6 +32,10 @@ from testfixtures.popen import MockPopen, PopenBehaviour
 
 import ray.autoscaler.aws.config as aws_config
 import ray.scripts.scripts as scripts
+
+def _debug_die(result):
+    print(result.output)
+    assert False
 
 def _debug_check_line_by_line(result, expected_lines):
     output_lines = result.output.split("\n")
@@ -75,13 +83,14 @@ def test_ray_start():
         r"    ray stop"
     ]
 
+    if result.exception is not None:
+        print(result.output)
+        raise result.exception
+
     expected = r" *\n".join(expected_lines) + "\n?"
     if re.fullmatch(expected, result.output) is None:
         _debug_check_line_by_line(result, expected_lines)
     assert result.exit_code == 0
-
-    if result.exception is not None:
-        raise result.exception
 
 @mock_ec2
 @mock_iam
@@ -106,7 +115,7 @@ def test_ray_up(aws_credentials, tmp_path):
             "region": "us-west-2",
             "availability_zone": "us-west-2a",
             "key_pair": {
-                "key_name": "test-cli"
+                "key_name": "__test-cli"
             }
         },
         "auth": {
@@ -159,12 +168,21 @@ def test_ray_up(aws_credentials, tmp_path):
     #
     # Mock Popen
     #
-
     def commands_mock(command, stdin):
-        return PopenBehaviour(stdout="MOCKED")
+        # if we want to have e.g. some commands fail,
+        # we can have overrides happen here.
+        # unfortunately, cutting out SSH prefixes and such
+        # is, to put it lightly, non-trivial
+        if "uptime" in command:
+            return PopenBehaviour(stdout="MOCKED uptime")
+        if "rsync" in command:
+            return PopenBehaviour(stdout="MOCKED rsync")
+        if "ray" in command:
+            return PopenBehaviour(stdout="MOCKED ray")
+        return PopenBehaviour(stdout="MOCKED GENERIC")
 
     Popen = MockPopen()
-    Popen.set_default(stdout="MOCKED", behaviour=commands_mock)
+    Popen.set_default(behaviour=commands_mock)
     with Replacer() as replacer:
         replacer.replace("subprocess.Popen", Popen)
 
@@ -197,7 +215,6 @@ def test_ray_up(aws_credentials, tmp_path):
             r"Acquiring an up-to-date head node",
             r"  Launched 1 nodes \[subnet_id=subnet-.+\]",
             r"    Launched instance i-.+ \[state=pending, info=pending\]",
-            r"Done listing",
             r"  Launched a new head node",
             r"  Fetching the new head node",
             r"",
@@ -236,8 +253,13 @@ def test_ray_up(aws_credentials, tmp_path):
         result = runner.invoke(
             scripts.up,
             [str(config_path), "--no-config-cache", "-y", "--log-new-style"])
+        try:
+            pathlib.Path("~", ".ssh", "__test-cli_key").unlink()
+        except FileNotFoundError:
+            pass
 
         if result.exception is not None:
+            print(result.output)
             raise result.exception from None
 
         expected = r" *\n".join(expected_lines) + "\n?"

@@ -368,7 +368,6 @@ class AWSNodeProvider(NodeProvider):
                             "[id={}, name={}, info={}]", instance.instance_id,
                             instance.state["Name"],
                             instance.state_reason["Message"])
-                    print('Done listing')
                 break
             except botocore.exceptions.ClientError as exc:
                 if attempt == BOTO_CREATE_MAX_RETRIES:
