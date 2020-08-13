@@ -287,10 +287,10 @@ def test_metrics_export_end_to_end(ray_start_cluster):
         return components_dict, metric_names
 
     def test_prometheus_endpoint():
-        # TODO(sang): Add a core worker & gcs_server after adding metrics.
+        # TODO(Simon): Add a gcs_server after fixing metrics.
         components_dict, metric_names = fetch_prometheus(prom_addresses)
 
-        # Raylet and GCS should be on every node
+        # Raylet should be on every node
         expected_components = {"raylet"}
         components_found = all(
             expected_components.issubset(components)
