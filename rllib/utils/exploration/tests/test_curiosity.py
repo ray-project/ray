@@ -43,10 +43,10 @@ class TestCuriosity(unittest.TestCase):
                     prev_reward=1.0 if prev_a is not None else None))
             check(actions[-1], actions[0])
         print(actions)
-#        trainer.train()
 
     def test_curiosity(self):
         config = ppo.DEFAULT_CONFIG
+
         env = "CartPole-v0"
         config["framework"] = "torch"
         config["exploration_config"] = {
