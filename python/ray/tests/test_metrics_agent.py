@@ -14,6 +14,7 @@ from ray.core.generated.common_pb2 import MetricPoint
 from ray.dashboard.util import get_unused_port
 from ray.metrics_agent import (Gauge, MetricsAgent,
                                PrometheusServiceDiscoveryWriter)
+from ray.test_utils import wait_for_condition
 
 
 def generate_metrics_point(name: str,
@@ -214,6 +215,80 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
     loaded_json_data = json.loads(writer.get_file_discovery_content())[0]
     assert (set(get_metrics_export_address_from_node(nodes)) == set(
         loaded_json_data["targets"]))
+
+
+def test_metrics_export_end_to_end(ray_start_cluster):
+    NUM_NODES = 2
+    cluster = ray_start_cluster
+    # Add a head node.
+    cluster.add_node(
+        _internal_config=json.dumps({
+            "metrics_report_interval_ms": 1000
+        }))
+    # Add worker nodes.
+    [cluster.add_node() for _ in range(NUM_NODES - 1)]
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    # Generate some metrics around actor & tasks.
+    @ray.remote
+    def f():
+        return 3
+
+    @ray.remote
+    class A:
+        def ping(self):
+            return 3
+
+    ray.get([f.remote() for _ in range(30)])
+    a = A.remote()
+    ray.get(a.ping.remote())
+
+    node_info_list = ray.nodes()
+    prom_addresses = []
+    for node_info in node_info_list:
+        metrics_export_port = node_info["MetricsExportPort"]
+        addr = node_info["NodeManagerAddress"]
+        prom_addresses.append(f"{addr}:{metrics_export_port}")
+
+    # Make sure we can ping Prometheus endpoints.
+    def get_component_information(prom_addresses):
+        # TODO(sang): Add a core worker & gcs_server after adding metrics.
+        components_dict = {}
+        for address in prom_addresses:
+            if address not in components_dict:
+                components_dict[address] = set()
+            try:
+                response = requests.get(
+                    "http://localhost:{}".format(metrics_export_port))
+            except requests.exceptions.ConnectionError:
+                return components_dict
+
+            for line in response.text.split("\n"):
+                for family in text_string_to_metric_families(line):
+                    for sample in family.samples:
+                        # print(sample)
+                        if "Component" in sample.labels:
+                            components_dict[address].add(
+                                sample.labels["Component"])
+        return components_dict
+
+    def test_prometheus_endpoint():
+        # TODO(sang): Add a core worker & gcs_server after adding metrics.
+        components_dict = get_component_information(prom_addresses)
+        COMPONENTS_CANDIDATES = {"raylet"}
+        return all(
+            COMPONENTS_CANDIDATES.issubset(components)
+            for components in components_dict.values())
+
+    try:
+        wait_for_condition(test_prometheus_endpoint, timeout=3)
+    except RuntimeError:
+        # This is for debugging when test failed.
+        print(get_component_information(prom_addresses))
+        raise RuntimeError("All components were not visible to "
+                           "prometheus endpoints on time.")
+    ray.shutdown()
 
 
 if __name__ == "__main__":
