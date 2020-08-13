@@ -53,6 +53,7 @@ trainer = ppo.PPOTrainer(config=config, env=env)
 trainer.train()
 """
 
+
 class Curiosity(Exploration):
     def __init__(self, action_space: Space, *, framework: str, **kwargs):
         """
