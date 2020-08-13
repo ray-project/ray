@@ -386,6 +386,7 @@ def kill_node(config_file, yes, hard, override_cluster_name):
                 auth_config=config["auth"],
                 cluster_name=config["cluster_name"],
                 file_mounts=config["file_mounts"],
+                exclude_list=config["exclude_list"],
                 initialization_commands=[],
                 setup_commands=[],
                 ray_start_commands=[],
@@ -623,6 +624,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
                 auth_config=config["auth"],
                 cluster_name=config["cluster_name"],
                 file_mounts=config["file_mounts"],
+                exclude_list=config["exclude_list"],
                 initialization_commands=config["initialization_commands"],
                 setup_commands=init_commands,
                 ray_start_commands=ray_start_commands,
@@ -774,6 +776,7 @@ def exec_cluster(config_file: str,
             auth_config=config["auth"],
             cluster_name=config["cluster_name"],
             file_mounts=config["file_mounts"],
+            exclude_list=config['exclude_list'],
             initialization_commands=[],
             setup_commands=[],
             ray_start_commands=[],
@@ -905,6 +908,7 @@ def rsync(config_file: str,
                 auth_config=config["auth"],
                 cluster_name=config["cluster_name"],
                 file_mounts=config["file_mounts"],
+                exclude_list=config['exclude_list'],
                 initialization_commands=[],
                 setup_commands=[],
                 ray_start_commands=[],
@@ -920,8 +924,10 @@ def rsync(config_file: str,
                 # print rsync progress for single file rsync
                 cmd_output_util.set_output_redirected(False)
                 set_rsync_silent(False)
-
-                rsync(source, target)
+                try:
+                    rsync(source, target)
+                except:
+                    print(f"Rsync failed for node {node_id} \n")
             else:
                 updater.sync_file_mounts(rsync)
 

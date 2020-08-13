@@ -262,7 +262,8 @@ class NodeProvider:
                            cluster_name,
                            process_runner,
                            use_internal_ip,
-                           docker_config=None) -> Any:
+                           docker_config=None,
+                           exclude_list=None) -> Any:
         """ Returns the CommandRunner class used to perform SSH commands.
 
         Args:
@@ -286,7 +287,8 @@ class NodeProvider:
             "auth_config": auth_config,
             "cluster_name": cluster_name,
             "process_runner": process_runner,
-            "use_internal_ip": use_internal_ip
+            "use_internal_ip": use_internal_ip,
+            "exclude_list": exclude_list
         }
         if docker_config and docker_config["container_name"] != "":
             return DockerCommandRunner(docker_config, **common_args)

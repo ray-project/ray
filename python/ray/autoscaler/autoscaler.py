@@ -404,6 +404,7 @@ class StandardAutoscaler:
             auth_config=self.config["auth"],
             cluster_name=self.config["cluster_name"],
             file_mounts=self.config["file_mounts"],
+            exclude_list=self.config["exclude_list"],
             initialization_commands=with_head_node_ip(
                 self.config["initialization_commands"]),
             setup_commands=with_head_node_ip(init_commands),

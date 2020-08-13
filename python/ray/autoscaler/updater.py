@@ -33,6 +33,7 @@ class NodeUpdater:
                  auth_config,
                  cluster_name,
                  file_mounts,
+                 exclude_list,
                  initialization_commands,
                  setup_commands,
                  ray_start_commands,
@@ -48,7 +49,7 @@ class NodeUpdater:
                            or provider_config.get("use_internal_ips", False))
         self.cmd_runner = provider.get_command_runner(
             self.log_prefix, node_id, auth_config, cluster_name,
-            process_runner, use_internal_ip, docker_config)
+            process_runner, use_internal_ip, docker_config,  exclude_list)
 
         self.daemon = True
         self.process_runner = process_runner
@@ -146,7 +147,7 @@ class NodeUpdater:
             with LogTimer(self.log_prefix +
                           "Synced {} to {}".format(local_path, remote_path)):
                 self.cmd_runner.run("mkdir -p {}".format(
-                    os.path.dirname(remote_path)))
+                    os.path.dirname(remote_path)), run_env="host")
                 sync_cmd(local_path, remote_path)
 
                 if remote_path not in nolog_paths:
@@ -188,7 +189,7 @@ class NodeUpdater:
                                              "{}Waiting for remote shell...",
                                              self.log_prefix)
 
-                        self.cmd_runner.run("uptime")
+                        self.cmd_runner.run("uptime", run_env="host")
                         cli_logger.old_debug(logger, "Uptime succeeded.")
                         cli_logger.success("Success.")
                         return True
