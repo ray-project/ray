@@ -1,6 +1,6 @@
 # EXPERIMENTAL: an example of configuring a mixed-worker cluster. Currently
 # multi-worker autoscaling only works if you use the request_resources() call.
-cluster_name: alex_test2
+cluster_name: alex_test3
 min_workers: 0
 max_workers: 5
 

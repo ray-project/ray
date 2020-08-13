@@ -199,6 +199,7 @@ class Monitor:
                 useful in testing, as mock clusters have many nodes with
                 the same IP and cannot be uniquely identified.
         """
+        print("[update_raylet_map] called")
         all_raylet_nodes = ray.nodes()
         self.raylet_id_to_ip_map = {}
         for raylet_info in all_raylet_nodes:
@@ -207,6 +208,7 @@ class Monitor:
                           or raylet_info["NodeManagerAddress"]).split(":")[0]
             if _append_port:
                 ip_address += ":" + str(raylet_info["NodeManagerPort"])
+            print("[update_raylet_map] adding node")
             self.raylet_id_to_ip_map[node_id] = ip_address
 
     def _run(self):
@@ -228,6 +230,7 @@ class Monitor:
 
         # TODO(rkn): If there were any dead clients at startup, we should clean
         # up the associated state in the state tables.
+        print("[_run] Running, autoscaler: ", self.autoscaler)
 
         # Handle messages from the subscription channels.
         while True:
