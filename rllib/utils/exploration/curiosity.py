@@ -31,8 +31,7 @@ from ray.rllib.utils.types import SampleBatchType, TrainerConfigDict
 
 torch, nn = try_import_torch()
 
-# TODO how to test if action space is discrete
-
+# TODO: (tanay) how to test if action space is discrete
 """
 Example Configuration
 
@@ -55,12 +54,7 @@ trainer.train()
 """
 
 class Curiosity(Exploration):
-
-    def __init__(self,
-                 action_space: Space,
-                 *,
-                 framework: str,
-                 **kwargs):
+    def __init__(self, action_space: Space, *, framework: str, **kwargs):
         """
         Args:
             action_space (Space): The action space in which to explore.
@@ -95,39 +89,39 @@ class Curiosity(Exploration):
         inverse_activation = extract_from_kwargs("inverse_activation", nn.ReLU)
         feature_activation = extract_from_kwargs("feature_activation", nn.ReLU)
 
-        feature_net_hiddens = cast_to_list(extract_from_kwargs(
-            "feature_net_hiddens", [64]))
-        inverse_net_hiddens = cast_to_list(extract_from_kwargs(
-            "inverse_net_hiddens", [64]))
-        forward_net_hiddens = cast_to_list(extract_from_kwargs(
-            "forward_net_hiddens", [64]))
+        feature_net_hiddens = cast_to_list(
+            extract_from_kwargs("feature_net_hiddens", [64]))
+        inverse_net_hiddens = cast_to_list(
+            extract_from_kwargs("inverse_net_hiddens", [64]))
+        forward_net_hiddens = cast_to_list(
+            extract_from_kwargs("forward_net_hiddens", [64]))
 
         super().__init__(
-            action_space=action_space,
-            framework=framework,
-            **kwargs)
+            action_space=action_space, framework=framework, **kwargs)
 
         # TODO: what should this look like for multidimensional obs spaces
         self.obs_space_dim = kwargs["model"].obs_space.shape[0]
         # TODO can we always assume 1
         self.action_space_dim = 1
+
         # Given a list of layer dimensions, create a FC ReLU net.
         # If layer_dims is [4,8,6] we'll have a two layer net: 4->8 and 8->6
         def create_fc_net(layer_dims, activation):
             layers = []
             for i in range(len(layer_dims) - 1):
-                layers.append(SlimFC(
-                    in_size=layer_dims[i],
-                    out_size=layer_dims[i + 1],
-                    use_bias=False,
-                    activation_fn=activation))
+                layers.append(
+                    SlimFC(
+                        in_size=layer_dims[i],
+                        out_size=layer_dims[i + 1],
+                        use_bias=False,
+                        activation_fn=activation))
             return nn.Sequential(*layers)
 
         # List of dimension of each layer. Appends the hidden dims.
-        feature_dims = [self.obs_space_dim] + feature_net_hiddens + [
-            self.feature_dim]
-        inverse_dims = [2 * self.feature_dim] + inverse_net_hiddens + [
-            self.action_space_dim]
+        feature_dims = [self.obs_space_dim
+                        ] + feature_net_hiddens + [self.feature_dim]
+        inverse_dims = [2 * self.feature_dim
+                        ] + inverse_net_hiddens + [self.action_space_dim]
         forward_dims = [self.feature_dim + self.action_space_dim] + \
             forward_net_hiddens + [self.feature_dim]
 
@@ -151,8 +145,7 @@ class Curiosity(Exploration):
                 "model": self.model,
                 "num_workers": self.num_workers,
                 "worker_index": self.worker_index
-                }
-            )
+            })
 
     def get_exploration_action(self,
                                *,
@@ -193,8 +186,8 @@ class Curiosity(Exploration):
         embedding_pred = self._predict_next_obs(obs_list, actions_list)
 
         # L2 losses for predicted action and next state
-        embedding_loss = self.criterion_reduced(
-            emb_next_obs_list, embedding_pred)
+        embedding_loss = self.criterion_reduced(emb_next_obs_list,
+                                                embedding_pred)
         actions_loss = self.criterion_reduced(
             actions_pred.squeeze(1), actions_list)
         return policy_loss + [embedding_loss + actions_loss]
@@ -214,8 +207,7 @@ class Curiosity(Exploration):
         feature_params = list(self.feature_model.parameters())
 
         return torch.optim.Adam(
-            forward_params + inverse_params + feature_params,
-            lr=1e-3)
+            forward_params + inverse_params + feature_params, lr=1e-3)
 
     def postprocess_trajectory(self,
                                policy,
@@ -240,8 +232,7 @@ class Curiosity(Exploration):
         # A vector of L2 losses corresponding to each observation,
         # Equation (7) in paper.
         embedding_loss = torch.sum(
-            self.criterion(emb_next_obs_list, embedding_pred),
-            dim=-1)
+            self.criterion(emb_next_obs_list, embedding_pred), dim=-1)
 
         # Equation (3) in paper. TODO discrete action space
         actions_loss = self.criterion(actions_pred.squeeze(1), actions_list)
@@ -275,5 +266,4 @@ class Curiosity(Exploration):
         """
         return self.forward_model(
             torch.cat(
-                (self._get_latent_vector(obs), action.unsqueeze(1)),
-                axis=-1))
+                (self._get_latent_vector(obs), action.unsqueeze(1)), -1))

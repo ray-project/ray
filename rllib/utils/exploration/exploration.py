@@ -91,9 +91,7 @@ class Exploration:
         pass
 
     @DeveloperAPI
-    def get_exploration_loss(self,
-                             policy_loss,
-                             sample_batch):
+    def get_exploration_loss(self, policy_loss, sample_batch):
         """Modifies the policy loss with a loss associated to the exploration
         strategy.
 
@@ -104,8 +102,7 @@ class Exploration:
         return policy_loss
 
     @DeveloperAPI
-    def get_exploration_optimizer(self,
-                                  config=None):
+    def get_exploration_optimizer(self, config=None):
         """
         Returns: an optimizer for the loss from get_exploration_loss (in case
         the exploration strategy has trainable components)
