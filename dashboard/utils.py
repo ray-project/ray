@@ -1,4 +1,5 @@
 import abc
+import socket
 import asyncio
 import collections
 import copy
@@ -12,10 +13,14 @@ import pkgutil
 import traceback
 from base64 import b64decode
 from collections.abc import MutableMapping, Mapping
+from typing import Any
 
+import aioredis
 import aiohttp.web
 from aiohttp import hdrs
 from aiohttp.frozenlist import FrozenList
+from aiohttp.typedefs import PathLike
+from aiohttp.web import RouteDef
 import aiohttp.signals
 from google.protobuf.json_format import MessageToDict
 from ray.utils import binary_to_hex
@@ -52,9 +57,12 @@ class DashboardHeadModule(abc.ABC):
         self._dashboard_head = dashboard_head
 
     @abc.abstractmethod
-    async def run(self):
+    async def run(self, server):
         """
-        Run the module in an asyncio loop.
+        Run the module in an asyncio loop. A head module can provide
+        servicers to the server.
+
+        :param server: Asyncio GRPC server.
         """
 
 
@@ -73,6 +81,22 @@ class ClassMethodRouteTable:
     @classmethod
     def routes(cls):
         return cls._routes
+
+    @classmethod
+    def bound_routes(cls):
+        bound_items = []
+        for r in cls._routes._items:
+            if isinstance(r, RouteDef):
+                route_method = getattr(r.handler, "__route_method__")
+                route_path = getattr(r.handler, "__route_path__")
+                instance = cls._bind_map[route_method][route_path].instance
+                if instance is not None:
+                    bound_items.append(r)
+            else:
+                bound_items.append(r)
+        routes = aiohttp.web.RouteTableDef()
+        routes._items = bound_items
+        return routes
 
     @classmethod
     def _register_route(cls, method, path, **kwargs):
@@ -133,6 +157,10 @@ class ClassMethodRouteTable:
         return cls._register_route(hdrs.METH_ANY, path, **kwargs)
 
     @classmethod
+    def static(cls, prefix: str, path: PathLike, **kwargs: Any) -> None:
+        cls._routes.static(prefix, path, **kwargs)
+
+    @classmethod
     def bind(cls, instance):
         def predicate(o):
             if inspect.ismethod(o):
@@ -159,6 +187,13 @@ def get_all_modules(module_type):
 
 def to_posix_time(dt):
     return (dt - datetime.datetime(1970, 1, 1)).total_seconds()
+
+
+def address_tuple(address):
+    if isinstance(address, tuple):
+        return address
+    ip, port = address.split(":")
+    return ip, int(port)
 
 
 class CustomEncoder(json.JSONEncoder):
@@ -338,3 +373,17 @@ class Dict(MutableMapping):
         for key in self._data.keys() - d.keys():
             self.pop(key)
         self.update(d)
+
+
+async def get_aioredis_client(redis_address, redis_password,
+                              retry_interval_seconds, retry_times):
+    for x in range(retry_times):
+        try:
+            return await aioredis.create_redis_pool(
+                address=redis_address, password=redis_password)
+        except (socket.gaierror, ConnectionError) as ex:
+            logger.error("Connect to Redis failed: %s, retry...", ex)
+            await asyncio.sleep(retry_interval_seconds)
+    # Raise exception from create_redis_pool
+    return await aioredis.create_redis_pool(
+        address=redis_address, password=redis_password)
