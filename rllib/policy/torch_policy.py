@@ -344,8 +344,8 @@ class TorchPolicy(Policy):
             loss_out = self.model.custom_loss(loss_out, train_batch)
         # Modifies the loss as specified by the Exploration strategy.
         if hasattr(self, "exploration"):
-            loss_out = self.exploration.get_exploration_loss(loss_out,
-                                                             train_batch)
+            loss_out = self.exploration.get_exploration_loss(
+                loss_out, train_batch)
         assert len(loss_out) == len(self._optimizers)
         # assert not any(torch.isnan(l) for l in loss_out)
         fetches = self.extra_compute_grad_fetches()
