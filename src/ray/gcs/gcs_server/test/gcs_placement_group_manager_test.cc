@@ -298,10 +298,8 @@ TEST_F(GcsPlacementGroupManagerTest, TestRescheduleWhenNodeDead) {
   ASSERT_EQ(finished_placement_group_count, 0);
   ASSERT_EQ(mock_placement_group_scheduler_->placement_groups_.size(), 1);
   auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
-  placement_group->GetMutablePlacementGroupTableData().mutable_bundles(0)->set_is_placed(
-      true);
-  placement_group->GetMutablePlacementGroupTableData().mutable_bundles(1)->set_is_placed(
-      true);
+  placement_group->GetMutableBundle(0)->set_is_placed(true);
+  placement_group->GetMutableBundle(1)->set_is_placed(true);
   mock_placement_group_scheduler_->placement_groups_.pop_back();
 
   // If a node dies, we will set the bundles above it to be unplaced and reschedule the

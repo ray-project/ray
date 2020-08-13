@@ -75,6 +75,10 @@ const std::string GcsPlacementGroup::DebugString() const {
   return stream.str();
 }
 
+rpc::Bundle *GcsPlacementGroup::GetMutableBundle(int bundle_index) {
+  return placement_group_table_data_.mutable_bundles(bundle_index);
+}
+
 /////////////////////////////////////////////////////////////////////////////////////////
 
 GcsPlacementGroupManager::GcsPlacementGroupManager(
@@ -317,9 +321,7 @@ void GcsPlacementGroupManager::OnNodeDead(const ClientID &node_id) {
   for (const auto &bundle : bundles) {
     auto &placement_group = registered_placement_groups_[bundle.first];
     for (const auto &bundle_index : bundle.second) {
-      placement_group->GetMutablePlacementGroupTableData()
-          .mutable_bundles(bundle_index)
-          ->set_is_placed(false);
+      placement_group->GetMutableBundle(bundle_index)->set_is_placed(false);
     }
     placement_group->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
     to_reschedule_groups.insert(placement_group);

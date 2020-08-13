@@ -57,16 +57,18 @@ class GcsPlacementGroup {
   /// Get the immutable PlacementGroupTableData of this placement group.
   const rpc::PlacementGroupTableData &GetPlacementGroupTableData();
 
-  /// Get the mutable PlacementGroupTableData of this placement group.
-  rpc::PlacementGroupTableData &GetMutablePlacementGroupTableData();
+  /// Get the mutable bundle of this placement group.
+  rpc::Bundle *GetMutableBundle(int bundle_index);
 
   /// Update the state of this placement_group.
   void UpdateState(rpc::PlacementGroupTableData::PlacementGroupState state);
+
   /// Get the state of this gcs placement_group.
   rpc::PlacementGroupTableData::PlacementGroupState GetState() const;
 
   /// Get the id of this placement_group.
   PlacementGroupID GetPlacementGroupID() const;
+
   /// Get the name of this placement_group.
   std::string GetName() const;
 
