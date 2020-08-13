@@ -129,7 +129,7 @@ class Curiosity(Exploration):
         inverse_dims = [2 * self.feature_dim] + inverse_net_hiddens + [
             self.action_space_dim]
         forward_dims = [self.feature_dim + self.action_space_dim] + \
-                       forward_net_hiddens + [self.feature_dim]
+            forward_net_hiddens + [self.feature_dim]
 
         # Creates actual models
         self.feature_model = create_fc_net(feature_dims, feature_activation)
@@ -247,9 +247,9 @@ class Curiosity(Exploration):
         actions_loss = self.criterion(actions_pred.squeeze(1), actions_list)
 
         # Modifies environment rewards by subtracting intrinsic rewards
-        sample_batch["rewards"] = sample_batch["rewards"] \
-                                  - embedding_loss.clone().detach().numpy() \
-                                  - actions_loss.clone().detach().numpy()
+        sample_batch["rewards"] = sample_batch["rewards"] - \
+            embedding_loss.clone().detach().numpy() - \
+            actions_loss.clone().detach().numpy()
 
     def _predict_action(self, obs: TensorType, next_obs: TensorType):
         """
