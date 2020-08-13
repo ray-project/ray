@@ -178,6 +178,10 @@ class KubernetesCommandRunner(CommandRunnerInterface):
         if target.startswith("~"):
             target = "/root" + target[1:]
 
+        # Add trailing slashes for rsync
+        source += "/" if not source.endswith("/") else ""
+        target += "/" if not target.endswith("/") else ""
+
         try:
             self.process_runner.check_call([
                 KUBECTL_RSYNC,
@@ -197,6 +201,10 @@ class KubernetesCommandRunner(CommandRunnerInterface):
     def run_rsync_down(self, source, target):
         if target.startswith("~"):
             target = "/root" + target[1:]
+
+        # Add trailing slashes for rsync
+        source += "/" if not source.endswith("/") else ""
+        target += "/" if not target.endswith("/") else ""
 
         try:
             self.process_runner.check_call([

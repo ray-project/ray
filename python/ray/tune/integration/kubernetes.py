@@ -125,10 +125,6 @@ class KubernetesSyncClient(SyncClient):
         """Here target is a tuple (target_node, target_dir)"""
         target_node, target_dir = target
 
-        # Add trailing slashes for rsync
-        source += "/" if not source.endswith("/") else ""
-        target_dir += "/" if not target_dir.endswith("/") else ""
-
         command_runner = self._get_command_runner(target_node)
         command_runner.run_rsync_up(source, target_dir)
         return True
@@ -136,10 +132,6 @@ class KubernetesSyncClient(SyncClient):
     def sync_down(self, source, target):
         """Here source is a tuple (source_node, source_dir)"""
         source_node, source_dir = source
-
-        # Add trailing slashes for rsync
-        source_dir += "/" if not source_dir.endswith("/") else ""
-        target += "/" if not target.endswith("/") else ""
 
         command_runner = self._get_command_runner(source_node)
         command_runner.run_rsync_down(source_dir, target)

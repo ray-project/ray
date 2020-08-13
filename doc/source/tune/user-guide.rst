@@ -448,6 +448,10 @@ You have to specify your Kubernetes namespace explicitly:
              sync_to_driver=NamespacedKubernetesSyncer("ray"))
 
 
+The ``KubernetesSyncer`` uses a special version of ``rsync`` that runs using
+``kubectl exec``. Your pod needs to have ``rsync`` installed for this to work.
+
+
 .. _tune-log_to_file:
 
 Redirecting stdout and stderr to files
