@@ -32,7 +32,8 @@ from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_torch, TensorType, \
     get_activation_fn
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.types import TensorType, TensorStructType, SampleBatchType
+from ray.rllib.utils.types import SampleBatchType, TensorType, TensorStructType, \
+    TrainerConfigDict
 
 torch, nn = try_import_torch()
 
@@ -211,10 +212,8 @@ class Curiosity(Exploration):
         """
         return self.feature_model(obs)
 
-    def get_exploration_optimizer(self, config):
-        """
-        Returns an optimizer for environmental dynamics networks, which will
-        then be handled by the Policy
+    def get_exploration_optimizers(self, config: TrainerConfigDict):
+        """Returns an optimizer (or list) for optimizing the environmental dynamics networks.
         """
         forward_params = list(self.forward_model.parameters())
         inverse_params = list(self.inverse_model.parameters())

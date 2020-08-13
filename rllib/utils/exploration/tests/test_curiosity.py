@@ -50,7 +50,7 @@ class TestCuriosity(unittest.TestCase):
         env = "CartPole-v0"
         config["framework"] = "torch"
         config["exploration_config"] = {
-            "type": "ray.rllib.utils.exploration.curiosity_exploration.Curiosity",
+            "type": "ray.rllib.utils.exploration.curiosity.Curiosity",
             "forward_net_hiddens": [64],
             "inverse_net_hiddens": [32,4],
             "feature_net_hiddens": [16,8],

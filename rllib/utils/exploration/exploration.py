@@ -101,7 +101,7 @@ class Exploration:
             policy_loss (TODO): Loss from the Policy
             sample_batch (SampleBatch): The SampleBatch object to post-process.
         """
-        pass
+        return policy_loss
 
     @DeveloperAPI
     def get_exploration_optimizer(self,
