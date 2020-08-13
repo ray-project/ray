@@ -536,7 +536,7 @@ class DockerCommandRunner(SSHCommandRunner):
             ssh_options_override_ssh_key="",
     ):
         if run_env == "auto":
-            run_env = "host" if cmd.find("docker") == 0 else "docker"
+            run_env = "docker" if (cmd.find("docker") > -1 and cmd.find("docker pull") == -1) else "host"
 
         if run_env == "docker":
             cmd = self._docker_expand_user(cmd, any_char=True)
