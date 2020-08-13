@@ -111,20 +111,16 @@ class Curiosity(Exploration):
         self.obs_space_dim = kwargs["model"].obs_space.shape[0]
         # TODO can we always assume 1
         self.action_space_dim = 1
-
-
         # Given a list of layer dimensions, create a FC ReLU net.
         # If layer_dims is [4,8,6] we'll have a two layer net: 4->8 and 8->6
         def create_fc_net(layer_dims, activation):
             layers = []
             for i in range(len(layer_dims) - 1):
-                layers.append(
-                    SlimFC(
-                        in_size=layer_dims[i],
-                        out_size=layer_dims[i + 1],
-                        use_bias=False,
-                        activation_fn=activation)
-                )
+                layers.append(SlimFC(
+                    in_size=layer_dims[i],
+                    out_size=layer_dims[i + 1],
+                    use_bias=False,
+                    activation_fn=activation))
             return nn.Sequential(*layers)
 
         # List of dimension of each layer. Appends the hidden dims.
@@ -158,7 +154,6 @@ class Curiosity(Exploration):
                 }
             )
 
-
     def get_exploration_action(self,
                                *,
                                action_distribution: ActionDistribution,
@@ -187,7 +182,6 @@ class Curiosity(Exploration):
             sample_batch (SampleBatchType): The SampleBatch of observations, to
                 which we will associate an intrinsic loss.
         """
-
 
         # Cast to torch tensors, to be fed into the model
         obs_list = sample_batch["obs"].float()
@@ -227,17 +221,10 @@ class Curiosity(Exploration):
                                policy,
                                sample_batch: SampleBatchType,
                                tf_sess: Optional["tf.Session"] = None):
-        # push sample batch through curiosity model
-        # change rewards inside sample batch
-        # don't return anything
+        """Calculates intrinsic rewards and adds them to "rewards" in batch.
 
-        """
-        Calculates the intrinsic curiosity based loss
-        policy (TODO what type should this be): The model policy
-        sample_batch (SampleBatch): a SampleBatch object containing
-            data from worker environmental rollouts
-        tf_sess (TODO what type): If tensorflow was supported, this would be
-            the execution session
+        Calculations are based on difference between predicted and actually
+        observed next observations.
         """
 
         # Extract the relevant data from the SampleBatch, and cast to Tensors
@@ -269,7 +256,6 @@ class Curiosity(Exploration):
         loss = torch.sum(embedding_loss) + torch.sum(actions_loss)
         # loss.backward()
         # self.optimizer.step()
-
 
     def _predict_action(self, obs: TensorType, next_obs: TensorType):
         """
