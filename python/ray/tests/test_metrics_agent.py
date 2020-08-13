@@ -217,6 +217,7 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
         loaded_json_data["targets"]))
 
 
+@pytest.mark.skip("This test is flaky right now. Will be fixed in #10080")
 def test_metrics_export_end_to_end(ray_start_cluster):
     NUM_NODES = 2
     cluster = ray_start_cluster
