@@ -199,8 +199,8 @@ class Monitor:
                 useful in testing, as mock clusters have many nodes with
                 the same IP and cannot be uniquely identified.
         """
-        print("[update_raylet_map] called")
         all_raylet_nodes = ray.nodes()
+        old = self.raylet_id_to_ip_map
         self.raylet_id_to_ip_map = {}
         for raylet_info in all_raylet_nodes:
             node_id = (raylet_info.get("DBClientID") or raylet_info["NodeID"])
@@ -208,8 +208,11 @@ class Monitor:
                           or raylet_info["NodeManagerAddress"]).split(":")[0]
             if _append_port:
                 ip_address += ":" + str(raylet_info["NodeManagerPort"])
-            print("[update_raylet_map] adding node")
             self.raylet_id_to_ip_map[node_id] = ip_address
+        if old != self.raylet_id_to_ip_map:
+            print("Raylet map changed")
+            print("old:", old)
+            print("new:", self.raylet_id_to_ip_map)
 
     def _run(self):
         """Run the monitor.
@@ -217,24 +220,19 @@ class Monitor:
         This function loops forever, checking for messages about dead database
         clients and cleaning up state accordingly.
         """
-        print("intialize raylet id -> ip map")
         # Initialize the mapping from raylet client ID to IP address.
         self.update_raylet_map()
-        print("done")
 
         # Initialize the subscription channel.
         self.psubscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_PATTERN)
         self.psubscribe(ray.gcs_utils.XRAY_JOB_PATTERN)
 
         if self.autoscaler:
-            print("subscribing to channel")
             self.subscribe(
                 ray.ray_constants.AUTOSCALER_RESOURCE_REQUEST_CHANNEL)
-            print("done")
 
         # TODO(rkn): If there were any dead clients at startup, we should clean
         # up the associated state in the state tables.
-        print("[_run] Running, autoscaler: ", self.autoscaler)
 
         # Handle messages from the subscription channels.
         while True:
@@ -287,7 +285,6 @@ class Monitor:
 
     def run(self):
         try:
-            print("Calling _run")
             self._run()
         except Exception:
             logger.exception("Error in monitor loop")
