@@ -251,12 +251,6 @@ class Curiosity(Exploration):
                                   - embedding_loss.clone().detach().numpy() \
                                   - actions_loss.clone().detach().numpy()
 
-        # sample_batch is already batched so we backprop over everything.
-        # self.optimizer.zero_grad()
-        loss = torch.sum(embedding_loss) + torch.sum(actions_loss)
-        # loss.backward()
-        # self.optimizer.step()
-
     def _predict_action(self, obs: TensorType, next_obs: TensorType):
         """
         Returns the predicted action, given two states. This is the inverse

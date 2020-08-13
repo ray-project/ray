@@ -117,7 +117,7 @@ class Exploration:
 
     @DeveloperAPI
     def on_episode_start(self,
-                         policy: "Policy",
+                         policy,
                          *,
                          environment=None,
                          episode=None,
