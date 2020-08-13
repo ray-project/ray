@@ -266,7 +266,9 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
     }
   }
 
-  registered_placement_groups_.erase(placement_group_id);
+  auto placement_grouop_it = registered_placement_groups_.find(placement_group_id);
+  auto placement_group = placement_grouop_it->second;
+  registered_placement_groups_.erase(placement_grouop_it);
   // If placement group hasn't been created yet, send a response to a core worker that
   // the creation of placement group has failed.
   auto it = placement_group_to_register_callback_.find(placement_group_id);
@@ -278,7 +280,14 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
     placement_group_to_register_callback_.erase(it);
   }
 
-  on_placement_group_removed(Status::OK());
+  placement_group->UpdateState(rpc::PlacementGroupTableData::REMOVED);
+  RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
+      placement_group->GetPlacementGroupID(),
+      placement_group->GetPlacementGroupTableData(),
+      [on_placement_group_removed](Status status) {
+        RAY_CHECK_OK(status);
+        on_placement_group_removed(status);
+      }));
 }
 
 void GcsPlacementGroupManager::RetryCreatingPlacementGroup() {
