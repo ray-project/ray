@@ -76,7 +76,7 @@ class KubernetesSyncer(NodeSyncer):
                 return pod.metadata.name
 
         logger.error(
-            "Could not find Kubernetes node name for IP {}".format(node_ip))
+            "Could not find Kubernetes pod name for IP {}".format(node_ip))
         return None
 
     @property
