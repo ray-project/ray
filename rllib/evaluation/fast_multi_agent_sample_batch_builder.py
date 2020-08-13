@@ -213,7 +213,7 @@ class _FastMultiAgentSampleBatchBuilder(_SampleCollector):
     @override(_SampleCollector)
     def check_missing_dones(self, episode_id: EpisodeID) -> None:
         for pid, rc in self.rollout_sample_collectors.items():
-            for agent_key, slot in rc.agent_key_to_slot.items():
+            for agent_key in rc.agent_key_to_slot.keys():
                 # Only check for given episode.
                 # Only check for last chunk (all previous ones are
                 # non-terminal).
