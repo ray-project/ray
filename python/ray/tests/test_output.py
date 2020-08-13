@@ -37,6 +37,8 @@ def test_output():
         stderr=subprocess.STDOUT).decode()
     lines = outputs.split("\n")
     assert len(lines) == 3, lines
+    for line in lines:
+        print(line)
     logging_header = r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}\sINFO\s"
     assert re.match(
         logging_header + r"resource_spec.py:\d+ -- Starting Ray with [0-9\.]+ "
