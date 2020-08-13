@@ -213,7 +213,7 @@ Here is an example of how to construct a dueling layer head (for DQN) on top of 
 
 .. code-block:: python
 
-    class DuelingQModel(TorchModelV2):
+    class DuelingQModel(TFModelV2):  # or: TorchModelV2
         """A simple, hard-coded dueling head model."""
         def __init__(obs_space, action_space, num_outputs, model_config, name):
             # Pass num_outputs=None into super constructor (so that no action/
@@ -228,16 +228,22 @@ Here is an example of how to construct a dueling layer head (for DQN) on top of 
             # we can use to construct the dueling head.
 
             # Construct advantage head ...
-            self.A = SlimFC(in_size=self.num_outputs, out_size=num_outputs)
+            self.A = tf.keras.layers.Dense(num_outputs)
+            # torch:
+            # self.A = SlimFC(
+            #     in_size=self.num_outputs, out_size=num_outputs)
+
             # ... and value head.
-            self.V = SlimFC(in_size=self.num_outputs, out_size=1)
+            self.V = tf.keras.layers.Dense(1)
+            # torch:
+            # self.V = SlimFC(in_size=self.num_outputs, out_size=1)
 
         def get_q_values(self, inputs):
             # Calculate q-values following dueling logic:
             v = self.V(inputs)  # value
             a = self.A(inputs)  # advantages (per action)
-            advantages_mean = torch.mean(a, 1)
-            advantages_centered = a - torch.unsqueeze(advantages_mean, 1)
+            advantages_mean = tf.reduce_mean(a, 1)
+            advantages_centered = a - tf.expand_dims(advantages_mean, 1)
             return v + advantages_centered  # q-values
 
 
@@ -251,7 +257,7 @@ In order to construct an instance of the above model, you can still use the `cat
             action_space=[action_space],
             num_outputs=[num q-value (per action) outs],
             model_config=config["model"],
-            framework="torch",
+            framework="tf",  # or: "torch"
             model_interface=DuelingQModel,
             name="dueling_q_model"
         )
