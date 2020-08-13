@@ -2,6 +2,7 @@ import distutils
 import logging
 import os
 import time
+from inspect import isclass
 
 from shlex import quote
 
@@ -284,6 +285,9 @@ def get_node_syncer(local_dir, remote_dir=None, sync_function=None):
     """
     key = (local_dir, remote_dir)
     if key in _syncers:
+        return _syncers[key]
+    elif isclass(sync_function) and issubclass(sync_function, Syncer):
+        _syncers[key] = sync_function(local_dir, remote_dir, None)
         return _syncers[key]
     elif not remote_dir or sync_function is False:
         sync_client = NOOP
