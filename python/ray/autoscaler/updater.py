@@ -188,7 +188,7 @@ class NodeUpdater:
                                              "{}Waiting for remote shell...",
                                              self.log_prefix)
 
-                        self.cmd_runner.run("uptime")
+                        self.cmd_runner.run("uptime", run_env="host")
                         cli_logger.old_debug(logger, "Uptime succeeded.")
                         cli_logger.success("Success.")
                         return True
