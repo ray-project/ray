@@ -99,10 +99,11 @@ if __name__ == "__main__":
         scheduler=scheduler,
         verbose=1,
         stop=stopper,
+        resources_per_trial={"cpu": 8},
         export_formats=[ExportFormat.MODEL],
         checkpoint_score_attr="mean_accuracy",
         keep_checkpoints_num=4,
-        num_samples=4,
+        num_samples=3,
         config={
             "lr": tune.uniform(0.001, 1),
             "momentum": tune.uniform(0.001, 1),
@@ -110,12 +111,10 @@ if __name__ == "__main__":
     # __tune_end__
 
     best_trial = analysis.get_best_trial("mean_accuracy")
-    all_checkpoints = analysis.get_trial_checkpoints_paths(
-        best_trial, "mean_accuracy")
-    best_checkpoint_path = max(all_checkpoints, key=lambda x: x[1])
+    best_checkpoint_path = analysis.get_best_checkpoint(best_trial, metric="mean_accuracy")
     best_model = ConvNet()
     best_checkpoint = torch.load(
-        os.path.join(best_checkpoint_path[0], "checkpoint"))
+        os.path.join(best_checkpoint_path, "checkpoint"))
     best_model.load_state_dict(best_checkpoint["model_state_dict"])
     # Note that test only runs on a small random set of the test data, thus the
     # accuracy may be different from metrics shown in tuning process.
