@@ -488,7 +488,7 @@ py_test(
     size = "large",
     srcs = ["examples/pbt_transformers/pbt_transformers.py"],
     deps = [":tune_lib"],
-    tags = ["exclusive", "example"],
+    tags = ["flaky", "exclusive", "example"],
     args = ["--smoke-test"]
 )
 
