@@ -106,11 +106,10 @@ if __name__ == "__main__":
         scheduler=scheduler,
         verbose=1,
         stop=stopper,
-        resources_per_trial={"cpu": 8},
         export_formats=[ExportFormat.MODEL],
         checkpoint_score_attr="mean_accuracy",
         keep_checkpoints_num=4,
-        num_samples=3,
+        num_samples=4,
         config={
             "lr": tune.uniform(0.001, 1),
             "momentum": tune.uniform(0.001, 1),
