@@ -346,3 +346,6 @@ RAY_CONFIG(bool, enable_multi_tenancy, false)
 
 /// Whether start the Plasma Store as a Raylet thread.
 RAY_CONFIG(bool, ownership_based_object_directory_enabled, false)
+
+// The interval where metrics are exported in milliseconds.
+RAY_CONFIG(uint64_t, metrics_report_interval_ms, 10000)
