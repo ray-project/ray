@@ -121,8 +121,8 @@ void GcsPlacementGroupScheduler::Schedule(
   RAY_LOG(INFO) << "Scheduling placement group " << placement_group->GetName();
   auto bundles = placement_group->GetUnplacedBundles();
   auto strategy = placement_group->GetStrategy();
-  auto selected_nodes =
-      scheduler_strategies_[strategy]->Schedule(bundles, GetScheduleContext());
+  auto selected_nodes = scheduler_strategies_[strategy]->Schedule(
+      bundles, GetScheduleContext(placement_group->GetPlacementGroupID()));
 
   // If no nodes are available, scheduling fails.
   if (selected_nodes.empty()) {
@@ -316,6 +316,12 @@ void GcsPlacementGroupScheduler::OnAllBundleSchedulingRequestReturned(
       const auto &bundle_sepc = location.second;
       node_to_leased_bundles_[location.first].emplace(bundle_sepc->BundleId(),
                                                       bundle_sepc);
+      placement_group_bundle_locations_[placement_group->GetPlacementGroupID()]
+      [location.second->Index()] =
+          location.first;
+      placement_group->GetMutablePlacementGroupTableData()
+          .mutable_bundles(location.second->Index())
+          ->set_is_placed(true);
     }
   }
   // Erase leasing in progress placement group.
@@ -342,22 +348,23 @@ std::unique_ptr<ScheduleContext> GcsPlacementGroupScheduler::GetScheduleContext(
     node_to_bundles->emplace(iter.first, iter.second.size());
   }
 
-  return std::unique_ptr<ScheduleContext>(new ScheduleContext(node_to_bundles, gcs_node_manager_,
-                                                              placement_group_bundle_locations_[placement_group_id]));
+  return std::unique_ptr<ScheduleContext>(new ScheduleContext(
+      node_to_bundles, placement_group_bundle_locations_[placement_group_id],
+      gcs_node_manager_));
 }
 
 absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>
-GcsPlacementGroupScheduler::GetBundlesOfDeadNode(const ClientID &node_id) {
-  absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> bundles_of_dead_node;
+GcsPlacementGroupScheduler::GetBundlesOnDeadNode(const ClientID &node_id) {
+  absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> bundles_on_dead_node;
   const auto node_iter = node_to_leased_bundles_.find(node_id);
   if (node_iter != node_to_leased_bundles_.end()) {
     const auto &bundles = node_iter->second;
     for (auto &bundle : bundles) {
-      bundles_of_dead_node[bundle->BundleId().first].push_back(bundle->BundleId().second);
+      bundles_on_dead_node[bundle->BundleId().first].push_back(bundle->BundleId().second);
     }
     node_to_leased_bundles_.erase(node_iter);
   }
-  return bundles_of_dead_node;
+  return bundles_on_dead_node;
 }
 
 }  // namespace gcs

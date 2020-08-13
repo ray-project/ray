@@ -312,16 +312,16 @@ void GcsPlacementGroupManager::RetryCreatingPlacementGroup() {
 }
 
 void GcsPlacementGroupManager::OnNodeDead(const ClientID &node_id) {
-  auto bundles = gcs_placement_group_scheduler_->GetBundlesOfDeadNode(node_id);
+  auto bundles = gcs_placement_group_scheduler_->GetBundlesOnDeadNode(node_id);
   absl::flat_hash_set<std::shared_ptr<GcsPlacementGroup>> to_reschedule_groups;
   for (const auto &bundle : bundles) {
     auto &placement_group = registered_placement_groups_[bundle.first];
-    to_reschedule_groups.insert(placement_group);
     for (const auto &bundle_index : bundle.second) {
       placement_group->GetMutablePlacementGroupTableData()
           .mutable_bundles(bundle_index)
           ->set_is_placed(false);
     }
+    to_reschedule_groups.insert(placement_group);
   }
 
   for (const auto &group : to_reschedule_groups) {

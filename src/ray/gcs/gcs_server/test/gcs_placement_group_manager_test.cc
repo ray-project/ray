@@ -24,14 +24,14 @@ using ::testing::_;
 
 class MockPlacementGroupScheduler : public gcs::GcsPlacementGroupSchedulerInterface {
  public:
-  MockPlacementGroupScheduler() {}
+  MockPlacementGroupScheduler() = default;
 
-  void Schedule(std::shared_ptr<gcs::GcsPlacementGroup> placement_group,
-                std::function<void(std::shared_ptr<gcs::GcsPlacementGroup>)>
-                    schedule_failure_handler = nullptr,
-                std::function<void(std::shared_ptr<gcs::GcsPlacementGroup>)>
-                    schedule_success_handler = nullptr) {
-    placement_groups.push_back(placement_group);
+  void Schedule(
+      std::shared_ptr<gcs::GcsPlacementGroup> placement_group,
+      std::function<void(std::shared_ptr<gcs::GcsPlacementGroup>)> failure_handler,
+      std::function<void(std::shared_ptr<gcs::GcsPlacementGroup>)> success_handler)
+      override {
+    placement_groups_.push_back(placement_group);
   }
 
   MOCK_METHOD1(DestroyPlacementGroupBundleResourcesIfExists,
@@ -39,12 +39,16 @@ class MockPlacementGroupScheduler : public gcs::GcsPlacementGroupSchedulerInterf
 
   MOCK_METHOD1(MarkScheduleCancelled, void(const PlacementGroupID &placement_group_id));
 
-  absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> GetBundlesOfDeadNode(
-      const ClientID &node_id) {
-    return absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>();
+  absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> GetBundlesOnDeadNode(
+      const ClientID &node_id) override {
+    absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> bundles;
+    bundles[group_on_dead_node_] = bundles_on_dead_node_;
+    return bundles;
   }
 
-  std::vector<std::shared_ptr<gcs::GcsPlacementGroup>> placement_groups;
+  PlacementGroupID group_on_dead_node_;
+  std::vector<int64_t> bundles_on_dead_node_;
+  std::vector<std::shared_ptr<gcs::GcsPlacementGroup>> placement_groups_;
 };
 
 class GcsPlacementGroupManagerTest : public ::testing::Test {
@@ -87,9 +91,9 @@ TEST_F(GcsPlacementGroupManagerTest, TestBasic) {
         ++finished_placement_group_count;
       });
   ASSERT_EQ(finished_placement_group_count, 0);
-  ASSERT_EQ(mock_placement_group_scheduler_->placement_groups.size(), 1);
-  auto placement_group = mock_placement_group_scheduler_->placement_groups.back();
-  mock_placement_group_scheduler_->placement_groups.pop_back();
+  ASSERT_EQ(mock_placement_group_scheduler_->placement_groups_.size(), 1);
+  auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
+  mock_placement_group_scheduler_->placement_groups_.pop_back();
 
   gcs_placement_group_manager_->OnPlacementGroupCreationSuccess(placement_group);
   WaitForExpectedCount(finished_placement_group_count, 1);
@@ -105,14 +109,14 @@ TEST_F(GcsPlacementGroupManagerTest, TestSchedulingFailed) {
       });
 
   ASSERT_EQ(finished_placement_group_count, 0);
-  ASSERT_EQ(mock_placement_group_scheduler_->placement_groups.size(), 1);
-  auto placement_group = mock_placement_group_scheduler_->placement_groups.back();
-  mock_placement_group_scheduler_->placement_groups.clear();
+  ASSERT_EQ(mock_placement_group_scheduler_->placement_groups_.size(), 1);
+  auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
+  mock_placement_group_scheduler_->placement_groups_.clear();
 
   gcs_placement_group_manager_->OnPlacementGroupCreationFailed(placement_group);
   gcs_placement_group_manager_->SchedulePendingPlacementGroups();
-  ASSERT_EQ(mock_placement_group_scheduler_->placement_groups.size(), 1);
-  mock_placement_group_scheduler_->placement_groups.clear();
+  ASSERT_EQ(mock_placement_group_scheduler_->placement_groups_.size(), 1);
+  mock_placement_group_scheduler_->placement_groups_.clear();
   ASSERT_EQ(finished_placement_group_count, 0);
 
   // Check that the placement_group is in state `CREATED`.
@@ -131,9 +135,9 @@ TEST_F(GcsPlacementGroupManagerTest, TestGetPlacementGroupIDByName) {
       });
 
   ASSERT_EQ(finished_placement_group_count, 0);
-  ASSERT_EQ(mock_placement_group_scheduler_->placement_groups.size(), 1);
-  auto placement_group = mock_placement_group_scheduler_->placement_groups.back();
-  mock_placement_group_scheduler_->placement_groups.pop_back();
+  ASSERT_EQ(mock_placement_group_scheduler_->placement_groups_.size(), 1);
+  auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
+  mock_placement_group_scheduler_->placement_groups_.pop_back();
 
   gcs_placement_group_manager_->OnPlacementGroupCreationSuccess(placement_group);
   WaitForExpectedCount(finished_placement_group_count, 1);
@@ -152,14 +156,14 @@ TEST_F(GcsPlacementGroupManagerTest, TestRescheduleWhenNodeAdd) {
         ++finished_placement_group_count;
       });
   ASSERT_EQ(finished_placement_group_count, 0);
-  ASSERT_EQ(mock_placement_group_scheduler_->placement_groups.size(), 1);
-  auto placement_group = mock_placement_group_scheduler_->placement_groups.back();
-  mock_placement_group_scheduler_->placement_groups.pop_back();
+  ASSERT_EQ(mock_placement_group_scheduler_->placement_groups_.size(), 1);
+  auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
+  mock_placement_group_scheduler_->placement_groups_.pop_back();
 
   // If the creation of placement group fails, it will be rescheduled after a short time.
   gcs_placement_group_manager_->OnPlacementGroupCreationFailed(placement_group);
   auto condition = [this]() {
-    return (int)mock_placement_group_scheduler_->placement_groups.size() == 1;
+    return (int)mock_placement_group_scheduler_->placement_groups_.size() == 1;
   };
   EXPECT_TRUE(WaitForCondition(condition, 10 * 1000));
 }
@@ -279,6 +283,44 @@ TEST_F(GcsPlacementGroupManagerTest, TestRemovingCreatedPlacementGroup) {
   // Make sure we can re-remove again.
   gcs_placement_group_manager_->RemovePlacementGroup(
       placement_group_id, [](Status status) { ASSERT_TRUE(status.ok()); });
+}
+
+TEST_F(GcsPlacementGroupManagerTest, TestRescheduleWhenNodeDead) {
+  auto request1 = Mocker::GenCreatePlacementGroupRequest();
+  std::atomic<int> finished_placement_group_count(0);
+  gcs_placement_group_manager_->RegisterPlacementGroup(
+      request1,
+      [&finished_placement_group_count]() { ++finished_placement_group_count; });
+  auto request2 = Mocker::GenCreatePlacementGroupRequest();
+  gcs_placement_group_manager_->RegisterPlacementGroup(
+      request2,
+      [&finished_placement_group_count]() { ++finished_placement_group_count; });
+  ASSERT_EQ(finished_placement_group_count, 0);
+  ASSERT_EQ(mock_placement_group_scheduler_->placement_groups_.size(), 1);
+  auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
+  placement_group->GetMutablePlacementGroupTableData().mutable_bundles(0)->set_is_placed(
+      true);
+  placement_group->GetMutablePlacementGroupTableData().mutable_bundles(1)->set_is_placed(
+      true);
+  mock_placement_group_scheduler_->placement_groups_.pop_back();
+
+  // If a node dies, we will set the bundles above it to be unplaced and reschedule the
+  // placement group. The rescheduling priority is the highest.
+  mock_placement_group_scheduler_->group_on_dead_node_ =
+      placement_group->GetPlacementGroupID();
+  mock_placement_group_scheduler_->bundles_on_dead_node_.push_back(0);
+  gcs_placement_group_manager_->OnNodeDead(ClientID::FromRandom());
+
+  gcs_placement_group_manager_->OnPlacementGroupCreationSuccess(placement_group);
+  WaitForExpectedCount(finished_placement_group_count, 1);
+  ASSERT_EQ(mock_placement_group_scheduler_->placement_groups_.size(), 1);
+
+  ASSERT_EQ(mock_placement_group_scheduler_->placement_groups_[0]->GetPlacementGroupID(),
+            placement_group->GetPlacementGroupID());
+  const auto &bundles =
+      mock_placement_group_scheduler_->placement_groups_[0]->GetBundles();
+  EXPECT_FALSE(bundles[0]->GetMutableMessage().is_placed());
+  EXPECT_TRUE(bundles[1]->GetMutableMessage().is_placed());
 }
 
 }  // namespace ray
