@@ -43,7 +43,7 @@ class KubernetesSyncer(NodeSyncer):
     without a custom sync client. The sync client defaults to
     ``KubernetesSyncClient`` instead.
 
-    KubernetesSyncer uses the default namespce ``ray``. You should
+    KubernetesSyncer uses the default namespace ``ray``. You should
     probably use ``NamespacedKubernetesSyncer`` to return a class
     with a custom namespace instead.
     """
