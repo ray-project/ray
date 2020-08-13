@@ -14,6 +14,7 @@ matplotlib
 mlflow
 mxnet
 nevergrad
+optuna
 pytest-remotedata>=0.3.1
 pytorch-lightning
 scikit-optimize
