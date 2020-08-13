@@ -35,7 +35,7 @@ typedef std::function<boost::optional<rpc::GcsNodeInfo>(const ClientID &node_id)
 ///    still capable of running the task, then dispatch it.
 ///     * Step 4 should be run any time there is a new task to dispatch *or*
 ///       there is a new worker which can dispatch the tasks.
-/// 5. When a worker finshes executing its task(s) it will be returned.
+/// 5. When a worker finishes executing its task(s), the requester will return it.
 class ClusterTaskManager {
  public:
   /// fullfills_dependencies_func Should return if all dependencies are
