@@ -305,22 +305,37 @@ TEST_F(GcsPlacementGroupManagerTest, TestRescheduleWhenNodeDead) {
   mock_placement_group_scheduler_->placement_groups_.pop_back();
 
   // If a node dies, we will set the bundles above it to be unplaced and reschedule the
-  // placement group. The rescheduling priority is the highest.
+  // placement group. The placement group state is set to `RESCHEDULING` and will be
+  // scheduled first.
   mock_placement_group_scheduler_->group_on_dead_node_ =
       placement_group->GetPlacementGroupID();
   mock_placement_group_scheduler_->bundles_on_dead_node_.push_back(0);
   gcs_placement_group_manager_->OnNodeDead(ClientID::FromRandom());
 
-  gcs_placement_group_manager_->OnPlacementGroupCreationSuccess(placement_group);
+  // Trigger scheduling `RESCHEDULING` placement group.
+  auto finished_group = std::make_shared<gcs::GcsPlacementGroup>(
+      placement_group->GetPlacementGroupTableData());
+  gcs_placement_group_manager_->OnPlacementGroupCreationSuccess(finished_group);
   WaitForExpectedCount(finished_placement_group_count, 1);
   ASSERT_EQ(mock_placement_group_scheduler_->placement_groups_.size(), 1);
-
   ASSERT_EQ(mock_placement_group_scheduler_->placement_groups_[0]->GetPlacementGroupID(),
             placement_group->GetPlacementGroupID());
   const auto &bundles =
       mock_placement_group_scheduler_->placement_groups_[0]->GetBundles();
   EXPECT_FALSE(bundles[0]->GetMutableMessage().is_placed());
   EXPECT_TRUE(bundles[1]->GetMutableMessage().is_placed());
+
+  // If `RESCHEDULING` placement group fails to create, we will schedule it again first.
+  placement_group = mock_placement_group_scheduler_->placement_groups_.back();
+  mock_placement_group_scheduler_->placement_groups_.pop_back();
+  ASSERT_EQ(mock_placement_group_scheduler_->placement_groups_.size(), 0);
+  gcs_placement_group_manager_->OnPlacementGroupCreationFailed(placement_group);
+  auto condition = [this]() {
+    return (int)mock_placement_group_scheduler_->placement_groups_.size() == 1;
+  };
+  EXPECT_TRUE(WaitForCondition(condition, 10 * 1000));
+  ASSERT_EQ(mock_placement_group_scheduler_->placement_groups_[0]->GetPlacementGroupID(),
+            placement_group->GetPlacementGroupID());
 }
 
 }  // namespace ray

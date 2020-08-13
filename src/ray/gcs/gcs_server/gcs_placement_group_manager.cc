@@ -321,6 +321,7 @@ void GcsPlacementGroupManager::OnNodeDead(const ClientID &node_id) {
           .mutable_bundles(bundle_index)
           ->set_is_placed(false);
     }
+    placement_group->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
     to_reschedule_groups.insert(placement_group);
   }
 
