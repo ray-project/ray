@@ -145,39 +145,6 @@ thus just use the same ``Trainable`` for the replay run.
         scheduler=replay,
         stop={"training_iteration": 100})
 
-Trainable Class API with Population Based Training
---------------------------------------------------
-
-While using the function API is sufficient for most PBT workflows, sometimes it is better to use the Trainable Class API.
-For example, if your training requires setting up an expensive reinforcement learning environment, we don't want to start a
-new trial on every single exploit. If we use the Trainable Class API, we can resue actors if our trainable implements ``reset_config``
-and we can avoid the expensive setup.
-
-First, instead of a training function, we define a Trainable class that wraps a ConvNet model.
-
-.. literalinclude:: /../../python/ray/tune/examples/pbt_convnet_example.py
-   :language: python
-   :start-after: __trainable_begin__
-   :end-before: __trainable_end__
-
-Here, we also override ``reset_config``. This method is optional but can be implemented to speed
-up algorithms such as PBT, and to allow performance optimizations such as running experiments
-with ``reuse_actors=True``.
-
-Then, we define a PBT scheduler:
-
-.. literalinclude:: /../../python/ray/tune/examples/pbt_convnet_example.py
-   :language: python
-   :start-after: __pbt_begin__
-   :end-before: __pbt_end__
-
-Now we can kick off the tuning process by invoking tune.run, setting ``resuse_actors`` to ``True``:
-
-.. literalinclude:: /../../python/ray/tune/examples/pbt_convnet_example.py
-   :language: python
-   :start-after: __tune_begin__
-   :end-before: __tune_end__
-
 DCGAN with Trainable and PBT
 ----------------------------
 
