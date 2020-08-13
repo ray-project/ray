@@ -1233,8 +1233,17 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
             "`ray submit [yaml] script.py -- --arg1 --arg2` instead.")
 
     if start:
-        create_or_update_cluster(cluster_config_file, None, None, False, False,
-                                 True, cluster_name, False)
+        create_or_update_cluster(
+            config_file=cluster_config_file,
+            override_min_workers=None,
+            override_max_workers=None,
+            no_restart=False,
+            restart_only=False,
+            yes=True,
+            override_cluster_name=cluster_name,
+            no_config_cache=False,
+            dump_command_output=True,
+            use_login_shells=True)
     target = os.path.basename(script)
     target = os.path.join("~", target)
     rsync(cluster_config_file, script, target, cluster_name, down=False)

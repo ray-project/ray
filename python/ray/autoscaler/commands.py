@@ -94,12 +94,16 @@ def request_resources(num_cpus=None, bundles=None):
         r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps(bundles))
 
 
-def create_or_update_cluster(
-        config_file: str, override_min_workers: Optional[int],
-        override_max_workers: Optional[int], no_restart: bool,
-        restart_only: bool, yes: bool, override_cluster_name: Optional[str],
-        no_config_cache: bool, dump_command_output: bool,
-        use_login_shells: bool) -> None:
+def create_or_update_cluster(config_file: str,
+                             override_min_workers: Optional[int],
+                             override_max_workers: Optional[int],
+                             no_restart: bool,
+                             restart_only: bool,
+                             yes: bool,
+                             override_cluster_name: Optional[str],
+                             no_config_cache: bool,
+                             dump_command_output: bool = True,
+                             use_login_shells: bool = True) -> None:
     """Create or updates an autoscaling Ray cluster from a config json."""
     set_using_login_shells(use_login_shells)
     cmd_output_util.set_output_redirected(not dump_command_output)
