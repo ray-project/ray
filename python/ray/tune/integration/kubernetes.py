@@ -1,11 +1,10 @@
+import kubernetes
 import subprocess
 
+from ray import services, logger
+from ray.autoscaler.command_runner import KubernetesCommandRunner
 from ray.tune.syncer import NodeSyncer
 from ray.tune.sync_client import SyncClient
-from ray.autoscaler.command_runner import KubernetesCommandRunner
-from ray import services, logger
-
-import kubernetes
 
 
 def NamespacedKubernetesSyncer(namespace):
@@ -149,5 +148,4 @@ class KubernetesSyncClient(SyncClient):
     def delete(self, target):
         """No delete function because it is only used by
         the KubernetesSyncer, which doesn't call delete."""
-        pass
         return True

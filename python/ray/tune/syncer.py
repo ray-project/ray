@@ -2,8 +2,8 @@ import distutils
 import logging
 import os
 import time
-from inspect import isclass
 
+from inspect import isclass
 from shlex import quote
 
 from ray import ray_constants
