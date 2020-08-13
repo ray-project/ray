@@ -23,17 +23,11 @@ from gym.spaces import Space
 from typing import Union, Optional
 
 from ray.rllib.models.action_dist import ActionDistribution
-from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.misc import SlimFC
-from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.exploration.exploration import Exploration
-from ray.rllib.utils.framework import try_import_torch, TensorType, \
-    get_activation_fn
+from ray.rllib.utils.framework import try_import_torch, TensorType
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.types import SampleBatchType, TensorType, TensorStructType, \
-    TrainerConfigDict
+from ray.rllib.utils.types import SampleBatchType, TrainerConfigDict
 
 torch, nn = try_import_torch()
 
@@ -148,13 +142,13 @@ class Curiosity(Exploration):
         self.exploration_submodule = from_config(
             cls=Exploration,
             config={
-                'type': submodule_type,
-                'action_space': action_space,
-                'framework': framework,
-                'policy_config': self.policy_config,
-                'model': self.model,
-                'num_workers': self.num_workers,
-                'worker_index': self.worker_index
+                "type": submodule_type,
+                "action_space": action_space,
+                "framework": framework,
+                "policy_config": self.policy_config,
+                "model": self.model,
+                "num_workers": self.num_workers,
+                "worker_index": self.worker_index
                 }
             )
 
