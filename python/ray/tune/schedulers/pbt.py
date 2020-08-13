@@ -232,21 +232,20 @@ class PopulationBasedTraining(FIFOScheduler):
 
     def on_trial_result(self, trial_runner, trial, result):
         if self._time_attr not in result:
-            raise TuneError("Cannot find time_attr {} in trial results. "
-                            "Make sure that this attribute is returned "
-                            "in the results of your Trainable.".format(
-                                self._time_attr))
-        if self._metric not in result:
-            raise TuneError("Cannot find metric {} in trial results. "
-                            "Make sure that this attribute is returned "
-                            "in the results of your Trainable.".format(
-                                self._metric))
+            raise RuntimeError("Cannot find time_attr {} in trial results {}. "
+                               "Make sure that this attribute is returned "
+                               "in the results of your Trainable.".format(
+                                   self._time_attr, result))
         time = result[self._time_attr]
         state = self._trial_state[trial]
 
         if time - state.last_perturbation_time < self._perturbation_interval:
             return TrialScheduler.CONTINUE  # avoid checkpoint overhead
-
+        if self._metric not in result:
+            raise RuntimeError("Cannot find metric {} in trial results {}. "
+                               "Make sure that this attribute is returned "
+                               "in the results of your Trainable.".format(
+                                   self._metric, result))
         score = self._metric_op * result[self._metric]
         state.last_score = score
         state.last_perturbation_time = time
