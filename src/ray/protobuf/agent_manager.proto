@@ -12,19 +12,27 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#pragma once
+syntax = "proto3";
 
-#include <boost/asio.hpp>
+package ray.rpc;
 
-inline std::shared_ptr<boost::asio::deadline_timer> execute_after(
-    boost::asio::io_context &io_context, const std::function<void()> &fn,
-    uint32_t delay_milliseconds) {
-  auto timer = std::make_shared<boost::asio::deadline_timer>(io_context);
-  timer->expires_from_now(boost::posix_time::milliseconds(delay_milliseconds));
-  timer->async_wait([timer, fn](const boost::system::error_code &error) {
-    if (error != boost::asio::error::operation_aborted && fn) {
-      fn();
-    }
-  });
-  return timer;
+enum AgentRpcStatus {
+  // OK.
+  AGENT_RPC_STATUS_OK = 0;
+  // Failed.
+  AGENT_RPC_STATUS_FAILED = 1;
+}
+
+message RegisterAgentRequest {
+  int32 agent_pid = 1;
+  int32 agent_port = 2;
+  string agent_ip_address = 3;
+}
+
+message RegisterAgentReply {
+  AgentRpcStatus status = 1;
+}
+
+service AgentManagerService {
+  rpc RegisterAgent(RegisterAgentRequest) returns (RegisterAgentReply);
 }
