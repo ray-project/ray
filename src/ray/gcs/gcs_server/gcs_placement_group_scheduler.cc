@@ -33,11 +33,44 @@ GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
   scheduler_strategies_.push_back(std::make_shared<GcsSpreadStrategy>());
 }
 
-/// In this algorithm, we try to pack all the bundles in the node which satisfies the
-/// resource requirements and has the least number of bundles.
-/// TODO(ffbin): At present, only one node will be scheduled. If one node does not have
-/// enough resources, we need to divide bundles to multiple nodes. We will implement
-/// it in the next pr.
+ScheduleMap GcsStrictPackStrategy::Schedule(
+    std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
+    const std::unique_ptr<ScheduleContext> &context) {
+  // Aggregate required resources.
+  std::unordered_map<std::string, double> required_resources;
+  for (const auto &bundle : bundles) {
+    const auto &resources = bundle->GetRequiredResources().GetResourceMap();
+    for (const auto &iter : resources) {
+      required_resources[iter.first] += iter.second;
+    }
+  }
+
+  // Filter candidate nodes.
+  const auto &alive_nodes = context->node_manager_.GetClusterRealtimeResources();
+  std::vector<std::pair<int64_t, ClientID>> candidate_nodes;
+  for (auto &node : alive_nodes) {
+    if (node.second->IsSubset(required_resources)) {
+      candidate_nodes.emplace_back((*context->node_to_bundles_)[node.first], node.first);
+    }
+  }
+
+  // Select the node with the least number of bundles.
+  ScheduleMap schedule_map;
+  if (candidate_nodes.empty()) {
+    return schedule_map;
+  }
+
+  std::sort(
+      std::begin(candidate_nodes), std::end(candidate_nodes),
+      [](const std::pair<int64_t, ClientID> &left,
+         const std::pair<int64_t, ClientID> &right) { return left.first < right.first; });
+
+  for (auto &bundle : bundles) {
+    schedule_map[bundle->BundleId()] = candidate_nodes.front().second;
+  }
+  return schedule_map;
+}
+
 ScheduleMap GcsPackStrategy::Schedule(
     std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
     const std::unique_ptr<ScheduleContext> &context) {
