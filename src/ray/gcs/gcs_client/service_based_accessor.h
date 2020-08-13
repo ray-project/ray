@@ -228,9 +228,12 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   /// server restarts from a failure.
   FetchDataOperation fetch_node_data_operation_;
 
+  // Mutex to protect the cached_heartbeat_ field.
+  absl::Mutex mutex_;
+
   /// Save the heartbeat data, so we can resend it again when GCS server restarts from a
   /// failure.
-  rpc::ReportHeartbeatRequest cached_heartbeat_;
+  rpc::ReportHeartbeatRequest cached_heartbeat_ GUARDED_BY(mutex_);
 
   void HandleNotification(const GcsNodeInfo &node_info);
 

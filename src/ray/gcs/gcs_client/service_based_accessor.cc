@@ -709,11 +709,11 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToResources(
 Status ServiceBasedNodeInfoAccessor::AsyncReportHeartbeat(
     const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
     const StatusCallback &callback) {
-  rpc::ReportHeartbeatRequest request;
+  absl::MutexLock lock(&mutex_);
   cached_heartbeat_.mutable_heartbeat()->CopyFrom(*data_ptr);
-  request.mutable_heartbeat()->CopyFrom(*data_ptr);
   client_impl_->GetGcsRpcClient().ReportHeartbeat(
-      request, [callback](const Status &status, const rpc::ReportHeartbeatReply &reply) {
+      cached_heartbeat_,
+      [callback](const Status &status, const rpc::ReportHeartbeatReply &reply) {
         if (callback) {
           callback(status);
         }
@@ -722,6 +722,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncReportHeartbeat(
 }
 
 void ServiceBasedNodeInfoAccessor::AsyncReReportHeartbeat() {
+  absl::MutexLock lock(&mutex_);
   if (cached_heartbeat_.has_heartbeat()) {
     RAY_LOG(INFO) << "Rereport heartbeat.";
     client_impl_->GetGcsRpcClient().ReportHeartbeat(
