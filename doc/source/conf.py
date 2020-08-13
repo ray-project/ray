@@ -24,16 +24,16 @@ from custom_directives import CustomGalleryItemDirective
 import mock
 MOCK_MODULES = [
     "blist", "gym", "gym.spaces", "psutil", "ray._raylet",
-    "ray.core.generated", "ray.core.generated.gcs_pb2",
-    "ray.core.generated.ray.protocol.Task", "scipy.signal", "scipy.stats",
-    "setproctitle", "tensorflow_probability", "tensorflow",
-    "tensorflow.contrib", "tensorflow.contrib.all_reduce", "tree",
-    "tensorflow.contrib.all_reduce.python", "tensorflow.contrib.layers",
-    "tensorflow.contrib.rnn", "tensorflow.contrib.slim", "tensorflow.core",
-    "tensorflow.core.util", "tensorflow.python", "tensorflow.python.client",
-    "tensorflow.python.util", "torch", "torch.distributed", "torch.nn",
-    "torch.nn.parallel", "torch.utils.data", "torch.utils.data.distributed",
-    "zoopt"
+    "ray.core.generated", "ray.core.generated.common_pb2",
+    "ray.core.generated.gcs_pb2", "ray.core.generated.ray.protocol.Task",
+    "scipy.signal", "scipy.stats", "setproctitle", "tensorflow_probability",
+    "tensorflow", "tensorflow.contrib", "tensorflow.contrib.all_reduce",
+    "tree", "tensorflow.contrib.all_reduce.python",
+    "tensorflow.contrib.layers", "tensorflow.contrib.rnn",
+    "tensorflow.contrib.slim", "tensorflow.core", "tensorflow.core.util",
+    "tensorflow.python", "tensorflow.python.client", "tensorflow.python.util",
+    "torch", "torch.distributed", "torch.nn", "torch.nn.parallel",
+    "torch.utils.data", "torch.utils.data.distributed", "zoopt"
 ]
 import scipy.stats
 import scipy.linalg
