@@ -53,15 +53,13 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
       RayConfig::instance().gcs_service_connect_retries()))
       << "Failed to get gcs server address when init gcs client.";
 
-  restart_functions_ = [this](bool is_pubsub_server_restarted) {
+  resubscribe_func_ = [this](bool is_pubsub_server_restarted) {
     job_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
     actor_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
     node_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
     task_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
     object_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
     worker_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
-
-    node_accessor_->AsyncReReportHeartbeat();
   };
 
   // Connect to gcs service.
@@ -176,7 +174,9 @@ void ServiceBasedGcsClient::GcsServiceFailureDetected(rpc::GcsServiceFailureType
     // NOTE(ffbin): Currently we don't support the case where the pub-sub server restarts,
     // because we use the same Redis server for both GCS storage and pub-sub. So the
     // following flag is alway false.
-    restart_functions_(false);
+    resubscribe_func_(false);
+    // Resend heartbeat after reconnected, needed by resource view in GCS.
+    node_accessor_->AsyncReReportHeartbeat();
     break;
   default:
     RAY_LOG(FATAL) << "Unsupported failure type: " << type;
