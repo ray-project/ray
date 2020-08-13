@@ -165,9 +165,7 @@ class Curiosity(Exploration):
         return self.exploration_submodule.get_exploration_action(
             action_distribution=action_distribution, timestep=timestep)
 
-    def get_exploration_loss(self,
-                             policy_loss,
-                             sample_batch: SampleBatchType):
+    def get_exploration_loss(self, policy_loss, sample_batch: SampleBatchType):
         """
         Returns the intrinsic reward associated to the explorations strategy
             policy_loss (TensorType): The loss from the policy, not associated
@@ -266,4 +264,4 @@ class Curiosity(Exploration):
         """
         return self.forward_model(
             torch.cat(
-                (self._get_latent_vector(obs), action.unsqueeze(1)), -1))
+                (self._get_latent_vector(obs), action.unsqueeze(1)), dim=-1))

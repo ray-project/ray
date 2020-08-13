@@ -16,7 +16,6 @@ from ray.rllib.utils.exploration.soft_q import SoftQ
 from ray.rllib.utils.exploration.stochastic_sampling import \
     StochasticSampling
 
-
 __all__ = [
     "Curiosity",
     "Exploration",
