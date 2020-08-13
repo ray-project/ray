@@ -131,7 +131,7 @@ class TrialRunner:
                  server_port=TuneServer.DEFAULT_PORT,
                  fail_fast=False,
                  verbose=True,
-                 rerun_failed_only=False,
+                 rerun_failed=False,
                  checkpoint_period=10,
                  trial_executor=None):
         self._search_alg = search_alg or BasicVariantGenerator()
@@ -182,7 +182,7 @@ class TrialRunner:
 
         if self._validate_resume(resume_type=resume):
             try:
-                self.resume(rerun_failed_only=rerun_failed_only)
+                self.resume(rerun_failed=rerun_failed)
                 self._resumed = True
             except Exception as e:
                 if self._verbose:
@@ -192,10 +192,10 @@ class TrialRunner:
                     raise
                 logger.info("Restarting experiment.")
         else:
-            if rerun_failed_only:
+            if rerun_failed:
                 raise ValueError(
-                    "'rerun_failed_only' should only be used with 'resume'. "
-                    f"Got: resume={resume}, rerun_failed_only={rerun_failed_only}"
+                    "'rerun_failed' should only be used with 'resume'. "
+                    f"Got: resume={resume}, rerun_failed={rerun_failed}"
                 )
             logger.debug("Starting a new experiment.")
 
@@ -312,7 +312,7 @@ class TrialRunner:
             self._syncer.sync_up_if_needed()
         return self._local_checkpoint_dir
 
-    def resume(self, rerun_failed_only=False):
+    def resume(self, rerun_failed=False):
         """Resumes all checkpointed trials from previous run.
 
         Requires user to manually re-register their objects. Also stops
@@ -340,8 +340,9 @@ class TrialRunner:
             trials += [new_trial]
         for trial in sorted(
                 trials, key=lambda t: t.last_update_time, reverse=True):
-            if rerun_failed_only and trial.status == Trial.ERROR:
-                trial = trial.reset()
+            if rerun_failed:
+                if trial.status == Trial.ERROR:
+                    trial = trial.reset()
             self.add_trial(trial)
 
     def is_finished(self):

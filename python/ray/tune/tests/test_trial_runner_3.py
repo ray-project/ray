@@ -355,6 +355,24 @@ class TrialRunnerTest3(unittest.TestCase):
         count = Counter(evaluated)
         assert all(v <= 3 for v in count.values())
 
+    def testTrialErrorResume(self):
+        trials = create_trials(3)
+        runner = TrialRunner()
+        runner.add_trials(trials)
+        while not runner.is_finished():
+            runner.step()
+
+        runner.checkpoint()
+
+        assert trials[0].status == Trial.ERROR
+        new_runner = TrialRunner(..., rerun_failed=True)
+
+        while not new_runner.is_finished():
+            new_runner.step()
+
+        assert not trials == Trial.ERROR
+
+
     def testTrialSaveRestore(self):
         """Creates different trials to test runner.checkpoint/restore."""
         ray.init(num_cpus=3)
