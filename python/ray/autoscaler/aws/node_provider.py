@@ -337,10 +337,26 @@ class AWSNodeProvider(NodeProvider):
                 # todo: timed?
                 # todo: handle plurality?
                 with cli_logger.group(
-                        "Launching {} nodes",
+                        "Launched {} nodes",
                         count,
                         _tags=dict(subnet_id=subnet_id)):
                     for instance in created:
+                        if instance.state_reason is None:
+                            # needed for mocking boto3 for tests
+                            # not sure if this is a bug in moto
+                            # or if the field is just optional
+                            # AWS docs don't seem to say
+                            #
+                            # you can patch
+                            # moto/ec2/responses/instances.py
+                            # to fix this
+                            # (add <stateReason> to EC2_RUN_INSTANCES)
+                            #
+                            # the correct value is technically
+                            # code = 0
+                            # message = pending
+                            instance.state_reason = {"Message": "n/a"}
+
                         cli_logger.print(
                             "Launched instance {}",
                             instance.instance_id,
@@ -352,6 +368,7 @@ class AWSNodeProvider(NodeProvider):
                             "[id={}, name={}, info={}]", instance.instance_id,
                             instance.state["Name"],
                             instance.state_reason["Message"])
+                    print('Done listing')
                 break
             except botocore.exceptions.ClientError as exc:
                 if attempt == BOTO_CREATE_MAX_RETRIES:
