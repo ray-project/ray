@@ -143,8 +143,8 @@ class _PerPolicySampleCollector:
         if self.agent_key_to_timestep[
             agent_key] - self.shift_before == self.num_timesteps and \
                 not values[SampleBatch.DONES]:
-            print("Creating new chunk from full one.")
-            print("\t{}".format([agent_slot, agent_key, self.agent_key_to_timestep[agent_key]]))
+            #print("Creating new chunk from full one.")
+            #print("\t{}".format([agent_slot, agent_key, self.agent_key_to_timestep[agent_key]]))
             self.new_chunk_from(agent_slot, agent_key,
                                 self.agent_key_to_timestep[agent_key])
 
@@ -221,21 +221,30 @@ class _PerPolicySampleCollector:
                     for k in self.slot_to_agent_key if k is not None]  # and
                     #self.agent_key_to_timestep[k] > self.shift_before]
         max_seq_len = max(seq_lens)
+        first_zero_len = len(seq_lens)
+        if seq_lens[-1] == 0:
+            first_zero_len = seq_lens.index(0)
+            # Assert that all zeros lie at the end of the seq_lens array.
+            try:
+                assert all(seq_lens[i] == 0 for i in range(first_zero_len, len(seq_lens)))
+            except AssertionError as e:
+                print()
+                raise e
 
         t_start = self.shift_before
-        t_end = t_start + min(self.num_timesteps, max_seq_len)
+        t_end = t_start + self.num_timesteps
 
         # The agent_slot cursor that points to the newest agent-slot that
         # actually already has at least 1 timestep of data (thus it excludes
         # just-rolled over chunks (which only have the initial obs in them)).
-        valid_agent_cursor = self.agent_slot_cursor
-        if valid_agent_cursor <= 0:
-            valid_agent_cursor = self.num_agents
-        while self.agent_key_to_timestep[self.slot_to_agent_key[valid_agent_cursor - 1]] <= \
-                self.shift_before:
-            valid_agent_cursor -= 1
-            if valid_agent_cursor <= 0:
-                valid_agent_cursor = self.num_agents
+        valid_agent_cursor = (self.agent_slot_cursor - (len(seq_lens) - first_zero_len)) % self.num_agents
+        #if valid_agent_cursor <= 0:
+        #    valid_agent_cursor = self.num_agents
+        #while self.agent_key_to_timestep[self.slot_to_agent_key[valid_agent_cursor - 1]] <= \
+        #        self.shift_before:
+        #    valid_agent_cursor -= 1
+        #    if valid_agent_cursor <= 0:
+        #        valid_agent_cursor = self.num_agents
 
         # Construct the view dict.
         view = {}
@@ -264,16 +273,9 @@ class _PerPolicySampleCollector:
                     t_start + extra_shift:t_end + extra_shift,
                     self.sample_batch_offset:valid_agent_cursor]
 
-        if 0 in seq_lens:
-            print()
-        batch = SampleBatch(
-            view, _seq_lens=np.array(seq_lens), _time_major=True)
-
-        call_args = []
-
-        # Copy all still ongoing trajectories to new agent slots.
-        for i in range(self.agent_slot_cursor - self.sample_batch_offset):
-        seq_len_cut = len(seq_lens)
+        # Copy all still ongoing trajectories to new agent slots
+        # (including the ones that just started (are seq_len=0)).
+        new_chunk_args = []
         for i, seq_len in enumerate(seq_lens):
             if seq_len < self.num_timesteps:
                 agent_slot = self.sample_batch_offset + i
@@ -283,9 +285,12 @@ class _PerPolicySampleCollector:
                                     DONES][seq_len - 1 +
                                            self.shift_before][agent_slot]:
                     agent_key = self.slot_to_agent_key[agent_slot]
-                    call_args.append((agent_slot, agent_key,
+                    new_chunk_args.append((agent_slot, agent_key,
                                       self.agent_key_to_timestep[agent_key]))
-            if seq_len == 0:
+        # Cut out all 0 seq-lens.
+        seq_lens = seq_lens[:first_zero_len]
+        batch = SampleBatch(
+            view, _seq_lens=np.array(seq_lens), _time_major=True)
 
         # Reset everything for new data.
         self.postprocessed_agents = [False] * self.num_agents
@@ -297,9 +302,9 @@ class _PerPolicySampleCollector:
         self.forward_pass_size = 0
         self.sample_batch_offset = self.agent_slot_cursor
 
-        print("Creating new chunks from unfinished-but-train-batched ones.")
-        for args in call_args:
-            print("\t{}".format(args))
+        #print("Creating new chunks from unfinished-but-train-batched ones.")
+        for args in new_chunk_args:
+            #print("\t{}".format(args))
             self.new_chunk_from(*args)
 
         return batch
