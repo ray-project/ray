@@ -90,28 +90,34 @@ void GcsPlacementGroupScheduler::Schedule(
     return;
   }
 
-  // If schedule success, the decision will be set as schedule_map[bundles[pos]]
-  // else will be set ClientID::Nil().
+  auto leasing_context = std::make_shared<PlacementGroupLeasingContext>(placement_group);
+  RAY_CHECK(leasing_context_.emplace(placement_group->GetPlacementGroupID(), leasing_context).second);
+
+  // // If schedule success, the decision will be set as schedule_map[bundles[pos]]
+  // // else will be set ClientID::Nil().
   auto bundle_locations = std::make_shared<std::unordered_map<
       BundleID, std::pair<ClientID, std::shared_ptr<BundleSpecification>>, pair_hash>>();
   // To count how many scheduler have been return, which include success and failure.
   auto finished_count = std::make_shared<size_t>();
-  /// TODO(AlisaWu): Change the strategy when reserve resource failed.
+  // TODO(AlisaWu): Change the strategy when reserve resource failed.
   for (auto &bundle : bundles) {
     const auto &bundle_id = bundle->BundleId();
     const auto &node_id = selected_nodes[bundle_id];
+    // SANG-TODO Add to the entry
     RAY_CHECK(node_to_bundles_when_leasing_[node_id].emplace(bundle_id).second);
     ReserveResourceFromNode(
         bundle, gcs_node_manager_.GetNode(node_id),
         [this, bundle_id, bundle, bundles, node_id, placement_group, bundle_locations,
          finished_count, schedule_failure_handler,
          schedule_success_handler](const Status &status) {
+           // SANG-TODO if context -> destroyed, don't add the result.
           if (status.ok()) {
+            // SANG-TODO Add a bundle here.
             (*bundle_locations)[bundle_id] = std::make_pair(node_id, bundle);
           }
 
-          if (++(*finished_count) == bundles.size()) {
-            if (bundle_locations->size() == bundles.size()) {
+          if (++(*finished_count) == bundles.size()) { // SANG-TODO if context->Done
+            if (bundle_locations->size() == bundles.size()) { // SANG-TODO if context -> Succeed
               rpc::ScheduleData data;
               for (const auto &iter : bundles) {
                 // TODO(ekl) this is a hack to get a string key for the proto
@@ -132,6 +138,9 @@ void GcsPlacementGroupScheduler::Schedule(
               }
               schedule_failure_handler(placement_group);
             }
+            auto leasing_context_it = leasing_context_.find(placement_group->GetPlacementGroupID());
+            RAY_CHECK(leasing_context_it != leasing_context_.end());
+            leasing_context_.erase(leasing_context_it);
           }
         });
   }
