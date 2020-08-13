@@ -20,6 +20,7 @@ from ray.tune.trial import ExportFormat
 
 # __train_begin__
 def train_convnet(config, checkpoint_dir=None):
+    # Create our data loaders, model, and optmizer.
     step = 0
     train_loader, test_loader = get_data_loaders()
     model = ConvNet()
@@ -28,6 +29,8 @@ def train_convnet(config, checkpoint_dir=None):
         lr=config.get("lr", 0.01),
         momentum=config.get("momentum", 0.9))
 
+    # If checkpoint_dir is not None, then we are resuming from a checkpoint.
+    # Load model state and iteration step from checkpoint.
     if checkpoint_dir:
         print("Loading from checkpoint.")
         path = os.path.join(checkpoint_dir, "checkpoint")
@@ -39,8 +42,12 @@ def train_convnet(config, checkpoint_dir=None):
         train(model, optimizer, train_loader)
         acc = test(model, test_loader)
         if step % 5 == 0:
+            # Every 5 steps, checkpoint our current state.
+            # First get the checkpoint directory from tune.
             with tune.checkpoint_dir(step=step) as checkpoint_dir:
+                # Then create a checkpoint file in this directory.
                 path = os.path.join(checkpoint_dir, "checkpoint")
+                # Save state to checkpoint file.
                 # No need to save optimizer for SGD.
                 torch.save({
                     "step": step,
