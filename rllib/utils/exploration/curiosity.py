@@ -95,9 +95,12 @@ class Curiosity(Exploration):
         inverse_activation = extract_from_kwargs("inverse_activation", nn.ReLU)
         feature_activation = extract_from_kwargs("feature_activation", nn.ReLU)
 
-        feature_net_hiddens = cast_to_list(extract_from_kwargs("feature_net_hiddens", [64]))
-        inverse_net_hiddens = cast_to_list(extract_from_kwargs("inverse_net_hiddens", [64]))
-        forward_net_hiddens = cast_to_list(extract_from_kwargs("forward_net_hiddens", [64]))
+        feature_net_hiddens = cast_to_list(extract_from_kwargs(
+            "feature_net_hiddens", [64]))
+        inverse_net_hiddens = cast_to_list(extract_from_kwargs(
+            "inverse_net_hiddens", [64]))
+        forward_net_hiddens = cast_to_list(extract_from_kwargs(
+            "forward_net_hiddens", [64]))
 
         super().__init__(
             action_space=action_space,
@@ -125,9 +128,12 @@ class Curiosity(Exploration):
             return nn.Sequential(*layers)
 
         # List of dimension of each layer. Appends the hidden dims.
-        feature_dims = [self.obs_space_dim] + feature_net_hiddens + [self.feature_dim]
-        inverse_dims = [2 * self.feature_dim] + inverse_net_hiddens + [self.action_space_dim]
-        forward_dims = [self.feature_dim + self.action_space_dim] + forward_net_hiddens + [self.feature_dim]
+        feature_dims = [self.obs_space_dim] + feature_net_hiddens + [
+            self.feature_dim]
+        inverse_dims = [2 * self.feature_dim] + inverse_net_hiddens + [
+            self.action_space_dim]
+        forward_dims = [self.feature_dim + self.action_space_dim] + \
+                       forward_net_hiddens + [self.feature_dim]
 
         # Creates actual models
         self.feature_model = create_fc_net(feature_dims, feature_activation)
@@ -207,7 +213,7 @@ class Curiosity(Exploration):
         return self.feature_model(obs)
 
     def get_exploration_optimizers(self, config: TrainerConfigDict):
-        """Returns an optimizer (or list) for optimizing the environmental dynamics networks.
+        """Returns optimizer (or list) for environmental dynamics networks.
         """
         forward_params = list(self.forward_model.parameters())
         inverse_params = list(self.inverse_model.parameters())
@@ -244,16 +250,14 @@ class Curiosity(Exploration):
         actions_pred = self._predict_action(obs_list, next_obs_list)
         embedding_pred = self._predict_next_obs(obs_list, actions_list)
 
-        # A vector of L2 losses corresponding to each observation, Equation (7) in paper
+        # A vector of L2 losses corresponding to each observation,
+        # Equation (7) in paper.
         embedding_loss = torch.sum(
             self.criterion(emb_next_obs_list, embedding_pred),
             dim=-1)
 
         # Equation (3) in paper. TODO discrete action space
         actions_loss = self.criterion(actions_pred.squeeze(1), actions_list)
-
-        # todo ask sven about gpu/cpu and which operations should happen on both
-        # also when do we convert from numpy array to tensor
 
         # Modifies environment rewards by subtracting intrinsic rewards
         sample_batch["rewards"] = sample_batch["rewards"] \
