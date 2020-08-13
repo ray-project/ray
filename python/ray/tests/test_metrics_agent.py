@@ -14,7 +14,7 @@ from ray.dashboard.util import get_unused_port
 from ray.metrics_agent import (Gauge, MetricsAgent,
                                PrometheusServiceDiscoveryWriter)
 from ray.experimental.metrics import Count, Histogram
-from ray.test_utils import wait_for_condition
+from ray.test_utils import wait_for_condition, SignalActor
 
 
 def generate_metrics_point(name: str,
@@ -230,10 +230,13 @@ def test_metrics_export_end_to_end(ray_start_cluster):
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
+    signal = SignalActor.remote()
+
     # Generate some metrics around actor & tasks.
     @ray.remote
     def f():
         counter = Count("test_counter", "desc", "unit", [])
+        ray.get(signal.send.remote())
         while True:
             counter.record(1, {})
             time.sleep(0.1)
@@ -254,7 +257,9 @@ def test_metrics_export_end_to_end(ray_start_cluster):
     a = A.remote()
     obj_refs.append(a.ping.remote())
 
+    # Make sure both histogram and counter are created
     ray.get(a.ready.remote())
+    ray.get(signal.wait.remote())
 
     node_info_list = ray.nodes()
     prom_addresses = []
@@ -307,7 +312,11 @@ def test_metrics_export_end_to_end(ray_start_cluster):
         return components_found and metric_names_found
 
     try:
-        wait_for_condition(test_prometheus_endpoint, timeout=5)
+        wait_for_condition(
+            test_prometheus_endpoint,
+            timeout=20,
+            retry_interval_ms=1000,  # Yield resource for other processes
+        )
     except RuntimeError:
         # This is for debugging when test failed.
         raise RuntimeError(
