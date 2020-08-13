@@ -354,7 +354,7 @@ std::unique_ptr<ScheduleContext> GcsPlacementGroupScheduler::GetScheduleContext(
 }
 
 absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>
-GcsPlacementGroupScheduler::GetBundlesOnDeadNode(const ClientID &node_id) {
+GcsPlacementGroupScheduler::GetBundlesOnNode(const ClientID &node_id) {
   absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> bundles_on_dead_node;
   const auto node_iter = node_to_leased_bundles_.find(node_id);
   if (node_iter != node_to_leased_bundles_.end()) {

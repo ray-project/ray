@@ -54,12 +54,12 @@ class GcsPlacementGroupSchedulerInterface {
       std::function<void(std::shared_ptr<GcsPlacementGroup>)> failure_callback,
       std::function<void(std::shared_ptr<GcsPlacementGroup>)> success_callback) = 0;
 
-  /// Get bundles belong to the dead node.
+  /// Get bundles belong to the specified node.
   ///
   /// \param node_id ID of the dead node.
   /// \return The bundles belong to the dead node.
-  virtual absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>
-  GetBundlesOnDeadNode(const ClientID &node_id) = 0;
+  virtual absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> GetBundlesOnNode(
+      const ClientID &node_id) = 0;
 
   /// Destroy bundle resources from all nodes in the placement group.
   virtual void DestroyPlacementGroupBundleResourcesIfExists(
@@ -164,7 +164,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// cancelled.
   void MarkScheduleCancelled(const PlacementGroupID &placement_group_id) override;
 
-  absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> GetBundlesOfDeadNode(
+  absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> GetBundlesOnNode(
       const ClientID &node_id) override;
 
  protected:

@@ -312,7 +312,7 @@ void GcsPlacementGroupManager::RetryCreatingPlacementGroup() {
 }
 
 void GcsPlacementGroupManager::OnNodeDead(const ClientID &node_id) {
-  auto bundles = gcs_placement_group_scheduler_->GetBundlesOnDeadNode(node_id);
+  auto bundles = gcs_placement_group_scheduler_->GetBundlesOnNode(node_id);
   absl::flat_hash_set<std::shared_ptr<GcsPlacementGroup>> to_reschedule_groups;
   for (const auto &bundle : bundles) {
     auto &placement_group = registered_placement_groups_[bundle.first];

@@ -420,6 +420,51 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPackStrategyLargeBundlesScheduling) {
   WaitPendingDone(success_placement_groups_, 1);
 }
 
+TEST_F(GcsPlacementGroupSchedulerTest, TestRescheduleWhenNodeDead) {
+  auto node0 = Mocker::GenNodeInfo(0);
+  auto node1 = Mocker::GenNodeInfo(1);
+  AddNode(node0);
+  AddNode(node1);
+  ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
+
+  auto create_placement_group_request = Mocker::GenCreatePlacementGroupRequest();
+  auto placement_group =
+      std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request);
+
+  // Schedule the placement group successfully.
+  auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
+    absl::MutexLock lock(&vector_mutex_);
+    failure_placement_groups_.emplace_back(std::move(placement_group));
+  };
+  auto success_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
+    absl::MutexLock lock(&vector_mutex_);
+    success_placement_groups_.emplace_back(std::move(placement_group));
+  };
+
+  scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler, success_handler);
+  ASSERT_TRUE(raylet_client_->GrantResourceReserve());
+  ASSERT_TRUE(raylet_client1_->GrantResourceReserve());
+  WaitPendingDone(success_placement_groups_, 1);
+
+  auto bundles_on_node0 =
+      scheduler_->GetBundlesOnNode(ClientID::FromBinary(node0->node_id()));
+  ASSERT_EQ(1, bundles_on_node0.size());
+  auto bundles_on_node1 =
+      scheduler_->GetBundlesOnNode(ClientID::FromBinary(node1->node_id()));
+  ASSERT_EQ(1, bundles_on_node1.size());
+
+  // Node1 is dead, reschedule the placement group.
+  auto bundle_on_dead_node = placement_group->GetMutableBundle(0);
+  bundle_on_dead_node->set_is_placed(false);
+  scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler, success_handler);
+  if (0 == bundles_on_node0[placement_group->GetPlacementGroupID()][0]) {
+    ASSERT_TRUE(raylet_client_->GrantResourceReserve());
+  } else {
+    ASSERT_TRUE(raylet_client1_->GrantResourceReserve());
+  }
+  WaitPendingDone(success_placement_groups_, 2);
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
