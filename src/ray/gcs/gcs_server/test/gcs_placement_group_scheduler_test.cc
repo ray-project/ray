@@ -64,10 +64,10 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
   }
 
-  void AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
+  void AddNode(const std::shared_ptr<rpc::GcsNodeInfo> &node, int cpu_num = 10) {
     gcs_node_manager_->AddNode(node);
     rpc::HeartbeatTableData heartbeat;
-    (*heartbeat.mutable_resources_available())["CPU"] = 10;
+    (*heartbeat.mutable_resources_available())["CPU"] = cpu_num;
     gcs_node_manager_->UpdateNodeRealtimeResources(ClientID::FromBinary(node->node_id()),
                                                    heartbeat);
   }
@@ -214,11 +214,9 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestSchedulePlacementGroupReturnResource)
   ASSERT_EQ(placement_group, failure_placement_groups_.front());
 }
 
-TEST_F(GcsPlacementGroupSchedulerTest, TestScheduleWithPackStrategy) {
+TEST_F(GcsPlacementGroupSchedulerTest, TestStrictPackStrategyBalancedScheduling) {
   AddNode(Mocker::GenNodeInfo(0));
   AddNode(Mocker::GenNodeInfo(1));
-  ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
-
   auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
     absl::MutexLock lock(&vector_mutex_);
     failure_placement_groups_.emplace_back(std::move(placement_group));
@@ -252,6 +250,68 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestScheduleWithPackStrategy) {
   WaitPendingDone(success_placement_groups_, 10);
   ASSERT_EQ(select_node0_count, 5);
   ASSERT_EQ(select_node1_count, 5);
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest, TestStrictPackStrategyReschedulingWhenNodeAdd) {
+  AddNode(Mocker::GenNodeInfo(0), 1);
+  auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
+    absl::MutexLock lock(&vector_mutex_);
+    failure_placement_groups_.emplace_back(std::move(placement_group));
+  };
+  auto success_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
+    absl::MutexLock lock(&vector_mutex_);
+    success_placement_groups_.emplace_back(std::move(placement_group));
+  };
+
+  // Failed to schedule the placement group, because the node resources is not enough.
+  auto create_placement_group_request =
+      Mocker::GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::PACK);
+  auto placement_group =
+      std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request);
+  gcs_placement_group_scheduler_->Schedule(placement_group, failure_handler,
+                                           success_handler);
+  WaitPendingDone(failure_placement_groups_, 1);
+  ASSERT_EQ(0, success_placement_groups_.size());
+
+  // A new node is added, and the rescheduling is successful.
+  AddNode(Mocker::GenNodeInfo(0), 2);
+  gcs_placement_group_scheduler_->Schedule(placement_group, failure_handler,
+                                           success_handler);
+  ASSERT_TRUE(raylet_client_->GrantResourceReserve());
+  ASSERT_TRUE(raylet_client_->GrantResourceReserve());
+  WaitPendingDone(success_placement_groups_, 1);
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest, TestStrictPackStrategyResourceCheck) {
+  auto node0 = Mocker::GenNodeInfo(0);
+  AddNode(node0);
+  auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
+    absl::MutexLock lock(&vector_mutex_);
+    failure_placement_groups_.emplace_back(std::move(placement_group));
+  };
+  auto success_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
+    absl::MutexLock lock(&vector_mutex_);
+    success_placement_groups_.emplace_back(std::move(placement_group));
+  };
+  auto create_placement_group_request =
+      Mocker::GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::PACK);
+  auto placement_group =
+      std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request);
+  gcs_placement_group_scheduler_->Schedule(placement_group, failure_handler,
+                                           success_handler);
+  ASSERT_TRUE(raylet_client_->GrantResourceReserve());
+  ASSERT_TRUE(raylet_client_->GrantResourceReserve());
+  WaitPendingDone(success_placement_groups_, 1);
+
+  // Node1 has less number of bundles, but it doesn't satisfy the resource
+  // requirement. In this case, the bundles should be scheduled on Node0.
+  auto node1 = Mocker::GenNodeInfo(1);
+  AddNode(node1, 1);
+  gcs_placement_group_scheduler_->Schedule(placement_group, failure_handler,
+                                           success_handler);
+  ASSERT_TRUE(raylet_client_->GrantResourceReserve());
+  ASSERT_TRUE(raylet_client_->GrantResourceReserve());
+  WaitPendingDone(success_placement_groups_, 2);
 }
 
 }  // namespace ray
