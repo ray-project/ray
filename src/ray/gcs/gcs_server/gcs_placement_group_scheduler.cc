@@ -37,14 +37,10 @@ ScheduleMap GcsStrictPackStrategy::Schedule(
     std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
     const std::unique_ptr<ScheduleContext> &context) {
   // Aggregate required resources.
-  std::unordered_map<std::string, double> bundle_resources;
+  ResourceSet required_resources;
   for (const auto &bundle : bundles) {
-    const auto &resources = bundle->GetRequiredResources().GetResourceMap();
-    for (const auto &iter : resources) {
-      bundle_resources[iter.first] += iter.second;
-    }
+    required_resources.AddResources(bundle->GetRequiredResources());
   }
-  ResourceSet required_resources(bundle_resources);
 
   // Filter candidate nodes.
   const auto &alive_nodes = context->node_manager_.GetClusterRealtimeResources();
@@ -75,18 +71,16 @@ ScheduleMap GcsStrictPackStrategy::Schedule(
 ScheduleMap GcsPackStrategy::Schedule(
     std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
     const std::unique_ptr<ScheduleContext> &context) {
-  // Aggregate required resources.
-  ResourceSet required_resources;
-  for (const auto &bundle : bundles) {
-    required_resources.AddResources(bundle->GetRequiredResources());
-  }
-
-  // Filter candidate nodes.
+  ScheduleMap schedule_map;
   const auto &alive_nodes = context->node_manager_.GetClusterRealtimeResources();
-  std::vector<std::pair<int64_t, ClientID>> candidate_nodes;
-  for (auto &node : alive_nodes) {
-    if (required_resources.IsSubset(*node.second)) {
-      candidate_nodes.emplace_back((*context->node_to_bundles_)[node.first], node.first);
+  for (const auto &bundle : bundles) {
+    const auto &required_resources = bundle->GetRequiredResources();
+    for (auto &node : alive_nodes) {
+      if (required_resources.IsSubset(*node.second)) {
+        node.second->SubtractResourcesStrict(required_resources);
+        schedule_map[bundle->BundleId()] = node.first;
+        break;
+      }
     }
   }
 
