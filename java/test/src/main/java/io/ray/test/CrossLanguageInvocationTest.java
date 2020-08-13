@@ -2,7 +2,6 @@ package io.ray.test;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
-import com.google.protobuf.InvalidProtocolBufferException;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
@@ -189,7 +188,7 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
   }
 
   @Test
-  public void testExceptionSerialization() throws InvalidProtocolBufferException {
+  public void testExceptionSerialization() throws IOException {
     try {
       throw new RayException("Test Exception");
     } catch (RayException e) {
@@ -312,6 +311,7 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
     return (byte[]) res.get();
   }
 
+  @SuppressWarnings("ConstantOverflow")
   public static Object throwException() {
     return 1 / 0;
   }
