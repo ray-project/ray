@@ -88,6 +88,8 @@ class NodeUpdater:
 
             cli_logger.old_error(logger, "{}Error executing: {}\n",
                                  self.log_prefix, error_str)
+            print(logger, "{}Error executing: {}\n",
+                                 self.log_prefix, error_str)
 
             cli_logger.error("!!!")
             if hasattr(e, "cmd"):

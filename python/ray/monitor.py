@@ -113,7 +113,6 @@ class Monitor:
                 logger.warning(
                     "Monitor: "
                     "could not find ip for client {}".format(client_id))
-                print("raylet_id->ip map:", self.raylet_id_to_ip_map)
 
     def xray_job_notification_handler(self, unused_channel, data):
         """Handle a notification that a job has been added or removed.
@@ -200,7 +199,6 @@ class Monitor:
                 the same IP and cannot be uniquely identified.
         """
         all_raylet_nodes = ray.nodes()
-        old = self.raylet_id_to_ip_map
         self.raylet_id_to_ip_map = {}
         for raylet_info in all_raylet_nodes:
             node_id = (raylet_info.get("DBClientID") or raylet_info["NodeID"])
@@ -209,10 +207,6 @@ class Monitor:
             if _append_port:
                 ip_address += ":" + str(raylet_info["NodeManagerPort"])
             self.raylet_id_to_ip_map[node_id] = ip_address
-        if old != self.raylet_id_to_ip_map:
-            print("Raylet map changed")
-            print("old:", old)
-            print("new:", self.raylet_id_to_ip_map)
 
     def _run(self):
         """Run the monitor.
