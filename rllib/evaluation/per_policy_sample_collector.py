@@ -160,7 +160,9 @@ class _PerPolicySampleCollector:
         assert self.slot_to_agent_key[self.agent_slot_cursor] is None
 
     def new_chunk_from(self, agent_slot, agent_key, timestep):
+        # Assign
         new_agent_slot = self.agent_slot_cursor
+        # Increase chunk num by 1.
         new_agent_key = agent_key[:2] + (agent_key[2] + 1, )
         # Copy everything from agent_slot into new_slot.
         if self.time_major:

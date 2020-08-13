@@ -46,8 +46,10 @@ class MultiAgentDebugCounterEnv(MultiAgentEnv):
 
     def reset(self):
         self.dones = set()
-        return {i: np.array([i, 0.0, 0.0, 0.0], dtype=np.float32)
-                for i in range(self.num_agents)}
+        return {
+            i: np.array([i, 0.0, 0.0, 0.0], dtype=np.float32)
+            for i in range(self.num_agents)
+        }
 
     def step(self, action_dict):
         obs, rew, done = {}, {}, {}
