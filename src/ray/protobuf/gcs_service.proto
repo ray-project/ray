@@ -169,6 +169,9 @@ service PlacementGroupInfoGcsService {
   // Create placement group via gcs service
   rpc CreatePlacementGroup(CreatePlacementGroupRequest)
       returns (CreatePlacementGroupReply);
+
+  rpc GetPlacementGroup(GetPlacementGroupRequest)
+       returns (GetPlacementGroupReply);
 }
 
 message RegisterNodeRequest {
@@ -495,6 +498,15 @@ message CreatePlacementGroupRequest {
 
 message CreatePlacementGroupReply {
   GcsStatus status = 1;
+}
+
+message GetPlacementGroupRequest {
+  bytes placement_group_id = 1;
+}
+
+message GetPlacementGroupReply {
+  GcsStatus status = 1;
+  PlacementGroupTableData placement_group_table_data = 2;
 }
 
 enum GcsServiceFailureType {

@@ -172,5 +172,40 @@ def test_placement_group_hang(ray_start_cluster):
     assert "CPU_group_" in list(resources.keys())[0], resources
 
 
+def test_placement_group_table(ray_start_cluster):
+    @ray.remote(num_cpus=2)
+    class Actor(object):
+        def __init__(self):
+            self.n = 0
+
+        def value(self):
+            return self.n
+
+    cluster = ray_start_cluster
+    num_nodes = 2
+    for _ in range(num_nodes):
+        cluster.add_node(num_cpus=4)
+    ray.init(address=cluster.address)
+
+    name = "name"
+    strategy = "SPREAD"
+    bundles = [{"CPU": 2}, {"CPU": 2}]
+    placement_group_id = ray.experimental.placement_group(
+        name=name, strategy=strategy, bundles=bundles)
+    result = ray.experimental.placement_group_table(placement_group_id)
+    assert result["name"] == name
+    assert result["strategy"] == strategy
+    for i in range(len(bundles)):
+        assert bundles[i] == result["bundles"][i]
+    assert result["state"] == "PENDING"
+    actor_1 = Actor.options(
+        placement_group_id=placement_group_id,
+        placement_group_bundle_index=0).remote()
+    ray.get(actor_1.value.remote())
+
+    result = ray.experimental.placement_group_table(placement_group_id)
+    assert result["state"] == "ALIVE"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

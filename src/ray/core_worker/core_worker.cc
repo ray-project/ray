@@ -1383,7 +1383,6 @@ Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill, bool no_r
   return Status::OK();
 }
 
-// SANG-TODO
 Status CoreWorker::KillActorLocalMode(const ActorID &actor_id) {
   // KillActor doesn't do anything in local mode. We only remove named actor entry if
   // exists.
