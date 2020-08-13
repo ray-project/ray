@@ -7,7 +7,7 @@ flatbuffers
 jsonschema
 mock
 numpy
-opencv-python-headless
+opencv-python-headless==4.3.0.36
 pandas
 pickle5
 pillow
