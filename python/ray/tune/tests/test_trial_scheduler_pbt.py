@@ -23,32 +23,31 @@ class MockTrainable(tune.Trainable):
     def save_checkpoint(self, tmp_checkpoint_dir):
         checkpoint_path = os.path.join(tmp_checkpoint_dir, "model.mock")
         with open(checkpoint_path, "wb") as fp:
-            pickle.dump((self.a, self.b), fp)
+            pickle.dump((self.a, self.b, self.iter), fp)
         return tmp_checkpoint_dir
 
     def load_checkpoint(self, tmp_checkpoint_dir):
         checkpoint_path = os.path.join(tmp_checkpoint_dir, "model.mock")
         with open(checkpoint_path, "rb") as fp:
-            self.a, self.b = pickle.load(fp)
+            self.a, self.b, self.iter = pickle.load(fp)
 
 
 def MockTrainingFunc(config, checkpoint_dir=None):
     iter = 0
     a = config["a"]
     b = config["b"]
-    # c = config["c"]
 
     if checkpoint_dir:
         checkpoint_path = os.path.join(checkpoint_dir, "model.mock")
         with open(checkpoint_path, "rb") as fp:
-            a, b = pickle.load(fp)
+            a, b, iter = pickle.load(fp)
 
     while True:
         iter += 1
         with tune.checkpoint_dir(step=iter) as checkpoint_dir:
             checkpoint_path = os.path.join(checkpoint_dir, "model.mock")
             with open(checkpoint_path, "wb") as fp:
-                pickle.dump((a, b), fp)
+                pickle.dump((a, b, iter), fp)
         tune.report(mean_accuracy=(a - iter) * b)
 
 
@@ -94,7 +93,6 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             },
             fail_fast=True,
             num_samples=20,
-            global_checkpoint_period=1,
             checkpoint_freq=1,
             checkpoint_at_end=True,
             keep_checkpoints_num=1,
@@ -124,11 +122,10 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             },
             fail_fast=True,
             num_samples=20,
-            global_checkpoint_period=1,
             keep_checkpoints_num=1,
             checkpoint_score_attr="min-training_iteration",
             scheduler=scheduler,
-            name="testPermutationContinuationFunct",
+            name="testPermutationContinuationFunc",
             stop={"training_iteration": 5})
 
 
