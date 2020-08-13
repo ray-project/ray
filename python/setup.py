@@ -68,7 +68,7 @@ generated_python_directories = [
     "ray/streaming/generated",
 ]
 
-optional_ray_files = []
+optional_ray_files = ["ray/nightly-wheels.yaml"]
 
 ray_autoscaler_files = [
     "ray/autoscaler/aws/example-full.yaml",
@@ -119,7 +119,7 @@ extras["rllib"] = extras["tune"] + [
     "dm_tree",
     "gym[atari]",
     "lz4",
-    "opencv-python-headless",
+    "opencv-python-headless<=4.3.0.36",
     "pyyaml",
     "scipy",
 ]
@@ -133,6 +133,7 @@ extras["all"] = list(set(chain.from_iterable(extras.values())))
 # the change in the matching section of requirements.txt
 install_requires = [
     "aiohttp",
+    "aiohttp_cors",
     "aioredis",
     "click >= 7.0",
     "colorama",
@@ -408,7 +409,7 @@ def api_main(program, *args):
             nonlocal result
             if excinfo[1].errno != errno.ENOENT:
                 msg = excinfo[1].strerror
-                logger.error("cannot remove {}: {}" % (path, msg))
+                logger.error("cannot remove {}: {}".format(path, msg))
                 result = 1
 
         for subdir in CLEANABLE_SUBDIRS:

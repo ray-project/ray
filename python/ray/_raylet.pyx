@@ -761,8 +761,9 @@ cdef class CoreWorker:
             c_object_id[0] = object_ref.native()
             with nogil:
                 check_status(CCoreWorkerProcess.GetCoreWorker().Create(
-                            metadata, data_size,
-                            c_object_id[0], data))
+                            metadata, data_size, c_object_id[0],
+                            CCoreWorkerProcess.GetCoreWorker().GetRpcAddress(),
+                            data))
 
         # If data is nullptr, that means the ObjectRef already existed,
         # which we ignore.

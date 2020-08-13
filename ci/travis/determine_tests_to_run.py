@@ -92,6 +92,8 @@ if __name__ == "__main__":
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif changed_file.startswith("python/ray/dashboard"):
                 RAY_CI_DASHBOARD_AFFECTED = 1
+            elif changed_file.startswith("dashboard"):
+                RAY_CI_DASHBOARD_AFFECTED = 1
             elif changed_file.startswith("python/"):
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_SGD_AFFECTED = 1
