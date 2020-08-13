@@ -1304,18 +1304,23 @@ Status CoreWorker::CreatePlacementGroup(
 }
 
 Status CoreWorker::RemovePlacementGroup(const PlacementGroupID &placement_group_id) {
-  RAY_LOG(ERROR) << "Remove a placement group of id, " << placement_group_id;
+  std::shared_ptr<std::promise<void>> promise = std::make_shared<std::promise<void>>();
+  std::shared_ptr<Status> removal_status = std::make_shared<Status>(Status::OK());
+  // Synchronously wait for placement group removal.
   RAY_UNUSED(gcs_client_->PlacementGroups().AsyncRemovePlacementGroup(
-      placement_group_id, [placement_group_id](Status status) {
-        if (status.ok()) {
-          RAY_LOG(ERROR) << "Finished removing placement group. placement group id = "
-                         << placement_group_id;
-        } else {
-          RAY_LOG(ERROR) << "Removing placement group failed with an error "
-                         << status.ToString();
-        }
+      placement_group_id, [promise, removal_status](Status status) {
+        *removal_status = status;
+        promise->set_value();
       }));
-  return Status::OK();
+  if (promise->get_future().wait_for(std::chrono::seconds(
+          RayConfig::instance().gcs_server_request_timeout_seconds())) !=
+      std::future_status::ready) {
+    std::ostringstream stream;
+    stream << "There was timeout in removing the placement group. It is probably "
+              "because GCS server is dead or there's a high load there.";
+    return Status::TimedOut(stream.str());
+  }
+  return *(removal_status.get());
 }
 
 void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &function,

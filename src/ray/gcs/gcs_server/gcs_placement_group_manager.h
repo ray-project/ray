@@ -30,9 +30,9 @@ namespace ray {
 namespace gcs {
 
 struct SchedulingProgress {
-  PlacementGroupID id;
-  bool is_creating;
-}
+  PlacementGroupID id = PlacementGroupID::Nil();
+  bool is_creating = false;
+};
 
 /// GcsPlacementGroup just wraps `PlacementGroupTableData` and provides some convenient
 /// interfaces to access the fields inside `PlacementGroupTableData`. This class is not
@@ -162,6 +162,18 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
  private:
   /// Try to create placement group after a short time.
   void RetryCreatingPlacementGroup();
+
+  /// Mark the manager that there's a placement group scheduling going on.
+  void MarkSchedulingStarted(const PlacementGroupID placement_group_id);
+
+  /// Mark the manager that there's no more placement group scheduling going on.
+  void MarkSchedulingDone();
+
+  /// Check if the placement group of a given id is scheduling.
+  bool IsSchedulingInProgress(const PlacementGroupID &placement_group_id);
+
+  /// Check if there's any placement group scheduling going on.
+  bool IsSchedulingInProgress();
 
   /// The io loop that is used to delay execution of tasks (e.g.,
   /// execute_after).

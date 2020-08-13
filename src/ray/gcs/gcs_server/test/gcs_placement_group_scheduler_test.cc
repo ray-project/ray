@@ -198,6 +198,10 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestSchedulePlacementGroupReturnResource)
   ASSERT_EQ(placement_group, failure_placement_groups_.front());
 }
 
+TEST_F(GcsPlacementGroupSchedulerTest, TestCancelScheduling) {}
+
+TEST_F(GcsPlacementGroupSchedulerTest, DestroyPlacementGroupResources) {}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {

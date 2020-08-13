@@ -175,7 +175,17 @@ def test_placement_group_hang(ray_start_cluster):
 
 def test_remove_placement_group():
     ray.init(num_cpus=4)
-    ray.experimental.remove_placement_group(PlacementGroupID.from_random())
+    # First try to remove a placement group that doesn't
+    # exist. This should throw an exception.
+    with pytest.raises(ValueError):
+        ray.experimental.remove_placement_group(PlacementGroupID.from_random())
+
+    # Creating a placement group as soon as it is
+    # created should work.
+    pid = ray.experimental.placement_group([{"CPU": 2}, {"CPU": 2}])
+    ray.experimental.remove_placement_group(pid)
+
+    # Now let's create a placement group.
     pid = ray.experimental.placement_group([{"CPU": 2}, {"CPU": 2}])
 
     @ray.remote(num_cpus=2)
@@ -183,12 +193,20 @@ def test_remove_placement_group():
         def f(self):
             return 3
 
-    # a = A.remote()
+    a = A.options(placement_group_id=pid).remote()
+    assert ray.get(a.f.remote()) == 3
     ray.experimental.remove_placement_group(pid)
-    # assert ray.get(a.f.remote()), timeout=5) == 3
 
-    import time
-    time.sleep(50)
+    # Since the placement group is destroyed,
+    # this actor should be infeasible, and the
+    # actor task should fail.
+    b = A.options(placement_group_id=pid).remote()
+    ray.get(b.f.remote(), timeout=0.5)
+
+    # Since the placement group is removed,
+    # the actor should've been killed.
+    # That means this request should fail.
+    ray.get(a.f.remote())
 
 
 if __name__ == "__main__":

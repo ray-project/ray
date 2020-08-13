@@ -137,6 +137,12 @@ void GcsPlacementGroupScheduler::Schedule(
   }
 }
 
+void GcsPlacementGroupScheduler::DestroyPlacementGroupResources(
+    const PlacementGroupID placement_group_id) {}
+
+void GcsPlacementGroupScheduler::CancelScheduling(
+    const PlacementGroupID placement_group_id) {}
+
 void GcsPlacementGroupScheduler::ReserveResourceFromNode(
     const std::shared_ptr<BundleSpecification> &bundle,
     const std::shared_ptr<ray::rpc::GcsNodeInfo> &node, const StatusCallback &callback) {

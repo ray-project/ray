@@ -1446,6 +1446,10 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
         if (status.ok()) {
           RAY_LOG(DEBUG) << "Finished registering placement group. placement group id = "
                          << placement_group_spec.PlacementGroupId();
+        } else {
+          RAY_LOG(WARNING) << "Placement group id = "
+                           << placement_group_spec.PlacementGroupId()
+                           << " failed to be registered. " << status;
         }
       });
   return Status::OK();

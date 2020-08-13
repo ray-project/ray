@@ -54,6 +54,13 @@ class GcsPlacementGroupSchedulerInterface {
       std::function<void(std::shared_ptr<GcsPlacementGroup>)>
           schedule_success_handler) = 0;
 
+  /// SANG-TODO Fill it up.
+  virtual void DestroyPlacementGroupResources(
+      const PlacementGroupID placement_group_id) = 0;
+
+  /// SANG-TODO Fill it up.
+  virtual void CancelScheduling(const PlacementGroupID placement_group_id) = 0;
+
   virtual ~GcsPlacementGroupSchedulerInterface() {}
 };
 
@@ -103,6 +110,12 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_failure_handler,
       std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_success_handler)
       override;
+
+  /// SANG-TODO Fill it up.
+  void DestroyPlacementGroupResources(const PlacementGroupID placement_group_id) override;
+
+  /// SANG-TODO Fill it up.
+  void CancelScheduling(const PlacementGroupID placement_group_id) override;
 
  protected:
   /// Lease resource from the specified node for the specified bundle.
