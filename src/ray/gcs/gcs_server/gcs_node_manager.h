@@ -27,6 +27,18 @@
 namespace ray {
 namespace gcs {
 
+/// Node resource information.
+class GcsNodeResource {
+ public:
+  explicit GcsNodeResource(std::unordered_map<std::string, double> resources_available)
+      : resources_available_(std::move(resources_available)) {}
+
+  bool IsSubset(const std::unordered_map<std::string, double> &request_resources) const;
+
+  /// Dynamic resource capacity.
+  std::unordered_map<std::string, double> resources_available_;
+};
+
 /// GcsNodeManager is responsible for managing and monitoring nodes as well as handing
 /// node and resource related rpc requests.
 /// This class is not thread-safe.
@@ -143,6 +155,14 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// Start node failure detector.
   void StartNodeFailureDetector();
 
+  // Update node realtime resources.
+  void UpdateNodeRealtimeResources(const ClientID &node_id,
+                                   const rpc::HeartbeatTableData &heartbeat);
+
+  /// Get cluster realtime resources.
+  const absl::flat_hash_map<ClientID, std::shared_ptr<GcsNodeResource>>
+      &GetClusterRealtimeResources() const;
+
  protected:
   class NodeFailureDetector {
    public:
@@ -239,6 +259,9 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
   /// Storage for GCS tables.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  /// Cluster realtime resources.
+  absl::flat_hash_map<ClientID, std::shared_ptr<GcsNodeResource>>
+      cluster_realtime_resources_;
 };
 
 }  // namespace gcs

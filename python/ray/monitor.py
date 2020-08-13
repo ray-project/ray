@@ -113,6 +113,7 @@ class Monitor:
                 logger.warning(
                     "Monitor: "
                     "could not find ip for client {}".format(client_id))
+                print("raylet_id->ip map:", self.raylet_id_to_ip_map)
 
     def xray_job_notification_handler(self, unused_channel, data):
         """Handle a notification that a job has been added or removed.

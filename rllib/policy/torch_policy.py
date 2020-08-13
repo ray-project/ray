@@ -98,7 +98,7 @@ class TorchPolicy(Policy):
         """
         self.framework = "torch"
         super().__init__(observation_space, action_space, config)
-        if torch.cuda.is_available() and ray.get_gpu_ids():
+        if torch.cuda.is_available() and ray.get_gpu_ids(as_str=True):
             self.device = torch.device("cuda")
         else:
             self.device = torch.device("cpu")
