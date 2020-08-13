@@ -42,14 +42,10 @@ ScheduleMap GcsPackStrategy::Schedule(
     std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
     const std::unique_ptr<ScheduleContext> &context) {
   // Aggregate required resources.
-  std::unordered_map<std::string, double> bundle_resources;
+  ResourceSet required_resources;
   for (const auto &bundle : bundles) {
-    const auto &resources = bundle->GetRequiredResources().GetResourceMap();
-    for (const auto &iter : resources) {
-      bundle_resources[iter.first] += iter.second;
-    }
+    required_resources.AddResources(bundle->GetRequiredResources());
   }
-  ResourceSet required_resources(bundle_resources);
 
   // Filter candidate nodes.
   const auto &alive_nodes = context->node_manager_.GetClusterRealtimeResources();
