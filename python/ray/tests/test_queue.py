@@ -2,21 +2,19 @@ import pytest
 import time
 
 import ray
-from ray.experimental.queue import Queue, Empty, Full
+from ray.experimental.async_queue import Queue, Empty, Full
 
+@ray.remote
+def get_async(queue, block, timeout, sleep):
+    time.sleep(sleep)
+    return queue.get(block, timeout)
 
-def test_queue(ray_start_regular):
-    @ray.remote
-    def get_async(queue, block, timeout, sleep):
-        time.sleep(sleep)
-        return queue.get(block, timeout)
+@ray.remote
+def put_async(queue, item, block, timeout, sleep):
+    time.sleep(sleep)
+    queue.put(item, block, timeout)
 
-    @ray.remote
-    def put_async(queue, item, block, timeout, sleep):
-        time.sleep(sleep)
-        queue.put(item, block, timeout)
-
-    # Test simple usage.
+def test_simple_usage(ray_start_regular):
 
     q = Queue()
 
@@ -28,7 +26,8 @@ def test_queue(ray_start_regular):
     for item in items:
         assert item == q.get()
 
-    # Test asynchronous usage.
+
+def test_asynchronous_usage(ray_start_regular):
 
     q = Queue()
 
@@ -42,7 +41,8 @@ def test_queue(ray_start_regular):
 
     assert items == result
 
-    # Test put.
+
+def test_put(ray_start_regular):
 
     q = Queue(1)
 
@@ -72,7 +72,8 @@ def test_queue(ray_start_regular):
 
     assert ray.get(get_id) == 1
 
-    # Test get.
+
+def test_get(ray_start_regular):
 
     q = Queue()
 
@@ -97,7 +98,8 @@ def test_queue(ray_start_regular):
     put_async.remote(q, item, True, None, 0.2)
     assert q.get() == item
 
-    # Test qsize.
+
+def test_qsize(ray_start_regular):
 
     q = Queue()
 
