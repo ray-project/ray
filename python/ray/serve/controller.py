@@ -21,7 +21,7 @@ import numpy as np
 
 # Used for testing purposes only. If this is set, the controller will crash
 # after writing each checkpoint with the specified probability.
-_CRASH_AFTER_CHECKPOINT_PROBABILITY = 0.0
+_CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
 CHECKPOINT_KEY = "serve-controller-checkpoint"
 
 # Feature flag for controller resource checking. If true, controller will
@@ -681,8 +681,11 @@ class ServeController:
             # TODO(edoakes): move this to client side.
             err_prefix = "Cannot create endpoint."
             if route in self.routes:
+
+                # Ensures this method is idempotent
                 if self.routes[route] == (endpoint, methods):
                     return
+
                 else:
                     raise ValueError(
                         "{} Route '{}' is already registered.".format(
@@ -694,8 +697,8 @@ class ServeController:
                         err_prefix, endpoint))
 
             logger.info(
-                "Registering route {} to endpoint {} with methods {}.".format(
-                    route, endpoint, methods))
+                "Registering route '{}' to endpoint '{}' with methods '{}'.".
+                format(route, endpoint, methods))
 
             self.routes[route] = (endpoint, methods)
 
@@ -747,6 +750,13 @@ class ServeController:
                              replica_config):
         """Register a new backend under the specified tag."""
         async with self.write_lock:
+            # Ensures this method is idempotent.
+            if backend_tag in self.backends:
+                backend_info = self.backends[backend_tag]
+                if (backend_info.backend_config == backend_config
+                        and backend_info.replica_config == replica_config):
+                    return
+
             backend_worker = create_backend_worker(
                 replica_config.func_or_class)
 
@@ -759,7 +769,11 @@ class ServeController:
                     backend_tag] = BasicAutoscalingPolicy(
                         backend_tag, backend_config.autoscaling_config)
 
-            self._scale_replicas(backend_tag, backend_config.num_replicas)
+            try:
+                self._scale_replicas(backend_tag, backend_config.num_replicas)
+            except RayServeException as e:
+                del self.backends[backend_tag]
+                raise e
 
             # NOTE(edoakes): we must write a checkpoint before starting new
             # or pushing the updated config to avoid inconsistent state if we

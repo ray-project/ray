@@ -126,6 +126,7 @@ void ObjectDirectory::HandleClientRemoved(const ClientID &client_id) {
 
 ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_id,
                                                       const ObjectID &object_id,
+                                                      const rpc::Address &owner_address,
                                                       const OnLocationsFound &callback) {
   ray::Status status = ray::Status::OK();
   auto it = listeners_.find(object_id);
@@ -200,6 +201,7 @@ ray::Status ObjectDirectory::UnsubscribeObjectLocations(const UniqueID &callback
 }
 
 ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
+                                             const rpc::Address &owner_address,
                                              const OnLocationsFound &callback) {
   ray::Status status;
   auto it = listeners_.find(object_id);
