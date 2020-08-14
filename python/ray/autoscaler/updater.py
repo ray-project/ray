@@ -145,8 +145,9 @@ class NodeUpdater:
 
             with LogTimer(self.log_prefix +
                           "Synced {} to {}".format(local_path, remote_path)):
-                self.cmd_runner.run("mkdir -p {}".format(
-                    os.path.dirname(remote_path)))
+                self.cmd_runner.run(
+                    "mkdir -p {}".format(os.path.dirname(remote_path)),
+                    run_env="host")
                 sync_cmd(local_path, remote_path)
 
                 if remote_path not in nolog_paths:
@@ -188,7 +189,7 @@ class NodeUpdater:
                                              "{}Waiting for remote shell...",
                                              self.log_prefix)
 
-                        self.cmd_runner.run("uptime")
+                        self.cmd_runner.run("uptime", run_env="host")
                         cli_logger.old_debug(logger, "Uptime succeeded.")
                         cli_logger.success("Success.")
                         return True
