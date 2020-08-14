@@ -16,6 +16,7 @@ from ray.autoscaler.subprocess_output_util import run_cmd_redirected,\
                                                   ProcessRunnerError
 
 from ray.autoscaler.cli_logger import cli_logger
+from typing import Dict
 import colorful as cf
 
 logger = logging.getLogger(__name__)
@@ -66,14 +67,14 @@ def set_using_login_shells(val):
     _config["use_login_shells"] = val
 
 
-def _with_environment_variables(cmd, environment_variables):
+def _with_environment_variables(cmd : str, environment_variables : Dict[str, str]):
     def dict_as_one_line_yaml(d):
         items = []
         for key, val in d.items():
             item_str = "{}:{}".format(quote(key), quote(val))
             items.append(item_str)
 
-        return "{%s}" % ",".join(items)
+        return "{{}}".format(",".join(items))
 
     as_strings = []
     for key, val in environment_variables.items():

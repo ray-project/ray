@@ -196,7 +196,6 @@ class StandardAutoscaler:
 
         # First let the resource demand scheduler launch nodes, if enabled.
         if self.resource_demand_scheduler and self.resource_demand_vector:
-            print("Using resource demand scheduler")
             # TODO(ekl) include head node in the node list
             instances = (
                 self.resource_demand_scheduler.get_instances_to_launch(
@@ -208,8 +207,6 @@ class StandardAutoscaler:
 
         # Launch additional nodes of the default type, if still needed.
         num_workers = len(nodes) + num_pending
-        print("num workers: ", num_workers)
-        print("target workers: ", target_workers)
         if num_workers < target_workers:
             max_allowed = min(self.max_launch_batch,
                               self.max_concurrent_launches - num_pending)
