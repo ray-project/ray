@@ -20,7 +20,7 @@ from ray.rllib.agents.pg.config_schema import pg_config_schema
 from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
 from ray.rllib.agents.pg.pg_torch_policy import PGTorchPolicy
 from ray.rllib.policy.policy import Policy
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.types import TrainerConfigDict
 
 # yapf: disable
 # __sphinx_doc_begin__
