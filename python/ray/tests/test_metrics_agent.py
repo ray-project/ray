@@ -14,7 +14,7 @@ from ray.dashboard.util import get_unused_port
 from ray.metrics_agent import (Gauge, MetricsAgent,
                                PrometheusServiceDiscoveryWriter)
 from ray.experimental.metrics import Count, Histogram
-from ray.test_utils import wait_for_condition, SignalActor
+from ray.test_utils import wait_for_condition
 
 
 def generate_metrics_point(name: str,
@@ -217,7 +217,6 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
         loaded_json_data["targets"]))
 
 
-@pytest.mark.skip("This test is flaky right now. Will be fixed in #10080")
 def test_metrics_export_end_to_end(ray_start_cluster):
     NUM_NODES = 2
     cluster = ray_start_cluster
@@ -231,36 +230,22 @@ def test_metrics_export_end_to_end(ray_start_cluster):
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
-    signal = SignalActor.remote()
-
     # Generate some metrics around actor & tasks.
     @ray.remote
     def f():
         counter = Count("test_counter", "desc", "unit", [])
-        ray.get(signal.send.remote())
-        while True:
-            counter.record(1, {})
-            time.sleep(0.1)
+        counter.record(1, {})
 
     @ray.remote
     class A:
-        async def ready(self):
-            pass
-
         async def ping(self):
             histogram = Histogram("test_histogram", "desc", "unit", [0, 1, 2],
                                   [])
-            while True:
-                histogram.record(1, {})
-                await asyncio.sleep(0.1)
+            histogram.record(1, {})
 
-    obj_refs = [f.remote() for _ in range(30)]
     a = A.remote()
-    obj_refs.append(a.ping.remote())
-
-    # Make sure both histogram and counter are created
-    ray.get(a.ready.remote())
-    ray.get(signal.wait.remote())
+    obj_refs = [f.remote(), a.ping.remote()]
+    ray.get(obj_refs)
 
     node_info_list = ray.nodes()
     prom_addresses = []
@@ -278,18 +263,21 @@ def test_metrics_export_end_to_end(ray_start_cluster):
                 components_dict[address] = set()
             try:
                 response = requests.get(
-                    "http://localhost:{}".format(metrics_export_port))
+                    "http://localhost:{}/metrics".format(metrics_export_port))
             except requests.exceptions.ConnectionError:
                 return components_dict, metric_names
 
             for line in response.text.split("\n"):
                 for family in text_string_to_metric_families(line):
                     for sample in family.samples:
-                        # print(sample)
                         metric_names.add(sample.name)
                         if "Component" in sample.labels:
                             components_dict[address].add(
                                 sample.labels["Component"])
+                            if not (sample.labels["Component"] in {
+                                    "raylet", "gcs_server"
+                            }):
+                                print(sample)
         return components_dict, metric_names
 
     def test_prometheus_endpoint():

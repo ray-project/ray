@@ -69,11 +69,6 @@ class MetricExporter final : public opencensus::stats::StatsExporter::Handler {
                         static_cast<double>(row.second), tags, measure_descriptor};
       RAY_LOG(DEBUG) << "Metric name " << metric_name << ", value " << point.value;
       points.push_back(std::move(point));
-      if (points.size() >= report_batch_size_) {
-        RAY_LOG(DEBUG) << "Point size : " << points.size();
-        metric_exporter_client_->ReportMetrics(points);
-        points.clear();
-      }
     }
   }
 

@@ -26,12 +26,10 @@ namespace stats {
 /// Interface class for abstract metrics exporter client.
 class MetricExporterClient {
  public:
-  virtual void ReportMetrics(const std::vector<MetricPoint> &points) = 0;
   virtual void ReportMetrics(
+      const std::vector<MetricPoint> &points,
       const std::vector<std::pair<opencensus::stats::ViewDescriptor,
-                                  opencensus::stats::ViewData>> &data){
-      // Unimplemented
-  };
+                                  opencensus::stats::ViewData>> &opencensus_data) = 0;
 
   virtual ~MetricExporterClient() = default;
 };
@@ -41,7 +39,10 @@ class MetricExporterClient {
 /// use stdout as the default concrete class.
 class StdoutExporterClient : public MetricExporterClient {
  public:
-  void ReportMetrics(const std::vector<MetricPoint> &points) override;
+  void ReportMetrics(const std::vector<MetricPoint> &points,
+                     const std::vector<std::pair<opencensus::stats::ViewDescriptor,
+                                                 opencensus::stats::ViewData>>
+                         &opencensus_data) override;
 };
 
 /// The decoration mode is that the user can apply it by configuring different
@@ -56,7 +57,10 @@ class StdoutExporterClient : public MetricExporterClient {
 class MetricExporterDecorator : public MetricExporterClient {
  public:
   MetricExporterDecorator(std::shared_ptr<MetricExporterClient> exporter);
-  virtual void ReportMetrics(const std::vector<MetricPoint> &points);
+  virtual void ReportMetrics(
+      const std::vector<MetricPoint> &points,
+      const std::vector<std::pair<opencensus::stats::ViewDescriptor,
+                                  opencensus::stats::ViewData>> &opencensus_data);
 
  private:
   std::shared_ptr<MetricExporterClient> exporter_;
@@ -69,19 +73,16 @@ class MetricsAgentExporter : public MetricExporterDecorator {
 
   ~MetricsAgentExporter() {}
 
-  void ReportMetrics(const std::vector<MetricPoint> &points) override;
-
-  void ReportMetrics(
-      const std::vector<std::pair<opencensus::stats::ViewDescriptor,
-                                  opencensus::stats::ViewData>> &data) override;
+  void ReportMetrics(const std::vector<MetricPoint> &points,
+                     const std::vector<std::pair<opencensus::stats::ViewDescriptor,
+                                                 opencensus::stats::ViewData>>
+                         &opencensus_data) override;
 
  private:
   /// Client to call a metrics agent gRPC server.
   std::unique_ptr<rpc::MetricsAgentClient> client_;
   /// Call Manager for gRPC client.
   rpc::ClientCallManager client_call_manager_;
-  /// Whether or not description and units information for metrics should be updated.
-  bool should_update_description_ = true;
 };
 
 }  // namespace stats

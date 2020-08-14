@@ -23,7 +23,10 @@ namespace stats {
 ///
 /// Stdout Exporter
 ///
-void StdoutExporterClient::ReportMetrics(const std::vector<MetricPoint> &points) {
+void StdoutExporterClient::ReportMetrics(
+    const std::vector<MetricPoint> &points,
+    const std::vector<std::pair<opencensus::stats::ViewDescriptor,
+                                opencensus::stats::ViewData>> &opencensus_data) {
   RAY_LOG(DEBUG) << "Metric point size : " << points.size();
 }
 
@@ -34,9 +37,12 @@ MetricExporterDecorator::MetricExporterDecorator(
     std::shared_ptr<MetricExporterClient> exporter)
     : exporter_(exporter) {}
 
-void MetricExporterDecorator::ReportMetrics(const std::vector<MetricPoint> &points) {
+void MetricExporterDecorator::ReportMetrics(
+    const std::vector<MetricPoint> &points,
+    const std::vector<std::pair<opencensus::stats::ViewDescriptor,
+                                opencensus::stats::ViewData>> &opencensus_data) {
   if (exporter_) {
-    exporter_->ReportMetrics(points);
+    exporter_->ReportMetrics(points, opencensus_data);
   }
 }
 
@@ -51,44 +57,14 @@ MetricsAgentExporter::MetricsAgentExporter(std::shared_ptr<MetricExporterClient>
   client_.reset(new rpc::MetricsAgentClient(address, port, client_call_manager_));
 }
 
-void MetricsAgentExporter::ReportMetrics(const std::vector<MetricPoint> &points) {
-  MetricExporterDecorator::ReportMetrics(points);
-  rpc::ReportMetricsRequest request;
-  for (auto point : points) {
-    auto metric_point = request.add_metrics_points();
-    metric_point->set_metric_name(point.metric_name);
-    metric_point->set_timestamp(point.timestamp);
-    metric_point->set_value(point.value);
-    auto mutable_tags = metric_point->mutable_tags();
-    for (auto &tag : point.tags) {
-      (*mutable_tags)[tag.first] = tag.second;
-    }
-    // If description and units information is requested from
-    // the metrics agent, append the information.
-    // TODO(sang): It can be inefficient if there are lots of new registered metrics.
-    // We should make it more efficient if there's compelling use cases.
-    if (should_update_description_) {
-      metric_point->set_description(point.measure_descriptor.description());
-      metric_point->set_units(point.measure_descriptor.units());
-    }
-  }
-  should_update_description_ = false;
-
-  // TODO(sang): Should retry metrics report if it fails.
-  client_->ReportMetrics(
-      request, [this](const Status &status, const rpc::ReportMetricsReply &reply) {
-        if (!status.ok()) {
-          RAY_LOG(WARNING) << "ReportMetrics failed with status " << status;
-        }
-        should_update_description_ = reply.metrcs_description_required();
-      });
-}
-
 void MetricsAgentExporter::ReportMetrics(
+    const std::vector<MetricPoint> &points,
     const std::vector<std::pair<opencensus::stats::ViewDescriptor,
-                                opencensus::stats::ViewData>> &data) {
+                                opencensus::stats::ViewData>> &opencensus_data) {
+  MetricExporterDecorator::ReportMetrics(points, opencensus_data);
+
   rpc::ReportOCMetricsRequest request_proto;
-  for (auto datum : data) {
+  for (auto datum : opencensus_data) {
     auto view_descriptor = datum.first;
     auto view_data = datum.second;
     auto measure_descriptor = view_descriptor.measure_descriptor();

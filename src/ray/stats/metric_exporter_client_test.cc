@@ -43,7 +43,10 @@ class MockExporterClient1 : public MetricExporterDecorator {
         lastest_hist_mean(0.0),
         lastest_hist_max(0.0) {}
 
-  void ReportMetrics(const std::vector<MetricPoint> &points) override {
+  void ReportMetrics(const std::vector<MetricPoint> &points,
+                     const std::vector<std::pair<opencensus::stats::ViewDescriptor,
+                                                 opencensus::stats::ViewData>>
+                         &opencensus_data) override {
     if (points.empty()) {
       return;
     }
@@ -89,7 +92,10 @@ class MockExporterClient2 : public MetricExporterDecorator {
  public:
   MockExporterClient2(std::shared_ptr<MetricExporterClient> exporter)
       : MetricExporterDecorator(exporter), client2_count(0), client2_value(0) {}
-  void ReportMetrics(const std::vector<MetricPoint> &points) override {
+  void ReportMetrics(const std::vector<MetricPoint> &points,
+                     const std::vector<std::pair<opencensus::stats::ViewDescriptor,
+                                                 opencensus::stats::ViewData>>
+                         &opencensus_data) override {
     if (points.empty()) {
       return;
     }

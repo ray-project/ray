@@ -58,24 +58,6 @@ class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
         return reporter_pb2.GetProfilingStatsReply(
             profiling_stats=profiling_stats, std_out=stdout, std_err=stderr)
 
-    def ReportMetrics(self, request, context):
-        # NOTE: Exceptions are not propagated properly
-        # when we don't catch them here.
-        try:
-            metrcs_description_required = (
-                self.metrics_agent.record_metrics_points(
-                    request.metrics_points))
-        except Exception as e:
-            logger.error(e)
-            logger.error(traceback.format_exc())
-
-        # If metrics description is missing, we should notify cpp processes
-        # that we need them. Cpp processes will then report them to here.
-        # We need it when (1) a new metric is reported (application metric)
-        # (2) a reporter goes down and restarted (currently not implemented).
-        return reporter_pb2.ReportMetricsReply(
-            metrcs_description_required=metrcs_description_required)
-
     def ReportOCMetrics(self, request, context):
         try:
             self.metrics_agent.record_metric_points_from_protobuf(

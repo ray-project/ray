@@ -109,18 +109,7 @@ class MetricsAgent:
         """
         return self._registry
 
-    def record_metrics_points(self, metrics_points: List[MetricPoint]):
-        return False
-        with self._lock:
-            measurement_map = self.stats_recorder.new_measurement_map()
-            for metric_point in metrics_points:
-                self._register_if_needed(metric_point)
-                self._record(metric_point, measurement_map)
-            return self._missing_information
-
     def record_metric_points_from_protobuf(self, metrics: List[Metric]):
-        # return False
-
         view_data_changed = []
         for metric in metrics:
             descriptor = metric.metric_descriptor
@@ -178,80 +167,6 @@ class MetricsAgent:
                     #     f"updated view_data's agg map {view_data.tag_value_aggregation_data_map}"
                     # )
         self.view_manager.measure_to_view_map.export(view_data_changed)
-
-    def _record(self, metric_point: MetricPoint,
-                measurement_map: MeasurementMap):
-        """Record a single metric point to export.
-
-        NOTE: When this method is called, the caller should acquire a lock.
-
-        Args:
-            metric_point(MetricPoint) metric point defined in common.proto
-            measurement_map(MeasurementMap): Measurement map to record metrics.
-        """
-        metric_name = metric_point.metric_name
-        tags = metric_point.tags
-
-        metric = self._registry.get(metric_name)
-        # Metrics should be always registered dynamically.
-        assert metric
-
-        tag_map = tag_map_module.TagMap()
-        for key, value in tags.items():
-            tag_key = tag_key_module.TagKey(key)
-            tag_value = tag_value_module.TagValue(value)
-            tag_map.insert(tag_key, tag_value)
-
-        metric_value = metric_point.value
-        measurement_map.measure_float_put(metric.measure, metric_value)
-        # NOTE: When we record this metric, timestamp will be renewed.
-        measurement_map.record(tag_map)
-
-    def _register_if_needed(self, metric_point: MetricPoint):
-        """Register metrics if they are not registered.
-
-        NOTE: When this method is called, the caller should acquire a lock.
-
-        Unseen metrics:
-            Register it with Gauge type metrics. Note that all metrics in
-            the agent will be gauge because sampling is already done
-            within cpp processes.
-        Metrics that are missing description & units:
-            In this case, we will notify cpp proceses that we need this
-            information. Cpp processes will then report description and units
-            of all metrics they have.
-
-        Args:
-            metric_point metric point defined in common.proto
-        Return:
-            True if given metrics are missing description and units.
-            False otherwise.
-        """
-        metric_name = metric_point.metric_name
-        metric_description = metric_point.description
-        metric_units = metric_point.units
-        if self._registry[metric_name] is None:
-            tags = metric_point.tags
-            metric_tags = []
-            for tag_key in tags:
-                metric_tags.append(tag_key_module.TagKey(tag_key))
-
-            metric = Gauge(metric_name, metric_description, metric_units,
-                           metric_tags)
-            self._registry[metric_name] = metric
-            self.view_manager.register_view(metric.view)
-
-            # If there are missing description & unit information,
-            # we should notify cpp processes that we need them.
-            if not metric_description or not metric_units:
-                self._missing_information = True
-
-        if metric_description and metric_units:
-            self._registry[metric_name].view._description = metric_description
-            self._registry[
-                metric_name].view.measure._description = metric_description
-            self._registry[metric_name].view.measure._unit = metric_units
-            self._missing_information = False
 
 
 class PrometheusServiceDiscoveryWriter(threading.Thread):
