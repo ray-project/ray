@@ -1,5 +1,5 @@
 from ray.rllib.utils.annotations import PublicAPI
-from ray.rllib.utils.types import EnvConfigDict
+from ray.rllib.rllib.utils.typing import EnvConfigDict
 
 
 @PublicAPI
