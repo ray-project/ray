@@ -445,12 +445,14 @@ You have to specify your Kubernetes namespace explicitly:
 
     from ray.tune.integration.kubernetes import NamespacedKubernetesSyncer
     tune.run(train,
-             sync_to_driver=NamespacedKubernetesSyncer("ray"))
+             sync_to_driver=NamespacedKubernetesSyncer("ray", use_rsync=True))
 
 
-The ``KubernetesSyncer`` uses a special version of ``rsync`` that runs using
-``kubectl exec``. Your pod needs to have ``rsync`` installed for this to work.
-
+The ``KubernetesSyncer`` supports two modes for file synchronisation. Per
+default, files are synchronized with ``kubectl cp``, requiring the ``tar``
+binary in your pods. If you would like to use ``rsync`` instead your pods
+will have to have ``rsync`` installed. Use the ``use_rsync`` parameter to
+decide between the two options.
 
 .. _tune-log_to_file:
 
