@@ -37,6 +37,7 @@ def _create_mock_syncer(namespace, lookup, process_runner, local_ip, local_dir,
                         remote_dir):
     class _MockSyncer(KubernetesSyncer):
         _namespace = namespace
+        _use_rsync = True
         _get_kubernetes_node_by_ip = lookup
 
         def __init__(self, local_dir, remote_dir, sync_client):
@@ -53,7 +54,8 @@ def _create_mock_syncer(namespace, lookup, process_runner, local_ip, local_dir,
         local_dir,
         remote_dir,
         sync_client=KubernetesSyncClient(
-            namespace=namespace, process_runner=process_runner))
+            namespace=namespace, use_rsync=True,
+            process_runner=process_runner))
 
 
 class KubernetesIntegrationTest(unittest.TestCase):
