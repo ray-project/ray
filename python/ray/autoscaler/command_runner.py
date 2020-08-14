@@ -67,7 +67,8 @@ def set_using_login_shells(val):
     _config["use_login_shells"] = val
 
 
-def _with_environment_variables(cmd : str, environment_variables : Dict[str, str]):
+def _with_environment_variables(cmd: str,
+                                environment_variables: Dict[str, str]):
     def dict_as_one_line_yaml(d):
         items = []
         for key, val in d.items():
