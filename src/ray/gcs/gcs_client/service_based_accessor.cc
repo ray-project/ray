@@ -1459,7 +1459,6 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncRemovePlacementGroup(
     const ray::PlacementGroupID &placement_group_id, const StatusCallback &callback) {
   rpc::RemovePlacementGroupRequest request;
   request.set_placement_group_id(placement_group_id.Binary());
-  RAY_LOG(ERROR) << "sangin service request going on";
   client_impl_->GetGcsRpcClient().RemovePlacementGroup(
       request, [callback](const Status &, const rpc::RemovePlacementGroupReply &reply) {
         auto status =

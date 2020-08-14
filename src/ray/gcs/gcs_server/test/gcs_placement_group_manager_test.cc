@@ -34,11 +34,9 @@ class MockPlacementGroupScheduler : public gcs::GcsPlacementGroupSchedulerInterf
     placement_groups.push_back(placement_group);
   }
 
-  /// SANG-TODO Fill it up.
-  void DestroyPlacementGroupResources(const PlacementGroupID placement_group_id) {}
+  void DestroyPlacementGroupBundleResources(const PlacementGroupID &placement_group_id) {}
 
-  /// SANG-TODO Fill it up.
-  void CancelScheduling(const PlacementGroupID placement_group_id) {}
+  void MarkScheduleCancelled(const PlacementGroupID &placement_group_id) {}
 
   std::vector<std::shared_ptr<gcs::GcsPlacementGroup>> placement_groups;
 };

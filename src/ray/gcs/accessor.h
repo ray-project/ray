@@ -729,16 +729,18 @@ class PlacementGroupInfoAccessor {
  public:
   virtual ~PlacementGroupInfoAccessor() = default;
 
-  // TODO(AlisaWu): fill the accessor.
-  /// Create an placement group to GCS asynchronously.
+  /// Create a placement group to GCS asynchronously.
   ///
   /// \param placement_group_spec The specification for the placement group creation task.
-  /// \param callback Callback that will be called after the placement group info is
-  /// written to GCS. \return Status
   virtual Status AsyncCreatePlacementGroup(
       const PlacementGroupSpecification &placement_group_spec) = 0;
 
-  /// SANG-TODO Fill the def.
+  /// Remove a placement group to GCS synchronously.
+  ///
+  /// \param placement_group_id The id for the placement group to remove.
+  /// \param callback Callback that will be called after the placement group is
+  /// removed from GCS.
+  /// \return Status
   virtual Status AsyncRemovePlacementGroup(const PlacementGroupID &placement_group_id,
                                            const StatusCallback &callback) = 0;
 

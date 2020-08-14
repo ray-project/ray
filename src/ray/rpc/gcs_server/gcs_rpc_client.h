@@ -251,7 +251,7 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, CreatePlacementGroup,
                              placement_group_info_grpc_client_, )
 
-  /// SANG-TODO Fill it up.
+  /// Remove placement group via GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, RemovePlacementGroup,
                              placement_group_info_grpc_client_, )
 

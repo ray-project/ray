@@ -116,7 +116,7 @@ void GcsPlacementGroupScheduler::Schedule(
 
   // If schedule success, the decision will be set as schedule_map[bundles[pos]]
   // else will be set ClientID::Nil().
-  auto bundle_locations = std::make_shared<BundleLocation>();
+  auto bundle_locations = std::make_shared<BundleLocations>();
   // To count how many scheduler have been return, which include success and failure.
   auto finished_count = std::make_shared<size_t>();
   RAY_CHECK(
@@ -149,19 +149,19 @@ void GcsPlacementGroupScheduler::Schedule(
           }
 
           if (++(*finished_count) == bundles.size()) {
-            OnPlacementGroupResourceReserveDone(placement_group, bundles,
-                                                bundle_locations, failure_callback,
-                                                success_callback);
+            OnAllBundleSchedulingRequestReturned(placement_group, bundles,
+                                                 bundle_locations, failure_callback,
+                                                 success_callback);
           }
         });
   }
 }
 
-void GcsPlacementGroupScheduler::DestroyPlacementGroupResources(
-    const PlacementGroupID placement_group_id) {
+void GcsPlacementGroupScheduler::DestroyPlacementGroupBundleResources(
+    const PlacementGroupID &placement_group_id) {
   auto it = placement_group_to_bundle_location_.find(placement_group_id);
   RAY_CHECK(it != placement_group_to_bundle_location_.end());
-  std::shared_ptr<BundleLocation> bundle_location = it->second;
+  std::shared_ptr<BundleLocations> bundle_location = it->second;
   for (const auto &iter : *bundle_location) {
     auto &bundle_spec = iter.second.second;
     auto &node_id = iter.second.first;
@@ -170,8 +170,8 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupResources(
   placement_group_to_bundle_location_.erase(it);
 }
 
-void GcsPlacementGroupScheduler::CancelScheduling(
-    const PlacementGroupID placement_group_id) {
+void GcsPlacementGroupScheduler::MarkScheduleCancelled(
+    const PlacementGroupID &placement_group_id) {
   auto it = placement_group_leasing_in_progress_.find(placement_group_id);
   RAY_CHECK(it != placement_group_leasing_in_progress_.end());
   placement_group_leasing_in_progress_.erase(it);
@@ -209,6 +209,10 @@ void GcsPlacementGroupScheduler::CancelResourceReserve(
     const std::shared_ptr<BundleSpecification> &bundle_spec,
     const std::shared_ptr<ray::rpc::GcsNodeInfo> &node) {
   if (node == nullptr) {
+    RAY_LOG(WARNING) << "Node id " << node->node_id() << " for a placement group id "
+                     << bundle_spec->PlacementGroupId() << " and a bundle index, "
+                     << bundle_spec->Index()
+                     << " has already removed. Cancellation request will be ignored.";
     return;
   }
   auto node_id = ClientID::FromBinary(node->node_id());
@@ -238,25 +242,25 @@ GcsPlacementGroupScheduler::GetOrConnectLeaseClient(const rpc::Address &raylet_a
   return iter->second;
 }
 
-void GcsPlacementGroupScheduler::OnPlacementGroupResourceReserveDone(
+void GcsPlacementGroupScheduler::OnAllBundleSchedulingRequestReturned(
     const std::shared_ptr<GcsPlacementGroup> &placement_group,
     const std::vector<std::shared_ptr<BundleSpecification>> &bundles,
-    const std::shared_ptr<BundleLocation> &bundle_locations,
+    const std::shared_ptr<BundleLocations> &bundle_locations,
     const std::function<void(std::shared_ptr<GcsPlacementGroup>)>
         &schedule_failure_handler,
     const std::function<void(std::shared_ptr<GcsPlacementGroup>)>
         &schedule_success_handler) {
   const auto &placement_group_id = placement_group->GetPlacementGroupID();
+  RAY_CHECK(
+      placement_group_to_bundle_location_.emplace(placement_group_id, bundle_locations)
+          .second);
+
   if (placement_group_leasing_in_progress_.find(placement_group_id) ==
           placement_group_leasing_in_progress_.end() ||
       bundle_locations->size() != bundles.size()) {
     // If the lease request has been already cancelled
-    // or not every lease request succeeds,
-    for (auto &iter : *bundle_locations) {
-      auto &bundle_spec = iter.second.second;
-      auto &node_id = iter.second.first;
-      CancelResourceReserve(bundle_spec, gcs_node_manager_.GetNode(node_id));
-    }
+    // or not every lease request succeeds.
+    DestroyPlacementGroupBundleResources(placement_group_id);
     schedule_failure_handler(placement_group);
   } else {
     // If we successfully created placement group, store them to GCS.
@@ -277,9 +281,6 @@ void GcsPlacementGroupScheduler::OnPlacementGroupResourceReserveDone(
       const auto &location = iter.second;
       node_to_leased_bundles_[location.first].push_back(location.second);
     }
-    RAY_CHECK(
-        placement_group_to_bundle_location_.emplace(placement_group_id, bundle_locations)
-            .second);
   }
   // Erase leasing in progress placement group.
   // This could've been removed if the leasing request is cancelled already.

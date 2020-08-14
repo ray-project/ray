@@ -38,7 +38,7 @@ struct pair_hash {
   }
 };
 using ScheduleMap = std::unordered_map<BundleID, ClientID, pair_hash>;
-using BundleLocation = std::unordered_map<
+using BundleLocations = std::unordered_map<
     BundleID, std::pair<ClientID, std::shared_ptr<BundleSpecification>>, pair_hash>;
 class GcsPlacementGroup;
 
@@ -53,12 +53,12 @@ class GcsPlacementGroupSchedulerInterface {
       std::function<void(std::shared_ptr<GcsPlacementGroup>)>
           schedule_success_handler) = 0;
 
-  /// SANG-TODO Fill it up.
-  virtual void DestroyPlacementGroupResources(
-      const PlacementGroupID placement_group_id) = 0;
+  /// Destroy bundle resources from all nodes in the placement group.
+  virtual void DestroyPlacementGroupBundleResources(
+      const PlacementGroupID &placement_group_id) = 0;
 
-  /// SANG-TODO Fill it up.
-  virtual void CancelScheduling(const PlacementGroupID placement_group_id) = 0;
+  /// Mark the placement group schedule as cancelled. Cancelled bundles will be destroyed.
+  virtual void MarkScheduleCancelled(const PlacementGroupID &placement_group_id) = 0;
 
   virtual ~GcsPlacementGroupSchedulerInterface() {}
 };
@@ -125,11 +125,18 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       std::function<void(std::shared_ptr<GcsPlacementGroup>)> failure_handler,
       std::function<void(std::shared_ptr<GcsPlacementGroup>)> success_handler) override;
 
-  /// SANG-TODO Fill it up.
-  void DestroyPlacementGroupResources(const PlacementGroupID placement_group_id) override;
+  /// Destroy bundle resources from all nodes in the placement group.
+  ///
+  /// \param placement_group_id The id of a placement group to destroy all bundle
+  /// resources.
+  void DestroyPlacementGroupBundleResources(
+      const PlacementGroupID &placement_group_id) override;
 
-  /// SANG-TODO Fill it up.
-  void CancelScheduling(const PlacementGroupID placement_group_id) override;
+  /// Mark the placement group schedule as cancelled.
+  /// Cancelled bundles will be destroyed.
+  /// \param placement_group_id The id of a placement group to mark that scheduling is
+  /// cancelled.
+  void MarkScheduleCancelled(const PlacementGroupID &placement_group_id) override;
 
  protected:
   /// Lease resource from the specified node for the specified bundle.
@@ -148,11 +155,10 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   std::shared_ptr<ResourceReserveInterface> GetOrConnectLeaseClient(
       const rpc::Address &raylet_address);
 
-  /// SANG-TODO Fill it up.
-  void OnPlacementGroupResourceReserveDone(
+  void OnAllBundleSchedulingRequestReturned(
       const std::shared_ptr<GcsPlacementGroup> &placement_group,
       const std::vector<std::shared_ptr<BundleSpecification>> &bundles,
-      const std::shared_ptr<BundleLocation> &bundle_locations,
+      const std::shared_ptr<BundleLocations> &bundle_locations,
       const std::function<void(std::shared_ptr<GcsPlacementGroup>)>
           &schedule_failure_handler,
       const std::function<void(std::shared_ptr<GcsPlacementGroup>)>
@@ -191,7 +197,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   absl::flat_hash_set<PlacementGroupID> placement_group_leasing_in_progress_;
   /// A map from placement group id to bundle locations.
   /// It is used to destroy bundles for the placement group.
-  absl::flat_hash_map<PlacementGroupID, std::shared_ptr<BundleLocation>>
+  absl::flat_hash_map<PlacementGroupID, std::shared_ptr<BundleLocations>>
       placement_group_to_bundle_location_;
 };
 

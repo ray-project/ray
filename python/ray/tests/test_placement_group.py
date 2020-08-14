@@ -188,10 +188,13 @@ def test_remove_placement_group(ray_start_cluster):
     # created should work.
     pid = ray.experimental.placement_group([{"CPU": 2}, {"CPU": 2}])
     ray.experimental.remove_placement_group(pid)
+    # TODO(sang): Add state check here.
 
     # Now let's create a placement group.
     pid = ray.experimental.placement_group([{"CPU": 2}, {"CPU": 2}])
 
+    # This is a hack to wait for placement group creation.
+    # TODO(sang): Remove it when wait is implemented.
     @ray.remote(num_cpus=0)
     class A:
         def f(self):
@@ -201,9 +204,13 @@ def test_remove_placement_group(ray_start_cluster):
     assert ray.get(a.f.remote()) == 3
     ray.experimental.remove_placement_group(pid)
     # Subsequent remove request should fail.
+    # Q: Should remove be idempotent? Now, if we remove a
+    # group that is already removed, it raises ValueError.
     with pytest.raises(ValueError):
         ray.experimental.remove_placement_group(pid)
 
+    # Make sure placement group resources are
+    # released and we can schedule this task.
     @ray.remote(num_cpus=4)
     def f():
         return 3

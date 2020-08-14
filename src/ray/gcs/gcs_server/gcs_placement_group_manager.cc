@@ -149,6 +149,9 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
     return;
   }
   const auto placement_group = pending_placement_groups_.front();
+  // Pending placement group should have been always registered.
+  RAY_CHECK(registered_placement_groups_.find(placement_group->GetPlacementGroupID()) !=
+            registered_placement_groups_.end());
   MarkSchedulingStarted(placement_group->GetPlacementGroupID());
   gcs_placement_group_scheduler_->Schedule(
       placement_group,
@@ -194,8 +197,8 @@ void GcsPlacementGroupManager::HandleCreatePlacementGroup(
                 RAY_LOG(INFO) << "Finished registering placement group, "
                               << placement_group->DebugString();
               } else {
-                RAY_LOG(INFO) << "Failed to register placement group, "
-                              << placement_group->DebugString();
+                RAY_LOG(WARNING) << "Failed to register placement group, "
+                                 << placement_group->DebugString();
               }
               GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
             });
@@ -214,8 +217,8 @@ void GcsPlacementGroupManager::HandleRemovePlacementGroup(
       RAY_LOG(INFO) << "Placement group of an id, " << placement_group_id
                     << " is removed successfully.";
     } else {
-      RAY_LOG(INFO) << "Removing a placement group of an id, " << placement_group_id
-                    << " failed.";
+      RAY_LOG(WARNING) << "Removing a placement group of an id, " << placement_group_id
+                       << " failed.";
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   });
@@ -241,11 +244,12 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
   auto created_placement_group_it = created_placement_group_.find(placement_group_id);
   if (created_placement_group_it != created_placement_group_.end()) {
     // If the placement group is already created.
-    gcs_placement_group_scheduler_->DestroyPlacementGroupResources(placement_group_id);
+    gcs_placement_group_scheduler_->DestroyPlacementGroupBundleResources(
+        placement_group_id);
     created_placement_group_.erase(created_placement_group_it);
   } else if (IsSchedulingInProgress(placement_group_id)) {
     // If the placement group is scheduling.
-    gcs_placement_group_scheduler_->CancelScheduling(placement_group_id);
+    gcs_placement_group_scheduler_->MarkScheduleCancelled(placement_group_id);
   } else {
     // If placement group is pending
     auto pending_it = std::find_if(
@@ -257,13 +261,10 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
     if (pending_it != pending_placement_groups_.end()) {
       // The placement group was pending scheduling, remove it from the queue.
       pending_placement_groups_.erase(pending_it);
-    } else {
-      // This can happen only when placement group is removed as soon as it is created.
-      // TODO(sang): Make the initial registration synchronous, so that we don't need to
-      // care about this edge case.
-      RAY_CHECK(registered_placement_groups_.find(placement_group_id) !=
-                registered_placement_groups_.end());
     }
+    // This can happen only when placement group is removed as soon as it is created.
+    // TODO(sang): Make the initial registration synchronous, so that we don't need to
+    // care about this edge case.
   }
 
   auto placement_grouop_it = registered_placement_groups_.find(placement_group_id);

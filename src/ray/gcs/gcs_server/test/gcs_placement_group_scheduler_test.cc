@@ -318,9 +318,9 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictPackStrategyResourceCheck) {
   WaitPendingDone(success_placement_groups_, 2);
 }
 
-TEST_F(GcsPlacementGroupSchedulerTest, TestCancelScheduling) {}
+TEST_F(GcsPlacementGroupSchedulerTest, TestMarkScheduleCancelled) {}
 
-TEST_F(GcsPlacementGroupSchedulerTest, DestroyPlacementGroupResources) {}
+TEST_F(GcsPlacementGroupSchedulerTest, DestroyPlacementGroupBundleResources) {}
 
 }  // namespace ray
 
