@@ -145,7 +145,8 @@ class RayParams:
                  enable_object_reconstruction=False,
                  metrics_agent_port=None,
                  metrics_export_port=None,
-                 lru_evict=False):
+                 lru_evict=False,
+                 object_spilling_config=None):
         self.object_ref_seed = object_ref_seed
         self.redis_address = redis_address
         self.num_cpus = num_cpus
@@ -190,6 +191,7 @@ class RayParams:
         self._internal_config = _internal_config
         self._lru_evict = lru_evict
         self._enable_object_reconstruction = enable_object_reconstruction
+        self.object_spilling_config = object_spilling_config
         self._check_usage()
 
         # Set the internal config options for LRU eviction.

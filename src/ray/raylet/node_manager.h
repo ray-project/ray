@@ -614,6 +614,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Trigger local GC on each worker of this raylet.
   void DoLocalGC();
 
+  /// Spill objects to external storage.
+  /// \param objects_ids_to_spill The objects to be spilled.
+  void SpillObjects(const std::vector<ObjectID> &objects_ids_to_spill,
+                    std::function<void(const ray::Status &)> callback = nullptr);
+
+  /// Restore spilled objects from external storage.
+  /// \param object_ids Objects to be restored.
+  void RestoreSpilledObjects(const std::vector<ObjectID> &object_ids,
+                             std::function<void(const ray::Status &)> callback = nullptr);
+
   /// Push an error to the driver if this node is full of actors and so we are
   /// unable to schedule new tasks or actors at all.
   void WarnResourceDeadlock();
@@ -699,7 +709,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// A mapping from actor ID to registration information about that actor
   /// (including which node manager owns it).
   std::unordered_map<ActorID, ActorRegistration> actor_registry_;
-
+  /// A mapping from ObjectIDs to external object URLs for spilled objects.
+  /// TODO(suquark): Move it into object directory.
+  absl::flat_hash_map<ObjectID, std::string> spilled_objects_;
   /// This map stores actor ID to the ID of the checkpoint that will be used to
   /// restore the actor.
   std::unordered_map<ActorID, ActorCheckpointID> checkpoint_id_to_restore_;

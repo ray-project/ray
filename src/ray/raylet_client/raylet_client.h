@@ -23,6 +23,7 @@
 #include "ray/common/status.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
+#include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 using ray::ActorCheckpointID;
@@ -162,7 +163,7 @@ class RayletClient : public PinObjectsInterface,
   /// \param grpc_client gRPC client to the raylet.
   /// \param raylet_socket The name of the socket to use to connect to the raylet.
   /// \param worker_id A unique ID to represent the worker.
-  /// \param is_worker Whether this client is a worker. If it is a worker, an
+  /// \param worker_type The type of the worker. If it is a certain worker type, an
   /// additional message will be sent to register as one.
   /// \param job_id The ID of the driver. This is non-nil if the client is a driver.
   /// \param language Language of the worker.
@@ -175,7 +176,7 @@ class RayletClient : public PinObjectsInterface,
   RayletClient(boost::asio::io_service &io_service,
                std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
                const std::string &raylet_socket, const WorkerID &worker_id,
-               bool is_worker, const JobID &job_id, const Language &language,
+               rpc::WorkerType worker_type, const JobID &job_id, const Language &language,
                const std::string &ip_address, ClientID *raylet_id, int *port,
                std::unordered_map<std::string, std::string> *internal_config,
                const std::string &job_config);
@@ -317,6 +318,16 @@ class RayletClient : public PinObjectsInterface,
   /// \return ray::Status
   ray::Status SetResource(const std::string &resource_name, const double capacity,
                           const ray::ClientID &client_Id);
+
+  /// Spill objects to external storage.
+  /// \param object_ids The IDs of objects to be spilled.
+  /// \return ray::Status
+  ray::Status ForceSpillObjects(const std::vector<ObjectID> &object_ids);
+
+  /// Restore spilled objects from external storage.
+  /// \param object_ids The IDs of objects to be restored.
+  /// \return ray::Status
+  ray::Status ForceRestoreSpilledObjects(const std::vector<ObjectID> &object_ids);
 
   /// Implements WorkerLeaseInterface.
   void RequestWorkerLease(
