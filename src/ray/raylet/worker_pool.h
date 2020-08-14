@@ -330,7 +330,8 @@ class WorkerPool : public WorkerPoolInterface {
   /// (due to worker process crash or any other reasons), remove them
   /// from `starting_worker_processes`. Otherwise if we'll mistakenly
   /// think there are unregistered workers, and won't start new workers.
-  void MonitorStartingWorkerProcess(const Process &proc, const Language &language);
+  void MonitorStartingWorkerProcess(const Process &proc, const Language &language,
+                                    const rpc::WorkerType worker_type);
 
   /// Get the next unallocated port in the free ports list. If a port range isn't
   /// configured, returns 0.
@@ -343,6 +344,13 @@ class WorkerPool : public WorkerPoolInterface {
   /// Mark this port as free to be used by another worker.
   /// \param[in] port The port to mark as free.
   void MarkPortAsFree(int port);
+
+  /// Try start all I/O workers waiting to be started.
+  /// \param language The language of the I/O worker. Currently only Python I/O
+  /// workers are effective.
+  /// \param state The state including the number of I/O workers waiting to be
+  /// started.
+  void TryStartIOWorkers(const Language &language, State &state);
 
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   boost::asio::io_service *io_service_;
