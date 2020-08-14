@@ -33,11 +33,11 @@ class _MockLookup:
         return self.ip_to_node[ip]
 
 
-def _create_mock_syncer(namespace, lookup, process_runner, local_ip, local_dir,
-                        remote_dir):
+def _create_mock_syncer(namespace, lookup, use_rsync, process_runner, local_ip,
+                        local_dir, remote_dir):
     class _MockSyncer(KubernetesSyncer):
         _namespace = namespace
-        _use_rsync = True
+        _use_rsync = use_rsync
         _get_kubernetes_node_by_ip = lookup
 
         def __init__(self, local_dir, remote_dir, sync_client):
@@ -54,7 +54,8 @@ def _create_mock_syncer(namespace, lookup, process_runner, local_ip, local_dir,
         local_dir,
         remote_dir,
         sync_client=KubernetesSyncClient(
-            namespace=namespace, use_rsync=True,
+            namespace=namespace,
+            use_rsync=use_rsync,
             process_runner=process_runner))
 
 
@@ -70,18 +71,51 @@ class KubernetesIntegrationTest(unittest.TestCase):
         self.local_dir = "/tmp/local"
         self.remote_dir = "/tmp/remote"
 
-        self.syncer = _create_mock_syncer(
-            self.namespace, self.lookup, self.process_runner,
-            self.lookup.get_ip("head"), self.local_dir, self.remote_dir)
-
     def tearDown(self):
         pass
 
-    def testKubernetesSyncUpDown(self):
-        self.syncer.set_worker_ip(self.lookup.get_ip("w1"))
+    def testKubernetesCpUpDown(self):
+        syncer = _create_mock_syncer(
+            self.namespace, self.lookup, False, self.process_runner,
+            self.lookup.get_ip("head"), self.local_dir, self.remote_dir)
+
+        syncer.set_worker_ip(self.lookup.get_ip("w1"))
 
         # Test sync up. Should add / to the dirs and call the rsync command
-        self.syncer.sync_up()
+        syncer.sync_up()
+
+        self.assertEqual(self.process_runner.history[-1], [
+            "kubectl", "-n", self.namespace, "cp", self.local_dir + "/",
+            "{}/{}:{}".format(self.namespace, "w1", self.remote_dir + "/")
+        ])
+
+        # Test sync down.
+        syncer.sync_down()
+        self.assertEqual(self.process_runner.history[-1], [
+            "kubectl", "-n", self.namespace, "cp", "{}/{}:{}".format(
+                self.namespace,
+                "w1",
+                self.remote_dir + "/",
+            ), self.local_dir + "/"
+        ])
+
+        # Sync to same node should be ignored
+        syncer.set_worker_ip(self.lookup.get_ip("head"))
+        syncer.sync_up()
+        self.assertTrue(len(self.process_runner.history) == 2)
+
+        syncer.sync_down()
+        self.assertTrue(len(self.process_runner.history) == 2)
+
+    def testKubernetesRsyncUpDown(self):
+        syncer = _create_mock_syncer(
+            self.namespace, self.lookup, True, self.process_runner,
+            self.lookup.get_ip("head"), self.local_dir, self.remote_dir)
+
+        syncer.set_worker_ip(self.lookup.get_ip("w1"))
+
+        # Test sync up. Should add / to the dirs and call the rsync command
+        syncer.sync_up()
         self.assertEqual(self.process_runner.history[-1][0], KUBECTL_RSYNC)
         self.assertEqual(self.process_runner.history[-1][-2],
                          self.local_dir + "/")
@@ -90,7 +124,7 @@ class KubernetesIntegrationTest(unittest.TestCase):
                 "w1", self.namespace, self.remote_dir + "/"))
 
         # Test sync down.
-        self.syncer.sync_down()
+        syncer.sync_down()
         self.assertEqual(self.process_runner.history[-1][0], KUBECTL_RSYNC)
         self.assertEqual(
             self.process_runner.history[-1][-2], "{}@{}:{}".format(
@@ -99,11 +133,11 @@ class KubernetesIntegrationTest(unittest.TestCase):
                          self.local_dir + "/")
 
         # Sync to same node should be ignored
-        self.syncer.set_worker_ip(self.lookup.get_ip("head"))
-        self.syncer.sync_up()
+        syncer.set_worker_ip(self.lookup.get_ip("head"))
+        syncer.sync_up()
         self.assertTrue(len(self.process_runner.history) == 2)
 
-        self.syncer.sync_down()
+        syncer.sync_down()
         self.assertTrue(len(self.process_runner.history) == 2)
 
 
