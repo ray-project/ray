@@ -41,6 +41,8 @@ struct pair_hash {
   }
 };
 using ScheduleMap = std::unordered_map<BundleID, ClientID, pair_hash>;
+using BundleLocation = std::unordered_map<
+    BundleID, std::pair<ClientID, std::shared_ptr<BundleSpecification>>, pair_hash>;
 class GcsPlacementGroup;
 
 class GcsPlacementGroupSchedulerInterface {
@@ -133,6 +135,16 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// Get an existing lease client or connect a new one.
   std::shared_ptr<ResourceReserveInterface> GetOrConnectLeaseClient(
       const rpc::Address &raylet_address);
+
+  void OnPlacementGroupResourceReserveDone(
+      const std::shared_ptr<GcsPlacementGroup> &placement_group,
+      const std::vector<std::shared_ptr<BundleSpecification>> &bundles,
+      const std::shared_ptr<BundleLocation> &bundle_locations,
+      const std::function<void(std::shared_ptr<GcsPlacementGroup>)>
+          &schedule_failure_handler,
+      const std::function<void(std::shared_ptr<GcsPlacementGroup>)>
+          &schedule_success_handler);
+
   /// A timer that ticks every cancel resource failure milliseconds.
   boost::asio::deadline_timer return_timer_;
   /// Used to update placement group information upon creation, deletion, etc.
@@ -152,6 +164,11 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       node_to_bundles_when_leasing_;
   /// A vector to store all the schedule strategy.
   std::vector<std::shared_ptr<GcsScheduleStrategy>> scheduler_strategies_;
+  /// Set of placement group that have lease requests in flight to nodes.
+  absl::flat_hash_set<PlacementGroupID> placement_group_leasing_in_progress_;
+  /// A map from placement group id to bundle locations. It is used to destroy bundles.
+  absl::flat_hash_map<PlacementGroupID, std::shared_ptr<BundleLocation>>
+      placement_group_to_bundle_location_;
 };
 
 }  // namespace gcs

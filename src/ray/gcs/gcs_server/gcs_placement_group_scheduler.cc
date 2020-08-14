@@ -92,56 +92,67 @@ void GcsPlacementGroupScheduler::Schedule(
 
   // If schedule success, the decision will be set as schedule_map[bundles[pos]]
   // else will be set ClientID::Nil().
-  auto bundle_locations = std::make_shared<std::unordered_map<
-      BundleID, std::pair<ClientID, std::shared_ptr<BundleSpecification>>, pair_hash>>();
+  auto bundle_locations = std::make_shared<BundleLocation>();
   // To count how many scheduler have been return, which include success and failure.
   auto finished_count = std::make_shared<size_t>();
+  RAY_CHECK(
+      placement_group_leasing_in_progress_.emplace(placement_group->GetPlacementGroupID())
+          .second);
+
   /// TODO(AlisaWu): Change the strategy when reserve resource failed.
   for (auto &bundle : bundles) {
     const auto &bundle_id = bundle->BundleId();
     const auto &node_id = selected_nodes[bundle_id];
     RAY_CHECK(node_to_bundles_when_leasing_[node_id].emplace(bundle_id).second);
+
     ReserveResourceFromNode(
         bundle, gcs_node_manager_.GetNode(node_id),
         [this, bundle_id, bundle, bundles, node_id, placement_group, bundle_locations,
          finished_count, schedule_failure_handler,
          schedule_success_handler](const Status &status) {
+          auto leasing_bundles = node_to_bundles_when_leasing_.find(node_id);
+          RAY_CHECK(leasing_bundles != node_to_bundles_when_leasing_.end());
+          auto bundle_iter = leasing_bundles->second.find(bundle->BundleId());
+          RAY_CHECK(bundle_iter != leasing_bundles->second.end());
+          // Remove the bundle from the leasing map as the reply is returned from the
+          // remote node.
+          leasing_bundles->second.erase(bundle_iter);
+          if (leasing_bundles->second.empty()) {
+            node_to_bundles_when_leasing_.erase(leasing_bundles);
+          }
+
           if (status.ok()) {
             (*bundle_locations)[bundle_id] = std::make_pair(node_id, bundle);
           }
 
           if (++(*finished_count) == bundles.size()) {
-            if (bundle_locations->size() == bundles.size()) {
-              rpc::ScheduleData data;
-              for (const auto &iter : bundles) {
-                // TODO(ekl) this is a hack to get a string key for the proto
-                auto key =
-                    iter->PlacementGroupId().Hex() + "_" + std::to_string(iter->Index());
-                data.mutable_schedule_plan()->insert(
-                    {key, (*bundle_locations)[iter->BundleId()].first.Binary()});
-              }
-              RAY_CHECK_OK(gcs_table_storage_->PlacementGroupScheduleTable().Put(
-                  placement_group->GetPlacementGroupID(), data,
-                  [schedule_success_handler, placement_group](Status status) {
-                    schedule_success_handler(placement_group);
-                  }));
-            } else {
-              for (auto &iter : *bundle_locations) {
-                CancelResourceReserve(iter.second.second,
-                                      gcs_node_manager_.GetNode(node_id));
-              }
-              schedule_failure_handler(placement_group);
-            }
+            OnPlacementGroupResourceReserveDone(
+                placement_group, bundles, bundle_locations, schedule_failure_handler,
+                schedule_success_handler);
           }
         });
   }
 }
 
 void GcsPlacementGroupScheduler::DestroyPlacementGroupResources(
-    const PlacementGroupID placement_group_id) {}
+    const PlacementGroupID placement_group_id) {
+  auto it = placement_group_to_bundle_location_.find(placement_group_id);
+  RAY_CHECK(it != placement_group_to_bundle_location_.end());
+  std::shared_ptr<BundleLocation> bundle_location = it->second;
+  for (const auto &iter : *bundle_location) {
+    auto &bundle_spec = iter.second.second;
+    auto &node_id = iter.second.first;
+    CancelResourceReserve(bundle_spec, gcs_node_manager_.GetNode(node_id));
+  }
+  placement_group_to_bundle_location_.erase(it);
+}
 
 void GcsPlacementGroupScheduler::CancelScheduling(
-    const PlacementGroupID placement_group_id) {}
+    const PlacementGroupID placement_group_id) {
+  auto it = placement_group_leasing_in_progress_.find(placement_group_id);
+  RAY_CHECK(it != placement_group_leasing_in_progress_.end());
+  placement_group_leasing_in_progress_.erase(it);
+}
 
 void GcsPlacementGroupScheduler::ReserveResourceFromNode(
     const std::shared_ptr<BundleSpecification> &bundle,
@@ -155,27 +166,17 @@ void GcsPlacementGroupScheduler::ReserveResourceFromNode(
   RAY_LOG(INFO) << "Leasing resource from node " << node_id
                 << " for bundle: " << bundle->DebugString();
   lease_client->RequestResourceReserve(
-      *bundle, [this, node_id, bundle, callback](
+      *bundle, [node_id, bundle, callback](
                    const Status &status, const rpc::RequestResourceReserveReply &reply) {
         // TODO(AlisaWu): Add placement group cancel.
         auto result = reply.success() ? Status::OK()
                                       : Status::IOError("Failed to reserve resource");
-        auto bundles = node_to_bundles_when_leasing_.find(node_id);
-        RAY_CHECK(bundles != node_to_bundles_when_leasing_.end());
-        auto bundle_iter = bundles->second.find(bundle->BundleId());
-        RAY_CHECK(bundle_iter != bundles->second.end());
         if (result.ok()) {
           RAY_LOG(INFO) << "Finished leasing resource from " << node_id
                         << " for bundle: " << bundle->DebugString();
         } else {
           RAY_LOG(WARNING) << "Failed to lease resource from " << node_id
                            << " for bundle: " << bundle->DebugString();
-        }
-        // Remove the bundle from the leasing map as the reply is returned from the
-        // remote node.
-        bundles->second.erase(bundle_iter);
-        if (bundles->second.empty()) {
-          node_to_bundles_when_leasing_.erase(bundles);
         }
         callback(result);
       });
@@ -184,6 +185,9 @@ void GcsPlacementGroupScheduler::ReserveResourceFromNode(
 void GcsPlacementGroupScheduler::CancelResourceReserve(
     const std::shared_ptr<BundleSpecification> &bundle_spec,
     const std::shared_ptr<ray::rpc::GcsNodeInfo> &node) {
+  if (node == nullptr) {
+    return;
+  }
   auto node_id = ClientID::FromBinary(node->node_id());
   RAY_LOG(INFO) << "Cancelling the resource reserved for bundle: "
                 << bundle_spec->DebugString() << " at node " << node_id;
@@ -209,6 +213,51 @@ GcsPlacementGroupScheduler::GetOrConnectLeaseClient(const rpc::Address &raylet_a
     iter = remote_lease_clients_.emplace(node_id, std::move(lease_client)).first;
   }
   return iter->second;
+}
+
+void GcsPlacementGroupScheduler::OnPlacementGroupResourceReserveDone(
+    const std::shared_ptr<GcsPlacementGroup> &placement_group,
+    const std::vector<std::shared_ptr<BundleSpecification>> &bundles,
+    const std::shared_ptr<BundleLocation> &bundle_locations,
+    const std::function<void(std::shared_ptr<GcsPlacementGroup>)>
+        &schedule_failure_handler,
+    const std::function<void(std::shared_ptr<GcsPlacementGroup>)>
+        &schedule_success_handler) {
+  const auto &placement_group_id = placement_group->GetPlacementGroupID();
+  if (placement_group_leasing_in_progress_.find(placement_group_id) ==
+          placement_group_leasing_in_progress_.end() ||
+      bundle_locations->size() != bundles.size()) {
+    // If the lease request has been already cancelled
+    // or not every lease request succeeds,
+    for (auto &iter : *bundle_locations) {
+      auto &bundle_spec = iter.second.second;
+      auto &node_id = iter.second.first;
+      CancelResourceReserve(bundle_spec, gcs_node_manager_.GetNode(node_id));
+    }
+    schedule_failure_handler(placement_group);
+  } else {
+    // If we successfully created placement group, store them to GCS.
+    rpc::ScheduleData data;
+    for (const auto &iter : bundles) {
+      // TODO(ekl) this is a hack to get a string key for the proto
+      auto key = iter->PlacementGroupId().Hex() + "_" + std::to_string(iter->Index());
+      data.mutable_schedule_plan()->insert(
+          {key, (*bundle_locations)[iter->BundleId()].first.Binary()});
+    }
+    RAY_CHECK_OK(gcs_table_storage_->PlacementGroupScheduleTable().Put(
+        placement_group_id, data,
+        [schedule_success_handler, placement_group](Status status) {
+          schedule_success_handler(placement_group);
+        }));
+    RAY_CHECK(
+        placement_group_to_bundle_location_.emplace(placement_group_id, bundle_locations)
+            .second);
+  }
+  // This could've been removed if the leasing request is cancelled already.
+  auto it = placement_group_leasing_in_progress_.find(placement_group_id);
+  if (it != placement_group_leasing_in_progress_.end()) {
+    placement_group_leasing_in_progress_.erase(it);
+  }
 }
 
 }  // namespace gcs
