@@ -81,7 +81,7 @@ class KubernetesIntegrationTest(unittest.TestCase):
 
         syncer.set_worker_ip(self.lookup.get_ip("w1"))
 
-        # Test sync up. Should add / to the dirs and call the rsync command
+        # Test sync up. Should add / to the dirs and call kubectl cp
         syncer.sync_up()
 
         self.assertEqual(self.process_runner.history[-1], [
@@ -114,7 +114,7 @@ class KubernetesIntegrationTest(unittest.TestCase):
 
         syncer.set_worker_ip(self.lookup.get_ip("w1"))
 
-        # Test sync up. Should add / to the dirs and call the rsync command
+        # Test sync up. Should add / to the dirs and call rsync
         syncer.sync_up()
         self.assertEqual(self.process_runner.history[-1][0], KUBECTL_RSYNC)
         self.assertEqual(self.process_runner.history[-1][-2],
