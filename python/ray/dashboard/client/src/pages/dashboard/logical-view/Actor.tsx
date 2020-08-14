@@ -299,7 +299,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
         </Typography>
         <ActorDetailsPane
           actorDetails={information}
-          actorTitle={actor.actorTitle}
+          actorTitle={actor.actorTitle ?? ""}
           actorState={actor.state}
           invalidStateType={invalidStateType}
         />

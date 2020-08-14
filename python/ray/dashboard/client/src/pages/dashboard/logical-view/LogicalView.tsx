@@ -14,7 +14,7 @@ import {
 } from "../../../api";
 import { filterObj } from "../../../common/util";
 import { StoreState } from "../../../store";
-import Actors from "./Actors";
+import ActorClassGroups from './ActorClassGroups';
 
 const actorMatchesSearch = (
   actor: ActorInfo,
@@ -87,7 +87,7 @@ const LogicalView: React.FC<LogicalViewProps> = ({ rayletInfo }) => {
               Search for an actor by name
             </FormHelperText>
           </FormControl>
-          <Actors actors={filteredActors} />
+          <ActorClassGroups actors={Object.values(filteredActors)} />
         </div>
       )}
     </div>

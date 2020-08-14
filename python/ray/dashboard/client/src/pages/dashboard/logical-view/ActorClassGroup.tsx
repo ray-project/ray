@@ -12,11 +12,11 @@ const ActorClassGroup: React.FC<ActorClassGroupProps> = ({
   actors,
   title
 }) => {
-  const entries = actors.map(actor => <Actor actor={actor} />);
+  const entries = actors.map((actor, i) => <Actor actor={actor} key={actor.actorId ?? i} />);
   return (
     <div>
       <Typography>{title}</Typography>
-      {...entries}
+      {entries}
     </div>
   );
 };

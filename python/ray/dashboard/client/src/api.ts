@@ -161,6 +161,7 @@ export type FullActorInfo = {
   actorId: string;
   actorTitle: string;
   averageTaskExecutionSpeed: number;
+  children?: ActorInfo[]
   ipAddress: string;
   jobId: string;
   nodeId: string;
@@ -185,8 +186,8 @@ export type FullActorInfo = {
 };
 
 export type PartialActorInfo = {
-  actorId: string;
-  actorTitle: string;
+  actorId?: string;
+  actorTitle?: string;
   requiredResources?: { [key: string]: number };
   state: ActorState.Invalid;
   invalidStateType?: InvalidStateType;
