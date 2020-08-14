@@ -10,6 +10,7 @@ from ray import (
     gcs_utils,
     services,
 )
+from ray.core.generated.common_pb2 import PlacementStrategy
 from ray.utils import (decode, binary_to_hex, hex_to_binary)
 
 from ray._raylet import GlobalStateAccessor
@@ -399,15 +400,15 @@ class GlobalState:
 
     def _gen_placement_group_info(self, placement_group_info):
         def get_state(state):
-            if state == 0:
+            if state == ray.gcs_utils.PlacementGroupTableData.PENDING:
                 return "PENDING"
-            elif state == 1:
+            elif state == ray.gcs_utils.PlacementGroupTableData.ALIVE:
                 return "ALIVE"
             else:
                 return "DEAD"
 
         def get_strategy(strategy):
-            if strategy == 0:
+            if strategy == PlacementStrategy.PACK:
                 return "PACK"
             else:
                 return "SPREAD"

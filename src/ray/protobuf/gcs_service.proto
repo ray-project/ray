@@ -166,10 +166,11 @@ service ActorInfoGcsService {
 
 // Service for placement group info access.
 service PlacementGroupInfoGcsService {
-  // Create placement group via gcs service
+  // Create placement group via gcs service.
   rpc CreatePlacementGroup(CreatePlacementGroupRequest)
       returns (CreatePlacementGroupReply);
 
+ // Get placement group information via gcs service.
   rpc GetPlacementGroup(GetPlacementGroupRequest)
        returns (GetPlacementGroupReply);
 }
