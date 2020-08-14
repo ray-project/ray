@@ -117,7 +117,8 @@ if __name__ == "__main__":
     # __tune_end__
 
     best_trial = analysis.get_best_trial("mean_accuracy")
-    best_checkpoint_path = analysis.get_best_checkpoint(best_trial, metric="mean_accuracy")
+    best_checkpoint_path = analysis.get_best_checkpoint(
+        best_trial, metric="mean_accuracy")
     best_model = ConvNet()
     best_checkpoint = torch.load(
         os.path.join(best_checkpoint_path, "checkpoint"))

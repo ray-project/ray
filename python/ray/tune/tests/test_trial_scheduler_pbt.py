@@ -66,6 +66,7 @@ class MockParam(object):
 class PopulationBasedTrainingResumeTest(unittest.TestCase):
     def setUp(self):
         ray.init()
+
     def tearDown(self):
         ray.shutdown()
 

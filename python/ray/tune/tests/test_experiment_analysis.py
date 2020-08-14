@@ -129,7 +129,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
     def testGetBestCheckpoint(self):
         best_trial = self.ea.get_best_trial(self.metric)
         checkpoints_metrics = self.ea.get_trial_checkpoints_paths(best_trial)
-        expected_path = max(checkpoints_metrics, key=lambda x:x[1])[0]
+        expected_path = max(checkpoints_metrics, key=lambda x: x[1])[0]
         best_checkpoint = self.ea.get_best_checkpoint(best_trial, self.metric)
         assert expected_path == best_checkpoint
 

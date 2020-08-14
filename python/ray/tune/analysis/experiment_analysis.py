@@ -179,7 +179,9 @@ class Analysis:
             Path for best checkpoint of trial determined by metric
         """
 
-        return max(self.get_trial_checkpoints_paths(trial, metric), key=lambda x:x[1])[0]
+        return max(
+            self.get_trial_checkpoints_paths(trial, metric),
+            key=lambda x: x[1])[0]
 
     def _retrieve_rows(self, metric=None, mode=None):
         assert mode is None or mode in ["max", "min"]
