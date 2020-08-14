@@ -149,9 +149,9 @@ void GcsPlacementGroupScheduler::Schedule(
           }
 
           if (++(*finished_count) == bundles.size()) {
-            OnPlacementGroupResourceReserveDone(
-                placement_group, bundles, bundle_locations, failure_callback,
-                success_callback);
+            OnPlacementGroupResourceReserveDone(placement_group, bundles,
+                                                bundle_locations, failure_callback,
+                                                success_callback);
           }
         });
   }
