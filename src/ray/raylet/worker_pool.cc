@@ -780,7 +780,7 @@ void WorkerPool::TryStartIOWorkers(const Language &language, State &state) {
       state.num_starting_io_workers + state.registered_io_workers.size();
   int max_workers_to_start =
       RayConfig::instance().max_io_workers() - available_io_workers_num;
-  // Compare first to prevent unsigned underflow. 
+  // Compare first to prevent unsigned underflow.
   if (state.pending_io_tasks.size() > state.idle_io_workers.size()) {
     int expected_workers_num =
         state.pending_io_tasks.size() - state.idle_io_workers.size();
