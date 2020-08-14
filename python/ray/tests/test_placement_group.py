@@ -188,18 +188,23 @@ def test_remove_placement_group():
     # Now let's create a placement group.
     pid = ray.experimental.placement_group([{"CPU": 2}, {"CPU": 2}])
 
-    @ray.remote(num_cpus=2)
+    @ray.remote(num_cpus=0)
     class A:
         def f(self):
             return 3
 
-    # TODO(sang): Test if workers are properly killed
-    # a = A.options(placement_group_id=pid).remote()
-    # assert ray.get(a.f.remote()) == 3
+    a = A.options(placement_group_id=pid).remote()
+    assert ray.get(a.f.remote()) == 3
     ray.experimental.remove_placement_group(pid)
     # Subsequent remove request should fail.
     with pytest.raises(ValueError):
         ray.experimental.remove_placement_group(pid)
+
+    @ray.remote(num_cpus=4)
+    def f():
+        return 3
+
+    assert ray.get(f.remote()) == 3
 
     # Since the placement group is destroyed,
     # this actor should be infeasible, and the
