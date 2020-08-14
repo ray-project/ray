@@ -58,11 +58,11 @@ def accept_batch(f: Callable) -> Callable:
     return f
 
 
-def init(name: str=None,
-         http_host: str=DEFAULT_HTTP_HOST,
-         http_port: int=DEFAULT_HTTP_PORT,
+def init(name: str = None,
+         http_host: str = DEFAULT_HTTP_HOST,
+         http_port: int = DEFAULT_HTTP_PORT,
          metric_exporter: Type[InMemoryExporter]=InMemoryExporter,
-         _http_middlewares: List[Any]=[]) -> None:
+         _http_middlewares: List[Any] = []) -> None:
     """Initialize or connect to a serve cluster.
 
     If serve cluster is already initialized, this function will just return.
@@ -132,9 +132,9 @@ def shutdown() -> None:
 
 @_ensure_connected
 def create_endpoint(endpoint_name: str,
-                    *, backend=None,
-                    route=None,
-                    methods=["GET"]) -> None:
+                    *, backend: str = None,
+                    route: str = None,
+                    methods: List[str] = ["GET"]) -> None:
     """Create a service endpoint given route_expression.
 
     Args:
@@ -196,7 +196,7 @@ def delete_endpoint(endpoint: str) -> None:
 
 
 @_ensure_connected
-def list_endpoints() -> Dict[str, Union[Dict[str, Union[str, List[str], Dict[str, float]]], Dict[str, Optional[Union[List[str], Dict[str, float]]]]]]:
+def list_endpoints() -> Dict[str, Dict[str, Any]]:
     """Returns a dictionary of all registered endpoints.
 
     The dictionary keys are endpoint names and values are dictionaries
@@ -206,7 +206,7 @@ def list_endpoints() -> Dict[str, Union[Dict[str, Union[str, List[str], Dict[str
 
 
 @_ensure_connected
-def update_backend_config(backend_tag: str, config_options: Dict[str, int]) -> None:
+def update_backend_config(backend_tag: str, config_options: Dict[str, Any]) -> None:
     """Update a backend configuration for a backend tag.
 
     Keys not specified in the passed will be left unchanged.
@@ -233,7 +233,7 @@ def update_backend_config(backend_tag: str, config_options: Dict[str, int]) -> N
 
 
 @_ensure_connected
-def get_backend_config(backend_tag):
+def get_backend_config(backend_tag: str):
     """Get the backend configuration for a backend tag.
 
     Args:
@@ -247,7 +247,7 @@ def create_backend(backend_tag: str,
                    func_or_class: Callable,
                    *actor_init_args,
     ray_actor_options=None,
-                   config=None) -> None:
+                   config: Dict[str, Any] = None) -> None:
     """Create a backend with the provided tag.
 
     The backend will serve requests with func_or_class.
@@ -294,7 +294,7 @@ def create_backend(backend_tag: str,
 
 
 @_ensure_connected
-def list_backends() -> Dict[str, Dict[str, Optional[Union[bool, int]]]]:
+def list_backends() -> Dict[str, Dict[str, Any]]:
     """Returns a dictionary of all registered backends.
 
     Dictionary maps backend tags to backend configs.
@@ -359,9 +359,9 @@ def shadow_traffic(endpoint_name: str, backend_tag: str, proportion: float) -> N
 
 @_ensure_connected
 def get_handle(endpoint_name: str,
-               relative_slo_ms: None=None,
-               absolute_slo_ms: None=None,
-               missing_ok: bool=False) -> RayServeHandle:
+               relative_slo_ms: float = None,
+               absolute_slo_ms: float = None,
+               missing_ok: bool = False) -> RayServeHandle:
     """Retrieve RayServeHandle for service endpoint to invoke it from Python.
 
     Args:
@@ -390,7 +390,7 @@ def get_handle(endpoint_name: str,
 
 
 @_ensure_connected
-def stat() -> List[Dict[str, Union[Dict[str, str], int]]]:
+def stat() -> Any:
     """Retrieve metric statistics about ray serve system.
 
     Returns:
