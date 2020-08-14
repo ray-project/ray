@@ -279,7 +279,10 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
   } else if (language == Language::PYTHON) {
     RAY_CHECK(worker_type == rpc::WorkerType::WORKER ||
               worker_type == rpc::WorkerType::IO_WORKER);
-    worker_command_args.push_back("--worker-type=" + rpc::WorkerType_Name(worker_type));
+    if (worker_type == rpc::WorkerType::IO_WORKER) {
+      // Without "--worker-type", by default the worker type is rpc::WorkerType::WORKER.
+      worker_command_args.push_back("--worker-type=" + rpc::WorkerType_Name(worker_type));
+    }
   }
 
   std::map<std::string, std::string> env;
