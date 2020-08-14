@@ -189,9 +189,11 @@ def test_placement_group_table(ray_start_cluster):
         cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
 
+    # Originally placement group creation should be pending because
+    # there are no resources.
     name = "name"
     strategy = "SPREAD"
-    bundles = [{"CPU": 2}, {"CPU": 2}]
+    bundles = [{"CPU": 2, "GPU": 1}, {"CPU": 2}]
     placement_group_id = ray.experimental.placement_group(
         name=name, strategy=strategy, bundles=bundles)
     result = ray.experimental.placement_group_table(placement_group_id)
@@ -200,6 +202,9 @@ def test_placement_group_table(ray_start_cluster):
     for i in range(len(bundles)):
         assert bundles[i] == result["bundles"][i]
     assert result["state"] == "PENDING"
+
+    # Now the placement group should be scheduled.
+    cluster.add_node(num_cpus=5, num_gpus=1)
     actor_1 = Actor.options(
         placement_group_id=placement_group_id,
         placement_group_bundle_index=0).remote()
