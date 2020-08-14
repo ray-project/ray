@@ -85,7 +85,7 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # Extra options to pass to the custom classes. These will be available to
     # the Model's constructor in the model_config field. Also, they will be
     # attempted to be passed as **kwargs to ModelV2 models. For an example,
-    # see attention_net.py.
+    # see rllib/models/[tf|torch]/attention_net.py.
     "custom_model_config": {},
     # Name of a custom action distribution to use.
     "custom_action_dist": None,
