@@ -63,14 +63,20 @@ void MetricsAgentExporter::ReportMetrics(
                                 opencensus::stats::ViewData>> &opencensus_data) {
   MetricExporterDecorator::ReportMetrics(points, opencensus_data);
 
+  // Start converting opencensus data into their protobuf format.
+  // The format can be found here
+  // https://github.com/census-instrumentation/opencensus-proto/blob/master/src/opencensus/proto/metrics/v1/metrics.proto
   rpc::ReportOCMetricsRequest request_proto;
   for (auto datum : opencensus_data) {
+    // Unpack the fields we need for in memory data structure.
     auto view_descriptor = datum.first;
     auto view_data = datum.second;
     auto measure_descriptor = view_descriptor.measure_descriptor();
 
+    // Create one metric `Point` in protobuf.
     auto request_point_proto = request_proto.add_metrics();
 
+    // Write the `MetricDescriptor`.
     auto metric_descriptor_proto = request_point_proto->mutable_metric_descriptor();
     metric_descriptor_proto->set_name(measure_descriptor.name());
     metric_descriptor_proto->set_description(measure_descriptor.description());
@@ -79,9 +85,9 @@ void MetricsAgentExporter::ReportMetrics(
       metric_descriptor_proto->add_label_keys()->set_key(tag_key.name());
     };
 
+    // Helpers for writing the actual `TimeSeries`.
     auto start_time = absl::ToUnixSeconds(view_data.start_time());
     auto end_time = absl::ToUnixSeconds(view_data.end_time());
-
     auto make_new_data_point_proto = [request_point_proto, start_time,
                                       end_time](std::vector<std::string> tag_values) {
       auto metric_timeseries_proto = request_point_proto->add_timeseries();
@@ -96,6 +102,7 @@ void MetricsAgentExporter::ReportMetrics(
       return point_proto;
     };
 
+    // Write the `TimeSeries` for the given aggregated data type.
     switch (view_data.type()) {
     case opencensus::stats::ViewData::Type::kDouble:
       for (auto &row : view_data.double_data()) {
@@ -121,13 +128,15 @@ void MetricsAgentExporter::ReportMetrics(
         opencensus::stats::Distribution dist_value = row.second;
 
         auto point_proto = make_new_data_point_proto(tag_values);
-        point_proto->mutable_timestamp()->set_seconds(end_time);
+
+        // Copy in memory data into `DistributionValue` protobuf.
         auto distribution_proto = point_proto->mutable_distribution_value();
         distribution_proto->set_count(dist_value.count());
         distribution_proto->set_sum(dist_value.count() * dist_value.mean());
         distribution_proto->set_sum_of_squared_deviation(
             dist_value.sum_of_squared_deviation());
 
+        // Write the `BucketOption` and `Bucket` data.
         auto bucket_opt_proto =
             distribution_proto->mutable_bucket_options()->mutable_explicit_();
         for (auto bound : dist_value.bucket_boundaries().lower_boundaries()) {

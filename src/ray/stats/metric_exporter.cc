@@ -69,9 +69,10 @@ void MetricExporter::ExportToPoints(
                  << "  min value : " << min_point.value;
 }
 
-void MetricExporter::ExportViewData(
-    const std::vector<std::pair<opencensus::stats::ViewDescriptor,
-                                opencensus::stats::ViewData>> &data) {
+using CensusViewData = std::vector<
+    std::pair<opencensus::stats::ViewDescriptor, opencensus::stats::ViewData>>;
+
+void MetricExporter::ExportViewData(const CensusViewData &data) {
   std::vector<MetricPoint> points;
   // NOTE(lingxuan.zlx): There is no sampling in view data, so all raw metric
   // data will be processed.
@@ -100,9 +101,38 @@ void MetricExporter::ExportViewData(
       break;
     }
   }
-  RAY_LOG(DEBUG) << "Point size : " << points.size()
-                 << " batch size: " << report_batch_size_;
-  metric_exporter_client_->ReportMetrics(points, data);
+
+  // TODO(simon): Batching in the exporter is a little weird. Shouldn't it be a
+  // configurable parameter in each client instead? Especially now the `points` and `data`
+  // can be different size.
+  size_t max_data_size = std::max(points.size(), data.size());
+  if (max_data_size <= report_batch_size_) {
+    metric_exporter_client_->ReportMetrics(points, data);
+  } else {
+    std::vector<std::vector<MetricPoint>> points_batches;
+    std::vector<MetricPoint> default_points_batch;  // used for unbalanced number of batch
+    for (size_t i = 0; i < points.size(); i += report_batch_size_) {
+      auto last = std::min(points.size(), i + report_batch_size_);
+      points_batches.emplace_back(points.begin() + i, points.begin() + last);
+    }
+
+    std::vector<CensusViewData> census_batches;
+    CensusViewData default_census_batch;  // used for unbalanced number of batch
+    for (size_t i = 0; i < data.size(); i += report_batch_size_) {
+      auto last = std::min(data.size(), i + report_batch_size_);
+      census_batches.emplace_back(data.begin() + i, data.begin() + last);
+    }
+
+    size_t max_num_batch = std::max(points_batches.size(), census_batches.size());
+    for (size_t i = 0; i < max_num_batch; i++) {
+      auto points_batch =
+          (i < points_batches.size()) ? points_batches.at(i) : default_points_batch;
+      auto census_batch =
+          (i < census_batches.size()) ? census_batches.at(i) : default_census_batch;
+
+      metric_exporter_client_->ReportMetrics(points_batch, census_batch);
+    }
+  }
 }
 
 }  // namespace stats

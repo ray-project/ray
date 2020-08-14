@@ -50,7 +50,7 @@ class MockExporterClient1 : public MetricExporterDecorator {
     if (points.empty()) {
       return;
     }
-    MetricExporterDecorator::ReportMetrics(points);
+    MetricExporterDecorator::ReportMetrics(points, opencensus_data);
     client1_count++;
     client1_value = points.back().value;
     RAY_LOG(DEBUG) << "Client 1 " << client1_count << " last metric "
@@ -99,7 +99,7 @@ class MockExporterClient2 : public MetricExporterDecorator {
     if (points.empty()) {
       return;
     }
-    MetricExporterDecorator::ReportMetrics(points);
+    MetricExporterDecorator::ReportMetrics(points, opencensus_data);
     client2_count++;
     RAY_LOG(DEBUG) << "Client 2 " << client2_count << " last metric "
                    << points.back().metric_name << ", value " << points.back().value;

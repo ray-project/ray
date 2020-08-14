@@ -10,6 +10,7 @@ from typing import List
 from opencensus.stats import measure as measure_module
 from opencensus.stats import stats as stats_module
 from opencensus.stats.view import View
+from opencensus.stats.view_data import ViewData
 from opencensus.stats.aggregation_data import (CountAggregationData,
                                                DistributionAggregationData,
                                                LastValueAggregationData)
@@ -28,7 +29,6 @@ class MetricsAgent:
         assert metrics_export_port is not None
         # OpenCensus classes.
         self.view_manager = stats_module.stats.view_manager
-        self.stats_recorder = stats_module.stats.stats_recorder
         # Port where we will expose metrics.
         self.metrics_export_port = metrics_export_port
         # Lock required because gRPC server uses
@@ -41,21 +41,17 @@ class MetricsAgent:
                 prometheus_exporter.Options(
                     namespace="ray", port=metrics_export_port)))
 
-    @property
-    def registry(self):
-        """Return metric definition registry.
-
-        Metrics definition registry is dynamically updated
-        by metrics reported by Ray processes.
-        """
-        return self._registry
-
     def record_metric_points_from_protobuf(self, metrics: List[Metric]):
+        """Record metrics from Opencensus Protobuf"""
         with self._lock:
             self._record_metrics(metrics)
 
     def _record_metrics(self, metrics):
-        view_data_changed = []
+        # The list of view data is what we are going to use for the
+        # final export to exporter.
+        view_data_changed: List[ViewData] = []
+
+        # Walk the protobufs and convert them to ViewData
         for metric in metrics:
             descriptor = metric.metric_descriptor
             timeseries = metric.timeseries
@@ -66,6 +62,7 @@ class MetricsAgent:
             columns = [label_key.key for label_key in descriptor.label_keys]
             start_time = timeseries[0].start_timestamp.seconds
 
+            # Create the view and view_data
             measure = measure_module.BaseMeasure(
                 descriptor.name, descriptor.description, descriptor.unit)
             view = self.view_manager.measure_to_view_map.get_view(
@@ -81,14 +78,12 @@ class MetricsAgent:
                     view, start_time)
             view_data = (self.view_manager.measure_to_view_map.
                          _measure_to_view_data_list_map[measure.name][-1])
-
             view_data_changed.append(view_data)
 
+            # Create the aggregation and fill it in the our stats
             for series in timeseries:
                 tag_vals = tuple([val.value for val in series.label_values])
                 for point in series.points:
-                    data = None
-
                     if point.HasField("int64_value"):
                         data = CountAggregationData(point.int64_value)
                     elif point.HasField("double_value"):
@@ -111,6 +106,8 @@ class MetricsAgent:
                         raise ValueError("Summary is not supported")
 
                     view_data.tag_value_aggregation_data_map[tag_vals] = data
+
+        # Finally, export all the values
         self.view_manager.measure_to_view_map.export(view_data_changed)
 
 
