@@ -1,6 +1,6 @@
 from getpass import getuser
 from shlex import quote
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 import click
 import hashlib
 import logging
@@ -66,7 +66,7 @@ def set_using_login_shells(val):
     _config["use_login_shells"] = val
 
 
-def _with_environment_variables(cmd: str, environment_variables: dict):
+def _with_environment_variables(cmd: str, environment_variables: Dict[str, object]):
     """Prepend environment variables to a shell command.
 
     Args:
@@ -74,10 +74,9 @@ def _with_environment_variables(cmd: str, environment_variables: dict):
         environment_variables (Dict[str, object]): The set of environment
             variables. If an environment variable value is a dict, it will
             automatically be converted to a one line yaml string.
-
     """
 
-    def dict_as_one_line_yaml(d: dict):
+    def dict_as_one_line_yaml(d):
         items = []
         for key, val in d.items():
             item_str = "{}: {}".format(quote(str(key)), quote(str(val)))
@@ -115,7 +114,7 @@ class CommandRunnerInterface:
             exit_on_fail: bool = False,
             port_forward: List[Tuple[int, int]] = None,
             with_output: bool = False,
-            environment_variables: dict = None,
+            environment_variables: Dict[str, object] = None,
             run_env: str = "auto",
             ssh_options_override_ssh_key: str = "",
     ) -> str:
@@ -131,7 +130,7 @@ class CommandRunnerInterface:
             port_forward (list): List of (local, remote) ports to forward, or
                 a single tuple.
             with_output (bool): Whether to return output.
-            environment_variables (dict): Environment variables that `cmd`
+            environment_variables (Dict[str, str | int | Dict[str, str]): Environment variables that `cmd`
                 should be run with.
             run_env (str): Options: docker/host/auto. Used in
                 DockerCommandRunner to determine the run environment.
@@ -180,7 +179,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
             exit_on_fail=False,
             port_forward=None,
             with_output=False,
-            environment_variables: dict = None,
+            environment_variables: Dict[str, object] = None,
             run_env="auto",  # Unused argument.
             ssh_options_override_ssh_key="",  # Unused argument.
     ):
@@ -459,7 +458,7 @@ class SSHCommandRunner(CommandRunnerInterface):
             exit_on_fail=False,
             port_forward=None,
             with_output=False,
-            environment_variables: dict = None,
+            environment_variables: Dict[str, object] = None,
             run_env="auto",  # Unused argument.
             ssh_options_override_ssh_key="",
     ):
@@ -572,7 +571,7 @@ class DockerCommandRunner(SSHCommandRunner):
             exit_on_fail=False,
             port_forward=None,
             with_output=False,
-            environment_variables: dict = None,
+            environment_variables: Dict[str, object] = None,
             run_env="auto",
             ssh_options_override_ssh_key="",
     ):

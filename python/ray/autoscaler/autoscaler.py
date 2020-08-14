@@ -246,7 +246,6 @@ class StandardAutoscaler:
                                              for node_id in nodes):
             if node_id is not None:
                 resources = self._node_resources(node_id)
-                print("node id", node_id, "resources", resources)
                 T.append(
                     threading.Thread(
                         target=self.spawn_updater,

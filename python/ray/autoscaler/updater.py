@@ -16,6 +16,7 @@ from ray.autoscaler.log_timer import LogTimer
 import ray.autoscaler.subprocess_output_util as cmd_output_util
 
 from ray.autoscaler.cli_logger import cli_logger
+from ray import ray_constants
 import colorful as cf
 
 logger = logging.getLogger(__name__)
@@ -343,7 +344,7 @@ class NodeUpdater:
                 for cmd in self.ray_start_commands:
                     if self.node_resources:
                         env_vars = {
-                            "RAY_OVERRIDE_RESOURCES": self.node_resources
+                            ray_constants.RESOURCES_ENVIRONMENT_VARIABLE: self.node_resources
                         }
                     else:
                         env_vars = {}
