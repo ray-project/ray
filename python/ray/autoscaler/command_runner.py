@@ -178,10 +178,6 @@ class KubernetesCommandRunner(CommandRunnerInterface):
         if target.startswith("~"):
             target = "/root" + target[1:]
 
-        # Add trailing slashes for rsync
-        source += "/" if not source.endswith("/") else ""
-        target += "/" if not target.endswith("/") else ""
-
         try:
             self.process_runner.check_call([
                 KUBECTL_RSYNC,
@@ -193,18 +189,20 @@ class KubernetesCommandRunner(CommandRunnerInterface):
             logger.warning(self.log_prefix +
                            "rsync failed: '{}'. Falling back to 'kubectl cp'"
                            .format(e))
-            self.process_runner.check_call(self.kubectl + [
-                "cp", source, "{}/{}:{}".format(self.namespace, self.node_id,
-                                                target)
-            ])
+            self.run_cp_up(source, target)
+
+    def run_cp_up(self, source, target):
+        if target.startswith("~"):
+            target = "/root" + target[1:]
+
+        self.process_runner.check_call(self.kubectl + [
+            "cp", source, "{}/{}:{}".format(self.namespace, self.node_id,
+                                            target)
+        ])
 
     def run_rsync_down(self, source, target):
         if target.startswith("~"):
             target = "/root" + target[1:]
-
-        # Add trailing slashes for rsync
-        source += "/" if not source.endswith("/") else ""
-        target += "/" if not target.endswith("/") else ""
 
         try:
             self.process_runner.check_call([
@@ -217,10 +215,16 @@ class KubernetesCommandRunner(CommandRunnerInterface):
             logger.warning(self.log_prefix +
                            "rsync failed: '{}'. Falling back to 'kubectl cp'"
                            .format(e))
-            self.process_runner.check_call(self.kubectl + [
-                "cp", "{}/{}:{}".format(self.namespace, self.node_id, source),
-                target
-            ])
+            self.run_cp_down(source, target)
+
+    def run_cp_down(self, source, target):
+        if target.startswith("~"):
+            target = "/root" + target[1:]
+
+        self.process_runner.check_call(self.kubectl + [
+            "cp", "{}/{}:{}".format(self.namespace, self.node_id, source),
+            target
+        ])
 
     def remote_shell_command_str(self):
         return "{} exec -it {} bash".format(" ".join(self.kubectl),
