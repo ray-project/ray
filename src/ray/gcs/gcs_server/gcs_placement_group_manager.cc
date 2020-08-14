@@ -108,9 +108,14 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
     std::shared_ptr<GcsPlacementGroup> placement_group) {
   RAY_LOG(WARNING) << "Failed to create placement group " << placement_group->GetName()
                    << ", try again.";
-  // We will attempt to schedule this placement_group once an eligible node is
-  // registered.
-  pending_placement_groups_.emplace_back(std::move(placement_group));
+  // We will attempt to schedule this placement_group once
+  // an eligible node is registered.
+  // NOTE: Creation could've been failed because placement group
+  // has been alread removed. In this case we should not reschedule.
+  if (registered_placement_groups_.find(placement_group->GetPlacementGroupID()) !=
+      registered_placement_groups_.end()) {
+    pending_placement_groups_.emplace_back(std::move(placement_group));
+  }
   MarkSchedulingDone();
   RetryCreatingPlacementGroup();
 }
