@@ -106,12 +106,12 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             "observation_space": obs_space
         }))
 
-        config["num_workers"] = 2
-        config["num_envs_per_worker"] = 4
-        config["num_sgd_iter"] = 8
+        config["num_workers"] = 3
+        config["num_envs_per_worker"] = 8
+        config["num_sgd_iter"] = 10
         config["model"]["use_lstm"] = True
         config["model"]["lstm_use_prev_action_reward"] = True
-        config["model"]["max_seq_len"] = 100
+        config["model"]["max_seq_len"] = 200
 
         policies = {
             "pol0": (None, obs_space, action_space, {}),
@@ -124,7 +124,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             "policies": policies,
             "policy_mapping_fn": policy_fn,
         }
-        num_iterations = 4
+        num_iterations = 2
         # Only works in torch so far.
         for _ in framework_iterator(config, frameworks="torch"):
             print("w/ API")

@@ -10,8 +10,8 @@ from typing import Any, Callable, Dict, List, Iterable, Optional, Set, Tuple,\
 
 from ray.util.debug import log_once
 from ray.rllib.evaluation.episode import MultiAgentEpisode
-from ray.rllib.evaluation.fast_multi_agent_sample_batch_builder import \
-    _FastMultiAgentSampleBatchBuilder
+from ray.rllib.evaluation.multi_agent_sample_collector import \
+    _MultiAgentSampleCollector
 from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
 from ray.rllib.evaluation.sample_batch_builder import \
     MultiAgentSampleBatchBuilder
@@ -206,7 +206,7 @@ class SyncSampler(SamplerInput):
         self.perf_stats = _PerfStats()
         self.sample_collector = None
         if _use_trajectory_view_api:
-            self.sample_collector = _FastMultiAgentSampleBatchBuilder(
+            self.sample_collector = _MultiAgentSampleCollector(
                 policies, callbacks)
 
         # Create the rollout generator to use for calls to `get_data()`.
@@ -350,7 +350,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self._use_trajectory_view_api = _use_trajectory_view_api
         self.sample_collector = None
         if _use_trajectory_view_api:
-            self.sample_collector = _FastMultiAgentSampleBatchBuilder(
+            self.sample_collector = _MultiAgentSampleCollector(
                 policies, callbacks)
 
     @override(threading.Thread)
