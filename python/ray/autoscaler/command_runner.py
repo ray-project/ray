@@ -88,7 +88,6 @@ def _with_environment_variables(cmd: str, environment_variables: Dict[str, objec
     for key, val in environment_variables.items():
         if isinstance(val, dict):
             val = dict_as_one_line_yaml(val)
-            print("encoded:", val)
         s = "export {}={};".format(key, quote(val))
         as_strings.append(s)
     all_vars = "".join(as_strings)

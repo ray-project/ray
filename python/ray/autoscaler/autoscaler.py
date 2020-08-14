@@ -260,8 +260,11 @@ class StandardAutoscaler:
             self.recover_if_needed(node_id, now)
 
     def _node_resources(self, node_id):
-        instance_type = self.provider.node_tags(node_id)[TAG_RAY_INSTANCE_TYPE]
-        return self.instance_types[instance_type]["resources"]
+        instance_type = self.provider.node_tags(node_id).get(TAG_RAY_INSTANCE_TYPE)
+        if instance_type:
+            return self.instance_types[instance_type].get("resources", None)
+        else:
+            return {}
 
     def reload_config(self, errors_fatal=False):
         sync_continuously = False
