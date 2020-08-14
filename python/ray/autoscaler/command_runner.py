@@ -84,7 +84,6 @@ def _with_environment_variables(cmd: str, environment_variables: dict):
             items.append(item_str)
 
         return "{" + ",".join(items) + "}"
-        # return "\{{}\}".format(",".join(items))
 
     as_strings = []
     for key, val in environment_variables.items():
