@@ -103,8 +103,17 @@ def with_head_node_ip(cmds):
 
 def hash_launch_conf(node_conf, auth):
     hasher = hashlib.sha1()
+    # For hashing, we replace the path to the key with the
+    # key itself. This is to make sure the hashes are the
+    # same even if keys live at different locations on different
+    # machines.
+    full_auth = auth.copy()
+    for key_type in ["ssh_private_key", "ssh_public_key"]:
+        if key_type in auth:
+            with open(auth[key_type]) as key:
+                full_auth[key_type] = key.read()
     hasher.update(
-        json.dumps([node_conf, auth], sort_keys=True).encode("utf-8"))
+        json.dumps([node_conf, full_auth], sort_keys=True).encode("utf-8"))
     return hasher.hexdigest()
 
 

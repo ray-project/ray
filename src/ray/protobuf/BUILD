@@ -83,11 +83,6 @@ cc_proto_library(
     deps = [":gcs_service_proto"],
 )
 
-python_grpc_compile(
-    name = "gcs_service_py_proto",
-    deps = [":gcs_service_proto"],
-)
-
 proto_library(
     name = "object_manager_proto",
     srcs = ["object_manager.proto"],
@@ -134,21 +129,3 @@ cc_proto_library(
     name = "event_cc_proto",
     deps = [":event_proto"],
 )
-
-# Agent manager gRPC lib.
-proto_library(
-    name = "agent_manager_proto",
-    srcs = ["agent_manager.proto"],
-    deps = [],
-)
-
-python_grpc_compile(
-    name = "agent_manager_py_proto",
-    deps = [":agent_manager_proto"],
-)
-
-cc_proto_library(
-    name = "agent_manager_cc_proto",
-    deps = [":agent_manager_proto"],
-)
-
