@@ -48,7 +48,8 @@ message ReportOCMetricsRequest {
   repeated opencensus.proto.metrics.v1.Metric metrics = 1;
 }
 
-message ReportOCMetricsReply {}
+message ReportOCMetricsReply {
+}
 
 // Service for communicating with the reporter.py process on a remote node.
 service ReporterService {

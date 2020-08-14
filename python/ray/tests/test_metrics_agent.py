@@ -69,9 +69,9 @@ def _setup_cluster_for_test(ray_start_cluster):
     @ray.remote
     class A:
         async def ping(self):
-            histogram = Histogram("test_histogram", "desc", "unit",
-                                  [0.2, 1, 2], [])
-            histogram.record(1, {})
+            histogram = Histogram("test_histogram", "desc", "unit", [0.1, 1.6],
+                                  [])
+            histogram.record(1.5, {})
             ray.get(worker_should_exit.wait.remote())
 
     a = A.remote()
@@ -101,6 +101,7 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
     def fetch_prometheus(prom_addresses):
         components_dict = {}
         metric_names = set()
+        metric_samples = []
         for address in prom_addresses:
             if address not in components_dict:
                 components_dict[address] = set()
@@ -113,13 +114,15 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
                 for family in text_string_to_metric_families(line):
                     for sample in family.samples:
                         metric_names.add(sample.name)
+                        metric_samples.append(sample)
                         if "Component" in sample.labels:
                             components_dict[address].add(
                                 sample.labels["Component"])
-        return components_dict, metric_names
+        return components_dict, metric_names, metric_samples
 
     def test_cases():
-        components_dict, metric_names = fetch_prometheus(prom_addresses)
+        components_dict, metric_names, metric_samples = fetch_prometheus(
+            prom_addresses)
 
         # Raylet should be on every node
         assert all(
@@ -136,6 +139,31 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         # Make sure our user defined metrics exist
         for metric_name in ["test_counter", "test_histogram"]:
             assert any(metric_name in full_name for full_name in metric_names)
+
+        # Make sure the numeric value is correct
+        test_counter_sample = [
+            m for m in metric_samples if "test_counter" in m.name
+        ][0]
+        assert test_counter_sample.value == 1.0
+
+        # Make sure the numeric value is correct
+        test_histogram_samples = [
+            m for m in metric_samples if "test_histogram" in m.name
+        ]
+        buckets = {
+            m.labels["le"]: m.value
+            for m in test_histogram_samples if "_bucket" in m.name
+        }
+        # We recorded value 1.5 for the histogram. In Prometheus data model
+        # the histogram is cumulative. So we expect the count to appear in
+        # <1.1 and <+Inf buckets.
+        assert buckets == {"0.1": 0.0, "1.6": 1.0, "+Inf": 1.0}
+        hist_count = [m for m in test_histogram_samples
+                      if "_count" in m.name][0].value
+        hist_sum = [m for m in test_histogram_samples
+                    if "_sum" in m.name][0].value
+        assert hist_count == 1
+        assert hist_sum == 1.5
 
     def wrap_test_case_for_retry():
         try:
