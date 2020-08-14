@@ -6,7 +6,7 @@ import pickle
 import platform
 import os
 from typing import Callable, Any, List, Dict, Tuple, Union, Optional, \
-    TYPE_CHECKING, TypeVar
+    TYPE_CHECKING, Type, TypeVar
 
 import ray
 from ray.rllib.env.atari_wrappers import wrap_deepmind, is_atari
@@ -36,9 +36,10 @@ from ray.rllib.utils.filter import get_filter, Filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
-from ray.rllib.utils.types import EnvType, AgentID, PolicyID, EnvConfigDict, \
-    ModelConfigDict, TrainerConfigDict, SampleBatchType, ModelWeights, \
-    ModelGradients, MultiAgentPolicyConfigDict
+from ray.rllib.utils.types import AgentID, EnvConfigDict, EnvType, \
+    ModelConfigDict, ModelGradients, ModelWeights, \
+    MultiAgentPolicyConfigDict, PartialTrainerConfigDict, PolicyID, \
+    SampleBatchType, TrainerConfigDict
 from ray.util.debug import log_once, disable_log_once_globally, \
     enable_periodic_logging
 from ray.util.iter import ParallelIteratorWorker
@@ -131,10 +132,13 @@ class RolloutWorker(ParallelIteratorWorker):
     @DeveloperAPI
     def __init__(self,
                  env_creator: Callable[[EnvContext], EnvType],
-                 policy: type,
+                 policy: Union[type, Dict[str, Tuple[
+                     Optional[type],
+                     gym.Space, gym.Space, PartialTrainerConfigDict]]],
                  policy_mapping_fn: Callable[[AgentID], PolicyID] = None,
-                 policies_to_train: List[PolicyID] = None,
-                 tf_session_creator: Callable[[], Any] = None,
+                 policies_to_train: Optional[List[PolicyID]] = None,
+                 tf_session_creator: Optional[Callable[
+                     [], "tf1.Session"]] = None,
                  rollout_fragment_length: int = 100,
                  batch_mode: str = "truncate_episodes",
                  episode_horizon: int = None,
@@ -154,7 +158,7 @@ class RolloutWorker(ParallelIteratorWorker):
                  monitor_path: str = None,
                  log_dir: str = None,
                  log_level: str = None,
-                 callbacks: "DefaultCallbacks" = None,
+                 callbacks: Type["DefaultCallbacks"] = None,
                  input_creator: Callable[[
                      IOContext
                  ], InputReader] = lambda ioctx: ioctx.default_sampler_input(),
@@ -170,22 +174,24 @@ class RolloutWorker(ParallelIteratorWorker):
                  fake_sampler: bool = False):
         """Initialize a rollout worker.
 
-        Arguments:
-            env_creator (func): Function that returns a gym.Env given an
-                EnvContext wrapped configuration.
-            policy (class|dict): Either a class implementing
-                Policy, or a dictionary of policy id strings to
-                (Policy, obs_space, action_space, config) tuples. If a
-                dict is specified, then we are in multi-agent mode and a
-                policy_mapping_fn should also be set.
-            policy_mapping_fn (func): A function that maps agent ids to
-                policy ids in multi-agent mode. This function will be called
-                each time a new agent appears in an episode, to bind that agent
-                to a policy for the duration of the episode.
-            policies_to_train (list): Optional list of policies to train,
-                or None for all policies.
-            tf_session_creator (func): A function that returns a TF session.
-                This is optional and only useful with TFPolicy.
+        Args:
+            env_creator (Callable[[EnvContext], EnvType]): Function that
+                returns a gym.Env given an EnvContext wrapped configuration.
+            policy (Union[type, Dict[str, Tuple[Optional[type], gym.Space,
+                gym.Space, PartialTrainerConfigDict]]]): Either a Policy class
+                or a dict of policy id strings to
+                (Policy (None for default), obs_space, action_space,
+                config)-tuples. If a dict is specified, then we are in
+                multi-agent mode and a policy_mapping_fn should also be set.
+            policy_mapping_fn (Callable[[AgentID], PolicyID]): A function that
+                maps agent ids to policy ids in multi-agent mode. This function
+                will be called each time a new agent appears in an episode, to
+                bind that agent to a policy for the duration of the episode.
+            policies_to_train (Optional[List[PolicyID]]): Optional list of
+                policies to train, or None for all policies.
+            tf_session_creator (Optional[Callable[[], tf1.Session]]): A
+                function that returns a TF session. This is optional and only
+                useful with TFPolicy.
             rollout_fragment_length (int): The target number of env transitions
                 to include in each sample batch returned from this worker.
             batch_mode (str): One of the following batch modes:
@@ -221,10 +227,11 @@ class RolloutWorker(ParallelIteratorWorker):
                 only.
             clip_actions (bool): Whether to clip action values to the range
                 specified by the policy action space.
-            env_config (dict): Config to pass to the env creator.
-            model_config (dict): Config to use when creating the policy model.
-            policy_config (dict): Config to pass to the policy. In the
-                multi-agent case, this config will be merged with the
+            env_config (EnvConfigDict): Config to pass to the env creator.
+            model_config (ModelConfigDict): Config to use when creating the
+                policy model.
+            policy_config (TrainerConfigDict): Config to pass to the policy.
+                In the multi-agent case, this config will be merged with the
                 per-policy configs specified by `policy`.
             worker_index (int): For remote workers, this should be set to a
                 non-zero and unique value. This index is passed to created envs
@@ -236,17 +243,19 @@ class RolloutWorker(ParallelIteratorWorker):
             log_dir (str): Directory where logs can be placed.
             log_level (str): Set the root log level on creation.
             callbacks (DefaultCallbacks): Custom training callbacks.
-            input_creator (func): Function that returns an InputReader object
-                for loading previous generated experiences.
-            input_evaluation (list): How to evaluate the policy performance.
-                This only makes sense to set when the input is reading offline
-                data. The possible values include:
+            input_creator (Callable[[IOContext], InputReader]): Function that
+                returns an InputReader object for loading previous generated
+                experiences.
+            input_evaluation (List[str]): How to evaluate the policy
+                performance. This only makes sense to set when the input is
+                reading offline data. The possible values include:
                   - "is": the step-wise importance sampling estimator.
                   - "wis": the weighted step-wise is estimator.
                   - "simulation": run the environment in the background, but
                     use this data for evaluation only and never for learning.
-            output_creator (func): Function that returns an OutputWriter object
-                for saving generated experiences.
+            output_creator (Callable[[IOContext], OutputWriter]): Function that
+                returns an OutputWriter object for saving generated
+                experiences.
             remote_worker_envs (bool): If using num_envs > 1, whether to create
                 those new envs in remote processes instead of in the current
                 process. This adds overheads, but can make sense if your envs
