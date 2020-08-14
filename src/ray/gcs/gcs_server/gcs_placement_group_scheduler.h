@@ -84,21 +84,6 @@ class GcsSpreadStrategy : public GcsScheduleStrategy {
                        const GcsNodeManager &node_manager) override;
 };
 
-class PlacementGroupLeasingContext {
-  public:
-   PlacementGroupLeasingContext(std::shared_ptr<GcsPlacementGroup> placement_group);
-   ~PlacementGroupLeasingContext() = default;
-
-  private:
-   /// Map from node ID to the set of bundles for whom we are trying to acquire a lease
-   /// from that node. This is needed so that we can retry lease requests from the node
-   /// until we receive a reply or the node is removed.
-   absl::flat_hash_map<ClientID, absl::flat_hash_set<BundleID>> node_to_bundles_when_leasing_;
-   absl::flat_hash_map<BundleID, std::pair<ClientID, std::shared_ptr<BundleSpecification>>, pair_hash>bundle_locations_;
-   std::shared_ptr<GcsPlacementGroup> placement_group_;
-   size_t finished_count_;
-};
-
 /// GcsPlacementGroupScheduler is responsible for scheduling placement_groups registered
 /// to GcsPlacementGroupManager. This class is not thread-safe.
 class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
@@ -148,29 +133,25 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// Get an existing lease client or connect a new one.
   std::shared_ptr<ResourceReserveInterface> GetOrConnectLeaseClient(
       const rpc::Address &raylet_address);
-
   /// A timer that ticks every cancel resource failure milliseconds.
   boost::asio::deadline_timer return_timer_;
-
   /// Used to update placement group information upon creation, deletion, etc.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-
   /// Reference of GcsNodeManager.
   const GcsNodeManager &gcs_node_manager_;
-
   /// The cached node clients which are used to communicate with raylet to lease workers.
   absl::flat_hash_map<ClientID, std::shared_ptr<ResourceReserveInterface>>
       remote_lease_clients_;
-
   /// Factory for producing new clients to request leases from remote nodes.
   ReserveResourceClientFactoryFn lease_client_factory_;
 
+  /// Map from node ID to the set of bundles for whom we are trying to acquire a lease
+  /// from that node. This is needed so that we can retry lease requests from the node
+  /// until we receive a reply or the node is removed.
+  absl::flat_hash_map<ClientID, absl::flat_hash_set<BundleID>>
+      node_to_bundles_when_leasing_;
   /// A vector to store all the schedule strategy.
   std::vector<std::shared_ptr<GcsScheduleStrategy>> scheduler_strategies_;
-
-  absl::flat_hash_map<ClientID, absl::flat_hash_set<BundleID>> node_to_bundles_when_leasing_;
-
-  absl::flat_hash_map<PlacementGroupID, std::shared_ptr<PlacementGroupLeasingContext>> leasing_context_;
 };
 
 }  // namespace gcs
