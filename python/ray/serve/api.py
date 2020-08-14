@@ -9,11 +9,14 @@ from ray.serve.utils import (block_until_http_ready, format_actor_name)
 from ray.serve.exceptions import RayServeException
 from ray.serve.config import BackendConfig, ReplicaConfig
 from ray.serve.metric import InMemoryExporter
+from ray.actor import ActorHandle
+from ray.serve.metric.exporter import InMemoryExporter
+from typing import Any, Callable, Dict, List, Optional, Type, Union
 
 controller = None
 
 
-def _get_controller():
+def _get_controller() -> ActorHandle:
     """Used for internal purpose because using just import serve.global_state
     will always reference the original None object.
     """
@@ -24,7 +27,7 @@ def _get_controller():
     return controller
 
 
-def _ensure_connected(f):
+def _ensure_connected(f: Callable) -> Callable:
     @wraps(f)
     def check(*args, **kwargs):
         _get_controller()
@@ -33,7 +36,7 @@ def _ensure_connected(f):
     return check
 
 
-def accept_batch(f):
+def accept_batch(f: Callable) -> Callable:
     """Annotation to mark a serving function that batch is accepted.
 
     This annotation need to be used to mark a function expect all arguments
@@ -55,11 +58,11 @@ def accept_batch(f):
     return f
 
 
-def init(name=None,
-         http_host=DEFAULT_HTTP_HOST,
-         http_port=DEFAULT_HTTP_PORT,
-         metric_exporter=InMemoryExporter,
-         _http_middlewares=[]):
+def init(name: str=None,
+         http_host: str=DEFAULT_HTTP_HOST,
+         http_port: int=DEFAULT_HTTP_PORT,
+         metric_exporter: Type[InMemoryExporter]=InMemoryExporter,
+         _http_middlewares: List[Any]=[]) -> None:
     """Initialize or connect to a serve cluster.
 
     If serve cluster is already initialized, this function will just return.
@@ -115,7 +118,7 @@ def init(name=None,
 
 
 @_ensure_connected
-def shutdown():
+def shutdown() -> None:
     """Completely shut down the connected Serve instance.
 
     Shuts down all processes and deletes all state associated with the Serve
@@ -128,11 +131,10 @@ def shutdown():
 
 
 @_ensure_connected
-def create_endpoint(endpoint_name,
-                    *,
-                    backend=None,
+def create_endpoint(endpoint_name: str,
+                    *, backend=None,
                     route=None,
-                    methods=["GET"]):
+                    methods=["GET"]) -> None:
     """Create a service endpoint given route_expression.
 
     Args:
@@ -185,7 +187,7 @@ def create_endpoint(endpoint_name,
 
 
 @_ensure_connected
-def delete_endpoint(endpoint):
+def delete_endpoint(endpoint: str) -> None:
     """Delete the given endpoint.
 
     Does not delete any associated backends.
@@ -194,7 +196,7 @@ def delete_endpoint(endpoint):
 
 
 @_ensure_connected
-def list_endpoints():
+def list_endpoints() -> Dict[str, Union[Dict[str, Union[str, List[str], Dict[str, float]]], Dict[str, Optional[Union[List[str], Dict[str, float]]]]]]:
     """Returns a dictionary of all registered endpoints.
 
     The dictionary keys are endpoint names and values are dictionaries
@@ -204,7 +206,7 @@ def list_endpoints():
 
 
 @_ensure_connected
-def update_backend_config(backend_tag, config_options):
+def update_backend_config(backend_tag: str, config_options: Dict[str, int]) -> None:
     """Update a backend configuration for a backend tag.
 
     Keys not specified in the passed will be left unchanged.
@@ -241,11 +243,11 @@ def get_backend_config(backend_tag):
 
 
 @_ensure_connected
-def create_backend(backend_tag,
-                   func_or_class,
+def create_backend(backend_tag: str,
+                   func_or_class: Callable,
                    *actor_init_args,
-                   ray_actor_options=None,
-                   config=None):
+    ray_actor_options=None,
+                   config=None) -> None:
     """Create a backend with the provided tag.
 
     The backend will serve requests with func_or_class.
@@ -292,7 +294,7 @@ def create_backend(backend_tag,
 
 
 @_ensure_connected
-def list_backends():
+def list_backends() -> Dict[str, Dict[str, Optional[Union[bool, int]]]]:
     """Returns a dictionary of all registered backends.
 
     Dictionary maps backend tags to backend configs.
@@ -301,7 +303,7 @@ def list_backends():
 
 
 @_ensure_connected
-def delete_backend(backend_tag):
+def delete_backend(backend_tag: str) -> None:
     """Delete the given backend.
 
     The backend must not currently be used by any endpoints.
@@ -310,7 +312,7 @@ def delete_backend(backend_tag):
 
 
 @_ensure_connected
-def set_traffic(endpoint_name, traffic_policy_dictionary):
+def set_traffic(endpoint_name: str, traffic_policy_dictionary: Dict[str, float]) -> None:
     """Associate a service endpoint with traffic policy.
 
     Example:
@@ -331,7 +333,7 @@ def set_traffic(endpoint_name, traffic_policy_dictionary):
 
 
 @_ensure_connected
-def shadow_traffic(endpoint_name, backend_tag, proportion):
+def shadow_traffic(endpoint_name: str, backend_tag: str, proportion: float) -> None:
     """Shadow traffic from an endpoint to a backend.
 
     The specified proportion of requests will be duplicated and sent to the
@@ -356,10 +358,10 @@ def shadow_traffic(endpoint_name, backend_tag, proportion):
 
 
 @_ensure_connected
-def get_handle(endpoint_name,
-               relative_slo_ms=None,
-               absolute_slo_ms=None,
-               missing_ok=False):
+def get_handle(endpoint_name: str,
+               relative_slo_ms: None=None,
+               absolute_slo_ms: None=None,
+               missing_ok: bool=False) -> RayServeHandle:
     """Retrieve RayServeHandle for service endpoint to invoke it from Python.
 
     Args:
@@ -388,7 +390,7 @@ def get_handle(endpoint_name,
 
 
 @_ensure_connected
-def stat():
+def stat() -> List[Dict[str, Union[Dict[str, str], int]]]:
     """Retrieve metric statistics about ray serve system.
 
     Returns:
