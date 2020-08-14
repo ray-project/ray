@@ -8,7 +8,7 @@ else
   base_commit="$(git merge-base "${TRAVIS_BRANCH}" HEAD)"
   echo "Running clang-format against branch $base_commit, with hash $(git rev-parse "$base_commit")"
 fi
-exclude_regex="(.*thirdparty/|.*redismodule.h|.*.java|.*.jsx?|.*.tsx?)"
+exclude_regex="(.*thirdparty/|.*redismodule.h|.*.java|.*.jsx?|.*.tsx?|.*.proto)"
 output="$(ci/travis/git-clang-format --binary clang-format --commit "$base_commit" --diff --exclude "$exclude_regex")"
 if [ "$output" = "no modified files to format" ] || [ "$output" = "clang-format did not modify any files" ] ; then
   echo "clang-format passed."
