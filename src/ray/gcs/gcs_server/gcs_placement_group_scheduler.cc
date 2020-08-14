@@ -104,9 +104,6 @@ ScheduleMap GcsPackStrategy::Schedule(
   return schedule_map;
 }
 
-/// This is an initial algorithm to respect spread algorithm.
-/// In this algorithm, we try to spread all the bundle in different node
-/// and don't care the real resource.
 ScheduleMap GcsSpreadStrategy::Schedule(
     std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
     const std::unique_ptr<ScheduleContext> &context) {

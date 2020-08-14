@@ -83,6 +83,7 @@ class GcsPackStrategy : public GcsScheduleStrategy {
                        const std::unique_ptr<ScheduleContext> &context) override;
 };
 
+/// The `GcsSpreadStrategy` is that spread all bundles in different nodes.
 class GcsSpreadStrategy : public GcsScheduleStrategy {
  public:
   ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
