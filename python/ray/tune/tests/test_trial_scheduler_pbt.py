@@ -5,6 +5,7 @@ import random
 import unittest
 import sys
 
+import ray
 from ray import tune
 from ray.tune.schedulers import PopulationBasedTraining
 
@@ -63,6 +64,11 @@ class MockParam(object):
 
 
 class PopulationBasedTrainingResumeTest(unittest.TestCase):
+    def setUp(self):
+        ray.init()
+    def tearDown(self):
+        ray.shutdown()
+
     def testPermutationContinuation(self):
         """
         Tests continuation of runs after permutation.
