@@ -1,11 +1,11 @@
 package io.ray.runtime.object;
 
 import com.google.protobuf.InvalidProtocolBufferException;
+import io.ray.api.id.ObjectId;
 import io.ray.runtime.exception.RayActorException;
+import io.ray.runtime.exception.RayTaskException;
 import io.ray.runtime.exception.RayWorkerException;
 import io.ray.runtime.exception.UnreconstructableException;
-import io.ray.api.id.ObjectId;
-import io.ray.runtime.exception.RayTaskException;
 import io.ray.runtime.generated.Common.ErrorType;
 import io.ray.runtime.serializer.Serializer;
 import java.nio.ByteBuffer;
@@ -71,8 +71,13 @@ public class ObjectSerializer {
       } else if (Arrays.equals(meta, UNRECONSTRUCTABLE_EXCEPTION_META)) {
         return new UnreconstructableException(objectId);
       } else if (Arrays.equals(meta, TASK_EXECUTION_EXCEPTION_META)) {
-        // Serialization logic of task execution exception: an instance of `io.ray.runtime.exception.RayTaskException` -> a `RayException` protobuf message -> protobuf-serialized bytes -> MessagePack-serialized bytes.
-        // So here the `data` variable is MessagePack-serialized bytes, and the `serialized` variable is protobuf-serialized bytes. They are not the same.
+        // Serialization logic of task execution exception: an instance of
+        // `io.ray.runtime.exception.RayTaskException`
+        //    -> a `RayException` protobuf message
+        //    -> protobuf-serialized bytes
+        //    -> MessagePack-serialized bytes.
+        // So here the `data` variable is MessagePack-serialized bytes, and the `serialized`
+        // variable is protobuf-serialized bytes. They are not the same.
         byte[] serialized = Serializer.decode(data, byte[].class);
         try {
           return RayTaskException.fromBytes(serialized);
@@ -121,7 +126,8 @@ public class ObjectSerializer {
       byte[] serializedBytes = Serializer.encode(taskException.toBytes()).getLeft();
       // serializedBytes is MessagePack serialized bytes
       // taskException.toBytes() is protobuf serialized bytes
-      // Only OBJECT_METADATA_TYPE_RAW is raw bytes, any other type is the MessagePack serialized bytes.
+      // Only OBJECT_METADATA_TYPE_RAW is raw bytes,
+      // any other type should be the MessagePack serialized bytes.
       return new NativeRayObject(serializedBytes, TASK_EXECUTION_EXCEPTION_META);
     } else {
       try {
