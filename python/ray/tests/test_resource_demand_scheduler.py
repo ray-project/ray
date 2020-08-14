@@ -52,10 +52,11 @@ TYPES_A = {
     },
 }
 
-MULTI_WORKER_CLUSTER = dict(SMALL_CLUSTER, **{
-    "available_instance_types": TYPES_A,
-    "worker_start_ray_commands": ["ray start --address=$RAY_HEAD_IP:6379"]
-})
+MULTI_WORKER_CLUSTER = dict(
+    SMALL_CLUSTER, **{
+        "available_instance_types": TYPES_A,
+        "worker_start_ray_commands": ["ray start --address=$RAY_HEAD_IP:6379"]
+    })
 
 
 def test_util_score():
@@ -255,6 +256,10 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(2)
         assert self.provider.mock_nodes[1].instance_type == "p2.8xlarge"
 
+        # TODO (Alex): Autoscaler creates the node during one update then
+        # starts the updater in the enxt update. The sleep is largely
+        # unavoidable because the updater runs in its own thread and we have no
+        # good way of ensuring that the commands are sent in time.
         autoscaler.update()
         sleep(0.1)
 

@@ -52,7 +52,8 @@ class MockProcessRunner:
         return "command-output".encode()
 
     def assert_has_call(self, ip, pattern=None, exact=None):
-        assert pattern or exact, "Must specify either a pattern or exact match."
+        assert pattern or exact, \
+            "Must specify either a pattern or exact match."
         out = ""
         if pattern is not None:
             for cmd in self.calls:

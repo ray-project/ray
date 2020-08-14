@@ -356,7 +356,8 @@ class NodeUpdater:
                         self.cmd_runner.run(
                             cmd, environment_variables=env_vars)
                         print("GETS HERE3")
-                        print(self.cmd_runner.ssh_command_runner.process_runner.calls[-1])
+                        print(self.cmd_runner.ssh_command_runner.
+                              process_runner.calls[-1])
                         print("---------------")
                         cmd_output_util.set_output_redirected(True)
                     except ProcessRunnerError as e:
