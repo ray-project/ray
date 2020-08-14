@@ -108,12 +108,12 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
             port_forward=port_forward)
         click.echo("Successfully established connection.")
     except Exception as e:
-        click.echo(
+        raise click.ClickException(
             "Failed to forward dashboard from remote port {1} to local port "
             "{0}. There are a couple possibilities: \n 1. The remote port is "
             "incorrectly specified \n 2. The local port {0} is already in "
-            "use.\n The exception is: {2}".format(port, remote_port, e))
-        exit(-1)
+            "use.\n The exception is: {2}".format(port, remote_port, e)) \
+                from None
 
 
 @cli.command()
