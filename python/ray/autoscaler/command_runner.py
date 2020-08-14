@@ -556,6 +556,7 @@ class DockerCommandRunner(SSHCommandRunner):
             ssh_options_override_ssh_key=ssh_options_override_ssh_key)
 
     def run_rsync_up(self, source, target):
+        # TODO(ilr) Expose this to before NodeUpdater::sync_file_mounts
         protected_path = target
         if target.find("/root") == 0:
             target = target.replace("/root", "/tmp/root")
