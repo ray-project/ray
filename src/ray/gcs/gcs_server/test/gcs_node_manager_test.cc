@@ -93,19 +93,21 @@ TEST_F(GcsNodeManagerTest, TestGetClusterRealtimeResources) {
 
   auto node_id = ClientID::FromRandom();
   rpc::HeartbeatTableData heartbeat;
-  (*heartbeat.mutable_resources_available())["CPU"] = 10;
+  const std::string cpu_resource = "CPU";
+  (*heartbeat.mutable_resources_available())[cpu_resource] = 10;
   node_manager.UpdateNodeRealtimeResources(node_id, heartbeat);
   auto node_resources = node_manager.GetClusterRealtimeResources();
-  std::unordered_map<std::string, double> request_resources;
-  request_resources["CPU"] = 9;
-  ASSERT_TRUE(node_resources[node_id]->IsSubset(request_resources));
-  request_resources["CPU"] = 10;
-  ASSERT_TRUE(node_resources[node_id]->IsSubset(request_resources));
-  request_resources["CPU"] = 10.1;
-  ASSERT_FALSE(node_resources[node_id]->IsSubset(request_resources));
-  request_resources.clear();
-  request_resources["GPU"] = 1;
-  ASSERT_FALSE(node_resources[node_id]->IsSubset(request_resources));
+
+  ResourceSet required_resources;
+  required_resources.AddOrUpdateResource(cpu_resource, 9);
+  ASSERT_TRUE(required_resources.IsSubset(*node_resources[node_id]));
+  required_resources.AddOrUpdateResource(cpu_resource, 10);
+  ASSERT_TRUE(required_resources.IsSubset(*node_resources[node_id]));
+  required_resources.AddOrUpdateResource(cpu_resource, 10.1);
+  ASSERT_FALSE(required_resources.IsSubset(*node_resources[node_id]));
+  required_resources.DeleteResource(cpu_resource);
+  required_resources.AddOrUpdateResource("GPU", 9);
+  ASSERT_FALSE(required_resources.IsSubset(*node_resources[node_id]));
 }
 
 }  // namespace ray
