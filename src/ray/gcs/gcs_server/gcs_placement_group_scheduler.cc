@@ -31,6 +31,7 @@ GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
       lease_client_factory_(std::move(lease_client_factory)) {
   scheduler_strategies_.push_back(std::make_shared<GcsPackStrategy>());
   scheduler_strategies_.push_back(std::make_shared<GcsSpreadStrategy>());
+  scheduler_strategies_.push_back(std::make_shared<GcsStrictPackStrategy>());
 }
 
 ScheduleMap GcsStrictPackStrategy::Schedule(
@@ -122,6 +123,9 @@ ScheduleMap GcsSpreadStrategy::Schedule(
         schedule_map[bundles[index + base * alive_nodes_size]->BundleId()] = iter->first;
       }
     }
+  }
+  if (schedule_map.size() != bundles.size()) {
+    schedule_map.clear();
   }
   return schedule_map;
 }
