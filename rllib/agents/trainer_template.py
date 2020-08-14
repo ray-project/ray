@@ -1,5 +1,5 @@
 import logging
-from typing import Callable, Iterable, List, Optional, Type
+from typing import Callable, Iterable, List, Optional, Type, Union
 
 from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
 from ray.rllib.evaluation.worker_set import WorkerSet
@@ -11,6 +11,7 @@ from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.typing import EnvConfigDict, EnvType, \
     PartialTrainerConfigDict, ResultDict, TrainerConfigDict
+from ray.tune.logger import Logger
 
 logger = logging.getLogger(__name__)
 
