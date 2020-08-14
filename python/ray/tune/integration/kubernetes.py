@@ -20,7 +20,7 @@ def NamespacedKubernetesSyncer(namespace):
 
     Example:
 
-        .. code-block:: python
+    .. code-block:: python
 
         from ray.tune.integration.kubernetes import NamespacedKubernetesSyncer
         tune.run(train,
