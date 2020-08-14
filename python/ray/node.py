@@ -104,7 +104,8 @@ class Node:
                     head), "LRU Evict can only be passed into the head node."
 
         self._raylet_ip_address = raylet_ip_address
-        self.metrics_agent_port = self._get_unused_port()[0]
+        self.metrics_agent_port = (ray_params.metrics_agent_port
+                                   or self._get_unused_port()[0])
         self._metrics_export_port = ray_params.metrics_export_port
         if self._metrics_export_port is None:
             self._metrics_export_port = self._get_unused_port()[0]

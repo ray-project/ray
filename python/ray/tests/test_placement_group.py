@@ -1,9 +1,11 @@
 import pytest
+import os
+import sys
+
 try:
     import pytest_timeout
 except ImportError:
     pytest_timeout = None
-import sys
 
 import ray
 import ray.test_utils
@@ -173,8 +175,10 @@ def test_placement_group_hang(ray_start_cluster):
     assert "CPU_group_" in list(resources.keys())[0], resources
 
 
-def test_remove_placement_group():
-    ray.init(num_cpus=4)
+def test_remove_placement_group(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4)
+    ray.init(address=cluster.address)
     # First try to remove a placement group that doesn't
     # exist. This should throw an exception.
     with pytest.raises(ValueError):
@@ -218,6 +222,24 @@ def test_remove_placement_group():
     # That means this request should fail.
     # TODO(sang): Turn it on.
     # ray.get(a.f.remote())
+
+
+def test_cuda_visible_devices(ray_start_cluster):
+    @ray.remote(num_gpus=1)
+    def f():
+        return os.environ["CUDA_VISIBLE_DEVICES"]
+
+    cluster = ray_start_cluster
+    num_nodes = 1
+    for _ in range(num_nodes):
+        cluster.add_node(num_gpus=1)
+    ray.init(address=cluster.address)
+
+    g1 = ray.experimental.placement_group([{"CPU": 1, "GPU": 1}])
+    o1 = f.options(placement_group_id=g1).remote()
+
+    devices = ray.get(o1)
+    assert devices == "0", devices
 
 
 if __name__ == "__main__":
