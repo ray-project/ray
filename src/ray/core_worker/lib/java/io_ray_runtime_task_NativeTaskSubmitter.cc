@@ -162,9 +162,12 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
 
 inline ray::PlacementStrategy ConvertStrategy(jint java_strategy) {
   switch (java_strategy) {
-    case 0:return ray::rpc::PACK;
-    case 1:return ray::rpc::SPREAD;
-    default:return ray::rpc::STRICT_PACK;
+  case 0:
+    return ray::rpc::PACK;
+  case 1:
+    return ray::rpc::SPREAD;
+  default:
+    return ray::rpc::STRICT_PACK;
   }
 }
 
