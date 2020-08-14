@@ -1,3 +1,4 @@
+from jsonschema import Draft7Validator
 import logging
 from typing import Callable, Iterable, List, Optional, Type, Union
 
@@ -39,9 +40,9 @@ def build_trainer(
         default_config: TrainerConfigDict = None,
         config_schema: Optional[dict] = None,
         validate_config: Callable[[TrainerConfigDict], None] = None,
-        default_policy: Optional[Policy],
+        default_policy: Optional[Type[Policy]] = None,
         get_policy_class: Optional[Callable[
-            [TrainerConfigDict], Type[Policy]]] = None,
+            [TrainerConfigDict], Optional[Type[Policy]]]] = None,
         before_init: Optional[Callable[[Trainer], None]] = None,
         after_init: Optional[Callable[[Trainer], None]] = None,
         before_evaluate_fn: Optional[Callable[[Trainer], None]] = None,
@@ -67,14 +68,18 @@ def build_trainer(
             needed.
         default_policy (Optional[Type[Policy]]): The default Policy class to
             use.
-        get_policy_class (Optional[Callable[TrainerConfigDict, Type[Policy]]]):
-            Optional callable that takes a config and returns the policy class
-            to override the default with.
+        get_policy_class (Optional[Callable[
+            TrainerConfigDict, Optional[Type[Policy]]]]): Optional callable
+            that takes a config and returns the policy class or None. If None
+            is returned, will use `default_policy` (which must be provided
+            then).
         before_init (Optional[Callable[[Trainer], None]]): Optional callable to
-            run at the start of trainer init that takes the trainer instance as
+            run before anything is constructed inside Trainer (Workers with
+            Policies, execution plan, etc..). Takes the Trainer instance as
             argument.
         after_init (Optional[Callable[[Trainer], None]]): Optional callable to
-            run at the end of trainer init that takes the trainer instance as
+            run at the end of trainer init (after all Workers and the exec.
+            plan have been constructed). Takes the Trainer instance as
             argument.
         before_evaluate_fn (Optional[Callable[[Trainer], None]]): Callback to
             run before evaluation. This takes the trainer instance as argument.
@@ -107,21 +112,29 @@ def build_trainer(
             # Validate config via jsonschema, if one was provided.
             if config_schema:
                 Draft7Validator(config_schema).validate(config)
+            # Validate config via custom validation function.
             if validate_config:
                 validate_config(config)
 
             if get_policy_class is None:
+                assert default_policy is not None
                 self._policy_class = default_policy
             else:
                 self._policy_class = get_policy_class(config)
+                if self._policy_class is None:
+                    assert default_policy is not None
+                    self._policy_class = default_policy
+
             if before_init:
                 before_init(self)
+
             # Creating all workers (excluding evaluation workers).
             self.workers = self._make_workers(
                 env_creator, self._policy_class, config,
                 self.config["num_workers"])
             self.execution_plan = execution_plan
             self.train_exec_impl = execution_plan(self.workers, config)
+
             if after_init:
                 after_init(self)
 

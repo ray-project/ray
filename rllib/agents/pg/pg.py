@@ -12,7 +12,7 @@ Implementation of a vanilla policy gradients algorithm. Based on:
     http://www-anw.cs.umass.edu/~barto/courses/cs687/williams92simple.pdf
 """
 
-from typing import Type
+from typing import Optional, Type
 
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
@@ -37,19 +37,18 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def get_policy_class(config: TrainerConfigDict) -> Type[Policy]:
+def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
     """Policy class picker function. Class is chosen based on DL-framework.
 
     Args:
         config (TrainerConfigDict): The trainer's configuration dict.
 
     Returns:
-        Type[Policy]: The Policy class to use with PGTrainer.
+        Optional[Type[Policy]]: The Policy class to use with PGTrainer.
+            If None, use `default_policy` provided in build_trainer().
     """
     if config["framework"] == "torch":
         return PGTorchPolicy
-    else:
-        return PGTFPolicy
 
 
 # Build a child class of `Trainer`, which uses the framework specific Policy
@@ -59,4 +58,5 @@ PGTrainer = build_trainer(
     default_config=DEFAULT_CONFIG,
     config_schema=pg_config_schema,
     default_policy=PGTFPolicy,
-    get_policy_class=get_policy_class)
+    get_policy_class=get_policy_class,
+)
