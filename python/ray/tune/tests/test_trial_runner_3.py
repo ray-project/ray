@@ -356,22 +356,48 @@ class TrialRunnerTest3(unittest.TestCase):
         assert all(v <= 3 for v in count.values())
 
     def testTrialErrorResume(self):
-        trials = create_trials(3)
-        runner = TrialRunner()
-        runner.add_trials(trials)
+        ray.init(num_cpus=3)
+        tmpdir = tempfile.mkdtemp()
+        runner = TrialRunner(local_checkpoint_dir=tmpdir)
+        kwargs = {
+            "stopping_criterion": {
+                "training_iteration": 4
+            },
+            "resources": Resources(cpu=1, gpu=0),
+        }
+        trials = [
+            Trial("__fake", config={"mock_error": True}, **kwargs),
+            Trial("__fake", **kwargs),
+            Trial("__fake", **kwargs),
+        ]
+        for t in trials:
+            runner.add_trial(t)
+
         while not runner.is_finished():
             runner.step()
 
         runner.checkpoint()
 
         assert trials[0].status == Trial.ERROR
-        new_runner = TrialRunner(..., rerun_failed=True)
+        del runner
+
+        new_runner = TrialRunner(
+            rerun_failed=True, resume=True, local_checkpoint_dir=tmpdir)
+        assert len(new_runner.get_trials()) == 3
+        assert Trial.ERROR not in set(
+            t.status for t in new_runner.get_trials())
+        disable_error = False
+        for t in new_runner.get_trials():
+            if t.config.get("mock_error"):
+                t.config["mock_error"] = False
+                disable_error = True
+        assert disable_error
 
         while not new_runner.is_finished():
             new_runner.step()
-
-        assert not trials == Trial.ERROR
-
+        assert not any(t.status == Trial.ERROR
+                       for t in new_runner.get_trials())
+        shutil.rmtree(tmpdir)
 
     def testTrialSaveRestore(self):
         """Creates different trials to test runner.checkpoint/restore."""

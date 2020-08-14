@@ -195,8 +195,7 @@ class TrialRunner:
             if rerun_failed:
                 raise ValueError(
                     "'rerun_failed' should only be used with 'resume'. "
-                    f"Got: resume={resume}, rerun_failed={rerun_failed}"
-                )
+                    f"Got: resume={resume}, rerun_failed={rerun_failed}")
             logger.debug("Starting a new experiment.")
 
         self._start_time = time.time()
