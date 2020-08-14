@@ -9,7 +9,7 @@ from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.policy.view_requirement import ViewRequirement
-from ray.rllib.utils import add_mixins
+from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import convert_to_non_torch_type
@@ -294,9 +294,15 @@ def build_torch_policy(
         @override(TorchPolicy)
         def optimizer(self):
             if optimizer_fn:
-                return optimizer_fn(self, self.config)
+                optimizers = optimizer_fn(self, self.config)
             else:
-                return TorchPolicy.optimizer(self)
+                optimizers = TorchPolicy.optimizer(self)
+            optimizers = force_list(optimizers)
+            if hasattr(self, "exploration"):
+                exploration_optimizers = force_list(
+                    self.exploration.get_exploration_optimizer(self.config))
+                optimizers.extend(exploration_optimizers)
+            return optimizers
 
         @override(TorchPolicy)
         def extra_grad_info(self, train_batch):

@@ -95,10 +95,10 @@ def test_actor_gpus(ray_start_cluster):
     @ray.remote(num_gpus=1)
     class Actor1:
         def __init__(self):
-            self.gpu_ids = ray.get_gpu_ids()
+            self.gpu_ids = ray.get_gpu_ids(as_str=True)
 
         def get_location_and_ids(self):
-            assert ray.get_gpu_ids() == self.gpu_ids
+            assert ray.get_gpu_ids(as_str=True) == self.gpu_ids
             return (ray.worker.global_worker.node.unique_id,
                     tuple(self.gpu_ids))
 

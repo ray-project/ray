@@ -466,10 +466,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] metadata Metadata of the object to be written.
   /// \param[in] data_size Size of the object to be written.
   /// \param[in] object_id Object ID specified by the user.
+  /// \param[in] owner_address The address of the object's owner.
   /// \param[out] data Buffer for the user to write the object into.
   /// \return Status.
   Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
-                const ObjectID &object_id, std::shared_ptr<Buffer> *data);
+                const ObjectID &object_id, const rpc::Address &owner_address,
+                std::shared_ptr<Buffer> *data);
 
   /// Finalize placing an object into the object store. This should be called after
   /// a corresponding `Create()` call and then writing into the returned buffer.
@@ -762,6 +764,22 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &request,
                                rpc::WaitForRefRemovedReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Implements gRPC server handler.
+  void HandleAddObjectLocationOwner(const rpc::AddObjectLocationOwnerRequest &request,
+                                    rpc::AddObjectLocationOwnerReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Implements gRPC server handler.
+  void HandleRemoveObjectLocationOwner(
+      const rpc::RemoveObjectLocationOwnerRequest &request,
+      rpc::RemoveObjectLocationOwnerReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Implements gRPC server handler.
+  void HandleGetObjectLocationsOwner(const rpc::GetObjectLocationsOwnerRequest &request,
+                                     rpc::GetObjectLocationsOwnerReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
   void HandleKillActor(const rpc::KillActorRequest &request, rpc::KillActorReply *reply,

@@ -373,7 +373,7 @@ class Worker:
         sys.exit(0)
 
 
-def get_gpu_ids():
+def get_gpu_ids(as_str=False):
     """Get the IDs of the GPUs that are available to the worker.
 
     If the CUDA_VISIBLE_DEVICES environment variable was set when the worker
@@ -387,9 +387,12 @@ def get_gpu_ids():
 
     # TODO(ilr) Handle inserting resources in local mode
     all_resource_ids = global_worker.core_worker.resource_ids()
-    assigned_ids = [
-        resource_id for resource_id, _ in all_resource_ids.get("GPU", [])
-    ]
+    assigned_ids = []
+    for resource, assignment in all_resource_ids.items():
+        # Handle both normal and placement group GPU resources.
+        if resource == "GPU" or resource.startswith("GPU_group_"):
+            for resource_id, _ in assignment:
+                assigned_ids.append(resource_id)
     # If the user had already set CUDA_VISIBLE_DEVICES, then respect that (in
     # the sense that only GPU IDs that appear in CUDA_VISIBLE_DEVICES should be
     # returned).
@@ -400,7 +403,17 @@ def get_gpu_ids():
         # Give all GPUs in local_mode.
         if global_worker.mode == LOCAL_MODE:
             max_gpus = global_worker.node.get_resource_spec().num_gpus
-            return global_worker.original_gpu_ids[:max_gpus]
+            assigned_ids = global_worker.original_gpu_ids[:max_gpus]
+
+    if not as_str:
+        from ray.util.debug import log_once
+        if log_once("ray.get_gpu_ids.as_str"):
+            logger.warning(
+                "ray.get_gpu_ids() will return a list of strings by default"
+                " in a future version of Ray for compatibility with CUDA. "
+                "To enable the forward-compatible behavior, use "
+                "`ray.get_gpu_ids(as_str=True)`.")
+        assigned_ids = [int(assigned_id) for assigned_id in assigned_ids]
 
     return assigned_ids
 

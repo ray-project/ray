@@ -1,5 +1,6 @@
 # coding: utf-8
 import json
+import os
 import sys
 
 import grpc
@@ -43,6 +44,7 @@ def test_initial_workers(shutdown_only):
 # of different jobs were not correctly isolated during execution.
 def test_multi_drivers(shutdown_only):
     info = ray.init(
+        num_cpus=10,
         _internal_config=json.dumps({
             "enable_multi_tenancy": True
         }))
@@ -66,9 +68,9 @@ def get_pid():
 
 pid_objs = []
 # Submit some normal tasks and get the PIDs of workers which execute the tasks.
-pid_objs = pid_objs + [get_pid.remote() for _ in range(5)]
+pid_objs = pid_objs + [get_pid.remote() for _ in range(2)]
 # Create some actors and get the PIDs of actors.
-actors = [Actor.remote() for _ in range(5)]
+actors = [Actor.remote() for _ in range(2)]
 pid_objs = pid_objs + [actor.get_pid.remote() for actor in actors]
 
 pids = set([ray.get(obj) for obj in pid_objs])
@@ -78,7 +80,7 @@ print("PID:" + str.join(",", [str(_) for _ in pids]))
 ray.shutdown()
     """.format(info["redis_address"])
 
-    driver_count = 10
+    driver_count = 3
     processes = [
         run_string_as_driver_nonblocking(driver_code)
         for _ in range(driver_count)
@@ -110,6 +112,24 @@ ray.shutdown()
                         ("Worker process with PID {} is shared" +
                          " by multiple drivers.").format(worker_pid))
                     all_worker_pids.add(worker_pid)
+
+
+def test_worker_env(shutdown_only):
+    ray.init(
+        job_config=ray.job_config.JobConfig(worker_env={
+            "foo1": "bar1",
+            "foo2": "bar2"
+        }),
+        _internal_config=json.dumps({
+            "enable_multi_tenancy": True
+        }))
+
+    @ray.remote
+    def get_env(key):
+        return os.environ.get(key)
+
+    assert ray.get(get_env.remote("foo1")) == "bar1"
+    assert ray.get(get_env.remote("foo2")) == "bar2"
 
 
 if __name__ == "__main__":
