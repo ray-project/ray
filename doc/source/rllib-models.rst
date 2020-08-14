@@ -156,6 +156,13 @@ You can check out the `rnn_model.py <https://github.com/ray-project/ray/blob/mas
     .. automethod:: forward_rnn
     .. automethod:: get_initial_state
 
+Attention Networks/Transformers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+RLlib now also has experimental built-in support for attention/transformer nets (the GTrXL model in particular).
+Here is `an example script <https://github.com/ray-project/ray/blob/master/rllib/examples/attention_net.py>`__ on how to use these with some of our algorithms.
+`There is also a test case <https://github.com/ray-project/ray/blob/master/rllib/tests/test_attention_net_learning.py>`__, which confirms their learning capabilities in PPO and IMPALA.
+
 Batch Normalization
 ~~~~~~~~~~~~~~~~~~~
 

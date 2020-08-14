@@ -8,7 +8,7 @@ import os
 import pickle
 import time
 import tempfile
-from typing import Callable, List, Dict, Union
+from typing import Callable, Dict, List, Optional, Union
 
 import ray
 from ray.exceptions import RayError
@@ -1039,9 +1039,12 @@ class Trainer(Trainable):
                 "The config of this agent is: {}".format(config))
 
     @classmethod
-    def merge_trainer_configs(cls, config1: TrainerConfigDict,
-                              config2: PartialTrainerConfigDict,
-                              _allow_unknown_configs=None) -> dict:
+    def merge_trainer_configs(
+            cls,
+            config1: TrainerConfigDict,
+            config2: PartialTrainerConfigDict,
+            _allow_unknown_configs: Optional[bool] = None
+    ) -> TrainerConfigDict:
         config1 = copy.deepcopy(config1)
         # Error if trainer default has deprecated value.
         if config1["sample_batch_size"] != DEPRECATED_VALUE:

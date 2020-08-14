@@ -35,7 +35,7 @@ Algorithm           Frameworks Discrete Actions        Continuous Actions Multi-
 .. _`+LSTM auto-wrapping`: rllib-models.html#built-in-models
 .. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
 .. _`+RNN`: rllib-models.html#recurrent-models
-.. _`+Transformer`: rllib-models.html#transformer-models
+.. _`+Transformer`: rllib-models.html#attention-networks
 .. _`A2C, A3C`: rllib-algorithms.html#a3c
 .. _`APEX-DQN`: rllib-algorithms.html#apex
 .. _`APEX-DDPG`: rllib-algorithms.html#apex
