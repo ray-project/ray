@@ -84,7 +84,7 @@ void MetricsAgentExporter::ReportMetrics(
     metric_descriptor_proto->set_name(measure_descriptor.name());
     metric_descriptor_proto->set_description(measure_descriptor.description());
     metric_descriptor_proto->set_unit(measure_descriptor.units());
-    for (auto &tag_key : view_descriptor.columns()) {
+    for (const auto &tag_key : view_descriptor.columns()) {
       metric_descriptor_proto->add_label_keys()->set_key(tag_key.name());
     };
 
