@@ -115,10 +115,6 @@ class KubernetesSyncClient(SyncClient):
 
     def _create_command_runner(self, node_id):
         """Create a command runner for one Kubernetes node"""
-        # Todo(krfricke): These cached runners are currently
-        # never cleaned up. They are cheap so this shouldn't
-        # cause much problems, but should be addressed if
-        # the SyncClient is used more extensively in the future.
         return KubernetesCommandRunner(
             log_prefix="KubernetesSyncClient: {}:".format(node_id),
             namespace=self.namespace,
@@ -128,6 +124,10 @@ class KubernetesSyncClient(SyncClient):
 
     def _get_command_runner(self, node_id):
         """Create command runner if it doesn't exist"""
+        # Todo(krfricke): These cached runners are currently
+        # never cleaned up. They are cheap so this shouldn't
+        # cause much problems, but should be addressed if
+        # the SyncClient is used more extensively in the future.
         if node_id not in self._command_runners:
             command_runner = self._create_command_runner(node_id)
             self._command_runners[node_id] = command_runner
