@@ -381,19 +381,18 @@ def get_gpu_ids(as_str=False):
     IDs in CUDA_VISIBLE_DEVICES. If not, the IDs will fall in the range
     [0, NUM_GPUS - 1], where NUM_GPUS is the number of GPUs that the node has.
 
-    Args:
-        as_str (Boolean): If true, return gpu ids in string format. By default,
-            it is False. This will change to default to True in the future.
-
     Returns:
         A list of GPU IDs.
     """
 
     # TODO(ilr) Handle inserting resources in local mode
     all_resource_ids = global_worker.core_worker.resource_ids()
-    assigned_ids = [
-        resource_id for resource_id, _ in all_resource_ids.get("GPU", [])
-    ]
+    assigned_ids = []
+    for resource, assignment in all_resource_ids.items():
+        # Handle both normal and placement group GPU resources.
+        if resource == "GPU" or resource.startswith("GPU_group_"):
+            for resource_id, _ in assignment:
+                assigned_ids.append(resource_id)
     # If the user had already set CUDA_VISIBLE_DEVICES, then respect that (in
     # the sense that only GPU IDs that appear in CUDA_VISIBLE_DEVICES should be
     # returned).
