@@ -128,12 +128,12 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
                 "c": 1
             },
             fail_fast=True,
-            num_samples=20,
+            num_samples=4,
             keep_checkpoints_num=1,
             checkpoint_score_attr="min-training_iteration",
             scheduler=scheduler,
             name="testPermutationContinuationFunc",
-            stop={"training_iteration": 5})
+            stop={"training_iteration": 3})
 
 
 if __name__ == "__main__":
