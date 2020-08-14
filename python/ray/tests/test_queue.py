@@ -2,7 +2,7 @@ import pytest
 import time
 
 import ray
-from ray.experimental.async_queue import Queue, Empty, Full
+from ray.experimental.queue import Queue, Empty, Full
 
 @ray.remote
 def get_async(queue, block, timeout, sleep):
