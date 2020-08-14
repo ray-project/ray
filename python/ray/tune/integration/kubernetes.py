@@ -8,9 +8,7 @@ from ray.tune.sync_client import SyncClient
 
 
 def NamespacedKubernetesSyncer(namespace):
-    """
-    Wrapper to return a ``KubernetesSyncer`` for a specific
-    Kubernetes namespace.
+    """Wrapper to return a ``KubernetesSyncer`` for a Kubernetes namespace.
 
     Args:
         namespace (str): Kubernetes namespace.
@@ -35,9 +33,7 @@ def NamespacedKubernetesSyncer(namespace):
 
 
 class KubernetesSyncer(NodeSyncer):
-    """
-    KubernetesSyncer used for synchronization of checkpoints between
-    Kubernetes pods.
+    """KubernetesSyncer used for synchronization between Kubernetes pods.
 
     This syncer extends the node syncer, but is usually instantiated
     without a custom sync client. The sync client defaults to
