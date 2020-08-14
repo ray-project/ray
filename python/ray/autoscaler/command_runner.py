@@ -66,7 +66,8 @@ def set_using_login_shells(val):
     _config["use_login_shells"] = val
 
 
-def _with_environment_variables(cmd: str, environment_variables: Dict[str, object]):
+def _with_environment_variables(cmd: str,
+                                environment_variables: Dict[str, object]):
     """Prepend environment variables to a shell command.
 
     Args:
@@ -129,8 +130,8 @@ class CommandRunnerInterface:
             port_forward (list): List of (local, remote) ports to forward, or
                 a single tuple.
             with_output (bool): Whether to return output.
-            environment_variables (Dict[str, str | int | Dict[str, str]): Environment variables that `cmd`
-                should be run with.
+            environment_variables (Dict[str, str | int | Dict[str, str]):
+                Environment variables that `cmd` should be run with.
             run_env (str): Options: docker/host/auto. Used in
                 DockerCommandRunner to determine the run environment.
             ssh_options_override_ssh_key (str): if provided, overwrites

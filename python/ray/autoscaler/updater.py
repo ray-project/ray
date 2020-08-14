@@ -344,7 +344,8 @@ class NodeUpdater:
                 for cmd in self.ray_start_commands:
                     if self.node_resources:
                         env_vars = {
-                            ray_constants.RESOURCES_ENVIRONMENT_VARIABLE: self.node_resources
+                            ray_constants.RESOURCES_ENVIRONMENT_VARIABLE: self.
+                            node_resources
                         }
                     else:
                         env_vars = {}
