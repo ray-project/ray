@@ -169,6 +169,7 @@ class Monitor:
                     # Continue on to the next subscribe client.
                     break
 
+                print("Received message: ", message)
                 # Parse the message.
                 pattern = message["pattern"]
                 channel = message["channel"]
