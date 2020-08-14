@@ -1,7 +1,7 @@
-import asyncio
 import json
 import time
 from collections import defaultdict
+from pprint import pformat
 
 import requests
 import pytest
@@ -11,8 +11,7 @@ from prometheus_client.parser import text_string_to_metric_families
 import ray
 from ray.core.generated.common_pb2 import MetricPoint
 from ray.dashboard.util import get_unused_port
-from ray.metrics_agent import (Gauge, MetricsAgent,
-                               PrometheusServiceDiscoveryWriter)
+from ray.metrics_agent import (MetricsAgent, PrometheusServiceDiscoveryWriter)
 from ray.experimental.metrics import Count, Histogram
 from ray.test_utils import wait_for_condition
 
@@ -219,6 +218,7 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
 
 def test_metrics_export_end_to_end(ray_start_cluster):
     NUM_NODES = 2
+    TEST_TIMEOUT_S = 5
     cluster = ray_start_cluster
     # Add a head node.
     cluster.add_node(
@@ -233,19 +233,22 @@ def test_metrics_export_end_to_end(ray_start_cluster):
     # Generate some metrics around actor & tasks.
     @ray.remote
     def f():
-        counter = Count("test_counter", "desc", "unit", [])
+        counter = Count(f"test_counter", "desc", "unit", [])
         counter.record(1, {})
+        # Make sure this worker does flush out the metrics before killed
+        time.sleep(TEST_TIMEOUT_S / 2)
 
     @ray.remote
     class A:
         async def ping(self):
-            histogram = Histogram("test_histogram", "desc", "unit", [0, 1, 2],
-                                  [])
+            histogram = Histogram("test_histogram", "desc", "unit",
+                                  [0.2, 1, 2], [])
             histogram.record(1, {})
+            # Make sure this worker does flush out the metrics before killed
+            time.sleep(TEST_TIMEOUT_S / 2)
 
     a = A.remote()
     obj_refs = [f.remote(), a.ping.remote()]
-    ray.get(obj_refs)
 
     node_info_list = ray.nodes()
     prom_addresses = []
@@ -262,10 +265,9 @@ def test_metrics_export_end_to_end(ray_start_cluster):
             if address not in components_dict:
                 components_dict[address] = set()
             try:
-                response = requests.get(
-                    "http://localhost:{}/metrics".format(metrics_export_port))
+                response = requests.get(f"http://{address}/metrics")
             except requests.exceptions.ConnectionError:
-                return components_dict, metric_names
+                continue
 
             for line in response.text.split("\n"):
                 for family in text_string_to_metric_families(line):
@@ -274,10 +276,6 @@ def test_metrics_export_end_to_end(ray_start_cluster):
                         if "Component" in sample.labels:
                             components_dict[address].add(
                                 sample.labels["Component"])
-                            if not (sample.labels["Component"] in {
-                                    "raylet", "gcs_server"
-                            }):
-                                print(sample)
         return components_dict, metric_names
 
     def test_prometheus_endpoint():
@@ -295,24 +293,32 @@ def test_metrics_export_end_to_end(ray_start_cluster):
             "core_worker" in components
             for components in components_dict.values())
 
-        expected_metric_names = {"ray_test_counter", "ray_test_histogram_max"}
-        metric_names_found = expected_metric_names.issubset(metric_names)
+        # Prometheus can reformat the name (add prefix, suffix)
+        expected_metric_names = {"test_counter", "test_histogram"}
+        expected_found = []
+        for name in expected_metric_names:
+            expected_found.append(
+                any(name in sample_name for sample_name in metric_names))
+        metric_names_found = all(expected_found)
 
         return components_found and metric_names_found
 
     try:
         wait_for_condition(
             test_prometheus_endpoint,
-            timeout=20,
-            retry_interval_ms=1000,  # Yield resource for other processes
+            timeout=TEST_TIMEOUT_S,
+            retry_interval_ms=300,  # Yield resource for other processes
         )
     except RuntimeError:
         # This is for debugging when test failed.
         raise RuntimeError(
             "All components were not visible to "
             "prometheus endpoints on time. "
-            f"The compoenents are {fetch_prometheus(prom_addresses)}")
+            f"The compoenents are {pformat(fetch_prometheus(prom_addresses))}")
+
+    ray.get(obj_refs)
     ray.shutdown()
+    cluster.shutdown()
 
 
 if __name__ == "__main__":

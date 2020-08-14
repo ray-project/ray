@@ -62,8 +62,7 @@ class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
         try:
             self.metrics_agent.record_metric_points_from_protobuf(
                 request.metrics)
-        except Exception as e:
-            logger.error(e)
+        except Exception:
             logger.error(traceback.format_exc())
 
         return reporter_pb2.ReportOCMetricsReply()

@@ -127,6 +127,7 @@ class Collector(object):
     def add_view_data(self, view_data):
         """ Add view data object to be sent to server
         """
+        print(f"Prom::add_view_data {view_data.view.name}")
         self.register_view(view_data.view)
         v_name = get_view_name(self.options.namespace, view_data.view)
         self.view_name_to_data_map[v_name] = view_data
@@ -227,6 +228,7 @@ class Collector(object):
         for example when the HTTP endpoint is invoked by Prometheus.
         """
         for v_name, view_data in self.view_name_to_data_map.items():
+            print(f"Prom::collect {v_name}")
             if v_name not in self.registered_views:
                 continue
             desc = self.registered_views[v_name]
