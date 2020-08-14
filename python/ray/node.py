@@ -618,11 +618,8 @@ class Node:
                 if we fail to start the dashboard. Otherwise it will print
                 a warning if we fail to start the dashboard.
         """
-        if "RAY_USE_NEW_DASHBOARD" in os.environ:
-            stdout_file, stderr_file = None, None
-        else:
-            stdout_file, stderr_file = self.get_log_file_handles(
-                "dashboard", unique=True)
+        stdout_file, stderr_file = self.get_log_file_handles(
+            "dashboard", unique=True)
         self._webui_url, process_info = ray.services.start_dashboard(
             require_dashboard,
             self._ray_params.dashboard_host,
@@ -804,8 +801,7 @@ class Node:
 
         self.start_plasma_store()
         self.start_raylet()
-        if "RAY_USE_NEW_DASHBOARD" not in os.environ:
-            self.start_reporter()
+        self.start_reporter()
 
         if self._ray_params.include_log_monitor:
             self.start_log_monitor()

@@ -182,7 +182,7 @@ format_all() {
 
     echo "$(date)" "clang-format...."
     if command -v clang-format >/dev/null; then
-      git ls-files -- '*.cc' '*.h' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 clang-format -i
+      git ls-files -- '*.cc' '*.h' '*.proto' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 clang-format -i
     fi
 
     if command -v shellcheck >/dev/null; then
