@@ -297,7 +297,8 @@ cdef prepare_args(
             if language != Language.PYTHON:
                 if metadata not in [
                         ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE,
-                        ray_constants.OBJECT_METADATA_TYPE_RAW]:
+                        ray_constants.OBJECT_METADATA_TYPE_RAW,
+                        ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE]:
                     raise Exception("Can't transfer {} data to {}".format(
                         metadata, language))
             size = serialized_arg.total_bytes
@@ -1195,7 +1196,7 @@ cdef class CoreWorker:
                 c_actor_handle.ActorCreationTaskFunctionDescriptor())
         if language == Language.PYTHON:
             assert isinstance(actor_creation_function_descriptor,
-                              PythonFunctionDescriptor)
+                              PythonFunctionDescriptor), actor_creation_function_descriptor
             # Load actor_method_cpu from actor handle's extension data.
             extension_data = <str>c_actor_handle.ExtensionData()
             if extension_data:

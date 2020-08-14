@@ -250,6 +250,9 @@ class SerializationContext:
                 if data is None:
                     return b""
                 return data.to_pybytes()
+            elif metadata == ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE:
+                obj = self._deserialize_msgpack_data(data, metadata)
+                return actor_handle_deserializer(obj)
             # Otherwise, return an exception object based on
             # the error type.
             try:
@@ -354,6 +357,14 @@ class SerializationContext:
             metadata = str(
                 ErrorType.Value("TASK_EXECUTION_EXCEPTION")).encode("ascii")
             value = value.to_bytes()
+        elif isinstance(value, ray.actor.ActorHandle):
+            # TODO(fyresone): ActorHandle should be serialized as a
+            #  custom cross language type.
+            serialized, actor_handle_id = value._serialization_helper()
+            # Update ref counting for the actor handle
+            self.add_contained_object_ref(actor_handle_id)
+            metadata = ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE
+            value = serialized
         else:
             metadata = ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE
 

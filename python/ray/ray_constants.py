@@ -192,6 +192,10 @@ OBJECT_METADATA_TYPE_PYTHON = b"PYTHON"
 # A constant used as object metadata to indicate the object is raw bytes.
 OBJECT_METADATA_TYPE_RAW = b"RAW"
 
+# A constant used as object metadata for ActorHandle
+# TODO(fyrestone): Serialize the ActorHandle as a custom type of XLANG.
+OBJECT_METADATA_TYPE_ACTOR_HANDLE = b"ACTOR_HANDLE"
+
 AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"
 
 # The default password to prevent redis port scanning attack.
