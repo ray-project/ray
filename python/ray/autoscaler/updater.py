@@ -340,7 +340,6 @@ class NodeUpdater:
                 "Starting the Ray runtime", _numbered=("[]", 6, 6)):
             with LogTimer(
                     self.log_prefix + "Ray start commands", show_status=True):
-                print("RUNNING RAY START COMMANDS")
                 for cmd in self.ray_start_commands:
                     if self.node_resources:
                         env_vars = {
@@ -348,17 +347,10 @@ class NodeUpdater:
                         }
                     else:
                         env_vars = {}
-                    print("env vars:", env_vars)
                     try:
-                        print("GETS HERE1")
                         cmd_output_util.set_output_redirected(True)
-                        print("GETS HERE2")
                         self.cmd_runner.run(
                             cmd, environment_variables=env_vars)
-                        print("GETS HERE3")
-                        print(self.cmd_runner.ssh_command_runner.
-                              process_runner.calls[-1])
-                        print("---------------")
                         cmd_output_util.set_output_redirected(True)
                     except ProcessRunnerError as e:
                         if e.msg_type == "ssh_command_failed":

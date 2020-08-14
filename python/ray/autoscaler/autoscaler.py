@@ -445,7 +445,6 @@ class StandardAutoscaler:
                 self.config["worker_nodes"])
         self.pending_launches.inc(instance_type, count)
         config = copy.deepcopy(self.config)
-        print("Launching node: ", instance_type)
         self.launch_queue.put((config, count, instance_type))
 
     def workers(self):
