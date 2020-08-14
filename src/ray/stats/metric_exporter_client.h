@@ -23,13 +23,20 @@
 
 namespace ray {
 namespace stats {
+
+static constexpr size_t kDefaultBatchSize = 200;
+
 /// Interface class for abstract metrics exporter client.
 class MetricExporterClient {
  public:
+  virtual void ReportMetrics(const std::vector<MetricPoint> &points) = 0;
   virtual void ReportMetrics(
-      const std::vector<MetricPoint> &points,
       const std::vector<std::pair<opencensus::stats::ViewDescriptor,
-                                  opencensus::stats::ViewData>> &opencensus_data) = 0;
+                                  opencensus::stats::ViewData>> &opencensus_data) {
+    // Unimplemented Empty Method
+    RAY_LOG(WARNING) << "ReportMetrics on opencensus_data is not implemented in "
+                        "MetricExporterClient baseclass.";
+  };
 
   virtual ~MetricExporterClient() = default;
 };
@@ -39,10 +46,7 @@ class MetricExporterClient {
 /// use stdout as the default concrete class.
 class StdoutExporterClient : public MetricExporterClient {
  public:
-  void ReportMetrics(const std::vector<MetricPoint> &points,
-                     const std::vector<std::pair<opencensus::stats::ViewDescriptor,
-                                                 opencensus::stats::ViewData>>
-                         &opencensus_data) override;
+  void ReportMetrics(const std::vector<MetricPoint> &points) override;
 };
 
 /// The decoration mode is that the user can apply it by configuring different
@@ -57,10 +61,7 @@ class StdoutExporterClient : public MetricExporterClient {
 class MetricExporterDecorator : public MetricExporterClient {
  public:
   MetricExporterDecorator(std::shared_ptr<MetricExporterClient> exporter);
-  virtual void ReportMetrics(
-      const std::vector<MetricPoint> &points,
-      const std::vector<std::pair<opencensus::stats::ViewDescriptor,
-                                  opencensus::stats::ViewData>> &opencensus_data);
+  virtual void ReportMetrics(const std::vector<MetricPoint> &points);
 
  private:
   std::shared_ptr<MetricExporterClient> exporter_;
@@ -69,20 +70,24 @@ class MetricExporterDecorator : public MetricExporterClient {
 class MetricsAgentExporter : public MetricExporterDecorator {
  public:
   MetricsAgentExporter(std::shared_ptr<MetricExporterClient> exporter, const int port,
-                       boost::asio::io_service &io_service, const std::string address);
+                       boost::asio::io_service &io_service, const std::string address,
+                       size_t report_batch_size = kDefaultBatchSize);
 
   ~MetricsAgentExporter() {}
 
-  void ReportMetrics(const std::vector<MetricPoint> &points,
-                     const std::vector<std::pair<opencensus::stats::ViewDescriptor,
-                                                 opencensus::stats::ViewData>>
-                         &opencensus_data) override;
+  void ReportMetrics(const std::vector<MetricPoint> &points) override;
+  void ReportMetrics(
+      const std::vector<
+          std::pair<opencensus::stats::ViewDescriptor, opencensus::stats::ViewData>>
+          &opencensus_data) override;
 
  private:
   /// Client to call a metrics agent gRPC server.
   std::unique_ptr<rpc::MetricsAgentClient> client_;
   /// Call Manager for gRPC client.
   rpc::ClientCallManager client_call_manager_;
+  /// Auto max minbatch size for reporting metrics to external components.
+  size_t report_batch_size_;
 };
 
 }  // namespace stats

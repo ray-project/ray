@@ -30,17 +30,14 @@ namespace stats {
 /// exporter after a main thread launched.
 class MetricExporter final : public opencensus::stats::StatsExporter::Handler {
  public:
-  explicit MetricExporter(std::shared_ptr<MetricExporterClient> metric_exporter_client,
-                          size_t report_batch_size = kDefaultBatchSize)
-      : metric_exporter_client_(metric_exporter_client),
-        report_batch_size_(report_batch_size) {}
+  explicit MetricExporter(std::shared_ptr<MetricExporterClient> metric_exporter_client)
+      : metric_exporter_client_(metric_exporter_client) {}
 
   ~MetricExporter() = default;
 
-  static void Register(std::shared_ptr<MetricExporterClient> metric_exporter_client,
-                       size_t report_batch_size) {
+  static void Register(std::shared_ptr<MetricExporterClient> metric_exporter_client) {
     opencensus::stats::StatsExporter::RegisterPushHandler(
-        absl::make_unique<MetricExporter>(metric_exporter_client, report_batch_size));
+        absl::make_unique<MetricExporter>(metric_exporter_client));
   }
 
   void ExportViewData(
@@ -74,9 +71,6 @@ class MetricExporter final : public opencensus::stats::StatsExporter::Handler {
 
  private:
   std::shared_ptr<MetricExporterClient> metric_exporter_client_;
-  /// Auto max minbatch size for reporting metrics to external components.
-  static constexpr size_t kDefaultBatchSize = 100;
-  size_t report_batch_size_;
 };
 
 }  // namespace stats

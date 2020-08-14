@@ -43,21 +43,16 @@ class MockExporterClient1 : public MetricExporterDecorator {
         lastest_hist_mean(0.0),
         lastest_hist_max(0.0) {}
 
-  void ReportMetrics(const std::vector<MetricPoint> &points,
-                     const std::vector<std::pair<opencensus::stats::ViewDescriptor,
-                                                 opencensus::stats::ViewData>>
-                         &opencensus_data) override {
+  void ReportMetrics(const std::vector<MetricPoint> &points) override {
     if (points.empty()) {
       return;
     }
-    MetricExporterDecorator::ReportMetrics(points, opencensus_data);
+    MetricExporterDecorator::ReportMetrics(points);
     client1_count++;
     client1_value = points.back().value;
     RAY_LOG(DEBUG) << "Client 1 " << client1_count << " last metric "
                    << points.back().metric_name << ", value " << points.back().value;
     RecordLastHistData(points);
-    // Point size must be less than or equal to report batch size.
-    ASSERT_GE(kMockReportBatchSize, points.size());
   }
   int GetCount() { return client1_count; }
   int GetValue() { return client1_value; }
@@ -92,14 +87,11 @@ class MockExporterClient2 : public MetricExporterDecorator {
  public:
   MockExporterClient2(std::shared_ptr<MetricExporterClient> exporter)
       : MetricExporterDecorator(exporter), client2_count(0), client2_value(0) {}
-  void ReportMetrics(const std::vector<MetricPoint> &points,
-                     const std::vector<std::pair<opencensus::stats::ViewDescriptor,
-                                                 opencensus::stats::ViewData>>
-                         &opencensus_data) override {
+  void ReportMetrics(const std::vector<MetricPoint> &points) override {
     if (points.empty()) {
       return;
     }
-    MetricExporterDecorator::ReportMetrics(points, opencensus_data);
+    MetricExporterDecorator::ReportMetrics(points);
     client2_count++;
     RAY_LOG(DEBUG) << "Client 2 " << client2_count << " last metric "
                    << points.back().metric_name << ", value " << points.back().value;
