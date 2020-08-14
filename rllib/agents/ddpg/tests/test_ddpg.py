@@ -28,24 +28,6 @@ class TestDDPG(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def test_ddpg_compilation(self):
-        """Test whether a DDPGTrainer can be built with both frameworks."""
-        config = ddpg.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 1
-        config["num_envs_per_worker"] = 2
-        config["learning_starts"] = 0
-        config["exploration_config"]["random_timesteps"] = 100
-
-        num_iterations = 2
-
-        # Test against all frameworks.
-        for _ in framework_iterator(config, ("tf", "torch")):
-            trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v0")
-            for i in range(num_iterations):
-                results = trainer.train()
-                print(results)
-            check_compute_action(trainer)
-
     def test_ddpg_exploration_and_with_random_prerun(self):
         """Tests DDPG's Exploration (w/ random actions for n timesteps)."""
         core_config = ddpg.DEFAULT_CONFIG.copy()

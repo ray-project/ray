@@ -2,13 +2,13 @@
 This file defines the common pytest fixtures used in current directory.
 """
 
+import ray
+from ray.cluster_utils import Cluster
+
 from contextlib import contextmanager
 import json
 import pytest
 import subprocess
-
-import ray
-from ray.cluster_utils import Cluster
 
 
 @pytest.fixture

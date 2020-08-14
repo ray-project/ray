@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-set -euo pipefail
+set -euox pipefail
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
-version="1.1.0"
+version="${USE_BAZEL_VERSION:-3.3.0}"
 achitecture="${HOSTTYPE}"
 platform="unknown"
 case "${OSTYPE}" in
@@ -42,7 +42,12 @@ esac
   fi
 }
 
-if [ "${OSTYPE}" = "msys" ]; then
+# In azure pipelines or github acions, we don't need to install bazel
+if [ -x "$(command -v bazel)" ]; then
+  echo 'Bazel is already installed'
+  bazel info
+  bazel --version
+elif [ "${OSTYPE}" = "msys" ]; then
   target="${MINGW_DIR-/usr}/bin/bazel.exe"
   mkdir -p "${target%/*}"
   curl -f -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-${platform}-${achitecture}.exe"

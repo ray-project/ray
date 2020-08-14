@@ -1,0 +1,33 @@
+# This template includes the steps of the 
+# jenkings test in the run_multi_node_tests.sh
+
+steps:
+- bash: |
+    echo Running install phase of the original travis.yml
+
+    # Set some variables to make the system looks like Travis
+    source $BUILD_SOURCESDIRECTORY/ci/azure_pipelines/templates/travis-legacy/pre-install.sh
+
+    # Start Original script
+
+    ROOT_DIR=$(cd "ci/jenkins_tests"; pwd)
+
+    export RUN_TUNE_TESTS=1
+    export RUN_DOC_TESTS=1
+    export RUN_SGD_TESTS=1
+
+    bash $ROOT_DIR/entry_point.sh
+
+    # End Original script
+
+    exit 0
+  env:
+    PYTHONWARNINGS: 'ignore'
+    TRAVIS: 'true'
+    MAC_WHEELS: 1
+    RAY_INSTALL_JAVA: 1
+  displayName: 'Run original Jenkins multi-node tests'
+  timeoutInMinutes: 180
+  # TODO: remove - we are allowing to continue on error because
+  # because some tests are very flaky in our agents
+  continueOnError: 'true'

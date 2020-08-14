@@ -35,9 +35,11 @@ class SACTFModel(TFModelV2):
         """Initialize variables of this model.
 
         Extra model kwargs:
-            actor_hidden_activation (str): activation for actor network
+            actor_hidden_activation (str or list): activation or list of activations
+            for actor network
             actor_hiddens (list): hidden layers sizes for actor network
-            critic_hidden_activation (str): activation for critic network
+            critic_hidden_activation (str or list): activation or list of activations
+            for critic network
             critic_hiddens (list): hidden layers sizes for critic network
             twin_q (bool): build twin Q networks.
             initial_alpha (float): The initial value for the to-be-optimized
@@ -49,28 +51,28 @@ class SACTFModel(TFModelV2):
         """
         super(SACTFModel, self).__init__(obs_space, action_space, num_outputs,
                                          model_config, name)
+        self.actor_hidden_activation = actor_hidden_activation
+        self.actor_hiddens = actor_hiddens
+        self.critic_hidden_activation = critic_hidden_activation
+        self.critic_hiddens = critic_hiddens
+        self.discrete = False
+        if isinstance(self.actor_hidden_activation, str):
+            self.actor_hidden_activation = [self.actor_hidden_activation] * len(self.actor_hiddens)
+        if isinstance(self.critic_hidden_activation, str):
+            self.critic_hidden_activation = [self.critic_hidden_activation] * len(self.critic_hiddens)
         if isinstance(action_space, Discrete):
             self.action_dim = action_space.n
             self.discrete = True
-            action_outs = q_outs = self.action_dim
+            self.action_outs = self.q_outs = self.action_dim
         else:
             self.action_dim = np.product(action_space.shape)
             self.discrete = False
-            action_outs = 2 * self.action_dim
-            q_outs = 1
+            self.action_outs = 2 * self.action_dim
+            self.q_outs = 1
 
         self.model_out = tf.keras.layers.Input(
             shape=(self.num_outputs, ), name="model_out")
-        self.action_model = tf.keras.Sequential([
-            tf.keras.layers.Dense(
-                units=hidden,
-                activation=getattr(tf.nn, actor_hidden_activation, None),
-                name="action_{}".format(i + 1))
-            for i, hidden in enumerate(actor_hiddens)
-        ] + [
-            tf.keras.layers.Dense(
-                units=action_outs, activation=None, name="action_out")
-        ])
+        self.action_model = self.build_action_model()
         self.shift_and_log_scale_diag = self.action_model(self.model_out)
 
         self.register_variables(self.action_model.variables)
@@ -80,35 +82,11 @@ class SACTFModel(TFModelV2):
             self.actions_input = tf.keras.layers.Input(
                 shape=(self.action_dim, ), name="actions")
 
-        def build_q_net(name, observations, actions):
-            # For continuous actions: Feed obs and actions (concatenated)
-            # through the NN. For discrete actions, only obs.
-            q_net = tf.keras.Sequential(([
-                tf.keras.layers.Concatenate(axis=1),
-            ] if not self.discrete else []) + [
-                tf.keras.layers.Dense(
-                    units=units,
-                    activation=getattr(tf.nn, critic_hidden_activation, None),
-                    name="{}_hidden_{}".format(name, i))
-                for i, units in enumerate(critic_hiddens)
-            ] + [
-                tf.keras.layers.Dense(
-                    units=q_outs, activation=None, name="{}_out".format(name))
-            ])
-
-            # TODO(hartikainen): Remove the unnecessary Model calls here
-            if self.discrete:
-                q_net = tf.keras.Model(observations, q_net(observations))
-            else:
-                q_net = tf.keras.Model([observations, actions],
-                                       q_net([observations, actions]))
-            return q_net
-
-        self.q_net = build_q_net("q", self.model_out, self.actions_input)
+        self.q_net = self.build_q_net("q", self.model_out, self.actions_input)
         self.register_variables(self.q_net.variables)
 
         if twin_q:
-            self.twin_q_net = build_q_net("twin_q", self.model_out,
+            self.twin_q_net = self.build_q_net("twin_q", self.model_out,
                                           self.actions_input)
             self.register_variables(self.twin_q_net.variables)
         else:
@@ -130,6 +108,43 @@ class SACTFModel(TFModelV2):
         self.target_entropy = target_entropy
 
         self.register_variables([self.log_alpha])
+
+    def build_action_model(self):
+        action_model = tf.keras.Sequential([
+            tf.keras.layers.Dense(
+                units=hidden,
+                activation=getattr(tf.nn, self.actor_hidden_activation[i], None),
+                name="action_{}".format(i + 1))
+            for i, hidden in enumerate(self.actor_hiddens)
+        ] + [
+            tf.keras.layers.Dense(
+                units=self.action_outs, activation=None, name="action_out")
+        ])
+        return action_model
+
+    def build_q_net(self, name, observations, actions):
+        # For continuous actions: Feed obs and actions (concatenated)
+        # through the NN. For discrete actions, only obs.
+        q_net = tf.keras.Sequential(([
+            tf.keras.layers.Concatenate(axis=1),
+        ] if not self.discrete else []) + [
+            tf.keras.layers.Dense(
+                units=units,
+                activation=getattr(tf.nn, self.critic_hidden_activation[i], None),
+                name="{}_hidden_{}".format(name, i))
+            for i, units in enumerate(self.critic_hiddens)
+        ] + [
+            tf.keras.layers.Dense(
+                units=self.q_outs, activation=None, name="{}_out".format(name))
+        ])
+
+        # TODO(hartikainen): Remove the unnecessary Model calls here
+        if self.discrete:
+            q_net = tf.keras.Model(observations, q_net(observations))
+        else:
+            q_net = tf.keras.Model([observations, actions],
+                                    q_net([observations, actions]))
+        return q_net
 
     def get_q_values(self, model_out, actions=None):
         """Return the Q estimates for the most recent forward pass.

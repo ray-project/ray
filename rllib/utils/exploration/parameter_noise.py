@@ -176,7 +176,8 @@ class ParameterNoise(Exploration):
                          *,
                          environment=None,
                          episode=None,
-                         tf_sess=None):
+                         tf_sess=None,
+                         env_infos={}):
         # We have to delay the noise-adding step by one forward call.
         # This is due to the fact that the optimizer does it's step right
         # after the episode was reset (and hence the noise was already added!).

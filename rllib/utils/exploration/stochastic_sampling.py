@@ -33,6 +33,11 @@ class StochasticSampling(Exploration):
         assert framework is not None
         super().__init__(
             action_space, model=model, framework=framework, **kwargs)
+        self._deterministic_sample = None
+
+    @override(Exploration)
+    def deterministic_sample(self):
+        return self._deterministic_sample
 
     @override(Exploration)
     def get_exploration_action(self,
@@ -41,19 +46,21 @@ class StochasticSampling(Exploration):
                                timestep: Union[int, TensorType],
                                explore: bool = True):
         if self.framework == "torch":
-            return self._get_torch_exploration_action(action_distribution,
-                                                      explore)
+            action, logp, self._deterministic_sample = self._get_torch_exploration_action(
+                action_distribution,
+                explore)
+            return action, logp
         else:
             return self._get_tf_exploration_action_op(action_distribution,
                                                       explore)
 
     def _get_tf_exploration_action_op(self, action_dist, explore):
         sample = action_dist.sample()
-        deterministic_sample = action_dist.deterministic_sample()
+        self._deterministic_sample = action_dist.deterministic_sample()
         action = tf.cond(
             tf.constant(explore) if isinstance(explore, bool) else explore,
             true_fn=lambda: sample,
-            false_fn=lambda: deterministic_sample)
+            false_fn=lambda: self._deterministic_sample)
 
         def logp_false_fn():
             batch_size = tf.shape(tree.flatten(action)[0])[0]
@@ -68,10 +75,11 @@ class StochasticSampling(Exploration):
 
     @staticmethod
     def _get_torch_exploration_action(action_dist, explore):
+        deterministic_sample = action_dist.deterministic_sample()
         if explore:
             action = action_dist.sample()
             logp = action_dist.sampled_action_logp()
         else:
-            action = action_dist.deterministic_sample()
+            action = deterministic_sample
             logp = torch.zeros((action.size()[0], ), dtype=torch.float32)
-        return action, logp
+        return action, logp, deterministic_sample

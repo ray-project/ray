@@ -88,6 +88,9 @@ DEFAULT_CONFIG = with_common_config({
     "train_batch_size": 256,
     # Update the target network every `target_network_update_freq` steps.
     "target_network_update_freq": 0,
+    # Callable to be added in the store_ops part of the execution plan.
+    # The foreach transformation is used over the ParallelIterator.
+    "execution_plan_custom_store_ops": None,
 
     # === Parallelism ===
     # Whether to use a GPU for local optimization.

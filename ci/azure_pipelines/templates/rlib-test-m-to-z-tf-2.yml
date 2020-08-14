@@ -1,0 +1,42 @@
+# This template includes the steps of the rlib test job M-to-Z with TF 2 in travix.yml
+
+steps:
+- bash: |
+    echo Running install phase of the original travis.yml
+
+    # Set some variables to make the system looks like Travis
+    source $BUILD_SOURCESDIRECTORY/ci/azure_pipelines/templates/travis-legacy/pre-install.sh
+
+    # Start Original script
+
+    # install part
+    . ./ci/travis/ci.sh init RAY_CI_RLLIB_FULL_AFFECTED
+    . ./ci/travis/ci.sh build
+
+    # script part
+    # Originally with ./ci/keep_alive
+    bazel test --config=ci --build_tests_only --test_tag_filters=tests_dir_M,tests_dir_N,tests_dir_O rllib/...
+    sync
+    sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'
+    swapoff -a && swapon -a
+    sleep 5
+    bazel test --config=ci --build_tests_only --test_tag_filters=tests_dir_P,tests_dir_Q,tests_dir_R rllib/...
+    sync
+    sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'
+    swapoff -a && swapon -a
+    sleep 5
+    bazel test --config=ci --build_tests_only --test_tag_filters=tests_dir_S,tests_dir_T,tests_dir_U,tests_dir_V,tests_dir_W,tests_dir_X,tests_dir_Y,tests_dir_Z rllib/...
+
+    # End Original script
+
+    exit 0
+  env:
+    PYTHONWARNINGS: 'ignore'
+    TRAVIS: 'true'
+    RLLIB_TESTING: 1
+    RLLIB_TESTS_DIR_TESTS_M_TO_Z: 1
+    TF_VERSION: 2.1.0
+    TFP_VERSION: 0.8
+    TORCH_VERSION: 1.4
+  displayName: 'Run original rlib test job J-to-Z with TF 2'
+  timeoutInMinutes: 180

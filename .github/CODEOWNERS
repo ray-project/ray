@@ -1,38 +1,51 @@
+# Each line is a file pattern followed by one or more owners.
 # See https://help.github.com/articles/about-codeowners/
 # for more info about CODEOWNERS file
 
 # It uses the same pattern rule for gitignore file,
 # see https://git-scm.com/docs/gitignore#_pattern_format.
 
+# ==== Ray default ====
+# These owners will be the default owners for everything in
+# the repo. Unless a later match takes precedence,
+# @BonsaiAI/ray-code-owners will be requested for
+# review when someone opens a pull request.
+*       @BonsaiAI/ray-code-owners
+
+
 # ==== Ray core ====
 
 # All C++ code.
-/src/ray @ray-project/ray-core-cpp
+/src/ray @BonsaiAI/ray-maintainers
 
 # Python worker.
-/python/ray/ @ray-project/ray-core-python
-!/python/ray/tune/ @ray-project/ray-core-python
-!/python/ray/rllib/ @ray-project/ray-core-python
+/python/ray/ @BonsaiAI/ray-maintainers
+!/python/ray/tune/ @BonsaiAI/ray-maintainers
+!/python/ray/rllib/ @BonsaiAI/ray-maintainers
 
 # Java worker.
-/java/ @ray-project/ray-core-java
+/java/ @BonsaiAI/ray-maintainers
+
+# Kube Operator.
+/deploy/ @BonsaiAI/ray-maintainers
 
 # ==== Libraries and frameworks ====
 
 # Ray tune.
-/python/ray/tune/ @ray-project/ray-tune
+/python/ray/tune/ @BonsaiAI/ray-code-owners
 
 # RLlib.
-/python/ray/rllib/ @ray-project/rllib
+/python/ray/rllib/ @BonsaiAI/ray-code-owners
+/rllib/ @BonsaiAI/ray-code-owners
 
 # ==== Build and CI ====
 
 # Bazel.
-/BUILD.bazel @ray-project/ray-core
-/WORKSPACE @ray-project/ray-core
-/bazel/ @ray-project/ray-core
+/BUILD.bazel @BonsaiAI/ray-code-owners
+/WORKSPACE @BonsaiAI/ray-code-owners
+/bazel/ @BonsaiAI/ray-code-owners
 
 # CI scripts.
-/.travis.yml @ray-project/ray-core
-/ci/travis/ @ray-project/ray-core
+/.travis.yml @BonsaiAI/ray-maintainers
+/ci/ @BonsaiAI/ray-maintainers
 

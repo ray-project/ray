@@ -179,3 +179,6 @@ tools/prometheus*
 # ray project files
 project-id
 .mypy_cache/
+
+# PyCharm
+.ijwb/

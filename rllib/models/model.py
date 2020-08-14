@@ -223,7 +223,7 @@ def restore_original_dimensions(obs, obs_space, tensorlib=tf):
         observation space.
     """
 
-    if hasattr(obs_space, "original_space"):
+    if hasattr(obs_space, "original_space") and obs_space.original_space is not None:
         if tensorlib == "tf":
             tensorlib = tf
         elif tensorlib == "torch":

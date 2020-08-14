@@ -44,30 +44,6 @@ class SimpleEnv(Env):
 
 
 class TestSAC(unittest.TestCase):
-    def test_sac_compilation(self):
-        """Tests whether an SACTrainer can be built with all frameworks."""
-        config = sac.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 0  # Run locally.
-        config["twin_q"] = True
-        config["soft_horizon"] = True
-        config["clip_actions"] = False
-        config["normalize_actions"] = True
-        config["learning_starts"] = 0
-        config["prioritized_replay"] = True
-        num_iterations = 1
-        for _ in framework_iterator(config, ("tf", "torch")):
-            # Test for different env types (discrete w/ and w/o image, + cont).
-            for env in [
-                    "Pendulum-v0", "MsPacmanNoFrameskip-v4", "CartPole-v0"
-            ]:
-                print("Env={}".format(env))
-                config["use_state_preprocessor"] = \
-                    env == "MsPacmanNoFrameskip-v4"
-                trainer = sac.SACTrainer(config=config, env=env)
-                for i in range(num_iterations):
-                    results = trainer.train()
-                    print(results)
-                check_compute_action(trainer)
 
     def test_sac_loss_function(self):
         """Tests SAC loss function results across all frameworks."""

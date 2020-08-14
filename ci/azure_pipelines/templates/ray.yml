@@ -1,0 +1,68 @@
+# This template includes the steps of the general Ray tests
+# that are specified in the .travis.yml of the upstream repo.
+# This is the default script phase that is reused by the first
+# two of the parallel jobs in the build matrix of the .travis.yml file.
+steps:
+- bash: |
+    echo Running script phase of the original travis.yml
+
+    # Cause the script to exit if a single command fails.
+    set -e
+
+    # TODO: [CI] remove after CI get stable
+    set -x
+
+    # Set some variables to make the system looks like Travis
+    source $BUILD_SOURCESDIRECTORY/ci/azure_pipelines/templates/travis-legacy/pre-install.sh
+
+    # Start Original install part
+
+    . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED
+    . ./ci/travis/ci.sh build
+
+    # Start Original script part
+
+    # raylet integration tests (core_worker_tests included in bazel tests below)
+    # Originally with ./ci/suppress_output
+    bash src/ray/test/run_object_manager_tests.sh
+
+    # cc bazel tests (w/o RLlib)
+    # Originally with ./ci/suppress_output
+    bazel test --config=ci --build_tests_only -- //:all -rllib/...
+
+    # ray serve tests
+    # Desabling this tests because is not working in ADO and is not required yet in Bonsai
+    # Originally with ./ci/keep_alive
+    # if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then bazel test --config=ci --test_tag_filters=-jenkins_only python/ray/serve/...; fi
+
+    # ray dashboard tests
+    # Originally with ./ci/keep_alive
+    if [ "$RAY_CI_DASHBOARD_AFFECTED" == "1" ]; then bazel test python/ray/dashboard/...; fi
+
+    # ray operator tests
+    # Originally with ./ci/suppress_output
+    (cd deploy/ray-operator && export CC=gcc && go build && go test ./...)
+
+    # random python tests TODO(ekl): these should be moved to bazel
+    # The following is the original line but it was modified
+    # because --timeout is not a valid parameter for pytest
+    # if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/test/async_test.py; fi
+    if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=5 python/ray/experimental/test/async_test.py; fi
+
+    # bazel python tests. This should be run last to keep its logs at the end of travis logs.
+    # Originally with ./ci/keep_alive
+    if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then bazel test --config=ci --test_tag_filters=-jenkins_only python/ray/tests/...; fi
+    # Originally with ./ci/keep_alive
+    if [ $RAY_CI_TUNE_AFFECTED == "1" ]; then bazel test --config=ci --test_tag_filters=-jenkins_only python/ray/tune/...; fi
+    # NO MORE TESTS BELOW, keep them above.
+    # End Original script
+
+    exit 0
+  env:
+    PYTHONWARNINGS: 'ignore'
+    RAY_DEFAULT_BUILD: 1
+    RAY_CYTHON_EXAMPLES: 1
+    RAY_USE_RANDOM_PORTS: 1
+    TRAVIS: 'true'
+  displayName: 'Run original Ray tests'
+  timeoutInMinutes: 180

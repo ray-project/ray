@@ -1,4 +1,5 @@
 import logging
+from typing import Type, TypeVar
 
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
@@ -111,6 +112,9 @@ DEFAULT_CONFIG = with_common_config({
     # if async_updates is set, then each worker returns gradients for a
     # batch of this size.
     "train_batch_size": 32,
+    # Callable to be added in the store_ops part of the execution plan.
+    # The foreach transformation is used over the ParallelIterator.
+    "execution_plan_custom_store_ops": None,
 
     # === Parallelism ===
     # Number of workers for collecting samples with. This only makes sense
@@ -253,6 +257,9 @@ def execution_plan(workers, config):
     # next() on store_op drives this.
     store_op = rollouts.for_each(
         StoreToReplayBuffer(local_buffer=local_replay_buffer))
+    if config.get("execution_plan_custom_store_ops"):
+        custom_store_ops = config["execution_plan_custom_store_ops"]
+        store_op = store_op.for_each(custom_store_ops(workers, config))
 
     def update_prio(item):
         samples, info_dict = item

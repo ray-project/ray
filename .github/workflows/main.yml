@@ -1,6 +1,14 @@
 name: CI
 
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      - master
+      - releases/*
+  pull_request:
+    branches:
+      - master
+      - releases/*
 
 env:
   # Git GITHUB_... variables are useful for translating Travis environment variables

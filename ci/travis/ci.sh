@@ -153,9 +153,15 @@ build_dashboard_front_end() {
   else
     (
       cd ray/dashboard/client
-      set +x  # suppress set -x since it'll get very noisy here
-      . "${HOME}/.nvm/nvm.sh"
-      nvm use --silent node
+      # In azure pipelines or github acions, we don't need to install node
+      if [ -x "$(command -v npm)" ]; then
+        echo "Node already installed"
+        npm -v
+      else
+        set +x  # suppress set -x since it'll get very noisy here
+        . "${HOME}/.nvm/nvm.sh"
+        nvm use --silent node
+      fi
       install_npm_project
       npm run -s build
     )
@@ -195,7 +201,7 @@ install_ray() {
   (
     cd "${WORKSPACE_DIR}"/python
     build_dashboard_front_end
-    pip install -v -e .
+    pip install --force-reinstall -v -e .
   )
 }
 
@@ -216,13 +222,13 @@ build_wheels() {
 
       # This command should be kept in sync with ray/python/README-building-wheels.md,
       # except the "${MOUNT_BAZEL_CACHE[@]}" part.
-      suppress_output docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
+      docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
         -e TRAVIS_COMMIT="${TRAVIS_COMMIT}" \
         rayproject/arrow_linux_x86_64_base:python-3.8.0 /ray/python/build-wheel-manylinux1.sh
       ;;
     darwin*)
       # This command should be kept in sync with ray/python/README-building-wheels.md.
-      suppress_output "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
+      "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
       ;;
     msys*)
       (
@@ -303,10 +309,16 @@ lint_bazel() {
 lint_web() {
   (
     cd "${WORKSPACE_DIR}"/python/ray/dashboard/client
-    set +x # suppress set -x since it'll get very noisy here
-    . "${HOME}/.nvm/nvm.sh"
+    # In azure pipelines or github acions, we don't need to install node
+    if [ -x "$(command -v npm)" ]; then
+      echo "Node already installed"
+      npm -v
+    else
+      set +x # suppress set -x since it'll get very noisy here
+      . "${HOME}/.nvm/nvm.sh"
+      nvm use --silent node
+    fi
     install_npm_project
-    nvm use --silent node
     node_modules/.bin/eslint --max-warnings 0 $(find src -name "*.ts" -or -name "*.tsx")
     node_modules/.bin/prettier --check $(find src -name "*.ts" -or -name "*.tsx")
     node_modules/.bin/prettier --check public/index.html

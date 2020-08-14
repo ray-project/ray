@@ -1,0 +1,53 @@
+# This template includes the steps to genarete the ubuntu wheels in travis.
+
+steps:
+# Install phase of the travis Ubuntu wheels build
+- bash: |
+    echo Running install phase of the original travis.yml
+
+    # Set some variables to make the system looks like Travis
+    source $BUILD_SOURCESDIRECTORY/ci/azure_pipelines/templates/travis-legacy/pre-install.sh
+
+    # Start Original script
+
+    . ./ci/travis/ci.sh init RAY_CI_LINUX_WHEELS_AFFECTED
+    . ./ci/travis/ci.sh build
+
+    # End Original script
+
+    exit 0
+  env:
+    PYTHONWARNINGS: 'ignore'
+    TRAVIS: 'true'
+    LINUX_WHEELS: 1
+    RAY_INSTALL_JAVA: 1
+    RAY_GCS_ACTOR_SERVICE_ENABLED: 'true'
+  displayName: 'Run original travis install phase'
+  timeoutInMinutes: 120
+# Script phase of the travis Ubuntu wheels build
+- bash: |
+    echo "Allowing manylinux1 packages"
+    echo 'manylinux1_compatible = True' > /opt/hostedtoolcache/Python/3.6.10/x64/_manylinux.py
+    python -c 'import sys; sys.path.append(r"/_manylinux.py")'
+    echo "Original wheels"
+    ls -l "$BUILD_SOURCESDIRECTORY/.whl/"
+
+
+    # Set some variables to make the system looks like Travis
+    source $BUILD_SOURCESDIRECTORY/ci/azure_pipelines/templates/travis-legacy/pre-install.sh
+
+    # Start Original script
+
+    . ./ci/travis/ci.sh test_wheels
+
+    # End Original script
+
+    exit 0
+  env:
+    PYTHONWARNINGS: 'ignore'
+    TRAVIS: 'true'
+    LINUX_WHEELS: 1
+    RAY_INSTALL_JAVA: 1
+    RAY_GCS_ACTOR_SERVICE_ENABLED: 'true'
+  displayName: 'Run original script phase'
+  timeoutInMinutes: 60

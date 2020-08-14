@@ -40,6 +40,8 @@
 # inside rllib/tuned_examples/[algo-name] for actual learning success.
 # --------------------------------------------------------------------
 
+SRCS = ["tests/conftest.py"]
+
 # A2C/A3C
 py_test(
     name = "regression_test_a2c_cartpole_tf",
@@ -480,21 +482,6 @@ py_test(
             "agents/ppo/tests/test.py"]  # TODO(sven): Move down once PR 6889 merged
 )
 
-# DDPPO
-py_test(
-    name = "test_ddppo",
-    tags = ["agents_dir"],
-    size = "small",
-    srcs = ["agents/ppo/tests/test_ddppo.py"]
-)
-
-# APPO
-py_test(
-    name = "test_appo",
-    tags = ["agents_dir"],
-    size = "medium",
-    srcs = ["agents/ppo/tests/test_appo.py"]
-)
 
 # SAC
 py_test(
@@ -1129,6 +1116,20 @@ py_test(
 # it correctly by its starting letter, e.g. tags=["tests_dir", "tests_dir_A"]
 # for `tests/test_all_stuff.py`.
 # --------------------------------------------------------------------
+# All new parametrized pytest tests - Compilation
+py_test(
+    name = "test_compilation",
+    tags = ["tests_dir", "tests_dir_A", "quick_train"],
+    srcs = ["tests/agents/test_compilation.py"]
+)
+
+# All new parametrized pytest tests - Learning
+py_test(
+    name = "test_learning",
+    tags = ["tests_dir", "tests_dir_A", "learning_tests"],
+    size = "large",
+    srcs = ["tests/agents/test_learning.py"]
+)
 
 py_test(
     name = "tests/test_attention_net_learning",
@@ -1151,12 +1152,12 @@ py_test(
     srcs = ["tests/test_catalog.py"]
 )
 
-py_test(
-    name = "tests/test_checkpoint_restore",
-    tags = ["tests_dir", "tests_dir_C"],
-    size = "enormous",
-    srcs = ["tests/test_checkpoint_restore.py"]
-)
+# py_test(
+#     name = "tests/test_checkpoint_restore",
+#     tags = ["tests_dir", "tests_dir_C"],
+#     size = "enormous",
+#     srcs = ["tests/test_checkpoint_restore.py"]
+# )
 
 py_test(
     name = "tests/test_dependency",
@@ -1205,7 +1206,7 @@ py_test(
     name = "tests/test_execution",
     tags = ["tests_dir", "tests_dir_E"],
     size = "medium",
-    srcs = ["tests/test_execution.py"]
+    srcs = SRCS + ["tests/test_execution.py"]
 )
 
 py_test(

@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Any, Dict
 
 from ray.rllib.env import BaseEnv
 from ray.rllib.policy import Policy, PolicyID, AgentID
@@ -26,9 +26,13 @@ class DefaultCallbacks:
                 "a class extending rllib.agents.callbacks.DefaultCallbacks")
         self.legacy_callbacks = legacy_callbacks_dict or {}
 
-    def on_episode_start(self, worker: RolloutWorker, base_env: BaseEnv,
+    def on_episode_start(self,
+                         worker: RolloutWorker,
+                         base_env: BaseEnv,
                          policies: Dict[PolicyID, Policy],
-                         episode: MultiAgentEpisode, **kwargs):
+                         episode: MultiAgentEpisode,
+                         env_infos: Dict[str, Any],
+                         **kwargs):
         """Callback run on the rollout worker before each episode starts.
 
         Args:
@@ -41,6 +45,10 @@ class DefaultCallbacks:
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
                 metrics for the episode.
+            env_infos (Dict): Dictionary with the info values comming from each
+                agent. These are the info values return by the poll method in
+                BaseEnv. They are being passed here by sampler in the _env_runner
+                method.
             kwargs: Forward compatibility placeholder.
         """
 
@@ -49,6 +57,7 @@ class DefaultCallbacks:
                 "env": base_env,
                 "policy": policies,
                 "episode": episode,
+                "env_infos": env_infos,
             })
 
     def on_episode_step(self, worker: RolloutWorker, base_env: BaseEnv,

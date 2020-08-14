@@ -1,4 +1,6 @@
-from gym.spaces import Discrete
+import logging
+
+from gym.spaces import Discrete, Box
 import numpy as np
 
 import ray
@@ -16,6 +18,8 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_ops import huber_loss, reduce_mean_ignore_inf, \
     minimize_and_clip
 from ray.rllib.utils.tf_ops import make_tf_callable
+
+logger = logging.getLogger(__name__)
 
 tf = try_import_tf()
 
@@ -369,8 +373,13 @@ def postprocess_nstep_and_prio(policy, batch, other_agent=None, episode=None):
 
     # Prioritize on the worker side
     if batch.count > 0 and policy.config["worker_side_prioritization"]:
+        actions = batch[SampleBatch.ACTIONS]
+        if isinstance(policy.action_space, Box) and actions.ndim == 1:
+            actions = np.reshape(actions, [-1, 1])
+        elif isinstance(policy.action_space, Discrete) and actions.shape[-1] == 1:
+            actions = np.reshape(actions, [-1])
         td_errors = policy.compute_td_error(
-            batch[SampleBatch.CUR_OBS], batch[SampleBatch.ACTIONS],
+            batch[SampleBatch.CUR_OBS], actions,
             batch[SampleBatch.REWARDS], batch[SampleBatch.NEXT_OBS],
             batch[SampleBatch.DONES], batch[PRIO_WEIGHTS])
         new_priorities = (

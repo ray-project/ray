@@ -110,6 +110,9 @@ def apex_execution_plan(workers: WorkerSet, config: dict):
     rollouts = ParallelRollouts(workers, mode="async", num_async=2)
     store_op = rollouts \
         .for_each(StoreToReplayBuffer(actors=replay_actors))
+    if config.get("execution_plan_custom_store_ops"):
+        custom_store_ops = config["execution_plan_custom_store_ops"]
+        store_op = store_op.for_each(custom_store_ops(workers, config))
     # Only need to update workers if there are remote workers.
     if workers.remote_workers():
         store_op = store_op.zip_with_source_actor() \

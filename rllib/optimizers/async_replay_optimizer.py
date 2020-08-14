@@ -4,6 +4,8 @@ https://arxiv.org/abs/1803.00933"""
 
 import collections
 import logging
+
+import gym
 import numpy as np
 import platform
 import random
@@ -505,6 +507,25 @@ class LearnerThread(threading.Thread):
             if replay is not None:
                 prio_dict = {}
                 with self.grad_timer:
+                    try:
+                        batch = replay.policy_batches["default_policy"]
+                    except KeyError:
+                        pass
+                    else:
+                        is_box_action_space = all((
+                            hasattr(self.local_worker, "policy_map"),
+                            self.local_worker.policy_map.get(
+                                "default_policy", None
+                            ) is not None,
+                            isinstance(
+                                self.local_worker.policy_map[
+                                    "default_policy"
+                                ].action_space,
+                                gym.spaces.Box
+                            )
+                        ))
+                        if is_box_action_space:
+                            batch["actions"] = batch["actions"].reshape((-1, 1))
                     grad_out = self.local_worker.learn_on_batch(replay)
                     for pid, info in grad_out.items():
                         td_error = info.get(

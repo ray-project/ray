@@ -140,10 +140,14 @@ public class ChannelID {
       |    Head    | Timestamp | Empty | From  |  To    |
       | 8 bytes    |  4bytes   | 4bytes| 2bytes| 2bytes |
     */
+    // The Guava Preconditions checks take error message template
+    // strings that look similar to format strings but only accept %s
+    // as a placeholder. For more details check here:
+    // https://errorprone.info/bugpattern/PreconditionsInvalidPlaceholder
     Preconditions.checkArgument(fromTaskId < Short.MAX_VALUE,
-        "fromTaskId %d is larger than %d", fromTaskId, Short.MAX_VALUE);
+        "fromTaskId %s is larger than %s", Integer.toString(fromTaskId), Integer.toString(Short.MAX_VALUE));
     Preconditions.checkArgument(toTaskId < Short.MAX_VALUE,
-        "toTaskId %d is larger than %d", fromTaskId, Short.MAX_VALUE);
+        "toTaskId %s is larger than %s", Integer.toString(fromTaskId), Integer.toString(Short.MAX_VALUE));
     byte[] channelName = new byte[20];
 
     for (int i = 11; i >= 8; i--) {

@@ -73,6 +73,12 @@ COMMON_CONFIG = {
     # evenly sized batches, but increases variance as the reward-to-go will
     # need to be estimated at truncation boundaries.
     "batch_mode": "truncate_episodes",
+    # Allows to customize the metrics summarization
+    # The callable received the episodes, new_episodes and the result
+    # of the default summarize_episodes. Must return the new summary.
+    # The signatura of the callable is the following:
+    # Callable[[Sequence[Any], Sequence[Any], Dict[str, Any]], Dict[str, Any]]
+    "custom_summarize_episodes_callback": None,
 
     # === Settings for the Trainer process ===
     # Number of GPUs to allocate to the trainer process. Note that not all
@@ -109,6 +115,9 @@ COMMON_CONFIG = {
     "env": None,
     # Unsquash actions to the upper and lower bounds of env's action space
     "normalize_actions": False,
+    # If normalize_actions (above flag) is on, this flag allows you to
+    # control if the actions must be rescaled back to the env scale or not.
+    "disable_actions_rescaling": False,
     # Whether to clip rewards prior to experience postprocessing. Setting to
     # None means clip for Atari only.
     "clip_rewards": None,
@@ -585,7 +594,7 @@ class Trainer(Trainable):
             logger.info("Tip: set framework=tfe or the --eager flag to enable "
                         "TensorFlow eager execution")
 
-        if self.config["normalize_actions"]:
+        if self.config["normalize_actions"] and not self.config["disable_actions_rescaling"]:
             inner = self.env_creator
 
             def normalize(env):

@@ -71,7 +71,7 @@ void TestSetupUtil::ShutDownRedisServer(const int &port) {
   if (system(stop_redis_command.c_str()) != 0) {
     RAY_LOG(WARNING) << "Failed to stop redis. The redis process may no longer exist.";
   }
-  usleep(100 * 1000);
+  usleep(500 * 1000);
 }
 
 void TestSetupUtil::FlushAllRedisServers() {

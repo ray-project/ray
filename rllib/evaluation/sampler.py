@@ -433,7 +433,7 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
             return MultiAgentSampleBatchBuilder(policies, clip_rewards,
                                                 callbacks)
 
-    def new_episode():
+    def new_episode(env_id):
         episode = MultiAgentEpisode(policies, policy_mapping_fn,
                                     get_batch_builder, extra_batch_callback)
         # Call each policy's Exploration.on_episode_start method.
@@ -443,15 +443,22 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
                     policy=p,
                     environment=base_env,
                     episode=episode,
-                    tf_sess=getattr(p, "_sess", None))
+                    tf_sess=getattr(p, "_sess", None),
+                    env_infos=infos[env_id])
         callbacks.on_episode_start(
             worker=worker,
             base_env=base_env,
             policies=policies,
-            episode=episode)
+            episode=episode,
+            env_infos=infos[env_id])
         return episode
 
-    active_episodes = defaultdict(new_episode)
+    class DefaultDictWithKey(defaultdict):
+        def __missing__(self, key):
+            ret = self[key] = self.default_factory(key)
+            return ret
+
+    active_episodes = DefaultDictWithKey(new_episode)
 
     while True:
         perf_stats.iters += 1
@@ -836,6 +843,20 @@ def _do_policy_eval(*, to_eval, policies, active_episodes, tf_sess=None):
     return eval_results
 
 
+class ActionsToSendDict(defaultdict):
+    """Simple Dict like data structure that holds a nested dict of
+    env id -> agent id -> agent replies, and also allows to carry
+    over the user data associated to the episodes.
+
+    Attributes:
+        user_data (dict): Dict that contains episode user data per
+        each env - env id -> user data
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user_data = defaultdict(dict)
+
+
 def _process_policy_eval_results(*, to_eval, eval_results, active_episodes,
                                  active_envs, off_policy_actions, policies,
                                  clip_actions):
@@ -862,9 +883,10 @@ def _process_policy_eval_results(*, to_eval, eval_results, active_episodes,
         actions_to_send: Nested dict of env id -> agent id -> agent replies.
     """
 
-    actions_to_send = defaultdict(dict)
+    actions_to_send = ActionsToSendDict(dict)
     for env_id in active_envs:
         actions_to_send[env_id] = {}  # at minimum send empty dict
+        actions_to_send.user_data[env_id] = {} # with an empty dict of user data
 
     for policy_id, eval_data in to_eval.items():
         rnn_in_cols = _to_column_format([t.rnn_state for t in eval_data])
@@ -901,6 +923,9 @@ def _process_policy_eval_results(*, to_eval, eval_results, active_episodes,
                 clipped_action = action
             actions_to_send[env_id][agent_id] = clipped_action
             episode = active_episodes[env_id]
+
+            actions_to_send.user_data[env_id][agent_id] = episode.user_data.copy()
+
             episode._set_rnn_state(agent_id, [c[i] for c in rnn_out_cols])
             episode._set_last_pi_info(
                 agent_id, {k: v[i]

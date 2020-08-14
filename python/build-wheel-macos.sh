@@ -13,23 +13,19 @@ MACPYTHON_URL=https://www.python.org/ftp/python
 MACPYTHON_PY_PREFIX=/Library/Frameworks/Python.framework/Versions
 DOWNLOAD_DIR=python_downloads
 
-PY_VERSIONS=("3.5.3"
-             "3.6.1"
+PY_VERSIONS=("3.6.1"
              "3.7.0"
              "3.8.2")
-PY_INSTS=("python-3.5.3-macosx10.6.pkg"
-          "python-3.6.1-macosx10.6.pkg"
+PY_INSTS=("python-3.6.1-macosx10.6.pkg"
           "python-3.7.0-macosx10.6.pkg"
           "python-3.8.2-macosx10.9.pkg")
-PY_MMS=("3.5"
-        "3.6"
+PY_MMS=("3.6"
         "3.7"
         "3.8")
 
 # The minimum supported numpy version is 1.14, see
 # https://issues.apache.org/jira/browse/ARROW-3141
 NUMPY_VERSIONS=("1.14.5"
-                "1.14.5"
                 "1.14.5"
                 "1.14.5")
 
@@ -38,9 +34,15 @@ NUMPY_VERSIONS=("1.14.5"
 mkdir -p $DOWNLOAD_DIR
 mkdir -p .whl
 
-# Use the latest version of Node.js in order to build the dashboard.
-source $HOME/.nvm/nvm.sh
-nvm use node
+# In azure pipelines or github acions, we don't need to install node
+if [ -x "$(command -v npm)" ]; then
+  echo "Node already installed"
+  npm -v
+else
+  # Use the latest version of Node.js in order to build the dashboard.
+  source $HOME/.nvm/nvm.sh
+  nvm use node
+fi
 
 # Build the dashboard so its static assets can be included in the wheel.
 pushd python/ray/dashboard/client

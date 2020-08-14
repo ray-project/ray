@@ -1,0 +1,57 @@
+# This template includes the steps to genarete the MacOS wheels in travis.
+
+steps:
+# Install phase of the travis MacOS wheels build
+- bash: |
+    echo Running install phase of the original travis.yml
+
+    # Set some variables to make the system looks like Travis
+    source $BUILD_SOURCESDIRECTORY/ci/azure_pipelines/templates/travis-legacy/pre-install.sh
+
+    # Start Original script
+
+    . ./ci/travis/ci.sh init RAY_CI_MACOS_WHEELS_AFFECTED
+    . ./ci/travis/ci.sh build
+
+    # End Original script
+
+    exit 0
+  env:
+    PYTHONWARNINGS: 'ignore'
+    TRAVIS: 'true'
+    MAC_WHEELS: 1
+    RAY_INSTALL_JAVA: 1
+    RAY_GCS_ACTOR_SERVICE_ENABLED: 'true'
+  displayName: 'Run original travis install phase'
+  timeoutInMinutes: 180
+# Script phase of the travis MacOS wheels build
+- bash: |
+    ls -l "$BUILD_SOURCESDIRECTORY/.whl/"
+
+    echo "MACOSX_DEPLOYMENT_TARGET: $MACOSX_DEPLOYMENT_TARGET"
+    echo "PYTHON_CONFIGURE_OPTS: $PYTHON_CONFIGURE_OPTS"
+
+    # Set some variables to make the system looks like Travis
+    source $BUILD_SOURCESDIRECTORY/ci/azure_pipelines/templates/travis-legacy/pre-install.sh
+
+    # Duplicate the wheel packages for the architecture of the agent
+
+    # Start Original script
+
+    . ./ci/travis/ci.sh test_wheels
+
+    # End Original script
+
+    set +e
+
+    ls -l "$BUILD_SOURCESDIRECTORY/.whl/"
+
+    exit 0
+  env:
+    PYTHONWARNINGS: 'ignore'
+    TRAVIS: 'true'
+    MAC_WHEELS: 1
+    RAY_INSTALL_JAVA: 1
+    RAY_GCS_ACTOR_SERVICE_ENABLED: 'true'
+  displayName: 'Run original script phase'
+  timeoutInMinutes: 60

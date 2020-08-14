@@ -15,19 +15,6 @@ tf = try_import_tf()
 
 
 class TestSimpleQ(unittest.TestCase):
-    def test_simple_q_compilation(self):
-        """Test whether a SimpleQTrainer can be built on all frameworks."""
-        config = dqn.SIMPLE_Q_DEFAULT_CONFIG.copy()
-        config["num_workers"] = 0  # Run locally.
-
-        for _ in framework_iterator(config):
-            trainer = dqn.SimpleQTrainer(config=config, env="CartPole-v0")
-            num_iterations = 2
-            for i in range(num_iterations):
-                results = trainer.train()
-                print(results)
-
-            check_compute_action(trainer)
 
     def test_simple_q_loss_function(self):
         """Tests the Simple-Q loss function results on all frameworks."""

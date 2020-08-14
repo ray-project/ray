@@ -14,7 +14,7 @@ class TFModelV2(ModelV2):
     implement forward() in a subclass."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name):
+                 name, **kwargs):
         """Initialize a TFModelV2.
 
         Here is an example implementation for a subclass

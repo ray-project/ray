@@ -6,6 +6,7 @@ from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 # Counters for training progress (keys for metrics.counters).
 STEPS_SAMPLED_COUNTER = "num_steps_sampled"
 STEPS_TRAINED_COUNTER = "num_steps_trained"
+TIMESTEPS_TOTAL = "timesteps_total"
 
 # Counters to track target network updates.
 LAST_TARGET_UPDATE_TS = "last_target_update_ts"

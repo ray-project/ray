@@ -1,0 +1,38 @@
+# This template includes the steps of the rlib examples job with TF 2 in travix.yml
+
+steps:
+- bash: |
+    echo Running install phase of the original travis.yml
+
+    # Set some variables to make the system looks like Travis
+    source $BUILD_SOURCESDIRECTORY/ci/azure_pipelines/templates/travis-legacy/pre-install.sh
+
+    # Start Original script
+
+    # install part
+    . ./ci/travis/ci.sh init RAY_CI_RLLIB_FULL_AFFECTED
+    . ./ci/travis/ci.sh build
+
+    # script part
+    # Originally with ./ci/keep_alive
+    bazel test --config=ci --build_tests_only --test_tag_filters=examples_A,examples_B rllib/...
+    # Originally with ./ci/keep_alive
+    bazel test --config=ci --build_tests_only --test_tag_filters=examples_C,examples_D rllib/...
+    # Originally with ./ci/keep_alive
+    bazel test --config=ci --build_tests_only --test_tag_filters=examples_E,examples_F,examples_G,examples_H,examples_I,examples_J,examples_K,examples_L,examples_M,examples_N,examples_O,examples_P rllib/...
+    # Originally with ./ci/keep_alive
+    bazel test --config=ci --build_tests_only --test_tag_filters=examples_Q,examples_R,examples_S,examples_T,examples_U,examples_V,examples_W,examples_X,examples_Y,examples_Z rllib/...
+
+    # End Original script
+
+    exit 0
+  env:
+    PYTHONWARNINGS: 'ignore'
+    TRAVIS: 'true'
+    RLLIB_TESTING: 1
+    RLLIB_EXAMPLE_DIR_TESTS: 1
+    TF_VERSION: 2.1.0
+    TFP_VERSION: 0.8
+    TORCH_VERSION: 1.4
+  displayName: 'Run original rlib examples job with TF 2'
+  timeoutInMinutes: 120

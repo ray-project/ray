@@ -84,7 +84,8 @@ class DynamicTFPolicy(TFPolicy):
                 forward pass through some model.
                 If None, pass inputs through `self.model()` to get the
                 distribution inputs.
-            existing_inputs (OrderedDict): When copying a policy, this
+            existing_inputs (OrderedDict): used to specify inputs custom built
+                by plicy extending this one. When copying a policy, this
                 specifies an existing dict of placeholders to use instead of
                 defining new ones
             existing_model (ModelV2): when copying a policy, this specifies
@@ -106,28 +107,33 @@ class DynamicTFPolicy(TFPolicy):
         # Setup standard placeholders
         prev_actions = None
         prev_rewards = None
-        if existing_inputs is not None:
+        if existing_inputs is not None and SampleBatch.CUR_OBS in existing_inputs:
             obs = existing_inputs[SampleBatch.CUR_OBS]
-            if self._obs_include_prev_action_reward:
-                prev_actions = existing_inputs[SampleBatch.PREV_ACTIONS]
-                prev_rewards = existing_inputs[SampleBatch.PREV_REWARDS]
-            action_input = existing_inputs[SampleBatch.ACTIONS]
-            explore = existing_inputs["is_exploring"]
-            timestep = existing_inputs["timestep"]
         else:
             obs = tf.placeholder(
                 tf.float32,
                 shape=[None] + list(obs_space.shape),
                 name="observation")
+        if existing_inputs is not None and SampleBatch.ACTIONS in existing_inputs:
+            action_input = existing_inputs[SampleBatch.ACTIONS]
+            self._is_exploring = existing_inputs["is_exploring"]
+            self._timestep = existing_inputs["timestep"]
+        else:
             action_input = ModelCatalog.get_action_placeholder(action_space)
-            if self._obs_include_prev_action_reward:
+            self._is_exploring = tf.placeholder_with_default(
+                True, (), name="is_exploring")
+            self._timestep = tf.placeholder(tf.int32, (), name="timestep")
+        if self._obs_include_prev_action_reward:
+            if existing_inputs is not None and SampleBatch.PREV_ACTIONS in existing_inputs:
+                prev_actions = existing_inputs[SampleBatch.PREV_ACTIONS]
+            else:
                 prev_actions = ModelCatalog.get_action_placeholder(
                     action_space, "prev_action")
+            if existing_inputs is not None and SampleBatch.PREV_REWARDS in existing_inputs:
+                prev_rewards = existing_inputs[SampleBatch.PREV_REWARDS]
+            else:
                 prev_rewards = tf.placeholder(
                     tf.float32, [None], name="prev_reward")
-            explore = tf.placeholder_with_default(
-                True, (), name="is_exploring")
-            timestep = tf.placeholder(tf.int32, (), name="timestep")
 
         self._input_dict = {
             SampleBatch.CUR_OBS: obs,
@@ -139,14 +145,15 @@ class DynamicTFPolicy(TFPolicy):
         self._seq_lens = tf.placeholder(
             dtype=tf.int32, shape=[None], name="seq_lens")
 
-        dist_class = dist_inputs = None
-        if action_sampler_fn or action_distribution_fn:
+        self.dist_class = self.dist_inputs = None
+        self.action_distribution_fn = action_distribution_fn
+        if action_sampler_fn or self.action_distribution_fn:
             if not make_model:
                 raise ValueError(
                     "`make_model` is required if `action_sampler_fn` OR "
                     "`action_distribution_fn` is given")
         else:
-            dist_class, logit_dim = ModelCatalog.get_action_dist(
+            self.dist_class, logit_dim = ModelCatalog.get_action_dist(
                 action_space, self.config["model"])
 
         # Setup self.model.
@@ -189,37 +196,11 @@ class DynamicTFPolicy(TFPolicy):
                 seq_lens=self._seq_lens,
                 prev_action_batch=self._input_dict[SampleBatch.PREV_ACTIONS],
                 prev_reward_batch=self._input_dict[SampleBatch.PREV_REWARDS],
-                explore=explore,
+                explore=self._is_exploring,
                 is_training=self._input_dict["is_training"])
         else:
-            # Distribution generation is customized, e.g., DQN, DDPG.
-            if action_distribution_fn:
-                dist_inputs, dist_class, self._state_out = \
-                    action_distribution_fn(
-                        self, self.model,
-                        obs_batch=self._input_dict[SampleBatch.CUR_OBS],
-                        state_batches=self._state_in,
-                        seq_lens=self._seq_lens,
-                        prev_action_batch=self._input_dict[
-                            SampleBatch.PREV_ACTIONS],
-                        prev_reward_batch=self._input_dict[
-                            SampleBatch.PREV_REWARDS],
-                        explore=explore,
-                        is_training=self._input_dict["is_training"])
-            # Default distribution generation behavior:
-            # Pass through model. E.g., PG, PPO.
-            else:
-                dist_inputs, self._state_out = self.model(
-                    self._input_dict, self._state_in, self._seq_lens)
-
-            action_dist = dist_class(dist_inputs, self.model)
-
-            # Using exploration to get final action (e.g. via sampling).
-            sampled_action, sampled_action_logp = \
-                self.exploration.get_exploration_action(
-                    action_distribution=action_dist,
-                    timestep=timestep,
-                    explore=explore)
+            # Using an exploration setup.
+            sampled_action, sampled_action_logp = self._default_action_sampler_fn()
 
         # Phase 1 init.
         sess = tf.get_default_session() or tf.Session()
@@ -237,8 +218,8 @@ class DynamicTFPolicy(TFPolicy):
             action_input=action_input,  # for logp calculations
             sampled_action=sampled_action,
             sampled_action_logp=sampled_action_logp,
-            dist_inputs=dist_inputs,
-            dist_class=dist_class,
+            dist_inputs=self.dist_inputs,
+            dist_class=self.dist_class,
             loss=None,  # dynamically initialized on run
             loss_inputs=[],
             model=self.model,
@@ -249,15 +230,46 @@ class DynamicTFPolicy(TFPolicy):
             seq_lens=self._seq_lens,
             max_seq_len=config["model"]["max_seq_len"],
             batch_divisibility_req=batch_divisibility_req,
-            explore=explore,
-            timestep=timestep)
+            explore=self._is_exploring,
+            timestep=self._timestep)
 
         # Phase 2 init.
         if before_loss_init is not None:
             before_loss_init(self, obs_space, action_space, config)
 
-        if not existing_inputs:
+        if not existing_inputs or not existing_model:
             self._initialize_loss()
+
+    def _default_action_sampler_fn(self):
+        # Distribution generation is customized, e.g., DQN, DDPG.
+        if self.action_distribution_fn:
+            self.dist_inputs, self.dist_class, self._state_out = \
+                self.action_distribution_fn(
+                    self, self.model,
+                    obs_batch=self._input_dict[SampleBatch.CUR_OBS],
+                    state_batches=self._state_in,
+                    seq_lens=self._seq_lens,
+                    prev_action_batch=self._input_dict[
+                        SampleBatch.PREV_ACTIONS],
+                    prev_reward_batch=self._input_dict[
+                        SampleBatch.PREV_REWARDS],
+                    explore=self._is_exploring,
+                    is_training=self._input_dict["is_training"])
+        # Default distribution generation behavior:
+        # Pass through model. E.g., PG, PPO.
+        else:
+            self.dist_inputs, self._state_out = self.model(
+                self._input_dict, self._state_in, self._seq_lens)
+
+        action_dist = self.dist_class(self.dist_inputs, self.model)
+
+        # Using exploration to get final action (e.g. via sampling).
+        sampled_action, sampled_action_logp = \
+            self.exploration.get_exploration_action(
+                action_distribution=action_dist,
+                timestep=self._timestep,
+                explore=self._is_exploring)
+        return sampled_action, sampled_action_logp
 
     @override(TFPolicy)
     def copy(self, existing_inputs):
@@ -410,3 +422,32 @@ class DynamicTFPolicy(TFPolicy):
         # override the update ops to be those of the model
         self._update_ops = self.model.update_ops()
         return loss
+
+    @override(Policy)
+    def get_state(self):
+        """Saves all local state.
+
+        Returns:
+            state (obj): Serialized local state.
+        """
+        base_state = super().get_state()
+        exploration_state = self.get_exploration_info()
+        state = {
+            "base_state": base_state,
+            "exploration_state": exploration_state
+        }
+        return state
+
+    @override(Policy)
+    def set_state(self, state):
+        """Restores all local state.
+
+        Arguments:
+            state (obj): Serialized local state.
+        """
+        base_state = state["base_state"]
+        exploration_state = state["exploration_state"]
+        if base_state:
+            super().set_state(base_state)
+        if exploration_state:
+            self.exploration.restore_info(exploration_state)

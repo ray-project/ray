@@ -1,10 +1,6 @@
-SRCS = [] + select({
-    "@bazel_tools//src/conditions:windows": [
-        # TODO(mehrdadn): This should be added for all platforms once resulting errors are fixed
-        "conftest.py",
-    ],
-    "//conditions:default": [],
-})
+SRCS = ["conftest.py"]
+AWS_SRCS = ["aws/conftest.py"] + glob(["aws/utils/*.py"])
+DATA = ["additional_property.yaml"] + glob(["perf_integration_tests/**", "project_files/**"])
 
 py_test(
     name = "test_actor",
@@ -194,7 +190,7 @@ py_test(
 py_test(
     name = "test_autoscaler_aws",
     size = "small",
-    srcs = ["aws/test_autoscaler_aws.py"],
+    srcs = AWS_SRCS + ["aws/test_autoscaler_aws.py"],
     deps = ["//:ray_lib"],
 )
 
@@ -202,6 +198,7 @@ py_test(
     name = "test_autoscaler_yaml",
     size = "small",
     srcs = SRCS + ["test_autoscaler_yaml.py"],
+    data = DATA,
     deps = ["//:ray_lib"],
 )
 
@@ -229,7 +226,7 @@ py_test(
 
 py_test(
     name = "test_failure",
-    size = "medium",
+    size = "large",
     srcs = SRCS + ["test_failure.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
@@ -255,6 +252,7 @@ py_test(
     name = "test_reference_counting_2",
     size = "medium",
     srcs = SRCS + ["test_reference_counting_2.py"],
+    data = DATA,
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
@@ -373,6 +371,7 @@ py_test(
     name = "test_projects",
     size = "small",
     srcs = SRCS + ["test_projects.py"],
+    data = DATA,
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )

@@ -1,6 +1,7 @@
 import logging
 import numpy as np
 import collections
+from numbers import Number
 
 import ray
 from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
@@ -143,14 +144,20 @@ def summarize_episodes(episodes, new_episodes=None):
         hist_stats["policy_{}_reward".format(policy_id)] = rewards
 
     for k, v_list in custom_metrics.copy().items():
-        filt = [v for v in v_list if not np.isnan(v)]
-        custom_metrics[k + "_mean"] = np.mean(filt)
-        if filt:
-            custom_metrics[k + "_min"] = np.min(filt)
-            custom_metrics[k + "_max"] = np.max(filt)
+        is_mesurable = all([isinstance(v, Number) for v in v_list])
+        if is_mesurable:
+            filt = [v for v in v_list if not np.isnan(v)]
+            custom_metrics[k + "_mean"] = np.mean(filt)
+            if filt:
+                custom_metrics[k + "_min"] = np.min(filt)
+                custom_metrics[k + "_max"] = np.max(filt)
+            else:
+                custom_metrics[k + "_min"] = float("nan")
+                custom_metrics[k + "_max"] = float("nan")
         else:
-            custom_metrics[k + "_min"] = float("nan")
-            custom_metrics[k + "_max"] = float("nan")
+            not_measurable_metric_samples = [v for v in v_list if not isinstance(v, Number)]
+            logger.debug(f"The key {k} in the custom metrics can't be reduced, keeping as it is. "
+                         "Example: {not_measurable_metric_samples[0]}")
         del custom_metrics[k]
 
     for k, v_list in perf_stats.copy().items():

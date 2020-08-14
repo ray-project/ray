@@ -1,4 +1,5 @@
 import logging
+from typing import Type, TypeVar
 
 from ray.rllib.agents import with_common_config
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
@@ -39,6 +40,9 @@ DEFAULT_CONFIG = with_common_config({
     # Number of SGD iterations in each outer loop (i.e., number of epochs to
     # execute per train batch).
     "num_sgd_iter": 30,
+    # Callable to be added in the store_ops part of the execution plan.
+    # The foreach transformation is used over the ParallelIterator.
+    "execution_plan_custom_store_ops": None,
     # Stepsize of SGD.
     "lr": 5e-5,
     # Learning rate schedule.
@@ -171,6 +175,9 @@ class UpdateKL:
 def execution_plan(workers, config):
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
+    if config.get("execution_plan_custom_store_ops"):
+        custom_store_ops = config["execution_plan_custom_store_ops"]
+        rollouts = rollouts.for_each(custom_store_ops(workers, config))
     # Collect large batches of relevant experiences & standardize.
     rollouts = rollouts.for_each(
         SelectExperiences(workers.trainable_policies()))
