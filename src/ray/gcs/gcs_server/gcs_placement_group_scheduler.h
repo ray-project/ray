@@ -170,31 +170,39 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// A timer that ticks every cancel resource failure milliseconds.
   boost::asio::deadline_timer return_timer_;
   /// Used to update placement group information upon creation, deletion, etc.
+
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+
   /// Reference of GcsNodeManager.
   const GcsNodeManager &gcs_node_manager_;
+
   /// The cached node clients which are used to communicate with raylet to lease workers.
   absl::flat_hash_map<ClientID, std::shared_ptr<ResourceReserveInterface>>
       remote_lease_clients_;
+
   /// Factory for producing new clients to request leases from remote nodes.
   ReserveResourceClientFactoryFn lease_client_factory_;
 
   /// Map from node ID to the set of bundles for whom we are trying to acquire a lease
   /// from that node. This is needed so that we can retry lease requests from the node
   /// until we receive a reply or the node is removed.
+  /// TODO(sang): We don't currently handle retry.
   absl::flat_hash_map<ClientID, absl::flat_hash_set<BundleID>>
       node_to_bundles_when_leasing_;
 
   /// Map from node ID to the set of bundles. This is needed so that we can reschedule
   /// bundles when a node is dead.
-  absl::flat_hash_map<ClientID, std::vector<std::shared_ptr<BundleSpecification>>>
+  absl::flat_hash_map<ClientID,
+                      absl::flat_hash_map<BundleID, std::shared_ptr<BundleSpecification>>>
       node_to_leased_bundles_;
 
   /// A vector to store all the schedule strategy.
   std::vector<std::shared_ptr<GcsScheduleStrategy>> scheduler_strategies_;
+
   /// Set of placement group that have lease requests in flight to nodes.
   /// It is required to know if placement group has been removed or not.
   absl::flat_hash_set<PlacementGroupID> placement_group_leasing_in_progress_;
+
   /// A map from placement group id to bundle locations.
   /// It is used to destroy bundles for the placement group.
   absl::flat_hash_map<PlacementGroupID, std::shared_ptr<BundleLocations>>

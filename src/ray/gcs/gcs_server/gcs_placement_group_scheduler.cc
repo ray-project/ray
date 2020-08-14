@@ -161,13 +161,24 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupBundleResources(
     const PlacementGroupID &placement_group_id) {
   auto it = placement_group_to_bundle_location_.find(placement_group_id);
   RAY_CHECK(it != placement_group_to_bundle_location_.end());
-  std::shared_ptr<BundleLocations> bundle_location = it->second;
-  for (const auto &iter : *bundle_location) {
+  std::shared_ptr<BundleLocations> bundle_locations = it->second;
+  for (const auto &iter : *bundle_locations) {
     auto &bundle_spec = iter.second.second;
     auto &node_id = iter.second.first;
     CancelResourceReserve(bundle_spec, gcs_node_manager_.GetNode(node_id));
   }
   placement_group_to_bundle_location_.erase(it);
+
+  // Remove bundles from node_to_leased_bundles_ because bundels are removed now.
+  for (const auto &bundle_location : *bundle_locations) {
+    const auto &bundle_id = bundle_location.first;
+    const auto &node_id = bundle_location.second.first;
+    const auto &leased_bundles_it = node_to_leased_bundles_.find(node_id);
+    // node could've been already dead at this point.
+    if (leased_bundles_it != node_to_leased_bundles_.end()) {
+      leased_bundles_it->second.erase(bundle_id);
+    }
+  }
 }
 
 void GcsPlacementGroupScheduler::MarkScheduleCancelled(
@@ -279,7 +290,9 @@ void GcsPlacementGroupScheduler::OnAllBundleSchedulingRequestReturned(
     // Update `node_to_leased_bundles_`.
     for (const auto &iter : *bundle_locations) {
       const auto &location = iter.second;
-      node_to_leased_bundles_[location.first].push_back(location.second);
+      const auto &bundle_sepc = location.second;
+      node_to_leased_bundles_[location.first].emplace(bundle_sepc->BundleId(),
+                                                      bundle_sepc);
     }
   }
   // Erase leasing in progress placement group.
@@ -296,7 +309,8 @@ std::unique_ptr<ScheduleContext> GcsPlacementGroupScheduler::GetScheduleContext(
   for (const auto &iter : alive_nodes) {
     if (!node_to_leased_bundles_.contains(iter.first)) {
       node_to_leased_bundles_.emplace(
-          iter.first, std::vector<std::shared_ptr<BundleSpecification>>());
+          iter.first,
+          absl::flat_hash_map<BundleID, std::shared_ptr<BundleSpecification>>());
     }
   }
 

@@ -217,18 +217,27 @@ def test_remove_placement_group(ray_start_cluster):
 
     assert ray.get(f.remote()) == 3
 
-    # Since the placement group is destroyed,
-    # this actor should be infeasible, and the
-    # actor task should fail.
-    # TODO(sang): Turn it on.
-    # b = A.options(placement_group_id=pid).remote()
-    # ray.get(b.f.remote(), timeout=0.5)
-
     # Since the placement group is removed,
     # the actor should've been killed.
     # That means this request should fail.
     # TODO(sang): Turn it on.
     # ray.get(a.f.remote())
+
+
+def test_remove_pending_placement_group(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4)
+    ray.init(address=cluster.address)
+    # Create a placement group that cannot be scheduled now.
+    pid = ray.experimental.placement_group([{"GPU": 2}, {"CPU": 2}])
+    ray.experimental.remove_placement_group(pid)
+    # TODO(sang): Add state check here.
+    @ray.remote(num_cpus=4)
+    def f():
+        return 3
+
+    # Make sure this task is still schedulable.
+    assert ray.get(f.remote()) == 3
 
 
 def test_cuda_visible_devices(ray_start_cluster):
