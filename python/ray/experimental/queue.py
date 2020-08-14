@@ -1,9 +1,6 @@
-from collections import deque
-import time
 import asyncio
 
 import ray
-from ray.exceptions import RayTimeoutError
 
 
 class Empty(Exception):
@@ -46,7 +43,7 @@ class Queue:
     def put(self, item, block=True, timeout=None):
         """Adds an item to the queue.
 
-        There is no guarantee of order if multiple producers put to the same 
+        There is no guarantee of order if multiple producers put to the same
         full queue.
 
         Raises:
@@ -68,7 +65,7 @@ class Queue:
     def get(self, block=True, timeout=None):
         """Gets an item from the queue.
 
-        There is no guarantee of order if multiple consumers get from the 
+        There is no guarantee of order if multiple consumers get from the
         same empty queue.
 
         Returns:
