@@ -174,6 +174,8 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         "ray::PlacementStrategy::PACK"
     cdef CPlacementStrategy PLACEMENT_STRATEGY_SPREAD \
         "ray::PlacementStrategy::SPREAD"
+    cdef CPlacementStrategy PLACEMENT_STRATEGY_STRICT_PACK \
+        "ray::PlacementStrategy::STRICT_PACK"
 
 cdef extern from "ray/common/task/scheduling_resources.h" nogil:
     cdef cppclass ResourceSet "ray::ResourceSet":
