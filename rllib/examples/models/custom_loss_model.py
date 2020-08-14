@@ -181,7 +181,7 @@ class TorchCustomLossModel(TorchModelV2, nn.Module):
         # return policy_loss + [10 * self.imitation_loss]
         return [loss_ + 10 * self.imitation_loss for loss_ in policy_loss]
 
-    def custom_stats(self):
+    def metrics(self):
         return {
             "policy_loss": torch.mean(self.policy_loss),
             "imitation_loss": self.imitation_loss,
