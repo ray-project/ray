@@ -13,6 +13,8 @@ import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
 import io.ray.streaming.runtime.rpc.RemoteCallWorker;
 import io.ray.streaming.runtime.worker.JobWorker;
 import io.ray.streaming.runtime.worker.context.JobWorkerContext;
+import io.ray.streaming.runtime.python.GraphPbBuilder;
+import io.ray.streaming.runtime.generated.RemoteCall;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -41,8 +43,8 @@ public class WorkerLifecycleController {
    * @return creation result
    */
   private boolean createWorker(ExecutionVertex executionVertex) {
-    LOG.info("Start to create worker actor for vertex: {} with resource: {}.",
-        executionVertex.getExecutionVertexName(), executionVertex.getResource());
+    LOG.info("Start to create worker actor for vertex: {} with resource: {}, workeConfig: {}.",
+        executionVertex.getExecutionVertexName(), executionVertex.getResource(), executionVertex.getWorkerConfig());
 
     Language language = executionVertex.getLanguage();
 
@@ -53,9 +55,10 @@ public class WorkerLifecycleController {
           .setMaxRestarts(-1)
           .remote();
     } else {
-      String jsonConfig = JSON.toJSONString(executionVertex.getWorkerConfig());
+      RemoteCall.ExecutionVertexContext.ExecutionVertex vertexPb
+       = new GraphPbBuilder().buildVertex(executionVertex);
       actor = Ray.actor(
-          PyActorClass.of("ray.streaming.runtime.worker", "JobWorker"), jsonConfig)
+          PyActorClass.of("ray.streaming.runtime.worker", "JobWorker"), vertexPb.toByteArray())
           .setResources(executionVertex.getResource())
           .setMaxRestarts(-1)
           .remote();

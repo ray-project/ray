@@ -62,8 +62,10 @@ class ExecutionVertex:
             else:
                 logger.info("Load operator")
                 self.stream_operator = operator.load_operator(operator_bytes)
-        self.worker_actor = ray.actor.ActorHandle. \
-            _deserialization_helper(execution_vertex_pb.worker_actor)
+        self.worker_actor = None
+        if execution_vertex_pb.worker_actor:
+            self.worker_actor = ray.actor.ActorHandle. \
+                _deserialization_helper(execution_vertex_pb.worker_actor)
         self.container_id = execution_vertex_pb.container_id
         self.build_time = execution_vertex_pb.build_time
         self.language = execution_vertex_pb.language

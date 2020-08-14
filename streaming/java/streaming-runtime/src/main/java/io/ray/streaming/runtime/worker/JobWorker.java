@@ -110,9 +110,10 @@ public class JobWorker implements Serializable {
 
   public synchronized void saveContext() {
     byte[] contextBytes = Serializer.encode(workerContext);
-    LOG.info("Saving context, worker context={}, serialized byte length={}", workerContext,
-      contextBytes.length);
-    CheckpointStateUtil.put(stateBackend, getJobWorkerContextKey(), contextBytes);
+    String key = getJobWorkerContextKey();
+    LOG.info("Saving context, worker context={}, serialized byte length={}, key={}.", workerContext,
+      contextBytes.length, key);
+    CheckpointStateUtil.put(stateBackend, key, contextBytes);
   }
 
   /**

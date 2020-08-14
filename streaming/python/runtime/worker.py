@@ -9,11 +9,10 @@ from typing import Optional
 import ray
 import ray.streaming.runtime.processor as processor
 from ray.actor import ActorHandle
-from ray.streaming.constants import StreamingConstants
 from ray.streaming.generated import remote_call_pb2
 from ray.streaming.runtime.command import WorkerRollbackRequest
 from ray.streaming.runtime.failover import Barrier
-from ray.streaming.runtime.graph import ExecutionVertexContext
+from ray.streaming.runtime.graph import ExecutionVertexContext, ExecutionVertex
 from ray.streaming.runtime.remote_call import CallResult, RemoteCallMst
 from ray.streaming.runtime.state_backend import StateBackendFactory
 from ray.streaming.runtime.task import SourceStreamTask, OneInputStreamTask
@@ -36,17 +35,19 @@ class JobWorker(object):
     execution_vertex_context: Optional[ExecutionVertexContext]
     __need_rollback: bool
 
-    def __init__(self, worker_config_str):
+    def __init__(self, execution_vertex_pb_bytes):
         logger.info("Creating job worker, pid={}".format(os.getpid()))
-        self.worker_config = json.loads(worker_config_str)
+        execution_vertex_pb = remote_call_pb2.ExecutionVertexContext.ExecutionVertex()
+        execution_vertex_pb.ParseFromString(execution_vertex_pb_bytes)
+        self.execution_vertex = ExecutionVertex(execution_vertex_pb)
+        self.config = self.execution_vertex.config
         self.worker_context = None
         self.execution_vertex_context = None
-        self.config = None
         self.task_id = None
         self.task = None
         self.stream_processor = None
         self.master_actor = None
-        self.state_backend = StateBackendFactory.get_state_backend(self.worker_config)
+        self.state_backend = StateBackendFactory.get_state_backend(self.config)
         self.initial_state_lock = threading.Lock()
         self.__rollback_cnt: int = 0
         self.__is_recreate: bool = False
@@ -73,7 +74,7 @@ class JobWorker(object):
                             job_worker_context_key))
         except Exception:
             logger.exception("Error in __init__ of JobWorker")
-        logger.info("Creating job worker succeeded. worker config {}".format(self.worker_config))
+        logger.info("Creating job worker succeeded. worker config {}".format(self.config))
 
     def init(self, worker_context_bytes):
         logger.info("Start to init job worker")
@@ -87,6 +88,7 @@ class JobWorker(object):
             # build vertex context from pb
             self.execution_vertex_context = ExecutionVertexContext(
                 worker_context.execution_vertex_context)
+            self.execution_vertex = self.execution_vertex_context.execution_vertex
 
             # save context
             job_worker_context_key = self.__get_job_worker_context_key()
@@ -277,7 +279,7 @@ class JobWorker(object):
         self.__is_recreate = True
 
         request_ret = False
-        for i in range(StreamingConstants.REQUEST_ROLLBACK_RETRY_TIMES):
+        for i in range(Config.REQUEST_ROLLBACK_RETRY_TIMES):
             logger.info("request rollback {} time".format(i))
             try:
                 request_ret = RemoteCallMst.request_job_worker_rollback(
@@ -294,7 +296,7 @@ class JobWorker(object):
                 break
         if not request_ret:
             logger.warning("Request failed after retry {} times, \
-                now worker shutdown without reconstruction.".format(StreamingConstants.REQUEST_ROLLBACK_RETRY_TIMES))
+                now worker shutdown without reconstruction.".format(Config.REQUEST_ROLLBACK_RETRY_TIMES))
             self.shutdown_without_reconstruction()
 
         self.__state.set_type(StateType.WAIT_ROLLBACK)
@@ -317,11 +319,11 @@ class JobWorker(object):
 
     def _gen_unique_key(self, key_prefix):
         return key_prefix \
-               + str(self.worker_config.get(StreamingConstants.JOB_NAME)) \
-               + "_" + str(self.worker_config.get(StreamingConstants.WORKER_ID))
+               + str(self.config.get(Config.STREAMING_JOB_NAME)) \
+               + "_" + str(self.execution_vertex.execution_vertex_id)
 
     def __get_job_worker_context_key(self) -> str:
-        return self._gen_unique_key(StreamingConstants.JOB_WORKER_CONTEXT_KEY)
+        return self._gen_unique_key(Config.JOB_WORKER_CONTEXT_KEY)
 
 
 class WorkerState:

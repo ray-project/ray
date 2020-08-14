@@ -8,7 +8,6 @@ from typing import Optional
 
 from ray.streaming.collector import OutputCollector
 from ray.streaming.config import Config
-from ray.streaming.constants import StreamingConstants
 from ray.streaming.context import RuntimeContextImpl
 from ray.streaming.generated import remote_call_pb2
 from ray.streaming.runtime import serialization
@@ -96,7 +95,7 @@ class StreamTask(ABC):
         self.worker.request_rollback(exception_msg)
 
     def __gen_op_checkpoint_key(self, checkpoint_id):
-        op_checkpoint_key = StreamingConstants.JOB_WORKER_OP_CHECKPOINT_PREFIX_KEY + str(
+        op_checkpoint_key = Config.JOB_WORKER_OP_CHECKPOINT_PREFIX_KEY + str(
             self.vertex_context.job_name) + "_" + str(self.vertex_context.exe_vertex_name) + "_" + str(checkpoint_id)
         logger.info("Generate op checkpoint key {}. ".format(op_checkpoint_key))
         return op_checkpoint_key

@@ -3,8 +3,7 @@ import os
 from abc import ABC, abstractmethod
 from os import path
 
-from ray.streaming.config import ConfigHelper
-from ray.streaming.constants import StreamingConstants
+from ray.streaming.config import ConfigHelper, Config
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +64,11 @@ class LocalFileStateBackend(StateBackend):
 
     def remove(self, key):
         logger.info("Remove value of key {} start.".format(key))
-        os.remove(self.__gen_file_path(key))
+        try:
+            os.remove(self.__gen_file_path(key))
+        except Exception:
+            # ignore exception
+            pass
 
     def rename(self, src, dst):
         logger.info("rename {} to {}".format(src, dst))
@@ -111,8 +114,8 @@ class StateBackendFactory:
     def get_state_backend(worker_config) -> StateBackend:
         backend_type = ConfigHelper.get_cp_state_backend_type(worker_config)
         state_backend = None
-        if backend_type == StreamingConstants.CP_STATE_BACKEND_LOCAL_FILE:
+        if backend_type == Config.CP_STATE_BACKEND_LOCAL_FILE:
             state_backend = AtomicFsStateBackend(worker_config)
-        elif backend_type == StreamingConstants.CP_STATE_BACKEND_MEMORY:
+        elif backend_type == Config.CP_STATE_BACKEND_MEMORY:
             state_backend = MemoryStateBackend(worker_config)
         return state_backend
