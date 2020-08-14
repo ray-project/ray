@@ -62,7 +62,7 @@ class Queue:
         else:
             if timeout is not None and timeout < 0:
                 raise ValueError("'timeout' must be a non-negative number")
-            else: 
+            else:
                 ray.get(self.actor.put.remote(item, timeout))
 
     def get(self, block=True, timeout=None):
@@ -135,6 +135,6 @@ class _QueueActor:
 
     def put_nowait(self, item):
         self.queue.put_nowait(item)
-    
+
     def get_nowait(self):
         return self.queue.get_nowait()

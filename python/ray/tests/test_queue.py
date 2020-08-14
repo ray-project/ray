@@ -4,15 +4,18 @@ import time
 import ray
 from ray.experimental.queue import Queue, Empty, Full
 
+
 @ray.remote
 def get_async(queue, block, timeout, sleep):
     time.sleep(sleep)
     return queue.get(block, timeout)
 
+
 @ray.remote
 def put_async(queue, item, block, timeout, sleep):
     time.sleep(sleep)
     queue.put(item, block, timeout)
+
 
 def test_simple_usage(ray_start_regular):
 
