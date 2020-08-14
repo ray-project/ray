@@ -12,7 +12,7 @@ from ray.rllib.env.env_context import EnvContext
 from ray.rllib.policy import Policy
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.types import PolicyID, TrainerConfigDict, EnvType
+from ray.rllib.utils.typing import PolicyID, TrainerConfigDict, EnvType
 
 tf1, tf, tfv = try_import_tf()
 

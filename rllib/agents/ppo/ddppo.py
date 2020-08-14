@@ -19,7 +19,6 @@ import time
 
 import ray
 from ray.rllib.agents.ppo import ppo
-from ray.rllib.agents.trainer import with_base_config
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
@@ -32,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 # yapf: disable
 # __sphinx_doc_begin__
-DEFAULT_CONFIG = with_base_config(ppo.DEFAULT_CONFIG, {
+DEFAULT_CONFIG = ppo.PPOTrainer.merge_trainer_configs(ppo.DEFAULT_CONFIG, {
     # During the sampling phase, each rollout worker will collect a batch
     # `rollout_fragment_length * num_envs_per_worker` steps in size.
     "rollout_fragment_length": 100,

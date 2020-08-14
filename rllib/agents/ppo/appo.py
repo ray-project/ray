@@ -1,14 +1,14 @@
 from ray.rllib.agents.impala.impala import validate_config
 from ray.rllib.agents.ppo.appo_tf_policy import AsyncPPOTFPolicy
 from ray.rllib.agents.ppo.ppo import UpdateKL
-from ray.rllib.agents.trainer import with_base_config
+from ray.rllib.agents.trainer import merge_trainer_configs
 from ray.rllib.agents import impala
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
     LAST_TARGET_UPDATE_TS, NUM_TARGET_UPDATES, _get_shared_metrics
 
 # yapf: disable
 # __sphinx_doc_begin__
-DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
+DEFAULT_CONFIG = merge_trainer_configs(impala.DEFAULT_CONFIG, {
     # Whether to use V-trace weighted advantages. If false, PPO GAE advantages
     # will be used instead.
     "vtrace": False,

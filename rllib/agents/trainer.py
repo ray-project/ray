@@ -1,6 +1,7 @@
 from datetime import datetime
 import numpy as np
 import copy
+from jsonschema import validators, Draft7Validator
 import logging
 import math
 import os
@@ -25,7 +26,7 @@ from ray.rllib.utils.framework import try_import_tf, TensorStructType
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.types import TrainerConfigDict, \
+from ray.rllib.utils.typing import TrainerConfigDict, \
     PartialTrainerConfigDict, EnvInfoDict, ResultDict, EnvType, PolicyID
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.trainable import Trainable
@@ -386,19 +387,18 @@ COMMON_CONFIG: TrainerConfigDict = {
 @DeveloperAPI
 def with_common_config(
         extra_config: PartialTrainerConfigDict) -> TrainerConfigDict:
-    """Returns the given config dict merged with common agent confs."""
+    """Returns the given config dict merged with common agent confs.
 
-    return with_base_config(COMMON_CONFIG, extra_config)
+    Args:
+        extra_config (PartialTrainerConfigDict): A user defined partial config
+            which will get merged with COMMON_CONFIG and returned.
 
-
-def with_base_config(
-        base_config: TrainerConfigDict,
-        extra_config: PartialTrainerConfigDict) -> TrainerConfigDict:
-    """Returns the given config dict merged with a base agent conf."""
-
-    config = copy.deepcopy(base_config)
-    config.update(extra_config)
-    return config
+    Returns:
+        TrainerConfigDict: The merged config dict resulting of COMMON_CONFIG
+            plus `extra_config`.
+    """
+    return Trainer.merge_trainer_configs(
+        COMMON_CONFIG, extra_config, _allow_unknown_configs=True)
 
 
 @PublicAPI
@@ -1040,7 +1040,8 @@ class Trainer(Trainable):
 
     @classmethod
     def merge_trainer_configs(cls, config1: TrainerConfigDict,
-                              config2: PartialTrainerConfigDict) -> dict:
+                              config2: PartialTrainerConfigDict,
+                              _allow_unknown_configs=None) -> dict:
         config1 = copy.deepcopy(config1)
         # Error if trainer default has deprecated value.
         if config1["sample_batch_size"] != DEPRECATED_VALUE:
@@ -1062,7 +1063,9 @@ class Trainer(Trainable):
                     legacy_callbacks_dict=legacy_callbacks_dict)
 
             config2["callbacks"] = make_callbacks
-        return deep_update(config1, config2, cls._allow_unknown_configs,
+        if _allow_unknown_configs is None:
+            _allow_unknown_configs = cls._allow_unknown_configs
+        return deep_update(config1, config2, _allow_unknown_configs,
                            cls._allow_unknown_subkeys,
                            cls._override_all_subkeys_if_type_changes)
 
