@@ -87,21 +87,8 @@ ScheduleMap GcsPackStrategy::Schedule(
     }
   }
 
-  // Select the node with the least number of bundles.
-  ScheduleMap schedule_map;
-  if (candidate_nodes.empty()) {
-    return schedule_map;
-  }
-
-  std::sort(
-      std::begin(candidate_nodes), std::end(candidate_nodes),
-      [](const std::pair<int64_t, ClientID> &left,
-         const std::pair<int64_t, ClientID> &right) { return left.first < right.first; });
-
-  std::uniform_int_distribution<int> distribution(0, candidate_nodes.size() - 1);
-  int node_index = distribution(gen_);
-  for (auto &bundle : bundles) {
-    schedule_map[bundle->BundleId()] = candidate_nodes.front().second;
+  if (schedule_map.size() != bundles.size()) {
+    schedule_map.clear();
   }
   return schedule_map;
 }
@@ -122,9 +109,6 @@ ScheduleMap GcsSpreadStrategy::Schedule(
         schedule_map[bundles[index + base * alive_nodes_size]->BundleId()] = iter->first;
       }
     }
-  }
-  if (schedule_map.size() != bundles.size()) {
-    schedule_map.clear();
   }
   return schedule_map;
 }
