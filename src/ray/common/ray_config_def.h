@@ -285,6 +285,8 @@ RAY_CONFIG(int64_t, gcs_redis_heartbeat_interval_milliseconds, 100)
 RAY_CONFIG(uint32_t, gcs_lease_worker_retry_interval_ms, 200)
 /// Duration to wait between retries for creating actor in gcs server.
 RAY_CONFIG(uint32_t, gcs_create_actor_retry_interval_ms, 200)
+/// Duration to wait between retries for creating placement group in gcs server.
+RAY_CONFIG(uint32_t, gcs_create_placement_group_retry_interval_ms, 200)
 
 /// Maximum number of times to retry putting an object when the plasma store is full.
 /// Can be set to -1 to enable unlimited retries.
@@ -326,6 +328,12 @@ RAY_CONFIG(bool, put_small_object_in_memory_store, false)
 /// pipelining task submission.
 RAY_CONFIG(uint32_t, max_tasks_in_flight_per_worker, 1)
 
+/// Interval to restart dashboard agent after the process exit.
+RAY_CONFIG(uint32_t, agent_restart_interval_ms, 1000)
+
+/// Wait timeout for dashboard agent register.
+RAY_CONFIG(uint32_t, agent_register_timeout_ms, 30 * 1000)
+
 /// The maximum number of resource shapes included in the resource
 /// load reported by each raylet.
 RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)
@@ -335,3 +343,9 @@ RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 5)
 
 /// Whether to enable multi tenancy features.
 RAY_CONFIG(bool, enable_multi_tenancy, false)
+
+/// Whether start the Plasma Store as a Raylet thread.
+RAY_CONFIG(bool, ownership_based_object_directory_enabled, false)
+
+// The interval where metrics are exported in milliseconds.
+RAY_CONFIG(uint64_t, metrics_report_interval_ms, 10000)

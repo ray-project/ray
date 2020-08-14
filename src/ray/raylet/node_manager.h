@@ -27,6 +27,7 @@
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/actor_registration.h"
+#include "ray/raylet/agent_manager.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
@@ -73,6 +74,8 @@ struct NodeManagerConfig {
   int maximum_startup_concurrency;
   /// The commands used to start the worker process, grouped by language.
   WorkerCommandMap worker_commands;
+  /// The command used to start agent.
+  std::string agent_command;
   /// The time between heartbeats in milliseconds.
   uint64_t heartbeat_period_ms;
   /// The time between debug dumps in milliseconds, or -1 to disable.
@@ -233,7 +236,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param object_ids The object ids to store error messages into.
   /// \param job_id The optional job to push errors to if the writes fail.
   void MarkObjectsAsFailed(const ErrorType &error_type,
-                           const std::vector<ObjectID> object_ids, const JobID &job_id);
+                           const std::vector<rpc::ObjectReference> object_ids,
+                           const JobID &job_id);
   /// This is similar to TreatTaskAsFailed, but it will only mark the task as
   /// failed if at least one of the task's return values is lost. A return
   /// value is lost if it has been created before, but no longer exists on any
@@ -703,11 +707,17 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// restore the actor.
   std::unordered_map<ActorID, ActorCheckpointID> checkpoint_id_to_restore_;
 
+  std::unique_ptr<AgentManager> agent_manager_;
+
   /// The RPC server.
   rpc::GrpcServer node_manager_server_;
 
   /// The node manager RPC service.
   rpc::NodeManagerGrpcService node_manager_service_;
+
+  /// The agent manager RPC service.
+  std::unique_ptr<rpc::AgentManagerServiceHandler> agent_manager_service_handler_;
+  rpc::AgentManagerGrpcService agent_manager_service_;
 
   /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s
   /// as well as all `CoreWorkerClient`s.
