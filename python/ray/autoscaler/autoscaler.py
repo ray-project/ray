@@ -246,6 +246,7 @@ class StandardAutoscaler:
                                              for node_id in nodes):
             if node_id is not None:
                 resources = self._node_resources(node_id)
+                print("node id", node_id, "resources", resources)
                 T.append(
                     threading.Thread(
                         target=self.spawn_updater,
@@ -298,7 +299,6 @@ class StandardAutoscaler:
     def target_num_workers(self):
         target_frac = self.config["target_utilization_fraction"]
         cur_used = self.load_metrics.approx_workers_used()
-        print("cur_used:", cur_used)
         ideal_num_nodes = int(np.ceil(cur_used / float(target_frac)))
         ideal_num_workers = ideal_num_nodes - 1  # subtract 1 for head node
 
@@ -445,6 +445,7 @@ class StandardAutoscaler:
                 self.config["worker_nodes"])
         self.pending_launches.inc(instance_type, count)
         config = copy.deepcopy(self.config)
+        print("Launching node: ", instance_type)
         self.launch_queue.put((config, count, instance_type))
 
     def workers(self):

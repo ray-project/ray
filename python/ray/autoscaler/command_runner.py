@@ -16,7 +16,6 @@ from ray.autoscaler.subprocess_output_util import run_cmd_redirected,\
                                                   ProcessRunnerError
 
 from ray.autoscaler.cli_logger import cli_logger
-from typing import Dict
 import colorful as cf
 
 logger = logging.getLogger(__name__)
@@ -67,21 +66,32 @@ def set_using_login_shells(val):
     _config["use_login_shells"] = val
 
 
-def _with_environment_variables(cmd: str,
-                                environment_variables: Dict[str, str]):
-    def dict_as_one_line_yaml(d):
+def _with_environment_variables(cmd: str, environment_variables: dict):
+    """Prepend environment variables to a shell command.
+
+    Args:
+        cmd (str): The base command.
+        environment_variables (Dict[str, object]): The set of environment
+            variables. If an environment variable value is a dict, it will
+            automatically be converted to a one line yaml string.
+
+    """
+
+    def dict_as_one_line_yaml(d: dict):
         items = []
         for key, val in d.items():
-            item_str = "{}:{}".format(quote(key), quote(val))
+            item_str = "{}: {}".format(quote(str(key)), quote(str(val)))
             items.append(item_str)
 
-        return "{{}}".format(",".join(items))
+        return "{" + ",".join(items) + "}"
+        # return "\{{}\}".format(",".join(items))
 
     as_strings = []
     for key, val in environment_variables.items():
         if isinstance(val, dict):
             val = dict_as_one_line_yaml(val)
-        s = "{}={};".format(key, quote(val))
+            print("encoded:", val)
+        s = "export {}={};".format(key, quote(val))
         as_strings.append(s)
     all_vars = "".join(as_strings)
     return all_vars + cmd
@@ -205,8 +215,9 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                 self.node_id,
                 "--",
             ]
+            cmd = _with_interactive(cmd)
             if environment_variables:
-                cmd = _with_environment_variables(cmd)
+                cmd = _with_environment_variables(cmd, environment_variables)
             final_cmd += _with_interactive(cmd)
             logger.info(self.log_prefix + "Running {}".format(final_cmd))
             try:
@@ -489,7 +500,7 @@ class SSHCommandRunner(CommandRunnerInterface):
         ]
         if cmd:
             if environment_variables:
-                cmd = _with_environment_variables(cmd)
+                cmd = _with_environment_variables(cmd, environment_variables)
             if is_using_login_shells():
                 final_cmd += _with_interactive(cmd)
             else:
@@ -569,11 +580,12 @@ class DockerCommandRunner(SSHCommandRunner):
         if run_env == "auto":
             run_env = "host" if cmd.find("docker") == 0 else "docker"
 
+        if environment_variables:
+            cmd = _with_environment_variables(cmd, environment_variables)
+
         if run_env == "docker":
             cmd = self._docker_expand_user(cmd, any_char=True)
             cmd = " ".join(_with_interactive(cmd))
-            if environment_variables:
-                cmd = _with_environment_variables(cmd)
             cmd = with_docker_exec(
                 [cmd], container_name=self.docker_name,
                 with_interactive=True)[0]

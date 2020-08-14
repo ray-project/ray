@@ -6,25 +6,26 @@ import shutil
 import unittest
 
 import ray
-from ray.tests.test_autoscaler import SMALL_CLUSTER, MockProvider, \
-    MockProcessRunner
+from ray.tests.test_autoscaler import SMALL_CLUSTER, MockProvider
+from ray.tests.test_command_runner import MockProcessRunner
 from ray.autoscaler.autoscaler import StandardAutoscaler
 from ray.autoscaler.load_metrics import LoadMetrics
 from ray.autoscaler.node_provider import NODE_PROVIDERS
 from ray.autoscaler.resource_demand_scheduler import _utilization_score, \
     get_bin_pack_residual, get_instances_for
+from time import sleep
 
 TYPES_A = {
     "m4.large": {
         "resources": {
-            "CPU": 2,
-            "custom": 1
+            "CPU": 2
         },
         "max_workers": 10,
     },
     "m4.4xlarge": {
         "resources": {
-            "CPU": 16
+            "CPU": 16,
+            "custom": 1
         },
         "max_workers": 8,
     },
@@ -38,14 +39,14 @@ TYPES_A = {
         "resources": {
             "CPU": 16,
             "GPU": 1,
-            "custom1": 1
         },
         "max_workers": 10,
     },
     "p2.8xlarge": {
         "resources": {
             "CPU": 32,
-            "GPU": 8
+            "GPU": 8,
+            "custom1": 1
         },
         "max_workers": 4,
     },
@@ -53,6 +54,7 @@ TYPES_A = {
 
 MULTI_WORKER_CLUSTER = dict(SMALL_CLUSTER, **{
     "available_instance_types": TYPES_A,
+    "worker_start_ray_commands": ["ray start --address=$RAY_HEAD_IP:6379"]
 })
 
 
@@ -99,13 +101,13 @@ def test_get_instances_packing_heuristic():
         == [("m4.16xlarge", 1), ("m4.large", 1)]
     assert get_instances_for(
         TYPES_A, {}, 9999, [{"CPU": 64}, {"CPU": 9}, {"CPU": 9}]) == \
-        [("m4.16xlarge", 1), ("m4.4xlarge", 2)]
+        [("m4.16xlarge", 2)]
     assert get_instances_for(TYPES_A, {}, 9999, [{"CPU": 16}] * 5) == \
-        [("m4.16xlarge", 1), ("m4.4xlarge", 1)]
+        [("m4.16xlarge", 2)]
     assert get_instances_for(TYPES_A, {}, 9999, [{"CPU": 8}] * 10) == \
-        [("m4.16xlarge", 1), ("m4.4xlarge", 1)]
+        [("m4.16xlarge", 2)]
     assert get_instances_for(TYPES_A, {}, 9999, [{"CPU": 1}] * 100) == \
-        [("m4.16xlarge", 1), ("m4.4xlarge", 2), ("m4.large", 2)]
+        [("m4.16xlarge", 2)]
     assert get_instances_for(
         TYPES_A, {}, 9999, [{"GPU": 1}] + ([{"CPU": 1}] * 64)) == \
         [("m4.16xlarge", 1), ("p2.xlarge", 1)]
@@ -198,62 +200,71 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(2)
 
-    # def testRequestBundles(self):
-    #     config = MULTI_WORKER_CLUSTER.copy()
-    #     config["min_workers"] = 0
-    #     config["max_workers"] = 50
-    #     config_path = self.write_config(config)
-    #     self.provider = MockProvider(default_instance_type="m4.large")
-    #     runner = MockProcessRunner()
-    #     autoscaler = StandardAutoscaler(
-    #         config_path,
-    #         LoadMetrics(),
-    #         max_failures=0,
-    #         process_runner=runner,
-    #         update_interval_s=0)
-    #     assert len(self.provider.non_terminated_nodes({})) == 0
-    #     autoscaler.update()
-    #     self.waitForNodes(0)
-    #     autoscaler.request_resources([{"CPU": 1}])
-    #     autoscaler.update()
-    #     self.waitForNodes(1)
-    #     assert self.provider.mock_nodes[0].instance_type == "m4.large"
-    #     autoscaler.request_resources([{"GPU": 8}])
-    #     autoscaler.update()
-    #     self.waitForNodes(2)
-    #     assert self.provider.mock_nodes[1].instance_type == "p2.8xlarge"
-    #     autoscaler.request_resources([{"CPU": 32}] * 4)
-    #     autoscaler.update()
-    #     self.waitForNodes(4)
-    #     assert self.provider.mock_nodes[2].instance_type == "m4.16xlarge"
-    #     assert self.provider.mock_nodes[3].instance_type == "m4.16xlarge"
+    def testRequestBundles(self):
+        config = MULTI_WORKER_CLUSTER.copy()
+        config["min_workers"] = 0
+        config["max_workers"] = 50
+        config_path = self.write_config(config)
+        self.provider = MockProvider(default_instance_type="m4.large")
+        runner = MockProcessRunner()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            LoadMetrics(),
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        assert len(self.provider.non_terminated_nodes({})) == 0
+        autoscaler.update()
+        self.waitForNodes(0)
+        autoscaler.request_resources([{"CPU": 1}])
+        autoscaler.update()
+        self.waitForNodes(1)
+        assert self.provider.mock_nodes[0].instance_type == "m4.large"
+        autoscaler.request_resources([{"GPU": 8}])
+        autoscaler.update()
+        self.waitForNodes(2)
+        assert self.provider.mock_nodes[1].instance_type == "p2.8xlarge"
+        autoscaler.request_resources([{"CPU": 32}] * 4)
+        autoscaler.update()
+        self.waitForNodes(4)
+        assert self.provider.mock_nodes[2].instance_type == "m4.16xlarge"
+        assert self.provider.mock_nodes[3].instance_type == "m4.16xlarge"
 
-    # def testResourcePassing(self):
-    #     config = MULTI_WORKER_CLUSTER.copy()
-    #     config["min_workers"] = 0
-    #     config["max_workers"] = 50
-    #     config_path = self.write_config(config)
-    #     self.provider = MockProvider(default_instance_type="m4.large")
-    #     runner = MockProcessRunner()
-    #     autoscaler = StandardAutoscaler(
-    #         config_path,
-    #         LoadMetrics(),
-    #         max_failures=0,
-    #         process_runner=runner,
-    #         update_interval_s=0)
-    #     assert len(self.provider.non_terminated_nodes({})) == 0
-    #     autoscaler.update()
-    #     self.waitForNodes(0)
-    #     autoscaler.request_resources([{"CPU": 1}])
-    #     autoscaler.update()
-    #     self.waitForNodes(1)
-    #     assert self.provider.mock_nodes[0].instance_type == "m4.4xlarge"
-    #     autoscaler.request_resources([{"GPU": 8}])
-    #     autoscaler.update()
-    #     self.waitForNodes(2)
-    #     assert self.provider.mock_nodes[1].instance_type == "p2.8xlarge"
+    def testResourcePassing(self):
+        config = MULTI_WORKER_CLUSTER.copy()
+        config["min_workers"] = 0
+        config["max_workers"] = 50
+        config_path = self.write_config(config)
+        self.provider = MockProvider(default_instance_type="m4.large")
+        runner = MockProcessRunner()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            LoadMetrics(),
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        assert len(self.provider.non_terminated_nodes({})) == 0
+        autoscaler.update()
+        self.waitForNodes(0)
+        autoscaler.request_resources([{"CPU": 1}])
+        autoscaler.update()
+        self.waitForNodes(1)
+        assert self.provider.mock_nodes[0].instance_type == "m4.large"
+        autoscaler.request_resources([{"GPU": 8}])
+        autoscaler.update()
+        self.waitForNodes(2)
+        assert self.provider.mock_nodes[1].instance_type == "p2.8xlarge"
 
-    #     assert runner.cmds == None, str(runner.cmds)
+        autoscaler.update()
+        sleep(0.1)
+
+        # These checks are done separately because we have no guarantees on the
+        # order the dict is serialized in.
+        runner.assert_has_call("172.0.0.0", "RAY_OVERRIDE_RESOURCES=")
+        runner.assert_has_call("172.0.0.0", "CPU: 2")
+        runner.assert_has_call("172.0.0.1", "RAY_OVERRIDE_RESOURCES=")
+        runner.assert_has_call("172.0.0.1", "CPU: 32")
+        runner.assert_has_call("172.0.0.1", "GPU: 8")
 
 
 if __name__ == "__main__":
