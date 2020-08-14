@@ -90,7 +90,6 @@ class MetricsAgent:
                         data = LastValueAggregationData(
                             ValueDouble, point.double_value)
                     elif point.HasField("distribution_value"):
-                        # print(f"got histogram {descriptor}")
                         dist_value = point.distribution_value
                         counts_per_bucket = [
                             bucket.count for bucket in dist_value.buckets
