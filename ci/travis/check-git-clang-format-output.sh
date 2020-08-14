@@ -1,5 +1,7 @@
 #!/bin/bash
 
+echo "$(clang-format --version)"
+
 if [ -z "${TRAVIS_PULL_REQUEST-}" ] || [ "${TRAVIS_PULL_REQUEST}" = "false" ]; then
   # Not in a pull request, so compare against parent commit
   base_commit="HEAD^"
