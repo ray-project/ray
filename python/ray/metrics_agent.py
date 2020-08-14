@@ -82,7 +82,7 @@ class MetricsAgent:
 
             # Create the aggregation and fill it in the our stats
             for series in timeseries:
-                tag_vals = tuple([val.value for val in series.label_values])
+                tag_vals = tuple(val.value for val in series.label_values)
                 for point in series.points:
                     if point.HasField("int64_value"):
                         data = CountAggregationData(point.int64_value)
