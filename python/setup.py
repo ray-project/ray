@@ -82,12 +82,6 @@ ray_autoscaler_files = [
     "ray/autoscaler/ray-schema.json"
 ]
 
-ray_project_files = [
-    "ray/projects/schema.json", "ray/projects/templates/cluster_template.yaml",
-    "ray/projects/templates/project_template.yaml",
-    "ray/projects/templates/requirements.txt"
-]
-
 ray_dashboard_files = [
     os.path.join(dirpath, filename)
     for dirpath, dirnames, filenames in os.walk("ray/dashboard/client/build")
@@ -95,7 +89,6 @@ ray_dashboard_files = [
 ]
 
 optional_ray_files += ray_autoscaler_files
-optional_ray_files += ray_project_files
 optional_ray_files += ray_dashboard_files
 
 if os.getenv("RAY_USE_NEW_GCS") == "on":

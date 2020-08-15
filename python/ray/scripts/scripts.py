@@ -20,7 +20,6 @@ from ray.autoscaler.commands import (
     debug_status, RUN_ENV_TYPES)
 import ray.ray_constants as ray_constants
 import ray.utils
-from ray.projects.scripts import project_cli, session_cli
 
 from ray.autoscaler.subprocess_output_util import set_output_redirected
 from ray.autoscaler.cli_logger import cli_logger
@@ -1580,8 +1579,6 @@ cli.add_command(status)
 cli.add_command(memory)
 cli.add_command(globalgc)
 cli.add_command(timeline)
-cli.add_command(project_cli)
-cli.add_command(session_cli)
 cli.add_command(install_nightly)
 
 try:
