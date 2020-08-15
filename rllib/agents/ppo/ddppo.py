@@ -24,7 +24,7 @@ from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
     STEPS_TRAINED_COUNTER, LEARNER_INFO, LEARN_ON_BATCH_TIMER, \
-    _get_shared_metrics
+    _get_shared_metrics, _get_global_vars
 from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.utils.sgd import do_minibatch_sgd
 
@@ -121,6 +121,13 @@ def execution_plan(workers, config):
                                 config["sgd_minibatch_size"], ["advantages"])
         return info, batch.count
 
+    # Broadcast the local set of global vars.
+    def update_worker_global_vars(item):
+        global_vars = _get_global_vars()
+        for w in workers.remote_workers():
+            w.set_global_vars.remote(global_vars)
+        return item
+
     # Have to manually record stats since we are using "raw" rollouts mode.
     class RecordStats:
         def _on_fetch_start(self):
@@ -142,6 +149,8 @@ def execution_plan(workers, config):
         rollouts.for_each(train_torch_distributed_allreduce)  # allreduce
         .batch_across_shards()  # List[(grad_info, count)]
         .for_each(RecordStats()))
+
+    train_op = train_op.for_each(update_worker_global_vars)
 
     # Sync down the weights. As with the sync up, this is not really
     # needed unless the user is reading the local weights.

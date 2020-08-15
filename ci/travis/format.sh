@@ -68,6 +68,10 @@ else
     echo "WARNING: clang-format is not installed!"
 fi
 
+if [[ $(flake8 --version) != *"flake8_quotes"* ]]; then
+    echo "WARNING: Ray uses flake8 with flake8_quotes. Might error without it. Install with: pip install flake8-quotes"
+fi
+
 SHELLCHECK_FLAGS=(
   --exclude=1090  # "Can't follow non-constant source. Use a directive to specify location."
   --exclude=1091  # "Not following {file} due to some error"
@@ -182,7 +186,7 @@ format_all() {
 
     echo "$(date)" "clang-format...."
     if command -v clang-format >/dev/null; then
-      git ls-files -- '*.cc' '*.h' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 clang-format -i
+      git ls-files -- '*.cc' '*.h' '*.proto' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 clang-format -i
     fi
 
     if command -v shellcheck >/dev/null; then
