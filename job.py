@@ -4,7 +4,7 @@ from time import sleep
 ray.init(address="auto")
 
 
-@ray.remote(num_gpus=1, resources={"custom1": 1})
+@ray.remote(resources={"custom1": 1})
 def foo():
     while True:
         print("boop")
