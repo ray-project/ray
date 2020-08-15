@@ -88,6 +88,26 @@ class Monitor:
         """
         self.primary_subscribe_client.psubscribe(pattern)
 
+    def handle_resource_demands(self, resource_load_by_shape):
+        """Handle the message.resource_load_by_shape protobuf for the demand based
+        autoscaling. Catch and log all exceptions so this doesn't interfere with the
+        utilization based autoscaler until we're confident this is stable.
+
+        Args:
+            resource_load_by_shape (pb2.gcs.ResourceLoad): The resource demands in protobuf form or None.
+        """
+        try:
+            if not autoscaler:
+                return
+            bundles = []
+            for resource_demand_pb in list(resource_load_by_shape):
+                resource_demand_unparsed = dict(resource_demand_pb)
+                request_shape = resource_demand_unparsed["shape"]
+                bundles.append(request_shape)
+                self.autoscaler.request_resources(bundles)
+        except Exception as e:
+            logger.exception(e)
+
     def xray_heartbeat_batch_handler(self, unused_channel, data):
         """Handle an xray heartbeat batch message from Redis."""
 
@@ -96,7 +116,6 @@ class Monitor:
 
         message = ray.gcs_utils.HeartbeatBatchTableData.FromString(
             heartbeat_data)
-        print("by shape", message.resource_load_by_shape)
         for heartbeat_message in message.batch:
             resource_load = dict(heartbeat_message.resource_load)
             total_resources = dict(heartbeat_message.resources_total)
@@ -114,6 +133,7 @@ class Monitor:
                 logger.warning(
                     "Monitor: "
                     "could not find ip for client {}".format(client_id))
+            handle_resource_demands(message.resource_load_by_shape)
 
     def xray_job_notification_handler(self, unused_channel, data):
         """Handle a notification that a job has been added or removed.
