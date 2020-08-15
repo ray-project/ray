@@ -76,6 +76,9 @@ void MetricsAgentExporter::ReportMetrics(const std::vector<MetricPoint> &points)
   // TODO(sang): Should retry metrics report if it fails.
   client_->ReportMetrics(
       request, [this](const Status &status, const rpc::ReportMetricsReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(WARNING) << "ReportMetrics failed with status " << status;
+        }
         should_update_description_ = reply.metrcs_description_required();
       });
 }
