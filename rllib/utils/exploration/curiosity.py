@@ -1,37 +1,23 @@
-"""
-Curiosity-driven Exploration by Self-supervised Prediction - Pathak, Agrawal,
-Efros, and Darrell - UC Berkeley - ICML 2017.
-
-This implements the curiosty-based loss function from
-https://arxiv.org/pdf/1705.05363.pdf. We learn a simplified model of the
-environment based on three networks:
-    1) embedding states into latent space (the "features" network)
-    2) predicting the next embedded state, given a state and action (the
-        "forwards" network)
-    3) predicting the action, given two consecutive embedded state (the
-        "inverse" network)
-
-If the agent was unable to successfully predict the state-action-next_state
-sequence, we modify the standard reward with a penalty. Therefore, if a state
-transition was unexpected, the agent becomes "curious" and further explores
-this transition.
-
-This is tailored for sparse reward environments, as it generates an intrinsic
-reward.
-"""
-from gym.spaces import Space
+from gym.spaces import Discrete, Space
 from typing import Union, Optional
 
 from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.misc import SlimFC
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils import force_list
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_torch, TensorType
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.types import SampleBatchType, TrainerConfigDict
+from ray.rllib.utils.types import FromConfigSpec, SampleBatchType, \
+    TrainerConfigDict
 
 torch, nn = try_import_torch()
+F = None
+if nn is not None:
+    F = nn.functional
 
-# TODO: (tanay) how to test if action space is discrete
 """
 Example Configuration
 
@@ -44,6 +30,7 @@ config["exploration_config"] = {
     "inverse_net_hiddens": [32,4],
     "feature_net_hiddens": [16,8],
     "feature_dim": 8,
+    "eta": 1.0,
     "forward_activation": "relu",
     "inverse_activation": "relu",
     "feature_activation": "relu",
@@ -55,33 +42,65 @@ trainer.train()
 
 
 class Curiosity(Exploration):
-    def __init__(self, action_space: Space, *, framework: str, **kwargs):
-        """
+    """Implementation of:
+    Curiosity-driven Exploration by Self-supervised Prediction
+    Pathak, Agrawal, Efros, and Darrell - UC Berkeley - ICML 2017.
+    https://arxiv.org/pdf/1705.05363.pdf
+
+    Learns a simplified model of the environment based on three networks:
+    1) Embedding observations into latent space ("features" network).
+    2) Predicting the next embedded obs, given an obs and action
+        ("forwards" network).
+    3) Predicting the action, given two consecutive embedded observations
+        ("inverse" network).
+
+    The less the agent is able to predict the actually observed next_obs,
+    given obs and action (through the forwards network), the larger the
+    "intrinsic reward", which will modify the standard reward with a penalty.
+    Therefore, if a state transition was unexpected, the agent becomes
+    "curious" and will further explores this transition.
+    """
+
+    def __init__(self,
+                 action_space: Space,
+                 *,
+                 framework: str,
+                 model: ModelV2,
+                 eta: float = 1.0,
+                 sub_exploration: FromConfigSpec,
+                 **kwargs):
+        """Initializes a Curiosity object.
+
         Args:
             action_space (Space): The action space in which to explore.
             framework (str): One of "tf" or "torch". Currently only torch is
                 supported.
         """
         if framework != "torch":
-            raise NotImplementedError("only torch is currently supported for "
-                                      "curiosity")
+            raise ValueError("Only torch is currently supported for Curiosity")
+        elif not isinstance(action_space, Discrete):
+            raise ValueError(
+                "Only Discrete action spaces supported for Curiosity so far.")
 
-        # Parse the curiosity-specific arguments
-        # If it was not specified in the config, assign the given default
-        def extract_from_kwargs(key, default):
-            if key in kwargs:
-                temp = kwargs[key]
-                del kwargs[key]
-                return temp
-            else:
-                return default
+        super().__init__(
+            action_space, model=model, framework=framework, **kwargs)
+
+        ## Parse the curiosity-specific arguments
+        ## If it was not specified in the config, assign the given default
+        #def extract_from_kwargs(key, default):
+        #    if key in kwargs:
+        #        temp = kwargs[key]
+        #        del kwargs[key]
+        #        return temp
+        #    else:
+        #        return default
 
         # Casts a single int to a list, else leaves it unchanged
-        def cast_to_list(l):
-            if type(l) == int:
-                return [l]
-            else:
-                return l
+        #def cast_to_list(l):
+        #    if type(l) == int:
+        #        return [l]
+        #    else:
+        #        return l
 
         submodule_type = extract_from_kwargs("submodule", "StochasticSampling")
         self.feature_dim = extract_from_kwargs("feature_dim", 32)
@@ -90,12 +109,9 @@ class Curiosity(Exploration):
         inverse_activation = extract_from_kwargs("inverse_activation", nn.ReLU)
         feature_activation = extract_from_kwargs("feature_activation", nn.ReLU)
 
-        feature_net_hiddens = cast_to_list(
-            extract_from_kwargs("feature_net_hiddens", [64]))
-        inverse_net_hiddens = cast_to_list(
-            extract_from_kwargs("inverse_net_hiddens", [64]))
-        forward_net_hiddens = cast_to_list(
-            extract_from_kwargs("forward_net_hiddens", [64]))
+        feature_net_hiddens = extract_from_kwargs("feature_net_hiddens", [64])
+        inverse_net_hiddens = extract_from_kwargs("inverse_net_hiddens", [64])
+        forward_net_hiddens = extract_from_kwargs("forward_net_hiddens", [64])
 
         super().__init__(
             action_space=action_space, framework=framework, **kwargs)
@@ -132,8 +148,8 @@ class Curiosity(Exploration):
         self.forward_model = create_fc_net(forward_dims, forward_activation)
 
         # Convenient reductions
-        self.criterion = torch.nn.MSELoss(reduction="none")
-        self.criterion_reduced = torch.nn.MSELoss(reduction="sum")
+        #self.criterion = torch.nn.MSELoss(reduction="none")
+        #self.criterion_reduced = torch.nn.MSELoss(reduction="sum")
 
         # This is only used to select the correct action
         self.exploration_submodule = from_config(
@@ -148,23 +164,16 @@ class Curiosity(Exploration):
                 "worker_index": self.worker_index
             })
 
+    @override(Exploration)
     def get_exploration_action(self,
                                *,
                                action_distribution: ActionDistribution,
                                timestep: Union[int, TensorType],
                                explore: bool = True):
-        """
-        Returns the action to take next
-
-        Args:
-            action_distribution (ActionDistribution): The probabilistic
-                distribution we sample actions from
-            timestep (Union[int, TensorType]):
-            explore (bool): If true, uses the submodule strategy to select the
-                next action
-        """
         return self.exploration_submodule.get_exploration_action(
-            action_distribution=action_distribution, timestep=timestep)
+            action_distribution=action_distribution,
+            timestep=timestep,
+            explore=explore)
 
     def get_exploration_loss(self, policy_loss, sample_batch: SampleBatchType):
         """
@@ -215,54 +224,50 @@ class Curiosity(Exploration):
         """Calculates intrinsic rewards and adds them to "rewards" in batch.
 
         Calculations are based on difference between predicted and actually
-        observed next observations.
+        observed next states (predicted phi' vs observed phi').
         """
 
         # Extract the relevant data from the SampleBatch, and cast to Tensors
-        obs_list = torch.from_numpy(sample_batch["obs"]).float()
-        next_obs_list = torch.from_numpy(sample_batch["new_obs"]).float()
-        emb_next_obs_list = self._get_latent_vector(next_obs_list).float()
-        actions_list = torch.from_numpy(sample_batch["actions"]).float()
+        obs = torch.from_numpy(sample_batch[SampleBatch.OBS]).float()
+        next_obs = torch.from_numpy(sample_batch[SampleBatch.NEXT_OBS]).float()
+        next_state = self._get_latent_vector(next_obs).float()
+        actions = torch.from_numpy(sample_batch[SampleBatch.ACTIONS]).float()
 
-        # Equation (2) in paper.
-        actions_pred = self._predict_action(obs_list, next_obs_list)
-        embedding_pred = self._predict_next_obs(obs_list, actions_list)
+        predicted_next_state = self._predict_next_obs(obs, actions)
 
-        # A vector of L2 losses corresponding to each observation,
-        # Equation (7) in paper.
-        embedding_loss = torch.sum(
-            self.criterion(emb_next_obs_list, embedding_pred), dim=-1)
-
-        # Equation (3) in paper. TODO discrete action space
-        actions_loss = self.criterion(actions_pred.squeeze(1), actions_list)
+        # Calculate the L2 difference between the actually observed next_state
+        # (phi') and the predicted one.
+        intrinsic_reward = torch.sum(
+            torch.pow(next_state - predicted_next_state, 2.0), dim=-1)
 
         # Modifies environment rewards by subtracting intrinsic rewards
         sample_batch["rewards"] = sample_batch["rewards"] - \
-            embedding_loss.clone().detach().numpy() - \
-            actions_loss.clone().detach().numpy()
+            self.eta * intrinsic_reward.detach().numpy()
 
     def _predict_action(self, obs: TensorType, next_obs: TensorType):
-        """
-        Returns the predicted action, given two states. This is the inverse
-        dynamics model.
+        """Returns the predicted action, given two states.
 
-        obs (TensorType): Observed state at time t.
-        next_obs (TensorType): Observed state at time t+1
-        """
-        return self.inverse_model(
-            torch.cat(
-                (self._get_latent_vector(obs),
-                 self._get_latent_vector(next_obs)),
-                axis=-1))
+        Uses the inverse dynamics model.
 
-    # raw obs (not embedded)
-    def _predict_next_obs(self, obs: TensorType, action: TensorType):
+        obs (TensorType): Observation at time t.
+        next_obs (TensorType): Observation at time t+1
         """
-        Returns the predicted next state, given an action and state.
+        state = self._get_latent_vector(obs)
+        next_state = self._get_latent_vector(next_obs)
+        return self.inverse_model(torch.cat(state, next_state, dim=-1))
 
-        obs (TensorType): Observed state at time t.
-        action (TensorType): Action taken at time t
+    def _predict_next_state(self, obs: TensorType, action: TensorType):
+        """Returns the predicted next state, given an action and current state.
+
+        Args:
+            obs (TensorType): Observation at time t.
+            action (TensorType): Action taken at time t
+
+        Returns:
+            TensorType: The predicted next state (feature vector phi').
         """
-        return self.forward_model(
-            torch.cat(
-                (self._get_latent_vector(obs), action.unsqueeze(1)), dim=-1))
+        state = self._get_latent_vector(obs)
+        inputs = torch.cat(
+            state,
+            F.one_hot(action, num_classes=self.action_space.n), dim=-1)
+        return self.forward_model(inputs)

@@ -19,6 +19,10 @@ EnvConfigDict = dict
 # the model catalog.
 ModelConfigDict = dict
 
+# Objects that can be created through the `from_config()` util method
+# need a config dict with a "type" key, a class path (str), or a type directly.
+FromConfigSpec = Union[Dict[str, Any], type, str]
+
 # Represents a BaseEnv, MultiAgentEnv, ExternalEnv, ExternalMultiAgentEnv,
 # VectorEnv, or gym.Env.
 EnvType = Any
