@@ -194,6 +194,7 @@ class StandardAutoscaler:
 
         # First let the resource demand scheduler launch nodes, if enabled.
         if self.resource_demand_scheduler and self.resource_demand_vector:
+            print("Invoking scheduler", self.resource_demand_vector)
             # TODO(ekl) include head node in the node list
             instances = (
                 self.resource_demand_scheduler.get_instances_to_launch(
