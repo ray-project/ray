@@ -201,7 +201,7 @@ class StandardAutoscaler:
                     self.resource_demand_vector))
             # TODO(ekl) also enforce max launch concurrency here?
             for instance_type, count in instances:
-                print("Resource demand scheduler launching node",\
+                print("Resource demand scheduler launching node",
                       instance_type, count)
                 self.launch_new_node(count, instance_type=instance_type)
 
