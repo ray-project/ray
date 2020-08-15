@@ -174,7 +174,8 @@ class TorchCustomLossModel(TorchModelV2, nn.Module):
 
         # Compute the IL loss.
         action_dist = TorchCategorical(logits, self.model_config)
-        imitation_loss = torch.mean(-action_dist.logp(torch.from_numpy(batch["actions"])))
+        imitation_loss = torch.mean(
+            -action_dist.logp(torch.from_numpy(batch["actions"])))
         self.imitation_loss_metric = imitation_loss.item()
         self.policy_loss_metric = np.mean([l.item() for l in policy_loss])
 
