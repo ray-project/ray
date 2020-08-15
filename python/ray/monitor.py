@@ -102,7 +102,8 @@ class Monitor:
             if not self.autoscaler:
                 return
             bundles = []
-            for resource_demand_pb in list(resource_load_by_shape.resource_demands):
+            for resource_demand_pb in list(
+                    resource_load_by_shape.resource_demands):
                 resource_demand_unparsed = dict(resource_demand_pb)
                 request_shape = resource_demand_unparsed["shape"]
                 bundles.append(request_shape)
