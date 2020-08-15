@@ -16,7 +16,5 @@ if [ "$output" = "no modified files to format" ] || [ "$output" = "clang-format 
 else
   echo "clang-format failed:"
   echo "$output"
-  echo "sleeping 10s for log to flush"
-  sleep 10
   exit 1
 fi
