@@ -29,6 +29,7 @@ enum Language {
 enum WorkerType {
   WORKER = 0;
   DRIVER = 1;
+  IO_WORKER = 2;
 }
 
 // Type of a task.

@@ -167,6 +167,22 @@ class Analysis:
         else:
             raise ValueError("trial should be a string or a Trial instance.")
 
+    def get_best_checkpoint(self, trial, metric=TRAINING_ITERATION):
+        """Gets best persistent checkpoint path of provided trial.
+
+        Args:
+            trial (Trial): The log directory of a trial, or a trial instance.
+            metric (str): key of trial info to return, e.g. "mean_accuracy".
+                "training_iteration" is used by default.
+
+        Returns:
+            Path for best checkpoint of trial determined by metric
+        """
+
+        return max(
+            self.get_trial_checkpoints_paths(trial, metric),
+            key=lambda x: x[1])[0]
+
     def _retrieve_rows(self, metric=None, mode=None):
         assert mode is None or mode in ["max", "min"]
         rows = {}

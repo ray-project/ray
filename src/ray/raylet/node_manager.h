@@ -27,7 +27,6 @@
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/actor_registration.h"
-#include "ray/raylet/agent_manager.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
@@ -74,8 +73,6 @@ struct NodeManagerConfig {
   int maximum_startup_concurrency;
   /// The commands used to start the worker process, grouped by language.
   WorkerCommandMap worker_commands;
-  /// The command used to start agent.
-  std::string agent_command;
   /// The time between heartbeats in milliseconds.
   uint64_t heartbeat_period_ms;
   /// The time between debug dumps in milliseconds, or -1 to disable.
@@ -617,6 +614,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Trigger local GC on each worker of this raylet.
   void DoLocalGC();
 
+  /// Spill objects to external storage.
+  /// \param objects_ids_to_spill The objects to be spilled.
+  void SpillObjects(const std::vector<ObjectID> &objects_ids_to_spill,
+                    std::function<void(const ray::Status &)> callback = nullptr);
+
+  /// Restore spilled objects from external storage.
+  /// \param object_ids Objects to be restored.
+  void RestoreSpilledObjects(const std::vector<ObjectID> &object_ids,
+                             std::function<void(const ray::Status &)> callback = nullptr);
+
   /// Push an error to the driver if this node is full of actors and so we are
   /// unable to schedule new tasks or actors at all.
   void WarnResourceDeadlock();
@@ -702,22 +709,18 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// A mapping from actor ID to registration information about that actor
   /// (including which node manager owns it).
   std::unordered_map<ActorID, ActorRegistration> actor_registry_;
-
+  /// A mapping from ObjectIDs to external object URLs for spilled objects.
+  /// TODO(suquark): Move it into object directory.
+  absl::flat_hash_map<ObjectID, std::string> spilled_objects_;
   /// This map stores actor ID to the ID of the checkpoint that will be used to
   /// restore the actor.
   std::unordered_map<ActorID, ActorCheckpointID> checkpoint_id_to_restore_;
-
-  std::unique_ptr<AgentManager> agent_manager_;
 
   /// The RPC server.
   rpc::GrpcServer node_manager_server_;
 
   /// The node manager RPC service.
   rpc::NodeManagerGrpcService node_manager_service_;
-
-  /// The agent manager RPC service.
-  std::unique_ptr<rpc::AgentManagerServiceHandler> agent_manager_service_handler_;
-  rpc::AgentManagerGrpcService agent_manager_service_;
 
   /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s
   /// as well as all `CoreWorkerClient`s.

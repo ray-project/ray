@@ -41,6 +41,8 @@ namespace rpc {
   RPC_SERVICE_HANDLER(CoreWorkerService, RemoteCancelTask)               \
   RPC_SERVICE_HANDLER(CoreWorkerService, GetCoreWorkerStats)             \
   RPC_SERVICE_HANDLER(CoreWorkerService, LocalGC)                        \
+  RPC_SERVICE_HANDLER(CoreWorkerService, SpillObjects)                   \
+  RPC_SERVICE_HANDLER(CoreWorkerService, RestoreSpilledObjects)          \
   RPC_SERVICE_HANDLER(CoreWorkerService, PlasmaObjectReady)
 
 #define RAY_CORE_WORKER_DECLARE_RPC_HANDLERS                              \
@@ -58,6 +60,8 @@ namespace rpc {
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RemoteCancelTask)               \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetCoreWorkerStats)             \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(LocalGC)                        \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(SpillObjects)                   \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RestoreSpilledObjects)          \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PlasmaObjectReady)
 
 /// Interface of the `CoreWorkerServiceHandler`, see `src/ray/protobuf/core_worker.proto`.

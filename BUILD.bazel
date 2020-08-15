@@ -175,30 +175,6 @@ cc_library(
     ],
 )
 
-# Agent manager.
-cc_grpc_library(
-    name = "agent_manager_cc_grpc",
-    srcs = ["//src/ray/protobuf:agent_manager_proto"],
-    grpc_only = True,
-    deps = ["//src/ray/protobuf:agent_manager_cc_proto"],
-)
-
-cc_library(
-    name = "agent_manager_rpc",
-    hdrs = glob([
-        "src/ray/rpc/agent_manager/*.h",
-    ]),
-    copts = COPTS,
-    strip_include_prefix = "src",
-    deps = [
-        ":agent_manager_cc_grpc",
-        ":grpc_common_lib",
-        ":ray_common",
-        "@boost//:asio",
-        "@com_github_grpc_grpc//:grpc++",
-    ],
-)
-
 # === End of rpc definitions ===
 
 # === Begin of plasma definitions ===
@@ -439,7 +415,6 @@ cc_library(
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
-        ":agent_manager_rpc",
         ":gcs",
         ":gcs_pub_sub_lib",
         ":gcs_service_rpc",
@@ -531,7 +506,6 @@ cc_library(
     strip_include_prefix = "src",
     visibility = ["//streaming:__subpackages__"],
     deps = [
-        ":agent_manager_rpc",
         ":gcs",
         ":node_manager_fbs",
         ":node_manager_rpc",
@@ -575,7 +549,6 @@ cc_library(
     strip_include_prefix = "src",
     visibility = ["//streaming:__subpackages__"],
     deps = [
-        ":agent_manager_rpc",
         ":node_manager_fbs",
         ":node_manager_rpc",
         ":ray_common",
@@ -1499,7 +1472,6 @@ cc_library(
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
-        ":agent_manager_rpc",
         ":hiredis",
         ":node_manager_fbs",
         ":node_manager_rpc",
@@ -1839,11 +1811,9 @@ cc_binary(
 filegroup(
     name = "all_py_proto",
     srcs = [
-        "//src/ray/protobuf:agent_manager_py_proto",
         "//src/ray/protobuf:common_py_proto",
         "//src/ray/protobuf:core_worker_py_proto",
         "//src/ray/protobuf:gcs_py_proto",
-        "//src/ray/protobuf:gcs_service_py_proto",
         "//src/ray/protobuf:node_manager_py_proto",
         "//src/ray/protobuf:reporter_py_proto",
     ],
@@ -1937,14 +1907,10 @@ genrule(
             python/ray/core/generated/common_pb2.py
             python/ray/core/generated/node_manager_pb2.py
             python/ray/core/generated/node_manager_pb2_grpc.py
-            python/ray/core/generated/agent_manager_pb2.py
-            python/ray/core/generated/agent_manager_pb2_grpc.py
             python/ray/core/generated/reporter_pb2.py
             python/ray/core/generated/reporter_pb2_grpc.py
             python/ray/core/generated/core_worker_pb2.py
             python/ray/core/generated/core_worker_pb2_grpc.py
-            python/ray/core/generated/gcs_service_pb2.py
-            python/ray/core/generated/gcs_service_pb2_grpc.py
         )
         sed -i -E 's/from src.ray.protobuf/from ./' "$${files[@]}"
         echo "$${PWD}" > $@
