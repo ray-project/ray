@@ -93,7 +93,7 @@ def _setup_cluster_for_test(ray_start_cluster):
 
 
 def test_metrics_export_end_to_end(_setup_cluster_for_test):
-    TEST_TIMEOUT_S = 10
+    TEST_TIMEOUT_S = 20
 
     prom_addresses = _setup_cluster_for_test
 
@@ -176,7 +176,7 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         wait_for_condition(
             wrap_test_case_for_retry,
             timeout=TEST_TIMEOUT_S,
-            retry_interval_ms=300,  # Yield resource for other processes
+            retry_interval_ms=1000,  # Yield resource for other processes
         )
     except RuntimeError:
         print(
