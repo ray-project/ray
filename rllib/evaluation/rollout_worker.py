@@ -9,7 +9,6 @@ from typing import Callable, Any, List, Dict, Tuple, Union, Optional, \
     TYPE_CHECKING, Type, TypeVar
 
 import ray
-from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
@@ -157,7 +156,7 @@ class RolloutWorker(ParallelIteratorWorker):
             monitor_path: str = None,
             log_dir: str = None,
             log_level: str = None,
-            callbacks: Type[DefaultCallbacks] = None,
+            callbacks: Type["DefaultCallbacks"] = None,
             input_creator: Callable[[
                 IOContext
             ], InputReader] = lambda ioctx: ioctx.default_sampler_input(),
@@ -310,9 +309,10 @@ class RolloutWorker(ParallelIteratorWorker):
         self.env_context = env_context
         self.policy_config: TrainerConfigDict = policy_config
         if callbacks:
-            self.callbacks: DefaultCallbacks = callbacks()
+            self.callbacks: "DefaultCallbacks" = callbacks()
         else:
-            self.callbacks: DefaultCallbacks = DefaultCallbacks()
+            from ray.rllib.agents.callbacks import DefaultCallbacks
+            self.callbacks: "DefaultCallbacks" = DefaultCallbacks()
         self.worker_index: int = worker_index
         self.num_workers: int = num_workers
         model_config: ModelConfigDict = model_config or {}
