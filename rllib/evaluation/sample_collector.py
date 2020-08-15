@@ -3,7 +3,7 @@ import logging
 from typing import Dict, Optional
 
 from ray.rllib.evaluation.episode import MultiAgentEpisode
-from ray.rllib.utils.types import AgentID, EpisodeID, PolicyID, \
+from ray.rllib.utils.typing import AgentID, EpisodeID, PolicyID, \
     TensorType
 
 logger = logging.getLogger(__name__)

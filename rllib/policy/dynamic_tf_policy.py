@@ -14,7 +14,8 @@ from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
-from ray.rllib.utils.types import ModelGradients, TensorType, TrainerConfigDict
+from ray.rllib.utils.typing import ModelGradients, TensorType, \
+    TrainerConfigDict
 
 tf1, tf, tfv = try_import_tf()
 
