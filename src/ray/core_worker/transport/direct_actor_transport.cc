@@ -307,16 +307,22 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
   const TaskSpecification task_spec(request.task_spec());
 
   {
-    absl::MutexLock lock(&mu_); 
+    absl::MutexLock lock(&mu_);
     auto tasks_received_entry = tasks_received_.find(task_spec.TaskId());
     if (tasks_received_entry == tasks_received_.end()) {
-      RAY_LOG(DEBUG) << "Task " << task_spec.TaskId() << " was stolen and is not in the queue. Setting reply->set_task_stolen(true). worker: " << this_worker;
+      RAY_LOG(DEBUG) << "Task " << task_spec.TaskId()
+                     << " was stolen and is not in the queue. Setting "
+                        "reply->set_task_stolen(true). worker: "
+                     << this_worker;
       // task stolen. respond accordingly
       reply->set_task_stolen(true);
       send_reply_callback(Status::OK(), nullptr, nullptr);
       return;
     }
-    RAY_LOG(DEBUG) << "Task " << task_spec.TaskId() << " was NOT stolen, so it's still in the queue. Proceeding with HandlePushTask normally! worker: " << this_worker;
+    RAY_LOG(DEBUG) << "Task " << task_spec.TaskId()
+                   << " was NOT stolen, so it's still in the queue. Proceeding with "
+                      "HandlePushTask normally! worker: "
+                   << this_worker;
     tasks_received_.erase(tasks_received_entry);
   }
 

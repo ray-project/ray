@@ -757,7 +757,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Implements gRPC server handler.
   void HandleStealWork(const rpc::StealWorkRequest &request, rpc::StealWorkReply *reply,
-                      rpc::SendReplyCallback send_reply_callback) override;
+                       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
   void HandleDirectActorCallArgWaitComplete(

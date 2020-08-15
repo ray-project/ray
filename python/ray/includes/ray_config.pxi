@@ -176,4 +176,5 @@ cdef class Config:
 
     @staticmethod
     def work_stealing_and_eager_workers_requesting_enabled():
-        return RayConfig.instance().work_stealing_and_eager_workers_requesting_enabled()
+        return RayConfig.instance().\
+            work_stealing_and_eager_workers_requesting_enabled()
