@@ -119,14 +119,14 @@ def execution_plan(workers, config):
         info = do_minibatch_sgd(batch, this_worker.policy_map, this_worker,
                                 config["num_sgd_iter"],
                                 config["sgd_minibatch_size"], ["advantages"])
-
-        metrics = _get_shared_metrics()
-        metrics.counters[
-            STEPS_SAMPLED_COUNTER] += expected_batch_size * \
-            config["num_workers"]
-        this_worker.set_global_vars(_get_global_vars())
-
         return info, batch.count
+
+    # Broadcast the local set of global vars.
+    def update_worker_global_vars(item):
+        global_vars = _get_global_vars()
+        for w in workers.remote_workers():
+            w.set_global_vars.remote(global_vars)
+        return item
 
     # Have to manually record stats since we are using "raw" rollouts mode.
     class RecordStats:
@@ -149,6 +149,8 @@ def execution_plan(workers, config):
         rollouts.for_each(train_torch_distributed_allreduce)  # allreduce
         .batch_across_shards()  # List[(grad_info, count)]
         .for_each(RecordStats()))
+
+    train_op = train_op.for_each(update_worker_global_vars)
 
     # Sync down the weights. As with the sync up, this is not really
     # needed unless the user is reading the local weights.
