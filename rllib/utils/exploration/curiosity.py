@@ -1,5 +1,5 @@
 from gym.spaces import Discrete, Space
-from typing import Union, Optional
+from typing import Optional, Tuple, Union
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
@@ -66,8 +66,15 @@ class Curiosity(Exploration):
                  *,
                  framework: str,
                  model: ModelV2,
+                 feature_dim: int = 32,
+                 feature_net_hiddens: Tuple[int] = (64, ),
+                 feature_net_activation: str = "relu",
+                 inverse_net_hiddens: Tuple[int] = (64, ),
+                 inverse_net_activation: str = "relu",
+                 forward_net_hiddens: Tuple[int] = (64, ),
+                 forward_net_activation: str = "relu",
                  eta: float = 1.0,
-                 sub_exploration: FromConfigSpec,
+                 sub_exploration: Optional[FromConfigSpec] = None,
                  **kwargs):
         """Initializes a Curiosity object.
 
@@ -85,67 +92,33 @@ class Curiosity(Exploration):
         super().__init__(
             action_space, model=model, framework=framework, **kwargs)
 
-        ## Parse the curiosity-specific arguments
-        ## If it was not specified in the config, assign the given default
-        #def extract_from_kwargs(key, default):
-        #    if key in kwargs:
-        #        temp = kwargs[key]
-        #        del kwargs[key]
-        #        return temp
-        #    else:
-        #        return default
+        self.feature_dim = feature_dim
+        self.feature_net_hiddens = feature_net_hiddens
+        self.feature_net_activation = feature_net_activation
+        self.inverse_net_hiddens = inverse_net_hiddens
+        self.inverse_net_activation = inverse_net_activation
+        self.forward_net_hiddens = forward_net_hiddens
+        self.forward_net_activation = forward_net_activation
 
-        # Casts a single int to a list, else leaves it unchanged
-        #def cast_to_list(l):
-        #    if type(l) == int:
-        #        return [l]
-        #    else:
-        #        return l
-
-        submodule_type = extract_from_kwargs("submodule", "StochasticSampling")
-        self.feature_dim = extract_from_kwargs("feature_dim", 32)
-
-        forward_activation = extract_from_kwargs("forward_activation", nn.ReLU)
-        inverse_activation = extract_from_kwargs("inverse_activation", nn.ReLU)
-        feature_activation = extract_from_kwargs("feature_activation", nn.ReLU)
-
-        feature_net_hiddens = extract_from_kwargs("feature_net_hiddens", [64])
-        inverse_net_hiddens = extract_from_kwargs("inverse_net_hiddens", [64])
-        forward_net_hiddens = extract_from_kwargs("forward_net_hiddens", [64])
-
-        super().__init__(
-            action_space=action_space, framework=framework, **kwargs)
+        self.eta = eta
+        self.sub_exploration = sub_exploration
 
         # TODO: what should this look like for multidimensional obs spaces
-        self.obs_space_dim = kwargs["model"].obs_space.shape[0]
+        self.obs_space_dim = self.model.obs_space.shape[0]
         # TODO can we always assume 1
         self.action_space_dim = 1
 
-        # Given a list of layer dimensions, create a FC ReLU net.
-        # If layer_dims is [4,8,6] we'll have a two layer net: 4->8 and 8->6
-        def create_fc_net(layer_dims, activation):
-            layers = []
-            for i in range(len(layer_dims) - 1):
-                layers.append(
-                    SlimFC(
-                        in_size=layer_dims[i],
-                        out_size=layer_dims[i + 1],
-                        use_bias=False,
-                        activation_fn=activation))
-            return nn.Sequential(*layers)
-
-        # List of dimension of each layer. Appends the hidden dims.
-        feature_dims = [self.obs_space_dim
-                        ] + feature_net_hiddens + [self.feature_dim]
-        inverse_dims = [2 * self.feature_dim
-                        ] + inverse_net_hiddens + [self.action_space_dim]
-        forward_dims = [self.feature_dim + self.action_space_dim] + \
-            forward_net_hiddens + [self.feature_dim]
-
-        # Creates actual models
-        self.feature_model = create_fc_net(feature_dims, feature_activation)
-        self.inverse_model = create_fc_net(inverse_dims, inverse_activation)
-        self.forward_model = create_fc_net(forward_dims, forward_activation)
+        # Creates modules/layers inside the actual ModelV2.
+        self.model._curiosity_feature_fcnet = self._create_fc_net(
+            [self.obs_space_dim] + self.feature_net_hiddens +
+            [self.feature_dim], self.feature_net_activation)
+        self.model._curiosity_inverse_fcnet = self._create_fc_net(
+            [2 * self.feature_dim] + self.inverse_net_hiddens +
+            [self.action_space_dim], self.inverse_net_activation)
+        self.model._curiosity_forward_fcnet = self._create_fc_net(
+            [self.feature_dim + self.action_space_dim] +
+            forward_net_hiddens + [self.feature_dim],
+            self.forward_net_activation)
 
         # Convenient reductions
         #self.criterion = torch.nn.MSELoss(reduction="none")
@@ -154,15 +127,14 @@ class Curiosity(Exploration):
         # This is only used to select the correct action
         self.exploration_submodule = from_config(
             cls=Exploration,
-            config={
-                "type": submodule_type,
-                "action_space": action_space,
-                "framework": framework,
-                "policy_config": self.policy_config,
-                "model": self.model,
-                "num_workers": self.num_workers,
-                "worker_index": self.worker_index
-            })
+            config=self.sub_exploration,
+            action_space=self.action_space,
+            framework=self.framework,
+            policy_config=self.policy_config,
+            model=self.model,
+            num_workers=self.num_workers,
+            worker_index=self.worker_index,
+        )
 
     @override(Exploration)
     def get_exploration_action(self,
@@ -170,43 +142,13 @@ class Curiosity(Exploration):
                                action_distribution: ActionDistribution,
                                timestep: Union[int, TensorType],
                                explore: bool = True):
+        # Simply delegate to sub-Exploration module.
         return self.exploration_submodule.get_exploration_action(
             action_distribution=action_distribution,
             timestep=timestep,
             explore=explore)
 
-    def get_exploration_loss(self, policy_loss, sample_batch: SampleBatchType):
-        """
-        Returns the intrinsic reward associated to the explorations strategy
-            policy_loss (TensorType): The loss from the policy, not associated
-                to the exploration strategy, which we will modify
-            sample_batch (SampleBatchType): The SampleBatch of observations, to
-                which we will associate an intrinsic loss.
-        """
-
-        # Cast to torch tensors, to be fed into the model
-        obs_list = sample_batch["obs"].float()
-        next_obs_list = sample_batch["new_obs"].float()
-        emb_next_obs_list = self._get_latent_vector(next_obs_list).float()
-        actions_list = sample_batch["actions"].float()
-
-        actions_pred = self._predict_action(obs_list, next_obs_list)
-        embedding_pred = self._predict_next_obs(obs_list, actions_list)
-
-        # L2 losses for predicted action and next state
-        embedding_loss = self.criterion_reduced(emb_next_obs_list,
-                                                embedding_pred)
-        actions_loss = self.criterion_reduced(
-            actions_pred.squeeze(1), actions_list)
-        return policy_loss + [embedding_loss + actions_loss]
-
-    def _get_latent_vector(self, obs: TensorType) -> TensorType:
-        """
-        Returns the embedded vector phi(state)
-            obs (TensorType): a batch of states
-        """
-        return self.feature_model(obs)
-
+    @override(Exploration)
     def get_exploration_optimizers(self, config: TrainerConfigDict):
         """Returns optimizer (or list) for environmental dynamics networks.
         """
@@ -217,6 +159,7 @@ class Curiosity(Exploration):
         return torch.optim.Adam(
             forward_params + inverse_params + feature_params, lr=1e-3)
 
+    @override(Exploration)
     def postprocess_trajectory(self,
                                policy,
                                sample_batch: SampleBatchType,
@@ -244,13 +187,54 @@ class Curiosity(Exploration):
         sample_batch["rewards"] = sample_batch["rewards"] - \
             self.eta * intrinsic_reward.detach().numpy()
 
+    @override(Exploration)
+    def get_exploration_loss(self, policy_loss, sample_batch: SampleBatchType):
+        """
+        Returns the intrinsic reward associated to the explorations strategy
+            policy_loss (TensorType): The loss from the policy, not associated
+                to the exploration strategy, which we will modify
+            sample_batch (SampleBatchType): The SampleBatch of observations, to
+                which we will associate an intrinsic loss.
+        """
+
+        # Cast to torch tensors, to be fed into the model
+        obs_list = sample_batch["obs"].float()
+        next_obs_list = sample_batch["new_obs"].float()
+        emb_next_obs_list = self._get_latent_vector(next_obs_list).float()
+        actions_list = sample_batch["actions"].float()
+
+        actions_pred = self._predict_action(obs_list, next_obs_list)
+        embedding_pred = self._predict_next_obs(obs_list, actions_list)
+
+        # L2 losses for predicted action and next state
+        embedding_loss = self.criterion_reduced(emb_next_obs_list,
+                                                embedding_pred)
+        actions_loss = self.criterion_reduced(
+            actions_pred.squeeze(1), actions_list)
+        return policy_loss + [embedding_loss + actions_loss]
+
+    def _get_latent_vector(self, obs: TensorType) -> TensorType:
+        """Returns the embedded vector phi(state), given some obs.
+
+        Args:
+            obs (TensorType): A batch of observations.
+
+        Returns:
+            TensorType: A batch of feature vectors (phi).
+        """
+        return self.feature_model(obs)
+
     def _predict_action(self, obs: TensorType, next_obs: TensorType):
-        """Returns the predicted action, given two states.
+        """Returns the predicted action, given two consecutive observations.
 
         Uses the inverse dynamics model.
 
-        obs (TensorType): Observation at time t.
-        next_obs (TensorType): Observation at time t+1
+        Args:
+            obs (TensorType): Observation at time t.
+            next_obs (TensorType): Observation at time t+1
+
+        Returns:
+            TensorType: The predicted action tensor.
         """
         state = self._get_latent_vector(obs)
         next_state = self._get_latent_vector(next_obs)
@@ -271,3 +255,23 @@ class Curiosity(Exploration):
             state,
             F.one_hot(action, num_classes=self.action_space.n), dim=-1)
         return self.forward_model(inputs)
+
+    def _create_fc_net(self, layer_dims, activation):
+        """Given a list of layer dimensions (incl. input-dim), creates FC-net.
+
+        Args:
+            layer_dims (Tuple[int]): Tuple of layer dims, including the input
+                dimension.
+            activation (str): An activation specifier string (e.g. "relu").
+
+        Examples:
+            If layer_dims is [4,8,6] we'll have a two layer net: 4->8 and 8->6.
+        """
+        layers = []
+        for i in range(len(layer_dims) - 1):
+            layers.append(
+                SlimFC(
+                    in_size=layer_dims[i],
+                    out_size=layer_dims[i + 1],
+                    activation_fn=activation))
+        return nn.Sequential(*layers)
