@@ -30,13 +30,30 @@ ray.get(foo.remote("abc", "def"))
     assert err_str.split("\n")[-2].endswith("def")
 
 
+exempted_logs = [
+    r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}\sWARNING\s"
+    r"services.py:\d{4} -- WARNING: The object store is using "
+    r".* instead of "
+    r"/dev/shm because /dev/shm has only \d+ bytes available. "
+    r"This may slow down performance! You may be able to free "
+    r"up space by deleting files in /dev/shm or terminating "
+    r"any running plasma_store_server processes. If you are "
+    r"inside a Docker container, you may need to pass an "
+    r"argument with the flag '--shm-size' to 'docker run'."  # from services.py
+]
+
+
 def test_output():
     # Use subprocess to execute the __main__ below.
     outputs = subprocess.check_output(
         [sys.executable, __file__, "_ray_instance"],
         stderr=subprocess.STDOUT).decode()
-    lines = outputs.split("\n")
-    for line in lines:
+    original_lines = outputs.split("\n")
+    lines = []
+    for line in original_lines:
+        for exempted_log in exempted_logs:
+            if not re.match(exempted_log, line):
+                lines.append(line)
         print(line)
     assert len(lines) == 3, lines
     logging_header = r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}\sINFO\s"
