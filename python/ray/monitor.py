@@ -96,6 +96,7 @@ class Monitor:
 
         message = ray.gcs_utils.HeartbeatBatchTableData.FromString(
             heartbeat_data)
+        print("by shape", message.resource_load_by_shape)
         for heartbeat_message in message.batch:
             resource_load = dict(heartbeat_message.resource_load)
             total_resources = dict(heartbeat_message.resources_total)
@@ -169,7 +170,6 @@ class Monitor:
                     # Continue on to the next subscribe client.
                     break
 
-                print("Received message: ", message)
                 # Parse the message.
                 pattern = message["pattern"]
                 channel = message["channel"]

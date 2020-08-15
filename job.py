@@ -11,5 +11,10 @@ def foo():
         sleep(1)
         pass
 
+print("req1")
+ref1 = foo.remote()
+print("req2")
+ref2 = foo.remote()
+print("getting")
+ray.get([ref1, ref2])
 
-ray.get(foo.remote())
