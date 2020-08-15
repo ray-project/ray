@@ -21,18 +21,6 @@
 namespace ray {
 namespace gcs {
 
-bool GcsNodeResource::IsSubset(
-    const std::unordered_map<std::string, double> &request_resources) const {
-  for (const auto &request_resource : request_resources) {
-    auto iter = resources_available_.find(request_resource.first);
-    if (iter == resources_available_.end() || iter->second < request_resource.second) {
-      return false;
-    }
-  }
-  return true;
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////
 GcsNodeManager::NodeFailureDetector::NodeFailureDetector(
     boost::asio::io_service &io_service,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
@@ -470,16 +458,11 @@ void GcsNodeManager::StartNodeFailureDetector() {
 void GcsNodeManager::UpdateNodeRealtimeResources(
     const ClientID &node_id, const rpc::HeartbeatTableData &heartbeat) {
   auto resources_available = MapFromProtobuf(heartbeat.resources_available());
-  auto iter = cluster_realtime_resources_.find(node_id);
-  if (iter != cluster_realtime_resources_.end()) {
-    iter->second->resources_available_ = resources_available;
-  } else {
-    cluster_realtime_resources_[node_id] =
-        std::make_shared<GcsNodeResource>(resources_available);
-  }
+  cluster_realtime_resources_[node_id] =
+      std::make_shared<ResourceSet>(resources_available);
 }
 
-const absl::flat_hash_map<ClientID, std::shared_ptr<GcsNodeResource>>
+const absl::flat_hash_map<ClientID, std::shared_ptr<ResourceSet>>
     &GcsNodeManager::GetClusterRealtimeResources() const {
   return cluster_realtime_resources_;
 }
