@@ -1,4 +1,8 @@
-from typing import Dict, List, Optional, Type, Union
+"""
+PyTorch policy class used for PG.
+"""
+
+from typing import Dict, List, Type, Union
 
 import ray
 from ray.rllib.agents.pg.utils import post_process_advantages
@@ -31,14 +35,20 @@ def pg_torch_loss(
         Union[TensorType, List[TensorType]]: A single loss tensor or a list
             of loss tensors.
     """
-    logits, _ = model.from_batch(train_batch)
-    action_dist = dist_class(logits, model)
+    # Pass the training data through our model to get distribution parameters.
+    dist_inputs, _ = model.from_batch(train_batch)
+
+    # Create an action distribution object.
+    action_dist = dist_class(dist_inputs, model)
+
+    # Calculate the vanilla PG loss based on:
+    # L = -E[ log(pi(a|s)) * A]
     log_probs = action_dist.logp(train_batch[SampleBatch.ACTIONS])
-    # Save the error in the policy object.
-    # policy.pi_err = -train_batch[Postprocessing.ADVANTAGES].dot(
-    # log_probs.reshape(-1)) / len(log_probs)
+
+    # Save the loss in the policy object for the stats_fn below.
     policy.pi_err = -torch.mean(
         log_probs * train_batch[Postprocessing.ADVANTAGES])
+
     return policy.pi_err
 
 
@@ -57,7 +67,7 @@ def pg_loss_stats(
     """
 
     return {
-        # `pi_err` is stored when computing the loss.
+        # `pi_err` (the loss) is stored inside `pg_torch_loss()`.
         "policy_loss": policy.pi_err.item(),
     }
 

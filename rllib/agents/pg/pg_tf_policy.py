@@ -35,13 +35,14 @@ def pg_tf_loss(
         Union[TensorType, List[TensorType]]: A single loss tensor or a list
             of loss tensors.
     """
-    # Pass the training data through our model.
-    logits, _ = model.from_batch(train_batch)
+    # Pass the training data through our model to get distribution parameters.
+    dist_inputs, _ = model.from_batch(train_batch)
 
     # Create an action distribution object.
-    action_dist = dist_class(logits, model)
+    action_dist = dist_class(dist_inputs, model)
 
-    # Calculate the vanilla PG loss.
+    # Calculate the vanilla PG loss based on:
+    # L = -E[ log(pi(a|s)) * A]
     return -tf.reduce_mean(
         action_dist.logp(train_batch[SampleBatch.ACTIONS]) * tf.cast(
             train_batch[Postprocessing.ADVANTAGES], dtype=tf.float32))
