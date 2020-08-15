@@ -6,13 +6,14 @@ import shutil
 import unittest
 
 import ray
-from ray.tests.test_autoscaler import SMALL_CLUSTER, MockProvider
-from ray.tests.test_command_runner import MockProcessRunner
+from ray.tests.test_autoscaler import SMALL_CLUSTER, MockProvider, \
+    MockProcessRunner
 from ray.autoscaler.autoscaler import StandardAutoscaler
 from ray.autoscaler.load_metrics import LoadMetrics
 from ray.autoscaler.node_provider import NODE_PROVIDERS
 from ray.autoscaler.resource_demand_scheduler import _utilization_score, \
     get_bin_pack_residual, get_instances_for
+
 from time import sleep
 
 TYPES_A = {
@@ -24,8 +25,7 @@ TYPES_A = {
     },
     "m4.4xlarge": {
         "resources": {
-            "CPU": 16,
-            "custom": 1
+            "CPU": 16
         },
         "max_workers": 8,
     },
@@ -38,25 +38,22 @@ TYPES_A = {
     "p2.xlarge": {
         "resources": {
             "CPU": 16,
-            "GPU": 1,
+            "GPU": 1
         },
         "max_workers": 10,
     },
     "p2.8xlarge": {
         "resources": {
             "CPU": 32,
-            "GPU": 8,
-            "custom1": 1
+            "GPU": 8
         },
         "max_workers": 4,
     },
 }
 
-MULTI_WORKER_CLUSTER = dict(
-    SMALL_CLUSTER, **{
-        "available_instance_types": TYPES_A,
-        "worker_start_ray_commands": ["ray start --address=$RAY_HEAD_IP:6379"]
-    })
+MULTI_WORKER_CLUSTER = dict(SMALL_CLUSTER, **{
+    "available_instance_types": TYPES_A,
+})
 
 
 def test_util_score():
@@ -102,13 +99,13 @@ def test_get_instances_packing_heuristic():
         == [("m4.16xlarge", 1), ("m4.large", 1)]
     assert get_instances_for(
         TYPES_A, {}, 9999, [{"CPU": 64}, {"CPU": 9}, {"CPU": 9}]) == \
-        [("m4.16xlarge", 2)]
+        [("m4.16xlarge", 1), ("m4.4xlarge", 2)]
     assert get_instances_for(TYPES_A, {}, 9999, [{"CPU": 16}] * 5) == \
-        [("m4.16xlarge", 2)]
+        [("m4.16xlarge", 1), ("m4.4xlarge", 1)]
     assert get_instances_for(TYPES_A, {}, 9999, [{"CPU": 8}] * 10) == \
-        [("m4.16xlarge", 2)]
+        [("m4.16xlarge", 1), ("m4.4xlarge", 1)]
     assert get_instances_for(TYPES_A, {}, 9999, [{"CPU": 1}] * 100) == \
-        [("m4.16xlarge", 2)]
+        [("m4.16xlarge", 1), ("m4.4xlarge", 2), ("m4.large", 2)]
     assert get_instances_for(
         TYPES_A, {}, 9999, [{"GPU": 1}] + ([{"CPU": 1}] * 64)) == \
         [("m4.16xlarge", 1), ("p2.xlarge", 1)]
