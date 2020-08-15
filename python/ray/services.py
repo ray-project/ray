@@ -1289,7 +1289,8 @@ def start_raylet(redis_address,
                  fate_share=None,
                  socket_to_use=None,
                  head_node=False,
-                 start_initial_python_workers_for_first_job=False):
+                 start_initial_python_workers_for_first_job=False,
+                 object_spilling_config=None):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1397,6 +1398,10 @@ def start_raylet(redis_address,
 
     if load_code_from_local:
         start_worker_command += ["--load-code-from-local"]
+
+    if object_spilling_config:
+        start_worker_command.append(
+            f"--object-spilling-config={json.dumps(object_spilling_config)}")
 
     command = [
         RAYLET_EXECUTABLE,

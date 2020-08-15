@@ -507,6 +507,89 @@ void NodeManager::DoLocalGC() {
   }
 }
 
+void NodeManager::SpillObjects(const std::vector<ObjectID> &objects_ids_to_spill,
+                               std::function<void(const ray::Status &)> callback) {
+  std::vector<ObjectID> objects_ids;
+  for (const auto &id : objects_ids_to_spill) {
+    // Do not spill already spilled objects.
+    if (spilled_objects_.count(id) == 0) {
+      objects_ids.push_back(id);
+    }
+  }
+  if (objects_ids.empty()) {
+    if (callback) {
+      callback(Status::OK());
+    }
+    return;
+  }
+  worker_pool_.PopIOWorker(
+      [this, objects_ids, callback](std::shared_ptr<WorkerInterface> io_worker) {
+        RAY_LOG(DEBUG) << "Sending object spilling request";
+        rpc::SpillObjectsRequest request;
+        for (const auto &object_id : objects_ids) {
+          request.add_object_ids_to_spill(object_id.Binary());
+        }
+        io_worker->rpc_client()->SpillObjects(
+            request, [this, objects_ids, callback, io_worker](
+                         const ray::Status &status, const rpc::SpillObjectsReply &r) {
+              worker_pool_.PushIOWorker(io_worker);
+              if (!status.ok()) {
+                RAY_LOG(ERROR) << "Failed to send object spilling request: "
+                               << status.ToString();
+              } else {
+                RAY_CHECK(static_cast<size_t>(r.spilled_objects_url_size()) ==
+                          objects_ids.size());
+                for (size_t i = 0; i < objects_ids.size(); ++i) {
+                  const ObjectID &object_id = objects_ids[i];
+                  const std::string &object_url = r.spilled_objects_url(i);
+                  // TODO(suquark): write to object directory.
+                  spilled_objects_[object_id] = object_url;
+                  auto search = pinned_objects_.find(object_id);
+                  if (search != pinned_objects_.end()) {
+                    pinned_objects_.erase(search);
+                  } else {
+                    RAY_LOG(ERROR)
+                        << "The spilled object " << object_id.Hex() << " is not pinned.";
+                  }
+                }
+              }
+              if (callback) {
+                callback(status);
+              }
+            });
+      });
+}
+
+void NodeManager::RestoreSpilledObjects(
+    const std::vector<ObjectID> &object_ids,
+    std::function<void(const ray::Status &)> callback) {
+  std::vector<std::string> object_urls;
+  object_urls.reserve(object_ids.size());
+  for (const auto &object_id : object_ids) {
+    object_urls.push_back(spilled_objects_[object_id]);
+  }
+  worker_pool_.PopIOWorker([this, object_urls,
+                            callback](std::shared_ptr<WorkerInterface> io_worker) {
+    RAY_LOG(DEBUG) << "Sending restore spilled object request";
+    rpc::RestoreSpilledObjectsRequest request;
+    for (const auto &url : object_urls) {
+      request.add_spilled_objects_url(std::move(url));
+    }
+    io_worker->rpc_client()->RestoreSpilledObjects(
+        request, [this, callback, io_worker](const ray::Status &status,
+                                             const rpc::RestoreSpilledObjectsReply &r) {
+          worker_pool_.PushIOWorker(io_worker);
+          if (!status.ok()) {
+            RAY_LOG(ERROR) << "Failed to send restore spilled object request: "
+                           << status.ToString();
+          }
+          if (callback) {
+            callback(status);
+          }
+        });
+  });
+}
+
 // TODO(edoakes): this function is problematic because it both sends warnings spuriously
 // under normal conditions and sometimes doesn't send a warning under actual deadlock
 // conditions. The current logic is to push a warning when: all running tasks are
@@ -1144,7 +1227,41 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
   case protocol::MessageType::SubscribePlasmaReady: {
     ProcessSubscribePlasmaReady(client, message_data);
   } break;
-
+  case protocol::MessageType::ForceSpillObjectsRequest: {
+    auto message = flatbuffers::GetRoot<protocol::ForceSpillObjectsRequest>(message_data);
+    std::vector<ObjectID> object_ids = from_flatbuf<ObjectID>(*message->object_ids());
+    SpillObjects(object_ids, [this, client](const ray::Status &status) {
+      flatbuffers::FlatBufferBuilder fbb;
+      flatbuffers::Offset<protocol::ForceSpillObjectsReply> reply =
+          protocol::CreateForceSpillObjectsReply(fbb);
+      fbb.Finish(reply);
+      auto reply_status = client->WriteMessage(
+          static_cast<int64_t>(protocol::MessageType::ForceSpillObjectsReply),
+          fbb.GetSize(), fbb.GetBufferPointer());
+      if (!reply_status.ok()) {
+        // We failed to write to the client, so disconnect the client.
+        ProcessDisconnectClientMessage(client);
+      }
+    });
+  } break;
+  case protocol::MessageType::ForceRestoreSpilledObjectsRequest: {
+    auto message =
+        flatbuffers::GetRoot<protocol::ForceRestoreSpilledObjectsRequest>(message_data);
+    std::vector<ObjectID> object_ids = from_flatbuf<ObjectID>(*message->object_ids());
+    RestoreSpilledObjects(object_ids, [this, client](const ray::Status &status) {
+      flatbuffers::FlatBufferBuilder fbb;
+      flatbuffers::Offset<protocol::ForceRestoreSpilledObjectsReply> reply =
+          protocol::CreateForceRestoreSpilledObjectsReply(fbb);
+      fbb.Finish(reply);
+      auto reply_status = client->WriteMessage(
+          static_cast<int64_t>(protocol::MessageType::ForceRestoreSpilledObjectsReply),
+          fbb.GetSize(), fbb.GetBufferPointer());
+      if (!reply_status.ok()) {
+        // We failed to write to the client, so disconnect the client.
+        ProcessDisconnectClientMessage(client);
+      }
+    });
+  } break;
   default:
     RAY_LOG(FATAL) << "Received unexpected message type " << message_type;
   }
@@ -1162,8 +1279,10 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   WorkerID worker_id = from_flatbuf<WorkerID>(*message->worker_id());
   pid_t pid = message->worker_pid();
   std::string worker_ip_address = string_from_flatbuf(*message->ip_address());
+  // TODO(suquark): Use `WorkerType` in `common.proto` without type converting.
+  rpc::WorkerType worker_type = static_cast<rpc::WorkerType>(message->worker_type());
   auto worker = std::dynamic_pointer_cast<WorkerInterface>(std::make_shared<Worker>(
-      worker_id, language, worker_ip_address, client, client_call_manager_));
+      worker_id, language, worker_type, worker_ip_address, client, client_call_manager_));
 
   auto send_reply_callback = [this, client](int assigned_port) {
     flatbuffers::FlatBufferBuilder fbb;
@@ -1187,7 +1306,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
         });
   };
 
-  if (message->is_worker()) {
+  if (worker_type == rpc::WorkerType::WORKER ||
+      worker_type == rpc::WorkerType::IO_WORKER) {
     // Register the new worker.
     RAY_UNUSED(worker_pool_.RegisterWorker(worker, pid, send_reply_callback));
   } else {
@@ -1238,6 +1358,13 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<ClientConnection> 
 
 void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &worker) {
   RAY_CHECK(worker);
+
+  if (worker->GetWorkerType() == rpc::WorkerType::IO_WORKER) {
+    // Return the worker to the idle pool.
+    worker_pool_.PushIOWorker(worker);
+    return;
+  }
+
   bool worker_idle = true;
 
   // If the worker was assigned a task, mark it as finished.
@@ -1400,14 +1527,22 @@ void NodeManager::ProcessFetchOrReconstructMessage(
   const auto refs =
       FlatbufferToObjectReference(*message->object_ids(), *message->owner_addresses());
   if (message->fetch_only()) {
+    std::vector<ObjectID> spilled_object_ids;
     for (const auto &ref : refs) {
       ObjectID object_id = ObjectID::FromBinary(ref.object_id());
       // If only a fetch is required, then do not subscribe to the
       // dependencies to the task dependency manager.
       if (!task_dependency_manager_.CheckObjectLocal(object_id)) {
-        // Fetch the object if it's not already local.
-        RAY_CHECK_OK(object_manager_.Pull(object_id, ref.owner_address()));
+        if (spilled_objects_.count(object_id) > 0) {
+          spilled_object_ids.push_back(object_id);
+        } else {
+          // Fetch the object if it's not already local.
+          RAY_CHECK_OK(object_manager_.Pull(object_id, ref.owner_address()));
+        }
       }
+    }
+    if (spilled_object_ids.size() > 0) {
+      RestoreSpilledObjects(spilled_object_ids);
     }
   } else {
     // The values are needed. Add all requested objects to the list to
