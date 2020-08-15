@@ -389,13 +389,13 @@ py_test(
     srcs = ["agents/a3c/tests/test_a3c.py"]
 )
 
-# APEXTrainer (DQN)
-py_test(
-    name = "test_apex_dqn",
-    tags = ["agents_dir"],
-    size = "large",
-    srcs = ["agents/dqn/tests/test_apex_dqn.py"]
-)
+## APEXTrainer (DQN)
+#py_test(
+#    name = "test_apex_dqn",
+#    tags = ["agents_dir"],
+#    size = "large",
+#    srcs = ["agents/dqn/tests/test_apex_dqn.py"]
+#)
 
 # APEXDDPGTrainer
 py_test(
@@ -479,7 +479,7 @@ py_test(
 py_test(
     name = "test_maml",
     tags = ["agents_dir"],
-    size = "small",
+    size = "medium",
     srcs = ["agents/maml/tests/test_maml.py"]
 )
 
@@ -1231,12 +1231,12 @@ py_test(
     srcs = ["tests/test_filters.py"]
 )
 
-py_test(
-    name = "tests/test_ignore_worker_failure",
-    tags = ["tests_dir", "tests_dir_I"],
-    size = "large",
-    srcs = ["tests/test_ignore_worker_failure.py"]
-)
+#py_test(
+#    name = "tests/test_ignore_worker_failure",
+#    tags = ["tests_dir", "tests_dir_I"],
+#    size = "large",
+#    srcs = ["tests/test_ignore_worker_failure.py"]
+#)
 
 py_test(
     name = "tests/test_io",
@@ -1342,14 +1342,14 @@ py_test(
     args = ["TestSupportedMultiAgentPG"]
 )
 
-py_test(
-    name = "tests/test_supported_multi_agent_off_policy",
-    main = "tests/test_supported_multi_agent.py",
-    tags = ["tests_dir", "tests_dir_S"],
-    size = "medium",
-    srcs = ["tests/test_supported_multi_agent.py"],
-    args = ["TestSupportedMultiAgentOffPolicy"]
-)
+#py_test(
+#    name = "tests/test_supported_multi_agent_off_policy",
+#    main = "tests/test_supported_multi_agent.py",
+#    tags = ["tests_dir", "tests_dir_S"],
+#    size = "medium",
+#    srcs = ["tests/test_supported_multi_agent.py"],
+#    args = ["TestSupportedMultiAgentOffPolicy"]
+#)
 
 py_test(
     name = "tests/test_supported_spaces_pg",
