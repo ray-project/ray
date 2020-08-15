@@ -7,7 +7,7 @@ from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
-from ray.rllib.utils.types import SampleBatchType, AgentID, PolicyID, \
+from ray.rllib.utils.typing import SampleBatchType, AgentID, PolicyID, \
     EnvObsType, EnvInfoDict, EnvActionType
 
 if TYPE_CHECKING:
@@ -92,11 +92,17 @@ class MultiAgentEpisode:
         self._agent_reward_history = defaultdict(list)
 
     @DeveloperAPI
-    def policy_for(self, agent_id: AgentID = _DUMMY_AGENT_ID) -> Policy:
-        """Returns the policy for the specified agent.
+    def policy_for(self, agent_id: AgentID = _DUMMY_AGENT_ID) -> PolicyID:
+        """Returns and stores the policy ID for the specified agent.
 
         If the agent is new, the policy mapping fn will be called to bind the
         agent to a policy for the duration of the episode.
+
+        Args:
+            agent_id (AgentID): The agent ID to lookup the policy ID for.
+
+        Returns:
+            PolicyID: The policy ID for the specified agent.
         """
 
         if agent_id not in self._agent_to_policy:

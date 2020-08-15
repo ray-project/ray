@@ -10,7 +10,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_torch, TensorType
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.types import FromConfigSpec, SampleBatchType, \
+from ray.rllib.utils.typing import FromConfigSpec, SampleBatchType, \
     TrainerConfigDict
 
 torch, nn = try_import_torch()
