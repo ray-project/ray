@@ -36,7 +36,7 @@ from ray.rllib.utils.filter import get_filter, Filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
-from ray.rllib.utils.types import EnvType, AgentID, PolicyID, EnvConfigDict, \
+from ray.rllib.utils.typing import EnvType, AgentID, PolicyID, EnvConfigDict, \
     ModelConfigDict, TrainerConfigDict, SampleBatchType, ModelWeights, \
     ModelGradients, MultiAgentPolicyConfigDict
 from ray.util.debug import log_once, disable_log_once_globally, \

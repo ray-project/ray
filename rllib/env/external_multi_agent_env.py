@@ -4,7 +4,7 @@ from typing import Optional
 
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.env.external_env import ExternalEnv, _ExternalEnvEpisode
-from ray.rllib.utils.types import MultiAgentDict
+from ray.rllib.utils.typing import MultiAgentDict
 
 
 @PublicAPI

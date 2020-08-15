@@ -10,7 +10,7 @@ from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.policy import Policy
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils.types import EnvConfigDict, EnvType, \
+from ray.rllib.utils.typing import EnvConfigDict, EnvType, \
     PartialTrainerConfigDict, ResultDict, TrainerConfigDict
 from ray.tune.logger import Logger
 
