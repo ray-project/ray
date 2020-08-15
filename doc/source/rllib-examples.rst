@@ -97,19 +97,31 @@ Multi-Agent and Hierarchical
 
 Community Examples
 ------------------
+- `Arena AI <https://sites.google.com/view/arena-unity/home>`__:
+   A General Evaluation Platform and Building Toolkit for Single/Multi-Agent Intelligence
+   with RLlib-generated baselines.
 - `CARLA <https://github.com/layssi/Carla_Ray_Rlib>`__:
    Example of training autonomous vehicles with RLlib and `CARLA <http://carla.org/>`__ simulator.
+-  `The Emergence of Adversarial Communication in Multi-Agent Reinforcement Learning <https://arxiv.org/pdf/2008.02616.pdf>`__:
+   Using Graph Neural Networks and RLlib to train multiple cooperative and adversarial agents to solve the
+   "cover the area"-problem, thereby learning how to best communicate (or - in the adversarial case - how to disturb communication).
+- `Flatland <https://flatland.aicrowd.com/intro.html>`__:
+   A dense traffic simulating environment with RLlib-generated baselines.
 - `GFootball <https://github.com/google-research/football/blob/master/gfootball/examples/run_multiagent_rllib.py>`__:
    Example of setting up a multi-agent version of `GFootball <https://github.com/google-research>`__ with RLlib.
+- `Neural MMO <https://jsuarez5341.github.io/neural-mmo/build/html/rst/userguide.html>`__:
+   A multiagent AI research environment inspired by Massively Multiplayer Online (MMO) role playing games –
+   self-contained worlds featuring thousands of agents per persistent macrocosm, diverse skilling systems, local and global economies, complex emergent social structures,
+   and ad-hoc high-stakes single and team based conflict.
 - `NeuroCuts <https://github.com/neurocuts/neurocuts>`__:
    Example of building packet classification trees using RLlib / multi-agent in a bandit-like setting.
 - `NeuroVectorizer <https://github.com/ucb-bar/NeuroVectorizer>`__:
    Example of learning optimal LLVM vectorization compiler pragmas for loops in C and C++ codes using RLlib.
 - `Roboschool / SageMaker <https://github.com/awslabs/amazon-sagemaker-examples/tree/master/reinforcement_learning/rl_roboschool_ray>`__:
    Example of training robotic control policies in SageMaker with RLlib.
+- `Sequential Social Dilemma Games <https://github.com/eugenevinitsky/sequential_social_dilemma_games>`__:
+   Example of using the multi-agent API to model several `social dilemma games <https://arxiv.org/abs/1702.03037>`__.
 - `StarCraft2 <https://github.com/oxwhirl/smac>`__:
    Example of training in StarCraft2 maps with RLlib / multi-agent.
 - `Traffic Flow <https://berkeleyflow.readthedocs.io/en/latest/flow_setup.html>`__:
    Example of optimizing mixed-autonomy traffic simulations with RLlib / multi-agent.
-- `Sequential Social Dilemma Games <https://github.com/eugenevinitsky/sequential_social_dilemma_games>`__:
-   Example of using the multi-agent API to model several `social dilemma games <https://arxiv.org/abs/1702.03037>`__.

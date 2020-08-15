@@ -305,9 +305,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   std::unordered_map<std::string, std::string> internal_config;
   local_raylet_client_ = std::shared_ptr<raylet::RayletClient>(new raylet::RayletClient(
       io_service_, std::move(grpc_client), options_.raylet_socket, GetWorkerID(),
-      (options_.worker_type == ray::WorkerType::WORKER),
-      worker_context_.GetCurrentJobID(), options_.language, options_.node_ip_address,
-      &local_raylet_id, &assigned_port, &internal_config,
+      options_.worker_type, worker_context_.GetCurrentJobID(), options_.language,
+      options_.node_ip_address, &local_raylet_id, &assigned_port, &internal_config,
       options_.serialized_job_config));
   connected_ = true;
 
@@ -326,6 +325,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   core_worker_server_->Run();
 
   // Tell the raylet the port that we are listening on.
+  // NOTE: This also marks the worker as available in Raylet.
   RAY_CHECK_OK(local_raylet_client_->AnnounceWorkerPort(core_worker_server_->GetPort()));
 
   // Set our own address.
@@ -378,8 +378,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       options_.store_socket, local_raylet_client_, reference_counter_,
       options_.check_signals,
       /*evict_if_full=*/RayConfig::instance().object_pinning_enabled(),
-      boost::bind(&CoreWorker::TriggerGlobalGC, this),
-      boost::bind(&CoreWorker::CurrentCallSite, this)));
+      /*on_store_full=*/boost::bind(&CoreWorker::TriggerGlobalGC, this),
+      /*get_current_call_site=*/boost::bind(&CoreWorker::CurrentCallSite, this)));
   memory_store_.reset(new CoreWorkerMemoryStore(
       [this](const RayObject &object, const ObjectID &object_id) {
         PutObjectIntoPlasma(object, object_id);
@@ -735,7 +735,10 @@ CoreWorker::GetAllReferenceCounts() const {
 
 void CoreWorker::PutObjectIntoPlasma(const RayObject &object, const ObjectID &object_id) {
   bool object_exists;
-  RAY_CHECK_OK(plasma_store_provider_->Put(object, object_id, &object_exists));
+  // This call will only be used by PromoteObjectToPlasma, which means that the
+  // object will always owned by us.
+  RAY_CHECK_OK(plasma_store_provider_->Put(
+      object, object_id, /* owner_address = */ rpc_address_, &object_exists));
   if (!object_exists) {
     // Tell the raylet to pin the object **after** it is created.
     RAY_LOG(DEBUG) << "Pinning put object " << object_id;
@@ -826,7 +829,8 @@ Status CoreWorker::Put(const RayObject &object,
     RAY_CHECK(memory_store_->Put(object, object_id));
     return Status::OK();
   }
-  RAY_RETURN_NOT_OK(plasma_store_provider_->Put(object, object_id, &object_exists));
+  RAY_RETURN_NOT_OK(plasma_store_provider_->Put(
+      object, object_id, /* owner_address = */ rpc_address_, &object_exists));
   if (!object_exists) {
     if (pin_object) {
       // Tell the raylet to pin the object **after** it is created.
@@ -860,8 +864,8 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
            RayConfig::instance().max_direct_call_object_size())) {
     *data = std::make_shared<LocalMemoryBuffer>(data_size);
   } else {
-    RAY_RETURN_NOT_OK(
-        plasma_store_provider_->Create(metadata, data_size, *object_id, data));
+    RAY_RETURN_NOT_OK(plasma_store_provider_->Create(
+        metadata, data_size, *object_id, /* owner_address = */ rpc_address_, data));
   }
   // Only add the object to the reference counter if it didn't already exist.
   if (data) {
@@ -874,12 +878,14 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
 }
 
 Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
-                          const ObjectID &object_id, std::shared_ptr<Buffer> *data) {
+                          const ObjectID &object_id, const rpc::Address &owner_address,
+                          std::shared_ptr<Buffer> *data) {
   if (options_.is_local_mode) {
     return Status::NotImplemented(
         "Creating an object with a pre-existing ObjectID is not supported in local mode");
   } else {
-    return plasma_store_provider_->Create(metadata, data_size, object_id, data);
+    return plasma_store_provider_->Create(metadata, data_size, object_id, owner_address,
+                                          data);
   }
 }
 
@@ -908,7 +914,8 @@ Status CoreWorker::Seal(const ObjectID &object_id, bool pin_object,
 }
 
 Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_ms,
-                       std::vector<std::shared_ptr<RayObject>> *results) {
+                       std::vector<std::shared_ptr<RayObject>> *results,
+                       bool plasma_objects_only) {
   results->resize(ids.size(), nullptr);
 
   absl::flat_hash_set<ObjectID> plasma_object_ids;
@@ -918,20 +925,24 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
   auto start_time = current_time_ms();
 
-  if (!memory_object_ids.empty()) {
-    RAY_RETURN_NOT_OK(memory_store_->Get(memory_object_ids, timeout_ms, worker_context_,
-                                         &result_map, &got_exception));
-  }
-
-  // Erase any objects that were promoted to plasma from the results. These get
-  // requests will be retried at the plasma store.
-  for (auto it = result_map.begin(); it != result_map.end();) {
-    auto current = it++;
-    if (current->second->IsInPlasmaError()) {
-      RAY_LOG(DEBUG) << current->first << " in plasma, doing fetch-and-get";
-      plasma_object_ids.insert(current->first);
-      result_map.erase(current);
+  if (!plasma_objects_only) {
+    if (!memory_object_ids.empty()) {
+      RAY_RETURN_NOT_OK(memory_store_->Get(memory_object_ids, timeout_ms, worker_context_,
+                                           &result_map, &got_exception));
     }
+
+    // Erase any objects that were promoted to plasma from the results. These get
+    // requests will be retried at the plasma store.
+    for (auto it = result_map.begin(); it != result_map.end();) {
+      auto current = it++;
+      if (current->second->IsInPlasmaError()) {
+        RAY_LOG(DEBUG) << current->first << " in plasma, doing fetch-and-get";
+        plasma_object_ids.insert(current->first);
+        result_map.erase(current);
+      }
+    }
+  } else {
+    plasma_object_ids = std::move(memory_object_ids);
   }
 
   if (!got_exception) {
@@ -1161,6 +1172,14 @@ Status CoreWorker::NotifyActorResumedFromCheckpoint(
 Status CoreWorker::SetResource(const std::string &resource_name, const double capacity,
                                const ClientID &client_id) {
   return local_raylet_client_->SetResource(resource_name, capacity, client_id);
+}
+
+Status CoreWorker::ForceSpillObjects(const std::vector<ObjectID> &object_ids) {
+  return local_raylet_client_->ForceSpillObjects(object_ids);
+}
+
+Status CoreWorker::ForceRestoreSpilledObjects(const std::vector<ObjectID> &object_ids) {
+  return local_raylet_client_->ForceRestoreSpilledObjects(object_ids);
 }
 
 std::unordered_map<std::string, double> AddPlacementGroupConstraint(
@@ -1526,8 +1545,8 @@ Status CoreWorker::AllocateReturnObjects(
               RayConfig::instance().max_direct_call_object_size()) {
         data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
       } else {
-        RAY_RETURN_NOT_OK(
-            Create(metadatas[i], data_sizes[i], object_ids[i], &data_buffer));
+        RAY_RETURN_NOT_OK(Create(metadatas[i], data_sizes[i], object_ids[i],
+                                 owner_address, &data_buffer));
         object_already_exists = !data_buffer;
       }
     }
@@ -1903,6 +1922,47 @@ void CoreWorker::HandleWaitForObjectEviction(
   }
 }
 
+void CoreWorker::HandleAddObjectLocationOwner(
+    const rpc::AddObjectLocationOwnerRequest &request,
+    rpc::AddObjectLocationOwnerReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
+                           send_reply_callback)) {
+    return;
+  }
+  reference_counter_->AddObjectLocation(ObjectID::FromBinary(request.object_id()),
+                                        ClientID::FromBinary(request.client_id()));
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void CoreWorker::HandleRemoveObjectLocationOwner(
+    const rpc::RemoveObjectLocationOwnerRequest &request,
+    rpc::RemoveObjectLocationOwnerReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
+                           send_reply_callback)) {
+    return;
+  }
+  reference_counter_->RemoveObjectLocation(ObjectID::FromBinary(request.object_id()),
+                                           ClientID::FromBinary(request.client_id()));
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void CoreWorker::HandleGetObjectLocationsOwner(
+    const rpc::GetObjectLocationsOwnerRequest &request,
+    rpc::GetObjectLocationsOwnerReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
+                           send_reply_callback)) {
+    return;
+  }
+  std::unordered_set<ClientID> client_ids =
+      reference_counter_->GetObjectLocations(ObjectID::FromBinary(request.object_id()));
+  for (const auto &client_id : client_ids) {
+    reply->add_client_ids(client_id.Binary());
+  }
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 void CoreWorker::HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &request,
                                          rpc::WaitForRefRemovedReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
@@ -2053,6 +2113,44 @@ void CoreWorker::HandleLocalGC(const rpc::LocalGCRequest &request,
   } else {
     send_reply_callback(Status::NotImplemented("GC callback not defined"), nullptr,
                         nullptr);
+  }
+}
+
+void CoreWorker::HandleSpillObjects(const rpc::SpillObjectsRequest &request,
+                                    rpc::SpillObjectsReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) {
+  if (options_.spill_objects != nullptr) {
+    std::vector<ObjectID> object_ids_to_spill;
+    object_ids_to_spill.reserve(request.object_ids_to_spill_size());
+    for (const auto &id_binary : request.object_ids_to_spill()) {
+      object_ids_to_spill.push_back(ObjectID::FromBinary(id_binary));
+    }
+    std::vector<std::string> object_urls = options_.spill_objects(object_ids_to_spill);
+    for (size_t i = 0; i < object_urls.size(); i++) {
+      reply->add_spilled_objects_url(std::move(object_urls[i]));
+    }
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  } else {
+    send_reply_callback(Status::NotImplemented("Spill objects callback not defined"),
+                        nullptr, nullptr);
+  }
+}
+
+void CoreWorker::HandleRestoreSpilledObjects(
+    const rpc::RestoreSpilledObjectsRequest &request,
+    rpc::RestoreSpilledObjectsReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  if (options_.restore_spilled_objects != nullptr) {
+    std::vector<std::string> spilled_objects_url;
+    spilled_objects_url.reserve(request.spilled_objects_url_size());
+    for (const auto &url : request.spilled_objects_url()) {
+      spilled_objects_url.push_back(url);
+    }
+    options_.restore_spilled_objects(spilled_objects_url);
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  } else {
+    send_reply_callback(
+        Status::NotImplemented("Restore spilled objects callback not defined"), nullptr,
+        nullptr);
   }
 }
 

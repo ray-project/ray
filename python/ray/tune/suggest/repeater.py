@@ -44,7 +44,7 @@ class _TrialGroup:
 
     def add(self, trial_id):
         assert len(self._trials) < self.max_trials
-        self._trials[trial_id] = None
+        self._trials.setdefault(trial_id, None)
 
     def full(self):
         return len(self._trials) == self.max_trials
@@ -56,7 +56,8 @@ class _TrialGroup:
         self._trials[trial_id] = score
 
     def finished_reporting(self):
-        return None not in self._trials.values()
+        return None not in self._trials.values() and len(
+            self._trials) == self.max_trials
 
     def scores(self):
         return list(self._trials.values())
@@ -159,8 +160,10 @@ class Repeater(Searcher):
                 result={self.searcher.metric: np.nanmean(scores)},
                 **kwargs)
 
-    def save(self, path):
-        self.searcher.save(path)
+    def get_state(self):
+        self_state = self.__dict__.copy()
+        del self_state["searcher"]
+        return self_state
 
-    def restore(self, path):
-        self.searcher.restore(path)
+    def set_state(self, state):
+        self.__dict__.update(state)
