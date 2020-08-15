@@ -4,7 +4,7 @@ from time import sleep
 ray.init(address="auto")
 
 
-@ray.remote(resources={"custom1": 1})
+@ray.remote(resources={"Custom1": 1})
 def foo():
     while True:
         print("boop")
@@ -12,7 +12,7 @@ def foo():
         pass
 
 
-@ray.remote(num_gpus=1, resources={"custom2": 2})
+@ray.remote(num_gpus=1, resources={"Custom2": 2})
 def bar():
     while True:
         print("boop")

@@ -194,7 +194,6 @@ class StandardAutoscaler:
 
         # First let the resource demand scheduler launch nodes, if enabled.
         if self.resource_demand_scheduler and self.resource_demand_vector:
-            print("Invoking scheduler", self.resource_demand_vector)
             # TODO(ekl) include head node in the node list
             instances = (
                 self.resource_demand_scheduler.get_instances_to_launch(
@@ -202,8 +201,6 @@ class StandardAutoscaler:
                     self.resource_demand_vector))
             # TODO(ekl) also enforce max launch concurrency here?
             for instance_type, count in instances:
-                print("Resource demand scheduler launching node",
-                      instance_type, count)
                 self.launch_new_node(count, instance_type=instance_type)
 
         # Launch additional nodes of the default type, if still needed.
@@ -430,7 +427,6 @@ class StandardAutoscaler:
         return True
 
     def launch_new_node(self, count, instance_type=None):
-        print("Launching new node")
         logger.info(
             "StandardAutoscaler: Queue {} new nodes for launch".format(count))
         # Try to fill in the default instance type so we can tag it properly.
