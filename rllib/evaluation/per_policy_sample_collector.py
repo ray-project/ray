@@ -112,14 +112,12 @@ class _PerPolicySampleCollector:
                 init_obs
         self.agent_key_to_timestep[agent_key] = self.shift_before
 
-        self._add_to_next_inference_call(
-            agent_key, env_id, agent_slot, self.shift_before-1)
+        self._add_to_next_inference_call(agent_key, env_id, agent_slot,
+                                         self.shift_before - 1)
 
-    def add_action_reward_next_obs(self, episode_id: EpisodeID,
-                                   agent_id: AgentID,
-                                   env_id: EnvID,
-                                   agent_done: bool,
-                                   values: Dict[str, TensorType]) -> None:
+    def add_action_reward_next_obs(
+            self, episode_id: EpisodeID, agent_id: AgentID, env_id: EnvID,
+            agent_done: bool, values: Dict[str, TensorType]) -> None:
         """Add the given dictionary (row) of values to this batch.
 
         Args:
@@ -161,16 +159,15 @@ class _PerPolicySampleCollector:
             agent_key] - self.shift_before == self.num_timesteps and \
                 not values[SampleBatch.DONES]:
             self._new_chunk_from(agent_slot, agent_key,
-                                self.agent_key_to_timestep[agent_key])
+                                 self.agent_key_to_timestep[agent_key])
 
         self.timesteps_since_last_reset += 1
 
         if not agent_done:
             self._add_to_next_inference_call(agent_key, env_id, agent_slot, ts)
 
-    def get_inference_input_dict(
-            self,
-            view_reqs: Dict[str, ViewRequirement]) -> Dict[str, TensorType]:
+    def get_inference_input_dict(self, view_reqs: Dict[str, ViewRequirement]
+                                 ) -> Dict[str, TensorType]:
         """Returns an input_dict for an (inference) forward pass.
 
         The input_dict can then be used for action computations inside a
@@ -207,8 +204,8 @@ class _PerPolicySampleCollector:
                 if isinstance(view_req.shift, (list, tuple)):
                     time_indices = \
                         np.array(view_req.shift) + np.array(indices[0])
-                    input_dict[view_col] = self.buffers[data_col][
-                        indices[1], time_indices]
+                    input_dict[view_col] = self.buffers[data_col][indices[1],
+                                                                  time_indices]
                 else:
                     input_dict[view_col] = \
                         self.buffers[data_col][indices[1], indices[0]]
@@ -292,15 +289,17 @@ class _PerPolicySampleCollector:
             SampleBatch: Returns the accumulated sample batch for this
                 policy.
         """
-        seq_lens = [self.agent_key_to_timestep[k] - self.shift_before
-                    for k in self.slot_to_agent_key if k is not None]
+        seq_lens = [
+            self.agent_key_to_timestep[k] - self.shift_before
+            for k in self.slot_to_agent_key if k is not None
+        ]
         first_zero_len = len(seq_lens)
         if seq_lens[-1] == 0:
             first_zero_len = seq_lens.index(0)
             # Assert that all zeros lie at the end of the seq_lens array.
             try:
-                assert all(seq_lens[i] == 0 for
-                           i in range(first_zero_len, len(seq_lens)))
+                assert all(seq_lens[i] == 0
+                           for i in range(first_zero_len, len(seq_lens)))
             except AssertionError as e:
                 print()
                 raise e
@@ -325,8 +324,8 @@ class _PerPolicySampleCollector:
             # If agent_slot has been rolled-over to beginning, we have to copy
             # here.
             if valid_agent_cursor < self.sample_batch_offset:
-                time_slice = self.buffers[data_col][
-                             t_start + extra_shift:t_end + extra_shift]
+                time_slice = self.buffers[data_col][t_start + extra_shift:
+                                                    t_end + extra_shift]
                 one_ = time_slice[:, self.sample_batch_offset:]
                 two_ = time_slice[:, :valid_agent_cursor]
                 if torch and isinstance(time_slice, torch.Tensor):
@@ -351,8 +350,9 @@ class _PerPolicySampleCollector:
                                     DONES][seq_len - 1 +
                                            self.shift_before][agent_slot]:
                     agent_key = self.slot_to_agent_key[agent_slot]
-                    new_chunk_args.append((agent_slot, agent_key,
-                                      self.agent_key_to_timestep[agent_key]))
+                    new_chunk_args.append(
+                        (agent_slot, agent_key,
+                         self.agent_key_to_timestep[agent_key]))
         # Cut out all 0 seq-lens.
         seq_lens = seq_lens[:first_zero_len]
         batch = SampleBatch(
@@ -451,8 +451,8 @@ class _PerPolicySampleCollector:
         self._next_agent_slot()
         self.agent_key_to_timestep[new_agent_key] = self.shift_before
 
-    def _add_to_next_inference_call(
-            self, agent_key, env_id, agent_slot, timestep):
+    def _add_to_next_inference_call(self, agent_key, env_id, agent_slot,
+                                    timestep):
         """Registers given T and B (agent_slot) for get_inference_input_dict.
 
         Calling `get_inference_input_dict` will produce an input_dict (for
@@ -467,8 +467,8 @@ class _PerPolicySampleCollector:
             timestep (int): The timestep to register (T axis).
         """
         idx = self.forward_pass_size
-        self.forward_pass_index_to_agent_info[idx] = (
-            agent_key[0], agent_key[1], env_id)
+        self.forward_pass_index_to_agent_info[idx] = (agent_key[0],
+                                                      agent_key[1], env_id)
         self.agent_key_to_forward_pass_index[agent_key[:2]] = idx
         if self.forward_pass_size == 0:
             self.forward_pass_indices[0].clear()

@@ -1,6 +1,7 @@
 import logging
 from typing import Dict, Optional
 
+from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.evaluation.per_policy_sample_collector import \
@@ -34,13 +35,14 @@ class _MultiAgentSampleCollector(_SampleCollector):
     buffers via views to avoid copying of data).
     """
 
-    def __init__(self,
-                 policy_map: Dict[PolicyID, Policy],
-                 callbacks: "DefaultCallbacks",
-                 # TODO: (sven) make `num_agents` flexibly grow in size.
-                 num_agents: int = 100,
-                 num_timesteps=None,
-                 time_major: Optional[bool] = False):
+    def __init__(
+            self,
+            policy_map: Dict[PolicyID, Policy],
+            callbacks: DefaultCallbacks,
+            # TODO: (sven) make `num_agents` flexibly grow in size.
+            num_agents: int = 100,
+            num_timesteps=None,
+            time_major: Optional[bool] = False):
         """Initializes a _MultiAgentSampleCollector object.
 
         Args:
@@ -86,7 +88,8 @@ class _MultiAgentSampleCollector(_SampleCollector):
 
             self.rollout_sample_collectors[pid] = _PerPolicySampleCollector(
                 num_agents=self.num_agents,
-                shift_before=-max_shift_before, shift_after=max_shift_after,
+                shift_before=-max_shift_before,
+                shift_after=max_shift_after,
                 **kwargs)
 
         # Internal agent-to-policy map.
@@ -96,13 +99,9 @@ class _MultiAgentSampleCollector(_SampleCollector):
         self.count = 0
 
     @override(_SampleCollector)
-    def add_init_obs(
-            self,
-            episode_id: EpisodeID,
-            agent_id: AgentID,
-            env_id: EnvID,
-            policy_id: PolicyID,
-            obs: TensorType) -> None:
+    def add_init_obs(self, episode_id: EpisodeID, agent_id: AgentID,
+                     env_id: EnvID, policy_id: PolicyID,
+                     obs: TensorType) -> None:
         # Make sure our mappings are up to date.
         if agent_id not in self.agent_to_policy:
             self.agent_to_policy[agent_id] = policy_id
@@ -114,14 +113,10 @@ class _MultiAgentSampleCollector(_SampleCollector):
             episode_id, agent_id, env_id, chunk_num=0, init_obs=obs)
 
     @override(_SampleCollector)
-    def add_action_reward_next_obs(
-            self,
-            episode_id: EpisodeID,
-            agent_id: AgentID,
-            env_id: EnvID,
-            policy_id: PolicyID,
-            agent_done: bool,
-            values: Dict[str, TensorType]) -> None:
+    def add_action_reward_next_obs(self, episode_id: EpisodeID,
+                                   agent_id: AgentID, env_id: EnvID,
+                                   policy_id: PolicyID, agent_done: bool,
+                                   values: Dict[str, TensorType]) -> None:
         assert policy_id in self.rollout_sample_collectors
 
         # Make sure our mappings are up to date.

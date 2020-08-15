@@ -9,6 +9,7 @@ from typing import Callable, Any, List, Dict, Tuple, Union, Optional, \
     TYPE_CHECKING, Type, TypeVar
 
 import ray
+from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
@@ -45,7 +46,6 @@ from ray.util.debug import log_once, disable_log_once_globally, \
 from ray.util.iter import ParallelIteratorWorker
 
 if TYPE_CHECKING:
-    from ray.rllib.agents.callbacks import DefaultCallbacks
     from ray.rllib.evaluation.observation_function import ObservationFunction
 
 # Generic type var for foreach_* methods.
@@ -130,48 +130,47 @@ class RolloutWorker(ParallelIteratorWorker):
             resources=resources)(cls)
 
     @DeveloperAPI
-    def __init__(self,
-                 env_creator: Callable[[EnvContext], EnvType],
-                 policy: Union[type, Dict[str, Tuple[
-                     Optional[type],
-                     gym.Space, gym.Space, PartialTrainerConfigDict]]],
-                 policy_mapping_fn: Callable[[AgentID], PolicyID] = None,
-                 policies_to_train: Optional[List[PolicyID]] = None,
-                 tf_session_creator: Optional[Callable[
-                     [], "tf1.Session"]] = None,
-                 rollout_fragment_length: int = 100,
-                 batch_mode: str = "truncate_episodes",
-                 episode_horizon: int = None,
-                 preprocessor_pref: str = "deepmind",
-                 sample_async: bool = False,
-                 compress_observations: bool = False,
-                 num_envs: int = 1,
-                 observation_fn: "ObservationFunction" = None,
-                 observation_filter: str = "NoFilter",
-                 clip_rewards: bool = None,
-                 clip_actions: bool = True,
-                 env_config: EnvConfigDict = None,
-                 model_config: ModelConfigDict = None,
-                 policy_config: TrainerConfigDict = None,
-                 worker_index: int = 0,
-                 num_workers: int = 0,
-                 monitor_path: str = None,
-                 log_dir: str = None,
-                 log_level: str = None,
-                 callbacks: Type["DefaultCallbacks"] = None,
-                 input_creator: Callable[[
-                     IOContext
-                 ], InputReader] = lambda ioctx: ioctx.default_sampler_input(),
-                 input_evaluation: List[str] = frozenset([]),
-                 output_creator: Callable[
-                     [IOContext], OutputWriter] = lambda ioctx: NoopOutput(),
-                 remote_worker_envs: bool = False,
-                 remote_env_batch_wait_ms: int = 0,
-                 soft_horizon: bool = False,
-                 no_done_at_end: bool = False,
-                 seed: int = None,
-                 extra_python_environs: dict = None,
-                 fake_sampler: bool = False):
+    def __init__(
+            self,
+            env_creator: Callable[[EnvContext], EnvType],
+            policy: Union[type, Dict[str, Tuple[Optional[
+                type], gym.Space, gym.Space, PartialTrainerConfigDict]]],
+            policy_mapping_fn: Callable[[AgentID], PolicyID] = None,
+            policies_to_train: Optional[List[PolicyID]] = None,
+            tf_session_creator: Optional[Callable[[], "tf1.Session"]] = None,
+            rollout_fragment_length: int = 100,
+            batch_mode: str = "truncate_episodes",
+            episode_horizon: int = None,
+            preprocessor_pref: str = "deepmind",
+            sample_async: bool = False,
+            compress_observations: bool = False,
+            num_envs: int = 1,
+            observation_fn: "ObservationFunction" = None,
+            observation_filter: str = "NoFilter",
+            clip_rewards: bool = None,
+            clip_actions: bool = True,
+            env_config: EnvConfigDict = None,
+            model_config: ModelConfigDict = None,
+            policy_config: TrainerConfigDict = None,
+            worker_index: int = 0,
+            num_workers: int = 0,
+            monitor_path: str = None,
+            log_dir: str = None,
+            log_level: str = None,
+            callbacks: Type[DefaultCallbacks] = None,
+            input_creator: Callable[[
+                IOContext
+            ], InputReader] = lambda ioctx: ioctx.default_sampler_input(),
+            input_evaluation: List[str] = frozenset([]),
+            output_creator: Callable[
+                [IOContext], OutputWriter] = lambda ioctx: NoopOutput(),
+            remote_worker_envs: bool = False,
+            remote_env_batch_wait_ms: int = 0,
+            soft_horizon: bool = False,
+            no_done_at_end: bool = False,
+            seed: int = None,
+            extra_python_environs: dict = None,
+            fake_sampler: bool = False):
         """Initialize a rollout worker.
 
         Args:
@@ -311,10 +310,9 @@ class RolloutWorker(ParallelIteratorWorker):
         self.env_context = env_context
         self.policy_config: TrainerConfigDict = policy_config
         if callbacks:
-            self.callbacks: "DefaultCallbacks" = callbacks()
+            self.callbacks: DefaultCallbacks = callbacks()
         else:
-            from ray.rllib.agents.callbacks import DefaultCallbacks
-            self.callbacks: "DefaultCallbacks" = DefaultCallbacks()
+            self.callbacks: DefaultCallbacks = DefaultCallbacks()
         self.worker_index: int = worker_index
         self.num_workers: int = num_workers
         model_config: ModelConfigDict = model_config or {}
