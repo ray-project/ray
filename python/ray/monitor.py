@@ -104,10 +104,9 @@ class Monitor:
             bundles = []
             for resource_demand_pb in list(
                     resource_load_by_shape.resource_demands):
-                resource_demand_unparsed = dict(resource_demand_pb)
-                request_shape = resource_demand_unparsed["shape"]
+                request_shape = dict(resource_demand_unparsed.shape)
                 bundles.append(request_shape)
-                self.autoscaler.request_resources(bundles)
+            self.autoscaler.request_resources(bundles)
         except Exception as e:
             logger.exception(e)
 
