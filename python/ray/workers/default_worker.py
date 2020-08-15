@@ -1,5 +1,6 @@
 import argparse
 import json
+import time
 
 import ray
 import ray.actor
@@ -81,15 +82,45 @@ parser.add_argument(
     action="store_true",
     help="True if cloudpickle should be used for serialization.")
 parser.add_argument(
+    "--worker-type",
+    required=False,
+    type=str,
+    default="WORKER",
+    help="Specify the type of the worker process")
+parser.add_argument(
     "--metrics-agent-port",
     required=True,
     type=int,
     help="the port of the node's metric agent.")
+parser.add_argument(
+    "--object-spilling-config",
+    required=False,
+    type=str,
+    default="",
+    help="The configuration of object spilling. Only used by I/O workers.")
 
 if __name__ == "__main__":
     args = parser.parse_args()
 
     ray.utils.setup_logger(args.logging_level, args.logging_format)
+
+    if args.worker_type == "WORKER":
+        mode = ray.WORKER_MODE
+    elif args.worker_type == "IO_WORKER":
+        mode = ray.IO_WORKER_MODE
+    else:
+        raise ValueError("Unknown worker type: " + args.worker_type)
+
+    # NOTE(suquark): We must initialize the external storage before we
+    # connect to raylet. Otherwise we may receive requests before the
+    # external storage is intialized.
+    if mode == ray.IO_WORKER_MODE:
+        from ray import external_storage
+        if args.object_spilling_config:
+            object_spilling_config = json.loads(args.object_spilling_config)
+        else:
+            object_spilling_config = {}
+        external_storage.setup_external_storage(object_spilling_config)
 
     internal_config = {}
     if args.config_list is not None:
@@ -125,5 +156,14 @@ if __name__ == "__main__":
         spawn_reaper=False,
         connect_only=True)
     ray.worker._global_node = node
-    ray.worker.connect(node, mode=ray.WORKER_MODE)
-    ray.worker.global_worker.main_loop()
+
+    ray.worker.connect(node, mode=mode)
+    if mode == ray.WORKER_MODE:
+        ray.worker.global_worker.main_loop()
+    elif mode == ray.IO_WORKER_MODE:
+        # It is handled by another thread in the C++ core worker.
+        # We just need to keep the worker alive.
+        while True:
+            time.sleep(100000)
+    else:
+        raise ValueError(f"Unexcepted worker mode: {mode}")
