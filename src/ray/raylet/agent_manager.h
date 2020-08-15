@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include "ray/util/process.h"
 #include "ray/rpc/agent_manager/agent_manager_client.h"
 #include "ray/rpc/agent_manager/agent_manager_server.h"
 
