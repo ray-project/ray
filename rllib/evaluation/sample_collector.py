@@ -3,7 +3,6 @@ import logging
 from typing import Dict, Optional
 
 from ray.rllib.evaluation.episode import MultiAgentEpisode
-from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.typing import AgentID, EpisodeID, PolicyID, \
     TensorType
 
@@ -101,15 +100,15 @@ class _SampleCollector(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def get_inference_input_dict(self, model: ModelV2) -> \
+    def get_inference_input_dict(self, policy_id: PolicyID) -> \
             Dict[str, TensorType]:
-        """Returns input_dict for an inference forward pass from our data.
+        """Returns an input_dict for an (inference) forward pass from our data.
 
-        The input_dict can then be used for action computations.
+        The input_dict can then be used for action computations inside a
+        Policy via `Policy.compute_actions_from_input_dict()`.
 
         Args:
-            model (ModelV2): The ModelV2 object for which to generate the view
-                (input_dict) from `data`.
+            policy_id (PolicyID): The Policy ID to get the input dict for.
 
         Returns:
             Dict[str, TensorType]: The input_dict to be passed into the ModelV2
@@ -156,22 +155,31 @@ class _SampleCollector(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
+    def check_missing_dones(self, episode_id: EpisodeID) -> None:
+        """Checks whether given episode is properly terminated with done=True.
+
+        This applies to all agents in the episode.
+
+        Args:
+            episode_id (EpisodeID): The episode ID to check for proper
+                termination.
+
+        Raises:
+            ValueError: If `episode` has no done=True at the end.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
     def get_multi_agent_batch_and_reset(self):
         """Returns the accumulated sample batches for each policy.
 
         Any unprocessed rows will be first postprocessed with a policy
-        postprocessor. The internal state of this builder will be reset.
-
-        Args:
-            episode (Optional[MultiAgentEpisode]): The Episode object that
-                holds this MultiAgentBatchBuilder object or None.
+        postprocessor. The internal state of this builder will be reset to
+        start the next batch.
+        This is usually called to collect samples for policy training.
 
         Returns:
             MultiAgentBatch: Returns the accumulated sample batches for each
                 policy inside one MultiAgentBatch object.
         """
-        raise NotImplementedError
-
-    @abstractmethod
-    def check_missing_dones(self, episode_id: EpisodeID) -> None:
         raise NotImplementedError
