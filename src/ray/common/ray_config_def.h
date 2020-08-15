@@ -328,6 +328,14 @@ RAY_CONFIG(bool, put_small_object_in_memory_store, false)
 /// pipelining task submission.
 RAY_CONFIG(uint32_t, max_tasks_in_flight_per_worker, 1)
 
+/// Whether work stealing among existing workers should be enabled.
+RAY_CONFIG(bool, work_stealing_enabled, false)
+
+/// Whether the eager worker requesting mode should be enabled, so that
+/// we can request new workers for the purpose of stealing work from overloaded
+/// existing workers.
+RAY_CONFIG(bool, work_stealing_and_eager_workers_requesting_enabled, false)
+
 /// The maximum number of resource shapes included in the resource
 /// load reported by each raylet.
 RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)

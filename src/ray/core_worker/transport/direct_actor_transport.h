@@ -504,6 +504,10 @@ class CoreWorkerDirectTaskReceiver {
   void HandlePushTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
                       rpc::SendReplyCallback send_reply_callback);
 
+  absl::Mutex mu_;
+  WorkerID this_worker;
+  absl::flat_hash_map<TaskID, TaskSpecification> tasks_received_ GUARDED_BY(mu_);
+
  private:
   // Worker context.
   WorkerContext &worker_context_;

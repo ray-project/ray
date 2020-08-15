@@ -92,3 +92,7 @@ cdef extern from "ray/common/ray_config.h" nogil:
         uint32_t max_tasks_in_flight_per_worker() const
 
         uint64_t metrics_report_interval_ms() const
+
+        c_bool work_stealing_enabled() const
+
+        c_bool work_stealing_and_eager_workers_requesting_enabled() const

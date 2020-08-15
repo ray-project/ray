@@ -169,3 +169,11 @@ cdef class Config:
     @staticmethod
     def metrics_report_interval_ms():
         return RayConfig.instance().metrics_report_interval_ms()
+
+    @staticmethod
+    def work_stealing_enabled():
+        return RayConfig.instance().work_stealing_enabled()
+
+    @staticmethod
+    def work_stealing_and_eager_workers_requesting_enabled():
+        return RayConfig.instance().work_stealing_and_eager_workers_requesting_enabled()
