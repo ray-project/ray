@@ -1808,8 +1808,9 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
   const TaskSpecification task_spec(request.task_spec());
   {
     absl::MutexLock lock(&direct_task_receiver_->mu_);
-    RAY_LOG(DEBUG) << "Received task " << task_spec.TaskId() << ". Adding it to the tasks_received_ queue!";
-    direct_task_receiver_->tasks_received_.emplace(task_spec.TaskId() , task_spec);
+    RAY_LOG(DEBUG) << "Received task " << task_spec.TaskId()
+                   << ". Adding it to the tasks_received_ queue!";
+    direct_task_receiver_->tasks_received_.emplace(task_spec.TaskId(), task_spec);
   }
 
   task_execution_service_.post([=] {
@@ -1821,8 +1822,8 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
 }
 
 void CoreWorker::HandleStealWork(const rpc::StealWorkRequest &request,
-                                rpc::StealWorkReply *reply,
-                                rpc::SendReplyCallback send_reply_callback) {
+                                 rpc::StealWorkReply *reply,
+                                 rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Entering HandleStealWork!";
   // get maximum number of tasks to steal
   int max_tasks_to_steal = request.max_tasks_to_steal();
@@ -1830,7 +1831,7 @@ void CoreWorker::HandleStealWork(const rpc::StealWorkRequest &request,
 
   {
     absl::MutexLock lock(&direct_task_receiver_->mu_);
-    
+
     int half = direct_task_receiver_->tasks_received_.size() / 2;
     RAY_CHECK(half >= 0);
 
@@ -1840,16 +1841,19 @@ void CoreWorker::HandleStealWork(const rpc::StealWorkRequest &request,
       send_reply_callback(Status::OK(), nullptr, nullptr);
       return;
     }
-    
-    absl::flat_hash_map<TaskID, TaskSpecification>::iterator it = direct_task_receiver_->tasks_received_.begin();
+
+    absl::flat_hash_map<TaskID, TaskSpecification>::iterator it =
+        direct_task_receiver_->tasks_received_.begin();
     absl::flat_hash_map<TaskID, TaskSpecification>::iterator it2 = it;
-    int i=0;
+    int i = 0;
     for (; i < std::min(max_tasks_to_steal, half); i++) {
       if (it == direct_task_receiver_->tasks_received_.end()) {
         break;
       }
       reply->add_tasks_stolen()->CopyFrom(it->second.GetMessage());
-      RAY_LOG(DEBUG) << "Task " << it->second.TaskId() << " was stolen and removed from the tasks_received_ queue. worker: " << GetWorkerID();
+      RAY_LOG(DEBUG) << "Task " << it->second.TaskId()
+                     << " was stolen and removed from the tasks_received_ queue. worker: "
+                     << GetWorkerID();
       it2 = it;
       it++;
       direct_task_receiver_->tasks_received_.erase(it2);
@@ -1857,10 +1861,9 @@ void CoreWorker::HandleStealWork(const rpc::StealWorkRequest &request,
     RAY_LOG(DEBUG) << "Setting the total number of tasks stolen to " << i;
     reply->set_number_of_tasks_stolen(i);
   }
-  
+
   // send reply back
   send_reply_callback(Status::OK(), nullptr, nullptr);
-
 }
 
 void CoreWorker::HandleDirectActorCallArgWaitComplete(
