@@ -18,6 +18,7 @@
 #include "ray/gcs/accessor.h"
 #include "ray/gcs/subscription_executor.h"
 #include "ray/util/sequencer.h"
+#include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
 namespace gcs {
@@ -193,6 +194,8 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   Status AsyncReportHeartbeat(const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
                               const StatusCallback &callback) override;
 
+  void AsyncReReportHeartbeat() override;
+
   Status AsyncSubscribeHeartbeat(
       const SubscribeCallback<ClientID, rpc::HeartbeatTableData> &subscribe,
       const StatusCallback &done) override;
@@ -224,6 +227,13 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   /// Save the fetch data operation in this function, so we can call it again when GCS
   /// server restarts from a failure.
   FetchDataOperation fetch_node_data_operation_;
+
+  // Mutex to protect the cached_heartbeat_ field.
+  absl::Mutex mutex_;
+
+  /// Save the heartbeat data, so we can resend it again when GCS server restarts from a
+  /// failure.
+  rpc::ReportHeartbeatRequest cached_heartbeat_ GUARDED_BY(mutex_);
 
   void HandleNotification(const GcsNodeInfo &node_info);
 

@@ -362,6 +362,8 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
   Status AsyncReportHeartbeat(const std::shared_ptr<HeartbeatTableData> &data_ptr,
                               const StatusCallback &callback) override;
 
+  void AsyncReReportHeartbeat() override;
+
   Status AsyncSubscribeHeartbeat(
       const SubscribeCallback<ClientID, HeartbeatTableData> &subscribe,
       const StatusCallback &done) override;

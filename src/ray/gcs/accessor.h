@@ -551,6 +551,9 @@ class NodeInfoAccessor {
       const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
       const StatusCallback &callback) = 0;
 
+  /// Resend heartbeat when GCS restarts from a failure.
+  virtual void AsyncReReportHeartbeat() = 0;
+
   /// Subscribe to the heartbeat of each node from GCS.
   ///
   /// \param subscribe Callback that will be called each time when heartbeat is updated.
