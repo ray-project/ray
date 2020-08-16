@@ -492,6 +492,10 @@ class CoreWorkerDirectTaskReceiver {
         task_main_io_service_(main_io_service),
         task_done_(task_done) {}
 
+  ~CoreWorkerDirectTaskReceiver() {
+    RAY_LOG(INFO) << "we are done.";
+  }
+
   /// Initialize this receiver. This must be called prior to use.
   void Init(rpc::ClientFactoryFn client_factory, rpc::Address rpc_address,
             std::shared_ptr<DependencyWaiter> dependency_waiter);

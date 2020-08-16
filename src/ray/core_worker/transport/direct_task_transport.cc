@@ -113,12 +113,12 @@ void CoreWorkerDirectTaskSubmitter::AddWorkerLeaseClient(
 
 void CoreWorkerDirectTaskSubmitter::ReturnWorker(const rpc::WorkerAddress addr,
                                                  bool was_error) {
-  /*struct timespec return_worker_time;
+  struct timespec return_worker_time;
   clock_gettime(CLOCK_REALTIME, &return_worker_time);
   long double time_elapsed = (long double)(return_worker_time.tv_sec -
   initial_time_.tv_sec) + (long double)((return_worker_time.tv_nsec -
-  initial_time_.tv_nsec) / (long double) 1000000000.0); RAY_LOG(INFO) << "RETURN_WORKER
-  placeholder" << " " << time_elapsed;*/
+  initial_time_.tv_nsec) / (long double) 1000000000.0); 
+  RAY_LOG(INFO) << "RETURN_WORKER " << addr.worker_id << " " <<  time_elapsed;
 
   auto &lease_entry = worker_to_lease_entry_[addr];
   RAY_CHECK(lease_entry.lease_client_);
@@ -473,8 +473,13 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     auto lease_client = GetOrConnectLeaseClient(raylet_address);
     TaskSpecification &resource_spec = candidate_task_spec;
     TaskID task_id = resource_spec.TaskId();
-    RAY_LOG(DEBUG) << "Lease requested " << task_id;
-    // RAY_LOG(INFO) << "LEASE_REQUESTED " << task_id;
+    //RAY_LOG(DEBUG) << "Lease requested " << task_id;
+    struct timespec lease_requested_time;
+    clock_gettime(CLOCK_REALTIME, &lease_requested_time);
+    long double time_elapsed = (long double)(lease_requested_time.tv_sec -
+    initial_time_.tv_sec) + (long double)((lease_requested_time.tv_nsec -
+    initial_time_.tv_nsec) / (long double) 1000000000.0); 
+    RAY_LOG(INFO) << "LEASE_REQUESTED " << task_id << " " << time_elapsed;
 
     auto submitted_task_entry = submissible_tasks_.find(scheduling_key);
     RAY_CHECK(submitted_task_entry != submissible_tasks_.end());
@@ -509,12 +514,12 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
               RAY_LOG(DEBUG) << "Lease granted " << task_id;
               rpc::WorkerAddress addr(reply.worker_address());
 
-              /*struct timespec lease_granted_time_;
+              struct timespec lease_granted_time_;
               clock_gettime(CLOCK_REALTIME, &lease_granted_time_);
               long double time_elapsed = (long double)(lease_granted_time_.tv_sec -
               initial_time_.tv_sec) + (long double)((lease_granted_time_.tv_nsec -
-              initial_time_.tv_nsec) / (long double) 1000000000.0); RAY_LOG(INFO) <<
-              "LEASE_GRANTED " << addr.worker_id << " " << time_elapsed;*/
+              initial_time_.tv_nsec) / (long double) 1000000000.0); 
+              RAY_LOG(INFO) << "LEASE_GRANTED " << addr.worker_id << " " << task_id << " " << time_elapsed;
 
               AddWorkerLeaseClient(addr, std::move(lease_client), scheduling_key);
               auto resources_copy = reply.resource_mapping();
