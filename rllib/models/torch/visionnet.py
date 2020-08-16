@@ -144,11 +144,7 @@ class VisionNetwork(TorchModelV2, nn.Module):
 
     @override(TorchModelV2)
     def forward(self, input_dict, state, seq_lens):
-        #TODO
-        obs = input_dict["obs"]
-        if obs.dtype == torch.uint8:
-            obs = obs.float() / 255.0
-        self._features = obs.float().permute(0, 3, 1, 2)
+        self._features = input_dict["obs"].float().permute(0, 3, 1, 2)
         conv_out = self._convs(self._features)
         # Store features to save forward pass when getting value_function out.
         if not self._value_branch_separate:

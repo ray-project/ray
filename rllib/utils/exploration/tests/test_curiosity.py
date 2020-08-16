@@ -14,7 +14,6 @@ def env_maker(config):
     env = gym.make(name)
     # Convert discrete inputs (OBJECT_IDX, COLOR_IDX, STATE) to pixels
     # (otherwise, a Conv2D will not be able to learn anything).
-    #env = gym_minigrid.wrappers.FlatObsWrapper(env)
     env = gym_minigrid.wrappers.RGBImgPartialObsWrapper(env)
     # Only use image portion of observation (discard goal and direction).
     env = gym_minigrid.wrappers.ImgObsWrapper(env)

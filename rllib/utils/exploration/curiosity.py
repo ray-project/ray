@@ -226,9 +226,6 @@ class Curiosity(Exploration):
         inverse_loss = -action_dist.logp(train_batch[SampleBatch.ACTIONS])
         inverse_loss = torch.mean(inverse_loss)
 
-        #print("inverse-loss={} forward-loss={}".format(
-        #    inverse_loss, torch.mean(train_batch["forward_l2_norm_sqared"])))
-
         # Forward loss term has already been calculated during train batch pre-
         # processing (just have to weight with beta here).
         # Append our loss to the policy loss(es).
