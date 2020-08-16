@@ -40,7 +40,7 @@ std::string GcsPlacementGroup::GetName() const {
 }
 
 std::vector<std::shared_ptr<BundleSpecification>> GcsPlacementGroup::GetBundles() const {
-  auto bundles = placement_group_table_data_.bundles();
+  const auto &bundles = placement_group_table_data_.bundles();
   std::vector<std::shared_ptr<BundleSpecification>> ret_bundles;
   for (auto &bundle : bundles) {
     ret_bundles.push_back(std::make_shared<BundleSpecification>(bundle));
@@ -50,7 +50,7 @@ std::vector<std::shared_ptr<BundleSpecification>> GcsPlacementGroup::GetBundles(
 
 std::vector<std::shared_ptr<BundleSpecification>> GcsPlacementGroup::GetUnplacedBundles()
     const {
-  auto bundles = placement_group_table_data_.bundles();
+  const auto &bundles = placement_group_table_data_.bundles();
   std::vector<std::shared_ptr<BundleSpecification>> unplaced_bundles;
   for (auto &bundle : bundles) {
     if (!bundle.is_placed()) {
@@ -317,19 +317,17 @@ void GcsPlacementGroupManager::RetryCreatingPlacementGroup() {
 
 void GcsPlacementGroupManager::OnNodeDead(const ClientID &node_id) {
   auto bundles = gcs_placement_group_scheduler_->GetBundlesOnNode(node_id);
-  absl::flat_hash_set<std::shared_ptr<GcsPlacementGroup>> to_reschedule_groups;
   for (const auto &bundle : bundles) {
-    auto &placement_group = registered_placement_groups_[bundle.first];
-    for (const auto &bundle_index : bundle.second) {
-      placement_group->GetMutableBundle(bundle_index)->set_is_placed(false);
+    const auto iter = registered_placement_groups_.find(bundle.first);
+    if (iter != registered_placement_groups_.end()) {
+      for (const auto &bundle_index : bundle.second) {
+        iter->second->GetMutableBundle(bundle_index)->set_is_placed(false);
+      }
+      iter->second->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
+      pending_placement_groups_.emplace_front(iter->second);
     }
-    placement_group->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
-    to_reschedule_groups.insert(placement_group);
   }
 
-  for (const auto &group : to_reschedule_groups) {
-    pending_placement_groups_.emplace_front(group);
-  }
   SchedulePendingPlacementGroups();
 }
 
