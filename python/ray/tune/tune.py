@@ -218,6 +218,10 @@ def run(run_or_experiment,
             PROMPT provides CLI feedback. False forces a new
             experiment. If resume is set but checkpoint does not exist,
             ValueError will be thrown.
+        rerun_failed (bool): Resets and reruns failed trials, assuming
+            the provided Trainable is the same. Previous trial artifacts
+            will be left untouched. Only to be used with
+            `resume` enabled. Raises ValueError otherwise.
         queue_trials (bool): Whether to queue trials when the cluster does
             not currently have enough resources to launch one. This should
             be set to True when running on an autoscaling cluster to enable
@@ -232,7 +236,6 @@ def run(run_or_experiment,
         ray_auto_init (bool): Automatically starts a local Ray cluster
             if using a RayTrialExecutor (which is the default) and
             if Ray is not initialized. Defaults to True.
-
 
 
     Returns:

@@ -597,10 +597,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
         trials = tune.run(test, raise_on_failed_trial=False, **config).trials
         self.assertEqual(Counter(t.status for t in trials)["ERROR"], 5)
         new_trials = tune.run(
-            test,
-            resume=True,
-            rerun_failed=True,
-            **config).trials
+            test, resume=True, rerun_failed=True, **config).trials
         self.assertEqual(Counter(t.status for t in new_trials)["ERROR"], 0)
         self.assertTrue(
             all(t.last_result.get("hello") == 123 for t in new_trials))

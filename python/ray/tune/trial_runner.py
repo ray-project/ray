@@ -108,6 +108,10 @@ class TrialRunner:
             If fail_fast='raise' provided, Tune will automatically
             raise the exception received by the Trainable. fail_fast='raise'
             can easily leak resources and should be used with caution.
+        rerun_failed (bool): Resets and reruns failed trials, assuming
+            the provided Trainable is the same. Previous trial artifacts
+            will be left untouched. Only to be used with
+            `resume` enabled. Raises ValueError otherwise.
         verbose (bool): Flag for verbosity. If False, trial results
             will not be output.
         checkpoint_period (int): Trial runner checkpoint periodicity in
@@ -130,8 +134,8 @@ class TrialRunner:
                  resume=False,
                  server_port=TuneServer.DEFAULT_PORT,
                  fail_fast=False,
-                 verbose=True,
                  rerun_failed=False,
+                 verbose=True,
                  checkpoint_period=10,
                  trial_executor=None):
         self._search_alg = search_alg or BasicVariantGenerator()
