@@ -74,6 +74,7 @@ ScheduleMap GcsPackStrategy::Schedule(
     const std::unique_ptr<ScheduleContext> &context) {
   // The current algorithm is to select a node and deploy as many bundles as possible.
   // First fill up a node. If the node resource is insufficient, select a new node.
+  // TODO(ffbin): We will speed this up in next PR. Currently it is a double for loop.
   ScheduleMap schedule_map;
   const auto &alive_nodes = context->node_manager_.GetClusterRealtimeResources();
   for (const auto &bundle : bundles) {

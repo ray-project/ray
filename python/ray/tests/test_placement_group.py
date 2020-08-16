@@ -56,6 +56,7 @@ def test_placement_group_pack(ray_start_cluster):
     node_of_actor_2 = actor_info_2["Address"]["NodeID"]
     assert node_of_actor_1 == node_of_actor_2
 
+
 def test_placement_group_strict_pack(ray_start_cluster):
     @ray.remote(num_cpus=2)
     class Actor(object):
@@ -99,6 +100,7 @@ def test_placement_group_strict_pack(ray_start_cluster):
     node_of_actor_1 = actor_info_1["Address"]["NodeID"]
     node_of_actor_2 = actor_info_2["Address"]["NodeID"]
     assert node_of_actor_1 == node_of_actor_2
+
 
 def test_placement_group_spread(ray_start_cluster):
     @ray.remote(num_cpus=2)

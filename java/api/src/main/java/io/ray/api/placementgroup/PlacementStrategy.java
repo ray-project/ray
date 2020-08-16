@@ -13,7 +13,7 @@ public enum PlacementStrategy {
    */
   SPREAD(1);
   /**
-   * Packs Bundles close together inside one node..
+   * Packs Bundles into one node. The group is not allowed to span multiple nodes.
    */
   STRICT_PACK(2);
 
