@@ -339,10 +339,11 @@ class TrialRunner:
             trials += [new_trial]
         for trial in sorted(
                 trials, key=lambda t: t.last_update_time, reverse=True):
-            if rerun_failed:
-                if trial.status == Trial.ERROR:
-                    trial = trial.reset()
-            self.add_trial(trial)
+            if rerun_failed and trial.status == Trial.ERROR:
+                new_trial = trial.reset()
+                self.add_trial(new_trial)
+            else:
+                self.add_trial(trial)
 
     def is_finished(self):
         """Returns whether all trials have finished running."""

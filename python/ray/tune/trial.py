@@ -243,6 +243,7 @@ class Trial:
         self.last_debug = 0
         self.error_file = None
         self.error_msg = None
+        self.trial_name_creator = trial_name_creator
         self.custom_trial_name = None
 
         # Checkpointing fields
@@ -253,6 +254,8 @@ class Trial:
             self.remote_checkpoint_dir_prefix = None
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
+        self.keep_checkpoints_num = keep_checkpoints_num
+        self.checkpoint_score_attr = checkpoint_score_attr
         self.sync_on_checkpoint = sync_on_checkpoint
         self.checkpoint_manager = CheckpointManager(
             keep_checkpoints_num, checkpoint_score_attr,
@@ -604,6 +607,7 @@ class Trial:
             state[key] = binary_to_hex(cloudpickle.dumps(state.get(key)))
 
         state["runner"] = None
+        state["location"] = Location()
         state["result_logger"] = None
         # Avoid waiting for events that will never occur on resume.
         state["resuming_from"] = None
