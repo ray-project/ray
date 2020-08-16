@@ -8,7 +8,7 @@ from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.offline.io_context import IOContext
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.types import TensorType, SampleBatchType
+from ray.rllib.utils.typing import TensorType, SampleBatchType
 from typing import List
 
 logger = logging.getLogger(__name__)
