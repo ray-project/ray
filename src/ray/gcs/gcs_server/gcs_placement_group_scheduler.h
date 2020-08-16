@@ -183,7 +183,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// Get an existing lease client or connect a new one.
   std::shared_ptr<ResourceReserveInterface> GetOrConnectLeaseClient(
       const rpc::Address &raylet_address);
-
+  
   void OnAllBundleSchedulingRequestReturned(
       const std::shared_ptr<GcsPlacementGroup> &placement_group,
       const std::vector<std::shared_ptr<BundleSpecification>> &bundles,
@@ -193,7 +193,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       const std::function<void(std::shared_ptr<GcsPlacementGroup>)>
           &schedule_success_handler);
 
-  /// Generate schedule conetext.
+  /// Generate schedule context.
   std::unique_ptr<ScheduleContext> GetScheduleContext(
       const PlacementGroupID &placement_group_id);
 
