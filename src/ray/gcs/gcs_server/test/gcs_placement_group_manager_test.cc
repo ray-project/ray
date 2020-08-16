@@ -26,7 +26,7 @@ class MockPlacementGroupScheduler : public gcs::GcsPlacementGroupSchedulerInterf
  public:
   MockPlacementGroupScheduler() = default;
 
-  void Schedule(
+  void ScheduleUnplacedBundles(
       std::shared_ptr<gcs::GcsPlacementGroup> placement_group,
       std::function<void(std::shared_ptr<gcs::GcsPlacementGroup>)> failure_handler,
       std::function<void(std::shared_ptr<gcs::GcsPlacementGroup>)> success_handler)

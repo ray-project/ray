@@ -114,7 +114,7 @@ ScheduleMap GcsSpreadStrategy::Schedule(
   return schedule_map;
 }
 
-void GcsPlacementGroupScheduler::Schedule(
+void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     std::shared_ptr<GcsPlacementGroup> placement_group,
     std::function<void(std::shared_ptr<GcsPlacementGroup>)> failure_callback,
     std::function<void(std::shared_ptr<GcsPlacementGroup>)> success_callback) {
@@ -349,7 +349,7 @@ std::unique_ptr<ScheduleContext> GcsPlacementGroupScheduler::GetScheduleContext(
   }
 
   return std::unique_ptr<ScheduleContext>(new ScheduleContext(
-      node_to_bundles, placement_group_bundle_locations_[placement_group_id],
+      std::move(node_to_bundles), placement_group_bundle_locations_[placement_group_id],
       gcs_node_manager_));
 }
 
