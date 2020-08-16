@@ -1,43 +1,66 @@
-import numpy as np
+import gym
+import gym_minigrid
 import ray
 import sys
 import unittest
 
-from ray.rllib.utils import check
 import ray.rllib.agents.ppo as ppo
+from ray.rllib.utils.test_utils import framework_iterator
+from ray.tune import register_env
+
+
+def env_maker(config):
+    name = config.get("name", "MiniGrid-Empty-5x5-v0")
+    env = gym.make(name)
+    # Convert discrete inputs (OBJECT_IDX, COLOR_IDX, STATE) to pixels
+    # (otherwise, a Conv2D will not be able to learn anything).
+    #env = gym_minigrid.wrappers.FlatObsWrapper(env)
+    env = gym_minigrid.wrappers.RGBImgPartialObsWrapper(env)
+    # Only use image portion of observation (discard goal and direction).
+    env = gym_minigrid.wrappers.ImgObsWrapper(env)
+    return env
+
+
+register_env("4-room", env_maker)
+CONV_FILTERS = [[16, [11, 11], 3], [32, [9, 9], 3], [64, [5, 5], 3]]
 
 
 class TestCuriosity(unittest.TestCase):
-
-    # Sets up a single ray environment for every test.
-
     @classmethod
     def setUpClass(cls):
-        ray.init(local_mode=True)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):
         ray.shutdown()
 
-    def test_curiosity(self):
-        config = ppo.DEFAULT_CONFIG
-
-        env = "CartPole-v0"
-        config["framework"] = "torch"
+    def test_curiosity_on_4_room_domain(self):
+        config = ppo.DEFAULT_CONFIG.copy()
+        # config["env_config"] = {"name": "MiniGrid-FourRooms-v0"}
+        config["num_workers"] = 0  # local only
+        config["model"]["conv_filters"] = CONV_FILTERS
+        config["model"]["use_lstm"] = True
+        config["model"]["lstm_cell_size"] = 256
+        config["model"]["lstm_use_prev_action_reward"] = True
         config["exploration_config"] = {
-            "type": "ray.rllib.utils.exploration.curiosity.Curiosity",
-            "forward_net_hiddens": [64],
-            "inverse_net_hiddens": [32, 4],
-            "feature_net_hiddens": [16, 8],
-            "feature_dim": 8,
-            "forward_activation": "relu",
-            "inverse_activation": "relu",
-            "feature_activation": "relu",
-            #"submodule": "EpsilonGreedy",
+            "type": "Curiosity",
+            # For the feature NN, use a non-LSTM conv2d net (same as the one
+            # in the policy model.
+            "feature_net_config": {
+                "conv_filters": CONV_FILTERS,
+            },
+            "sub_exploration": {
+                "type": "StochasticSampling",
+            }
         }
-        trainer = ppo.PPOTrainer(config=config, env=env)
-        trainer.train()
-        trainer.stop()
+
+        num_iterations = 10
+        for _ in framework_iterator(config, frameworks="torch"):
+            trainer = ppo.PPOTrainer(config=config, env="4-room")
+            for _ in range(num_iterations):
+                result = trainer.train()
+                print(result)
+            trainer.stop()
 
 
 if __name__ == "__main__":

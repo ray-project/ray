@@ -37,14 +37,14 @@ logger = logging.getLogger(__name__)
 # __sphinx_doc_begin__
 MODEL_DEFAULTS: ModelConfigDict = {
     # === Built-in options ===
+    # Number of hidden layers for fully connected net
+    "fcnet_hiddens": [256, 256],
+    # Nonlinearity for fully connected net (tanh, relu)
+    "fcnet_activation": "tanh",
     # Filter config. List of [out_channels, kernel, stride] for each filter
     "conv_filters": None,
     # Nonlinearity for built-in convnet
     "conv_activation": "relu",
-    # Nonlinearity for fully connected net (tanh, relu)
-    "fcnet_activation": "tanh",
-    # Number of hidden layers for fully connected net
-    "fcnet_hiddens": [256, 256],
     # For DiagGaussian action distributions, make the second half of the model
     # outputs floating bias variables instead of state-dependent. This only
     # has an effect is using the default fully connected net.
