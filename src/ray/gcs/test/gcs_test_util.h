@@ -89,10 +89,10 @@ struct Mocker {
   }
 
   static rpc::CreatePlacementGroupRequest GenCreatePlacementGroupRequest(
-      const std::string name = "") {
+      const std::string name = "",
+      rpc::PlacementStrategy strategy = rpc::PlacementStrategy::SPREAD) {
     rpc::CreatePlacementGroupRequest request;
     std::vector<std::unordered_map<std::string, double>> bundles;
-    rpc::PlacementStrategy strategy = rpc::PlacementStrategy::SPREAD;
     std::unordered_map<std::string, double> bundle;
     bundle["CPU"] = 1.0;
     bundles.push_back(bundle);

@@ -21,6 +21,8 @@ from typing import List
 
 logger = logging.getLogger(__name__)
 
+WINDOWS_DRIVES = [chr(i) for i in range(ord("c"), ord("z") + 1)]
+
 
 @PublicAPI
 class JsonReader(InputReader):
@@ -47,7 +49,7 @@ class JsonReader(InputReader):
                 logger.warning(
                     "Treating input directory as glob pattern: {}".format(
                         inputs))
-            if urlparse(inputs).scheme not in ["", "c"]:
+            if urlparse(inputs).scheme not in [""] + WINDOWS_DRIVES:
                 raise ValueError(
                     "Don't know how to glob over `{}`, ".format(inputs) +
                     "please specify a list of files to read instead.")
@@ -126,7 +128,7 @@ class JsonReader(InputReader):
 
     def _next_file(self) -> FileType:
         path = random.choice(self.files)
-        if urlparse(path).scheme not in ["", "c"]:
+        if urlparse(path).scheme not in [""] + WINDOWS_DRIVES:
             if smart_open is None:
                 raise ValueError(
                     "You must install the `smart_open` module to read "
