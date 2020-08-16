@@ -36,6 +36,63 @@ class TestCuriosity(unittest.TestCase):
 
     def test_curiosity_on_4_room_domain(self):
         config = ppo.DEFAULT_CONFIG.copy()
+        # 4-room env as frozen-lake (with holes instead of walls).
+        config["env"] = "FrozenLake-v0"
+        config["env_config"] = {"desc": [
+            "FFFFFFFFHFFFFFFFF",
+            "FSFFFFFFHFFFFFFFF",
+            "FFFFFFFFHFFFFFFFF",
+            "FFFFFFFFHFFFFFFFF",
+            "FFFFFFFFHFFFFFFFF",
+            "FFFFFFFFFFFFFFFFF",
+            "FFFFFFFFHFFFFFFFF",
+            "FFFFFFFFHFFFFFFFF",
+            "HHHHFHHHHHHHHFHHH",
+            "FFFFFFFFHFFFFFFFF",
+            "FFFFFFFFHFFFFFFFF",
+            "FFFFFFFFHFFFFFFFF",
+            "FFFFFFFFHFFFFFFFF",
+            "FFFFFFFFHFFFFGFFF",
+            "FFFFFFFFHFFFFFFFF",
+            "FFFFFFFFFFFFFFFFF",
+            "FFFFFFFFHFFFFFFFF",
+            "FFFFFFFFHFFFFFFFF",
+        ]}
+        config["num_workers"] = 0  # local only
+
+        num_iterations = 10
+        for _ in framework_iterator(config, frameworks="torch"):
+            # W/ Curiosity.
+            config["exploration_config"] = {
+                "type": "Curiosity",
+                "sub_exploration": {
+                    "type": "StochasticSampling",
+                }
+            }
+            trainer = ppo.PPOTrainer(config=config)
+            rewards_w = 0.0
+            for _ in range(num_iterations):
+                result = trainer.train()
+                rewards_w += result["episode_reward_mean"]
+                print(result)
+            trainer.stop()
+
+            # W/o Curiosity.
+            config["exploration_config"] = {
+                "type": "StochasticSampling",
+            }
+            trainer = ppo.PPOTrainer(config=config)
+            rewards_wo = 0.0
+            for _ in range(num_iterations):
+                result = trainer.train()
+                rewards_wo += result["episode_reward_mean"]
+                print(result)
+            trainer.stop()
+
+            self.assertGreater(rewards_w, rewards_wo)
+
+    def test_curiosity_on_4_room_partially_observable_pixels_domain(self):
+        config = ppo.DEFAULT_CONFIG.copy()
         # config["env_config"] = {"name": "MiniGrid-FourRooms-v0"}
         config["num_workers"] = 0  # local only
         config["model"]["conv_filters"] = CONV_FILTERS
@@ -54,7 +111,7 @@ class TestCuriosity(unittest.TestCase):
             }
         }
 
-        num_iterations = 10
+        num_iterations = 1
         for _ in framework_iterator(config, frameworks="torch"):
             trainer = ppo.PPOTrainer(config=config, env="4-room")
             for _ in range(num_iterations):
