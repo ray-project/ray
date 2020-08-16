@@ -16,7 +16,7 @@ def placement_group(bundles: List[Dict[str, float]],
             PACK: Packs Bundles into as few nodes as possible.
             SPREAD: Places Bundles across distinct nodes as even as possible.
             STRICT_PACK: Packs Bundles into one node.
-                The group is not allowed to span multiple nodes.
+            The group is not allowed to span multiple nodes.
         name: The name of the placement group.
     """
     worker = ray.worker.global_worker
