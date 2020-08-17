@@ -29,11 +29,6 @@
 namespace ray {
 namespace gcs {
 
-struct SchedulingProgress {
-  PlacementGroupID id = PlacementGroupID::Nil();
-  bool is_creating = false;
-};
-
 /// GcsPlacementGroup just wraps `PlacementGroupTableData` and provides some convenient
 /// interfaces to access the fields inside `PlacementGroupTableData`. This class is not
 /// thread-safe.
@@ -166,16 +161,22 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   void RetryCreatingPlacementGroup();
 
   /// Mark the manager that there's a placement group scheduling going on.
-  void MarkSchedulingStarted(const PlacementGroupID placement_group_id);
+  void MarkSchedulingStarted(const PlacementGroupID placement_group_id) {
+    scheduling_in_progress_id_ = placement_group_id;
+  }
 
   /// Mark the manager that there's no more placement group scheduling going on.
-  void MarkSchedulingDone();
+  void MarkSchedulingDone() { scheduling_in_progress_id_ = PlacementGroupID::Nil(); }
 
   /// Check if the placement group of a given id is scheduling.
-  bool IsSchedulingInProgress(const PlacementGroupID &placement_group_id);
+  bool IsSchedulingInProgress(const PlacementGroupID &placement_group_id) const {
+    return scheduling_in_progress_id_ == placement_group_id;
+  }
 
   /// Check if there's any placement group scheduling going on.
-  bool IsSchedulingInProgress();
+  bool IsSchedulingInProgress() const {
+    return scheduling_in_progress_id_ != PlacementGroupID::Nil();
+  }
 
   /// The io loop that is used to delay execution of tasks (e.g.,
   /// execute_after).
@@ -204,8 +205,10 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// Used to update placement group information upon creation, deletion, etc.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
 
-  /// If a placement group is creating
-  SchedulingProgress scheduling_progress_;
+  /// The placement group id that is in progress of scheduling bundles.
+  /// TODO(sang): Currently, only one placement group can be scheduled at a time.
+  /// We should probably support concurrenet creation (or batching).
+  PlacementGroupID scheduling_in_progress_id_ = PlacementGroupID::Nil();
 };
 
 }  // namespace gcs

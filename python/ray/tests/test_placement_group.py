@@ -323,7 +323,7 @@ def test_placement_group_table(ray_start_cluster):
     ray.get(actor_1.value.remote())
 
     result = ray.experimental.placement_group_table(placement_group_id)
-    assert result["state"] == "ALIVE"
+    assert result["state"] == "CREATED"
 
 
 def test_cuda_visible_devices(ray_start_cluster):
