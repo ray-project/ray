@@ -349,8 +349,8 @@ std::unique_ptr<ScheduleContext> GcsPlacementGroupScheduler::GetScheduleContext(
   }
 
   return std::unique_ptr<ScheduleContext>(new ScheduleContext(
-      std::move(node_to_bundles), placement_group_bundle_locations_[placement_group_id],
-      gcs_node_manager_));
+      std::move(node_to_bundles),
+      placement_group_to_bundle_locations_[placement_group_id], gcs_node_manager_));
 }
 
 absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>
