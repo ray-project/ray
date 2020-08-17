@@ -58,10 +58,10 @@ def accept_batch(f: Callable) -> Callable:
     return f
 
 
-def init(name: str = None,
+def init(name: Optional[str] = None,
          http_host: str = DEFAULT_HTTP_HOST,
          http_port: int = DEFAULT_HTTP_PORT,
-         metric_exporter: Type[InMemoryExporter]=InMemoryExporter,
+         metric_exporter: Type[InMemoryExporter] = InMemoryExporter,
          _http_middlewares: List[Any] = []) -> None:
     """Initialize or connect to a serve cluster.
 
@@ -133,7 +133,7 @@ def shutdown() -> None:
 @_ensure_connected
 def create_endpoint(endpoint_name: str,
                     *, backend: str = None,
-                    route: str = None,
+                    route: Optional[str] = None,
                     methods: List[str] = ["GET"]) -> None:
     """Create a service endpoint given route_expression.
 
@@ -359,8 +359,8 @@ def shadow_traffic(endpoint_name: str, backend_tag: str, proportion: float) -> N
 
 @_ensure_connected
 def get_handle(endpoint_name: str,
-               relative_slo_ms: float = None,
-               absolute_slo_ms: float = None,
+               relative_slo_ms: Optional[float] = None,
+               absolute_slo_ms: Optional[float] = None,
                missing_ok: bool = False) -> RayServeHandle:
     """Retrieve RayServeHandle for service endpoint to invoke it from Python.
 
