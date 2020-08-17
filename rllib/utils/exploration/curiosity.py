@@ -22,7 +22,7 @@ if nn is not None:
 
 class Curiosity(Exploration):
     """Implementation of:
-    Curiosity-driven Exploration by Self-supervised Prediction
+    [1] Curiosity-driven Exploration by Self-supervised Prediction
     Pathak, Agrawal, Efros, and Darrell - UC Berkeley - ICML 2017.
     https://arxiv.org/pdf/1705.05363.pdf
 
@@ -58,6 +58,8 @@ class Curiosity(Exploration):
                  sub_exploration: Optional[FromConfigSpec] = None,
                  **kwargs):
         """Initializes a Curiosity object.
+
+        Uses as defaults the hyperparameters described in [1].
 
         Args:
              feature_dim (int): The dimensionality of the feature (phi)
