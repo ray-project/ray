@@ -90,13 +90,15 @@ struct Mocker {
 
   static rpc::CreatePlacementGroupRequest GenCreatePlacementGroupRequest(
       const std::string name = "",
-      rpc::PlacementStrategy strategy = rpc::PlacementStrategy::SPREAD) {
+      rpc::PlacementStrategy strategy = rpc::PlacementStrategy::SPREAD,
+      int bundles_count = 2) {
     rpc::CreatePlacementGroupRequest request;
     std::vector<std::unordered_map<std::string, double>> bundles;
     std::unordered_map<std::string, double> bundle;
     bundle["CPU"] = 1.0;
-    bundles.push_back(bundle);
-    bundles.push_back(bundle);
+    for (int index = 0; index < bundles_count; ++index) {
+      bundles.push_back(bundle);
+    }
     auto placement_group_creation_spec =
         GenPlacementGroupCreation(name, bundles, strategy);
     request.mutable_placement_group_spec()->CopyFrom(
