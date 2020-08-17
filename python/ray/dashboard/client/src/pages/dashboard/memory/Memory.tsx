@@ -1,9 +1,9 @@
 import {
   Button,
-  Checkbox,
   createStyles,
-  FormControlLabel,
   makeStyles,
+  MenuItem,
+  Select,
   Table,
   TableBody,
   Theme,
@@ -103,6 +103,28 @@ const UngroupedMemoryRows: React.FC<UngroupedMemoryRowsProps> = ({
   );
 };
 
+type MemoryGrouping =
+  | "node"
+  | "stackTrace"
+  | "";
+
+const byNode = (entry: MemoryTableEntry) =>
+  entry.node_ip_address;
+
+const byStackTrace = (entry: MemoryTableEntry) =>
+  entry.call_site;
+
+const groupFunction = (grouping: MemoryGrouping) => {
+  switch (grouping) {
+    case "node":
+      return byNode
+    case "stackTrace":
+      return byStackTrace
+    case "":
+      return null
+  }
+}
+
 type memoryColumnId =
   | "node_ip_address"
   | "pid"
@@ -170,9 +192,9 @@ const MemoryInfo: React.FC<{}> = () => {
     <PlayArrowIcon />
   );
   const classes = useMemoryInfoStyles();
-  const [isGrouped, setIsGrouped] = useState(true);
-  const [order, setOrder] = React.useState<Order>("asc");
+  const [groupBy, setGroupBy] = useState<MemoryGrouping>("node");
   const toggleOrder = () => setOrder(order === "asc" ? "desc" : "asc");
+  const [order, setOrder] = React.useState<Order>("asc");
   const [orderBy, setOrderBy] = React.useState<memoryColumnId | null>(null);
   return (
     <React.Fragment>
@@ -182,16 +204,17 @@ const MemoryInfo: React.FC<{}> = () => {
             {pauseButtonIcon}
             {shouldObtainMemoryTable ? "Pause Collection" : "Resume Collection"}
           </Button>
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={isGrouped}
-                onChange={() => setIsGrouped(!isGrouped)}
-                color="primary"
-              />
-            }
-            label="Group by host"
-          />
+          <Select
+            value={groupBy}
+            onChange={(e: any) => setGroupBy(e.target.value)}
+            color="primary"
+          >
+            <MenuItem value="">
+              <em>None</em>
+            </MenuItem>
+            <MenuItem value={"node"}>Node</MenuItem>
+            <MenuItem value={"stackTrace"}>Stack trace</MenuItem>
+          </Select>
           <Table className={classes.table}>
             <SortableTableHead
               orderBy={orderBy}
@@ -208,9 +231,10 @@ const MemoryInfo: React.FC<{}> = () => {
               firstColumnEmpty={false}
             />
             <TableBody>
-              {isGrouped ? (
+              {groupBy ? (
                 <GroupedMemoryRows
                   memoryTableGroups={memoryTable.group}
+                  groupBy={groupFunction(groupBy)}
                   order={order}
                   orderBy={orderBy}
                 />
