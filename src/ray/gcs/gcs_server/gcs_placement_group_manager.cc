@@ -319,6 +319,8 @@ void GcsPlacementGroupManager::RetryCreatingPlacementGroup() {
 }
 
 void GcsPlacementGroupManager::OnNodeDead(const ClientID &node_id) {
+  RAY_LOG(WARNING) << "Node " << node_id
+                   << " failed, rescheduling the placement groups on the dead node.";
   auto bundles = gcs_placement_group_scheduler_->GetBundlesOnNode(node_id);
   for (const auto &bundle : bundles) {
     const auto iter = registered_placement_groups_.find(bundle.first);
