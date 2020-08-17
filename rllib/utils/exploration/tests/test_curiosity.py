@@ -20,7 +20,7 @@ def env_maker(config):
     return env
 
 
-register_env("4-room", env_maker)
+register_env("mini-grid", env_maker)
 CONV_FILTERS = [[16, [11, 11], 3], [32, [9, 9], 3], [64, [5, 5], 3]]
 
 
@@ -33,9 +33,10 @@ class TestCuriosity(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
-    def test_curiosity_on_frozen_lake(self):
+    def test_curiosity_on_large_frozen_lake(self):
         config = ppo.DEFAULT_CONFIG.copy()
-        # 4-room env as frozen-lake (with holes instead of walls).
+        # A very large frozen-lake that's hard for a random policy to solve
+        # due to 0.0 feedback.
         config["env"] = "FrozenLake-v0"
         config["env_config"] = {
             "desc": [
@@ -58,7 +59,7 @@ class TestCuriosity(unittest.TestCase):
             ],
             "is_slippery": False
         }
-        # limit horizon to make it really hard for non-curious agent to reach
+        # Limit horizon to make it really hard for non-curious agent to reach
         # the goal state.
         config["horizon"] = 40
         config["num_workers"] = 0  # local only
@@ -82,6 +83,7 @@ class TestCuriosity(unittest.TestCase):
                 result = trainer.train()
                 rewards_w += result["episode_reward_mean"]
                 print(result)
+            rewards_w /= num_iterations
             trainer.stop()
 
             # W/o Curiosity.
@@ -94,22 +96,31 @@ class TestCuriosity(unittest.TestCase):
                 result = trainer.train()
                 rewards_wo += result["episode_reward_mean"]
                 print(result)
+            rewards_wo /= num_iterations
             trainer.stop()
 
-            self.assertGreater(rewards_w, rewards_wo)
+            self.assertTrue(rewards_wo == 0.0)
+            self.assertGreater(rewards_w, 0.15)
 
     def test_curiosity_on_4_room_partially_observable_pixels_domain(self):
         config = ppo.DEFAULT_CONFIG.copy()
         # config["env_config"] = {"name": "MiniGrid-FourRooms-v0"}
-        config["num_workers"] = 0  # local only
+        config["env_config"] = {"name": "MiniGrid-DoorKey-5x5-v0"}
+        config["num_envs_per_worker"] = 10
+        config["horizon"] = 100  # Make it hard to reach goald just by chance.
         config["model"]["conv_filters"] = CONV_FILTERS
         config["model"]["use_lstm"] = True
         config["model"]["lstm_cell_size"] = 256
         config["model"]["lstm_use_prev_action_reward"] = True
+
+        config["train_batch_size"] = 512
+        config["num_sgd_iter"] = 10
+
         config["exploration_config"] = {
             "type": "Curiosity",
             # For the feature NN, use a non-LSTM conv2d net (same as the one
             # in the policy model.
+            "eta": 0.05,
             "feature_net_config": {
                 "conv_filters": CONV_FILTERS,
             },
@@ -118,9 +129,9 @@ class TestCuriosity(unittest.TestCase):
             }
         }
 
-        num_iterations = 1
+        num_iterations = 100
         for _ in framework_iterator(config, frameworks="torch"):
-            trainer = ppo.PPOTrainer(config=config, env="4-room")
+            trainer = ppo.PPOTrainer(config=config, env="mini-grid")
             for _ in range(num_iterations):
                 result = trainer.train()
                 print(result)
