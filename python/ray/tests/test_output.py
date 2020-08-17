@@ -52,10 +52,6 @@ def test_output():
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "_ray_instance":
-        # Call ray stop multiple times to remove all remaining
-        # plasma store processes.
-        for _ in range(3):
-            subprocess.check_call(["ray", "stop"])
         ray.init(num_cpus=1)
         ray.shutdown()
     else:
