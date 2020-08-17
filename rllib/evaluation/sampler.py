@@ -25,7 +25,7 @@ from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray, \
     unbatch
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
-from ray.rllib.utils.types import SampleBatchType, AgentID, PolicyID, \
+from ray.rllib.utils.typing import SampleBatchType, AgentID, PolicyID, \
     EnvObsType, EnvInfoDict, EnvID, MultiEnvDict, EnvActionType, \
     TensorStructType
 

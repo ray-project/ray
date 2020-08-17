@@ -13,7 +13,7 @@ from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     TensorType
 from ray.rllib.utils.spaces.repeated import Repeated
-from ray.rllib.utils.types import ModelConfigDict, TensorStructType
+from ray.rllib.utils.typing import ModelConfigDict, TensorStructType
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()

@@ -69,6 +69,7 @@ from ray.includes.common cimport (
     WORKER_TYPE_IO_WORKER,
     PLACEMENT_STRATEGY_PACK,
     PLACEMENT_STRATEGY_SPREAD,
+    PLACEMENT_STRATEGY_STRICT_PACK,
 )
 from ray.includes.unique_ids cimport (
     CActorID,
@@ -1061,9 +1062,11 @@ cdef class CoreWorker:
 
         if strategy == b"PACK":
             c_strategy = PLACEMENT_STRATEGY_PACK
+        elif strategy == b"SPREAD":
+            c_strategy = PLACEMENT_STRATEGY_SPREAD
         else:
-            if strategy == b"SPREAD":
-                c_strategy = PLACEMENT_STRATEGY_SPREAD
+            if strategy == b"STRICT_PACK":
+                c_strategy = PLACEMENT_STRATEGY_STRICT_PACK
             else:
                 raise TypeError(strategy)
 

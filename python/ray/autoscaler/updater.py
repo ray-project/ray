@@ -286,7 +286,8 @@ class NodeUpdater:
                                     self.cmd_runner.run(
                                         cmd,
                                         ssh_options_override_ssh_key=self.
-                                        auth_config.get("ssh_private_key"))
+                                        auth_config.get("ssh_private_key"),
+                                        run_env="host")
                                 except ProcessRunnerError as e:
                                     if e.msg_type == "ssh_command_failed":
                                         cli_logger.error("Failed.")

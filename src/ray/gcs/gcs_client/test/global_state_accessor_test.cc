@@ -269,6 +269,8 @@ TEST_F(GlobalStateAccessorTest, TestWorkerTable) {
   ASSERT_EQ(global_state_->GetAllWorkerInfo().size(), 2);
 }
 
+// TODO(sang): Add tests after adding asyncAdd
+
 }  // namespace ray
 
 int main(int argc, char **argv) {

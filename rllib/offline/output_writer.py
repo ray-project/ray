@@ -1,6 +1,6 @@
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.annotations import PublicAPI
-from ray.rllib.utils.types import SampleBatchType
+from ray.rllib.utils.typing import SampleBatchType
 
 
 @PublicAPI
