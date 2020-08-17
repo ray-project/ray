@@ -2,6 +2,8 @@ import pytest
 from ray.tests.test_autoscaler import MockProvider, MockProcessRunner
 from ray.autoscaler.command_runner import SSHCommandRunner, \
     _with_environment_variables, DockerCommandRunner
+from getpass import getuser
+import hashlib
 
 auth_config = {
     "ssh_user": "ray",
@@ -28,12 +30,18 @@ def test_ssh_command_runner():
     process_runner = MockProcessRunner()
     provider = MockProvider()
     provider.create_node({}, {}, 1)
+    cluster_name = "cluster"
+    ssh_control_hash = hashlib.md5(cluster_name.encode()).hexdigest()
+    ssh_user_hash = hashlib.md5(getuser().encode()).hexdigest()
+    ssh_control_path = "/tmp/ray_ssh_{}/{}".format(
+        ssh_user_hash[:10],
+        ssh_control_hash[:10])
     args = {
         "log_prefix": "prefix",
         "node_id": 0,
         "provider": provider,
         "auth_config": auth_config,
-        "cluster_name": "cluster",
+        "cluster_name": cluster_name,
         "process_runner": process_runner,
         "use_internal_ip": False,
     }
@@ -67,7 +75,7 @@ def test_ssh_command_runner():
         "-o",
         "ControlMaster=auto",
         "-o",
-        "ControlPath=/tmp/ray_ssh_534b44a19b/06b2d4b91b/%C",
+        "ControlPath={}/%C".format(ssh_control_path),
         "-o",
         "ControlPersist=10s",
         "-o",
@@ -90,13 +98,19 @@ def test_docker_command_runner():
     process_runner = MockProcessRunner()
     provider = MockProvider()
     provider.create_node({}, {}, 1)
+    cluster_name = "cluster"
+    ssh_control_hash = hashlib.md5(cluster_name.encode()).hexdigest()
+    ssh_user_hash = hashlib.md5(getuser().encode()).hexdigest()
+    ssh_control_path = "/tmp/ray_ssh_{}/{}".format(
+        ssh_user_hash[:10],
+        ssh_control_hash[:10])
     docker_config = {"container_name": "container"}
     args = {
         "log_prefix": "prefix",
         "node_id": 0,
         "provider": provider,
         "auth_config": auth_config,
-        "cluster_name": "cluster",
+        "cluster_name": cluster_name,
         "process_runner": process_runner,
         "use_internal_ip": False,
         "docker_config": docker_config,
@@ -118,7 +132,7 @@ def test_docker_command_runner():
         "UserKnownHostsFile=/dev/null", "-o", "IdentitiesOnly=yes", "-o",
         "ExitOnForwardFailure=yes", "-o", "ServerAliveInterval=5", "-o",
         "ServerAliveCountMax=3", "-o", "ControlMaster=auto", "-o",
-        "ControlPath=/tmp/ray_ssh_534b44a19b/06b2d4b91b/%C", "-o",
+        "ControlPath={}/%C".format(ssh_control_path), "-o",
         "ControlPersist=10s", "-o", "ConnectTimeout=120s", "ray@1.2.3.4",
         "bash", "--login", "-c", "-i", cmd
     ]
