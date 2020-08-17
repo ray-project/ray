@@ -352,7 +352,7 @@ and opens all the necessary ports to support the Ray cluster.
 .. code-block:: yaml
 
     docker:
-        image: tensorflow/tensorflow:1.5.0-py3
+        image: rayproject/ray:0.8.7
         container_name: ray_docker
 
 If Docker is not installed, add the following commands to ``initialization_commands`` to install it.

@@ -30,3 +30,10 @@ def placement_group(bundles: List[Dict[str, float]],
         name, bundles, strategy)
 
     return placement_group_id
+
+
+def placement_group_table(placement_group_id):
+    assert placement_group_id is not None
+    worker = ray.worker.global_worker
+    worker.check_connected()
+    return ray.state.state.placement_group_table(placement_group_id)
