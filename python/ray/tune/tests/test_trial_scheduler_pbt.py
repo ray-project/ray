@@ -73,7 +73,7 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
                 "c": 1
             },
             fail_fast=True,
-            num_samples=20,
+            num_samples=4,
             global_checkpoint_period=1,
             checkpoint_freq=1,
             checkpoint_at_end=True,
@@ -81,7 +81,7 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             checkpoint_score_attr="min-training_iteration",
             scheduler=scheduler,
             name="testPermutationContinuation",
-            stop={"training_iteration": 5})
+            stop={"training_iteration": 3})
 
 
 if __name__ == "__main__":
