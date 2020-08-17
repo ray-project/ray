@@ -6,7 +6,7 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER
-from ray.rllib.utils.types import SampleBatchType
+from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor
 
 torch, nn = try_import_torch()

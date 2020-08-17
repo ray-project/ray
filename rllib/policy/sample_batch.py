@@ -8,7 +8,7 @@ from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.compression import pack, unpack, is_compressed
 from ray.rllib.utils.memory import concat_aligned
 from ray.rllib.utils.deprecation import deprecation_warning
-from ray.rllib.utils.types import TensorType
+from ray.rllib.utils.typing import TensorType
 
 # Default policy id for single agent environments
 DEFAULT_POLICY_ID = "default_policy"

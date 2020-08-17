@@ -74,13 +74,25 @@ class GcsScheduleStrategy {
       const std::unique_ptr<ScheduleContext> &context) = 0;
 };
 
+/// The `GcsPackStrategy` is that pack all bundles in one node as much as possible.
+/// If one node does not have enough resources, we need to divide bundles to multiple
+/// nodes.
 class GcsPackStrategy : public GcsScheduleStrategy {
  public:
   ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
                        const std::unique_ptr<ScheduleContext> &context) override;
 };
 
+/// The `GcsSpreadStrategy` is that spread all bundles in different nodes.
 class GcsSpreadStrategy : public GcsScheduleStrategy {
+ public:
+  ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
+                       const std::unique_ptr<ScheduleContext> &context) override;
+};
+
+/// The `GcsStrictPackStrategy` is that all bundles must be scheduled to one node. If one
+/// node does not have enough resources, it will fail to schedule.
+class GcsStrictPackStrategy : public GcsScheduleStrategy {
  public:
   ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
                        const std::unique_ptr<ScheduleContext> &context) override;
