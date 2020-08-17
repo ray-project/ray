@@ -139,7 +139,7 @@ class EpsilonGreedy(Exploration):
             # Mask out actions, whose Q-values are -inf, so that we don't
             # even consider them for exploration.
             random_valid_action_logits = torch.where(
-                q_values == -float("inf"),
+                q_values <= -1e15,
                 torch.ones_like(q_values) * 0.0, torch.ones_like(q_values))
             # A random action.
             random_actions = torch.squeeze(
