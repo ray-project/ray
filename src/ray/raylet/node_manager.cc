@@ -1738,12 +1738,7 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
         HandleDirectCallTaskUnblocked(worker);
       }
       if (new_scheduler_enabled_) {
-        new_resource_scheduler_->SubtractCPUResourceInstances(
-            worker->GetBorrowedCPUInstances());
-        new_resource_scheduler_->FreeLocalTaskResources(worker->GetAllocatedInstances());
-        worker->ClearAllocatedInstances();
-
-        cluster_task_manager_->HandleTaskFinished(worker->GetAssignedTaskId());
+        cluster_task_manager_->HandleTaskFinished(worker);
       }
       HandleWorkerAvailable(worker);
     }

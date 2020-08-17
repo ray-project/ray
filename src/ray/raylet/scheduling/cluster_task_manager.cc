@@ -154,14 +154,11 @@ void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> ready_ids) {
   }
 }
 
-void ClusterTaskManager::HandleTaskFinished(const TaskID &task_id) {
-  auto iter = running_tasks_.find(task_id);
-  if (iter != running_tasks_.end()) {
-    running_tasks_.erase(iter);
-  } else {
-    // This shouldn't happen (unless the worker resends a ReturnWorker request?).
-    RAY_CHECK(false) << "Received TaskDone for unknown task.";
-  }
+void ClusterTaskManager::HandleTaskFinished(std::shared_ptr<WorkerInterface> worker) {
+  cluster_resource_scheduler_->SubtractCPUResourceInstances(
+                                                        worker->GetBorrowedCPUInstances());
+  cluster_resource_scheduler_->FreeLocalTaskResources(worker->GetAllocatedInstances());
+  worker->ClearAllocatedInstances();
 }
 
 bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
@@ -187,17 +184,12 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
   return false;
 }
 
-bool ClusterTaskManager::IsRunning(const TaskID &task_id) const {
-  return running_tasks_.find(task_id) != running_tasks_.end();
-}
-
 std::string ClusterTaskManager::DebugString() {
   std::stringstream buffer;
   buffer << "========== Node: " << self_node_id_ << " =================\n";
   buffer << "Schedule queue length: " << tasks_to_schedule_.size() << "\n";
   buffer << "Dispatch queue length: " << tasks_to_dispatch_.size() << "\n";
   buffer << "Waiting tasks size: " << waiting_tasks_.size() << "\n";
-  buffer << "Running tasks size: " << running_tasks_.size() << "\n";
   buffer << "cluster_resource_scheduler state: "
          << cluster_resource_scheduler_->DebugString() << "\n";
   buffer << "==================================================";
@@ -217,7 +209,6 @@ void ClusterTaskManager::Dispatch(
 
   RAY_CHECK(leased_workers.find(worker->WorkerId()) == leased_workers.end());
   leased_workers[worker->WorkerId()] = worker;
-  running_tasks_.insert(task_spec.TaskId());
 
   // Update our internal view of the cluster state.
   std::shared_ptr<TaskResourceInstances> allocated_resources;

@@ -35,7 +35,8 @@ typedef std::function<boost::optional<rpc::GcsNodeInfo>(const ClientID &node_id)
 ///    still capable of running the task, then dispatch it.
 ///     * Step 4 should be run any time there is a new task to dispatch *or*
 ///       there is a new worker which can dispatch the tasks.
-/// 5. When a worker finishes executing its task(s), the requester will return it.
+/// 5. When a worker finishes executing its task(s), the requester will return
+///    it and we should release the resources in our view of the node's state.
 class ClusterTaskManager {
  public:
   /// fullfills_dependencies_func Should return if all dependencies are
@@ -85,8 +86,8 @@ class ClusterTaskManager {
 
   /// (Step 5) Call once a task finishes (i.e. a worker is returned).
   ///
-  /// \param task_id: The id of the task that is finished.
-  void HandleTaskFinished(const TaskID &task_id);
+  /// \param worker: The worker which was running the task.
+  void HandleTaskFinished(std::shared_ptr<WorkerInterface> worker);
 
   /// Attempt to cancel an already queued task.
   ///
@@ -95,9 +96,6 @@ class ClusterTaskManager {
   /// \return True if task was successfully removed. This function will return
   /// false if the task is already running.
   bool CancelTask(const TaskID &task_id);
-
-  /// Check if a task is currently running.
-  bool IsRunning(const TaskID &task_id) const;
 
   std::string DebugString();
 
@@ -114,8 +112,6 @@ class ClusterTaskManager {
   std::deque<Work> tasks_to_dispatch_;
   /// Tasks waiting for arguments to be transferred locally.
   absl::flat_hash_map<TaskID, Work> waiting_tasks_;
-  /// Tasks that are currently running.
-  absl::flat_hash_set<TaskID> running_tasks_;
 
   /// Determine whether a task should be immediately dispatched,
   /// or placed on a wait queue.
