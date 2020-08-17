@@ -1721,7 +1721,6 @@ void NodeManager::HandleCancelResourceReserve(
 void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
                                      rpc::ReturnWorkerReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO) << "Worker Returned";
   // Read the resource spec submitted by the client.
   auto worker_id = WorkerID::FromBinary(request.worker_id());
   std::shared_ptr<WorkerInterface> worker = leased_workers_[worker_id];
@@ -1744,7 +1743,7 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
         new_resource_scheduler_->FreeLocalTaskResources(worker->GetAllocatedInstances());
         worker->ClearAllocatedInstances();
 
-        cluster_task_manager_->TaskFinished(worker->GetAssignedTaskId());
+        cluster_task_manager_->HandleTaskFinished(worker->GetAssignedTaskId());
       }
       HandleWorkerAvailable(worker);
     }

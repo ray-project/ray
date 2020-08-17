@@ -41,7 +41,10 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       continue;
     } else {
       if (node_id_string == self_node_id_.Binary()) {
-        did_schedule = WaitForTaskArgsRequests(work) || did_schedule;
+        // Warning: WaitForTaskArgsRequests must execute (do not let it short
+        // circuit if did_schedule is true).
+        bool task_scheduled = WaitForTaskArgsRequests(work);
+        did_schedule =  task_scheduled || did_schedule;
       } else {
         // Should spill over to a different node.
         cluster_resource_scheduler_->AllocateRemoteTaskResources(node_id_string,
@@ -151,13 +154,13 @@ void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> ready_ids) {
   }
 }
 
-void ClusterTaskManager::TaskFinished(const TaskID &task_id) {
+void ClusterTaskManager::HandleTaskFinished(const TaskID &task_id) {
   auto iter = running_tasks_.find(task_id);
   if (iter != running_tasks_.end()) {
     running_tasks_.erase(iter);
   } else {
     // This shouldn't happen (unless the worker resends a ReturnWorker request?).
-    RAY_LOG(DEBUG) << "Received TaskDone for unknown task.";
+    RAY_CHECK(false) << "Received TaskDone for unknown task.";
   }
 }
 
@@ -212,7 +215,6 @@ void ClusterTaskManager::Dispatch(
   reply->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());
   reply->mutable_worker_address()->set_raylet_id(self_node_id_.Binary());
 
-  // Do some internal bookkeeping.
   RAY_CHECK(leased_workers.find(worker->WorkerId()) == leased_workers.end());
   leased_workers[worker->WorkerId()] = worker;
   running_tasks_.insert(task_spec.TaskId());

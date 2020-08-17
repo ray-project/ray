@@ -83,17 +83,17 @@ class ClusterTaskManager {
   /// \param readyIds: The tasks which are now ready to be dispatched.
   void TasksUnblocked(const std::vector<TaskID> ready_ids);
 
-  /// (Step 5) Call once a task finishes.
+  /// (Step 5) Call once a task finishes (i.e. a worker is returned).
   ///
   /// \param task_id: The id of the task that is finished.
-  void TaskFinished(const TaskID &task_id);
+  void HandleTaskFinished(const TaskID &task_id);
 
   /// Attempt to cancel an already queued task.
-  /// Note: This function will return false if the task is already running.
   ///
   /// \param task_id: The id of the task to remove.
   ///
-  /// \return True if task was successfully removed.
+  /// \return True if task was successfully removed. This function will return
+  /// false if the task is already running.
   bool CancelTask(const TaskID &task_id);
 
   /// Check if a task is currently running.
