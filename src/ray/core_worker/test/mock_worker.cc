@@ -54,6 +54,8 @@ class MockWorker {
                   _7),  // task_execution_callback
         nullptr,        // check_signals
         nullptr,        // gc_collect
+        nullptr,        // spill_objects
+        nullptr,        // restore_spilled_objects
         nullptr,        // get_lang_stack
         nullptr,        // kill_main
         true,           // ref_counting_enabled

@@ -27,11 +27,12 @@ namespace raylet {
 
 /// A constructor responsible for initializing the state of a worker.
 Worker::Worker(const WorkerID &worker_id, const Language &language,
-               const std::string &ip_address,
+               rpc::WorkerType worker_type, const std::string &ip_address,
                std::shared_ptr<ClientConnection> connection,
                rpc::ClientCallManager &client_call_manager)
     : worker_id_(worker_id),
       language_(language),
+      worker_type_(worker_type),
       ip_address_(ip_address),
       assigned_port_(-1),
       port_(-1),
@@ -40,6 +41,8 @@ Worker::Worker(const WorkerID &worker_id, const Language &language,
       blocked_(false),
       client_call_manager_(client_call_manager),
       is_detached_actor_(false) {}
+
+rpc::WorkerType Worker::GetWorkerType() const { return worker_type_; }
 
 void Worker::MarkDead() { dead_ = true; }
 

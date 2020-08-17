@@ -178,6 +178,8 @@ Test that it works by running the following commands from your local machine:
 
 .. tip:: This section describes the easiest way to launch a Ray cluster on Kubernetes. See this :ref:`document for advanced usage <ray-k8s-deploy>` of Kubernetes with Ray.
 
+.. tip:: If you would like to use Ray Tune in your Kubernetes cluster, have a look at :ref:`this short guide to make it work <tune-kubernetes>`.
+
 .. _cluster-private-setup:
 
 Local On Premise Cluster (List of nodes)

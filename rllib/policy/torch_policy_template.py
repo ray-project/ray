@@ -13,7 +13,7 @@ from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import convert_to_non_torch_type
-from ray.rllib.utils.types import TensorType, TrainerConfigDict
+from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
 torch, _ = try_import_torch()
 

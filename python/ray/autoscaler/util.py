@@ -110,7 +110,7 @@ def hash_launch_conf(node_conf, auth):
     full_auth = auth.copy()
     for key_type in ["ssh_private_key", "ssh_public_key"]:
         if key_type in auth:
-            with open(auth[key_type]) as key:
+            with open(os.path.expanduser(auth[key_type])) as key:
                 full_auth[key_type] = key.read()
     hasher.update(
         json.dumps([node_conf, full_auth], sort_keys=True).encode("utf-8"))
