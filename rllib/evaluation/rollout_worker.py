@@ -420,7 +420,7 @@ class RolloutWorker(ParallelIteratorWorker):
         if (ray.is_initialized()
                 and ray.worker._mode() != ray.worker.LOCAL_MODE):
             # Check available number of GPUs
-            if not ray.get_gpu_ids(as_str=True):
+            if not ray.get_gpu_ids():
                 logger.debug("Creating policy evaluation worker {}".format(
                     worker_index) +
                              " on CPU (please ignore any CUDA init errors)")

@@ -33,37 +33,45 @@ class TestCuriosity(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
-    def test_curiosity_on_4_room_domain(self):
+    def test_curiosity_on_frozen_lake(self):
         config = ppo.DEFAULT_CONFIG.copy()
         # 4-room env as frozen-lake (with holes instead of walls).
         config["env"] = "FrozenLake-v0"
-        config["env_config"] = {"desc": [
-            "FFFFFFFFHFFFFFFFF",
-            "FSFFFFFFHFFFFFFFF",
-            "FFFFFFFFHFFFFFFFF",
-            "FFFFFFFFHFFFFFFFF",
-            "FFFFFFFFHFFFFFFFF",
-            "FFFFFFFFFFFFFFFFF",
-            "FFFFFFFFHFFFFFFFF",
-            "FFFFFFFFHFFFFFFFF",
-            "HHHHFHHHHHHHHFHHH",
-            "FFFFFFFFHFFFFFFFF",
-            "FFFFFFFFHFFFFFFFF",
-            "FFFFFFFFHFFFFFFFF",
-            "FFFFFFFFHFFFFFFFF",
-            "FFFFFFFFHFFFFGFFF",
-            "FFFFFFFFHFFFFFFFF",
-            "FFFFFFFFFFFFFFFFF",
-            "FFFFFFFFHFFFFFFFF",
-            "FFFFFFFFHFFFFFFFF",
-        ]}
+        config["env_config"] = {
+            "desc": [
+                "SFFFFFFFFFFFFFFF",
+                "FFFFFFFFFFFFFFFF",
+                "FFFFFFFFFFFFFFFF",
+                "FFFFFFFFFFFFFFFF",
+                "FFFFFFFFFFFFFFFF",
+                "FFFFFFFFFFFFFFFF",
+                "FFFFFFFFFFFFFFFF",
+                "FFFFFFFFFFFFFFFF",
+                "FFFFFFFFFFFFFFFF",
+                "FFFFFFFFFFFFFFFF",
+                "FFFFFFFFFFFFFFFF",
+                "FFFFFFFFFFFFFFFF",
+                "FFFFFFFFFFFFFFFF",
+                "FFFFFFFFFFFFFFFF",
+                "FFFFFFFFFFFFFFFF",
+                "FFFFFFFFFFFFFFFG",
+            ],
+            "is_slippery": False
+        }
+        # limit horizon to make it really hard for non-curious agent to reach
+        # the goal state.
+        config["horizon"] = 50
         config["num_workers"] = 0  # local only
+        config["train_batch_size"] = 512
+        config["num_sgd_iter"] = 10
 
-        num_iterations = 10
+        num_iterations = 30
         for _ in framework_iterator(config, frameworks="torch"):
             # W/ Curiosity.
             config["exploration_config"] = {
                 "type": "Curiosity",
+                "feature_dim": 128,
+                "eta": 0.05,
                 "sub_exploration": {
                     "type": "StochasticSampling",
                 }

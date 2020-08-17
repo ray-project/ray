@@ -240,6 +240,13 @@ def build_torch_policy(
             # Do all post-processing always with no_grad().
             # Not using this here will introduce a memory leak (issue #6962).
             with torch.no_grad():
+                #TODO
+                import numpy as np
+                states = np.argmax(sample_batch[SampleBatch.OBS], -1)
+                max_x = np.max(states % 16)
+                max_y = np.max(states // 16)
+                print("max-x/y={}/{}".format(max_x, max_y))
+
                 # Call super's postprocess_trajectory first.
                 sample_batch = super().postprocess_trajectory(
                     convert_to_non_torch_type(sample_batch),

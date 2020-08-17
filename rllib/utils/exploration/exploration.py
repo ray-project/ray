@@ -143,21 +143,21 @@ class Exploration:
         """
         return sample_batch
 
-    @DeveloperAPI
-    def preprocess_train_batch(self, train_batch):
-        """Handles pre-processing of a train batch (before the Policy's loss).
-
-        May change the given batch in place. This callback is invoked by the
-        Policy, before the Policy's loss and Exploration.get_exploration_loss()
-        are called.
-
-        Args:
-            train_batch (SampleBatch): The SampleBatch object to pre-process.
-
-        Returns:
-            SampleBatch: The pre-processed train data.
-        """
-        return train_batch
+    #@DeveloperAPI
+    #def preprocess_train_batch(self, train_batch):
+    #    """Handles pre-processing of a train batch (before the Policy's loss).
+    #
+    #    May change the given batch in place. This callback is invoked by the
+    #    Policy, before the Policy's loss and Exploration.get_exploration_loss()
+    #    are called.
+    #
+    #    Args:
+    #        train_batch (SampleBatch): The SampleBatch object to pre-process.
+    #
+    #    Returns:
+    #        SampleBatch: The pre-processed train data.
+    #    """
+    #    return train_batch
 
     @DeveloperAPI
     def get_exploration_optimizer(self, optimizers: List[LocalOptimizer]):
