@@ -44,7 +44,7 @@ bool ClusterTaskManager::SchedulePendingTasks() {
         // Warning: WaitForTaskArgsRequests must execute (do not let it short
         // circuit if did_schedule is true).
         bool task_scheduled = WaitForTaskArgsRequests(work);
-        did_schedule =  task_scheduled || did_schedule;
+        did_schedule = task_scheduled || did_schedule;
       } else {
         // Should spill over to a different node.
         cluster_resource_scheduler_->AllocateRemoteTaskResources(node_id_string,
