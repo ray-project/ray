@@ -10,7 +10,6 @@ from ray import (
     gcs_utils,
     services,
 )
-from ray.core.generated.common_pb2 import PlacementStrategy
 from ray.utils import (decode, binary_to_hex, hex_to_binary)
 
 from ray._raylet import GlobalStateAccessor
@@ -399,6 +398,9 @@ class GlobalState:
                 "Get all placement group is not implemented yet.")
 
     def _gen_placement_group_info(self, placement_group_info):
+        # This should be imported here, otherwise, it will error doc build.
+        from ray.core.generated.common_pb2 import PlacementStrategy
+
         def get_state(state):
             if state == ray.gcs_utils.PlacementGroupTableData.PENDING:
                 return "PENDING"
