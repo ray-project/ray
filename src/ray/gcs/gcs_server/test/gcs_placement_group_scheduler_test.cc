@@ -87,13 +87,15 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     // Failed to schedule the placement group, because the node resources is not enough.
     auto request = Mocker::GenCreatePlacementGroupRequest("", strategy);
     auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(request);
-    scheduler_->Schedule(placement_group, failure_handler, success_handler);
+    scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler,
+                                        success_handler);
     WaitPendingDone(failure_placement_groups_, 1);
     ASSERT_EQ(0, success_placement_groups_.size());
 
     // A new node is added, and the rescheduling is successful.
     AddNode(Mocker::GenNodeInfo(0), 2);
-    scheduler_->Schedule(placement_group, failure_handler, success_handler);
+    scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler,
+                                        success_handler);
     ASSERT_TRUE(raylet_client_->GrantResourceReserve());
     ASSERT_TRUE(raylet_client_->GrantResourceReserve());
     WaitPendingDone(success_placement_groups_, 1);
@@ -255,7 +257,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictPackStrategyBalancedScheduling)
     auto request =
         Mocker::GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::STRICT_PACK);
     auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(request);
-    scheduler_->Schedule(placement_group, failure_handler, success_handler);
+    scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler,
+                                        success_handler);
 
     if (!raylet_client_->lease_callbacks.empty()) {
       ASSERT_TRUE(raylet_client_->GrantResourceReserve());
@@ -290,7 +293,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictPackStrategyResourceCheck) {
   auto request =
       Mocker::GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::STRICT_PACK);
   auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(request);
-  scheduler_->Schedule(placement_group, failure_handler, success_handler);
+  scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler, success_handler);
   ASSERT_TRUE(raylet_client_->GrantResourceReserve());
   ASSERT_TRUE(raylet_client_->GrantResourceReserve());
   WaitPendingDone(success_placement_groups_, 1);
@@ -401,7 +404,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPackStrategyLargeBundlesScheduling) {
   auto request =
       Mocker::GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::PACK, 15);
   auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(request);
-  scheduler_->Schedule(placement_group, failure_handler, success_handler);
+  scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler, success_handler);
   RAY_CHECK(raylet_client_->num_lease_requested > 0);
   RAY_CHECK(raylet_client1_->num_lease_requested > 0);
   for (int index = 0; index < raylet_client_->num_lease_requested; ++index) {
