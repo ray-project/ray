@@ -353,9 +353,6 @@ script:
   # ray dashboard tests
   - if [ "$RAY_CI_DASHBOARD_AFFECTED" == "1" ]; then ./ci/keep_alive bazel test python/ray/dashboard/...; fi
 
-  # ray new dashboard tests
-  - if [ "$RAY_CI_DASHBOARD_AFFECTED" == "1" ]; then ./ci/keep_alive bazel test python/ray/new_dashboard/...; fi
-
   # ray operator tests
   - (cd deploy/ray-operator && export CC=gcc && suppress_output go build && suppress_output go test ./...)
 

@@ -377,6 +377,57 @@ class GlobalState:
 
         return dict(result)
 
+    # SANG-TODO Add functions.
+    def placement_group_table(self, placement_group_id=None):
+        self._check_connected()
+
+        if placement_group_id is not None:
+            placement_group_id = ray.PlacementGroupID(
+                hex_to_binary(placement_group_id.hex()))
+            placement_group_info = (
+                self.global_state_accessor.get_placement_group_info(
+                    placement_group_id))
+            if placement_group_info is None:
+                return {}
+            else:
+                placement_group_info = (gcs_utils.PlacementGroupTableData.
+                                        FromString(placement_group_info))
+                return self._gen_placement_group_info(placement_group_info)
+        else:
+            raise NotImplementedError(
+                "Get all placement group is not implemented yet.")
+
+    def _gen_placement_group_info(self, placement_group_info):
+        # This should be imported here, otherwise, it will error doc build.
+        from ray.core.generated.common_pb2 import PlacementStrategy
+
+        def get_state(state):
+            if state == ray.gcs_utils.PlacementGroupTableData.PENDING:
+                return "PENDING"
+            elif state == ray.gcs_utils.PlacementGroupTableData.ALIVE:
+                return "ALIVE"
+            else:
+                return "DEAD"
+
+        def get_strategy(strategy):
+            if strategy == PlacementStrategy.PACK:
+                return "PACK"
+            else:
+                return "SPREAD"
+
+        assert placement_group_info is not None
+        return {
+            "placement_group_id": binary_to_hex(
+                placement_group_info.placement_group_id),
+            "name": placement_group_info.name,
+            "bundles": {
+                bundle.bundle_id.bundle_index: bundle.unit_resources
+                for bundle in placement_group_info.bundles
+            },
+            "strategy": get_strategy(placement_group_info.strategy),
+            "state": get_state(placement_group_info.state),
+        }
+
     def _seconds_to_microseconds(self, time_in_seconds):
         """A helper function for converting seconds to microseconds."""
         time_in_microseconds = 10**6 * time_in_seconds

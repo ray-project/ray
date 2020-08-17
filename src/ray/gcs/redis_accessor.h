@@ -362,6 +362,8 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
   Status AsyncReportHeartbeat(const std::shared_ptr<HeartbeatTableData> &data_ptr,
                               const StatusCallback &callback) override;
 
+  void AsyncReReportHeartbeat() override;
+
   Status AsyncSubscribeHeartbeat(
       const SubscribeCallback<ClientID, HeartbeatTableData> &subscribe,
       const StatusCallback &done) override;
@@ -479,6 +481,10 @@ class RedisPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor {
 
   Status AsyncRemovePlacementGroup(const PlacementGroupID &placement_group_id,
                                    const StatusCallback &callback) override;
+
+  Status AsyncGet(
+      const PlacementGroupID &placement_group_id,
+      const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) override;
 };
 
 }  // namespace gcs

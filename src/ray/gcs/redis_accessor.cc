@@ -660,6 +660,8 @@ Status RedisNodeInfoAccessor::AsyncReportHeartbeat(
   return heartbeat_table.Add(JobID::Nil(), node_id, data_ptr, on_done);
 }
 
+void RedisNodeInfoAccessor::AsyncReReportHeartbeat() {}
+
 Status RedisNodeInfoAccessor::AsyncSubscribeHeartbeat(
     const SubscribeCallback<ClientID, HeartbeatTableData> &subscribe,
     const StatusCallback &done) {
@@ -833,6 +835,12 @@ Status RedisPlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
 
 Status RedisPlacementGroupInfoAccessor::AsyncRemovePlacementGroup(
     const PlacementGroupID &placement_group_id, const StatusCallback &callback) {
+  return Status::Invalid("Not implemented");
+}
+
+Status RedisPlacementGroupInfoAccessor::AsyncGet(
+    const PlacementGroupID &placement_group_id,
+    const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) {
   return Status::Invalid("Not implemented");
 }
 

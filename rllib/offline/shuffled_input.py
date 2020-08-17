@@ -3,7 +3,7 @@ import random
 
 from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils.types import SampleBatchType
+from ray.rllib.utils.typing import SampleBatchType
 
 logger = logging.getLogger(__name__)
 

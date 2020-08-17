@@ -111,15 +111,17 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
 
   ~GcsPlacementGroupManager() = default;
 
-  // TODO-SANG fill the description.
   void HandleCreatePlacementGroup(const rpc::CreatePlacementGroupRequest &request,
                                   rpc::CreatePlacementGroupReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
 
-  // TODO-SANG Fill the description.
   void HandleRemovePlacementGroup(const rpc::RemovePlacementGroupRequest &request,
                                   rpc::RemovePlacementGroupReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleGetPlacementGroup(const rpc::GetPlacementGroupRequest &request,
+                               rpc::GetPlacementGroupReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
 
   /// Register placement_group asynchronously.
   ///

@@ -31,14 +31,10 @@ GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
       lease_client_factory_(std::move(lease_client_factory)) {
   scheduler_strategies_.push_back(std::make_shared<GcsPackStrategy>());
   scheduler_strategies_.push_back(std::make_shared<GcsSpreadStrategy>());
+  scheduler_strategies_.push_back(std::make_shared<GcsStrictPackStrategy>());
 }
 
-/// In this algorithm, we try to pack all the bundles in the node which satisfies the
-/// resource requirements and has the least number of bundles.
-/// TODO(ffbin): At present, only one node will be scheduled. If one node does not have
-/// enough resources, we need to divide bundles to multiple nodes. We will implement
-/// it in the next pr.
-ScheduleMap GcsPackStrategy::Schedule(
+ScheduleMap GcsStrictPackStrategy::Schedule(
     std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
     const std::unique_ptr<ScheduleContext> &context) {
   // Aggregate required resources.
@@ -73,9 +69,31 @@ ScheduleMap GcsPackStrategy::Schedule(
   return schedule_map;
 }
 
-/// This is an initial algorithm to respect spread algorithm.
-/// In this algorithm, we try to spread all the bundle in different node
-/// and don't care the real resource.
+ScheduleMap GcsPackStrategy::Schedule(
+    std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
+    const std::unique_ptr<ScheduleContext> &context) {
+  // The current algorithm is to select a node and deploy as many bundles as possible.
+  // First fill up a node. If the node resource is insufficient, select a new node.
+  // TODO(ffbin): We will speed this up in next PR. Currently it is a double for loop.
+  ScheduleMap schedule_map;
+  const auto &alive_nodes = context->node_manager_.GetClusterRealtimeResources();
+  for (const auto &bundle : bundles) {
+    const auto &required_resources = bundle->GetRequiredResources();
+    for (auto &node : alive_nodes) {
+      if (required_resources.IsSubset(*node.second)) {
+        node.second->SubtractResourcesStrict(required_resources);
+        schedule_map[bundle->BundleId()] = node.first;
+        break;
+      }
+    }
+  }
+
+  if (schedule_map.size() != bundles.size()) {
+    schedule_map.clear();
+  }
+  return schedule_map;
+}
+
 ScheduleMap GcsSpreadStrategy::Schedule(
     std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
     const std::unique_ptr<ScheduleContext> &context) {

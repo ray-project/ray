@@ -254,6 +254,9 @@ class GcsRpcClient {
   /// Remove placement group via GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, RemovePlacementGroup,
                              placement_group_info_grpc_client_, )
+  /// Get placement group via GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, GetPlacementGroup,
+                             placement_group_info_grpc_client_, )
 
  private:
   std::function<void(GcsServiceFailureType)> gcs_service_failure_detected_;
