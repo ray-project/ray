@@ -53,6 +53,8 @@ class MockExporterClient1 : public MetricExporterDecorator {
     RAY_LOG(DEBUG) << "Client 1 " << client1_count << " last metric "
                    << points.back().metric_name << ", value " << points.back().value;
     RecordLastHistData(points);
+    // Point size must be less than or equal to report batch size.
+    ASSERT_GE(kMockReportBatchSize, points.size());
   }
   int GetCount() { return client1_count; }
   int GetValue() { return client1_value; }

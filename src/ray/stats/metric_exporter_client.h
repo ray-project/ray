@@ -16,28 +16,16 @@
 
 #include <boost/asio.hpp>
 
-#include "opencensus/stats/stats.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/metrics_agent_client.h"
 #include "ray/stats/metric.h"
 
 namespace ray {
 namespace stats {
-
-static constexpr size_t kDefaultBatchSize = 200;
-
 /// Interface class for abstract metrics exporter client.
 class MetricExporterClient {
  public:
   virtual void ReportMetrics(const std::vector<MetricPoint> &points) = 0;
-  virtual void ReportMetrics(
-      const std::vector<std::pair<opencensus::stats::ViewDescriptor,
-                                  opencensus::stats::ViewData>> &opencensus_data) {
-    // Unimplemented Empty Method
-    RAY_LOG(WARNING) << "ReportMetrics on opencensus_data is not implemented in "
-                        "MetricExporterClient baseclass.";
-  };
-
   virtual ~MetricExporterClient() = default;
 };
 
@@ -55,8 +43,8 @@ class StdoutExporterClient : public MetricExporterClient {
 /// std::shared_ptr<MetricExporterClient> exporter(new StdoutExporterClient());
 /// std::shared_ptr<MetricExporterClient> dashboard_exporter_client(
 ///         new DashboardExporterCLient(exporter, gcs_rpc_client));
-/// Both dahsboard client and std logging will emit when
-/// dahsboard_exporter_client->ReportMetrics(points) is called.
+///  Both dahsboard client and std logging will emit when
+//  dahsboard_exporter_client->ReportMetrics(points) is called.
 /// Actually, opentsdb exporter can be added like above mentioned style.
 class MetricExporterDecorator : public MetricExporterClient {
  public:
@@ -70,24 +58,19 @@ class MetricExporterDecorator : public MetricExporterClient {
 class MetricsAgentExporter : public MetricExporterDecorator {
  public:
   MetricsAgentExporter(std::shared_ptr<MetricExporterClient> exporter, const int port,
-                       boost::asio::io_service &io_service, const std::string address,
-                       size_t report_batch_size = kDefaultBatchSize);
+                       boost::asio::io_service &io_service, const std::string address);
 
   ~MetricsAgentExporter() {}
 
   void ReportMetrics(const std::vector<MetricPoint> &points) override;
-  void ReportMetrics(
-      const std::vector<
-          std::pair<opencensus::stats::ViewDescriptor, opencensus::stats::ViewData>>
-          &opencensus_data) override;
 
  private:
   /// Client to call a metrics agent gRPC server.
   std::unique_ptr<rpc::MetricsAgentClient> client_;
   /// Call Manager for gRPC client.
   rpc::ClientCallManager client_call_manager_;
-  /// Auto max minbatch size for reporting metrics to external components.
-  size_t report_batch_size_;
+  /// Whether or not description and units information for metrics should be updated.
+  bool should_update_description_ = true;
 };
 
 }  // namespace stats

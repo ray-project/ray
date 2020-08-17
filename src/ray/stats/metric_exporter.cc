@@ -67,12 +67,17 @@ void MetricExporter::ExportToPoints(
   RAY_LOG(DEBUG) << "Metric name " << metric_name << ", mean value : " << mean_point.value
                  << " max value : " << max_point.value
                  << "  min value : " << min_point.value;
+
+  if (points.size() >= report_batch_size_) {
+    RAY_LOG(DEBUG) << "Point size : " << points.size();
+    metric_exporter_client_->ReportMetrics(points);
+    points.clear();
+  }
 }
 
-using CensusViewData = std::vector<
-    std::pair<opencensus::stats::ViewDescriptor, opencensus::stats::ViewData>>;
-
-void MetricExporter::ExportViewData(const CensusViewData &data) {
+void MetricExporter::ExportViewData(
+    const std::vector<std::pair<opencensus::stats::ViewDescriptor,
+                                opencensus::stats::ViewData>> &data) {
   std::vector<MetricPoint> points;
   // NOTE(lingxuan.zlx): There is no sampling in view data, so all raw metric
   // data will be processed.
@@ -101,9 +106,8 @@ void MetricExporter::ExportViewData(const CensusViewData &data) {
       break;
     }
   }
-
+  RAY_LOG(DEBUG) << "Point size : " << points.size();
   metric_exporter_client_->ReportMetrics(points);
-  metric_exporter_client_->ReportMetrics(data);
 }
 
 }  // namespace stats
