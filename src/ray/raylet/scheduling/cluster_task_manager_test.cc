@@ -62,6 +62,8 @@ class MockWorker : public WorkerInterface {
 
   WorkerID WorkerId() const { return worker_id_; }
 
+  rpc::WorkerType GetWorkerType() const { return rpc::WorkerType::WORKER; }
+
   int Port() const { return port_; }
 
   void SetOwnerAddress(const rpc::Address &address) { address_ = address; }

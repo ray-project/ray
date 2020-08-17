@@ -27,6 +27,7 @@ def gen_streaming_java_deps():
 	        "org.powermock:powermock-api-mockito:1.6.6",
         ],
         repositories = [
+            "https://repo.spring.io/plugins-release/",
             "https://repo1.maven.org/maven2/",
         ],
     )

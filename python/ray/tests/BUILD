@@ -48,6 +48,7 @@ py_test_module_list(
     "test_stress_sharded.py",
     "test_unreconstructable_errors.py",
     "test_tensorflow.py",
+    "test_object_spilling.py",
   ],
   size = "medium",
   extra_srcs = SRCS,

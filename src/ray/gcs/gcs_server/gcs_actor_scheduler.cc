@@ -249,9 +249,9 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
 
 void GcsActorScheduler::RetryLeasingWorkerFromNode(
     std::shared_ptr<GcsActor> actor, std::shared_ptr<rpc::GcsNodeInfo> node) {
-  RAY_UNUSED(execute_after(
-      io_context_, [this, node, actor] { DoRetryLeasingWorkerFromNode(actor, node); },
-      RayConfig::instance().gcs_lease_worker_retry_interval_ms()));
+  execute_after(io_context_,
+                [this, node, actor] { DoRetryLeasingWorkerFromNode(actor, node); },
+                RayConfig::instance().gcs_lease_worker_retry_interval_ms());
 }
 
 void GcsActorScheduler::DoRetryLeasingWorkerFromNode(
@@ -370,9 +370,9 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
 
 void GcsActorScheduler::RetryCreatingActorOnWorker(
     std::shared_ptr<GcsActor> actor, std::shared_ptr<GcsLeasedWorker> worker) {
-  RAY_UNUSED(execute_after(
-      io_context_, [this, actor, worker] { DoRetryCreatingActorOnWorker(actor, worker); },
-      RayConfig::instance().gcs_create_actor_retry_interval_ms()));
+  execute_after(io_context_,
+                [this, actor, worker] { DoRetryCreatingActorOnWorker(actor, worker); },
+                RayConfig::instance().gcs_create_actor_retry_interval_ms());
 }
 
 void GcsActorScheduler::DoRetryCreatingActorOnWorker(

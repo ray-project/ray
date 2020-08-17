@@ -6,7 +6,7 @@ from ray.util.iter_metrics import SharedMetrics
 from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.execution.common import \
     STEPS_SAMPLED_COUNTER, _get_shared_metrics
-from ray.rllib.utils.types import SampleBatchType
+from ray.rllib.utils.typing import SampleBatchType
 
 
 class StoreToReplayBuffer:
