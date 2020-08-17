@@ -7,7 +7,6 @@ public interface CheckpointConfig extends Config, Mutable {
 
   String CP_INTERVAL_SECS = "streaming.checkpoint.interval.secs";
   String CP_TIMEOUT_SECS = "streaming.checkpoint.timeout.secs";
-  String CP_PARTIAL_TIMEOUT_SECS = "streaming.checkpoint.partial.timeout.secs";
   String CP_MODE = "streaming.checkpoint.mode";
   String CP_RETAINED_NUM = "streaming.checkpoint.retained.num";
 
@@ -22,10 +21,6 @@ public interface CheckpointConfig extends Config, Mutable {
   @DefaultValue(value = "120")
   @Key(value = CP_TIMEOUT_SECS)
   int cpTimeoutSecs();
-
-  @DefaultValue(value = "120")
-  @Key(value = CP_PARTIAL_TIMEOUT_SECS)
-  int cpPartialTimeoutSecs();
 
   @DefaultValue(value = "sync")
   @Key(value = CP_MODE)

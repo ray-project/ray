@@ -13,6 +13,7 @@ def test_word_count():
         ctx = StreamingContext.Builder() \
             .option("streaming.state-backend.type", "local_file") \
             .option("streaming.state-backend.file-state.root", "/tmp/ray/cp_files/") \
+            .option("streaming.checkpoint.timeout.secs", "3") \
             .build()
 
         print("-----------submit job-------------")
@@ -42,7 +43,7 @@ def test_word_count():
 
         print("-----------checking checkpoint-------------")
         cp_ok_num = checkpoint_success_num()
-        retry_count = 300 / 5  # wait for 5min
+        retry_count = 300000 / 5  # wait for 5min
         while True:
             cur_cp_num = checkpoint_success_num()
             print(

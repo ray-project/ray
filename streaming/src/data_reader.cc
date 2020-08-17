@@ -116,7 +116,7 @@ StreamingStatus DataReader::InitChannelMerger(uint32_t timeout_ms) {
     auto status = GetMessageFromChannel(channel_info_map_[input_queue], msg, timeout_ms, timeout_ms);
     if (StreamingStatus::OK != status) {
       STREAMING_LOG(INFO)
-          << "[Reader] initializing merge, get message from channel timeout, "
+          << "[Reader] initializing merger, get message from channel timeout, "
           << input_queue << ", status => " << static_cast<uint32_t>(status);
       unready_queue_ids_stashed.push_back(input_queue);
       continue;

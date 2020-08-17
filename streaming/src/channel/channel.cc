@@ -68,11 +68,7 @@ StreamingStatus StreamingQueueProducer::CreateQueue() {
                                                  channel_info_.queue_size);
   STREAMING_CHECK(queue_ != nullptr);
 
-  std::vector<ObjectID> queue_ids, failed_queues;
-  queue_ids.push_back(channel_info_.channel_id);
-  upstream_handler->WaitQueues(queue_ids, 10 * 1000, failed_queues);
-
-  STREAMING_LOG(INFO) << "q id => " << channel_info_.channel_id << ", queue size => "
+  STREAMING_LOG(INFO) << "StreamingQueueProducer CreateQueue queue id => " << channel_info_.channel_id << ", queue size => "
                       << channel_info_.queue_size;
 
   return StreamingStatus::OK;
