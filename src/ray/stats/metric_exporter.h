@@ -28,19 +28,21 @@ namespace stats {
 /// opencensus data view, and sends it to the remote (for example
 /// sends metrics to dashboard agents through RPC). How to use it? Register metrics
 /// exporter after a main thread launched.
-class MetricExporter final : public opencensus::stats::StatsExporter::Handler {
+class MetricPointExporter final : public opencensus::stats::StatsExporter::Handler {
  public:
-  explicit MetricExporter(std::shared_ptr<MetricExporterClient> metric_exporter_client,
-                          size_t report_batch_size = kDefaultBatchSize)
+  explicit MetricPointExporter(
+      std::shared_ptr<MetricExporterClient> metric_exporter_client,
+      size_t report_batch_size = kDefaultBatchSize)
       : metric_exporter_client_(metric_exporter_client),
         report_batch_size_(report_batch_size) {}
 
-  ~MetricExporter() = default;
+  ~MetricPointExporter() = default;
 
   static void Register(std::shared_ptr<MetricExporterClient> metric_exporter_client,
                        size_t report_batch_size) {
     opencensus::stats::StatsExporter::RegisterPushHandler(
-        absl::make_unique<MetricExporter>(metric_exporter_client, report_batch_size));
+        absl::make_unique<MetricPointExporter>(metric_exporter_client,
+                                               report_batch_size));
   }
 
   void ExportViewData(

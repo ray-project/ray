@@ -20,7 +20,7 @@ namespace ray {
 namespace stats {
 
 template <>
-void MetricExporter::ExportToPoints(
+void MetricPointExporter::ExportToPoints(
     const opencensus::stats::ViewData::DataMap<opencensus::stats::Distribution>
         &view_data,
     const opencensus::stats::MeasureDescriptor &measure_descriptor,
@@ -75,7 +75,7 @@ void MetricExporter::ExportToPoints(
   }
 }
 
-void MetricExporter::ExportViewData(
+void MetricPointExporter::ExportViewData(
     const std::vector<std::pair<opencensus::stats::ViewDescriptor,
                                 opencensus::stats::ViewData>> &data) {
   std::vector<MetricPoint> points;

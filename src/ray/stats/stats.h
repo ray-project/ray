@@ -96,7 +96,7 @@ static inline void Init(const TagsType &global_tags, const int metrics_agent_por
       absl::Milliseconds(std::max(RayConfig::instance().metrics_report_interval_ms() / 2,
                                   static_cast<uint64_t>(500))));
 
-  MetricExporter::Register(exporter, metrics_report_batch_size);
+  MetricPointExporter::Register(exporter, metrics_report_batch_size);
   opencensus::stats::StatsExporter::SetInterval(
       StatsConfig::instance().GetReportInterval());
   opencensus::stats::DeltaProducer::Get()->SetHarvestInterval(
