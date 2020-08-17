@@ -6,7 +6,7 @@
 
 if [ -z "$KRSYNC_STARTED" ]; then
     export KRSYNC_STARTED=true
-    exec rsync --blocking-io --rsh "$0" $@
+    exec rsync --blocking-io --rsh "$0" "$@"
 fi
 
 # Running as --rsh
@@ -22,4 +22,4 @@ if [ "X$pod" = "X-l" ]; then
     shift
 fi
 
-exec kubectl $namespace exec -i $pod -- "$@"
+exec kubectl "$namespace" exec -i "$pod" -- "$@"

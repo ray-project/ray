@@ -11,9 +11,9 @@ from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.examples.models.mobilenet_v2_with_lstm_models import \
     MobileV2PlusRNNModel, TorchMobileV2PlusRNNModel
 from ray.rllib.models import ModelCatalog
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 cnn_shape = (4, 4, 3)
 # The torch version of MobileNetV2 does channels first.
@@ -32,11 +32,11 @@ if __name__ == "__main__":
 
     # Configure our Trainer.
     config = {
-        "use_pytorch": args.torch,
+        "framework": "torch" if args.torch else "tf",
         "model": {
             "custom_model": "my_model",
             # Extra config passed to the custom model's c'tor as kwargs.
-            "custom_options": {
+            "custom_model_config": {
                 "cnn_shape": cnn_shape_torch if args.torch else cnn_shape,
             },
             "max_seq_len": 20,

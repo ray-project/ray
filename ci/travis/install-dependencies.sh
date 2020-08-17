@@ -32,6 +32,8 @@ install_bazel() {
 install_base() {
   case "${OSTYPE}" in
     linux*)
+      # Expired apt key error: https://github.com/bazelbuild/bazel/issues/11470#issuecomment-633205152
+      curl -f -s -L -R https://bazel.build/bazel-release.pub.gpg | sudo apt-key add - || true
       sudo apt-get update -qq
       pkg_install_helper build-essential curl unzip libunwind-dev python3-pip python3-setuptools \
         tmux gdb
@@ -49,8 +51,13 @@ install_base() {
 }
 
 install_miniconda() {
-  local conda="${CONDA_EXE-}"  # Try to get the activated conda executable
+  if [ "${OSTYPE}" = msys ]; then
+    # Windows is on GitHub Actions, whose built-in Python installations we added direct support for.
+    python --version
+    return 0
+  fi
 
+  local conda="${CONDA_EXE-}"  # Try to get the activated conda executable
   if [ -z "${conda}" ]; then  # If no conda is found, try to find it in PATH
     conda="$(command -v conda || true)"
   fi
@@ -88,9 +95,17 @@ install_miniconda() {
         mkdir -p -- "${miniconda_dir}"
         # We're forced to pass -b for non-interactive mode.
         # Unfortunately it inhibits PATH modifications as a side effect.
-        "${miniconda_target}" -f -b -p "${miniconda_dir}" | grep --line-buffered -v \
-          '^\(reinstalling: \|installing: \|using -f (force) option\|installation finished\.\|$\)'
+        "${WORKSPACE_DIR}"/ci/suppress_output "${miniconda_target}" -f -b -p "${miniconda_dir}"
         conda="${miniconda_dir}/bin/conda"
+        ;;
+    esac
+  else
+    case "${OSTYPE}" in
+      darwin*)
+        # When 'conda' is preinstalled on Mac (as on GitHub Actions), it uses this directory
+        local miniconda_dir="/usr/local/miniconda"
+        sudo mkdir -p -- "${miniconda_dir}"
+        sudo chown -R "${USER}" "${miniconda_dir}"
         ;;
     esac
   fi
@@ -113,7 +128,7 @@ install_miniconda() {
     (
       set +x
       echo "Updating Anaconda Python ${python_version} to ${PYTHON}..."
-      conda install -q -y python="${PYTHON}"
+      "${WORKSPACE_DIR}"/ci/suppress_output conda install -q -y python="${PYTHON}"
     )
   fi
 
@@ -121,8 +136,34 @@ install_miniconda() {
   test -x "${CONDA_PYTHON_EXE}"  # make sure conda is activated
 }
 
+install_shellcheck() {
+  local shellcheck_version="0.7.1"
+  if [ "${shellcheck_version}" != "$(command -v shellcheck > /dev/null && shellcheck --version | sed -n "s/version: //p")" ]; then
+    local osname=""
+    case "${OSTYPE}" in
+      linux*) osname="linux";;
+      darwin*) osname="darwin";;
+    esac
+    local name="shellcheck-v${shellcheck_version}"
+    if [ "${osname}" = linux ] || [ "${osname}" = darwin ]; then
+      sudo mkdir -p /usr/local/bin || true
+      curl -f -s -L "https://github.com/koalaman/shellcheck/releases/download/v${shellcheck_version}/${name}.${osname}.x86_64.tar.xz" | {
+        sudo tar -C /usr/local/bin -x -v -J --strip-components=1 "${name}/shellcheck"
+      }
+    else
+      mkdir -p /usr/local/bin
+      curl -f -s -L -o "${name}.zip" "https://github.com/koalaman/shellcheck/releases/download/v${shellcheck_version}/${name}.zip"
+      unzip "${name}.zip" "${name}.exe"
+      mv -f "${name}.exe" "/usr/local/bin/shellcheck.exe"
+    fi
+    test "${shellcheck_version}" = "$(shellcheck --version | sed -n "s/version: //p")"
+  fi
+}
+
 install_linters() {
-  pip install flake8==3.7.7 flake8-comprehensions flake8-quotes==2.0.0 yapf==0.23.0
+  pip install -r "${WORKSPACE_DIR}"/python/requirements_linters.txt
+
+  install_shellcheck
 }
 
 install_nvm() {
@@ -143,7 +184,7 @@ install_nvm() {
       )
       printf "%s\n" \
         "export NVM_HOME=\"$(cygpath -w -- "${NVM_HOME}")\"" \
-        'nvm() { "${NVM_HOME}/nvm.exe" "$@"; }' \
+        "nvm() { \"\${NVM_HOME}/nvm.exe\" \"\$@\"; }" \
         > "${NVM_HOME}/nvm.sh"
     fi
   else
@@ -161,7 +202,7 @@ install_pip() {
     "${python}" -m pip install --upgrade --quiet pip
 
     # If we're in a CI environment, do some configuration
-    if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_WORKFLOW-}" ]; then
+    if [ "${CI-}" = true ]; then
       "${python}" -W ignore -m pip config -q --user set global.disable-pip-version-check True
       "${python}" -W ignore -m pip config -q --user set global.no-color True
       "${python}" -W ignore -m pip config -q --user set global.progress_bar off
@@ -192,41 +233,35 @@ install_toolchains() {
 install_dependencies() {
 
   install_bazel
+
   install_base
   install_toolchains
   install_nvm
   install_pip
 
-  if [ -n "${PYTHON-}" ]; then
+  if [ -n "${PYTHON-}" ] || [ "${LINT-}" = 1 ]; then
     install_miniconda
+  fi
 
+  # Install modules needed in all jobs.
+  pip install --no-clean dm-tree  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
+
+  if [ -n "${PYTHON-}" ]; then
     # PyTorch is installed first since we are using a "-f" directive to find the wheels.
     # We want to install the CPU version only.
     local torch_url="https://download.pytorch.org/whl/torch_stable.html"
     case "${OSTYPE}" in
-      linux*) pip install torch==1.5.0+cpu torchvision==0.6.0+cpu -f "${torch_url}";;
       darwin*) pip install torch torchvision;;
-      msys*) pip install torch==1.5.0+cpu torchvision==0.6.0+cpu -f "${torch_url}";;
+      *) pip install torch==1.5.0+cpu torchvision==0.6.0+cpu -f "${torch_url}";;
     esac
-
-    pip_packages=(scipy tensorflow=="${TF_VERSION:-2.1.0}" cython==0.29.0 gym \
-      opencv-python-headless pyyaml pandas==0.24.2 requests feather-format lxml openpyxl xlrd \
-      py-spy pytest pytest-timeout networkx tabulate aiohttp uvicorn dataclasses pygments werkzeug \
-      kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio scikit-learn==0.22.2 numba \
-      Pillow prometheus_client)
-    if [ "${OSTYPE}" != msys ]; then
-      # These packages aren't Windows-compatible
-      pip_packages+=(blist)  # https://github.com/DanielStutzbach/blist/issues/81#issue-391460716
-    fi
 
     # Try n times; we often encounter OpenSSL.SSL.WantReadError (or others)
     # that break the entire CI job: Simply retry installation in this case
     # after n seconds.
     local status="0";
     local errmsg="";
-    for i in {1..3};
-    do
-      errmsg=$(CC=gcc pip install "${pip_packages[@]}" 2>&1) && break;
+    for _ in {1..3}; do
+      errmsg=$(CC=gcc pip install -r "${WORKSPACE_DIR}"/python/requirements.txt 2>&1) && break;
       status=$errmsg && echo "'pip install ...' failed, will retry after n seconds!" && sleep 30;
     done
     if [ "$status" != "0" ]; then
@@ -235,26 +270,50 @@ install_dependencies() {
   fi
 
   if [ "${LINT-}" = 1 ]; then
-    install_miniconda
     install_linters
     # readthedocs has an antiquated build env.
     # This is a best effort to reproduce it locally to avoid doc build failures and hidden errors.
-    pip install -r "${WORKSPACE_DIR}"/doc/requirements-rtd.txt
-    pip install -r "${WORKSPACE_DIR}"/doc/requirements-doc.txt
+    local python_version
+    python_version="$(python -s -c "import sys; print('%s.%s' % sys.version_info[:2])")"
+    if [ "${OSTYPE}" = msys ] && [ "${python_version}" = "3.8" ]; then
+      { echo "WARNING: Pillow binaries not available on Windows; cannot build docs"; } 2> /dev/null
+    else
+      pip install -r "${WORKSPACE_DIR}"/doc/requirements-rtd.txt
+      pip install -r "${WORKSPACE_DIR}"/doc/requirements-doc.txt
+    fi
   fi
-
-  # Install modules needed in all jobs.
-  pip install dm-tree
 
   # Additional RLlib dependencies.
   if [ "${RLLIB_TESTING-}" = 1 ]; then
-    pip install tensorflow-probability=="${TFP_VERSION-0.8}" gast==0.2.2 \
-      torch=="${TORCH_VERSION-1.4}" torchvision atari_py gym[atari] lz4 smart_open
+    pip install -r "${WORKSPACE_DIR}"/python/requirements_rllib.txt
   fi
 
-  # Additional streaming dependencies.
-  if [ "${RAY_CI_STREAMING_PYTHON_AFFECTED}" = 1 ]; then
-    pip install "msgpack>=0.6.2"
+  # Additional Tune test dependencies.
+  if [ "${TUNE_TESTING-}" = 1 ]; then
+    pip install -r "${WORKSPACE_DIR}"/python/requirements_tune.txt
+  fi
+
+  # Additional RaySGD test dependencies.
+  if [ "${SGD_TESTING-}" = 1 ]; then
+    pip install -r "${WORKSPACE_DIR}"/python/requirements_tune.txt
+  fi
+
+  # Additional Doc test dependencies.
+  if [ "${DOC_TESTING-}" = 1 ]; then
+    pip install -r "${WORKSPACE_DIR}"/python/requirements_tune.txt
+  fi
+
+  # If CI has deemed that a different version of Tensorflow or Torch
+  # should be installed, then upgrade/downgrade to that specific version.
+  if [ -n "${TORCH_VERSION-}" ] || [ -n "${TFP_VERSION-}" ] || [ -n "${TF_VERSION-}" ]; then
+    case "${TORCH_VERSION-1.6}" in
+      1.5) TORCHVISION_VERSION=0.6.0;;
+      *) TORCHVISION_VERSION=0.5.0;;
+    esac
+
+    pip install --upgrade tensorflow-probability=="${TFP_VERSION-0.8}" \
+      torch=="${TORCH_VERSION-1.6}" torchvision=="${TORCHVISION_VERSION}" \
+      tensorflow=="${TF_VERSION-2.2.0}" gym
   fi
 
   if [ -n "${PYTHON-}" ] || [ -n "${LINT-}" ] || [ "${MAC_WHEELS-}" = 1 ]; then

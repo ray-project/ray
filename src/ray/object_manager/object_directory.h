@@ -12,16 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_OBJECT_MANAGER_OBJECT_DIRECTORY_H
-#define RAY_OBJECT_MANAGER_OBJECT_DIRECTORY_H
+#pragma once
 
 #include <memory>
 #include <mutex>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-
-#include "plasma/client.h"
 
 #include "ray/common/id.h"
 #include "ray/common/status.h"
@@ -71,6 +68,7 @@ class ObjectDirectoryInterface {
   /// \param callback Invoked with (possibly empty) list of client ids and object_id.
   /// \return Status of whether async call to backend succeeded.
   virtual ray::Status LookupLocations(const ObjectID &object_id,
+                                      const rpc::Address &owner_address,
                                       const OnLocationsFound &callback) = 0;
 
   /// Handle the removal of an object manager client. This updates the
@@ -95,6 +93,7 @@ class ObjectDirectoryInterface {
   /// \return Status of whether subscription succeeded.
   virtual ray::Status SubscribeObjectLocations(const UniqueID &callback_id,
                                                const ObjectID &object_id,
+                                               const rpc::Address &owner_address,
                                                const OnLocationsFound &callback) = 0;
 
   /// Unsubscribe to object location notifications.
@@ -152,12 +151,14 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   std::vector<RemoteConnectionInfo> LookupAllRemoteConnections() const override;
 
   ray::Status LookupLocations(const ObjectID &object_id,
+                              const rpc::Address &owner_address,
                               const OnLocationsFound &callback) override;
 
   void HandleClientRemoved(const ClientID &client_id) override;
 
   ray::Status SubscribeObjectLocations(const UniqueID &callback_id,
                                        const ObjectID &object_id,
+                                       const rpc::Address &owner_address,
                                        const OnLocationsFound &callback) override;
   ray::Status UnsubscribeObjectLocations(const UniqueID &callback_id,
                                          const ObjectID &object_id) override;
@@ -174,7 +175,7 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   /// ObjectDirectory should not be copied.
   RAY_DISALLOW_COPY_AND_ASSIGN(ObjectDirectory);
 
- private:
+ protected:
   /// Callbacks associated with a call to GetLocations.
   struct LocationListenerState {
     /// The callback to invoke when object locations are found.
@@ -198,5 +199,3 @@ class ObjectDirectory : public ObjectDirectoryInterface {
 };
 
 }  // namespace ray
-
-#endif  // RAY_OBJECT_MANAGER_OBJECT_DIRECTORY_H

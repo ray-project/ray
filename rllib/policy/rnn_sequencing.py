@@ -20,7 +20,7 @@ from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 logger = logging.getLogger(__name__)
@@ -109,7 +109,10 @@ def pad_batch_to_sequences_of_same_size(batch,
 
 
 @DeveloperAPI
-def add_time_dimension(padded_inputs, seq_lens, framework="tf"):
+def add_time_dimension(padded_inputs,
+                       seq_lens,
+                       framework="tf",
+                       time_major=False):
     """Adds a time dimension to padded inputs.
 
     Arguments:
@@ -127,6 +130,7 @@ def add_time_dimension(padded_inputs, seq_lens, framework="tf"):
     # input batch must be padded to the max seq length given here. That is,
     # batch_size == len(seq_lens) * max(seq_lens)
     if framework == "tf":
+        assert time_major is False, "time-major not supported yet for tf!"
         padded_batch_size = tf.shape(padded_inputs)[0]
         max_seq_len = padded_batch_size // tf.shape(seq_lens)[0]
 
@@ -142,7 +146,10 @@ def add_time_dimension(padded_inputs, seq_lens, framework="tf"):
 
         # Dynamically reshape the padded batch to introduce a time dimension.
         new_batch_size = padded_batch_size // max_seq_len
-        new_shape = (new_batch_size, max_seq_len) + padded_inputs.shape[1:]
+        if time_major:
+            new_shape = (max_seq_len, new_batch_size) + padded_inputs.shape[1:]
+        else:
+            new_shape = (new_batch_size, max_seq_len) + padded_inputs.shape[1:]
         return torch.reshape(padded_inputs, new_shape)
 
 
@@ -203,7 +210,7 @@ def chop_into_sequences(episode_ids,
     seq_len = 0
     unique_ids = np.add(
         np.add(episode_ids, agent_indices),
-        np.array(unroll_ids) << 32)
+        np.array(unroll_ids, dtype=np.int64) << 32)
     for uid in unique_ids:
         if (prev_id is not None and uid != prev_id) or \
                 seq_len >= max_seq_len:
@@ -223,11 +230,15 @@ def chop_into_sequences(episode_ids,
     feature_sequences = []
     for f in feature_columns:
         f = np.array(f)
-        f_pad = np.zeros((len(seq_lens) * max_seq_len, ) + np.shape(f)[1:])
+        length = len(seq_lens) * max_seq_len
+        if f.dtype == np.object or f.dtype.type is np.str_:
+            f_pad = [None] * length
+        else:
+            f_pad = np.zeros((length, ) + np.shape(f)[1:])
         seq_base = 0
         i = 0
-        for l in seq_lens:
-            for seq_offset in range(l):
+        for len_ in seq_lens:
+            for seq_offset in range(len_):
                 f_pad[seq_base + seq_offset] = f[i]
                 i += 1
             seq_base += max_seq_len
@@ -239,9 +250,9 @@ def chop_into_sequences(episode_ids,
         s = np.array(s)
         s_init = []
         i = 0
-        for l in seq_lens:
+        for len_ in seq_lens:
             s_init.append(s[i])
-            i += l
+            i += len_
         initial_states.append(np.array(s_init))
 
     if shuffle:

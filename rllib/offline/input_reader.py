@@ -4,9 +4,11 @@ import threading
 
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.framework import try_import_tf
+from typing import Dict, List
+from ray.rllib.utils.types import TensorType, SampleBatchType
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +27,7 @@ class InputReader:
         raise NotImplementedError
 
     @PublicAPI
-    def tf_input_ops(self, queue_size=1):
+    def tf_input_ops(self, queue_size: int = 1) -> Dict[str, TensorType]:
         """Returns TensorFlow queue ops for reading inputs from this reader.
 
         The main use of these ops is for integration into custom model losses.
@@ -75,7 +77,7 @@ class InputReader:
             k: (-1, ) + s[1:]
             for (k, s) in [(k, batch[k].shape) for k in keys]
         }
-        queue = tf.FIFOQueue(capacity=queue_size, dtypes=dtypes, names=keys)
+        queue = tf1.FIFOQueue(capacity=queue_size, dtypes=dtypes, names=keys)
         tensors = queue.dequeue()
 
         logger.info("Creating TF queue runner for {}".format(self))
@@ -90,17 +92,18 @@ class InputReader:
 class _QueueRunner(threading.Thread):
     """Thread that feeds a TF queue from a InputReader."""
 
-    def __init__(self, input_reader, queue, keys, dtypes):
+    def __init__(self, input_reader: InputReader, queue: "tf1.FIFOQueue",
+                 keys: List[str], dtypes: "tf.dtypes.DType"):
         threading.Thread.__init__(self)
-        self.sess = tf.get_default_session()
+        self.sess = tf1.get_default_session()
         self.daemon = True
         self.input_reader = input_reader
         self.keys = keys
         self.queue = queue
-        self.placeholders = [tf.placeholder(dtype) for dtype in dtypes]
+        self.placeholders = [tf1.placeholder(dtype) for dtype in dtypes]
         self.enqueue_op = queue.enqueue(dict(zip(keys, self.placeholders)))
 
-    def enqueue(self, batch):
+    def enqueue(self, batch: SampleBatchType):
         data = {
             self.placeholders[i]: batch[key]
             for i, key in enumerate(self.keys)

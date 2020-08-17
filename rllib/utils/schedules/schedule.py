@@ -1,9 +1,9 @@
 from abc import ABCMeta, abstractmethod
 
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.framework import check_framework, try_import_tf
+from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
 @DeveloperAPI
@@ -24,7 +24,7 @@ class Schedule(metaclass=ABCMeta):
     """
 
     def __init__(self, framework):
-        self.framework = check_framework(framework)
+        self.framework = framework
 
     def value(self, t):
         """Generates the value given a timestep (based on schedule's logic).
@@ -35,7 +35,7 @@ class Schedule(metaclass=ABCMeta):
         Returns:
             any: The calculated value depending on the schedule and `t`.
         """
-        if self.framework == "tf" and not tf.executing_eagerly():
+        if self.framework in ["tf2", "tf", "tfe"]:
             return self._tf_value_op(t)
         return self._value(t)
 
@@ -71,4 +71,4 @@ class Schedule(metaclass=ABCMeta):
         """
         # By default (most of the time), tf should work with python code.
         # Override only if necessary.
-        return tf.constant(self._value(t))
+        return self._value(t)

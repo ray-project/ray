@@ -7,13 +7,13 @@ from ray.util.iter_metrics import SharedMetrics
 from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.execution.common import GradientType, SampleBatchType, \
-    STEPS_SAMPLED_COUNTER, LEARNER_INFO, SAMPLE_TIMER, \
-    GRAD_WAIT_TIMER, _check_sample_batch_type
-from ray.rllib.policy.policy import PolicyID
+from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, LEARNER_INFO, \
+    SAMPLE_TIMER, GRAD_WAIT_TIMER, _check_sample_batch_type, \
+    _get_shared_metrics
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
 from ray.rllib.utils.sgd import standardized
+from ray.rllib.utils.types import PolicyID, SampleBatchType, ModelGradients
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ def ParallelRollouts(workers: WorkerSet, *, mode="bulk_sync",
     workers.sync_weights()
 
     def report_timesteps(batch):
-        metrics = LocalIterator.get_metrics()
+        metrics = _get_shared_metrics()
         metrics.counters[STEPS_SAMPLED_COUNTER] += batch.count
         return batch
 
@@ -91,7 +91,7 @@ def ParallelRollouts(workers: WorkerSet, *, mode="bulk_sync",
 
 
 def AsyncGradients(
-        workers: WorkerSet) -> LocalIterator[Tuple[GradientType, int]]:
+        workers: WorkerSet) -> LocalIterator[Tuple[ModelGradients, int]]:
     """Operator to compute gradients in parallel from rollout workers.
 
     Arguments:
@@ -123,7 +123,7 @@ def AsyncGradients(
 
         def __call__(self, item):
             (grads, info), count = item
-            metrics = LocalIterator.get_metrics()
+            metrics = _get_shared_metrics()
             metrics.counters[STEPS_SAMPLED_COUNTER] += count
             metrics.info[LEARNER_INFO] = get_learner_stats(info)
             metrics.timers[GRAD_WAIT_TIMER].push(time.perf_counter() -
@@ -169,7 +169,7 @@ class ConcatBatches:
                             "This may be because you have many workers or "
                             "long episodes in 'complete_episodes' batch mode.")
             out = SampleBatch.concat_samples(self.buffer)
-            timer = LocalIterator.get_metrics().timers[SAMPLE_TIMER]
+            timer = _get_shared_metrics().timers[SAMPLE_TIMER]
             timer.push(time.perf_counter() - self.batch_start_time)
             timer.push_units_processed(self.count)
             self.batch_start_time = None

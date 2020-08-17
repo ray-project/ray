@@ -17,7 +17,7 @@ from ray.rllib.models.tf.recurrent_net import RecurrentNetwork
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
 # TODO(sven): Use RLlib's FCNet instead.
@@ -146,7 +146,7 @@ class GTrXLNet(RecurrentNetwork):
     Examples:
         >> config["model"]["custom_model"] = GTrXLNet
         >> config["model"]["max_seq_len"] = 10
-        >> config["model"]["custom_options"] = {
+        >> config["model"]["custom_model_config"] = {
         >>     num_transformer_units=1,
         >>     attn_dim=32,
         >>     num_heads=2,

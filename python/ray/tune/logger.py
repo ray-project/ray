@@ -190,7 +190,7 @@ class TBXLogger(Logger):
     """
 
     # NoneType is not supported on the last TBX release yet.
-    VALID_HPARAMS = (str, bool, int, float, list)
+    VALID_HPARAMS = (str, bool, np.bool8, int, np.integer, float, list)
 
     def _init(self):
         try:
@@ -221,7 +221,9 @@ class TBXLogger(Logger):
                 valid_result[full_attr] = value
                 self._file_writer.add_scalar(
                     full_attr, value, global_step=step)
-            elif type(value) in [list, np.ndarray] and len(value) > 0:
+            elif (type(value) == list
+                  and len(value) > 0) or (type(value) == np.ndarray
+                                          and value.size > 0):
                 valid_result[full_attr] = value
                 try:
                     self._file_writer.add_histogram(

@@ -23,7 +23,7 @@ from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as TorchFC
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check_learning_achieved
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
 
 parser = argparse.ArgumentParser()
@@ -120,7 +120,7 @@ if __name__ == "__main__":
         "vf_share_layers": True,
         "lr": grid_search([1e-2, 1e-4, 1e-6]),  # try different lrs
         "num_workers": 1,  # parallelism
-        "use_pytorch": args.torch
+        "framework": "torch" if args.torch else "tf",
     }
 
     stop = {

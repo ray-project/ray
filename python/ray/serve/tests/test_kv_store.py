@@ -38,3 +38,8 @@ def test_ray_internal_kv_collisions(serve_instance):
     kv2.put("1", b"-1")
     assert kv2.get("1") == b"-1"
     assert kv1.get("1") == b"1"
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", "-s", __file__]))

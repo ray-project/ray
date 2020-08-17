@@ -1,5 +1,4 @@
-#ifndef RAY_DATA_READER_H
-#define RAY_DATA_READER_H
+#pragma once
 
 #include <cstdlib>
 #include <functional>
@@ -128,4 +127,3 @@ class DataReader {
 };
 }  // namespace streaming
 }  // namespace ray
-#endif  // RAY_DATA_READER_H

@@ -43,7 +43,7 @@ if __name__ == "__main__":
         "num_sgd_iter": 4,
         "num_workers": 0,
         "vf_loss_coeff": 0.01,
-        "use_pytorch": args.torch,
+        "framework": "torch" if args.torch else "tf",
     }
 
     stop = {

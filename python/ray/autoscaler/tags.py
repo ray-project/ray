@@ -8,6 +8,10 @@ TAG_RAY_NODE_TYPE = "ray-node-type"
 NODE_TYPE_HEAD = "head"
 NODE_TYPE_WORKER = "worker"
 
+# Tag for the provider-specific instance type (e.g., m4.4xlarge). This is used
+# for automatic worker instance type selection.
+TAG_RAY_INSTANCE_TYPE = "ray-instance-type"
+
 # Tag that reports the current state of the node (e.g. Updating, Up-to-date)
 TAG_RAY_NODE_STATUS = "ray-node-status"
 STATUS_UNINITIALIZED = "uninitialized"
@@ -25,3 +29,7 @@ TAG_RAY_LAUNCH_CONFIG = "ray-launch-config"
 
 # Hash of the node runtime config, used to determine if updates are needed
 TAG_RAY_RUNTIME_CONFIG = "ray-runtime-config"
+# Hash of the contents of the directories specified by the file_mounts config
+# if the node is a worker, this also hashes content of the directories
+# specified by the cluster_synced_files config
+TAG_RAY_FILE_MOUNTS_CONTENTS = "ray-file-mounts-contents"

@@ -1,6 +1,7 @@
 import logging
 import numpy as np
 import collections
+from typing import List, Optional, Tuple, Union
 
 import ray
 from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
@@ -8,17 +9,18 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.offline.off_policy_estimator import OffPolicyEstimate
 from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.memory import ray_get_and_free
+from ray.rllib.utils.types import GradInfoDict, LearnerStatsDict, ResultDict
 
 logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-def get_learner_stats(grad_info):
+def get_learner_stats(grad_info: GradInfoDict) -> LearnerStatsDict:
     """Return optimization stats reported from the policy.
 
     Example:
-        >>> grad_info = evaluator.learn_on_batch(samples)
+        >>> grad_info = worker.learn_on_batch(samples)
+        {"td_error": [...], "learner_stats": {"vf_loss": ..., ...}}
         >>> print(get_stats(grad_info))
         {"vf_loss": ..., "policy_loss": ...}
     """
@@ -36,10 +38,10 @@ def get_learner_stats(grad_info):
 
 
 @DeveloperAPI
-def collect_metrics(local_worker=None,
-                    remote_workers=[],
-                    to_be_collected=[],
-                    timeout_seconds=180):
+def collect_metrics(local_worker: Optional["RolloutWorker"] = None,
+                    remote_workers: List["ActorHandle"] = [],
+                    to_be_collected: List["ObjectRef"] = [],
+                    timeout_seconds: int = 180) -> ResultDict:
     """Gathers episode metrics from RolloutWorker instances."""
 
     episodes, to_be_collected = collect_episodes(
@@ -52,10 +54,12 @@ def collect_metrics(local_worker=None,
 
 
 @DeveloperAPI
-def collect_episodes(local_worker=None,
-                     remote_workers=[],
-                     to_be_collected=[],
-                     timeout_seconds=180):
+def collect_episodes(
+        local_worker: Optional["RolloutWorker"] = None,
+        remote_workers: List["ActorHandle"] = [],
+        to_be_collected: List["ObjectRef"] = [],
+        timeout_seconds: int = 180
+) -> Tuple[List[Union[RolloutMetrics, OffPolicyEstimate]], List["ObjectRef"]]:
     """Gathers new episodes metrics tuples from the given evaluators."""
 
     if remote_workers:
@@ -68,7 +72,7 @@ def collect_episodes(local_worker=None,
             logger.warning(
                 "WARNING: collected no metrics in {} seconds".format(
                     timeout_seconds))
-        metric_lists = ray_get_and_free(collected)
+        metric_lists = ray.get(collected)
     else:
         metric_lists = []
 
@@ -81,7 +85,10 @@ def collect_episodes(local_worker=None,
 
 
 @DeveloperAPI
-def summarize_episodes(episodes, new_episodes=None):
+def summarize_episodes(
+        episodes: List[Union[RolloutMetrics, OffPolicyEstimate]],
+        new_episodes: List[Union[RolloutMetrics, OffPolicyEstimate]] = None
+) -> ResultDict:
     """Summarizes a set of episode metrics tuples.
 
     Arguments:
@@ -181,7 +188,8 @@ def summarize_episodes(episodes, new_episodes=None):
         off_policy_estimator=dict(estimators))
 
 
-def _partition(episodes):
+def _partition(episodes: List[RolloutMetrics]
+               ) -> Tuple[List[RolloutMetrics], List[OffPolicyEstimate]]:
     """Divides metrics data into true rollouts vs off-policy estimates."""
 
     rollouts, estimates = [], []

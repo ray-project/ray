@@ -41,7 +41,7 @@ if __name__ == "__main__":
                 "use_lstm": True,
                 "lstm_use_prev_action_reward": args.use_prev_action_reward,
             },
-            "use_pytorch": args.torch,
+            "framework": "torch" if args.torch else "tf",
         })
 
     stop = {

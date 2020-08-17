@@ -4,6 +4,7 @@
 import argparse
 import click
 import os
+import shutil
 import subprocess
 
 import ray
@@ -22,14 +23,25 @@ def do_link(package, force=False, local_path=""):
                 package_home, local_home),
             default=True):
         return
-    if os.access(os.path.dirname(package_home), os.W_OK):
-        subprocess.check_call(["rm", "-rf", package_home])
-        subprocess.check_call(["ln", "-s", local_home, package_home])
+    # Windows: Create directory junction.
+    if os.name == "nt":
+        try:
+            shutil.rmtree(package_home)
+        except FileNotFoundError:
+            pass
+        except OSError:
+            os.remove(package_home)
+        subprocess.check_call(
+            ["mklink", "/J", package_home, local_home], shell=True)
+    # Posix: Use `ln -s` to create softlink.
     else:
-        print("You don't have write permission to {}, using sudo:".format(
-            package_home))
-        subprocess.check_call(["sudo", "rm", "-rf", package_home])
-        subprocess.check_call(["sudo", "ln", "-s", local_home, package_home])
+        sudo = []
+        if not os.access(os.path.dirname(package_home), os.W_OK):
+            print("You don't have write permission to {}, using sudo:".format(
+                package_home))
+            sudo = ["sudo"]
+        subprocess.check_call(sudo + ["rm", "-rf", package_home])
+        subprocess.check_call(sudo + ["ln", "-s", local_home, package_home])
 
 
 if __name__ == "__main__":

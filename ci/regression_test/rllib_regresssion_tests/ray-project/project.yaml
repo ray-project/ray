@@ -15,6 +15,9 @@ cluster:
     - name: commit # Ray commit SHA string.
       default: "f5a1307a608fe5fdbdb04616b22c91f029af329a"
 
+    - name: ray_branch
+      default: "releases/0.8.2"
+
 
 environment:
   # dockerfile: The dockerfile to be built and ran the commands with.
@@ -38,7 +41,9 @@ commands:
     help: "Show tail of the workoad output."
 
   - name: run-regression-tests
-    command: source activate tensorflow_p36 && rllib train -f compact-regression-test.yaml
+    command: |
+      source activate tensorflow_p36 && pip install torch torchvision
+      source activate tensorflow_p36 && rllib train -f compact-regression-test.yaml
     help: "Run rllib regression tests"
 
 # Pathnames for files and directories that should be saved

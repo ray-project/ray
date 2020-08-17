@@ -1,6 +1,6 @@
 package io.ray.streaming.runtime.master.scheduler;
 
-import io.ray.api.RayActor;
+import io.ray.api.ActorHandle;
 import io.ray.streaming.runtime.config.StreamingConfig;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
@@ -153,29 +153,28 @@ public class JobSchedulerImpl implements JobScheduler {
    */
   protected Map<ExecutionVertex, JobWorkerContext> buildWorkersContext(
       ExecutionGraph executionGraph) {
-    RayActor masterActor = jobMaster.getJobMasterActor();
+    ActorHandle<JobMaster> masterActor = jobMaster.getJobMasterActor();
 
     // build workers' context
-    Map<ExecutionVertex, JobWorkerContext> needRegistryVertexToContextMap = new HashMap<>();
+    Map<ExecutionVertex, JobWorkerContext> vertexToContextMap = new HashMap<>();
     executionGraph.getAllExecutionVertices().forEach(vertex -> {
-      JobWorkerContext ctx = buildJobWorkerContext(vertex, masterActor);
-      needRegistryVertexToContextMap.put(vertex, ctx);
+      JobWorkerContext context = buildJobWorkerContext(vertex, masterActor);
+      vertexToContextMap.put(vertex, context);
     });
-    return needRegistryVertexToContextMap;
+    return vertexToContextMap;
   }
 
   private JobWorkerContext buildJobWorkerContext(
       ExecutionVertex executionVertex,
-      RayActor<JobMaster> masterActor) {
+      ActorHandle<JobMaster> masterActor) {
 
-    // create worker context
-    JobWorkerContext ctx = new JobWorkerContext(
-        executionVertex.getWorkerActorId(),
+    // create java worker context
+    JobWorkerContext context = new JobWorkerContext(
         masterActor,
         executionVertex
     );
 
-    return ctx;
+    return context;
   }
 
   /**

@@ -55,24 +55,6 @@ message ActorHandle {
   int64 max_task_retries = 9;
 }
 
-message AssignTaskRequest {
-  // The ID of the worker this message is intended for. This is used to
-  // ensure that workers don't try to execute tasks assigned to workers
-  // that used to be bound to the same port.
-  bytes intended_worker_id = 1;
-
-  // The task to be pushed.
-  Task task = 2;
-
-  // A list of the resources reserved for this worker.
-  // TODO(zhijunfu): `resource_ids` is represented as
-  // flatbutters-serialized bytes, will be moved to protobuf later.
-  bytes resource_ids = 3;
-}
-
-message AssignTaskReply {
-}
-
 message ReturnObject {
   // Object ID.
   bytes object_id = 1;
@@ -143,16 +125,19 @@ message DirectActorCallArgWaitCompleteReply {
 }
 
 message GetObjectStatusRequest {
-  // The owner of the object. Note that we do not need to include
-  // intended_worker_id since the new worker can service this request too by
-  // inspecting the owner_id field.
-  bytes owner_id = 1;
+  // The ID of the worker that owns this object. This is also
+  // the ID of the worker that this message is intended for.
+  bytes owner_worker_id = 1;
   // Wait for this object's status.
   bytes object_id = 2;
 }
 
 message GetObjectStatusReply {
-  enum ObjectStatus { CREATED = 0; }
+  enum ObjectStatus {
+    CREATED = 0;
+    OUT_OF_SCOPE = 1;
+    FREED = 2;
+  }
   ObjectStatus status = 1;
 }
 
@@ -174,6 +159,33 @@ message WaitForObjectEvictionRequest {
 }
 
 message WaitForObjectEvictionReply {
+}
+
+message AddObjectLocationOwnerRequest {
+  bytes intended_worker_id = 1;
+  bytes object_id = 2;
+  bytes client_id = 3;
+}
+
+message AddObjectLocationOwnerReply {
+}
+
+message RemoveObjectLocationOwnerRequest {
+  bytes intended_worker_id = 1;
+  bytes object_id = 2;
+  bytes client_id = 3;
+}
+
+message RemoveObjectLocationOwnerReply {
+}
+
+message GetObjectLocationsOwnerRequest {
+  bytes intended_worker_id = 1;
+  bytes object_id = 2;
+}
+
+message GetObjectLocationsOwnerReply {
+  repeated bytes client_ids = 1;
 }
 
 message KillActorRequest {
@@ -221,15 +233,6 @@ message GetCoreWorkerStatsRequest {
 message GetCoreWorkerStatsReply {
   // Debug information returned from the core worker.
   CoreWorkerStats core_worker_stats = 1;
-}
-
-message ObjectReference {
-  // ObjectID that the worker has a reference to.
-  bytes object_id = 1;
-  // The task or actor ID of the object's owner.
-  bytes owner_id = 2;
-  // The address of the object's owner.
-  Address owner_address = 3;
 }
 
 message WaitForRefRemovedRequest {
@@ -292,8 +295,6 @@ message PlasmaObjectReadyReply {
 }
 
 service CoreWorkerService {
-  // Push a task to a worker from the raylet.
-  rpc AssignTask(AssignTaskRequest) returns (AssignTaskReply);
   // Push a task directly to this worker from another.
   rpc PushTask(PushTaskRequest) returns (PushTaskReply);
   // Reply from raylet that wait for direct actor call args has completed.
@@ -310,6 +311,15 @@ service CoreWorkerService {
   // to this message indicates that the raylet should unpin the object.
   rpc WaitForObjectEviction(WaitForObjectEvictionRequest)
       returns (WaitForObjectEvictionReply);
+  // Add object location to the ownership-based object directory.
+  rpc AddObjectLocationOwner(AddObjectLocationOwnerRequest)
+      returns (AddObjectLocationOwnerReply);
+  // Remove object location from the ownership-based object directory.
+  rpc RemoveObjectLocationOwner(RemoveObjectLocationOwnerRequest)
+      returns (RemoveObjectLocationOwnerReply);
+  // Get object locations from the ownership-based object directory.
+  rpc GetObjectLocationsOwner(GetObjectLocationsOwnerRequest)
+      returns (GetObjectLocationsOwnerReply);
   // Request that the worker shut down without completing outstanding work.
   rpc KillActor(KillActorRequest) returns (KillActorReply);
   // Request that a worker cancels a task.

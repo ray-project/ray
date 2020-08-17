@@ -60,10 +60,6 @@ constexpr uint8_t kCreatedByTaskBitsOffset = 15;
 /// The bit offset of the flag `ObjectType` in a flags bytes.
 constexpr uint8_t kObjectTypeBitsOffset = 14;
 
-/// The bit offset of the flag `TransportType` in a flags bytes.
-// TODO(edoakes): this isn't used anymore, should update ID layout.
-// constexpr uint8_t kTransportTypeBitsOffset = 11;
-
 /// The mask that is used to mask the flag `CreatedByTask`.
 constexpr ObjectIDFlagsType kCreatedByTaskFlagBitMask = 0x1 << kCreatedByTaskBitsOffset;
 
@@ -71,31 +67,26 @@ constexpr ObjectIDFlagsType kCreatedByTaskFlagBitMask = 0x1 << kCreatedByTaskBit
 /// So it can represent for 2 types.
 constexpr ObjectIDFlagsType kObjectTypeFlagBitMask = 0x1 << kObjectTypeBitsOffset;
 
-/// The mask that is used to mask 3 bits to indicate the type of transport.
-// TODO(edoakes): this isn't used anymore, should update ID layout.
-// constexpr ObjectIDFlagsType kTransportTypeFlagBitMask = 0x7 <<
-// kTransportTypeBitsOffset;
-
 /// The implementations of helper functions.
 inline void SetCreatedByTaskFlag(bool created_by_task, ObjectIDFlagsType *flags) {
   const ObjectIDFlagsType object_type_bits =
       static_cast<ObjectIDFlagsType>(created_by_task) << kCreatedByTaskBitsOffset;
-  *flags = (*flags bitor object_type_bits);
+  *flags = (*flags | object_type_bits);
 }
 
 inline void SetObjectTypeFlag(ObjectType object_type, ObjectIDFlagsType *flags) {
   const ObjectIDFlagsType object_type_bits = static_cast<ObjectIDFlagsType>(object_type)
                                              << kObjectTypeBitsOffset;
-  *flags = (*flags bitor object_type_bits);
+  *flags = (*flags | object_type_bits);
 }
 
 inline bool CreatedByTask(ObjectIDFlagsType flags) {
-  return ((flags bitand kCreatedByTaskFlagBitMask) >> kCreatedByTaskBitsOffset) != 0x0;
+  return ((flags & kCreatedByTaskFlagBitMask) >> kCreatedByTaskBitsOffset) != 0x0;
 }
 
 inline ObjectType GetObjectType(ObjectIDFlagsType flags) {
   const ObjectIDFlagsType object_type =
-      (flags bitand kObjectTypeFlagBitMask) >> kObjectTypeBitsOffset;
+      (flags & kObjectTypeFlagBitMask) >> kObjectTypeBitsOffset;
   return static_cast<ObjectType>(object_type);
 }
 
@@ -117,32 +108,12 @@ WorkerID ComputeDriverIdFromJob(const JobID &job_id) {
       std::string(reinterpret_cast<const char *>(data.data()), data.size()));
 }
 
-ObjectID ObjectID::FromPlasmaIdBinary(const std::string &from) {
-  RAY_CHECK(from.size() == kPlasmaIdSize);
-  return ObjectID::FromBinary(from.substr(0, ObjectID::kLength));
-}
-
-plasma::UniqueID ObjectID::ToPlasmaId() const {
-  static_assert(ObjectID::kLength <= kPlasmaIdSize,
-                "Currently length of ObjectID must be shorter than plasma's.");
-
-  plasma::UniqueID result;
-  std::memcpy(result.mutable_data(), Data(), ObjectID::Size());
-  std::fill_n(result.mutable_data() + ObjectID::Size(), kPlasmaIdSize - ObjectID::kLength,
-              0xFF);
-  return result;
-}
-
-ObjectID::ObjectID(const plasma::UniqueID &from) {
-  RAY_CHECK(from.size() <= static_cast<int64_t>(ObjectID::Size())) << "Out of size.";
-  std::memcpy(this->MutableData(), from.data(), ObjectID::Size());
-}
-
 ObjectIDFlagsType ObjectID::GetFlags() const {
   ObjectIDFlagsType flags;
   std::memcpy(&flags, id_ + TaskID::kLength, sizeof(flags));
   return flags;
 }
+
 bool ObjectID::CreatedByTask() const { return ::ray::CreatedByTask(this->GetFlags()); }
 
 bool ObjectID::IsPutObject() const {
@@ -365,5 +336,5 @@ ID_OSTREAM_OPERATOR(JobID);
 ID_OSTREAM_OPERATOR(ActorID);
 ID_OSTREAM_OPERATOR(TaskID);
 ID_OSTREAM_OPERATOR(ObjectID);
-
+ID_OSTREAM_OPERATOR(PlacementGroupID);
 }  // namespace ray

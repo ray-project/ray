@@ -300,6 +300,7 @@ class StreamingWorker {
         raylet_socket,       // raylet_socket
         JobID::FromInt(1),   // job_id
         gcs_options,         // gcs_options
+        true,                // enable_logging
         "",                  // log_dir
         true,                // install_failure_signal_handler
         "127.0.0.1",         // node_ip_address
@@ -317,6 +318,9 @@ class StreamingWorker {
         true,           // ref_counting_enabled
         false,          // is_local_mode
         1,              // num_workers
+        nullptr,        // terminate_asyncio_thread
+        "",             // serialized_job_config
+        -1,             // metrics_agent_port
     };
     CoreWorkerProcess::Initialize(options);
 

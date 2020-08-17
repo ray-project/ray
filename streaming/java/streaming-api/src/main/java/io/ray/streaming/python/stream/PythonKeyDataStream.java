@@ -2,6 +2,7 @@ package io.ray.streaming.python.stream;
 
 import io.ray.streaming.api.stream.DataStream;
 import io.ray.streaming.api.stream.KeyDataStream;
+import io.ray.streaming.operator.ChainStrategy;
 import io.ray.streaming.python.PythonFunction;
 import io.ray.streaming.python.PythonFunction.FunctionInterface;
 import io.ray.streaming.python.PythonOperator;
@@ -37,7 +38,9 @@ public class PythonKeyDataStream extends PythonDataStream implements PythonStrea
    */
   public PythonDataStream reduce(PythonFunction func) {
     func.setFunctionInterface(FunctionInterface.REDUCE_FUNCTION);
-    return new PythonDataStream(this, new PythonOperator(func));
+    PythonDataStream stream = new PythonDataStream(this, new PythonOperator(func));
+    stream.withChainStrategy(ChainStrategy.HEAD);
+    return stream;
   }
 
   /**

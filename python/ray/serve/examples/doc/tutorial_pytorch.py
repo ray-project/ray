@@ -16,12 +16,14 @@ from torchvision.models import resnet18
 # __doc_define_servable_begin__
 class ImageModel:
     def __init__(self):
-        self.model = resnet18(pretrained=True)
+        self.model = resnet18(pretrained=True).eval()
         self.preprocessor = transforms.Compose([
             transforms.Resize(224),
             transforms.CenterCrop(224),
             transforms.ToTensor(),
             transforms.Lambda(lambda t: t[:3, ...]),  # remove alpha channel
+            transforms.Normalize(
+                mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ])
 
     def __call__(self, flask_request):
@@ -45,9 +47,12 @@ class ImageModel:
 
 # __doc_deploy_begin__
 serve.init()
-serve.create_endpoint("predictor", "/image_predict", methods=["POST"])
 serve.create_backend("resnet18:v0", ImageModel)
-serve.set_traffic("predictor", {"resnet18:v0": 1})
+serve.create_endpoint(
+    "predictor",
+    backend="resnet18:v0",
+    route="/image_predict",
+    methods=["POST"])
 # __doc_deploy_end__
 
 # __doc_query_begin__

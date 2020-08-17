@@ -12,14 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_STATS_TAG_DEFS_H
-#define RAY_STATS_TAG_DEFS_H
+#pragma once
 
 /// The definitions of tag keys that you can use every where.
 /// You can follow these examples to define and register your tag keys.
 
 using TagKeyType = opencensus::tags::TagKey;
 using TagsType = std::vector<std::pair<opencensus::tags::TagKey, std::string>>;
+
+static const TagKeyType ComponentKey = TagKeyType::Register("Component");
 
 static const TagKeyType JobNameKey = TagKeyType::Register("JobName");
 
@@ -39,4 +40,4 @@ static const TagKeyType ResourceNameKey = TagKeyType::Register("ResourceName");
 
 static const TagKeyType ValueTypeKey = TagKeyType::Register("ValueType");
 
-#endif  // RAY_STATS_TAG_DEFS_H
+static const TagKeyType ActorIdKey = TagKeyType::Register("ActorId");

@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_STATS_HANDLER_IMPL_H
-#define RAY_GCS_STATS_HANDLER_IMPL_H
+#pragma once
 
+#include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 
@@ -24,18 +24,20 @@ namespace rpc {
 /// This implementation class of `StatsHandler`.
 class DefaultStatsHandler : public rpc::StatsHandler {
  public:
-  explicit DefaultStatsHandler(gcs::RedisGcsClient &gcs_client)
-      : gcs_client_(gcs_client) {}
+  explicit DefaultStatsHandler(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
+      : gcs_table_storage_(std::move(gcs_table_storage)) {}
 
   void HandleAddProfileData(const AddProfileDataRequest &request,
                             AddProfileDataReply *reply,
                             SendReplyCallback send_reply_callback) override;
 
+  void HandleGetAllProfileInfo(const rpc::GetAllProfileInfoRequest &request,
+                               rpc::GetAllProfileInfoReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
+
  private:
-  gcs::RedisGcsClient &gcs_client_;
+  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
 };
 
 }  // namespace rpc
 }  // namespace ray
-
-#endif  // RAY_GCS_STATS_HANDLER_IMPL_H

@@ -4,9 +4,9 @@ import os
 import ray
 
 from ray.rllib.agents.registry import get_agent_class
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 ray.init(num_cpus=10)
 
@@ -25,14 +25,14 @@ def train_and_export(algo_name, num_steps, model_dir, ckpt_dir, prefix):
 
 def restore_saved_model(export_dir):
     signature_key = \
-        tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
-    g = tf.Graph()
+        tf1.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+    g = tf1.Graph()
     with g.as_default():
-        with tf.Session(graph=g) as sess:
+        with tf1.Session(graph=g) as sess:
             meta_graph_def = \
-                tf.saved_model.load(sess,
-                                    [tf.saved_model.tag_constants.SERVING],
-                                    export_dir)
+                tf1.saved_model.load(sess,
+                                     [tf1.saved_model.tag_constants.SERVING],
+                                     export_dir)
             print("Model restored!")
             print("Signature Def Information:")
             print(meta_graph_def.signature_def[signature_key])
@@ -41,13 +41,13 @@ def restore_saved_model(export_dir):
 
 
 def restore_checkpoint(export_dir, prefix):
-    sess = tf.Session()
+    sess = tf1.Session()
     meta_file = "%s.meta" % prefix
-    saver = tf.train.import_meta_graph(os.path.join(export_dir, meta_file))
+    saver = tf1.train.import_meta_graph(os.path.join(export_dir, meta_file))
     saver.restore(sess, os.path.join(export_dir, prefix))
     print("Checkpoint restored!")
     print("Variables Information:")
-    for v in tf.trainable_variables():
+    for v in tf1.trainable_variables():
         value = sess.run(v)
         print(v.name, value)
 

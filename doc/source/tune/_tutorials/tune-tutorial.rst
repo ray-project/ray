@@ -3,81 +3,85 @@
 A Basic Tune Tutorial
 =====================
 
-.. image:: /images/tune-api.svg
+This tutorial will walk you through the process of setting up Tune. Specifically, we'll leverage early stopping and Bayesian Optimization (via HyperOpt) to optimize your PyTorch model.
 
-This tutorial will walk you through the following process to setup a Tune experiment using Pytorch. Specifically, we'll leverage ASHA and Bayesian Optimization (via HyperOpt) via the following steps:
 
-  1. Integrating Tune into your workflow
-  2. Specifying a TrialScheduler
-  3. Adding a SearchAlgorithm
-  4. Getting the best model and analyzing results
+.. tip:: If you have suggestions as to how to improve this tutorial, please `let us know <https://github.com/ray-project/ray/issues/new/choose>`_!
 
-.. note::
+To run this example, you will need to install the following:
 
-    To run this example, you will need to install the following:
+.. code-block:: bash
 
-    .. code-block:: bash
+    $ pip install ray torch torchvision
 
-        $ pip install ray torch torchvision
+Pytorch Model Setup
+~~~~~~~~~~~~~~~~~~~
 
-We first run some imports:
+To start off, let's first import some dependencies:
 
 .. literalinclude:: /../../python/ray/tune/tests/tutorial.py
    :language: python
    :start-after: __tutorial_imports_begin__
    :end-before: __tutorial_imports_end__
 
+Then, let's define the PyTorch model that we'll be training.
 
-Below, we have some boiler plate code for a PyTorch training function.
+.. literalinclude:: /../../python/ray/tune/tests/tutorial.py
+   :language: python
+   :start-after:  __model_def_begin__
+   :end-before:  __model_def_end__
+
+
+Below, we have some boiler plate code for training and evaluating your model in Pytorch. :ref:`Skip ahead to the Tune usage <tutorial-tune-setup>`.
+
+.. literalinclude:: /../../python/ray/tune/tests/tutorial.py
+   :language: python
+   :start-after: __train_def_begin__
+   :end-before: __train_def_end__
+
+.. _tutorial-tune-setup:
+
+Setting up Tune
+~~~~~~~~~~~~~~~
+
+Below, we define a function that trains the Pytorch model for multiple epochs. This function will be executed on a separate :ref:`Ray Actor (process) <actor-guide>` underneath the hood, so we need to communicate the performance of the model back to Tune (which is on the main Python process).
+
+To do this, we call :ref:`tune.report <tune-function-docstring>` in our training function, which sends the performance value back to Tune.
+
+.. tip:: Since the function is executed on the separate process, make sure that the function is :ref:`serializable by Ray <serialization-guide>`.
 
 .. literalinclude:: /../../python/ray/tune/tests/tutorial.py
    :language: python
    :start-after: __train_func_begin__
    :end-before: __train_func_end__
 
-Notice that there's a couple helper functions in the above training script. You can take a look at these functions in the imported module `examples/mnist_pytorch <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/mnist_pytorch.py>`__; there's no black magic happening. For example, ``train`` is simply a for loop over the data loader.
-
-.. code:: python
-
-    EPOCH_SIZE = 20
-
-    def train(model, optimizer, train_loader):
-        model.train()
-        for batch_idx, (data, target) in enumerate(train_loader):
-            if batch_idx * len(data) > EPOCH_SIZE:
-                return
-            optimizer.zero_grad()
-            output = model(data)
-            loss = F.nll_loss(output, target)
-            loss.backward()
-            optimizer.step()
-
-Let's run 1 trial, randomly sampling from a uniform distribution for learning rate and momentum.
+Let's run 1 trial by calling :ref:`tune.run <tune-run-ref>` and :ref:`randomly sample <tune-sample-docs>` from a uniform distribution for learning rate and momentum.
 
 .. literalinclude:: /../../python/ray/tune/tests/tutorial.py
    :language: python
    :start-after: __eval_func_begin__
    :end-before: __eval_func_end__
 
-We can then plot the performance of this trial.
+``tune.run`` returns an :ref:`Analysis object <tune-analysis-docs>`. You can use this to plot the performance of this trial.
 
 .. literalinclude:: /../../python/ray/tune/tests/tutorial.py
    :language: python
    :start-after: __plot_begin__
    :end-before: __plot_end__
 
-.. note:: Tune will automatically run parallel trials across all available cores/GPUs on your machine or cluster. To limit the number of cores that Tune uses, you can call ``ray.init(num_cpus=<int>, num_gpus=<int>)`` before ``tune.run``.
+.. note:: Tune will automatically run parallel trials across all available cores/GPUs on your machine or cluster. To limit the number of cores that Tune uses, you can call ``ray.init(num_cpus=<int>, num_gpus=<int>)`` before ``tune.run``. If you're using a Search Algorithm like Bayesian Optimization, you'll want to use the :ref:`ConcurrencyLimiter <limiter>`.
 
 
 Early Stopping with ASHA
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-Let's integrate a Trial Scheduler to our search - ASHA, a scalable algorithm for principled early stopping.
+Let's integrate early stopping into our optimization process. Let's use :ref:`ASHA <tune-scheduler-hyperband>`, a scalable algorithm for `principled early stopping`_.
 
-How does it work? On a high level, it terminates trials that are less promising and
-allocates more time and resources to more promising trials. See `this blog post <https://blog.ml.cmu.edu/2018/12/12/massively-parallel-hyperparameter-optimization/>`__ for more details.
+.. _`principled early stopping`: https://blog.ml.cmu.edu/2018/12/12/massively-parallel-hyperparameter-optimization/
 
-We can afford to **increase the search space by 5x**, by adjusting the parameter ``num_samples``. See :ref:`tune-schedulers` for more details of available schedulers and library integrations.
+On a high level, ASHA terminates trials that are less promising and allocates more time and resources to more promising trials. As our optimization process becomes more efficient, we can afford to **increase the search space by 5x**, by adjusting the parameter ``num_samples``.
+
+ASHA is implemented in Tune as a "Trial Scheduler". These Trial Schedulers can early terminate bad trials, pause trials, clone trials, and alter hyperparameters of a running trial. See :ref:`the TrialScheduler documentation <tune-schedulers>` for more details of available schedulers and library integrations.
 
 .. literalinclude:: /../../python/ray/tune/tests/tutorial.py
    :language: python
@@ -95,7 +99,7 @@ You can run the below in a Jupyter notebook to visualize trial progress.
     :scale: 50%
     :align: center
 
-You can also use Tensorboard for visualizing results.
+You can also use :ref:`Tensorboard <tensorboard>` for visualizing results.
 
 .. code:: bash
 
@@ -105,18 +109,21 @@ You can also use Tensorboard for visualizing results.
 Search Algorithms in Tune
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-With Tune you can combine powerful hyperparameter search libraries such as `HyperOpt <https://github.com/hyperopt/hyperopt>`_ and `Ax <https://ax.dev>`_ with state-of-the-art algorithms such as HyperBand without modifying any model training code. Tune allows you to use different search algorithms in combination with different trial schedulers. See :ref:`tune-search-alg` for more details of available algorithms and library integrations.
+In addition to :ref:`TrialSchedulers <tune-schedulers>`, you can further optimize your hyperparameters by using an intelligent search technique like Bayesian Optimization. To do this, you can use a Tune :ref:`Search Algorithm <tune-search-alg>`. Search Algorithms leverage optimization algorithms to intelligently navigate the given hyperparameter space.
+
+Note that each library has a specific way of defining the search space.
 
 .. literalinclude:: /../../python/ray/tune/tests/tutorial.py
    :language: python
    :start-after: __run_searchalg_begin__
    :end-before: __run_searchalg_end__
 
+.. note:: Tune allows you to use some search algorithms in combination with different trial schedulers. See :ref:`this page for more details <tune-schedulers>`.
 
 Evaluate your model
 ~~~~~~~~~~~~~~~~~~~
 
-You can evaluate best trained model using the Analysis object to retrieve the best model:
+You can evaluate best trained model using the :ref:`Analysis object <tune-analysis-docs>` to retrieve the best model:
 
 .. literalinclude:: /../../python/ray/tune/tests/tutorial.py
    :language: python
@@ -126,4 +133,8 @@ You can evaluate best trained model using the Analysis object to retrieve the be
 
 Next Steps
 ----------
-Take a look at the :ref:`tune-user-guide` for a more comprehensive overview of Tune's features.
+
+* Take a look at the :doc:`/tune/user-guide` for a more comprehensive overview of Tune's features.
+* Check out the :ref:`Tune tutorials <tune-guides>` for guides on using Tune with your preferred machine learning library.
+* Browse our :ref:`gallery of examples <tune-general-examples>` to see how to use Tune with PyTorch, XGBoost, Tensorflow, etc.
+* `Let us know <https://github.com/ray-project/ray/issues>`__ if you ran into issues or have any questions by opening an issue on our Github.

@@ -77,6 +77,7 @@ class TestMemoryScheduling(unittest.TestCase):
                 config={
                     "env": "CartPole-v0",
                     "memory": 100 * 1024 * 1024,  # too little
+                    "framework": "tf",
                 },
                 raise_on_failed_trial=False)
             self.assertEqual(result.trials[0].status, "ERROR")
@@ -99,6 +100,7 @@ class TestMemoryScheduling(unittest.TestCase):
                         "env": "CartPole-v0",
                         # too large
                         "object_store_memory": 10000 * 1024 * 1024,
+                        "framework": "tf",
                     }))
         finally:
             ray.shutdown()
@@ -113,6 +115,7 @@ class TestMemoryScheduling(unittest.TestCase):
                     "env": "CartPole-v0",
                     "num_workers": 1,
                     "memory_per_worker": 100 * 1024 * 1024,  # too little
+                    "framework": "tf",
                 },
                 raise_on_failed_trial=False)
             self.assertEqual(result.trials[0].status, "ERROR")
@@ -134,6 +137,7 @@ class TestMemoryScheduling(unittest.TestCase):
                     "num_workers": 1,
                     # too large
                     "object_store_memory_per_worker": 10000 * 1024 * 1024,
+                    "framework": "tf",
                 }))
         finally:
             ray.shutdown()

@@ -2,7 +2,7 @@
 name: Feature request
 about: Suggest an idea for Ray, Tune, RLlib, etc.
 title: ''
-labels: enhancement
+labels: enhancement, triage
 assignees: ''
 
 ---

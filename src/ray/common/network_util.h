@@ -12,15 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_COMMON_NETWORK_UTIL_H
-#define RAY_COMMON_NETWORK_UTIL_H
+#pragma once
 
 #include <boost/asio.hpp>
 #include <boost/asio/deadline_timer.hpp>
 #include <boost/bind.hpp>
 #include <boost/date_time/posix_time/posix_time_types.hpp>
 #include <boost/system/error_code.hpp>
-#include "constants.h"
+#include <string>
+
+#ifndef _WIN32
+
+#include <arpa/inet.h>
+#include <ifaddrs.h>
+#include <netinet/in.h>
+
+#endif
+
+#include "ray/common/constants.h"
 
 using boost::asio::deadline_timer;
 using boost::asio::io_service;
@@ -32,6 +41,11 @@ using boost::asio::ip::tcp;
 class AsyncClient {
  public:
   AsyncClient() : socket_(io_service_), timer_(io_service_) {}
+
+  ~AsyncClient() {
+    io_service_.stop();
+    socket_.close();
+  }
 
   /// This function is used to asynchronously connect a socket to the specified address
   /// with timeout.
@@ -107,56 +121,63 @@ class AsyncClient {
 ///
 /// \param port The port that the local ip is listening on.
 /// \param timeout_ms The maximum wait time in milliseconds.
-/// \return A valid local ip.
-std::string GetValidLocalIp(int port, int64_t timeout_ms) {
-  AsyncClient async_client;
-  boost::system::error_code error_code;
-  std::string address;
-  bool is_timeout;
-  if (async_client.Connect(kPublicDNSServerIp, kPublicDNSServerPort, timeout_ms,
-                           &is_timeout, &error_code)) {
-    address = async_client.GetLocalIPAddress();
-  } else {
-    address = "127.0.0.1";
+/// \return a valid local ip.
+std::string GetValidLocalIp(int port, int64_t timeout_ms);
 
-    if (is_timeout || error_code == boost::system::errc::host_unreachable) {
-      boost::asio::ip::detail::endpoint primary_endpoint;
-      boost::asio::io_context io_context;
-      boost::asio::ip::tcp::resolver resolver(io_context);
-      boost::asio::ip::tcp::resolver::query query(
-          boost::asio::ip::host_name(), "",
-          boost::asio::ip::resolver_query_base::flags::v4_mapped);
-      boost::asio::ip::tcp::resolver::iterator iter = resolver.resolve(query, error_code);
-      boost::asio::ip::tcp::resolver::iterator end;  // End marker.
-      if (!error_code) {
-        while (iter != end) {
-          boost::asio::ip::tcp::endpoint ep = *iter;
-          if (ep.address().is_v4() && !ep.address().is_loopback() &&
-              !ep.address().is_multicast()) {
-            primary_endpoint.address(ep.address());
-            primary_endpoint.port(ep.port());
+/// A helper function to test whether target rpc server is valid.
+///
+/// \param ip The ip that the target rpc server is listening on.
+/// \param port The port that the target rpc server is listening on.
+/// \param timeout_ms The maximum wait time in milliseconds.
+/// \return Whether target rpc server is valid.
+bool Ping(const std::string &ip, int port, int64_t timeout_ms);
 
-            AsyncClient client;
-            if (client.Connect(primary_endpoint.address().to_string(), port, timeout_ms,
-                               &is_timeout)) {
-              break;
-            }
-          }
-          iter++;
-        }
-      } else {
-        RAY_LOG(WARNING) << "Failed to resolve ip address, error = "
-                         << strerror(error_code.value());
-        iter = end;
-      }
+bool CheckFree(int port);
 
-      if (iter != end) {
-        address = primary_endpoint.address().to_string();
-      }
-    }
-  }
+/// \namespace NetIf
+///
+/// Namespace with implementations of helper function to get valid IPs
+/// from network interfaces
+namespace NetIf {
+/// Priority of a IPs from a given interface to be chosen to serve something
+enum class Priority { kVeryHigh, kHigh, kNormal, kExclude };
 
-  return address;
-}
+/// To keep one IP and its interface
+typedef std::pair<std::string, std::string> NameAndIp;
 
-#endif  // RAY_COMMON_NETWORK_UTIL_H
+/// To keep interface names prefixes and its priorities
+typedef std::pair<std::string, Priority> PrefixAndPriority;
+
+/// Interface name prefix and its priority
+extern std::vector<PrefixAndPriority> prefixes_and_priorities;
+
+/// A helper function to get IPs from local interfaces.
+/// It also filters out IPs from interfaces with priority Priority::kExclude
+/// and sort the IPs based on its interfaces priority.
+/// If running on Windows, uses boost to try to resolve hostname
+/// and don't filter candidates.
+///
+/// \return a vector with valid local IP candidates that were not filtered out
+std::vector<boost::asio::ip::address> GetValidLocalIpCandidates();
+
+/// Based on the prefix of the interface name, returns a level of priority.
+///
+/// \param if_name the name of the interface to be tested.
+/// \return the priority of the interface.
+Priority GetPriority(const std::string &if_name);
+
+/// Helper function to be used with std::sort.
+/// Lowest priority comes first
+bool CompNamesAndIps(const NameAndIp &left, const NameAndIp &right);
+
+/// Helper function to be used with std::sort.
+/// Biggest prefix comes first
+bool CompPrefixLen(const PrefixAndPriority &left, const PrefixAndPriority &right);
+
+/// A helper tiny function to check if the interface name has a given prefix.
+///
+/// \param name the interface name to be checked.
+/// \param prefix the prefix that will be looked in 'name'.
+/// \return true if 'name' starts with 'prefix'.
+bool NameStartsWith(const std::string &name, const std::string &prefix);
+}  // namespace NetIf

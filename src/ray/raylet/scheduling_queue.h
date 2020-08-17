@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_RAYLET_SCHEDULING_QUEUE_H
-#define RAY_RAYLET_SCHEDULING_QUEUE_H
+#pragma once
 
 #include <array>
 #include <list>
@@ -24,6 +23,7 @@
 #include "ray/common/task/task.h"
 #include "ray/util/logging.h"
 #include "ray/util/ordered_set.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 
@@ -107,10 +107,16 @@ class TaskQueue {
   /// \return The task.
   const Task &GetTask(const TaskID &task_id) const;
 
-  /// \brief Get the total resources required by the tasks in the queue.
+  /// \brief Return all resource demand associated with the ready queue.
   ///
-  /// \return Total resources required by the tasks in the queue.
-  const ResourceSet &GetCurrentResourceLoad() const;
+  /// \return Aggregate resource demand from ready tasks.
+  const ResourceSet &GetTotalResourceLoad() const;
+
+  /// \brief Get the resources required by the tasks in the queue.
+  ///
+  /// \return A map from resource shape key to the number of tasks queued that
+  /// require that shape.
+  const std::unordered_map<SchedulingClass, uint64_t> &GetResourceLoadByShape() const;
 
  protected:
   /// A list of tasks.
@@ -118,7 +124,11 @@ class TaskQueue {
   /// A hash to speed up looking up a task.
   std::unordered_map<TaskID, std::list<Task>::iterator> task_map_;
   /// Aggregate resources of all the tasks in this queue.
-  ResourceSet current_resource_load_;
+  ResourceSet total_resource_load_;
+  /// Required resources for all the tasks in this queue. This is a
+  /// map from resource shape key to number of tasks queued that require that
+  /// shape.
+  std::unordered_map<SchedulingClass, uint64_t> resource_load_by_shape_;
 };
 
 class ReadyQueue : public TaskQueue {
@@ -211,7 +221,14 @@ class SchedulingQueue {
   ///
   /// \return A resource set with aggregate resource information about resource load on
   /// this raylet.
-  ResourceSet GetResourceLoad() const;
+  ResourceSet GetTotalResourceLoad() const;
+
+  /// \brief Return a summary of the requests in the ready and infeasible
+  /// queues.
+  ///
+  /// \return A message summarizing the number of requests, sorted by shape, in
+  /// the ready and infeasible queues.
+  rpc::ResourceLoad GetResourceLoadByShape(int64_t max_shapes = -1) const;
 
   /// Get the tasks in the blocked state.
   ///
@@ -310,11 +327,6 @@ class SchedulingQueue {
   /// \return All the tasks that have the given actor ID.
   std::unordered_set<TaskID> GetTaskIdsForActor(const ActorID &actor_id) const;
 
-  /// \brief Return all resource demand associated with the ready queue.
-  ///
-  /// \return Aggregate resource demand from ready tasks.
-  ResourceSet GetReadyQueueResources() const;
-
   /// Returns the number of running tasks in this class.
   ///
   /// \return int.
@@ -366,5 +378,3 @@ class SchedulingQueue {
 }  // namespace raylet
 
 }  // namespace ray
-
-#endif  // RAY_RAYLET_SCHEDULING_QUEUE_H

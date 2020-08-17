@@ -12,14 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_STORE_CLIENT_REDIS_STORE_CLIENT_H
-#define RAY_GCS_STORE_CLIENT_REDIS_STORE_CLIENT_H
+#pragma once
 
 #include "absl/container/flat_hash_set.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/redis_context.h"
 #include "ray/gcs/store_client/store_client.h"
-#include "ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 
@@ -40,15 +39,27 @@ class RedisStoreClient : public StoreClient {
   Status AsyncGet(const std::string &table_name, const std::string &key,
                   const OptionalItemCallback<std::string> &callback) override;
 
+  Status AsyncGetByIndex(const std::string &table_name, const std::string &index_key,
+                         const MapCallback<std::string, std::string> &callback) override;
+
   Status AsyncGetAll(const std::string &table_name,
                      const MapCallback<std::string, std::string> &callback) override;
 
   Status AsyncDelete(const std::string &table_name, const std::string &key,
                      const StatusCallback &callback) override;
 
+  Status AsyncDeleteWithIndex(const std::string &table_name, const std::string &key,
+                              const std::string &index_key,
+                              const StatusCallback &callback) override;
+
   Status AsyncBatchDelete(const std::string &table_name,
                           const std::vector<std::string> &keys,
                           const StatusCallback &callback) override;
+
+  Status AsyncBatchDeleteWithIndex(const std::string &table_name,
+                                   const std::vector<std::string> &keys,
+                                   const std::vector<std::string> &index_keys,
+                                   const StatusCallback &callback) override;
 
   Status AsyncDeleteByIndex(const std::string &table_name, const std::string &index_key,
                             const StatusCallback &callback) override;
@@ -62,25 +73,22 @@ class RedisStoreClient : public StoreClient {
   class RedisScanner {
    public:
     explicit RedisScanner(std::shared_ptr<RedisClient> redis_client,
-                          std::string table_name, std::string match_pattern);
+                          std::string table_name);
 
-    Status ScanKeysAndValues(const MapCallback<std::string, std::string> &callback);
+    Status ScanKeysAndValues(std::string match_pattern,
+                             const MapCallback<std::string, std::string> &callback);
 
-    Status ScanKeys(const MultiItemCallback<std::string> &callback);
+    Status ScanKeys(std::string match_pattern,
+                    const MultiItemCallback<std::string> &callback);
 
    private:
-    void Scan(const StatusCallback &callback);
+    void Scan(std::string match_pattern, const StatusCallback &callback);
 
-    void OnScanCallback(size_t shard_index, const std::shared_ptr<CallbackReply> &reply,
+    void OnScanCallback(std::string match_pattern, size_t shard_index,
+                        const std::shared_ptr<CallbackReply> &reply,
                         const StatusCallback &callback);
 
-    void MGetValues(const std::vector<std::string> &keys,
-                    const MapCallback<std::string, std::string> &callback);
-
     std::string table_name_;
-
-    /// The scan match pattern.
-    std::string match_pattern_;
 
     /// Mutex to protect the shard_to_cursor_ field and the keys_ field and the
     /// key_value_map_ field.
@@ -88,9 +96,6 @@ class RedisStoreClient : public StoreClient {
 
     /// All keys that scanned from redis.
     absl::flat_hash_set<std::string> keys_;
-
-    /// Key-Value pairs that scanned from redis.
-    std::unordered_map<std::string, std::string> key_value_map_;
 
     /// The scan cursor for each shard.
     std::unordered_map<size_t, size_t> shard_to_cursor_;
@@ -112,7 +117,8 @@ class RedisStoreClient : public StoreClient {
       const std::vector<std::string> &keys);
 
   /// The separator is used when building redis key.
-  static std::string separator_;
+  static std::string table_separator_;
+  static std::string index_table_separator_;
 
   static std::string GenRedisKey(const std::string &table_name, const std::string &key);
 
@@ -131,11 +137,13 @@ class RedisStoreClient : public StoreClient {
                                         const std::string &table_name,
                                         const std::string &index_key);
 
+  static Status MGetValues(std::shared_ptr<RedisClient> redis_client,
+                           std::string table_name, const std::vector<std::string> &keys,
+                           const MapCallback<std::string, std::string> &callback);
+
   std::shared_ptr<RedisClient> redis_client_;
 };
 
 }  // namespace gcs
 
 }  // namespace ray
-
-#endif  // RAY_GCS_STORE_CLIENT_REDIS_STORE_CLIENT_H

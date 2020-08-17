@@ -1,9 +1,9 @@
 from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
-class SkipConnection(tf.keras.layers.Layer):
+class SkipConnection(tf.keras.layers.Layer if tf else object):
     """Skip connection layer.
 
     Adds the original input to the output (regular residual layer) OR uses

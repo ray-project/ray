@@ -55,14 +55,14 @@ if __name__ == "__main__":
             "multiagent": {
                 "policies": {
                     "pg_policy": (None, obs_space, act_space, {
-                        "use_pytorch": args.torch
+                        "framework": "torch" if args.torch else "tf",
                     }),
                     "random": (RandomPolicy, obs_space, act_space, {}),
                 },
                 "policy_mapping_fn": (
                     lambda agent_id: ["pg_policy", "random"][agent_id % 2]),
             },
-            "use_pytorch": args.torch,
+            "framework": "torch" if args.torch else "tf",
         },
     )
 

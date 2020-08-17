@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "scheduling_queue.h"
+#include "ray/raylet/scheduling_queue.h"
 
 #include <sstream>
 
@@ -70,7 +70,8 @@ bool TaskQueue::AppendTask(const TaskID &task_id, const Task &task) {
   auto list_iterator = task_list_.insert(task_list_.end(), task);
   task_map_[task_id] = list_iterator;
   // Resource bookkeeping
-  current_resource_load_.AddResources(task.GetTaskSpecification().GetRequiredResources());
+  total_resource_load_.AddResources(task.GetTaskSpecification().GetRequiredResources());
+  resource_load_by_shape_[task.GetTaskSpecification().GetSchedulingClass()]++;
   return true;
 }
 
@@ -80,15 +81,20 @@ bool TaskQueue::RemoveTask(const TaskID &task_id, std::vector<Task> *removed_tas
     return false;
   }
 
-  auto list_iterator = task_found_iterator->second;
+  auto it = task_found_iterator->second;
   // Resource bookkeeping
-  current_resource_load_.SubtractResourcesStrict(
-      list_iterator->GetTaskSpecification().GetRequiredResources());
+  total_resource_load_.SubtractResourcesStrict(
+      it->GetTaskSpecification().GetRequiredResources());
+  auto scheduling_class = it->GetTaskSpecification().GetSchedulingClass();
+  resource_load_by_shape_[scheduling_class]--;
+  if (resource_load_by_shape_[scheduling_class] == 0) {
+    resource_load_by_shape_.erase(scheduling_class);
+  }
   if (removed_tasks) {
-    removed_tasks->push_back(std::move(*list_iterator));
+    removed_tasks->push_back(std::move(*it));
   }
   task_map_.erase(task_found_iterator);
-  task_list_.erase(list_iterator);
+  task_list_.erase(it);
   return true;
 }
 
@@ -104,8 +110,13 @@ const Task &TaskQueue::GetTask(const TaskID &task_id) const {
   return *it->second;
 }
 
-const ResourceSet &TaskQueue::GetCurrentResourceLoad() const {
-  return current_resource_load_;
+const ResourceSet &TaskQueue::GetTotalResourceLoad() const {
+  return total_resource_load_;
+}
+
+const std::unordered_map<SchedulingClass, uint64_t> &TaskQueue::GetResourceLoadByShape()
+    const {
+  return resource_load_by_shape_;
 }
 
 bool ReadyQueue::AppendTask(const TaskID &task_id, const Task &task) {
@@ -144,12 +155,69 @@ const Task &SchedulingQueue::GetTaskOfState(const TaskID &task_id,
   return queue->GetTask(task_id);
 }
 
-ResourceSet SchedulingQueue::GetResourceLoad() const {
-  auto load = ready_queue_->GetCurrentResourceLoad();
+ResourceSet SchedulingQueue::GetTotalResourceLoad() const {
+  auto load = ready_queue_->GetTotalResourceLoad();
   // Also take into account infeasible tasks so they show up for autoscaling.
   load.AddResources(
-      task_queues_[static_cast<int>(TaskState::INFEASIBLE)]->GetCurrentResourceLoad());
+      task_queues_[static_cast<int>(TaskState::INFEASIBLE)]->GetTotalResourceLoad());
   return load;
+}
+
+rpc::ResourceLoad SchedulingQueue::GetResourceLoadByShape(int64_t max_shapes) const {
+  std::unordered_map<SchedulingClass, rpc::ResourceDemand> load;
+  auto infeasible_queue_load =
+      task_queues_[static_cast<int>(TaskState::INFEASIBLE)]->GetResourceLoadByShape();
+  auto ready_queue_load = ready_queue_->GetResourceLoadByShape();
+  size_t max_shapes_to_add = ready_queue_load.size() + infeasible_queue_load.size();
+  if (max_shapes >= 0) {
+    max_shapes_to_add = max_shapes;
+  }
+
+  // Always collect the 1-CPU resource shape stats, if the specified max shapes
+  // allows.
+  static const ResourceSet one_cpu_resource_set(
+      std::unordered_map<std::string, double>({{kCPU_ResourceLabel, 1}}));
+  static const SchedulingClass one_cpu_scheduling_cls(
+      TaskSpecification::GetSchedulingClass(one_cpu_resource_set));
+  if (max_shapes_to_add > 0) {
+    if (infeasible_queue_load.count(one_cpu_scheduling_cls) > 0) {
+      load[one_cpu_scheduling_cls].set_num_infeasible_requests_queued(
+          infeasible_queue_load.at(one_cpu_scheduling_cls));
+    }
+    if (ready_queue_load.count(one_cpu_scheduling_cls) > 0) {
+      load[one_cpu_scheduling_cls].set_num_ready_requests_queued(
+          ready_queue_load.at(one_cpu_scheduling_cls));
+    }
+  }
+
+  // Collect the infeasible queue's load.
+  auto infeasible_it = infeasible_queue_load.begin();
+  while (infeasible_it != infeasible_queue_load.end() &&
+         load.size() < max_shapes_to_add) {
+    load[infeasible_it->first].set_num_infeasible_requests_queued(infeasible_it->second);
+    infeasible_it++;
+  }
+
+  // Collect the ready queue's load.
+  auto ready_it = ready_queue_load.begin();
+  while (ready_it != ready_queue_load.end() && load.size() < max_shapes_to_add) {
+    load[ready_it->first].set_num_ready_requests_queued(ready_it->second);
+    ready_it++;
+  }
+
+  // Set the resource shapes.
+  rpc::ResourceLoad load_proto;
+  for (auto &demand : load) {
+    auto demand_proto = load_proto.add_resource_demands();
+    demand_proto->Swap(&demand.second);
+    const auto &resource_map =
+        TaskSpecification::GetSchedulingClassDescriptor(demand.first).GetResourceMap();
+    for (const auto &resource_pair : resource_map) {
+      (*demand_proto->mutable_shape())[resource_pair.first] = resource_pair.second;
+    }
+  }
+
+  return load_proto;
 }
 
 const std::unordered_set<TaskID> &SchedulingQueue::GetBlockedTaskIds() const {
@@ -461,8 +529,7 @@ std::string SchedulingQueue::DebugString() const {
   for (const auto &pair : num_running_tasks_) {
     result << "\n- ";
     auto desc = TaskSpecification::GetSchedulingClassDescriptor(pair.first);
-    result << desc.second->ToString();
-    result << desc.first.ToString();
+    result << desc.ToString();
     result << ": " << pair.second;
     total += pair.second;
   }

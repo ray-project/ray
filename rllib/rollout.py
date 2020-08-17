@@ -16,7 +16,7 @@ from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.deprecation import deprecation_warning
-from ray.rllib.utils.space_utils import flatten_to_single_ndarray
+from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
 from ray.tune.utils import merge_dicts
 from ray.tune.registry import get_trainable_cls
 
@@ -241,7 +241,6 @@ def create_parser(parser_creator=None):
 
 
 def run(args, parser):
-    config = {}
     # Load configuration from checkpoint file.
     config_dir = os.path.dirname(args.checkpoint)
     config_path = os.path.join(config_dir, "params.pkl")
@@ -255,6 +254,8 @@ def run(args, parser):
             raise ValueError(
                 "Could not find params.pkl in either the checkpoint dir or "
                 "its parent directory AND no config given on command line!")
+        else:
+            config = args.config
 
     # Load the config from pickled.
     else:
@@ -265,10 +266,14 @@ def run(args, parser):
     if "num_workers" in config:
         config["num_workers"] = min(2, config["num_workers"])
 
-    # Merge with `evaluation_config`.
-    evaluation_config = copy.deepcopy(config.get("evaluation_config", {}))
+    # Merge with `evaluation_config` (first try from command line, then from
+    # pkl file).
+    evaluation_config = copy.deepcopy(
+        args.config.get("evaluation_config", config.get(
+            "evaluation_config", {})))
     config = merge_dicts(config, evaluation_config)
-    # Merge with command line `--config` settings.
+    # Merge with command line `--config` settings (if not already the same
+    # anyways).
     config = merge_dicts(config, args.config)
     if not args.env:
         if not config.get("env"):
@@ -306,6 +311,7 @@ def run(args, parser):
             save_info=args.save_info) as saver:
         rollout(agent, args.env, num_steps, num_episodes, saver,
                 args.no_render, video_dir)
+    agent.stop()
 
 
 class DefaultMapping(collections.defaultdict):

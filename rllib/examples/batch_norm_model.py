@@ -7,10 +7,10 @@ from ray import tune
 from ray.rllib.examples.models.batch_norm_model import BatchNormModel, \
     TorchBatchNormModel
 from ray.rllib.models import ModelCatalog
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_learning_achieved
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")
@@ -33,7 +33,7 @@ if __name__ == "__main__":
             "custom_model": "bn_model",
         },
         "num_workers": 0,
-        "use_pytorch": args.torch,
+        "framework": "torch" if args.torch else "tf",
     }
 
     stop = {

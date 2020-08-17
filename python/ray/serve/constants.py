@@ -1,8 +1,5 @@
-#: Actor name used to register master actor
-SERVE_MASTER_NAME = "SERVE_MASTER_ACTOR"
-
-#: Actor name used to register router actor
-SERVE_ROUTER_NAME = "SERVE_ROUTER_ACTOR"
+#: Actor name used to register controller
+SERVE_CONTROLLER_NAME = "SERVE_CONTROLLER_ACTOR"
 
 #: Actor name used to register HTTP proxy actor
 SERVE_PROXY_NAME = "SERVE_PROXY_ACTOR"
@@ -27,3 +24,6 @@ DEFAULT_LATENCY_SLO_MS = 1e9
 
 #: Interval for metric client to push metrics to exporters
 METRIC_PUSH_INTERVAL_S = 2
+
+#: Time to wait for HTTP proxy in `serve.init()`
+HTTP_PROXY_TIMEOUT = 60

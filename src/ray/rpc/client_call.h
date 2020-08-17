@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_RPC_CLIENT_CALL_H
-#define RAY_RPC_CLIENT_CALL_H
+#pragma once
 
 #include <grpcpp/grpcpp.h>
-#include <boost/asio.hpp>
-#include "absl/synchronization/mutex.h"
 
+#include <boost/asio.hpp>
+
+#include "absl/synchronization/mutex.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
 
@@ -281,5 +281,3 @@ class ClientCallManager {
 
 }  // namespace rpc
 }  // namespace ray
-
-#endif

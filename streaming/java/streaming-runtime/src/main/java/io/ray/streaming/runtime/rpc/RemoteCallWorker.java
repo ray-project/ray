@@ -1,7 +1,10 @@
 package io.ray.streaming.runtime.rpc;
 
-import io.ray.api.RayActor;
-import io.ray.api.RayObject;
+import io.ray.api.ActorHandle;
+import io.ray.api.BaseActorHandle;
+import io.ray.api.ObjectRef;
+import io.ray.api.PyActorHandle;
+import io.ray.api.function.PyActorMethod;
 import io.ray.streaming.runtime.master.JobMaster;
 import io.ray.streaming.runtime.worker.JobWorker;
 import io.ray.streaming.runtime.worker.context.JobWorkerContext;
@@ -20,16 +23,23 @@ public class RemoteCallWorker {
    * Call JobWorker actor to init.
    *
    * @param actor target JobWorker actor
-   * @param ctx JobWorker's context
+   * @param context JobWorker's context
    * @return init result
    */
-  public static RayObject<Boolean> initWorker(RayActor actor, JobWorkerContext ctx) {
-    LOG.info("Call worker to init, actor: {}, context: {}.", actor.getId(), ctx);
-    RayObject<Boolean> result = null;
+  public static ObjectRef<Boolean> initWorker(BaseActorHandle actor, JobWorkerContext context) {
+    LOG.info("Call worker to initiate, actor: {}, context: {}.", actor.getId(), context);
+    ObjectRef<Boolean> result;
 
-    // TODO (datayjz): ray call worker to initiate
+    // python
+    if (actor instanceof PyActorHandle) {
+      result = ((PyActorHandle) actor).task(PyActorMethod.of("init", Boolean.class),
+          context.getPythonWorkerContextBytes()).remote();
+    } else {
+      // java
+      result = ((ActorHandle<JobWorker>) actor).task(JobWorker::init, context).remote();
+    }
 
-    LOG.info("Finished calling worker to init.");
+    LOG.info("Finished calling worker to initiate.");
     return result;
   }
 
@@ -39,11 +49,18 @@ public class RemoteCallWorker {
    * @param actor target JobWorker actor
    * @return start result
    */
-  public static RayObject<Boolean> startWorker(RayActor actor) {
+  public static ObjectRef<Boolean> startWorker(BaseActorHandle actor) {
     LOG.info("Call worker to start, actor: {}.", actor.getId());
-    RayObject<Boolean> result = null;
+    ObjectRef<Boolean> result = null;
 
-    // TODO (datayjz): ray call worker to start
+    // python
+    if (actor instanceof PyActorHandle) {
+      result = ((PyActorHandle) actor)
+          .task(PyActorMethod.of("start", Boolean.class)).remote();
+    } else {
+      // java
+      result = ((ActorHandle<JobWorker>) actor).task(JobWorker::start).remote();
+    }
 
     LOG.info("Finished calling worker to start.");
     return result;
@@ -55,7 +72,7 @@ public class RemoteCallWorker {
    * @param actor target JobWorker actor
    * @return destroy result
    */
-  public static Boolean shutdownWithoutReconstruction(RayActor actor) {
+  public static Boolean shutdownWithoutReconstruction(BaseActorHandle actor) {
     LOG.info("Call worker to shutdown without reconstruction, actor is {}.",
         actor.getId());
     Boolean result = false;

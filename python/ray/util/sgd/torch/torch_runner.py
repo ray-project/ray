@@ -138,7 +138,9 @@ class TorchRunner:
     def setup_components(self):
         """Runs the creator functions without any distributed coordination."""
         logger.debug("Loading data.")
-        self._initialize_dataloaders()
+        if self.data_creator and callable(self.data_creator):
+            self._initialize_dataloaders()
+
         logger.debug("Creating model")
         self.models = self.model_creator(self.config)
         if not isinstance(self.models, Iterable):
@@ -181,7 +183,11 @@ class TorchRunner:
         """Finds a free port on the current node."""
         return utils.find_free_port()
 
-    def train_epoch(self, num_steps=None, profile=False, info=None):
+    def train_epoch(self,
+                    num_steps=None,
+                    profile=False,
+                    info=None,
+                    iterator=None):
         """Runs a training epoch and updates the model parameters."""
         logger.debug("Begin Training Step {}".format(self.epochs + 1))
         info = info or {}
@@ -193,9 +199,18 @@ class TorchRunner:
             SCHEDULER_STEP: self.scheduler_step_freq
         })
         with self.timers.record("train_epoch"):
-            iterator = self.train_loader
+            if iterator is None:
+                iterator = iter(self.train_loader)
+            else:
+                # Dataset will provide us with a list of tuples but we
+                # need two lists.
+                def format_batch(batch):
+                    features, targets = zip(*batch)
+                    return torch.cat(features), torch.cat(targets)
+
+                iterator = map(format_batch, iterator)
             if num_steps:
-                iterator = itertools.islice(iter(self.train_loader), num_steps)
+                iterator = itertools.islice(iterator, num_steps)
             train_stats = self.training_operator.train_epoch(iterator, info)
 
         self.epochs += 1

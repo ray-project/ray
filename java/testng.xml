@@ -3,11 +3,12 @@
 <suite name="RAY suite" verbose="2">
     <test name = "RAY test">
         <packages>
-            <package name = "io.ray.api.test.*" />
             <package name = "io.ray.runtime.*" />
+            <package name = "io.ray.test.*" />
         </packages>
     </test>
     <listeners>
-        <listener class-name="io.ray.api.TestProgressListener" />
+        <listener class-name="io.ray.test.RayAlterSuiteListener" />
+        <listener class-name="io.ray.test.TestProgressListener" />
     </listeners>
 </suite>

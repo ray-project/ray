@@ -1,11 +1,10 @@
 from gym.spaces import Space
 from typing import Union
 
-from ray.rllib.utils.framework import check_framework, try_import_torch, \
-    TensorType
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.framework import try_import_torch, TensorType
 
 torch, nn = try_import_torch()
 
@@ -36,7 +35,7 @@ class Exploration:
         self.model = model
         self.num_workers = num_workers
         self.worker_index = worker_index
-        self.framework = check_framework(framework)
+        self.framework = framework
         # The device on which the Model has been placed.
         # This Exploration will be on the same device.
         self.device = None
@@ -90,6 +89,28 @@ class Exploration:
             - The log-likelihood of the exploration action.
         """
         pass
+
+    @DeveloperAPI
+    def get_exploration_loss(self, policy_loss, sample_batch):
+        """Modifies the policy loss with a loss associated to the exploration
+        strategy.
+
+        Args:
+            policy_loss (TODO): Loss from the Policy
+            sample_batch (SampleBatch): The SampleBatch object to post-process.
+        """
+        return policy_loss
+
+    @DeveloperAPI
+    def get_exploration_optimizer(self, config=None):
+        """
+        Returns: an optimizer for the loss from get_exploration_loss (in case
+        the exploration strategy has trainable components)
+
+        Args:
+            config: configuration for an optimizer
+        """
+        return []
 
     @DeveloperAPI
     def on_episode_start(self,

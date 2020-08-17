@@ -84,7 +84,7 @@ public class PipelineFirstStrategy implements ResourceAssignStrategy {
           continue;
         }
         ExecutionVertex executionVertex = exeVertices.get(i);
-        Map<String, Double> requiredResource = executionVertex.getResources();
+        Map<String, Double> requiredResource = executionVertex.getResource();
         if (requiredResource.containsKey(ResourceType.CPU.getValue())) {
           LOG.info("Required resource contain {} value : {}, no limitation by default.",
               ResourceType.CPU, requiredResource.get(ResourceType.CPU.getValue()));

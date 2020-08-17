@@ -5,9 +5,9 @@ from ray import tune
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.evaluation.postprocessing import discount
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--stop-iters", type=int, default=200)
@@ -51,4 +51,5 @@ if __name__ == "__main__":
         config={
             "env": "CartPole-v0",
             "num_workers": 2,
+            "framework": "tf",
         })

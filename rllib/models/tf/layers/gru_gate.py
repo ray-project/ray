@@ -1,9 +1,9 @@
 from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
-class GRUGate(tf.keras.layers.Layer):
+class GRUGate(tf.keras.layers.Layer if tf else object):
     def __init__(self, init_bias=0., **kwargs):
         super().__init__(**kwargs)
         self._init_bias = init_bias

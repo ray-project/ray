@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_REDIS_FAILURE_DETECTOR_H
-#define RAY_GCS_REDIS_FAILURE_DETECTOR_H
+#pragma once
 
 #include <boost/asio.hpp>
+
 #include "ray/gcs/redis_context.h"
 
 namespace ray {
@@ -67,5 +67,3 @@ class GcsRedisFailureDetector {
 
 }  // namespace gcs
 }  // namespace ray
-
-#endif  // RAY_GCS_REDIS_FAILURE_DETECTOR_H

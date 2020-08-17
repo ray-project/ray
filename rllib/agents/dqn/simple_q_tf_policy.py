@@ -12,10 +12,10 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_ops import huber_loss, make_tf_callable
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 Q_SCOPE = "q_func"
@@ -55,7 +55,7 @@ def build_q_models(policy, obs_space, action_space, config):
         action_space=action_space,
         num_outputs=action_space.n,
         model_config=config["model"],
-        framework="torch" if config["use_pytorch"] else "tf",
+        framework=config["framework"],
         name=Q_SCOPE)
 
     policy.target_q_model = ModelCatalog.get_model_v2(
@@ -63,7 +63,7 @@ def build_q_models(policy, obs_space, action_space, config):
         action_space=action_space,
         num_outputs=action_space.n,
         model_config=config["model"],
-        framework="torch" if config["use_pytorch"] else "tf",
+        framework=config["framework"],
         name=Q_TARGET_SCOPE)
 
     policy.q_func_vars = policy.q_model.variables()
@@ -83,9 +83,9 @@ def get_distribution_inputs_and_class(policy,
     q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
 
     policy.q_values = q_vals
-    return policy.q_values,\
-        TorchCategorical if policy.config["use_pytorch"] else Categorical,\
-        []  # state-outs
+    return policy.q_values, (TorchCategorical
+                             if policy.config["framework"] == "torch" else
+                             Categorical), []  # state-outs
 
 
 def build_q_losses(policy, model, dist_class, train_batch):

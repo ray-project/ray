@@ -11,9 +11,9 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import LearningRateSchedule, \
     EntropyCoeffSchedule
 from ray.rllib.policy.torch_policy_template import build_torch_policy
-from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import global_norm, sequence_mask
+from ray.rllib.utils.torch_ops import explained_variance, global_norm, \
+    sequence_mask
 
 torch, nn = try_import_torch()
 
@@ -94,19 +94,19 @@ class VTraceLoss:
         # Move v-trace results back to GPU for actual loss computing.
         self.value_targets = self.vtrace_returns.vs.to(device)
 
-        # The policy gradients loss
+        # The policy gradients loss.
         self.pi_loss = -torch.sum(
             actions_logp * self.vtrace_returns.pg_advantages.to(device) *
             valid_mask)
 
-        # The baseline loss
+        # The baseline loss.
         delta = (values - self.value_targets) * valid_mask
         self.vf_loss = 0.5 * torch.sum(torch.pow(delta, 2.0))
 
-        # The entropy loss
+        # The entropy loss.
         self.entropy = torch.sum(actions_entropy * valid_mask)
 
-        # The summed weighted loss
+        # The summed weighted loss.
         self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
                            self.entropy * entropy_coeff)
 
@@ -135,10 +135,11 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
     rewards = train_batch[SampleBatch.REWARDS]
     behaviour_action_logp = train_batch[SampleBatch.ACTION_LOGP]
     behaviour_logits = train_batch[SampleBatch.ACTION_DIST_INPUTS]
-    if isinstance(output_hidden_shape, list):
+    if isinstance(output_hidden_shape, (list, tuple, np.ndarray)):
         unpacked_behaviour_logits = torch.split(
-            behaviour_logits, output_hidden_shape, dim=1)
-        unpacked_outputs = torch.split(model_out, output_hidden_shape, dim=1)
+            behaviour_logits, list(output_hidden_shape), dim=1)
+        unpacked_outputs = torch.split(
+            model_out, list(output_hidden_shape), dim=1)
     else:
         unpacked_behaviour_logits = torch.chunk(
             behaviour_logits, output_hidden_shape, dim=1)
@@ -146,9 +147,9 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
     values = model.value_function()
 
     if policy.is_recurrent():
-        max_seq_len = torch.max(train_batch["seq_lens"]) - 1
-        mask = sequence_mask(train_batch["seq_lens"], max_seq_len)
-        mask = torch.reshape(mask, [-1])
+        max_seq_len = torch.max(train_batch["seq_lens"])
+        mask_orig = sequence_mask(train_batch["seq_lens"], max_seq_len)
+        mask = torch.reshape(mask_orig, [-1])
     else:
         mask = torch.ones_like(rewards)
 
@@ -162,7 +163,7 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
         actions_logp=_make_time_major(
             action_dist.logp(actions), drop_last=True),
         actions_entropy=_make_time_major(
-            action_dist.multi_entropy(), drop_last=True),
+            action_dist.entropy(), drop_last=True),
         dones=_make_time_major(dones, drop_last=True),
         behaviour_action_logp=_make_time_major(
             behaviour_action_logp, drop_last=True),
@@ -238,8 +239,7 @@ def stats(policy, train_batch):
         "vf_loss": policy.loss.vf_loss,
         "vf_explained_var": explained_variance(
             torch.reshape(policy.loss.value_targets, [-1]),
-            torch.reshape(values_batched, [-1]),
-            framework="torch"),
+            torch.reshape(values_batched, [-1])),
     }
 
 

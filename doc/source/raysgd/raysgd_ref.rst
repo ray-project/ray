@@ -33,3 +33,12 @@ TFTrainer
     :members:
 
     .. automethod:: __init__
+
+Dataset
+-------
+
+.. autoclass:: ray.util.sgd.data.Dataset
+    :members:
+
+    .. automethod:: __init__
+

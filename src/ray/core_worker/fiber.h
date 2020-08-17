@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_FIBER_H
-#define RAY_CORE_WORKER_FIBER_H
+#pragma once
 
-#include <ray/util/logging.h>
 #include <boost/fiber/all.hpp>
+
+#include "ray/util/logging.h"
 namespace ray {
 
 /// Used by async actor mode. The fiber event will be used
@@ -142,5 +142,3 @@ class FiberState {
 };
 
 }  // namespace ray
-
-#endif  // RAY_CORE_WORKER_FIBER_H

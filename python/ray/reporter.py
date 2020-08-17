@@ -6,28 +6,37 @@ import traceback
 import time
 import datetime
 import grpc
-import socket
+import platform
 import subprocess
 import sys
 from concurrent import futures
 
 import ray
 import psutil
+
 import ray.ray_constants as ray_constants
 import ray.services
 import ray.utils
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
+from ray.metrics_agent import MetricsAgent
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
 logger = logging.getLogger(__name__)
 
+try:
+    import gpustat.core as gpustat
+except ImportError:
+    gpustat = None
+    logger.warning(
+        "Install gpustat with 'pip install gpustat' to enable GPU monitoring.")
+
 
 class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
-    def __init__(self):
-        pass
+    def __init__(self, metrics_agent):
+        self.metrics_agent = metrics_agent
 
     def GetProfilingStats(self, request, context):
         pid = request.pid
@@ -47,7 +56,25 @@ class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
             with open(profiling_file_path, "r") as f:
                 profiling_stats = f.read()
         return reporter_pb2.GetProfilingStatsReply(
-            profiling_stats=profiling_stats, stdout=stdout, stderr=stderr)
+            profiling_stats=profiling_stats, std_out=stdout, std_err=stderr)
+
+    def ReportMetrics(self, request, context):
+        # NOTE: Exceptions are not propagated properly
+        # when we don't catch them here.
+        try:
+            metrcs_description_required = (
+                self.metrics_agent.record_metrics_points(
+                    request.metrics_points))
+        except Exception as e:
+            logger.error(e)
+            logger.error(traceback.format_exc())
+
+        # If metrics description is missing, we should notify cpp processes
+        # that we need them. Cpp processes will then report them to here.
+        # We need it when (1) a new metric is reported (application metric)
+        # (2) a reporter goes down and restarted (currently not implemented).
+        return reporter_pb2.ReportMetricsReply(
+            metrcs_description_required=metrcs_description_required)
 
 
 def recursive_asdict(o):
@@ -88,11 +115,18 @@ class Reporter:
         redis_client: A client used to communicate with the Redis server.
     """
 
-    def __init__(self, redis_address, redis_password=None):
+    def __init__(self,
+                 redis_address,
+                 port,
+                 metrics_export_port,
+                 redis_password=None):
         """Initialize the reporter object."""
         self.cpu_counts = (psutil.cpu_count(), psutil.cpu_count(logical=False))
         self.ip = ray.services.get_node_ip_address()
-        self.hostname = socket.gethostname()
+        self.hostname = platform.node()
+        self.port = port
+        self.metrics_agent = MetricsAgent(metrics_export_port)
+        self.reporter_grpc_server = ReporterServer(self.metrics_agent)
 
         _ = psutil.cpu_percent()  # For initialization
 
@@ -106,6 +140,27 @@ class Reporter:
     @staticmethod
     def get_cpu_percent():
         return psutil.cpu_percent()
+
+    @staticmethod
+    def get_gpu_usage():
+        if gpustat is None:
+            return []
+        gpu_utilizations = []
+        gpus = []
+        try:
+            gpus = gpustat.new_query().gpus
+        except Exception as e:
+            logger.debug(
+                "gpustat failed to retrieve GPU information: {}".format(e))
+        for gpu in gpus:
+            # Note the keys in this dict have periods which throws
+            # off javascript so we change .s to _s
+            gpu_data = {
+                "_".join(key.split(".")): val
+                for key, val in gpu.entry.items()
+            }
+            gpu_utilizations.append(gpu_data)
+        return gpu_utilizations
 
     @staticmethod
     def get_boot_time():
@@ -179,6 +234,7 @@ class Reporter:
             "boot_time": self.get_boot_time(),
             "load_avg": self.get_load_avg(),
             "disk": self.get_disk_usage(),
+            "gpus": self.get_gpu_usage(),
             "net": netstats,
         }
 
@@ -192,13 +248,14 @@ class Reporter:
         )
 
     def run(self):
-        """Publish the port."""
         thread_pool = futures.ThreadPoolExecutor(max_workers=10)
         server = grpc.server(thread_pool, options=(("grpc.so_reuseport", 0), ))
         reporter_pb2_grpc.add_ReporterServiceServicer_to_server(
-            ReporterServer(), server)
-        port = server.add_insecure_port("[::]:0")
+            self.reporter_grpc_server, server)
+        port = server.add_insecure_port("[::]:{}".format(self.port))
+
         server.start()
+        # Publish the port.
         self.redis_client.set("REPORTER_PORT:{}".format(self.ip), port)
         """Run the reporter."""
         while True:
@@ -221,6 +278,16 @@ if __name__ == "__main__":
         type=str,
         help="The address to use for Redis.")
     parser.add_argument(
+        "--port",
+        required=True,
+        type=int,
+        help="The port to bind the reporter process.")
+    parser.add_argument(
+        "--metrics-export-port",
+        required=True,
+        type=int,
+        help="The port to expose metrics through Prometheus.")
+    parser.add_argument(
         "--redis-password",
         required=False,
         type=str,
@@ -242,7 +309,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray.utils.setup_logger(args.logging_level, args.logging_format)
 
-    reporter = Reporter(args.redis_address, redis_password=args.redis_password)
+    reporter = Reporter(
+        args.redis_address,
+        args.port,
+        args.metrics_export_port,
+        redis_password=args.redis_password)
 
     try:
         reporter.run()
@@ -252,7 +323,7 @@ if __name__ == "__main__":
             args.redis_address, password=args.redis_password)
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         message = ("The reporter on node {} failed with the following "
-                   "error:\n{}".format(socket.gethostname(), traceback_str))
+                   "error:\n{}".format(platform.node(), traceback_str))
         ray.utils.push_error_to_driver_through_redis(
             redis_client, ray_constants.REPORTER_DIED_ERROR, message)
         raise e

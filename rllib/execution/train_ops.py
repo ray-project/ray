@@ -5,22 +5,22 @@ import math
 from typing import List
 
 import ray
-from ray.util.iter import LocalIterator
 from ray.rllib.evaluation.metrics import get_learner_stats, LEARNER_STATS_KEY
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.execution.common import SampleBatchType, \
+from ray.rllib.execution.common import \
     STEPS_SAMPLED_COUNTER, STEPS_TRAINED_COUNTER, LEARNER_INFO, \
     APPLY_GRADS_TIMER, COMPUTE_GRADS_TIMER, WORKER_UPDATE_TIMER, \
     LEARN_ON_BATCH_TIMER, LOAD_BATCH_TIMER, LAST_TARGET_UPDATE_TS, \
-    NUM_TARGET_UPDATES, _get_global_vars, _check_sample_batch_type
-from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
-from ray.rllib.policy.policy import PolicyID
+    NUM_TARGET_UPDATES, _get_global_vars, _check_sample_batch_type, \
+    _get_shared_metrics
+from ray.rllib.execution.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.sgd import do_minibatch_sgd, averaged
+from ray.rllib.utils.types import PolicyID, SampleBatchType
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ class TrainOneStep:
     def __call__(self,
                  batch: SampleBatchType) -> (SampleBatchType, List[dict]):
         _check_sample_batch_type(batch)
-        metrics = LocalIterator.get_metrics()
+        metrics = _get_shared_metrics()
         learn_timer = metrics.timers[LEARN_ON_BATCH_TIMER]
         with learn_timer:
             if self.num_sgd_iter > 1 or self.sgd_minibatch_size > 0:
@@ -107,12 +107,14 @@ class TrainTFMultiGPU:
                  train_batch_size: int,
                  shuffle_sequences: bool,
                  policies: List[PolicyID] = frozenset([]),
-                 _fake_gpus: bool = False):
+                 _fake_gpus: bool = False,
+                 framework: str = "tf"):
         self.workers = workers
         self.policies = policies or workers.local_worker().policies_to_train
         self.num_sgd_iter = num_sgd_iter
         self.sgd_minibatch_size = sgd_minibatch_size
         self.shuffle_sequences = shuffle_sequences
+        self.framework = framework
 
         # Collect actual devices to use.
         if not num_gpus:
@@ -137,7 +139,7 @@ class TrainTFMultiGPU:
             with self.workers.local_worker().tf_sess.as_default():
                 for policy_id in self.policies:
                     policy = self.workers.local_worker().get_policy(policy_id)
-                    with tf.variable_scope(policy_id, reuse=tf.AUTO_REUSE):
+                    with tf1.variable_scope(policy_id, reuse=tf1.AUTO_REUSE):
                         if policy._state_inputs:
                             rnn_inputs = policy._state_inputs + [
                                 policy._seq_lens
@@ -152,7 +154,7 @@ class TrainTFMultiGPU:
                                 self.per_device_batch_size, policy.copy))
 
                 self.sess = self.workers.local_worker().tf_sess
-                self.sess.run(tf.global_variables_initializer())
+                self.sess.run(tf1.global_variables_initializer())
 
     def __call__(self,
                  samples: SampleBatchType) -> (SampleBatchType, List[dict]):
@@ -164,7 +166,7 @@ class TrainTFMultiGPU:
                 DEFAULT_POLICY_ID: samples
             }, samples.count)
 
-        metrics = LocalIterator.get_metrics()
+        metrics = _get_shared_metrics()
         load_timer = metrics.timers[LOAD_BATCH_TIMER]
         learn_timer = metrics.timers[LEARN_ON_BATCH_TIMER]
         with load_timer:
@@ -245,7 +247,7 @@ class ComputeGradients:
 
     def __call__(self, samples: SampleBatchType):
         _check_sample_batch_type(samples)
-        metrics = LocalIterator.get_metrics()
+        metrics = _get_shared_metrics()
         with metrics.timers[COMPUTE_GRADS_TIMER]:
             grad, info = self.workers.local_worker().compute_gradients(samples)
         metrics.info[LEARNER_INFO] = get_learner_stats(info)
@@ -287,7 +289,7 @@ class ApplyGradients:
                 "Input must be a tuple of (grad_dict, count), got {}".format(
                     item))
         gradients, count = item
-        metrics = LocalIterator.get_metrics()
+        metrics = _get_shared_metrics()
         metrics.counters[STEPS_TRAINED_COUNTER] += count
 
         apply_timer = metrics.timers[APPLY_GRADS_TIMER]
@@ -377,7 +379,7 @@ class UpdateTargetNetwork:
             self.metric = STEPS_SAMPLED_COUNTER
 
     def __call__(self, _):
-        metrics = LocalIterator.get_metrics()
+        metrics = _get_shared_metrics()
         cur_ts = metrics.counters[self.metric]
         last_update = metrics.counters[LAST_TARGET_UPDATE_TS]
         if cur_ts - last_update > self.target_update_freq:

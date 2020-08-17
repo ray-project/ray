@@ -16,12 +16,17 @@
 namespace ray.object_manager.protocol;
 
 // Object information data structure.
-// NOTE(pcm): This structure is replicated in
-// https://github.com/apache/arrow/blob/master/cpp/src/plasma/common.fbs,
-// so if you modify it, you should also modify that one.
 table ObjectInfo {
   // Object ID of this object.
   object_id: string;
+  // Owner raylet ID of this object.
+  owner_raylet_id: string;
+  // Owner IP address of this object.
+  owner_ip_address: string;
+  // Owner port address of this object.
+  owner_port: int;
+  // Unique id for the owner worker.
+  owner_worker_id: string;
   // Number of bytes the content of this object occupies in memory.
   data_size: long;
   // Number of bytes the metadata of this object occupies in memory.
@@ -32,16 +37,10 @@ table ObjectInfo {
   create_time: long;
   // How long creation of this object took.
   construct_duration: long;
-  // Hash of the object content. If the object is not sealed yet this is
-  // an empty string.
-  digest: string;
   // Specifies if this object was deleted or added.
   is_deletion: bool;
 }
 
-// NOTE(pcm): This structure is replicated in
-// https://github.com/apache/arrow/blob/master/cpp/src/plasma/plasma.fbs
-// so if you modify it, you should also modify that one.
 table PlasmaNotification {
   object_info: [ObjectInfo];
 }

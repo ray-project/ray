@@ -42,7 +42,7 @@ if __name__ == "__main__":
         "train_batch_size": sample_from(
             lambda spec: 1000 * max(1, spec.config.num_gpus)),
         "fake_sampler": True,
-        "use_pytorch": args.torch,
+        "framework": "torch" if args.torch else "tf",
     }
 
     stop = {

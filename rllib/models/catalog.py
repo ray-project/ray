@@ -2,39 +2,40 @@ from functools import partial
 import gym
 import logging
 import numpy as np
+import tree
+from typing import List
 
 from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
     RLLIB_ACTION_DIST, _global_registry
-from ray.rllib.models.extra_spaces import Simplex
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.preprocessors import get_preprocessor
+from ray.rllib.models.preprocessors import get_preprocessor, Preprocessor
 from ray.rllib.models.tf.fcnet_v1 import FullyConnectedNetwork
 from ray.rllib.models.tf.lstm_v1 import LSTM
 from ray.rllib.models.tf.modelv1_compat import make_v1_wrapper
+from ray.rllib.models.tf.recurrent_net import LSTMWrapper
 from ray.rllib.models.tf.tf_action_dist import Categorical, \
     Deterministic, DiagGaussian, Dirichlet, \
     MultiActionDistribution, MultiCategorical
-from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.visionnet_v1 import VisionNetwork
-from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
     TorchDeterministic, TorchDiagGaussian, \
     TorchMultiActionDistribution, TorchMultiCategorical
-from ray.rllib.utils import try_import_tf, try_import_tree
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.utils.space_utils import flatten_space
+from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.spaces.simplex import Simplex
+from ray.rllib.utils.spaces.space_utils import flatten_space
+from ray.rllib.utils.types import ModelConfigDict, TensorType
 
-tf = try_import_tf()
-tree = try_import_tree()
+tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
 # yapf: disable
 # __sphinx_doc_begin__
-MODEL_DEFAULTS = {
+MODEL_DEFAULTS: ModelConfigDict = {
     # === Built-in options ===
     # Filter config. List of [out_channels, kernel, stride] for each filter
     "conv_filters": None,
@@ -56,13 +57,13 @@ MODEL_DEFAULTS = {
     "vf_share_layers": True,
 
     # == LSTM ==
-    # Whether to wrap the model with a LSTM
+    # Whether to wrap the model with an LSTM.
     "use_lstm": False,
-    # Max seq len for training the LSTM, defaults to 20
+    # Max seq len for training the LSTM, defaults to 20.
     "max_seq_len": 20,
-    # Size of the LSTM cell
+    # Size of the LSTM cell.
     "lstm_cell_size": 256,
-    # Whether to feed a_{t-1}, r_{t-1} to LSTM
+    # Whether to feed a_{t-1}, r_{t-1} to LSTM.
     "lstm_use_prev_action_reward": False,
     # When using modelv1 models with a modelv2 algorithm, you may have to
     # define the state shape here (e.g., [256, 256]).
@@ -81,14 +82,17 @@ MODEL_DEFAULTS = {
     # === Options for custom models ===
     # Name of a custom model to use
     "custom_model": None,
+    # Extra options to pass to the custom classes.
+    # These will be available in the Model's
+    "custom_model_config": {},
     # Name of a custom action distribution to use.
     "custom_action_dist": None,
-
-    # Extra options to pass to the custom classes
-    "custom_options": {},
     # Custom preprocessors are deprecated. Please use a wrapper class around
     # your environment instead to preprocess observations.
     "custom_preprocessor": None,
+
+    # Deprecated config keys.
+    "custom_options": DEPRECATED_VALUE,
 }
 # __sphinx_doc_end__
 # yapf: enable
@@ -103,33 +107,39 @@ class ModelCatalog:
         >>> observation = prep.transform(raw_observation)
 
         >>> dist_class, dist_dim = ModelCatalog.get_action_dist(
-                env.action_space, {})
-        >>> model = ModelCatalog.get_model(inputs, dist_dim, options)
+        ...     env.action_space, {})
+        >>> model = ModelCatalog.get_model_v2(
+        ...     obs_space, action_space, num_outputs, options)
         >>> dist = dist_class(model.outputs, model)
         >>> action = dist.sample()
     """
 
     @staticmethod
     @DeveloperAPI
-    def get_action_dist(action_space,
-                        config,
-                        dist_type=None,
-                        framework="tf",
-                        **kwargs):
+    def get_action_dist(action_space: gym.Space,
+                        config: ModelConfigDict,
+                        dist_type: str = None,
+                        framework: str = "tf",
+                        **kwargs) -> (type, int):
         """Returns a distribution class and size for the given action space.
 
         Args:
             action_space (Space): Action space of the target gym env.
             config (Optional[dict]): Optional model config.
-            dist_type (Optional[str]): Identifier of the action distribution.
-            framework (str): One of "tf" or "torch".
+            dist_type (Optional[str]): Identifier of the action distribution
+                interpreted as a hint.
+            framework (str): One of "tf", "tfe", or "torch".
             kwargs (dict): Optional kwargs to pass on to the Distribution's
                 constructor.
 
         Returns:
-            dist_class (ActionDistribution): Python class of the distribution.
-            dist_dim (int): The size of the input vector to the distribution.
+            Tuple:
+                - dist_class (ActionDistribution): Python class of the
+                    distribution.
+                - dist_dim (int): The size of the input vector to the
+                    distribution.
         """
+
         dist = None
         config = config or MODEL_DEFAULTS
         # Custom distribution given.
@@ -155,13 +165,14 @@ class ModelCatalog:
                     "using a Tuple action space, or the multi-agent API.")
             # TODO(sven): Check for bounds and return SquashedNormal, etc..
             if dist_type is None:
-                dist = DiagGaussian if framework == "tf" else TorchDiagGaussian
+                dist = TorchDiagGaussian if framework == "torch" \
+                    else DiagGaussian
             elif dist_type == "deterministic":
-                dist = Deterministic if framework == "tf" else \
-                    TorchDeterministic
+                dist = TorchDeterministic if framework == "torch" \
+                    else Deterministic
         # Discrete Space -> Categorical.
         elif isinstance(action_space, gym.spaces.Discrete):
-            dist = Categorical if framework == "tf" else TorchCategorical
+            dist = TorchCategorical if framework == "torch" else Categorical
         # Tuple/Dict Spaces -> MultiAction.
         elif dist_type in (MultiActionDistribution,
                            TorchMultiActionDistribution) or \
@@ -187,8 +198,8 @@ class ModelCatalog:
             dist = Dirichlet
         # MultiDiscrete -> MultiCategorical.
         elif isinstance(action_space, gym.spaces.MultiDiscrete):
-            dist = MultiCategorical if framework == "tf" else \
-                TorchMultiCategorical
+            dist = TorchMultiCategorical if framework == "torch" else \
+                MultiCategorical
             return partial(dist, input_lens=action_space.nvec), \
                 int(sum(action_space.nvec))
         # Unknown type -> Error.
@@ -200,7 +211,7 @@ class ModelCatalog:
 
     @staticmethod
     @DeveloperAPI
-    def get_action_shape(action_space):
+    def get_action_shape(action_space: gym.Space) -> (np.dtype, List[int]):
         """Returns action tensor dtype and shape for the action space.
 
         Args:
@@ -234,7 +245,8 @@ class ModelCatalog:
 
     @staticmethod
     @DeveloperAPI
-    def get_action_placeholder(action_space, name="action"):
+    def get_action_placeholder(action_space: gym.Space,
+                               name: str = "action") -> TensorType:
         """Returns an action placeholder consistent with the action space
 
         Args:
@@ -247,19 +259,19 @@ class ModelCatalog:
 
         dtype, shape = ModelCatalog.get_action_shape(action_space)
 
-        return tf.placeholder(dtype, shape=shape, name=name)
+        return tf1.placeholder(dtype, shape=shape, name=name)
 
     @staticmethod
     @DeveloperAPI
-    def get_model_v2(obs_space,
-                     action_space,
-                     num_outputs,
-                     model_config,
-                     framework="tf",
-                     name="default_model",
-                     model_interface=None,
-                     default_model=None,
-                     **model_kwargs):
+    def get_model_v2(obs_space: gym.Space,
+                     action_space: gym.Space,
+                     num_outputs: int,
+                     model_config: ModelConfigDict,
+                     framework: str = "tf",
+                     name: str = "default_model",
+                     model_interface: type = None,
+                     default_model: type = None,
+                     **model_kwargs) -> ModelV2:
         """Returns a suitable model compatible with given spaces and output.
 
         Args:
@@ -268,7 +280,7 @@ class ModelCatalog:
                 unflatten the tensor into a ragged tensor.
             action_space (Space): Action space of the target gym env.
             num_outputs (int): The size of the output vector of the model.
-            framework (str): One of "tf" or "torch".
+            framework (str): One of "tf", "tfe", or "torch".
             name (str): Name (scope) for the model.
             model_interface (cls): Interface required for the model
             default_model (cls): Override the default class for the model. This
@@ -280,11 +292,22 @@ class ModelCatalog:
         """
 
         if model_config.get("custom_model"):
+
+            if "custom_options" in model_config and \
+                    model_config["custom_options"] != DEPRECATED_VALUE:
+                deprecation_warning(
+                    "model.custom_options",
+                    "model.custom_model_config",
+                    error=False)
+                model_config["custom_model_config"] = \
+                    model_config.pop("custom_options")
+
             if isinstance(model_config["custom_model"], type):
                 model_cls = model_config["custom_model"]
             else:
                 model_cls = _global_registry.get(RLLIB_MODEL,
                                                  model_config["custom_model"])
+
             # TODO(sven): Hard-deprecate Model(V1).
             if issubclass(model_cls, ModelV2):
                 logger.info("Wrapping {} as {}".format(model_cls,
@@ -292,7 +315,7 @@ class ModelCatalog:
                 model_cls = ModelCatalog._wrap_if_needed(
                     model_cls, model_interface)
 
-                if framework == "tf":
+                if framework in ["tf", "tfe"]:
                     # Track and warn if vars were created but not registered.
                     created = set()
 
@@ -304,7 +327,7 @@ class ModelCatalog:
                     with tf.variable_creator_scope(track_var_creation):
                         # Try calling with kwargs first (custom ModelV2 should
                         # accept these as kwargs, not get them from
-                        # config["custom_options"] anymore)
+                        # config["custom_model_config"] anymore).
                         try:
                             instance = model_cls(obs_space, action_space,
                                                  num_outputs, model_config,
@@ -315,7 +338,7 @@ class ModelCatalog:
                                 logger.warning(
                                     "Custom ModelV2 should accept all custom "
                                     "options as **kwargs, instead of expecting"
-                                    " them in config['custom_options']!")
+                                    " them in config['custom_model_config']!")
                                 instance = model_cls(obs_space, action_space,
                                                      num_outputs, model_config,
                                                      name)
@@ -350,12 +373,20 @@ class ModelCatalog:
                     "used, however you specified a custom model {}".format(
                         model_cls))
 
-        if framework == "tf":
+        if framework in ["tf", "tfe", "tf2"]:
             v2_class = None
-            # try to get a default v2 model
+            # Try to get a default v2 model.
             if not model_config.get("custom_model"):
                 v2_class = default_model or ModelCatalog._get_v2_model_class(
                     obs_space, model_config, framework=framework)
+
+            if model_config.get("use_lstm"):
+                wrapped_cls = v2_class
+                forward = wrapped_cls.forward
+                v2_class = ModelCatalog._wrap_if_needed(
+                    wrapped_cls, LSTMWrapper)
+                v2_class._wrapped_forward = forward
+
             # fallback to a default v1 model
             if v2_class is None:
                 if tf.executing_eagerly():
@@ -365,7 +396,7 @@ class ModelCatalog:
                         "observation space: {}, use_lstm={}".format(
                             obs_space, model_config.get("use_lstm")))
                 v2_class = make_v1_wrapper(ModelCatalog.get_model)
-            # wrap in the requested interface
+            # Wrap in the requested interface.
             wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
             return wrapper(obs_space, action_space, num_outputs, model_config,
                            name, **model_kwargs)
@@ -373,17 +404,26 @@ class ModelCatalog:
             v2_class = \
                 default_model or ModelCatalog._get_v2_model_class(
                     obs_space, model_config, framework=framework)
+            if model_config.get("use_lstm"):
+                from ray.rllib.models.torch.recurrent_net import LSTMWrapper \
+                    as TorchLSTMWrapper
+                wrapped_cls = v2_class
+                forward = wrapped_cls.forward
+                v2_class = ModelCatalog._wrap_if_needed(
+                    wrapped_cls, TorchLSTMWrapper)
+                v2_class._wrapped_forward = forward
             # Wrap in the requested interface.
             wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
             return wrapper(obs_space, action_space, num_outputs, model_config,
                            name, **model_kwargs)
         else:
             raise NotImplementedError(
-                "Framework must be 'tf' or 'torch': {}".format(framework))
+                "`framework` must be 'tf|tfe|torch', but is "
+                "{}!".format(framework))
 
     @staticmethod
     @DeveloperAPI
-    def get_preprocessor(env, options=None):
+    def get_preprocessor(env: gym.Env, options: dict = None) -> Preprocessor:
         """Returns a suitable preprocessor for the given env.
 
         This is a wrapper for get_preprocessor_for_space().
@@ -394,7 +434,8 @@ class ModelCatalog:
 
     @staticmethod
     @DeveloperAPI
-    def get_preprocessor_for_space(observation_space, options=None):
+    def get_preprocessor_for_space(observation_space: gym.Space,
+                                   options: dict = None) -> Preprocessor:
         """Returns a suitable preprocessor for the given observation space.
 
         Args:
@@ -432,7 +473,8 @@ class ModelCatalog:
 
     @staticmethod
     @PublicAPI
-    def register_custom_preprocessor(preprocessor_name, preprocessor_class):
+    def register_custom_preprocessor(preprocessor_name: str,
+                                     preprocessor_class: type) -> None:
         """Register a custom preprocessor class by name.
 
         The preprocessor can be later used by specifying
@@ -447,7 +489,7 @@ class ModelCatalog:
 
     @staticmethod
     @PublicAPI
-    def register_custom_model(model_name, model_class):
+    def register_custom_model(model_name: str, model_class: type) -> None:
         """Register a custom model class by name.
 
         The model can be later used by specifying {"custom_model": model_name}
@@ -461,7 +503,8 @@ class ModelCatalog:
 
     @staticmethod
     @PublicAPI
-    def register_custom_action_dist(action_dist_name, action_dist_class):
+    def register_custom_action_dist(action_dist_name: str,
+                                    action_dist_class: type) -> None:
         """Register a custom action distribution class by name.
 
         The model can be later used by specifying
@@ -475,8 +518,8 @@ class ModelCatalog:
                                   action_dist_class)
 
     @staticmethod
-    def _wrap_if_needed(model_cls, model_interface):
-        assert issubclass(model_cls, (TFModelV2, TorchModelV2)), model_cls
+    def _wrap_if_needed(model_cls: type, model_interface: type) -> type:
+        assert issubclass(model_cls, ModelV2), model_cls
 
         if not model_interface or issubclass(model_cls, model_interface):
             return model_cls
@@ -491,6 +534,30 @@ class ModelCatalog:
         return wrapper
 
     @staticmethod
+    def _get_v2_model_class(input_space, model_config, framework="tf"):
+        if framework == "torch":
+            from ray.rllib.models.torch.fcnet import (FullyConnectedNetwork as
+                                                      FCNet)
+            from ray.rllib.models.torch.visionnet import (VisionNetwork as
+                                                          VisionNet)
+        else:
+            from ray.rllib.models.tf.fcnet import \
+                FullyConnectedNetwork as FCNet
+            from ray.rllib.models.tf.visionnet import \
+                VisionNetwork as VisionNet
+
+        # Discrete/1D obs-spaces.
+        if isinstance(input_space, gym.spaces.Discrete) or \
+                len(input_space.shape) <= 2:
+            return FCNet
+        # Default Conv2D net.
+        else:
+            return VisionNet
+
+    # -------------------
+    # DEPRECATED METHODS.
+    # -------------------
+    @staticmethod
     def get_model(input_dict,
                   obs_space,
                   action_space,
@@ -498,7 +565,7 @@ class ModelCatalog:
                   options,
                   state_in=None,
                   seq_lens=None):
-        """Deprecated: use get_model_v2() instead."""
+        """Deprecated: Use get_model_v2() instead."""
 
         deprecation_warning("get_model", "get_model_v2", error=False)
         assert isinstance(input_dict, dict)
@@ -547,32 +614,3 @@ class ModelCatalog:
 
         return FullyConnectedNetwork(input_dict, obs_space, action_space,
                                      num_outputs, options)
-
-    @staticmethod
-    def _get_v2_model_class(obs_space, model_config, framework="tf"):
-        model_config = model_config or MODEL_DEFAULTS
-        if framework == "torch":
-            from ray.rllib.models.torch.fcnet import (FullyConnectedNetwork as
-                                                      FCNet)
-            from ray.rllib.models.torch.visionnet import (VisionNetwork as
-                                                          VisionNet)
-        else:
-            from ray.rllib.models.tf.fcnet import \
-                FullyConnectedNetwork as FCNet
-            from ray.rllib.models.tf.visionnet import \
-                VisionNetwork as VisionNet
-
-        # Discrete/1D obs-spaces.
-        if isinstance(obs_space, gym.spaces.Discrete) or \
-                len(obs_space.shape) <= 2:
-            return FCNet
-        # Default Conv2D net.
-        else:
-            return VisionNet
-
-    @staticmethod
-    def get_torch_model(obs_space,
-                        num_outputs,
-                        options=None,
-                        default_model_cls=None):
-        raise DeprecationWarning("Please use get_model_v2() instead.")

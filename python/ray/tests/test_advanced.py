@@ -33,11 +33,12 @@ def test_internal_free(shutdown_only):
 
     sampler = Sampler.remote()
 
-    # Free does not delete from in-memory store.
-    obj_id = sampler.sample.remote()
-    ray.get(obj_id)
-    ray.internal.free(obj_id)
-    assert ray.get(obj_id) == [1, 2, 3, 4, 5]
+    # Free deletes from in-memory store.
+    obj_ref = sampler.sample.remote()
+    ray.get(obj_ref)
+    ray.internal.free(obj_ref)
+    with pytest.raises(Exception):
+        ray.get(obj_ref)
 
     # Free deletes big objects from plasma store.
     big_id = sampler.sample_big.remote()
@@ -54,17 +55,17 @@ def test_wait_iterables(ray_start_regular):
         time.sleep(delay)
         return 1
 
-    objectids = (f.remote(1.0), f.remote(0.5), f.remote(0.5), f.remote(0.5))
-    ready_ids, remaining_ids = ray.experimental.wait(objectids)
+    object_refs = (f.remote(1.0), f.remote(0.5), f.remote(0.5), f.remote(0.5))
+    ready_ids, remaining_ids = ray.experimental.wait(object_refs)
     assert len(ready_ids) == 1
     assert len(remaining_ids) == 3
 
-    objectids = np.array(
+    object_refs = np.array(
         [f.remote(1.0),
          f.remote(0.5),
          f.remote(0.5),
          f.remote(0.5)])
-    ready_ids, remaining_ids = ray.experimental.wait(objectids)
+    ready_ids, remaining_ids = ray.experimental.wait(object_refs)
     assert len(ready_ids) == 1
     assert len(remaining_ids) == 3
 
@@ -81,20 +82,20 @@ def test_multiple_waits_and_gets(shutdown_only):
 
     @ray.remote
     def g(l):
-        # The argument l should be a list containing one object ID.
+        # The argument l should be a list containing one object ref.
         ray.wait([l[0]])
 
     @ray.remote
     def h(l):
-        # The argument l should be a list containing one object ID.
+        # The argument l should be a list containing one object ref.
         ray.get(l[0])
 
-    # Make sure that multiple wait requests involving the same object ID
+    # Make sure that multiple wait requests involving the same object ref
     # all return.
     x = f.remote(1)
     ray.get([g.remote([x]), g.remote([x])])
 
-    # Make sure that multiple get requests involving the same object ID all
+    # Make sure that multiple get requests involving the same object ref all
     # return.
     x = f.remote(1)
     ray.get([h.remote([x]), h.remote([x])])
@@ -179,9 +180,9 @@ def test_profiling_api(ray_start_2_cpus):
             pass
 
     ray.put(1)
-    object_id = f.remote()
-    ray.wait([object_id])
-    ray.get(object_id)
+    object_ref = f.remote()
+    ray.wait([object_ref])
+    ray.get(object_ref)
 
     # Wait until all of the profiling information appears in the profile
     # table.
@@ -201,7 +202,8 @@ def test_profiling_api(ray_start_2_cpus):
             "ray.wait",
             "submit_task",
             "fetch_and_run_function",
-            "register_remote_function",
+            # TODO (Alex) :https://github.com/ray-project/ray/pull/9346
+            # "register_remote_function",
             "custom_event",  # This is the custom one from ray.profile.
         ]
 
@@ -259,14 +261,14 @@ def test_object_transfer_dump(ray_start_cluster):
         return
 
     # These objects will live on different nodes.
-    object_ids = [
+    object_refs = [
         f._remote(args=[1], resources={str(i): 1}) for i in range(num_nodes)
     ]
 
     # Broadcast each object from each machine to each other machine.
-    for object_id in object_ids:
+    for object_ref in object_refs:
         ray.get([
-            f._remote(args=[object_id], resources={str(i): 1})
+            f._remote(args=[object_ref], resources={str(i): 1})
             for i in range(num_nodes)
         ])
 
@@ -334,19 +336,19 @@ def test_identical_function_names(ray_start_regular):
         return 1
 
     @ray.remote  # noqa: F811
-    def g():
+    def g():  # noqa: F811
         return 2
 
     @ray.remote  # noqa: F811
-    def g():
+    def g():  # noqa: F811
         return 3
 
     @ray.remote  # noqa: F811
-    def g():
+    def g():  # noqa: F811
         return 4
 
     @ray.remote  # noqa: F811
-    def g():
+    def g():  # noqa: F811
         return 5
 
     result_values = ray.get([g.remote() for _ in range(num_calls)])
@@ -355,7 +357,7 @@ def test_identical_function_names(ray_start_regular):
 
 def test_illegal_api_calls(ray_start_regular):
 
-    # Verify that we cannot call put on an ObjectID.
+    # Verify that we cannot call put on an ObjectRef.
     x = ray.put(1)
     with pytest.raises(Exception):
         ray.put(x)

@@ -1,21 +1,14 @@
-"""
-Full example of ray.serve module
-"""
-
 import time
 
 import requests
 
 import ray
 import ray.serve as serve
-from ray.serve.utils import pformat_color_json
+from ray.serve.metric import PrometheusExporter
 
 # initialize ray serve system.
-# blocking=True will wait for HTTP server to be ready to serve request.
-serve.init(blocking=True)
-
-# an endpoint is associated with an http URL.
-serve.create_endpoint("my_endpoint", "/echo")
+ray.init(num_cpus=10)
+serve.init(metric_exporter=PrometheusExporter)
 
 
 # a backend can be a function or class.
@@ -28,9 +21,9 @@ def echo_v1(flask_request, response="hello from python!"):
 
 serve.create_backend("echo:v1", echo_v1)
 
-# We can link an endpoint to a backend, the means all the traffic
-# goes to my_endpoint will now goes to echo:v1 backend.
-serve.set_traffic("my_endpoint", {"echo:v1": 1.0})
+# An endpoint is associated with an HTTP path and traffic to the endpoint
+# will be serviced by the echo:v1 backend.
+serve.create_endpoint("my_endpoint", backend="echo:v1", route="/echo")
 
 print(requests.get("http://127.0.0.1:8000/echo", timeout=0.5).text)
 # The service will be reachable from http
@@ -61,4 +54,4 @@ serve.update_backend_config("echo:v1", {"num_replicas": 2})
 serve.update_backend_config("echo:v2", {"num_replicas": 2})
 
 # As well as retrieving relevant system metrics
-print(pformat_color_json(serve.stat()))
+print(serve.stat().decode())

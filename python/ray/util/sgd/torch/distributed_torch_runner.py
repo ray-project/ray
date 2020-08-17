@@ -1,4 +1,3 @@
-from datetime import timedelta
 import logging
 import io
 import os
@@ -8,7 +7,7 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, IterableDataset
 from torch.utils.data.distributed import DistributedSampler
-from ray.util.sgd.torch.constants import NCCL_TIMEOUT_S
+from ray.util.sgd.torch.utils import setup_process_group
 
 import ray
 from ray.util.sgd.torch.torch_runner import TorchRunner
@@ -47,31 +46,19 @@ class DistributedTorchRunner(TorchRunner):
     def setup(self):
         raise RuntimeError("Need to call setup commands separately.")
 
-    def setup_process_group(self, url, world_rank, world_size):
+    def setup_process_group(self, url, world_rank, world_size, timeout):
         """Connects the distributed PyTorch backend.
 
         Args:
             url (str): the URL used to connect to distributed PyTorch.
             world_rank (int): the index of the runner.
             world_size (int): the total number of runners.
+            timeout (timedelta): Seconds for process group
+                operations to timeout.
         """
         self.world_rank = world_rank
-        logger.debug("Connecting to {} world_rank: {} world_size: {}".format(
-            url, world_rank, world_size))
-        logger.debug("using {}".format(self.backend))
-        if self.backend == "nccl" and "NCCL_BLOCKING_WAIT" not in os.environ:
-            logger.debug(
-                "Setting NCCL_BLOCKING_WAIT for detecting node failure. "
-                "To override this behavior, you can set NCCL_BLOCKING_WAIT=0.")
-            os.environ["NCCL_BLOCKING_WAIT"] = "1"
-
-        timeout = timedelta(seconds=NCCL_TIMEOUT_S)
-        dist.init_process_group(
-            backend=self.backend,
-            init_method=url,
-            rank=world_rank,
-            world_size=world_size,
-            timeout=timeout)
+        setup_process_group(
+            url, world_rank, world_size, timeout, backend=self.backend)
 
     def setup_ddp_and_operator(self):
         """Runs distributed coordination components.
@@ -190,27 +177,54 @@ class _DummyActor:
     def cuda_devices(self):
         return os.environ["CUDA_VISIBLE_DEVICES"]
 
+    def get(self):
+        # in order to verify the actor has created
+        return 1
+
 
 # This is a bit of a hack. It prevents the reassignment of CUDA_VISIBLE_DEVICES
 # during a trainer resize. We won't need this if we don't shutdown
 # all the actors.
-_dummy_actor = None
+_dummy_cuda_actor = None
+# used to reserve CPU resources
+_dummy_cpu_actor = None
 
 
 def clear_dummy_actor():
-    global _dummy_actor
-    if _dummy_actor:
+    global _dummy_cuda_actor
+    if _dummy_cuda_actor:
         try:
-            _dummy_actor.__ray_terminate__.remote()
+            _dummy_cuda_actor.__ray_terminate__.remote()
         except Exception as exc:
             logger.info("Tried to clear dummy actor: %s", str(exc))
 
-    _dummy_actor = None
+    _dummy_cuda_actor = None
+
+    global _dummy_cpu_actor
+    if _dummy_cpu_actor:
+        try:
+            _dummy_cpu_actor.__ray_terminate__.remote()
+        except Exception as exc:
+            logger.info("Tried to clear dummy actor: %s", str(exc))
+
+    _dummy_cpu_actor = None
 
 
-def reserve_cuda_device(retries=20):
+def reserve_resources(num_cpus, num_gpus, retries=20):
     ip = ray.services.get_node_ip_address()
-    reserved_device = None
+
+    reserved_cuda_device = None
+
+    if num_cpus > 0:
+        global _dummy_cpu_actor
+        if _dummy_cpu_actor is None:
+            _dummy_cpu_actor = ray.remote(
+                num_cpus=num_cpus,
+                resources={"node:" + ip: 0.1})(_DummyActor).remote()
+            assert ray.get(_dummy_cpu_actor.get.remote()) == 1
+
+    if num_gpus == 0:
+        return reserved_cuda_device
 
     cuda_devices = os.environ.get("CUDA_VISIBLE_DEVICES")
     cuda_device_set = {}
@@ -220,25 +234,25 @@ def reserve_cuda_device(retries=20):
         assert isinstance(cuda_devices, str)
         cuda_device_set = set(cuda_devices.split(","))
 
-    global _dummy_actor
+    global _dummy_cuda_actor
     unused_actors = []
 
     success = False
     for _ in range(retries):
-        if _dummy_actor is None:
-            _dummy_actor = ray.remote(
-                num_gpus=1,
+        if _dummy_cuda_actor is None:
+            _dummy_cuda_actor = ray.remote(
+                num_cpus=0, num_gpus=num_gpus,
                 resources={"node:" + ip: 0.1})(_DummyActor).remote()
 
-        reserved_device = ray.get(_dummy_actor.cuda_devices.remote())
+        reserved_cuda_device = ray.get(_dummy_cuda_actor.cuda_devices.remote())
 
-        if match_devices and reserved_device not in cuda_device_set:
+        if match_devices and reserved_cuda_device not in cuda_device_set:
             logger.debug("Device %s not in list of visible devices %s",
-                         reserved_device, cuda_device_set)
-            unused_actors.append(_dummy_actor)
-            _dummy_actor = None
+                         reserved_cuda_device, cuda_device_set)
+            unused_actors.append(_dummy_cuda_actor)
+            _dummy_cuda_actor = None
         else:
-            logger.debug("Found matching device %s", reserved_device)
+            logger.debug("Found matching device %s", reserved_cuda_device)
             success = True
             for actor in unused_actors:
                 actor.__ray_terminate__.remote()
@@ -250,7 +264,7 @@ def reserve_cuda_device(retries=20):
             "make sure that Ray has access to all the visible devices: "
             "{}".format(os.environ.get("CUDA_VISIBLE_DEVICES")))
 
-    return reserved_device
+    return reserved_cuda_device
 
 
 class LocalDistributedRunner(DistributedTorchRunner):
@@ -265,33 +279,48 @@ class LocalDistributedRunner(DistributedTorchRunner):
 
         # Reserve a local GPU or CPU for the local worker
         # TODO: we should make sure this NEVER dies.
-        self.local_device = "0"
+        self.local_cuda_device = "0"
         self._is_set = False
         if num_gpus:
             assert num_gpus == 1, "Does not support multi-gpu workers"
 
-        if not self.is_actor() and num_gpus > 0:
-            self._try_reserve_and_set_cuda()
+        if num_cpus is None:
+            num_cpus = 0
+
+        if num_gpus is None:
+            num_gpus = 0
+
+        if not self.is_actor() and (num_cpus > 0 or num_gpus > 0):
+            self._try_reserve_and_set_resources(num_cpus, num_gpus)
 
         super(LocalDistributedRunner, self).__init__(*args, **kwargs)
 
-    def _try_reserve_and_set_cuda(self):
-        use_found_device = os.environ.get("CUDA_VISIBLE_DEVICES") is None \
-                           and torch.cuda.is_initialized()
-        device = reserve_cuda_device()
+    def _try_reserve_and_set_resources(self, num_cpus, num_gpus):
+        visible_cuda_devices = os.environ.get("CUDA_VISIBLE_DEVICES")
+        reserved_cuda_device = reserve_resources(num_cpus, num_gpus)
+        if num_gpus == 0:
+            return
         # This needs to be set even if torch.cuda is already
         # initialized because the env var is used later when
         # starting the DDP setup.
-        os.environ["CUDA_VISIBLE_DEVICES"] = device
-        if use_found_device:
+        os.environ["CUDA_VISIBLE_DEVICES"] = reserved_cuda_device
+        if visible_cuda_devices:
+            # We want to set the index on the visible devices list.
+            if reserved_cuda_device not in visible_cuda_devices:
+                raise RuntimeError(
+                    "TorchTrainer reserved a device {} that was not in the "
+                    "CUDA_VISIBLE_DEVICES {}. This may be because the "
+                    "Ray cluster is not set with the right env vars. "
+                    "If that is not the issue, please raise a Github "
+                    "issue.".format(reserved_cuda_device,
+                                    visible_cuda_devices))
+            devices = visible_cuda_devices.split(",")
+            scoped_index = devices.index(reserved_cuda_device)
+            self._set_cuda_device(str(scoped_index))
+        else:
             # Once cuda is initialized, torch.device ignores the os.env
             # so we have to set the right actual device.
-            self._set_cuda_device(device)
-        else:
-            # if CUDA is not initialized, we can set the os.env.
-            # Even if initialized, we want to set the device to use BatchNorm.
-            # and make Torch think it only sees 1 GPU.
-            self._set_cuda_device("0")
+            self._set_cuda_device(reserved_cuda_device)
 
     def _set_cuda_device(self, device_str):
         """Sets the CUDA device for this current local worker."""
@@ -303,24 +332,31 @@ class LocalDistributedRunner(DistributedTorchRunner):
         # before we call 'set_device'.
         _init_cuda_context()
         assert isinstance(device_str, str)
-        self.local_device = device_str
-        logger.debug("Setting local device: %s", self.local_device)
+        self.local_cuda_device = device_str
+        logger.debug("Setting local CUDA device: %s", self.local_cuda_device)
         try:
-            torch.cuda.set_device(int(self.local_device))
+            torch.cuda.set_device(int(self.local_cuda_device))
         except RuntimeError:
-            logger.error("Failed to set local device.")
+            logger.error("Failed to set local CUDA device.")
             raise
 
     def get_device_ids(self):
-        return [int(self.local_device)]
+        return [int(self.local_cuda_device)]
 
     def shutdown(self, cleanup=True):
         super(LocalDistributedRunner, self).shutdown()
-        global _dummy_actor
-        if cleanup and _dummy_actor:
-            assert not self.is_actor(), "Actor shouldn't have a dummy actor."
-            ray.kill(_dummy_actor)
-            _dummy_actor = None
+        global _dummy_cpu_actor
+        global _dummy_cuda_actor
+        if cleanup:
+            if _dummy_cpu_actor or _dummy_cuda_actor:
+                assert not self.is_actor(), ("Actor shouldn't have a "
+                                             "dummy actor.")
+            if _dummy_cpu_actor:
+                ray.kill(_dummy_cpu_actor)
+            if _dummy_cuda_actor:
+                ray.kill(_dummy_cuda_actor)
+            _dummy_cpu_actor = None
+            _dummy_cuda_actor = None
 
     def is_actor(self):
         actor_id = ray.worker.global_worker.actor_id

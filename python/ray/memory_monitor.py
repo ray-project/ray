@@ -1,5 +1,6 @@
 import logging
 import os
+import platform
 import sys
 import time
 
@@ -47,7 +48,7 @@ class RayOutOfMemoryError(Exception):
                 " ".join(cmdline)[:100].strip())
         return ("More than {}% of the memory on ".format(int(
             100 * threshold)) + "node {} is used ({} / {} GB). ".format(
-                os.uname()[1], round(used_gb, 2), round(total_gb, 2)) +
+                platform.node(), round(used_gb, 2), round(total_gb, 2)) +
                 "The top 10 memory consumers are:\n\n{}".format(proc_str) +
                 "\n\nIn addition, up to {} GiB of shared memory is ".format(
                     round(get_shared(psutil.virtual_memory()) / (1024**3), 2))
@@ -107,8 +108,15 @@ class MemoryMonitor:
                 return  # escape hatch, not intended for user use
 
             self.last_checked = time.time()
-            total_gb = psutil.virtual_memory().total / (1024**3)
-            used_gb = total_gb - psutil.virtual_memory().available / (1024**3)
+            psutil_mem = psutil.virtual_memory()
+            total_gb = psutil_mem.total / (1024**3)
+            used_gb = total_gb - psutil_mem.available / (1024**3)
+
+            # Linux, BSD has cached memory, which should
+            # also be considered as unused memory
+            if hasattr(psutil_mem, "cached"):
+                used_gb -= psutil_mem.cached / (1024**3)
+
             if self.cgroup_memory_limit_gb < total_gb:
                 total_gb = self.cgroup_memory_limit_gb
                 with open("/sys/fs/cgroup/memory/memory.usage_in_bytes",

@@ -1,0 +1,22 @@
+pendulum-appo-vtrace:
+    env: Pendulum-v0
+    run: APPO
+    stop:
+        episode_reward_mean: -1000  # just check it learns a bit
+        timesteps_total: 500000
+    config:
+        # Works for both torch and tf.
+        framework: tf
+        vtrace: true
+        num_gpus: 0
+        num_workers: 1
+        lambda: 0.1
+        gamma: 0.95
+        lr: 0.0003
+        train_batch_size: 100
+        minibatch_buffer_size: 16
+        num_sgd_iter: 10
+        model:
+            fcnet_hiddens: [256, 256]
+        batch_mode: truncate_episodes
+        observation_filter: MeanStdFilter

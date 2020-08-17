@@ -5,6 +5,7 @@ import time
 
 import ray
 from ray import serve
+from ray.serve.config import BackendConfig, ReplicaConfig
 
 
 def request_with_retries(endpoint, timeout=30):
@@ -19,72 +20,77 @@ def request_with_retries(endpoint, timeout=30):
             time.sleep(0.1)
 
 
-def test_master_failure(serve_instance):
+def test_controller_failure(serve_instance):
     serve.init()
-    serve.create_endpoint("master_failure", "/master_failure")
 
     def function():
         return "hello1"
 
-    serve.create_backend("master_failure:v1", function)
-    serve.set_traffic("master_failure", {"master_failure:v1": 1.0})
+    serve.create_backend("controller_failure:v1", function)
+    serve.create_endpoint(
+        "controller_failure",
+        backend="controller_failure:v1",
+        route="/controller_failure")
 
-    assert request_with_retries("/master_failure", timeout=1).text == "hello1"
+    assert request_with_retries(
+        "/controller_failure", timeout=1).text == "hello1"
 
     for _ in range(10):
-        response = request_with_retries("/master_failure", timeout=30)
+        response = request_with_retries("/controller_failure", timeout=30)
         assert response.text == "hello1"
 
-    ray.kill(serve.api._get_master_actor())
+    ray.kill(serve.api._get_controller(), no_restart=False)
 
     for _ in range(10):
-        response = request_with_retries("/master_failure", timeout=30)
+        response = request_with_retries("/controller_failure", timeout=30)
         assert response.text == "hello1"
 
     def function():
         return "hello2"
 
-    ray.kill(serve.api._get_master_actor())
+    ray.kill(serve.api._get_controller(), no_restart=False)
 
-    serve.create_backend("master_failure:v2", function)
-    serve.set_traffic("master_failure", {"master_failure:v2": 1.0})
+    serve.create_backend("controller_failure:v2", function)
+    serve.set_traffic("controller_failure", {"controller_failure:v2": 1.0})
 
     for _ in range(10):
-        response = request_with_retries("/master_failure", timeout=30)
+        response = request_with_retries("/controller_failure", timeout=30)
         assert response.text == "hello2"
 
     def function():
         return "hello3"
 
-    ray.kill(serve.api._get_master_actor())
-    serve.create_endpoint("master_failure_2", "/master_failure_2")
-    ray.kill(serve.api._get_master_actor())
-    serve.create_backend("master_failure_2", function)
-    ray.kill(serve.api._get_master_actor())
-    serve.set_traffic("master_failure_2", {"master_failure_2": 1.0})
+    ray.kill(serve.api._get_controller(), no_restart=False)
+    serve.create_backend("controller_failure_2", function)
+    ray.kill(serve.api._get_controller(), no_restart=False)
+    serve.create_endpoint(
+        "controller_failure_2",
+        backend="controller_failure_2",
+        route="/controller_failure_2")
+    ray.kill(serve.api._get_controller(), no_restart=False)
 
     for _ in range(10):
-        response = request_with_retries("/master_failure", timeout=30)
+        response = request_with_retries("/controller_failure", timeout=30)
         assert response.text == "hello2"
-        response = request_with_retries("/master_failure_2", timeout=30)
+        response = request_with_retries("/controller_failure_2", timeout=30)
         assert response.text == "hello3"
 
 
-def _kill_http_proxy():
-    [http_proxy] = ray.get(
-        serve.api._get_master_actor().get_http_proxy.remote())
-    ray.kill(http_proxy)
+def _kill_routers():
+    routers = ray.get(serve.api._get_controller().get_routers.remote())
+    for router in routers.values():
+        ray.kill(router, no_restart=False)
 
 
 def test_http_proxy_failure(serve_instance):
     serve.init()
-    serve.create_endpoint("proxy_failure", "/proxy_failure")
 
     def function():
         return "hello1"
 
     serve.create_backend("proxy_failure:v1", function)
-    serve.set_traffic("proxy_failure", {"proxy_failure:v1": 1.0})
+    serve.create_endpoint(
+        "proxy_failure", backend="proxy_failure:v1", route="/proxy_failure")
 
     assert request_with_retries("/proxy_failure", timeout=1.0).text == "hello1"
 
@@ -92,7 +98,7 @@ def test_http_proxy_failure(serve_instance):
         response = request_with_retries("/proxy_failure", timeout=30)
         assert response.text == "hello1"
 
-    _kill_http_proxy()
+    _kill_routers()
 
     def function():
         return "hello2"
@@ -105,47 +111,9 @@ def test_http_proxy_failure(serve_instance):
         assert response.text == "hello2"
 
 
-def _kill_router():
-    [router] = ray.get(serve.api._get_master_actor().get_router.remote())
-    ray.kill(router)
-
-
-def test_router_failure(serve_instance):
-    serve.init()
-    serve.create_endpoint("router_failure", "/router_failure")
-
-    def function():
-        return "hello1"
-
-    serve.create_backend("router_failure:v1", function)
-    serve.set_traffic("router_failure", {"router_failure:v1": 1.0})
-
-    assert request_with_retries("/router_failure", timeout=5).text == "hello1"
-
-    for _ in range(10):
-        response = request_with_retries("/router_failure", timeout=30)
-        assert response.text == "hello1"
-
-    _kill_router()
-
-    for _ in range(10):
-        response = request_with_retries("/router_failure", timeout=30)
-        assert response.text == "hello1"
-
-    def function():
-        return "hello2"
-
-    serve.create_backend("router_failure:v2", function)
-    serve.set_traffic("router_failure", {"router_failure:v2": 1.0})
-
-    for _ in range(10):
-        response = request_with_retries("/router_failure", timeout=30)
-        assert response.text == "hello2"
-
-
 def _get_worker_handles(backend):
-    master_actor = serve.api._get_master_actor()
-    backend_dict = ray.get(master_actor.get_all_worker_handles.remote())
+    controller = serve.api._get_controller()
+    backend_dict = ray.get(controller.get_all_worker_handles.remote())
 
     return list(backend_dict[backend].values())
 
@@ -154,14 +122,14 @@ def _get_worker_handles(backend):
 # serving requests.
 def test_worker_restart(serve_instance):
     serve.init()
-    serve.create_endpoint("worker_failure", "/worker_failure")
 
     class Worker1:
         def __call__(self):
             return os.getpid()
 
     serve.create_backend("worker_failure:v1", Worker1)
-    serve.set_traffic("worker_failure", {"worker_failure:v1": 1.0})
+    serve.create_endpoint(
+        "worker_failure", backend="worker_failure:v1", route="/worker_failure")
 
     # Get the PID of the worker.
     old_pid = request_with_retries("/worker_failure", timeout=1).text
@@ -169,7 +137,7 @@ def test_worker_restart(serve_instance):
     # Kill the worker.
     handles = _get_worker_handles("worker_failure:v1")
     assert len(handles) == 1
-    ray.kill(handles[0])
+    ray.kill(handles[0], no_restart=False)
 
     # Wait until the worker is killed and a one is started.
     start = time.time()
@@ -186,7 +154,6 @@ def test_worker_restart(serve_instance):
 def test_worker_replica_failure(serve_instance):
     serve.http_proxy.MAX_ACTOR_DEAD_RETRIES = 0
     serve.init()
-    serve.create_endpoint("replica_failure", "/replica_failure")
 
     class Worker:
         # Assumes that two replicas are started. Will hang forever in the
@@ -213,10 +180,12 @@ def test_worker_replica_failure(serve_instance):
         def __call__(self):
             pass
 
-    temp_path = tempfile.gettempdir() + "/" + serve.utils.get_random_letters()
+    temp_path = os.path.join(tempfile.gettempdir(),
+                             serve.utils.get_random_letters())
     serve.create_backend("replica_failure", Worker, temp_path)
     serve.update_backend_config("replica_failure", {"num_replicas": 2})
-    serve.set_traffic("replica_failure", {"replica_failure": 1.0})
+    serve.create_endpoint(
+        "replica_failure", backend="replica_failure", route="/replica_failure")
 
     # Wait until both replicas have been started.
     responses = set()
@@ -227,7 +196,7 @@ def test_worker_replica_failure(serve_instance):
     # Kill one of the replicas.
     handles = _get_worker_handles("replica_failure")
     assert len(handles) == 2
-    ray.kill(handles[0])
+    ray.kill(handles[0], no_restart=False)
 
     # Check that the other replica still serves requests.
     for _ in range(10):
@@ -239,3 +208,53 @@ def test_worker_replica_failure(serve_instance):
                 break
             except TimeoutError:
                 time.sleep(0.1)
+
+
+def test_create_backend_idempotent(serve_instance):
+    serve.init()
+
+    def f():
+        return "hello"
+
+    controller = serve.api._get_controller()
+
+    replica_config = ReplicaConfig(f)
+    backend_config = BackendConfig({"num_replicas": 1})
+
+    for i in range(10):
+        ray.get(
+            controller.create_backend.remote("my_backend", backend_config,
+                                             replica_config))
+
+    assert len(ray.get(controller.get_all_backends.remote())) == 1
+    serve.create_endpoint(
+        "my_endpoint", backend="my_backend", route="/my_route")
+
+    assert requests.get("http://127.0.0.1:8000/my_route").text == "hello"
+
+
+def test_create_endpoint_idempotent(serve_instance):
+    serve.init()
+
+    def f():
+        return "hello"
+
+    serve.create_backend("my_backend", f)
+
+    controller = serve.api._get_controller()
+
+    for i in range(10):
+        ray.get(
+            controller.create_endpoint.remote(
+                "my_endpoint", {"my_backend": 1.0}, "/my_route", ["GET"]))
+
+    assert len(ray.get(controller.get_all_endpoints.remote())) == 1
+    assert requests.get("http://127.0.0.1:8000/my_route").text == "hello"
+    resp = requests.get("http://127.0.0.1:8000/-/routes", timeout=0.5).json()
+    assert resp == {"/my_route": ["my_endpoint", ["GET"]]}
+
+
+if __name__ == "__main__":
+    import sys
+    import pytest
+    sys.exit(pytest.main(["-v", "-s", __file__]))

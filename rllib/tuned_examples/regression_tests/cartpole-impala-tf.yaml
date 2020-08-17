@@ -1,9 +1,0 @@
-cartpole-impala-tf:
-    env: CartPole-v0
-    run: IMPALA
-    stop:
-        episode_reward_mean: 150
-        timesteps_total: 500000
-    config:
-        use_pytorch: false
-        num_gpus: 0

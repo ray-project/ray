@@ -20,7 +20,7 @@ from ray.rllib.examples.policy.rock_paper_scissors_dummies import \
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check_learning_achieved
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 parser = argparse.ArgumentParser()
@@ -35,7 +35,7 @@ def run_same_policy(args, stop):
     """Use the same policy for both agents (trivial case)."""
     config = {
         "env": RockPaperScissors,
-        "use_pytorch": args.torch,
+        "framework": "torch" if args.torch else "tf",
     }
 
     results = tune.run("PG", config=config, stop=stop)
@@ -77,12 +77,12 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
                     "model": {
                         "use_lstm": use_lstm
                     },
-                    "use_pytorch": args.torch,
+                    "framework": "torch" if args.torch else "tf",
                 }),
             },
             "policy_mapping_fn": select_policy,
         },
-        "use_pytorch": args.torch,
+        "framework": "torch" if args.torch else "tf",
     }
     cls = get_agent_class(trainer) if isinstance(trainer, str) else trainer
     trainer_obj = cls(config=config)

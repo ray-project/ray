@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_ACTOR_HANDLE_H
-#define RAY_CORE_WORKER_ACTOR_HANDLE_H
+#pragma once
 
 #include <gtest/gtest_prod.h>
 
@@ -22,8 +21,8 @@
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/gcs/redis_gcs_client.h"
-#include "ray/protobuf/core_worker.pb.h"
-#include "ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/core_worker.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 
@@ -64,7 +63,21 @@ class ActorHandle {
 
   std::string ExtensionData() const { return inner_.extension_data(); }
 
+  /// Set the actor task spec fields.
+  ///
+  /// \param[in] builder Task spec builder.
+  /// \param[in] new_cursor Actor dummy object. This is legacy code needed for
+  /// raylet-based actor restart.
   void SetActorTaskSpec(TaskSpecBuilder &builder, const ObjectID new_cursor);
+
+  /// Reset the actor task spec fields of an existing task so that the task can
+  /// be re-executed.
+  ///
+  /// \param[in] spec An existing task spec that has executed on the actor
+  /// before.
+  /// \param[in] new_cursor Actor dummy object. This is legacy code needed for
+  /// raylet-based actor restart.
+  void SetResubmittedActorTaskSpec(TaskSpecification &spec, const ObjectID new_cursor);
 
   void Serialize(std::string *output);
 
@@ -89,5 +102,3 @@ class ActorHandle {
 };
 
 }  // namespace ray
-
-#endif  // RAY_CORE_WORKER_ACTOR_HANDLE_H

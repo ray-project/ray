@@ -3,8 +3,10 @@ import cv2
 import logging
 import numpy as np
 import gym
+from typing import Any, List
 
 from ray.rllib.utils.annotations import override, PublicAPI
+from ray.rllib.utils.spaces.repeated import Repeated
 
 ATARI_OBS_SHAPE = (210, 160, 3)
 ATARI_RAM_OBS_SHAPE = (128, )
@@ -18,11 +20,11 @@ class Preprocessor:
     """Defines an abstract observation preprocessor function.
 
     Attributes:
-        shape (obj): Shape of the preprocessed output.
+        shape (List[int]): Shape of the preprocessed output.
     """
 
     @PublicAPI
-    def __init__(self, obs_space, options=None):
+    def __init__(self, obs_space: gym.Space, options: dict = None):
         legacy_patch_shapes(obs_space)
         self._obs_space = obs_space
         if not options:
@@ -35,20 +37,20 @@ class Preprocessor:
         self._i = 0
 
     @PublicAPI
-    def _init_shape(self, obs_space, options):
+    def _init_shape(self, obs_space: gym.Space, options: dict) -> List[int]:
         """Returns the shape after preprocessing."""
         raise NotImplementedError
 
     @PublicAPI
-    def transform(self, observation):
+    def transform(self, observation: Any) -> np.ndarray:
         """Returns the preprocessed observation."""
         raise NotImplementedError
 
-    def write(self, observation, array, offset):
+    def write(self, observation: Any, array: np.ndarray, offset: int) -> None:
         """Alternative to transform for more efficient flattening."""
         array[offset:offset + self._size] = self.transform(observation)
 
-    def check_shape(self, observation):
+    def check_shape(self, observation: Any) -> None:
         """Checks the shape of the given observation."""
         if self._i % VALIDATION_INTERVAL == 0:
             if type(observation) is list and isinstance(
@@ -67,17 +69,18 @@ class Preprocessor:
 
     @property
     @PublicAPI
-    def size(self):
+    def size(self) -> int:
         return self._size
 
     @property
     @PublicAPI
-    def observation_space(self):
+    def observation_space(self) -> gym.Space:
         obs_space = gym.spaces.Box(-1., 1., self.shape, dtype=np.float32)
         # Stash the unwrapped space so that we can unwrap dict and tuple spaces
         # automatically in model.py
         if (isinstance(self, TupleFlatteningPreprocessor)
-                or isinstance(self, DictFlatteningPreprocessor)):
+                or isinstance(self, DictFlatteningPreprocessor)
+                or isinstance(self, RepeatedValuesPreprocessor)):
             obs_space.original_space = self._obs_space
         return obs_space
 
@@ -243,8 +246,47 @@ class DictFlatteningPreprocessor(Preprocessor):
             offset += p.size
 
 
+class RepeatedValuesPreprocessor(Preprocessor):
+    """Pads and batches the variable-length list value."""
+
+    @override(Preprocessor)
+    def _init_shape(self, obs_space, options):
+        assert isinstance(self._obs_space, Repeated)
+        child_space = obs_space.child_space
+        self.child_preprocessor = get_preprocessor(child_space)(child_space,
+                                                                self._options)
+        # The first slot encodes the list length.
+        size = 1 + self.child_preprocessor.size * obs_space.max_len
+        return (size, )
+
+    @override(Preprocessor)
+    def transform(self, observation):
+        array = np.zeros(self.shape)
+        if isinstance(observation, list):
+            for elem in observation:
+                self.child_preprocessor.check_shape(elem)
+        else:
+            pass  # ValueError will be raised in write() below.
+        self.write(observation, array, 0)
+        return array
+
+    @override(Preprocessor)
+    def write(self, observation, array, offset):
+        if not isinstance(observation, list):
+            raise ValueError("Input for {} must be list type, got {}".format(
+                self, observation))
+        elif len(observation) > self._obs_space.max_len:
+            raise ValueError("Input {} exceeds max len of space {}".format(
+                observation, self._obs_space.max_len))
+        # The first slot encodes the list length.
+        array[offset] = len(observation)
+        for i, elem in enumerate(observation):
+            offset_i = offset + 1 + i * self.child_preprocessor.size
+            self.child_preprocessor.write(elem, array, offset_i)
+
+
 @PublicAPI
-def get_preprocessor(space):
+def get_preprocessor(space: gym.Space) -> type:
     """Returns an appropriate preprocessor class for the given space."""
 
     legacy_patch_shapes(space)
@@ -260,13 +302,15 @@ def get_preprocessor(space):
         preprocessor = TupleFlatteningPreprocessor
     elif isinstance(space, gym.spaces.Dict):
         preprocessor = DictFlatteningPreprocessor
+    elif isinstance(space, Repeated):
+        preprocessor = RepeatedValuesPreprocessor
     else:
         preprocessor = NoPreprocessor
 
     return preprocessor
 
 
-def legacy_patch_shapes(space):
+def legacy_patch_shapes(space: gym.Space) -> List[int]:
     """Assigns shapes to spaces that don't have shapes.
 
     This is only needed for older gym versions that don't set shapes properly

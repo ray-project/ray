@@ -1,4 +1,5 @@
 from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.types import EnvConfigDict
 
 
 @PublicAPI
@@ -19,17 +20,21 @@ class EnvContext(dict):
         remote (bool): Whether environment should be remote or not.
     """
 
-    def __init__(self, env_config, worker_index, vector_index=0, remote=False):
+    def __init__(self,
+                 env_config: EnvConfigDict,
+                 worker_index: int,
+                 vector_index: int = 0,
+                 remote: bool = False):
         dict.__init__(self, env_config)
         self.worker_index = worker_index
         self.vector_index = vector_index
         self.remote = remote
 
     def copy_with_overrides(self,
-                            env_config=None,
-                            worker_index=None,
-                            vector_index=None,
-                            remote=None):
+                            env_config: EnvConfigDict = None,
+                            worker_index: int = None,
+                            vector_index: int = None,
+                            remote: bool = None):
         return EnvContext(
             env_config if env_config is not None else self,
             worker_index if worker_index is not None else self.worker_index,

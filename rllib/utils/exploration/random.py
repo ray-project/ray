@@ -9,9 +9,9 @@ from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils import force_tuple
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     TensorType
-from ray.rllib.utils.space_utils import get_base_struct_from_space
+from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
@@ -28,7 +28,7 @@ class Random(Exploration):
 
         Args:
             action_space (Space): The gym action space used by the environment.
-            framework (Optional[str]): One of None, "tf", "torch".
+            framework (Optional[str]): One of None, "tf", "tfe", "torch".
         """
         super().__init__(
             action_space=action_space,
@@ -46,7 +46,7 @@ class Random(Exploration):
                                timestep: Union[int, TensorType],
                                explore: bool = True):
         # Instantiate the distribution object.
-        if self.framework == "tf":
+        if self.framework in ["tf", "tfe"]:
             return self.get_tf_exploration_action_op(action_distribution,
                                                      explore)
         else:

@@ -18,7 +18,7 @@ package io.ray.api.function;
  * we can create this Python actor from Java:
  *
  * {@code
- * RayPyActor actor = Ray.createActor(new PyActorClass("example_package.example_module", "A"),
+ * PyActorHandle actor = Ray.createActor(PyActorClass.of("example_package.example_module", "A"),
  *                                    "the value for x");
  * }
  * </pre>
@@ -29,8 +29,20 @@ public class PyActorClass {
   // The name of this actor class
   public final String className;
 
-  public PyActorClass(String moduleName, String className) {
+  private PyActorClass(String moduleName, String className) {
     this.moduleName = moduleName;
     this.className = className;
   }
+
+  /**
+   * Create a python actor class.
+   *
+   * @param moduleName The full module name of this actor class
+   * @param className The name of this actor class
+   * @return a python actor class
+   */
+  public static PyActorClass of(String moduleName, String className) {
+    return new PyActorClass(moduleName, className);
+  }
+
 }

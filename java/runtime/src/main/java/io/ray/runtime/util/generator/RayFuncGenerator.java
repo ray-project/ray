@@ -44,7 +44,7 @@ public class RayFuncGenerator extends BaseGenerator {
     newLine("@FunctionalInterface");
     String className = "RayFunc" + (hasReturn ? "" : "Void") + numParameters;
     newLine(String.format("public interface %s%s extends %s {",
-        className, genericTypes, hasReturn ? "RayFunc" : "RayFuncVoid"));
+        className, genericTypes, hasReturn ? "RayFuncR<R>" : "RayFuncVoid"));
     newLine("");
     indents(1);
     newLine(String.format("%s apply(%s) throws Exception;", hasReturn ? "R" : "void", paramList));

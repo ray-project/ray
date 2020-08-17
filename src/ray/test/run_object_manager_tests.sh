@@ -6,13 +6,13 @@
 set -e
 set -x
 
-bazel build "//:object_manager_stress_test" "//:object_manager_test" "@plasma//:plasma_store_server"
+bazel build "//:object_manager_stress_test" "//:object_manager_test" "//:plasma_store_server"
 
 # Get the directory in which this script is executing.
-SCRIPT_DIR="`dirname \"$0\"`"
+SCRIPT_DIR="$(dirname "$0")"
 RAY_ROOT="$SCRIPT_DIR/../../.."
 # Makes $RAY_ROOT an absolute path.
-RAY_ROOT="`( cd \"$RAY_ROOT\" && pwd )`"
+RAY_ROOT="$(cd "$RAY_ROOT" && pwd)"
 if [ -z "$RAY_ROOT" ] ; then
   exit 1
 fi
@@ -23,13 +23,13 @@ if [ ! -d "$RAY_ROOT/python" ]; then
 fi
 
 REDIS_MODULE="./bazel-bin/libray_redis_module.so"
-LOAD_MODULE_ARGS="--loadmodule ${REDIS_MODULE}"
-STORE_EXEC="./bazel-bin/external/plasma/plasma_store_server"
+LOAD_MODULE_ARGS=(--loadmodule "${REDIS_MODULE}")
+STORE_EXEC="./bazel-bin/plasma_store_server"
 
 # Allow cleanup commands to fail.
 bazel run //:redis-cli -- -p 6379 shutdown || true
 sleep 1s
-bazel run //:redis-server -- --loglevel warning ${LOAD_MODULE_ARGS} --port 6379 &
+bazel run //:redis-server -- --loglevel warning "${LOAD_MODULE_ARGS[@]}" --port 6379 &
 sleep 1s
 # Run tests.
 ./bazel-bin/object_manager_stress_test $STORE_EXEC

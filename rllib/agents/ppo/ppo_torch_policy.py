@@ -1,4 +1,5 @@
 import logging
+import numpy as np
 
 import ray
 from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
@@ -9,9 +10,10 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import EntropyCoeffSchedule, \
     LearningRateSchedule
 from ray.rllib.policy.torch_policy_template import build_torch_policy
-from ray.rllib.utils.explained_variance import explained_variance
-from ray.rllib.utils.torch_ops import sequence_mask
-from ray.rllib.utils import try_import_torch
+from ray.rllib.policy.view_requirement import ViewRequirement
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.torch_ops import convert_to_torch_tensor, \
+    explained_variance, sequence_mask
 
 torch, nn = try_import_torch()
 
@@ -69,7 +71,7 @@ class PPOLoss:
             num_valid = torch.sum(valid_mask)
 
             def reduce_mean_valid(t):
-                return torch.sum(t * valid_mask) / num_valid
+                return torch.sum(t[valid_mask]) / num_valid
 
         else:
 
@@ -111,7 +113,7 @@ class PPOLoss:
 
 
 def ppo_surrogate_loss(policy, model, dist_class, train_batch):
-    logits, state = model.from_batch(train_batch)
+    logits, state = model.from_batch(train_batch, is_training=True)
     action_dist = dist_class(logits, model)
 
     mask = None
@@ -152,8 +154,7 @@ def kl_and_loss_stats(policy, train_batch):
         "vf_loss": policy.loss_obj.mean_vf_loss,
         "vf_explained_var": explained_variance(
             train_batch[Postprocessing.VALUE_TARGETS],
-            policy.model.value_function(),
-            framework="torch"),
+            policy.model.value_function()),
         "kl": policy.loss_obj.mean_kl,
         "entropy": policy.loss_obj.mean_entropy,
         "entropy_coeff": policy.entropy_coeff,
@@ -187,14 +188,17 @@ class ValueNetworkMixin:
 
             def value(ob, prev_action, prev_reward, *state):
                 model_out, _ = self.model({
-                    SampleBatch.CUR_OBS: self._convert_to_tensor([ob]),
-                    SampleBatch.PREV_ACTIONS: self._convert_to_tensor(
-                        [prev_action]),
-                    SampleBatch.PREV_REWARDS: self._convert_to_tensor(
-                        [prev_reward]),
+                    SampleBatch.CUR_OBS: convert_to_torch_tensor(
+                        np.asarray([ob]), self.device),
+                    SampleBatch.PREV_ACTIONS: convert_to_torch_tensor(
+                        np.asarray([prev_action]), self.device),
+                    SampleBatch.PREV_REWARDS: convert_to_torch_tensor(
+                        np.asarray([prev_reward]), self.device),
                     "is_training": False,
-                }, [self._convert_to_tensor(s) for s in state],
-                                          self._convert_to_tensor([1]))
+                }, [
+                    convert_to_torch_tensor(np.asarray([s]), self.device)
+                    for s in state
+                ], convert_to_torch_tensor(np.asarray([1]), self.device))
                 return self.model.value_function()[0]
 
         else:
@@ -213,6 +217,15 @@ def setup_mixins(policy, obs_space, action_space, config):
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
+def training_view_requirements_fn(policy):
+    return {
+        # Next obs are needed for PPO postprocessing.
+        SampleBatch.NEXT_OBS: ViewRequirement(SampleBatch.OBS, shift=1),
+        # VF preds are needed for the loss.
+        SampleBatch.VF_PREDS: ViewRequirement(shift=0),
+    }
+
+
 PPOTorchPolicy = build_torch_policy(
     name="PPOTorchPolicy",
     get_default_config=lambda: ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG,
@@ -223,4 +236,9 @@ PPOTorchPolicy = build_torch_policy(
     extra_grad_process_fn=apply_grad_clipping,
     before_init=setup_config,
     after_init=setup_mixins,
-    mixins=[KLCoeffMixin, ValueNetworkMixin])
+    mixins=[
+        LearningRateSchedule, EntropyCoeffSchedule, KLCoeffMixin,
+        ValueNetworkMixin
+    ],
+    training_view_requirements_fn=training_view_requirements_fn,
+)

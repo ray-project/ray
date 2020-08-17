@@ -1,5 +1,4 @@
-#ifndef RAY_CORE_WORKER_MEMORY_STORE_H
-#define RAY_CORE_WORKER_MEMORY_STORE_H
+#pragma once
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -177,5 +176,3 @@ class CoreWorkerMemoryStore {
 };
 
 }  // namespace ray
-
-#endif  // RAY_CORE_WORKER_MEMORY_STORE_H

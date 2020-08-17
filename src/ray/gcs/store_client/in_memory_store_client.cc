@@ -77,6 +77,36 @@ Status InMemoryStoreClient::AsyncDelete(const std::string &table_name,
   return Status::OK();
 }
 
+Status InMemoryStoreClient::AsyncDeleteWithIndex(const std::string &table_name,
+                                                 const std::string &key,
+                                                 const std::string &index_key,
+                                                 const StatusCallback &callback) {
+  auto table = GetOrCreateTable(table_name);
+  absl::MutexLock lock(&(table->mutex_));
+  // Remove key-value data.
+  table->records_.erase(key);
+
+  // Remove index-key data.
+  auto iter = table->index_keys_.find(index_key);
+  if (iter != table->index_keys_.end()) {
+    auto it = std::find(iter->second.begin(), iter->second.end(), key);
+    if (it != iter->second.end()) {
+      iter->second.erase(it);
+      if (iter->second.size() == 0) {
+        table->index_keys_.erase(iter);
+      }
+    }
+  }
+
+  main_io_service_.post([callback]() {
+    if (callback) {
+      callback(Status::OK());
+    }
+  });
+
+  return Status::OK();
+}
+
 Status InMemoryStoreClient::AsyncBatchDelete(const std::string &table_name,
                                              const std::vector<std::string> &keys,
                                              const StatusCallback &callback) {
@@ -86,6 +116,60 @@ Status InMemoryStoreClient::AsyncBatchDelete(const std::string &table_name,
     table->records_.erase(key);
   }
   main_io_service_.post([callback]() { callback(Status::OK()); });
+  return Status::OK();
+}
+
+Status InMemoryStoreClient::AsyncBatchDeleteWithIndex(
+    const std::string &table_name, const std::vector<std::string> &keys,
+    const std::vector<std::string> &index_keys, const StatusCallback &callback) {
+  RAY_CHECK(keys.size() == index_keys.size());
+
+  auto table = GetOrCreateTable(table_name);
+  absl::MutexLock lock(&(table->mutex_));
+
+  for (size_t i = 0; i < keys.size(); ++i) {
+    const std::string &key = keys[i];
+    const std::string &index_key = index_keys[i];
+    table->records_.erase(key);
+
+    auto iter = table->index_keys_.find(index_key);
+    if (iter != table->index_keys_.end()) {
+      auto it = std::find(iter->second.begin(), iter->second.end(), key);
+      if (it != iter->second.end()) {
+        iter->second.erase(it);
+        if (iter->second.size() == 0) {
+          table->index_keys_.erase(iter);
+        }
+      }
+    }
+  }
+
+  main_io_service_.post([callback]() {
+    if (callback) {
+      callback(Status::OK());
+    }
+  });
+
+  return Status::OK();
+}
+
+Status InMemoryStoreClient::AsyncGetByIndex(
+    const std::string &table_name, const std::string &index_key,
+    const MapCallback<std::string, std::string> &callback) {
+  auto table = GetOrCreateTable(table_name);
+  absl::MutexLock lock(&(table->mutex_));
+  auto iter = table->index_keys_.find(index_key);
+  std::unordered_map<std::string, std::string> result;
+  if (iter != table->index_keys_.end()) {
+    for (auto &key : iter->second) {
+      auto kv_iter = table->records_.find(key);
+      if (kv_iter != table->records_.end()) {
+        result[kv_iter->first] = kv_iter->second;
+      }
+    }
+  }
+  main_io_service_.post([result, callback]() { callback(result); });
+
   return Status::OK();
 }
 
@@ -101,7 +185,11 @@ Status InMemoryStoreClient::AsyncDeleteByIndex(const std::string &table_name,
     }
     table->index_keys_.erase(iter);
   }
-  main_io_service_.post([callback]() { callback(Status::OK()); });
+  main_io_service_.post([callback]() {
+    if (callback) {
+      callback(Status::OK());
+    }
+  });
   return Status::OK();
 }
 

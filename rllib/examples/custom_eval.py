@@ -162,7 +162,7 @@ if __name__ == "__main__":
                 "corridor_length": 5,
             },
         },
-        "use_pytorch": args.torch,
+        "framework": "torch" if args.torch else "tf",
     }
 
     stop = {

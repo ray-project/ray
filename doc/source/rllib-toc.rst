@@ -79,6 +79,7 @@ Models, Preprocessors, and Action Distributions
 *  `Custom Action Distributions <rllib-models.html#custom-action-distributions>`__
 *  `Supervised Model Losses <rllib-models.html#supervised-model-losses>`__
 *  `Self-Supervised Model Losses <rllib-models.html#self-supervised-model-losses>`__
+*  `Variable-length / Complex Observation Spaces <rllib-models.html#variable-length-complex-observation-spaces>`__
 *  `Variable-length / Parametric Action Spaces <rllib-models.html#variable-length-parametric-action-spaces>`__
 *  `Autoregressive Action Distributions <rllib-models.html#autoregressive-action-distributions>`__
 
@@ -104,6 +105,8 @@ Algorithms
    -  |pytorch| |tensorflow| :ref:`Deep Deterministic Policy Gradients (DDPG, TD3) <ddpg>`
 
    -  |pytorch| |tensorflow| :ref:`Deep Q Networks (DQN, Rainbow, Parametric DQN) <dqn>`
+
+   -  |pytorch| |tensorflow| :ref:`Model-Agnostic Meta-Learning (MAML) <maml>`
 
    -  |pytorch| |tensorflow| :ref:`Policy Gradients <pg>`
 
@@ -153,7 +156,7 @@ Concepts and Custom Algorithms
    -  `Extending Existing Policies <rllib-concepts.html#extending-existing-policies>`__
 
 *  `Policy Evaluation <rllib-concepts.html#policy-evaluation>`__
-*  `Policy Optimization <rllib-concepts.html#policy-optimization>`__
+*  `Execution Plans <rllib-concepts.html#execution-plans>`__
 *  `Trainers <rllib-concepts.html#trainers>`__
 
 Examples
@@ -180,8 +183,8 @@ Package Reference
 *  `ray.rllib.agents <rllib-package-ref.html#module-ray.rllib.agents>`__
 *  `ray.rllib.env <rllib-package-ref.html#module-ray.rllib.env>`__
 *  `ray.rllib.evaluation <rllib-package-ref.html#module-ray.rllib.evaluation>`__
+*  `ray.rllib.execution <rllib-package-ref.html#module-ray.rllib.execution>`__
 *  `ray.rllib.models <rllib-package-ref.html#module-ray.rllib.models>`__
-*  `ray.rllib.optimizers <rllib-package-ref.html#module-ray.rllib.optimizers>`__
 *  `ray.rllib.utils <rllib-package-ref.html#module-ray.rllib.utils>`__
 
 Troubleshooting
@@ -191,8 +194,6 @@ If you encounter errors like
 `blas_thread_init: pthread_create: Resource temporarily unavailable` when using many workers,
 try setting ``OMP_NUM_THREADS=1``. Similarly, check configured system limits with
 `ulimit -a` for other resource limit errors.
-
-If you encounter out-of-memory errors, consider setting ``redis_max_memory`` and ``object_store_memory`` in ``ray.init()`` to reduce memory usage.
 
 For debugging unexpected hangs or performance problems, you can run ``ray stack`` to dump
 the stack traces of all Ray workers on the current node, ``ray timeline`` to dump

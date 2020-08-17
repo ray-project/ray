@@ -1,7 +1,11 @@
+import logging
+
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.agents.sac.sac_tf_policy import SACTFPolicy
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
+
+logger = logging.getLogger(__name__)
 
 OPTIMIZER_SHARED_CONFIGS = [
     "buffer_size", "prioritized_replay", "prioritized_replay_alpha",
@@ -62,8 +66,13 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_eps": 1e-6,
     "prioritized_replay_beta_annealing_timesteps": 20000,
     "final_prioritized_replay_beta": 0.4,
-
+    # Whether to LZ4 compress observations
     "compress_observations": False,
+    # If set, this will fix the ratio of replayed from a buffer and learned on
+    # timesteps to sampled from an environment and stored in the replay buffer
+    # timesteps. Otherwise, the replay will proceed at the native ratio
+    # determined by (train_batch_size / rollout_fragment_length).
+    "training_intensity": None,
 
     # === Optimization ===
     "optimization": {
@@ -119,7 +128,7 @@ DEFAULT_CONFIG = with_common_config({
 
 
 def get_policy_class(config):
-    if config.get("use_pytorch") is True:
+    if config["framework"] == "torch":
         from ray.rllib.agents.sac.sac_torch_policy import SACTorchPolicy
         return SACTorchPolicy
     else:
@@ -127,9 +136,18 @@ def get_policy_class(config):
 
 
 def validate_config(config):
+    if config["model"].get("custom_model"):
+        logger.warning(
+            "Setting use_state_preprocessor=True since a custom model "
+            "was specified.")
+        config["use_state_preprocessor"] = True
+
     if config.get("grad_norm_clipping", DEPRECATED_VALUE) != DEPRECATED_VALUE:
         deprecation_warning("grad_norm_clipping", "grad_clip")
         config["grad_clip"] = config.pop("grad_norm_clipping")
+
+    if config["grad_clip"] is not None and config["grad_clip"] <= 0.0:
+        raise ValueError("`grad_clip` value must be > 0.0!")
 
     # Use same keys as for standard Trainer "model" config.
     for model in ["Q_model", "policy_model"]:
@@ -150,7 +168,7 @@ def validate_config(config):
 SACTrainer = GenericOffPolicyTrainer.with_updates(
     name="SAC",
     default_config=DEFAULT_CONFIG,
-    validate_config=validate_config,
     default_policy=SACTFPolicy,
     get_policy_class=get_policy_class,
+    validate_config=validate_config,
 )

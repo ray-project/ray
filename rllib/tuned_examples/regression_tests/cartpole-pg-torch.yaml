@@ -1,9 +1,0 @@
-cartpole-pg-torch:
-    env: CartPole-v0
-    run: PG
-    stop:
-        episode_reward_mean: 150
-        timesteps_total: 100000
-    config:
-        num_workers: 0
-        use_pytorch: true

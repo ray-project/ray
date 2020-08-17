@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <signal.h>
+
 #include <cstdlib>
 #include <iostream>
 
@@ -24,7 +25,7 @@
 namespace ray {
 #ifndef _WIN32
 
-void Sleep() { usleep(100000); }
+void Sleep() { std::this_thread::sleep_for(std::chrono::milliseconds(100)); }
 
 void TestSendSignal(const std::string &test_name, int signal) {
   pid_t pid;

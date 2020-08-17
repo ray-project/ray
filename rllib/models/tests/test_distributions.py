@@ -2,6 +2,7 @@ from functools import partial
 import numpy as np
 from gym.spaces import Box, Dict, Tuple
 from scipy.stats import beta, norm
+import tree
 import unittest
 
 from ray.rllib.models.tf.tf_action_dist import Beta, Categorical, \
@@ -10,15 +11,13 @@ from ray.rllib.models.tf.tf_action_dist import Beta, Categorical, \
 from ray.rllib.models.torch.torch_action_dist import TorchBeta, \
     TorchCategorical, TorchDiagGaussian, TorchMultiActionDistribution, \
     TorchMultiCategorical, TorchSquashedGaussian
-from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT, \
     softmax, SMALL_NUMBER, LARGE_INTEGER
 from ray.rllib.utils.test_utils import check, framework_iterator
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
-tree = try_import_tree()
 
 
 class TestDistributions(unittest.TestCase):
@@ -43,8 +42,15 @@ class TestDistributions(unittest.TestCase):
         ]
         inputs = np.zeros(shape=network_output_shape, dtype=np.float32)
         for batch_item in range(network_output_shape[0]):
-            for num in range(len(inputs[batch_item])):
+            for num in range(len(inputs[batch_item]) // 2):
                 inputs[batch_item][num] = np.random.choice(extreme_values)
+            else:
+                # For Gaussians, the second half of the vector is
+                # log standard deviations, and should therefore be
+                # the log of a positive number >= 1.
+                inputs[batch_item][num] = np.log(
+                    max(1, np.random.choice((extreme_values))))
+
         dist = distribution_cls(inputs, {})
         for _ in range(100):
             sample = dist.sample()
@@ -68,13 +74,13 @@ class TestDistributions(unittest.TestCase):
     def test_categorical(self):
         """Tests the Categorical ActionDistribution (tf only)."""
         num_samples = 100000
-        logits = tf.placeholder(tf.float32, shape=(None, 10))
+        logits = tf1.placeholder(tf.float32, shape=(None, 10))
         z = 8 * (np.random.rand(10) - 0.5)
         data = np.tile(z, (num_samples, 1))
         c = Categorical(logits, {})  # dummy config dict
         sample_op = c.sample()
-        sess = tf.Session()
-        sess.run(tf.global_variables_initializer())
+        sess = tf1.Session()
+        sess.run(tf1.global_variables_initializer())
         samples = sess.run(sample_op, feed_dict={logits: data})
         counts = np.zeros(10)
         for sample in samples:
@@ -150,7 +156,7 @@ class TestDistributions(unittest.TestCase):
         low, high = -2.0, 1.0
 
         for fw, sess in framework_iterator(
-                frameworks=("torch", "tf", "eager"), session=True):
+                frameworks=("torch", "tf", "tfe"), session=True):
             cls = SquashedGaussian if fw != "torch" else TorchSquashedGaussian
 
             # Do a stability test using extreme NN outputs to see whether
@@ -237,6 +243,72 @@ class TestDistributions(unittest.TestCase):
                 outs = sess.run(outs)
             check(outs, log_prob, decimals=4)
 
+    def test_diag_gaussian(self):
+        """Tests the DiagGaussian ActionDistribution for all frameworks."""
+        input_space = Box(-2.0, 2.0, shape=(200, 10))
+
+        for fw, sess in framework_iterator(
+                frameworks=("torch", "tf", "tfe"), session=True):
+            cls = DiagGaussian if fw != "torch" else TorchDiagGaussian
+
+            # Do a stability test using extreme NN outputs to see whether
+            # sampling and logp'ing result in NaN or +/-inf values.
+            self._stability_test(cls, input_space.shape, fw=fw, sess=sess)
+
+            # Batch of size=n and deterministic.
+            inputs = input_space.sample()
+            means, _ = np.split(inputs, 2, axis=-1)
+            diag_distribution = cls(inputs, {})
+            expected = means
+            # Sample n times, expect always mean value (deterministic draw).
+            out = diag_distribution.deterministic_sample()
+            check(out, expected)
+
+            # Batch of size=n and non-deterministic -> expect roughly the mean.
+            inputs = input_space.sample()
+            means, log_stds = np.split(inputs, 2, axis=-1)
+            diag_distribution = cls(inputs, {})
+            expected = means
+            values = diag_distribution.sample()
+            if sess:
+                values = sess.run(values)
+            else:
+                values = values.numpy()
+            check(np.mean(values), expected.mean(), decimals=1)
+
+            # Test log-likelihood outputs.
+            sampled_action_logp = diag_distribution.logp(
+                values if fw != "torch" else torch.Tensor(values))
+            if sess:
+                sampled_action_logp = sess.run(sampled_action_logp)
+            else:
+                sampled_action_logp = sampled_action_logp.numpy()
+
+            # NN output.
+            means = np.array(
+                [[0.1, 0.2, 0.3, 0.4, 50.0], [-0.1, -0.2, -0.3, -0.4, -1.0]],
+                dtype=np.float32)
+            log_stds = np.array(
+                [[0.8, -0.2, 0.3, -1.0, 2.0], [0.7, -0.3, 0.4, -0.9, 2.0]],
+                dtype=np.float32)
+
+            diag_distribution = cls(
+                inputs=np.concatenate([means, log_stds], axis=-1), model={})
+            # Convert to parameters for distr.
+            stds = np.exp(log_stds)
+            # Values to get log-likelihoods for.
+            values = np.array([[0.9, 0.2, 0.4, -0.1, -1.05],
+                               [-0.9, -0.2, 0.4, -0.1, -1.05]])
+
+            # get log-llh from regular gaussian.
+            log_prob = np.sum(np.log(norm.pdf(values, means, stds)), -1)
+
+            outs = diag_distribution.logp(values if fw != "torch" else
+                                          torch.Tensor(values))
+            if sess:
+                outs = sess.run(outs)
+            check(outs, log_prob, decimals=4)
+
     def test_beta(self):
         input_space = Box(-2.0, 1.0, shape=(200, 10))
         low, high = -1.0, 2.0
@@ -296,7 +368,7 @@ class TestDistributions(unittest.TestCase):
     def test_gumbel_softmax(self):
         """Tests the GumbelSoftmax ActionDistribution (tf + eager only)."""
         for fw, sess in framework_iterator(
-                frameworks=["tf", "eager"], session=True):
+                frameworks=["tf", "tfe"], session=True):
             batch_size = 1000
             num_categories = 5
             input_space = Box(-1.0, 1.0, shape=(batch_size, num_categories))
