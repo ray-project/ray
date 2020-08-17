@@ -11,7 +11,7 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
     unbatch
-from ray.rllib.utils.types import AgentID, ModelGradients, ModelWeights, \
+from ray.rllib.utils.typing import AgentID, ModelGradients, ModelWeights, \
     TensorType, TrainerConfigDict, Tuple, Union
 
 torch, _ = try_import_torch()
@@ -36,18 +36,18 @@ class Policy(metaclass=ABCMeta):
     graphs and multi-GPU support.
 
     Attributes:
-        observation_space (gym.Space): Observation space of the policy.
+        observation_space (gym.Space): Observation space of the policy. For
+            complex spaces (e.g., Dict), this will be flattened version of the
+            space, and you can access the original space via
+            ``observation_space.original_space``.
         action_space (gym.Space): Action space of the policy.
         exploration (Exploration): The exploration object to use for
             computing actions, or None.
     """
 
     @DeveloperAPI
-    def __init__(
-            self,
-            observation_space: gym.spaces.Space,
-            action_space: gym.spaces.Space,
-            config: TrainerConfigDict):
+    def __init__(self, observation_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space, config: TrainerConfigDict):
         """Initialize the graph.
 
         This is the standard constructor for policies. The policy
@@ -178,9 +178,9 @@ class Policy(metaclass=ABCMeta):
             episodes = [episode]
         if state is not None:
             state_batch = [
-                s.unsqueeze(0) if torch and isinstance(s, torch.Tensor) else
-                np.expand_dims(s, 0)
-                for s in state
+                s.unsqueeze(0)
+                if torch and isinstance(s, torch.Tensor) else np.expand_dims(
+                    s, 0) for s in state
             ]
 
         out = self.compute_actions(
@@ -258,10 +258,10 @@ class Policy(metaclass=ABCMeta):
             actions: Union[List[TensorType], TensorType],
             obs_batch: Union[List[TensorType], TensorType],
             state_batches: Optional[List[TensorType]] = None,
-            prev_action_batch: Optional[
-                Union[List[TensorType], TensorType]] = None,
-            prev_reward_batch: Optional[
-                Union[List[TensorType], TensorType]] = None) -> TensorType:
+            prev_action_batch: Optional[Union[List[TensorType],
+                                              TensorType]] = None,
+            prev_reward_batch: Optional[Union[List[
+                TensorType], TensorType]] = None) -> TensorType:
         """Computes the log-prob/likelihood for a given action and observation.
 
         Args:
@@ -306,8 +306,8 @@ class Policy(metaclass=ABCMeta):
     def postprocess_trajectory(
             self,
             sample_batch: SampleBatch,
-            other_agent_batches: Optional[
-                Dict[AgentID, Tuple["Policy", SampleBatch]]] = None,
+            other_agent_batches: Optional[Dict[AgentID, Tuple[
+                "Policy", SampleBatch]]] = None,
             episode: Optional["MultiAgentEpisode"] = None) -> SampleBatch:
         """Implements algorithm-specific trajectory postprocessing.
 

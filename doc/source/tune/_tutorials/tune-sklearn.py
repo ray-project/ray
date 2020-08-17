@@ -68,10 +68,7 @@ parameter_grid = {"alpha": [1e-4, 1e-1, 1], "epsilon": [0.01, 0.1]}
 # As you can see, the setup here is exactly how you would do it for Scikit-Learn. Now, let's try fitting a model.
 
 tune_search = TuneGridSearchCV(
-    SGDClassifier(),
-    parameter_grid,
-    early_stopping=True,
-    max_iters=10)
+    SGDClassifier(), parameter_grid, early_stopping=True, max_iters=10)
 
 import time  # Just to compare fit times
 start = time.time()

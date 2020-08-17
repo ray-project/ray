@@ -19,7 +19,6 @@
 #include <unordered_map>
 
 #include "absl/synchronization/mutex.h"
-
 #include "opencensus/stats/internal/delta_producer.h"
 #include "opencensus/stats/stats.h"
 #include "opencensus/tags/tag_key.h"
@@ -90,6 +89,13 @@ static inline void Init(const TagsType &global_tags, const int metrics_agent_por
     exporter = exporter_to_use;
   }
 
+  // Set interval.
+  StatsConfig::instance().SetReportInterval(absl::Milliseconds(std::max(
+      RayConfig::instance().metrics_report_interval_ms(), static_cast<uint64_t>(1000))));
+  StatsConfig::instance().SetHarvestInterval(
+      absl::Milliseconds(std::max(RayConfig::instance().metrics_report_interval_ms() / 2,
+                                  static_cast<uint64_t>(500))));
+
   MetricExporter::Register(exporter, metrics_report_batch_size);
   opencensus::stats::StatsExporter::SetInterval(
       StatsConfig::instance().GetReportInterval());
@@ -102,7 +108,6 @@ static inline void Init(const TagsType &global_tags, const int metrics_agent_por
 /// Shutdown the initialized stats library.
 /// This cleans up various threads and metadata for stats library.
 static inline void Shutdown() {
-  // TODO(sang): Harvest thread is not currently cleaned up.
   absl::MutexLock lock(&stats_mutex);
   if (!StatsConfig::instance().IsInitialized()) {
     // Return if stats had never been initialized.

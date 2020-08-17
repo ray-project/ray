@@ -66,8 +66,10 @@ from ray.includes.common cimport (
     TASK_TYPE_ACTOR_TASK,
     WORKER_TYPE_WORKER,
     WORKER_TYPE_DRIVER,
+    WORKER_TYPE_IO_WORKER,
     PLACEMENT_STRATEGY_PACK,
     PLACEMENT_STRATEGY_SPREAD,
+    PLACEMENT_STRATEGY_STRICT_PACK,
 )
 from ray.includes.unique_ids cimport (
     CActorID,
@@ -90,6 +92,7 @@ from ray.includes.ray_config cimport RayConfig
 from ray.includes.global_state_accessor cimport CGlobalStateAccessor
 
 import ray
+from ray import external_storage
 from ray.async_compat import (
     sync_to_async, get_new_event_loop)
 import ray.memory_monitor as memory_monitor
@@ -125,11 +128,6 @@ include "includes/metric.pxi"
 OPTIMIZED = __OPTIMIZE__
 
 logger = logging.getLogger(__name__)
-
-
-def gcs_actor_service_enabled():
-    return (
-        RayConfig.instance().gcs_actor_service_enabled())
 
 
 cdef int check_status(const CRayStatus& status) nogil except -1:
@@ -358,7 +356,7 @@ cdef execute_task(
         CFiberEvent task_done_event
 
     # Automatically restrict the GPUs available to this task.
-    ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
+    ray.utils.set_cuda_visible_devices(ray.get_gpu_ids(as_str=True))
 
     function_descriptor = CFunctionDescriptorToPython(
         ray_function.GetFunctionDescriptor())
@@ -595,6 +593,49 @@ cdef void gc_collect() nogil:
                     num_freed, end - start))
 
 
+cdef c_vector[c_string] spill_objects_handler(
+        const c_vector[CObjectID]& object_ids_to_spill) nogil:
+    cdef c_vector[c_string] return_urls
+    with gil:
+        object_refs = VectorToObjectRefs(object_ids_to_spill)
+        try:
+            urls = external_storage.spill_objects(object_refs)
+            for url in urls:
+                return_urls.push_back(url)
+        except Exception:
+            exception_str = (
+                "An unexpected internal error occurred while the IO worker "
+                "was spilling objects.")
+            logger.exception(exception_str)
+            ray.utils.push_error_to_driver(
+                ray.worker.global_worker,
+                "io_worker_spill_objects_error",
+                traceback.format_exc() + exception_str,
+                job_id=None)
+        return return_urls
+
+
+cdef void restore_spilled_objects_handler(
+        const c_vector[c_string]& object_urls) nogil:
+    with gil:
+        urls = []
+        size = object_urls.size()
+        for i in range(size):
+            urls.append(object_urls[i])
+        try:
+            external_storage.restore_spilled_objects(urls)
+        except Exception:
+            exception_str = (
+                "An unexpected internal error occurred while the IO worker "
+                "was restoring spilled objects.")
+            logger.exception(exception_str)
+            ray.utils.push_error_to_driver(
+                ray.worker.global_worker,
+                "io_worker_retore_spilled_objects_error",
+                traceback.format_exc() + exception_str,
+                job_id=None)
+
+
 # This function introduces ~2-7us of overhead per call (i.e., it can be called
 # up to hundreds of thousands of times per second).
 cdef void get_py_stack(c_string* stack_out) nogil:
@@ -655,17 +696,25 @@ cdef void terminate_asyncio_thread() nogil:
 
 cdef class CoreWorker:
 
-    def __cinit__(self, is_driver, store_socket, raylet_socket,
+    def __cinit__(self, worker_type, store_socket, raylet_socket,
                   JobID job_id, GcsClientOptions gcs_options, log_dir,
                   node_ip_address, node_manager_port, raylet_ip_address,
                   local_mode, driver_name, stdout_file, stderr_file,
-                  serialized_job_config):
-        self.is_driver = is_driver
+                  serialized_job_config, metrics_agent_port):
         self.is_local_mode = local_mode
 
         cdef CCoreWorkerOptions options = CCoreWorkerOptions()
-        options.worker_type = (
-            WORKER_TYPE_DRIVER if is_driver else WORKER_TYPE_WORKER)
+        if worker_type in (ray.LOCAL_MODE, ray.SCRIPT_MODE):
+            self.is_driver = True
+            options.worker_type = WORKER_TYPE_DRIVER
+        elif worker_type == ray.WORKER_MODE:
+            self.is_driver = False
+            options.worker_type = WORKER_TYPE_WORKER
+        elif worker_type == ray.IO_WORKER_MODE:
+            self.is_driver = False
+            options.worker_type = WORKER_TYPE_IO_WORKER
+        else:
+            raise ValueError(f"Unknown worker type: {worker_type}")
         options.language = LANGUAGE_PYTHON
         options.store_socket = store_socket.encode("ascii")
         options.raylet_socket = raylet_socket.encode("ascii")
@@ -683,6 +732,8 @@ cdef class CoreWorker:
         options.task_execution_callback = task_execution_handler
         options.check_signals = check_signals
         options.gc_collect = gc_collect
+        options.spill_objects = spill_objects_handler
+        options.restore_spilled_objects = restore_spilled_objects_handler
         options.get_lang_stack = get_py_stack
         options.ref_counting_enabled = True
         options.is_local_mode = local_mode
@@ -690,6 +741,7 @@ cdef class CoreWorker:
         options.kill_main = kill_main_task
         options.terminate_asyncio_thread = terminate_asyncio_thread
         options.serialized_job_config = serialized_job_config
+        options.metrics_agent_port = metrics_agent_port
 
         CCoreWorkerProcess.Initialize(options)
 
@@ -729,15 +781,15 @@ cdef class CoreWorker:
         return self.plasma_event_handler
 
     def get_objects(self, object_refs, TaskID current_task_id,
-                    int64_t timeout_ms=-1):
+                    int64_t timeout_ms=-1, plasma_objects_only=False):
         cdef:
             c_vector[shared_ptr[CRayObject]] results
             CTaskID c_task_id = current_task_id.native()
             c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_refs)
-
+            c_bool _plasma_objects_only = plasma_objects_only
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker().Get(
-                c_object_ids, timeout_ms, &results))
+                c_object_ids, timeout_ms, &results, _plasma_objects_only))
 
         return RayObjectsToDataMetadataPairs(results)
 
@@ -765,14 +817,57 @@ cdef class CoreWorker:
             c_object_id[0] = object_ref.native()
             with nogil:
                 check_status(CCoreWorkerProcess.GetCoreWorker().Create(
-                            metadata, data_size,
-                            c_object_id[0], data))
+                            metadata, data_size, c_object_id[0],
+                            CCoreWorkerProcess.GetCoreWorker().GetRpcAddress(),
+                            data))
 
         # If data is nullptr, that means the ObjectRef already existed,
         # which we ignore.
         # TODO(edoakes): this is hacky, we should return the error instead
         # and deal with it here.
         return data.get() == NULL
+
+    def put_file_like_object(
+            self, metadata, data_size, file_like, ObjectRef object_ref=None):
+        """Directly create a new Plasma Store object from a file like
+        object. This avoids extra memory copy.
+
+        Args:
+            metadata (bytes): The metadata of the object.
+            data_size (int): The size of the data buffer.
+            file_like: A python file object that provides the `readinto`
+                interface.
+            object_ref: The new ObjectRef.
+        """
+        cdef:
+            CObjectID c_object_id
+            shared_ptr[CBuffer] data_buf
+            shared_ptr[CBuffer] metadata_buf
+            int64_t put_threshold
+            c_bool put_small_object_in_memory_store
+            c_vector[CObjectID] c_object_id_vector
+        # TODO(suquark): This method does not support put objects to
+        # in memory store currently.
+        metadata_buf = string_to_buffer(metadata)
+        object_already_exists = self._create_put_buffer(
+            metadata_buf, data_size, object_ref,
+            ObjectRefsToVector([]),
+            &c_object_id, &data_buf)
+        if object_already_exists:
+            logger.debug("Object already exists in 'put_file_like_object'.")
+            return
+        data = Buffer.make(data_buf)
+        view = memoryview(data)
+        index = 0
+        while index < data_size:
+            bytes_read = file_like.readinto(view[index:])
+            index += bytes_read
+        with nogil:
+            # Using custom object refs is not supported because we
+            # can't track their lifecycle, so we don't pin the object
+            # in this case.
+            check_status(CCoreWorkerProcess.GetCoreWorker().Seal(
+                         c_object_id, pin_object=object_ref is None))
 
     def put_serialized_object(self, serialized_object,
                               ObjectRef object_ref=None,
@@ -967,9 +1062,11 @@ cdef class CoreWorker:
 
         if strategy == b"PACK":
             c_strategy = PLACEMENT_STRATEGY_PACK
+        elif strategy == b"SPREAD":
+            c_strategy = PLACEMENT_STRATEGY_SPREAD
         else:
-            if strategy == b"SPREAD":
-                c_strategy = PLACEMENT_STRATEGY_SPREAD
+            if strategy == b"STRICT_PACK":
+                c_strategy = PLACEMENT_STRATEGY_STRICT_PACK
             else:
                 raise TypeError(strategy)
 
@@ -1344,6 +1441,20 @@ cdef class CoreWorker:
         CCoreWorkerProcess.GetCoreWorker().SetResource(
             resource_name.encode("ascii"), capacity,
             CClientID.FromBinary(client_id.binary()))
+
+    def force_spill_objects(self, object_refs):
+        cdef c_vector[CObjectID] object_ids
+        object_ids = ObjectRefsToVector(object_refs)
+        with nogil:
+            check_status(CCoreWorkerProcess.GetCoreWorker()
+                         .ForceSpillObjects(object_ids))
+
+    def force_restore_spilled_objects(self, object_refs):
+        cdef c_vector[CObjectID] object_ids
+        object_ids = ObjectRefsToVector(object_refs)
+        with nogil:
+            check_status(CCoreWorkerProcess.GetCoreWorker()
+                         .ForceRestoreSpilledObjects(object_ids))
 
 cdef void async_set_result(shared_ptr[CRayObject] obj,
                            CObjectID object_ref,

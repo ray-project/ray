@@ -15,8 +15,10 @@ export const ClusterDisk: ClusterFeatureRenderFn = ({ nodes }) => {
   let used = 0;
   let total = 0;
   for (const node of nodes) {
-    used += node.disk["/"].used;
-    total += node.disk["/"].total;
+    if ("/" in node.disk) {
+      used += node.disk["/"].used;
+      total += node.disk["/"].total;
+    }
   }
   return (
     <UsageBar

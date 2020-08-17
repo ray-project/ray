@@ -58,6 +58,18 @@ def validate_config(config: Dict[str, Any]) -> None:
     except jsonschema.ValidationError as e:
         raise jsonschema.ValidationError(message=e.message) from None
 
+    # Detect out of date defaults. This happens when the autoscaler that filled
+    # out the default values is older than the version of the autoscaler that
+    # is running on the cluster.
+    if "cluster_synced_files" not in config:
+        raise RuntimeError(
+            "Missing 'cluster_synced_files' field in the cluster "
+            "configuration. This is likely due to the Ray version running "
+            "in the cluster {ray_version} is greater than the Ray version "
+            "running on your laptop. Please try updating Ray on your local "
+            "machine and make sure the versions match.".format(
+                ray_version=ray.__version__))
+
 
 def prepare_config(config):
     with_defaults = fillout_defaults(config)
@@ -91,8 +103,17 @@ def with_head_node_ip(cmds):
 
 def hash_launch_conf(node_conf, auth):
     hasher = hashlib.sha1()
+    # For hashing, we replace the path to the key with the
+    # key itself. This is to make sure the hashes are the
+    # same even if keys live at different locations on different
+    # machines.
+    full_auth = auth.copy()
+    for key_type in ["ssh_private_key", "ssh_public_key"]:
+        if key_type in auth:
+            with open(os.path.expanduser(auth[key_type])) as key:
+                full_auth[key_type] = key.read()
     hasher.update(
-        json.dumps([node_conf, auth], sort_keys=True).encode("utf-8"))
+        json.dumps([node_conf, full_auth], sort_keys=True).encode("utf-8"))
     return hasher.hexdigest()
 
 

@@ -1,9 +1,11 @@
-from typing import Any, Awaitable
+from typing import Any, Awaitable, TypeVar
+
+R = TypeVar("R")
 
 
-class ObjectRef(Awaitable[Any]):
+class ObjectRef(Awaitable[R]):
     pass
 
 
-class ObjectID(Awaitable[Any]):
+class ObjectID(Awaitable[R]):
     pass

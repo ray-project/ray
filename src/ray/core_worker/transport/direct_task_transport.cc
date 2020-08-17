@@ -21,7 +21,7 @@ namespace ray {
 Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
 
-  if (actor_creator_ && task_spec.IsActorCreationTask()) {
+  if (task_spec.IsActorCreationTask()) {
     // Synchronously register the actor to GCS server.
     // Previously, we asynchronously registered the actor after all its dependencies were
     // resolved. This caused a problem: if the owner of the actor dies before dependencies
@@ -37,7 +37,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
 
   resolver_.ResolveDependencies(task_spec, [this, task_spec]() {
     RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
-    if (actor_creator_ && task_spec.IsActorCreationTask()) {
+    if (task_spec.IsActorCreationTask()) {
       // If gcs actor management is enabled, the actor creation task will be sent to
       // gcs server directly after the in-memory dependent objects are resolved. For
       // more details please see the protocol of actor management based on gcs.
@@ -94,12 +94,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
 
 void CoreWorkerDirectTaskSubmitter::AddWorkerLeaseClient(
     const rpc::WorkerAddress &addr, std::shared_ptr<WorkerLeaseInterface> lease_client) {
-  auto it = client_cache_.find(addr);
-  if (it == client_cache_.end()) {
-    client_cache_[addr] =
-        std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr.ToProto()));
-    RAY_LOG(INFO) << "Connected to " << addr.ip_address << ":" << addr.port;
-  }
+  client_cache_.GetOrConnect(addr.ToProto());
   int64_t expiration = current_time_ms() + lease_timeout_ms_;
   LeaseEntry new_lease_entry = LeaseEntry(std::move(lease_client), expiration, 0);
   worker_to_lease_entry_.emplace(addr, new_lease_entry);
@@ -131,7 +126,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
     }
 
   } else {
-    auto &client = *client_cache_[addr];
+    auto &client = *client_cache_.GetOrConnect(addr.ToProto());
 
     while (!queue_entry->second.empty() &&
            lease_entry.tasks_in_flight_ < max_tasks_in_flight_per_worker_) {
@@ -368,17 +363,23 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
     // or when all dependencies are resolved.
     RAY_CHECK(cancelled_tasks_.emplace(task_spec.TaskId()).second);
     auto rpc_client = executing_tasks_.find(task_spec.TaskId());
-    // Looks for an RPC handle for the worker executing the task.
-    if (rpc_client != executing_tasks_.end() &&
-        client_cache_.find(rpc_client->second) != client_cache_.end()) {
-      client = client_cache_.find(rpc_client->second)->second;
+
+    if (rpc_client == executing_tasks_.end()) {
+      // This case is reached for tasks that have unresolved dependencies.
+      // No executing tasks, so cancelling is a noop.
+      return Status::OK();
     }
+    // Looks for an RPC handle for the worker executing the task.
+    auto maybe_client = client_cache_.GetByID(rpc_client->second.worker_id);
+    if (!maybe_client.has_value()) {
+      // If we don't have a connection to that worker, we can't cancel it.
+      // This case is reached for tasks that have unresolved dependencies.
+      return Status::OK();
+    }
+    client = maybe_client.value();
   }
 
-  // This case is reached for tasks that have unresolved dependencies.
-  if (client == nullptr) {
-    return Status::OK();
-  }
+  RAY_CHECK(client != nullptr);
 
   auto request = rpc::CancelTaskRequest();
   request.set_intended_task_id(task_spec.TaskId().Binary());
@@ -408,15 +409,16 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
 Status CoreWorkerDirectTaskSubmitter::CancelRemoteTask(const ObjectID &object_id,
                                                        const rpc::Address &worker_addr,
                                                        bool force_kill) {
-  absl::MutexLock lock(&mu_);
-  auto client = client_cache_.find(rpc::WorkerAddress(worker_addr));
-  if (client == client_cache_.end()) {
+  auto maybe_client = client_cache_.GetByID(rpc::WorkerAddress(worker_addr).worker_id);
+
+  if (!maybe_client.has_value()) {
     return Status::Invalid("No remote worker found");
   }
+  auto client = maybe_client.value();
   auto request = rpc::RemoteCancelTaskRequest();
   request.set_force_kill(force_kill);
   request.set_remote_object_id(object_id.Binary());
-  client->second->RemoteCancelTask(request, nullptr);
+  client->RemoteCancelTask(request, nullptr);
   return Status::OK();
 }
 

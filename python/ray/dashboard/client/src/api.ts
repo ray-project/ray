@@ -189,7 +189,7 @@ export type FullActorInfo = {
 export type PartialActorInfo = {
   actorId: string;
   actorTitle: string;
-  requiredResources: { [key: string]: number };
+  requiredResources?: { [key: string]: number };
   state: ActorState.Invalid;
   invalidStateType?: InvalidStateType;
 };

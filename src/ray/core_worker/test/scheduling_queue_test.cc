@@ -13,8 +13,8 @@
 // limitations under the License.
 
 #include <thread>
-#include "gtest/gtest.h"
 
+#include "gtest/gtest.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 

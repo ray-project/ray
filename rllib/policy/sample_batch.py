@@ -8,7 +8,7 @@ from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.compression import pack, unpack, is_compressed
 from ray.rllib.utils.memory import concat_aligned
 from ray.rllib.utils.deprecation import deprecation_warning
-from ray.rllib.utils.types import TensorType
+from ray.rllib.utils.typing import TensorType
 
 # Default policy id for single agent environments
 DEFAULT_POLICY_ID = "default_policy"
@@ -305,10 +305,9 @@ class SampleBatch:
         self.data[key] = item
 
     @DeveloperAPI
-    def compress(
-            self,
-            bulk: bool = False,
-            columns: Set[str] = frozenset(["obs", "new_obs"])) -> None:
+    def compress(self,
+                 bulk: bool = False,
+                 columns: Set[str] = frozenset(["obs", "new_obs"])) -> None:
         """Compresses the data buffers (by column) in place.
 
         Args:
@@ -327,10 +326,9 @@ class SampleBatch:
                         [pack(o) for o in self.data[key]])
 
     @DeveloperAPI
-    def decompress_if_needed(
-            self,
-            columns: Set[str] = frozenset(
-                ["obs", "new_obs"])) -> "SampleBatch":
+    def decompress_if_needed(self,
+                             columns: Set[str] = frozenset(
+                                 ["obs", "new_obs"])) -> "SampleBatch":
         """Decompresses data buffers (per column if not compressed) in place.
 
         Args:
@@ -374,8 +372,7 @@ class MultiAgentBatch:
     """
 
     @PublicAPI
-    def __init__(self,
-                 policy_batches: Dict[PolicyID, SampleBatch],
+    def __init__(self, policy_batches: Dict[PolicyID, SampleBatch],
                  env_steps: int):
         """Initialize a MultiAgentBatch object.
 
@@ -541,11 +538,9 @@ class MultiAgentBatch:
         return sum(b.size_bytes() for b in self.policy_batches.values())
 
     @DeveloperAPI
-    def compress(
-            self,
-            bulk: bool = False,
-            columns: Set[str] = frozenset(
-                ["obs", "new_obs"])) -> None:
+    def compress(self,
+                 bulk: bool = False,
+                 columns: Set[str] = frozenset(["obs", "new_obs"])) -> None:
         """Compresses each policy batch (per column) in place.
 
         Args:
@@ -558,10 +553,9 @@ class MultiAgentBatch:
             batch.compress(bulk=bulk, columns=columns)
 
     @DeveloperAPI
-    def decompress_if_needed(
-            self,
-            columns: Set[str] = frozenset(
-                ["obs", "new_obs"])) -> "MultiAgentBatch":
+    def decompress_if_needed(self,
+                             columns: Set[str] = frozenset(
+                                 ["obs", "new_obs"])) -> "MultiAgentBatch":
         """Decompresses each policy batch (per column), if already compressed.
 
         Args:

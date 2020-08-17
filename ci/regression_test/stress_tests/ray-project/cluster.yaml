@@ -97,7 +97,7 @@ setup_commands:
     # - git clone https://github.com/ray-project/ray || true
     # - ray/ci/travis/install-bazel.sh
     - pip install -U pip 
-    - conda uninstall -y terminado
+    - conda uninstall -y terminado || true
     - pip install terminado
     - pip install boto3==1.4.8 cython==0.29.0
     # - cd ray/python; git checkout master; git pull; pip install -e . --verbose

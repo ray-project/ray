@@ -8,7 +8,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.debug import summarize
-from ray.rllib.utils.types import PolicyID, AgentID
+from ray.rllib.utils.typing import PolicyID, AgentID
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.util.debug import log_once
 
@@ -27,6 +27,7 @@ def to_float_array(v: List[Any]) -> np.ndarray:
 
 # TODO(sven): Remove the following class once we switch to trajectory view API.
 
+
 @PublicAPI
 class SampleBatchBuilder:
     """Util to build a SampleBatch incrementally.
@@ -43,7 +44,7 @@ class SampleBatchBuilder:
         self.count = 0
 
     @PublicAPI
-    def add_values(self, **values: Dict[str, Any]) -> None:
+    def add_values(self, **values: Any) -> None:
         """Add the given dictionary (row) of values to this batch."""
 
         for k, v in values.items():
@@ -75,6 +76,7 @@ class SampleBatchBuilder:
 
 
 # TODO(sven): Remove the following class once we switch to trajectory view API.
+
 
 @DeveloperAPI
 class MultiAgentSampleBatchBuilder:
@@ -136,7 +138,7 @@ class MultiAgentSampleBatchBuilder:
 
     @DeveloperAPI
     def add_values(self, agent_id: AgentID, policy_id: AgentID,
-                   **values: Dict[str, Any]) -> None:
+                   **values: Any) -> None:
         """Add the given dictionary (row) of values to this batch.
 
         Arguments:

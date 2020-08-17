@@ -36,6 +36,8 @@ def test_output():
         [sys.executable, __file__, "_ray_instance"],
         stderr=subprocess.STDOUT).decode()
     lines = outputs.split("\n")
+    for line in lines:
+        print(line)
     assert len(lines) == 3, lines
     logging_header = r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}\sINFO\s"
     assert re.match(
