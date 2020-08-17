@@ -116,6 +116,8 @@ class TestCuriosity(unittest.TestCase):
         config["train_batch_size"] = 512
         config["num_sgd_iter"] = 10
 
+        config["num_gpus"] = 1
+
         config["exploration_config"] = {
             "type": "Curiosity",
             # For the feature NN, use a non-LSTM conv2d net (same as the one
