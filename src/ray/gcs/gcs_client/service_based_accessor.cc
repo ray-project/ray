@@ -1462,5 +1462,26 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
   return Status::OK();
 }
 
+Status ServiceBasedPlacementGroupInfoAccessor::AsyncGet(
+    const PlacementGroupID &placement_group_id,
+    const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) {
+  RAY_LOG(DEBUG) << "Getting placement group info, placement group id = "
+                 << placement_group_id;
+  rpc::GetPlacementGroupRequest request;
+  request.set_placement_group_id(placement_group_id.Binary());
+  client_impl_->GetGcsRpcClient().GetPlacementGroup(
+      request, [placement_group_id, callback](const Status &status,
+                                              const rpc::GetPlacementGroupReply &reply) {
+        if (reply.has_placement_group_table_data()) {
+          callback(status, reply.placement_group_table_data());
+        } else {
+          callback(status, boost::none);
+        }
+        RAY_LOG(DEBUG) << "Finished getting placement group info, placement group id = "
+                       << placement_group_id;
+      });
+  return Status::OK();
+}
+
 }  // namespace gcs
 }  // namespace ray
