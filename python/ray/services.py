@@ -1203,11 +1203,10 @@ def start_dashboard(require_dashboard,
 
         cli_logger.labeled_value("Dashboard URL", cf.underlined("http://{}"),
                                  dashboard_url)
-        print(
-            "View the Ray dashboard at ",
-            f"{colorama.Style.BRIGHT}{colorama.Fore.GREEN}"
-            f"{dashboard_url}{colorama.Fore.RESET}"
-            f"{colorama.Style.NORMAL}")
+        cli_logger.old_info(logger, "View the Ray dashboard at {}{}{}{}{}",
+                            colorama.Style.BRIGHT, colorama.Fore.GREEN,
+                            dashboard_url, colorama.Fore.RESET,
+                            colorama.Style.NORMAL)
 
         return dashboard_url, process_info
     else:
