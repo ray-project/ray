@@ -15,10 +15,8 @@ def dockerize_if_needed(config):
     docker_image = config["docker"].get("image")
     docker_pull = config["docker"].get("pull_before_run", True)
     cname = config["docker"].get("container_name")
-    run_options = config["docker"].get("run_options", [])
 
     head_docker_image = config["docker"].get("head_image", docker_image)
-    head_run_options = config["docker"].get("head_run_options", [])
 
     worker_docker_image = config["docker"].get("worker_image", docker_image)
     worker_run_options = config["docker"].get("worker_run_options", [])
@@ -38,13 +36,9 @@ def dockerize_if_needed(config):
         docker_pull_cmd = "docker pull {}".format(docker_image)
         config["initialization_commands"].append(docker_pull_cmd)
 
-    head_docker_start = docker_start_cmds(ssh_user, head_docker_image,
-                                          docker_mounts, cname,
-                                          run_options + head_run_options)
+    head_docker_start = docker_start_cmds(cname, head_docker_image, docker_mounts, config["docker"], "head")
 
-    worker_docker_start = docker_start_cmds(ssh_user, worker_docker_image,
-                                            docker_mounts, cname,
-                                            run_options + worker_run_options)
+    worker_docker_start = docker_start_cmds(cname, worker_docker_image, docker_mounts, config["docker"], "worker")
 
     config["head_setup_commands"] = head_docker_start + (with_docker_exec(
         config["head_setup_commands"], container_name=cname))
@@ -84,27 +78,39 @@ def check_docker_running_cmd(cname):
     return " ".join(["docker", "inspect", "-f", "'{{.State.Running}}'", cname])
 
 
-def docker_start_cmds(user, image, mount, cname, user_options):
+def docker_start_cmds(cname, image, ray_mounts, docker_config, node_type):
+    assert node_type in ["worker", "head"]
+    run_options = docker_config.get("run_options", [])
+    working_dir = docker_config.get("working_dir")
+    user_env = docker_config.get("env", [])
+    volume_mounts = docker_config.get("container_volume_mounts", [])
+    
+    run_options.extend(docker_config.get(f"{node_type}_run_options", []))
+    working_dir = docker_config.get(f"{node_type}_working_dir", working_dir)
+    user_env.extend(docker_config.get(f"{node_type}_env"))
+    volume_mounts.extend(docker_config.get(f"{node_type}_container_volume_mounts", []))
+
+
     cmds = []
 
     # TODO(ilr) Move away from defaulting to /root/
-    mount_flags = " ".join([
-        "-v {src}:{dest}".format(src=k, dest=v.replace("~/", "/root/"))
-        for k, v in mount.items()
-    ])
+    mount_list = ["-v {src}:{dest}".format(src=k, dest=v.replace("~/", "/root/")) for k, v in ray_mounts.items() ]
+    mount_list.extend([f"-v {mnt}" for mnt in volume_mounts])
+    mount_flags = " ".join()
 
     # for click, used in ray cli
     env_vars = {"LC_ALL": "C.UTF-8", "LANG": "C.UTF-8"}
-    env_flags = " ".join(
-        ["-e {name}={val}".format(name=k, val=v) for k, v in env_vars.items()])
+    env_list = ["-e {name}={val}".format(name=k, val=v) for k, v in env_vars.items()]
+    env_list.extend([f"-e {var}" for var in user_env])
+    env_flags = " ".join(env_list)
 
-    user_options_str = " ".join(user_options)
+    run_options_str = " ".join(run_options)
     # TODO(ilr) Check command type
     # docker run command
     docker_check = check_docker_running_cmd(cname) + " || "
     docker_run = [
         "docker", "run", "--rm", "--name {}".format(cname), "-d", "-it",
-        mount_flags, env_flags, user_options_str, "--net=host", image, "bash"
+        mount_flags, env_flags, run_options_str, f"-w {working_dir}" if working_dir else "", "--net=host", image, "bash"
     ]
     cmds.append(docker_check + " ".join(docker_run))
 

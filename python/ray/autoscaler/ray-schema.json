@@ -202,6 +202,18 @@
                     "type": "array",
                     "description": "shared options for starting head/worker docker"
                 },
+                "working_dir" : {
+                    "type": "string",
+                    "description": "working directory to run all commands from"
+                },
+                "env" : {
+                    "type": "array",
+                    "description": "environment variables for the container"
+                },
+                "container_volume_mounts" : {
+                    "type": "array",
+                    "description": "mounts from host to container path. Note "
+                },
                 "head_image": {
                     "type": "string",
                     "description": "image for head node, takes precedence over 'image' if specified"
@@ -210,6 +222,18 @@
                     "type": "array",
                     "description": "head specific run options, appended to run_options"
                 },
+                "head_working_dir" : {
+                    "type": "string",
+                    "description": "working directory for head node, takes precedence over 'working_dir' if specified"
+                },
+                "head_env" : {
+                    "type": "array",
+                    "description": "head specific environment variables, appended to env"
+                },
+                "head_container_volume_mounts" : {
+                    "type": "array",
+                    "description": "head specific mounts, appended to volume_mounts"
+                },
                 "worker_image": {
                     "type": "string",
                     "description": "analogous to head_image"
@@ -217,6 +241,18 @@
                 "worker_run_options": {
                     "type": "array",
                     "description": "analogous to head_run_options"
+                },
+                "worker_working_dir" : {
+                    "type": "string",
+                    "description": "analogous to head_working_dir"
+                },
+                "worker_env" : {
+                    "type": "array",
+                    "description": "analogous to head_env"
+                },
+                "worker_container_volume_mounts" : {
+                    "type": "array",
+                    "description": "analogous to head_volume_mounts"
                 }
             }
         },
