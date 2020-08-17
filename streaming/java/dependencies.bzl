@@ -33,6 +33,7 @@ def gen_streaming_java_deps():
             "com.alibaba:fastjson:1.2.50",
         ],
         repositories = [
+            "https://repo.spring.io/plugins-release/",
             "https://repo1.maven.org/maven2/",
         ],
     )

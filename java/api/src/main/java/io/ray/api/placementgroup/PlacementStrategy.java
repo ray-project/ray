@@ -11,7 +11,11 @@ public enum PlacementStrategy {
   /**
    * Places Bundles across distinct nodes as even as possible.
    */
-  SPREAD(1);
+  SPREAD(1),
+  /**
+   * Packs Bundles into one node. The group is not allowed to span multiple nodes.
+   */
+  STRICT_PACK(2);
 
   private int value = 0;
 

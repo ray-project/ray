@@ -36,6 +36,17 @@
     </repository>
   </distributionManagement>
 
+  <repositories>
+    <repository>
+      <id>spring</id>
+      <url>https://repo.spring.io/plugins-release/</url>
+    </repository>
+    <repository>
+      <id>central</id>
+      <url>https://repo1.maven.org/maven2/</url>
+    </repository>
+  </repositories>
+
   <modules>
     <module>api</module>
     <module>runtime</module>

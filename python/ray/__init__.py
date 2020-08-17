@@ -78,27 +78,11 @@ from ray.profiling import profile  # noqa: E402
 from ray.state import (jobs, nodes, actors, objects, timeline,
                        object_transfer_timeline, cluster_resources,
                        available_resources)  # noqa: E402
-from ray.worker import (
-    LOCAL_MODE,
-    SCRIPT_MODE,
-    WORKER_MODE,
-    cancel,
-    connect,
-    disconnect,
-    get,
-    get_actor,
-    get_gpu_ids,
-    get_resource_ids,
-    get_webui_url,
-    init,
-    is_initialized,
-    put,
-    kill,
-    register_custom_serializer,
-    remote,
-    shutdown,
-    show_in_webui,
-    wait,
+from ray.worker import (  # noqa: F401
+    LOCAL_MODE, SCRIPT_MODE, WORKER_MODE, IO_WORKER_MODE, cancel, connect,
+    disconnect, get, get_actor, get_gpu_ids, get_resource_ids, get_webui_url,
+    init, is_initialized, put, kill, register_custom_serializer, remote,
+    shutdown, show_in_webui, wait,
 )  # noqa: E402
 import ray.internal  # noqa: E402
 import ray.projects  # noqa: E402

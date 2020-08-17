@@ -25,7 +25,7 @@ from ray.rllib.utils.framework import try_import_tf, TensorStructType
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.types import TrainerConfigDict, \
+from ray.rllib.utils.typing import TrainerConfigDict, \
     PartialTrainerConfigDict, EnvInfoDict, ResultDict, EnvType, PolicyID
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.trainable import Trainable

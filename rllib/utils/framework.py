@@ -3,7 +3,7 @@ import os
 import sys
 from typing import Any, Optional
 
-from ray.rllib.utils.types import TensorStructType, TensorShape, TensorType
+from ray.rllib.utils.typing import TensorStructType, TensorShape, TensorType
 
 logger = logging.getLogger(__name__)
 

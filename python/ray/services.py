@@ -19,6 +19,9 @@ import ray
 import ray.ray_constants as ray_constants
 import psutil
 
+from ray.autoscaler.cli_logger import cli_logger
+import colorful as cf
+
 resource = None
 if sys.platform != "win32":
     import resource
@@ -579,6 +582,12 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
         else:
             break
     else:
+        cli_logger.error(
+            "Unable to connect to Redis at "
+            "`{c.underlined}{}:{}{c.no_underlined}` after {} retries.",
+            redis_ip_address, redis_port, num_retries)
+        cli_logger.abort("Check your firewall and network settings.")
+
         raise RuntimeError("Unable to connect to Redis. If the Redis instance "
                            "is on a different machine, check that your "
                            "firewall is configured properly.")
@@ -1191,9 +1200,13 @@ def start_dashboard(require_dashboard,
 
         dashboard_url = "{}:{}".format(
             host if host != "0.0.0.0" else get_node_ip_address(), port)
-        logger.info("View the Ray dashboard at {}{}{}{}{}".format(
-            colorama.Style.BRIGHT, colorama.Fore.GREEN, dashboard_url,
-            colorama.Fore.RESET, colorama.Style.NORMAL))
+
+        cli_logger.labeled_value("Dashboard URL", cf.underlined("http://{}"),
+                                 dashboard_url)
+        cli_logger.old_info(logger, "View the Ray dashboard at {}{}{}{}{}",
+                            colorama.Style.BRIGHT, colorama.Fore.GREEN,
+                            dashboard_url, colorama.Fore.RESET,
+                            colorama.Style.NORMAL)
 
         return dashboard_url, process_info
     else:
@@ -1276,7 +1289,8 @@ def start_raylet(redis_address,
                  fate_share=None,
                  socket_to_use=None,
                  head_node=False,
-                 start_initial_python_workers_for_first_job=False):
+                 start_initial_python_workers_for_first_job=False,
+                 object_spilling_config=None):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1358,8 +1372,7 @@ def start_raylet(redis_address,
 
     # Create the command that the Raylet will use to start workers.
     start_worker_command = [
-        sys.executable,
-        worker_path,
+        sys.executable, worker_path,
         "--node-ip-address={}".format(node_ip_address),
         "--node-manager-port={}".format(node_manager_port),
         "--object-store-name={}".format(plasma_store_name),
@@ -1367,6 +1380,7 @@ def start_raylet(redis_address,
         "--redis-address={}".format(redis_address),
         "--config-list={}".format(config_str),
         "--temp-dir={}".format(temp_dir),
+        f"--metrics-agent-port={metrics_agent_port}"
     ]
     if redis_password:
         start_worker_command += ["--redis-password={}".format(redis_password)]
@@ -1384,6 +1398,10 @@ def start_raylet(redis_address,
 
     if load_code_from_local:
         start_worker_command += ["--load-code-from-local"]
+
+    if object_spilling_config:
+        start_worker_command.append(
+            f"--object-spilling-config={json.dumps(object_spilling_config)}")
 
     command = [
         RAYLET_EXECUTABLE,
