@@ -6,7 +6,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation import MultiAgentEpisode, RolloutWorker
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.deprecation import deprecation_warning
-from ray.rllib.utils.types import AgentID, PolicyID
+from ray.rllib.utils.typing import AgentID, PolicyID
 
 
 @PublicAPI

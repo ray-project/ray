@@ -14,7 +14,7 @@ _config = {"redirect_output": True}
 
 
 def is_output_redirected():
-    return _config["_redirect_output"]
+    return _config["redirect_output"]
 
 
 def set_output_redirected(val):
@@ -26,7 +26,7 @@ def set_output_redirected(val):
         val (bool): If true, subprocess output will be redirected to
                     a temporary file.
     """
-    _config["_redirect_output"] = val
+    _config["redirect_output"] = val
 
 
 class ProcessRunnerError(Exception):

@@ -105,6 +105,10 @@ struct CoreWorkerOptions {
   /// runtime. This is required to free distributed references that may otherwise
   /// be held up in garbage objects.
   std::function<void()> gc_collect;
+  /// Application-language callback to spill objects to external storage.
+  std::function<std::vector<std::string>(const std::vector<ObjectID> &)> spill_objects;
+  /// Application-language callback to restore objects from external storage.
+  std::function<void(const std::vector<std::string> &)> restore_spilled_objects;
   /// Language worker callback to get the current call stack.
   std::function<void(std::string *)> get_lang_stack;
   // Function that tries to interrupt the currently running Python thread.
@@ -466,10 +470,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] metadata Metadata of the object to be written.
   /// \param[in] data_size Size of the object to be written.
   /// \param[in] object_id Object ID specified by the user.
+  /// \param[in] owner_address The address of the object's owner.
   /// \param[out] data Buffer for the user to write the object into.
   /// \return Status.
   Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
-                const ObjectID &object_id, std::shared_ptr<Buffer> *data);
+                const ObjectID &object_id, const rpc::Address &owner_address,
+                std::shared_ptr<Buffer> *data);
 
   /// Finalize placing an object into the object store. This should be called after
   /// a corresponding `Create()` call and then writing into the returned buffer.
@@ -488,9 +494,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] ids IDs of the objects to get.
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[out] results Result list of objects data.
+  /// \param[in] plasma_objects_only Only get objects from Plasma Store.
   /// \return Status.
   Status Get(const std::vector<ObjectID> &ids, const int64_t timeout_ms,
-             std::vector<std::shared_ptr<RayObject>> *results);
+             std::vector<std::shared_ptr<RayObject>> *results,
+             bool plasma_objects_only = false);
 
   /// Return whether or not the object store contains the given object.
   ///
@@ -577,6 +585,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status
   Status SetResource(const std::string &resource_name, const double capacity,
                      const ClientID &client_id);
+
+  /// Force spilling objects to external storage.
+  /// \param[in] object_ids The objects to be spilled.
+  /// \return Status
+  Status ForceSpillObjects(const std::vector<ObjectID> &object_ids);
+
+  /// Restore objects from external storage.
+  /// \param[in] object_ids The objects to be restored.
+  /// \return Status
+  Status ForceRestoreSpilledObjects(const std::vector<ObjectID> &object_ids);
 
   /// Submit a normal task.
   ///
@@ -764,6 +782,22 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
+  void HandleAddObjectLocationOwner(const rpc::AddObjectLocationOwnerRequest &request,
+                                    rpc::AddObjectLocationOwnerReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Implements gRPC server handler.
+  void HandleRemoveObjectLocationOwner(
+      const rpc::RemoveObjectLocationOwnerRequest &request,
+      rpc::RemoveObjectLocationOwnerReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Implements gRPC server handler.
+  void HandleGetObjectLocationsOwner(const rpc::GetObjectLocationsOwnerRequest &request,
+                                     rpc::GetObjectLocationsOwnerReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Implements gRPC server handler.
   void HandleKillActor(const rpc::KillActorRequest &request, rpc::KillActorReply *reply,
                        rpc::SendReplyCallback send_reply_callback) override;
 
@@ -790,6 +824,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Trigger local GC on this worker.
   void HandleLocalGC(const rpc::LocalGCRequest &request, rpc::LocalGCReply *reply,
                      rpc::SendReplyCallback send_reply_callback) override;
+
+  // Spill objects to external storage.
+  void HandleSpillObjects(const rpc::SpillObjectsRequest &request,
+                          rpc::SpillObjectsReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override;
+
+  // Restore objects from external storage.
+  void HandleRestoreSpilledObjects(const rpc::RestoreSpilledObjectsRequest &request,
+                                   rpc::RestoreSpilledObjectsReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) override;
 
   ///
   /// Public methods related to async actor call. This should only be used when

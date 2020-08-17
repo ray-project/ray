@@ -50,6 +50,10 @@ Summary
      - Gradient-free Optimization
      - [`Nevergrad <https://github.com/facebookresearch/nevergrad>`__]
      - :doc:`/tune/examples/nevergrad_example`
+   * - :ref:`OptunaSearch <tune-optuna>`
+     - Optuna search algorithms
+     - [`Optuna <https://optuna.org/>`__]
+     - :doc:`/tune/examples/optuna_example`
    * - :ref:`ZOOptSearch <zoopt>`
      - Zeroth-order Optimization
      - [`ZOOpt <https://github.com/polixir/ZOOpt>`__]
@@ -183,6 +187,15 @@ Nevergrad (tune.suggest.nevergrad.NevergradSearch)
   :members: save, restore
 
 .. _`Nevergrad README's Optimization section`: https://github.com/facebookresearch/nevergrad/blob/master/docs/optimization.rst#choosing-an-optimizer
+
+.. _tune-optuna:
+
+Optuna (tune.suggest.optuna.OptunaSearch)
+--------------------------------------------------
+
+.. autoclass:: ray.tune.suggest.optuna.OptunaSearch
+
+.. _`Optuna samplers`: https://optuna.readthedocs.io/en/stable/reference/samplers.html
 
 .. _sigopt:
 

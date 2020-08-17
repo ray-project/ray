@@ -5,7 +5,7 @@ from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.utils.annotations import override, PublicAPI
-from ray.rllib.utils.types import EnvType, MultiEnvDict, EnvID, \
+from ray.rllib.utils.typing import EnvType, MultiEnvDict, EnvID, \
     AgentID, MultiAgentDict
 
 if TYPE_CHECKING:
