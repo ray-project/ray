@@ -451,7 +451,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestRescheduleWhenNodeDead) {
 
   // Node1 is dead, reschedule the placement group.
   auto bundle_on_dead_node = placement_group->GetMutableBundle(0);
-  bundle_on_dead_node->set_is_placed(false);
+  bundle_on_dead_node->clear_node_id();
   scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler, success_handler);
   if (0 == bundles_on_node0[placement_group->GetPlacementGroupID()][0]) {
     ASSERT_TRUE(raylet_client_->GrantResourceReserve());

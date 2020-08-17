@@ -146,8 +146,8 @@ message Bundle {
   }
   BundleIdentifier bundle_id = 1;
   map<string, double> unit_resources = 2;
-  // Whether the bundle is placed.
-  bool is_placed = 3;
+  // The location of this bundle.
+  bytes node_id = 3;
 }
 
 message PlacementGroupSpec {

@@ -53,7 +53,7 @@ std::vector<std::shared_ptr<BundleSpecification>> GcsPlacementGroup::GetUnplaced
   const auto &bundles = placement_group_table_data_.bundles();
   std::vector<std::shared_ptr<BundleSpecification>> unplaced_bundles;
   for (auto &bundle : bundles) {
-    if (!bundle.is_placed()) {
+    if (ClientID::FromBinary(bundle.node_id()).IsNil()) {
       unplaced_bundles.push_back(std::make_shared<BundleSpecification>(bundle));
     }
   }
@@ -326,8 +326,11 @@ void GcsPlacementGroupManager::OnNodeDead(const ClientID &node_id) {
     const auto iter = registered_placement_groups_.find(bundle.first);
     if (iter != registered_placement_groups_.end()) {
       for (const auto &bundle_index : bundle.second) {
-        iter->second->GetMutableBundle(bundle_index)->set_is_placed(false);
+        iter->second->GetMutableBundle(bundle_index)->clear_node_id();
       }
+      // TODO(ffbin): If we have a placement group bundle that requires a unique resource
+      // (for example gpu resource when there’s only one gpu node), this can postpone
+      // creating until a node with the resources is added. we will solve it in next pr.
       iter->second->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
       pending_placement_groups_.push(iter->second);
     }

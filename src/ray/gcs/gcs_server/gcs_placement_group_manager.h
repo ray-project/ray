@@ -171,7 +171,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   void OnNodeDead(const ClientID &node_id);
 
  private:
-  /// Scheduling priority of placement group: RESCHEDULING > PENDING
+  /// Scheduling priority of placement group: RESCHEDULING > PENDING.
   struct PlacementGroupCompare {
     bool operator()(const std::shared_ptr<GcsPlacementGroup> &left,
                     const std::shared_ptr<GcsPlacementGroup> &right) {

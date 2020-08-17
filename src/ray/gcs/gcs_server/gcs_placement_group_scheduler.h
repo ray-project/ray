@@ -83,7 +83,7 @@ class ScheduleContext {
 
   // Key is node id, value is the number of bundles on the node.
   const std::shared_ptr<absl::flat_hash_map<ClientID, int64_t>> node_to_bundles_;
-  // Bundle locations.
+  // The locations of existing bundles for this placement group.
   const std::shared_ptr<BundleLocations> &bundle_locations_;
 
   const GcsNodeManager &node_manager_;

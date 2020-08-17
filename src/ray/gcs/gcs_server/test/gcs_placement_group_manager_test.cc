@@ -298,8 +298,8 @@ TEST_F(GcsPlacementGroupManagerTest, TestRescheduleWhenNodeDead) {
   ASSERT_EQ(finished_placement_group_count, 0);
   ASSERT_EQ(mock_placement_group_scheduler_->placement_groups_.size(), 1);
   auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
-  placement_group->GetMutableBundle(0)->set_is_placed(true);
-  placement_group->GetMutableBundle(1)->set_is_placed(true);
+  placement_group->GetMutableBundle(0)->set_node_id(ClientID::FromRandom().Binary());
+  placement_group->GetMutableBundle(1)->set_node_id(ClientID::FromRandom().Binary());
   mock_placement_group_scheduler_->placement_groups_.pop_back();
 
   // If a node dies, we will set the bundles above it to be unplaced and reschedule the
@@ -320,8 +320,8 @@ TEST_F(GcsPlacementGroupManagerTest, TestRescheduleWhenNodeDead) {
             placement_group->GetPlacementGroupID());
   const auto &bundles =
       mock_placement_group_scheduler_->placement_groups_[0]->GetBundles();
-  EXPECT_FALSE(bundles[0]->GetMutableMessage().is_placed());
-  EXPECT_TRUE(bundles[1]->GetMutableMessage().is_placed());
+  EXPECT_TRUE(ClientID::FromBinary(bundles[0]->GetMutableMessage().node_id()).IsNil());
+  EXPECT_FALSE(ClientID::FromBinary(bundles[1]->GetMutableMessage().node_id()).IsNil());
 
   // If `RESCHEDULING` placement group fails to create, we will schedule it again first.
   placement_group = mock_placement_group_scheduler_->placement_groups_.back();
