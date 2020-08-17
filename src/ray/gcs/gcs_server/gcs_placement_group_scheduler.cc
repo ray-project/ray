@@ -175,10 +175,15 @@ void GcsPlacementGroupScheduler::Schedule(
   }
 }
 
-void GcsPlacementGroupScheduler::DestroyPlacementGroupBundleResources(
+void GcsPlacementGroupScheduler::DestroyPlacementGroupBundleResourcesIfExists(
     const PlacementGroupID &placement_group_id) {
   auto it = placement_group_to_bundle_location_.find(placement_group_id);
-  RAY_CHECK(it != placement_group_to_bundle_location_.end());
+  // If bundle location has been already removed, it means bundles
+  // are already destroyed. Do nothing.
+  if (it == placement_group_to_bundle_location_.end()) {
+    return;
+  }
+
   std::shared_ptr<BundleLocations> bundle_locations = it->second;
   for (const auto &iter : *bundle_locations) {
     auto &bundle_spec = iter.second.second;
@@ -289,7 +294,7 @@ void GcsPlacementGroupScheduler::OnAllBundleSchedulingRequestReturned(
       bundle_locations->size() != bundles.size()) {
     // If the lease request has been already cancelled
     // or not every lease request succeeds.
-    DestroyPlacementGroupBundleResources(placement_group_id);
+    DestroyPlacementGroupBundleResourcesIfExists(placement_group_id);
     schedule_failure_handler(placement_group);
   } else {
     // If we successfully created placement group, store them to GCS.

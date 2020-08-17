@@ -133,13 +133,6 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
           placement_group_to_register_callback_.erase(iter);
         }
         MarkSchedulingDone();
-        auto placement_group_it = registered_placement_groups_.find(placement_group_id);
-        // Add an entry to the created map if placement group is not removed at this
-        // point.
-        if (placement_group_it != registered_placement_groups_.end()) {
-          created_placement_group_.emplace(placement_group_id,
-                                           placement_group_it->second);
-        }
         SchedulePendingPlacementGroups();
       }));
 }
@@ -218,9 +211,6 @@ void GcsPlacementGroupManager::HandleRemovePlacementGroup(
     if (status.ok()) {
       RAY_LOG(INFO) << "Placement group of an id, " << placement_group_id
                     << " is removed successfully.";
-    } else {
-      RAY_LOG(WARNING) << "Removing a placement group of an id, " << placement_group_id
-                       << " failed.";
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   });
@@ -230,26 +220,19 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
     const PlacementGroupID &placement_group_id,
     StatusCallback on_placement_group_removed) {
   RAY_CHECK(on_placement_group_removed);
-  // If the placement group is not registered, it means it is already removed or wasn't
-  // created before. Just fail the request in this case.
-  if (registered_placement_groups_.find(placement_group_id) ==
-      registered_placement_groups_.end()) {
-    std::stringstream stream;
-    stream << "Placement group of id " << placement_group_id
-           << " is already removed or doesn't exist";
-    on_placement_group_removed(Status::NotFound(stream.str()));
+  // If the placement group has been already removed, don't do anything.
+  auto placement_group_it = registered_placement_groups_.find(placement_group_id);
+  if (placement_group_it == registered_placement_groups_.end()) {
+    on_placement_group_removed(Status::OK());
     return;
   }
+  auto placement_group = placement_group_it->second;
+  registered_placement_groups_.erase(placement_group_it);
 
-  // Remove the placement group if it is already created.
-  auto created_placement_group_it = created_placement_group_.find(placement_group_id);
-  if (created_placement_group_it != created_placement_group_.end()) {
-    gcs_placement_group_scheduler_->DestroyPlacementGroupBundleResources(
-        placement_group_id);
-    created_placement_group_.erase(created_placement_group_it);
-  }
-
-  // Cancel the scheduling requset if necessary.
+  // Destroy all bundles.
+  gcs_placement_group_scheduler_->DestroyPlacementGroupBundleResourcesIfExists(
+      placement_group_id);
+  // Cancel the scheduling request if necessary.
   if (IsSchedulingInProgress(placement_group_id)) {
     // If the placement group is scheduling.
     gcs_placement_group_scheduler_->MarkScheduleCancelled(placement_group_id);
@@ -266,27 +249,23 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
     pending_placement_groups_.erase(pending_it);
   }
 
-  // Remove registered placement group.
-  auto placement_grouop_it = registered_placement_groups_.find(placement_group_id);
-  auto placement_group = placement_grouop_it->second;
-  registered_placement_groups_.erase(placement_grouop_it);
-  // If placement group hasn't been created yet, send a response to a core worker that
-  // the creation of placement group has failed.
-  auto it = placement_group_to_register_callback_.find(placement_group_id);
-  if (it != placement_group_to_register_callback_.end()) {
-    std::stringstream stream;
-    stream << "Placement group of id " << placement_group_id
-           << " is removed before it is created";
-    it->second(Status::NotFound(stream.str()));
-    placement_group_to_register_callback_.erase(it);
-  }
-
+  // Flush the status and respond to workers.
   placement_group->UpdateState(rpc::PlacementGroupTableData::REMOVED);
   RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
       placement_group->GetPlacementGroupID(),
       placement_group->GetPlacementGroupTableData(),
-      [on_placement_group_removed](Status status) {
+      [this, on_placement_group_removed, placement_group_id](Status status) {
         RAY_CHECK_OK(status);
+        // If placement group hasn't been created yet, send a response to a core worker
+        // that the creation of placement group has failed.
+        auto it = placement_group_to_register_callback_.find(placement_group_id);
+        if (it != placement_group_to_register_callback_.end()) {
+          std::stringstream stream;
+          stream << "Placement group of id " << placement_group_id
+                 << " is removed before it is created";
+          it->second(Status::NotFound(stream.str()));
+          placement_group_to_register_callback_.erase(it);
+        }
         on_placement_group_removed(status);
       }));
 }

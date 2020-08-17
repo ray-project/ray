@@ -1087,6 +1087,7 @@ cdef class CoreWorker:
         cdef:
             CPlacementGroupID c_placement_group_id = \
                 placement_group_id.native()
+
         with nogil:
             check_status(
                 CCoreWorkerProcess.GetCoreWorker().

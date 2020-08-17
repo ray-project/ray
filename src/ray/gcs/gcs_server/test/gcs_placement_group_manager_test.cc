@@ -34,7 +34,7 @@ class MockPlacementGroupScheduler : public gcs::GcsPlacementGroupSchedulerInterf
     placement_groups.push_back(placement_group);
   }
 
-  MOCK_METHOD1(DestroyPlacementGroupBundleResources,
+  MOCK_METHOD1(DestroyPlacementGroupBundleResourcesIfExists,
                void(const PlacementGroupID &placement_group_id));
 
   MOCK_METHOD1(MarkScheduleCancelled, void(const PlacementGroupID &placement_group_id));
@@ -190,12 +190,12 @@ TEST_F(GcsPlacementGroupManagerTest, TestRemovingPendingPlacementGroup) {
   gcs_placement_group_manager_->SchedulePendingPlacementGroups();
   ASSERT_EQ(mock_placement_group_scheduler_->placement_groups.size(), 0);
   mock_placement_group_scheduler_->placement_groups.clear();
-  ASSERT_EQ(finished_placement_group_count, 0);
-  ASSERT_EQ(failed_placement_group_count, 1);
+  WaitForExpectedCount(finished_placement_group_count, 0);
+  WaitForExpectedCount(failed_placement_group_count, 1);
 
-  // Make sure we cannot re-remove again.
+  // Make sure we can re-remove again.
   gcs_placement_group_manager_->RemovePlacementGroup(
-      placement_group_id, [](Status status) { ASSERT_TRUE(!status.ok()); });
+      placement_group_id, [](Status status) { ASSERT_TRUE(status.ok()); });
 }
 
 TEST_F(GcsPlacementGroupManagerTest, TestRemovingLeasingPlacementGroup) {
@@ -231,12 +231,12 @@ TEST_F(GcsPlacementGroupManagerTest, TestRemovingLeasingPlacementGroup) {
   gcs_placement_group_manager_->SchedulePendingPlacementGroups();
   ASSERT_EQ(mock_placement_group_scheduler_->placement_groups.size(), 0);
   mock_placement_group_scheduler_->placement_groups.clear();
-  ASSERT_EQ(finished_placement_group_count, 0);
-  ASSERT_EQ(failed_placement_group_count, 1);
+  WaitForExpectedCount(finished_placement_group_count, 0);
+  WaitForExpectedCount(failed_placement_group_count, 1);
 
-  // Make sure we cannot re-remove again.
+  // Make sure we can re-remove again.
   gcs_placement_group_manager_->RemovePlacementGroup(
-      placement_group_id, [](Status status) { ASSERT_TRUE(!status.ok()); });
+      placement_group_id, [](Status status) { ASSERT_TRUE(status.ok()); });
 }
 
 TEST_F(GcsPlacementGroupManagerTest, TestRemovingCreatedPlacementGroup) {
@@ -257,8 +257,10 @@ TEST_F(GcsPlacementGroupManagerTest, TestRemovingCreatedPlacementGroup) {
 
   const auto &placement_group_id = placement_group->GetPlacementGroupID();
   EXPECT_CALL(*mock_placement_group_scheduler_,
-              DestroyPlacementGroupBundleResources(placement_group_id))
+              DestroyPlacementGroupBundleResourcesIfExists(placement_group_id))
       .Times(1);
+  EXPECT_CALL(*mock_placement_group_scheduler_, MarkScheduleCancelled(placement_group_id))
+      .Times(0);
   gcs_placement_group_manager_->RemovePlacementGroup(placement_group_id,
                                                      [](Status status) {});
   ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::REMOVED);
@@ -269,9 +271,9 @@ TEST_F(GcsPlacementGroupManagerTest, TestRemovingCreatedPlacementGroup) {
   mock_placement_group_scheduler_->placement_groups.clear();
   ASSERT_EQ(finished_placement_group_count, 1);
 
-  // Make sure we cannot re-remove again.
+  // Make sure we can re-remove again.
   gcs_placement_group_manager_->RemovePlacementGroup(
-      placement_group_id, [](Status status) { ASSERT_TRUE(!status.ok()); });
+      placement_group_id, [](Status status) { ASSERT_TRUE(status.ok()); });
 }
 
 }  // namespace ray

@@ -190,10 +190,6 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   absl::flat_hash_map<PlacementGroupID, std::shared_ptr<GcsPlacementGroup>>
       registered_placement_groups_;
 
-  /// All created placement_groups.
-  absl::flat_hash_map<PlacementGroupID, std::shared_ptr<GcsPlacementGroup>>
-      created_placement_group_;
-
   /// The pending placement_groups which will not be scheduled until there's a resource
   /// change.
   std::deque<std::shared_ptr<GcsPlacementGroup>> pending_placement_groups_;

@@ -342,10 +342,16 @@ TEST_F(GcsPlacementGroupSchedulerTest, DestroyPlacementGroup) {
   WaitPendingDone(failure_placement_groups_, 0);
   WaitPendingDone(success_placement_groups_, 1);
   const auto &placement_group_id = placement_group->GetPlacementGroupID();
-  gcs_placement_group_scheduler_->DestroyPlacementGroupBundleResources(
+  gcs_placement_group_scheduler_->DestroyPlacementGroupBundleResourcesIfExists(
       placement_group_id);
   ASSERT_TRUE(raylet_client_->GrantCancelResourceReserve());
   ASSERT_TRUE(raylet_client_->GrantCancelResourceReserve());
+
+  // Subsequent destroy request should not do anything.
+  gcs_placement_group_scheduler_->DestroyPlacementGroupBundleResourcesIfExists(
+      placement_group_id);
+  ASSERT_FALSE(raylet_client_->GrantCancelResourceReserve());
+  ASSERT_FALSE(raylet_client_->GrantCancelResourceReserve());
 }
 
 TEST_F(GcsPlacementGroupSchedulerTest, DestroyCancelledPlacementGroup) {

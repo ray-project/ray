@@ -54,7 +54,7 @@ class GcsPlacementGroupSchedulerInterface {
           schedule_success_handler) = 0;
 
   /// Destroy bundle resources from all nodes in the placement group.
-  virtual void DestroyPlacementGroupBundleResources(
+  virtual void DestroyPlacementGroupBundleResourcesIfExists(
       const PlacementGroupID &placement_group_id) = 0;
 
   /// Mark the placement group schedule as cancelled. Cancelled bundles will be destroyed.
@@ -138,10 +138,11 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       std::function<void(std::shared_ptr<GcsPlacementGroup>)> success_handler) override;
 
   /// Destroy bundle resources from all nodes in the placement group.
+  /// This doesn't do anything if bundles are already destroyed.
   ///
   /// \param placement_group_id The id of a placement group to destroy all bundle
   /// resources.
-  void DestroyPlacementGroupBundleResources(
+  void DestroyPlacementGroupBundleResourcesIfExists(
       const PlacementGroupID &placement_group_id) override;
 
   /// Mark the placement group schedule as cancelled.
@@ -217,6 +218,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
 
   /// A map from placement group id to bundle locations.
   /// It is used to destroy bundles for the placement group.
+  /// NOTE: It is a reverse index of `node_to_leased_bundles`.
   absl::flat_hash_map<PlacementGroupID, std::shared_ptr<BundleLocations>>
       placement_group_to_bundle_location_;
 };

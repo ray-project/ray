@@ -170,6 +170,7 @@ service PlacementGroupInfoGcsService {
   rpc CreatePlacementGroup(CreatePlacementGroupRequest)
       returns (CreatePlacementGroupReply);
 
+  // Remove placement group via gcs service.
   rpc RemovePlacementGroup(RemovePlacementGroupRequest)
       returns (RemovePlacementGroupReply);
 

@@ -8,7 +8,7 @@ except ImportError:
     pytest_timeout = None
 
 import ray
-import ray.test_utils
+from ray.test_utils import wait_for_condition
 import ray.cluster_utils
 from ray._raylet import PlacementGroupID
 
@@ -225,21 +225,29 @@ def test_remove_placement_group(ray_start_cluster):
     cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
     # First try to remove a placement group that doesn't
-    # exist. This should throw an exception.
-    with pytest.raises(ValueError):
-        ray.experimental.remove_placement_group(PlacementGroupID.from_random())
+    # exist. This should not do anything.
+    random_placement_group_id = PlacementGroupID.from_random()
+    for _ in range(3):
+        ray.experimental.remove_placement_group(random_placement_group_id)
 
     # Creating a placement group as soon as it is
     # created should work.
     pid = ray.experimental.placement_group([{"CPU": 2}, {"CPU": 2}])
     ray.experimental.remove_placement_group(pid)
-    # TODO(sang): Add state check here.
 
-    # Now let's create a placement group.
+    def is_placement_group_removed():
+        table = ray.experimental.placement_group_table(pid)
+        if "state" not in table:
+            return False
+        return table["state"] == "REMOVED"
+
+    wait_for_condition(is_placement_group_removed)
+
+    # # Now let's create a placement group.
     pid = ray.experimental.placement_group([{"CPU": 2}, {"CPU": 2}])
 
-    # This is a hack to wait for placement group creation.
-    # TODO(sang): Remove it when wait is implemented.
+    # # This is a hack to wait for placement group creation.
+    # # TODO(sang): Remove it when wait is implemented.
     @ray.remote(num_cpus=0)
     class A:
         def f(self):
@@ -248,14 +256,12 @@ def test_remove_placement_group(ray_start_cluster):
     a = A.options(placement_group_id=pid).remote()
     assert ray.get(a.f.remote()) == 3
     ray.experimental.remove_placement_group(pid)
-    # Subsequent remove request should fail.
-    # Q: Should remove be idempotent? Now, if we remove a
-    # group that is already removed, it raises ValueError.
-    with pytest.raises(ValueError):
+    # # Subsequent remove request shouldn't do anything
+    for _ in range(3):
         ray.experimental.remove_placement_group(pid)
 
-    # Make sure placement group resources are
-    # released and we can schedule this task.
+    # # Make sure placement group resources are
+    # # released and we can schedule this task.
     @ray.remote(num_cpus=4)
     def f():
         return 3
