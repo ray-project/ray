@@ -2,6 +2,7 @@ import re
 import subprocess
 import sys
 import pytest
+
 import ray
 
 from ray.test_utils import run_string_as_driver_nonblocking
@@ -52,7 +53,15 @@ def test_output():
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "_ray_instance":
+        # Since this code will run inside subprocess, we should
+        # manually mock the method. This will fix the issue
+        # https://github.com/ray-project/ray/pull/10162
+        original_method = ray.utils.get_shared_memory_bytes
+        ray.utils.get_shared_memory_bytes = lambda: 1000**3
+
         ray.init(num_cpus=1)
         ray.shutdown()
+
+        ray.utils.get_shared_memory_bytes = original_method
     else:
         sys.exit(pytest.main(["-v", __file__]))
