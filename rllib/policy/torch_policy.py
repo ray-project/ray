@@ -110,10 +110,7 @@ class TorchPolicy(Policy):
             SampleBatch.REWARDS: ViewRequirement(shift=0),
             SampleBatch.DONES: ViewRequirement(shift=0),
         }, **self.model.inference_view_requirements)
-        #{
-        #    **self.model.inference_view_requirements(),
-        #    **self.training_view_requirements(),
-        #}
+
         self.exploration = self._create_exploration()
         self.unwrapped_model = model  # used to support DistributedDataParallel
         self._loss = loss
@@ -130,12 +127,6 @@ class TorchPolicy(Policy):
         self.batch_divisibility_req = get_batch_divisibility_req(self) if \
             callable(get_batch_divisibility_req) else \
             (get_batch_divisibility_req or 1)
-
-    #@override(Policy)
-    #def training_view_requirements(self):
-    #    if hasattr(self, "view_requirements"):
-    #        return self.view_requirements
-    #    return
 
     @override(Policy)
     @DeveloperAPI

@@ -249,27 +249,6 @@ class ModelV2:
             i += 1
         return self.__call__(input_dict, states, train_batch.get("seq_lens"))
 
-    """def inference_view_requirements(self) -> Dict[str, ViewRequirement]:
-        ""Returns a dict of ViewRequirements for this Model.
-
-        Note: This is an experimental API method.
-
-        The view requirements dict is used to generate input_dicts and
-        train batches for 1) action computations, 2) postprocessing, and 3)
-        generating training batches.
-
-        Returns:
-            Dict[str, ViewRequirement]: The view requirements dict, mapping
-                each view key (which will be available in input_dicts) to
-                an underlying requirement (actual data, timestep shift, etc..).
-        ""
-        # Default implementation for simple RL model:
-        # Single requirement: Pass current obs as input.
-        return {
-            SampleBatch.OBS: ViewRequirement(shift=0),
-        }
-    """
-
     def import_from_h5(self, h5_file: str) -> None:
         """Imports weights from an h5 file.
 
