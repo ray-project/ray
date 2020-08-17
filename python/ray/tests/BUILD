@@ -10,6 +10,7 @@ SRCS = [] + select({
 
 py_test_module_list(
   files = [
+    "test_output.py",
     "test_actor_advanced.py",
     "test_actor_failures.py",
     "test_actor.py",
@@ -38,7 +39,6 @@ py_test_module_list(
     "test_multi_node.py",
     "test_multiprocessing.py",
     "test_object_manager.py",
-    "test_output.py",
     "test_placement_group.py",
     "test_reconstruction.py",
     "test_resource_demand_scheduler.py",
