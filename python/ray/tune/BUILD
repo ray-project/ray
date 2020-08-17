@@ -94,6 +94,14 @@ py_test(
 )
 
 py_test(
+    name = "test_integration_kubernetes",
+    size = "small",
+    srcs = ["tests/test_integration_kubernetes.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+)
+
+py_test(
     name = "test_integration_wandb",
     size = "small",
     srcs = ["tests/test_integration_wandb.py"],

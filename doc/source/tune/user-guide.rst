@@ -431,6 +431,29 @@ If a string is provided, then it must include replacement fields ``{source}`` an
 
 By default, syncing occurs every 300 seconds. To change the frequency of syncing, set the ``TUNE_CLOUD_SYNC_S`` environment variable in the driver to the desired syncing period. Note that uploading only happens when global experiment state is collected, and the frequency of this is determined by the ``global_checkpoint_period`` argument. So the true upload period is given by ``max(TUNE_CLOUD_SYNC_S, global_checkpoint_period)``.
 
+.. _tune-kubernetes:
+
+Using Tune with Kubernetes
+--------------------------
+Tune automatically syncs files and checkpoints between different remote
+nodes as needed.
+To make this work in your Kubernetes cluster, you will need to pass a
+``KubernetesSyncer`` to the ``sync_to_driver`` argument of ``tune.run()``.
+You have to specify your Kubernetes namespace explicitly:
+
+.. code-block:: python
+
+    from ray.tune.integration.kubernetes import NamespacedKubernetesSyncer
+    tune.run(train,
+             sync_to_driver=NamespacedKubernetesSyncer("ray", use_rsync=True))
+
+
+The ``KubernetesSyncer`` supports two modes for file synchronisation. Per
+default, files are synchronized with ``kubectl cp``, requiring the ``tar``
+binary in your pods. If you would like to use ``rsync`` instead your pods
+will have to have ``rsync`` installed. Use the ``use_rsync`` parameter to
+decide between the two options.
+
 .. _tune-log_to_file:
 
 Redirecting stdout and stderr to files
