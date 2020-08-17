@@ -161,7 +161,7 @@ export type FullActorInfo = {
   actorId: string;
   actorTitle: string;
   averageTaskExecutionSpeed: number;
-  children?: ActorInfo[]
+  children?: ActorInfo[];
   ipAddress: string;
   jobId: string;
   nodeId: string;

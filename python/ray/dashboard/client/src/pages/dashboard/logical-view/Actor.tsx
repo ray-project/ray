@@ -7,6 +7,7 @@ import {
 } from "@material-ui/core";
 import React from "react";
 import {
+  ActorInfo,
   ActorState,
   checkProfilingStatus,
   CheckProfilingStatusResponse,
@@ -14,7 +15,6 @@ import {
   isFullActorInfo,
   launchKillActor,
   launchProfiling,
-  ActorInfo,
 } from "../../../api";
 import { sum } from "../../../common/util";
 import ActorDetailsPane from "./ActorDetailsPane";
@@ -29,6 +29,7 @@ const styles = (theme: Theme) =>
       borderWidth: 1,
       marginTop: theme.spacing(2),
       padding: theme.spacing(2),
+      width: "100%",
     },
     title: {
       color: theme.palette.text.secondary,
@@ -62,7 +63,6 @@ type Props = {
 };
 
 type State = {
-  expanded: boolean;
   profiling: {
     [profilingId: string]: {
       startTime: number;
@@ -73,12 +73,7 @@ type State = {
 
 class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
   state: State = {
-    expanded: true,
     profiling: {},
-  };
-
-  setExpanded = (expanded: boolean) => () => {
-    this.setState({ expanded });
   };
 
   handleProfilingClick = (duration: number) => async () => {
@@ -123,7 +118,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
 
   render() {
     const { classes, actor } = this.props;
-    const { expanded, profiling } = this.state;
+    const { profiling } = this.state;
     const invalidStateType = isFullActorInfo(actor)
       ? undefined
       : actor.invalidStateType;
@@ -241,8 +236,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
         <Typography className={classes.title}>
           {isFullActorInfo(actor) ? (
             <React.Fragment>
-              Actor {actor.actorId}{" "}
-              (Profile for
+              Actor {actor.actorId} (Profile for
               {[10, 30, 60].map((duration) => (
                 <React.Fragment>
                   {" "}
