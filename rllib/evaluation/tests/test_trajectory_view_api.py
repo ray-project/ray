@@ -33,11 +33,12 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             view_req_model = policy.model.inference_view_requirements
             view_req_policy = policy.training_view_requirements
             assert len(view_req_model) == 1
-            assert len(view_req_policy) == 6
+            assert len(view_req_policy) == 10
             for key in [
                     SampleBatch.OBS, SampleBatch.ACTIONS, SampleBatch.REWARDS,
                     SampleBatch.DONES, SampleBatch.NEXT_OBS,
-                    SampleBatch.VF_PREDS
+                    SampleBatch.VF_PREDS, "advantages", "value_targets",
+                    SampleBatch.ACTION_DIST_INPUTS, SampleBatch.ACTION_LOGP
             ]:
                 assert key in view_req_policy
                 # None of the view cols has a special underlying data_col,
@@ -63,13 +64,14 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             policy = trainer.get_policy()
             view_req_model = policy.model.inference_view_requirements
             view_req_policy = policy.training_view_requirements
-            assert len(view_req_model) == 5  # obs, prev_a, prev_r, 2xstate_in
-            assert len(view_req_policy) == 14
+            assert len(view_req_model) == 7  # obs, prev_a, prev_r, 4xstates
+            assert len(view_req_policy) == 16
             for key in [
                     SampleBatch.OBS, SampleBatch.ACTIONS, SampleBatch.REWARDS,
                     SampleBatch.DONES, SampleBatch.NEXT_OBS,
                     SampleBatch.VF_PREDS, SampleBatch.PREV_ACTIONS,
-                    SampleBatch.PREV_REWARDS
+                    SampleBatch.PREV_REWARDS, "advantages", "value_targets",
+                    SampleBatch.ACTION_DIST_INPUTS, SampleBatch.ACTION_LOGP
             ]:
                 assert key in view_req_policy
 
@@ -124,7 +126,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             "policies": policies,
             "policy_mapping_fn": policy_fn,
         }
-        num_iterations = 2
+        num_iterations = 1
         # Only works in torch so far.
         for _ in framework_iterator(config, frameworks="torch"):
             print("w/ API")
@@ -186,20 +188,15 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
             # Assert `_fasts_sampling` is much(!) faster across important
             # metrics.
-            self.assertLess(duration_w, duration_wo * 0.6)
-            self.assertLess(learn_time_w, learn_time_wo * 0.5)
-            self.assertLess(get_ma_train_batch_w, get_ma_train_batch_wo * 0.6)
+            self.assertLess(duration_w, duration_wo * 0.8)
+            self.assertLess(learn_time_w, learn_time_wo * 0.6)
             self.assertLess(
-                postproc_traj_so_far_w, postproc_traj_so_far_wo * 0.3)
-
-            ## Check learning success.
-            #print("w/ _fast_sampling: reward={}".format(
-            #    results["episode_reward_mean"]))
-            #self.assertGreater(results["episode_reward_mean"], 80.0)
+                postproc_traj_so_far_w, postproc_traj_so_far_wo * 0.4)
 
     def test_traj_view_lstm_functionality(self):
         action_space = Box(-float("inf"), float("inf"), shape=(2,))
         obs_space = Box(float("-inf"), float("inf"), (4, ))
+        max_seq_len = 50
         policies = {
             "pol0": (EpisodeEnvAwarePolicy, obs_space, action_space, {}),
         }
@@ -218,7 +215,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 "model": {
                     "use_lstm": True,
                     "_time_major": True,
-                    "max_seq_len": 50,
+                    "max_seq_len": max_seq_len,
                 },
             },
             callbacks=EpisodeEnvAwareCallback,
@@ -226,11 +223,34 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             policy_mapping_fn=policy_fn,
             num_envs=1,
         )
-        result = rollout_worker.sample()
-        print(result)
+        for _ in range(100):
+            result = rollout_worker.sample()
+            pol_batch = result.policy_batches["pol0"]
+
+            self.assertTrue(result.count == 100)
+            self.assertTrue(pol_batch.count >= 100)
+            self.assertFalse(0 in pol_batch.seq_lens)
+            for t in range(max_seq_len):
+                obs_t = pol_batch["obs"][t]
+                r_t = pol_batch["rewards"][t]
+                if t > 0:
+                    next_obs_t_m_1 = pol_batch["new_obs"][t - 1]
+                    self.assertTrue((obs_t == next_obs_t_m_1).all())
+                if t < max_seq_len - 1:
+                    prev_rewards_t_p_1 = pol_batch["prev_rewards"][t + 1]
+                    self.assertTrue((r_t == prev_rewards_t_p_1).all())
+            # Check seq-lens (must find dones at end of each sequence,
+            # unless == 50).
+            for agent_slot, seq_len in enumerate(pol_batch.seq_lens):
+                if seq_len < max_seq_len - 1:
+                    print()
+                    self.assertTrue(
+                        (pol_batch["obs"][seq_len + 1][agent_slot] == 0.0).all())
+                    print()
+                    self.assertFalse(
+                        (pol_batch["obs"][seq_len][agent_slot] == 0.0).all())
+
         #TODO: finish this test case: check, whether everything in buffer makes sense:
-        # - obs -> next_obs shift (prev_actions/rewards shifts)
-        # - seq_lens make sense (match ts)
         # - all cursors in sample collector make sense
         # - sample as long as there is a rollover in the buffer, then check again
 
