@@ -104,7 +104,7 @@ void GcsPlacementGroupManager::RegisterPlacementGroup(
   // successfully created.
   placement_group_to_register_callback_[placement_group_id] = std::move(callback);
   registered_placement_groups_.emplace(placement_group_id, placement_group);
-  pending_placement_groups_.emplace_back(std::move(placement_group));
+  pending_placement_groups_.push(std::move(placement_group));
   SchedulePendingPlacementGroups();
 }
 
@@ -124,9 +124,12 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
     std::shared_ptr<GcsPlacementGroup> placement_group) {
   RAY_LOG(WARNING) << "Failed to create placement group " << placement_group->GetName()
                    << ", try again.";
-  // We will attempt to schedule this placement_group once
-  // an eligible node is registered.
-  pending_placement_groups_.emplace_back(std::move(placement_group));
+  // We will attempt to schedule this placement_group once an eligible node is
+  // registered.
+  // NOTE: If a node is dead, the placement group scheduler should try to recover the
+  // group by rescheduling the bundles of the dead node. This should have higher
+  // priority than trying to place other placement groups.
+  pending_placement_groups_.push(std::move(placement_group));
   MarkSchedulingDone();
   RetryCreatingPlacementGroup();
 }
@@ -157,13 +160,13 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
   if (pending_placement_groups_.empty() || IsSchedulingInProgress()) {
     return;
   }
-  const auto placement_group = pending_placement_groups_.front();
+  const auto placement_group = pending_placement_groups_.top();
   const auto &placement_group_id = placement_group->GetPlacementGroupID();
   // Do not reschedule if the placement group has removed already.
   if (registered_placement_groups_.find(placement_group_id) !=
       registered_placement_groups_.end()) {
     MarkSchedulingStarted(placement_group_id);
-    gcs_placement_group_scheduler_->Schedule(
+    gcs_placement_group_scheduler_->ScheduleUnplacedBundles(
         placement_group,
         [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
           OnPlacementGroupCreationFailed(std::move(placement_group));
@@ -172,7 +175,7 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
           OnPlacementGroupCreationSuccess(std::move(placement_group));
         });
   }
-  pending_placement_groups_.pop_front();
+  pending_placement_groups_.pop();
 }
 
 void GcsPlacementGroupManager::HandleCreatePlacementGroup(
@@ -324,7 +327,7 @@ void GcsPlacementGroupManager::OnNodeDead(const ClientID &node_id) {
         iter->second->GetMutableBundle(bundle_index)->set_is_placed(false);
       }
       iter->second->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
-      pending_placement_groups_.emplace_front(iter->second);
+      pending_placement_groups_.push(iter->second);
     }
   }
 

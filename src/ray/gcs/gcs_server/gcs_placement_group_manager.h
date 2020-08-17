@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #pragma once
+#include <queue>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
@@ -137,7 +138,6 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
                               StatusCallback callback);
 
   /// Schedule placement_groups in the `pending_placement_groups_` queue.
-  /// This function is exposed for testing only.
   void SchedulePendingPlacementGroups();
 
   /// Get the placement_group ID for the named placement_group. Returns nil if the
@@ -171,6 +171,14 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   void OnNodeDead(const ClientID &node_id);
 
  private:
+  /// Scheduling priority of placement group: RESCHEDULING > PENDING
+  struct PlacementGroupCompare {
+    bool operator()(const std::shared_ptr<GcsPlacementGroup> &left,
+                    const std::shared_ptr<GcsPlacementGroup> &right) {
+      return left->GetState() < right->GetState();
+    }
+  };
+
   /// Try to create placement group after a short time.
   void RetryCreatingPlacementGroup();
 
@@ -206,7 +214,10 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
 
   /// The pending placement_groups which will not be scheduled until there's a resource
   /// change.
-  std::deque<std::shared_ptr<GcsPlacementGroup>> pending_placement_groups_;
+  std::priority_queue<std::shared_ptr<GcsPlacementGroup>,
+                      std::vector<std::shared_ptr<GcsPlacementGroup>>,
+                      PlacementGroupCompare>
+      pending_placement_groups_;
 
   /// The scheduler to schedule all registered placement_groups.
   std::shared_ptr<gcs::GcsPlacementGroupSchedulerInterface>
