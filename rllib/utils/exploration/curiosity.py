@@ -191,9 +191,6 @@ class Curiosity(Exploration):
             ])
         })
         phi, next_phi = phis[:batch_size], phis[batch_size:]
-        #next_phi, _ = self.model._curiosity_feature_net({
-        #    SampleBatch.OBS: sample_batch[SampleBatch.NEXT_OBS]
-        #})
 
         # Detach phi from graph (should not backpropagate through feature net
         # for forward-loss).
@@ -207,9 +204,6 @@ class Curiosity(Exploration):
                         num_classes=self.action_space.n)
                 ],
                 dim=-1))
-
-        #sample_batch["phi"] = phi
-        #sample_batch["next_phi"] = next_phi
 
         # Forward loss term (predicted phi', given phi and action vs actually
         # observed phi').
@@ -258,8 +252,6 @@ class Curiosity(Exploration):
                 dim=-1))
         forward_loss = torch.mean(0.5 * torch.sum(
             torch.pow(predicted_next_phi - next_phi, 2.0), dim=-1))
-
-        #print("inverse-loss={} forward-loss={}".format(inverse_loss, forward_loss))
 
         # Append our loss to the policy loss(es).
         return policy_loss + [

@@ -60,7 +60,7 @@ class TestCuriosity(unittest.TestCase):
         }
         # limit horizon to make it really hard for non-curious agent to reach
         # the goal state.
-        config["horizon"] = 50
+        config["horizon"] = 40
         config["num_workers"] = 0  # local only
         config["train_batch_size"] = 512
         config["num_sgd_iter"] = 10

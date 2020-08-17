@@ -131,10 +131,6 @@ class TorchPolicy(Policy):
             callable(get_batch_divisibility_req) else \
             (get_batch_divisibility_req or 1)
 
-        #TEST
-        self.counts = torch.zeros((256, )).long()
-        #END: TEST
-
     @override(Policy)
     def training_view_requirements(self):
         if hasattr(self, "view_requirements"):
@@ -347,17 +343,6 @@ class TorchPolicy(Policy):
             batch_divisibility_req=self.batch_divisibility_req)
 
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
-
-        # Give Exploration component the chance to pre-process the train-batch.
-        #if hasattr(self, "exploration"):
-        #    train_batch = self.exploration.preprocess_train_batch(train_batch)
-
-        #TEST:
-        #from ray.rllib.models.torch.torch_action_dist import TorchCategorical
-        #for n in torch.argmax(train_batch["obs"], -1).numpy():
-        #    self.counts[n] += 1
-        #print("state-entropy={}".format(TorchCategorical(self.counts.float(), {}).entropy()))
-        #END TEST:
 
         # Calculate the actual policy loss.
         loss_out = force_list(

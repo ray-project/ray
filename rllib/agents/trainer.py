@@ -569,7 +569,7 @@ class Trainer(Trainable):
             # Try gym.
             else:
                 import gym  # soft dependency
-                self.env_creator = lambda env_config: gym.make(env, **env_config)
+                self.env_creator = lambda env_config: gym.make(env)
         else:
             self.env_creator = lambda env_config: None
 
