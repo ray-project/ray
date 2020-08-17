@@ -714,6 +714,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                    explore=None,
                    perturbation_interval=10,
                    log_config=False,
+                   require_attrs=True,
                    hyperparams=None,
                    hyperparam_mutations=None,
                    step_once=True):
@@ -729,7 +730,8 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             quantile_fraction=0.25,
             hyperparam_mutations=hyperparam_mutations,
             custom_explore_fn=explore,
-            log_config=log_config)
+            log_config=log_config,
+            require_attrs=require_attrs)
         runner = _MockTrialRunner(pbt)
         for i in range(5):
             trial_hyperparams = hyperparams or {
@@ -752,18 +754,32 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         pbt, runner = self.basicSetup()
         trials = runner.get_trials()
 
-        self.assertEqual(pbt.last_scores(trials), [0, 50, 100, 150, 200])
         # Should error if training_iteration not in result dict.
         with self.assertRaises(RuntimeError):
             pbt.on_trial_result(
                 runner, trials[0], result={"episode_reward_mean": 4})
 
-        pbt, runner = self.basicSetup()
-        trials = runner.get_trials()
-
-        self.assertEqual(pbt.last_scores(trials), [0, 50, 100, 150, 200])
         # Should error if episode_reward_mean not in result dict.
         with self.assertRaises(RuntimeError):
+            pbt.on_trial_result(
+                runner,
+                trials[0],
+                result={
+                    "random_metric": 10,
+                    "training_iteration": 20
+                })
+
+    def testMetricLog(self):
+        pbt, runner = self.basicSetup(require_attrs=False)
+        trials = runner.get_trials()
+
+        # Should not error if training_iteration not in result dict
+        with self.assertLogs("ray.tune.schedulers.pbt", level="WARN"):
+            pbt.on_trial_result(
+                runner, trials[0], result={"episode_reward_mean": 4})
+
+        # Should not error if episode_reward_mean not in result dict.
+        with self.assertLogs("ray.tune.schedulers.pbt", level="WARN"):
             pbt.on_trial_result(
                 runner,
                 trials[0],
