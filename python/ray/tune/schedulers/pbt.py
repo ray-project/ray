@@ -53,7 +53,7 @@ def explore(config, mutations, resample_probability, custom_explore_fn):
             })
         elif isinstance(distribution, list):
             if random.random() < resample_probability or \
-                config[key] not in distribution:
+                    config[key] not in distribution:
                 new_config[key] = random.choice(distribution)
             elif random.random() > 0.5:
                 new_config[key] = distribution[max(
@@ -151,8 +151,8 @@ class PopulationBasedTraining(FIFOScheduler):
             local_dir at each exploit. Allows config schedule to be
             reconstructed.
         require_attrs (bool): Whether to require time_attr and metric to appear
-            in result for every iteration. If True, error will be raised if these values
-            are not present in trial result.
+            in result for every iteration. If True, error will be raised
+            if these values are not present in trial result.
 
     .. code-block:: python
 
@@ -239,26 +239,31 @@ class PopulationBasedTraining(FIFOScheduler):
 
     def on_trial_result(self, trial_runner, trial, result):
         if self._time_attr not in result:
-            time_missing_msg = "Cannot find time_attr {} in trial result {}. Make sure that this attribute is " \
-                               "returned in the " \
+            time_missing_msg = "Cannot find time_attr {} " \
+                               "in trial result {}. Make sure that this " \
+                               "attribute is returned in the " \
                                "results of your Trainable.".format(
-                self._time_attr, result)
+                                self._time_attr, result)
             if self._require_attrs:
                 raise RuntimeError(
-                    time_missing_msg + "If this error is expected, you can change this to a warning message by "
-                                       "setting PBT(require_attrs=False)")
+                    time_missing_msg +
+                    "If this error is expected, you can change this to "
+                    "a warning message by "
+                    "setting PBT(require_attrs=False)")
             else:
                 if log_once("pbt-time_attr-error"):
                     logger.warning(time_missing_msg)
         if self._metric not in result:
-            metric_missing_msg = "Cannot find metric {} in trial result {}. Make sure that this attribute is returned " \
+            metric_missing_msg = "Cannot find metric {} in trial result {}. " \
+                                 "Make sure that this attribute is returned " \
                                  "in the " \
                                  "results of your Trainable.".format(
-                self._metric, result)
+                                    self._metric, result)
             if self._require_attrs:
                 raise RuntimeError(
-                    metric_missing_msg + "If this error is expected, you can change this to a warning message by "
-                                         "setting PBT(require_attrs=False)")
+                    metric_missing_msg + "If this error is expected, "
+                    "you can change this to a warning message by "
+                    "setting PBT(require_attrs=False)")
             else:
                 if log_once("pbt-metric-error"):
                     logger.warning(metric_missing_msg)
@@ -345,8 +350,8 @@ class PopulationBasedTraining(FIFOScheduler):
                              self._custom_explore_fn)
         logger.info("[exploit] transferring weights from trial "
                     "{} (score {}) -> {} (score {})".format(
-            trial_to_clone, new_state.last_score, trial,
-            trial_state.last_score))
+                        trial_to_clone, new_state.last_score, trial,
+                        trial_state.last_score))
 
         if self._log_config:
             self._log_config_on_step(trial_state, new_state, trial,
@@ -405,7 +410,7 @@ class PopulationBasedTraining(FIFOScheduler):
         candidates = []
         for trial in trial_runner.get_trials():
             if trial.status in [Trial.PENDING, Trial.PAUSED] and \
-                trial_runner.has_resources(trial.resources):
+                    trial_runner.has_resources(trial.resources):
                 candidates.append(trial)
         candidates.sort(
             key=lambda trial: self._trial_state[trial].last_perturbation_time)
