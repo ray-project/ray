@@ -10,11 +10,9 @@ import {
 import React from "react";
 import { connect } from "react-redux";
 import {
-  getMemoryTable,
   getNodeInfo,
   getRayletInfo,
   getTuneAvailability,
-  stopMemoryTableCollection,
 } from "../../api";
 import { StoreState } from "../../store";
 import LastUpdated from "./LastUpdated";
@@ -44,7 +42,6 @@ const styles = (theme: Theme) =>
 const mapStateToProps = (state: StoreState) => ({
   tab: state.dashboard.tab,
   tuneAvailability: state.dashboard.tuneAvailability,
-  shouldObtainMemoryTable: state.dashboard.shouldObtainMemoryTable,
 });
 
 const mapDispatchToProps = dashboardActions;
@@ -64,25 +61,19 @@ class Dashboard extends React.Component<
   ];
 
   refreshInfo = async () => {
-    const { shouldObtainMemoryTable } = this.props;
     try {
       const [
         nodeInfo,
         rayletInfo,
-        memoryTable,
         tuneAvailability,
       ] = await Promise.all([
         getNodeInfo(),
         getRayletInfo(),
-        getMemoryTable(shouldObtainMemoryTable),
         getTuneAvailability(),
       ]);
       this.props.setNodeAndRayletInfo({ nodeInfo, rayletInfo });
       this.props.setTuneAvailability(tuneAvailability);
       this.props.setError(null);
-      if (shouldObtainMemoryTable) {
-        this.props.setMemoryTable(memoryTable);
-      }
     } catch (error) {
       this.props.setError(error.toString());
     } finally {
@@ -98,15 +89,9 @@ class Dashboard extends React.Component<
     clearTimeout(this.timeoutId);
   }
 
-  handleTabChange = async (event: React.ChangeEvent<{}>, value: number) => {
+  handleTabChange = async (event: React.ChangeEvent<{}>, value: number) =>
     this.props.setTab(value);
-    if (this.tabs[value].label === "Memory") {
-      this.props.setShouldObtainMemoryTable(true);
-    } else {
-      this.props.setShouldObtainMemoryTable(false);
-      await stopMemoryTableCollection();
-    }
-  };
+  
 
   render() {
     const { classes, tab, tuneAvailability } = this.props;

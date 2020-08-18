@@ -1,5 +1,6 @@
 import {
   Button,
+  Box,
   createStyles,
   makeStyles,
   MenuItem,
@@ -7,15 +8,20 @@ import {
   Table,
   TableBody,
   Theme,
+  InputLabel, FormControl
 } from "@material-ui/core";
 import PauseIcon from "@material-ui/icons/Pause";
 import PlayArrowIcon from "@material-ui/icons/PlayArrow";
 import React, { useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
+import { useInterval } from "../../../common/reactUtils";
 import {
   MemoryTableEntry,
   MemoryTableGroups,
   stopMemoryTableCollection,
+  getMemoryTable,
+  MemoryGroupByKey,
+  MemoryTableResponse
 } from "../../../api";
 import SortableTableHead, {
   HeaderInfo,
@@ -103,28 +109,6 @@ const UngroupedMemoryRows: React.FC<UngroupedMemoryRowsProps> = ({
   );
 };
 
-type MemoryGrouping =
-  | "node"
-  | "stackTrace"
-  | "";
-
-const byNode = (entry: MemoryTableEntry) =>
-  entry.node_ip_address;
-
-const byStackTrace = (entry: MemoryTableEntry) =>
-  entry.call_site;
-
-const groupFunction = (grouping: MemoryGrouping) => {
-  switch (grouping) {
-    case "node":
-      return byNode
-    case "stackTrace":
-      return byStackTrace
-    case "":
-      return null
-  }
-}
-
 type memoryColumnId =
   | "node_ip_address"
   | "pid"
@@ -163,6 +147,11 @@ const useMemoryInfoStyles = makeStyles((theme: Theme) =>
       padding: theme.spacing(1),
       textAlign: "center",
     },
+    pauseButton: {
+      margin: theme.spacing(1),
+      padding: theme.spacing(1),
+      float: "right",
+    },
   }),
 );
 
@@ -172,49 +161,63 @@ const memoryInfoSelector = (state: StoreState) => ({
   shouldObtainMemoryTable: state.dashboard.shouldObtainMemoryTable,
 });
 
+const fetchMemoryTable = (groupByKey: MemoryGroupByKey, setResults: (mtr: MemoryTableResponse) => void) => {
+  return async () => {
+    const resp = await getMemoryTable(groupByKey);
+    setResults(resp);
+  };
+};
+
 const MemoryInfo: React.FC<{}> = () => {
-  const { memoryTable, shouldObtainMemoryTable } = useSelector(
+  const { memoryTable } = useSelector(
     memoryInfoSelector,
   );
   const dispatch = useDispatch();
-  const toggleMemoryCollection = async () => {
-    dispatch(
-      dashboardActions.setShouldObtainMemoryTable(!shouldObtainMemoryTable),
-    );
-    if (shouldObtainMemoryTable) {
-      await stopMemoryTableCollection();
-    }
-  };
-
-  const pauseButtonIcon = shouldObtainMemoryTable ? (
-    <PauseIcon />
-  ) : (
+  const [paused, setPaused] = useState(false);
+  const pauseButtonIcon = paused ? (
     <PlayArrowIcon />
-  );
+  ) : (
+      <PauseIcon />
+    );
   const classes = useMemoryInfoStyles();
-  const [groupBy, setGroupBy] = useState<MemoryGrouping>("node");
+  const [groupBy, setGroupBy] = useState<MemoryGroupByKey>("node");
   const toggleOrder = () => setOrder(order === "asc" ? "desc" : "asc");
   const [order, setOrder] = React.useState<Order>("asc");
   const [orderBy, setOrderBy] = React.useState<memoryColumnId | null>(null);
+
+  const stopPolling = useInterval(
+    fetchMemoryTable(groupBy, (resp) => dispatch(dashboardActions.setMemoryTable(resp))), 4000);
   return (
     <React.Fragment>
       {memoryTable !== null ? (
         <React.Fragment>
-          <Button color="primary" onClick={toggleMemoryCollection}>
-            {pauseButtonIcon}
-            {shouldObtainMemoryTable ? "Pause Collection" : "Resume Collection"}
-          </Button>
-          <Select
-            value={groupBy}
-            onChange={(e: any) => setGroupBy(e.target.value)}
+          <FormControl>
+            <InputLabel shrink id="group-by-label">Group by</InputLabel>
+            <Select
+              labelId="group-by-label"
+              value={groupBy}
+              onChange={(e: any) => setGroupBy(e.target.value)}
+              color="primary"
+              displayEmpty
+            >
+              <MenuItem value="">
+                <em>None</em>
+              </MenuItem>
+              <MenuItem value={"node"}>Node IP Address</MenuItem>
+              <MenuItem value={"stack_trace"}>Stack Trace</MenuItem>
+            </Select>
+          </FormControl>
+          <Button
             color="primary"
-          >
-            <MenuItem value="">
-              <em>None</em>
-            </MenuItem>
-            <MenuItem value={"node"}>Node</MenuItem>
-            <MenuItem value={"stackTrace"}>Stack trace</MenuItem>
-          </Select>
+            className={classes.pauseButton}
+            onClick={() => {
+              setPaused(true);
+              stopPolling();
+              stopMemoryTableCollection();
+            }}>
+            {pauseButtonIcon}
+            {paused ? "Resume Collection" : "Pause Collection"}
+          </Button>
           <Table className={classes.table}>
             <SortableTableHead
               orderBy={orderBy}
@@ -234,23 +237,22 @@ const MemoryInfo: React.FC<{}> = () => {
               {groupBy ? (
                 <GroupedMemoryRows
                   memoryTableGroups={memoryTable.group}
-                  groupBy={groupFunction(groupBy)}
                   order={order}
                   orderBy={orderBy}
                 />
               ) : (
-                <UngroupedMemoryRows
-                  memoryTableGroups={memoryTable.group}
-                  order={order}
-                  orderBy={orderBy}
-                />
-              )}
+                  <UngroupedMemoryRows
+                    memoryTableGroups={memoryTable.group}
+                    order={order}
+                    orderBy={orderBy}
+                  />
+                )}
             </TableBody>
           </Table>
         </React.Fragment>
       ) : (
-        <div>No Memory Table Information Provided</div>
-      )}
+          <div>No Memory Table Information Provided</div>
+        )}
     </React.Fragment>
   );
 };

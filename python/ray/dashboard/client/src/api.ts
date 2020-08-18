@@ -385,12 +385,13 @@ export type MemoryTableResponse = {
 // This doesn't return anything.
 export type StopMemoryTableResponse = {};
 
-export const getMemoryTable = (shouldObtainMemoryTable: boolean) => {
-  if (shouldObtainMemoryTable) {
-    return get<MemoryTableResponse>("/api/memory_table", {});
-  } else {
-    return null;
-  }
+export type MemoryGroupByKey =
+  | "node"
+  | "stack_trace"
+  | "";
+
+export const getMemoryTable = async (groupByKey: MemoryGroupByKey) => {
+    return get<MemoryTableResponse>("/api/memory_table", {"group_by": groupByKey});
 };
 
 export const stopMemoryTableCollection = () =>
