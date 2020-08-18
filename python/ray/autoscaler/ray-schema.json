@@ -284,9 +284,11 @@
                            "description": "Provider-specific config for worker nodes. e.g. instance type."
                        },
                        "additionalProperties": false
-                    }
+                    },
+                    "additionalProperties": false
                 }
             },
             "additionalProperties": false
         }
     }
+}
