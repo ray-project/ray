@@ -7,7 +7,7 @@ from ray.rllib.models.tf.visionnet_v1 import _get_filter_config
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import get_activation_fn, try_import_torch
 
-torch, nn = try_import_torch()
+_, nn = try_import_torch()
 
 
 class VisionNetwork(TorchModelV2, nn.Module):
