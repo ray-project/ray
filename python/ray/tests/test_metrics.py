@@ -209,7 +209,10 @@ def test_raylet_info_endpoint(shutdown_only):
             actors_info = raylet_info["result"]["actors"]
             try:
                 assert len(actors_info) == 3
-                c_actor_info = [actor for actor in actors_info.values() if "ActorC" in actor["actorTitle"]][0]
+                c_actor_info = [
+                    actor for actor in actors_info.values()
+                    if "ActorC" in actor["actorTitle"]
+                ][0]
                 assert c_actor_info["numObjectRefsInScope"] == 13
                 assert c_actor_info["numLocalObjects"] == 10
                 break
