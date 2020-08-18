@@ -150,61 +150,6 @@ class TestCuriosity(unittest.TestCase):
             self.assertTrue(rewards_wo == 0.0)
             self.assertGreater(rewards_w, 0.1)
 
-    def test_curiosity_on_4_rooms_partially_observable_domain(self):
-        config = ppo.DEFAULT_CONFIG.copy()
-        config["env_config"] = {"name": "MiniGrid-FourRooms-v0"}
-        config["horizon"] = 40  # Make it hard to reach goal just by chance.
-        config["num_envs_per_worker"] = 10
-        config["model"]["use_lstm"] = True
-        config["model"]["lstm_cell_size"] = 256
-        config["model"]["lstm_use_prev_action_reward"] = True
-        config["model"]["max_seq_len"] = 100
-        config["num_sgd_iter"] = 10
-        config["num_gpus"] = 1
-
-        config["exploration_config"] = {
-            "type": "Curiosity",
-            # For the feature NN, use a non-LSTM conv2d net (same as the one
-            # in the policy model.
-            "eta": 0.1,
-            "lr": 0.0001,
-            "feature_net_config": {
-                "fcnet_hiddens": [256, 256],
-                "fcnet_activation": "relu",
-            },
-            "sub_exploration": {
-                "type": "StochasticSampling",
-            }
-        }
-
-        reward_threshold = 0.2
-        max_num_iterations = 1000
-        for _ in framework_iterator(config, frameworks="torch"):
-            # Curiosity should be able to solve this.
-            trainer = ppo.PPOTrainer(config=config, env="mini-grid")
-            num_iterations_to_success = 0
-            for num_iterations_to_success in range(max_num_iterations):
-                result = trainer.train()
-                print(result)
-                if result["episode_reward_mean"] > reward_threshold:
-                    print("Learnt after {} iters!".format(
-                        num_iterations_to_success))
-                    break
-            trainer.stop()
-
-            # Try w/o Curiosity.
-            config["exploration_config"] = {
-                "type": "StochasticSampling",
-            }
-            trainer = ppo.PPOTrainer(config=config, env="mini-grid")
-            # Give agent w/o curiosity 2x as much time.
-            for _ in range(num_iterations_to_success * 2):
-                result = trainer.train()
-                print(result)
-                if result["episode_reward_mean"] > reward_threshold:
-                    raise ValueError("Not expected to learn w/o curiosity!")
-            trainer.stop()
-
 
 if __name__ == "__main__":
     import pytest
