@@ -281,9 +281,16 @@ def _configure_key_pair(config):
         cli_logger.doassert(
             "KeyName" in config["worker_nodes"],
             "`KeyName` missing for worker nodes.")  # todo: err msg
+        for instance_type in config["available_instance_types"]:
+            cli_logger.doassert(
+                "KeyName" in config["available_instance_types"][instance_type],
+                "`KeyName` missing for {} node type.".format(instance_type)
+            )
 
         assert "KeyName" in config["head_node"]
         assert "KeyName" in config["worker_nodes"]
+        for instance_type in config["available_instance_types"]:
+            assert "KeyName" in config["available_instance_types"][instance_type]
         return config
     _set_config_info(keypair_src="default")
 
@@ -348,6 +355,8 @@ def _configure_key_pair(config):
     config["auth"]["ssh_private_key"] = key_path
     config["head_node"]["KeyName"] = key_name
     config["worker_nodes"]["KeyName"] = key_name
+    for instance_type in config["available_instance_types"]:
+        config["available_instance_types"]["KeyName"] = key_name
 
     return config
 
@@ -418,6 +427,20 @@ def _configure_subnet(config):
     else:
         _set_config_info(workers_subnet_src="config")
 
+
+    for instance_type in config["available_instance_types"]:
+        if "SubnetIds" not in config["available_instance_types"][instance_type]:
+            _set_config_info(workers_subnet_src="default")
+            config["available_instance_types"][instance_type]["SubnetIds"] = subnet_ids
+            cli_logger.old_info(
+                logger, "_configure_subnet: "
+                "SubnetId not specified for workers,"
+                " using {}", subnet_descr)
+        else:
+            _set_config_info(workers_subnet_src="config")
+
+        pass
+
     return config
 
 
@@ -453,6 +476,8 @@ def _configure_security_group(config):
             "SecurityGroupIds not specified for workers, using {} ({})",
             workers_sg.group_name, workers_sg.id)
         config["worker_nodes"]["SecurityGroupIds"] = [workers_sg.id]
+        for instance_type in config["available_instance_types"]:
+            config["available_instance_types"][instance_type]["SecurityGroupIds"] = [workers_sg.id]
 
     return config
 
@@ -491,6 +516,19 @@ def _check_ami(config):
             ami_id=default_ami,
             ami_name=DEFAULT_AMI_NAME,
             region=region)
+
+    for instance_type in config["available_instance_types"]:
+        if config["available_instance_types"][instance_type].get("ImageId", "").lower() == "latest_dlami":
+            config["available_instance_types"][instance_type]["ImageId"] = default_ami
+            _set_config_info(workers_ami_src="dlami")
+            cli_logger.old_info(
+                logger,
+                "_check_ami: worker nodes ImageId is 'latest_dlami'. "
+                "Using '{ami_id}', which is the default {ami_name} "
+                "for your region ({region}).",
+                ami_id=default_ami,
+                ami_name=DEFAULT_AMI_NAME,
+                region=region)
 
 
 def _upsert_security_groups(config, node_types):
