@@ -122,12 +122,12 @@ class TestCuriosity(unittest.TestCase):
             self.assertTrue(rewards_wo == 0.0)
             self.assertGreater(rewards_w, 0.1)
 
-    def test_curiosity_on_4_room_partially_observable_pixels_domain(self):
+    def test_curiosity_on_key_lock_partially_observable_domain(self):
         config = ppo.DEFAULT_CONFIG.copy()
         # config["env_config"] = {"name": "MiniGrid-FourRooms-v0"}
-        config["env_config"] = {"name": "MiniGrid-DoorKey-5x5-v0"}
+        config["env_config"] = {"name": "MiniGrid-DoorKey-8x8-v0"}
         config["num_envs_per_worker"] = 10
-        config["horizon"] = 100  # Make it hard to reach goald just by chance.
+        config["horizon"] = 100  # Make it hard to reach goal just by chance.
         #config["model"]["conv_filters"] = CONV_FILTERS
         config["model"]["use_lstm"] = True
         config["model"]["lstm_cell_size"] = 256
@@ -153,12 +153,33 @@ class TestCuriosity(unittest.TestCase):
             }
         }
 
-        num_iterations = 100
+        max_num_iterations = 1000
         for _ in framework_iterator(config, frameworks="torch"):
+            # Curiosity should be able to solve this.
             trainer = ppo.PPOTrainer(config=config, env="mini-grid")
-            for _ in range(num_iterations):
+            num_iterations_to_success = 0
+            for num_iterations_to_success in range(max_num_iterations):
                 result = trainer.train()
                 print(result)
+                reward = result["episode_reward_mean"]
+                if reward > 0.7:
+                    print("Learnt after {} iters!".format(
+                        num_iterations_to_success))
+                    break
+            trainer.stop()
+
+            # Try w/o Curiosity.
+            config["exploration_config"] = {
+                "type": "StochasticSampling",
+            }
+            trainer = ppo.PPOTrainer(config=config, env="mini-grid")
+            # Give agent w/o curiosity 2x as much time.
+            for _ in range(num_iterations_to_success * 2):
+                result = trainer.train()
+                print(result)
+                reward = result["episode_reward_mean"]
+                if reward > 0.7:
+                    raise ValueError("Not expected to learn w/o curiosity!")
             trainer.stop()
 
 

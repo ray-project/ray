@@ -168,9 +168,14 @@ class Curiosity(Exploration):
         # Now that the Policy's own optimizer(s) have been created (from
         # the Model parameters (IMPORTANT: w/o(!) the curiosity params),
         # we can add our curiosity sub-modules to the Policy's Model.
-        self.model._curiosity_feature_net = self._curiosity_feature_net
-        self.model._curiosity_inverse_fcnet = self._curiosity_inverse_fcnet
-        self.model._curiosity_forward_fcnet = self._curiosity_forward_fcnet
+        #TODO:
+        print("exploration and policy DEVICE={}".format(self.device))
+        self.model._curiosity_feature_net = \
+            self._curiosity_feature_net.to(self.device)
+        self.model._curiosity_inverse_fcnet = \
+            self._curiosity_inverse_fcnet.to(self.device)
+        self.model._curiosity_forward_fcnet = \
+            self._curiosity_forward_fcnet.to(self.device)
 
         # Add the Adam for curiosity NN updating to the Policy's optimizers.
         return optimizers + [

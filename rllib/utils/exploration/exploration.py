@@ -1,5 +1,5 @@
 from gym.spaces import Space
-from typing import List, Optional, Union
+from typing import List, Optional, Union, TYPE_CHECKING
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
@@ -7,6 +7,9 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch, TensorType
 from ray.rllib.utils.typing import LocalOptimizer, TrainerConfigDict
+
+if TYPE_CHECKING:
+    from ray.rllib.policy.policy import Policy
 
 _, nn = try_import_torch()
 
@@ -130,7 +133,9 @@ class Exploration:
         pass
 
     @DeveloperAPI
-    def postprocess_trajectory(self, policy, sample_batch, tf_sess=None):
+    def postprocess_trajectory(self,
+                               policy: "Policy",
+                               sample_batch, tf_sess=None):
         """Handles post-processing of done episode trajectories.
 
         Changes the given batch in place. This callback is invoked by the
