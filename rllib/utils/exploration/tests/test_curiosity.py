@@ -75,8 +75,7 @@ CONV_FILTERS = [[16, [11, 11], 3], [32, [9, 9], 3], [64, [5, 5], 3]]
 class TestCuriosity(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        #TODO
-        ray.init(local_mode=True)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):
@@ -154,7 +153,7 @@ class TestCuriosity(unittest.TestCase):
     def test_curiosity_on_4_rooms_partially_observable_domain(self):
         config = ppo.DEFAULT_CONFIG.copy()
         config["env_config"] = {"name": "MiniGrid-FourRooms-v0"}
-        config["horizon"] = 100  # Make it hard to reach goal just by chance.
+        config["horizon"] = 40  # Make it hard to reach goal just by chance.
         config["num_envs_per_worker"] = 10
         config["model"]["use_lstm"] = True
         config["model"]["lstm_cell_size"] = 256
@@ -178,6 +177,7 @@ class TestCuriosity(unittest.TestCase):
             }
         }
 
+        reward_threshold = 0.2
         max_num_iterations = 1000
         for _ in framework_iterator(config, frameworks="torch"):
             # Curiosity should be able to solve this.
@@ -186,8 +186,7 @@ class TestCuriosity(unittest.TestCase):
             for num_iterations_to_success in range(max_num_iterations):
                 result = trainer.train()
                 print(result)
-                reward = result["episode_reward_mean"]
-                if reward > 0.7:
+                if result["episode_reward_mean"] > reward_threshold:
                     print("Learnt after {} iters!".format(
                         num_iterations_to_success))
                     break
@@ -202,8 +201,7 @@ class TestCuriosity(unittest.TestCase):
             for _ in range(num_iterations_to_success * 2):
                 result = trainer.train()
                 print(result)
-                reward = result["episode_reward_mean"]
-                if reward > 0.7:
+                if result["episode_reward_mean"] > reward_threshold:
                     raise ValueError("Not expected to learn w/o curiosity!")
             trainer.stop()
 
