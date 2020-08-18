@@ -28,9 +28,21 @@ class DreamerLoss(object):
         lambda_=0.95,
         kl_coeff=1.0,
         free_nats=3.0,
-        log=False,
-        optimizers=None):
+        log=False):
+        """Constructs loss for the Dreamer objective
 
+        Arguments:
+            obs (TensorType): Observations (o_t)
+            action (TensorType): Actions (a_(t-1))
+            reward (TensorType): Rewards (r_(t-1))
+            model (TorchModelV2): DreamerModel, encompassing all other models
+            imagine_horizon (int): Imagination horizon for actor and critic loss
+            discount (float): Discount
+            lambda_ (float): Lambda, like in GAE
+            kl_coeff (float): KL Coefficient for Divergence loss in PlaNET loss
+            free_nats (float): Threshold for minimum divergence in PlaNET loss
+            log (bool): If log, generate gifs
+        """
         self.model = model
         encoder_weights = list(model.encoder.parameters())
         decoder_weights = list(model.decoder.parameters())
@@ -91,7 +103,7 @@ class DreamerLoss(object):
             self.log_summary(obs, action, latent, image_pred)
 
 
-    # Similar to GAE-Lambda
+    # Similar to GAE-Lambda, calculate value targets
     def lambda_return(self, reward, value, pcont, bootstrap, lambda_):
         agg_fn = lambda x,y: y[0] + y[1] * lambda_ * x
         next_values = torch.cat([value[1:], bootstrap[None]],dim=0)
@@ -135,7 +147,6 @@ def dreamer_loss(policy, model, dist_class, train_batch):
                                   policy.config["kl_coeff"],
                                   policy.config["free_nats"],
                                   policy.log_gif,
-                                  policy._optimizers,
                                   )
 
     return tuple([policy.loss_obj.model_loss, policy.loss_obj.actor_loss, policy.loss_obj.critic_loss])
@@ -155,6 +166,11 @@ def build_dreamer_model(policy, obs_space, action_space, config):
     return policy.model
 
 def action_sampler_fn(policy, model, input_dict, state, explore, timestep):
+    """Action sampler function has two phases. During the prefill phase,
+    actions are sampled uniformly [-1, 1]. During training phase, actions
+    are evaluated through DreamerPolicy and an additive gaussian is added
+    to incentivize exploration.
+    """
     obs = input_dict["obs"]
 
     # Custom Exploration

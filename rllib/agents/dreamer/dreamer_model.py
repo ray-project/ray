@@ -406,78 +406,83 @@ class RSSM(nn.Module):
 
 # Represents all models in Dreamer, unifies them all into a single interface
 class DreamerModel(TorchModelV2, nn.Module):
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name):
-        super().__init__(obs_space, action_space, num_outputs,
-                         model_config, name)
+  def __init__(self, obs_space, action_space, num_outputs, model_config,
+               name):
+    super().__init__(obs_space, action_space, num_outputs,
+                     model_config, name)
 
-        nn.Module.__init__(self)
-        self.depth = model_config["depth_size"]
-        self.deter_size = model_config["deter_size"]
-        self.stoch_size = model_config["stoch_size"]
-        self.hidden_size = model_config["hidden_size"]
+    nn.Module.__init__(self)
+    self.depth = model_config["depth_size"]
+    self.deter_size = model_config["deter_size"]
+    self.stoch_size = model_config["stoch_size"]
+    self.hidden_size = model_config["hidden_size"]
 
-        self.action_size = action_space.shape[0]
+    self.action_size = action_space.shape[0]
 
-        self.encoder = ConvEncoder(self.depth)
-        self.decoder = ConvDecoder(self.stoch_size + self.deter_size, depth=self.depth)
-        self.reward = DenseDecoder(self.stoch_size + self.deter_size, 1, 2, self.hidden_size)
-        self.dynamics = RSSM(self.action_size, 32 * self.depth, stoch=self.stoch_size, deter=self.deter_size)
-        self.actor = ActionDecoder(self.stoch_size + self.deter_size, self.action_size, 4, self.hidden_size)
-        self.value = DenseDecoder(self.stoch_size + self.deter_size, 1, 3, self.hidden_size)
-        self.state = None
+    self.encoder = ConvEncoder(self.depth)
+    self.decoder = ConvDecoder(self.stoch_size + self.deter_size, depth=self.depth)
+    self.reward = DenseDecoder(self.stoch_size + self.deter_size, 1, 2, self.hidden_size)
+    self.dynamics = RSSM(self.action_size, 32 * self.depth, stoch=self.stoch_size, deter=self.deter_size)
+    self.actor = ActionDecoder(self.stoch_size + self.deter_size, self.action_size, 4, self.hidden_size)
+    self.value = DenseDecoder(self.stoch_size + self.deter_size, 1, 3, self.hidden_size)
+    self.state = None
 
-        self.device = (torch.device("cuda")
-              if torch.cuda.is_available() else torch.device("cpu"))
+    self.device = (torch.device("cuda")
+          if torch.cuda.is_available() else torch.device("cpu"))
 
-    def policy(self, obs, state, explore=True):
-        if state is None:
-          self.initial_state()
-        else:
-          self.state = state
-        post = self.state[:4]
-        action = self.state[4]
+  def policy(self, obs: TensorType, state: List[TensorType], explore=True) -> Tuple[TensorType, List[float], List[TensorType]]:
+    """Returns the action. Runs through the encoder, recurrent model,
+    and policy to obtain action.
+    """
+    if state is None:
+      self.initial_state()
+    else:
+      self.state = state
+    post = self.state[:4]
+    action = self.state[4]
 
-        embed = self.encoder(obs)
-        post, _ = self.dynamics.obs_step(post, action, embed)
-        feat = self.dynamics.get_feature(post)
+    embed = self.encoder(obs)
+    post, _ = self.dynamics.obs_step(post, action, embed)
+    feat = self.dynamics.get_feature(post)
 
-        action_dist = self.actor(feat)
-        if explore:
-          action = action_dist.sample()
-        else:
-          action = action_dist.mean
-        logp = action_dist.log_prob(action)
+    action_dist = self.actor(feat)
+    if explore:
+      action = action_dist.sample()
+    else:
+      action = action_dist.mean
+    logp = action_dist.log_prob(action)
 
-        self.state = post + [action]
-        return action, logp, self.state
+    self.state = post + [action]
+    return action, logp, self.state
 
-    def imagine_ahead(self, state, horizon):
-        start = []
-        for s in state:
-          s = s.contiguous().detach()
-          shpe = [-1] + list(s.size())[2:]
-          start.append(s.view(*shpe))
+  def imagine_ahead(self, state: List[TensorType], horizon: int) -> TensorType:
+    """Given a batch of states, rolls out more state of length horizon.
+    """
+    start = []
+    for s in state:
+      s = s.contiguous().detach()
+      shpe = [-1] + list(s.size())[2:]
+      start.append(s.view(*shpe))
 
-        def next_state(state):
-          feature = self.dynamics.get_feature(state).detach()
-          action = self.actor(feature).rsample()
-          next_state = self.dynamics.img_step(state, action)
-          return next_state
+    def next_state(state):
+      feature = self.dynamics.get_feature(state).detach()
+      action = self.actor(feature).rsample()
+      next_state = self.dynamics.img_step(state, action)
+      return next_state
 
-        last = start
-        outputs = [[] for i in range(len(start))]
-        for _ in range(horizon):
-          last = next_state(last)
-          [o.append(l) for l,o in zip(last, outputs)]
-        outputs = [torch.stack(x, dim=0) for x in outputs] 
+    last = start
+    outputs = [[] for i in range(len(start))]
+    for _ in range(horizon):
+      last = next_state(last)
+      [o.append(l) for l,o in zip(last, outputs)]
+    outputs = [torch.stack(x, dim=0) for x in outputs] 
 
-        imag_feat = self.dynamics.get_feature(outputs)
-        return imag_feat
+    imag_feat = self.dynamics.get_feature(outputs)
+    return imag_feat
 
-    def get_initial_state(self):
-        self.state = self.dynamics.get_initial_state(1) + [torch.zeros(1, self.action_space.shape[0]).to(self.device)]
-        return self.state 
+  def get_initial_state(self) -> List[TensorType]:
+    self.state = self.dynamics.get_initial_state(1) + [torch.zeros(1, self.action_space.shape[0]).to(self.device)]
+    return self.state 
 
-    def value_function(self):
-        return None
+  def value_function(self) -> TensorType:
+      return None
