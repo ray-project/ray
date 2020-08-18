@@ -127,9 +127,9 @@ void OpenCensusProtoExporter::ExportViewData(
 
   for (const auto &datum : data) {
     // Unpack the fields we need for in memory data structure.
-    auto view_descriptor = datum.first;
-    auto view_data = datum.second;
-    auto measure_descriptor = view_descriptor.measure_descriptor();
+    auto &view_descriptor = datum.first;
+    auto &view_data = datum.second;
+    auto &measure_descriptor = view_descriptor.measure_descriptor();
 
     // Create one metric `Point` in protobuf.
     auto request_point_proto = request_proto.add_metrics();
@@ -164,26 +164,21 @@ void OpenCensusProtoExporter::ExportViewData(
     switch (view_data.type()) {
     case opencensus::stats::ViewData::Type::kDouble:
       for (const auto &row : view_data.double_data()) {
-        std::vector<std::string> tag_values = row.first;
-
-        auto point_proto = make_new_data_point_proto(tag_values);
+        auto point_proto = make_new_data_point_proto(row.first /*tag_values*/);
         point_proto->set_double_value(row.second);
       }
       break;
     case opencensus::stats::ViewData::Type::kInt64:
       for (const auto &row : view_data.int_data()) {
-        auto tag_values = row.first;
-
-        auto point_proto = make_new_data_point_proto(tag_values);
+        auto point_proto = make_new_data_point_proto(row.first /*tag_values*/);
         point_proto->set_int64_value(row.second);
       }
       break;
     case opencensus::stats::ViewData::Type::kDistribution:
       for (const auto &row : view_data.distribution_data()) {
-        auto tag_values = row.first;
         opencensus::stats::Distribution dist_value = row.second;
 
-        auto point_proto = make_new_data_point_proto(tag_values);
+        auto point_proto = make_new_data_point_proto(row.first /*tag_values*/);
 
         // Copy in memory data into `DistributionValue` protobuf.
         auto distribution_proto = point_proto->mutable_distribution_value();

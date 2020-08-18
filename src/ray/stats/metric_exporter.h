@@ -106,10 +106,10 @@ class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::H
                                   opencensus::stats::ViewData>> &data) override;
 
  private:
-  /// Client to call a metrics agent gRPC server.
-  std::unique_ptr<rpc::MetricsAgentClient> client_;
   /// Call Manager for gRPC client.
   rpc::ClientCallManager client_call_manager_;
+  /// Client to call a metrics agent gRPC server.
+  std::unique_ptr<rpc::MetricsAgentClient> client_;
 };
 
 }  // namespace stats
