@@ -20,7 +20,7 @@ import ray.utils
 logger = logging.getLogger(__name__)
 
 # First group is worker id. Second group is job id.
-JOB_LOG_PATTERN = re.compile(".*worker-([0-9a-f]{40})-(\d+)")
+JOB_LOG_PATTERN = re.compile(".*worker-([0-9a-f]{40})-(\d+)-(\d+)")
 
 
 class LogFileInfo:
