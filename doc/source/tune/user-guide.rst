@@ -143,13 +143,11 @@ During training, Tune will automatically log the below metrics in addition to th
 Checkpointing
 -------------
 
-When running a hyperparameter search, Tune can automatically and periodically save/checkpoint your model. Checkpointing is used for
+When running a hyperparameter search, Tune can automatically and periodically save/checkpoint your model. This allows you to:
 
- * saving a model throughout training
- * fault-tolerance when using pre-emptible machines.
+ * save intermediate models throughout training
+ * use pre-emptible machines (by automatically restoring from last checkpoint)
  * Pausing trials when using Trial Schedulers such as HyperBand and PBT.
-
-Checkpointing assumes that the model state will be saved to disk on whichever node the Trainable is running on.
 
 To use Tune's checkpointing features, you must expose a ``checkpoint_dir`` argument in the function signature, and call ``tune.checkpoint_dir``:
 
@@ -193,6 +191,21 @@ You can restore a single trial checkpoint by using ``tune.run(restore=<checkpoin
         restore="~/ray_results/Original/PG_<xxx>/checkpoint_5/checkpoint-5",
         config={"env": "CartPole-v0"},
     )
+
+Distributed Checkpointing
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+On a multinode cluster, Tune automatically creates a copy of all trial checkpoints on the head node. This requires the Ray cluster to be started with the :ref:`cluster launcher <ref-automatic-cluster>` and also requires rsync to be installed.
+
+Note that you must use the ``tune.checkpoint_dir`` API to trigger syncing. Also, if running Tune on Kubernetes, be sure to use the :ref:`KubernetesSyncer <tune-kubernetes>` to transfer files between different pods. 
+
+If you do not use the cluster launcher, you should set up a NFS or global file system and
+disable cross-node syncing:
+
+.. code-block:: python
+
+    tune.run(func, sync_to_driver=False)
+
 
 Handling Large Datasets
 -----------------------

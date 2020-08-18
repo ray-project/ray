@@ -51,18 +51,31 @@ class MockProcessRunner:
         self.check_call(cmd)
         return "command-output".encode()
 
-    def assert_has_call(self, ip, pattern):
+    def assert_has_call(self, ip, pattern=None, exact=None):
+        assert pattern or exact, \
+            "Must specify either a pattern or exact match."
         out = ""
-        for cmd in self.calls:
-            msg = " ".join(cmd)
-            if ip in msg:
-                out += msg
-                out += "\n"
-        if pattern in out:
-            return True
+        if pattern is not None:
+            for cmd in self.calls:
+                msg = " ".join(cmd)
+                if ip in msg:
+                    out += msg
+                    out += "\n"
+            if pattern in out:
+                return True
+            else:
+                raise Exception("Did not find [{}] in [{}] for {}".format(
+                    pattern, out, ip))
         else:
-            raise Exception("Did not find [{}] in [{}] for {}".format(
-                pattern, out, ip))
+            for cmd in self.calls:
+                msg = " ".join(cmd)
+                if ip in msg:
+                    out += msg
+                    out += "\n"
+                if cmd == exact:
+                    return True
+            raise Exception("Did not find {} in {} for {}".format(
+                exact, out, ip))
 
     def assert_not_has_call(self, ip, pattern):
         out = ""
