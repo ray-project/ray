@@ -395,8 +395,7 @@ class TrialRunnerTest3(unittest.TestCase):
 
         while not new_runner.is_finished():
             new_runner.step()
-        assert not any(t.status == Trial.ERROR
-                       for t in new_runner.get_trials())
+        assert Trial.ERROR not in {t.status for t in new_runner.get_trials()}
         shutil.rmtree(tmpdir)
 
     def testTrialSaveRestore(self):
