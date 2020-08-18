@@ -443,8 +443,10 @@ class StandardAutoscaler:
         default_instance_config = self.config["worker_nodes"]
         if instance_type is None:
             return default_instance_config
-        assert instance_type in self.instance_types, "Unknown instance type: {}.".format(instance_type)
-        return self.instance_types[instance_type].get("provider_options", default_instance_config)
+        assert instance_type in self.instance_types, \
+            "Unknown instance type: {}.".format(instance_type)
+        return self.instance_types[instance_type].get("provider_options",
+                                                      default_instance_config)
 
     def launch_new_node(self, count, instance_type=None):
         logger.info(
