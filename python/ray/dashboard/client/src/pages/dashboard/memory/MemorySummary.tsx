@@ -1,15 +1,14 @@
 import {
   createStyles,
+  makeStyles,
   TableCell,
   TableRow,
   Theme,
-  withStyles,
-  WithStyles,
 } from "@material-ui/core";
-import React from "react";
+import React, { useState } from "react";
 import { MemoryTableSummary } from "../../../api";
 
-const styles = (theme: Theme) =>
+const useMemorySummaryStyles = makeStyles((theme: Theme) =>
   createStyles({
     cell: {
       padding: theme.spacing(1),
@@ -30,33 +29,18 @@ const styles = (theme: Theme) =>
       fontFamily: "SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace",
       whiteSpace: "pre",
     },
-  });
+  }));
 
-type Props = {
+type MemorySummaryProps = {
   memoryTableSummary: MemoryTableSummary;
   initialExpanded: boolean;
 };
 
-type State = {
-  expanded: boolean;
-};
+const MemorySummary: React.FC<MemorySummaryProps> = ({ memoryTableSummary, initialExpanded }) => {
 
-class MemorySummary extends React.Component<
-  Props & WithStyles<typeof styles>,
-  State
-> {
-  state: State = {
-    expanded: this.props.initialExpanded,
-  };
-
-  toggleExpand = () => {
-    this.setState((state) => ({
-      expanded: !state.expanded,
-    }));
-  };
-
-  render() {
-    const { classes, memoryTableSummary } = this.props;
+  const [expanded, setExpanded] = useState(initialExpanded);
+  const toggleExpanded = () => setExpanded(!expanded);
+  const classes = useMemorySummaryStyles();
 
     const memorySummaries =
       memoryTableSummary !== null
@@ -85,7 +69,5 @@ class MemorySummary extends React.Component<
         </React.Fragment>
       )
     );
-  }
 }
-
-export default withStyles(styles)(MemorySummary);
+export default MemorySummary;
