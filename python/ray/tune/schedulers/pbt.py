@@ -15,6 +15,8 @@ from ray.tune.suggest.variant_generator import format_vars
 from ray.tune.trial import Trial, Checkpoint
 from ray.util import log_once
 
+from ray.util.debug import log_once
+
 logger = logging.getLogger(__name__)
 
 
@@ -78,8 +80,11 @@ def explore(config, mutations, resample_probability, custom_explore_fn):
         new_config = custom_explore_fn(new_config)
         assert new_config is not None, \
             "Custom explore fn failed to return new config"
+    # Only log mutated hyperparameters and not entire config.
+    old_hparams = {k:v for k, v in config.items() if k in mutations}
+    new_hparams = {k:v for k, v in new_config.items() if k in mutations}
     logger.info("[explore] perturbed config from {} -> {}".format(
-        config, new_config))
+        old_hparams, new_hparams))
     return new_config
 
 
@@ -171,6 +176,9 @@ class PopulationBasedTraining(FIFOScheduler):
         log_config (bool): Whether to log the ray config of each model to
             local_dir at each exploit. Allows config schedule to be
             reconstructed.
+        require_attrs (bool): Whether to require time_attr and metric to appear
+            in result for every iteration. If True, error will be raised
+            if these values are not present in trial result.
 
     .. code-block:: python
 
@@ -211,7 +219,8 @@ class PopulationBasedTraining(FIFOScheduler):
                  quantile_fraction=0.25,
                  resample_probability=0.25,
                  custom_explore_fn=None,
-                 log_config=True):
+                 log_config=True,
+                 require_attrs=True):
         for value in hyperparam_mutations.values():
             if not (isinstance(value,
                                (list, dict, sample_from)) or callable(value)):
@@ -253,6 +262,7 @@ class PopulationBasedTraining(FIFOScheduler):
         self._trial_state = {}
         self._custom_explore_fn = custom_explore_fn
         self._log_config = log_config
+        self._require_attrs = require_attrs
 
         # Metrics
         self._num_checkpoints = 0
@@ -274,8 +284,39 @@ class PopulationBasedTraining(FIFOScheduler):
                 trial.evaluated_params[attr] = trial.config[attr]
 
     def on_trial_result(self, trial_runner, trial, result):
-        if self._time_attr not in result or self._metric not in result:
+        if self._time_attr not in result:
+            time_missing_msg = "Cannot find time_attr {} " \
+                               "in trial result {}. Make sure that this " \
+                               "attribute is returned in the " \
+                               "results of your Trainable.".format(
+                                self._time_attr, result)
+            if self._require_attrs:
+                raise RuntimeError(
+                    time_missing_msg +
+                    "If this error is expected, you can change this to "
+                    "a warning message by "
+                    "setting PBT(require_attrs=False)")
+            else:
+                if log_once("pbt-time_attr-error"):
+                    logger.warning(time_missing_msg)
+        if self._metric not in result:
+            metric_missing_msg = "Cannot find metric {} in trial result {}. " \
+                                 "Make sure that this attribute is returned " \
+                                 "in the " \
+                                 "results of your Trainable.".format(
+                                    self._metric, result)
+            if self._require_attrs:
+                raise RuntimeError(
+                    metric_missing_msg + "If this error is expected, "
+                    "you can change this to a warning message by "
+                    "setting PBT(require_attrs=False)")
+            else:
+                if log_once("pbt-metric-error"):
+                    logger.warning(metric_missing_msg)
+
+        if self._metric not in result or self._time_attr not in result:
             return TrialScheduler.CONTINUE
+
         time = result[self._time_attr]
         state = self._trial_state[trial]
 
