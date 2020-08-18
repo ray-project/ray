@@ -19,6 +19,17 @@ available_instance_types:
     m4.4xlarge:
         resources: {"CPU": 16, "Custom1": 1}
         max_workers: 10
+        provider_options:
+          InstanceType: m5.large
+          ImageId: ami-0a2363a9cff180a64 # Deep Learning AMI (Ubuntu) Version 30
+
+          # You can provision additional disk space with a conf as follows
+          BlockDeviceMappings:
+              - DeviceName: /dev/sda1
+                Ebs:
+                    VolumeSize: 120
+          # For more documentation on available fields, see:
+          # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
     p2.xlarge:
         resources: {"CPU": 4, "GPU": 1, "Custom2": 2}
         max_workers: 4

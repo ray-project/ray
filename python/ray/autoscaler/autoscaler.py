@@ -439,16 +439,24 @@ class StandardAutoscaler:
             return False
         return True
 
+    def get_instance_specific_config(self, instance_type):
+        default_instance_config = self.config["worker_nodes"]
+        if instance_type is None:
+            return default_instance_config
+        assert instance_type in self.instance_types, "Unknown instance type: {}.".format(instance_type)
+        return self.instance_types[instance_type].get("provider_options", default_instance_config)
+
     def launch_new_node(self, count, instance_type=None):
         logger.info(
             "StandardAutoscaler: Queue {} new nodes for launch".format(count))
+        self.pending_launches.inc(instance_type, count)
+        config = copy.deepcopy(self.config)
+        instance_config = self.get_instance_specific_config(instance_type)
         # Try to fill in the default instance type so we can tag it properly.
         if not instance_type:
             instance_type = self.provider.get_instance_type(
                 self.config["worker_nodes"])
-        self.pending_launches.inc(instance_type, count)
-        config = copy.deepcopy(self.config)
-        self.launch_queue.put((config, count, instance_type))
+        self.launch_queue.put((config, count, instance_type, instance_config))
 
     def workers(self):
         return self.provider.non_terminated_nodes(
