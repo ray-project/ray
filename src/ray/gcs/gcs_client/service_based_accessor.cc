@@ -1457,6 +1457,24 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
         if (status.ok()) {
           RAY_LOG(DEBUG) << "Finished registering placement group. placement group id = "
                          << placement_group_spec.PlacementGroupId();
+        } else {
+          RAY_LOG(ERROR) << "Placement group id = "
+                         << placement_group_spec.PlacementGroupId()
+                         << " failed to be registered. " << status;
+        }
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedPlacementGroupInfoAccessor::AsyncRemovePlacementGroup(
+    const ray::PlacementGroupID &placement_group_id, const StatusCallback &callback) {
+  rpc::RemovePlacementGroupRequest request;
+  request.set_placement_group_id(placement_group_id.Binary());
+  client_impl_->GetGcsRpcClient().RemovePlacementGroup(
+      request,
+      [callback](const Status &status, const rpc::RemovePlacementGroupReply &reply) {
+        if (callback) {
+          callback(status);
         }
       });
   return Status::OK();

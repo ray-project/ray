@@ -748,11 +748,12 @@ class Node:
             return None, None
 
         if job_id is not None:
-            name = "worker-{}-{}".format(
+            name = "worker-{}-{}-{}".format(
                 ray.utils.binary_to_hex(worker_id),
-                ray.utils.binary_to_hex(job_id))
+                ray.utils.binary_to_hex(job_id), os.getpid())
         else:
-            name = "worker-{}".format(ray.utils.binary_to_hex(worker_id))
+            name = "worker-{}-{}".format(
+                ray.utils.binary_to_hex(worker_id), os.getpid())
 
         worker_stdout_file, worker_stderr_file = self._get_log_file_names(
             name, unique=False)

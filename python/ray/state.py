@@ -404,10 +404,10 @@ class GlobalState:
         def get_state(state):
             if state == ray.gcs_utils.PlacementGroupTableData.PENDING:
                 return "PENDING"
-            elif state == ray.gcs_utils.PlacementGroupTableData.ALIVE:
-                return "ALIVE"
+            elif state == ray.gcs_utils.PlacementGroupTableData.CREATED:
+                return "CREATED"
             else:
-                return "DEAD"
+                return "REMOVED"
 
         def get_strategy(strategy):
             if strategy == PlacementStrategy.PACK:
