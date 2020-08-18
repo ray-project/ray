@@ -16,6 +16,7 @@ from ray.autoscaler.log_timer import LogTimer
 import ray.autoscaler.subprocess_output_util as cmd_output_util
 
 from ray.autoscaler.cli_logger import cli_logger
+from ray import ray_constants
 import colorful as cf
 
 logger = logging.getLogger(__name__)
@@ -38,6 +39,7 @@ class NodeUpdater:
                  ray_start_commands,
                  runtime_hash,
                  file_mounts_contents_hash,
+                 node_resources=None,
                  cluster_synced_files=None,
                  process_runner=subprocess,
                  use_internal_ip=False,
@@ -61,6 +63,7 @@ class NodeUpdater:
         self.initialization_commands = initialization_commands
         self.setup_commands = setup_commands
         self.ray_start_commands = ray_start_commands
+        self.node_resources = node_resources
         self.runtime_hash = runtime_hash
         self.file_mounts_contents_hash = file_mounts_contents_hash
         self.cluster_synced_files = cluster_synced_files
@@ -341,9 +344,17 @@ class NodeUpdater:
             with LogTimer(
                     self.log_prefix + "Ray start commands", show_status=True):
                 for cmd in self.ray_start_commands:
+                    if self.node_resources:
+                        env_vars = {
+                            ray_constants.RESOURCES_ENVIRONMENT_VARIABLE: self.
+                            node_resources
+                        }
+                    else:
+                        env_vars = {}
                     try:
-                        cmd_output_util.set_output_redirected(False)
-                        self.cmd_runner.run(cmd)
+                        cmd_output_util.set_output_redirected(True)
+                        self.cmd_runner.run(
+                            cmd, environment_variables=env_vars)
                         cmd_output_util.set_output_redirected(True)
                     except ProcessRunnerError as e:
                         if e.msg_type == "ssh_command_failed":

@@ -129,34 +129,28 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     """Port-forward a Ray cluster's dashboard to the local machine."""
     # Sleeping in a loop is preferable to `sleep infinity` because the latter
     # only works on linux.
-    if port:
-        dashboard_port = port
-    else:
-        dashboard_port = remote_port
-
-    port_taken = True
-
     # Find the first open port sequentially from `remote_port`.
-    while port_taken:
-        try:
-            port_forward = [
-                (dashboard_port, remote_port),
-            ]
-            click.echo(("Attempting to establish dashboard locally at"
-                        " localhost:{} connected to"
-                        " remote port {}").format(dashboard_port, remote_port))
-            # We want to probe with a no-op that returns quickly to avoid
-            # exceptions caused by network errors.
-            exec_cluster(
-                cluster_config_file,
-                override_cluster_name=cluster_name,
-                port_forward=port_forward)
-            port_taken = False
-        except Exception:
-            click.echo("Failed to forward dashboard, trying a new port...")
-            port_taken = True
-            dashboard_port += 1
-            pass
+    try:
+        port_forward = [
+            (port, remote_port),
+        ]
+        click.echo("Attempting to establish dashboard locally at"
+                   " localhost:{} connected to"
+                   " remote port {}".format(port, remote_port))
+        # We want to probe with a no-op that returns quickly to avoid
+        # exceptions caused by network errors.
+        exec_cluster(
+            cluster_config_file,
+            override_cluster_name=cluster_name,
+            port_forward=port_forward)
+        click.echo("Successfully established connection.")
+    except Exception as e:
+        raise click.ClickException(
+            "Failed to forward dashboard from remote port {1} to local port "
+            "{0}. There are a couple possibilities: \n 1. The remote port is "
+            "incorrectly specified \n 2. The local port {0} is already in "
+            "use.\n The exception is: {2}".format(port, remote_port, e)) \
+                from None
 
 
 @cli.command()
