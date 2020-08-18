@@ -52,6 +52,15 @@ def MockTrainingFunc(config, checkpoint_dir=None):
                 pickle.dump((a, b, iter), fp)
         tune.report(mean_accuracy=(a - iter) * b)
 
+def MockTrainingFunc2(config):
+    a = config["a"]
+    b = config["b"]
+    c1 = config["c"]["c1"]
+    c2 = config["c"]["c2"]
+
+    while True:
+        tune.report(mean_accuracy=a*b*(c1+c2))
+
 
 class MockParam(object):
     def __init__(self, params):
@@ -76,17 +85,18 @@ class PopulationBasedTrainingConfigTest(unittest.TestCase):
             metric="mean_accuracy",
             mode="max",
             perturbation_interval=1,
-            hyperparam_mutations={"a": tune.uniform(0, 0.3)},
-            resample_probability=0,
+            hyperparam_mutations={
+                "a": tune.uniform(0, 0.3),
+                "b": [1, 2, 3],
+                "c": {
+                    "c1": lambda: np.random.uniform(0.5),
+                    "c2": tune.choice([2, 3, 4])
+                }
+            },
         )
 
         tune.run(
-            MockTrainingFunc,
-            config={
-                #"a": tune.uniform(0, 0.3),
-                "b": 1,
-                "c": 1
-            },
+            MockTrainingFunc2,
             fail_fast=True,
             num_samples=4,
             scheduler=scheduler,

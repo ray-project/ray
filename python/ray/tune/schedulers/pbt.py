@@ -131,11 +131,16 @@ class PopulationBasedTraining(FIFOScheduler):
             perturbation incurs checkpoint overhead, so you shouldn't set this
             to be too frequent.
         hyperparam_mutations (dict): Hyperparams to mutate. The format is
-            as follows: for each key, either a list or function can be
+            as follows: for each key, either a list, function,
+            or tune.sample_from instance can be
             provided. A list specifies an allowed set of categorical values.
-            A function specifies the distribution of a continuous parameter.
+            A function or tune.sample_from instance specifies the distribution
+            of a continuous parameter.
             You must specify at least one of `hyperparam_mutations` or
             `custom_explore_fn`.
+            Tune will use the search space provided by
+            `hyperparam_mutations` for the initial samples if the
+            corresponding attributes are not present in `config`.
         quantile_fraction (float): Parameters are transferred from the top
             `quantile_fraction` fraction of trials to the bottom
             `quantile_fraction` fraction. Needs to be between 0 and 0.5.
@@ -169,9 +174,15 @@ class PopulationBasedTraining(FIFOScheduler):
                 # Perturb factor1 by scaling it by 0.8 or 1.2. Resampling
                 # resets it to a value sampled from the lambda function.
                 "factor_1": lambda: random.uniform(0.0, 20.0),
-                # Perturb factor2 by changing it to an adjacent value, e.g.
+                # Alternatively, use tune search space primitives.
+                # The search space for factor_1 is equivalent to factor_2.
+                "factor_2": tune.uniform(0.0, 20.0),
+                # Perturb factor3 by changing it to an adjacent value, e.g.
                 # 10 -> 1 or 10 -> 100. Resampling will choose at random.
-                "factor_2": [1, 10, 100, 1000, 10000],
+                "factor_3": [1, 10, 100, 1000, 10000],
+                # Using tune.choice is NOT equivalent to the above.
+                # factor_4 is treated as a continuous hyperparameter.
+                "factor_4": tune.choice([1, 10, 100, 1000, 10000]),
             })
         tune.run({...}, num_samples=8, scheduler=pbt)
     """
@@ -191,7 +202,7 @@ class PopulationBasedTraining(FIFOScheduler):
             if not (isinstance(value, (list, dict, sample_from)) or callable(
                 value)):
                 raise TypeError("`hyperparam_mutation` values must be either "
-                                "a List, Dict, a tune.sample object or "
+                                "a List, Dict, a tune.sample_from instance or "
                                 "callable.")
 
         if not hyperparam_mutations and not custom_explore_fn:
@@ -243,7 +254,7 @@ class PopulationBasedTraining(FIFOScheduler):
             config[attr] = random.choice(search_space)
         elif isinstance(search_space, dict):
             config[attr] = {}
-            for k, v in search_space:
+            for k, v in search_space.items():
                 self.fill_config(config[attr], k, v)
 
 
