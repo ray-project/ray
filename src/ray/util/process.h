@@ -37,9 +37,9 @@ enum { PID_MAX_LIMIT = 1 << 22 };
 namespace ray {
 
 class EnvironmentVariableLess {
+ public:
   bool operator()(char a, char b) const;
 
- public:
   bool operator()(const std::string &a, const std::string &b) const;
 };
 

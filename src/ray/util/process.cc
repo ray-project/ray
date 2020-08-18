@@ -69,7 +69,7 @@ bool EnvironmentVariableLess::operator()(const std::string &a,
                                          const std::string &b) const {
   bool result;
 #ifdef _WIN32
-  result = std::lexicographical_compare(a, b, *this);
+  result = std::lexicographical_compare(a.begin(), a.end(), b.begin(), b.end(), *this);
 #else
   result = a < b;
 #endif
