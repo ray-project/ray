@@ -44,7 +44,7 @@ class SampleBatchBuilder:
         self.count = 0
 
     @PublicAPI
-    def add_values(self, **values: Dict[str, Any]) -> None:
+    def add_values(self, **values: Any) -> None:
         """Add the given dictionary (row) of values to this batch."""
 
         for k, v in values.items():
@@ -138,7 +138,7 @@ class MultiAgentSampleBatchBuilder:
 
     @DeveloperAPI
     def add_values(self, agent_id: AgentID, policy_id: AgentID,
-                   **values: Dict[str, Any]) -> None:
+                   **values: Any) -> None:
         """Add the given dictionary (row) of values to this batch.
 
         Arguments:

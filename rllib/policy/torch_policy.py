@@ -388,6 +388,8 @@ class TorchPolicy(Policy):
 
         grad_info["allreduce_latency"] /= len(self._optimizers)
         grad_info.update(self.extra_grad_info(train_batch))
+        if self.model:
+            grad_info["model"] = self.model.metrics()
         return dict(fetches, **{LEARNER_STATS_KEY: grad_info})
 
     @override(Policy)

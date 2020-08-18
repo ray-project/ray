@@ -131,6 +131,8 @@ RAYLET_CONNECTION_ERROR = "raylet_connection_error"
 # Used in gpu detection
 RESOURCE_CONSTRAINT_PREFIX = "GPUType:"
 
+RESOURCES_ENVIRONMENT_VARIABLE = "RAY_OVERRIDE_RESOURCES"
+
 # Abort autoscaling if more than this number of errors are encountered. This
 # is a safety feature to prevent e.g. runaway node launches.
 AUTOSCALER_MAX_NUM_FAILURES = env_integer("AUTOSCALER_MAX_NUM_FAILURES", 5)

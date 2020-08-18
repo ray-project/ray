@@ -200,8 +200,7 @@ class DynamicTFPolicy(TFPolicy):
                 action_space=action_space,
                 num_outputs=logit_dim,
                 model_config=self.config["model"],
-                framework="tf",
-                **self.config["model"].get("custom_model_config", {}))
+                framework="tf")
 
         # Create the Exploration object to use for this Policy.
         self.exploration = self._create_exploration()
