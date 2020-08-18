@@ -5,7 +5,7 @@ import numpy as np
 torch, nn = try_import_torch()
 
 
-# Custom initialization for each diff layer
+# Custom initialization for different types of layers
 class Linear(nn.Linear):
   def __init__(self, *args, **kwargs):
     super().__init__(*args, **kwargs)
@@ -14,7 +14,6 @@ class Linear(nn.Linear):
       nn.init.xavier_uniform_(self.weight)
       if self.bias is not None:
           nn.init.zeros_(self.bias)
-
 
 class Conv2d(nn.Conv2d):
   def __init__(self, *args, **kwargs):
@@ -46,8 +45,7 @@ class GRUCell(nn.GRUCell):
       nn.init.zeros_(self.bias_hh)
 
 
-# Custom Tanh Bijector due to Huge gradients through Actor
-
+# Custom Tanh Bijector due to big gradients through Dreamer Actor
 class TanhBijector(torch.distributions.Transform):
     def __init__(self):
         super().__init__()
@@ -70,18 +68,10 @@ class TanhBijector(torch.distributions.Transform):
     def log_abs_det_jacobian(self, x, y):
         return 2. * (np.log(2) - x - nn.functional.softplus(-2. * x))
 
+
+# Modified from https://github.com/juliusfrost/dreamer-pytorch
 class FreezeParameters:
   def __init__(self, parameters):
-      """
-      Context manager to locally freeze gradients.
-      In some cases with can speed up computation because gradients aren't calculated for these listed modules.
-      example:
-      ```
-      with FreezeParameters([module]):
-          output_tensor = module(input_tensor)
-      ```
-      :param modules: iterable of modules. used to call .parameters() to freeze gradients.
-      """
       self.parameters = parameters
       self.param_states = [p.requires_grad for p in self.parameters]
 

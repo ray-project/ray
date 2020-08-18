@@ -21,6 +21,7 @@ from ray.rllib.agents.dreamer.dreamer_model import DreamerModel
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.util.iter_metrics import SharedMetrics
 from ray.util.iter import LocalIterator
+from ray.rllib.utils.typing import SampleBatchType
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +54,6 @@ DEFAULT_CONFIG = with_common_config({
     "free_nats": 3.0,
     # KL Coeff for the Model Loss
     "kl_coeff": 1.0,
-    # Action Repeat (Dreamer does best at 2)
-    "action_repeat": 2,
     # Distributed Dreamer not implemented yet
     "num_workers": 0,
     # Prefill Timesteps
@@ -78,6 +77,11 @@ DEFAULT_CONFIG = with_common_config({
         # Action STD
         "action_init_std": 5.0,
     },
+
+    "env_config": {
+        # Repeats action send by policy for frame_skip times in env
+        "frame_skip": 2,
+    }
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -85,6 +89,14 @@ DEFAULT_CONFIG = with_common_config({
 class EpisodicBuffer(object):
 
   def __init__(self, max_length: int = 1000, length: int =50):
+    """Data structure that stores episodes and samples chunks 
+    of size length from episodes
+
+    Arguments:
+        max_length: Maximum episodes it can store
+        length: Episode chunking lengh in sample()
+    """
+
     # Stores all episodes into a list: List[SampleBatchType]
     self.episodes = []
     self.max_length = max_length
@@ -92,21 +104,32 @@ class EpisodicBuffer(object):
     self.length = length
 
   def add(self, batch: SampleBatchType):
+    """Splits a SampleBatch into episodes and adds episodes
+    to the episode buffer
+
+    Arguments:
+        batch: SampleBatch to be added
+    """
+
     self.timesteps += batch.count
-    # Delete State keys (TD model is RNN but Policy is not)
     episodes = batch.split_by_episode()
+
     for i,e in enumerate(episodes):
         episodes[i] = self.preprocess_episode(e)
-
     self.episodes.extend(episodes)
+
     if len(self.episodes) > self.max_length:
       delta = len(self.episodes) - self.max_length
       # Drop oldest episodes
       self.episodes = self.episodes[delta:]
   
   def preprocess_episode(self, episode: SampleBatchType):
-    # Batch format should be in the form of (s_t, a_(t-1), r_(t-1))
-    # When t=0, the resetted obs is paired with action and reward of 0.
+    """Batch format should be in the form of (s_t, a_(t-1), r_(t-1))
+    When t=0, the resetted obs is paired with action and reward of 0.
+
+    Arguments:
+        episode: SampleBatch representing an episode
+    """
     obs = episode['obs']
     new_obs = episode['new_obs']
     action = episode['actions']
@@ -125,7 +148,12 @@ class EpisodicBuffer(object):
     return SampleBatch(new_batch)
 
 
-  def sample(self, batch_size):
+  def sample(self, batch_size: int):
+    """Samples [batch_size, length] from the list of episodes
+
+    Arguments:
+        batch_size: batch_size to be sampled
+    """
     episodes_buffer = []
     while len(episodes_buffer) < batch_size:
       rand_index = random.randint(0, len(self.episodes)-1)
@@ -141,6 +169,7 @@ class EpisodicBuffer(object):
         batch[k] = np.stack([e[k] for e in episodes_buffer], axis=0)
 
     return SampleBatch(batch)
+
 
 def total_sampled_timesteps(worker):
     return worker.policy_map[DEFAULT_POLICY_ID].global_timestep
@@ -173,23 +202,23 @@ def execution_plan(workers, config):
             return fetches['default_policy']['learner_stats']
 
         for samples in itr:
-
+            # Dreamer Training Loop
             for n in range(dreamer_train_iters):
                 batch = episode_buffer.sample(batch_size)
                 if n == dreamer_train_iters -1:
                     batch["log_gif"] = True
                 fetches = local_worker.learn_on_batch(batch)
 
+
+            # Custom Logging
             policy_fetches = policy_stats(fetches)
             if "log_gif" in policy_fetches:
                 gif = policy_fetches['log_gif']
                 policy_fetches['log_gif'] = postprocess_gif(gif)
 
-            # Logging
             metrics = _get_shared_metrics()
             metrics.info[LEARNER_INFO] = fetches
             metrics.counters[STEPS_SAMPLED_COUNTER] = episode_buffer.timesteps*action_repeat
-
             res = collect_metrics(local_worker=local_worker)
             res["info"] = metrics.info
             res["info"].update(metrics.counters)
@@ -207,6 +236,7 @@ def get_policy_class(config):
     return DreamerTorchPolicy
 
 def validate_config(config):
+    config["action_repeat"] = config["env_config"]["frame_skip"]
     if config["framework"] != "torch":
         raise ValueError("Dreamer not supported in Tensorflow yet!")
     if config["batch_mode"] != "complete_episodes":

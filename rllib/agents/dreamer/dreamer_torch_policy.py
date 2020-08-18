@@ -60,14 +60,14 @@ class DreamerLoss(object):
         div = torch.mean(torch.distributions.kl_divergence(post_dist, prior_dist).sum(dim=2))
         self.div = torch.clamp(div, min=free_nats)
         self.model_loss = kl_coeff * self.div + self.reward_loss + self.image_loss
-        
+
         # Actor Loss
         # [imagine_horizon, batch_length*batch_size, feature_size]
         with torch.no_grad():
             actor_states = [v.detach() for v in post]
-        with FreezeParameters(model_modules):
+        with FreezeParameters(model_weights):
             imag_feat = model.imagine_ahead(actor_states, imagine_horizon)
-        with FreezeParameters(model_modules + critic_weights):
+        with FreezeParameters(model_weights + critic_weights):
             reward = model.reward(imag_feat).mean
             value = model.value(imag_feat).mean
         pcont =  discount*torch.ones_like(reward)
@@ -83,24 +83,6 @@ class DreamerLoss(object):
             val_discount = discount.detach()
         val_pred = model.value(val_feat)
         self.critic_loss = -torch.mean(val_discount * val_pred.log_prob(target))
-
-        """
-        model_optimizer.zero_grad()
-        actor_optimizer.zero_grad()
-        critic_optimizer.zero_grad()
-
-        self.model_loss.backward()
-        self.actor_loss.backward()
-        self.critic_loss.backward()
-
-        nn.utils.clip_grad_norm_(model_modules, 100.0, norm_type=2)
-        nn.utils.clip_grad_norm_(actor_weights, 100.0, norm_type=2)
-        nn.utils.clip_grad_norm_(critic_weights, 100.0, norm_type=2)
-
-        model_optimizer.step()
-        actor_optimizer.step()
-        critic_optimizer.step()
-        """
 
         # Logging purposes
         self.prior_ent = torch.mean(prior_dist.entropy()) 
@@ -141,7 +123,7 @@ class DreamerLoss(object):
 def dreamer_loss(policy, model, dist_class, train_batch):
     policy.cur_lr = policy.config["lr"]
     policy.log_gif = False
-    if "log" in train_batch:
+    if "log_gif" in train_batch:
         policy.log_gif = True
     policy.loss_obj = DreamerLoss(train_batch['obs'],
                                   train_batch['actions'],
@@ -175,7 +157,7 @@ def build_dreamer_model(policy, obs_space, action_space, config):
 def action_sampler_fn(policy, model, input_dict, state, explore, timestep):
     obs = input_dict["obs"]
 
-    # Exploration here
+    # Custom Exploration
     if timestep <= policy.config["prefill_timesteps"]:
         logp = [0.0]
         # Random action in space [-1.0, 1.0]
@@ -184,9 +166,9 @@ def action_sampler_fn(policy, model, input_dict, state, explore, timestep):
     else:
         # Weird RLLib Handling, this happens when env rests
         if len(state[0].size())==3:
+            # Very hacky, but works on all envs
             state = model.get_initial_state()
         action, logp, state = model.policy(obs, state, explore)
-        # Add random gaussian (for better training dataset)
         action = td.Normal(action, policy.config["explore_noise"]).sample()
         action = torch.clamp(action, min=-1.0, max=1.0)
 
