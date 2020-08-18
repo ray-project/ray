@@ -349,6 +349,7 @@ class TorchPolicy(Policy):
 
         # Loop through all optimizers.
         grad_info = {"allreduce_latency": 0.0}
+        """
         for i, opt in enumerate(self._optimizers):
             # Erase gradients in all vars of this optimizer.
             opt.zero_grad()
@@ -382,7 +383,7 @@ class TorchPolicy(Policy):
 
             # Step the optimizer.
             opt.step()
-
+        """
         grad_info["allreduce_latency"] /= len(self._optimizers)
         grad_info.update(self.extra_grad_info(train_batch))
         return dict(fetches, **{LEARNER_STATS_KEY: grad_info})

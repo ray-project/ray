@@ -2,9 +2,11 @@ import numpy as np
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.models.torch.recurrent_net import RecurrentNetwork
+from ray.rllib.agents.dreamer.utils import Linear, Conv2d, ConvTranspose2d, GRUCell, TanhBijector
 torch, nn = try_import_torch()
 if torch:
   from torch import distributions as td
+
 
 # Encoder, part of PlaNET
 class ConvEncoder(nn.Module):
@@ -18,13 +20,13 @@ class ConvEncoder(nn.Module):
 
     init_channels = self.shape[0]
     self.layers = [
-          nn.Conv2d(init_channels, self.depth, 4, stride = 2),
+          Conv2d(init_channels, self.depth, 4, stride = 2),
           self.act(),
-          nn.Conv2d(self.depth, 2 * self.depth, 4, stride = 2),
+          Conv2d(self.depth, 2 * self.depth, 4, stride = 2),
           self.act(),
-          nn.Conv2d(2 * self.depth, 4 * self.depth, 4, stride = 2),
+          Conv2d(2 * self.depth, 4 * self.depth, 4, stride = 2),
           self.act(),
-          nn.Conv2d(4 * self.depth, 8 * self.depth, 4, stride = 2),
+          Conv2d(4 * self.depth, 8 * self.depth, 4, stride = 2),
           self.act(),
         ]
     self.model=nn.Sequential(*self.layers)
@@ -59,15 +61,15 @@ class ConvDecoder(nn.Module):
     self.shape = shape
 
     self.layers = [
-          nn.Linear(input_size , 32*self.depth),
+          Linear(input_size , 32*self.depth),
           Reshape((-1, 32*self.depth, 1, 1)),
-          nn.ConvTranspose2d(32*self.depth, 4*self.depth, 5, stride = 2),
+          ConvTranspose2d(32*self.depth, 4*self.depth, 5, stride = 2),
           self.act(),
-          nn.ConvTranspose2d(4*self.depth, 2*self.depth, 5, stride = 2),
+          ConvTranspose2d(4*self.depth, 2*self.depth, 5, stride = 2),
           self.act(),
-          nn.ConvTranspose2d(2*self.depth, self.depth, 6, stride = 2),
+          ConvTranspose2d(2*self.depth, self.depth, 6, stride = 2),
           self.act(),
-          nn.ConvTranspose2d(self.depth, self.shape[0], 6, stride = 2),       
+          ConvTranspose2d(self.depth, self.shape[0], 6, stride = 2),       
         ]
     self.model = nn.Sequential(*self.layers)
 
@@ -97,9 +99,9 @@ class DenseDecoder(nn.Module):
     self.layers = []
     cur_size = input_size
     for _ in range(self.layrs):
-      self.layers.extend([nn.Linear(cur_size, self.units), self.act()])
+      self.layers.extend([Linear(cur_size, self.units), self.act()])
       cur_size = units
-    self.layers.append(nn.Linear(cur_size, output_size))
+    self.layers.append(Linear(cur_size, output_size))
     self.model = nn.Sequential(*self.layers)
 
   def forward(self, x):
@@ -135,12 +137,12 @@ class ActionDecoder(nn.Module):
     # MLP Construction
     cur_size = input_size
     for _ in range(self.layrs):
-      self.layers.extend([nn.Linear(cur_size, self.units), self.act()])
-      cur_size = units
+      self.layers.extend([Linear(cur_size, self.units), self.act()])
+      cur_size = self.units
     if self.dist == "tanh_normal":
-      self.layers.append(nn.Linear(cur_size, 2*action_size))
+      self.layers.append(Linear(cur_size, 2*action_size))
     elif self.dist == "onehot":
-      self.layers.append(nn.Linear(cur_size, action_size))
+      self.layers.append(Linear(cur_size, action_size))
     self.model = nn.Sequential(*self.layers)
 
   # Returns distribution
@@ -152,10 +154,9 @@ class ActionDecoder(nn.Module):
       mean = self.mean_scale * torch.tanh(mean/self.mean_scale)
       std = self.softplus(std + raw_init_std) + self.min_std
       dist = td.Normal(mean, std)
-      transforms = [td.transforms.TanhTransform()]
+      transforms = [TanhBijector()]
       dist = td.transformed_distribution.TransformedDistribution(dist, transforms)
       dist = td.Independent(dist,1)
-      # Needs wrapper for samplling (Backpropgable)
     elif self.dist=='onehot':
       dist = td.OneHotCategorical(logits=x)
       raise NotImplementedError("Atari not implemented yet!")
@@ -172,13 +173,13 @@ class RSSM(nn.Module):
     if act is None:
       self.act = nn.ELU
 
-    self.obs1 = nn.Linear(embed_size + deter, hidden)
-    self.obs2 = nn.Linear(hidden, 2*stoch)
+    self.obs1 = Linear(embed_size + deter, hidden)
+    self.obs2 = Linear(hidden, 2*stoch)
 
-    self.cell = nn.GRUCell(self.hidden_size, hidden_size=self.deter_size)
-    self.img1 = nn.Linear(stoch + action_size, hidden)
-    self.img2 = nn.Linear(deter, hidden)
-    self.img3 = nn.Linear(hidden, 2*stoch)
+    self.cell = GRUCell(self.hidden_size, hidden_size=self.deter_size)
+    self.img1 = Linear(stoch + action_size, hidden)
+    self.img2 = Linear(deter, hidden)
+    self.img3 = Linear(hidden, 2*stoch)
 
     self.softplus = nn.Softplus
 
@@ -228,13 +229,11 @@ class RSSM(nn.Module):
 
     action = action.permute(1,0,2)
 
-    prior = static_scan(self.img_step, action, state)
-
     indices = range(len(action))
-    priors = [[] for i in range(len(state))]
+    priors = [[] for _ in range(len(state))]
     last = state
     for index in indices:
-      last = self.img_step(state, action[index])
+      last = self.img_step(last, action[index])
       [o.append(l) for l,o in zip(last, priors)]
 
     prior = [torch.stack(x,dim=0) for x in priors]
@@ -245,7 +244,7 @@ class RSSM(nn.Module):
     return torch.cat([state[2], state[3]], dim=-1)
 
   def get_dist(self, mean, std):
-    return td.Independent(td.Normal(mean, std), 1)
+    return td.Normal(mean, std)
 
   def obs_step(self, prev_state, prev_action, embed):
     prior = self.img_step(prev_state, prev_action)
@@ -255,7 +254,7 @@ class RSSM(nn.Module):
     x = self.obs2(x)
     mean, std = torch.chunk(x, 2, dim=-1)
     std = self.softplus()(std) + 0.1
-    stoch = self.get_dist(mean, std).sample()
+    stoch = self.get_dist(mean, std).rsample()
     post = [mean, std, stoch, prior[3]]
     return post, prior
 
@@ -271,7 +270,7 @@ class RSSM(nn.Module):
     x = self.img3(x)
     mean, std = torch.chunk(x, 2, dim=-1)
     std = self.softplus()(std) + 0.1
-    stoch = self.get_dist(mean, std).sample()
+    stoch = self.get_dist(mean, std).rsample()
     return [mean, std, stoch, deter]
 
 
@@ -292,7 +291,7 @@ class DreamerModel(TorchModelV2, nn.Module):
 
         self.encoder = ConvEncoder(self.depth)
         self.decoder = ConvDecoder(self.stoch_size + self.deter_size, depth=self.depth)
-        self.reward = DenseDecoder(self.stoch_size + self.deter_size, 1, 2, 400)
+        self.reward = DenseDecoder(self.stoch_size + self.deter_size, 1, 2, self.hidden_size)
         self.dynamics = RSSM(self.action_size, 32 * self.depth, stoch=self.stoch_size, deter=self.deter_size)
         self.actor = ActionDecoder(self.stoch_size + self.deter_size, self.action_size, 4, self.hidden_size)
         self.value = DenseDecoder(self.stoch_size + self.deter_size, 1, 3, self.hidden_size)
@@ -301,10 +300,11 @@ class DreamerModel(TorchModelV2, nn.Module):
         self.device = (torch.device("cuda")
               if torch.cuda.is_available() else torch.device("cpu"))
 
-    def policy(self, obs, state, explore):
+    def policy(self, obs, state, explore=True):
         if state is None:
           self.initial_state()
-
+        else:
+          self.state = state
         post = self.state[:4]
         action = self.state[4]
 
@@ -316,7 +316,7 @@ class DreamerModel(TorchModelV2, nn.Module):
         if explore:
           action = action_dist.sample()
         else:
-          action = action_dist.mode()
+          action = action_dist.mean
         logp = action_dist.log_prob(action)
 
         self.state = post + [action]
@@ -325,19 +325,21 @@ class DreamerModel(TorchModelV2, nn.Module):
     def imagine_ahead(self, state, horizon):
         start = []
         for s in state:
-          s = s.contiguous()
-          shpe = list(s.size())[2:]
-          start.append(s.view(-1, *shpe))
+          s = s.contiguous().detach()
+          shpe = [-1] + list(s.size())[2:]
+          start.append(s.view(*shpe))
 
-        policy = lambda state: self.actor(self.dynamics.get_feature(state).detach()).sample()
-        feature_fn = lambda prev: self.dynamics.img_step(prev, policy(prev))
+        def next_state(state):
+          feature = self.dynamics.get_feature(state).detach()
+          action = self.actor(feature).rsample()
+          next_state = self.dynamics.img_step(state, action)
+          return next_state
 
         last = start
         outputs = [[] for i in range(len(start))]
         for _ in range(horizon):
-          last = feature_fn(start)
+          last = next_state(last)
           [o.append(l) for l,o in zip(last, outputs)]
-
         outputs = [torch.stack(x, dim=0) for x in outputs] 
 
         imag_feat = self.dynamics.get_feature(outputs)
