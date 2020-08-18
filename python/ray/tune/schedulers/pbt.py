@@ -132,10 +132,10 @@ class PopulationBasedTraining(FIFOScheduler):
             to be too frequent.
         hyperparam_mutations (dict): Hyperparams to mutate. The format is
             as follows: for each key, either a list, function,
-            or tune.sample_from instance can be
-            provided. A list specifies an allowed set of categorical values.
-            A function or tune.sample_from instance specifies the distribution
-            of a continuous parameter.
+            or a tune search space object (tune.sample_from, tune.uniform,
+            etc.) can be provided. A list specifies an allowed set of
+            categorical values. A function or tune search space object
+            specifies the distribution of a continuous parameter.
             You must specify at least one of `hyperparam_mutations` or
             `custom_explore_fn`.
             Tune will use the search space provided by
@@ -202,7 +202,7 @@ class PopulationBasedTraining(FIFOScheduler):
             if not (isinstance(value,
                                (list, dict, sample_from)) or callable(value)):
                 raise TypeError("`hyperparam_mutation` values must be either "
-                                "a List, Dict, a tune.sample_from instance or "
+                                "a List, Dict, a tune search space object, or "
                                 "callable.")
 
         if not hyperparam_mutations and not custom_explore_fn:
@@ -263,8 +263,8 @@ class PopulationBasedTraining(FIFOScheduler):
         for attr in self._hyperparam_mutations.keys():
             if attr not in trial.config:
                 if log_once(attr + "-missing"):
-                    logger.info("Cannot find {} in config. Using search "
-                                "space provided by hyperparam_mutations.")
+                    logger.debug("Cannot find {} in config. Using search "
+                                 "space provided by hyperparam_mutations.")
                 self.fill_config(trial.config, attr,
                                  self._hyperparam_mutations[attr])
             # Make sure this attribute is added to CLI output.
