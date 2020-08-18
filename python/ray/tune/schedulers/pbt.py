@@ -9,9 +9,11 @@ import shutil
 from ray.tune.error import TuneError
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.logger import _SafeFallbackEncoder
+from ray.tune.sample import sample_from
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest.variant_generator import format_vars
 from ray.tune.trial import Trial, Checkpoint
+from ray.util import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +64,8 @@ def explore(config, mutations, resample_probability, custom_explore_fn):
                     len(distribution) - 1,
                     distribution.index(config[key]) + 1)]
         else:
+            if isinstance(distribution, sample_from):
+                distribution = distribution.func(None)
             if random.random() < resample_probability:
                 new_config[key] = distribution()
             elif random.random() > 0.5:
@@ -184,9 +188,11 @@ class PopulationBasedTraining(FIFOScheduler):
                  custom_explore_fn=None,
                  log_config=True):
         for value in hyperparam_mutations.values():
-            if not (isinstance(value, (list, dict)) or callable(value)):
+            if not (isinstance(value, (list, dict, sample_from)) or callable(
+                value)):
                 raise TypeError("`hyperparam_mutation` values must be either "
-                                "a List, Dict, or callable.")
+                                "a List, Dict, a tune.sample object or "
+                                "callable.")
 
         if not hyperparam_mutations and not custom_explore_fn:
             raise TuneError(
@@ -227,8 +233,32 @@ class PopulationBasedTraining(FIFOScheduler):
         self._num_checkpoints = 0
         self._num_perturbations = 0
 
+    def fill_config(self, config, attr, search_space):
+        # If attribute in hyperparam_mutations but not in config, add to config
+        if callable(search_space):
+            config[attr] = search_space()
+        elif isinstance(search_space, sample_from):
+            config[attr] = search_space.func(None)
+        elif isinstance(search_space, list):
+            config[attr] = random.choice(search_space)
+        elif isinstance(search_space, dict):
+            config[attr] = {}
+            for k, v in search_space:
+                self.fill_config(config[attr], k, v)
+
+
     def on_trial_add(self, trial_runner, trial):
         self._trial_state[trial] = PBTTrialState(trial)
+
+        for attr in self._hyperparam_mutations.keys():
+            if attr not in trial.config:
+                if log_once(attr+"-missing"):
+                    logger.info("Cannot find {} in config. Using search "
+                                "space provided by hyperparam_mutations.")
+                self.fill_config(trial.config, attr,
+                                 self._hyperparam_mutations[attr])
+            # Make sure this attribute is added to CLI output.
+            trial.evaluated_params[attr] = trial.config[attr]
 
     def on_trial_result(self, trial_runner, trial, result):
         if self._time_attr not in result or self._metric not in result:

@@ -37,6 +37,7 @@ def MockTrainingFunc(config, checkpoint_dir=None):
     iter = 0
     a = config["a"]
     b = config["b"]
+    c = config["c"]
 
     if checkpoint_dir:
         checkpoint_path = os.path.join(checkpoint_dir, "model.mock")
@@ -62,6 +63,36 @@ class MockParam(object):
         self._index += 1
         return val
 
+class PopulationBasedTrainingConfigTest(unittest.TestCase):
+    def setUp(self):
+        ray.init()
+
+    def tearDown(self):
+        ray.shutdown()
+
+    def testNoConfig(self):
+        scheduler = PopulationBasedTraining(
+            time_attr="training_iteration",
+            metric="mean_accuracy",
+            mode="max",
+            perturbation_interval=1,
+            hyperparam_mutations={"a": tune.uniform(0, 0.3)},
+            resample_probability=0,
+        )
+
+        tune.run(
+            MockTrainingFunc,
+            config={
+                #"a": tune.uniform(0, 0.3),
+                "b": 1,
+                "c": 1
+            },
+            fail_fast=True,
+            num_samples=4,
+            scheduler=scheduler,
+            name="testNoConfig",
+            stop={"training_iteration": 3}
+        )
 
 class PopulationBasedTrainingResumeTest(unittest.TestCase):
     def setUp(self):
