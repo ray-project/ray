@@ -153,10 +153,10 @@ class TestCuriosity(unittest.TestCase):
         config["model"]["use_lstm"] = True
         config["model"]["lstm_cell_size"] = 256
         config["model"]["lstm_use_prev_action_reward"] = True
-        config["model"]["max_seq_len"] = 20
+        config["model"]["max_seq_len"] = 100
 
         # config["evaluation_interval"] = 1
-        config["train_batch_size"] = 512
+        config["train_batch_size"] = 1024
         config["num_sgd_iter"] = 10
 
         config["num_gpus"] = 1
