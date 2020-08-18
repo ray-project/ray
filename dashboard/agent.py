@@ -36,6 +36,7 @@ class DashboardAgent(object):
                  redis_password=None,
                  temp_dir=None,
                  log_dir=None,
+                 metrics_export_port=None,
                  node_manager_port=None,
                  object_store_name=None,
                  raylet_name=None):
@@ -45,6 +46,7 @@ class DashboardAgent(object):
         self.redis_password = redis_password
         self.temp_dir = temp_dir
         self.log_dir = log_dir
+        self.metrics_export_port = metrics_export_port
         self.node_manager_port = node_manager_port
         self.object_store_name = object_store_name
         self.raylet_name = raylet_name
@@ -173,6 +175,11 @@ if __name__ == "__main__":
         type=str,
         help="The address to use for Redis.")
     parser.add_argument(
+        "--metrics-export-port",
+        required=True,
+        type=int,
+        help="The port to expose metrics through Prometheus.")
+    parser.add_argument(
         "--node-manager-port",
         required=True,
         type=int,
@@ -277,6 +284,7 @@ if __name__ == "__main__":
             redis_password=args.redis_password,
             temp_dir=temp_dir,
             log_dir=log_dir,
+            metrics_export_port=args.metrics_export_port,
             node_manager_port=args.node_manager_port,
             object_store_name=args.object_store_name,
             raylet_name=args.raylet_name)

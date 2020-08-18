@@ -74,6 +74,22 @@ class DashboardHead:
         while True:
             try:
                 nodes = await self._get_nodes()
+
+                # Get correct node info by state,
+                #   1. The node is ALIVE if any ALIVE node info
+                #      of the hostname exists.
+                #   2. The node is DEAD if all node info of the
+                #      hostname are DEAD.
+                hostname_to_node_info = {}
+                for node in nodes:
+                    hostname = node["nodeManagerAddress"]
+                    assert node["state"] in ["ALIVE", "DEAD"]
+                    choose = hostname_to_node_info.get(hostname)
+                    if choose is not None and choose["state"] == "ALIVE":
+                        continue
+                    hostname_to_node_info[hostname] = node
+                nodes = hostname_to_node_info.values()
+
                 self._gcs_rpc_error_counter = 0
                 node_ips = [node["nodeManagerAddress"] for node in nodes]
                 node_hostnames = [
@@ -83,13 +99,11 @@ class DashboardHead:
                 agents = dict(DataSource.agents)
                 for node in nodes:
                     node_ip = node["nodeManagerAddress"]
-                    if node_ip not in agents:
-                        key = "{}{}".format(
-                            dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX,
-                            node_ip)
-                        agent_port = await self.aioredis_client.get(key)
-                        if agent_port:
-                            agents[node_ip] = json.loads(agent_port)
+                    key = "{}{}".format(
+                        dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX, node_ip)
+                    agent_port = await self.aioredis_client.get(key)
+                    if agent_port:
+                        agents[node_ip] = json.loads(agent_port)
                 for ip in agents.keys() - set(node_ips):
                     agents.pop(ip, None)
 

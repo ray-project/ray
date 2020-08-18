@@ -19,7 +19,7 @@ class DataSource:
     # {actor id hex(str): actor table data(dict of ActorTableData
     # in gcs.proto)}
     actors = Dict()
-    # {ip address(str): dashboard agent grpc server port(int)}
+    # {ip address(str): dashboard agent [http port(int), grpc port(int)]}
     agents = Dict()
     # {ip address(str): gcs node info(dict of GcsNodeInfo in gcs.proto)}
     nodes = Dict()
