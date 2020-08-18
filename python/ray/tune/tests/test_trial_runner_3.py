@@ -384,8 +384,7 @@ class TrialRunnerTest3(unittest.TestCase):
         new_runner = TrialRunner(
             rerun_failed=True, resume=True, local_checkpoint_dir=tmpdir)
         assert len(new_runner.get_trials()) == 3
-        assert Trial.ERROR not in set(
-            t.status for t in new_runner.get_trials())
+        assert Trial.ERROR not in {t.status for t in new_runner.get_trials()}
         disable_error = False
         for t in new_runner.get_trials():
             if t.config.get("mock_error"):
