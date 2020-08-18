@@ -203,7 +203,7 @@ class Curiosity(Exploration):
                     F.one_hot(
                         torch.from_numpy(
                             sample_batch[SampleBatch.ACTIONS]).long(),
-                        num_classes=self.action_space.n)
+                        num_classes=self.action_space.n).float()
                 ],
                 dim=-1))
 
@@ -249,7 +249,7 @@ class Curiosity(Exploration):
                     phi.detach(),
                     F.one_hot(
                         train_batch[SampleBatch.ACTIONS].long(),
-                        num_classes=self.action_space.n)
+                        num_classes=self.action_space.n).float()
                 ],
                 dim=-1))
         forward_loss = torch.mean(0.5 * torch.sum(

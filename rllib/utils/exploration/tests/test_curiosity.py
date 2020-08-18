@@ -1,12 +1,31 @@
 import gym
 import gym_minigrid
+import numpy as np
 import ray
 import sys
 import unittest
 
 import ray.rllib.agents.ppo as ppo
 from ray.rllib.utils.test_utils import framework_iterator
+from ray.rllib.utils.numpy import one_hot
 from ray.tune import register_env
+
+
+class OneHotWrapper(gym.core.ObservationWrapper):
+    def __init__(self, env):
+        super().__init__(env)
+        self.observation_space = gym.spaces.Box(
+            # 11=objects; 6=colors; 3=states
+            0.0, 1.0, shape=(49 * (11 + 6 + 3), ), dtype=np.float32)
+
+    def observation(self, obs):
+        # One-hot the last dim into 11, 6, 3 one-hot vectors, then flatten.
+        objects = one_hot(obs[:, :, 0], depth=11)
+        colors = one_hot(obs[:, :, 1], depth=6)
+        states = one_hot(obs[:, :, 2], depth=3)
+        all_ = np.concatenate([objects, colors, states], -1)
+        ret = np.reshape(all_, (-1, ))
+        return ret
 
 
 def env_maker(config):
@@ -14,9 +33,10 @@ def env_maker(config):
     env = gym.make(name)
     # Convert discrete inputs (OBJECT_IDX, COLOR_IDX, STATE) to pixels
     # (otherwise, a Conv2D will not be able to learn anything).
-    env = gym_minigrid.wrappers.RGBImgPartialObsWrapper(env)
+    #env = gym_minigrid.wrappers.RGBImgPartialObsWrapper(env)
     # Only use image portion of observation (discard goal and direction).
     env = gym_minigrid.wrappers.ImgObsWrapper(env)
+    env = OneHotWrapper(env)
     return env
 
 
@@ -100,7 +120,7 @@ class TestCuriosity(unittest.TestCase):
             trainer.stop()
 
             self.assertTrue(rewards_wo == 0.0)
-            self.assertGreater(rewards_w, 0.15)
+            self.assertGreater(rewards_w, 0.1)
 
     def test_curiosity_on_4_room_partially_observable_pixels_domain(self):
         config = ppo.DEFAULT_CONFIG.copy()
@@ -108,7 +128,7 @@ class TestCuriosity(unittest.TestCase):
         config["env_config"] = {"name": "MiniGrid-DoorKey-5x5-v0"}
         config["num_envs_per_worker"] = 10
         config["horizon"] = 100  # Make it hard to reach goald just by chance.
-        config["model"]["conv_filters"] = CONV_FILTERS
+        #config["model"]["conv_filters"] = CONV_FILTERS
         config["model"]["use_lstm"] = True
         config["model"]["lstm_cell_size"] = 256
         config["model"]["lstm_use_prev_action_reward"] = True
@@ -124,7 +144,9 @@ class TestCuriosity(unittest.TestCase):
             # in the policy model.
             "eta": 0.05,
             "feature_net_config": {
-                "conv_filters": CONV_FILTERS,
+                "fcnet_hiddens": [256, 256],
+                "fcnet_activation": "relu",
+                #"conv_filters": CONV_FILTERS,
             },
             "sub_exploration": {
                 "type": "StochasticSampling",
