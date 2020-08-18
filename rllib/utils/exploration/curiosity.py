@@ -251,7 +251,7 @@ class Curiosity(Exploration):
         predicted_next_phi = self.model._curiosity_forward_fcnet(
             torch.cat(
                 [
-                    phi.detach(),
+                    phi,
                     F.one_hot(
                         train_batch[SampleBatch.ACTIONS].long(),
                         num_classes=self.action_space.n).float()
