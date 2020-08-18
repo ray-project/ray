@@ -37,6 +37,10 @@ class OneHotWrapper(gym.core.ObservationWrapper):
             self.init_x = self.agent_pos[0]
             self.init_y = self.agent_pos[1]
 
+        # Are we carrying the key?
+        if self.carrying is not None:
+            print("Carrying KEY!!")
+
         self.x_positions.append(self.agent_pos[0])
         self.y_positions.append(self.agent_pos[1])
 
@@ -44,6 +48,12 @@ class OneHotWrapper(gym.core.ObservationWrapper):
         objects = one_hot(obs[:, :, 0], depth=11)
         colors = one_hot(obs[:, :, 1], depth=6)
         states = one_hot(obs[:, :, 2], depth=3)
+        # Is the door we see open?
+        for x in range(7):
+            for y in range(7):
+                if objects[x, y, 4] == 1.0 and states[x, y, 0] == 1.0:
+                    print("Door OPEN!!")
+
         all_ = np.concatenate([objects, colors, states], -1)
         ret = np.reshape(all_, (-1, ))
         direction = one_hot(np.array(self.agent_dir), depth=4).astype(np.float32)
@@ -148,9 +158,11 @@ class TestCuriosity(unittest.TestCase):
     def test_curiosity_on_key_lock_partially_observable_domain(self):
         config = ppo.DEFAULT_CONFIG.copy()
         # config["env_config"] = {"name": "MiniGrid-FourRooms-v0"}
-        config["env_config"] = {"name": "MiniGrid-DoorKey-16x16-v0"}
+        config["env_config"] = {
+            "name": "MiniGrid-DoorKey-16x16-v0",
+        }
+        config["horizon"] = 200  # Make it hard to reach goal just by chance.
         config["num_envs_per_worker"] = 10
-        config["horizon"] = 100  # Make it hard to reach goal just by chance.
         #config["model"]["conv_filters"] = CONV_FILTERS
         config["model"]["use_lstm"] = True
         config["model"]["lstm_cell_size"] = 256
@@ -158,7 +170,7 @@ class TestCuriosity(unittest.TestCase):
         config["model"]["max_seq_len"] = 100
 
         # config["evaluation_interval"] = 1
-        config["train_batch_size"] = 1024
+        #config["train_batch_size"] = 1024
         config["num_sgd_iter"] = 10
 
         config["num_gpus"] = 1
@@ -167,7 +179,8 @@ class TestCuriosity(unittest.TestCase):
             "type": "Curiosity",
             # For the feature NN, use a non-LSTM conv2d net (same as the one
             # in the policy model.
-            "eta": 0.05,
+            "eta": 0.1,
+            "lr": 0.0001,
             "feature_net_config": {
                 "fcnet_hiddens": [256, 256],
                 "fcnet_activation": "relu",
