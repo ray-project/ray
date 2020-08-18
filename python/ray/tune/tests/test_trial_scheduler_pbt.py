@@ -37,7 +37,6 @@ def MockTrainingFunc(config, checkpoint_dir=None):
     iter = 0
     a = config["a"]
     b = config["b"]
-    c = config["c"]
 
     if checkpoint_dir:
         checkpoint_path = os.path.join(checkpoint_dir, "model.mock")
@@ -52,6 +51,7 @@ def MockTrainingFunc(config, checkpoint_dir=None):
                 pickle.dump((a, b, iter), fp)
         tune.report(mean_accuracy=(a - iter) * b)
 
+
 def MockTrainingFunc2(config):
     a = config["a"]
     b = config["b"]
@@ -59,7 +59,7 @@ def MockTrainingFunc2(config):
     c2 = config["c"]["c2"]
 
     while True:
-        tune.report(mean_accuracy=a*b*(c1+c2))
+        tune.report(mean_accuracy=a * b * (c1 + c2))
 
 
 class MockParam(object):
@@ -71,6 +71,7 @@ class MockParam(object):
         val = self._params[self._index % len(self._params)]
         self._index += 1
         return val
+
 
 class PopulationBasedTrainingConfigTest(unittest.TestCase):
     def setUp(self):
@@ -101,8 +102,8 @@ class PopulationBasedTrainingConfigTest(unittest.TestCase):
             num_samples=4,
             scheduler=scheduler,
             name="testNoConfig",
-            stop={"training_iteration": 3}
-        )
+            stop={"training_iteration": 3})
+
 
 class PopulationBasedTrainingResumeTest(unittest.TestCase):
     def setUp(self):

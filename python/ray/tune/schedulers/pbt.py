@@ -199,8 +199,8 @@ class PopulationBasedTraining(FIFOScheduler):
                  custom_explore_fn=None,
                  log_config=True):
         for value in hyperparam_mutations.values():
-            if not (isinstance(value, (list, dict, sample_from)) or callable(
-                value)):
+            if not (isinstance(value,
+                               (list, dict, sample_from)) or callable(value)):
                 raise TypeError("`hyperparam_mutation` values must be either "
                                 "a List, Dict, a tune.sample_from instance or "
                                 "callable.")
@@ -257,13 +257,12 @@ class PopulationBasedTraining(FIFOScheduler):
             for k, v in search_space.items():
                 self.fill_config(config[attr], k, v)
 
-
     def on_trial_add(self, trial_runner, trial):
         self._trial_state[trial] = PBTTrialState(trial)
 
         for attr in self._hyperparam_mutations.keys():
             if attr not in trial.config:
-                if log_once(attr+"-missing"):
+                if log_once(attr + "-missing"):
                     logger.info("Cannot find {} in config. Using search "
                                 "space provided by hyperparam_mutations.")
                 self.fill_config(trial.config, attr,
