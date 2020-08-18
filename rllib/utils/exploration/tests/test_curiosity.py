@@ -17,8 +17,21 @@ class OneHotWrapper(gym.core.ObservationWrapper):
         self.observation_space = gym.spaces.Box(
             # 11=objects; 6=colors; 3=states
             0.0, 1.0, shape=(49 * (11 + 6 + 3), ), dtype=np.float32)
+        self.x_positions = []
+        self.y_positions = []
 
     def observation(self, obs):
+        # Debug output: max-x/y positions to watch exploration progress.
+        if self.step_count == 0 and self.x_positions:
+            print("After reset: min-x/y={}/{} max-x/y={}/{}".format(
+                min(self.x_positions), min(self.y_positions),
+                max(self.x_positions), max(self.y_positions)))
+            self.x_positions = []
+            self.y_positions = []
+
+        self.x_positions.append(self.agent_pos[0])
+        self.y_positions.append(self.agent_pos[1])
+
         # One-hot the last dim into 11, 6, 3 one-hot vectors, then flatten.
         objects = one_hot(obs[:, :, 0], depth=11)
         colors = one_hot(obs[:, :, 1], depth=6)
@@ -125,14 +138,16 @@ class TestCuriosity(unittest.TestCase):
     def test_curiosity_on_key_lock_partially_observable_domain(self):
         config = ppo.DEFAULT_CONFIG.copy()
         # config["env_config"] = {"name": "MiniGrid-FourRooms-v0"}
-        config["env_config"] = {"name": "MiniGrid-DoorKey-8x8-v0"}
+        config["env_config"] = {"name": "MiniGrid-DoorKey-16x16-v0"}
         config["num_envs_per_worker"] = 10
         config["horizon"] = 100  # Make it hard to reach goal just by chance.
         #config["model"]["conv_filters"] = CONV_FILTERS
         config["model"]["use_lstm"] = True
         config["model"]["lstm_cell_size"] = 256
         config["model"]["lstm_use_prev_action_reward"] = True
+        config["model"]["max_seq_len"] = 20
 
+        # config["evaluation_interval"] = 1
         config["train_batch_size"] = 512
         config["num_sgd_iter"] = 10
 
