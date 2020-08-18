@@ -17,17 +17,24 @@ class OneHotWrapper(gym.core.ObservationWrapper):
         self.observation_space = gym.spaces.Box(
             # 11=objects; 6=colors; 3=states
             0.0, 1.0, shape=(49 * (11 + 6 + 3), ), dtype=np.float32)
+        self.init_x = None
+        self.init_y = None
         self.x_positions = []
         self.y_positions = []
 
     def observation(self, obs):
         # Debug output: max-x/y positions to watch exploration progress.
-        if self.step_count == 0 and self.x_positions:
-            print("After reset: min-x/y={}/{} max-x/y={}/{}".format(
-                min(self.x_positions), min(self.y_positions),
-                max(self.x_positions), max(self.y_positions)))
-            self.x_positions = []
-            self.y_positions = []
+        if self.step_count == 0:
+            if self.x_positions:
+                #max_x_diff = max(abs(np.array(self.x_positions) - self.init_x))
+                #max_y_diff = max(abs(np.array(self.y_positions) - self.init_y))
+                max_diff = max(np.sqrt((np.array(self.x_positions) - self.init_x) ** 2 + (
+                            np.array(self.y_positions) - self.init_y) ** 2))
+                print("After reset: max delta-x/y={}".format(max_diff))
+                self.x_positions = []
+                self.y_positions = []
+            self.init_x = self.agent_pos[0]
+            self.init_y = self.agent_pos[1]
 
         self.x_positions.append(self.agent_pos[0])
         self.y_positions.append(self.agent_pos[1])
@@ -60,7 +67,8 @@ CONV_FILTERS = [[16, [11, 11], 3], [32, [9, 9], 3], [64, [5, 5], 3]]
 class TestCuriosity(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init()
+        #TODO
+        ray.init(local_mode=True)
 
     @classmethod
     def tearDownClass(cls):
