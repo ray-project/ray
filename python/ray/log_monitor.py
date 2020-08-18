@@ -19,7 +19,7 @@ import ray.utils
 # entry/init points.
 logger = logging.getLogger(__name__)
 
-# First group is worker id. Second group is job id.
+# The groups are worker id, job id, and pid.
 JOB_LOG_PATTERN = re.compile(".*worker-([0-9a-f]{40})-(\d+)-(\d+)")
 
 
