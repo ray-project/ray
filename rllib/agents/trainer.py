@@ -372,7 +372,7 @@ COMMON_CONFIG: TrainerConfigDict = {
 
     # === Logger ===
     # Define logger-specific configuration to be used inside Logger
-    "logger_config": {}
+    "logger_config": {},
 
     # === Replay Settings ===
     # The number of contiguous environment steps to replay at once. This may
