@@ -123,7 +123,7 @@ class DMCEnv(core.Env):
                 low=0, high=255, shape=shape, dtype=np.uint8)
             if preprocess:
                 self._observation_space = spaces.Box(
-                low=-0.5, high=0.5, shape=shape, dtype=np.float32)
+                    low=-0.5, high=0.5, shape=shape, dtype=np.float32)
         else:
             self._observation_space = _spec_to_box(
                 self._env.observation_spec().values())
@@ -144,7 +144,7 @@ class DMCEnv(core.Env):
             if self._channels_first:
                 obs = obs.transpose(2, 0, 1).copy()
             if self.preprocess:
-                obs = obs/255.0 - 0.5
+                obs = obs / 255.0 - 0.5
         else:
             obs = _flatten_obs(time_step.observation)
         return obs

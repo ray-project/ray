@@ -104,6 +104,7 @@ def _import_mbmpo():
     from ray.rllib.agents import mbmpo
     return mbmpo.MBMPOTrainer
 
+
 def _import_dreamer():
     from ray.rllib.agents import dreamer
     return dreamer.DREAMERTrainer

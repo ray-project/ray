@@ -98,7 +98,7 @@ class TorchPolicy(Policy):
         """
         self.framework = "torch"
         super().__init__(observation_space, action_space, config)
-        if torch.cuda.is_available(): #and ray.get_gpu_ids(as_str=True):
+        if torch.cuda.is_available() and ray.get_gpu_ids(as_str=True):
             self.device = torch.device("cuda")
         else:
             self.device = torch.device("cpu")
@@ -386,7 +386,7 @@ class TorchPolicy(Policy):
                 grad_info["allreduce_latency"] += time.time() - start
 
         # Step the optimizer
-        for i,opt in enumerate(self._optimizers):
+        for i, opt in enumerate(self._optimizers):
             opt.step()
 
         grad_info["allreduce_latency"] /= len(self._optimizers)
