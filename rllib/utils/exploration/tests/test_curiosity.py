@@ -16,7 +16,8 @@ class OneHotWrapper(gym.core.ObservationWrapper):
         super().__init__(env)
         self.observation_space = gym.spaces.Box(
             # 11=objects; 6=colors; 3=states
-            0.0, 1.0, shape=(49 * (11 + 6 + 3), ), dtype=np.float32)
+            # +4: direction
+            0.0, 1.0, shape=(49 * (11 + 6 + 3) + 4, ), dtype=np.float32)
         self.init_x = None
         self.init_y = None
         self.x_positions = []
@@ -45,7 +46,8 @@ class OneHotWrapper(gym.core.ObservationWrapper):
         states = one_hot(obs[:, :, 2], depth=3)
         all_ = np.concatenate([objects, colors, states], -1)
         ret = np.reshape(all_, (-1, ))
-        return ret
+        direction = one_hot(np.array(self.agent_dir), depth=4).astype(np.float32)
+        return np.concatenate([ret, direction])
 
 
 def env_maker(config):
