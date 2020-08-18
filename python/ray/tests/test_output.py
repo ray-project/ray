@@ -53,15 +53,10 @@ def test_output():
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "_ray_instance":
-        # Since this code will run inside subprocess, we should
-        # manually mock the method. This will fix the issue
-        # https://github.com/ray-project/ray/pull/10162
-        original_method = ray.utils.get_shared_memory_bytes
-        ray.utils.get_shared_memory_bytes = lambda: 1000**3
-
-        ray.init(num_cpus=1)
+        # Set object store memory very low (30MB) so that it won't complain
+        # about low shm memory in Linux environment.
+        MB = 1000 * 2
+        ray.init(num_cpus=1, object_store_memory=(100000000))
         ray.shutdown()
-
-        ray.utils.get_shared_memory_bytes = original_method
     else:
         sys.exit(pytest.main(["-v", __file__]))
