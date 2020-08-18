@@ -192,8 +192,9 @@ void GcsPlacementGroupManager::HandleCreatePlacementGroup(
                 RAY_LOG(INFO) << "Finished registering placement group, "
                               << placement_group->DebugString();
               } else {
-                RAY_LOG(WARNING) << "Failed to register placement group, "
-                                 << placement_group->DebugString();
+                RAY_LOG(WARNING)
+                    << "Failed to register placement group, "
+                    << placement_group->DebugString() << ", cause: " << status.message();
               }
               GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
             });
@@ -260,10 +261,7 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
         // that the creation of placement group has failed.
         auto it = placement_group_to_register_callback_.find(placement_group_id);
         if (it != placement_group_to_register_callback_.end()) {
-          std::stringstream stream;
-          stream << "Placement group of id " << placement_group_id
-                 << " is removed before it is created";
-          it->second(Status::NotFound(stream.str()));
+          it->second(Status::NotFound("Placement group is removed before it is created"));
           placement_group_to_register_callback_.erase(it);
         }
         on_placement_group_removed(status);
