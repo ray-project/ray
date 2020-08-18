@@ -221,6 +221,31 @@ install_toolchains() {
   "${ROOT_DIR}"/install-toolchains.sh
 }
 
+install_kubebuilder() {
+  echo "installing kubebuilder for testing purposes"
+  version=1.0.8 # latest stable version
+  arch=amd64
+  case "${OSTYPE}" in
+    darwin*)
+      # download the release
+      curl -L -O "https://github.com/kubernetes-sigs/kubebuilder/releases/download/v${version}/kubebuilder_${version}_darwin_${arch}.tar.gz"
+      # extract the archive
+      tar -zxvf kubebuilder_${version}_darwin_${arch}.tar.gz
+      mv kubebuilder_${version}_darwin_${arch} kubebuilder && sudo mv kubebuilder /usr/local/
+      ;;
+    linux*)
+        # download the release
+      curl -L -O "https://github.com/kubernetes-sigs/kubebuilder/releases/download/v${version}/kubebuilder_${version}_linux_${arch}.tar.gz"
+      # extract the archive
+      tar -zxvf kubebuilder_${version}_linux_${arch}.tar.gz
+      mv kubebuilder_${version}_linux_${arch} kubebuilder && sudo mv kubebuilder /usr/local/
+      ;;
+    *) false;;
+  esac
+  # update your PATH to include /usr/local/kubebuilder/bin
+  export PATH=$PATH:/usr/local/kubebuilder/bin
+}
+
 install_dependencies() {
 
   install_bazel
@@ -228,6 +253,7 @@ install_dependencies() {
   install_toolchains
   install_nvm
   install_pip
+  install_kubebuilder # to enable testing with an in-memory k8s api-server
 
   if [ -n "${PYTHON-}" ] || [ "${LINT-}" = 1 ]; then
     install_miniconda

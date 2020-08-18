@@ -3,19 +3,20 @@ package controllers
 import (
 	"context"
 	"fmt"
-	mapset "github.com/deckarep/golang-set"
-	"github.com/go-logr/logr"
-	_ "k8s.io/api/apps/v1beta1"
 	rayiov1alpha1 "ray-operator/api/v1alpha1"
 	"ray-operator/controllers/common"
 	_ "ray-operator/controllers/common"
 	"ray-operator/controllers/utils"
 	"strings"
 
+	mapset "github.com/deckarep/golang-set"
+	"github.com/go-logr/logr"
+	_ "k8s.io/api/apps/v1beta1"
+
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -26,6 +27,9 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
+
+//K8sClient used to communicate the K8s API server
+var K8sClient client.Client
 
 var log = logf.Log.WithName("RayCluster-Controller")
 
@@ -127,11 +131,11 @@ func (r *RayClusterReconciler) Reconcile(request reconcile.Request) (reconcile.R
 			svcConf := common.DefaultServiceConfig(*instance, podName)
 			rayPodSvc := common.ServiceForPod(svcConf)
 			blockOwnerDeletion := true
-			ownerReference :=  metav1.OwnerReference{
-				APIVersion: instance.APIVersion,
-				Kind: instance.Kind,
-				Name: instance.Name,
-				UID: instance.UID,
+			ownerReference := metav1.OwnerReference{
+				APIVersion:         instance.APIVersion,
+				Kind:               instance.Kind,
+				Name:               instance.Name,
+				UID:                instance.UID,
 				BlockOwnerDeletion: &blockOwnerDeletion,
 			}
 			rayPodSvc.OwnerReferences = append(rayPodSvc.OwnerReferences, ownerReference)
