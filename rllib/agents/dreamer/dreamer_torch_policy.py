@@ -31,19 +31,15 @@ class DreamerLoss(object):
         log=False,
         optimizers=None):
 
-        model_optimizer = optimizers[0]
-        actor_optimizer = optimizers[1]
-        critic_optimizer = optimizers[2]
         self.model = model
-
         encoder_weights = list(model.encoder.parameters())
         decoder_weights = list(model.decoder.parameters())
         reward_weights = list(model.reward.parameters())
         dynamics_weights = list(model.dynamics.parameters())
         actor_weights = list(model.actor.parameters())
         critic_weights = list(model.value.parameters())
+        model_weights = encoder_weights + decoder_weights + reward_weights + dynamics_weights
 
-        model_modules = encoder_weights + decoder_weights + reward_weights + dynamics_weights
         self.horizon = imagine_horizon
         self.lambda_ = lambda_
         self.kl_coeff = kl_coeff
@@ -52,8 +48,6 @@ class DreamerLoss(object):
         self.free_nats = free_nats
 
         # PlaNET Model Loss
-        #a(torch.mean(obs))
-        #print(torch.mean(action))
         latent = model.encoder(obs)
         post, prior = model.dynamics.observe(latent, action)
         features = model.dynamics.get_feature(post)
@@ -61,12 +55,9 @@ class DreamerLoss(object):
         reward_pred = model.reward(features)
         self.image_loss = -torch.mean(image_pred.log_prob(obs)) 
         self.reward_loss = -torch.mean(reward_pred.log_prob(reward))
-
         prior_dist = model.dynamics.get_dist(prior[0], prior[1]) 
         post_dist = model.dynamics.get_dist(post[0], post[1])
-        
         div = torch.mean(torch.distributions.kl_divergence(post_dist, prior_dist).sum(dim=2))
-        print(div)
         self.div = torch.clamp(div, min=free_nats)
         self.model_loss = kl_coeff * self.div + self.reward_loss + self.image_loss
         
@@ -93,6 +84,7 @@ class DreamerLoss(object):
         val_pred = model.value(val_feat)
         self.critic_loss = -torch.mean(val_discount * val_pred.log_prob(target))
 
+        """
         model_optimizer.zero_grad()
         actor_optimizer.zero_grad()
         critic_optimizer.zero_grad()
@@ -108,6 +100,7 @@ class DreamerLoss(object):
         model_optimizer.step()
         actor_optimizer.step()
         critic_optimizer.step()
+        """
 
         # Logging purposes
         self.prior_ent = torch.mean(prior_dist.entropy()) 
@@ -212,8 +205,8 @@ def dreamer_stats(policy, train_batch):
             "post_ent": policy.loss_obj.post_ent,
             }
 
-    if "log" in train_batch:
-        stats_dict["log"] = policy.loss_obj.gif
+    if "log_gif" in train_batch:
+        stats_dict["log_gif"] = policy.loss_obj.gif
 
     return stats_dict
 

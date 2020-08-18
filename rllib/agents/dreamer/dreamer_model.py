@@ -10,7 +10,7 @@ if torch:
 
 # Encoder, part of PlaNET
 class ConvEncoder(nn.Module):
-  def __init__(self, depth=32, act=None, shape=[3, 64, 64]):
+  def __init__(self, depth: int = 32, act=None, shape=[3, 64, 64]):
     super().__init__()
     self.act = act
     if not act:

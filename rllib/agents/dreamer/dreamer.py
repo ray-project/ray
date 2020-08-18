@@ -84,14 +84,14 @@ DEFAULT_CONFIG = with_common_config({
 
 class EpisodicBuffer(object):
 
-  def __init__(self, max_length=1000, length=50):
+  def __init__(self, max_length: int = 1000, length: int =50):
     # Stores all episodes into a list: List[SampleBatchType]
     self.episodes = []
     self.max_length = max_length
     self.timesteps = 0
     self.length = length
 
-  def add(self, batch):
+  def add(self, batch: SampleBatchType):
     self.timesteps += batch.count
     # Delete State keys (TD model is RNN but Policy is not)
     episodes = batch.split_by_episode()
@@ -104,7 +104,7 @@ class EpisodicBuffer(object):
       # Drop oldest episodes
       self.episodes = self.episodes[delta:]
   
-  def preprocess_episode(self, episode):
+  def preprocess_episode(self, episode: SampleBatchType):
     # Batch format should be in the form of (s_t, a_(t-1), r_(t-1))
     # When t=0, the resetted obs is paired with action and reward of 0.
     obs = episode['obs']
@@ -146,49 +146,54 @@ def total_sampled_timesteps(worker):
     return worker.policy_map[DEFAULT_POLICY_ID].global_timestep
 
 
-# Similar to Dreamer Execution Plan
 def execution_plan(workers, config):
+    # Special Replay Buffer for Dreamer agent
     episode_buffer = EpisodicBuffer(length=config["batch_length"])
+
     local_worker = workers.local_worker()
 
+    # Prefill episode buffer with initial exploration (uniform sampling)
     while total_sampled_timesteps(local_worker) < config["prefill_timesteps"]:
         samples = local_worker.sample()
         episode_buffer.add(samples)
 
     batch_size = config["batch_size"]
     dreamer_train_iters = config["dreamer_train_iters"]
+    action_repeat = config["action_repeat"]
     
     def dreamer_iteration(itr):
 
-        def process(gif):
+        def postprocess_gif(gif: np.ndarray):
             gif = np.clip(255 * gif, 0, 255).astype(np.uint8)
             B,T,C,H,W = gif.shape  
             frames = gif.transpose((1, 2, 3, 0,4)).reshape((1,T,C,H,B*W))
             return frames
 
+        def policy_stats(fetches):
+            return fetches['default_policy']['learner_stats']
+
         for samples in itr:
-            import pdb; pdb.set_trace
+
             for n in range(dreamer_train_iters):
                 batch = episode_buffer.sample(batch_size)
                 if n == dreamer_train_iters -1:
-                    batch["log"] = True
+                    batch["log_gif"] = True
                 fetches = local_worker.learn_on_batch(batch)
 
-            if "log" in fetches['default_policy']['learner_stats']:
-                gif = fetches['default_policy']['learner_stats']['log']
-                fetches['default_policy']['learner_stats']['log'] = process(gif)
-
+            policy_fetches = policy_stats(fetches)
+            if "log_gif" in policy_fetches:
+                gif = policy_fetches['log_gif']
+                policy_fetches['log_gif'] = postprocess_gif(gif)
 
             # Logging
             metrics = _get_shared_metrics()
             metrics.info[LEARNER_INFO] = fetches
+            metrics.counters[STEPS_SAMPLED_COUNTER] = episode_buffer.timesteps*action_repeat
+
             res = collect_metrics(local_worker=local_worker)
             res["info"] = metrics.info
             res["info"].update(metrics.counters)
-            metrics.counters[STEPS_SAMPLED_COUNTER] = episode_buffer.timesteps*config["action_repeat"]
             res["timesteps_total"] = metrics.counters[STEPS_SAMPLED_COUNTER]
-            
-
             yield res
 
             episode_buffer.add(samples)
@@ -201,16 +206,17 @@ def execution_plan(workers, config):
 def get_policy_class(config):
     return DreamerTorchPolicy
 
-
 def validate_config(config):
     if config["framework"] != "torch":
         raise ValueError("Dreamer not supported in Tensorflow yet!")
     if config["batch_mode"] != "complete_episodes":
         raise ValueError("truncate_episodes not supported")
+    if config["num_workers"] != 0:
+        raise ValueError("Distributed Dreamer not supported yet!")
+    if config["clip_actions"]:
+        raise ValueError("Clipping is done inherently via policy tanh!")
     if config["action_repeat"] > 1:
         config["horizon"] = config["horizon"]/config["action_repeat"]
-
-
 
 DREAMERTrainer = build_trainer(
     name="Dreamer",
