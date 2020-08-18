@@ -283,14 +283,14 @@ def _configure_key_pair(config):
             "`KeyName` missing for worker nodes.")  # todo: err msg
         for instance_type in config["available_instance_types"]:
             cli_logger.doassert(
-                "KeyName" in config["available_instance_types"][instance_type],
+                "KeyName" in config["available_instance_types"][instance_type]["provider_options"],
                 "`KeyName` missing for {} node type.".format(instance_type)
             )
 
         assert "KeyName" in config["head_node"]
         assert "KeyName" in config["worker_nodes"]
         for instance_type in config["available_instance_types"]:
-            assert "KeyName" in config["available_instance_types"][instance_type]
+            assert "KeyName" in config["available_instance_types"][instance_type]["provider_options"]
         return config
     _set_config_info(keypair_src="default")
 
@@ -356,7 +356,7 @@ def _configure_key_pair(config):
     config["head_node"]["KeyName"] = key_name
     config["worker_nodes"]["KeyName"] = key_name
     for instance_type in config["available_instance_types"]:
-        config["available_instance_types"][instance_type]["KeyName"] = key_name
+        config["available_instance_types"][instance_type]["provider_options"]["KeyName"] = key_name
 
     return config
 
@@ -429,9 +429,9 @@ def _configure_subnet(config):
 
 
     for instance_type in config["available_instance_types"]:
-        if "SubnetIds" not in config["available_instance_types"][instance_type]:
+        if "SubnetIds" not in config["available_instance_types"][instance_type]["provider_options"]:
             _set_config_info(workers_subnet_src="default")
-            config["available_instance_types"][instance_type]["SubnetIds"] = subnet_ids
+            config["available_instance_types"][instance_type]["provider_options"]["SubnetIds"] = subnet_ids
             cli_logger.old_info(
                 logger, "_configure_subnet: "
                 "SubnetId not specified for workers,"
@@ -478,7 +478,7 @@ def _configure_security_group(config):
             workers_sg.group_name, workers_sg.id)
         config["worker_nodes"]["SecurityGroupIds"] = [workers_sg.id]
         for instance_type in config["available_instance_types"]:
-            config["available_instance_types"][instance_type]["SecurityGroupIds"] = [workers_sg.id]
+            config["available_instance_types"][instance_type]["provider_options"]["SecurityGroupIds"] = [workers_sg.id]
 
     return config
 
@@ -519,8 +519,8 @@ def _check_ami(config):
             region=region)
 
     for instance_type in config["available_instance_types"]:
-        if config["available_instance_types"][instance_type].get("ImageId", "").lower() == "latest_dlami":
-            config["available_instance_types"][instance_type]["ImageId"] = default_ami
+        if config["available_instance_types"][instance_type]["provider_options"].get("ImageId", "").lower() == "latest_dlami":
+            config["available_instance_types"][instance_type]["provider_options"]["ImageId"] = default_ami
             _set_config_info(workers_ami_src="dlami")
             cli_logger.old_info(
                 logger,
