@@ -56,7 +56,10 @@ python_grpc_compile(
 proto_library(
     name = "reporter_proto",
     srcs = ["reporter.proto"],
-    deps = [":common_proto"],
+    deps = [
+        ":common_proto",
+        "@io_opencensus_proto//opencensus/proto/metrics/v1:metrics_proto"
+    ],
 )
 
 cc_proto_library(
