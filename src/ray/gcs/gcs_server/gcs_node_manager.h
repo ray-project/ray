@@ -143,6 +143,14 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// Start node failure detector.
   void StartNodeFailureDetector();
 
+  // Update node realtime resources.
+  void UpdateNodeRealtimeResources(const ClientID &node_id,
+                                   const rpc::HeartbeatTableData &heartbeat);
+
+  /// Get cluster realtime resources.
+  const absl::flat_hash_map<ClientID, std::shared_ptr<ResourceSet>>
+      &GetClusterRealtimeResources() const;
+
  protected:
   class NodeFailureDetector {
    public:
@@ -239,6 +247,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
   /// Storage for GCS tables.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  /// Cluster realtime resources.
+  absl::flat_hash_map<ClientID, std::shared_ptr<ResourceSet>> cluster_realtime_resources_;
 };
 
 }  // namespace gcs

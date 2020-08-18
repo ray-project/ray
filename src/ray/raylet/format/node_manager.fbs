@@ -82,6 +82,12 @@ enum MessageType:int {
   SetResourceRequest,
   // Subscribe to Plasma updates
   SubscribePlasmaReady,
+  // Manually spill objects to external storage.
+  ForceSpillObjectsRequest,
+  ForceSpillObjectsReply,
+  // Manually restore objects from external storage.
+  ForceRestoreSpilledObjectsRequest,
+  ForceRestoreSpilledObjectsReply,
 }
 
 table TaskExecutionSpecification {
@@ -126,8 +132,9 @@ table ResourceIdSetInfos {
 // This struct is used to register a new worker with the raylet.
 // It is shipped as part of raylet_connect.
 table RegisterClientRequest {
-  // True if the client is a worker and false if the client is a driver.
-  is_worker: bool;
+  // Type of the worker.
+  // TODO(suquark): Use `WorkerType` in `common.proto`.
+  worker_type: int;
   // The ID of the worker or driver.
   worker_id: string;
   // The process ID of this worker.
@@ -291,4 +298,20 @@ table SetResourceRequest {
 table SubscribePlasmaReady {
   // ObjectID to wait for
   object_id: string;
+}
+
+table ForceSpillObjectsRequest {
+  // List of object IDs to be spilled to external storage.
+  object_ids: [string];
+}
+
+table ForceSpillObjectsReply {
+}
+
+table ForceRestoreSpilledObjectsRequest {
+  // List of object IDs to be restored from external storage.
+  object_ids: [string];
+}
+
+table ForceRestoreSpilledObjectsReply {
 }

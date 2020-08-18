@@ -3,8 +3,8 @@ import logging
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list, Experiment
 from ray.tune.analysis import ExperimentAnalysis
-from ray.tune.suggest import BasicVariantGenerator
-from ray.tune.suggest.suggestion import Searcher, SearchGenerator
+from ray.tune.suggest import BasicVariantGenerator, SearchGenerator
+from ray.tune.suggest.suggestion import Searcher
 from ray.tune.trial import Trial
 from ray.tune.trainable import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
@@ -190,7 +190,11 @@ def run(run_or_experiment,
             Ray will recover from the latest checkpoint if present.
             Setting to -1 will lead to infinite recovery retries.
             Setting to 0 will disable retries. Defaults to 3.
-        fail_fast (bool): Whether to fail upon the first error.
+        fail_fast (bool | str): Whether to fail upon the first error.
+            If fail_fast='raise' provided, Tune will automatically
+            raise the exception received by the Trainable. fail_fast='raise'
+            can easily leak resources and should be used with caution (it
+            is best used with `ray.init(local_mode=True)`).
         restore (str): Path to checkpoint. Only makes sense to set if
             running 1 trial. Defaults to None.
         search_alg (Searcher): Search algorithm for optimization.
@@ -264,10 +268,9 @@ def run(run_or_experiment,
 
     for i, exp in enumerate(experiments):
         if not isinstance(exp, Experiment):
-            run_identifier = Experiment.register_if_needed(exp)
             experiments[i] = Experiment(
                 name=name,
-                run=run_identifier,
+                run=exp,
                 stop=stop,
                 config=config,
                 resources_per_trial=resources_per_trial,
@@ -300,8 +303,11 @@ def run(run_or_experiment,
     if issubclass(type(search_alg), Searcher):
         search_alg = SearchGenerator(search_alg)
 
+    if not search_alg:
+        search_alg = BasicVariantGenerator()
+
     runner = TrialRunner(
-        search_alg=search_alg or BasicVariantGenerator(),
+        search_alg=search_alg,
         scheduler=scheduler or FIFOScheduler(),
         local_checkpoint_dir=experiments[0].checkpoint_dir,
         remote_checkpoint_dir=experiments[0].remote_checkpoint_dir,
@@ -315,8 +321,11 @@ def run(run_or_experiment,
         fail_fast=fail_fast,
         trial_executor=trial_executor)
 
-    for exp in experiments:
-        runner.add_experiment(exp)
+    if not runner.resumed:
+        for exp in experiments:
+            search_alg.add_configurations([exp])
+    else:
+        logger.info("TrialRunner resumed, ignoring new add_experiment.")
 
     if progress_reporter is None:
         if IS_NOTEBOOK:

@@ -120,13 +120,12 @@ class Experiment:
                  restore=None):
 
         config = config or {}
-
         if callable(run) and detect_checkpoint_function(run):
             if checkpoint_at_end:
-                raise ValueError(
-                    "'checkpoint_at_end' cannot be used with a "
-                    "checkpointable function. You can specify and register "
-                    "checkpoints within your trainable function.")
+                raise ValueError("'checkpoint_at_end' cannot be used with a "
+                                 "checkpointable function. You can specify "
+                                 "and register checkpoints within "
+                                 "your trainable function.")
             if checkpoint_freq:
                 raise ValueError(
                     "'checkpoint_freq' cannot be used with a "

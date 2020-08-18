@@ -188,7 +188,7 @@
                 "image": {
                     "type": "string",
                     "description": "the docker image name",
-                    "default": "tensorflow/tensorflow:1.5.0-py3"
+                    "default": "rayproject/ray:0.8.7"
                 },
                 "container_name": {
                     "type": "string",

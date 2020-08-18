@@ -74,7 +74,6 @@ cdef class Gauge(Metric):
             value = 5
             key1= "key1"
             key2 = "key2"
-s
             gauge.record(value, {"tagk1": key1, "tagk2": key2})
     """
     def __init__(self, name, description, unit, tag_keys):
