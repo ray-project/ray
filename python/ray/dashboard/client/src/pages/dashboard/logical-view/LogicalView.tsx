@@ -7,12 +7,19 @@ import {
 } from "@material-ui/core";
 import React, { useState } from "react";
 import { connect } from "react-redux";
-import { ActorInfo, isFullActorInfo, RayletInfoResponse } from "../../../api";
+import {
+  isFullActorInfo,
+  RayletActorInfo,
+  RayletInfoResponse,
+} from "../../../api";
 import { filterObj } from "../../../common/util";
 import { StoreState } from "../../../store";
-import ActorClassGroups from "./ActorClassGroups";
+import Actors from "./Actors";
 
-const actorMatchesSearch = (actor: ActorInfo, nameFilter: string): boolean => {
+const actorMatchesSearch = (
+  actor: RayletActorInfo,
+  nameFilter: string,
+): boolean => {
   // Performs a case insensitive search for the name filter string within the
   // actor and all of its nested subactors.
   const actorTitles = getNestedActorTitles(actor);
@@ -23,7 +30,7 @@ const actorMatchesSearch = (actor: ActorInfo, nameFilter: string): boolean => {
   return match !== undefined;
 };
 
-const getNestedActorTitles = (actor: ActorInfo): string[] => {
+const getNestedActorTitles = (actor: RayletActorInfo): string[] => {
   const actorTitle = actor.actorTitle;
   const titles: string[] = actorTitle ? [actorTitle] : [];
   if (!isFullActorInfo(actor)) {
@@ -55,8 +62,10 @@ const LogicalView: React.FC<LogicalViewProps> = ({ rayletInfo }) => {
   }
   let filteredActors = rayletInfo.actors;
   if (nameFilter !== "") {
-    filteredActors = filterObj(filteredActors, ([_, actor]: [any, ActorInfo]) =>
-      actorMatchesSearch(actor, nameFilter),
+    filteredActors = filterObj(
+      filteredActors,
+      ([_, actor]: [any, RayletActorInfo]) =>
+        actorMatchesSearch(actor, nameFilter),
     );
   }
 
@@ -78,7 +87,7 @@ const LogicalView: React.FC<LogicalViewProps> = ({ rayletInfo }) => {
               Search for an actor by name
             </FormHelperText>
           </FormControl>
-          <ActorClassGroups actors={Object.values(filteredActors)} />
+          <Actors actors={filteredActors} />
         </div>
       )}
     </div>

@@ -1,4 +1,5 @@
 import {
+  Collapse,
   createStyles,
   Theme,
   Typography,
@@ -7,7 +8,6 @@ import {
 } from "@material-ui/core";
 import React from "react";
 import {
-  ActorInfo,
   ActorState,
   checkProfilingStatus,
   CheckProfilingStatusResponse,
@@ -15,9 +15,11 @@ import {
   isFullActorInfo,
   launchKillActor,
   launchProfiling,
+  RayletActorInfo,
 } from "../../../api";
 import { sum } from "../../../common/util";
 import ActorDetailsPane from "./ActorDetailsPane";
+import Actors from "./Actors";
 
 const memoryDebuggingDocLink =
   "https://docs.ray.io/en/latest/memory-management.html#debugging-using-ray-memory";
@@ -29,7 +31,6 @@ const styles = (theme: Theme) =>
       borderWidth: 1,
       marginTop: theme.spacing(2),
       padding: theme.spacing(2),
-      width: "100%",
     },
     title: {
       color: theme.palette.text.secondary,
@@ -59,10 +60,11 @@ const styles = (theme: Theme) =>
   });
 
 type Props = {
-  actor: ActorInfo;
+  actor: RayletActorInfo;
 };
 
 type State = {
+  expanded: boolean;
   profiling: {
     [profilingId: string]: {
       startTime: number;
@@ -73,7 +75,12 @@ type State = {
 
 class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
   state: State = {
+    expanded: true,
     profiling: {},
+  };
+
+  setExpanded = (expanded: boolean) => () => {
+    this.setState({ expanded });
   };
 
   handleProfilingClick = (duration: number) => async () => {
@@ -118,7 +125,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
 
   render() {
     const { classes, actor } = this.props;
-    const { profiling } = this.state;
+    const { expanded, profiling } = this.state;
     const invalidStateType = isFullActorInfo(actor)
       ? undefined
       : actor.invalidStateType;
@@ -236,7 +243,20 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
         <Typography className={classes.title}>
           {isFullActorInfo(actor) ? (
             <React.Fragment>
-              Actor {actor.actorId} (Profile for
+              Actor {actor.actorId}{" "}
+              {Object.entries(actor.children).length > 0 && (
+                <React.Fragment>
+                  (
+                  <span
+                    className={classes.action}
+                    onClick={this.setExpanded(!expanded)}
+                  >
+                    {expanded ? "Collapse" : "Expand"}
+                  </span>
+                  )
+                </React.Fragment>
+              )}{" "}
+              (Profile for
               {[10, 30, 60].map((duration) => (
                 <React.Fragment>
                   {" "}
@@ -293,7 +313,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
         </Typography>
         <ActorDetailsPane
           actorDetails={information}
-          actorTitle={actor.actorTitle ?? ""}
+          actorTitle={actor.actorTitle}
           actorState={actor.state}
           invalidStateType={invalidStateType}
         />
@@ -302,6 +322,10 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
             {actorCustomDisplay.length > 0 && (
               <React.Fragment>{actorCustomDisplay}</React.Fragment>
             )}
+
+            <Collapse in={expanded}>
+              <Actors actors={actor.children} />
+            </Collapse>
           </React.Fragment>
         )}
       </div>
