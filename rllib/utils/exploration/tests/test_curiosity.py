@@ -159,7 +159,8 @@ class TestCuriosity(unittest.TestCase):
         config = ppo.DEFAULT_CONFIG.copy()
         # config["env_config"] = {"name": "MiniGrid-FourRooms-v0"}
         config["env_config"] = {
-            "name": "MiniGrid-DoorKey-16x16-v0",
+            #"name": "MiniGrid-DoorKey-16x16-v0",
+            "name": "MiniGrid-FourRooms-v0",
         }
         config["horizon"] = 200  # Make it hard to reach goal just by chance.
         config["num_envs_per_worker"] = 10
