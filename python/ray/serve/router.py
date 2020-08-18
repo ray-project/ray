@@ -93,7 +93,7 @@ class Router:
         # -- Queues -- #
 
         # endpoint_name -> request queue
-        # We use FIFO (right to left) ordering. The new items should be added
+        # We use FIFO (left to right) ordering. The new items should be added
         # using appendleft. Old items should be removed via pop().
         self.endpoint_queues: DefaultDict[deque[Query]] = defaultdict(deque)
         # backend_name -> worker replica tag queue
