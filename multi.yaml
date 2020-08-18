@@ -70,7 +70,7 @@ setup_commands:
     - bash Anaconda3-5.0.1-Linux-x86_64.sh -b -p $HOME/anaconda3 || true
     - echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.bashrc
     # Build Ray.
-    - git clone --single-branch --branch resource_demand_vector_plumbing https://github.com/wuisawesome/ray || true
+    - git clone --single-branch --branch multi-instance-custom-options https://github.com/wuisawesome/ray || true
     - ray/ci/travis/install-bazel.sh
     - cd ray/python/ray/dashboard/client; npm ci; npm run build
     - pip install boto3==1.4.8 cython==0.29.0 aiohttp grpcio psutil setproctitle
