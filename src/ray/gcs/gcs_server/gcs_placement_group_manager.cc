@@ -174,6 +174,32 @@ void GcsPlacementGroupManager::HandleCreatePlacementGroup(
       }));
 }
 
+void GcsPlacementGroupManager::HandleGetPlacementGroup(
+    const rpc::GetPlacementGroupRequest &request, rpc::GetPlacementGroupReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  PlacementGroupID placement_group_id =
+      PlacementGroupID::FromBinary(request.placement_group_id());
+  RAY_LOG(DEBUG) << "Getting placement group info, placement group id = "
+                 << placement_group_id;
+
+  auto on_done = [placement_group_id, reply, send_reply_callback](
+                     const Status &status,
+                     const boost::optional<PlacementGroupTableData> &result) {
+    if (result) {
+      reply->mutable_placement_group_table_data()->CopyFrom(*result);
+    }
+    RAY_LOG(DEBUG) << "Finished getting placement group info, placement group id = "
+                   << placement_group_id;
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  };
+
+  Status status =
+      gcs_table_storage_->PlacementGroupTable().Get(placement_group_id, on_done);
+  if (!status.ok()) {
+    on_done(status, boost::none);
+  }
+}
+
 void GcsPlacementGroupManager::RetryCreatingPlacementGroup() {
   execute_after(io_context_, [this] { SchedulePendingPlacementGroups(); },
                 RayConfig::instance().gcs_create_placement_group_retry_interval_ms());

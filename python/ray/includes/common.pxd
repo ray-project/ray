@@ -162,6 +162,7 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CWorkerType WORKER_TYPE_WORKER "ray::WorkerType::WORKER"
     cdef CWorkerType WORKER_TYPE_DRIVER "ray::WorkerType::DRIVER"
+    cdef CWorkerType WORKER_TYPE_IO_WORKER "ray::WorkerType::IO_WORKER"
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CTaskType TASK_TYPE_NORMAL_TASK "ray::TaskType::NORMAL_TASK"
@@ -173,6 +174,8 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         "ray::PlacementStrategy::PACK"
     cdef CPlacementStrategy PLACEMENT_STRATEGY_SPREAD \
         "ray::PlacementStrategy::SPREAD"
+    cdef CPlacementStrategy PLACEMENT_STRATEGY_STRICT_PACK \
+        "ray::PlacementStrategy::STRICT_PACK"
 
 cdef extern from "ray/common/task/scheduling_resources.h" nogil:
     cdef cppclass ResourceSet "ray::ResourceSet":
