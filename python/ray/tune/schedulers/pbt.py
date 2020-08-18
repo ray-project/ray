@@ -92,6 +92,20 @@ def make_experiment_tag(orig_tag, config, mutations):
     return "{}@perturbed[{}]".format(orig_tag, format_vars(resolved_vars))
 
 
+def fill_config(config, attr, search_space):
+    """Add attr to config by sampling from search_space."""
+    if callable(search_space):
+        config[attr] = search_space()
+    elif isinstance(search_space, sample_from):
+        config[attr] = search_space.func(None)
+    elif isinstance(search_space, list):
+        config[attr] = random.choice(search_space)
+    elif isinstance(search_space, dict):
+        config[attr] = {}
+        for k, v in search_space.items():
+            fill_config(config[attr], k, v)
+
+
 class PopulationBasedTraining(FIFOScheduler):
     """Implements the Population Based Training (PBT) algorithm.
 
@@ -244,19 +258,6 @@ class PopulationBasedTraining(FIFOScheduler):
         self._num_checkpoints = 0
         self._num_perturbations = 0
 
-    def fill_config(self, config, attr, search_space):
-        # If attribute in hyperparam_mutations but not in config, add to config
-        if callable(search_space):
-            config[attr] = search_space()
-        elif isinstance(search_space, sample_from):
-            config[attr] = search_space.func(None)
-        elif isinstance(search_space, list):
-            config[attr] = random.choice(search_space)
-        elif isinstance(search_space, dict):
-            config[attr] = {}
-            for k, v in search_space.items():
-                self.fill_config(config[attr], k, v)
-
     def on_trial_add(self, trial_runner, trial):
         self._trial_state[trial] = PBTTrialState(trial)
 
@@ -265,10 +266,12 @@ class PopulationBasedTraining(FIFOScheduler):
                 if log_once(attr + "-missing"):
                     logger.debug("Cannot find {} in config. Using search "
                                  "space provided by hyperparam_mutations.")
-                self.fill_config(trial.config, attr,
-                                 self._hyperparam_mutations[attr])
-            # Make sure this attribute is added to CLI output.
-            trial.evaluated_params[attr] = trial.config[attr]
+                # Add attr to trial's config by sampling search space from
+                # hyperparam_mutations.
+                fill_config(trial.config, attr,
+                            self._hyperparam_mutations[attr])
+                # Make sure this attribute is added to CLI output.
+                trial.evaluated_params[attr] = trial.config[attr]
 
     def on_trial_result(self, trial_runner, trial, result):
         if self._time_attr not in result or self._metric not in result:
