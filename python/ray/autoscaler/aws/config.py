@@ -356,7 +356,7 @@ def _configure_key_pair(config):
     config["head_node"]["KeyName"] = key_name
     config["worker_nodes"]["KeyName"] = key_name
     for instance_type in config["available_instance_types"]:
-        config["available_instance_types"]["KeyName"] = key_name
+        config["available_instance_types"][instance_type]["KeyName"] = key_name
 
     return config
 
@@ -436,6 +436,7 @@ def _configure_subnet(config):
                 logger, "_configure_subnet: "
                 "SubnetId not specified for workers,"
                 " using {}", subnet_descr)
+            print("Set subnet ids for ", instance_type)
         else:
             _set_config_info(workers_subnet_src="config")
 
