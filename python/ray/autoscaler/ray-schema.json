@@ -278,7 +278,10 @@
                        "resources": {
                            "type": "object",
                            ".*": {"type": "number"}
-                       }
+                       },
+                    "provider_options": {
+                        "type": "object",
+                        "description": "Provider-specific config for worker nodes. e.g. instance type."
                     },
                     "additionalProperties": false
                 }
@@ -286,4 +289,3 @@
             "additionalProperties": false
         }
     }
-}
