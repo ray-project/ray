@@ -79,11 +79,6 @@ def explore(config, mutations, resample_probability, custom_explore_fn):
         new_config = custom_explore_fn(new_config)
         assert new_config is not None, \
             "Custom explore fn failed to return new config"
-    # Only log mutated hyperparameters and not entire config.
-    old_hparams = {k: v for k, v in config.items() if k in mutations}
-    new_hparams = {k: v for k, v in new_config.items() if k in mutations}
-    logger.info("[explore] perturbed config from {} -> {}".format(
-        old_hparams, new_hparams))
     return new_config
 
 
@@ -397,6 +392,12 @@ class PopulationBasedTraining(FIFOScheduler):
                     "{} (score {}) -> {} (score {})".format(
                         trial_to_clone, new_state.last_score, trial,
                         trial_state.last_score))
+        # Only log mutated hyperparameters and not entire config.
+        old_hparams = {k: v for k, v in trial_to_clone.config.items() if k
+                       in self._hyperparam_mutations}
+        new_hparams = {k: v for k, v in new_config.items() if k in self._hyperparam_mutations}
+        logger.info("[explore] perturbed config from {} -> {}".format(
+            old_hparams, new_hparams))
 
         if self._log_config:
             self._log_config_on_step(trial_state, new_state, trial,
