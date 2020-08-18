@@ -53,7 +53,7 @@ def test_output():
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "_ray_instance":
-        # Set object store memory very low (30MB) so that it won't complain
+        # Set object store memory very low so that it won't complain
         # about low shm memory in Linux environment.
         MB = 1000 * 2
         ray.init(num_cpus=1, object_store_memory=(100000000))
