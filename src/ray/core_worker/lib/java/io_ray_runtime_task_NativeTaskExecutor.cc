@@ -13,7 +13,9 @@
 // limitations under the License.
 
 #include "io_ray_runtime_task_NativeTaskExecutor.h"
+
 #include <jni.h>
+
 #include "jni_utils.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"

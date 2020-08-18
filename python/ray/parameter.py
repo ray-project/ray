@@ -89,11 +89,15 @@ class RayParams:
         java_worker_options (list): The command options for Java worker.
         load_code_from_local: Whether load code from local file or from GCS.
         metrics_agent_port(int): The port to bind metrics agent.
+        metrics_export_port(int): The port at which metrics are exposed
+            through a Prometheus endpoint.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
         lru_evict (bool): Enable LRU eviction if space is needed.
         enable_object_reconstruction (bool): Enable plasma reconstruction on
             failure.
+        start_initial_python_workers_for_first_job (bool): If true, start
+            initial Python workers for the first job on the node.
     """
 
     def __init__(self,
@@ -136,10 +140,13 @@ class RayParams:
                  include_java=False,
                  java_worker_options=None,
                  load_code_from_local=False,
+                 start_initial_python_workers_for_first_job=False,
                  _internal_config=None,
                  enable_object_reconstruction=False,
                  metrics_agent_port=None,
-                 lru_evict=False):
+                 metrics_export_port=None,
+                 lru_evict=False,
+                 object_spilling_config=None):
         self.object_ref_seed = object_ref_seed
         self.redis_address = redis_address
         self.num_cpus = num_cpus
@@ -178,9 +185,13 @@ class RayParams:
         self.java_worker_options = java_worker_options
         self.load_code_from_local = load_code_from_local
         self.metrics_agent_port = metrics_agent_port
+        self.metrics_export_port = metrics_export_port
+        self.start_initial_python_workers_for_first_job = (
+            start_initial_python_workers_for_first_job)
         self._internal_config = _internal_config
         self._lru_evict = lru_evict
         self._enable_object_reconstruction = enable_object_reconstruction
+        self.object_spilling_config = object_spilling_config
         self._check_usage()
 
         # Set the internal config options for LRU eviction.

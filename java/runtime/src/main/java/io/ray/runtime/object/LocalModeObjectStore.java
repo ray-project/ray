@@ -2,6 +2,7 @@ package io.ray.runtime.object;
 
 import com.google.common.base.Preconditions;
 import io.ray.api.id.ObjectId;
+import io.ray.api.id.UniqueId;
 import io.ray.runtime.context.WorkerContext;
 import io.ray.runtime.generated.Common.Address;
 import java.util.ArrayList;
@@ -96,6 +97,14 @@ public class LocalModeObjectStore extends ObjectStore {
     for (ObjectId objectId : objectIds) {
       pool.remove(objectId);
     }
+  }
+
+  @Override
+  public void addLocalReference(UniqueId workerId, ObjectId objectId) {
+  }
+
+  @Override
+  public void removeLocalReference(UniqueId workerId, ObjectId objectId) {
   }
 
   @Override

@@ -23,6 +23,7 @@
 #include "ray/common/status.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
+#include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 using ray::ActorCheckpointID;
@@ -47,7 +48,7 @@ namespace ray {
 class PinObjectsInterface {
  public:
   /// Request to a raylet to pin a plasma object. The callback will be sent via gRPC.
-  virtual ray::Status PinObjectIDs(
+  virtual void PinObjectIDs(
       const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
       const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) = 0;
 
@@ -60,7 +61,7 @@ class WorkerLeaseInterface {
   /// Requests a worker from the raylet. The callback will be sent via gRPC.
   /// \param resource_spec Resources that should be allocated for the worker.
   /// \return ray::Status
-  virtual ray::Status RequestWorkerLease(
+  virtual void RequestWorkerLease(
       const ray::TaskSpecification &resource_spec,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback) = 0;
 
@@ -76,11 +77,11 @@ class WorkerLeaseInterface {
   /// \param workers_in_use Workers currently in use.
   /// \param callback Callback that will be called after raylet completes the release of
   /// unused workers. \return ray::Status
-  virtual ray::Status ReleaseUnusedWorkers(
+  virtual void ReleaseUnusedWorkers(
       const std::vector<WorkerID> &workers_in_use,
       const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) = 0;
 
-  virtual ray::Status CancelWorkerLease(
+  virtual void CancelWorkerLease(
       const TaskID &task_id,
       const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) = 0;
 
@@ -93,12 +94,12 @@ class ResourceReserveInterface {
   /// Requests a resource from the raylet. The callback will be sent via gRPC.
   /// \param resource_spec Resources that should be allocated for the worker.
   /// \return ray::Status
-  virtual ray::Status RequestResourceReserve(
+  virtual void RequestResourceReserve(
       const BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::RequestResourceReserveReply>
           &callback) = 0;
 
-  virtual ray::Status CancelResourceReserve(
+  virtual void CancelResourceReserve(
       BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback) = 0;
 
@@ -162,7 +163,7 @@ class RayletClient : public PinObjectsInterface,
   /// \param grpc_client gRPC client to the raylet.
   /// \param raylet_socket The name of the socket to use to connect to the raylet.
   /// \param worker_id A unique ID to represent the worker.
-  /// \param is_worker Whether this client is a worker. If it is a worker, an
+  /// \param worker_type The type of the worker. If it is a certain worker type, an
   /// additional message will be sent to register as one.
   /// \param job_id The ID of the driver. This is non-nil if the client is a driver.
   /// \param language Language of the worker.
@@ -175,9 +176,10 @@ class RayletClient : public PinObjectsInterface,
   RayletClient(boost::asio::io_service &io_service,
                std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
                const std::string &raylet_socket, const WorkerID &worker_id,
-               bool is_worker, const JobID &job_id, const Language &language,
+               rpc::WorkerType worker_type, const JobID &job_id, const Language &language,
                const std::string &ip_address, ClientID *raylet_id, int *port,
-               std::unordered_map<std::string, std::string> *internal_config);
+               std::unordered_map<std::string, std::string> *internal_config,
+               const std::string &job_config);
 
   /// Connect to the raylet via grpc only.
   ///
@@ -317,8 +319,18 @@ class RayletClient : public PinObjectsInterface,
   ray::Status SetResource(const std::string &resource_name, const double capacity,
                           const ray::ClientID &client_Id);
 
+  /// Spill objects to external storage.
+  /// \param object_ids The IDs of objects to be spilled.
+  /// \return ray::Status
+  ray::Status ForceSpillObjects(const std::vector<ObjectID> &object_ids);
+
+  /// Restore spilled objects from external storage.
+  /// \param object_ids The IDs of objects to be restored.
+  /// \return ray::Status
+  ray::Status ForceRestoreSpilledObjects(const std::vector<ObjectID> &object_ids);
+
   /// Implements WorkerLeaseInterface.
-  ray::Status RequestWorkerLease(
+  void RequestWorkerLease(
       const ray::TaskSpecification &resource_spec,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback)
       override;
@@ -328,31 +340,31 @@ class RayletClient : public PinObjectsInterface,
                            bool disconnect_worker) override;
 
   /// Implements WorkerLeaseInterface.
-  ray::Status ReleaseUnusedWorkers(
+  void ReleaseUnusedWorkers(
       const std::vector<WorkerID> &workers_in_use,
       const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) override;
 
-  ray::Status CancelWorkerLease(
+  void CancelWorkerLease(
       const TaskID &task_id,
       const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override;
 
   /// Implements ResourceReserveInterface.
-  ray::Status RequestResourceReserve(
+  void RequestResourceReserve(
       const BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::RequestResourceReserveReply> &callback)
       override;
 
   /// Implements ResourceReserveInterface.
-  ray::Status CancelResourceReserve(
+  void CancelResourceReserve(
       BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback)
       override;
 
-  ray::Status PinObjectIDs(
+  void PinObjectIDs(
       const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
       const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override;
 
-  ray::Status GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback);
+  void GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback);
 
   // Subscribe to receive notification on plasma object
   ray::Status SubscribeToPlasma(const ObjectID &object_id);
@@ -369,6 +381,8 @@ class RayletClient : public PinObjectsInterface,
   std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client_;
   const WorkerID worker_id_;
   const JobID job_id_;
+  const std::string job_config_;
+
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
   /// of that resource allocated for this worker.

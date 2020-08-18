@@ -62,7 +62,20 @@ class ActorInfoAccessor {
       const std::string &name,
       const OptionalItemCallback<rpc::ActorTableData> &callback) = 0;
 
-  /// Create an actor to GCS asynchronously.
+  /// Register actor to GCS asynchronously.
+  ///
+  /// \param task_spec The specification for the actor creation task.
+  /// \param callback Callback that will be called after the actor info is written to GCS.
+  /// \return Status
+  virtual Status AsyncRegisterActor(const TaskSpecification &task_spec,
+                                    const StatusCallback &callback) = 0;
+
+  /// Asynchronously request GCS to create the actor.
+  ///
+  /// This should be called after the worker has resolved the actor dependencies.
+  /// TODO(...): Currently this request will only reply after the actor is created.
+  /// We should change it to reply immediately after GCS has persisted the actor
+  /// dependencies in storage.
   ///
   /// \param task_spec The specification for the actor creation task.
   /// \param callback Callback that will be called after the actor info is written to GCS.
@@ -538,6 +551,9 @@ class NodeInfoAccessor {
       const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
       const StatusCallback &callback) = 0;
 
+  /// Resend heartbeat when GCS restarts from a failure.
+  virtual void AsyncReReportHeartbeat() = 0;
+
   /// Subscribe to the heartbeat of each node from GCS.
   ///
   /// \param subscribe Callback that will be called each time when heartbeat is updated.
@@ -721,9 +737,18 @@ class PlacementGroupInfoAccessor {
   ///
   /// \param placement_group_spec The specification for the placement group creation task.
   /// \param callback Callback that will be called after the placement group info is
-  /// written to GCS. \return Status
+  /// written to GCS.
+  /// \return Status.
   virtual Status AsyncCreatePlacementGroup(
       const PlacementGroupSpecification &placement_group_spec) = 0;
+
+  /// Get a placement group data from GCS asynchronously.
+  ///
+  /// \param placement_group_id The id of a placement group to obtain from GCS.
+  /// \return Status.
+  virtual Status AsyncGet(
+      const PlacementGroupID &placement_group_id,
+      const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) = 0;
 
  protected:
   PlacementGroupInfoAccessor() = default;

@@ -16,7 +16,6 @@
 #include "absl/memory/memory.h"
 #include "opencensus/stats/stats.h"
 #include "opencensus/tags/tag_key.h"
-
 #include "ray/stats/metric.h"
 #include "ray/stats/metric_exporter_client.h"
 #include "ray/util/logging.h"
@@ -57,8 +56,9 @@ class MetricExporter final : public opencensus::stats::StatsExporter::Handler {
   /// \param keys, metric tags map
   /// \param points, memory metric vector instance
   void ExportToPoints(const opencensus::stats::ViewData::DataMap<DTYPE> &view_data,
-                      const std::string &metric_name, std::vector<std::string> &keys,
-                      std::vector<MetricPoint> &points) {
+                      const opencensus::stats::MeasureDescriptor &measure_descriptor,
+                      std::vector<std::string> &keys, std::vector<MetricPoint> &points) {
+    const auto &metric_name = measure_descriptor.name();
     for (const auto &row : view_data) {
       std::unordered_map<std::string, std::string> tags;
       for (size_t i = 0; i < keys.size(); ++i) {
@@ -66,7 +66,7 @@ class MetricExporter final : public opencensus::stats::StatsExporter::Handler {
       }
       // Current timestamp is used for point not view data time.
       MetricPoint point{metric_name, current_sys_time_ms(),
-                        static_cast<double>(row.second), tags};
+                        static_cast<double>(row.second), tags, measure_descriptor};
       RAY_LOG(DEBUG) << "Metric name " << metric_name << ", value " << point.value;
       points.push_back(std::move(point));
       if (points.size() >= report_batch_size_) {

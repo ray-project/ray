@@ -117,10 +117,11 @@ def push_error_to_driver_through_redis(redis_client,
     # of through the raylet.
     error_data = ray.gcs_utils.construct_error_message(job_id, error_type,
                                                        message, time.time())
-    redis_client.execute_command(
-        "RAY.TABLE_APPEND", ray.gcs_utils.TablePrefix.Value("ERROR_INFO"),
-        ray.gcs_utils.TablePubsub.Value("ERROR_INFO_PUBSUB"), job_id.binary(),
-        error_data)
+    pubsub_msg = ray.gcs_utils.PubSubMessage()
+    pubsub_msg.id = job_id.hex()
+    pubsub_msg.data = error_data
+    redis_client.publish("ERROR_INFO:" + job_id.hex(),
+                         pubsub_msg.SerializeAsString())
 
 
 def is_cython(obj):
@@ -270,9 +271,9 @@ def get_cuda_visible_devices():
     """Get the device IDs in the CUDA_VISIBLE_DEVICES environment variable.
 
     Returns:
-        if CUDA_VISIBLE_DEVICES is set, this returns a list of integers with
-            the IDs of the GPUs. If it is not set or is set to NoDevFiles,
-            this returns None.
+        devices (List[str]): If CUDA_VISIBLE_DEVICES is set, returns a
+            list of strings representing the IDs of the visible GPUs.
+            If it is not set or is set to NoDevFiles, returns empty list.
     """
     gpu_ids_str = os.environ.get("CUDA_VISIBLE_DEVICES", None)
 
@@ -285,7 +286,8 @@ def get_cuda_visible_devices():
     if gpu_ids_str == "NoDevFiles":
         return []
 
-    return [int(i) for i in gpu_ids_str.split(",")]
+    # GPU identifiers are given as strings representing integers or UUIDs.
+    return list(gpu_ids_str.split(","))
 
 
 last_set_gpu_ids = None
@@ -295,7 +297,7 @@ def set_cuda_visible_devices(gpu_ids):
     """Set the CUDA_VISIBLE_DEVICES environment variable.
 
     Args:
-        gpu_ids: This is a list of integers representing GPU IDs.
+        gpu_ids (List[str]): List of strings representing GPU IDs.
     """
 
     global last_set_gpu_ids
@@ -390,16 +392,52 @@ def setup_logger(logging_level, logging_format):
     logger.propagate = False
 
 
-def open_log(path, **kwargs):
+class Unbuffered(object):
+    """There's no "built-in" solution to programatically disabling buffering of
+    text files. Ray expects stdout/err to be text files, so creating an
+    unbuffered binary file is unacceptable.
+
+    See
+    https://mail.python.org/pipermail/tutor/2003-November/026645.html.
+    https://docs.python.org/3/library/functions.html#open
+
+    """
+
+    def __init__(self, stream):
+        self.stream = stream
+
+    def write(self, data):
+        self.stream.write(data)
+        self.stream.flush()
+
+    def writelines(self, datas):
+        self.stream.writelines(datas)
+        self.stream.flush()
+
+    def __getattr__(self, attr):
+        return getattr(self.stream, attr)
+
+
+def open_log(path, unbuffered=False, **kwargs):
+    """
+    Opens the log file at `path`, with the provided kwargs being given to
+    `open`.
+    """
+    # Disable buffering, see test_advanced_3.py::test_logging_to_driver
     kwargs.setdefault("buffering", 1)
     kwargs.setdefault("mode", "a")
     kwargs.setdefault("encoding", "utf-8")
-    return open(path, **kwargs)
+    stream = open(path, **kwargs)
+    if unbuffered:
+        return Unbuffered(stream)
+    else:
+        return stream
 
 
 def create_and_init_new_worker_log(path, worker_pid):
-    """
-    Opens a path (or creates if necessary) for a log.
+    """Opens or creates and sets up a new worker log file. Note that because we
+    expect to dup the underlying file descriptor, then fdopen it, the python
+    level metadata is not important.
 
     Args:
         path (str): The name/path of the file to be opened.
@@ -407,6 +445,7 @@ def create_and_init_new_worker_log(path, worker_pid):
 
     Returns:
         A file-like object which can be written to.
+
     """
     # TODO (Alex): We should eventually be able to replace this with
     # named-pipes.

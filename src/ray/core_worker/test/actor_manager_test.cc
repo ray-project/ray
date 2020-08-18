@@ -18,7 +18,6 @@
 #include "gtest/gtest.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
-#include "ray/core_worker/actor_reporter.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/gcs/redis_accessor.h"
@@ -194,15 +193,13 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
   EXPECT_CALL(*direct_actor_submitter_, ConnectActor(_, _, _)).Times(1);
   rpc::ActorTableData actor_table_data;
   actor_table_data.set_actor_id(actor_id.Binary());
-  actor_table_data.set_state(
-      rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
+  actor_table_data.set_state(rpc::ActorTableData::ALIVE);
   actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data);
 
   // Now actor state is updated to DEAD. Make sure it is diconnected.
   EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _, _)).Times(1);
   actor_table_data.set_actor_id(actor_id.Binary());
-  actor_table_data.set_state(
-      rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
+  actor_table_data.set_state(rpc::ActorTableData::DEAD);
   actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data);
 }
 
@@ -248,8 +245,7 @@ TEST_F(ActorManagerTest, TestActorStateNotificationPending) {
   EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _, _)).Times(0);
   rpc::ActorTableData actor_table_data;
   actor_table_data.set_actor_id(actor_id.Binary());
-  actor_table_data.set_state(
-      rpc::ActorTableData_ActorState::ActorTableData_ActorState_PENDING);
+  actor_table_data.set_state(rpc::ActorTableData::PENDING_CREATION);
   ASSERT_TRUE(
       actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data));
 }
@@ -261,8 +257,7 @@ TEST_F(ActorManagerTest, TestActorStateNotificationRestarting) {
   EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _, _)).Times(1);
   rpc::ActorTableData actor_table_data;
   actor_table_data.set_actor_id(actor_id.Binary());
-  actor_table_data.set_state(
-      rpc::ActorTableData_ActorState::ActorTableData_ActorState_RESTARTING);
+  actor_table_data.set_state(rpc::ActorTableData::RESTARTING);
   ASSERT_TRUE(
       actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data));
 }
@@ -274,8 +269,7 @@ TEST_F(ActorManagerTest, TestActorStateNotificationDead) {
   EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _, _)).Times(1);
   rpc::ActorTableData actor_table_data;
   actor_table_data.set_actor_id(actor_id.Binary());
-  actor_table_data.set_state(
-      rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
+  actor_table_data.set_state(rpc::ActorTableData::DEAD);
   ASSERT_TRUE(
       actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data));
 }
@@ -287,8 +281,7 @@ TEST_F(ActorManagerTest, TestActorStateNotificationAlive) {
   EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _, _)).Times(0);
   rpc::ActorTableData actor_table_data;
   actor_table_data.set_actor_id(actor_id.Binary());
-  actor_table_data.set_state(
-      rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
+  actor_table_data.set_state(rpc::ActorTableData::ALIVE);
   ASSERT_TRUE(
       actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data));
 }

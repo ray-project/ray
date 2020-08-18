@@ -36,6 +36,7 @@ from ray.dashboard.metrics_exporter.client import Exporter
 from ray.dashboard.metrics_exporter.client import MetricsExportClient
 from ray.dashboard.node_stats import NodeStats
 from ray.dashboard.util import to_unix_time, measures_to_dict, format_resource
+from ray.metrics_agent import PrometheusServiceDiscoveryWriter
 
 try:
     from ray.tune import Analysis
@@ -75,8 +76,6 @@ class DashboardController(BaseDashboardController):
         if Analysis is not None:
             self.tune_stats = TuneCollector(2.0)
         self.memory_table = MemoryTable([])
-        self.v2_api_handler = Dashboardv2APIHandler(self.node_stats,
-                                                    self.raylet_stats)
 
     def _construct_raylet_info(self):
         D = self.raylet_stats.get_raylet_stats()
@@ -240,52 +239,6 @@ class DashboardController(BaseDashboardController):
         self.raylet_stats.start()
         if Analysis is not None:
             self.tune_stats.start()
-
-
-class Dashboardv2APIHandler:
-    def __init__(self, node_stats, raylet_stats):
-        self.raylet_stats = raylet_stats
-        self.node_stats = node_stats
-
-    @staticmethod
-    def api_response(data):
-        return aiohttp.web.json_response({
-            "result": True,
-            "msg": "Success",
-            "data": data,
-        })
-
-    @staticmethod
-    def api_error(msg, status):
-        return aiohttp.web.json_response(
-            {
-                "result": False,
-                "msg": msg
-            }, status=status)
-
-    def hostnames(self, req):
-        node_stats = self.node_stats.get_node_stats()
-        return self.api_response({
-            "hostnames": [
-                client["hostname"] for client in node_stats["clients"]
-            ]
-        })
-
-    def node_summaries(self, req):
-        node_stats = self.node_stats.get_node_stats()
-        return self.api_response({"summaries": list(node_stats["clients"])})
-
-    def node_details(self, req):
-        hostname = req.match_info.get("hostname")
-        if hostname is None:
-            return self.api_error(400, "Missing hostname")
-        node_stats = self.node_stats.get_node_stats()
-        for node in node_stats["clients"]:
-            if node["hostname"] == hostname:
-                node_obj = {"details": node}
-                return self.api_response(node_obj)
-        return self.api_error(
-            400, "Host not found for hostname {}".format(hostname))
 
 
 class DashboardRouteHandler(BaseDashboardRouteHandler):
@@ -541,6 +494,8 @@ class Dashboard:
         self.dashboard_id = str(uuid.uuid4())
         self.dashboard_controller = DashboardController(
             redis_address, redis_password)
+        self.service_discovery = PrometheusServiceDiscoveryWriter(
+            redis_address, redis_password, temp_dir)
 
         # Setting the environment variable RAY_DASHBOARD_DEV=1 disables some
         # security checks in the dashboard server to ease development while
@@ -577,19 +532,7 @@ class Dashboard:
             logs="/api/logs",
             errors="/api/errors",
             memory_table="/api/memory_table",
-            stop_memory_table="/api/stop_memory_table",
-        )
-        # Add v2 routes
-        self.app.router.add_get(
-            "/api/v2/hostnames",
-            self.dashboard_controller.v2_api_handler.hostnames)
-        self.app.router.add_get(
-            "/api/v2/nodes/{hostname}",
-            self.dashboard_controller.v2_api_handler.node_details)
-        self.app.router.add_get(
-            "/api/v2/nodes",
-            self.dashboard_controller.v2_api_handler.node_summaries)
-
+            stop_memory_table="/api/stop_memory_table")
         self.app.router.add_get("/{_}", route_handler.get_forbidden)
         self.app.router.add_post("/api/set_tune_experiment",
                                  route_handler.set_tune_experiment)
@@ -631,6 +574,7 @@ class Dashboard:
     def run(self):
         self.log_dashboard_url()
         self.dashboard_controller.start_collecting_metrics()
+        self.service_discovery.start()
         if self.metrics_export_address:
             self._start_exporting_metrics()
         aiohttp.web.run_app(self.app, host=self.host, port=self.port)

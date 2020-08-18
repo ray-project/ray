@@ -13,9 +13,6 @@
 // limitations under the License.
 #pragma once
 
-#include <queue>
-#include <tuple>
-
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
@@ -32,9 +29,6 @@ namespace gcs {
 
 using ReserveResourceClientFactoryFn =
     std::function<std::shared_ptr<ResourceReserveInterface>(const rpc::Address &address)>;
-
-using ReserveResourceCallback =
-    std::function<void(const Status &, const rpc::RequestResourceReserveReply &)>;
 
 typedef std::pair<PlacementGroupID, int64_t> BundleID;
 struct pair_hash {
@@ -60,24 +54,48 @@ class GcsPlacementGroupSchedulerInterface {
   virtual ~GcsPlacementGroupSchedulerInterface() {}
 };
 
+class ScheduleContext {
+ public:
+  ScheduleContext(std::shared_ptr<absl::flat_hash_map<ClientID, int64_t>> node_to_bundles,
+                  const GcsNodeManager &node_manager)
+      : node_to_bundles_(std::move(node_to_bundles)), node_manager_(node_manager) {}
+
+  // Key is node id, value is the number of bundles on the node.
+  std::shared_ptr<absl::flat_hash_map<ClientID, int64_t>> node_to_bundles_;
+
+  const GcsNodeManager &node_manager_;
+};
+
 class GcsScheduleStrategy {
  public:
   virtual ~GcsScheduleStrategy() {}
   virtual ScheduleMap Schedule(
       std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
-      const GcsNodeManager &node_manager) = 0;
+      const std::unique_ptr<ScheduleContext> &context) = 0;
 };
 
+/// The `GcsPackStrategy` is that pack all bundles in one node as much as possible.
+/// If one node does not have enough resources, we need to divide bundles to multiple
+/// nodes.
 class GcsPackStrategy : public GcsScheduleStrategy {
  public:
   ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
-                       const GcsNodeManager &node_manager) override;
+                       const std::unique_ptr<ScheduleContext> &context) override;
 };
 
+/// The `GcsSpreadStrategy` is that spread all bundles in different nodes.
 class GcsSpreadStrategy : public GcsScheduleStrategy {
  public:
   ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
-                       const GcsNodeManager &node_manager) override;
+                       const std::unique_ptr<ScheduleContext> &context) override;
+};
+
+/// The `GcsStrictPackStrategy` is that all bundles must be scheduled to one node. If one
+/// node does not have enough resources, it will fail to schedule.
+class GcsStrictPackStrategy : public GcsScheduleStrategy {
+ public:
+  ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
+                       const std::unique_ptr<ScheduleContext> &context) override;
 };
 
 /// GcsPlacementGroupScheduler is responsible for scheduling placement_groups registered
@@ -94,35 +112,42 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
       const GcsNodeManager &gcs_node_manager,
       ReserveResourceClientFactoryFn lease_client_factory = nullptr);
+
   virtual ~GcsPlacementGroupScheduler() = default;
+
   /// Schedule the specified placement_group.
   /// If there is no available nodes then the `schedule_failed_handler` will be
   /// triggered, otherwise the bundle in placement_group will be add into a queue and
   /// schedule all bundle by calling ReserveResourceFromNode().
   ///
   /// \param placement_group to be scheduled.
+  /// \param failure_callback This function is called if the schedule is failed.
+  /// \param success_callback This function is called if the schedule is successful.
   void Schedule(
       std::shared_ptr<GcsPlacementGroup> placement_group,
-      std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_failure_handler,
-      std::function<void(std::shared_ptr<GcsPlacementGroup>)> schedule_success_handler)
-      override;
+      std::function<void(std::shared_ptr<GcsPlacementGroup>)> failure_handler,
+      std::function<void(std::shared_ptr<GcsPlacementGroup>)> success_handler) override;
 
  protected:
   /// Lease resource from the specified node for the specified bundle.
-  void ReserveResourceFromNode(std::shared_ptr<BundleSpecification> bundle,
-                               std::shared_ptr<ray::rpc::GcsNodeInfo> node,
-                               ReserveResourceCallback callback);
+  void ReserveResourceFromNode(const std::shared_ptr<BundleSpecification> &bundle,
+                               const std::shared_ptr<ray::rpc::GcsNodeInfo> &node,
+                               const StatusCallback &callback);
 
   /// return resource for the specified node for the specified bundle.
   ///
   /// \param bundle A description of the bundle to return.
   /// \param node The node that the worker will be returned for.
-  void CancelResourceReserve(std::shared_ptr<BundleSpecification> bundle_spec,
-                             std::shared_ptr<ray::rpc::GcsNodeInfo> node);
+  void CancelResourceReserve(const std::shared_ptr<BundleSpecification> &bundle_spec,
+                             const std::shared_ptr<ray::rpc::GcsNodeInfo> &node);
 
   /// Get an existing lease client or connect a new one.
   std::shared_ptr<ResourceReserveInterface> GetOrConnectLeaseClient(
       const rpc::Address &raylet_address);
+
+  /// Generate schedule conetext.
+  std::unique_ptr<ScheduleContext> GetScheduleContext();
+
   /// A timer that ticks every cancel resource failure milliseconds.
   boost::asio::deadline_timer return_timer_;
   /// Used to update placement group information upon creation, deletion, etc.
@@ -140,6 +165,12 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// until we receive a reply or the node is removed.
   absl::flat_hash_map<ClientID, absl::flat_hash_set<BundleID>>
       node_to_bundles_when_leasing_;
+
+  /// Map from node ID to the set of bundles. This is needed so that we can reschedule
+  /// bundles when a node is dead.
+  absl::flat_hash_map<ClientID, std::vector<std::shared_ptr<BundleSpecification>>>
+      node_to_leased_bundles_;
+
   /// A vector to store all the schedule strategy.
   std::vector<std::shared_ptr<GcsScheduleStrategy>> scheduler_strategies_;
 };

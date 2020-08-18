@@ -1,13 +1,14 @@
 
 #pragma once
 
-#include <memory>
-
 #include <ray/api/generated/actor_funcs.generated.h>
 #include <ray/api/generated/create_funcs.generated.h>
 #include <ray/api/generated/funcs.generated.h>
 #include <ray/api/ray_runtime.h>
+
+#include <memory>
 #include <msgpack.hpp>
+
 #include "ray/core.h"
 namespace ray {
 namespace api {
@@ -38,6 +39,14 @@ class Ray {
   /// \return ObjectRef A reference to the object in the object store.
   template <typename T>
   static ObjectRef<T> Put(const T &obj);
+
+  /// Get a single object from the object store.
+  /// This method will be blocked until the object is ready.
+  ///
+  /// \param[in] object The object reference which should be returned.
+  /// \return shared pointer of the result.
+  template <typename T>
+  static std::shared_ptr<T> Get(const ObjectRef<T> &object);
 
   /// Get a list of objects from the object store.
   /// This method will be blocked until all the objects are ready.
@@ -76,10 +85,6 @@ class Ray {
   static RayRuntime *runtime_;
 
   static std::once_flag is_inited_;
-
-  /// Used by ObjectRef to implement .Get()
-  template <typename T>
-  static std::shared_ptr<T> Get(const ObjectRef<T> &object);
 
   template <typename ReturnType, typename FuncType, typename ExecFuncType,
             typename... ArgTypes>
@@ -228,13 +233,10 @@ inline ActorTaskCaller<ReturnType> Ray::CallActorInternal(FuncType &actor_func,
   return ActorTaskCaller<ReturnType>(runtime_, actor.ID(), ptr, buffer);
 }
 
-#include <ray/api/generated/exec_funcs.generated.h>
-
-#include <ray/api/generated/call_funcs_impl.generated.h>
-
-#include <ray/api/generated/create_actors_impl.generated.h>
-
 #include <ray/api/generated/call_actors_impl.generated.h>
+#include <ray/api/generated/call_funcs_impl.generated.h>
+#include <ray/api/generated/create_actors_impl.generated.h>
+#include <ray/api/generated/exec_funcs.generated.h>
 
 }  // namespace api
 }  // namespace ray

@@ -12,7 +12,10 @@
 namespace ray {
 namespace raylet {
 
-typedef std::tuple<Task, rpc::RequestWorkerLeaseReply *, rpc::SendReplyCallback> Work;
+/// Work represents all the information needed to make a scheduling decision.
+/// This includes the task, the information we need to communicate to
+/// dispatch/spillback and the callback to trigger it.
+typedef std::tuple<Task, rpc::RequestWorkerLeaseReply *, std::function<void(void)>> Work;
 
 typedef std::function<boost::optional<rpc::GcsNodeInfo>(const ClientID &node_id)>
     NodeInfoGetter;
@@ -61,14 +64,14 @@ class ClusterTaskManager {
   /// `worker_pool` state will be modified (idle workers will be popped) during
   /// dispatching.
   void DispatchScheduledTasksToWorkers(
-      WorkerPool &worker_pool,
-      std::unordered_map<WorkerID, std::shared_ptr<Worker>> &leased_workers);
+      WorkerPoolInterface &worker_pool,
+      std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers);
 
   /// (Step 1) Queue tasks for scheduling.
   /// \param fn: The function used during dispatching.
   /// \param task: The incoming task to schedule.
   void QueueTask(const Task &task, rpc::RequestWorkerLeaseReply *reply,
-                 rpc::SendReplyCallback send_reply_callback);
+                 std::function<void(void)>);
 
   /// Move tasks from waiting to ready for dispatch. Called when a task's
   /// dependencies are resolved.
@@ -96,14 +99,15 @@ class ClusterTaskManager {
   /// \return True if the work can be immediately dispatched.
   bool WaitForTaskArgsRequests(Work work);
 
-  void Dispatch(std::shared_ptr<Worker> worker,
-                std::unordered_map<WorkerID, std::shared_ptr<Worker>> &leased_workers_,
-                const TaskSpecification &task_spec, rpc::RequestWorkerLeaseReply *reply,
-                rpc::SendReplyCallback send_reply_callback);
+  void Dispatch(
+      std::shared_ptr<WorkerInterface> worker,
+      std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers_,
+      const TaskSpecification &task_spec, rpc::RequestWorkerLeaseReply *reply,
+      std::function<void(void)> send_reply_callback);
 
   void Spillback(ClientID spillback_to, std::string address, int port,
                  rpc::RequestWorkerLeaseReply *reply,
-                 rpc::SendReplyCallback send_reply_callback);
+                 std::function<void(void)> send_reply_callback);
 };
 }  // namespace raylet
 }  // namespace ray

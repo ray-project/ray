@@ -1,8 +1,12 @@
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_library_public")
 load("@com_github_checkstyle_java//checkstyle:checkstyle.bzl", "checkstyle_test")
+load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@bazel_common//tools/maven:pom_file.bzl", "pom_file")
 
 COPTS = ["-DRAY_USE_GLOG"] + select({
+    "//:opt": ["-DBAZEL_OPT"],
+    "//conditions:default": [],
+}) + select({
     "@bazel_tools//src/conditions:windows": [
         # TODO(mehrdadn): (How to) support dynamic linking?
         "-DRAY_STATIC",
@@ -125,7 +129,7 @@ def copy_to_workspace(name, srcs, dstdir = ""):
             dstdir = "." + ("/" + dstdir.replace("\\", "/")).rstrip("/") + "/",
         ),
         # Keep this batch script equivalent to the Bash script above (or take out the batch script)
-        cmd_bat = r"""
+        cmd_bat = """
             (
                 if not exist {dstdir} mkdir {dstdir}
             ) && (
@@ -139,4 +143,58 @@ def copy_to_workspace(name, srcs, dstdir = ""):
             dstdir = "." + ("\\" + dstdir.replace("/", "\\")).rstrip("\\") + "\\",
         ),
         local = 1,
+    )
+
+def native_java_binary(module_name, name, native_binary_name):
+    """Copy native binary file to different path based on operating systems"""
+    copy_file(
+        name = name + "_darwin",
+        src = native_binary_name,
+        out = module_name + "/src/main/resources/native/darwin/" + name,
+    )
+
+    copy_file(
+        name = name + "_linux",
+        src = native_binary_name,
+        out = module_name + "/src/main/resources/native/linux/" + name,
+    )
+
+    copy_file(
+        name = name + "_windows",
+        src = native_binary_name,
+        out = module_name + "/src/main/resources/native/windows/" + name,
+    )
+
+    native.filegroup(
+        name = name,
+        srcs = select({
+            "@bazel_tools//src/conditions:darwin": [name + "_darwin"],
+            "@bazel_tools//src/conditions:windows": [name + "_windows"],
+            "//conditions:default": [name + "_linux"],
+        }),
+        visibility = ["//visibility:public"],
+    )
+
+def native_java_library(module_name, name, native_library_name):
+    """Copy native library file to different path based on operating systems"""
+    copy_file(
+        name = name + "_darwin",
+        src = native_library_name,
+        out = module_name + "/src/main/resources/native/darwin/lib{}.dylib".format(name),
+    )
+
+    copy_file(
+        name = name + "_linux",
+        src = native_library_name,
+        out = module_name + "/src/main/resources/native/linux/lib{}.so".format(name),
+    )
+
+    native.filegroup(
+        name = name,
+        srcs = select({
+            "@bazel_tools//src/conditions:darwin": [name + "_darwin"],
+            "@bazel_tools//src/conditions:windows": [],
+            "//conditions:default": [name + "_linux"],
+        }),
+        visibility = ["//visibility:public"],
     )

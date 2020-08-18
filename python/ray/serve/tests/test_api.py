@@ -76,6 +76,18 @@ def test_no_route(serve_instance):
     assert result == 1
 
 
+def test_reject_duplicate_backend(serve_instance):
+    def f():
+        pass
+
+    def g():
+        pass
+
+    serve.create_backend("backend", f)
+    with pytest.raises(ValueError):
+        serve.create_backend("backend", g)
+
+
 def test_reject_duplicate_route(serve_instance):
     def f():
         pass
@@ -99,6 +111,22 @@ def test_reject_duplicate_endpoint(serve_instance):
     with pytest.raises(ValueError):
         serve.create_endpoint(
             endpoint_name, backend="backend", route="/different")
+
+
+def test_reject_duplicate_endpoint_and_route(serve_instance):
+    class SimpleBackend(object):
+        def __init__(self, message):
+            self.message = message
+
+        def __call__(self, *args, **kwargs):
+            return {"message": self.message}
+
+    serve.create_backend("backend1", SimpleBackend, "First")
+    serve.create_backend("backend2", SimpleBackend, "Second")
+
+    serve.create_endpoint("test", backend="backend1", route="/test")
+    with pytest.raises(ValueError):
+        serve.create_endpoint("test", backend="backend2", route="/test")
 
 
 def test_set_traffic_missing_data(serve_instance):
@@ -579,7 +607,7 @@ def test_shutdown(serve_instance):
                 pass
         return True
 
-    assert wait_for_condition(check_dead)
+    wait_for_condition(check_dead)
 
 
 def test_shadow_traffic(serve_instance):
@@ -622,7 +650,7 @@ def test_shadow_traffic(serve_instance):
             requests_to_backend("backend4") > 0,
         ])
 
-    assert wait_for_condition(check_requests)
+    wait_for_condition(check_requests)
 
 
 if __name__ == "__main__":

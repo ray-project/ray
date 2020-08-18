@@ -183,7 +183,11 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   // A one-word summary of the task func as a call site (e.g., __main__.foo).
   std::string CallSiteString() const;
 
+  // Lookup the resource shape that corresponds to the static key.
   static SchedulingClassDescriptor &GetSchedulingClassDescriptor(SchedulingClass id);
+
+  // Compute a static key that represents the given resource shape.
+  static SchedulingClass GetSchedulingClass(const ResourceSet &sched_cls);
 
  private:
   void ComputeResources();

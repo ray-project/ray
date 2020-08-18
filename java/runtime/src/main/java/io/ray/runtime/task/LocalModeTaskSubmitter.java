@@ -12,6 +12,8 @@ import io.ray.api.id.TaskId;
 import io.ray.api.id.UniqueId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
+import io.ray.api.placementgroup.PlacementGroup;
+import io.ray.api.placementgroup.PlacementStrategy;
 import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.actor.LocalModeActorHandle;
 import io.ray.runtime.context.LocalModeWorkerContext;
@@ -28,6 +30,7 @@ import io.ray.runtime.generated.Common.TaskSpec;
 import io.ray.runtime.generated.Common.TaskType;
 import io.ray.runtime.object.LocalModeObjectStore;
 import io.ray.runtime.object.NativeRayObject;
+import io.ray.runtime.placementgroup.PlacementGroupImpl;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -103,7 +106,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     // Check whether task arguments are ready.
     for (TaskArg arg : taskSpec.getArgsList()) {
       ByteString idByteString = arg.getObjectRef().getObjectId();
-      if (idByteString  != ByteString.EMPTY) {
+      if (idByteString != ByteString.EMPTY) {
         ObjectId id = new ObjectId(idByteString.toByteArray());
         if (!objectStore.isObjectReady(id)) {
           unreadyObjects.add(id);
@@ -175,9 +178,11 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
         = new LocalModeActorHandle(actorId, getReturnIds(taskSpec).get(0));
     actorHandles.put(actorId, actorHandle.copy());
     if (StringUtils.isNotBlank(options.name)) {
-      Preconditions.checkArgument(!namedActors.containsKey(options.name),
-          String.format("Actor of name %s exists", options.name));
-      namedActors.put(options.name, actorHandle);
+      String fullName = options.global ? options.name :
+          String.format("%s-%s", Ray.getRuntimeContext().getCurrentJobId(), options.name);
+      Preconditions.checkArgument(!namedActors.containsKey(fullName),
+          String.format("Actor of name %s exists", fullName));
+      namedActors.put(fullName, actorHandle);
     }
     return actorHandle;
   }
@@ -209,6 +214,12 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   }
 
   @Override
+  public PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
+      PlacementStrategy strategy) {
+    return new PlacementGroupImpl();
+  }
+
+  @Override
   public BaseActorHandle getActor(ActorId actorId) {
     return actorHandles.get(actorId).copy();
   }
@@ -216,11 +227,11 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   public Optional<BaseActorHandle> getActor(String name, boolean global) {
     String fullName = global ? name :
         String.format("%s-%s", Ray.getRuntimeContext().getCurrentJobId(), name);
-    if (namedActors.containsKey(fullName)) {
-      return Optional.of(namedActors.get(fullName));
-    } else {
+    ActorHandle actorHandle = namedActors.get(fullName);
+    if (null == actorHandle) {
       return Optional.empty();
     }
+    return Optional.of(actorHandle);
   }
 
   public void shutdown() {
@@ -312,8 +323,9 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
         ? ((LocalModeTaskExecutor.LocalActorContext) actorContext).getWorkerId()
         : UniqueId.randomId();
     ((LocalModeWorkerContext) runtime.getWorkerContext()).setCurrentWorkerId(workerId);
-    List<NativeRayObject> returnObjects = taskExecutor
-        .execute(getJavaFunctionDescriptor(taskSpec).toList(), args);
+    List<String> rayFunctionInfo = getJavaFunctionDescriptor(taskSpec).toList();
+    taskExecutor.checkByteBufferArguments(rayFunctionInfo);
+    List<NativeRayObject> returnObjects = taskExecutor.execute(rayFunctionInfo, args);
     if (taskSpec.getType() == TaskType.ACTOR_CREATION_TASK) {
       // Update actor context map ASAP in case objectStore.putRaw triggered the next actor task
       // on this actor.
