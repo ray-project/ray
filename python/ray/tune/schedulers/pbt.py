@@ -13,7 +13,6 @@ from ray.tune.sample import sample_from
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest.variant_generator import format_vars
 from ray.tune.trial import Trial, Checkpoint
-from ray.util import log_once
 
 from ray.util.debug import log_once
 
@@ -81,8 +80,8 @@ def explore(config, mutations, resample_probability, custom_explore_fn):
         assert new_config is not None, \
             "Custom explore fn failed to return new config"
     # Only log mutated hyperparameters and not entire config.
-    old_hparams = {k:v for k, v in config.items() if k in mutations}
-    new_hparams = {k:v for k, v in new_config.items() if k in mutations}
+    old_hparams = {k: v for k, v in config.items() if k in mutations}
+    new_hparams = {k: v for k, v in new_config.items() if k in mutations}
     logger.info("[explore] perturbed config from {} -> {}".format(
         old_hparams, new_hparams))
     return new_config
