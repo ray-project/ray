@@ -15,7 +15,12 @@ public enum PlacementStrategy {
   /**
    * Packs Bundles into one node. The group is not allowed to span multiple nodes.
    */
-  STRICT_PACK(2);
+  STRICT_PACK(2),
+  /**
+   * Places Bundles across distinct nodes.
+   * The group is not allowed to deploy more than one bundle on a node.
+   */
+  STRICT_SPREAD(3);
 
   private int value = 0;
 
