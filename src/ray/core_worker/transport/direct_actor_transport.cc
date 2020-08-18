@@ -130,6 +130,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   if (num_restarts <= queue->second.num_restarts) {
     // This message is about an old version of the actor and the actor has
     // already restarted since then. Skip the connection.
+    RAY_LOG(INFO) << "Ignoring connection of old version actors, actorId=" << actor_id;
     return;
   }
 
