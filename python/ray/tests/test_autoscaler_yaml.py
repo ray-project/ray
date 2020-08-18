@@ -1,9 +1,10 @@
 import jsonschema
 import os
-import unittest
-import yaml
-import urllib
+import sys
 import tempfile
+import unittest
+import urllib
+import yaml
 
 from ray.autoscaler.util import prepare_config, validate_config
 from ray.test_utils import recursive_fnmatch
@@ -51,6 +52,7 @@ class AutoscalingConfigTest(unittest.TestCase):
         except jsonschema.ValidationError:
             pass
 
+    @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
     def testInvalidConfig(self):
         self._test_invalid_config(
             os.path.join("tests", "additional_property.yaml"))

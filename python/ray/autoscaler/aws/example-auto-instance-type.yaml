@@ -17,10 +17,10 @@ available_instance_types:
         resources: {"CPU": 4}
         max_workers: 10
     m4.4xlarge:
-        resources: {"CPU": 16}
+        resources: {"CPU": 16, "Custom1": 1}
         max_workers: 10
     p2.xlarge:
-        resources: {"CPU": 4, "GPU": 1}
+        resources: {"CPU": 4, "GPU": 1, "Custom2": 2}
         max_workers: 4
     p2.8xlarge:
         resources: {"CPU": 32, "GPU": 8}
