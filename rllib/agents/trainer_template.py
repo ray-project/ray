@@ -1,4 +1,3 @@
-from jsonschema import Draft7Validator
 import logging
 from typing import Callable, Iterable, List, Optional, Type, Union
 
@@ -38,7 +37,6 @@ def build_trainer(
         name: str,
         *,
         default_config: TrainerConfigDict = None,
-        config_schema: Optional[dict] = None,
         validate_config: Callable[[TrainerConfigDict], None] = None,
         default_policy: Optional[Type[Policy]] = None,
         get_policy_class: Optional[Callable[
@@ -61,8 +59,6 @@ def build_trainer(
         name (str): name of the trainer (e.g., "PPO")
         default_config (TrainerConfigDict): The default config dict
             of the algorithm, otherwise uses the Trainer default config.
-        config_schema (Optional[dict]): An optional json schema dict to verify
-            the user provided (and default) config dict.
         validate_config (Optional[callable]): Optional callable that takes the
             config to check for correctness. It may mutate the config as
             needed.
@@ -109,9 +105,6 @@ def build_trainer(
         def _init(self,
                   config: TrainerConfigDict,
                   env_creator: Callable[[EnvConfigDict], EnvType]):
-            # Validate config via jsonschema, if one was provided.
-            if config_schema:
-                Draft7Validator(config_schema).validate(config)
             # Validate config via custom validation function.
             if validate_config:
                 validate_config(config)

@@ -1,7 +1,6 @@
 from datetime import datetime
 import numpy as np
 import copy
-from jsonschema import validators, Draft7Validator
 import logging
 import math
 import os

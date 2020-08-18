@@ -16,7 +16,6 @@ from typing import Optional, Type
 
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
-from ray.rllib.agents.pg.config_schema import pg_config_schema
 from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
 from ray.rllib.agents.pg.pg_torch_policy import PGTorchPolicy
 from ray.rllib.policy.policy import Policy
@@ -56,7 +55,6 @@ def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
 PGTrainer = build_trainer(
     name="PG",
     default_config=DEFAULT_CONFIG,
-    config_schema=pg_config_schema,
     default_policy=PGTFPolicy,
     get_policy_class=get_policy_class,
 )
