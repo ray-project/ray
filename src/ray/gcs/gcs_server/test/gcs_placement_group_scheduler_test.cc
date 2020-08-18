@@ -306,7 +306,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictPackStrategyResourceCheck) {
   auto node1 = Mocker::GenNodeInfo(1);
   AddNode(node1, 1);
   auto create_placement_group_request2 =
-      Mocker::GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::PACK);
+      Mocker::GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::STRICT_PACK);
   auto placement_group2 =
       std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request2);
   gcs_placement_group_scheduler_->Schedule(placement_group2, failure_handler,
