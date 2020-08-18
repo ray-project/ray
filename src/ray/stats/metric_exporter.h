@@ -13,9 +13,11 @@
 // limitations under the License.
 
 #pragma once
+#include <boost/asio.hpp>
 #include "absl/memory/memory.h"
 #include "opencensus/stats/stats.h"
 #include "opencensus/tags/tag_key.h"
+#include "ray/rpc/client_call.h"
 #include "ray/stats/metric.h"
 #include "ray/stats/metric_exporter_client.h"
 #include "ray/util/logging.h"
@@ -84,6 +86,30 @@ class MetricPointExporter final : public opencensus::stats::StatsExporter::Handl
   /// Auto max minbatch size for reporting metrics to external components.
   static constexpr size_t kDefaultBatchSize = 100;
   size_t report_batch_size_;
+};
+
+class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::Handler {
+ public:
+  OpenCensusProtoExporter(const int port, boost::asio::io_service &io_service,
+                          const std::string address);
+
+  ~OpenCensusProtoExporter() = default;
+
+  static void Register(const int port, boost::asio::io_service &io_service,
+                       const std::string address) {
+    opencensus::stats::StatsExporter::RegisterPushHandler(
+        absl::make_unique<OpenCensusProtoExporter>(port, io_service, address));
+  }
+
+  void ExportViewData(
+      const std::vector<std::pair<opencensus::stats::ViewDescriptor,
+                                  opencensus::stats::ViewData>> &data) override;
+
+ private:
+  /// Client to call a metrics agent gRPC server.
+  std::unique_ptr<rpc::MetricsAgentClient> client_;
+  /// Call Manager for gRPC client.
+  rpc::ClientCallManager client_call_manager_;
 };
 
 }  // namespace stats
