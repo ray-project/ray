@@ -260,8 +260,6 @@ class Curiosity(Exploration):
         forward_loss = torch.mean(0.5 * torch.sum(
             torch.pow(predicted_next_phi - next_phi, 2.0), dim=-1))
 
-        print("inverse-loss={} forward-loss={}".format(inverse_loss, forward_loss))
-
         # Append our loss to the policy loss(es).
         return policy_loss + [
             (1.0 - self.beta) * inverse_loss + self.beta * forward_loss

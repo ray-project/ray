@@ -27,10 +27,10 @@ class OneHotWrapper(gym.core.ObservationWrapper):
         # Debug output: max-x/y positions to watch exploration progress.
         if self.step_count == 0:
             if self.x_positions:
-                max_diff = max(
-                    np.sqrt((np.array(self.x_positions) - self.init_x) ** 2 + (
-                            np.array(self.y_positions) - self.init_y) ** 2))
-                print("After reset: max delta-x/y={}".format(max_diff))
+                # max_diff = max(
+                #   np.sqrt((np.array(self.x_positions) - self.init_x) ** 2 + (
+                #            np.array(self.y_positions) - self.init_y) ** 2))
+                # print("After reset: max delta-x/y={}".format(max_diff))
                 self.x_positions = []
                 self.y_positions = []
             self.init_x = self.agent_pos[0]
