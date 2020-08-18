@@ -54,7 +54,8 @@ class NodeLauncher(threading.Thread):
             config, count, instance_type, instance_config = self.queue.get()
             self.log("Got {} nodes to launch.".format(count))
             try:
-                self._launch_node(config, count, instance_type, instance_config)
+                self._launch_node(config, count, instance_type,
+                                  instance_config)
             except Exception:
                 logger.exception("Launch failed")
             finally:
