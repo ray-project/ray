@@ -331,7 +331,7 @@ class RayServeWorker:
                 get_call_method = attrgetter("call_method")
                 sorted_batch = sorted(batch, key=get_call_method)
                 for _, group in groupby(sorted_batch, key=get_call_method):
-                    group = sorted(group)
+                    group = list(group)
                     evaluated = asyncio.ensure_future(self.invoke_batch(group))
                     all_evaluated_futures.append(evaluated)
                     result_futures = [q.async_future for q in group]

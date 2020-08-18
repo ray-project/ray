@@ -66,7 +66,7 @@ Ray programs can run on a single machine, and can also seamlessly scale to large
 
 ``ray submit [CLUSTER.YAML] example.py --start``
 
-Read more about `launching clusters <https://docs.ray.io/en/latest/autoscaling.html>`_.
+Read more about `launching clusters <https://docs.ray.io/en/latest/cluster/index.html>`_.
 
 Tune Quick Start
 ----------------

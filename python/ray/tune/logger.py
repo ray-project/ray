@@ -78,9 +78,12 @@ class MLFLowLogger(Logger):
     """
 
     def _init(self):
+        logger_config = self.config.get("logger_config", {})
         from mlflow.tracking import MlflowClient
-        client = MlflowClient()
-        run = client.create_run(self.config.get("mlflow_experiment_id"))
+        client = MlflowClient(
+            tracking_uri=logger_config.get("mlflow_tracking_uri"),
+            registry_uri=logger_config.get("mlflow_registry_uri"))
+        run = client.create_run(logger_config.get("mlflow_experiment_id"))
         self._run_id = run.info.run_id
         for key, value in self.config.items():
             client.log_param(self._run_id, key, value)

@@ -105,6 +105,10 @@ struct CoreWorkerOptions {
   /// runtime. This is required to free distributed references that may otherwise
   /// be held up in garbage objects.
   std::function<void()> gc_collect;
+  /// Application-language callback to spill objects to external storage.
+  std::function<std::vector<std::string>(const std::vector<ObjectID> &)> spill_objects;
+  /// Application-language callback to restore objects from external storage.
+  std::function<void(const std::vector<std::string> &)> restore_spilled_objects;
   /// Language worker callback to get the current call stack.
   std::function<void(std::string *)> get_lang_stack;
   // Function that tries to interrupt the currently running Python thread.
@@ -490,9 +494,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] ids IDs of the objects to get.
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[out] results Result list of objects data.
+  /// \param[in] plasma_objects_only Only get objects from Plasma Store.
   /// \return Status.
   Status Get(const std::vector<ObjectID> &ids, const int64_t timeout_ms,
-             std::vector<std::shared_ptr<RayObject>> *results);
+             std::vector<std::shared_ptr<RayObject>> *results,
+             bool plasma_objects_only = false);
 
   /// Return whether or not the object store contains the given object.
   ///
@@ -580,6 +586,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status SetResource(const std::string &resource_name, const double capacity,
                      const ClientID &client_id);
 
+  /// Force spilling objects to external storage.
+  /// \param[in] object_ids The objects to be spilled.
+  /// \return Status
+  Status ForceSpillObjects(const std::vector<ObjectID> &object_ids);
+
+  /// Restore objects from external storage.
+  /// \param[in] object_ids The objects to be restored.
+  /// \return Status
+  Status ForceRestoreSpilledObjects(const std::vector<ObjectID> &object_ids);
+
   /// Submit a normal task.
   ///
   /// \param[in] function The remote function to execute.
@@ -611,12 +627,21 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] function The remote function that generates the placement group object.
   /// \param[in] placement_group_creation_options Options for this placement group
-  /// creation task. \param[out] placement_group_id ID of the created placement group.
-  /// This can be used to shedule actor in node \return Status error if placement group
+  /// creation task.
+  /// \param[out] placement_group_id ID of the created placement group.
+  /// This can be used to shedule actor in node
+  /// \return Status error if placement group
   /// creation fails, likely due to raylet failure.
   Status CreatePlacementGroup(
       const PlacementGroupCreationOptions &placement_group_creation_options,
       PlacementGroupID *placement_group_id);
+
+  /// Remove a placement group. Note that this operation is synchronous.
+  ///
+  /// \param[in] placement_group_id The id of a placement group to remove.
+  /// \return Status OK if succeed. TimedOut if request to GCS server times out.
+  /// NotFound if placement group is already removed or doesn't exist.
+  Status RemovePlacementGroup(const PlacementGroupID &placement_group_id);
 
   /// Submit an actor task.
   ///
@@ -808,6 +833,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Trigger local GC on this worker.
   void HandleLocalGC(const rpc::LocalGCRequest &request, rpc::LocalGCReply *reply,
                      rpc::SendReplyCallback send_reply_callback) override;
+
+  // Spill objects to external storage.
+  void HandleSpillObjects(const rpc::SpillObjectsRequest &request,
+                          rpc::SpillObjectsReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override;
+
+  // Restore objects from external storage.
+  void HandleRestoreSpilledObjects(const rpc::RestoreSpilledObjectsRequest &request,
+                                   rpc::RestoreSpilledObjectsReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) override;
 
   ///
   /// Public methods related to async actor call. This should only be used when
