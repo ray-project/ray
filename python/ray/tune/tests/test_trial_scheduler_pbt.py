@@ -99,14 +99,14 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
                 "c": 1
             },
             fail_fast=True,
-            num_samples=20,
+            num_samples=4,
             checkpoint_freq=1,
             checkpoint_at_end=True,
             keep_checkpoints_num=1,
             checkpoint_score_attr="min-training_iteration",
             scheduler=scheduler,
             name="testPermutationContinuation",
-            stop={"training_iteration": 5})
+            stop={"training_iteration": 3})
 
     def testPermutationContinuationFunc(self):
         scheduler = PopulationBasedTraining(

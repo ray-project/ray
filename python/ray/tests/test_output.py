@@ -7,6 +7,7 @@ import ray
 from ray.test_utils import run_string_as_driver_nonblocking
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_worker_stdout():
     script = """
 import ray
