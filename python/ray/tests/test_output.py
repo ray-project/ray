@@ -2,6 +2,7 @@ import re
 import subprocess
 import sys
 import pytest
+
 import ray
 
 from ray.test_utils import run_string_as_driver_nonblocking
@@ -53,7 +54,12 @@ def test_output():
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "_ray_instance":
-        ray.init(num_cpus=1)
+        # Set object store memory very low so that it won't complain
+        # about low shm memory in Linux environment.
+        # The test failures currently complain it only has 2 GB memory,
+        # so let's set it much lower than that.
+        MB = 1000**2
+        ray.init(num_cpus=1, object_store_memory=(100 * MB))
         ray.shutdown()
     else:
         sys.exit(pytest.main(["-v", __file__]))
