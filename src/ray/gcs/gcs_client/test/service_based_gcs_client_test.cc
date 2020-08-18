@@ -1173,6 +1173,8 @@ TEST_F(ServiceBasedGcsClientTest, TestMultiThreadSubAndUnsub) {
   }
 }
 
+// TODO(sang): Add tests after adding asyncAdd
+
 }  // namespace ray
 
 int main(int argc, char **argv) {

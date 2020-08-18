@@ -29,8 +29,8 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
     async def _update_stubs(self, change):
         if change.new:
-            ip, ports = next(iter(change.new.items()))
-            channel = aiogrpc.insecure_channel("{}:{}".format(ip, ports[1]))
+            ip, port = next(iter(change.new.items()))
+            channel = aiogrpc.insecure_channel("{}:{}".format(ip, int(port)))
             stub = reporter_pb2_grpc.ReporterServiceStub(channel)
             self._stubs[ip] = stub
         if change.old:
@@ -77,15 +77,15 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             message="Profiling info fetched.",
             profiling_info=json.loads(profiling_stats.profiling_stats))
 
-    async def run(self, server):
-        aioredis_client = self._dashboard_head.aioredis_client
-        receiver = Receiver()
+    async def run(self):
+        p = self._dashboard_head.aioredis_client
+        mpsc = Receiver()
 
         reporter_key = "{}*".format(reporter_consts.REPORTER_PREFIX)
-        await aioredis_client.psubscribe(receiver.pattern(reporter_key))
+        await p.psubscribe(mpsc.pattern(reporter_key))
         logger.info("Subscribed to {}".format(reporter_key))
 
-        async for sender, msg in receiver.iter():
+        async for sender, msg in mpsc.iter():
             try:
                 _, data = msg
                 data = json.loads(ray.utils.decode(data))

@@ -166,9 +166,11 @@ service ActorInfoGcsService {
 
 // Service for placement group info access.
 service PlacementGroupInfoGcsService {
-  // Create placement group via gcs service
+  // Create placement group via gcs service.
   rpc CreatePlacementGroup(CreatePlacementGroupRequest)
       returns (CreatePlacementGroupReply);
+  // Get placement group information via gcs service.
+  rpc GetPlacementGroup(GetPlacementGroupRequest) returns (GetPlacementGroupReply);
 }
 
 message RegisterNodeRequest {
@@ -495,6 +497,15 @@ message CreatePlacementGroupRequest {
 
 message CreatePlacementGroupReply {
   GcsStatus status = 1;
+}
+
+message GetPlacementGroupRequest {
+  bytes placement_group_id = 1;
+}
+
+message GetPlacementGroupReply {
+  GcsStatus status = 1;
+  PlacementGroupTableData placement_group_table_data = 2;
 }
 
 enum GcsServiceFailureType {
