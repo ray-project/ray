@@ -17,7 +17,7 @@ from ray.serve.context import FakeFlaskRequest
 from ray.serve.utils import (parse_request_item, _get_logger, chain_future,
                              unpack_future)
 from ray.serve.exceptions import RayServeException
-from ray.serve.metric import MetricClient
+from ray.experimental import metrics
 from ray.serve.config import BackendConfig
 from ray.serve.router import Query
 
@@ -113,14 +113,8 @@ def create_backend_worker(func_or_class):
             else:
                 _callable = func_or_class(*init_args)
 
-            controller = serve.api._get_controller()
-            [metric_exporter] = ray.get(
-                controller.get_metric_exporter.remote())
-            metric_client = MetricClient(
-                metric_exporter, default_labels={"backend": backend_tag})
             self.backend = RayServeWorker(backend_tag, replica_tag, _callable,
-                                          backend_config, is_function,
-                                          metric_client)
+                                          backend_config, is_function)
 
         async def handle_request(self, request):
             return await self.backend.handle_request(request)
@@ -157,7 +151,7 @@ class RayServeWorker:
     """Handles requests with the provided callable."""
 
     def __init__(self, backend_tag, replica_tag, _callable,
-                 backend_config: BackendConfig, is_function, metric_client):
+                 backend_config: BackendConfig, is_function):
         self.backend_tag = backend_tag
         self.replica_tag = replica_tag
         self.callable = _callable
@@ -167,24 +161,24 @@ class RayServeWorker:
         self.batch_queue = BatchQueue(self.config.max_batch_size or 1,
                                       self.config.batch_wait_timeout)
 
-        self.metric_client = metric_client
-        self.request_counter = self.metric_client.new_counter(
-            "backend_request_counter",
-            description=("Number of queries that have been "
-                         "processed in this replica"),
-        )
-        self.error_counter = self.metric_client.new_counter(
-            "backend_error_counter",
-            description=("Number of exceptions that have "
-                         "occurred in the backend"),
-        )
-        self.restart_counter = self.metric_client.new_counter(
+        self.request_counter = metrics.Count(
+            "backend_request_counter", ("Number of queries that have been "
+                                        "processed in this replica"),
+            "requests", ["backend"])
+        self.error_counter = metrics.Count("backend_error_counter",
+                                           ("Number of exceptions that have "
+                                            "occurred in the backend"),
+                                           "errors", ["backend"])
+        self.restart_counter = metrics.Count(
             "backend_worker_starts",
-            description=("The number of time this replica workers "
-                         "has been restarted due to failure."),
-            label_names=("replica_tag", ))
+            ("The number of time this replica workers "
+             "has been restarted due to failure."), "restarts",
+            ["backend", "replica_tag"])
 
-        self.restart_counter.labels(replica_tag=self.replica_tag).add()
+        self.restart_counter.record(1, {
+            "backend": self.backend_tag,
+            "replica_tag": self.replica_tag
+        })
 
         asyncio.get_event_loop().create_task(self.main_loop())
 
@@ -228,10 +222,10 @@ class RayServeWorker:
         method_to_call = ensure_async(method_to_call)
         try:
             result = await method_to_call(*args, **kwargs)
-            self.request_counter.add()
+            self.request_counter.record(1, {"backend": self.backend_tag})
         except Exception as e:
             result = wrap_to_ray_error(e)
-            self.error_counter.add()
+            self.error_counter.record(1, {"backend": self.backend_tag})
         finally:
             self._reset_context()
 
@@ -284,7 +278,8 @@ class RayServeWorker:
             # Flask requests are passed to __call__ as a list
             arg_list = [arg_list]
 
-            self.request_counter.add(batch_size)
+            self.request_counter.record(batch_size,
+                                        {"backend": self.backend_tag})
             result_list = await call_method(*arg_list, **kwargs_list)
 
             if not isinstance(result_list, Iterable) or isinstance(
@@ -309,7 +304,7 @@ class RayServeWorker:
             return result_list
         except Exception as e:
             wrapped_exception = wrap_to_ray_error(e)
-            self.error_counter.add()
+            self.error_counter.record(1, {"backend": self.backend_tag})
             self._reset_context()
             return [wrapped_exception for _ in range(batch_size)]
 
