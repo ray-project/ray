@@ -13,11 +13,10 @@ def placement_group(bundles: List[Dict[str, float]],
     Args:
         bundles: A list of bundles which represent the resources needed.
         strategy: The strategy to create the placement group.
-            There are two build-in strategies for the time begin.
-            PACK: Packs Bundles close together inside processes or nodes as
-            tight as possible.
-            SPREAD: Places Bundles across distinct nodes or processes as even
-            as possible.
+            PACK: Packs Bundles into as few nodes as possible.
+            SPREAD: Places Bundles across distinct nodes as even as possible.
+            STRICT_PACK: Packs Bundles into one node.
+            The group is not allowed to span multiple nodes.
         name: The name of the placement group.
     """
     worker = ray.worker.global_worker
@@ -31,3 +30,10 @@ def placement_group(bundles: List[Dict[str, float]],
         name, bundles, strategy)
 
     return placement_group_id
+
+
+def placement_group_table(placement_group_id):
+    assert placement_group_id is not None
+    worker = ray.worker.global_worker
+    worker.check_connected()
+    return ray.state.state.placement_group_table(placement_group_id)

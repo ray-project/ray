@@ -272,7 +272,7 @@ class Node:
             return result
 
         env_resources = {}
-        env_string = os.getenv("RAY_OVERRIDE_RESOURCES")
+        env_string = os.getenv(ray_constants.RESOURCES_ENVIRONMENT_VARIABLE)
         if env_string:
             env_resources = json.loads(env_string)
 
@@ -718,7 +718,8 @@ class Node:
             socket_to_use=self.socket,
             head_node=self.head,
             start_initial_python_workers_for_first_job=self._ray_params.
-            start_initial_python_workers_for_first_job)
+            start_initial_python_workers_for_first_job,
+            object_spilling_config=self._ray_params.object_spilling_config)
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
 

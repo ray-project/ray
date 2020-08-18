@@ -5,7 +5,7 @@ import uuid
 from typing import Optional
 
 from ray.rllib.utils.annotations import PublicAPI
-from ray.rllib.utils.types import EnvActionType, EnvObsType, EnvInfoDict
+from ray.rllib.utils.typing import EnvActionType, EnvObsType, EnvInfoDict
 
 
 @PublicAPI

@@ -771,6 +771,8 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
               worker_data->worker_address().worker_id());
 }
 
+// TODO(sang): Add tests after adding asyncAdd
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
