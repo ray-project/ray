@@ -12,6 +12,7 @@ from ray.test_utils import get_other_nodes, wait_for_condition
 import ray.cluster_utils
 from ray._raylet import PlacementGroupID
 
+
 def test_placement_group_pack(ray_start_cluster):
     @ray.remote(num_cpus=2)
     class Actor(object):
@@ -362,7 +363,7 @@ def test_placement_group_reschedule_when_node_dead(ray_start_cluster):
     cluster.add_node(num_cpus=4)
     cluster.add_node(num_cpus=4)
     cluster.add_node(num_cpus=4)
-    cluster.wait_for_nodes(3)
+    cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
     # Make sure both head and worker node are alive.
@@ -371,7 +372,9 @@ def test_placement_group_reschedule_when_node_dead(ray_start_cluster):
     assert nodes[0]["alive"] and nodes[1]["alive"] and nodes[2]["alive"]
 
     placement_group_id = ray.experimental.placement_group(
-        name="name", strategy="SPREAD", bundles=[{
+        name="name",
+        strategy="SPREAD",
+        bundles=[{
             "CPU": 2
         }, {
             "CPU": 2
@@ -395,7 +398,7 @@ def test_placement_group_reschedule_when_node_dead(ray_start_cluster):
     print(ray.get(actor_3.value.remote()))
 
     cluster.remove_node(get_other_nodes(cluster, exclude_head=True)[-1])
-    cluster.wait_for_nodes(2)
+    cluster.wait_for_nodes()
 
     actor_4 = Actor.options(
         placement_group_id=placement_group_id,
