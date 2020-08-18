@@ -431,7 +431,6 @@ class SSHCommandRunner(CommandRunnerInterface):
                 If `exit_on_fail` is `True`, the process will exit
                 if the command fails (exits with a code other than 0).
         """
-
         try:
             # For now, if the output is needed we just skip the new logic.
             # In the future we could update the new logic to support
@@ -520,7 +519,7 @@ class SSHCommandRunner(CommandRunnerInterface):
         else:
             # We do this because `-o ControlMaster` causes the `-N` flag to
             # still create an interactive shell in some ssh versions.
-            final_cmd.append(quote("while true; do sleep 86400; done"))
+            final_cmd.append("while true; do sleep 86400; done")
 
         cli_logger.verbose("Running `{}`", cf.bold(cmd))
         with cli_logger.indented():
