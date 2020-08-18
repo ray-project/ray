@@ -31,7 +31,7 @@ class NodeLauncher(threading.Thread):
     def _launch_node(self, config, count, instance_type, instance_config):
         worker_filter = {TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER}
         before = self.provider.non_terminated_nodes(tag_filters=worker_filter)
-        launch_hash = hash_launch_conf(config["worker_nodes"], config["auth"])
+        launch_hash = hash_launch_conf(instance_config, config["auth"])
         self.log("Launching {} nodes, type {}.".format(count, instance_type))
         node_tags = {
             TAG_RAY_NODE_NAME: "ray-{}-worker".format(config["cluster_name"]),
@@ -54,7 +54,7 @@ class NodeLauncher(threading.Thread):
             config, count, instance_type, instance_config = self.queue.get()
             self.log("Got {} nodes to launch.".format(count))
             try:
-                self._launch_node(config, count, instance_type)
+                self._launch_node(config, count, instance_type, instance_config)
             except Exception:
                 logger.exception("Launch failed")
             finally:
