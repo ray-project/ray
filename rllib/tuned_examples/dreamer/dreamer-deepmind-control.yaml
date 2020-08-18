@@ -5,7 +5,6 @@ dmc-dreamer:
             - ray.rllib.examples.env.dm_control_suite.walker_walk
             - ray.rllib.examples.env.dm_control_suite.cheetah_run
             - ray.rllib.examples.env.dm_control_suite.hopper_hop
-            - ray.rllib.examples.env.dm_control_suite.acrobot_swingup
     stop:
       timesteps_total: 1000000
     config:
