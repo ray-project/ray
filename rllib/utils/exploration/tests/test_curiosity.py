@@ -27,9 +27,8 @@ class OneHotWrapper(gym.core.ObservationWrapper):
         # Debug output: max-x/y positions to watch exploration progress.
         if self.step_count == 0:
             if self.x_positions:
-                #max_x_diff = max(abs(np.array(self.x_positions) - self.init_x))
-                #max_y_diff = max(abs(np.array(self.y_positions) - self.init_y))
-                max_diff = max(np.sqrt((np.array(self.x_positions) - self.init_x) ** 2 + (
+                max_diff = max(
+                    np.sqrt((np.array(self.x_positions) - self.init_x) ** 2 + (
                             np.array(self.y_positions) - self.init_y) ** 2))
                 print("After reset: max delta-x/y={}".format(max_diff))
                 self.x_positions = []
@@ -63,9 +62,6 @@ class OneHotWrapper(gym.core.ObservationWrapper):
 def env_maker(config):
     name = config.get("name", "MiniGrid-Empty-5x5-v0")
     env = gym.make(name)
-    # Convert discrete inputs (OBJECT_IDX, COLOR_IDX, STATE) to pixels
-    # (otherwise, a Conv2D will not be able to learn anything).
-    #env = gym_minigrid.wrappers.RGBImgPartialObsWrapper(env)
     # Only use image portion of observation (discard goal and direction).
     env = gym_minigrid.wrappers.ImgObsWrapper(env)
     env = OneHotWrapper(env)
@@ -155,25 +151,16 @@ class TestCuriosity(unittest.TestCase):
             self.assertTrue(rewards_wo == 0.0)
             self.assertGreater(rewards_w, 0.1)
 
-    def test_curiosity_on_key_lock_partially_observable_domain(self):
+    def test_curiosity_on_4_rooms_partially_observable_domain(self):
         config = ppo.DEFAULT_CONFIG.copy()
-        # config["env_config"] = {"name": "MiniGrid-FourRooms-v0"}
-        config["env_config"] = {
-            #"name": "MiniGrid-DoorKey-16x16-v0",
-            "name": "MiniGrid-FourRooms-v0",
-        }
-        config["horizon"] = 200  # Make it hard to reach goal just by chance.
+        config["env_config"] = {"name": "MiniGrid-FourRooms-v0"}
+        config["horizon"] = 100  # Make it hard to reach goal just by chance.
         config["num_envs_per_worker"] = 10
-        #config["model"]["conv_filters"] = CONV_FILTERS
         config["model"]["use_lstm"] = True
         config["model"]["lstm_cell_size"] = 256
         config["model"]["lstm_use_prev_action_reward"] = True
         config["model"]["max_seq_len"] = 100
-
-        # config["evaluation_interval"] = 1
-        #config["train_batch_size"] = 1024
         config["num_sgd_iter"] = 10
-
         config["num_gpus"] = 1
 
         config["exploration_config"] = {
@@ -185,7 +172,6 @@ class TestCuriosity(unittest.TestCase):
             "feature_net_config": {
                 "fcnet_hiddens": [256, 256],
                 "fcnet_activation": "relu",
-                #"conv_filters": CONV_FILTERS,
             },
             "sub_exploration": {
                 "type": "StochasticSampling",
