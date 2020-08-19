@@ -382,9 +382,14 @@ class _PerPolicySampleCollector:
     def _build_buffers(self, single_row: Dict[str, TensorType]) -> None:
         """Builds the internal data buffers based on a single given row.
 
+        This may be called several times in the lifetime of this instance
+        to add new columns to the buffer. Columns in `single_row` that already
+        exist in the buffer will be ignored.
+
         Args:
             single_row (Dict[str, TensorType]): A single datarow with one or
-                more columns (str as key, np.ndarray|tensor as data).
+                more columns (str as key, np.ndarray|tensor as data) to be used
+                as template to build the pre-allocated buffer.
         """
         time_size = self.num_timesteps + self.shift_before + self.shift_after
         for col, data in single_row.items():
