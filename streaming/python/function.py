@@ -28,8 +28,10 @@ class Function(ABC):
     def load_checkpoint(self, checkpoint_id, checkpoint_obj):
         pass
 
+
 class EmptyFunction(Function):
     """Default function which does nothing"""
+
     def open(self, runtime_context):
         pass
 
