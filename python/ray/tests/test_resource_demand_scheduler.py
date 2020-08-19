@@ -56,9 +56,14 @@ TYPES_A = {
     },
 }
 
-MULTI_WORKER_CLUSTER = dict(SMALL_CLUSTER, **{
-    "available_node_types": TYPES_A,
-})
+MULTI_WORKER_CLUSTER = dict(
+    SMALL_CLUSTER, **{
+        "available_node_types": TYPES_A,
+        "head_node_type": "m4.large",
+        "worker_node_default_type": "m4.large",
+    })
+del MULTI_WORKER_CLUSTER["head_node"]
+del MULTI_WORKER_CLUSTER["worker_nodes"]
 
 
 def test_util_score():
@@ -189,7 +194,7 @@ class AutoscalingTest(unittest.TestCase):
 
     def testScaleUpMinSanity(self):
         config_path = self.write_config(MULTI_WORKER_CLUSTER)
-        self.provider = MockProvider(default_instance_type="m4.large")
+        self.provider = MockProvider()
         runner = MockProcessRunner()
         autoscaler = StandardAutoscaler(
             config_path,
@@ -208,7 +213,7 @@ class AutoscalingTest(unittest.TestCase):
         config["min_workers"] = 0
         config["max_workers"] = 50
         config_path = self.write_config(config)
-        self.provider = MockProvider(default_instance_type="m4.large")
+        self.provider = MockProvider()
         runner = MockProcessRunner()
         autoscaler = StandardAutoscaler(
             config_path,
@@ -238,7 +243,7 @@ class AutoscalingTest(unittest.TestCase):
         config["min_workers"] = 0
         config["max_workers"] = 50
         config_path = self.write_config(config)
-        self.provider = MockProvider(default_instance_type="m4.large")
+        self.provider = MockProvider()
         runner = MockProcessRunner()
         autoscaler = StandardAutoscaler(
             config_path,

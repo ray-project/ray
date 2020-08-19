@@ -21,7 +21,7 @@ from ray.autoscaler.node_launcher import NodeLauncher
 from ray.autoscaler.resource_demand_scheduler import ResourceDemandScheduler
 from ray.autoscaler.util import ConcurrentCounter, validate_config, \
     with_head_node_ip, hash_launch_conf, hash_runtime_conf, \
-    DEBUG_AUTOSCALING_STATUS, DEBUG_AUTOSCALING_ERROR
+    DEBUG_AUTOSCALING_STATUS, DEBUG_AUTOSCALING_ERROR, merge_node_type_config
 from ray.ray_constants import AUTOSCALER_MAX_NUM_FAILURES, \
     AUTOSCALER_MAX_LAUNCH_BATCH, AUTOSCALER_MAX_CONCURRENT_LAUNCHES, \
     AUTOSCALER_UPDATE_INTERVAL_S, AUTOSCALER_HEARTBEAT_TIMEOUT_S
@@ -212,7 +212,8 @@ class StandardAutoscaler:
                               self.max_concurrent_launches - num_pending)
 
             num_launches = min(max_allowed, target_workers - num_workers)
-            self.launch_new_node(num_launches)
+            self.launch_new_node(num_launches,
+                                 self.config.get("worker_node_default_type"))
             nodes = self.workers()
             self.log_info_string(nodes, target_workers)
         elif self.load_metrics.num_workers_connected() >= target_workers:
@@ -276,6 +277,7 @@ class StandardAutoscaler:
             with open(self.config_path) as f:
                 new_config = yaml.safe_load(f.read())
             validate_config(new_config)
+            merge_node_type_config(new_config)
             new_launch_hash = hash_launch_conf(new_config["worker_nodes"],
                                                new_config["auth"])
             (new_runtime_hash,
@@ -439,7 +441,7 @@ class StandardAutoscaler:
             return False
         return True
 
-    def launch_new_node(self, count, instance_type=None):
+    def launch_new_node(self, count, instance_type):
         logger.info(
             "StandardAutoscaler: Queue {} new nodes for launch".format(count))
         self.pending_launches.inc(instance_type, count)

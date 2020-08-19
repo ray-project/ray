@@ -71,6 +71,24 @@ def validate_config(config: Dict[str, Any]) -> None:
             "machine and make sure the versions match.".format(
                 ray_version=ray.__version__))
 
+    if "available_node_types" in config:
+        if "head_node_type" not in config:
+            raise ValueError(
+                "You must specify `head_node_type` if `available_node_types "
+                "is set.")
+        if "worker_node_default_type" not in config:
+            raise ValueError("You must specify `worker_node_default_type` if "
+                             "`available_node_types is set.")
+
+    if "head_node_type" in config and "head_node" in config:
+        raise ValueError(
+            "`head_node` and `head_node_type` cannot be both given")
+
+    if "worker_node_default_type" in config and "worker_nodes" in config:
+        raise ValueError(
+            "`worker_nodes` and `worker_node_default_type` cannot be "
+            "both given")
+
 
 def prepare_config(config):
     with_defaults = fillout_defaults(config)
@@ -89,16 +107,9 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
 
 def merge_node_type_config(config: Dict[str, Any]) -> Dict[str, Any]:
     if "head_node_type" in config:
-        if "head_node" in config:
-            raise ValueError(
-                "`head_node` and `head_node_type` cannot be both given")
         config["head_node"] = copy.deepcopy(
             config["available_node_types"][config["head_node_type"]])
     if "worker_node_default_type" in config:
-        if "worker_nodes" in config:
-            raise ValueError(
-                "`worker_nodes` and `worker_node_default_type` cannot be "
-                "both given")
         config["worker_nodes"] = copy.deepcopy(
             config["available_node_types"][config["worker_node_default_type"]])
 

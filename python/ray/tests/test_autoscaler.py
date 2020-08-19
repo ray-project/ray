@@ -14,7 +14,7 @@ from ray.autoscaler.util import prepare_config, validate_config
 from ray.autoscaler.load_metrics import LoadMetrics
 from ray.autoscaler.autoscaler import StandardAutoscaler
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_NODE_STATUS, \
-    STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED
+    STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, TAG_RAY_INSTANCE_TYPE
 from ray.autoscaler.node_provider import NODE_PROVIDERS, NodeProvider
 from ray.test_utils import RayTestTimeoutException
 import pytest
@@ -95,7 +95,7 @@ class MockProcessRunner:
 
 
 class MockProvider(NodeProvider):
-    def __init__(self, cache_stopped=False, default_instance_type=None):
+    def __init__(self, cache_stopped=False):
         self.mock_nodes = {}
         self.next_id = 0
         self.throw = False
@@ -103,7 +103,6 @@ class MockProvider(NodeProvider):
         self.ready_to_create = threading.Event()
         self.ready_to_create.set()
         self.cache_stopped = cache_stopped
-        self.default_instance_type = default_instance_type
 
     def non_terminated_nodes(self, tag_filters):
         if self.throw:
@@ -138,7 +137,7 @@ class MockProvider(NodeProvider):
     def external_ip(self, node_id):
         return self.mock_nodes[node_id].external_ip
 
-    def create_node(self, node_config, tags, count, instance_type=None):
+    def create_node(self, node_config, tags, count):
         self.ready_to_create.wait()
         if self.fail_creates:
             return
@@ -149,12 +148,9 @@ class MockProvider(NodeProvider):
                     node.state = "pending"
                     node.tags.update(tags)
         for _ in range(count):
-            self.mock_nodes[self.next_id] = MockNode(self.next_id, tags.copy(),
-                                                     instance_type)
+            self.mock_nodes[self.next_id] = MockNode(
+                self.next_id, tags.copy(), tags.get(TAG_RAY_INSTANCE_TYPE))
             self.next_id += 1
-
-    def get_instance_type(self, node_config):
-        return self.default_instance_type
 
     def set_node_tags(self, node_id, tags):
         self.mock_nodes[node_id].tags.update(tags)
