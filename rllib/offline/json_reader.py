@@ -16,7 +16,7 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch, \
     DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.compression import unpack_if_needed
-from ray.rllib.utils.types import FileType, SampleBatchType
+from ray.rllib.utils.typing import FileType, SampleBatchType
 from typing import List
 
 logger = logging.getLogger(__name__)

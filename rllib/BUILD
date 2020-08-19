@@ -1074,6 +1074,13 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
+    name = "test_curiosity",
+    tags = ["utils"],
+    size = "large",
+    srcs = ["utils/exploration/tests/test_curiosity.py"]
+)
+
+py_test(
     name = "test_explorations",
     tags = ["utils"],
     size = "large",

@@ -175,6 +175,13 @@ class CoreWorkerClientInterface {
                                  const ClientCallback<WaitForRefRemovedReply> &callback) {
   }
 
+  virtual void SpillObjects(const SpillObjectsRequest &request,
+                            const ClientCallback<SpillObjectsReply> &callback) {}
+
+  virtual void RestoreSpilledObjects(
+      const RestoreSpilledObjectsRequest &request,
+      const ClientCallback<RestoreSpilledObjectsReply> &callback) {}
+
   virtual void PlasmaObjectReady(const PlasmaObjectReadyRequest &request,
                                  const ClientCallback<PlasmaObjectReadyReply> &callback) {
   }
@@ -230,6 +237,10 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, LocalGC, grpc_client_, override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, WaitForRefRemoved, grpc_client_, override)
+
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, SpillObjects, grpc_client_, override)
+
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, RestoreSpilledObjects, grpc_client_, override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, PlasmaObjectReady, grpc_client_, override)
 

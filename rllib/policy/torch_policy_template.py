@@ -13,7 +13,7 @@ from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import convert_to_non_torch_type
-from ray.rllib.utils.types import TensorType, TrainerConfigDict
+from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
 torch, _ = try_import_torch()
 
@@ -201,8 +201,7 @@ def build_torch_policy(
                     action_space=action_space,
                     num_outputs=logit_dim,
                     model_config=self.config["model"],
-                    framework="torch",
-                    **self.config["model"].get("custom_model_config", {}))
+                    framework="torch")
 
             # Make sure, we passed in a correct Model factory.
             assert isinstance(self.model, TorchModelV2), \
@@ -299,9 +298,8 @@ def build_torch_policy(
                 optimizers = TorchPolicy.optimizer(self)
             optimizers = force_list(optimizers)
             if hasattr(self, "exploration"):
-                exploration_optimizers = force_list(
-                    self.exploration.get_exploration_optimizer(self.config))
-                optimizers.extend(exploration_optimizers)
+                optimizers = self.exploration.get_exploration_optimizer(
+                    optimizers)
             return optimizers
 
         @override(TorchPolicy)

@@ -44,7 +44,6 @@ DEFINE_string(static_resource_list, "", "The static resource list of this node."
 DEFINE_string(config_list, "", "The raylet config list of this node.");
 DEFINE_string(python_worker_command, "", "Python worker command.");
 DEFINE_string(java_worker_command, "", "Java worker command.");
-DEFINE_string(agent_command, "", "Dashboard agent command.");
 DEFINE_string(redis_password, "", "The password of redis.");
 DEFINE_string(temp_dir, "", "Temporary directory.");
 DEFINE_string(session_dir, "", "The path of this ray session directory.");
@@ -83,7 +82,6 @@ int main(int argc, char *argv[]) {
   const std::string config_list = FLAGS_config_list;
   const std::string python_worker_command = FLAGS_python_worker_command;
   const std::string java_worker_command = FLAGS_java_worker_command;
-  const std::string agent_command = FLAGS_agent_command;
   const std::string redis_password = FLAGS_redis_password;
   const std::string temp_dir = FLAGS_temp_dir;
   const std::string session_dir = FLAGS_session_dir;
@@ -185,11 +183,6 @@ int main(int argc, char *argv[]) {
         if (python_worker_command.empty() && java_worker_command.empty()) {
           RAY_CHECK(0) << "Either Python worker command or Java worker command should be "
                           "provided.";
-        }
-        if (!agent_command.empty()) {
-          node_manager_config.agent_command = agent_command;
-        } else {
-          RAY_LOG(DEBUG) << "Agent command is empty.";
         }
 
         node_manager_config.heartbeat_period_ms =
