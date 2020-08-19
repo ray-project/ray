@@ -132,7 +132,8 @@ def shutdown() -> None:
 
 @_ensure_connected
 def create_endpoint(endpoint_name: str,
-                    *, backend: str = None,
+                    *,
+                    backend: str = None,
                     route: Optional[str] = None,
                     methods: List[str] = ["GET"]) -> None:
     """Create a service endpoint given route_expression.
@@ -206,7 +207,8 @@ def list_endpoints() -> Dict[str, Dict[str, Any]]:
 
 
 @_ensure_connected
-def update_backend_config(backend_tag: str, config_options: Dict[str, Any]) -> None:
+def update_backend_config(backend_tag: str,
+                          config_options: Dict[str, Any]) -> None:
     """Update a backend configuration for a backend tag.
 
     Keys not specified in the passed will be left unchanged.
@@ -246,7 +248,7 @@ def get_backend_config(backend_tag: str):
 def create_backend(backend_tag: str,
                    func_or_class: Callable,
                    *actor_init_args,
-    ray_actor_options=None,
+                   ray_actor_options=None,
                    config: Dict[str, Any] = None) -> None:
     """Create a backend with the provided tag.
 
@@ -312,7 +314,8 @@ def delete_backend(backend_tag: str) -> None:
 
 
 @_ensure_connected
-def set_traffic(endpoint_name: str, traffic_policy_dictionary: Dict[str, float]) -> None:
+def set_traffic(endpoint_name: str,
+                traffic_policy_dictionary: Dict[str, float]) -> None:
     """Associate a service endpoint with traffic policy.
 
     Example:
@@ -333,7 +336,8 @@ def set_traffic(endpoint_name: str, traffic_policy_dictionary: Dict[str, float])
 
 
 @_ensure_connected
-def shadow_traffic(endpoint_name: str, backend_tag: str, proportion: float) -> None:
+def shadow_traffic(endpoint_name: str, backend_tag: str,
+                   proportion: float) -> None:
     """Shadow traffic from an endpoint to a backend.
 
     The specified proportion of requests will be duplicated and sent to the
