@@ -27,7 +27,6 @@ class NodeLauncher(threading.Thread):
         self.provider = provider
         self.instance_types = instance_types
         self.index = str(index) if index is not None else ""
-        self.stop = False
         super(NodeLauncher, self).__init__(*args, **kwargs)
 
     def _launch_node(self, config, count, instance_type, node_config):
@@ -53,17 +52,12 @@ class NodeLauncher(threading.Thread):
 
     def run(self):
         while True:
-            if self.stop:
-                print("EXITING")
-                return
             self.log("Got {} nodes to launch.".format(count))
             try:
-                obj = self.queue.get(timeout=1.0)
+                obj = self.queue.get()
                 config, count, instance_type, node_config = obj
                 self._launch_node(config, count, instance_type,
                                 node_config)
-            except Empty:
-                pass
             except Exception:
                 logger.exception("Launch failed")
             finally:
