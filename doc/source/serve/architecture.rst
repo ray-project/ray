@@ -25,8 +25,8 @@ There are three kinds of actors that are created to make up a Serve instance:
   replica processes individual requests or batches of requests from the routers.
 
 
-Deep Dive
----------
+Lifetime of a Request
+---------------------
 When an HTTP request is sent to the router, the follow things happen:
 
 - The HTTP request is received and parsed.
