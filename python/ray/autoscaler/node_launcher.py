@@ -42,7 +42,7 @@ class NodeLauncher(threading.Thread):
             TAG_RAY_NODE_STATUS: STATUS_UNINITIALIZED,
             TAG_RAY_LAUNCH_CONFIG: launch_hash,
         }
-        # Only add the instance type if it's not None.
+        # Only add the instance type tag if it's not None.
         if instance_type:
             node_tags[TAG_RAY_INSTANCE_TYPE] = instance_type
             node_config = config["available_node_types"][instance_type][
