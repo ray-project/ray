@@ -81,9 +81,7 @@ void AgentManager::StartAgent() {
         },
         RayConfig::instance().agent_register_timeout_ms());
 
-    // int exit_code = child.Wait();
-    int exit_code = 0;
-    std::this_thread::sleep_for(std::chrono::hours(10));
+    int exit_code = child.Wait();
     timer->cancel();
 
     RAY_LOG(WARNING) << "Agent process with pid " << child.GetId()

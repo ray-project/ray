@@ -47,7 +47,6 @@ cleanup_test_files()
         })
     }],
     indirect=True)
-@pytest.mark.skip(reason="Test Windows CI")
 def test_basic(ray_start_with_dashboard):
     """Dashboard test that starts a Ray cluster with a dashboard server running,
     then hits the dashboard API and asserts that it receives sensible data."""
