@@ -36,6 +36,7 @@ from ray.dashboard.metrics_exporter.client import Exporter
 from ray.dashboard.metrics_exporter.client import MetricsExportClient
 from ray.dashboard.node_stats import NodeStats
 from ray.dashboard.util import to_unix_time, measures_to_dict, format_resource
+from ray.metrics_agent import PrometheusServiceDiscoveryWriter
 
 try:
     from ray.tune import Analysis
@@ -90,8 +91,8 @@ class DashboardController(BaseDashboardController):
         # (e.g., Actor requires 2 GPUs but there is only 1 gpu available).
         ready_tasks = sum((data.get("readyTasks", []) for data in D.values()),
                           [])
-        actor_tree = self.node_stats.get_actor_tree(
-            workers_info_by_node, infeasible_tasks, ready_tasks)
+        actors = self.node_stats.get_actors(workers_info_by_node,
+                                            infeasible_tasks, ready_tasks)
 
         for address, data in D.items():
             # process view data
@@ -130,15 +131,14 @@ class DashboardController(BaseDashboardController):
                         stats_name, stats_value))
                 data["extraInfo"] += ", ".join(extra_info_strings)
                 # process actor info
-                actor_tree_str = json.dumps(
-                    actor_tree, indent=2, sort_keys=True)
-                lines = actor_tree_str.split("\n")
+                actors_str = json.dumps(actors, indent=2, sort_keys=True)
+                lines = actors_str.split("\n")
                 max_line_length = max(map(len, lines))
                 to_print = []
                 for line in lines:
                     to_print.append(line + (max_line_length - len(line)) * " ")
                 data["extraInfo"] += "\n" + "\n".join(to_print)
-        return {"nodes": D, "actors": actor_tree}
+        return {"nodes": D, "actors": actors}
 
     def get_ray_config(self):
         try:
@@ -493,6 +493,8 @@ class Dashboard:
         self.dashboard_id = str(uuid.uuid4())
         self.dashboard_controller = DashboardController(
             redis_address, redis_password)
+        self.service_discovery = PrometheusServiceDiscoveryWriter(
+            redis_address, redis_password, temp_dir)
 
         # Setting the environment variable RAY_DASHBOARD_DEV=1 disables some
         # security checks in the dashboard server to ease development while
@@ -571,6 +573,7 @@ class Dashboard:
     def run(self):
         self.log_dashboard_url()
         self.dashboard_controller.start_collecting_metrics()
+        self.service_discovery.start()
         if self.metrics_export_address:
             self._start_exporting_metrics()
         aiohttp.web.run_app(self.app, host=self.host, port=self.port)

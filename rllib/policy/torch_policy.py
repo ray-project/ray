@@ -19,7 +19,7 @@ from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 from ray.rllib.utils.torch_ops import convert_to_non_torch_type, \
     convert_to_torch_tensor
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
-from ray.rllib.utils.types import ModelGradients, ModelWeights, \
+from ray.rllib.utils.typing import ModelGradients, ModelWeights, \
     TensorType, TrainerConfigDict
 
 torch, _ = try_import_torch()
@@ -104,10 +104,13 @@ class TorchPolicy(Policy):
             self.device = torch.device("cpu")
         self.model = model.to(self.device)
         # Combine view_requirements for Model and Policy.
-        self.view_requirements = {
-            **self.model.inference_view_requirements(),
-            **self.training_view_requirements(),
-        }
+        self.training_view_requirements = dict(**{
+            SampleBatch.ACTIONS: ViewRequirement(
+                space=self.action_space, shift=0),
+            SampleBatch.REWARDS: ViewRequirement(shift=0),
+            SampleBatch.DONES: ViewRequirement(shift=0),
+        }, **self.model.inference_view_requirements)
+
         self.exploration = self._create_exploration()
         self.unwrapped_model = model  # used to support DistributedDataParallel
         self._loss = loss
@@ -124,17 +127,6 @@ class TorchPolicy(Policy):
         self.batch_divisibility_req = get_batch_divisibility_req(self) if \
             callable(get_batch_divisibility_req) else \
             (get_batch_divisibility_req or 1)
-
-    @override(Policy)
-    def training_view_requirements(self):
-        if hasattr(self, "view_requirements"):
-            return self.view_requirements
-        return {
-            SampleBatch.ACTIONS: ViewRequirement(
-                space=self.action_space, shift=0),
-            SampleBatch.REWARDS: ViewRequirement(shift=0),
-            SampleBatch.DONES: ViewRequirement(shift=0),
-        }
 
     @override(Policy)
     @DeveloperAPI
@@ -198,12 +190,10 @@ class TorchPolicy(Policy):
         with torch.no_grad():
             # Pass lazy (torch) tensor dict to Model as `input_dict`.
             input_dict = self._lazy_tensor_dict(input_dict)
-            # Pass lazy (torch) tensor dict to Model as `input_dict`.
-            input_dict = self._lazy_tensor_dict(input_dict)
             state_batches = [
                 input_dict[k] for k in input_dict.keys() if "state_" in k[:6]
             ]
-            seq_lens = np.array([1] * len(input_dict["obs"][0])) \
+            seq_lens = np.array([1] * len(input_dict["obs"])) \
                 if state_batches else None
 
             actions, state_out, extra_fetches, logp = \
@@ -333,27 +323,14 @@ class TorchPolicy(Policy):
     @DeveloperAPI
     def learn_on_batch(
             self, postprocessed_batch: SampleBatch) -> Dict[str, TensorType]:
-        if self.config["_use_trajectory_view_api"]:
-            if postprocessed_batch.time_major is not None:
-                postprocessed_batch["seq_lens"] = torch.tensor(
-                    postprocessed_batch.seq_lens)
-                t = 0 if postprocessed_batch.time_major else 1
-                for col in postprocessed_batch.data.keys():
-                    # Cut time-dim from states.
-                    if "state_" in col[:6]:
-                        postprocessed_batch[col] = postprocessed_batch[col][t]
-                    # Flatten all other data.
-                    else:
-                        postprocessed_batch[col] = postprocessed_batch[
-                            col].reshape((-1, ) +
-                                         postprocessed_batch[col].shape[2:])
-        else:
-            # Get batch ready for RNNs, if applicable.
-            pad_batch_to_sequences_of_same_size(
-                postprocessed_batch,
-                max_seq_len=self.max_seq_len,
-                shuffle=False,
-                batch_divisibility_req=self.batch_divisibility_req)
+        # Get batch ready for RNNs, if applicable.
+        pad_batch_to_sequences_of_same_size(
+            postprocessed_batch,
+            max_seq_len=self.max_seq_len,
+            shuffle=False,
+            batch_divisibility_req=self.batch_divisibility_req,
+            _use_trajectory_view_api=self.config["_use_trajectory_view_api"],
+        )
 
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
         loss_out = force_list(
@@ -361,8 +338,12 @@ class TorchPolicy(Policy):
         # Call Model's custom-loss with Policy loss outputs and train_batch.
         if self.model:
             loss_out = self.model.custom_loss(loss_out, train_batch)
-
+        # Modifies the loss as specified by the Exploration strategy.
+        if hasattr(self, "exploration"):
+            loss_out = self.exploration.get_exploration_loss(
+                loss_out, train_batch)
         assert len(loss_out) == len(self._optimizers)
+
         # assert not any(torch.isnan(l) for l in loss_out)
         fetches = self.extra_compute_grad_fetches()
 
@@ -404,6 +385,8 @@ class TorchPolicy(Policy):
 
         grad_info["allreduce_latency"] /= len(self._optimizers)
         grad_info.update(self.extra_grad_info(train_batch))
+        if self.model:
+            grad_info["model"] = self.model.metrics()
         return dict(fetches, **{LEARNER_STATS_KEY: grad_info})
 
     @override(Policy)

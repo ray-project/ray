@@ -9,72 +9,61 @@ from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.policy.view_requirement import ViewRequirement
-from ray.rllib.utils import add_mixins
+from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import convert_to_non_torch_type
-from ray.rllib.utils.types import TensorType, TrainerConfigDict
+from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
 torch, _ = try_import_torch()
 
 
 @DeveloperAPI
-def build_torch_policy(name: str,
-                       *,
-                       loss_fn: Callable[
-                           [Policy, ModelV2, type, SampleBatch], TensorType],
-                       get_default_config: Optional[Callable[
-                           [], TrainerConfigDict]] = None,
-                       stats_fn: Optional[Callable[
-                           [Policy, SampleBatch],
-                           Dict[str, TensorType]]] = None,
-                       postprocess_fn: Optional[Callable[
-                            [Policy, SampleBatch, List[SampleBatch],
-                             "MultiAgentEpisode"], None]] = None,
-                       extra_action_out_fn: Optional[Callable[
-                           [Policy, Dict[str, TensorType], List[TensorType],
-                            ModelV2, TorchDistributionWrapper],
-                           Dict[str, TensorType]]] = None,
-                       extra_grad_process_fn: Optional[Callable[
-                           [Policy, "torch.optim.Optimizer", TensorType],
-                           Dict[str, TensorType]]] = None,
-                       # TODO: (sven) Replace "fetches" with "process".
-                       extra_learn_fetches_fn: Optional[Callable[
-                           [Policy], Dict[str, TensorType]]] = None,
-                       optimizer_fn: Optional[Callable[
-                           [Policy, TrainerConfigDict],
-                           "torch.optim.Optimizer"]] = None,
-                       validate_spaces: Optional[Callable[
-                           [Policy, gym.Space, gym.Space, TrainerConfigDict],
-                           None]] = None,
-                       before_init: Optional[Callable[
-                           [Policy, gym.Space, gym.Space, TrainerConfigDict],
-                           None]] = None,
-                       after_init: Optional[Callable[
-                           [Policy, gym.Space, gym.Space, TrainerConfigDict],
-                           None]] = None,
-                       action_sampler_fn: Optional[Callable[
-                           [TensorType, List[TensorType]], Tuple[
-                               TensorType, TensorType]]] = None,
-                       action_distribution_fn: Optional[Callable[
-                           [Policy, ModelV2, TensorType, TensorType,
-                            TensorType],
-                           Tuple[TensorType, type, List[TensorType]]]] = None,
-                       make_model: Optional[Callable[
-                           [Policy, gym.spaces.Space, gym.spaces.Space,
-                            TrainerConfigDict], ModelV2]] = None,
-                       make_model_and_action_dist: Optional[Callable[
-                           [Policy, gym.spaces.Space, gym.spaces.Space,
-                            TrainerConfigDict],
-                           Tuple[ModelV2, TorchDistributionWrapper]]] = None,
-                       apply_gradients_fn: Optional[Callable[
-                           [Policy, "torch.optim.Optimizer"], None]] = None,
-                       mixins: Optional[List[type]] = None,
-                       training_view_requirements_fn: Optional[Callable[
-                           [], Dict[str, ViewRequirement]]] = None,
-                       get_batch_divisibility_req: Optional[Callable[
-                           [Policy], int]] = None
-                       ):
+def build_torch_policy(
+        name: str,
+        *,
+        loss_fn: Callable[[Policy, ModelV2, type, SampleBatch], TensorType],
+        get_default_config: Optional[Callable[[], TrainerConfigDict]] = None,
+        stats_fn: Optional[Callable[[Policy, SampleBatch], Dict[
+            str, TensorType]]] = None,
+        postprocess_fn: Optional[Callable[[
+            Policy, SampleBatch, List[SampleBatch], "MultiAgentEpisode"
+        ], None]] = None,
+        extra_action_out_fn: Optional[Callable[[
+            Policy, Dict[str, TensorType], List[TensorType], ModelV2,
+            TorchDistributionWrapper
+        ], Dict[str, TensorType]]] = None,
+        extra_grad_process_fn: Optional[Callable[[
+            Policy, "torch.optim.Optimizer", TensorType
+        ], Dict[str, TensorType]]] = None,
+        # TODO: (sven) Replace "fetches" with "process".
+        extra_learn_fetches_fn: Optional[Callable[[Policy], Dict[
+            str, TensorType]]] = None,
+        optimizer_fn: Optional[Callable[[Policy, TrainerConfigDict],
+                                        "torch.optim.Optimizer"]] = None,
+        validate_spaces: Optional[Callable[
+            [Policy, gym.Space, gym.Space, TrainerConfigDict], None]] = None,
+        before_init: Optional[Callable[
+            [Policy, gym.Space, gym.Space, TrainerConfigDict], None]] = None,
+        after_init: Optional[Callable[
+            [Policy, gym.Space, gym.Space, TrainerConfigDict], None]] = None,
+        action_sampler_fn: Optional[Callable[[TensorType, List[
+            TensorType]], Tuple[TensorType, TensorType]]] = None,
+        action_distribution_fn: Optional[Callable[[
+            Policy, ModelV2, TensorType, TensorType, TensorType
+        ], Tuple[TensorType, type, List[TensorType]]]] = None,
+        make_model: Optional[Callable[[
+            Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict
+        ], ModelV2]] = None,
+        make_model_and_action_dist: Optional[Callable[[
+            Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict
+        ], Tuple[ModelV2, TorchDistributionWrapper]]] = None,
+        apply_gradients_fn: Optional[Callable[
+            [Policy, "torch.optim.Optimizer"], None]] = None,
+        mixins: Optional[List[type]] = None,
+        training_view_requirements_fn: Optional[Callable[[], Dict[
+            str, ViewRequirement]]] = None,
+        get_batch_divisibility_req: Optional[Callable[[Policy], int]] = None):
     """Helper function for creating a torch policy class at runtime.
 
     Args:
@@ -212,8 +201,7 @@ def build_torch_policy(name: str,
                     action_space=action_space,
                     num_outputs=logit_dim,
                     model_config=self.config["model"],
-                    framework="torch",
-                    **self.config["model"].get("custom_model_config", {}))
+                    framework="torch")
 
             # Make sure, we passed in a correct Model factory.
             assert isinstance(self.model, TorchModelV2), \
@@ -233,15 +221,12 @@ def build_torch_policy(name: str,
                 get_batch_divisibility_req=get_batch_divisibility_req,
             )
 
+            if callable(training_view_requirements_fn):
+                self.training_view_requirements.update(
+                    training_view_requirements_fn(self))
+
             if after_init:
                 after_init(self, obs_space, action_space, config)
-
-        @override(TorchPolicy)
-        def training_view_requirements(self):
-            req = super().training_view_requirements()
-            if callable(training_view_requirements_fn):
-                req.update(training_view_requirements_fn(self))
-            return req
 
         @override(Policy)
         def postprocess_trajectory(self,
@@ -305,9 +290,15 @@ def build_torch_policy(name: str,
         @override(TorchPolicy)
         def optimizer(self):
             if optimizer_fn:
-                return optimizer_fn(self, self.config)
+                optimizers = optimizer_fn(self, self.config)
             else:
-                return TorchPolicy.optimizer(self)
+                optimizers = TorchPolicy.optimizer(self)
+            optimizers = force_list(optimizers)
+            if hasattr(self, "exploration"):
+                exploration_optimizers = force_list(
+                    self.exploration.get_exploration_optimizer(self.config))
+                optimizers.extend(exploration_optimizers)
+            return optimizers
 
         @override(TorchPolicy)
         def extra_grad_info(self, train_batch):

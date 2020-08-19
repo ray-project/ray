@@ -64,16 +64,20 @@ class RecurrentNetwork(TorchModelV2):
         """Adds time dimension to batch before sending inputs to forward_rnn().
 
         You should implement forward_rnn() in your subclass."""
+        flat_inputs = input_dict["obs_flat"].float()
         if isinstance(seq_lens, np.ndarray):
             seq_lens = torch.Tensor(seq_lens).int()
+        max_seq_len = flat_inputs.shape[0] // seq_lens.shape[0]
+        self.time_major = self.model_config.get("_time_major", False)
         inputs = add_time_dimension(
-            input_dict["obs_flat"].float(),
-            seq_lens,
+            flat_inputs,
+            max_seq_len=max_seq_len,
             framework="torch",
-            time_major=self.model_config.get("_time_major", False),
+            time_major=self.time_major,
         )
         output, new_state = self.forward_rnn(inputs, state, seq_lens)
-        return torch.reshape(output, [-1, self.num_outputs]), new_state
+        output = torch.reshape(output, [-1, self.num_outputs])
+        return output, new_state
 
     def forward_rnn(self, inputs, state, seq_lens):
         """Call the model with the given input tensors and state.
@@ -132,6 +136,23 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
             activation_fn=None,
             initializer=torch.nn.init.xavier_uniform_)
 
+        self.inference_view_requirements.update(dict(**{
+            SampleBatch.OBS: ViewRequirement(shift=0),
+            SampleBatch.PREV_REWARDS: ViewRequirement(
+                SampleBatch.REWARDS, shift=-1),
+            SampleBatch.PREV_ACTIONS: ViewRequirement(
+                SampleBatch.ACTIONS, space=self.action_space, shift=-1),
+        }))
+        for i in range(2):
+            self.inference_view_requirements["state_in_{}".format(i)] = \
+                ViewRequirement(
+                    "state_out_{}".format(i),
+                    shift=-1,
+                    space=Box(-1.0, 1.0, shape=(self.cell_size,)))
+            self.inference_view_requirements["state_out_{}".format(i)] = \
+                ViewRequirement(
+                    space=Box(-1.0, 1.0, shape=(self.cell_size,)))
+
     @override(RecurrentNetwork)
     def forward(self, input_dict, state, seq_lens):
         assert seq_lens is not None
@@ -156,10 +177,24 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
 
     @override(RecurrentNetwork)
     def forward_rnn(self, inputs, state, seq_lens):
+        # Don't show paddings to RNN(?)
+        # TODO: (sven) For now, only allow, iff time_major=True to not break
+        #  anything retrospectively (time_major not supported previously).
+        # max_seq_len = inputs.shape[0]
+        # time_major = self.model_config["_time_major"]
+        # if time_major and max_seq_len > 1:
+        #     inputs = torch.nn.utils.rnn.pack_padded_sequence(
+        #         inputs, seq_lens,
+        #         batch_first=not time_major, enforce_sorted=False)
         self._features, [h, c] = self.lstm(
             inputs,
             [torch.unsqueeze(state[0], 0),
              torch.unsqueeze(state[1], 0)])
+        # Re-apply paddings.
+        # if time_major and max_seq_len > 1:
+        #     self._features, _ = torch.nn.utils.rnn.pad_packed_sequence(
+        #         self._features,
+        #         batch_first=not time_major)
         model_out = self._logits_branch(self._features)
         return model_out, [torch.squeeze(h, 0), torch.squeeze(c, 0)]
 
@@ -177,16 +212,3 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
     def value_function(self):
         assert self._features is not None, "must call forward() first"
         return torch.reshape(self._value_branch(self._features), [-1])
-
-    @override(ModelV2)
-    def inference_view_requirements(self) -> Dict[str, ViewRequirement]:
-        req = super().inference_view_requirements()
-        # Optional: prev-actions/rewards for forward pass.
-        if self.model_config["lstm_use_prev_action_reward"]:
-            req.update({
-                SampleBatch.PREV_REWARDS: ViewRequirement(
-                    SampleBatch.REWARDS, shift=-1),
-                SampleBatch.PREV_ACTIONS: ViewRequirement(
-                    SampleBatch.ACTIONS, space=self.action_space, shift=-1),
-            })
-        return req

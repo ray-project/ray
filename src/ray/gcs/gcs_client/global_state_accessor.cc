@@ -232,5 +232,16 @@ bool GlobalStateAccessor::AddWorkerInfo(const std::string &serialized_string) {
   return true;
 }
 
+std::unique_ptr<std::string> GlobalStateAccessor::GetPlacementGroupInfo(
+    const PlacementGroupID &placement_group_id) {
+  std::unique_ptr<std::string> placement_group_table_data;
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->PlacementGroups().AsyncGet(
+      placement_group_id, TransformForOptionalItemCallback<rpc::PlacementGroupTableData>(
+                              placement_group_table_data, promise)));
+  promise.get_future().get();
+  return placement_group_table_data;
+}
+
 }  // namespace gcs
 }  // namespace ray

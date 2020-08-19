@@ -198,7 +198,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
       RAY_LOG(INFO) << "Calling System.gc() ...";
       env->CallStaticObjectMethod(java_system_class, java_system_gc);
       last_gc_time_ms = current_time_ms();
-      RAY_LOG(INFO) << "GC finished in " << (double) (last_gc_time_ms - start) / 1000
+      RAY_LOG(INFO) << "GC finished in " << (double)(last_gc_time_ms - start) / 1000
                     << " seconds.";
     }
   };
@@ -225,6 +225,8 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
       task_execution_callback,                       // task_execution_callback
       nullptr,                                       // check_signals
       gc_collect,                                    // gc_collect
+      nullptr,                                       // spill_objects
+      nullptr,                                       // restore_spilled_objects
       nullptr,                                       // get_lang_stack
       nullptr,                                       // kill_main
       true,                                          // ref_counting_enabled
@@ -232,6 +234,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
       static_cast<int>(numWorkersPerProcess),        // num_workers
       nullptr,                                       // terminate_asyncio_thread
       serialized_job_config,                         // serialized_job_config
+      -1,                                            // metrics_agent_port
   };
 
   ray::CoreWorkerProcess::Initialize(options);

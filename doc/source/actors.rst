@@ -72,8 +72,8 @@ Resources with Actors
 You can specify that an actor requires CPUs or GPUs in the decorator. While Ray has built-in support for CPUs and GPUs, Ray can also handle custom resources.
 
 When using GPUs, Ray will automatically set the environment variable ``CUDA_VISIBLE_DEVICES`` for the actor after instantiated. The actor will have access to a list of the IDs of the GPUs
-that it is allowed to use via ``ray.get_gpu_ids()``. This is a list of integers,
-like ``[]``, or ``[1]``, or ``[2, 5, 6]``.
+that it is allowed to use via ``ray.get_gpu_ids(as_str=True)``. This is a list of strings,
+like ``[]``, or ``['1']``, or ``['2', '5', '6']``. Under some circumstances, the IDs of GPUs could be given as UUID strings instead of indices (see the `CUDA programming guide <https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#env-vars>`__).
 
 .. code-block:: python
 

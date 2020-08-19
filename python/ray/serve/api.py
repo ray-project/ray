@@ -55,12 +55,11 @@ def accept_batch(f):
     return f
 
 
-def init(
-        name=None,
-        http_host=DEFAULT_HTTP_HOST,
-        http_port=DEFAULT_HTTP_PORT,
-        metric_exporter=InMemoryExporter,
-):
+def init(name=None,
+         http_host=DEFAULT_HTTP_HOST,
+         http_port=DEFAULT_HTTP_PORT,
+         metric_exporter=InMemoryExporter,
+         _http_middlewares=[]):
     """Initialize or connect to a serve cluster.
 
     If serve cluster is already initialized, this function will just return.
@@ -101,12 +100,7 @@ def init(
         name=controller_name,
         max_restarts=-1,
         max_task_retries=-1,
-    ).remote(
-        name,
-        http_host,
-        http_port,
-        metric_exporter,
-    )
+    ).remote(name, http_host, http_port, metric_exporter, _http_middlewares)
 
     futures = []
     for node_id in ray.state.node_ids():
@@ -166,6 +160,17 @@ def create_endpoint(endpoint_name,
         raise TypeError(
             "methods must be a list of strings, but got type {}".format(
                 type(methods)))
+
+    endpoints = list_endpoints()
+    if endpoint_name in endpoints:
+        methods_old = endpoints[endpoint_name]["methods"]
+        route_old = endpoints[endpoint_name]["route"]
+        if methods_old.sort() == methods.sort() and route_old == route:
+            raise ValueError(
+                "Route '{}' is already registered to endpoint '{}' "
+                "with methods '{}'.  To set the backend for this "
+                "endpoint, please use serve.set_traffic().".format(
+                    route, endpoint_name, methods))
 
     upper_methods = []
     for method in methods:
@@ -266,6 +271,11 @@ def create_backend(backend_tag,
             be sent to a replica of this backend without receiving a
             response.
     """
+    if backend_tag in list_backends():
+        raise ValueError(
+            "Cannot create backend. "
+            "Backend '{}' is already registered.".format(backend_tag))
+
     if config is None:
         config = {}
     if not isinstance(config, dict):
@@ -346,18 +356,11 @@ def shadow_traffic(endpoint_name, backend_tag, proportion):
 
 
 @_ensure_connected
-def get_handle(endpoint_name,
-               relative_slo_ms=None,
-               absolute_slo_ms=None,
-               missing_ok=False):
+def get_handle(endpoint_name, missing_ok=False):
     """Retrieve RayServeHandle for service endpoint to invoke it from Python.
 
     Args:
         endpoint_name (str): A registered service endpoint.
-        relative_slo_ms(float): Specify relative deadline in milliseconds for
-            queries fired using this handle. (Default: None)
-        absolute_slo_ms(float): Specify absolute deadline in milliseconds for
-            queries fired using this handle. (Default: None)
         missing_ok (bool): If true, skip the check for the endpoint existence.
             It can be useful when the endpoint has not been registered.
 
@@ -372,8 +375,6 @@ def get_handle(endpoint_name,
     return RayServeHandle(
         list(routers.values())[0],
         endpoint_name,
-        relative_slo_ms,
-        absolute_slo_ms,
     )
 
 

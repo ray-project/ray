@@ -37,6 +37,7 @@ class WorkerInterface {
  public:
   /// A destructor responsible for freeing all worker state.
   virtual ~WorkerInterface() {}
+  virtual rpc::WorkerType GetWorkerType() const = 0;
   virtual void MarkDead() = 0;
   virtual bool IsDead() const = 0;
   virtual void MarkBlocked() = 0;
@@ -79,7 +80,6 @@ class WorkerInterface {
   virtual ResourceIdSet ReleaseTaskCpuResources() = 0;
   virtual void AcquireTaskCpuResources(const ResourceIdSet &cpu_resources) = 0;
 
-  virtual Status AssignTask(const Task &task, const ResourceIdSet &resource_id_set) = 0;
   virtual void DirectActorCallArgWaitComplete(int64_t tag) = 0;
 
   // Setter, geter, and clear methods  for allocated_instances_.
@@ -118,11 +118,12 @@ class Worker : public WorkerInterface {
  public:
   /// A constructor that initializes a worker object.
   /// NOTE: You MUST manually set the worker process.
-  Worker(const WorkerID &worker_id, const Language &language,
+  Worker(const WorkerID &worker_id, const Language &language, rpc::WorkerType worker_type,
          const std::string &ip_address, std::shared_ptr<ClientConnection> connection,
          rpc::ClientCallManager &client_call_manager);
   /// A destructor responsible for freeing all worker state.
   ~Worker() {}
+  rpc::WorkerType GetWorkerType() const;
   void MarkDead();
   bool IsDead() const;
   void MarkBlocked();
@@ -165,7 +166,6 @@ class Worker : public WorkerInterface {
   ResourceIdSet ReleaseTaskCpuResources();
   void AcquireTaskCpuResources(const ResourceIdSet &cpu_resources);
 
-  Status AssignTask(const Task &task, const ResourceIdSet &resource_id_set);
   void DirectActorCallArgWaitComplete(int64_t tag);
 
   // Setter, geter, and clear methods  for allocated_instances_.
@@ -217,6 +217,8 @@ class Worker : public WorkerInterface {
   Process proc_;
   /// The language type of this worker.
   Language language_;
+  /// The type of the worker.
+  rpc::WorkerType worker_type_;
   /// IP address of this worker.
   std::string ip_address_;
   /// Port assigned to this worker by the raylet. If this is 0, the actual

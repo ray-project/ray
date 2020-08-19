@@ -19,7 +19,6 @@ import ray.services
 import ray.utils
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
-from ray.dashboard.util import get_unused_port
 from ray.metrics_agent import MetricsAgent
 
 # Logger for this module. It should be configured at the entry point
@@ -59,23 +58,14 @@ class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
         return reporter_pb2.GetProfilingStatsReply(
             profiling_stats=profiling_stats, std_out=stdout, std_err=stderr)
 
-    def ReportMetrics(self, request, context):
-        # NOTE: Exceptions are not propagated properly
-        # when we don't catch them here.
+    def ReportOCMetrics(self, request, context):
         try:
-            metrcs_description_required = (
-                self.metrics_agent.record_metrics_points(
-                    request.metrics_points))
-        except Exception as e:
-            logger.error(e)
+            self.metrics_agent.record_metric_points_from_protobuf(
+                request.metrics)
+        except Exception:
             logger.error(traceback.format_exc())
 
-        # If metrics description is missing, we should notify cpp processes
-        # that we need them. Cpp processes will then report them to here.
-        # We need it when (1) a new metric is reported (application metric)
-        # (2) a reporter goes down and restarted (currently not implemented).
-        return reporter_pb2.ReportMetricsReply(
-            metrcs_description_required=metrcs_description_required)
+        return reporter_pb2.ReportOCMetricsReply()
 
 
 def recursive_asdict(o):
@@ -116,16 +106,17 @@ class Reporter:
         redis_client: A client used to communicate with the Redis server.
     """
 
-    def __init__(self, redis_address, port, redis_password=None):
+    def __init__(self,
+                 redis_address,
+                 port,
+                 metrics_export_port,
+                 redis_password=None):
         """Initialize the reporter object."""
         self.cpu_counts = (psutil.cpu_count(), psutil.cpu_count(logical=False))
         self.ip = ray.services.get_node_ip_address()
         self.hostname = platform.node()
         self.port = port
-        metrics_agent_port = os.getenv("METRICS_AGENT_PORT")
-        if not metrics_agent_port:
-            metrics_agent_port = get_unused_port()
-        self.metrics_agent = MetricsAgent(metrics_agent_port)
+        self.metrics_agent = MetricsAgent(metrics_export_port)
         self.reporter_grpc_server = ReporterServer(self.metrics_agent)
 
         _ = psutil.cpu_percent()  # For initialization
@@ -283,6 +274,11 @@ if __name__ == "__main__":
         type=int,
         help="The port to bind the reporter process.")
     parser.add_argument(
+        "--metrics-export-port",
+        required=True,
+        type=int,
+        help="The port to expose metrics through Prometheus.")
+    parser.add_argument(
         "--redis-password",
         required=False,
         type=str,
@@ -305,7 +301,10 @@ if __name__ == "__main__":
     ray.utils.setup_logger(args.logging_level, args.logging_format)
 
     reporter = Reporter(
-        args.redis_address, args.port, redis_password=args.redis_password)
+        args.redis_address,
+        args.port,
+        args.metrics_export_port,
+        redis_password=args.redis_password)
 
     try:
         reporter.run()

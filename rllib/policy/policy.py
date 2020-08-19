@@ -11,7 +11,7 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
     unbatch
-from ray.rllib.utils.types import AgentID, ModelGradients, ModelWeights, \
+from ray.rllib.utils.typing import AgentID, ModelGradients, ModelWeights, \
     TensorType, TrainerConfigDict, Tuple, Union
 
 torch, _ = try_import_torch()
@@ -36,7 +36,10 @@ class Policy(metaclass=ABCMeta):
     graphs and multi-GPU support.
 
     Attributes:
-        observation_space (gym.Space): Observation space of the policy.
+        observation_space (gym.Space): Observation space of the policy. For
+            complex spaces (e.g., Dict), this will be flattened version of the
+            space, and you can access the original space via
+            ``observation_space.original_space``.
         action_space (gym.Space): Action space of the policy.
         exploration (Exploration): The exploration object to use for
             computing actions, or None.
@@ -67,6 +70,11 @@ class Policy(metaclass=ABCMeta):
         # The action distribution class to use for action sampling, if any.
         # Child classes may set this.
         self.dist_class = None
+        # View requirements dict for a `learn_on_batch()` call.
+        # Child classes need to add their specific requirements here (usually
+        # a combination of a Model's inference_view_- and the
+        # Policy's loss function-requirements.
+        self.training_view_requirements = {}
 
     @abstractmethod
     @DeveloperAPI
@@ -255,10 +263,10 @@ class Policy(metaclass=ABCMeta):
             actions: Union[List[TensorType], TensorType],
             obs_batch: Union[List[TensorType], TensorType],
             state_batches: Optional[List[TensorType]] = None,
-            prev_action_batch: Optional[
-                Union[List[TensorType], TensorType]] = None,
-            prev_reward_batch: Optional[
-                Union[List[TensorType], TensorType]] = None) -> TensorType:
+            prev_action_batch: Optional[Union[List[TensorType],
+                                              TensorType]] = None,
+            prev_reward_batch: Optional[Union[List[
+                TensorType], TensorType]] = None) -> TensorType:
         """Computes the log-prob/likelihood for a given action and observation.
 
         Args:
@@ -281,30 +289,11 @@ class Policy(metaclass=ABCMeta):
         raise NotImplementedError
 
     @DeveloperAPI
-    def training_view_requirements(self):
-        """Returns a dict of view requirements for operating on this Policy.
-
-        Note: This is an experimental API method.
-
-        The view requirements dict is used to generate input_dicts and
-        SampleBatches for 1) action computations, 2) postprocessing, and 3)
-        generating training batches.
-        The Policy may ask its Model(s) as well for possible additional
-        requirements (e.g. prev-action/reward in an LSTM).
-
-        Returns:
-            Dict[str, ViewRequirement]: The view requirements dict, mapping
-                each view key (which will be available in input_dicts) to
-                an underlying requirement (actual data, timestep shift, etc..).
-        """
-        return {}
-
-    @DeveloperAPI
     def postprocess_trajectory(
             self,
             sample_batch: SampleBatch,
-            other_agent_batches: Optional[
-                Dict[AgentID, Tuple["Policy", SampleBatch]]] = None,
+            other_agent_batches: Optional[Dict[AgentID, Tuple[
+                "Policy", SampleBatch]]] = None,
             episode: Optional["MultiAgentEpisode"] = None) -> SampleBatch:
         """Implements algorithm-specific trajectory postprocessing.
 

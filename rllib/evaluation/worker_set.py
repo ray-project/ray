@@ -12,7 +12,7 @@ from ray.rllib.env.env_context import EnvContext
 from ray.rllib.policy import Policy
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.types import PolicyID, TrainerConfigDict, EnvType
+from ray.rllib.utils.typing import PolicyID, TrainerConfigDict, EnvType
 
 tf1, tf, tfv = try_import_tf()
 
@@ -272,6 +272,7 @@ class WorkerSet:
             num_envs=config["num_envs_per_worker"],
             observation_fn=config["multiagent"]["observation_fn"],
             observation_filter=config["observation_filter"],
+            clip_rewards=config["clip_rewards"],
             clip_actions=config["clip_actions"],
             env_config=config["env_config"],
             model_config=config["model"],

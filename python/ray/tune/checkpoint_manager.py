@@ -137,7 +137,7 @@ class CheckpointManager:
                 self._membership.remove(worst)
             # Don't delete the newest checkpoint. It will be deleted on the
             # next on_checkpoint() call since it isn't in self._membership.
-            if worst != checkpoint:
+            if worst.value != checkpoint.value:
                 self.delete(worst)
 
     def best_checkpoints(self):

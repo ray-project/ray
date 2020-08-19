@@ -13,7 +13,9 @@
 // limitations under the License.
 
 #include "io_ray_runtime_object_NativeObjectStore.h"
+
 #include <jni.h>
+
 #include "jni_utils.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
@@ -36,7 +38,8 @@ ray::Status PutSerializedObject(JNIEnv *env, jobject obj, ray::ObjectID object_i
         out_object_id, &data);
   } else {
     status = ray::CoreWorkerProcess::GetCoreWorker().Create(
-        native_ray_object->GetMetadata(), data_size, object_id, &data);
+        native_ray_object->GetMetadata(), data_size, object_id,
+        ray::CoreWorkerProcess::GetCoreWorker().GetRpcAddress(), &data);
     *out_object_id = object_id;
   }
   if (!status.ok()) {

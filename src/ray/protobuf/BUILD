@@ -56,7 +56,10 @@ python_grpc_compile(
 proto_library(
     name = "reporter_proto",
     srcs = ["reporter.proto"],
-    deps = [":common_proto"],
+    deps = [
+        ":common_proto",
+        "@io_opencensus_proto//opencensus/proto/metrics/v1:metrics_proto"
+    ],
 )
 
 cc_proto_library(
@@ -86,6 +89,7 @@ cc_proto_library(
 proto_library(
     name = "object_manager_proto",
     srcs = ["object_manager.proto"],
+    deps = [":common_proto"],
 )
 
 cc_proto_library(
@@ -119,3 +123,12 @@ cc_proto_library(
     deps = ["serialization_proto"],
 )
 
+proto_library(
+    name = "event_proto",
+    srcs = ["event.proto"],
+)
+
+cc_proto_library(
+    name = "event_cc_proto",
+    deps = [":event_proto"],
+)

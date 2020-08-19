@@ -1,6 +1,6 @@
 import asyncio
-from urllib.parse import parse_qs
 import socket
+from typing import List
 
 import uvicorn
 
@@ -60,32 +60,6 @@ class HTTPProxy:
 
         return b"".join(body_buffer)
 
-    def _parse_latency_slo(self, scope):
-        query_string = scope["query_string"].decode("ascii")
-        query_kwargs = parse_qs(query_string)
-
-        relative_slo_ms = query_kwargs.pop("relative_slo_ms", None)
-        absolute_slo_ms = query_kwargs.pop("absolute_slo_ms", None)
-        relative_slo_ms = self._validate_slo_ms(relative_slo_ms)
-        absolute_slo_ms = self._validate_slo_ms(absolute_slo_ms)
-        if relative_slo_ms is not None and absolute_slo_ms is not None:
-            raise ValueError("Both relative and absolute slo's"
-                             "cannot be specified.")
-        return relative_slo_ms, absolute_slo_ms
-
-    def _validate_slo_ms(self, request_slo_ms):
-        if request_slo_ms is None:
-            return None
-        if len(request_slo_ms) != 1:
-            raise ValueError(
-                "Multiple SLO specified, please specific only one.")
-        request_slo_ms = request_slo_ms[0]
-        request_slo_ms = float(request_slo_ms)
-        if request_slo_ms < 0:
-            raise ValueError("Request SLO must be positive, it is {}".format(
-                request_slo_ms))
-        return request_slo_ms
-
     def _make_error_sender(self, scope, receive, send):
         async def sender(error_message, status_code):
             response = Response(error_message, status_code=status_code)
@@ -141,19 +115,10 @@ class HTTPProxy:
 
         http_body_bytes = await self.receive_http_body(scope, receive, send)
 
-        # get slo_ms before enqueuing the query
-        try:
-            relative_slo_ms, absolute_slo_ms = self._parse_latency_slo(scope)
-        except ValueError as e:
-            await error_sender(str(e), 400)
-            return
-
         headers = {k.decode(): v.decode() for k, v in scope["headers"]}
         request_metadata = RequestMetadata(
             endpoint_name,
             TaskContext.Web,
-            relative_slo_ms=relative_slo_ms,
-            absolute_slo_ms=absolute_slo_ms,
             call_method=headers.get("X-SERVE-CALL-METHOD".lower(), "__call__"),
             shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), None),
         )
@@ -170,12 +135,25 @@ class HTTPProxy:
 
 @ray.remote
 class HTTPProxyActor:
-    async def __init__(self, name, host, port, instance_name=None):
+    async def __init__(
+            self,
+            name,
+            host,
+            port,
+            instance_name=None,
+            _http_middlewares: List["starlette.middleware.Middleware"] = []):
         serve.init(name=instance_name)
         self.app = HTTPProxy()
-        await self.app.fetch_config_from_controller(name, instance_name)
         self.host = host
         self.port = port
+
+        self.app = HTTPProxy()
+        await self.app.fetch_config_from_controller(name, instance_name)
+
+        self.wrapped_app = self.app
+        for middleware in _http_middlewares:
+            self.wrapped_app = middleware.cls(self.wrapped_app,
+                                              **middleware.options)
 
         # Start running the HTTP server on the event loop.
         asyncio.get_event_loop().create_task(self.run())
@@ -197,7 +175,7 @@ class HTTPProxyActor:
         # class because we want to run the server as a coroutine. The only
         # alternative is to call uvicorn.run which is blocking.
         config = uvicorn.Config(
-            self.app,
+            self.wrapped_app,
             host=self.host,
             port=self.port,
             lifespan="off",

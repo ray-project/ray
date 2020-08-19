@@ -19,6 +19,9 @@ import ray
 import ray.ray_constants as ray_constants
 import psutil
 
+from ray.autoscaler.cli_logger import cli_logger
+import colorful as cf
+
 resource = None
 if sys.platform != "win32":
     import resource
@@ -579,6 +582,12 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
         else:
             break
     else:
+        cli_logger.error(
+            "Unable to connect to Redis at "
+            "`{c.underlined}{}:{}{c.no_underlined}` after {} retries.",
+            redis_ip_address, redis_port, num_retries)
+        cli_logger.abort("Check your firewall and network settings.")
+
         raise RuntimeError("Unable to connect to Redis. If the Redis instance "
                            "is on a different machine, check that your "
                            "firewall is configured properly.")
@@ -1066,6 +1075,7 @@ def start_log_monitor(redis_address,
 
 def start_reporter(redis_address,
                    port,
+                   metrics_export_port,
                    stdout_file=None,
                    stderr_file=None,
                    redis_password=None,
@@ -1075,6 +1085,7 @@ def start_reporter(redis_address,
     Args:
         redis_address (str): The address of the Redis instance.
         port(int): The port to bind the reporter process.
+        metrics_export_port(int): The port at which metrics are exposed to.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
@@ -1088,7 +1099,8 @@ def start_reporter(redis_address,
         os.path.dirname(os.path.abspath(__file__)), "reporter.py")
     command = [
         sys.executable, "-u", reporter_filepath,
-        "--redis-address={}".format(redis_address), "--port={}".format(port)
+        "--redis-address={}".format(redis_address), "--port={}".format(port),
+        "--metrics-export-port={}".format(metrics_export_port)
     ]
     if redis_password:
         command += ["--redis-password", redis_password]
@@ -1188,9 +1200,13 @@ def start_dashboard(require_dashboard,
 
         dashboard_url = "{}:{}".format(
             host if host != "0.0.0.0" else get_node_ip_address(), port)
-        logger.info("View the Ray dashboard at {}{}{}{}{}".format(
-            colorama.Style.BRIGHT, colorama.Fore.GREEN, dashboard_url,
-            colorama.Fore.RESET, colorama.Style.NORMAL))
+
+        cli_logger.labeled_value("Dashboard URL", cf.underlined("http://{}"),
+                                 dashboard_url)
+        cli_logger.old_info(logger, "View the Ray dashboard at {}{}{}{}{}",
+                            colorama.Style.BRIGHT, colorama.Fore.GREEN,
+                            dashboard_url, colorama.Fore.RESET,
+                            colorama.Style.NORMAL)
 
         return dashboard_url, process_info
     else:
@@ -1259,6 +1275,7 @@ def start_raylet(redis_address,
                  object_manager_port=None,
                  redis_password=None,
                  metrics_agent_port=None,
+                 metrics_export_port=None,
                  use_valgrind=False,
                  use_profiler=False,
                  stdout_file=None,
@@ -1272,7 +1289,8 @@ def start_raylet(redis_address,
                  fate_share=None,
                  socket_to_use=None,
                  head_node=False,
-                 start_initial_python_workers_for_first_job=False):
+                 start_initial_python_workers_for_first_job=False,
+                 object_spilling_config=None):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1296,6 +1314,7 @@ def start_raylet(redis_address,
             on. If set, min_worker_port must also be set.
         redis_password: The password to use when connecting to Redis.
         metrics_agent_port(int): The port where metrics agent is bound to.
+        metrics_export_port(int): The port at which metrics are exposed to.
         use_valgrind (bool): True if the raylet should be started inside
             of valgrind. If this is True, use_profiler must be False.
         use_profiler (bool): True if the raylet should be started inside
@@ -1353,8 +1372,7 @@ def start_raylet(redis_address,
 
     # Create the command that the Raylet will use to start workers.
     start_worker_command = [
-        sys.executable,
-        worker_path,
+        sys.executable, worker_path,
         "--node-ip-address={}".format(node_ip_address),
         "--node-manager-port={}".format(node_manager_port),
         "--object-store-name={}".format(plasma_store_name),
@@ -1362,6 +1380,7 @@ def start_raylet(redis_address,
         "--redis-address={}".format(redis_address),
         "--config-list={}".format(config_str),
         "--temp-dir={}".format(temp_dir),
+        f"--metrics-agent-port={metrics_agent_port}"
     ]
     if redis_password:
         start_worker_command += ["--redis-password={}".format(redis_password)]
@@ -1379,6 +1398,10 @@ def start_raylet(redis_address,
 
     if load_code_from_local:
         start_worker_command += ["--load-code-from-local"]
+
+    if object_spilling_config:
+        start_worker_command.append(
+            f"--object-spilling-config={json.dumps(object_spilling_config)}")
 
     command = [
         RAYLET_EXECUTABLE,
@@ -1403,6 +1426,7 @@ def start_raylet(redis_address,
         "--temp_dir={}".format(temp_dir),
         "--session_dir={}".format(session_dir),
         "--metrics-agent-port={}".format(metrics_agent_port),
+        "--metrics_export_port={}".format(metrics_export_port),
     ]
     if start_initial_python_workers_for_first_job:
         command.append("--num_initial_python_workers_for_first_job={}".format(
@@ -1512,7 +1536,7 @@ def build_java_worker_command(
     # above options.
     command += options
 
-    command += ["RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_0"]
+    command += ["RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER"]
     command += ["io.ray.runtime.runner.worker.DefaultWorker"]
 
     return command

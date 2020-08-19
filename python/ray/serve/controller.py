@@ -21,7 +21,7 @@ import numpy as np
 
 # Used for testing purposes only. If this is set, the controller will crash
 # after writing each checkpoint with the specified probability.
-_CRASH_AFTER_CHECKPOINT_PROBABILITY = 0.0
+_CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
 CHECKPOINT_KEY = "serve-controller-checkpoint"
 
 # Feature flag for controller resource checking. If true, controller will
@@ -92,7 +92,7 @@ class ServeController:
     """
 
     async def __init__(self, instance_name, http_host, http_port,
-                       metric_exporter_class):
+                       metric_exporter_class, _http_middlewares):
         # Unique name of the serve instance managed by this actor. Used to
         # namespace child actors and checkpoints.
         self.instance_name = instance_name
@@ -135,6 +135,7 @@ class ServeController:
 
         self.http_host = http_host
         self.http_port = http_port
+        self._http_middlewares = _http_middlewares
 
         # If starting the actor for the first time, starts up the other system
         # components. If recovering, fetches their actor handles.
@@ -190,7 +191,8 @@ class ServeController:
                     node_id,
                     self.http_host,
                     self.http_port,
-                    instance_name=self.instance_name)
+                    instance_name=self.instance_name,
+                    _http_middlewares=self._http_middlewares)
 
             self.routers[node_id] = router
 
@@ -679,8 +681,11 @@ class ServeController:
             # TODO(edoakes): move this to client side.
             err_prefix = "Cannot create endpoint."
             if route in self.routes:
+
+                # Ensures this method is idempotent
                 if self.routes[route] == (endpoint, methods):
                     return
+
                 else:
                     raise ValueError(
                         "{} Route '{}' is already registered.".format(
@@ -692,8 +697,8 @@ class ServeController:
                         err_prefix, endpoint))
 
             logger.info(
-                "Registering route {} to endpoint {} with methods {}.".format(
-                    route, endpoint, methods))
+                "Registering route '{}' to endpoint '{}' with methods '{}'.".
+                format(route, endpoint, methods))
 
             self.routes[route] = (endpoint, methods)
 
@@ -745,6 +750,13 @@ class ServeController:
                              replica_config):
         """Register a new backend under the specified tag."""
         async with self.write_lock:
+            # Ensures this method is idempotent.
+            if backend_tag in self.backends:
+                backend_info = self.backends[backend_tag]
+                if (backend_info.backend_config == backend_config
+                        and backend_info.replica_config == replica_config):
+                    return
+
             backend_worker = create_backend_worker(
                 replica_config.func_or_class)
 
@@ -757,7 +769,11 @@ class ServeController:
                     backend_tag] = BasicAutoscalingPolicy(
                         backend_tag, backend_config.autoscaling_config)
 
-            self._scale_replicas(backend_tag, backend_config.num_replicas)
+            try:
+                self._scale_replicas(backend_tag, backend_config.num_replicas)
+            except RayServeException as e:
+                del self.backends[backend_tag]
+                raise e
 
             # NOTE(edoakes): we must write a checkpoint before starting new
             # or pushing the updated config to avoid inconsistent state if we

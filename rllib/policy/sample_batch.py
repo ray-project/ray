@@ -8,7 +8,7 @@ from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.compression import pack, unpack, is_compressed
 from ray.rllib.utils.memory import concat_aligned
 from ray.rllib.utils.deprecation import deprecation_warning
-from ray.rllib.utils.types import TensorType
+from ray.rllib.utils.typing import TensorType
 
 # Default policy id for single agent environments
 DEFAULT_POLICY_ID = "default_policy"
@@ -62,6 +62,9 @@ class SampleBatch:
         # Possible seq_lens (TxB or BxT) setup.
         self.time_major = kwargs.pop("_time_major", None)
         self.seq_lens = kwargs.pop("_seq_lens", None)
+        self.max_seq_len = None
+        if self.seq_lens is not None and len(self.seq_lens) > 0:
+            self.max_seq_len = max(self.seq_lens)
 
         # The actual data, accessible by column name (str).
         self.data = dict(*args, **kwargs)
@@ -321,7 +324,7 @@ class SampleBatch:
             key (str): The key (column name) to return.
 
         Returns:
-            TensorType]: The data under the given key.
+            TensorType: The data under the given key.
         """
         return self.data[key]
 

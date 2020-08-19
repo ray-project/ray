@@ -18,7 +18,8 @@ shift
 if [ "X$pod" = "X-l" ]; then
     pod=$1
     shift
-    namespace="-n $1"
+    # Space before $1 leads to namespace errors
+    namespace="-n$1"
     shift
 fi
 
