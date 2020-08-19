@@ -338,9 +338,10 @@ class NodeUpdater:
                     self.log_prefix + "Ray start commands", show_status=True):
                 for cmd in self.ray_start_commands:
                     try:
+                        old_redirected = cmd_output_util.is_output_redirected()
                         cmd_output_util.set_output_redirected(False)
                         self.cmd_runner.run(cmd)
-                        cmd_output_util.set_output_redirected(True)
+                        cmd_output_util.set_output_redirected(old_redirected)
                     except ProcessRunnerError as e:
                         if e.msg_type == "ssh_command_failed":
                             cli_logger.error("Failed.")

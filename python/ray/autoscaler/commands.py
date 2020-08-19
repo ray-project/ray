@@ -98,11 +98,18 @@ def create_or_update_cluster(
         config_file: str, override_min_workers: Optional[int],
         override_max_workers: Optional[int], no_restart: bool,
         restart_only: bool, yes: bool, override_cluster_name: Optional[str],
-        no_config_cache: bool, dump_command_output: bool,
+        no_config_cache: bool, dump_command_output: Optional[bool],
         use_login_shells: bool) -> None:
     """Create or updates an autoscaling Ray cluster from a config json."""
     set_using_login_shells(use_login_shells)
-    cmd_output_util.set_output_redirected(not dump_command_output)
+    if dump_command_output is None:
+        # login shells do NOT redirect by default since we cant filter
+        # out errors
+        cmd_output_util.set_output_redirected(not use_login_shells)
+    else:
+        cmd_output_util.set_output_redirected(not dump_command_output)
+
+    cli_logger.detect_colors()
 
     if use_login_shells:
         cli_logger.warning(
@@ -114,8 +121,6 @@ def create_or_update_cluster(
             "Consider using {}, {}.", cf.bold("--use-normal-shells"),
             cf.underlined("if you tested your workflow and it is compatible"))
         cli_logger.newline()
-
-    cli_logger.detect_colors()
 
     def handle_yaml_error(e):
         cli_logger.error("Cluster config invalid\n")
@@ -193,6 +198,7 @@ def create_or_update_cluster(
 CONFIG_CACHE_VERSION = 1
 
 
+_printed_cached_config_warning = False
 def _bootstrap_config(config: Dict[str, Any],
                       no_config_cache: bool = False) -> Dict[str, Any]:
     config = prepare_config(config)
@@ -214,15 +220,19 @@ def _bootstrap_config(config: Dict[str, Any],
             try_reload_log_state(config_cache["config"]["provider"],
                                  config_cache.get("provider_log_info"))
 
-            cli_logger.verbose_warning(
-                "Loaded cached provider configuration "
-                "from " + cf.bold("{}"), cache_key)
-            if cli_logger.verbosity == 0:
-                cli_logger.warning("Loaded cached provider configuration")
-            cli_logger.warning(
-                "If you experience issues with "
-                "the cloud provider, try re-running "
-                "the command with {}.", cf.bold("--no-config-cache"))
+            global _printed_cached_config_warning
+            if not _printed_cached_config_warning:
+                _printed_cached_config_warning = True
+
+                cli_logger.verbose_warning(
+                    "Loaded cached provider configuration "
+                    "from " + cf.bold("{}"), cache_key)
+                if cli_logger.verbosity == 0:
+                    cli_logger.warning("Loaded cached provider configuration")
+                cli_logger.warning(
+                    "If you experience issues with "
+                    "the cloud provider, try re-running "
+                    "the command with {}.", cf.bold("--no-config-cache"))
 
             return config_cache["config"]
         else:
@@ -260,7 +270,7 @@ def _bootstrap_config(config: Dict[str, Any],
 
 def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
                      override_cluster_name: Optional[str],
-                     keep_min_workers: bool):
+                     keep_min_workers: bool, skip_ray_stop: bool = False):
     """Destroys all nodes of a Ray cluster described by a config json."""
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
@@ -271,7 +281,7 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
     cli_logger.confirm(yes, "Destroying cluster.", _abort=True)
     cli_logger.old_confirm("This will destroy your cluster", yes)
 
-    if not workers_only:
+    if not workers_only and not skip_ray_stop:
         try:
             exec_cluster(
                 config_file,
@@ -297,11 +307,15 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
             cli_logger.old_exception(
                 logger, "Ignoring error attempting a clean shutdown.")
 
+    if skip_ray_stop:
+        cli_logger.print(
+            "Skipped stopping the Ray runtime "
+            "before bringing down the cluster.")
+
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
 
         def remaining_nodes():
-
             workers = provider.non_terminated_nodes({
                 TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER
             })
@@ -353,6 +367,7 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
                 A = remaining_nodes()
                 cli_logger.print("{} nodes remaining after 1 second.",
                                  cf.bold(len(A)))
+            cli_logger.success("No nodes remaining.")
     finally:
         provider.cleanup()
 
@@ -757,6 +772,9 @@ def exec_cluster(config_file: str,
     assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
     assert run_env in RUN_ENV_TYPES, "--run_env must be in {}".format(
         RUN_ENV_TYPES)
+
+    cmd_output_util.set_allow_interactive(True)
+
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name

@@ -18,7 +18,7 @@ import click
 import colorama
 from colorful.core import ColorfulString
 import colorful as cf
-colorama.init()
+colorama.init(strip=False)
 
 
 def _patched_makeRecord(self,
@@ -197,10 +197,10 @@ class _CliLogger():
     """
 
     def __init__(self):
-        self.strip = False
         self.old_style = True
         self.color_mode = "auto"
         self.indent_level = 0
+
         self.verbosity = 0
 
         self.dump_command_output = False
@@ -208,7 +208,7 @@ class _CliLogger():
         # store whatever colorful has detected for future use if
         # the color ouput is toggled (colorful detects # of supported colors,
         # so it has some non-trivial logic to determine this)
-        self._autodetected_cf_colormode = cf.colormode
+        self._autodetected_cf_colormode = cf.colorful.colormode
 
     def detect_colors(self):
         """Update color output settings.
@@ -228,7 +228,6 @@ class _CliLogger():
             cf.disable()
             return
         if self.color_mode == "auto":
-            self.strip = not sys.stdout.isatty()
             # colorful autodetects tty settings
             return
 

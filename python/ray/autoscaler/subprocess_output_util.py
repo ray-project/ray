@@ -10,13 +10,13 @@ import colorful as cf
 
 CONN_REFUSED_PATIENCE = 30  # how long to wait for sshd to run
 
-_config = {"redirect_output": True}
-
+_config = {
+    "redirect_output": False,
+    "allow_interactive": False
+}
 
 def is_output_redirected():
     return _config["redirect_output"]
-
-
 def set_output_redirected(val):
     """Choose between logging to a temporary file and to `sys.stdout`.
 
@@ -27,6 +27,18 @@ def set_output_redirected(val):
                     a temporary file.
     """
     _config["redirect_output"] = val
+
+def does_allow_interactive():
+    return _config["allow_interactive"]
+def set_allow_interactive(val):
+    """Choose whether to pass on stdin to running commands.
+
+    The default is to pipe stdin and close it immediately.
+
+    Args:
+        val (bool): If true, stdin will be passed to commands.
+    """
+    _config["allow_interactive"] = val
 
 
 class ProcessRunnerError(Exception):
@@ -167,7 +179,7 @@ def _run_and_process_output(cmd,
     Args:
         cmd (List[str]): Command to run.
         stdout_file: File to redirect stdout to.
-        stdout_file: File to redirect stderr to.
+        stderr_file: File to redirect stderr to.
 
     Implementation notes:
     1. `use_login_shells` disables special processing
@@ -206,24 +218,34 @@ def _run_and_process_output(cmd,
     are read-only except for return values and possible exceptions.
     """
 
-    if use_login_shells:
-        # See implementation note #1
-        if stdout_file is None:
-            stdout_file = subprocess.DEVNULL
-        if stderr_file is None:
-            stderr_file = subprocess.DEVNULL
+    stdin_overwrite = subprocess.PIPE
+    if does_allow_interactive():
+        if is_output_redirected():
+            # this is most probably a bug since the user has no control
+            # over these settings
+            raise ValueError(
+                "Output was redirected for an interactive command")
+        else:
+            stdin_overwrite = None
 
+    # See implementation note #1
+    if stdout_file is None:
+        stdout_file = subprocess.DEVNULL
+    if stderr_file is None:
+        stderr_file = stdout_file
+
+    if use_login_shells:
         return subprocess.check_call(
             cmd,
             # See implementation note #2
-            stdin=subprocess.PIPE,
+            stdin=stdin_overwrite,
             stdout=stdout_file,
             stderr=stderr_file)
 
     with subprocess.Popen(
             cmd,
             # See implementation note #2
-            stdin=subprocess.PIPE,
+            stdin=stdin_overwrite,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             bufsize=1,  # line buffering

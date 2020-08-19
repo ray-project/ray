@@ -13,13 +13,20 @@ Some instructions on writing CLI tests:
 
 WARNING: IF YOU MOCK AWS, DON'T FORGET THE AWS_CREDENTIALS FIXTURE.
          THIS IS REQUIRED SO BOTO3 DOES NOT ACCESS THE ACTUAL AWS SERVERS.
+
+Note: config cache does not work with AWS mocks since the AWS resource ids are
+      randomized each time.
+
+Note: while not strictly necessary for setup commands e.g. ray up,
+      --log-new-style produces much cleaner output if the test fails.
 """
 
 import sys
 import re
-import yaml
 import os
-import pathlib
+from contextlib import contextmanager
+from pathlib import Path
+import subprocess
 
 import pytest
 
@@ -34,140 +41,109 @@ import ray.autoscaler.aws.config as aws_config
 import ray.scripts.scripts as scripts
 
 def _debug_die(result):
-    print(result.output)
+    print('!!!!')
+    print(repr(result.output))
+    print('!!!!')
     assert False
+
+def _die_on_error(result):
+    if result.exit_code == 0:
+        return
+    _debug_die(result)
 
 def _debug_check_line_by_line(result, expected_lines):
     output_lines = result.output.split("\n")
-    for exp, out in zip(expected_lines, output_lines):
-        matched = re.fullmatch(exp + r" *", out) is not None
+    i = 0
+
+    for out in output_lines:
         print(out)
+
+        if i >= len(expected_lines):
+            i += 1
+            print('!!!!!! Expected fewer lines')
+            continue
+
+        exp = expected_lines[i]
+        matched = re.fullmatch(exp + r" *", out) is not None
         if not matched:
             print("!!!!!!! Expected (regex):")
             print(repr(exp))
+        i += 1
+    while i < len(expected_lines):
+        i += 1
+        print("!!!!!!! Expected (regex):")
+        print(repr(expected_lines[i]))
+
     assert False
+
+def _setup_aws_mock():
+    # moto (boto3 mock) only allows a hardcoded set of AMIs
+    dlami = moto.ec2.ec2_backends["us-west-2"].describe_images(
+                        filters={"name": "Deep Learning AMI Ubuntu*"})[0].id
+    aws_config.DEFAULT_AMI["us-west-2"] = dlami
+
+@contextmanager
+def _unlink_test_shh_key():
+    """Use this to remove the keys spawned by ray up.
+    """
+    try:
+        yield
+    finally:
+        try:
+            Path("~", ".ssh", "__test-cli_key").unlink()
+        except FileNotFoundError:
+            pass
+
+@contextmanager
+def _setup_popen_mock(commands_mock):
+    Popen = MockPopen()
+    Popen.set_default(behaviour=commands_mock)
+
+    with Replacer() as replacer:
+        replacer.replace("subprocess.Popen", Popen)
+        yield
+
+def _get_pattern_path(name):
+    p = Path(__file__).parent / "test_cli_patterns" / name
+    return str(p)
+
+def _load_output_pattern(name):
+    with open(_get_pattern_path(name)) as f:
+        # remove \n
+        return [x[:-1] for x in f.readlines()]
+
+def _check_output_via_pattern(name, result):
+    expected_lines = _load_output_pattern(name)
+
+    if result.exception is not None:
+        print(result.output)
+        raise result.exception from None
+
+    expected = r" *\n".join(expected_lines) + "\n?"
+    if re.fullmatch(expected, result.output) is None:
+        _debug_check_line_by_line(result, expected_lines)
+
+    assert result.exit_code == 0
+
+default_test_config_path = (
+    Path(__file__).parent / "test_cli_patterns" / "test_ray_up_config.json")
 
 def test_ray_start():
     runner = CliRunner()
     result = runner.invoke(
         scripts.start,
         ["--head", "--log-new-style"])
-    assert runner.invoke(scripts.stop).exit_code == 0
+    _die_on_error(runner.invoke(scripts.stop))
 
-    expected_lines = [
-        r"Local node IP: .+",
-        r"Available RAM",
-        r"  Workers: .+ GiB",
-        r"  Objects: .+ GiB",
-        r"",
-        r"  To adjust these values, use",
-        r"    ray\.init\(memory=<bytes>, object_store_memory=<bytes>\)",
-        r"Dashboard URL: .+",
-        r"",
-        r"--------------------",
-        r"Ray runtime started.",
-        r"--------------------",
-        r"",
-        r"Next steps",
-        r"  To connect to this Ray runtime from another node, run",
-        r"    ray start --address='.+' --redis-password='.+'",
-        r"",
-        r"  Alternatively, use the following Python code:",
-        r"    import ray",
-        r"    ray\.init\(address='auto', redis_password='.+'\)",
-        r"",
-        r"  If connection fails, check your firewall settings other " +\
-          r"network configuration.",
-        r"",
-        r"  To terminate the Ray runtime, run",
-        r"    ray stop"
-    ]
-
-    if result.exception is not None:
-        print(result.output)
-        raise result.exception
-
-    expected = r" *\n".join(expected_lines) + "\n?"
-    if re.fullmatch(expected, result.output) is None:
-        _debug_check_line_by_line(result, expected_lines)
-    assert result.exit_code == 0
+    _check_output_via_pattern("test_ray_start.txt", result)
 
 @mock_ec2
 @mock_iam
-def test_ray_up(aws_credentials, tmp_path):
-    #
-    # Get a config file
-    #
-
-    config = {
-        "cluster_name": "test-cli",
-
-        "min_workers": 1,
-        "max_workers": 2,
-        "initial_workers": 1,
-
-        "target_utilization_fraction": 0.9,
-
-        "idle_timeout_minutes": 5,
-
-        "provider": {
-            "type": "aws",
-            "region": "us-west-2",
-            "availability_zone": "us-west-2a",
-            "key_pair": {
-                "key_name": "__test-cli"
-            }
-        },
-        "auth": {
-            "ssh_user": "ubuntu",
-        },
-        "head_node": {
-            "InstanceType": "t3a.small",
-            "ImageId": "latest_dlami"
-        },
-        "worker_nodes": {
-            "InstanceType": "t3a.small",
-            "ImageId": "latest_dlami"
-        },
-        "file_mounts": {
-            "~/tests": "."
-        },
-
-        "initialization_commands": ["echo init"],
-        "setup_commands": [
-            "echo a",
-            "echo b",
-            "echo ${echo hi}"
-        ],
-        "head_setup_commands": ["echo head"],
-        "worker_setup_commands": ["echo worker"],
-        "head_start_ray_commands": [
-            "ray stop",
-            "ray start --head --autoscaling-config=~/ray_bootstrap_config.yaml"
-        ],
-        "worker_start_ray_commands": [
-            "ray stop",
-            "ray start --address=$RAY_HEAD_IP"
-        ]
-    }
-
-    config_path = tmp_path / "config.yaml"
-    config_path.write_text(yaml.dump(config))
-
-    #
-    # configure the AWS mock
-    #
-
-    # moto (boto3 mock) only allows a hardcoded set of AMIs
-    dlami = moto.ec2.ec2_backends["us-west-2"].describe_images(
-                        filters={"name": "Deep Learning AMI Ubuntu*"})[0].id
-    aws_config.DEFAULT_AMI["us-west-2"] = dlami
+def test_ray_up(aws_credentials):
+    _setup_aws_mock()
 
     # moto.settings.INITIAL_NO_AUTH_ACTION_COUNT = 0
 
-    #
-    # Mock Popen
-    #
     def commands_mock(command, stdin):
         # if we want to have e.g. some commands fail,
         # we can have overrides happen here.
@@ -181,93 +157,105 @@ def test_ray_up(aws_credentials, tmp_path):
             return PopenBehaviour(stdout="MOCKED ray")
         return PopenBehaviour(stdout="MOCKED GENERIC")
 
-    Popen = MockPopen()
-    Popen.set_default(behaviour=commands_mock)
-    with Replacer() as replacer:
-        replacer.replace("subprocess.Popen", Popen)
+    with _unlink_test_shh_key():
+        with _setup_popen_mock(commands_mock):
+            expected_lines = _load_output_pattern("test_ray_up.txt")
 
-        #
-        # Run the test
-        #
+            # config cache does not work with mocks
+            runner = CliRunner()
+            result = runner.invoke(
+                scripts.up,
+                [str(default_test_config_path),
+                    "--no-config-cache", "-y", "--log-new-style"])
 
-        expected_lines = [
-            r"Commands running under a login shell can produce more " +\
-                r"output than special processing can handle\.",
-            r"Thus, the output from subcommands will be logged as is\.",
-            r"Consider using --use-normal-shells, if you tested your " +\
-                r"workflow and it is compatible\.",
-            r"",
-            r"Cluster configuration valid",
-            r"",
-            r"Cluster: test-cli",
-            r"",
-            r"Bootstraping AWS config",
-            r"AWS config",
-            r"  IAM Profile: .+ \[default\]",
-            r"  EC2 Key pair \(head & workers\): .+ \[default\]",
-            r"  VPC Subnets \(head & workers\): subnet-.+ \[default\]",
-            r"  EC2 Security groups \(head & workers\): sg-.+ \[default\]",
-            r"  EC2 AMI \(head & workers\): ami-.+ \[dlami\]",
-            r"",
-            r"No head node found\. Launching a new cluster\. " +\
-                r"Confirm \[y/N\]: y \[automatic, due to --yes\]",
-            r"",
-            r"Acquiring an up-to-date head node",
-            r"  Launched 1 nodes \[subnet_id=subnet-.+\]",
-            r"    Launched instance i-.+ \[state=pending, info=pending\]",
-            r"  Launched a new head node",
-            r"  Fetching the new head node",
-            r"",
-            r"<1/1> Setting up head node",
-            r"  Prepared bootstrap config",
-            r"  New status: waiting-for-ssh",
-            r"  \[1/6\] Waiting for SSH to become available",
-            r"    Running `uptime` as a test\.",
-            r"    Fetched IP: .+",
-            r"    Success\.",
-            r"  Updating cluster configuration\. \[hash=.+\]",
-            r"  New status: syncing-files",
-            r"  \[3/6\] Processing file mounts",
-            r"    ~/tests/ from ./",
-            r"  \[4/6\] No worker file mounts to sync",
-            r"  New status: setting-up",
-            r"  \[3/5\] Running initialization commands",
-            r"  \[4/6\] Running setup commands",
-            r"    \(0/4\) echo a",
-            r"    \(1/4\) echo b",
-            r"    \(2/4\) echo \${echo hi}",
-            r"    \(3/4\) echo head",
-            r"  \[6/6\] Starting the Ray runtime",
-            r"  New status: up-to-date",
-            r"",
-            r"Useful commands",
-            r"  Monitor autoscaling with",
-            r"    ray exec .+\.yaml " +\
-                r"'tail -n 100 -f /tmp/ray/session_\*/logs/monitor\*'",
-            r"  Connect to a terminal on the cluster head",
-            r"    ray attach .+\.yaml"
-        ]
+            _check_output_via_pattern("test_ray_up.txt", result)
 
-        # config cache does not work with mocks
-        runner = CliRunner()
-        result = runner.invoke(
-            scripts.up,
-            [str(config_path), "--no-config-cache", "-y", "--log-new-style"])
-        try:
-            pathlib.Path("~", ".ssh", "__test-cli_key").unlink()
-        except FileNotFoundError:
-            pass
+@mock_ec2
+@mock_iam
+def test_ray_attach():
+    _setup_aws_mock()
 
-        if result.exception is not None:
-            print(result.output)
-            raise result.exception from None
+    def commands_mock(command, stdin):
+        # TODO(maximsmol): this is a hack since stdout=sys.stdout
+        #                  doesn't work with the mock for some reason
+        print("ubuntu@ip-.+:~$ exit")
+        return PopenBehaviour(stdout="ubuntu@ip-.+:~$ exit")
 
-        expected = r" *\n".join(expected_lines) + "\n?"
-        if re.fullmatch(expected, result.output) is None:
-            _debug_check_line_by_line(result, expected_lines)
+    with _unlink_test_shh_key():
+        with _setup_popen_mock(commands_mock):
+            runner = CliRunner()
+            result = runner.invoke(
+                scripts.up,
+                [str(default_test_config_path),
+                 "--no-config-cache", "-y", "--log-new-style"])
+            _die_on_error(result)
 
-        assert result.exit_code == 0
+            result = runner.invoke(
+                scripts.attach,
+                [str(default_test_config_path),
+                 "--log-new-style"])
 
+            _check_output_via_pattern("test_ray_attach.txt", result)
+
+@mock_ec2
+@mock_iam
+def test_ray_exec():
+    _setup_aws_mock()
+
+    def commands_mock(command, stdin):
+        # TODO(maximsmol): this is a hack since stdout=sys.stdout
+        #                  doesn't work with the mock for some reason
+        print("This is a test!")
+        return PopenBehaviour(stdout="This is a test!")
+
+    with _unlink_test_shh_key():
+        with _setup_popen_mock(commands_mock):
+            runner = CliRunner()
+            result = runner.invoke(
+                scripts.up,
+                [str(default_test_config_path),
+                 "--no-config-cache", "-y", "--log-new-style"])
+            _die_on_error(result)
+
+            result = runner.invoke(
+                scripts.exec,
+                [str(default_test_config_path),
+                 "--log-new-style",
+                 "\"echo This is a test!\""])
+
+            _check_output_via_pattern("test_ray_exec.txt", result)
+
+@mock_ec2
+@mock_iam
+def test_ray_submit():
+    _setup_aws_mock()
+
+    def commands_mock(command, stdin):
+        # TODO(maximsmol): this is a hack since stdout=sys.stdout
+        #                  doesn't work with the mock for some reason
+        if "rsync" not in command:
+            print("This is a test!")
+        return PopenBehaviour(stdout="This is a test!")
+
+    with _unlink_test_shh_key():
+        with _setup_popen_mock(commands_mock):
+            runner = CliRunner()
+            result = runner.invoke(
+                scripts.up,
+                [str(default_test_config_path),
+                 "--no-config-cache", "-y", "--log-new-style"])
+            _die_on_error(result)
+
+            result = runner.invoke(
+                scripts.submit,
+                [str(default_test_config_path),
+                 "--log-new-style",
+                 # this is somewhat misleading, since the file
+                 # actually never gets run
+                 # TODO(maximsmol): make this work properly one day?
+                 _get_pattern_path("test.py")])
+
+            _check_output_via_pattern("test_ray_submit.txt", result)
 
 @pytest.fixture(scope="function")
 def aws_credentials():
