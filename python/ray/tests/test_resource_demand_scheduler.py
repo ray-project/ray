@@ -268,6 +268,31 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("172.0.0.1", "CPU: 32")
         runner.assert_has_call("172.0.0.1", "GPU: 8")
 
+    def testNodeConfig(self):
+        config = MULTI_WORKER_CLUSTER.copy()
+        config["min_workers"] = 0
+        config["max_workers"] = 50
+        config["available_instance_types"]["m4.large"]["node_config"]\
+            = {"key1":"value1"}
+        config["worker_nodes"] = {"default_key": "default_value"}
+        config_path = self.write_config(config)
+        self.provider = MockProvider(default_instance_type="m4.large")
+        runner = MockProcessRunner()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            LoadMetrics(),
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        assert len(self.provider.non_terminated_nodes({})) == 0
+        autoscaler.update()
+        self.waitForNodes(0)
+        autoscaler.request_resources([{"CPU": 1}])
+        autoscaler.update()
+        self.waitForNodes(1)
+        assert self.provider.mock_nodes[0].instance_type == "m4.large"
+        assert "default_key" not in self.provider.mock_nodes[0].node_config
+        assert self.provider.mock_nodes[0].node_config["key1"] == "value1"
 
 if __name__ == "__main__":
     import sys

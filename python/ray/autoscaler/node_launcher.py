@@ -28,10 +28,10 @@ class NodeLauncher(threading.Thread):
         self.index = str(index) if index is not None else ""
         super(NodeLauncher, self).__init__(*args, **kwargs)
 
-    def _launch_node(self, config, count, instance_type, instance_config):
+    def _launch_node(self, config, count, instance_type, node_config):
         worker_filter = {TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER}
         before = self.provider.non_terminated_nodes(tag_filters=worker_filter)
-        launch_hash = hash_launch_conf(instance_config, config["auth"])
+        launch_hash = hash_launch_conf(node_config, config["auth"])
         self.log("Launching {} nodes, type {}.".format(count, instance_type))
         node_tags = {
             TAG_RAY_NODE_NAME: "ray-{}-worker".format(config["cluster_name"]),
@@ -41,21 +41,21 @@ class NodeLauncher(threading.Thread):
         }
         if instance_type:
             node_tags[TAG_RAY_INSTANCE_TYPE] = instance_type
-            self.provider.create_node_of_type(instance_config, node_tags,
+            self.provider.create_node_of_type(node_config, node_tags,
                                               instance_type, count)
         else:
-            self.provider.create_node(instance_config, node_tags, count)
+            self.provider.create_node(node_config, node_tags, count)
         after = self.provider.non_terminated_nodes(tag_filters=worker_filter)
         if set(after).issubset(before):
             self.log("No new nodes reported after node creation.")
 
     def run(self):
         while True:
-            config, count, instance_type, instance_config = self.queue.get()
+            config, count, instance_type, node_config = self.queue.get()
             self.log("Got {} nodes to launch.".format(count))
             try:
                 self._launch_node(config, count, instance_type,
-                                  instance_config)
+                                  node_config)
             except Exception:
                 logger.exception("Launch failed")
             finally:

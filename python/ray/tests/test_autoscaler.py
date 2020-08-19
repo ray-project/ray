@@ -21,13 +21,14 @@ import pytest
 
 
 class MockNode:
-    def __init__(self, node_id, tags, instance_type=None):
+    def __init__(self, node_id, tags, instance_type=None, node_config=None):
         self.node_id = node_id
         self.state = "pending"
         self.tags = tags
         self.external_ip = "1.2.3.4"
         self.internal_ip = "172.0.0.{}".format(self.node_id)
         self.instance_type = instance_type
+        self.node_config = node_config
 
     def matches(self, tags):
         for k, v in tags.items():
@@ -150,7 +151,7 @@ class MockProvider(NodeProvider):
                     node.tags.update(tags)
         for _ in range(count):
             self.mock_nodes[self.next_id] = MockNode(self.next_id, tags.copy(),
-                                                     instance_type)
+                                                     instance_type, node_config)
             self.next_id += 1
 
     def create_node_of_type(self, node_config, tags, instance_type, count):
