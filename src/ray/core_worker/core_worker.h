@@ -588,7 +588,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Request an object to be spilled to external storage.
   /// \param[in] object_ids The objects to be spilled.
-  /// \return Status
+  /// \return Status. Returns Status::Invalid if any of the objects are not
+  /// eligible for spilling (they have gone out of scope or we do not own the
+  /// object). Otherwise, the return status is ok and we will use best effort
+  /// to spill the object.
   Status SpillObjects(const std::vector<ObjectID> &object_ids);
 
   /// Restore objects from external storage.
@@ -995,6 +998,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Handler if a raylet node is removed from the cluster.
   void OnNodeRemoved(const rpc::GcsNodeInfo &node_info);
+
+  /// Request the spillage of an object that we own from the primary that hosts
+  /// the primary copy to spill.
+  void SpillOwnedObject(const ObjectID &object_id, const std::shared_ptr<RayObject> &obj,
+                        std::function<void()> callback);
 
   const CoreWorkerOptions options_;
 
