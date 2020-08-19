@@ -22,9 +22,6 @@ void TestReturnObjectId(const TaskID &task_id, int64_t return_index) {
   // Round trip test for computing the object ID for a task's return value,
   // then computing the task ID that created the object.
   ObjectID return_id = ObjectID::ForTaskReturn(task_id, return_index);
-  ASSERT_TRUE(return_id.CreatedByTask());
-  ASSERT_TRUE(return_id.IsReturnObject());
-  ASSERT_FALSE(return_id.IsPutObject());
   ASSERT_EQ(return_id.TaskId(), task_id);
   ASSERT_EQ(return_id.ObjectIndex(), return_index);
 }
@@ -33,9 +30,6 @@ void TestPutObjectId(const TaskID &task_id, int64_t put_index) {
   // Round trip test for computing the object ID for a task's put value, then
   // computing the task ID that created the object.
   ObjectID put_id = ObjectID::ForPut(task_id, put_index);
-  ASSERT_TRUE(put_id.CreatedByTask());
-  ASSERT_FALSE(put_id.IsReturnObject());
-  ASSERT_TRUE(put_id.IsPutObject());
   ASSERT_EQ(put_id.TaskId(), task_id);
   ASSERT_EQ(put_id.ObjectIndex(), put_index);
 }
@@ -43,7 +37,6 @@ void TestPutObjectId(const TaskID &task_id, int64_t put_index) {
 void TestRandomObjectId() {
   // Round trip test for computing the object ID from random.
   const ObjectID random_object_id = ObjectID::FromRandom();
-  ASSERT_FALSE(random_object_id.CreatedByTask());
 }
 
 const static JobID kDefaultJobId = JobID::FromInt(199);

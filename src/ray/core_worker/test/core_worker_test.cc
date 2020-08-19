@@ -314,7 +314,6 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
 
       driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
       ASSERT_EQ(return_ids.size(), 1);
-      ASSERT_TRUE(return_ids[0].IsReturnObject());
 
       std::vector<std::shared_ptr<ray::RayObject>> results;
       RAY_CHECK_OK(driver.Get(return_ids, -1, &results));

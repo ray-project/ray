@@ -36,6 +36,7 @@ struct WorkerThreadContext {
   void SetCurrentTask(const TaskSpecification &task_spec) {
     RAY_CHECK(task_index_ == 0);
     RAY_CHECK(put_index_ == 0);
+    put_index_ = task_spec.NumReturns();
     SetCurrentTaskId(task_spec.TaskId());
     current_task_ = std::make_shared<const TaskSpecification>(task_spec);
   }
@@ -56,7 +57,8 @@ struct WorkerThreadContext {
   /// Number of tasks that have been submitted from current task.
   int task_index_;
 
-  /// Number of objects that have been put from current task.
+  /// Number of return objects for the current task plus the number of objects that
+  /// have been put from current task.
   int put_index_;
 };
 
